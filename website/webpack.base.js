@@ -1,5 +1,6 @@
 // 📦 webpack.base.js
 import path from 'path'
+import webpack from 'webpack'
 import MiniCssExtractPlugin from 'mini-css-extract-plugin'
 import process from 'process'
 
@@ -8,25 +9,34 @@ const isProd = process.env.NODE_ENV === 'production'
 
 export default {
   entry: path.resolve(__dirname, './src/index.js'),
+
   target: 'web',
-  performance: { hints: false },
+
+  performance: {
+    hints: false,
+  },
 
   resolve: {
     extensions: [
       '.js',
       '.jsx',
+      '.json',
       '.css',
       '.scss',
       '.sass',
       '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
       '.svg',
+      '.webp',
       '.woff',
       '.woff2',
       '.ttf',
       '.eot',
       '.otf',
-      '.webp',
     ],
+
     alias: {
       '@routes': path.resolve(__dirname, 'src/Route'),
       '@features': path.resolve(__dirname, 'src/Features'),
@@ -37,6 +47,7 @@ export default {
       '@hooks': path.resolve(__dirname, 'src/Hooks'),
       '@assets': path.resolve(__dirname, 'src/assets'),
     },
+
     fallback: {
       process: 'process/browser',
     },
@@ -53,6 +64,7 @@ export default {
             loader: 'css-loader',
             options: {
               sourceMap: !isProd,
+              importLoaders: 1,
             },
           },
         ],
@@ -67,6 +79,7 @@ export default {
             loader: 'css-loader',
             options: {
               sourceMap: !isProd,
+              importLoaders: 1,
             },
           },
           {
@@ -80,7 +93,7 @@ export default {
 
       // ---------- IMÁGENES ----------
       {
-        test: /\.(png|jpe?g|gif|svg)$/i,
+        test: /\.(png|jpe?g|gif|svg|webp)$/i,
         type: 'asset/resource',
         generator: {
           filename: 'assets/images/[name].[contenthash][ext]',
@@ -103,9 +116,22 @@ export default {
         use: {
           loader: 'babel-loader',
           options: {
+            cacheDirectory: true,
             presets: [
-              ['@babel/preset-env', { modules: false }],
-              '@babel/preset-react',
+              [
+                '@babel/preset-env',
+                {
+                  modules: false,
+                  bugfixes: true,
+                  targets: '>0.2%, not dead, not op_mini all',
+                },
+              ],
+              [
+                '@babel/preset-react',
+                {
+                  runtime: 'automatic',
+                },
+              ],
             ],
             plugins: ['@babel/plugin-transform-runtime'],
           },
@@ -122,6 +148,12 @@ export default {
       },
     ],
   },
+
+  plugins: [
+    new webpack.ProvidePlugin({
+      process: 'process/browser',
+    }),
+  ],
 
   stats: {
     errorDetails: true,
