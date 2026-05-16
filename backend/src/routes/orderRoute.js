@@ -1,0 +1,200 @@
+// 📁 src/routes/orderRoute.js
+// VERSIÓN PRODUCCIÓN - MULTI-TENANT / CSRF / ADMIN + STOREFRONT SAFE
+
+import express from 'express'
+import expressAsyncHandler from 'express-async-handler'
+
+import {
+  createOrder,
+  resendConfirmationEmail,
+  getOrders,
+  getAllOrders,
+  updateOrderStatus,
+  updateOrderPaymentStatus,
+  updateOrderFulfillmentStatus,
+  cancelOrder,
+  refundOrder,
+  deleteOrder,
+  orderWriteLimiter,
+} from '../controller/orderCtrl.js'
+
+import { authMiddleware } from '../middlewares/authMiddleware.js'
+import { csrfProtection } from '../middlewares/csrfMiddleware.js'
+import {
+  resolveTenantByDomain,
+  requireShopDomain,
+} from '../middlewares/tenantMiddleware.js'
+
+const router = express.Router()
+
+// =========================================================
+// HELPERS
+// =========================================================
+
+const isAdminOrManager = expressAsyncHandler(async (req, res, next) => {
+  const role = req.user?.role
+
+  if (['admin', 'manager', 'owner', 'superadmin'].includes(role)) {
+    return next()
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: 'Permisos insuficientes',
+  })
+})
+
+// =========================================================
+// CLIENTE / USUARIO AUTENTICADO - STOREFRONT
+// =========================================================
+
+/**
+ * Crear orden
+ * POST /api/order/create
+ *
+ * Solo storefront.
+ */
+router.post(
+  '/create',
+  resolveTenantByDomain,
+  requireShopDomain,
+  authMiddleware,
+  csrfProtection,
+  orderWriteLimiter,
+  createOrder,
+)
+
+/**
+ * Obtener mis órdenes
+ * GET /api/order/my-orders
+ *
+ * Solo storefront.
+ */
+router.get(
+  '/my-orders',
+  resolveTenantByDomain,
+  requireShopDomain,
+  authMiddleware,
+  getOrders,
+)
+
+/**
+ * Reenviar email de confirmación
+ * POST /api/order/:orderId/resend-email
+ *
+ * Solo storefront.
+ */
+router.post(
+  '/:orderId/resend-email',
+  resolveTenantByDomain,
+  requireShopDomain,
+  authMiddleware,
+  csrfProtection,
+  orderWriteLimiter,
+  resendConfirmationEmail,
+)
+
+// =========================================================
+// ADMIN / MANAGER - ADMIN DOMAIN
+// =========================================================
+
+/**
+ * Obtener todas las órdenes del tenant
+ * GET /api/order/getAll
+ */
+router.get(
+  '/getAll',
+  resolveTenantByDomain,
+  authMiddleware,
+  isAdminOrManager,
+  getAllOrders,
+)
+
+/**
+ * Legacy: actualizar estado agregado
+ * PUT /api/order/:id/status
+ */
+router.put(
+  '/:id/status',
+  resolveTenantByDomain,
+  authMiddleware,
+  isAdminOrManager,
+  csrfProtection,
+  orderWriteLimiter,
+  updateOrderStatus,
+)
+
+/**
+ * Actualizar estado de pago
+ * PUT /api/order/:id/payment-status
+ */
+router.put(
+  '/:id/payment-status',
+  resolveTenantByDomain,
+  authMiddleware,
+  isAdminOrManager,
+  csrfProtection,
+  orderWriteLimiter,
+  updateOrderPaymentStatus,
+)
+
+/**
+ * Actualizar estado logístico
+ * PUT /api/order/:id/fulfillment-status
+ */
+router.put(
+  '/:id/fulfillment-status',
+  resolveTenantByDomain,
+  authMiddleware,
+  isAdminOrManager,
+  csrfProtection,
+  orderWriteLimiter,
+  updateOrderFulfillmentStatus,
+)
+
+/**
+ * Cancelar orden
+ * POST /api/order/:id/cancel
+ */
+router.post(
+  '/:id/cancel',
+  resolveTenantByDomain,
+  authMiddleware,
+  isAdminOrManager,
+  csrfProtection,
+  orderWriteLimiter,
+  cancelOrder,
+)
+
+/**
+ * Reembolsar orden
+ * POST /api/order/:id/refund
+ */
+router.post(
+  '/:id/refund',
+  resolveTenantByDomain,
+  authMiddleware,
+  isAdminOrManager,
+  csrfProtection,
+  orderWriteLimiter,
+  refundOrder,
+)
+
+/**
+ * Eliminar orden lógicamente
+ * DELETE /api/order/:id
+ *
+ * Solo admin/manager.
+ * No usa requireShopDomain porque debe funcionar desde admin.henko.local.
+ */
+router.delete(
+  '/:id',
+  resolveTenantByDomain,
+  authMiddleware,
+  isAdminOrManager,
+  csrfProtection,
+  orderWriteLimiter,
+  deleteOrder,
+)
+
+export default router

@@ -1,0 +1,478 @@
+/* ======================================================
+   ESTADOS Y CONTENEDOR
+   ====================================================== */
+
+.coupon-list {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.coupon-list-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.coupon-list-state.loading {
+  gap: 16px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #2196f3;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+/* ======================================================
+   TABLA RESPONSIVA
+   ====================================================== */
+
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.data-table thead {
+  background: #f5f5f5;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.data-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #e0e0e0;
+  white-space: nowrap;
+}
+
+.data-table th.actions-col {
+  text-align: center;
+  width: 120px;
+}
+
+.data-table td {
+  padding: 16px;
+  border-bottom: 1px solid #e0e0e0;
+  vertical-align: middle;
+}
+
+.data-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.data-table tbody tr.inactive {
+  opacity: 0.6;
+  background: #fafafa;
+}
+
+/* ======================================================
+   CELDAS ESPECÍFICAS
+   ====================================================== */
+
+.coupon-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.coupon-code code {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stackable-badge {
+  background: #4caf50;
+  color: white;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.description-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #555;
+}
+
+/* ======================================================
+   BADGES Y DESCUENTOS
+   ====================================================== */
+
+.discount-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.discount-value {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.max-discount {
+  color: #999;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ======================================================
+   FECHAS
+   ====================================================== */
+
+.date-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.date-range time {
+  color: #555;
+}
+
+.date-separator {
+  color: #999;
+  font-size: 11px;
+}
+
+/* ======================================================
+   USO Y PROGRESO
+   ====================================================== */
+
+.usage-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 100px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #4caf50;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-bar.warning .progress-fill {
+  background: #ff9800;
+}
+
+.progress-bar.danger .progress-fill {
+  background: #f44336;
+}
+
+.usage-text {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* ======================================================
+   PRODUCTOS
+   ====================================================== */
+
+.products-count {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #f5f5f5;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #666;
+}
+
+.products-count.all {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+/* ======================================================
+   ESTADOS
+   ====================================================== */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-active {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-inactive {
+  background: #eeeeee;
+  color: #757575;
+}
+
+.status-scheduled {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.status-expired {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.status-exhausted {
+  background: #efebe9;
+  color: #4e342e;
+}
+
+/* ======================================================
+   ACCIONES
+   ====================================================== */
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  background: transparent;
+}
+
+.btn-icon:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.btn-icon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-edit {
+  color: #2196f3;
+  background: #e3f2fd;
+}
+
+.btn-edit:hover:not(:disabled) {
+  background: #bbdefb;
+}
+
+.btn-clone {
+  color: #ff9800;
+  background: #fff3e0;
+}
+
+.btn-clone:hover:not(:disabled) {
+  background: #ffe0b2;
+}
+
+.btn-delete {
+  color: #f44336;
+  background: #ffebee;
+}
+
+.btn-delete:hover:not(:disabled) {
+  background: #ffcdd2;
+}
+
+/* ======================================================
+   FOOTER
+   ====================================================== */
+
+.list-footer {
+  padding: 16px;
+  background: #fafafa;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.total-count {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* ======================================================
+   RESPONSIVE
+   ====================================================== */
+
+@media (max-width: 768px) {
+  .data-table {
+    font-size: 13px;
+  }
+  
+  .data-table th,
+  .data-table td {
+    padding: 12px 8px;
+  }
+  
+  .description-cell {
+    max-width: 120px;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .btn-icon {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* ======================================================
+   ACCESSIBILITY
+   ====================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .progress-fill,
+  .btn-icon {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Focus visible para navegación por teclado */
+.btn-icon:focus-visible {
+  outline: 2px solid #2196f3;
+  outline-offset: 2px;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .status-badge {
+    border: 1px solid currentColor;
+  }
+  
+  .discount-value {
+    border: 1px solid white;
+  }
+}
+
+/* Filas de cupones desactivados */
+.coupon-row.inactive-row {
+  background-color: #f9f9f9;
+  opacity: 0.8;
+}
+
+.coupon-row.inactive-row td {
+  color: #888;
+}
+
+/* Badge de acumulable */
+.stackable-badge {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin-left: 5px;
+  font-weight: bold;
+}
+
+/* Colores de acciones en el menú */
+.menu-item.success { color: #2e7d32; }
+.menu-item.warning { color: #ed6c02; }
+.menu-item.danger { color: #d32f2f; }
+
+.menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #eee;
+}
+
+.hint {
+  font-size: 0.7rem;
+  display: block;
+  color: #999;
+}
+
+/* Barra de progreso de uso */
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #eee;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #4caf50;
+  transition: width 0.3s ease;
+}
+
+.progress-bar.warning .progress-fill { background: #ff9800; }
+.progress-bar.danger .progress-fill { background: #f44336; }

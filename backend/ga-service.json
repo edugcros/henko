@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "onyx-logic-373117",
+  "private_key_id": "7b0057281d6ff60780bd6aeccd19e9969da02a98",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQD4HpbrmoVT5cm/\ng2aTCdSdyAOaA8zAnE+yEvHub6DZ476psjgOtVdk02ngSnvKZr5QkMKFkrhUjw1S\nHsQVn3lTr22rzSzEu0FGmp3y/1Y/rF5OOIoZCGJ195WRqH62/v0HFjAPVt2w62md\nyXTFZzuO8Jm8eFqiqcyoNYleygsjl27DdJVJLC+oOiLXqbQ1X784u4l5Uy4mAZHF\ncVjBfeJQKsnXGnb99cJ7RpC8ibcoT4QLcsQuMpAc0uJCqE/viVnV6fMzTQ01flGR\nMQhIOyg/GII3Q/Xgo2ONPTVpjDfda8492fQS/l3grA51MjDmLcb41AIVVvajdLNT\n0f3gbEsFAgMBAAECggEAB2zY7N+QrmBRz4yl4PAaIAeoje8frULwQp69BTrreCHP\n5qGp+ky0exS1liv8dOPqvZv7akZoBEXMqwC3MwN0/Mti75GCDbgh3bRKVkeMY/br\nUpFwFoww8CFS5UtC0YSje1cPZKIfm8gLvthUyYSLnH04SJLceYI12PHTNNY8i5nR\nNblfZVrKQXCHvN1RtiJRsXW+t2oO1QsKbwl2WZH3gMTqtFgcPnflkcm2gynZsr91\nGXRrcdDPUm/6q5Wh9YEEbAd+bG7tL5t4m1Z2znbtb81nYOWuVlo3noexWbRiZHKx\nvcbQQ1mzUH9M77fznWmay5EDezmUvwPCyWke7mPfoQKBgQD+Fwdd7D02oa/vOkOZ\nHWDq22SaOFpHapQdizIUgFK08Z0fX8MBln+SBnPK1qAdSk7CLf72RugkdqEyk8Nw\nXl40v+FJwEsaIDpYqb1GXxecY/K3rWMQHUAlLt27n2lXapAWG9i+DEe/yYcY2Ble\nyUGlUZu0Y1WG4929v475QhDSZQKBgQD5/BI4zUMVlNgrZ752y+SdovPGWES9NfIT\nEjiPJC65fnpqkh/PIe/FqNW8axHrgBEomlNIeNzSzNLw12qYNxLw/7lv3OLeOgWE\n0tHAjKlA5wORp2cmC14GssjUB/nxeNGUHFHOuUgix6t6bKcWIuXneu4oIxnRC5ba\nzF5ib1O8IQKBgQDrKIkK5g8pNq9LatMRLF18Pxx2lt0G5565URBCZRkmmc7fMJOc\nLptWnF4iRkzdjt4hXMxxReKnjJtX4eWpY80waL2qsitPvLADSuT/8hY6CU6jq/bY\n/RlW0G8qrDikTN2ZeKA6E8d7upor5iRk00LMLCE87ApF0zJv4JAEJJ7I+QKBgDv9\nOKY248VXDbUE1VkOvtLxWsybPAun2WqoMbhv92J+LoRKgqWjQDXPuVLY4tj/x55V\nwmyezGctzeUL3MGgXcRFqctlV2/6vn5MVRd+6dLwXRPj90XS7oJu/vCa5WkEFE8V\nqLASGHR4M/dSAZq3TzKIdoRdQAHBZTcmWfQHQTHhAoGBAKijsLjgBBqeyVquCNcJ\nU2Z7wEDI6Sgt8yukzM32itEC47YZrCBE/xXaXC1B6Yphlsrua6HkR9DuhNqL/QMl\nByxWNBNjcqtdMO2AIqb4HXqjlDZry89i2VHdBDIL9XPUSWpzY8rMxl3nUR627aUV\nDOPpiIAVLfN2NbW1uqef1d5t\n-----END PRIVATE KEY-----\n",
+  "client_email": "gecommerce@onyx-logic-373117.iam.gserviceaccount.com",
+  "client_id": "100548211790114397181",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/gecommerce%40onyx-logic-373117.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

@@ -1,0 +1,415 @@
+// 📁 src/Components/DynamicThemeProvider.jsx
+import React, { useMemo, useEffect, useRef, useCallback } from 'react'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
+import { useSelector } from 'react-redux'
+import { useTenant } from '../contexts/TenantContext'
+
+// ==========================================
+// CONSTANTES
+// ==========================================
+
+const DEFAULT_THEME = {
+  colors: {
+    primary: '#1976d2',
+    secondary: '#dc004e',
+    background: '#ffffff',
+    paper: '#f5f5f5',
+    textPrimary: '#212121',
+    textSecondary: '#757575',
+    error: '#f44336',
+    warning: '#ff9800',
+    info: '#2196f3',
+    success: '#4caf50',
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    headingFont: '"Inter", sans-serif',
+    baseSize: 16,
+    lineHeight: 1.5,
+    letterSpacing: 0,
+    scale: 1.2,
+  },
+  layout: {
+    maxWidth: 'lg',
+    paddingX: 24,
+    borderRadius: 8,
+    spacing: 8,
+    shadows: true,
+  },
+  animations: {
+    preset: 'smooth',
+    pageTransitions: 'fade',
+    respectPrefersReducedMotion: true,
+  },
+}
+
+// ==========================================
+// UTILIDADES
+// ==========================================
+
+const sanitizeColor = (color, fallback) => {
+  if (!color || typeof color !== 'string') return fallback
+  const validPattern = /^(#[0-9A-Fa-f]{3,8}|rgb\(|rgba\(|hsl\(|hsla\(|[\w-]+)$/
+  return validPattern.test(color.trim()) ? color.trim() : fallback
+}
+
+const parseNumber = (value, min, max, defaultValue) => {
+  const parsed = parseFloat(value)
+  if (isNaN(parsed)) return defaultValue
+  return Math.max(min, Math.min(max, parsed))
+}
+
+const buildFontFamily = config => {
+  if (!config?.fontFamily) return DEFAULT_THEME.typography.fontFamily
+
+  const fonts = config.fontFamily
+    .split(',')
+    .map(f => f.trim())
+    .filter(f => f)
+
+  if (fonts.length === 0) return DEFAULT_THEME.typography.fontFamily
+
+  // Asegurar que cada fuente tenga comillas si tiene espacios
+  const formatted = fonts.map(f => (f.includes(' ') && !f.startsWith('"') ? `"${f}"` : f))
+
+  return formatted.join(', ')
+}
+
+// ==========================================
+// COMPONENTE
+// ==========================================
+
+const DynamicThemeProvider = ({ children }) => {
+  // ==========================================
+  // HOOKS
+  // ==========================================
+
+  const { themeConfig: tenantConfig, isReady: tenantReady, isLoading: tenantLoading } = useTenant()
+
+  const reduxState = useSelector(state => state.theme) || {}
+  const { config: reduxConfig, previewMode, previewConfig, isLoading: reduxLoading } = reduxState
+
+  const styleTagRef = useRef(null)
+  const prevConfigRef = useRef(null)
+
+  // ==========================================
+  // CONFIGURACIÓN ACTIVA (UNIFICADA)
+  // ==========================================
+
+  const activeConfig = useMemo(() => {
+    // Cadena de prioridad: Preview > Redux > Tenant > Default
+    const source = previewMode && previewConfig ? previewConfig : reduxConfig || tenantConfig || {}
+
+    // Merge profundo con defaults
+    return {
+      colors: { ...DEFAULT_THEME.colors, ...source.colors },
+      typography: { ...DEFAULT_THEME.typography, ...source.typography },
+      layout: { ...DEFAULT_THEME.layout, ...source.layout },
+      animations: { ...DEFAULT_THEME.animations, ...source.animations },
+      storeName: source.storeName || DEFAULT_THEME.storeName,
+      favicon: source.favicon,
+      customCSS: source.customCSS,
+      darkMode: source.darkMode || false,
+      _source: previewMode
+        ? 'preview'
+        : reduxConfig
+          ? 'redux'
+          : tenantConfig
+            ? 'tenant'
+            : 'default',
+      _timestamp: Date.now(),
+    }
+  }, [previewMode, previewConfig, reduxConfig, tenantConfig])
+
+  // ==========================================
+  // TEMA MUI
+  // ==========================================
+
+  const theme = useMemo(() => {
+    const { colors, typography, layout, darkMode } = activeConfig
+
+    const palette = {
+      mode: darkMode ? 'dark' : 'light',
+      primary: {
+        main: sanitizeColor(colors.primary, DEFAULT_THEME.colors.primary),
+      },
+      secondary: {
+        main: sanitizeColor(colors.secondary, DEFAULT_THEME.colors.secondary),
+      },
+      error: { main: sanitizeColor(colors.error, DEFAULT_THEME.colors.error) },
+      warning: {
+        main: sanitizeColor(colors.warning, DEFAULT_THEME.colors.warning),
+      },
+      info: { main: sanitizeColor(colors.info, DEFAULT_THEME.colors.info) },
+      success: {
+        main: sanitizeColor(colors.success, DEFAULT_THEME.colors.success),
+      },
+      background: {
+        default: darkMode
+          ? '#121212'
+          : sanitizeColor(colors.background, DEFAULT_THEME.colors.background),
+        paper: darkMode ? '#1e1e1e' : sanitizeColor(colors.paper, DEFAULT_THEME.colors.paper),
+      },
+      text: {
+        primary: darkMode
+          ? '#ffffff'
+          : sanitizeColor(colors.textPrimary, DEFAULT_THEME.colors.textPrimary),
+        secondary: darkMode
+          ? '#b0b0b0'
+          : sanitizeColor(colors.textSecondary, DEFAULT_THEME.colors.textSecondary),
+      },
+    }
+
+    const fontFamily = buildFontFamily(typography)
+    const baseSize = parseNumber(typography.baseSize, 12, 24, DEFAULT_THEME.typography.baseSize)
+    const borderRadius = parseNumber(layout.borderRadius, 0, 32, DEFAULT_THEME.layout.borderRadius)
+
+    return createTheme({
+      palette,
+      typography: {
+        fontFamily,
+        fontSize: baseSize,
+        h1: {
+          fontFamily: typography.headingFont || fontFamily,
+          fontWeight: 700,
+          fontSize: `${baseSize * 2.5}px`,
+        },
+        h2: {
+          fontFamily: typography.headingFont || fontFamily,
+          fontWeight: 700,
+          fontSize: `${baseSize * 2}px`,
+        },
+        h3: {
+          fontFamily: typography.headingFont || fontFamily,
+          fontWeight: 600,
+          fontSize: `${baseSize * 1.75}px`,
+        },
+        h4: {
+          fontFamily: typography.headingFont || fontFamily,
+          fontWeight: 600,
+          fontSize: `${baseSize * 1.5}px`,
+        },
+        h5: {
+          fontFamily: typography.headingFont || fontFamily,
+          fontWeight: 500,
+          fontSize: `${baseSize * 1.25}px`,
+        },
+        h6: {
+          fontFamily: typography.headingFont || fontFamily,
+          fontWeight: 500,
+          fontSize: `${baseSize * 1.1}px`,
+        },
+        body1: {
+          fontSize: `${baseSize}px`,
+          lineHeight: typography.lineHeight || 1.5,
+        },
+        body2: {
+          fontSize: `${baseSize * 0.875}px`,
+          lineHeight: typography.lineHeight || 1.5,
+        },
+        button: { textTransform: 'none', fontWeight: 600 },
+      },
+      shape: { borderRadius },
+      spacing: factor => {
+        const unit = parseNumber(layout.spacing, 4, 32, DEFAULT_THEME.layout.spacing)
+        return unit * factor
+      },
+      breakpoints: {
+        values: {
+          xs: 0,
+          sm: 600,
+          md: 900,
+          lg: layout.maxWidth === 'xl' ? 1536 : 1200,
+          xl: 1536,
+        },
+      },
+      components: {
+        MuiCssBaseline: {
+          styleOverrides: {
+            body: {
+              scrollbarWidth: 'thin',
+              '&::-webkit-scrollbar': {
+                width: '8px',
+                height: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: darkMode ? '#1e1e1e' : '#f1f1f1',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: palette.primary.main,
+                borderRadius: '4px',
+              },
+            },
+          },
+        },
+        MuiButton: {
+          styleOverrides: {
+            root: {
+              borderRadius,
+              textTransform: 'none',
+              fontWeight: 600,
+            },
+          },
+        },
+        MuiCard: {
+          styleOverrides: {
+            root: {
+              borderRadius: borderRadius * 1.5,
+              boxShadow:
+                layout.shadows !== false
+                  ? darkMode
+                    ? '0 4px 12px rgba(0,0,0,0.5)'
+                    : '0 4px 12px rgba(0,0,0,0.1)'
+                  : 'none',
+            },
+          },
+        },
+        MuiContainer: {
+          styleOverrides: {
+            root: {
+              maxWidth:
+                layout.maxWidth === 'false' || layout.maxWidth === false
+                  ? '100%'
+                  : layout.maxWidth || 'lg',
+            },
+          },
+        },
+        MuiAppBar: {
+          styleOverrides: {
+            root: {
+              backgroundImage: 'none',
+            },
+          },
+        },
+      },
+    })
+  }, [activeConfig])
+
+  // ==========================================
+  // EFECTOS
+  // ==========================================
+
+  // Actualizar DOM (título, favicon, meta)
+  const updateDOM = useCallback(() => {
+    const { storeName, favicon, colors } = activeConfig
+
+    // Título
+    if (storeName && document.title !== storeName) {
+      document.title = storeName
+    }
+
+    // Favicon
+    const faviconUrl = favicon?.url || (typeof favicon === 'string' ? favicon : null)
+    if (faviconUrl) {
+      let link = document.querySelector("link[rel~='icon']")
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = 'icon'
+        document.head.appendChild(link)
+      }
+      if (link.href !== faviconUrl) {
+        link.type = 'image/x-icon'
+        link.href = faviconUrl
+      }
+    }
+
+    // Theme color para móvil
+    let metaThemeColor = document.querySelector("meta[name='theme-color']")
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement('meta')
+      metaThemeColor.name = 'theme-color'
+      document.head.appendChild(metaThemeColor)
+    }
+    metaThemeColor.content = colors?.primary || DEFAULT_THEME.colors.primary
+
+    prevConfigRef.current = activeConfig
+  }, [activeConfig])
+
+  // Dentro de DynamicThemeProvider, junto a los otros useEffects:
+
+  useEffect(() => {
+    const { typography } = activeConfig
+    if (!typography?.fontFamily) return
+
+    const fontName = typography.fontFamily.split(',')[0].replace(/"/g, '')
+    const linkId = `google-font-${fontName.replace(/\s+/g, '-').toLowerCase()}`
+
+    if (!document.getElementById(linkId)) {
+      const link = document.createElement('link')
+      link.id = linkId
+      link.rel = 'stylesheet'
+      link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(/\s+/g, '+')}:wght@300;400;500;700&display=swap`
+      document.head.appendChild(link)
+    }
+  }, [activeConfig?.typography?.fontFamily])
+
+  useEffect(() => {
+    if (prevConfigRef.current === activeConfig) return
+    updateDOM()
+  }, [activeConfig, updateDOM])
+
+  // CSS personalizado
+  useEffect(() => {
+    const { customCSS } = activeConfig
+
+    if (!customCSS && styleTagRef.current) {
+      styleTagRef.current.remove()
+      styleTagRef.current = null
+      return
+    }
+
+    if (!customCSS) return
+
+    if (!styleTagRef.current) {
+      styleTagRef.current = document.createElement('style')
+      styleTagRef.current.id = 'dynamic-custom-css'
+      document.head.appendChild(styleTagRef.current)
+    }
+
+    styleTagRef.current.textContent = customCSS
+
+    return () => {
+      if (styleTagRef.current) {
+        styleTagRef.current.remove()
+        styleTagRef.current = null
+      }
+    }
+  }, [activeConfig?.customCSS])
+
+  // ==========================================
+  // RENDER
+  // ==========================================
+
+  const isLoading = tenantLoading || reduxLoading
+  const hasConfig = tenantReady || !!reduxConfig
+
+  // Skeleton mientras carga inicial
+  if (isLoading && !hasConfig) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100vh',
+          bgcolor: 'grey.100',
+        }}
+      >
+        <CircularProgress size={60} />
+      </Box>
+    )
+  }
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      {children}
+    </ThemeProvider>
+  )
+}
+
+// Importar Box y CircularProgress para el loader
+import { Box, CircularProgress } from '@mui/material'
+
+export default React.memo(DynamicThemeProvider)

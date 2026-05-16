@@ -1,0 +1,85 @@
+/* 📄 src/components/MainLayout.css */
+
+/* =======================
+   Dropdown animado para avatar
+   ======================= */
+.dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-toggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.dropdown-toggle:hover,
+.dropdown-toggle:focus {
+  opacity: 0.85;
+  outline: none;
+}
+
+/* Menú desplegable */
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: #2f2f2f; /* oscuro consistente con sidebar */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  list-style: none;
+  padding: 4px 0;
+  margin: 4px 0 0 0;
+  min-width: 180px;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 1050;
+}
+
+/* Mostrar dropdown */
+.dropdown-menu.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Item individual */
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+  background-color: #6a5acd; /* resaltado al hover */
+  color: #fff;
+  outline: none;
+}
+
+/* =======================
+   Ajustes responsive y sidebar colapsado
+   ======================= */
+@media (max-width: 768px) {
+  .dropdown-menu {
+    right: 8px;
+    min-width: 140px;
+  }
+
+  .dropdown-item {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}
