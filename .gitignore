@@ -2,6 +2,15 @@
 # GLOBAL IGNORE — E-COMMERCE MONOREPO
 # ============================================
 
+# Build outputs
+dist/
+build/
+
+admin/dist/
+admin/build/
+website/dist/
+website/build/
+
 # --- Node.js ---
 **/node_modules/
 **/npm-debug.log*
