@@ -16,6 +16,7 @@ import {
 import {
   runWithTenantContext,
 } from '../utils/tenantRequestContext.js'
+import expressAsyncHandler from 'express-async-handler'
 
 // =====================================================
 // Configuración
@@ -233,43 +234,81 @@ const attachTenantToRequest = ({
 // Middleware: resolver tenant por slug
 // =====================================================
 
-export const resolveTenant = async (req, res, next) => {
-  try {
-    const { slug } = req.params
-
-    if (!slug || typeof slug !== 'string') {
-      return sendResponse(res, 400, false, 'Slug de tenant requerido')
-    }
-
-    const cleanSlug = normalizeSlug(slug)
-
-    if (cleanSlug !== slug.toLowerCase().trim()) {
-      return sendResponse(res, 400, false, 'Slug contiene caracteres inválidos')
-    }
-
-    const tenant = await Tenant.findOne({
-      slug: cleanSlug,
-      status: 'active',
-    }).select('_id name slug status plan')
-
-    if (!tenant) {
-      return sendResponse(res, 404, false, 'Comercio no encontrado')
-    }
-
-    const context = attachTenantToRequest({
-      req,
-      tenant,
-      host: null,
-      rawHost: null,
-      isAdminContext: false,
-    })
-
-    return runWithTenantContext(context, () => next())
-  } catch (error) {
-    clearTenantContext(req)
-    return next(error)
-  }
+const normalizeDomain = value => {
+  return String(value || '')
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    .split(':')[0]
+    .replace(/^www\./, '')
+    .trim()
+    .toLowerCase()
 }
+
+export const resolveTenant = expressAsyncHandler(async (req, res) => {
+  const rawDomain =
+    req.query.domains ||
+    req.query.domain ||
+    req.headers['x-tenant-domain'] ||
+    req.headers['x-forwarded-host'] ||
+    req.headers.host
+
+  const domain = normalizeDomain(rawDomain)
+
+  if (!domain) {
+    return res.status(400).json({
+      success: false,
+      message: 'Dominio requerido',
+    })
+  }
+
+  const candidates = [...new Set([
+    domain,
+    domain.replace(/^www\./, ''),
+  ])]
+
+  const tenant = await Tenant.findOne({
+    status: 'active',
+    $or: [
+      // Modelo actual como array de objetos
+      { 'domains.hostname': { $in: candidates } },
+      { 'domains.normalizedHostname': { $in: candidates } },
+      { 'adminDomains.hostname': { $in: candidates } },
+      { 'adminDomains.normalizedHostname': { $in: candidates } },
+
+      // Compatibilidad por si algún tenant usa array de strings
+      { domains: { $in: candidates } },
+      { adminDomains: { $in: candidates } },
+
+      // Compatibilidad legacy
+      { legacyDomains: { $in: candidates } },
+      { legacyAdminDomains: { $in: candidates } },
+    ],
+  }).lean()
+
+  if (!tenant) {
+    return res.status(404).json({
+      success: false,
+      message: 'Tenant no encontrado',
+      debug: process.env.NODE_ENV !== 'production'
+        ? { domain, candidates }
+        : undefined,
+    })
+  }
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      _id: tenant._id,
+      id: tenant._id,
+      name: tenant.name,
+      slug: tenant.slug,
+      status: tenant.status,
+      domains: tenant.domains,
+      adminDomains: tenant.adminDomains,
+      ownerUserId: tenant.ownerUserId,
+    },
+  })
+})
 
 // =====================================================
 // Middleware: resolver tenant por dominio

@@ -97,22 +97,15 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
   const tenantByDomain = await Tenant.findOne({
     status: 'active',
     $or: [
-      {
-        domains: {
-          $elemMatch: {
-            status: 'active',
-            $or: [
-              { hostname: { $in: candidates } },
-              { normalizedHostname: { $in: candidates } },
-            ],
-          },
-        },
-      },
+      { 'domains.hostname': { $in: candidates } },
+      { 'domains.normalizedHostname': { $in: candidates } },
+      { 'adminDomains.hostname': { $in: candidates } },
+      { 'adminDomains.normalizedHostname': { $in: candidates } },
+
       { legacyDomains: { $in: candidates } },
+      { legacyAdminDomains: { $in: candidates } },
     ],
-  }).select(
-    '_id name slug domains status plan settings currency locale timezone country',
-  )
+  }).lean()
 
   if (!tenantByDomain) {
     return res.status(404).json({

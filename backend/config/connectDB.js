@@ -2,10 +2,17 @@
 import mongoose from 'mongoose'
 import logger from './logger.js'
 import { env } from './env.js'
+import dns from 'node:dns'
 // import { tenantPlugin } from '../src/models/tenantPlugin.js'
 
 mongoose.set('strictQuery', true)
 
+
+
+if (String(process.env.MONGO_FORCE_PUBLIC_DNS || '').toLowerCase() === 'true') {
+  dns.setServers(['1.1.1.1', '8.8.8.8'])
+  logger.warn('🌐 Mongo DNS override activo: 1.1.1.1, 8.8.8.8')
+}
 // =====================================================
 // ⚠️ PLUGIN GLOBAL
 // =====================================================

@@ -15,9 +15,7 @@ export const env = {
     process.env.NODE_ENV === 'production',
 
   apiBaseUrl:
-    getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL') ||
-    'http://api.henko.local:5000/api',
-
+    getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL'),
   tenantHeader:
     getValue('REACT_APP_TENANT_HEADER') ||
     'x-tenant-domain',
