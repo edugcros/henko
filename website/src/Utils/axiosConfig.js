@@ -23,13 +23,12 @@ const assertApiBaseUrl = () => {
       'localhost',
       '127.0.0.1',
       'henko.local',
-      'api.henko.com', // prohibido mientras todavía no uses .com real
     ]
 
     forbiddenValues.forEach(value => {
       if (String(env.apiBaseUrl).includes(value)) {
         throw new Error(
-          `REACT_APP_API_BASE_URL inválido para esta etapa: ${env.apiBaseUrl}`,
+          `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
         )
       }
     })
@@ -44,7 +43,9 @@ assertApiBaseUrl()
 
 const getTenantDomain = () => {
   if (typeof window === 'undefined') return null
-  return window.location.host
+
+  // Mejor para multi-tenant: evita mandar puerto en producción/dev.
+  return window.location.hostname
 }
 
 const isValidToken = token => {
@@ -77,6 +78,8 @@ const isSafeMethod = method => {
 
 const shouldAttachCsrf = requestConfig => {
   if (requestConfig.skipCsrf === true) return false
+  if (requestConfig.publicRequest === true) return false
+
   return !isSafeMethod(requestConfig.method)
 }
 
@@ -86,6 +89,18 @@ const getCsrfHeaderName = () => {
 
 const getTenantHeaderName = () => {
   return env.tenantHeader || 'x-tenant-domain'
+}
+
+const removeCsrfHeaders = headers => {
+  delete headers[getCsrfHeaderName()]
+  delete headers['x-csrf-token']
+  delete headers['X-CSRF-Token']
+}
+
+const removeTenantHeaders = headers => {
+  delete headers[getTenantHeaderName()]
+  delete headers['x-tenant-domain']
+  delete headers['X-Tenant-Domain']
 }
 
 // =====================================================
@@ -102,7 +117,6 @@ const api = axios.create({
 })
 
 if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-  // eslint-disable-next-line no-console
   console.log('[WEBSITE API BOOT]', {
     apiBaseUrl: env.apiBaseUrl,
     nodeEnv: env.nodeEnv,
@@ -124,62 +138,58 @@ export const clearCsrfToken = () => {
   cachedCsrfToken = null
   csrfTokenPromise = null
 
-  const headerName = getCsrfHeaderName()
-
-  delete api.defaults.headers.common[headerName]
-  delete api.defaults.headers.common['x-csrf-token']
-  delete api.defaults.headers.common['X-CSRF-Token']
+  removeCsrfHeaders(api.defaults.headers.common)
 }
 
 export const fetchCsrfToken = async ({ force = false } = {}) => {
-  try {
-    if (cachedCsrfToken && !force) {
-      return cachedCsrfToken
-    }
+  if (cachedCsrfToken && !force) {
+    return cachedCsrfToken
+  }
 
-    if (csrfTokenPromise && !force) {
-      return csrfTokenPromise
-    }
-
-    csrfTokenPromise = api
-      .get('/user/csrf-token', {
-        withCredentials: true,
-        skipAuthRefresh: true,
-        skipCsrfRetry: true,
-        skipCsrf: true,
-      })
-      .then(res => {
-        const token =
-          res.data?.csrfToken ||
-          res.data?.token ||
-          res.headers?.['x-csrf-token'] ||
-          res.headers?.['X-CSRF-Token'] ||
-          null
-
-        cachedCsrfToken = token || null
-
-        if (token) {
-          api.defaults.headers.common[getCsrfHeaderName()] = token
-        }
-
-        return cachedCsrfToken
-      })
-      .finally(() => {
-        csrfTokenPromise = null
-      })
-
+  if (csrfTokenPromise && !force) {
     return csrfTokenPromise
-  } catch (err) {
-    console.error('[CSRF] Fallo crítico:', {
-      baseURL: env.apiBaseUrl,
-      message: err?.message,
-      status: err?.response?.status,
-      data: err?.response?.data,
+  }
+
+  csrfTokenPromise = api
+    .get('/user/csrf-token', {
+      withCredentials: true,
+      skipAuthRefresh: true,
+      skipCsrfRetry: true,
+      skipCsrf: true,
+    })
+    .then(res => {
+      const token =
+        res.data?.csrfToken ||
+        res.data?.token ||
+        res.headers?.['x-csrf-token'] ||
+        res.headers?.['X-CSRF-Token'] ||
+        null
+
+      if (!token) {
+        throw new Error('CSRF token no recibido desde backend')
+      }
+
+      cachedCsrfToken = token
+      api.defaults.headers.common[getCsrfHeaderName()] = token
+
+      return token
+    })
+    .catch(err => {
+      console.error('[CSRF] Fallo crítico:', {
+        baseURL: env.apiBaseUrl,
+        message: err?.message,
+        status: err?.response?.status,
+        data: err?.response?.data,
+      })
+
+      clearCsrfToken()
+      return null
+    })
+    .finally(() => {
+      csrfTokenPromise = null
     })
 
-    clearCsrfToken()
-    return null
-  }
+  return csrfTokenPromise
 }
 
 export const initCsrf = async () => {
@@ -202,11 +212,8 @@ api.interceptors.request.use(
     if (requestConfig.publicRequest) {
       delete requestConfig.headers.Authorization
       delete requestConfig.headers.authorization
-      delete requestConfig.headers['x-csrf-token']
-      delete requestConfig.headers['X-CSRF-Token']
-      delete requestConfig.headers['x-tenant-domain']
-      delete requestConfig.headers['X-Tenant-Domain']
-      delete requestConfig.headers[getTenantHeaderName()]
+      removeCsrfHeaders(requestConfig.headers)
+      removeTenantHeaders(requestConfig.headers)
 
       requestConfig.withCredentials = false
       return requestConfig
@@ -221,9 +228,7 @@ api.interceptors.request.use(
     }
 
     if (requestConfig.skipTenantHeader) {
-      delete requestConfig.headers['x-tenant-domain']
-      delete requestConfig.headers['X-Tenant-Domain']
-      delete requestConfig.headers[getTenantHeaderName()]
+      removeTenantHeaders(requestConfig.headers)
     }
 
     const token = getAuthToken()
@@ -356,6 +361,8 @@ api.interceptors.response.use(
 
       try {
         if (!refreshTokenPromise) {
+          const csrf = await fetchCsrfToken()
+
           refreshTokenPromise = api
             .post(
               '/user/refresh',
@@ -364,6 +371,7 @@ api.interceptors.response.use(
                 withCredentials: true,
                 skipAuthRefresh: true,
                 skipCsrfRetry: true,
+                headers: csrf ? { [getCsrfHeaderName()]: csrf } : {},
               },
             )
             .finally(() => {

@@ -1,32 +1,75 @@
 // src/features/cart/cartService.js
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
+import { env } from '../../config/env.js'
 
 let cachedCsrfToken = null
+let csrfInFlight = null
 
 const extractErrorMessage = (error, fallback = 'Error inesperado') => {
   return error?.response?.data?.message || error?.message || fallback
 }
 
+const getAccessToken = () => {
+  const token = localStorage.getItem('token')
+
+  if (!token || token === 'null' || token === 'undefined') {
+    return null
+  }
+
+  return token
+}
+
 const ensureCsrf = async () => {
   if (cachedCsrfToken) return cachedCsrfToken
-  cachedCsrfToken = await fetchCsrfToken()
-  return cachedCsrfToken
+
+  if (!csrfInFlight) {
+    csrfInFlight = fetchCsrfToken()
+      .then(token => {
+        if (!token) {
+          throw new Error('No se pudo obtener token CSRF')
+        }
+
+        cachedCsrfToken = token
+        return token
+      })
+      .finally(() => {
+        csrfInFlight = null
+      })
+  }
+
+  return csrfInFlight
+}
+
+const resetCsrf = () => {
+  cachedCsrfToken = null
 }
 
 const apiRequest = async (method, endpoint, data, options = {}) => {
-  const csrfToken = await ensureCsrf()
+  const normalizedMethod = String(method || 'get').toLowerCase()
+  const isMutatingRequest = ['post', 'put', 'patch', 'delete'].includes(normalizedMethod)
+
+  const headers = {
+    Accept: 'application/json',
+    ...(options.headers || {}),
+  }
+
+  const token = getAccessToken()
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  if (isMutatingRequest && !options.skipCsrf) {
+    const csrfToken = await ensureCsrf()
+    headers[env.csrfHeaderName || 'x-csrf-token'] = csrfToken
+  }
 
   const config = {
-    method,
+    method: normalizedMethod,
     url: `/user${endpoint}`,
     withCredentials: true,
     ...options,
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${localStorage.getItem('token')}`,
-      'x-csrf-token': csrfToken,
-      ...options.headers,
-    },
+    headers,
   }
 
   if (data !== undefined) {
@@ -37,6 +80,27 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
     const res = await api(config)
     return res.data
   } catch (error) {
+    const status = error?.response?.status
+    const code = error?.response?.data?.code
+
+    if (status === 403 && code === 'EBADCSRFTOKEN' && !options._csrfRetried) {
+      resetCsrf()
+
+      const csrfToken = await ensureCsrf()
+
+      const retryConfig = {
+        ...config,
+        _csrfRetried: true,
+        headers: {
+          ...headers,
+          [env.csrfHeaderName || 'x-csrf-token']: csrfToken,
+        },
+      }
+
+      const retryRes = await api(retryConfig)
+      return retryRes.data
+    }
+
     const message = extractErrorMessage(error)
     console.error('Cart API Error:', message)
     throw new Error(message)
@@ -46,6 +110,7 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
 // ======================================================
 // Cart
 // ======================================================
+
 const getCart = async () => {
   return apiRequest('get', '/user-cart')
 }
