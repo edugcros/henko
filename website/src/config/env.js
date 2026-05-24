@@ -31,8 +31,11 @@ const predeployMode = parseBoolean(
   false,
 )
 
-const apiBaseUrl = getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL')
-const mercadoPagoPublicKey = getValue('REACT_APP_MP_PUBLIC_KEY')
+const apiBaseUrl =
+  getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL')
+
+const mercadoPagoPublicKey =
+  getValue('REACT_APP_MP_PUBLIC_KEY')
 
 export const env = {
   nodeEnv,
@@ -83,14 +86,14 @@ export const env = {
 }
 
 if (env.isProduction) {
-  const forbiddenValues = [
+  const forbiddenApiValues = [
     'localhost',
     '127.0.0.1',
     'henko.local',
     'http://',
   ]
 
-  forbiddenValues.forEach(value => {
+  forbiddenApiValues.forEach(value => {
     if (String(env.apiBaseUrl || '').includes(value)) {
       throw new Error(
         `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
@@ -102,14 +105,10 @@ if (env.isProduction) {
     throw new Error('Falta REACT_APP_MP_PUBLIC_KEY en producción')
   }
 
-  if (String(env.mercadoPagoPublicKey).startsWith('TEST-') && !env.predeployMode) {
-    throw new Error('REACT_APP_MP_PUBLIC_KEY de TEST no está permitido en producción')
-  }
+  const isTestKey = String(env.mercadoPagoPublicKey).startsWith('TEST-')
+  const isProdKey = String(env.mercadoPagoPublicKey).startsWith('APP_USR-')
 
-  if (
-    !String(env.mercadoPagoPublicKey).startsWith('APP_USR-') &&
-    !(env.predeployMode && String(env.mercadoPagoPublicKey).startsWith('TEST-'))
-  ) {
+  if (!isProdKey && !isTestKey) {
     throw new Error('REACT_APP_MP_PUBLIC_KEY inválida')
   }
 }
