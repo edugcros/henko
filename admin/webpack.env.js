@@ -66,15 +66,17 @@ export const getClientEnvironment = () => {
       },
     )
 
+  const stringified = {
+    'process.env.NODE_ENV': JSON.stringify(raw.NODE_ENV),
+  }
+
+  Object.keys(raw).forEach(key => {
+    stringified[`process.env.${key}`] = JSON.stringify(raw[key])
+  })
+
   return {
     raw,
-    stringified: {
-      'process.env.NODE_ENV': JSON.stringify(raw.NODE_ENV),
-      ...Object.keys(raw).reduce((acc, key) => {
-        acc[`process.env.${key}`] = JSON.stringify(raw[key])
-        return acc
-      }, {}),
-    },
+    stringified,
   }
 }
 
@@ -88,16 +90,7 @@ export const createEnvPlugin = () => {
     REACT_APP_ASSETS_BASE_URL: clientEnv.raw.REACT_APP_ASSETS_BASE_URL,
   })
 
-  return {
-  raw,
-  stringified: {
-    'process.env.NODE_ENV': JSON.stringify(raw.NODE_ENV),
-    ...Object.keys(raw).reduce((acc, key) => {
-      acc[`process.env.${key}`] = JSON.stringify(raw[key])
-      return acc
-    }, {}),
-  },
-}
+  return new webpack.DefinePlugin(clientEnv.stringified)
 }
 
 export default createEnvPlugin
