@@ -19,7 +19,9 @@ if (fs.existsSync(envPath)) {
   console.log(`[webpack] Cargando variables desde ${envFile}`)
   dotenv.config({ path: envPath, override: true })
 } else {
-  console.warn(`[webpack] No se encontró ${envFile}`)
+  console.warn(
+    `[webpack] No se encontró ${envFile}; usando variables del entorno del sistema/Vercel`,
+  )
 }
 
 const REQUIRED_PRODUCTION_KEYS = [
@@ -76,7 +78,7 @@ export const getClientEnvironment = () => {
   }
 }
 
-export const createDotenvPlugin = () => {
+export const createEnvPlugin = () => {
   const clientEnv = getClientEnvironment()
 
   console.log('[webpack] Variables públicas inyectadas:', {
@@ -89,4 +91,4 @@ export const createDotenvPlugin = () => {
   return new webpack.DefinePlugin(clientEnv.stringified)
 }
 
-export default createDotenvPlugin
+export default createEnvPlugin
