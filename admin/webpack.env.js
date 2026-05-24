@@ -37,7 +37,7 @@ const getEnvValue = key => {
   const value = process.env[key]
 
   if (value === undefined || value === null || String(value).trim() === '') {
-    return undefined
+    return ''
   }
 
   return String(value).trim()
@@ -58,15 +58,21 @@ export const getClientEnvironment = () => {
     .filter(key => key.startsWith('REACT_APP_'))
     .reduce(
       (acc, key) => {
-        acc[key] = getEnvValue(key) || ''
+        acc[key] = getEnvValue(key)
         return acc
       },
       {
         NODE_ENV,
+        REACT_APP_NODE_ENV:
+          getEnvValue('REACT_APP_NODE_ENV') || NODE_ENV,
       },
     )
 
   const stringified = {
+    // 🔒 Clave principal: elimina process.env dinámico del bundle
+    'process.env': JSON.stringify(raw),
+
+    // 🔒 Claves directas: mantiene reemplazos explícitos y optimización
     'process.env.NODE_ENV': JSON.stringify(raw.NODE_ENV),
   }
 
@@ -85,6 +91,7 @@ export const createEnvPlugin = () => {
 
   console.log('[webpack] Variables públicas inyectadas:', {
     NODE_ENV: clientEnv.raw.NODE_ENV,
+    REACT_APP_NODE_ENV: clientEnv.raw.REACT_APP_NODE_ENV,
     REACT_APP_API_BASE_URL: clientEnv.raw.REACT_APP_API_BASE_URL,
     REACT_APP_API_URL: clientEnv.raw.REACT_APP_API_URL,
     REACT_APP_ASSETS_BASE_URL: clientEnv.raw.REACT_APP_ASSETS_BASE_URL,
