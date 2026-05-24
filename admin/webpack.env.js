@@ -88,7 +88,16 @@ export const createEnvPlugin = () => {
     REACT_APP_ASSETS_BASE_URL: clientEnv.raw.REACT_APP_ASSETS_BASE_URL,
   })
 
-  return new webpack.DefinePlugin(clientEnv.stringified)
+  return {
+  raw,
+  stringified: {
+    'process.env.NODE_ENV': JSON.stringify(raw.NODE_ENV),
+    ...Object.keys(raw).reduce((acc, key) => {
+      acc[`process.env.${key}`] = JSON.stringify(raw[key])
+      return acc
+    }, {}),
+  },
+}
 }
 
 export default createEnvPlugin
