@@ -17,18 +17,29 @@ const parseBoolean = (value, fallback = false) => {
   return String(value).trim().toLowerCase() === 'true'
 }
 
+const nodeEnv =
+  getValue('REACT_APP_NODE_ENV') ||
+  process.env.NODE_ENV ||
+  'development'
+
+const isProduction =
+  getValue('REACT_APP_NODE_ENV') === 'production' ||
+  process.env.NODE_ENV === 'production'
+
+const predeployMode = parseBoolean(
+  getValue('REACT_APP_PREDEPLOY_MODE'),
+  false,
+)
+
+const apiBaseUrl = getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL')
+const mercadoPagoPublicKey = getValue('REACT_APP_MP_PUBLIC_KEY')
+
 export const env = {
-  nodeEnv:
-    getValue('REACT_APP_NODE_ENV') ||
-    process.env.NODE_ENV ||
-    'development',
+  nodeEnv,
+  isProduction,
+  predeployMode,
 
-  isProduction:
-    getValue('REACT_APP_NODE_ENV') === 'production' ||
-    process.env.NODE_ENV === 'production',
-
-  apiBaseUrl:
-    getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL'),
+  apiBaseUrl,
 
   tenantHeader:
     getValue('REACT_APP_TENANT_HEADER') ||
@@ -62,11 +73,13 @@ export const env = {
       true,
     ),
 
-  mercadoPagoPublicKey:
-    getValue('REACT_APP_MP_PUBLIC_KEY'),
+  mercadoPagoPublicKey,
 
   gaMeasurementId:
     getValue('REACT_APP_GA_MEASUREMENT_ID'),
+
+  debugApi:
+    parseBoolean(getValue('REACT_APP_DEBUG_API'), false),
 }
 
 if (env.isProduction) {
@@ -89,12 +102,15 @@ if (env.isProduction) {
     throw new Error('Falta REACT_APP_MP_PUBLIC_KEY en producción')
   }
 
-  if (String(env.mercadoPagoPublicKey).startsWith('TEST-')) {
+  if (String(env.mercadoPagoPublicKey).startsWith('TEST-') && !env.predeployMode) {
     throw new Error('REACT_APP_MP_PUBLIC_KEY de TEST no está permitido en producción')
   }
 
-  if (!String(env.mercadoPagoPublicKey).startsWith('APP_USR-')) {
-    throw new Error('REACT_APP_MP_PUBLIC_KEY productiva inválida')
+  if (
+    !String(env.mercadoPagoPublicKey).startsWith('APP_USR-') &&
+    !(env.predeployMode && String(env.mercadoPagoPublicKey).startsWith('TEST-'))
+  ) {
+    throw new Error('REACT_APP_MP_PUBLIC_KEY inválida')
   }
 }
 

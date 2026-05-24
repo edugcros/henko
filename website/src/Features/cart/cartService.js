@@ -129,34 +129,34 @@ const addOrUpdateCartItem = async cartData => {
  * - removeCartItem({ productId, variantId, cartKey })
  */
 const removeCartItem = async payload => {
-  if (!payload) {
-    throw new Error('payload requerido')
-  }
+  if (!payload) throw new Error('payload requerido')
 
   if (typeof payload === 'string') {
-    return apiRequest('delete', `/cart/${payload}`)
+    const res = await api.delete(`/user/cart/${payload}`, {
+      withCredentials: true,
+    })
+    return res.data
   }
 
   const { productId, variantId, cartKey } = payload
 
-  if (!productId) {
-    throw new Error('productId requerido')
-  }
+  if (!productId) throw new Error('productId requerido')
 
   const params = new URLSearchParams()
 
-  if (variantId) {
-    params.append('variantId', variantId)
-  }
-
-  if (cartKey) {
-    params.append('cartKey', cartKey)
-  }
+  if (variantId) params.append('variantId', variantId)
+  if (cartKey) params.append('cartKey', cartKey)
 
   const queryString = params.toString()
-  const endpoint = queryString ? `/cart/${productId}?${queryString}` : `/cart/${productId}`
+  const url = queryString
+    ? `/user/cart/${productId}?${queryString}`
+    : `/user/cart/${productId}`
 
-  return apiRequest('delete', endpoint)
+  const res = await api.delete(url, {
+    withCredentials: true,
+  })
+
+  return res.data
 }
 
 const emptyCart = async () => {
