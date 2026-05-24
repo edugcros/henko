@@ -186,10 +186,11 @@ const tunnelCsrfExemptRoutes = [
   // Wishlist
   { method: 'PUT', path: `${env.apiPrefix}/user/wishlist/:productId` },
 
-  // Carrito
+  // Carrito storefront
   { method: 'POST', path: `${env.apiPrefix}/user/cart` },
   { method: 'PUT', path: `${env.apiPrefix}/user/cart` },
   { method: 'DELETE', path: `${env.apiPrefix}/user/cart` },
+  { method: 'DELETE', path: `${env.apiPrefix}/user/cart/:productId` },
   { method: 'DELETE', path: `${env.apiPrefix}/user/cart/empty` },
   { method: 'POST', path: `${env.apiPrefix}/user/cart/cash-order` },
 
