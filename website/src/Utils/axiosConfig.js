@@ -47,12 +47,6 @@ const getTenantDomain = () => {
   return window.location.host
 }
 
-const tenantDomain = getTenantDomain()
-
-if (tenantDomain) {
-  config.headers[env.tenantHeader || 'x-tenant-domain'] = tenantDomain
-}
-
 const isValidToken = token => {
   return (
     token &&
@@ -64,7 +58,10 @@ const isValidToken = token => {
 
 const getAuthToken = () => {
   const cookieToken = Cookies.get('token')
-  const localToken = localStorage.getItem('token')
+  const localToken =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('token')
+      : null
 
   if (isValidToken(cookieToken)) return cookieToken
   if (isValidToken(localToken)) return localToken
@@ -73,12 +70,22 @@ const getAuthToken = () => {
 }
 
 const isSafeMethod = method => {
-  return ['get', 'head', 'options'].includes(String(method || 'get').toLowerCase())
+  return ['get', 'head', 'options'].includes(
+    String(method || 'get').toLowerCase(),
+  )
 }
 
-const shouldAttachCsrf = config => {
-  if (config.skipCsrf === true) return false
-  return !isSafeMethod(config.method)
+const shouldAttachCsrf = requestConfig => {
+  if (requestConfig.skipCsrf === true) return false
+  return !isSafeMethod(requestConfig.method)
+}
+
+const getCsrfHeaderName = () => {
+  return env.csrfHeaderName || 'x-csrf-token'
+}
+
+const getTenantHeaderName = () => {
+  return env.tenantHeader || 'x-tenant-domain'
 }
 
 // =====================================================
@@ -116,7 +123,10 @@ let refreshTokenPromise = null
 export const clearCsrfToken = () => {
   cachedCsrfToken = null
   csrfTokenPromise = null
-  delete api.defaults.headers.common[env.csrfHeaderName || 'x-csrf-token']
+
+  const headerName = getCsrfHeaderName()
+
+  delete api.defaults.headers.common[headerName]
   delete api.defaults.headers.common['x-csrf-token']
   delete api.defaults.headers.common['X-CSRF-Token']
 }
@@ -149,7 +159,7 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
         cachedCsrfToken = token || null
 
         if (token) {
-          api.defaults.headers.common[env.csrfHeaderName || 'x-csrf-token'] = token
+          api.defaults.headers.common[getCsrfHeaderName()] = token
         }
 
         return cachedCsrfToken
@@ -181,74 +191,75 @@ export const initCsrf = async () => {
 // =====================================================
 
 api.interceptors.request.use(
-  async config => {
-    config.headers = config.headers || {}
-    config.withCredentials = true
+  async requestConfig => {
+    requestConfig.headers = requestConfig.headers || {}
+    requestConfig.withCredentials = true
 
-    if (!config.baseURL) {
-      config.baseURL = env.apiBaseUrl
+    if (!requestConfig.baseURL) {
+      requestConfig.baseURL = env.apiBaseUrl
     }
 
-    if (config.publicRequest) {
-      delete config.headers.Authorization
-      delete config.headers.authorization
-      delete config.headers['x-csrf-token']
-      delete config.headers['X-CSRF-Token']
-      delete config.headers['x-tenant-domain']
-      delete config.headers['X-Tenant-Domain']
+    if (requestConfig.publicRequest) {
+      delete requestConfig.headers.Authorization
+      delete requestConfig.headers.authorization
+      delete requestConfig.headers['x-csrf-token']
+      delete requestConfig.headers['X-CSRF-Token']
+      delete requestConfig.headers['x-tenant-domain']
+      delete requestConfig.headers['X-Tenant-Domain']
+      delete requestConfig.headers[getTenantHeaderName()]
 
-      config.withCredentials = false
-      return config
+      requestConfig.withCredentials = false
+      return requestConfig
     }
 
-    if (env.enableTenantDomainResolution && !config.skipTenantHeader) {
+    if (env.enableTenantDomainResolution && !requestConfig.skipTenantHeader) {
       const tenantDomain = getTenantDomain()
 
       if (tenantDomain) {
-        config.headers[env.tenantHeader || 'x-tenant-domain'] = tenantDomain
+        requestConfig.headers[getTenantHeaderName()] = tenantDomain
       }
     }
 
-    if (config.skipTenantHeader) {
-      delete config.headers['x-tenant-domain']
-      delete config.headers['X-Tenant-Domain']
-      delete config.headers[env.tenantHeader || 'x-tenant-domain']
+    if (requestConfig.skipTenantHeader) {
+      delete requestConfig.headers['x-tenant-domain']
+      delete requestConfig.headers['X-Tenant-Domain']
+      delete requestConfig.headers[getTenantHeaderName()]
     }
 
     const token = getAuthToken()
 
-    if (isValidToken(token) && !config.url?.includes('/refresh')) {
-      config.headers.Authorization = `Bearer ${token}`
+    if (isValidToken(token) && !requestConfig.url?.includes('/refresh')) {
+      requestConfig.headers.Authorization = `Bearer ${token}`
     } else {
-      delete config.headers.Authorization
-      delete config.headers.authorization
+      delete requestConfig.headers.Authorization
+      delete requestConfig.headers.authorization
     }
 
-    if (shouldAttachCsrf(config)) {
-      const headerName = env.csrfHeaderName || 'x-csrf-token'
+    if (shouldAttachCsrf(requestConfig)) {
+      const headerName = getCsrfHeaderName()
 
-      if (!config.headers[headerName]) {
+      if (!requestConfig.headers[headerName]) {
         const csrfToken = await fetchCsrfToken()
 
         if (csrfToken) {
-          config.headers[headerName] = csrfToken
+          requestConfig.headers[headerName] = csrfToken
         }
       }
     }
 
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
       console.log('[WEBSITE API REQUEST]', {
-        method: config.method,
-        baseURL: config.baseURL,
-        url: config.url,
-        fullURL: `${config.baseURL || ''}${config.url || ''}`,
-        tenant: config.headers[env.tenantHeader || 'x-tenant-domain'],
-        hasAuth: Boolean(config.headers.Authorization),
-        hasCsrf: Boolean(config.headers[env.csrfHeaderName || 'x-csrf-token']),
+        method: requestConfig.method,
+        baseURL: requestConfig.baseURL,
+        url: requestConfig.url,
+        fullURL: `${requestConfig.baseURL || ''}${requestConfig.url || ''}`,
+        tenant: requestConfig.headers[getTenantHeaderName()],
+        hasAuth: Boolean(requestConfig.headers.Authorization),
+        hasCsrf: Boolean(requestConfig.headers[getCsrfHeaderName()]),
       })
     }
 
-    return config
+    return requestConfig
   },
   error => Promise.reject(error),
 )
@@ -280,18 +291,26 @@ api.interceptors.response.use(
     const code = error.response?.data?.code
     const message = error.response?.data?.message || ''
 
+    if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
+      console.log('[WEBSITE API RESPONSE ERROR DEBUG]', {
+        host: typeof window !== 'undefined' ? window.location.host : null,
+        tenantHeaderName: getTenantHeaderName(),
+        tenantHeaderValue:
+          originalRequest.headers?.[getTenantHeaderName()] ||
+          originalRequest.headers?.['x-tenant-domain'] ||
+          originalRequest.headers?.['X-Tenant-Domain'],
+        baseURL: originalRequest.baseURL,
+        url: originalRequest.url,
+        fullURL: `${originalRequest.baseURL || ''}${originalRequest.url || ''}`,
+        status,
+        code,
+      })
+    }
+
     // =====================================================
     // CSRF retry
     // =====================================================
 
-    console.log('[WEBSITE API REQUEST]', {
-  host: window.location.host,
-  tenantHeaderName: env.tenantHeader || 'x-tenant-domain',
-  tenantHeaderValue: config.headers[env.tenantHeader || 'x-tenant-domain'],
-  baseURL: config.baseURL,
-  url: config.url,
-  fullURL: `${config.baseURL || ''}${config.url || ''}`,
-})
     const isCsrfError =
       status === 403 &&
       (
@@ -299,7 +318,11 @@ api.interceptors.response.use(
         message.toLowerCase().includes('csrf')
       )
 
-    if (isCsrfError && !originalRequest._csrfRetry && !originalRequest.skipCsrfRetry) {
+    if (
+      isCsrfError &&
+      !originalRequest._csrfRetry &&
+      !originalRequest.skipCsrfRetry
+    ) {
       originalRequest._csrfRetry = true
 
       clearCsrfToken()
@@ -308,7 +331,7 @@ api.interceptors.response.use(
 
       if (newCsrf) {
         originalRequest.headers = originalRequest.headers || {}
-        originalRequest.headers[env.csrfHeaderName || 'x-csrf-token'] = newCsrf
+        originalRequest.headers[getCsrfHeaderName()] = newCsrf
 
         return api(originalRequest)
       }
@@ -349,6 +372,7 @@ api.interceptors.response.use(
         }
 
         const res = await refreshTokenPromise
+
         const token =
           res.data?.token ||
           res.data?.accessToken ||
