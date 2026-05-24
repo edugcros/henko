@@ -26,12 +26,12 @@ const safeStorage = {
       return null
     }
   },
-  removeAuth: () => { // Cambia el nombre o añade este alias
-      if (typeof window === 'undefined') return
-      sessionStorage.removeItem('user')
-      sessionStorage.removeItem('csrfToken')
-      Cookies.remove('token') // Centraliza aquí también la limpieza de cookies
-    }
+  removeUser: () => {
+    if (typeof window === 'undefined') return
+    sessionStorage.removeItem('user')
+    sessionStorage.removeItem('wishlist')
+    sessionStorage.removeItem('csrfToken')
+  },
 }
 
 
@@ -42,7 +42,7 @@ const safeStorage = {
 const initialState = {
   user: safeStorage.getUser(),
   token: null, 
-  csrfToken: null, // Mejor hidratar por acción o selector
+  csrfToken: sessionStorage.getItem('csrfToken'),
   isAuthenticated: !!safeStorage.getUser(),
   isLoading: false,
   isError: false,
@@ -115,7 +115,13 @@ export const loginUser = createAsyncThunk(
       return rejectWithValue('Respuesta inválida del servidor durante login')
     }
 
-      const { user, token } = res.data
+      const { user, token, csrfToken } = res.data
+
+      // 🔥 CRÍTICO: Si el login nos da un token nuevo, lo inyectamos en el estado inmediatamente
+      if (csrfToken) {
+        dispatch(setCsrfToken(csrfToken))
+      }
+
       const isProd = process.env.NODE_ENV === 'production'
 
       safeStorage.setUser(user)

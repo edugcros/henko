@@ -58,3 +58,5 @@ Thumbs.db
 # --- Scripts ---
 run_dev.sh
 run_prod.sh
+.vercel
+.env*

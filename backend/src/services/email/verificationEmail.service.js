@@ -1,6 +1,7 @@
 // 📁 src/services/email/verificationEmail.service.js
 import { env } from '../../../config/env.js'
 import { sendEmail } from '../../utils/sendEmail.js'
+import { buildFrontendUrl } from '../../utils/frontendUrl.js'
 
 // =====================================================
 // Helpers
@@ -24,11 +25,24 @@ const ensureUrl = value => {
 
   const clean = String(value).trim()
 
+  if (!clean) return null
+
   if (clean.startsWith('http://') || clean.startsWith('https://')) {
-    return clean
+    return trimTrailingSlash(clean)
   }
 
-  return `${env.isProduction ? 'https' : 'http'}://${clean}`
+  return trimTrailingSlash(`${env.isProduction ? 'https' : 'http'}://${clean}`)
+}
+
+const isLocalDomain = value => {
+  const raw = String(value || '').toLowerCase()
+
+  return (
+    raw.includes('localhost') ||
+    raw.includes('127.0.0.1') ||
+    raw.includes('henko.local') ||
+    raw.endsWith('.local')
+  )
 }
 
 const getDomainHostname = domain => {
@@ -45,7 +59,10 @@ const getPrimaryTenantDomain = tenant => {
   if (!tenant) return null
 
   const fromMethod = tenant.getPrimaryDomain?.()
-  if (fromMethod) return getDomainHostname(fromMethod)
+
+  if (fromMethod) {
+    return getDomainHostname(fromMethod)
+  }
 
   const primaryActiveDomain =
     tenant.domains?.find?.(
@@ -59,8 +76,14 @@ const getPrimaryTenantDomain = tenant => {
     return getDomainHostname(primaryActiveDomain)
   }
 
-  const firstDomain = tenant.domains?.[0] || null
-  return getDomainHostname(firstDomain)
+  const firstActiveDomain =
+    tenant.domains?.find?.(domain => {
+      if (typeof domain === 'string') return Boolean(domain)
+
+      return domain?.status === 'active' && getDomainHostname(domain)
+    }) || null
+
+  return getDomainHostname(firstActiveDomain)
 }
 
 const appendDevelopmentPortIfNeeded = value => {
@@ -69,11 +92,11 @@ const appendDevelopmentPortIfNeeded = value => {
   try {
     const url = new URL(value)
 
-    if (!url.port) {
+    if (!url.port && url.hostname.endsWith('.local')) {
       url.port = '3002'
     }
 
-    return url.toString().replace(/\/$/, '')
+    return trimTrailingSlash(url.toString())
   } catch {
     return value
   }
@@ -82,13 +105,17 @@ const appendDevelopmentPortIfNeeded = value => {
 const getTenantStorefrontUrl = tenant => {
   if (!tenant) return null
 
-  if (tenant.shopUrl) return trimTrailingSlash(tenant.shopUrl)
-  if (tenant.storefrontUrl) return trimTrailingSlash(tenant.storefrontUrl)
-  if (tenant.urls?.storefront) return trimTrailingSlash(tenant.urls.storefront)
+  if (tenant.shopUrl) return ensureUrl(tenant.shopUrl)
+  if (tenant.storefrontUrl) return ensureUrl(tenant.storefrontUrl)
+  if (tenant.urls?.storefront) return ensureUrl(tenant.urls.storefront)
 
   const primaryDomain = getPrimaryTenantDomain(tenant)
 
   if (!primaryDomain) return null
+
+  if (env.isProduction && isLocalDomain(primaryDomain)) {
+    return null
+  }
 
   const url = ensureUrl(primaryDomain)
 
@@ -98,20 +125,31 @@ const getTenantStorefrontUrl = tenant => {
 }
 
 const getFrontendBaseUrl = tenant => {
+  /**
+   * En producción/predeploy, la URL pública configurada por ENV manda.
+   * Esto evita generar emails con henko.local si el tenant todavía tiene
+   * ese dominio como primary en Atlas.
+   */
+  const envFallback =
+    env.clientUrl ||
+    env.shopFrontendUrl ||
+    process.env.CLIENT_URL ||
+    process.env.SHOP_FRONTEND_URL ||
+    process.env.APP_URL ||
+    null
+
+  if (envFallback) {
+    const url = ensureUrl(envFallback)
+
+    if (url && !(env.isProduction && isLocalDomain(url))) {
+      return url
+    }
+  }
+
   const tenantUrl = getTenantStorefrontUrl(tenant)
 
   if (tenantUrl) {
     return tenantUrl
-  }
-
-  const fallback =
-    env.clientUrl ||
-    env.shopFrontendUrl ||
-    env.app?.url ||
-    null
-
-  if (fallback) {
-    return trimTrailingSlash(fallback)
   }
 
   if (!env.isProduction) {
@@ -148,8 +186,11 @@ export const sendVerificationEmail = async (user, tenantOrName, rawToken) => {
   const safeTenantName = escapeHtml(tenantName)
   const safeUserName = escapeHtml(user.firstname || user.email)
 
-  const frontendBaseUrl = getFrontendBaseUrl(tenant)
-  const verifyUrl = `${frontendBaseUrl}/verify-email?token=${encodeURIComponent(rawToken)}`
+  const verifyUrl = buildFrontendUrl(
+    `/verify-email?token=${encodeURIComponent(rawToken)}`,
+    null,
+    tenant,
+  )
 
   return sendEmail({
     to: user.email,

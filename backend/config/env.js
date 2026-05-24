@@ -48,7 +48,7 @@ const requiredBase = [
 const missingBase = requiredBase.filter(key => !process.env[key])
 
 if (missingBase.length > 0) {
-  throw new Error(`Variables de entorno faltantes: ${missingBase.join(', ')}`)
+  Error(`Variables de entorno faltantes: ${missingBase.join(', ')}`)
 }
 
 // =====================================================
@@ -209,11 +209,11 @@ export const env = {
 // =====================================================
 
 if (!env.mongoUri) {
-  throw new Error('Falta MONGODB_URL o MONGO_URI')
+  Error('Falta MONGODB_URL o MONGO_URI')
 }
 
 if (!env.cookieSecret) {
-  throw new Error('Falta COOKIE_SECRET o JWT_SECRET para firmar cookies')
+  Error('Falta COOKIE_SECRET o JWT_SECRET para firmar cookies')
 }
 
 // =====================================================
@@ -237,7 +237,7 @@ if (env.isProduction) {
     .map(([key]) => key)
 
   if (missingProduction.length > 0) {
-    throw new Error(
+    Error(
       `Variables requeridas para producción faltantes: ${missingProduction.join(', ')}`,
     )
   }
@@ -269,38 +269,38 @@ if (env.isProduction) {
     )
 
     if (hasForbiddenValue) {
-      throw new Error(
+      Error(
         `Variable ${key} tiene valor de desarrollo en producción: ${value}`,
       )
     }
   })
 
   if (env.corsAllowAll) {
-    throw new Error('CORS_ALLOW_ALL=true no está permitido en producción')
+    Error('CORS_ALLOW_ALL=true no está permitido en producción')
   }
 
   if (env.disableSslVerify) {
-    throw new Error('DISABLE_SSL_VERIFY=true no está permitido en producción')
+    Error('DISABLE_SSL_VERIFY=true no está permitido en producción')
   }
 
   if (String(env.mercadoPago.accessToken || '').startsWith('TEST-')) {
-    throw new Error('MP_ACCESS_TOKEN de TEST no está permitido en producción')
+    Error('MP_ACCESS_TOKEN de TEST no está permitido en producción')
   }
 
   if (!env.cookieSecure) {
-    throw new Error('COOKIE_SECURE=false no está permitido en producción')
+    Error('COOKIE_SECURE=false no está permitido en producción')
   }
 
   if (env.cookieSameSite !== 'None') {
-    throw new Error('COOKIE_SAME_SITE debe ser None en producción si usás dominios cruzados')
+    Error('COOKIE_SAME_SITE debe ser None en producción si usás dominios cruzados')
   }
 
   if (!env.csrfCookieSecure) {
-    throw new Error('CSRF_COOKIE_SECURE=false no está permitido en producción')
+    Error('CSRF_COOKIE_SECURE=false no está permitido en producción')
   }
 
   if (env.allowLocalhost) {
-    throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
+    Error('ALLOW_LOCALHOST=true no está permitido en producción')
   }
 }
 

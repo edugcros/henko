@@ -91,6 +91,69 @@ router.post(
   }),
 )
 
+const normalizePath = value => {
+  const normalized = String(value || '').replace(/\/+$/, '')
+  return normalized || '/'
+}
+
+const isTrustedPredeployOrigin = req => {
+  const origin = String(req.headers.origin || '').toLowerCase()
+
+  return [
+    'https://henko-web.vercel.app',
+    'https://henko-admin.vercel.app',
+  ].includes(origin)
+}
+
+const routePatternToRegex = pattern => {
+  const normalized = normalizePath(pattern)
+
+  const regexSource = normalized
+    .split('/')
+    .map(segment => {
+      if (segment.startsWith(':')) {
+        return '[^/]+'
+      }
+
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    })
+    .join('/')
+
+  return new RegExp(`^${regexSource}$`)
+}
+
+const predeployCsrfExemptRoutes = [
+  { method: 'PUT', path: '/rating/:productId' },
+  { method: 'PUT', path: '/:productId/rating/:ratingId/helpful' },
+]
+
+const matchesPredeployExemptRoute = req => {
+  const requestPath = normalizePath(req.path)
+
+  return predeployCsrfExemptRoutes.some(route => {
+    return (
+      route.method === req.method &&
+      routePatternToRegex(route.path).test(requestPath)
+    )
+  })
+}
+
+const shouldSkipCsrfForPredeploy = req => {
+  return (
+    process.env.PREDEPLOY_TUNNEL_MODE === 'true' &&
+    isTrustedPredeployOrigin(req) &&
+    matchesPredeployExemptRoute(req)
+  )
+}
+
+const conditionalCsrfProtection = (req, res, next) => {
+  if (shouldSkipCsrfForPredeploy(req)) {
+    return next()
+  }
+
+  return csrfProtection(req, res, next)
+}
+
 // =========================================================
 // CRUD PRODUCTO - ADMIN
 // =========================================================
@@ -172,7 +235,7 @@ router.put(
   '/:productId/rating/:ratingId/helpful',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   toggleHelpfulVote,
 )
 
@@ -180,7 +243,7 @@ router.put(
   '/rating/:productId',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   rating,
 )
 

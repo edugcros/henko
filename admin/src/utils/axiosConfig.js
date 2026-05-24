@@ -4,9 +4,39 @@ import Cookies from 'js-cookie'
 import { env } from '../config/env.js'
 
 let _store = null
+
 export const setApiStore = store => {
   _store = store
 }
+
+// =====================================================
+// Runtime guards
+// =====================================================
+
+const assertApiBaseUrl = () => {
+  if (!env.apiBaseUrl) {
+    throw new Error('REACT_APP_API_BASE_URL no está configurado')
+  }
+
+  if (env.isProduction) {
+    const forbiddenValues = [
+      'localhost',
+      '127.0.0.1',
+      'henko.local',
+      'api.henko.com',
+    ]
+
+    forbiddenValues.forEach(value => {
+      if (String(env.apiBaseUrl).includes(value)) {
+        throw new Error(
+          `REACT_APP_API_BASE_URL inválido para esta etapa: ${env.apiBaseUrl}`,
+        )
+      }
+    })
+  }
+}
+
+assertApiBaseUrl()
 
 // =====================================================
 // Tenant domain
@@ -14,9 +44,6 @@ export const setApiStore = store => {
 
 const getTenantDomain = () => {
   if (typeof window === 'undefined') return null
-
-  // Usar host completo permite que el backend vea el puerto en desarrollo.
-  // Tu backend debe normalizar y remover :3001 si corresponde.
   return window.location.host
 }
 
@@ -32,14 +59,45 @@ const getAuthToken = () => {
 // Axios instance
 // =====================================================
 
+const API_BASE_URL =
+  env.apiBaseUrl ||
+  process.env.REACT_APP_API_BASE_URL ||
+  process.env.REACT_APP_API_URL ||
+  ''
+
+if (!API_BASE_URL) {
+  throw new Error('REACT_APP_API_BASE_URL no está configurado en admin')
+}
+
+if (API_BASE_URL.includes('henko-admin.vercel.app')) {
+  throw new Error(`API_BASE_URL inválido: ${API_BASE_URL}`)
+}
+
 const api = axios.create({
-  baseURL: env.apiBaseUrl,
+  baseURL: API_BASE_URL,
   withCredentials: true,
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
   },
 })
+
+console.log('[ADMIN API BOOT]', {
+  apiBaseUrl: API_BASE_URL,
+  envApiBaseUrl: env.apiBaseUrl,
+  reactApiBaseUrl: process.env.REACT_APP_API_BASE_URL,
+})
+
+// Debug temporal de producción
+if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
+  // eslint-disable-next-line no-console
+  console.log('[ADMIN API BOOT]', {
+    apiBaseUrl: env.apiBaseUrl,
+    nodeEnv: env.nodeEnv,
+    adminBaseDomain: env.adminBaseDomain,
+    publicBaseDomain: env.publicBaseDomain,
+  })
+}
 
 // =====================================================
 // CSRF
@@ -48,28 +106,55 @@ const api = axios.create({
 let csrfTokenPromise = null
 let refreshTokenPromise = null
 
-export const fetchCsrfToken = async () => {
+export const clearCsrfToken = () => {
+  csrfTokenPromise = null
+  delete api.defaults.headers.common['x-csrf-token']
+}
+
+export const fetchCsrfToken = async ({ force = false } = {}) => {
   try {
-    const res = await api.get('/user/csrf-token');
-    const token = res.data?.csrfToken;
-    if (token) {
-      api.defaults.headers.common['x-csrf-token'] = token;
-      return token;
+    if (csrfTokenPromise && !force) {
+      return csrfTokenPromise
     }
+
+    csrfTokenPromise = api
+      .get('/user/csrf-token', {
+        withCredentials: true,
+        skipAuthRefresh: true,
+        skipCsrfRetry: true,
+      })
+      .then(res => {
+        const token =
+          res.data?.csrfToken ||
+          res.data?.token ||
+          res.headers?.['x-csrf-token'] ||
+          null
+
+        if (token) {
+          api.defaults.headers.common['x-csrf-token'] = token
+        }
+
+        return token
+      })
+      .finally(() => {
+        csrfTokenPromise = null
+      })
+
+    return csrfTokenPromise
   } catch (err) {
-    console.error('[CSRF] Fallo crítico:', err.message);
-    return null;
+    console.error('[CSRF] Fallo crítico:', {
+      baseURL: env.apiBaseUrl,
+      message: err?.message,
+      status: err?.response?.status,
+      data: err?.response?.data,
+    })
+
+    return null
   }
-};
+}
 
 export const initCsrf = async () => {
-  const token = await fetchCsrfToken()
-
-  if (token) {
-    api.defaults.headers.common['x-csrf-token'] = token
-  }
-
-  return token
+  return fetchCsrfToken({ force: true })
 }
 
 // =====================================================
@@ -80,11 +165,15 @@ api.interceptors.request.use(
   config => {
     config.headers = config.headers || {}
 
+    if (!config.baseURL) {
+      config.baseURL = API_BASE_URL
+    }
+
     if (env.enableTenantDomainResolution) {
       const tenantDomain = getTenantDomain()
 
       if (tenantDomain) {
-        config.headers[env.tenantHeader] = tenantDomain
+        config.headers[env.tenantHeader || 'x-tenant-domain'] = tenantDomain
       }
     }
 
@@ -92,6 +181,16 @@ api.interceptors.request.use(
 
     if (token && !config.url?.includes('/refresh')) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+
+    if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
+      console.log('[ADMIN API REQUEST]', {
+        method: config.method,
+        baseURL: config.baseURL,
+        url: config.url,
+        fullURL: `${config.baseURL || ''}${config.url || ''}`,
+        tenant: config.headers[env.tenantHeader || 'x-tenant-domain'],
+      })
     }
 
     return config
@@ -107,6 +206,15 @@ api.interceptors.response.use(
   response => response,
   async error => {
     const originalRequest = error.config
+
+    console.error('[ADMIN API ERROR]', {
+      status: error?.response?.status,
+      baseURL: originalRequest?.baseURL,
+      url: originalRequest?.url,
+      fullURL: `${originalRequest?.baseURL || ''}${originalRequest?.url || ''}`,
+      data: error?.response?.data,
+      message: error?.message,
+    })
 
     if (!originalRequest) {
       return Promise.reject(error)
@@ -134,7 +242,7 @@ api.interceptors.response.use(
     if (isCsrfError && !originalRequest.skipCsrfRetry) {
       originalRequest._retry = true
 
-      const newCsrf = await fetchCsrfToken()
+      const newCsrf = await fetchCsrfToken({ force: true })
 
       if (newCsrf) {
         originalRequest.headers = originalRequest.headers || {}
@@ -163,11 +271,15 @@ api.interceptors.response.use(
       try {
         if (!refreshTokenPromise) {
           refreshTokenPromise = api
-            .post('/user/refresh', {}, {
-              withCredentials: true,
-              skipAuthRefresh: true,
-              skipCsrfRetry: true,
-            })
+            .post(
+              '/user/refresh',
+              {},
+              {
+                withCredentials: true,
+                skipAuthRefresh: true,
+                skipCsrfRetry: true,
+              },
+            )
             .finally(() => {
               refreshTokenPromise = null
             })

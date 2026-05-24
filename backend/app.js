@@ -122,24 +122,102 @@ const normalizePath = value => {
   return normalized || '/'
 }
 
+const routePatternToRegex = pattern => {
+  const normalized = normalizePath(pattern)
+
+  const regexSource = normalized
+    .split('/')
+    .map(segment => {
+      if (segment.startsWith(':')) {
+        return '[^/]+'
+      }
+
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    })
+    .join('/')
+
+  return new RegExp(`^${regexSource}$`)
+}
+
+const matchesRoute = (req, route) => {
+  return (
+    route.method === req.method &&
+    routePatternToRegex(route.path).test(normalizePath(req.path))
+  )
+}
+const isTrustedPredeployTunnelRequest = req => {
+  const origin = String(req.headers.origin || '').toLowerCase()
+  console.log('[PREDEPLOY CSRF CHECK]', {
+    enabled: process.env.PREDEPLOY_TUNNEL_MODE,
+    origin: req.headers.origin,
+    path: req.path,
+    method: req.method,
+  })
+  return (
+    process.env.PREDEPLOY_TUNNEL_MODE === 'true' &&
+    [
+      'https://henko-web.vercel.app',
+      'https://henko-admin.vercel.app',
+    ].includes(origin)
+  )
+}
+
+// Rutas públicas/sensibles que no deben depender de CSRF durante predeploy.
+// Login/register deben protegerse con rate-limit, validación y CORS estricto.
 const csrfExemptRoutes = [
+  { method: 'POST', path: `${env.apiPrefix}/user/login` },
+  { method: 'POST', path: `${env.apiPrefix}/user/admin-login` },
+  { method: 'POST', path: `${env.apiPrefix}/user/register` },
   { method: 'POST', path: `${env.apiPrefix}/user/register-admin` },
+
   { method: 'POST', path: `${env.apiPrefix}/user/forgot-password` },
   { method: 'PUT', path: `${env.apiPrefix}/user/reset-password` },
 
-  // Webhook externo real de Mercado Pago
+  // Webhook externo real de Mercado Pago.
   { method: 'POST', path: `${env.apiPrefix}/payments/webhook/mercadopago` },
 ]
 
-const isCsrfExempt = req => {
-  const requestPath = normalizePath(req.path)
+// Solo para etapa Vercel + TryCloudflare.
+const tunnelCsrfExemptRoutes = [
+  // Sesión
+  { method: 'POST', path: `${env.apiPrefix}/user/refresh` },
+  { method: 'POST', path: `${env.apiPrefix}/user/logout` },
 
-  return csrfExemptRoutes.some(route => {
-    return (
-      route.method === req.method &&
-      normalizePath(route.path) === requestPath
-    )
-  })
+  // Wishlist
+  { method: 'PUT', path: `${env.apiPrefix}/user/wishlist/:productId` },
+
+  // Carrito
+  { method: 'POST', path: `${env.apiPrefix}/user/cart` },
+  { method: 'PUT', path: `${env.apiPrefix}/user/cart` },
+  { method: 'DELETE', path: `${env.apiPrefix}/user/cart` },
+  { method: 'DELETE', path: `${env.apiPrefix}/user/cart/empty` },
+  { method: 'POST', path: `${env.apiPrefix}/user/cart/cash-order` },
+
+  // Órdenes
+  { method: 'POST', path: `${env.apiPrefix}/order/create` },
+  { method: 'POST', path: `${env.apiPrefix}/order/:orderId/resend-email` },
+  { method: 'PUT', path: `${env.apiPrefix}/order/:id/status` },
+  { method: 'PUT', path: `${env.apiPrefix}/order/:id/payment-status` },
+  { method: 'PUT', path: `${env.apiPrefix}/order/:id/fulfillment-status` },
+  { method: 'POST', path: `${env.apiPrefix}/order/:id/cancel` },
+  { method: 'POST', path: `${env.apiPrefix}/order/:id/refund` },
+  { method: 'DELETE', path: `${env.apiPrefix}/order/:id` },
+
+  // Productos
+  { method: 'PUT', path: `${env.apiPrefix}/product/rating/:productId` },
+  { method: 'PUT', path: `${env.apiPrefix}/product/:productId/rating/:ratingId/helpful` },
+]
+
+const isCsrfExempt = req => {
+  if (csrfExemptRoutes.some(route => matchesRoute(req, route))) {
+    return true
+  }
+
+  if (isTrustedPredeployTunnelRequest(req)) {
+    return tunnelCsrfExemptRoutes.some(route => matchesRoute(req, route))
+  }
+
+  return false
 }
 
 if (env.csrfEnabled) {

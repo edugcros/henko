@@ -65,6 +65,92 @@ const registerAdminLimiter = rateLimit({
 })
 
 // ======================================================
+// 🧩 CSRF CONDICIONAL PARA PREDEPLOY / TÚNEL
+// ======================================================
+
+const normalizePath = value => {
+  const normalized = String(value || '').replace(/\/+$/, '')
+  return normalized || '/'
+}
+
+const isTrustedPredeployOrigin = req => {
+  const origin = String(req.headers.origin || '').toLowerCase()
+
+  return [
+    'https://henko-web.vercel.app',
+    'https://henko-admin.vercel.app',
+  ].includes(origin)
+}
+
+const routePatternToRegex = pattern => {
+  const normalized = normalizePath(pattern)
+
+  const escaped = normalized
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\\:([^/]+)/g, '[^/]+')
+
+  return new RegExp(`^${escaped}$`)
+}
+
+const predeployCsrfExemptRoutes = [
+  // Auth pública
+  { method: 'POST', path: '/login' },
+  { method: 'POST', path: '/admin-login' },
+  { method: 'POST', path: '/register' },
+  { method: 'POST', path: '/register-admin' },
+
+  // Carrito storefront durante túnel
+  { method: 'POST', path: '/cart' },
+  { method: 'DELETE', path: '/cart/empty' },
+  { method: 'DELETE', path: '/cart/:productId' },
+  { method: 'POST', path: '/cart/cash-order' },
+
+  // Wishlist durante túnel
+  { method: 'PUT', path: '/wishlist/:productId' },
+
+  // Sesión / refresh durante túnel
+  { method: 'POST', path: '/logout' },
+  { method: 'POST', path: '/refresh' },
+
+  // Perfil durante túnel
+  { method: 'PUT', path: '/password' },
+  { method: 'PUT', path: '/edit-user' },
+  { method: 'PUT', path: '/save-address' },
+
+  // Admin durante túnel
+  { method: 'PUT', path: '/block-user/:id' },
+  { method: 'PUT', path: '/unblock-user/:id' },
+  { method: 'DELETE', path: '/delete-user/:id' },
+]
+
+const matchesPredeployExemptRoute = req => {
+  const requestPath = normalizePath(req.path)
+
+  return predeployCsrfExemptRoutes.some(route => {
+    return (
+      route.method === req.method &&
+      routePatternToRegex(route.path).test(requestPath)
+    )
+  })
+}
+
+const shouldSkipCsrfForPredeploy = req => {
+  return (
+    process.env.PREDEPLOY_TUNNEL_MODE === 'true' &&
+    isTrustedPredeployOrigin(req) &&
+    matchesPredeployExemptRoute(req)
+  )
+}
+
+const conditionalCsrfProtection = (req, res, next) => {
+  if (shouldSkipCsrfForPredeploy(req)) {
+    return next()
+  }
+
+  return csrfProtection(req, res, next)
+}
+
+// ======================================================
 // 🔓 1. RUTAS PÚBLICAS
 // ======================================================
 
@@ -85,7 +171,6 @@ router.post(
 )
 
 // Login panel admin por dominio admin actual.
-// Debe llegar x-tenant-domain = admin.<tenant>.<root-domain>
 router.post(
   '/admin-login',
   authLimiter,
@@ -98,12 +183,11 @@ router.post(
   '/register',
   authLimiter,
   resolveTenantByDomain,
-  csrfProtection,
+  conditionalCsrfProtection,
   createUser,
 )
 
 // Registro SaaS: crea tenant + admin principal.
-// Público, con limitador y validaciones fuertes en controller.
 router.post(
   '/register-admin',
   registerAdminLimiter,
@@ -111,15 +195,15 @@ router.post(
 )
 
 // Refresh token.
-// Como usa cookie y rota sesión, debe estar protegido con CSRF.
+// En producción real debe ir con CSRF.
+// En túnel puede saltarse si PREDEPLOY_TUNNEL_MODE=true y origin es Vercel.
 router.post(
   '/refresh',
-  csrfProtection,
+  conditionalCsrfProtection,
   handleRefreshToken,
 )
 
 // Recuperación de contraseña tenant-aware.
-// Esto evita ambigüedad si el mismo email existe en distintas tiendas.
 router.post(
   '/forgot-password',
   forgotPasswordLimiter,
@@ -145,11 +229,10 @@ router.get(
   getCurrentUser,
 )
 
-// Logout usa refresh cookie; no requiere authMiddleware para poder cerrar
-// incluso cuando el access token ya expiró, pero sí CSRF.
+// Logout usa refresh cookie; no requiere authMiddleware para cerrar sesión.
 router.post(
   '/logout',
-  csrfProtection,
+  conditionalCsrfProtection,
   logout,
 )
 
@@ -158,7 +241,7 @@ router.put(
   '/password',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   updatePassword,
 )
 
@@ -166,7 +249,7 @@ router.put(
   '/edit-user',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   updateUser,
 )
 
@@ -174,7 +257,7 @@ router.put(
   '/save-address',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   validateAddress,
   saveAddress,
 )
@@ -195,7 +278,7 @@ router.put(
   '/wishlist/:productId',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   toggleWishlist,
 )
 
@@ -207,7 +290,7 @@ router.post(
   '/cart',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   userCart,
 )
 
@@ -223,7 +306,7 @@ router.delete(
   '/cart/empty',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   emptyCart,
 )
 
@@ -231,7 +314,7 @@ router.delete(
   '/cart/:productId',
   resolveTenantByDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   removeFromCart,
 )
 
@@ -252,7 +335,7 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  conditionalCsrfProtection,
   blockUser,
 )
 
@@ -261,7 +344,7 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  conditionalCsrfProtection,
   unblockUser,
 )
 
@@ -270,7 +353,7 @@ router.delete(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  conditionalCsrfProtection,
   deleteUser,
 )
 

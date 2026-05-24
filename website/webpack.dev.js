@@ -3,6 +3,7 @@ import { merge } from 'webpack-merge'
 import path from 'path'
 import HtmlWebpackPlugin from 'html-webpack-plugin'
 import CaseSensitivePathsPlugin from 'case-sensitive-paths-webpack-plugin'
+import webpack from 'webpack'
 import baseConfig from './webpack.base.js'
 import { createEnvPlugin } from './webpack.env.js'
 
@@ -21,8 +22,55 @@ export default merge(baseConfig, {
     clean: true,
   },
 
+  module: {
+    rules: [
+      // ---------- CSS DEV ----------
+      {
+        test: /\.css$/i,
+        use: [
+          'style-loader',
+          {
+            loader: 'css-loader',
+            options: {
+              sourceMap: true,
+              importLoaders: 1,
+            },
+          },
+        ],
+      },
+
+      // ---------- SASS / SCSS DEV ----------
+      {
+        test: /\.(scss|sass)$/i,
+        use: [
+          'style-loader',
+          {
+            loader: 'css-loader',
+            options: {
+              sourceMap: true,
+              importLoaders: 1,
+            },
+          },
+          {
+            loader: 'sass-loader',
+            options: {
+              sourceMap: true,
+            },
+          },
+        ],
+      },
+    ],
+  },
+
   plugins: [
-    createEnvPlugin(),
+    createEnvPlugin({
+      mode: 'development',
+    }),
+
+    new webpack.DefinePlugin({
+      __DEV__: JSON.stringify(true),
+      __PROD__: JSON.stringify(false),
+    }),
 
     new CaseSensitivePathsPlugin(),
 

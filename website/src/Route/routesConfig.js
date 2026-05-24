@@ -12,7 +12,7 @@ import TermAndConditions from '@pages/TermAndConditions'
 import OurStore from '@pages/OurStore'
 import SingleProduct from '@pages/SingleProduct'
 import Unauthorized from '@pages/Unauthorized'
-import NotFound from '@pages/NotFound/NotFound'
+import NotFound from '@pages/NotFound/NotFound.js'
 import VerifyEmail from '../Components/VerifyEmail'
 
 // 🔸 Páginas diferidas (lazy load)

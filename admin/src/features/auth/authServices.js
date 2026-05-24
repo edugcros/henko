@@ -9,24 +9,28 @@ import api, { fetchCsrfToken } from '@utils/axiosConfig'
 const normalizeAuthResponse = response => {
   if (!response) return null
 
-  const raw = response?.data?.data || response?.data || response
+  const raw = response?.data || response
 
-  let user = null
+  return {
+    user:
+      raw?.user ||
+      raw?.data?.user ||
+      raw?.data?.profile ||
+      raw?.profile ||
+      null,
 
-  if (raw?.user) {
-    user = raw.user
-  } else if (raw?._id || raw?.email) {
-    user = raw
+    token:
+      raw?.token ||
+      raw?.accessToken ||
+      raw?.data?.token ||
+      raw?.data?.accessToken ||
+      null,
+
+    refreshToken:
+      raw?.refreshToken ||
+      raw?.data?.refreshToken ||
+      null,
   }
-
-  const token =
-    raw?.token ||
-    raw?.accessToken ||
-    raw?.data?.token ||
-    raw?.data?.accessToken ||
-    null
-
-  return { user, token, raw }
 }
 
 // ======================================================
@@ -96,10 +100,21 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
       ? await ensureCsrf()
       : null
 
-    const token =
+    const isValidToken = token => {
+      return (
+        token &&
+        token !== 'null' &&
+        token !== 'undefined' &&
+        String(token).trim() !== ''
+      )
+    }
+
+    const rawToken =
       localStorage.getItem('token') ||
       Cookies.get('token') ||
       null
+
+    const token = isValidToken(rawToken) ? rawToken : null
 
     const config = {
       method,
@@ -169,28 +184,39 @@ const registerAdmin = async payload => {
 // ======================================================
 
 const loginUser = async userData => {
-  const response = await apiRequest('post', '/admin-login', userData)
-  const normalized = normalizeAuthResponse(response)
+  try {
+    const response = await apiRequest('post', '/admin-login', userData, {
+      withCredentials: true,
+      skipCsrf: true,
+      skipCsrfRetry: true,
+    })
 
-  if (!response?.success || !normalized?.user) {
-    throw new Error(response?.message || 'Respuesta inválida del servidor durante login')
-  }
+    const normalized = normalizeAuthResponse(response)
 
-  const { user, token } = normalized
+    if (!normalized?.user) {
+      throw new Error(
+        response?.data?.message ||
+          'Respuesta inválida del servidor durante login',
+      )
+    }
 
-  if (token) {
-    localStorage.setItem('token', token)
-  }
+    const { user, token } = normalized
 
-  return {
+    if (token) {
+      localStorage.setItem('token', token)
+    }
+
+    return {
     success: true,
     data: {
-      user,
-      token,
+      user: normalized?.user,
+      token: normalized?.token,
     },
+    }
+  } catch (error) {
+    throwApiError(error, 'Error al iniciar sesión')
   }
 }
-
 // ======================================================
 // CURRENT USER
 // ======================================================

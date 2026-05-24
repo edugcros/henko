@@ -2,65 +2,80 @@
 
 const getValue = (...keys) => {
   for (const key of keys) {
-    if (process.env[key]) return process.env[key]
+    const value = process.env[key]
+
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value).trim()
+    }
   }
 
   return undefined
 }
 
+const parseBool = (value, fallback = false) => {
+  if (value === undefined || value === null || value === '') return fallback
+  return String(value).trim().toLowerCase() === 'true'
+}
+
 export const env = {
-  nodeEnv: getValue('REACT_APP_NODE_ENV') || process.env.NODE_ENV || 'development',
+  nodeEnv:
+    getValue('REACT_APP_NODE_ENV') ||
+    process.env.NODE_ENV ||
+    'development',
+
   isProduction:
     getValue('REACT_APP_NODE_ENV') === 'production' ||
     process.env.NODE_ENV === 'production',
 
   apiBaseUrl:
-    getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL'),
+    getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL') ||
+    '',
+
+  apiUrl:
+    getValue('REACT_APP_API_URL', 'REACT_APP_API_BASE_URL') ||
+    '',
+
+  assetsBaseUrl:
+    getValue('REACT_APP_ASSETS_BASE_URL') ||
+    '',
+
+  publicBaseDomain:
+    getValue('REACT_APP_PUBLIC_BASE_DOMAIN') ||
+    '',
+
+  adminBaseDomain:
+    getValue('REACT_APP_ADMIN_BASE_DOMAIN') ||
+    '',
+
   tenantHeader:
     getValue('REACT_APP_TENANT_HEADER') ||
     'x-tenant-domain',
 
-  publicBaseDomain:
-    getValue('REACT_APP_PUBLIC_BASE_DOMAIN', 'REACT_APP_PRODUCTION_DOMAIN'),
-
-  adminBaseDomain:
-    getValue('REACT_APP_ADMIN_BASE_DOMAIN'),
-
   csrfHeaderName:
-  getValue('REACT_APP_CSRF_HEADER_NAME') ||
-  'x-csrf-token',
-    
-  assetsBaseUrl:
-    getValue('REACT_APP_ASSETS_BASE_URL'),
+    getValue('REACT_APP_CSRF_HEADER_NAME') ||
+    'x-csrf-token',
 
   enableTenantDomainResolution:
-    getValue('REACT_APP_ENABLE_TENANT_DOMAIN_RESOLUTION') !== 'false',
+    parseBool(
+      getValue('REACT_APP_ENABLE_TENANT_DOMAIN_RESOLUTION'),
+      true,
+    ),
 
-  enableThemeBuilder:
-    getValue('REACT_APP_ENABLE_THEME_BUILDER') !== 'false',
-
-  enablePromotionalBlocks:
-    getValue('REACT_APP_ENABLE_PROMOTIONAL_BLOCKS') !== 'false',
-
-  enableAiProductAnalysis:
-    getValue('REACT_APP_ENABLE_AI_PRODUCT_ANALYSIS') !== 'false',
+  debugApi:
+    parseBool(getValue('REACT_APP_DEBUG_API'), false),
 }
 
-if (env.isProduction) {
-  const forbiddenValues = [
-    'localhost',
-    '127.0.0.1',
-    'henko.local',
-    'http://',
-  ]
+if (env.isProduction && !env.apiBaseUrl) {
+  throw new Error('REACT_APP_API_BASE_URL es obligatorio en producción')
+}
 
-  forbiddenValues.forEach(value => {
-    if (String(env.apiBaseUrl || '').includes(value)) {
-      throw new Error(
-        `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`
-      )
-    }
-  })
+if (
+  env.isProduction &&
+  /localhost|127\.0\.0\.1|henko\.local/i.test(env.apiBaseUrl)
+) {
+  throw new Error(
+    `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
+  )
 }
 
 export default env

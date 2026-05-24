@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "cross-env NODE_ENV=development HOST=henko.local webpack serve --port 3002 --mode development",
-    "dev:local": "cross-env NODE_ENV=development HOST=localhost webpack serve --port 3002 --mode development",
+    "dev:local": "cross-env NODE_ENV=development HOST=https://henko-web.vercel.app/ webpack serve --port 3002 --mode development",
     "build": "cross-env NODE_ENV=production webpack --mode production",
     "build:prod": "cross-env NODE_ENV=production webpack --mode production",
     "build:staging": "cross-env NODE_ENV=staging webpack --mode production",

@@ -42,8 +42,50 @@ export default merge(baseConfig, {
     clean: true,
   },
 
+  module: {
+    rules: [
+      // ---------- CSS PROD ----------
+      {
+        test: /\.css$/i,
+        use: [
+          MiniCssExtractPlugin.loader,
+          {
+            loader: 'css-loader',
+            options: {
+              sourceMap: false,
+              importLoaders: 1,
+            },
+          },
+        ],
+      },
+
+      // ---------- SASS / SCSS PROD ----------
+      {
+        test: /\.(scss|sass)$/i,
+        use: [
+          MiniCssExtractPlugin.loader,
+          {
+            loader: 'css-loader',
+            options: {
+              sourceMap: false,
+              importLoaders: 1,
+            },
+          },
+          {
+            loader: 'sass-loader',
+            options: {
+              sourceMap: false,
+            },
+          },
+        ],
+      },
+    ],
+  },
+
   plugins: [
-    createEnvPlugin(),
+    createEnvPlugin({
+      mode: 'production',
+    }),
 
     new CaseSensitivePathsPlugin(),
 

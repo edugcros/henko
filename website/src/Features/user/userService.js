@@ -89,7 +89,11 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
   const isReadOnly = ['get', 'head', 'options'].includes(normalizedMethod)
 
   try {
-    const csrfToken = isReadOnly ? null : await ensureCsrf()
+    const shouldUseCsrf =
+      !isReadOnly &&
+      options.skipCsrf !== true
+
+    const csrfToken = shouldUseCsrf ? await ensureCsrf() : null
 
     const config = {
       method: normalizedMethod,
@@ -102,10 +106,14 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
         ...(data instanceof FormData
           ? {}
           : { 'Content-Type': 'application/json' }),
-        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        ...(csrfToken
+          ? { [env.csrfHeaderName || 'x-csrf-token']: csrfToken }
+          : {}),
         ...(options.headers || {}),
       },
     }
+
+    delete config.skipCsrf
 
     const response = await api(config)
 
@@ -114,13 +122,13 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     const status = error?.response?.status
     const message = extractApiError(error, 'Error en la petición')
 
-    if (status === 403 && /csrf|token/i.test(message)) {
+    if (status === 403 && /csrf|token/i.test(message) && options.skipCsrf !== true) {
       try {
         resetCsrf()
 
         const retryCsrfToken = isReadOnly ? null : await ensureCsrf()
 
-        const retryResponse = await api({
+        const retryConfig = {
           method: normalizedMethod,
           url: `/user${endpoint}`,
           data,
@@ -131,10 +139,16 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
             ...(data instanceof FormData
               ? {}
               : { 'Content-Type': 'application/json' }),
-            ...(retryCsrfToken ? { 'X-CSRF-Token': retryCsrfToken } : {}),
+            ...(retryCsrfToken
+              ? { [env.csrfHeaderName || 'x-csrf-token']: retryCsrfToken }
+              : {}),
             ...(options.headers || {}),
           },
-        })
+        }
+
+        delete retryConfig.skipCsrf
+
+        const retryResponse = await api(retryConfig)
 
         return normalizeBooleanSuccess(retryResponse.data)
       } catch (retryError) {
@@ -162,13 +176,14 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     }
   }
 }
-
 // ======================================================
 // AUTH
 // ======================================================
 
 const register = async userData => {
-  const response = await apiRequest('post', '/register', userData)
+  const response = await apiRequest('post', '/register', userData, {
+    skipCsrf: true,
+  })
 
   if (response.success === false) return response
 
@@ -176,13 +191,6 @@ const register = async userData => {
 
   if (normalized?.token) {
     localStorage.setItem('token', normalized.token)
-
-    Cookies.set('token', normalized.token, {
-      expires: 1,
-      path: '/',
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
-    })
   }
 
   return {
@@ -195,7 +203,9 @@ const register = async userData => {
 }
 
 const loginUser = async userData => {
-  const response = await apiRequest('post', '/login', userData)
+  const response = await apiRequest('post', '/login', userData, {
+    skipCsrf: true,
+  })
 
   if (response.success === false) return response
 
@@ -203,13 +213,6 @@ const loginUser = async userData => {
 
   if (normalized?.token) {
     localStorage.setItem('token', normalized.token)
-
-    Cookies.set('token', normalized.token, {
-      expires: 1,
-      path: '/',
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
-    })
   }
 
   return {

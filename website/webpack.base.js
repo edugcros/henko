@@ -1,11 +1,8 @@
 // 📦 webpack.base.js
 import path from 'path'
 import webpack from 'webpack'
-import MiniCssExtractPlugin from 'mini-css-extract-plugin'
-import process from 'process'
 
 const __dirname = path.resolve()
-const isProd = process.env.NODE_ENV === 'production'
 
 export default {
   entry: path.resolve(__dirname, './src/index.js'),
@@ -55,42 +52,6 @@ export default {
 
   module: {
     rules: [
-      // ---------- CSS ----------
-      {
-        test: /\.css$/i,
-        use: [
-          isProd ? MiniCssExtractPlugin.loader : 'style-loader',
-          {
-            loader: 'css-loader',
-            options: {
-              sourceMap: !isProd,
-              importLoaders: 1,
-            },
-          },
-        ],
-      },
-
-      // ---------- SASS / SCSS ----------
-      {
-        test: /\.(scss|sass)$/i,
-        use: [
-          isProd ? MiniCssExtractPlugin.loader : 'style-loader',
-          {
-            loader: 'css-loader',
-            options: {
-              sourceMap: !isProd,
-              importLoaders: 1,
-            },
-          },
-          {
-            loader: 'sass-loader',
-            options: {
-              sourceMap: !isProd,
-            },
-          },
-        ],
-      },
-
       // ---------- IMÁGENES ----------
       {
         test: /\.(png|jpe?g|gif|svg|webp)$/i,

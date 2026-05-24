@@ -1,5 +1,5 @@
 // 📁 src/routes/orderRoute.js
-// VERSIÓN PRODUCCIÓN - MULTI-TENANT / CSRF / ADMIN + STOREFRONT SAFE
+// VERSIÓN PRODUCCIÓN / PREDEPLOY SAFE - MULTI-TENANT / ADMIN + STOREFRONT
 
 import express from 'express'
 import expressAsyncHandler from 'express-async-handler'
@@ -45,6 +45,75 @@ const isAdminOrManager = expressAsyncHandler(async (req, res, next) => {
 })
 
 // =========================================================
+// CSRF CONDICIONAL PARA PREDEPLOY / TÚNEL
+// =========================================================
+
+const normalizePath = value => {
+  const normalized = String(value || '').replace(/\/+$/, '')
+  return normalized || '/'
+}
+
+const isTrustedPredeployOrigin = req => {
+  const origin = String(req.headers.origin || '').toLowerCase()
+
+  return [
+    'https://henko-web.vercel.app',
+    'https://henko-admin.vercel.app',
+  ].includes(origin)
+}
+
+const routePatternToRegex = pattern => {
+  const normalized = normalizePath(pattern)
+
+  const escaped = normalized
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\\:([^/]+)/g, '[^/]+')
+
+  return new RegExp(`^${escaped}$`)
+}
+
+const predeployCsrfExemptRoutes = [
+  // Storefront checkout durante túnel
+  { method: 'POST', path: '/create' },
+  { method: 'POST', path: '/:orderId/resend-email' },
+
+  // Admin order mutations durante túnel
+  { method: 'PUT', path: '/:id/status' },
+  { method: 'PUT', path: '/:id/payment-status' },
+  { method: 'PUT', path: '/:id/fulfillment-status' },
+  { method: 'POST', path: '/:id/cancel' },
+  { method: 'POST', path: '/:id/refund' },
+  { method: 'DELETE', path: '/:id' },
+]
+
+const matchesPredeployExemptRoute = req => {
+  const requestPath = normalizePath(req.path)
+
+  return predeployCsrfExemptRoutes.some(route => {
+    return (
+      route.method === req.method &&
+      routePatternToRegex(route.path).test(requestPath)
+    )
+  })
+}
+
+const shouldSkipCsrfForPredeploy = req => {
+  return (
+    process.env.PREDEPLOY_TUNNEL_MODE === 'true' &&
+    isTrustedPredeployOrigin(req) &&
+    matchesPredeployExemptRoute(req)
+  )
+}
+
+const conditionalCsrfProtection = (req, res, next) => {
+  if (shouldSkipCsrfForPredeploy(req)) {
+    return next()
+  }
+
+  return csrfProtection(req, res, next)
+}
+
+// =========================================================
 // CLIENTE / USUARIO AUTENTICADO - STOREFRONT
 // =========================================================
 
@@ -59,7 +128,7 @@ router.post(
   resolveTenantByDomain,
   requireShopDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   orderWriteLimiter,
   createOrder,
 )
@@ -89,7 +158,7 @@ router.post(
   resolveTenantByDomain,
   requireShopDomain,
   authMiddleware,
-  csrfProtection,
+  conditionalCsrfProtection,
   orderWriteLimiter,
   resendConfirmationEmail,
 )
@@ -119,7 +188,7 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  csrfProtection,
+  conditionalCsrfProtection,
   orderWriteLimiter,
   updateOrderStatus,
 )
@@ -133,7 +202,7 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  csrfProtection,
+  conditionalCsrfProtection,
   orderWriteLimiter,
   updateOrderPaymentStatus,
 )
@@ -147,7 +216,7 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  csrfProtection,
+  conditionalCsrfProtection,
   orderWriteLimiter,
   updateOrderFulfillmentStatus,
 )
@@ -161,7 +230,7 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  csrfProtection,
+  conditionalCsrfProtection,
   orderWriteLimiter,
   cancelOrder,
 )
@@ -175,7 +244,7 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  csrfProtection,
+  conditionalCsrfProtection,
   orderWriteLimiter,
   refundOrder,
 )
@@ -185,14 +254,14 @@ router.post(
  * DELETE /api/order/:id
  *
  * Solo admin/manager.
- * No usa requireShopDomain porque debe funcionar desde admin.henko.local.
+ * No usa requireShopDomain porque debe funcionar desde admin.
  */
 router.delete(
   '/:id',
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  csrfProtection,
+  conditionalCsrfProtection,
   orderWriteLimiter,
   deleteOrder,
 )
