@@ -784,6 +784,16 @@ export default function AddProduct() {
     )
   }, [])
 
+  const normalizedIaResult =
+  iaResult && typeof iaResult === 'object'
+    ? {
+        ...iaResult,
+        appliedAt: new Date().toISOString(),
+        appliedBy: user?._id || user?.id || null,
+        sourceContext: 'admin-add-product',
+      }
+    : null
+
   const handleFinish = async (values) => {
     if (!fileList.length) {
       message.error('Debes subir al menos una imagen')
@@ -834,6 +844,16 @@ export default function AddProduct() {
           }))
         : []
 
+      const normalizedIaResult =
+        iaResult && typeof iaResult === 'object'
+          ? {
+              ...iaResult,
+              appliedAt: new Date().toISOString(),
+              appliedBy: user?._id || user?.id || null,
+              sourceContext: 'admin-add-product',
+            }
+          : null
+
       const productPayload = {
         title: normalizeString(values.titulo),
         description: normalizeString(values.descripcion),
@@ -843,14 +863,32 @@ export default function AddProduct() {
         price: Number(values.precio || 0),
         stock: hasVariants ? 0 : Number(values.cantidad || 0),
         condicion: values.condicion,
+
         color: colorArray,
         material: normalizeString(values.material),
+
+        atributos: {
+          color: colorArray.length === 1 ? colorArray[0] : colorArray,
+          material: normalizeString(values.material),
+        },
+
         hasVariants,
         variantAttributes: variantAttributesConfig,
         variants: payloadVariants,
         tags: editableTags.map(tag => tag.toLowerCase().trim()),
-        iaGenerated: Boolean(iaResult),
-        iaSource: iaResult ? 'gemini-1.5-flash' : 'manual',
+
+        iaGenerated: Boolean(normalizedIaResult),
+        aiOriginalOutput: normalizedIaResult
+          ? JSON.stringify(normalizedIaResult)
+          : null,
+        aiConfidence: normalizedIaResult?.confidence ?? null,
+        aiSource: normalizedIaResult?.source || 'gemini',
+        aiImageHash: normalizedIaResult?.hash || null,
+        aiNeedsReview:
+          normalizedIaResult?.needsReview === true ||
+          normalizedIaResult?.requiresHumanReview === true ||
+          false,
+
         status: 'active',
         visibility: 'visible',
       }
