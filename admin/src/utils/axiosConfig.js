@@ -192,6 +192,13 @@ api.interceptors.request.use(
         tenant: config.headers[env.tenantHeader || 'x-tenant-domain'],
       })
     }
+    const isFormData =
+      typeof FormData !== 'undefined' && config.data instanceof FormData
+
+    if (isFormData || config.isMultipart) {
+      delete config.headers['Content-Type']
+      delete config.headers['content-type']
+    }
 
     return config
   },

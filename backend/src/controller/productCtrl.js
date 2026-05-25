@@ -391,17 +391,17 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     const tags = safeJsonParse(req.body.tags, [])
 
     logger.info('🧠 AI payload recibido en createProduct', {
-  iaGenerated: req.body.iaGenerated,
-  hasAiOriginalOutput: Boolean(req.body.aiOriginalOutput),
-  aiOriginalOutputType: typeof req.body.aiOriginalOutput,
-  aiOriginalOutputPreview:
+      iaGenerated: req.body.iaGenerated,
+      hasAiOriginalOutput: Boolean(req.body.aiOriginalOutput),
+      aiOriginalOutputType: typeof req.body.aiOriginalOutput,
+      aiOriginalOutputPreview:
     typeof req.body.aiOriginalOutput === 'string'
       ? req.body.aiOriginalOutput.slice(0, 300)
       : req.body.aiOriginalOutput,
-  aiConfidence: req.body.aiConfidence,
-  aiSource: req.body.aiSource,
-  aiImageHash: req.body.aiImageHash,
-})
+      aiConfidence: req.body.aiConfidence,
+      aiSource: req.body.aiSource,
+      aiImageHash: req.body.aiImageHash,
+    })
 
     const aiOriginal = safeJsonParse(req.body.aiOriginalOutput, null)
 

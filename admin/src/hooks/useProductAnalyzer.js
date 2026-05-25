@@ -89,22 +89,25 @@ export default function useProductAnalyzer() {
       setLoading(true)
       setError(null)
 
-      const formData = new FormData()
-
-      // Debe coincidir con el nombre esperado por multer/backend.
-      // Si tu backend usa upload.single('image'), cambiar a 'image'.
-      // Si usa upload.array('images'), mantener 'images'.
-      formData.append('images', imageFile)
-
       try {
+        const formData = new FormData()
+
+        // IMPORTANTE:
+        // Backend usa uploadPhoto.single('images')
+        // Por eso el campo debe llamarse exactamente "images".
+        formData.append('images', imageFile, imageFile.name || 'product-image')
+
         const response = await api.post('/product/analyze-visual', formData, {
           withCredentials: true,
 
-          // No seteamos Content-Type manualmente.
-          // Axios/browser agrega multipart/form-data con boundary.
+          // No enviar Content-Type manual.
+          // El navegador/Axios debe generar multipart/form-data con boundary.
           headers: {
             Accept: 'application/json',
           },
+
+          // Flag útil para que axiosConfig borre application/json si lo tenés como default.
+          isMultipart: true,
         })
 
         const resData = response.data
