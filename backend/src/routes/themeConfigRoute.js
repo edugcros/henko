@@ -25,7 +25,7 @@ import {
 } from '../controller/themeConfigCtrl.js'
 
 import { isAdmin, authMiddleware } from '../middlewares/authMiddleware.js'
-import { csrfProtection } from '../middlewares/csrfMiddleware.js'
+
 import {
   resolveTenantByDomain,
   requireShopDomain,
@@ -248,7 +248,6 @@ router.put(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   updateTheme,
 )
@@ -263,7 +262,6 @@ router.patch(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   patchTheme,
 )
@@ -278,7 +276,6 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   createPreview,
 )
@@ -293,7 +290,6 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   activatePreview,
 )
@@ -308,7 +304,6 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   resetTheme,
 )
@@ -323,7 +318,6 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   toggleMaintenance,
 )
@@ -338,7 +332,6 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   rollbackTheme,
 )
@@ -353,7 +346,6 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   validateTheme,
 )
@@ -368,7 +360,6 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   importTheme,
 )
@@ -383,7 +374,6 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   strictLimiter,
   upload.single('image'),
   handleMulterError,

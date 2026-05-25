@@ -58,7 +58,7 @@ const isTenantOriginAllowed = async hostnameCandidates => {
 }
 
 export const corsOptions = {
-  credentials: env.corsCredentials,
+  credentials: true,
 
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 

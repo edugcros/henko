@@ -19,7 +19,6 @@ import {
 } from '../controller/orderCtrl.js'
 
 import { authMiddleware } from '../middlewares/authMiddleware.js'
-import { csrfProtection } from '../middlewares/csrfMiddleware.js'
 import {
   resolveTenantByDomain,
   requireShopDomain,
@@ -105,14 +104,6 @@ const shouldSkipCsrfForPredeploy = req => {
   )
 }
 
-const conditionalCsrfProtection = (req, res, next) => {
-  if (shouldSkipCsrfForPredeploy(req)) {
-    return next()
-  }
-
-  return csrfProtection(req, res, next)
-}
-
 // =========================================================
 // CLIENTE / USUARIO AUTENTICADO - STOREFRONT
 // =========================================================
@@ -128,7 +119,6 @@ router.post(
   resolveTenantByDomain,
   requireShopDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   orderWriteLimiter,
   createOrder,
 )
@@ -158,7 +148,6 @@ router.post(
   resolveTenantByDomain,
   requireShopDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   orderWriteLimiter,
   resendConfirmationEmail,
 )
@@ -188,7 +177,6 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  conditionalCsrfProtection,
   orderWriteLimiter,
   updateOrderStatus,
 )
@@ -202,7 +190,6 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  conditionalCsrfProtection,
   orderWriteLimiter,
   updateOrderPaymentStatus,
 )
@@ -216,7 +203,6 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  conditionalCsrfProtection,
   orderWriteLimiter,
   updateOrderFulfillmentStatus,
 )
@@ -230,7 +216,6 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  conditionalCsrfProtection,
   orderWriteLimiter,
   cancelOrder,
 )
@@ -244,7 +229,6 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  conditionalCsrfProtection,
   orderWriteLimiter,
   refundOrder,
 )
@@ -261,7 +245,6 @@ router.delete(
   resolveTenantByDomain,
   authMiddleware,
   isAdminOrManager,
-  conditionalCsrfProtection,
   orderWriteLimiter,
   deleteOrder,
 )

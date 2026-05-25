@@ -2,19 +2,97 @@
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
 import Cookies from 'js-cookie'
 
-const getAuthToken = () => Cookies.get('token') || localStorage.getItem('token') || null
+const getAuthToken = () => {
+  const token = Cookies.get('token') || localStorage.getItem('token') || null
+
+  if (!token || token === 'null' || token === 'undefined') {
+    return null
+  }
+
+  return token
+}
 
 const extractErrorMessage = (error, fallback = 'API Error') => {
-  return error?.response?.data?.message || error?.message || fallback
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.response?.data?.code ||
+    error?.message ||
+    fallback
+  )
+}
+
+const isPlainObject = value => {
+  return value && typeof value === 'object' && !Array.isArray(value)
+}
+
+const safeJsonStringify = value => {
+  if (value === undefined || value === null) return null
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return null
+  }
+}
+
+const normalizeBoolean = value => {
+  return value === true || value === 'true'
+}
+
+const normalizeAiProductPayload = productData => {
+  if (!isPlainObject(productData)) {
+    return productData
+  }
+
+  const normalized = {
+    ...productData,
+  }
+
+  const hasAiOriginal =
+    normalized.aiOriginalOutput !== undefined &&
+    normalized.aiOriginalOutput !== null &&
+    normalized.aiOriginalOutput !== ''
+
+  const aiOriginalOutputAsString = hasAiOriginal
+    ? safeJsonStringify(normalized.aiOriginalOutput)
+    : null
+
+  normalized.iaGenerated =
+    normalizeBoolean(normalized.iaGenerated) || Boolean(aiOriginalOutputAsString)
+
+  if (aiOriginalOutputAsString) {
+    normalized.aiOriginalOutput = aiOriginalOutputAsString
+  }
+
+  if (normalized.aiConfidence !== undefined && normalized.aiConfidence !== null) {
+    const confidence = Number(normalized.aiConfidence)
+    normalized.aiConfidence = Number.isFinite(confidence) ? confidence : null
+  }
+
+  if (normalized.aiNeedsReview !== undefined && normalized.aiNeedsReview !== null) {
+    normalized.aiNeedsReview = normalizeBoolean(normalized.aiNeedsReview)
+  }
+
+  return normalized
 }
 
 /**
- * Helper universal de requests
+ * Helper universal de requests.
+ *
  * Soporta:
  * - params
  * - headers extra
  * - multipart/form-data
  * - withCredentials
+ *
+ * Nota importante:
+ * Para FormData NO seteamos Content-Type manualmente.
+ * El browser/Axios debe agregar multipart/form-data con boundary.
  */
 const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
   try {
@@ -24,7 +102,6 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     const {
       headers: customHeaders = {},
       params,
-      isMultipart = false,
       withCredentials = true,
       ...restOptions
     } = options
@@ -33,7 +110,6 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
       Accept: 'application/json',
       ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(isMultipart ? { 'Content-Type': 'multipart/form-data' } : {}),
       ...customHeaders,
     }
 
@@ -58,19 +134,29 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
 }
 
 /**
- * Crea producto
- * Recibe un payload JSON normal
+ * Crea producto.
+ *
+ * Mantiene intactos los campos IA:
+ * - iaGenerated
+ * - aiOriginalOutput
+ * - aiConfidence
+ * - aiSource
+ * - aiImageHash
+ * - aiNeedsReview
  */
-const createProduct = async (productData) => {
+const createProduct = async productData => {
   if (!productData || typeof productData !== 'object') {
     throw new Error('No se proporcionó el payload del producto')
   }
 
-  return apiRequest('post', '/', productData)
+  const normalizedPayload = normalizeAiProductPayload(productData)
+
+  return apiRequest('post', '/', normalizedPayload)
 }
 
 /**
- * Actualiza producto
+ * Actualiza producto.
+ *
  * Acepta:
  * - updateAProduct(productId, data)
  * - updateAProduct({ productId, data })
@@ -92,13 +178,15 @@ const updateAProduct = async (productIdOrPayload, maybeData) => {
     throw new Error('Payload de actualización inválido')
   }
 
-  return apiRequest('put', `/${productId}`, data)
+  const normalizedPayload = normalizeAiProductPayload(data)
+
+  return apiRequest('put', `/${productId}`, normalizedPayload)
 }
 
 /**
- * Eliminar producto completo
+ * Eliminar producto completo.
  */
-const deleteProduct = async (productId) => {
+const deleteProduct = async productId => {
   if (!productId) {
     throw new Error('ID del producto requerido')
   }
@@ -107,8 +195,8 @@ const deleteProduct = async (productId) => {
 }
 
 /**
- * Subir imágenes globales del producto
- * Backend espera field: images
+ * Subir imágenes globales del producto.
+ * Backend espera field: images.
  */
 const uploadProductImage = async (productId, imageFile) => {
   if (!productId || !imageFile) {
@@ -118,14 +206,12 @@ const uploadProductImage = async (productId, imageFile) => {
   const formData = new FormData()
   formData.append('images', imageFile)
 
-  return apiRequest('post', `/${productId}/upload-image`, formData, {
-    isMultipart: true,
-  })
+  return apiRequest('post', `/${productId}/upload-image`, formData)
 }
 
 /**
- * Eliminar imagen específica del producto
- * El backend actual espera public_id por query string
+ * Eliminar imagen específica del producto.
+ * El backend actual espera public_id por query string.
  */
 const deleteProductImage = async (productId, publicId) => {
   if (!productId) {
@@ -142,9 +228,9 @@ const deleteProductImage = async (productId, publicId) => {
 }
 
 /**
- * Obtener configuración de una categoría
+ * Obtener configuración de una categoría.
  */
-const getCategoryConfig = async (category) => {
+const getCategoryConfig = async category => {
   if (!category) {
     throw new Error('Categoría requerida')
   }
@@ -153,14 +239,14 @@ const getCategoryConfig = async (category) => {
 }
 
 /**
- * Listar categorías del tenant actual
+ * Listar categorías del tenant actual.
  */
 const getCategories = async () => {
   return apiRequest('get', '/categories')
 }
 
 /**
- * Obtener productos públicos del storefront
+ * Obtener productos públicos del storefront.
  */
 const getProducts = async (params = {}) => {
   return apiRequest('get', '/', undefined, {
@@ -172,9 +258,9 @@ const getProducts = async (params = {}) => {
 }
 
 /**
- * Obtener producto por ID
+ * Obtener producto por ID.
  */
-const getProduct = async (productId) => {
+const getProduct = async productId => {
   if (!productId) {
     throw new Error('ID del producto requerido')
   }
@@ -187,7 +273,7 @@ const getProduct = async (productId) => {
 }
 
 /**
- * Calificar producto
+ * Calificar producto.
  */
 const rateProduct = async ({ productId, star, comment, variantId = null }) => {
   if (!productId) {
@@ -202,7 +288,7 @@ const rateProduct = async ({ productId, star, comment, variantId = null }) => {
 }
 
 /**
- * Voto útil en reseña
+ * Voto útil en reseña.
  */
 const toggleHelpfulRating = async ({ productId, ratingId }) => {
   if (!productId || !ratingId) {
@@ -213,9 +299,7 @@ const toggleHelpfulRating = async ({ productId, ratingId }) => {
 }
 
 /**
- * Próximo paso de arquitectura:
- * asignar una imagen existente del producto a una variante
- * Este método queda preparado para cuando agreguemos el endpoint backend.
+ * Asignar una imagen existente del producto a una variante.
  */
 const assignVariantImage = async ({ productId, variantId, image }) => {
   if (!productId) {

@@ -584,11 +584,38 @@ const productSchema = new Schema(
     iaGenerated: {
       type: Boolean,
       default: false,
+      index: true,
     },
-    iaSource: {
+
+    aiOriginalOutput: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+
+    aiConfidence: {
+      type: Number,
+      min: 0,
+      max: 1,
+      default: null,
+    },
+
+    aiSource: {
       type: String,
-      default: 'manual',
+      default: null,
       trim: true,
+    },
+
+    aiImageHash: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+
+    aiNeedsReview: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
 
     // Auditoría

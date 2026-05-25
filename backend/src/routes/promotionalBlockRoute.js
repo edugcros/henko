@@ -23,7 +23,6 @@ import {
 } from '../validators/promotionalBlockValidator.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
-import { csrfProtection } from '../middlewares/csrfMiddleware.js'
 import {
   requireShopDomain,
   resolveTenantByDomain,
@@ -105,7 +104,6 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   createPromotionalBlockValidator,
   createPromotionalBlock,
 )
@@ -122,7 +120,6 @@ router.patch(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   togglePromotionalBlockStatusValidator,
   togglePromotionalBlockStatus,
 )
@@ -149,7 +146,6 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   promotionalBlockIdValidator,
   updatePromotionalBlockValidator,
   updatePromotionalBlock,
@@ -164,7 +160,6 @@ router.delete(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   promotionalBlockIdValidator,
   deletePromotionalBlock,
 )

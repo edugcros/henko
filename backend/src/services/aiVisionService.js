@@ -1,8 +1,9 @@
 // src/services/aiVisionService.js
 import crypto from 'crypto'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import AIPreference from '../models/aIPreference.js '
-import CorrectionLog from '../models/correctionLog.js '
+import AIPreference from '../models/aIPreference.js'
+import CorrectionLog from '../models/correctionLog.js'
+import mongoose from 'mongoose'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const MODEL_NAME = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash'
@@ -443,15 +444,18 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     throw new Error('imageBuffer inválido')
   }
 
-  if (!tenantId || typeof tenantId !== 'string') {
+  const normalizedTenantId = String(tenantId || '').trim()
+
+  if (!mongoose.Types.ObjectId.isValid(normalizedTenantId)) {
     throw new Error('tenantId inválido')
   }
 
+  const learningContext = await loadTenantLearningContext(normalizedTenantId)
   const hash = crypto.createHash('sha256').update(imageBuffer).digest('hex')
   const safeMime = normalizeMimeType(mimeType)
 
   try {
-    const learningContext = await loadTenantLearningContext(tenantId)
+    const learningContext = await loadTenantLearningContext(normalizedTenantId)
 
     logInfo('Contexto de aprendizaje cargado', {
       tenantId,
@@ -462,7 +466,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     })
 
     const prompt = buildPrompt({
-      tenantId,
+      tenantId: normalizedTenantId,
       knownCategories: learningContext.knownCategories,
       knownBrands: learningContext.knownBrands,
       learnedRules: learningContext.learnedRules,

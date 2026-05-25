@@ -2,9 +2,9 @@
 import mongoose from 'mongoose'
 
 export const connectTestDB = async () => {
-  const dbUri = process.env.MONGO_URL_TEST
+  const dbUri = process.env.MONGO_URL_APP URS
   if (!dbUri || !dbUri.startsWith('mongodb')) {
-    throw new Error('❌ Cadena de conexión Mongo inválida. Verifica MONGO_URL_TEST')
+    throw new Error('❌ Cadena de conexión Mongo inválida. Verifica MONGO_URL_APP URS')
   }
 
   await mongoose.connect(dbUri, {

@@ -41,6 +41,8 @@ const ensureDir = async dir => {
   await fs.mkdir(dir, { recursive: true })
 }
 
+
+
 const publicBaseUrl = () => process.env.PUBLIC_URL || ''
 
 const normalizeText = (value, fallback = '') => {
@@ -91,8 +93,15 @@ const normalizeOptionalText = value => {
 }
 
 const safeJsonParse = (value, fallback = null) => {
-  if (value == null) return fallback
-  if (typeof value !== 'string') return value
+  if (value === undefined || value === null || value === '') return fallback
+
+  if (typeof value === 'object') {
+    return value
+  }
+
+  if (typeof value !== 'string') {
+    return fallback
+  }
 
   try {
     return JSON.parse(value)
@@ -330,13 +339,31 @@ const sendControllerError = (res, error, fallbackMessage) => {
 }
 
 // =====================================================
-// CREATE PRODUCT
+// 🧠 CREATE PRODUCT + AI LEARNING
 // =====================================================
-
 export const createProduct = expressAsyncHandler(async (req, res) => {
   try {
     const tenantId = requireUserTenantId(req)
     assertSameResolvedTenant(req, tenantId)
+
+    const userId = getRequestUserId(req)
+
+    // =====================================================
+    // 🧠 DEBUG TEMPORAL - CONFIRMAR PAYLOAD IA
+    // =====================================================
+    logger.info('🧠 AI payload recibido en createProduct', {
+      iaGenerated: req.body.iaGenerated,
+      hasAiOriginalOutput: Boolean(req.body.aiOriginalOutput),
+      aiOriginalOutputType: typeof req.body.aiOriginalOutput,
+      aiOriginalOutputPreview:
+        typeof req.body.aiOriginalOutput === 'string'
+          ? req.body.aiOriginalOutput.slice(0, 300)
+          : req.body.aiOriginalOutput,
+      aiConfidence: req.body.aiConfidence,
+      aiSource: req.body.aiSource,
+      aiImageHash: req.body.aiImageHash,
+      aiNeedsReview: req.body.aiNeedsReview,
+    })
 
     const finalTitle = normalizeText(req.body.title, 'Producto sin título')
 
@@ -345,7 +372,11 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       tenantId,
     })
 
-    const rawVariants = safeJsonParse(req.body.variants, req.body.variants || [])
+    const rawVariants = safeJsonParse(
+      req.body.variants,
+      req.body.variants || [],
+    )
+
     const rawVariantAttributes = safeJsonParse(
       req.body.variantAttributes,
       req.body.variantAttributes || [],
@@ -353,30 +384,98 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
 
     const variants = normalizeVariantsPayload(rawVariants, tenantId)
     const variantAttributes = normalizeVariantAttributesPayload(rawVariantAttributes)
+
     const safeBody = sanitizeCreateProductInput(req.body)
+
+    const atributos = safeJsonParse(req.body.atributos, {})
+    const tags = safeJsonParse(req.body.tags, [])
+
+    logger.info('🧠 AI payload recibido en createProduct', {
+  iaGenerated: req.body.iaGenerated,
+  hasAiOriginalOutput: Boolean(req.body.aiOriginalOutput),
+  aiOriginalOutputType: typeof req.body.aiOriginalOutput,
+  aiOriginalOutputPreview:
+    typeof req.body.aiOriginalOutput === 'string'
+      ? req.body.aiOriginalOutput.slice(0, 300)
+      : req.body.aiOriginalOutput,
+  aiConfidence: req.body.aiConfidence,
+  aiSource: req.body.aiSource,
+  aiImageHash: req.body.aiImageHash,
+})
+
+    const aiOriginal = safeJsonParse(req.body.aiOriginalOutput, null)
+
+    const iaGenerated =
+      req.body.iaGenerated === true ||
+      req.body.iaGenerated === 'true' ||
+      Boolean(aiOriginal)
+
+    const hasVariants =
+      req.body.hasVariants === true ||
+      req.body.hasVariants === 'true' ||
+      variants.length > 0
+
+    const aiConfidence =
+      aiOriginal?.confidence ??
+      aiOriginal?.confianza ??
+      toSafeNumber(req.body.aiConfidence, null)
+
+    const aiSource =
+      aiOriginal?.source ||
+      aiOriginal?.model ||
+      normalizeText(req.body.aiSource, null)
+
+    const aiImageHash =
+      aiOriginal?.hash ||
+      aiOriginal?.imageHash ||
+      normalizeText(req.body.aiImageHash, null)
+
+    const aiNeedsReview =
+      aiOriginal?.needsReview === true ||
+      aiOriginal?.requiresHumanReview === true ||
+      req.body.aiNeedsReview === true ||
+      req.body.aiNeedsReview === 'true' ||
+      false
 
     const product = new Product({
       ...safeBody,
+
       title: finalTitle,
       slug,
       tenantId,
+
       variants,
       variantAttributes,
+      hasVariants,
+
       images: [],
-      atributos: safeJsonParse(req.body.atributos, {}),
-      tags: safeJsonParse(req.body.tags, []),
+
+      atributos,
+      tags,
+
       price: toSafeNumber(req.body.price, 0),
       stock: toSafeNumber(req.body.stock, 0),
-      hasVariants: Boolean(req.body.hasVariants || variants.length > 0),
-      createdBy: getRequestUserId(req),
-      updatedBy: getRequestUserId(req),
+
+      // =====================================================
+      // 🧠 AI METADATA
+      // =====================================================
+      iaGenerated,
+      aiOriginalOutput: aiOriginal,
+      aiConfidence,
+      aiSource,
+      aiImageHash,
+      aiNeedsReview,
+
+      createdBy: userId,
+      updatedBy: userId,
     })
 
     await product.save()
 
-    const aiOriginal = safeJsonParse(req.body.aiOriginalOutput, null)
-
-    if (product.iaGenerated && aiOriginal) {
+    // =====================================================
+    // 🧠 HUMAN FEEDBACK / AUTO LEARNING
+    // =====================================================
+    if (iaGenerated && aiOriginal && typeof aiOriginal === 'object') {
       try {
         await registerVisualFeedback({
           tenantId,
@@ -384,20 +483,39 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
           humanCorrection: buildHumanCorrectionPayload(product),
           metadata: {
             source: 'createProduct',
-            productId: product._id,
+            productId: String(product._id),
+            imageHash: aiImageHash || null,
+            sourceModel: aiSource || null,
+            aiConfidence: aiConfidence ?? null,
+            createdBy: userId ? String(userId) : null,
           },
         })
 
-        logger.info(`🧠 Learning registrado en CREATE | product=${product._id}`)
-      } catch (error) {
-        logger.error(`❌ Error learning CREATE: ${error.message}`)
+        logger.info(
+          `🧠 Learning registrado en CREATE | product=${product._id} | tenant=${tenantId}`,
+        )
+      } catch (learningError) {
+        logger.error(
+          `❌ Error learning CREATE | product=${product._id} | tenant=${tenantId} | error=${
+            learningError.stack || learningError.message
+          }`,
+        )
       }
+    } else {
+      logger.warn('⚠️ Learning omitido en CREATE: falta aiOriginalOutput válido', {
+        productId: String(product._id),
+        tenantId: String(tenantId),
+        iaGenerated,
+        hasAiOriginal: Boolean(aiOriginal),
+        aiOriginalType: typeof aiOriginal,
+      })
     }
 
     logger.info(`✨ Producto creado: ${product._id} | Tenant: ${tenantId}`)
 
     return res.status(201).json({
       success: true,
+      message: 'Producto creado correctamente',
       data: product,
     })
   } catch (error) {

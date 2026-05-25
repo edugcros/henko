@@ -66,8 +66,8 @@ const MP_TOKEN_PLACEHOLDERS = [
   'APP_USR_TU_ACCESS_TOKEN_REAL',
   'APP_USR_ACCESS_TOKEN_REAL',
   'APP_USR_ACCESS_TOKEN_REAL_COPIADO_DESDE_MERCADO_PAGO',
-  'TEST_ACCESS_TOKEN_REAL_DEL_PANEL',
-  'TEST_PUBLIC_KEY_REAL_DEL_PANEL',
+  'APP URS_ACCESS_TOKEN_REAL_DEL_PANEL',
+  'APP URS_PUBLIC_KEY_REAL_DEL_PANEL',
   'TU_ACCESS_TOKEN',
   'YOUR_ACCESS_TOKEN',
   'ACCESS_TOKEN_REAL',
@@ -335,14 +335,14 @@ const isValidMpAccessToken = token => {
   if (!clean) return false
   if (hasPlaceholder(clean)) return false
 
-  return clean.startsWith('APP_USR-') || clean.startsWith('TEST-')
+  return clean.startsWith('APP_USR-') || clean.startsWith('APP URS-')
 }
 
 const inferMpTokenMode = token => {
   const clean = sanitizeString(token)
 
   if (clean.startsWith('APP_USR-')) return 'production'
-  if (clean.startsWith('TEST-')) return 'test'
+  if (clean.startsWith('APP URS-')) return 'test'
 
   return null
 }

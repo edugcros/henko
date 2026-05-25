@@ -1,5 +1,4 @@
-import CorrectionLog from '../models/correctionLog.js '
-
+import CorrectionLog from '../models/correctionLog.js'
 import { promoteLearnedRulesForTenant } from './aiLearningPromotionService.js'
 
 function safeString(value, { lower = false } = {}) {
@@ -72,6 +71,7 @@ function dedupeRules(rules) {
 }
 
 function computeLearnedRules(originalIAOutput, humanCorrection) {
+  
   const rules = []
 
   const originalCategory = safeString(originalIAOutput?.categoria)

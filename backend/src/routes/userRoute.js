@@ -33,7 +33,6 @@ import {
 } from '../controller/userCtrl.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
-import { csrfProtection } from '../middlewares/csrfMiddleware.js'
 import { resolveTenantByDomain } from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
@@ -142,13 +141,6 @@ const shouldSkipCsrfForPredeploy = req => {
   )
 }
 
-const conditionalCsrfProtection = (req, res, next) => {
-  if (shouldSkipCsrfForPredeploy(req)) {
-    return next()
-  }
-
-  return csrfProtection(req, res, next)
-}
 
 // ======================================================
 // 🔓 1. RUTAS PÚBLICAS
@@ -183,7 +175,6 @@ router.post(
   '/register',
   authLimiter,
   resolveTenantByDomain,
-  conditionalCsrfProtection,
   createUser,
 )
 
@@ -199,7 +190,6 @@ router.post(
 // En túnel puede saltarse si PREDEPLOY_TUNNEL_MODE=true y origin es Vercel.
 router.post(
   '/refresh',
-  conditionalCsrfProtection,
   handleRefreshToken,
 )
 
@@ -232,7 +222,6 @@ router.get(
 // Logout usa refresh cookie; no requiere authMiddleware para cerrar sesión.
 router.post(
   '/logout',
-  conditionalCsrfProtection,
   logout,
 )
 
@@ -241,7 +230,6 @@ router.put(
   '/password',
   resolveTenantByDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   updatePassword,
 )
 
@@ -249,7 +237,6 @@ router.put(
   '/edit-user',
   resolveTenantByDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   updateUser,
 )
 
@@ -257,7 +244,6 @@ router.put(
   '/save-address',
   resolveTenantByDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   validateAddress,
   saveAddress,
 )
@@ -278,7 +264,6 @@ router.put(
   '/wishlist/:productId',
   resolveTenantByDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   toggleWishlist,
 )
 
@@ -290,7 +275,6 @@ router.post(
   '/cart',
   resolveTenantByDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   userCart,
 )
 
@@ -306,7 +290,6 @@ router.delete(
   '/cart/empty',
   resolveTenantByDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   emptyCart,
 )
 
@@ -314,7 +297,6 @@ router.delete(
   '/cart/:productId',
   resolveTenantByDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   removeFromCart,
 )
 
@@ -335,7 +317,6 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  conditionalCsrfProtection,
   blockUser,
 )
 
@@ -344,7 +325,6 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  conditionalCsrfProtection,
   unblockUser,
 )
 
@@ -353,7 +333,6 @@ router.delete(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  conditionalCsrfProtection,
   deleteUser,
 )
 

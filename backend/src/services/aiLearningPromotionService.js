@@ -1,5 +1,5 @@
-import AIPreference from '../models/aIPreference.js '
-import CorrectionLog from '../models/correctionLog.js '
+import AIPreference from '../models/aIPreference.js'
+import CorrectionLog from '../models/correctionLog.js'
 
 const PROMOTION_MIN_OCCURRENCES = Number(process.env.AI_PROMOTION_MIN_OCCURRENCES || 3)
 const PROMOTION_MIN_CONFIDENCE = Number(process.env.AI_PROMOTION_MIN_CONFIDENCE || 0.8)

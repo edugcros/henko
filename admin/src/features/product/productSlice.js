@@ -1,45 +1,74 @@
+// 📁 src/features/product/productSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import { toast } from 'react-toastify'
 import productService from './productService.js'
 
 const normalizeErrorMessage = (error, fallback) => {
-  return error?.message || fallback
+  if (typeof error === 'string') return error
+  return error?.message || error?.error || fallback
 }
 
-const normalizeProductList = (payload) => {
+const normalizeImages = images => {
+  return Array.isArray(images) ? images : []
+}
+
+const normalizeVariants = variants => {
+  return Array.isArray(variants) ? variants : []
+}
+
+const normalizeRatings = ratings => {
+  return Array.isArray(ratings) ? ratings : []
+}
+
+const normalizeProduct = product => {
+  if (!product || typeof product !== 'object') return null
+
+  return {
+    ...product,
+
+    images: normalizeImages(product.images),
+    variants: normalizeVariants(product.variants),
+    ratings: normalizeRatings(product.ratings),
+    tags: Array.isArray(product.tags) ? product.tags : [],
+
+    totalrating: Number(product.totalrating || 0),
+
+    // =====================================================
+    // 🧠 AI METADATA NORMALIZATION
+    // =====================================================
+    iaGenerated: Boolean(product.iaGenerated),
+    aiOriginalOutput: product.aiOriginalOutput ?? null,
+    aiConfidence:
+      product.aiConfidence !== undefined && product.aiConfidence !== null
+        ? Number(product.aiConfidence)
+        : null,
+    aiSource: product.aiSource || null,
+    aiImageHash: product.aiImageHash || null,
+    aiNeedsReview: Boolean(product.aiNeedsReview),
+  }
+}
+
+const normalizeProductList = payload => {
   const rawProducts = Array.isArray(payload)
     ? payload
     : Array.isArray(payload?.data)
       ? payload.data
       : []
 
-  return rawProducts.map((product) => ({
-    ...product,
-    images: Array.isArray(product.images) ? product.images : [],
-    variants: Array.isArray(product.variants) ? product.variants : [],
-    ratings: Array.isArray(product.ratings) ? product.ratings : [],
-    totalrating: Number(product.totalrating || 0),
-  }))
+  return rawProducts
+    .map(normalizeProduct)
+    .filter(Boolean)
 }
 
-const normalizeSingleProduct = (payload) => {
+const normalizeSingleProduct = payload => {
   const product = payload?.data || payload || null
-
-  if (!product || typeof product !== 'object') return null
-
-  return {
-    ...product,
-    images: Array.isArray(product.images) ? product.images : [],
-    variants: Array.isArray(product.variants) ? product.variants : [],
-    ratings: Array.isArray(product.ratings) ? product.ratings : [],
-    totalrating: Number(product.totalrating || 0),
-  }
+  return normalizeProduct(product)
 }
 
 const replaceProductInList = (products, updatedProduct) => {
   if (!updatedProduct?._id) return products
 
-  const index = products.findIndex((item) => item._id === updatedProduct._id)
+  const index = products.findIndex(item => item._id === updatedProduct._id)
 
   if (index === -1) {
     return [updatedProduct, ...products]
@@ -50,10 +79,17 @@ const replaceProductInList = (products, updatedProduct) => {
   return cloned
 }
 
-const extractImagesArray = (payload) => {
+const extractImagesArray = payload => {
   if (Array.isArray(payload?.data)) return payload.data
   if (Array.isArray(payload)) return payload
   return []
+}
+
+const setRejectedState = (state, action, fallbackMessage) => {
+  state.isLoading = false
+  state.isError = true
+  state.isSuccess = false
+  state.message = action.payload?.message || fallbackMessage
 }
 
 // ==========================================
@@ -70,7 +106,7 @@ export const getProducts = createAsyncThunk(
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
-  }
+  },
 )
 
 export const createProducts = createAsyncThunk(
@@ -85,7 +121,7 @@ export const createProducts = createAsyncThunk(
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
-  }
+  },
 )
 
 export const getAProduct = createAsyncThunk(
@@ -97,7 +133,7 @@ export const getAProduct = createAsyncThunk(
       const message = normalizeErrorMessage(error, 'Error al obtener producto')
       return thunkAPI.rejectWithValue({ message })
     }
-  }
+  },
 )
 
 export const updateAProduct = createAsyncThunk(
@@ -112,7 +148,7 @@ export const updateAProduct = createAsyncThunk(
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
-  }
+  },
 )
 
 export const uploadProductImage = createAsyncThunk(
@@ -127,7 +163,7 @@ export const uploadProductImage = createAsyncThunk(
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
-  }
+  },
 )
 
 export const deleteProduct = createAsyncThunk(
@@ -142,7 +178,7 @@ export const deleteProduct = createAsyncThunk(
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
-  }
+  },
 )
 
 export const deleteProductImage = createAsyncThunk(
@@ -157,7 +193,7 @@ export const deleteProductImage = createAsyncThunk(
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
-  }
+  },
 )
 
 export const assignVariantImage = createAsyncThunk(
@@ -182,9 +218,10 @@ export const assignVariantImage = createAsyncThunk(
       return response
     } catch (error) {
       const message = normalizeErrorMessage(error, 'Error asignando imagen a variante')
+      toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
-  }
+  },
 )
 
 // ==========================================
@@ -195,13 +232,16 @@ const initialState = {
   products: [],
   singleProduct: null,
   images: [],
+
   isLoading: false,
   isSuccess: false,
   isError: false,
   message: '',
+
   createdProduct: null,
   updatedProduct: null,
   deletedProduct: null,
+
   meta: null,
 }
 
@@ -214,14 +254,19 @@ const productSlice = createSlice({
   initialState,
   reducers: {
     resetState: () => initialState,
+    clearProductMessage: state => {
+      state.message = ''
+      state.isError = false
+      state.isSuccess = false
+    },
   },
-  extraReducers: (builder) => {
+  extraReducers: builder => {
     builder
 
       // ==========================================
       // GET PRODUCTS
       // ==========================================
-      .addCase(getProducts.pending, (state) => {
+      .addCase(getProducts.pending, state => {
         state.isLoading = true
         state.isError = false
         state.isSuccess = false
@@ -232,20 +277,18 @@ const productSlice = createSlice({
         state.isSuccess = true
         state.isError = false
         state.message = ''
+
         state.products = normalizeProductList(action.payload)
         state.meta = action.payload?.meta || null
       })
       .addCase(getProducts.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.isSuccess = false
-        state.message = action.payload?.message || 'Error desconocido'
+        setRejectedState(state, action, 'Error al obtener productos')
       })
 
       // ==========================================
       // CREATE PRODUCT
       // ==========================================
-      .addCase(createProducts.pending, (state) => {
+      .addCase(createProducts.pending, state => {
         state.isLoading = true
         state.isError = false
         state.isSuccess = false
@@ -265,16 +308,13 @@ const productSlice = createSlice({
         }
       })
       .addCase(createProducts.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.isSuccess = false
-        state.message = action.payload?.message || 'Error al crear producto'
+        setRejectedState(state, action, 'Error al crear producto')
       })
 
       // ==========================================
       // GET SINGLE PRODUCT
       // ==========================================
-      .addCase(getAProduct.pending, (state) => {
+      .addCase(getAProduct.pending, state => {
         state.isLoading = true
         state.isError = false
         state.message = ''
@@ -286,19 +326,16 @@ const productSlice = createSlice({
         state.message = ''
 
         state.singleProduct = normalizeSingleProduct(action.payload)
-        state.images = Array.isArray(state.singleProduct?.images) ? state.singleProduct.images : []
+        state.images = normalizeImages(state.singleProduct?.images)
       })
       .addCase(getAProduct.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.isSuccess = false
-        state.message = action.payload?.message || 'Error al obtener producto'
+        setRejectedState(state, action, 'Error al obtener producto')
       })
 
       // ==========================================
       // UPDATE PRODUCT
       // ==========================================
-      .addCase(updateAProduct.pending, (state) => {
+      .addCase(updateAProduct.pending, state => {
         state.isLoading = true
         state.isError = false
         state.message = ''
@@ -317,23 +354,18 @@ const productSlice = createSlice({
 
           if (state.singleProduct?._id === state.updatedProduct._id) {
             state.singleProduct = state.updatedProduct
-            state.images = Array.isArray(state.updatedProduct.images)
-              ? state.updatedProduct.images
-              : []
+            state.images = normalizeImages(state.updatedProduct.images)
           }
         }
       })
       .addCase(updateAProduct.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.isSuccess = false
-        state.message = action.payload?.message || 'Error al actualizar producto'
+        setRejectedState(state, action, 'Error al actualizar producto')
       })
 
       // ==========================================
       // DELETE PRODUCT
       // ==========================================
-      .addCase(deleteProduct.pending, (state) => {
+      .addCase(deleteProduct.pending, state => {
         state.isLoading = true
         state.isError = false
         state.message = ''
@@ -346,7 +378,7 @@ const productSlice = createSlice({
 
         const deletedId = action.payload?.productId
         state.deletedProduct = deletedId || null
-        state.products = state.products.filter((product) => product._id !== deletedId)
+        state.products = state.products.filter(product => product._id !== deletedId)
 
         if (state.singleProduct?._id === deletedId) {
           state.singleProduct = null
@@ -354,16 +386,13 @@ const productSlice = createSlice({
         }
       })
       .addCase(deleteProduct.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.isSuccess = false
-        state.message = action.payload?.message || 'Error al eliminar producto'
+        setRejectedState(state, action, 'Error al eliminar producto')
       })
 
       // ==========================================
       // UPLOAD IMAGE
       // ==========================================
-      .addCase(uploadProductImage.pending, (state) => {
+      .addCase(uploadProductImage.pending, state => {
         state.isLoading = true
         state.isError = false
         state.message = ''
@@ -383,16 +412,13 @@ const productSlice = createSlice({
         }
       })
       .addCase(uploadProductImage.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.isSuccess = false
-        state.message = action.payload?.message || 'Error al subir imagen'
+        setRejectedState(state, action, 'Error al subir imagen')
       })
 
       // ==========================================
       // DELETE IMAGE
       // ==========================================
-      .addCase(deleteProductImage.pending, (state) => {
+      .addCase(deleteProductImage.pending, state => {
         state.isLoading = true
         state.isError = false
         state.message = ''
@@ -412,16 +438,13 @@ const productSlice = createSlice({
         }
       })
       .addCase(deleteProductImage.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.isSuccess = false
-        state.message = action.payload?.message || 'Error al eliminar imagen'
+        setRejectedState(state, action, 'Error al eliminar imagen')
       })
 
       // ==========================================
       // ASSIGN VARIANT IMAGE
       // ==========================================
-      .addCase(assignVariantImage.pending, (state) => {
+      .addCase(assignVariantImage.pending, state => {
         state.isLoading = true
         state.isError = false
         state.message = ''
@@ -436,18 +459,16 @@ const productSlice = createSlice({
 
         if (updatedProduct) {
           state.singleProduct = updatedProduct
-          state.images = Array.isArray(updatedProduct.images) ? updatedProduct.images : []
+          state.images = normalizeImages(updatedProduct.images)
           state.products = replaceProductInList(state.products, updatedProduct)
         }
       })
       .addCase(assignVariantImage.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.isSuccess = false
-        state.message = action.payload?.message || 'Error al asignar imagen a la variante'
+        setRejectedState(state, action, 'Error al asignar imagen a la variante')
       })
   },
 })
 
-export const { resetState } = productSlice.actions
+export const { resetState, clearProductMessage } = productSlice.actions
+
 export default productSlice.reducer

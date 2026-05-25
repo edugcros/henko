@@ -717,7 +717,7 @@ const CheckoutPage = () => {
     }
 
     const validFormat =
-      publicKey.startsWith('TEST-') || publicKey.startsWith('APP_USR-')
+      publicKey.startsWith('APP URS-') || publicKey.startsWith('APP_USR-')
 
     if (!validFormat) {
       setMpReady(false)

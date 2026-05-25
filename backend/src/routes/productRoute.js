@@ -21,7 +21,6 @@ import {
 } from '../controller/productCtrl.js'
 
 import { isAdmin, authMiddleware } from '../middlewares/authMiddleware.js'
-import { csrfProtection } from '../middlewares/csrfMiddleware.js'
 import { resolveTenantByDomain } from '../middlewares/tenantMiddleware.js'
 import { uploadPhoto, productImgResize } from '../middlewares/uploadImage.js'
 import { analyzeImage } from '../services/aiVisionService.js'
@@ -43,7 +42,6 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   uploadPhoto.single('images'),
   productImgResize,
   aiVisualLimiter,
@@ -151,7 +149,7 @@ const conditionalCsrfProtection = (req, res, next) => {
     return next()
   }
 
-  return csrfProtection(req, res, next)
+  return (req, res, next)
 }
 
 // =========================================================
@@ -163,7 +161,6 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   uploadPhoto.fields([
     { name: 'images', maxCount: 10 },
     { name: 'variantImages', maxCount: 20 },
@@ -177,7 +174,6 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   updateProduct,
 )
 
@@ -186,7 +182,6 @@ router.delete(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   deleteProduct,
 )
 
@@ -199,7 +194,6 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   uploadPhoto.array('images', 5),
   productImgResize,
   uploadProductImage,
@@ -210,7 +204,6 @@ router.delete(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   deleteProductImage,
 )
 
@@ -223,7 +216,6 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
   assignVariantImage,
 )
 

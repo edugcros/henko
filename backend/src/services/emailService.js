@@ -1223,7 +1223,7 @@ export const sendAdminNotificationEmail = async (
 }
 
 // =====================================================
-// TEST SMTP
+// APP URS SMTP
 // =====================================================
 
 export const testEmailConnection = async () => {

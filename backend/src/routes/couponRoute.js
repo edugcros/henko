@@ -21,7 +21,6 @@ import {
 } from '../controller/couponCtrl.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
-import { csrfProtection } from '../middlewares/csrfMiddleware.js'
 import {
   resolveTenantByDomain,
   requireShopDomain,
@@ -51,7 +50,7 @@ router.post(
   resolveTenantByDomain,
   requireShopDomain,
   authMiddleware,
-  csrfProtection,
+  
   validateCoupon,
 )
 
@@ -67,7 +66,7 @@ router.post(
   resolveTenantByDomain,
   requireShopDomain,
   authMiddleware,
-  csrfProtection,
+  
   applyCouponToOrder,
 )
 
@@ -97,7 +96,7 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  
   validateCouponCreation,
   createCoupon,
 )
@@ -111,7 +110,7 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  
   generateBulkCoupons,
 )
 
@@ -148,7 +147,7 @@ router.delete(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  
   permanentDeleteCoupon,
 )
 
@@ -161,7 +160,7 @@ router.patch(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  
   restoreCoupon,
 )
 
@@ -174,7 +173,7 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  
   cloneCoupon,
 )
 
@@ -187,7 +186,7 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  
   assignProductsToCoupon,
 )
 
@@ -212,7 +211,7 @@ router.put(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  
   updateCoupon,
 )
 
@@ -225,7 +224,7 @@ router.delete(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
-  csrfProtection,
+  
   deleteCoupon,
 )
 

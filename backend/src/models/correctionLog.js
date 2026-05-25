@@ -92,6 +92,8 @@ const correctionLogSchema = new mongoose.Schema(
 correctionLogSchema.index({ tenantId: 1, createdAt: -1 })
 correctionLogSchema.index({ tenantId: 1, promotedToPreference: 1, createdAt: -1 })
 
-const CorrectionLog = mongoose.model('CorrectionLog', correctionLogSchema)
+const CorrectionLog =
+  mongoose.models.CorrectionLog ||
+  mongoose.model('CorrectionLog', correctionLogSchema)
 
 export default CorrectionLog

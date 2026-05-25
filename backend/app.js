@@ -118,7 +118,8 @@ app.get(`${env.apiPrefix}/health`, (req, res) => {
 // =======================================================
 
 const normalizePath = value => {
-  const normalized = String(value || '').replace(/\/+$/, '')
+  const raw = String(value || '').split('?')[0]
+  const normalized = raw.replace(/\/+$/, '')
   return normalized || '/'
 }
 
@@ -127,6 +128,7 @@ const routePatternToRegex = pattern => {
 
   const regexSource = normalized
     .split('/')
+    .filter(Boolean)
     .map(segment => {
       if (segment.startsWith(':')) {
         return '[^/]+'
@@ -136,32 +138,54 @@ const routePatternToRegex = pattern => {
     })
     .join('/')
 
-  return new RegExp(`^${regexSource}$`)
+  return new RegExp(`^/${regexSource}$`)
 }
 
 const matchesRoute = (req, route) => {
-  return (
-    route.method === req.method &&
-    routePatternToRegex(route.path).test(normalizePath(req.path))
-  )
-}
-const isTrustedPredeployTunnelRequest = req => {
-  const origin = String(req.headers.origin || '').toLowerCase()
-  console.log('[PREDEPLOY CSRF CHECK]', {
-    enabled: process.env.PREDEPLOY_TUNNEL_MODE,
-    origin: req.headers.origin,
-    path: req.path,
-    method: req.method,
-  })
-  return (
-    process.env.PREDEPLOY_TUNNEL_MODE === 'true' &&
-    [
-      'https://henko-web.vercel.app',
-      'https://henko-admin.vercel.app',
-    ].includes(origin)
-  )
+  const reqMethod = String(req.method || '').toUpperCase()
+  const routeMethod = String(route.method || '').toUpperCase()
+
+  const reqPath = normalizePath(req.originalUrl || req.path || req.url)
+  const regex = routePatternToRegex(route.path)
+
+  const matched = routeMethod === reqMethod && regex.test(reqPath)
+
+  if (process.env.PREDEPLOY_TUNNEL_MODE === 'true') {
+    console.log('[CSRF ROUTE MATCH]', {
+      route: route.path,
+      routeMethod,
+      reqMethod,
+      reqPath,
+      regex: String(regex),
+      matched,
+    })
+  }
+
+  return matched
 }
 
+const isTrustedPredeployTunnelRequest = req => {
+  const origin = String(req.headers.origin || '').replace(/\/+$/, '').toLowerCase()
+
+  const allowedPredeployOrigins = [
+    'https://henko-web.vercel.app',
+    'https://henko-admin.vercel.app',
+  ]
+
+  const enabled = String(process.env.PREDEPLOY_TUNNEL_MODE || '').toLowerCase() === 'true'
+
+  if (enabled) {
+    console.log('[PREDEPLOY CSRF CHECK]', {
+      enabled,
+      origin,
+      path: req.path,
+      originalUrl: req.originalUrl,
+      method: req.method,
+    })
+  }
+
+  return enabled && allowedPredeployOrigins.includes(origin)
+}
 // Rutas públicas/sensibles que no deben depender de CSRF durante predeploy.
 // Login/register deben protegerse con rate-limit, validación y CORS estricto.
 const csrfExemptRoutes = [
@@ -183,10 +207,32 @@ const tunnelCsrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/user/refresh` },
   { method: 'POST', path: `${env.apiPrefix}/user/logout` },
 
+  // Payment
+  // Payments storefront predeploy
+  { method: 'POST', path: `${env.apiPrefix}/payments/process` },
+  { method: 'POST', path: `${env.apiPrefix}/payments/create-preference` },
+  { method: 'POST', path: `${env.apiPrefix}/payments/create-payment` },
+  { method: 'POST', path: `${env.apiPrefix}/payments/confirm` },
+
+  // Producto
+  // Productos admin predeploy
+  { method: 'POST', path: `${env.apiPrefix}/product` },
+  { method: 'POST', path: `${env.apiPrefix}/product/` },
+  { method: 'PUT', path: `${env.apiPrefix}/product/:id` },
+  { method: 'PATCH', path: `${env.apiPrefix}/product/:id` },
+  { method: 'DELETE', path: `${env.apiPrefix}/product/:id` },
+  { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
+  { method: 'PUT', path: `${env.apiPrefix}/product/:productId/upload-image` },
+  { method: 'DELETE', path: `${env.apiPrefix}/product/:productId/image` },
+  { method: 'PUT', path: `${env.apiPrefix}/product/:productId/variant-image` },
+  { method: 'POST', path: `${env.apiPrefix}/product/:id/upload-image` },
+  { method: 'POST', path: `${env.apiPrefix}/product/:productId/upload-image` },
+
+  { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
   // Wishlist
   { method: 'PUT', path: `${env.apiPrefix}/user/wishlist/:productId` },
 
-  // Carrito storefront
+  // Carrito storefront predeploy
   { method: 'POST', path: `${env.apiPrefix}/user/cart` },
   { method: 'PUT', path: `${env.apiPrefix}/user/cart` },
   { method: 'DELETE', path: `${env.apiPrefix}/user/cart` },
@@ -215,7 +261,18 @@ const isCsrfExempt = req => {
   }
 
   if (isTrustedPredeployTunnelRequest(req)) {
-    return tunnelCsrfExemptRoutes.some(route => matchesRoute(req, route))
+    const isMutatingMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
+
+    if (isMutatingMethod) {
+      console.log('[CSRF PREDEPLOY SKIP ALL MUTATIONS]', {
+        method: req.method,
+        path: req.path,
+        originalUrl: req.originalUrl,
+        origin: req.headers.origin,
+      })
+
+      return true
+    }
   }
 
   return false

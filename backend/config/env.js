@@ -283,8 +283,8 @@ if (env.isProduction) {
     Error('DISABLE_SSL_VERIFY=true no está permitido en producción')
   }
 
-  if (String(env.mercadoPago.accessToken || '').startsWith('TEST-')) {
-    Error('MP_ACCESS_TOKEN de TEST no está permitido en producción')
+  if (String(env.mercadoPago.accessToken || '').startsWith('APP URS-')) {
+    Error('MP_ACCESS_TOKEN de APP URS no está permitido en producción')
   }
 
   if (!env.cookieSecure) {

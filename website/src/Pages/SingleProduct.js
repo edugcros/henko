@@ -869,8 +869,8 @@ const SingleProduct = () => {
         hasPromotion ? '¡Producto en oferta añadido al carrito!' : '¡Añadido al carrito!',
       )
     } catch (err) {
-      console.error('Error al añadir al carrito:', err)
-      toast.error(err?.message || 'Error al añadir al carrito')
+      console.error('INICIE SESION PARA COMPRAR:', err)
+      toast.error(err?.message || 'INICIE SESION PARA COMPRAR')
     }
   }, [
     product,
