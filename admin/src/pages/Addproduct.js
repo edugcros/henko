@@ -784,15 +784,6 @@ export default function AddProduct() {
     )
   }, [])
 
-  const normalizedIaResult =
-  iaResult && typeof iaResult === 'object'
-    ? {
-        ...iaResult,
-        appliedAt: new Date().toISOString(),
-        appliedBy: user?._id || user?.id || null,
-        sourceContext: 'admin-add-product',
-      }
-    : null
 
   const handleFinish = async (values) => {
     if (!fileList.length) {
@@ -892,6 +883,23 @@ export default function AddProduct() {
         status: 'active',
         visibility: 'visible',
       }
+
+      console.log('[CREATE PRODUCT PAYLOAD COMPLETO]', productPayload)
+
+console.log('[CREATE PRODUCT PAYLOAD AI]', {
+  iaResultExists: Boolean(iaResult),
+  iaResultType: typeof iaResult,
+  iaGenerated: productPayload.iaGenerated,
+  hasAiOriginalOutput: Boolean(productPayload.aiOriginalOutput),
+  aiOriginalOutputType: typeof productPayload.aiOriginalOutput,
+  aiOriginalOutputPreview:
+    typeof productPayload.aiOriginalOutput === 'string'
+      ? productPayload.aiOriginalOutput.slice(0, 200)
+      : productPayload.aiOriginalOutput,
+  aiConfidence: productPayload.aiConfidence,
+  aiSource: productPayload.aiSource,
+  aiImageHash: productPayload.aiImageHash,
+})
 
       const created = await dispatch(createProducts(productPayload)).unwrap()
       const createdPayload = created?.data || created
