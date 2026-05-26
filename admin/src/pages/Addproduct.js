@@ -21,6 +21,7 @@ import {
   theme,
   Space,
   Badge,
+  Popconfirm,
 } from 'antd'
 import {
   InboxOutlined,
@@ -43,9 +44,11 @@ import {
   ClusterOutlined,
   ThunderboltOutlined,
   CheckOutlined,
+  CloudDownloadOutlined,
 } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import useProductAnalyzer from '../hooks/useProductAnalyzer'
+import api from '@utils/axiosConfig'
 import {
   createProducts,
   uploadProductImage,
@@ -82,6 +85,21 @@ const buildVariantName = (attributes = {}) =>
 
 const safeArray = value => (Array.isArray(value) ? value : [])
 
+const formatDate = value => {
+  if (!value) return ''
+  return new Intl.DateTimeFormat('es-AR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
+const getStoredBoolean = (key, fallback = false) => {
+  if (typeof window === 'undefined') return fallback
+  const value = window.localStorage.getItem(key)
+  if (value === null) return fallback
+  return value === 'true'
+}
+
 const dedupeByUid = (files = []) => {
   const map = new Map()
   files.forEach(file => {
@@ -108,6 +126,70 @@ const rebuildPreviews = files =>
   files
     .map(file => buildPreviewFromFile(file))
     .filter(Boolean)
+
+const buildProductPayloadFromAnalysis = ({
+  analysis,
+  job,
+  user,
+  publish = false,
+  automationMode = 'agent-assisted',
+}) => {
+  const detectedAttrs = analysis?.atributos_detectados || analysis?.atributos || {}
+  const colorValue = Array.isArray(detectedAttrs.color)
+    ? detectedAttrs.color.join(', ')
+    : detectedAttrs.color || analysis?.color || ''
+  const colorArray = normalizeString(colorValue)
+    ? String(colorValue).split(',').map(color => color.trim().toLowerCase()).filter(Boolean)
+    : []
+  const title =
+    normalizeString(analysis?.titulo || analysis?.title) ||
+    normalizeString(job?.originalFilename).replace(/\.[^/.]+$/, '') ||
+    'Producto sin título'
+  const normalizedAnalysis = {
+    ...(analysis || {}),
+    appliedAt: new Date().toISOString(),
+    appliedBy: user?._id || user?.id || null,
+    sourceContext: 'admin-add-product',
+    agentJobId: job?._id || null,
+    agentScheduledAt: job?.scheduledAt || job?.metadata?.addProductAt || null,
+    automationMode,
+  }
+
+  return {
+    title,
+    description:
+      normalizeString(analysis?.descripcion || analysis?.description) ||
+      'Descripción generada automáticamente pendiente de revisión.',
+    categoria: normalizeString(analysis?.categoria || analysis?.category || 'sin categoria').toLowerCase(),
+    subcategoria: normalizeString(analysis?.subcategoria || analysis?.subcategory || 'general'),
+    marca: normalizeString(analysis?.marca || analysis?.brand || 'sin marca'),
+    price: Number(analysis?.precio_sugerido || analysis?.suggestedPrice || analysis?.precio || analysis?.price || 0),
+    stock: Number(analysis?.cantidad || analysis?.stock || 1),
+    condicion: analysis?.condicion || 'nuevo',
+    color: colorArray,
+    material: normalizeString(detectedAttrs.material || analysis?.material),
+    atributos: {
+      ...(detectedAttrs && typeof detectedAttrs === 'object' ? detectedAttrs : {}),
+      color: colorArray.length === 1 ? colorArray[0] : colorArray,
+      material: normalizeString(detectedAttrs.material || analysis?.material),
+    },
+    hasVariants: false,
+    variantAttributes: [],
+    variants: [],
+    tags: safeArray(analysis?.tags).map(tag => String(tag).toLowerCase().trim()).filter(Boolean),
+    iaGenerated: true,
+    aiOriginalOutput: JSON.stringify(normalizedAnalysis),
+    aiConfidence: normalizedAnalysis?.confidence ?? null,
+    aiSource: normalizedAnalysis?.source || normalizedAnalysis?.model || 'gemini',
+    aiImageHash: normalizedAnalysis?.hash || normalizedAnalysis?.imageHash || job?.imageHash || null,
+    aiNeedsReview: normalizedAnalysis?.needsReview === true || normalizedAnalysis?.requiresHumanReview === true,
+    aiAgentJobId: job?._id || null,
+    aiAgentScheduledAt: job?.scheduledAt || job?.metadata?.addProductAt || null,
+    aiAutomationMode: automationMode,
+    status: publish ? 'active' : 'draft',
+    visibility: publish ? 'visible' : 'hidden',
+  }
+}
 
 const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 }) => {
   const { token } = useToken()
@@ -483,8 +565,20 @@ export default function AddProduct() {
   const [inputVisible, setInputVisible] = useState(false)
   const [dynamicAttributes, setDynamicAttributes] = useState([])
   const [selectedAttributes, setSelectedAttributes] = useState({})
+  const [agentQueue, setAgentQueue] = useState([])
+  const [selectedAgentJobId, setSelectedAgentJobId] = useState(null)
+  const [loadingAgentQueue, setLoadingAgentQueue] = useState(false)
+  const [importingAgentImage, setImportingAgentImage] = useState(false)
+  const [deletingAgentImage, setDeletingAgentImage] = useState(false)
+  const [autoAgentEnabled, setAutoAgentEnabled] = useState(() =>
+    getStoredBoolean('addProduct.agentAutoMode', false)
+  )
+  const [autoAgentRunning, setAutoAgentRunning] = useState(false)
+  const [currentAgentJob, setCurrentAgentJob] = useState(null)
 
   const inputRef = useRef(null)
+  const autoAgentRef = useRef(false)
+  const autoAgentFailedJobsRef = useRef(new Set())
 
   const user = useSelector(state => state.user.user)
   const tenantId = user?.tenantId?._id || user?.tenantId || null
@@ -502,6 +596,23 @@ export default function AddProduct() {
     return Object.values(selectedAttributes).some(values => Array.isArray(values) && values.length > 0)
   }, [selectedAttributes])
 
+  const agentQueueStats = useMemo(() => {
+    return agentQueue.reduce(
+      (acc, job) => {
+        acc.total += 1
+        acc[job.status] = (acc[job.status] || 0) + 1
+        if (job.metadata?.autoSaveProduct) acc.autoSave += 1
+        return acc
+      },
+      { total: 0, pending: 0, scheduled: 0, autoSave: 0 },
+    )
+  }, [agentQueue])
+
+  const selectedAgentJob = useMemo(
+    () => agentQueue.find(job => job._id === selectedAgentJobId) || null,
+    [agentQueue, selectedAgentJobId],
+  )
+
   useEffect(() => {
     return () => {
       dispatch(resetState())
@@ -514,6 +625,48 @@ export default function AddProduct() {
       inputRef.current?.focus()
     }
   }, [inputVisible])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('addProduct.agentAutoMode', String(autoAgentEnabled))
+    }
+  }, [autoAgentEnabled])
+
+  const fetchAgentQueue = useCallback(async () => {
+    setLoadingAgentQueue(true)
+    try {
+      await api.post('/product-analysis/process-due')
+      const { data } = await api.get('/product-analysis', {
+        params: {
+          limit: 25,
+          sort: 'createdAt',
+        },
+      })
+
+      const items = (Array.isArray(data?.items) ? data.items : [])
+        .filter(item =>
+          ['pending', 'scheduled'].includes(item.status) &&
+          item.metadata?.autoAnalyze === false
+        )
+      setAgentQueue(items)
+      setSelectedAgentJobId(current =>
+        current && items.some(item => item._id === current) ? current : items[0]?._id || null
+      )
+    } catch (error) {
+      message.error(error?.response?.data?.message || 'No se pudo cargar la cola del agente')
+    } finally {
+      setLoadingAgentQueue(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchAgentQueue()
+  }, [fetchAgentQueue])
+
+  useEffect(() => {
+    const interval = setInterval(fetchAgentQueue, 30000)
+    return () => clearInterval(interval)
+  }, [fetchAgentQueue])
 
   useEffect(() => {
     if (!iaResult) return
@@ -576,7 +729,7 @@ export default function AddProduct() {
       categoria: iaResult.categoria || '',
       subcategoria: iaResult.subcategoria || '',
       marca: iaResult.marca || iaResult.brand || '',
-      precio: iaResult.precio_sugerido || iaResult.precio || iaResult.price || undefined,
+      precio: iaResult.precio_sugerido || iaResult.precio || iaResult.price ,
       cantidad: iaResult.cantidad || iaResult.stock || 1,
       condicion: iaResult.condicion || 'nuevo',
       color: Array.isArray(detectedAttrs.color)
@@ -728,6 +881,178 @@ export default function AddProduct() {
       if (fileToAnalyze) analyzeImage(fileToAnalyze)
     }
   }, [analyzeImage, iaResult, imagePreviews, loadingIa])
+
+  const handleImportAgentImage = useCallback(async () => {
+    if (!selectedAgentJobId) {
+      message.warning('No hay imágenes pendientes del agente')
+      return
+    }
+
+    const selectedJob = selectedAgentJob
+
+    if (selectedJob?.status === 'scheduled') {
+      message.warning('La imagen todavía está programada. Va a estar disponible en el horario indicado.')
+      return
+    }
+
+    setImportingAgentImage(true)
+    try {
+      const response = await api.get(`/product-analysis/${selectedAgentJobId}/image-file`, {
+        responseType: 'blob',
+      })
+
+      const blob = response.data
+      const filename = selectedJob?.originalFilename || `agent-image-${Date.now()}.jpg`
+      const mimeType = blob?.type || selectedJob?.metadata?.mimeType || 'image/jpeg'
+      const imageFile = new File([blob], filename, { type: mimeType })
+      const uploadFile = {
+        uid: `agent-${selectedAgentJobId}-${Date.now()}`,
+        name: filename,
+        status: 'done',
+        originFileObj: imageFile,
+        type: mimeType,
+        size: imageFile.size,
+      }
+
+      const merged = dedupeByUid([...fileList, uploadFile])
+      revokeBlobUrls(imagePreviews)
+      setFileList(merged)
+      setImagePreviews(rebuildPreviews(merged))
+
+      await api.post(`/product-analysis/${selectedAgentJobId}/import-to-add-product`)
+      setCurrentAgentJob(selectedJob)
+
+      setAgentQueue(current => current.filter(job => job._id !== selectedAgentJobId))
+      setSelectedAgentJobId(null)
+
+      if (!iaResult && !loadingIa) {
+        await analyzeImage(imageFile)
+      }
+
+      message.success('Imagen del agente cargada en AddProduct')
+    } catch (error) {
+      message.error(error?.response?.data?.message || 'No se pudo importar la imagen del agente')
+    } finally {
+      setImportingAgentImage(false)
+    }
+  }, [
+    agentQueue,
+    analyzeImage,
+    fileList,
+    iaResult,
+    imagePreviews,
+    loadingIa,
+    selectedAgentJobId,
+    selectedAgentJob,
+  ])
+
+  const handleDeleteAgentImage = useCallback(async () => {
+    if (!selectedAgentJobId) return
+
+    const previousQueue = agentQueue
+    setAgentQueue(current => current.filter(job => job._id !== selectedAgentJobId))
+    setSelectedAgentJobId(null)
+    setDeletingAgentImage(true)
+
+    try {
+      await api.delete(`/product-analysis/${selectedAgentJobId}`)
+      message.success('Imagen eliminada de la bandeja del agente')
+    } catch (error) {
+      setAgentQueue(previousQueue)
+      setSelectedAgentJobId(selectedAgentJobId)
+      message.error(error?.response?.data?.message || 'No se pudo eliminar la imagen')
+    } finally {
+      setDeletingAgentImage(false)
+    }
+  }, [agentQueue, selectedAgentJobId])
+
+  const processAgentJobAutomatically = useCallback(async job => {
+    const response = await api.get(`/product-analysis/${job._id}/image-file`, {
+      responseType: 'blob',
+    })
+
+    const blob = response.data
+    const filename = job.originalFilename || `agent-image-${Date.now()}.jpg`
+    const mimeType = blob?.type || job.metadata?.mimeType || 'image/jpeg'
+    const imageFile = new File([blob], filename, { type: mimeType })
+    const analysis = await analyzeImage(imageFile)
+
+    if (!analysis) {
+      throw new Error('La IA no devolvió análisis para la imagen')
+    }
+
+    const productPayload = buildProductPayloadFromAnalysis({
+      analysis,
+      job,
+      user,
+      publish: Boolean(job.autoPublishProduct),
+      automationMode: 'agent-autosave',
+    })
+
+    const created = await dispatch(createProducts(productPayload)).unwrap()
+    const createdPayload = created?.data || created
+    const productId = createdPayload?._id
+
+    if (!productId) {
+      throw new Error('No se pudo obtener el ID del producto creado')
+    }
+
+    await dispatch(
+      uploadProductImage({
+        productId,
+        imageFile,
+      }),
+    ).unwrap()
+
+    await api.post(`/product-analysis/${job._id}/import-to-add-product`)
+    await api.post(`/product-analysis/${job._id}/complete-add-product`, {
+      productId,
+    })
+
+    resetIa()
+
+    return productId
+  }, [analyzeImage, dispatch, resetIa, user])
+
+  const processAutoAgentQueue = useCallback(async () => {
+    if (!autoAgentEnabled || autoAgentRef.current) return
+
+    const jobsToProcess = agentQueue.filter(job =>
+      job.status === 'pending' &&
+      job.metadata?.autoSaveProduct === true &&
+      !autoAgentFailedJobsRef.current.has(job._id)
+    )
+
+    if (!jobsToProcess.length) return
+
+    autoAgentRef.current = true
+    setAutoAgentRunning(true)
+
+    try {
+      for (const job of jobsToProcess) {
+        try {
+          await processAgentJobAutomatically(job)
+          message.success(`Producto creado automáticamente: ${job.originalFilename || job._id}`)
+        } catch (error) {
+          autoAgentFailedJobsRef.current.add(job._id)
+          message.error(
+            error?.response?.data?.message ||
+              error?.message ||
+              `No se pudo guardar automáticamente ${job.originalFilename || job._id}`,
+          )
+        }
+      }
+
+      await fetchAgentQueue()
+    } finally {
+      autoAgentRef.current = false
+      setAutoAgentRunning(false)
+    }
+  }, [agentQueue, autoAgentEnabled, fetchAgentQueue, processAgentJobAutomatically])
+
+  useEffect(() => {
+    processAutoAgentQueue()
+  }, [processAutoAgentQueue])
 
   const handleAddMoreImages = useCallback(({ fileList: incomingFiles }) => {
     setFileList(prevList => {
@@ -888,6 +1213,9 @@ export default function AddProduct() {
           normalizedIaResult?.needsReview === true ||
           normalizedIaResult?.requiresHumanReview === true ||
           false,
+        aiAgentJobId: currentAgentJob?._id || null,
+        aiAgentScheduledAt: currentAgentJob?.scheduledAt || currentAgentJob?.metadata?.addProductAt || null,
+        aiAutomationMode: currentAgentJob ? 'agent-assisted' : 'manual',
 
         status: 'active',
         visibility: 'visible',
@@ -955,6 +1283,12 @@ export default function AddProduct() {
         }
       }
 
+      if (currentAgentJob?._id) {
+        await api.post(`/product-analysis/${currentAgentJob._id}/complete-add-product`, {
+          productId,
+        })
+      }
+
       message.success(
         hasVariants
           ? `Producto creado correctamente con ${variants.length} variantes`
@@ -972,6 +1306,7 @@ export default function AddProduct() {
       setSelectedAttributes({})
       setInputTagValue('')
       setInputVisible(false)
+      setCurrentAgentJob(null)
       resetIa()
     } catch (error) {
       console.error('Error al crear producto:', error)
@@ -1010,6 +1345,134 @@ export default function AddProduct() {
               }
               style={{ marginBottom: 24, borderRadius: 12 }}
             >
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: 16,
+                  borderRadius: 12,
+                  border: `1px solid ${token.colorBorder}`,
+                  background: token.colorFillAlter,
+                }}
+              >
+                <Row gutter={[16, 16]} align="middle">
+                  <Col xs={24} lg={8}>
+                    <Space direction="vertical" size={4}>
+                      <Space wrap>
+                        <Tag color="processing">Agente</Tag>
+                        <Tag color={autoAgentEnabled ? 'success' : 'default'}>
+                          {autoAgentEnabled ? 'Auto activo' : 'Manual'}
+                        </Tag>
+                        {autoAgentRunning && <Tag color="blue">Procesando</Tag>}
+                      </Space>
+                      <Text strong>Bandeja inteligente de imágenes</Text>
+                      <Text type="secondary">
+                        Las fotos llegan acá desde la carpeta del agente. Si están programadas, AddProduct las libera al horario indicado; si tienen AutoSave y el modo Auto está activo, se analizan y guardan solas.
+                      </Text>
+                    </Space>
+                  </Col>
+
+                  <Col xs={24} lg={6}>
+                    <Row gutter={[8, 8]}>
+                      <Col span={8}>
+                        <div className="agent-metric">
+                          <Text type="secondary">Pendientes</Text>
+                          <Text strong>{agentQueueStats.pending}</Text>
+                        </div>
+                      </Col>
+                      <Col span={8}>
+                        <div className="agent-metric">
+                          <Text type="secondary">Programadas</Text>
+                          <Text strong>{agentQueueStats.scheduled}</Text>
+                        </div>
+                      </Col>
+                      <Col span={8}>
+                        <div className="agent-metric">
+                          <Text type="secondary">AutoSave</Text>
+                          <Text strong>{agentQueueStats.autoSave}</Text>
+                        </div>
+                      </Col>
+                    </Row>
+                  </Col>
+
+                  <Col xs={24} lg={10}>
+                    <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
+                      <Switch
+                        checked={autoAgentEnabled}
+                        onChange={setAutoAgentEnabled}
+                        checkedChildren="Auto"
+                        unCheckedChildren="Manual"
+                        loading={autoAgentRunning}
+                      />
+                      <Select
+                        loading={loadingAgentQueue}
+                        value={selectedAgentJobId}
+                        placeholder="Sin imágenes disponibles"
+                        style={{ minWidth: 280 }}
+                        onChange={setSelectedAgentJobId}
+                        options={agentQueue.map(job => ({
+                          value: job._id,
+                          label: job.status === 'scheduled'
+                            ? `${job.originalFilename || job._id} - ${formatDate(job.scheduledAt)}`
+                            : `${job.originalFilename || job._id}${job.metadata?.autoSaveProduct ? ' - AutoSave' : ''}`,
+                        }))}
+                      />
+                      <Button
+                        icon={<ReloadOutlined />}
+                        onClick={fetchAgentQueue}
+                        loading={loadingAgentQueue || autoAgentRunning}
+                      >
+                        Actualizar
+                      </Button>
+                      <Button
+                        type="primary"
+                        icon={<CloudDownloadOutlined />}
+                        onClick={handleImportAgentImage}
+                        loading={importingAgentImage}
+                        disabled={!selectedAgentJobId || selectedAgentJob?.status === 'scheduled'}
+                      >
+                        Cargar ahora
+                      </Button>
+                      <Popconfirm
+                        title="Eliminar imagen"
+                        description="La imagen se quitará de la bandeja del agente."
+                        okText="Eliminar"
+                        cancelText="Cancelar"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={handleDeleteAgentImage}
+                        disabled={!selectedAgentJobId}
+                      >
+                        <Button
+                          danger
+                          icon={<DeleteOutlined />}
+                          loading={deletingAgentImage}
+                          disabled={!selectedAgentJobId}
+                        >
+                          Eliminar
+                        </Button>
+                      </Popconfirm>
+                    </Space>
+                  </Col>
+                </Row>
+
+                {selectedAgentJob && (
+                  <Alert
+                    type={selectedAgentJob.status === 'scheduled' ? 'warning' : 'success'}
+                    showIcon
+                    style={{ marginTop: 12 }}
+                    message={
+                      selectedAgentJob.status === 'scheduled'
+                        ? `Programada para ${formatDate(selectedAgentJob.scheduledAt)}`
+                        : 'Disponible para AddProduct'
+                    }
+                    description={
+                      selectedAgentJob.metadata?.autoSaveProduct
+                        ? 'Esta imagen está marcada para AutoSave: con Auto activo, AddProduct la analiza con IA y crea el producto sin tocar el formulario.'
+                        : 'Esta imagen requiere toma manual: se carga al formulario, dispara la IA y queda lista para revisar antes de guardar.'
+                    }
+                  />
+                )}
+              </div>
+
               {!fileList.length ? (
                 <Dragger
                   multiple
@@ -1041,9 +1504,11 @@ export default function AddProduct() {
                       <InboxOutlined style={{ fontSize: 36, color: token.colorPrimary }} />
                     </div>
                     <Text strong style={{ fontSize: 16, display: 'block' }}>
-                      Arrastra imágenes aquí
+                      Arrastra imágenes o tomalas desde la bandeja del agente
                     </Text>
-                    <Text type="secondary">o haz clic para seleccionar archivos</Text>
+                    <Text type="secondary">
+                      Las imágenes cargadas acá disparan el análisis IA de AddProduct.
+                    </Text>
                     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
                       Soporta JPG, PNG y WEBP
                     </Text>
@@ -1661,6 +2126,18 @@ export default function AddProduct() {
         .add-more-images:hover {
           border-color: ${token.colorPrimary} !important;
           background: ${token.colorPrimary}08;
+        }
+
+        .agent-metric {
+          min-height: 58px;
+          padding: 8px 10px;
+          border: 1px solid ${token.colorBorder};
+          border-radius: 8px;
+          background: ${token.colorBgContainer};
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 2px;
         }
 
         .ai-analysis-card {

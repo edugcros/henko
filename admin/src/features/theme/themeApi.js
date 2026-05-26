@@ -18,6 +18,48 @@ const UPLOAD_TIMEOUT = 60000
 
 const getAuthToken = () => Cookies.get('token')
 
+const IMAGE_FIELDS = new Set(['backgroundImage', 'logo', 'favicon'])
+
+export const normalizeImageAsset = value => {
+  const image =
+    value?.image ||
+    value?.data?.image ||
+    value?.data ||
+    value?.payload?.image ||
+    value?.payload?.data ||
+    value?.payload ||
+    value
+
+  if (!image) return null
+  if (typeof image === 'string') return image.trim() ? { url: image.trim(), public_id: '' } : null
+  if (typeof image !== 'object') return null
+
+  const url = typeof image.url === 'string' ? image.url.trim() : ''
+  if (!url) return null
+
+  return {
+    url,
+    public_id: image.public_id || image.publicId || '',
+  }
+}
+
+const sanitizePayload = (value, key = '') => {
+  if (IMAGE_FIELDS.has(key)) return normalizeImageAsset(value)
+  if (!value || typeof value !== 'object') return value
+  if (typeof File !== 'undefined' && value instanceof File) return undefined
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return undefined
+  if (Array.isArray(value)) {
+    return value.map(item => sanitizePayload(item)).filter(item => item !== undefined)
+  }
+
+  return Object.entries(value).reduce((acc, [childKey, childValue]) => {
+    if (['meta', 'error'].includes(childKey)) return acc
+    const sanitized = sanitizePayload(childValue, childKey)
+    if (sanitized !== undefined) acc[childKey] = sanitized
+    return acc
+  }, {})
+}
+
 /**
  * Construye headers según tipo de request
  */
@@ -108,7 +150,7 @@ const request = async (method, endpoint, options = {}) => {
     }
 
     if (data !== null) {
-      config.data = data
+      config.data = isMultipart ? data : sanitizePayload(data)
     }
 
     // Debug dev

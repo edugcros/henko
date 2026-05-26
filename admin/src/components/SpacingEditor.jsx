@@ -16,10 +16,10 @@ const SpacingEditor = ({ value, onChange }) => {
   };
 
   const spacingFields = [
-    { key: 'section', label: 'Espaciado de Secciones', min: 32, max: 128, unit: 'px', description: 'Espacio entre secciones principales' },
-    { key: 'container', label: 'Padding del Contenedor', min: 16, max: 48, unit: 'px', description: 'Padding horizontal del layout' },
+    { key: 'section', label: 'Espaciado de Secciones', min: 0, max: 128, unit: 'px', description: 'Espacio entre secciones principales' },
+    { key: 'container', label: 'Padding del Contenedor', min: 0, max: 48, unit: 'px', description: 'Padding horizontal del layout' },
     { key: 'radius', label: 'Radio de Bordes Global', min: 0, max: 32, unit: 'px', description: 'Border radius por defecto' },
-    { key: 'cardPadding', label: 'Padding de Tarjetas', min: 8, max: 32, unit: 'px', description: 'Padding interno de cards' },
+    { key: 'cardPadding', label: 'Padding de Tarjetas', min: 0, max: 32, unit: 'px', description: 'Padding interno de cards' },
   ];
 
   return (
@@ -38,7 +38,7 @@ const SpacingEditor = ({ value, onChange }) => {
                 <TextField
                   size="small"
                   type="number"
-                  value={spacing[key] || 16}
+                  value={spacing[key] ?? 0}
                   onChange={(e) => handleChange(key, Number(e.target.value))}
                   sx={{ width: 80 }}
                   inputProps={{ min, max }}
@@ -46,7 +46,7 @@ const SpacingEditor = ({ value, onChange }) => {
               </Box>
               
               <Slider
-                value={spacing[key] || 16}
+                value={spacing[key] ?? 0}
                 onChange={(_, v) => handleChange(key, v)}
                 min={min}
                 max={max}
@@ -66,7 +66,7 @@ const SpacingEditor = ({ value, onChange }) => {
                     <Box sx={{ width: 60, height: 40, bgcolor: 'primary.main', borderRadius: 1 }} />
                     <Box sx={{ 
                       width: 20, 
-                      height: spacing[key] || 64, 
+                      height: spacing[key] ?? 64, 
                       bgcolor: 'secondary.main',
                       display: 'flex',
                       alignItems: 'center',
@@ -74,7 +74,7 @@ const SpacingEditor = ({ value, onChange }) => {
                       borderRadius: 1
                     }}>
                       <Typography variant="caption" sx={{ transform: 'rotate(-90deg)', color: 'white', whiteSpace: 'nowrap' }}>
-                        {spacing[key] || 64}px
+                        {spacing[key] ?? 64}px
                       </Typography>
                     </Box>
                     <Box sx={{ width: 60, height: 40, bgcolor: 'primary.main', borderRadius: 1 }} />
@@ -82,9 +82,9 @@ const SpacingEditor = ({ value, onChange }) => {
                 )}
                 {key === 'container' && (
                   <Box sx={{ width: '80%', height: 60, bgcolor: 'grey.300', borderRadius: 1, display: 'flex' }}>
-                    <Box sx={{ width: (spacing[key] || 24), bgcolor: 'secondary.main', height: '100%' }} />
+                    <Box sx={{ width: (spacing[key] ?? 24), bgcolor: 'secondary.main', height: '100%' }} />
                     <Box sx={{ flex: 1, bgcolor: 'primary.main', height: '100%' }} />
-                    <Box sx={{ width: (spacing[key] || 24), bgcolor: 'secondary.main', height: '100%' }} />
+                    <Box sx={{ width: (spacing[key] ?? 24), bgcolor: 'secondary.main', height: '100%' }} />
                   </Box>
                 )}
                 {key === 'radius' && (
@@ -93,19 +93,19 @@ const SpacingEditor = ({ value, onChange }) => {
                       width: 60, 
                       height: 60, 
                       bgcolor: 'primary.main',
-                      borderRadius: (spacing[key] || 12) / 4
+                      borderRadius: (spacing[key] ?? 12) / 4
                     }} />
                     <Box sx={{ 
                       width: 60, 
                       height: 60, 
                       bgcolor: 'secondary.main',
-                      borderRadius: (spacing[key] || 12) / 2
+                      borderRadius: (spacing[key] ?? 12) / 2
                     }} />
                     <Box sx={{ 
                       width: 60, 
                       height: 60, 
                       bgcolor: 'success.main',
-                      borderRadius: (spacing[key] || 12)
+                      borderRadius: (spacing[key] ?? 12)
                     }} />
                   </Box>
                 )}
@@ -113,7 +113,7 @@ const SpacingEditor = ({ value, onChange }) => {
                   <Box sx={{ 
                     bgcolor: 'grey.200', 
                     borderRadius: 2,
-                    p: (spacing[key] || 16) / 8
+                    p: (spacing[key] ?? 0) / 8
                   }}>
                     <Box sx={{ width: 80, height: 50, bgcolor: 'primary.main', borderRadius: 1 }} />
                   </Box>

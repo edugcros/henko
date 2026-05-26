@@ -28,12 +28,12 @@ const COLOR_PRESETS = [
   { name: 'Oscuro Premium', primary: '#90caf9', secondary: '#f48fb1', accent: '#ffe082', background: '#121212', surface: '#1e1e1e', text: '#ffffff' },
 ];
 
-const ColorsPanel = ({ colors = {}, updateTheme, updateField }) => {
+const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
   // 🔥 Memoizar grupos de colores
   const mainColors = useMemo(() => [
-    { key: 'primary', label: 'Primario', description: 'Botones principales, links, énfasis' },
-    { key: 'secondary', label: 'Secundario', description: 'Acciones secundarias, badges' },
-    { key: 'accent', label: 'Icono', description: 'Elementos destacados, CTAs especiales' },
+    { key: 'primary', label: 'Primario', description: 'Botones principales, links y precios' },
+    { key: 'secondary', label: 'Secundario', description: 'Badges promocionales y apoyos visuales' },
+    { key: 'accent', label: 'Acento', description: 'CTAs especiales, iconos destacados e info' },
     { key: 'background', label: 'Fondo', description: 'Fondo de la página' },
     { key: 'surface', label: 'Superficie', description: 'Cards, modales, elementos elevados' },
     { key: 'text', label: 'Texto Principal', description: 'Títulos y contenido principal' },
@@ -61,11 +61,13 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField }) => {
     // Usar updateField con path notation (si está disponible) o updateTheme
     if (updateField) {
       updateField(`colors.${key}`, value);
+    } else if (onChange) {
+      onChange({ ...colors, [key]: value });
     } else if (updateTheme) {
       // Fallback: actualizar objeto completo
       updateTheme('colors', { ...colors, [key]: value });
     }
-  }, [colors, updateField, updateTheme]);
+  }, [colors, updateField, updateTheme, onChange]);
 
   // 🔥 Reset individual de color
   const handleResetColor = useCallback((key) => {
@@ -74,16 +76,32 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField }) => {
 
   // 🔥 Aplicar preset completo
   const handleApplyPreset = useCallback((preset) => {
-    const newColors = { ...colors, ...preset };
-    updateTheme('colors', newColors);
-  }, [colors, updateTheme]);
+    const { name, ...presetColors } = preset;
+    const newColors = { ...colors, ...presetColors };
+
+    if (onChange) {
+      onChange(newColors);
+      return;
+    }
+
+    if (updateTheme) {
+      updateTheme('colors', newColors);
+    }
+  }, [colors, updateTheme, onChange]);
 
   // 🔥 Reset todos los colores
   const handleResetAll = useCallback(() => {
     if (window.confirm('¿Restaurar todos los colores a valores por defecto?')) {
-      updateTheme('colors', DEFAULT_COLORS);
+      if (onChange) {
+        onChange(DEFAULT_COLORS);
+        return;
+      }
+
+      if (updateTheme) {
+        updateTheme('colors', DEFAULT_COLORS);
+      }
     }
-  }, [updateTheme]);
+  }, [updateTheme, onChange]);
 
   return (
     <Box>

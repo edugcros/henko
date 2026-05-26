@@ -1,4 +1,4 @@
-// 📁 src/Components/CustomHeader.jsx - VERSIÓN DEBUG COMPLETO
+// 📁 src/Components/CustomHeader.jsx
 import React, { useMemo, useEffect } from 'react'
 import {
   AppBar,
@@ -29,6 +29,7 @@ import {
   FavoriteBorder as WishlistIcon,
   CompareArrows as CompareIcon,
   Menu as MenuIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material'
 import { logoutUser, clearState } from '@features/user/userSlice'
 import { persistor } from '@app/store'
@@ -45,43 +46,36 @@ const CustomHeader = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [drawerOpen, setDrawerOpen] = React.useState(false)
 
-  // 🔴 DEBUG: Obtener TODAS las fuentes de datos posibles
   const tenantContext = useTenant()
-  const reduxState = useSelector(state => state)
   const themeState = useSelector(state => state.theme)
-  console.log('🔴 DEBUG: reduxState:', reduxState)
-  console.log('🔴 DEBUG: themeState:', themeState)
   const userState = useSelector(state => state.user)
   const cartState = useSelector(state => state.cart)
 
   // Extraer configuraciones
   const tenantConfig = tenantContext?.themeConfig
-  console.log('🔴 DEBUG: tenantConfig:', tenantConfig)
   const tenantReady = tenantContext?.isReady
   const reduxConfig = themeState?.config
+  const previewConfig = themeState?.previewConfig
   const previewMode = themeState?.previewMode
 
   // Determinar configuración activiva
   const activeConfig = useMemo(() => {
-    // Prioridad: previewMode > redux > tenant
-    if (previewMode && reduxConfig) {
-      console.log('✅ Usando REDUX (preview mode)')
-      return reduxConfig
+    if (previewMode && previewConfig) {
+      return previewConfig
     }
     if (reduxConfig) {
-      console.log('✅ Usando REDUX')
       return reduxConfig
     }
     if (tenantConfig) {
-      console.log('✅ Usando TENANT')
       return tenantConfig
     }
-    console.log('⚠️ Usando CONFIG VACÍA')
     return {}
-  }, [reduxConfig, tenantConfig, previewMode])
-  console.log('activeConfig:', activeConfig)
+  }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const isReady = tenantReady || !!reduxConfig
+  const isThemePreviewRoute =
+    typeof window !== 'undefined' && window.location.pathname === '/theme-preview'
+  const isReady =
+    tenantReady || !!reduxConfig || (previewMode && !!previewConfig) || isThemePreviewRoute
 
   // Datos de usuario
   const isAuthenticated = !!userState?.user
@@ -95,55 +89,43 @@ const CustomHeader = () => {
   const headerConfig = useMemo(() => {
     // Valores RAW de la configuración
     const headerRaw = activeConfig?.header || {}
-    console.log('   headerRaw:', headerRaw)
 
     const config = {
       storeName: activeConfig?.general?.storeName,
 
-      // 🔴 EXPLÍCITO: Leer cada valor con logs
-      showCart: (() => {
-        const val = headerRaw.showCart
-        console.log('   showCart raw:', val, 'type:', typeof val)
-        return val !== false // true por defecto
-      })(),
-
-      showUserMenu: (() => {
-        const val = headerRaw.showAccount ?? headerRaw.showUserMenu
-        console.log('   showAccount/UserMenu raw:', val)
-        return val !== false // true por defecto
-      })(),
-
-      showWishlist: (() => {
-        const val = headerRaw.showWishlist
-        console.log('   showWishlist raw:', val, 'type:', typeof val)
-        // 🔴 IMPORTANTE: Si es undefined, usar false por defecto
-        // Cambia a true si quieres que aparezca por defecto
-        return val !== false
-      })(),
-
-      showCompare: (() => {
-        const val = headerRaw.showCompare
-        console.log('   showCompare raw:', val)
-        return val !== false // false por defecto
-      })(),
+      showCart: headerRaw.showCart !== false,
+      showSearch: headerRaw.showSearch !== false,
+      showLogo: headerRaw.showLogo !== false,
+      showUserMenu: (headerRaw.showAccount ?? headerRaw.showUserMenu) !== false,
+      showWishlist: headerRaw.showWishlist !== false,
+      showCompare: headerRaw.showCompare === true,
 
       isSticky: headerRaw.sticky !== false,
       isTransparent: headerRaw.transparent === true,
-      logoWidth: headerRaw.logoWidth || 150,
+      logoWidth: headerRaw.logoWidth ?? 150,
       height: headerRaw.height || 70,
     }
 
-    console.log('✅ headerConfig calculado:', config)
-    return config
+    return {
+      ...config,
+      storeName: config.storeName || 'Mi Tienda',
+    }
   }, [activeConfig])
 
   // Colores
   const colors = useMemo(
     () => ({
       primary: activeConfig?.colors?.primary || theme.palette.primary.main,
-      background: activeConfig?.colors?.background || theme.palette.background.default,
-      text: activeConfig?.colors?.primary || theme.palette.text.primary,
-      icon: activeConfig?.colors?.secondary || theme.palette.text.secondary,
+      background:
+        activeConfig?.colors?.surface ||
+        activeConfig?.colors?.background ||
+        theme.palette.background.default,
+      text: activeConfig?.colors?.text || theme.palette.text.primary,
+      icon:
+        activeConfig?.colors?.mutedText ||
+        activeConfig?.colors?.textSecondary ||
+        activeConfig?.colors?.textMuted ||
+        theme.palette.text.secondary,
       accion: activeConfig?.colors?.accent || theme.palette.primary.main,
     }),
     [activeConfig?.colors, theme.palette],
@@ -157,7 +139,6 @@ const CustomHeader = () => {
     [activeConfig?.typography, theme.typography],
   )
 
-  console.log(typography)
   // Logo
   const logoUrl = useMemo(() => {
     const logo = activeConfig?.header?.logo
@@ -187,7 +168,6 @@ const CustomHeader = () => {
         badge: isAuthenticated ? wishlistCount : null,
       })
     } else {
-      console.log('   ❌ Wishlist OMITIDO (showWishlist=false)')
     }
 
     // Comparar
@@ -198,7 +178,6 @@ const CustomHeader = () => {
         icon: CompareIcon,
         badge: null,
       })
-      console.log('   ✅ Comparar AGREGADO')
     }
 
     // Carrito
@@ -209,7 +188,6 @@ const CustomHeader = () => {
         icon: CartIcon,
         badge: isAuthenticated ? cartCount : null,
       })
-      console.log('   ✅ Carrito AGREGADO')
     }
 
     // Cuenta
@@ -220,31 +198,12 @@ const CustomHeader = () => {
         icon: UserIcon,
         badge: null,
       })
-      console.log('   ✅ Cuenta AGREGADO')
     }
 
-    console.log('   Total links:', links.length)
     return links
   }, [headerConfig, isAuthenticated, wishlistCount, cartCount])
 
-  // 🔴 DEBUG: Forzar wishlist si no hay links (para prueba)
-  const displayLinks =
-    quickLinks.length > 0
-      ? quickLinks
-      : [
-          {
-            label: 'Favoritos (DEBUG)',
-            path: '/wishlist',
-            icon: WishlistIcon,
-            badge: wishlistCount,
-          },
-          {
-            label: 'Carrito (DEBUG)',
-            path: '/cart',
-            icon: CartIcon,
-            badge: cartCount,
-          },
-        ]
+  const displayLinks = quickLinks
 
   const menuLinks = [
     { label: 'Inicio', path: '/' },
@@ -335,9 +294,6 @@ const CustomHeader = () => {
   // RENDER
   // ==========================================
 
-  // 🔴 DEBUG: Mostrar estado de carga
-  console.log('🔴 RENDER: isReady=', isReady, 'linksCount=', displayLinks.length)
-
   if (!isReady) {
     return (
       <AppBar position="static" elevation={0} sx={{ bgcolor: 'grey.100' }}>
@@ -372,6 +328,7 @@ const CustomHeader = () => {
         >
           {/* LOGO */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {headerConfig.showLogo && (
             <Box component={Link} to="/" sx={{ textDecoration: 'none', color: 'inherit' }}>
               {logoUrl ? (
                 <Box
@@ -391,6 +348,7 @@ const CustomHeader = () => {
                 </Typography>
               )}
             </Box>
+            )}
 
             {!isMobile &&
               menuLinks.map(link => (
@@ -431,6 +389,14 @@ const CustomHeader = () => {
                 </IconButton>
               </Tooltip>
             ))}
+
+            {headerConfig.showSearch && (
+              <Tooltip title="Buscar">
+                <IconButton onClick={() => navigate('/product')} sx={{ color: colors.accion }}>
+                  <SearchIcon />
+                </IconButton>
+              </Tooltip>
+            )}
 
             {isAuthenticated && !isMobile && (
               <Button

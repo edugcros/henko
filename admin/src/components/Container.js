@@ -3,7 +3,7 @@ import PropTypes from 'prop-types'
 
 const Container = props => {
   return (
-    <section className={props.class1}>
+    <section className={props.className}>
       <div className="container-xxl">{props.children}</div>
     </section>
   )

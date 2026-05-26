@@ -6,7 +6,7 @@ import CorrectionLog from '../models/correctionLog.js'
 import mongoose from 'mongoose'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-const MODEL_NAME = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash'
+const MODEL_NAME = process.env.GEMINI_MODEL || 'models/gemini-3.1-flash-lite'
 const MIN_CONFIDENCE = Number(process.env.AI_MIN_CONFIDENCE || 0.65)
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || 3)
 
@@ -523,4 +523,25 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
     return buildFallbackResult({ hash, tenantId, error })
   }
+}
+
+export async function analyzeProductImage({ tenantId, imageBuffer, mimeType }) {
+  return analyzeImage(imageBuffer, mimeType, tenantId)
+}
+
+export async function analyzeProductImageFromUrl({ tenantId, imageUrl }) {
+  if (!imageUrl || typeof imageUrl !== 'string') {
+    throw new Error('imageUrl inválida')
+  }
+
+  const response = await fetch(imageUrl)
+
+  if (!response.ok) {
+    throw new Error(`No se pudo descargar la imagen (${response.status})`)
+  }
+
+  const contentType = response.headers.get('content-type') || 'image/jpeg'
+  const arrayBuffer = await response.arrayBuffer()
+
+  return analyzeImage(Buffer.from(arrayBuffer), contentType, tenantId)
 }

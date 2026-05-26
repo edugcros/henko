@@ -46,7 +46,10 @@ const safeStorage = {
    Estado inicial
    --------------------------- */
 const initialUser = safeStorage.getUser()
-const initialToken = Cookies.get('token') || null
+const initialToken =
+  Cookies.get('token') ||
+  (typeof window !== 'undefined' ? localStorage.getItem('token') : null) ||
+  null
 const initialWishlist = (() => {
   try {
     const raw = sessionStorage.getItem('wishlist')
@@ -58,8 +61,9 @@ const initialWishlist = (() => {
 
 const initialState = {
   user: safeStorage.getUser(),
+  token: initialToken,
   csrfToken: sessionStorage.getItem('csrfToken'),
-  isAuthenticated: !!safeStorage.getUser(),
+  isAuthenticated: !!safeStorage.getUser() && !!initialToken,
   wishlist: initialWishlist,
   admin: null,
 
@@ -271,9 +275,19 @@ export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
  */
 export const toggleWishlist = createAsyncThunk(
   'user/toggleWishlist',
-  async (productId, { rejectWithValue }) => {
+  async (productId, { rejectWithValue, dispatch }) => {
     try {
       const res = await userService.toggleWishlist(productId)
+
+      if (res?.success === false) {
+        if ([401, 403].includes(Number(res.status))) {
+          dispatch(resetAuthState())
+          return rejectWithValue('Tu sesión expiró. Iniciá sesión nuevamente para guardar favoritos.')
+        }
+
+        return rejectWithValue(res.message || 'Error al actualizar wishlist')
+      }
+
       // Normalizar el resultado
       const updatedWishlist =
         res && res.data && Array.isArray(res.data)
@@ -340,6 +354,7 @@ const userSlice = createSlice({
       state.message = ''
       state.wishlist = []
       safeStorage.removeUser()
+      localStorage.removeItem('token')
       Cookies.remove('token')
     },
     // Tomar token desde cookie (por ejemplo SSR/hydration)

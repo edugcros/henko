@@ -14,6 +14,7 @@ import ThemeCustomizer from './ThemeCustomizer'
 import CouponsPage  from './CouponsPage'
 import EditProduct from './EditProduct'
 import PromotionalBlocksPage from './PromotionalBlocksPage'
+import ProductAnalysisPage from './ProductAnalysisPage'
 
 
 const pages = {
@@ -28,6 +29,7 @@ const pages = {
   Customers,
   ThemeCustomizer,
   PromotionalBlocksPage,
+  ProductAnalysisPage,
   Enquiries,
   Addproduct,
   Productlist,

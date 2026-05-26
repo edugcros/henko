@@ -1,0 +1,22 @@
+{
+  "name": "agent-image-watcher",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "test": "node --check agent.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.16.1",
+    "chokidar": "^5.0.0",
+    "dotenv": "^17.4.2",
+    "form-data": "^4.0.5",
+    "fs-extra": "^11.3.5",
+    "mime-types": "^3.0.2"
+  }
+}

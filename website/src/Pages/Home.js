@@ -51,8 +51,17 @@ import brand2 from '@assets/images/brand-02.png'
 import brand3 from '@assets/images/brand-03.png'
 import brand4 from '@assets/images/brand-04.png'
 
-import { Newprimary } from '../theme/colors'
 import { useTenant } from '../contexts/TenantContext'
+import {
+  formatCurrency,
+  getAssetUrl,
+  getLayoutThemeConfig,
+  getProductImage,
+  getProductRouteId,
+  getProductThemeConfig,
+  getSpacingThemeConfig,
+  getThemeColors,
+} from '@utils/themeRuntime'
 
 // URLs de imágenes por defecto
 const DEFAULT_IMAGES = {
@@ -74,20 +83,6 @@ const getProductFromPromotionalItem = item => {
   }
 
   return null
-}
-
-const getProductImage = product => {
-  return product?.images?.[0]?.url || DEFAULT_IMAGES.product
-}
-
-const formatPrice = value => {
-  const amount = Number(value || 0)
-
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(amount)
 }
 
 const getFinalPrice = (price, discountPercentage) => {
@@ -147,7 +142,7 @@ const SafeImage = memo(({ src, alt, fallbackSrc = DEFAULT_IMAGES.product, sx = {
 
 SafeImage.displayName = 'SafeImage'
 
-const PromotionalSpecialProduct = ({ item }) => {
+const PromotionalSpecialProduct = ({ item, formatPrice }) => {
   const product = getProductFromPromotionalItem(item)
 
   if (!product) return null
@@ -255,14 +250,32 @@ const Home = () => {
 
   const tenantConfig = tenantContext?.themeConfig
   const reduxConfig = themeState?.config
+  const previewConfig = themeState?.previewConfig
   const previewMode = themeState?.previewMode
 
   const activeConfig = useMemo(() => {
-    if (previewMode && reduxConfig) return reduxConfig
+    if (previewMode && previewConfig) return previewConfig
     if (reduxConfig) return reduxConfig
     if (tenantConfig) return tenantConfig
     return {}
-  }, [reduxConfig, tenantConfig, previewMode])
+  }, [reduxConfig, tenantConfig, previewConfig, previewMode])
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const spacingConfig = useMemo(
+    () => getSpacingThemeConfig(activeConfig),
+    [activeConfig],
+  )
+  const layoutConfig = useMemo(
+    () => getLayoutThemeConfig(activeConfig),
+    [activeConfig],
+  )
+  const productConfig = useMemo(
+    () => getProductThemeConfig(activeConfig),
+    [activeConfig],
+  )
+  const formatPrice = useCallback(
+    value => formatCurrency(value, activeConfig),
+    [activeConfig],
+  )
 
   const allProducts = useSelector(state => state.product?.products) || []
   const { isLoading } = useSelector(state => state.product)
@@ -276,7 +289,7 @@ const Home = () => {
   const [searchResults, setSearchResults] = useState([])
 
   const { user } = useSelector(state => state.user)
-  const tenantId = user?.tenantId
+  const tenantId = tenantContext?.tenantId || tenantConfig?.tenantId || user?.tenantId
 
   const heroConfig = useMemo(() => {
     const isValidUrl = url => {
@@ -284,19 +297,34 @@ const Home = () => {
       return typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
     }
 
+    const hero = activeConfig?.hero || {}
+    const general = activeConfig?.general || {}
+    const colors = activeConfig?.colors || {}
+    const heroImage = getAssetUrl(hero.backgroundImage)
+
     return {
-      title: activeConfig?.general?.tagline || 'Tu tienda online',
-      subtitle: activeConfig?.hero?.title || 'Nuevas oportunidades',
-      primaryColor: activeConfig?.primaryColor || theme.palette.primary.main,
-      bannerImage: isValidUrl(activeConfig?.heroBanner)
-        ? activeConfig.heroBanner
+      enabled: hero.enabled !== false,
+      title: hero.title || general.storeName || 'Tu tienda online',
+      subtitle: hero.subtitle || general.tagline || 'Nuevas oportunidades',
+      primaryColor: colors.primary || themeColors.primary || theme.palette.primary.main,
+      secondaryColor: colors.secondary || themeColors.secondary || theme.palette.secondary.main,
+      accentColor: colors.accent || themeColors.accent || theme.palette.primary.main,
+      textColor: hero.textColor || '#ffffff',
+      overlayOpacity: hero.overlayOpacity ?? 0.3,
+      alignment: hero.alignment || 'left',
+      height: hero.height || 'medium',
+      ctaText: hero.ctaText || 'Ver productos',
+      ctaLink: hero.ctaLink || '/product',
+      showCta: hero.showCta !== false,
+      bannerImage: isValidUrl(heroImage)
+        ? heroImage
         : DEFAULT_IMAGES.hero,
       specialBanner: isValidUrl(activeConfig?.specialBanner)
         ? activeConfig.specialBanner
         : DEFAULT_IMAGES.special,
       showSpecialSection: activeConfig?.showSpecialSection !== false,
     }
-  }, [activeConfig, theme.palette.primary.main])
+  }, [activeConfig, themeColors, theme.palette.primary.main, theme.palette.secondary.main])
 
   const weeklyOffersBlock = useMemo(() => {
     return promotionalBlocks
@@ -382,22 +410,44 @@ const Home = () => {
       <Meta title="Inicio | Tu Tienda" />
 
       {/* --- SECCIÓN 1: HERO & BÚSQUEDA --- */}
+      {heroConfig.enabled && (
       <Box
         sx={{
+          position: 'relative',
           bgcolor: '#fff',
           pt: { xs: 4, md: 8 },
           pb: { xs: 6, md: 10 },
           borderBottom: '1px solid #e0e0e0',
+          minHeight: {
+            small: 360,
+            medium: 520,
+            large: 680,
+            fullscreen: 'calc(100vh - 70px)',
+          }[heroConfig.height],
+          py: `${spacingConfig.section}px`,
+          backgroundImage: `linear-gradient(rgba(0,0,0,${heroConfig.overlayOpacity}), rgba(0,0,0,${heroConfig.overlayOpacity})), url(${heroConfig.bannerImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          color: heroConfig.textColor,
+          display: 'flex',
+          alignItems: 'center',
         }}
       >
-        <Container maxWidth="lg">
+        <Container
+          maxWidth={false}
+          disableGutters
+          sx={{
+            maxWidth: layoutConfig.maxWidth,
+            px: `${layoutConfig.containerPadding}px`,
+          }}
+        >
           <Grid container spacing={6} alignItems="center">
             <Grid item xs={12} md={6}>
-              <Box sx={{ textAlign: { xs: 'center', md: 'left' } }}>
+              <Box sx={{ textAlign: { xs: 'center', md: heroConfig.alignment } }}>
                 <Typography
                   variant="overline"
                   sx={{
-                    color: Newprimary.errorMedium,
+                    color: heroConfig.accentColor,
                     fontWeight: 800,
                     letterSpacing: 3,
                     fontSize: 14,
@@ -411,11 +461,12 @@ const Home = () => {
                     fontWeight: 900,
                     mt: 1,
                     mb: 5,
-                    fontFamily: 'Montserrat',
                     fontSize: { xs: '2.5rem', md: '3rem' },
+                    color: heroConfig.textColor,
+                    textShadow: '0 2px 12px rgba(0,0,0,0.35)',
                   }}
                 >
-                  <span style={{ color: Newprimary.darkBlueGray }}>{heroConfig.title}</span>
+                  {heroConfig.title}
                 </Typography>
 
                 <Box
@@ -442,12 +493,28 @@ const Home = () => {
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start" sx={{ ml: 1 }}>
-                            <BsSearch color={theme.palette.primary.main} />
+                            <BsSearch color={heroConfig.primaryColor} />
                           </InputAdornment>
                         ),
                       }}
                     />
                   </Box>
+
+                  {heroConfig.showCta && (
+                    <Button
+                      component={Link}
+                      to={heroConfig.ctaLink}
+                      variant="contained"
+                      sx={{
+                        mt: 2,
+                        bgcolor: heroConfig.accentColor,
+                        fontWeight: 800,
+                        '&:hover': { bgcolor: heroConfig.primaryColor },
+                      }}
+                    >
+                      {heroConfig.ctaText}
+                    </Button>
+                  )}
 
                   {searchResults.length > 0 && (
                     <Paper
@@ -469,7 +536,7 @@ const Home = () => {
                         <Box
                           key={product._id}
                           component={Link}
-                          to={`/product/${product.slug || product._id}`}
+                          to={`/product/${getProductRouteId(product)}`}
                           sx={{
                             display: 'flex',
                             alignItems: 'center',
@@ -512,31 +579,28 @@ const Home = () => {
                 </Box>
               </Box>
             </Grid>
-
-            <Grid item xs={12} md={6}>
-              <SafeImage
-                src={heroConfig.bannerImage}
-                alt="Banner principal"
-                fallbackSrc={DEFAULT_IMAGES.hero}
-                sx={{
-                  width: '100%',
-                  maxHeight: 420,
-                  borderRadius: 5,
-                  boxShadow: '0 20px 60px rgba(0,0,0,0.12)',
-                }}
-              />
-            </Grid>
           </Grid>
         </Container>
       </Box>
+      )}
 
       {/* --- SECCIÓN 2: TRUST BADGES --- */}
-      <Container maxWidth="lg" sx={{ mt: -5, position: 'relative', zIndex: 2 }}>
+      <Container
+        maxWidth={false}
+        disableGutters
+        sx={{
+          mt: -5,
+          position: 'relative',
+          zIndex: 2,
+          maxWidth: layoutConfig.maxWidth,
+          px: `${layoutConfig.containerPadding}px`,
+        }}
+      >
         <Paper
           elevation={0}
           sx={{
-            p: 4,
-            borderRadius: 5,
+            p: `${spacingConfig.cardPadding}px`,
+            borderRadius: `${spacingConfig.radius}px`,
             border: '1px solid #eee',
             boxShadow: '0 10px 40px rgba(0,0,0,0.04)',
           }}
@@ -575,7 +639,15 @@ const Home = () => {
       </Container>
 
       {/* --- SECCIÓN 3: DESTACADOS --- */}
-      <Container maxWidth="lg" sx={{ my: 10 }}>
+      <Container
+        maxWidth={false}
+        disableGutters
+        sx={{
+          my: `${spacingConfig.section}px`,
+          maxWidth: layoutConfig.maxWidth,
+          px: `${layoutConfig.containerPadding}px`,
+        }}
+      >
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 5 }}>
           <Typography
             sx={{
@@ -597,15 +669,15 @@ const Home = () => {
           </Button>
         </Stack>
 
-        <Grid container spacing={3}>
+        <Grid container spacing={Math.max(0, Math.round((productConfig.gap ?? 24) / 8))}>
           {isLoading
             ? [...Array(4)].map((_, index) => (
-                <Grid item xs={12} sm={6} md={3} key={index}>
+                <Grid item xs={12} sm={6} md={12 / Math.min(productConfig.columns ?? 4, 6)} key={index}>
                   <Skeleton variant="rectangular" height={320} sx={{ borderRadius: 5 }} />
                 </Grid>
               ))
             : featuredProducts.map(product => (
-                <Grid item xs={12} sm={6} md={3} key={product._id}>
+                <Grid item xs={12} sm={6} md={12 / Math.min(productConfig.columns ?? 4, 6)} key={product._id}>
                   <HomeProductCard data={product} />
                 </Grid>
               ))}
@@ -616,8 +688,15 @@ const Home = () => {
       {heroConfig.showSpecialSection && (
         <>
           {promotionalBlocksLoading ? (
-            <Box sx={{ bgcolor: '#131921', py: 12, color: '#fff' }}>
-              <Container maxWidth="lg">
+            <Box sx={{ bgcolor: '#131921', py: `${spacingConfig.section}px`, color: '#fff' }}>
+              <Container
+                maxWidth={false}
+                disableGutters
+                sx={{
+                  maxWidth: layoutConfig.maxWidth,
+                  px: `${layoutConfig.containerPadding}px`,
+                }}
+              >
                 <Grid container spacing={8} alignItems="center">
                   <Grid item xs={12} md={5}>
                     <Skeleton width={180} height={24} sx={{ bgcolor: 'grey.800', mb: 2 }} />
@@ -658,11 +737,20 @@ const Home = () => {
                   key={block._id}
                   sx={{
                     bgcolor: isDark ? '#131921' : '#fff',
-                    py: 12,
+                    py: `${spacingConfig.section}px`,
                     color: isDark ? '#fff' : 'text.primary',
                   }}
                 >
-                  <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
+                  <Container
+                    maxWidth={false}
+                    disableGutters
+                    sx={{
+                      position: 'relative',
+                      zIndex: 1,
+                      maxWidth: layoutConfig.maxWidth,
+                      px: `${layoutConfig.containerPadding}px`,
+                    }}
+                  >
                     <Grid
                       container
                       spacing={8}
@@ -719,7 +807,10 @@ const Home = () => {
                                   />
                                 }
                               >
-                                <PromotionalSpecialProduct item={item} />
+                                <PromotionalSpecialProduct
+                                  item={item}
+                                  formatPrice={formatPrice}
+                                />
                               </Suspense>
                             )
                           })}
@@ -753,8 +844,15 @@ const Home = () => {
               )
             })
           ) : (
-            <Box sx={{ bgcolor: '#131921', py: 12, color: '#fff' }}>
-              <Container maxWidth="lg">
+            <Box sx={{ bgcolor: '#131921', py: `${spacingConfig.section}px`, color: '#fff' }}>
+              <Container
+                maxWidth={false}
+                disableGutters
+                sx={{
+                  maxWidth: layoutConfig.maxWidth,
+                  px: `${layoutConfig.containerPadding}px`,
+                }}
+              >
                 <Typography color="grey.400">No hay ofertas especiales activas</Typography>
               </Container>
             </Box>
@@ -764,7 +862,15 @@ const Home = () => {
 
       {/* --- SECCIÓN 4.5: OTROS BLOQUES PROMOCIONALES --- */}
       {featuredPromotionalBlocks.length > 0 && (
-        <Container maxWidth="lg" sx={{ my: 10 }}>
+        <Container
+          maxWidth={false}
+          disableGutters
+          sx={{
+            my: `${spacingConfig.section}px`,
+            maxWidth: layoutConfig.maxWidth,
+            px: `${layoutConfig.containerPadding}px`,
+          }}
+        >
           {featuredPromotionalBlocks.map(block => {
             const items = Array.isArray(block.products)
               ? block.products

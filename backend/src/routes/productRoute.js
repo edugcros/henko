@@ -145,11 +145,9 @@ const shouldSkipCsrfForPredeploy = req => {
 }
 
 const conditionalCsrfProtection = (req, res, next) => {
-  if (shouldSkipCsrfForPredeploy(req)) {
-    return next()
-  }
-
-  return (req, res, next)
+  // La protección CSRF ya se aplica de forma global en app.js antes de montar rutas.
+  // Este middleware queda solo como compatibilidad para las rutas de ratings.
+  return next()
 }
 
 // =========================================================
@@ -235,7 +233,6 @@ router.put(
   '/rating/:productId',
   resolveTenantByDomain,
   authMiddleware,
-  conditionalCsrfProtection,
   rating,
 )
 

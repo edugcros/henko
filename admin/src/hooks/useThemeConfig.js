@@ -5,7 +5,9 @@ import { debounce } from 'lodash'
 import {
   // Selectors
   selectTheme,
+  selectActiveTheme,
   selectOriginalTheme,
+  selectThemeSection,
   selectHasUnsavedChanges,
   selectIsLoading,
   selectIsSaving,
@@ -58,6 +60,7 @@ export const useTheme = () => {
   
   // Selectors
   const theme = useSelector(selectTheme)
+  const activeTheme = useSelector(selectActiveTheme)
   const originalTheme = useSelector(selectOriginalTheme)
   const hasChanges = useSelector(selectHasUnsavedChanges)
   const isLoading = useSelector(selectIsLoading)
@@ -127,7 +130,11 @@ export const useTheme = () => {
       })
       
       dispatch(autoSaveTheme(patchData))
-      pendingChanges.current = {}
+      Object.entries(changes).forEach(([path, value]) => {
+        if (pendingChanges.current[path] === value) {
+          delete pendingChanges.current[path]
+        }
+      })
     }, AUTO_SAVE_DELAY, { maxWait: AUTO_SAVE_MAX_WAIT }),
     [dispatch]
   )
@@ -135,7 +142,7 @@ export const useTheme = () => {
   // Trigger auto-save cuando hay cambios
   useEffect(() => {
     if (hasChanges && autoSave.enabled && !isSaving) {
-      debouncedAutoSave(pendingChanges.current)
+      debouncedAutoSave({ ...pendingChanges.current })
     }
   }, [hasChanges, autoSave.enabled, isSaving, debouncedAutoSave])
   
@@ -149,7 +156,8 @@ export const useTheme = () => {
   // ==========================================
   
   const save = useCallback(() => {
-    debouncedAutoSave.flush() // Forzar auto-save pendiente
+    debouncedAutoSave.cancel()
+    pendingChanges.current = {}
     return dispatch(saveTheme(theme))
   }, [dispatch, theme, debouncedAutoSave])
   
@@ -179,6 +187,8 @@ export const useTheme = () => {
   
   const uploadImage = useCallback(({ file, type, fieldPath }) => {
     return dispatch(uploadThemeImage({ file, type, fieldPath }))
+      .unwrap()
+      .then(result => result?.image || result)
   }, [dispatch])
   
   // ==========================================
@@ -241,6 +251,7 @@ export const useTheme = () => {
   return {
     // Data
     theme,
+    activeTheme,
     originalTheme,
     hasChanges,
     

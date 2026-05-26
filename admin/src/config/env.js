@@ -38,6 +38,9 @@ export const env = {
   apiUrl,
   assetsBaseUrl,
 
+  storefrontPreviewUrl:
+    clean(process.env.REACT_APP_STOREFRONT_PREVIEW_URL),
+
   publicBaseDomain:
     clean(process.env.REACT_APP_PUBLIC_BASE_DOMAIN) ||
     clean(process.env.REACT_APP_PRODUCTION_DOMAIN),

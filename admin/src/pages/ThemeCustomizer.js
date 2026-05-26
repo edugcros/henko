@@ -35,7 +35,6 @@ import {
   Settings as SettingsIcon,
   Image as ImageIcon,
   Animation as AnimationIcon,
-  Store as StoreIcon,
   Tune as TuneIcon,
   ShoppingBag as ShoppingBagIcon,
   Web as WebIcon,
@@ -83,13 +82,13 @@ const ThemeCustomizer = () => {
   const {
     // Data
     theme,
+    activeTheme,
     hasChanges,
     
     // Status
     isLoading,
     isSaving,
     error,
-    status,
     
     // Auto-save
     autoSaveEnabled,
@@ -103,7 +102,6 @@ const ThemeCustomizer = () => {
     togglePreview,
     clearPreview,
     createPreview,
-    activatePreview,
     
     // Actions
     updateField,
@@ -116,11 +114,8 @@ const ThemeCustomizer = () => {
     uploadImage,
     
     // Versioning
-    loadHistory,
     rollback,
     
-    // Utils
-    clearError,
   } = useTheme()
 
   // ==========================================
@@ -201,14 +196,13 @@ const ThemeCustomizer = () => {
     }
   }, [previewMode, togglePreview])
 
-  const handleActivatePreview = useCallback(async () => {
-    if (!previewId) return
-    
-    const result = await activatePreview(previewId)
+  const handlePublishPreview = useCallback(async () => {
+    const result = await save()
     if (result.meta?.requestStatus === 'fulfilled') {
       setShowSuccess(true)
+      clearPreview()
     }
-  }, [previewId, activatePreview])
+  }, [save, clearPreview])
 
   // ==========================================
   // HELPERS DE DATOS
@@ -719,9 +713,10 @@ const ThemeCustomizer = () => {
                     size="small"
                     variant="contained"
                     color="success"
-                    onClick={handleActivatePreview}
+                    onClick={handlePublishPreview}
+                    disabled={isSaving}
                   >
-                    Publicar Preview
+                    Publicar Cambios
                   </Button>
                 </>
               )}
@@ -731,7 +726,7 @@ const ThemeCustomizer = () => {
           {/* Preview Component */}
           <Box sx={{ flex: 1, p: previewMode ? 2 : 3, overflow: 'auto' }}>
             <LivePreview 
-              themeData={previewMode && previewId ? theme : theme}
+              themeData={activeTheme || theme}
               viewport={previewViewport}
               isPreview={previewMode}
             />

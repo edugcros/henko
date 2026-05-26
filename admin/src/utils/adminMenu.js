@@ -6,11 +6,13 @@ import {
   ShoppingCart as ShoppingCartIcon,
   Person as PersonIcon,
   Assignment as AssignmentIcon,
+  AutoAwesome as AutoAwesomeIcon,
   Storefront as StorefrontIcon,
   LocalOffer as LocalOfferIcon,
   ColorLens as ColorLensIcon,
   AddShoppingCart as AddShoppingCartIcon,
 } from '@mui/icons-material';
+import OutboxIcon from '@mui/icons-material/Outbox';
 import { Badge, ListItemIcon } from '@mui/material';
 
 // 🔹 Traducciones y etiquetas
@@ -20,9 +22,10 @@ const translations = {
   enquiries: 'Consultas',
   orders: 'Órdenes',
   EditProduct: 'Editar Producto',
-  addproduct: 'Agregar Producto',
+  addproduct: 'Análisis IA',
   ThemeCustomizer: 'Diseño Visual',
   productlist: 'Lista de Productos',
+  'product-analysis': 'Agente IA',
   addcoupon: 'Crear Cupón',
   couponlist: 'Lista de Cupones',
   addblog: 'Agregar Blog',
@@ -54,8 +57,9 @@ const groups = {
     label: 'Productos',
     icon: StorefrontIcon,
     items: [
-      { key: 'addproduct', icon: AddShoppingCartIcon },
+      { key: 'addproduct', icon: AutoAwesomeIcon },
       { key: 'productlist', icon: StorefrontIcon },
+      { key: 'product-analysis', icon: OutboxIcon  },
     ],
   },
   marketing: {

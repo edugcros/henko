@@ -2,8 +2,16 @@ import React, { useMemo } from 'react'
 import PropTypes from 'prop-types'
 import ReactStars from 'react-stars'
 import { useNavigate } from 'react-router-dom'
-import { Card, CardMedia, CardContent, Typography, Box, alpha, Skeleton } from '@mui/material'
+import { Card, CardMedia, CardContent, Typography, Box } from '@mui/material'
 import { useSelector } from 'react-redux'
+import {
+  formatCurrency,
+  getActiveThemeConfig,
+  getProductThemeConfig,
+  getProductImage,
+  getProductRouteId,
+  getThemeColors,
+} from '@utils/themeRuntime'
 
 /**
  * HomeProductCard Optimizado
@@ -14,19 +22,32 @@ import { useSelector } from 'react-redux'
 const HomeProductCard = React.memo(({ data }) => {
   const navigate = useNavigate()
 
-  // Acceso a los colores dinámicos del tenant para el precio o bordes
-  const themeColors = useSelector(state => state.theme?.config?.colors || {})
-  const primaryColor = themeColors.primary || '#1976d2'
+  const themeState = useSelector(state => state.theme) || {}
+  const activeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const productTheme = useMemo(
+    () => getProductThemeConfig(activeConfig),
+    [activeConfig],
+  )
 
   // Extraemos el primer item con seguridad
   const item = useMemo(() => (Array.isArray(data) ? data[0] : data), [data])
 
   if (!item) return null
 
-  const imageUrl = item?.images?.[0]?.url || '/assets/images/placeholder.png'
-  const slug = item?.slug || item?._id
+  const imageUrl = getProductImage(item)
+  const routeId = getProductRouteId(item)
+  const aspectRatio = productTheme.imageAspectRatio?.replace(':', ' / ') || '1 / 1'
+  const hoverTransform = {
+    none: 'none',
+    zoom: 'scale(1.02)',
+    lift: 'translateY(-5px)',
+    border: 'none',
+    scale: 'scale(1.02)',
+  }[productTheme.hoverEffect || 'lift']
+
   const handleCardClick = () => {
-    navigate(`/product/${item._id}`) // 👈 Forzamos el uso del _id
+    navigate(`/product/${routeId}`)
   }
 
   return (
@@ -38,18 +59,29 @@ const HomeProductCard = React.memo(({ data }) => {
         borderRadius: 4, // 16px
         overflow: 'hidden',
         margin: '0 auto',
-        backgroundColor: 'background.paper',
+        backgroundColor: themeColors.surface,
+        border: `1px solid ${themeColors.border}`,
         boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
         transition: 'transform 0.3s ease, box-shadow 0.3s ease',
         cursor: 'pointer',
         '&:hover': {
-          transform: 'translateY(-5px)',
+          transform: hoverTransform,
           boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
+          borderColor:
+            productTheme.hoverEffect === 'border'
+              ? themeColors.primary
+              : themeColors.border,
         },
       }}
     >
       {/* Contenedor de Imagen */}
-      <Box sx={{ position: 'relative', pt: '100%', bgcolor: '#fafafa' }}>
+      <Box
+        sx={{
+          position: 'relative',
+          aspectRatio,
+          bgcolor: themeColors.background,
+        }}
+      >
         <CardMedia
           component="img"
           image={imageUrl}
@@ -99,30 +131,31 @@ const HomeProductCard = React.memo(({ data }) => {
         </Typography>
 
         {/* Rating */}
+        {productTheme.showRating !== false && (
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
           <ReactStars
             count={5}
             size={18}
             value={Number(item.totalrating) || 0}
             edit={false}
-            color2={primaryColor} // El color de las estrellas puede ser el primario
+            color2={themeColors.primary}
           />
         </Box>
+        )}
 
         {/* Precio */}
+        {productTheme.showPrice !== false && (
         <Typography
           variant="h6"
           sx={{
             fontWeight: 800,
-            color: primaryColor,
+            color: themeColors.primary,
             fontSize: '1.15rem',
           }}
         >
-          {new Intl.NumberFormat('es-CL', {
-            style: 'currency',
-            currency: 'CLP',
-          }).format(item.price || 0)}
+          {formatCurrency(item.price || 0, activeConfig)}
         </Typography>
+        )}
       </CardContent>
     </Card>
   )

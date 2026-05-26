@@ -112,6 +112,7 @@ export const previewThemeConfig = createAsyncThunk(
 
 const initialState = {
   config: null,
+  previewConfig: null,
   isLoading: false,
   isError: false,
   isSuccess: false,
@@ -139,7 +140,7 @@ const themeSlice = createSlice({
 
     updateLocalConfig: (state, action) => {
       state.config = { ...state.config, ...action.payload }
-      state.hasChanges = true
+      state.hasChanges = false
     },
 
     resetThemeState: () => initialState,
@@ -237,7 +238,7 @@ const themeSlice = createSlice({
       })
       .addCase(previewThemeConfig.fulfilled, (state, action) => {
         state.isLoading = false
-        state.config = action.payload.data
+        state.previewConfig = action.payload.data?.data || action.payload.data
         state.previewMode = true
       })
       .addCase(previewThemeConfig.rejected, (state, action) => {

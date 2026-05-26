@@ -3,11 +3,19 @@
 
 import mongoose from 'mongoose'
 import { v2 as cloudinary } from 'cloudinary'
+import crypto from 'crypto'
+import fs from 'fs/promises'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 import ThemeConfig, {
   DEFAULT_THEME_CONFIG,
 } from '../models/themeConfigModel.js'
 import logger from '../../config/logger.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const rootDir = path.resolve(__dirname, '../../')
 
 // =====================================================
 // CONSTANTES
@@ -48,6 +56,8 @@ const DESIGN_ROOT_KEYS = new Set([
   'maintenanceMode',
 ])
 
+const IMAGE_FIELDS = new Set(['backgroundImage', 'logo', 'favicon'])
+
 const DEFAULT_PREVIEW_TTL_MINUTES = 30
 
 // =====================================================
@@ -70,6 +80,13 @@ const errorResponse = (res, message, statusCode = 400, errors = null) => {
   if (errors) response.errors = errors
 
   return res.status(statusCode).json(response)
+}
+
+const setNoStoreHeaders = res => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  res.setHeader('Pragma', 'no-cache')
+  res.setHeader('Expires', '0')
+  res.setHeader('Surrogate-Control', 'no-store')
 }
 
 // =====================================================
@@ -137,6 +154,36 @@ const deepMerge = (base, patch) => {
   return output
 }
 
+const normalizeImageAsset = value => {
+  const image = value?.image || value?.payload?.image || value?.payload || value
+
+  if (!image) return null
+  if (typeof image === 'string') {
+    const url = image.trim()
+    return url ? { url, public_id: '' } : null
+  }
+  if (!isPlainObject(image)) return null
+
+  const url = typeof image.url === 'string' ? image.url.trim() : ''
+  if (!url) return null
+
+  return {
+    url,
+    public_id: image.public_id || image.publicId || '',
+  }
+}
+
+const sanitizeThemePatchValue = (value, key = '') => {
+  if (IMAGE_FIELDS.has(key)) return normalizeImageAsset(value)
+  if (!isPlainObject(value)) return value
+
+  return Object.entries(value).reduce((acc, [childKey, childValue]) => {
+    if (['meta', 'error'].includes(childKey)) return acc
+    acc[childKey] = sanitizeThemePatchValue(childValue, childKey)
+    return acc
+  }, {})
+}
+
 const sanitizeUpdates = updates => {
   if (!isPlainObject(updates)) return {}
 
@@ -144,7 +191,7 @@ const sanitizeUpdates = updates => {
     if (PROTECTED_FIELDS.has(key)) return acc
     if (!DESIGN_ROOT_KEYS.has(key)) return acc
 
-    acc[key] = value
+    acc[key] = sanitizeThemePatchValue(value, key)
     return acc
   }, {})
 }
@@ -414,7 +461,11 @@ const uploadBufferToCloudinary = async ({
 }) => {
   configureCloudinaryIfNeeded()
 
-  if (!process.env.CLOUDINARY_CLOUD_NAME) {
+  if (
+    !process.env.CLOUDINARY_CLOUD_NAME ||
+    !process.env.CLOUDINARY_API_KEY ||
+    !process.env.CLOUDINARY_API_SECRET
+  ) {
     throw new Error('Cloudinary no está configurado')
   }
 
@@ -425,6 +476,37 @@ const uploadBufferToCloudinary = async ({
     resource_type: 'image',
     overwrite: false,
   })
+}
+
+const getPublicBaseUrl = req => {
+  return (
+    process.env.PUBLIC_URL ||
+    process.env.API_PUBLIC_URL ||
+    process.env.BACKEND_PUBLIC_URL ||
+    `${req.protocol}://${req.get('host')}`
+  ).replace(/\/+$/, '')
+}
+
+const uploadThemeImageLocally = async ({ file, tenantId, type, req }) => {
+  const extension = path.extname(file.originalname || '').toLowerCase() || '.jpg'
+  const safeName = `${Date.now()}-${crypto.randomUUID()}${extension}`
+  const relativePath = path.posix.join('theme-assets', String(tenantId), type, safeName)
+  const folderAbs = path.join(rootDir, 'uploads', 'theme-assets', String(tenantId), type)
+  const fileAbs = path.join(folderAbs, safeName)
+
+  await fs.mkdir(folderAbs, { recursive: true })
+  await fs.writeFile(fileAbs, file.buffer)
+
+  return {
+    public_id: relativePath,
+    url: `${getPublicBaseUrl(req)}/uploads/${relativePath}`.replace(/([^:]\/)\/+/g, '$1'),
+    width: null,
+    height: null,
+    format: extension.replace('.', ''),
+    bytes: file.size,
+    type,
+    storage: 'local',
+  }
 }
 
 // =====================================================
@@ -440,6 +522,7 @@ export const getPublicTheme = async (req, res, next) => {
     const { tenantId } = resolveTenantContext(req)
     const theme = await ensureActiveTheme({ tenantId, req })
 
+    setNoStoreHeaders(res)
     return successResponse(res, theme.toPublicJSON())
   } catch (error) {
     return next(error)
@@ -466,6 +549,7 @@ export const getPublicThemeById = async (req, res, next) => {
       })
     }
 
+    setNoStoreHeaders(res)
     return successResponse(res, theme.toPublicJSON())
   } catch (error) {
     if (error?.code === 11000) {
@@ -493,7 +577,7 @@ export const getThemeCSS = async (req, res, next) => {
     }
 
     res.setHeader('Content-Type', 'text/css; charset=utf-8')
-    res.setHeader('Cache-Control', 'public, max-age=300')
+    setNoStoreHeaders(res)
 
     return res.status(200).send(
       theme.compiledCSS ||
@@ -904,22 +988,43 @@ export const uploadImage = async (req, res, next) => {
       })
     }
 
-    const upload = await uploadBufferToCloudinary({
-      buffer: req.file.buffer,
-      mimetype: req.file.mimetype,
-      tenantId,
-      type: req.body.type || 'generic',
-    })
+    const type = req.body.type || 'generic'
+    let upload
 
-    return successResponse(res, {
-      public_id: upload.public_id,
-      url: upload.secure_url,
-      width: upload.width,
-      height: upload.height,
-      format: upload.format,
-      bytes: upload.bytes,
-      type: req.body.type || 'generic',
-    })
+    try {
+      upload = await uploadBufferToCloudinary({
+        buffer: req.file.buffer,
+        mimetype: req.file.mimetype,
+        tenantId,
+        type,
+      })
+
+      return successResponse(res, {
+        public_id: upload.public_id,
+        url: upload.secure_url,
+        width: upload.width,
+        height: upload.height,
+        format: upload.format,
+        bytes: upload.bytes,
+        type,
+        storage: 'cloudinary',
+      })
+    } catch (cloudinaryError) {
+      logger.warn('[ThemeConfig] Cloudinary no disponible. Usando storage local para imagen de theme.', {
+        tenantId,
+        type,
+        error: cloudinaryError.message,
+      })
+
+      upload = await uploadThemeImageLocally({
+        file: req.file,
+        tenantId,
+        type,
+        req,
+      })
+
+      return successResponse(res, upload)
+    }
   } catch (error) {
     return next(error)
   }

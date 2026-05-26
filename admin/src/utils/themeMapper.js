@@ -14,12 +14,14 @@ export const mapConfigToMuiTheme = (config) => {
     buttons = {},
   } = config;
 
-  const primary = colors.primary || '#1976d2';
-  const secondary = colors.secondary || '#dc004e';
+  const primary = safeHex(colors.primary, '#1976d2');
+  const secondary = safeHex(colors.secondary, '#dc004e');
+  const background = safeHex(colors.background, '#ffffff');
+  const surface = safeHex(colors.surface, '#f5f5f5');
 
   // 🎯 PALETTE CORREGIDO
   const palette = {
-    mode: getLuminance(colors.background || '#ffffff') > 0.5 ? 'light' : 'dark',
+    mode: getLuminance(background) > 0.5 ? 'light' : 'dark',
 
     primary: {
       main: primary,
@@ -36,19 +38,19 @@ export const mapConfigToMuiTheme = (config) => {
     },
 
     background: {
-      default: colors.background || '#ffffff',
-      paper: colors.surface || '#f5f5f5',
+      default: background,
+      paper: surface,
     },
 
     text: {
-      primary: colors.text || '#1a1a1a',
-      secondary: colors.mutedText || '#666',
+      primary: safeHex(colors.text, '#1a1a1a'),
+      secondary: safeHex(colors.mutedText, '#666666'),
     },
 
-    error: { main: colors.error || '#d32f2f' },
-    warning: { main: colors.warning || '#ed6c02' },
-    info: { main: colors.info || '#0288d1' },
-    success: { main: colors.success || '#2e7d32' },
+    error: { main: safeHex(colors.error, '#d32f2f') },
+    warning: { main: safeHex(colors.warning, '#ed6c02') },
+    info: { main: safeHex(colors.info, '#0288d1') },
+    success: { main: safeHex(colors.success, '#2e7d32') },
   };
 
   // 🎯 TYPOGRAPHY CORREGIDO
@@ -118,6 +120,10 @@ export const mapConfigToMuiTheme = (config) => {
 //
 
 // HEX → RGB
+const isValidHex = (hex) => /^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(hex || '');
+
+const safeHex = (hex, fallback) => (isValidHex(hex) ? hex : fallback);
+
 const hexToRgb = (hex) => {
   const clean = hex.replace('#', '');
   const bigint = parseInt(clean, 16);
@@ -142,7 +148,8 @@ const rgbToHex = (r, g, b) =>
   '#' +
   [r, g, b]
     .map((x) => {
-      const hex = x.toString(16);
+      const safeValue = Math.max(0, Math.min(255, Math.round(x)));
+      const hex = safeValue.toString(16);
       return hex.length === 1 ? '0' + hex : hex;
     })
     .join('');

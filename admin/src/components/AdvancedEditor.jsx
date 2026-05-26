@@ -7,10 +7,9 @@ import {
   Switch,
   FormControlLabel,
   TextField,
-  Divider,
 } from '@mui/material';
 
-const AdvancedEditor = ({ value, customCSS, onChange, onCSSChange }) => {
+const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJSChange }) => {
   const advanced = value || {};
 
   const handleChange = (field, newValue) => {
@@ -84,8 +83,14 @@ const AdvancedEditor = ({ value, customCSS, onChange, onCSSChange }) => {
             fullWidth
             multiline
             rows={6}
-            value={advanced.customJS || ''}
-            onChange={(e) => handleChange('customJS', e.target.value)}
+            value={customJS ?? advanced.customJS ?? ''}
+            onChange={(e) => {
+              if (onJSChange) {
+                onJSChange(e.target.value);
+              } else {
+                handleChange('customJS', e.target.value);
+              }
+            }}
             placeholder="// Tu JavaScript personalizado aquí"
             sx={{
               '& .MuiInputBase-root': {

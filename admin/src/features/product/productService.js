@@ -206,12 +206,14 @@ const uploadProductImage = async (productId, imageFile) => {
   const formData = new FormData()
   formData.append('images', imageFile)
 
-  return apiRequest('post', `/${productId}/upload-image`, formData)
+  return apiRequest('post', `/${productId}/upload-image`, formData, {
+    isMultipart: true,
+  })
 }
 
 /**
- * Eliminar imagen específica del producto.
- * El backend actual espera public_id por query string.
+ * Eliminar imagen específica del producto
+ * El backend actual espera public_id por query string
  */
 const deleteProductImage = async (productId, publicId) => {
   if (!productId) {
@@ -226,7 +228,6 @@ const deleteProductImage = async (productId, publicId) => {
     params: { public_id: publicId },
   })
 }
-
 /**
  * Obtener configuración de una categoría.
  */

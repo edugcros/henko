@@ -34,7 +34,7 @@ const HEIGHTS = {
 // ===============================
 // COMPONENT
 // ===============================
-const HeroPanel = ({ value = {}, onChange, colors = {} }) => {
+const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
   const hero = value
 
   const update = (field, val) => {
@@ -192,6 +192,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {} }) => {
             <ImageUploader
               value={hero.backgroundImage}
               onChange={(img) => update('backgroundImage', img)}
+              onUpload={onImageUpload}
               label="Imagen"
             />
 

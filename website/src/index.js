@@ -21,7 +21,13 @@ const AppInitializer = () => {
     const initializeApp = async () => {
       ReactGA.initialize('G-XXXXXXXXXX')
       setApiStore(store)
-      await initCsrf()
+
+      const isThemePreviewRoute = window.location.pathname === '/theme-preview'
+
+      if (!isThemePreviewRoute) {
+        await initCsrf()
+      }
+
       setReady(true)
     }
     initializeApp()

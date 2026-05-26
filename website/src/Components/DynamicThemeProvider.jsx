@@ -14,9 +14,11 @@ const DEFAULT_THEME = {
     primary: '#1976d2',
     secondary: '#dc004e',
     background: '#ffffff',
-    paper: '#f5f5f5',
-    textPrimary: '#212121',
-    textSecondary: '#757575',
+    surface: '#f5f5f5',
+    text: '#212121',
+    mutedText: '#757575',
+    border: '#e0e0e0',
+    accent: '#ff9800',
     error: '#f44336',
     warning: '#ff9800',
     info: '#2196f3',
@@ -36,6 +38,13 @@ const DEFAULT_THEME = {
     borderRadius: 8,
     spacing: 8,
     shadows: true,
+  },
+  buttons: {
+    radius: 8,
+    uppercase: false,
+    elevation: 2,
+    size: 'medium',
+    variant: 'contained',
   },
   animations: {
     preset: 'smooth',
@@ -106,6 +115,7 @@ const DynamicThemeProvider = ({ children }) => {
       colors: { ...DEFAULT_THEME.colors, ...source.colors },
       typography: { ...DEFAULT_THEME.typography, ...source.typography },
       layout: { ...DEFAULT_THEME.layout, ...source.layout },
+      buttons: { ...DEFAULT_THEME.buttons, ...source.buttons },
       animations: { ...DEFAULT_THEME.animations, ...source.animations },
       storeName: source.storeName || DEFAULT_THEME.storeName,
       favicon: source.favicon,
@@ -127,7 +137,7 @@ const DynamicThemeProvider = ({ children }) => {
   // ==========================================
 
   const theme = useMemo(() => {
-    const { colors, typography, layout, darkMode } = activeConfig
+    const { colors, typography, layout, buttons, darkMode } = activeConfig
 
     const palette = {
       mode: darkMode ? 'dark' : 'light',
@@ -149,16 +159,20 @@ const DynamicThemeProvider = ({ children }) => {
         default: darkMode
           ? '#121212'
           : sanitizeColor(colors.background, DEFAULT_THEME.colors.background),
-        paper: darkMode ? '#1e1e1e' : sanitizeColor(colors.paper, DEFAULT_THEME.colors.paper),
+        paper: darkMode ? '#1e1e1e' : sanitizeColor(colors.surface, DEFAULT_THEME.colors.surface),
       },
       text: {
         primary: darkMode
           ? '#ffffff'
-          : sanitizeColor(colors.textPrimary, DEFAULT_THEME.colors.textPrimary),
+          : sanitizeColor(colors.text, DEFAULT_THEME.colors.text),
         secondary: darkMode
           ? '#b0b0b0'
-          : sanitizeColor(colors.textSecondary, DEFAULT_THEME.colors.textSecondary),
+          : sanitizeColor(
+            colors.mutedText || colors.textSecondary || colors.textMuted,
+            DEFAULT_THEME.colors.mutedText,
+          ),
       },
+      divider: sanitizeColor(colors.border, DEFAULT_THEME.colors.border),
     }
 
     const fontFamily = buildFontFamily(typography)
@@ -246,8 +260,8 @@ const DynamicThemeProvider = ({ children }) => {
         MuiButton: {
           styleOverrides: {
             root: {
-              borderRadius,
-              textTransform: 'none',
+              borderRadius: parseNumber(buttons.radius, 0, 50, DEFAULT_THEME.buttons.radius),
+              textTransform: buttons.uppercase ? 'uppercase' : 'none',
               fontWeight: 600,
             },
           },
@@ -262,16 +276,6 @@ const DynamicThemeProvider = ({ children }) => {
                     ? '0 4px 12px rgba(0,0,0,0.5)'
                     : '0 4px 12px rgba(0,0,0,0.1)'
                   : 'none',
-            },
-          },
-        },
-        MuiContainer: {
-          styleOverrides: {
-            root: {
-              maxWidth:
-                layout.maxWidth === 'false' || layout.maxWidth === false
-                  ? '100%'
-                  : layout.maxWidth || 'lg',
             },
           },
         },

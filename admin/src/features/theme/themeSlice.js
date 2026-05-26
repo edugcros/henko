@@ -14,6 +14,7 @@ import {
   rollbackTheme,
   toggleMaintenance,
   validateTheme,
+  normalizeImageAsset as normalizeUploadedImageAsset,
 } from './themeApi.js'
 
 // ==========================================
@@ -59,6 +60,64 @@ const initialState = {
 const deepClone = (obj) => JSON.parse(JSON.stringify(obj))
 const isEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
+const isImageField = key => ['backgroundImage', 'logo', 'favicon'].includes(key)
+
+const normalizeImageAsset = value => {
+  const image =
+    value?.image ||
+    value?.data?.image ||
+    value?.data ||
+    value?.payload?.image ||
+    value?.payload?.data ||
+    value?.payload ||
+    value
+
+  if (!image) return null
+  if (typeof image === 'string') return image.trim() ? { url: image.trim(), public_id: '' } : null
+  if (typeof image !== 'object') return null
+
+  const url = typeof image.url === 'string' ? image.url.trim() : ''
+  if (!url) return null
+
+  return {
+    url,
+    public_id: image.public_id || image.publicId || '',
+  }
+}
+
+const sanitizeThemeValue = (value, key = '') => {
+  if (isImageField(key)) return normalizeImageAsset(value)
+
+  if (!value || typeof value !== 'object') return value
+  if (typeof File !== 'undefined' && value instanceof File) return undefined
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return undefined
+  if (Array.isArray(value)) {
+    return value
+      .map(item => sanitizeThemeValue(item))
+      .filter(item => item !== undefined)
+  }
+
+  return Object.entries(value).reduce((acc, [childKey, childValue]) => {
+    if (['meta', 'error'].includes(childKey)) return acc
+    const sanitized = sanitizeThemeValue(childValue, childKey)
+    if (sanitized !== undefined) acc[childKey] = sanitized
+    return acc
+  }, {})
+}
+
+const unwrapApiData = value => {
+  if (
+    value &&
+    typeof value === 'object' &&
+    Object.prototype.hasOwnProperty.call(value, 'success') &&
+    Object.prototype.hasOwnProperty.call(value, 'data')
+  ) {
+    return value.data
+  }
+
+  return value
+}
+
 // ==========================================
 // THUNKS
 // ==========================================
@@ -67,8 +126,7 @@ export const fetchTheme = createAsyncThunk(
   'theme/fetch',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await getTheme()
-      return response.data
+      return await getTheme()
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -79,8 +137,7 @@ export const saveTheme = createAsyncThunk(
   'theme/save',
   async (themeData, { rejectWithValue }) => {
     try {
-      const response = await apiUpdateTheme(themeData)
-      return response.data
+      return await apiUpdateTheme(themeData)
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -93,7 +150,7 @@ export const autoSaveTheme = createAsyncThunk(
     try {
       const response = await apiPatchTheme(partialData)
       // Silencioso - no muestra loading global
-      return response.data
+      return response
     } catch (error) {
       // Auto-save fallido no es crítico
       dispatch(setAutoSaveError(error.message))
@@ -106,8 +163,7 @@ export const resetThemeToDefault = createAsyncThunk(
   'theme/reset',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await apiResetTheme()
-      return response.data
+      return await apiResetTheme()
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -119,7 +175,7 @@ export const uploadThemeImage = createAsyncThunk(
   async ({ file, type, fieldPath }, { rejectWithValue }) => {
     try {
       const uploadResponse = await uploadImage(file, type)
-      const imageData = uploadResponse.data
+      const imageData = normalizeUploadedImageAsset(uploadResponse)
       
       if (!imageData?.url) throw new Error('Respuesta de upload inválida')
       
@@ -141,7 +197,7 @@ export const uploadThemeImage = createAsyncThunk(
       })
       
       const themeResponse = await apiPatchTheme(updateData)
-      return { image: imageData, theme: themeResponse.data }
+      return { image: imageData, theme: themeResponse }
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -152,8 +208,7 @@ export const createThemePreview = createAsyncThunk(
   'theme/createPreview',
   async (previewData, { rejectWithValue }) => {
     try {
-      const response = await apiCreatePreview(previewData)
-      return response.data
+      return await apiCreatePreview(previewData)
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -164,8 +219,7 @@ export const activateThemePreview = createAsyncThunk(
   'theme/activatePreview',
   async (previewId, { rejectWithValue }) => {
     try {
-      const response = await apiActivatePreview(previewId)
-      return response.data
+      return await apiActivatePreview(previewId)
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -176,8 +230,7 @@ export const fetchThemeHistory = createAsyncThunk(
   'theme/fetchHistory',
   async (limit = 10, { rejectWithValue }) => {
     try {
-      const response = await getThemeHistory(limit)
-      return response.data
+      return await getThemeHistory(limit)
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -188,8 +241,7 @@ export const rollbackToVersion = createAsyncThunk(
   'theme/rollback',
   async (version, { rejectWithValue }) => {
     try {
-      const response = await rollbackTheme(version)
-      return response.data
+      return await rollbackTheme(version)
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -212,8 +264,7 @@ export const importThemeFromFile = createAsyncThunk(
   'theme/import',
   async (themeData, { rejectWithValue }) => {
     try {
-      const response = await apiImportTheme(themeData)
-      return response.data
+      return await apiImportTheme(themeData)
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -224,8 +275,7 @@ export const toggleMaintenanceMode = createAsyncThunk(
   'theme/toggleMaintenance',
   async (enabled, { rejectWithValue }) => {
     try {
-      const response = await toggleMaintenance(enabled)
-      return response.data
+      return await toggleMaintenance(enabled)
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -236,8 +286,7 @@ export const validateThemeConfig = createAsyncThunk(
   'theme/validate',
   async (config, { rejectWithValue }) => {
     try {
-      const response = await validateTheme(config)
-      return response.data
+      return await validateTheme(config)
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -269,7 +318,7 @@ const themeSlice = createSlice({
         target = target[key]
       }
       
-      target[keys[keys.length - 1]] = value
+      target[keys[keys.length - 1]] = sanitizeThemeValue(value, keys[keys.length - 1])
       state.config = newConfig
       state.hasUnsavedChanges = !isEqual(newConfig, state.originalConfig)
     },
@@ -278,13 +327,13 @@ const themeSlice = createSlice({
       const { section, data } = action.payload
       state.config = {
         ...state.config,
-        [section]: { ...state.config[section], ...data },
+        [section]: { ...state.config[section], ...sanitizeThemeValue(data, section) },
       }
       state.hasUnsavedChanges = !isEqual(state.config, state.originalConfig)
     },
     
     setPreviewData: (state, action) => {
-      state.previewConfig = action.payload
+      state.previewConfig = sanitizeThemeValue(action.payload)
     },
     
     clearPreview: (state) => {
@@ -336,8 +385,8 @@ const themeSlice = createSlice({
       })
       .addCase(fetchTheme.fulfilled, (state, action) => {
         state.isLoading = false
-        state.config = action.payload
-        state.originalConfig = deepClone(action.payload)
+        state.config = sanitizeThemeValue(unwrapApiData(action.payload))
+        state.originalConfig = deepClone(state.config)
         state.hasUnsavedChanges = false
         state.lastFetched = new Date().toISOString()
       })
@@ -355,8 +404,8 @@ const themeSlice = createSlice({
       .addCase(saveTheme.fulfilled, (state, action) => {
         state.isSaving = false
         state.isSuccess = true
-        state.config = action.payload
-        state.originalConfig = deepClone(action.payload)
+        state.config = sanitizeThemeValue(unwrapApiData(action.payload))
+        state.originalConfig = deepClone(state.config)
         state.hasUnsavedChanges = false
         state.lastSaved = new Date().toISOString()
       })
@@ -368,7 +417,9 @@ const themeSlice = createSlice({
     
     // Auto-save (silencioso)
       .addCase(autoSaveTheme.fulfilled, (state, action) => {
-        state.originalConfig = deepClone(action.payload)
+        const savedConfig = sanitizeThemeValue(unwrapApiData(action.payload))
+        state.config = savedConfig
+        state.originalConfig = deepClone(savedConfig)
         state.hasUnsavedChanges = false
         state.lastSaved = new Date().toISOString()
         state.autoSaveError = null
@@ -380,8 +431,8 @@ const themeSlice = createSlice({
       })
       .addCase(resetThemeToDefault.fulfilled, (state, action) => {
         state.isLoading = false
-        state.config = action.payload
-        state.originalConfig = deepClone(action.payload)
+        state.config = sanitizeThemeValue(unwrapApiData(action.payload))
+        state.originalConfig = deepClone(state.config)
         state.hasUnsavedChanges = false
       })
       .addCase(resetThemeToDefault.rejected, (state, action) => {
@@ -396,8 +447,8 @@ const themeSlice = createSlice({
       })
       .addCase(uploadThemeImage.fulfilled, (state, action) => {
         state.isSaving = false
-        state.config = action.payload.theme
-        state.originalConfig = deepClone(action.payload.theme)
+        state.config = sanitizeThemeValue(unwrapApiData(action.payload.theme))
+        state.originalConfig = deepClone(state.config)
         state.hasUnsavedChanges = false
       })
       .addCase(uploadThemeImage.rejected, (state, action) => {
@@ -408,12 +459,16 @@ const themeSlice = createSlice({
     
     // Preview system
       .addCase(createThemePreview.fulfilled, (state, action) => {
-        state.previewId = action.payload.previewId
+        const previewPayload = unwrapApiData(action.payload)
+        state.previewId = previewPayload?.previewId
+        state.previewConfig = sanitizeThemeValue(previewPayload?.data || state.previewConfig)
       })
       .addCase(activateThemePreview.fulfilled, (state, action) => {
-        state.config = action.payload
-        state.originalConfig = deepClone(action.payload)
+        state.config = sanitizeThemeValue(unwrapApiData(action.payload))
+        state.originalConfig = deepClone(state.config)
         state.previewId = null
+        state.previewConfig = null
+        state.previewMode = false
         state.hasUnsavedChanges = false
       })
     
@@ -431,15 +486,15 @@ const themeSlice = createSlice({
     
     // Rollback
       .addCase(rollbackToVersion.fulfilled, (state, action) => {
-        state.config = action.payload
-        state.originalConfig = deepClone(action.payload)
+        state.config = sanitizeThemeValue(unwrapApiData(action.payload))
+        state.originalConfig = deepClone(state.config)
         state.hasUnsavedChanges = false
       })
     
     // Import
       .addCase(importThemeFromFile.fulfilled, (state, action) => {
-        state.config = action.payload
-        state.originalConfig = deepClone(action.payload)
+        state.config = sanitizeThemeValue(unwrapApiData(action.payload))
+        state.originalConfig = deepClone(state.config)
         state.hasUnsavedChanges = false
       })
   },

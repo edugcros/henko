@@ -4,21 +4,31 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 const propertyId = process.env.GA_PROPERTY_ID
+const isAnalyticsConfigured = Boolean(
+  process.env.GA_PROPERTY_ID &&
+    process.env.GA_CLIENT_EMAIL &&
+    process.env.GA_PRIVATE_KEY &&
+    process.env.GA_PROJECT_ID,
+)
 
 const credentials = {
   client_email: process.env.GA_CLIENT_EMAIL,
-  private_key: process.env.GA_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  private_key: process.env.GA_PRIVATE_KEY?.replace(/\\n/g, '\n'),
 }
 
-const analyticsDataClient = new BetaAnalyticsDataClient({
-  credentials,
-  projectId: process.env.GA_PROJECT_ID,
-})
+const analyticsDataClient = isAnalyticsConfigured
+  ? new BetaAnalyticsDataClient({
+    credentials,
+    projectId: process.env.GA_PROJECT_ID,
+  })
+  : null
 
 // backend/services/analyticsService.js
 
 export const getTopVisitedProducts = async () => {
   try {
+    if (!analyticsDataClient || !propertyId) return []
+
     const [response] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
       dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],

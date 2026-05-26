@@ -165,19 +165,21 @@ export const useThemeConfig = () => {
         }
 
         // 3. CONSTRUIR CONFIGURACIÓN COMPLETA
-        const configFull = useMemo(
-          () => ({
-            ...themeRes.data,
-            // Asegurar valores críticos
-            tenantId,
-            storeName: themeRes.data?.storeName || tenantName || CONFIG.DEFAULT_STORE_NAME,
-            tenantName: tenantName || themeRes.data?.storeName,
-            // Metadata útil
-            _loadedAt: Date.now(),
-            _source: 'api',
-          }),
-          [themeRes.data, tenantId, tenantName],
-        )
+        const configFull = {
+          ...themeRes.data,
+          tenantId,
+          storeName:
+            themeRes.data?.general?.storeName ||
+            themeRes.data?.storeName ||
+            tenantName ||
+            CONFIG.DEFAULT_STORE_NAME,
+          tenantName:
+            tenantName ||
+            themeRes.data?.general?.storeName ||
+            themeRes.data?.storeName,
+          _loadedAt: Date.now(),
+          _source: 'api',
+        }
 
         // 4. ACTUALIZAR ESTADOS (solo si sigue montado)
         if (!isMountedRef.current) return
@@ -297,7 +299,8 @@ export const useThemeConfig = () => {
       }
 
       try {
-        const result = await themeService.updateTheme(state.tenantId, newConfig)
+        const token = localStorage.getItem('token')
+        const result = await themeService.updateThemeConfig(token, newConfig)
 
         if (result.success) {
           // Actualizar cache y estados

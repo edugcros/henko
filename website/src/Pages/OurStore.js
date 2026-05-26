@@ -22,8 +22,12 @@ import {
   InputAdornment,
 } from '@mui/material'
 import { ExpandMore, ExpandLess, Search } from '@mui/icons-material'
-import { Newprimary, primary } from '../theme/colors'
 import { fetchPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSlice'
+import {
+  getActiveThemeConfig,
+  getSpacingThemeConfig,
+  getThemeColors,
+} from '@utils/themeRuntime'
 
 import { selectPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSelectors'
 
@@ -119,6 +123,13 @@ const OurStore = () => {
   } = useSelector(state => state.product)
 
   const promotionalBlocks = useSelector(selectPublicPromotionalBlocks)
+  const themeState = useSelector(state => state.theme) || {}
+  const activeThemeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const themeColors = useMemo(() => getThemeColors(activeThemeConfig), [activeThemeConfig])
+  const spacingTheme = useMemo(
+    () => getSpacingThemeConfig(activeThemeConfig),
+    [activeThemeConfig],
+  )
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [expandedCategories, setExpandedCategories] = useState({})
@@ -325,7 +336,7 @@ const OurStore = () => {
   }, [products, promotionalBlocks])
 
   return (
-    <Box sx={{ bgcolor: '#F5F5F7', minHeight: '100vh' }}>
+    <Box sx={{ bgcolor: themeColors.background, minHeight: '100vh' }}>
       <Container class1="py-5">
         <Box
           display="flex"
@@ -338,19 +349,14 @@ const OurStore = () => {
             <Paper
               elevation={2}
               sx={{
-                p: 3,
+                p: `${spacingTheme.cardPadding}px`,
                 borderRadius: 4,
-                border: '1px solid #E0E0E0',
+                border: '1px solid',
+                borderColor: themeColors.border,
                 overflow: 'hidden',
                 position: { xs: 'static', md: 'sticky' },
                 top: 20,
-                background: `linear-gradient(
-                  180deg,
-                  ${Newprimary?.gray || '#f7f7f7'} 0%,
-                  #f1f1f1 35%,
-                  #ebebeb 65%,
-                  #e5e5e5 100%
-                )`,
+                background: themeColors.surface,
               }}
             >
               <Typography
@@ -358,7 +364,7 @@ const OurStore = () => {
                 sx={{
                   mb: 2,
                   fontWeight: 700,
-                  color: Newprimary.darkCyan,
+                  color: themeColors.text,
                 }}
               >
                 Categorías
@@ -390,18 +396,18 @@ const OurStore = () => {
                               textTransform: 'none',
                               borderRadius: 2,
                               py: 1,
-                              px: 2,
-                              color: isSelectedCategory ? '#fff' : Newprimary.darkGray,
-                              bgcolor: isSelectedCategory ? Newprimary.darkGray : 'transparent',
+                              px: `${spacingTheme.cardPadding}px`,
+                              color: isSelectedCategory ? 'primary.contrastText' : themeColors.text,
+                              bgcolor: isSelectedCategory ? themeColors.primary : 'transparent',
                               '&:hover': {
-                                bgcolor: isSelectedCategory ? Newprimary.darkBlueGray : '#e0f2f1',
-                                color: isSelectedCategory ? '#fff' : Newprimary.darkBlueGray,
+                                bgcolor: isSelectedCategory ? themeColors.primary : themeColors.background,
+                                color: isSelectedCategory ? 'primary.contrastText' : themeColors.primary,
                               },
                             }}
                           >
                             <Typography
                               sx={{
-                                color: isSelectedCategory ? '#fff' : primary.black,
+                                color: isSelectedCategory ? 'primary.contrastText' : themeColors.text,
                                 fontWeight: 600,
                                 textTransform: 'uppercase',
                                 fontSize: 12,
@@ -416,7 +422,7 @@ const OurStore = () => {
                               sx={{
                                 fontSize: 12,
                                 fontWeight: 700,
-                                color: isSelectedCategory ? '#fff' : primary.black,
+                                color: isSelectedCategory ? 'primary.contrastText' : themeColors.textSecondary,
                                 ml: 1,
                                 whiteSpace: 'nowrap',
                               }}
@@ -431,9 +437,9 @@ const OurStore = () => {
                               minWidth: 42,
                               px: 0,
                               borderRadius: 2,
-                              color: Newprimary.darkGray,
-                              bgcolor: '#ffffff90',
-                              '&:hover': { bgcolor: '#ffffff' },
+                              color: themeColors.textSecondary,
+                              bgcolor: themeColors.background,
+                              '&:hover': { bgcolor: themeColors.surface },
                             }}
                           >
                             {isExpanded ? <ExpandLess /> : <ExpandMore />}
@@ -459,19 +465,21 @@ const OurStore = () => {
                                     textTransform: 'none',
                                     borderRadius: 2,
                                     py: 0.85,
-                                    px: 2,
+                                    px: `${spacingTheme.cardPadding}px`,
                                     fontSize: 13,
-                                    color: isSelectedSubcategory ? '#fff' : Newprimary.darkBlueGray,
+                                    color: isSelectedSubcategory
+                                      ? 'primary.contrastText'
+                                      : themeColors.textSecondary,
                                     bgcolor: isSelectedSubcategory
-                                      ? Newprimary.darkCyan
+                                      ? themeColors.primary
                                       : 'transparent',
                                     '&:hover': {
                                       bgcolor: isSelectedSubcategory
-                                        ? Newprimary.darkCyan
-                                        : '#edf7f6',
+                                        ? themeColors.primary
+                                        : themeColors.background,
                                       color: isSelectedSubcategory
-                                        ? '#fff'
-                                        : Newprimary.darkBlueGray,
+                                        ? 'primary.contrastText'
+                                        : themeColors.primary,
                                     },
                                   }}
                                 >
@@ -514,7 +522,7 @@ const OurStore = () => {
                   onClick={() => setShowAllCategories(prev => !prev)}
                   sx={{
                     mt: 1.5,
-                    color: Newprimary.SlateBlue,
+                    color: themeColors.primary,
                     textTransform: 'none',
                     fontWeight: 700,
                     fontSize: 16,
@@ -547,10 +555,10 @@ const OurStore = () => {
               component="form"
               onSubmit={handleSearchSubmit}
               sx={{
-                p: 2,
+                p: `${spacingTheme.cardPadding}px`,
                 mb: 3,
                 borderRadius: 3,
-                border: '1px solid #E0E0E0',
+                border: `1px solid ${themeColors.border}`,
                 display: 'flex',
                 gap: 2,
                 flexDirection: { xs: 'column', md: 'row' },
@@ -580,8 +588,8 @@ const OurStore = () => {
                     textTransform: 'none',
                     borderRadius: 2,
                     minWidth: 120,
-                    bgcolor: Newprimary.azul,
-                    '&:hover': { bgcolor: Newprimary.darkBlueGray },
+                    bgcolor: themeColors.primary,
+                    '&:hover': { bgcolor: themeColors.accent },
                   }}
                 >
                   Buscar
@@ -610,10 +618,10 @@ const OurStore = () => {
               flexDirection={{ xs: 'column', sm: 'row' }}
               gap={2}
               sx={{
-                p: 2,
-                bgcolor: '#fff',
+                p: `${spacingTheme.cardPadding}px`,
+                bgcolor: themeColors.surface,
                 borderRadius: 3,
-                border: '1px solid #E0E0E0',
+                border: `1px solid ${themeColors.border}`,
               }}
             >
               <Box>
@@ -622,7 +630,7 @@ const OurStore = () => {
                 </Typography>
 
                 {activeFilterLabel && (
-                  <Typography variant="caption" sx={{ color: Newprimary.darkBlueGray }}>
+                  <Typography variant="caption" sx={{ color: themeColors.textSecondary }}>
                     {activeFilterLabel}
                   </Typography>
                 )}

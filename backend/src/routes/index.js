@@ -16,6 +16,7 @@ import paymentRoutes from './paymentRoutes.js'
 import dashboardRoute from './dashboardRoute.js'
 import tenantRoutes from './tenantRoutes.js'
 import promotionalBlockRoute from './promotionalBlockRoute.js'
+import productAnalysisRoutes from './productAnalysisRoutes.js'
 
 const router = express.Router()
 
@@ -34,6 +35,9 @@ router.use('/imgup', uploadRoutes)
 router.use('/brand', brandRouter)
 router.use('/color', colorRouter)
 router.use('/coupons', couponRouter)
+
+//AGENTE
+router.use('/product-analysis', productAnalysisRoutes)
 
 // =======================================================
 // 🎨 TEMAS Y CONFIGURACIÓN VISUAL

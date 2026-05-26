@@ -53,6 +53,9 @@ const getCurrentTenantDomain = () => {
   return window.location.hostname.trim().toLowerCase()
 }
 
+const isThemePreviewRoute = () =>
+  typeof window !== 'undefined' && window.location.pathname === '/theme-preview'
+
 // =====================================================
 // 🏪 Provider
 // =====================================================
@@ -63,9 +66,16 @@ export const StoreThemeProvider = ({ children }) => {
   const [error, setError] = useState(null)
 
   const reduxThemeState = useSelector(state => state.theme) || {}
-  const { previewMode, previewConfig } = reduxThemeState
+  const { config: reduxConfig, previewMode, previewConfig } = reduxThemeState
 
   const loadTheme = useCallback(async () => {
+    if (isThemePreviewRoute()) {
+      setThemeData(prev => prev || previewConfig || createDefaultTheme())
+      setError(null)
+      setLoading(false)
+      return
+    }
+
     // -------------------------------------------------
     // Preview mode del panel admin
     // -------------------------------------------------
@@ -138,8 +148,12 @@ export const StoreThemeProvider = ({ children }) => {
   }, [loadTheme, previewMode])
 
   const muiTheme = useMemo(() => {
-    return createStoreTheme(themeData || createDefaultTheme())
-  }, [themeData])
+    const activeTheme = previewMode && previewConfig
+      ? previewConfig
+      : reduxConfig || themeData || createDefaultTheme()
+
+    return createStoreTheme(activeTheme, activeTheme?.tenantId || 'default')
+  }, [previewMode, previewConfig, reduxConfig, themeData])
 
   const contextValue = useMemo(
     () => ({
@@ -152,7 +166,7 @@ export const StoreThemeProvider = ({ children }) => {
     [themeData, loading, error, loadTheme, previewMode],
   )
 
-  if (loading && !themeData) {
+  if (loading && !themeData && !isThemePreviewRoute()) {
     return (
       <div
         style={{

@@ -107,7 +107,7 @@ export const TenantProvider = ({ children }) => {
       if (!cached) return null
 
       const { data, timestamp } = JSON.parse(cached)
-      const isValid = Date.now() - timestamp < CONFIG.TTL
+      const isValid = Date.now() - timestamp < CONFIG.CACHE_TTL
 
       return isValid ? data : null
     } catch {
@@ -135,6 +135,16 @@ export const TenantProvider = ({ children }) => {
 
   const loadTenantAndTheme = useCallback(
     async (attempt = 1) => {
+      if (typeof window !== 'undefined' && window.location.pathname === '/theme-preview') {
+        setLocalState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: null,
+          initialized: true,
+        }))
+        return null
+      }
+
       const hostname = getHostname()
 
       try {
@@ -155,11 +165,9 @@ export const TenantProvider = ({ children }) => {
         // 2. CARGAR TEMA (público para inicialización rápida)
 
         const themeRes = await themeService.getPublicTheme(tenantId)
-        console.log(themeRes)
         if (!themeRes.success) {
           throw new Error(themeRes.error || 'Error cargando tema')
         }
-        console.log(tenantRes)
         // 3. CONSTRUIR CONFIGURACIÓN COMPLETA
         const fullConfig = {
           ...themeRes.data,
@@ -172,7 +180,6 @@ export const TenantProvider = ({ children }) => {
             hostname,
           },
         }
-        console.log(fullConfig)
         // 4. GUARDAR EN CACHE
         saveToCache(fullConfig)
 
@@ -254,7 +261,6 @@ export const TenantProvider = ({ children }) => {
       if (token) {
         dispatch(getThemeConfig())
       }
-      console.log(getThemeConfig(token))
     } catch (error) {
       console.error('[TenantContext] Error en refresh:', error)
     }

@@ -1,6 +1,7 @@
 // 📁 src/features/user/userService.js
 import Cookies from 'js-cookie'
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
+import { env } from '../../config/env.js'
 
 // ======================================================
 // HELPERS

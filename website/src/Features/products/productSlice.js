@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import productService from './productService'
+import { resetAuthState } from '@features/user/userSlice'
 import { toast } from 'react-toastify'
 
 const initialState = {
@@ -36,6 +37,19 @@ const normalizeProduct = (product = {}) => ({
   totalrating: product.totalrating || 0,
 })
 
+const unwrapApiData = payload => {
+  if (!payload || typeof payload !== 'object') return payload
+  if (payload.data?.product) return payload.data.product
+  if (payload.data && !Array.isArray(payload.data)) return payload.data
+  if (payload.product) return payload.product
+  return payload
+}
+
+const unwrapRatingPayload = payload => {
+  const data = unwrapApiData(payload)
+  return data && typeof data === 'object' ? data : {}
+}
+
 export const getAllProducts = createAsyncThunk(
   'product/fetchAll',
   async (params = {}, { rejectWithValue }) => {
@@ -63,7 +77,7 @@ export const getProduct = createAsyncThunk(
   async (productId, { rejectWithValue }) => {
     try {
       const response = await productService.getProduct(productId)
-      return response?.data || response || {}
+      return unwrapApiData(response) || {}
     } catch (error) {
       return rejectWithValue(error?.message || 'Error al cargar el producto')
     }
@@ -107,6 +121,13 @@ export const rateProduct = createAsyncThunk(
 
       return response
     } catch (error) {
+      if ([401, 403].includes(Number(error?.status || error?.response?.status))) {
+        thunkAPI.dispatch(resetAuthState())
+        return thunkAPI.rejectWithValue(
+          'Tu sesión expiró. Iniciá sesión nuevamente para publicar una reseña.',
+        )
+      }
+
       return thunkAPI.rejectWithValue(
         error?.response?.data?.message ||
           error?.message ||
@@ -252,8 +273,12 @@ const productSlice = createSlice({
 
       // Rating
       .addCase(rateProduct.fulfilled, (state, action) => {
-        state.singleProduct.totalrating = action.payload?.totalrating || 0
-        state.singleProduct.ratings = action.payload?.ratings || []
+        const ratingPayload = unwrapRatingPayload(action.payload)
+
+        state.singleProduct.totalrating = Number(ratingPayload.totalrating) || 0
+        state.singleProduct.ratings = Array.isArray(ratingPayload.ratings)
+          ? ratingPayload.ratings
+          : []
       })
 
       // Images

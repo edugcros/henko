@@ -618,6 +618,25 @@ const productSchema = new Schema(
       index: true,
     },
 
+    aiAgentJobId: {
+      type: Schema.Types.ObjectId,
+      ref: 'ProductAnalysisJob',
+      default: null,
+      index: true,
+    },
+
+    aiAgentScheduledAt: {
+      type: Date,
+      default: null,
+    },
+
+    aiAutomationMode: {
+      type: String,
+      enum: ['manual', 'agent-assisted', 'agent-autosave'],
+      default: 'manual',
+      index: true,
+    },
+
     // Auditoría
     createdBy: {
       type: Schema.Types.ObjectId,

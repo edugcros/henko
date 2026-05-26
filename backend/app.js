@@ -90,6 +90,7 @@ app.use(mongoSanitize())
 
 app.use(express.static(path.join(__dirname, 'public')))
 app.use('/images', express.static(path.join(__dirname, 'public/images')))
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 // =======================================================
 // HEALTHCHECKS
@@ -199,6 +200,11 @@ const csrfExemptRoutes = [
 
   // Webhook externo real de Mercado Pago.
   { method: 'POST', path: `${env.apiPrefix}/payments/webhook/mercadopago` },
+
+  // Agente local de análisis por API key. El endpoint mantiene autenticación propia.
+  { method: 'POST', path: `${env.apiPrefix}/product-analysis/import` },
+  { method: 'POST', path: `${env.apiPrefix}/product-analysis/process-due` },
+  { method: 'POST', path: `${env.apiPrefix}/product-analysis/wishlist-promotions/run` },
 ]
 
 // Solo para etapa Vercel + TryCloudflare.

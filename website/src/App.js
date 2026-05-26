@@ -18,6 +18,7 @@ import { RouteRenderer } from './Components/RouteWrappers'
 import PublicLayout from './Components/publicLayout'
 import PrivateLayout from './Components/privateLayout'
 import SpinnerCentered from './Components/SpinnerCentered/SpinnerCentered'
+import ThemePreview from './Pages/ThemePreview'
 import { useAuth } from '@hooks/useAuth'
 
 import './App.css'
@@ -25,6 +26,7 @@ import './App.css'
 const App = () => {
   const { isLoading: authLoading } = useAuth()
   const location = useLocation()
+  const isThemePreviewRoute = location.pathname === '/theme-preview'
 
   useEffect(() => {
     ReactGA.send({
@@ -34,7 +36,7 @@ const App = () => {
     })
   }, [location])
 
-  if (authLoading) {
+  if (authLoading && !isThemePreviewRoute) {
     return <SpinnerCentered />
   }
 
@@ -42,6 +44,8 @@ const App = () => {
   return (
     <Suspense fallback={<SpinnerCentered />}>
       <Routes>
+        <Route path="/theme-preview" element={<ThemePreview />} />
+
         {/* --- RUTAS PÚBLICAS --- */}
         <Route path="/" element={<PublicLayout />}>
           {RouteRenderer({ routes: publicRoutes, isPublic: true })}

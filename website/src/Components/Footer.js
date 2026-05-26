@@ -14,9 +14,28 @@ import {
 } from '@mui/material'
 import { LinkedIn, Instagram, GitHub, YouTube } from '@mui/icons-material'
 import newsletter from '@assets/images/newsletter.png'
+import { useTenant } from '../contexts/TenantContext'
+import { useSelector } from 'react-redux'
+
+const getAssetUrl = asset => {
+  if (!asset) return null
+  if (typeof asset === 'string') return asset
+  return asset.url || null
+}
 
 const Footer = () => {
   const theme = useTheme()
+  const { themeConfig } = useTenant()
+  const themeState = useSelector(state => state.theme) || {}
+  const activeConfig = themeState.previewMode && themeState.previewConfig
+    ? themeState.previewConfig
+    : themeState.config || themeConfig || {}
+  const footer = activeConfig?.footer || {}
+  const general = activeConfig?.general || {}
+  const footerLogo = getAssetUrl(footer.logo)
+  const social = footer.social || {}
+  const footerColumns = Math.min(Math.max(Number(footer.columns ?? 4), 1), 6)
+  const footerColumnSize = 12 / footerColumns
 
   return (
     <Box
@@ -37,6 +56,7 @@ const Footer = () => {
         }}
       >
         <Container maxWidth="lg">
+          {footer.showNewsletter !== false && (
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} md={5}>
               <Stack direction="row" spacing={2} alignItems="center">
@@ -47,7 +67,7 @@ const Footer = () => {
                   sx={{ width: 40, height: 40 }}
                 />
                 <Typography variant="subtitle1" fontWeight="600" sx={{ fontSize: 16 }}>
-                  Suscribite a nuestro Newsletter
+                  {footer.newsletterText || 'Suscribite a nuestro Newsletter'}
                 </Typography>
               </Stack>
             </Grid>
@@ -80,6 +100,7 @@ const Footer = () => {
               </Stack>
             </Grid>
           </Grid>
+          )}
         </Container>
       </Box>
 
@@ -88,30 +109,51 @@ const Footer = () => {
         <Container maxWidth="lg">
           <Grid container spacing={3}>
             {/* Contacto */}
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={footerColumnSize}>
+              {footerLogo && (
+                <Box
+                  component="img"
+                  src={footerLogo}
+                  alt={general.storeName || 'Logo'}
+                  sx={{ maxWidth: 140, maxHeight: 56, objectFit: 'contain', mb: 1.5 }}
+                />
+              )}
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
-                Contacto
+                {general.storeName || 'Contacto'}
               </Typography>
               <Typography variant="body2" color="grey.400">
-                Hno: 277 Near Vill chopal, Sonipat, Haryana, CP 131103
+                {footer.description || general.tagline || 'Tu tienda de confianza.'}
               </Typography>
+              {footer.phone && (
               <Typography variant="body2" sx={{ mt: 1, color: 'grey.300' }}>
                 Tel:{' '}
-                <a href="tel:+918264954234" style={{ color: '#fff' }}>
-                  +91 8264954234
+                <a href={`tel:${footer.phone}`} style={{ color: '#fff' }}>
+                  {footer.phone}
                 </a>
               </Typography>
+              )}
+              {footer.email && (
               <Typography variant="body2" sx={{ mt: 0.5, color: 'grey.300' }}>
                 Email:{' '}
-                <a href="mailto:grecoeduardo87@gmail.com" style={{ color: '#fff' }}>
-                  grecoeduardo87@gmail.com
+                <a href={`mailto:${footer.email}`} style={{ color: '#fff' }}>
+                  {footer.email}
                 </a>
               </Typography>
+              )}
 
               <Stack direction="row" spacing={1.5} mt={2}>
-                {[LinkedIn, Instagram, GitHub, YouTube].map((Icon, i) => (
+                {[
+                  { Icon: LinkedIn, url: social.linkedin },
+                  { Icon: Instagram, url: social.instagram },
+                  { Icon: GitHub, url: social.facebook },
+                  { Icon: YouTube, url: social.youtube },
+                ].filter(item => item.url).map(({ Icon, url }, i) => (
                   <IconButton
                     key={i}
+                    component="a"
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     color="inherit"
                     size="small"
                     sx={{
@@ -126,7 +168,7 @@ const Footer = () => {
             </Grid>
 
             {/* Información */}
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={footerColumnSize}>
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
                 Información
               </Typography>
@@ -147,7 +189,7 @@ const Footer = () => {
             </Grid>
 
             {/* Cuenta */}
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={footerColumnSize}>
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
                 Cuenta
               </Typography>
@@ -165,7 +207,7 @@ const Footer = () => {
             </Grid>
 
             {/* Enlaces rápidos */}
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={footerColumnSize}>
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
                 Enlaces Rápidos
               </Typography>

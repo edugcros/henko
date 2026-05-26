@@ -2,7 +2,7 @@ import React from 'react'
 import { Menu, MenuItem, ListItemText } from '@mui/material'
 import { primary } from '../theme/colors'
 
-const MenuList = ({ anchorEl, setAnchorEl, ListMenu }) => {
+const MenuList = ({ anchorEl, setAnchorEl, ListMenu = [] }) => {
   const handleClose = (handleOnClick) => {
     setAnchorEl(null)
     if (typeof handleOnClick === 'function') {

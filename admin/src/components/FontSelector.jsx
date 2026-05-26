@@ -10,24 +10,22 @@ import {
 } from '@mui/material';
 import { FontDownload } from '@mui/icons-material';
 
-const GOOGLE_FONTS = [
-  { name: 'Inter', value: '"Inter", sans-serif', category: 'Sans Serif' },
-  { name: 'Roboto', value: '"Roboto", sans-serif', category: 'Sans Serif' },
-  { name: 'Open Sans', value: '"Open Sans", sans-serif', category: 'Sans Serif' },
-  { name: 'Poppins', value: '"Poppins", sans-serif', category: 'Sans Serif' },
-  { name: 'Montserrat', value: '"Montserrat", sans-serif', category: 'Sans Serif' },
-  { name: 'Lato', value: '"Lato", sans-serif', category: 'Sans Serif' },
-  { name: 'Nunito', value: '"Nunito", sans-serif', category: 'Sans Serif' },
-  { name: 'Raleway', value: '"Raleway", sans-serif', category: 'Sans Serif' },
-  { name: 'Playfair Display', value: '"Playfair Display", serif', category: 'Serif' },
-  { name: 'Merriweather', value: '"Merriweather", serif', category: 'Serif' },
-  { name: 'Source Sans Pro', value: '"Source Sans Pro", sans-serif', category: 'Sans Serif' },
-  { name: 'Work Sans', value: '"Work Sans", sans-serif', category: 'Sans Serif' },
+export const GOOGLE_FONTS = [
+  { id: 'inter', name: 'Inter', family: 'Inter', value: '"Inter", sans-serif', category: 'Sans Serif', weights: '300;400;500;600;700' },
+  { id: 'roboto', name: 'Roboto', family: 'Roboto', value: '"Roboto", sans-serif', category: 'Sans Serif', weights: '300;400;500;700' },
+  { id: 'open-sans', name: 'Open Sans', family: 'Open Sans', value: '"Open Sans", sans-serif', category: 'Sans Serif', weights: '300;400;500;600;700' },
+  { id: 'poppins', name: 'Poppins', family: 'Poppins', value: '"Poppins", sans-serif', category: 'Sans Serif', weights: '300;400;500;600;700' },
+  { id: 'montserrat', name: 'Montserrat', family: 'Montserrat', value: '"Montserrat", sans-serif', category: 'Sans Serif', weights: '300;400;500;600;700' },
+  { id: 'lato', name: 'Lato', family: 'Lato', value: '"Lato", sans-serif', category: 'Sans Serif', weights: '300;400;700' },
+  { id: 'nunito', name: 'Nunito', family: 'Nunito', value: '"Nunito", sans-serif', category: 'Sans Serif', weights: '300;400;500;600;700' },
+  { id: 'raleway', name: 'Raleway', family: 'Raleway', value: '"Raleway", sans-serif', category: 'Sans Serif', weights: '300;400;500;600;700' },
+  { id: 'playfair-display', name: 'Playfair Display', family: 'Playfair Display', value: '"Playfair Display", serif', category: 'Serif', weights: '400;500;600;700' },
+  { id: 'merriweather', name: 'Merriweather', family: 'Merriweather', value: '"Merriweather", serif', category: 'Serif', weights: '300;400;700' },
+  { id: 'source-sans-pro', name: 'Source Sans Pro', family: 'Source Sans Pro', value: '"Source Sans Pro", sans-serif', category: 'Sans Serif', weights: '300;400;600;700' },
+  { id: 'work-sans', name: 'Work Sans', family: 'Work Sans', value: '"Work Sans", sans-serif', category: 'Sans Serif', weights: '300;400;500;600;700' },
 ];
 
 const FontSelector = ({ label, value, onChange }) => {
-  const selectedFont = GOOGLE_FONTS.find(f => f.value === value) || GOOGLE_FONTS[0];
-
   return (
     <Paper elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
       <Typography variant="subtitle2" gutterBottom fontWeight={600}>

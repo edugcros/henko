@@ -49,11 +49,22 @@ const buildFontStack = font => {
 }
 
 const parseBorderRadius = value => {
-  if (!value) return 8
+  if (value === undefined || value === null || value === '') return 8
   if (typeof value === 'number') return value
   if (value.includes('rem')) return parseFloat(value) * 16
   if (value.includes('px')) return parseInt(value)
   return parseInt(value) || 8
+}
+
+const createElevationShadow = elevation => {
+  const level = Number(elevation ?? 2)
+  if (!Number.isFinite(level) || level <= 0) return 'none'
+
+  const y = Math.min(level * 3, 24)
+  const blur = Math.min(level * 8, 48)
+  const alpha = Math.min(0.06 + level * 0.015, 0.18)
+
+  return `0 ${y}px ${blur}px rgba(15, 23, 42, ${alpha})`
 }
 
 const isLightBackground = color => {
@@ -112,13 +123,25 @@ const DEFAULTS = {
 
 const normalizeTheme = (dbTheme = {}) => {
   const t = dbTheme.typography || {}
+  const colors = dbTheme.colors || {}
+  const spacing = dbTheme.spacing || {}
+  const layout = dbTheme.layout || {}
+  const buttons = dbTheme.buttons || {}
 
   const bodyFont = extractPrimaryFont(t.fontFamily)
   const headingFont = extractPrimaryFont(t.headingFont)
   const secondaryFont = extractPrimaryFont(t.secondaryFont)
 
   return {
-    colors: { ...DEFAULTS.colors, ...(dbTheme.colors || {}) },
+    colors: {
+      ...DEFAULTS.colors,
+      ...colors,
+      textMuted:
+        colors.textMuted ||
+        colors.mutedText ||
+        colors.textSecondary ||
+        DEFAULTS.colors.textMuted,
+    },
 
     typography: {
       fontFamily: {
@@ -127,9 +150,9 @@ const normalizeTheme = (dbTheme = {}) => {
         secondary: secondaryFont || bodyFont || 'Inter',
       },
 
-      baseSize: t.baseSize || DEFAULTS.typography.baseSize,
-      scale: t.scale || DEFAULTS.typography.scale,
-      lineHeight: t.lineHeight || DEFAULTS.typography.lineHeight,
+      baseSize: t.baseSize ?? DEFAULTS.typography.baseSize,
+      scale: t.scale ?? DEFAULTS.typography.scale,
+      lineHeight: t.lineHeight ?? DEFAULTS.typography.lineHeight,
 
       fontWeight: {
         ...DEFAULTS.typography.fontWeight,
@@ -140,12 +163,29 @@ const normalizeTheme = (dbTheme = {}) => {
       secondary: t.secondary || {},
     },
 
-    borderRadius: dbTheme.borderRadius || {},
+    spacing: {
+      section: 0,
+      container: 0,
+      cardPadding: 0,
+      ...spacing,
+    },
+    layout: {
+      maxWidth: 1200,
+      containerPadding: spacing.container ?? 0,
+      ...layout,
+    },
+    buttons,
+    borderRadius: {
+      md: layout.borderRadius ?? spacing.radius ?? dbTheme.borderRadius?.md,
+      ...(dbTheme.borderRadius || {}),
+    },
     shadows: dbTheme.shadows || {},
 
     header: dbTheme.header || {},
-    buttons: dbTheme.buttons || {},
-    productCard: dbTheme.productCard || {},
+    productCard: {
+      ...(dbTheme.productCard || {}),
+      ...(dbTheme.products || {}),
+    },
 
     mode: dbTheme.mode || 'light',
   }
@@ -174,9 +214,9 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
     return {
       fontFamily: buildFontStack(theme.typography.fontFamily.heading),
       fontSize: h?.size ? `${h.size / 16}rem` : modularScale(fallbackStep),
-      fontWeight: h?.weight || theme.typography.fontWeight.bold,
-      lineHeight: h?.lineHeight || 1.3,
-      letterSpacing: h?.letterSpacing || 0,
+      fontWeight: h?.weight ?? theme.typography.fontWeight.bold,
+      lineHeight: h?.lineHeight ?? 1.3,
+      letterSpacing: h?.letterSpacing ?? 0,
       textTransform: h?.transform || 'none',
     }
   }
@@ -226,10 +266,10 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
 
       body2: {
         fontFamily: buildFontStack(theme.typography.fontFamily.secondary),
-        fontSize: `${(theme.typography.secondary?.size || 14) / 16}rem`,
-        fontWeight: theme.typography.secondary?.weight || 400,
-        lineHeight: theme.typography.secondary?.lineHeight || 1.6,
-        letterSpacing: theme.typography.secondary?.letterSpacing || 0,
+        fontSize: `${(theme.typography.secondary?.size ?? 14) / 16}rem`,
+        fontWeight: theme.typography.secondary?.weight ?? 400,
+        lineHeight: theme.typography.secondary?.lineHeight ?? 1.6,
+        letterSpacing: theme.typography.secondary?.letterSpacing ?? 0,
       },
 
       button: {
@@ -241,6 +281,37 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
 
     shape: {
       borderRadius: parseBorderRadius(theme.borderRadius?.md),
+    },
+
+    components: {
+      MuiButton: {
+        defaultProps: {
+          variant: theme.buttons.variant ?? 'contained',
+          size: theme.buttons.size ?? 'medium',
+        },
+        styleOverrides: {
+          root: {
+            borderRadius: `${theme.buttons.radius ?? theme.spacing.radius ?? 8}px`,
+            boxShadow: createElevationShadow(theme.buttons.elevation),
+            textTransform: theme.buttons.uppercase ? 'uppercase' : 'none',
+          },
+        },
+      },
+      MuiCard: {
+        styleOverrides: {
+          root: {
+            borderRadius: `${theme.spacing.radius ?? theme.layout.borderRadius ?? 8}px`,
+            boxShadow: createElevationShadow(theme.layout.shadowIntensity),
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          rounded: {
+            borderRadius: `${theme.spacing.radius ?? theme.layout.borderRadius ?? 8}px`,
+          },
+        },
+      },
     },
   })
 

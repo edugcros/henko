@@ -65,6 +65,12 @@ export const privateRoutes = [
     Component: pages.Productlist,
     allowedRoles: ['admin'],
   },
+  {
+    path: '/admin/product-analysis',
+    Component: pages.ProductAnalysisPage,
+    allowedRoles: ['admin'],
+    meta: { new: true },
+  },
 
   // 💸 Cupones / Marketing
   {

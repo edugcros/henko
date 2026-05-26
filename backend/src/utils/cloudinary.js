@@ -5,24 +5,22 @@ import logger from '../../config/logger.js'
 
 dotenv.config()
 
-// ==========================================
-// VALIDACIÓN DE CONFIGURACIÓN
-// ==========================================
-
 const requiredEnvVars = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']
+const missingCloudinaryVars = requiredEnvVars.filter(key => !process.env[key])
+const isCloudinaryConfigured = missingCloudinaryVars.length === 0
 
-requiredEnvVars.forEach(key => {
-  if (!process.env[key]) {
-    throw new Error(`❌ FALTA VARIABLE DE ENTORNO: ${key}`)
-  }
-})
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure: true,
-})
+if (isCloudinaryConfigured) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true,
+  })
+} else {
+  logger.warn('Cloudinary deshabilitado por configuración incompleta', {
+    missing: missingCloudinaryVars,
+  })
+}
 
 // ==========================================
 // FUNCIONES PRIVADAS (HELPERS)
@@ -32,6 +30,10 @@ cloudinary.config({
  * Upload genérico a Cloudinary con transformaciones optimizadas
  */
 const uploadToCloudinary = (buffer, folder, options = {}) => {
+  if (!isCloudinaryConfigured) {
+    throw new Error(`Cloudinary no configurado: faltan ${missingCloudinaryVars.join(', ')}`)
+  }
+
   return new Promise((resolve, reject) => {
     const uploadOptions = {
       folder,

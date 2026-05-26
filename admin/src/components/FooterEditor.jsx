@@ -19,7 +19,7 @@ const SOCIAL_PLATFORMS = [
   { key: 'linkedin', label: 'LinkedIn', placeholder: 'https://linkedin.com/...' },
 ];
 
-const FooterEditor = ({ value, onChange }) => {
+const FooterEditor = ({ value, onChange, onLogoUpload }) => {
   const footer = value || {};
   const social = footer.social || {};
 
@@ -45,6 +45,7 @@ const FooterEditor = ({ value, onChange }) => {
           <ImageUploader
             value={footer.logo}
             onChange={(img) => handleChange('logo', img)}
+            onUpload={onLogoUpload}
             label="Logo Footer"
           />
         </Grid>
@@ -124,12 +125,12 @@ const FooterEditor = ({ value, onChange }) => {
       {/* Columnas */}
       <Box sx={{ mt: 3 }}>
         <Typography variant="subtitle2" gutterBottom>
-          Número de Columnas: {footer.columns || 4}
+          Número de Columnas: {footer.columns ?? 4}
         </Typography>
         <TextField
           type="number"
           inputProps={{ min: 1, max: 6 }}
-          value={footer.columns || 4}
+          value={footer.columns ?? 4}
           onChange={(e) => handleChange('columns', Number(e.target.value))}
           size="small"
         />

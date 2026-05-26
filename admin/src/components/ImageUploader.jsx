@@ -39,6 +39,26 @@ const ImageUploader = ({
     return null;
   };
 
+  const normalizeUploadedImage = (result) => {
+    const image =
+      result?.image ||
+      result?.data?.image ||
+      result?.data ||
+      result?.payload?.image ||
+      result?.payload?.data ||
+      result?.payload ||
+      result;
+
+    if (!image?.url) {
+      throw new Error('Respuesta de upload inválida');
+    }
+
+    return {
+      url: image.url,
+      public_id: image.public_id || image.publicId || '',
+    };
+  };
+
   const handleUpload = async (file) => {
     const validationError = validateFile(file);
     if (validationError) {
@@ -64,7 +84,7 @@ const ImageUploader = ({
         };
       }
 
-      onChange(result);
+      onChange(normalizeUploadedImage(result));
     } catch (err) {
       setError('Error subiendo imagen');
     } finally {

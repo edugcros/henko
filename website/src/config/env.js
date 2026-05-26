@@ -37,6 +37,9 @@ const apiBaseUrl =
 const mercadoPagoPublicKey =
   getValue('REACT_APP_MP_PUBLIC_KEY')
 
+const adminPreviewOrigins =
+  getValue('REACT_APP_ADMIN_PREVIEW_ORIGINS')
+
 export const env = {
   nodeEnv,
   isProduction,
@@ -54,6 +57,8 @@ export const env = {
 
   publicBaseDomain:
     getValue('REACT_APP_PUBLIC_BASE_DOMAIN', 'REACT_APP_PRODUCTION_DOMAIN'),
+
+  adminPreviewOrigins,
 
   assetsBaseUrl:
     getValue('REACT_APP_ASSETS_BASE_URL'),

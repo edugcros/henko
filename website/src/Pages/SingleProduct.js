@@ -44,10 +44,20 @@ import toast, { Toaster } from 'react-hot-toast'
 
 import { getProduct, rateProduct } from '@features/products/productSlice'
 import { addOrUpdateCartItem } from '@features/cart/cartSlice'
-import { getUserProductWishlist, toggleWishlist } from '@features/user/userSlice'
+import {
+  getUserProductWishlist,
+  selectIsAuthenticated,
+  toggleWishlist,
+} from '@features/user/userSlice'
 import { createEnquiry } from '@features/enquiries/enquirySlice'
 import placeholder from '@assets/images/placeholder.png'
-import { Newprimary } from '../theme/colors'
+import {
+  formatCurrency,
+  getActiveThemeConfig,
+  getLayoutThemeConfig,
+  getSpacingThemeConfig,
+  getThemeColors,
+} from '@utils/themeRuntime'
 
 const IMG_BOX_SIZE = 520
 
@@ -60,7 +70,7 @@ const MainImageWindow = styled(Paper)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: '#fff',
+  backgroundColor: theme.palette.background.paper,
   cursor: 'zoom-in',
   border: `1px solid ${theme.palette.divider}`,
   flexShrink: 0,
@@ -74,7 +84,7 @@ const MainImageWindow = styled(Paper)(({ theme }) => ({
 
 const ThumbButton = styled(Box, {
   shouldForwardProp: prop => prop !== 'active',
-})(({ active }) => ({
+})(({ active, theme }) => ({
   width: 70,
   height: 70,
   borderRadius: 10,
@@ -83,7 +93,7 @@ const ThumbButton = styled(Box, {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  border: `2px solid ${active ? Newprimary.darkBlue : '#eee'}`,
+  border: `2px solid ${active ? theme.palette.primary.main : theme.palette.divider}`,
   transition: '0.2s',
   '&:hover': { transform: 'scale(1.05)' },
   '& img': {
@@ -459,10 +469,6 @@ const getDiscountedPrice = (price, discountPercentage) => {
   return Math.max(0, basePrice - basePrice * (discount / 100))
 }
 
-const formatProductPrice = value => {
-  return Number(value || 0).toLocaleString('es-CL')
-}
-
 const getReviewerName = review => {
   if (!review) return 'Cliente'
 
@@ -501,12 +507,38 @@ const getReviewerInitial = review => {
   return name.charAt(0).toUpperCase()
 }
 
+const hasClientAuthToken = () => {
+  if (typeof window === 'undefined') return false
+
+  const token = window.localStorage.getItem('token')
+  return Boolean(token && token !== 'null' && token !== 'undefined')
+}
+
 const SingleProduct = () => {
   const { id } = useParams()
   const dispatch = useDispatch()
 
   const { singleProduct: product, isLoading } = useSelector(s => s.product)
   const { wishlist, user } = useSelector(s => s.user)
+  const isAuthenticated = useSelector(selectIsAuthenticated)
+  const themeState = useSelector(state => state.theme) || {}
+  const activeThemeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const layoutConfig = useMemo(
+    () => getLayoutThemeConfig(activeThemeConfig),
+    [activeThemeConfig],
+  )
+  const spacingConfig = useMemo(
+    () => getSpacingThemeConfig(activeThemeConfig),
+    [activeThemeConfig],
+  )
+  const themeColors = useMemo(
+    () => getThemeColors(activeThemeConfig),
+    [activeThemeConfig],
+  )
+  const formatPrice = useCallback(
+    value => formatCurrency(value, activeThemeConfig),
+    [activeThemeConfig],
+  )
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const promotionalBlocks = useSelector(selectPublicPromotionalBlocks)
@@ -522,6 +554,7 @@ const SingleProduct = () => {
   const [showRatingForm, setShowRatingForm] = useState(false)
   const [userStar, setUserStar] = useState(0)
   const [userComment, setUserComment] = useState('')
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false)
   const [guestData, setGuestData] = useState({
     name: '',
     email: '',
@@ -618,16 +651,30 @@ const SingleProduct = () => {
   const iaAnalysis = useMemo(() => {
     if (!product) return { score: 'N/A', count: 0, avg: 0 }
 
-    const ratingsArray = product.ratings || []
+    const ratingsArray = Array.isArray(product.ratings)
+      ? product.ratings.filter(review => {
+        const star = Number(review?.star)
+        return star >= 1 && star <= 5
+      })
+      : []
     const count = ratingsArray.length
-    const avg = count > 0 ? ratingsArray.reduce((acc, curr) => acc + curr.star, 0) / count : 0
+    const persistedAverage = Number(product.totalrating) || 0
+    const avg =
+      count > 0
+        ? ratingsArray.reduce((acc, curr) => acc + (Number(curr.star) || 0), 0) / count
+        : persistedAverage
 
     return {
-      score: count > 0 ? avg.toFixed(1) : 'N/A',
+      score: avg > 0 ? avg.toFixed(1) : 'N/A',
       count,
       avg,
       summary: avg >= 4.2 ? 'Alta Confianza' : 'Calidad Estándar',
-      reason: count > 0 ? `Basado en ${count} opiniones.` : 'Sin suficientes datos.',
+      reason:
+        count > 0
+          ? `Basado en ${count} opiniones.`
+          : avg > 0
+            ? 'Basado en la calificación guardada.'
+            : 'Sin suficientes datos.',
     }
   }, [product])
 
@@ -885,19 +932,15 @@ const SingleProduct = () => {
   ])
 
   const handleRateSubmit = async () => {
-    if (!user) {
+    const canRate = Boolean(user && (isAuthenticated || hasClientAuthToken()))
+
+    if (!canRate) {
       toast.error('Inicia sesión para calificar')
       return
     }
 
     const normalizedStar = Math.trunc(Number(userStar))
-
-    console.log('⭐ SingleProduct.handleRateSubmit:', {
-      userStar,
-      normalizedStar,
-      userComment,
-      productId: product?._id || product?.id,
-    })
+    const productId = product?._id || product?.id
 
     if (
       !Number.isInteger(normalizedStar) ||
@@ -908,10 +951,17 @@ const SingleProduct = () => {
       return
     }
 
+    if (!productId) {
+      toast.error('Producto inválido')
+      return
+    }
+
     try {
+      setIsSubmittingRating(true)
+
       await dispatch(
         rateProduct({
-          productId: product?._id || product?.id,
+          productId,
           star: normalizedStar,
           rating: normalizedStar,
           comment: userComment || '',
@@ -929,6 +979,8 @@ const SingleProduct = () => {
           ? err
           : err?.message || 'Error al publicar reseña',
       )
+    } finally {
+      setIsSubmittingRating(false)
     }
   }
 
@@ -968,14 +1020,30 @@ const SingleProduct = () => {
 
   if (isLoading || !product) {
     return (
-      <Container sx={{ py: 10 }}>
+      <Container
+        maxWidth={false}
+        disableGutters
+        sx={{
+          py: `${spacingConfig.section}px`,
+          maxWidth: layoutConfig.maxWidth,
+          px: `${layoutConfig.containerPadding}px`,
+        }}
+      >
         <Skeleton variant="rectangular" height={500} />
       </Container>
     )
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 5 }}>
+    <Container
+      maxWidth={false}
+      disableGutters
+      sx={{
+        py: `${spacingConfig.section}px`,
+        maxWidth: layoutConfig.maxWidth,
+        px: `${layoutConfig.containerPadding}px`,
+      }}
+    >
       <Toaster position="bottom-right" />
 
       <Grid container spacing={8} justifyContent="center">
@@ -984,7 +1052,7 @@ const SingleProduct = () => {
             <Typography
               variant="h5"
               fontWeight={700}
-              sx={{ color: Newprimary.darkBlueGray, width: IMG_BOX_SIZE }}
+              sx={{ color: themeColors.text, width: IMG_BOX_SIZE }}
             >
               {product.title}
             </Typography>
@@ -1068,11 +1136,11 @@ const SingleProduct = () => {
                 sx={{
                   height: 60,
                   borderRadius: 3,
-                  bgcolor: isAvailable ? '#FFD814' : '#ccc',
-                  color: '#000',
+                  bgcolor: isAvailable ? themeColors.primary : 'action.disabledBackground',
+                  color: isAvailable ? 'primary.contrastText' : 'text.disabled',
                   fontWeight: 800,
                   '&:hover': {
-                    bgcolor: isAvailable ? '#F7CA00' : '#ccc',
+                    bgcolor: isAvailable ? themeColors.primary : 'action.disabledBackground',
                   },
                 }}
               >
@@ -1091,7 +1159,8 @@ const SingleProduct = () => {
                   borderRadius: 3,
                   width: 60,
                   height: 60,
-                  border: '1px solid #ddd',
+                  border: '1px solid',
+                  borderColor: 'divider',
                   color: isFavorite ? 'error.main' : 'text.secondary',
                 }}
               >
@@ -1112,20 +1181,18 @@ const SingleProduct = () => {
                       color="text.secondary"
                       sx={{ textDecoration: 'line-through', fontWeight: 600 }}
                     >
-                      ${formatProductPrice(displayPrice.min)} - $
-                      {formatProductPrice(displayPrice.max)}
+                      {formatPrice(displayPrice.min)} - {formatPrice(displayPrice.max)}
                     </Typography>
                   )}
 
-                  <Typography variant="h4" fontWeight={800} color={Newprimary.darkBlueGray}>
-                    ${formatProductPrice(displayPrice.finalMin)} - $
-                    {formatProductPrice(displayPrice.finalMax)}
+                  <Typography variant="h4" fontWeight={800} color="primary">
+                    {formatPrice(displayPrice.finalMin)} - {formatPrice(displayPrice.finalMax)}
                   </Typography>
 
                   {displayPrice.hasDiscount && (
                     <Chip
                       label={`${displayPrice.discountPercentage}% OFF`}
-                      color="error"
+                      color="secondary"
                       size="small"
                       sx={{ mt: 1, fontWeight: 800 }}
                     />
@@ -1139,19 +1206,19 @@ const SingleProduct = () => {
                       color="text.secondary"
                       sx={{ textDecoration: 'line-through', fontWeight: 600 }}
                     >
-                      ${formatProductPrice(displayPrice.original)}
+                      {formatPrice(displayPrice.original)}
                     </Typography>
                   )}
 
-                  <Typography variant="h4" fontWeight={800} color={Newprimary.darkBlueGray}>
-                    ${formatProductPrice(displayPrice.final)}
+                  <Typography variant="h4" fontWeight={800} color="primary">
+                    {formatPrice(displayPrice.final)}
                   </Typography>
 
                   {displayPrice?.hasDiscount && (
                     <Stack direction="row" spacing={1} mt={1} flexWrap="wrap">
                       <Chip
                         label={`${displayPrice.discountPercentage}% OFF`}
-                        color="error"
+                        color="secondary"
                         size="small"
                         sx={{ fontWeight: 800 }}
                       />
@@ -1183,8 +1250,8 @@ const SingleProduct = () => {
               sx={{
                 p: 2.5,
                 borderRadius: 4,
-                bgcolor: '#f0f7ff',
-                borderColor: '#c2e0ff',
+                bgcolor: 'background.paper',
+                borderColor: 'info.main',
               }}
             >
               <Stack direction="row" spacing={2} alignItems="center">
@@ -1225,7 +1292,7 @@ const SingleProduct = () => {
 
             <Box>
               <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="h6" fontWeight={800} color={Newprimary.darkBlue}>
+                <Typography variant="h6" fontWeight={800} color="text.primary">
                   Calificación general
                 </Typography>
                 <Button
@@ -1239,32 +1306,18 @@ const SingleProduct = () => {
               </Stack>
 
               <Stack direction="row" alignItems="center" spacing={2}>
-                <Typography variant="h4" fontWeight={900} color={Newprimary.black}>
+                <Typography variant="h4" fontWeight={900} color="text.primary">
                   {iaAnalysis.avg > 0 ? iaAnalysis.avg.toFixed(1) : '0.0'}
                 </Typography>
                 <Box>
                   <ReactStars
                     count={5}
                     size={28}
-                    value={Number(userStar || 0)}
-                    half={false}
-                    isHalf={false}
-                    onChange={newValue => {
-                      const normalizedStar = Math.trunc(Number(newValue))
-
-                      if (
-                        Number.isInteger(normalizedStar) &&
-                        normalizedStar >= 1 &&
-                        normalizedStar <= 5
-                      ) {
-                        setUserStar(normalizedStar)
-                        return
-                      }
-
-                      setUserStar(0)
-                    }}
-                    color1="#e0e0e0"
-                    color2={Newprimary.warning || Newprimary.yellow}
+                    value={Number(iaAnalysis.avg) || 0}
+                    edit={false}
+                    half
+                    color1={themeColors.border}
+                    color2={themeColors.warning}
                   />
                   <Typography variant="caption" color="text.secondary">
                     {iaAnalysis.count} opiniones
@@ -1276,9 +1329,10 @@ const SingleProduct = () => {
                 <Paper
                   sx={{
                     p: 2,
-                    bgcolor: '#fafafa',
+                    bgcolor: 'background.paper',
                     borderRadius: 2,
-                    border: '1px dashed #ccc',
+                    border: '1px dashed',
+                    borderColor: 'divider',
                   }}
                 >
                   {normalizedSelectedVariant?.attributes && (
@@ -1291,8 +1345,8 @@ const SingleProduct = () => {
                     count={5}
                     size={28}
                     value={userStar}
-                    onChange={setUserStar}
-                    color2={Newprimary.warning}
+                    onChange={value => setUserStar(Math.trunc(Number(value)) || 0)}
+                    color2={themeColors.warning}
                   />
                   <TextField
                     fullWidth
@@ -1302,10 +1356,21 @@ const SingleProduct = () => {
                     placeholder="Tu opinión..."
                     value={userComment}
                     onChange={e => setUserComment(e.target.value)}
-                    sx={{ my: 1.5, bgcolor: '#fff' }}
+                    sx={{ my: 1.5, bgcolor: 'background.paper' }}
                   />
-                  <Button variant="contained" size="small" fullWidth onClick={handleRateSubmit}>
-                    Enviar
+                  <Button
+                    type="button"
+                    variant="contained"
+                    size="small"
+                    fullWidth
+                    disabled={isSubmittingRating}
+                    onClick={event => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      handleRateSubmit()
+                    }}
+                  >
+                    {isSubmittingRating ? 'Enviando...' : 'Enviar'}
                   </Button>
                 </Paper>
               </Collapse>
@@ -1314,7 +1379,7 @@ const SingleProduct = () => {
             <Divider />
 
             <Box>
-              <Typography variant="h6" fontWeight={900} mb={2} color={Newprimary.darkBlue}>
+              <Typography variant="h6" fontWeight={900} mb={2} color="text.primary">
                 Reseñas recientes
               </Typography>
               <Stack spacing={2.5}>
@@ -1327,15 +1392,15 @@ const SingleProduct = () => {
                           width: 28,
                           height: 28,
                           fontSize: 13,
-                          bgcolor: Newprimary.darkBlue,
-                          color: '#fff',
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
                           fontWeight: 800,
                         }}
                       >
                         {getReviewerInitial(rev)}
                       </Avatar>
                         <Typography variant="caption" fontWeight={800}>
-                          {rev?.postedByName}
+                          {getReviewerName(rev)}
                         </Typography>
                         {rev.variantId && (
                           <Chip label="Variante" size="small" variant="outlined" color="primary" />
@@ -1343,9 +1408,9 @@ const SingleProduct = () => {
                         <ReactStars
                           count={5}
                           size={15}
-                          value={rev.star}
+                          value={Number(rev.star) || 0}
                           edit={false}
-                          color2={Newprimary.yellow}
+                          color2={themeColors.warning}
                         />
                       </Stack>
                       <Typography variant="body2" color="text.primary" sx={{ mt: 0.5, pl: 4 }}>
@@ -1378,7 +1443,7 @@ const SingleProduct = () => {
             display="flex"
             alignItems="center"
             gap={1}
-            color={Newprimary.darkBlue}
+            color="text.primary"
             sx={{ fontSize: 24 }}
           >
             <VerifiedIcon color="success" fontSize="small" /> Especificaciones
@@ -1389,7 +1454,7 @@ const SingleProduct = () => {
               fontSize: 18,
               whiteSpace: 'pre-line',
               justifyContent: 'start',
-              color: 'Newprimary.black',
+              color: 'text.primary',
               fontWeight: 600,
             }}
           >
@@ -1407,14 +1472,14 @@ const SingleProduct = () => {
             gap: 1,
             mb: 3,
             fontSize: 24,
-            color: Newprimary.darkBlue,
+            color: 'text.primary',
           }}
         >
           <ChatBubbleOutlineIcon fontSize="small" color="primary" />
           Preguntas al vendedor
         </Typography>
 
-        <Paper sx={{ p: 3, borderRadius: 4, bgcolor: '#fcfcfc' }} variant="outlined">
+        <Paper sx={{ p: 3, borderRadius: 4, bgcolor: 'background.paper' }} variant="outlined">
           <Stack spacing={2.5}>
             {!user && (
               <Grid container spacing={2}>
@@ -1460,7 +1525,7 @@ const SingleProduct = () => {
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 2,
-                    backgroundColor: '#fff',
+                    backgroundColor: theme.palette.background.paper,
                   },
                 }}
               />

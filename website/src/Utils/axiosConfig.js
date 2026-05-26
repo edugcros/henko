@@ -9,6 +9,23 @@ export const setApiStore = store => {
   _store = store
 }
 
+const clearClientAuthState = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('token')
+    sessionStorage.removeItem('user')
+    sessionStorage.removeItem('wishlist')
+    sessionStorage.removeItem('csrfToken')
+  }
+
+  Cookies.remove('token', { path: '/' })
+  delete api.defaults.headers.common.Authorization
+  delete api.defaults.headers.common.authorization
+
+  if (_store?.dispatch) {
+    _store.dispatch({ type: 'user/resetAuthState' })
+  }
+}
+
 // =====================================================
 // Runtime guards
 // =====================================================
@@ -398,8 +415,7 @@ api.interceptors.response.use(
 
         return api(originalRequest)
       } catch (refreshError) {
-        localStorage.removeItem('token')
-        Cookies.remove('token', { path: '/' })
+        clearClientAuthState()
 
         return Promise.reject(refreshError)
       }

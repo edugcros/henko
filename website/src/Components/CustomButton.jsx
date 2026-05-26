@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { Box, Button, Tooltip } from '@mui/material'
-import { grey, Newprimary } from '../theme/colors'
+import { useTheme } from '@mui/material/styles'
 import MenuList from './MenuList.jsx'
 
 const sizeText = {
@@ -35,17 +35,18 @@ const CustomButton = ({
   color,
   hoverBgcolor,
   hoverBorder,
-  autoFocus, // 🟢 SE AÑADE EL PROP AQUÍ
+  autoFocus,
   ...props
 }) => {
+  const theme = useTheme()
   const [anchorEl, setAnchorEl] = useState(null)
   const handleOpenMenu = useCallback(event => {
     setAnchorEl(event.currentTarget)
   }, [])
 
   const buttonStyles = {
-    backgroundColor: bgcolor || Newprimary.turquoise,
-    color: color || Newprimary.darkBlue,
+    backgroundColor: bgcolor || theme.palette.primary.main,
+    color: color || theme.palette.primary.contrastText,
     fontWeight: 'bolder',
     fontSize: sizeText[size],
     padding: paddingButton[size],
@@ -59,14 +60,12 @@ const CustomButton = ({
     transition: 'all 0.25s ease-in-out',
     boxSizing: 'border-box',
     '&:disabled': {
-      backgroundColor: grey.disabled,
-      color: altDisabledTextColor || grey.textPrimary,
+      backgroundColor: theme.palette.action.disabledBackground,
+      color: altDisabledTextColor || theme.palette.text.disabled,
       cursor: 'not-allowed',
     },
     '&:hover': {
-      backgroundColor:
-        hoverBgcolor ||
-        (bgcolor === Newprimary.turquoise ? Newprimary.lightTeal : Newprimary.turquoise),
+      backgroundColor: hoverBgcolor || theme.palette.primary.dark || theme.palette.primary.main,
       border: hoverBorder || '2px solid transparent',
     },
     ...customStyle,
@@ -81,7 +80,7 @@ const CustomButton = ({
         slotProps={{
           tooltip: {
             sx: {
-              backgroundColor: Newprimary.darkBlue,
+              backgroundColor: theme.palette.text.primary,
               px: 2,
               py: 1,
               fontSize: '0.85rem',
@@ -99,7 +98,7 @@ const CustomButton = ({
             endIcon={endIcon}
             disabled={disabled}
             onClick={ListMenu ? handleOpenMenu : handleOnClick || onClick}
-            autoFocus={autoFocus} // 🟢 PASARLO DIRECTO AL BUTTON DE MUI
+            autoFocus={autoFocus}
           >
             {title}
           </Button>

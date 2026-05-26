@@ -15,7 +15,7 @@ const FontInjector = ({ typography }) => {
 
     // 2. Generar los links para Google Fonts
     usedFonts.forEach(stack => {
-      const fontData = GOOGLE_FONTS.find(f => f.stack === stack);
+      const fontData = GOOGLE_FONTS.find(f => f.value === stack || f.name === stack);
       
       if (fontData) {
         const linkId = `google-font-${fontData.id}`;
@@ -24,7 +24,7 @@ const FontInjector = ({ typography }) => {
           link.id = linkId;
           link.rel = 'stylesheet';
           // Cargamos todos los pesos necesarios para que no se vea "flaca" la letra
-          link.href = `https://fonts.googleapis.com/css2?family=${fontData.family}:wght@${fontData.weights}&display=swap`;
+          link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontData.family)}:wght@${fontData.weights}&display=swap`;
           document.head.appendChild(link);
         }
       }

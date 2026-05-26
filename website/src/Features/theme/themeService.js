@@ -82,6 +82,7 @@ const themeService = {
         timeout: 10000,
         skipAuthRefresh: true,
         skipCsrfRetry: true,
+        params: { ts: Date.now() },
       })
 
       return {
@@ -121,7 +122,7 @@ const themeService = {
     try {
       if (!config) throw new Error('Config requerido')
 
-      const response = await api.put('/theme/', cleanMongoFields(config), {
+      const response = await api.put('/theme/admin', cleanMongoFields(config), {
         timeout: 15000,
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
@@ -143,7 +144,7 @@ const themeService = {
   resetThemeConfig: async token => {
     try {
       const response = await api.post(
-        '/theme/reset',
+        '/theme/admin/reset',
         {},
         {
           timeout: 10000,
@@ -167,7 +168,7 @@ const themeService = {
    */
   previewThemeConfig: async (token, config) => {
     try {
-      const response = await api.post('/theme/preview', cleanMongoFields(config), {
+      const response = await api.post('/theme/admin/preview', cleanMongoFields(config), {
         timeout: 10000,
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
@@ -192,8 +193,9 @@ const themeService = {
 
       const formData = new FormData()
       formData.append('image', file)
+      formData.append('type', assetType)
 
-      const response = await api.post(`/theme/upload/${assetType}`, formData, {
+      const response = await api.post('/theme/admin/upload-image', formData, {
         timeout: 30000,
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),

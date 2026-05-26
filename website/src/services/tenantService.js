@@ -43,6 +43,7 @@ const tenantService = {
         skipCsrfRetry: true,
         skipTenantHeader: true,
         publicRequest: true,
+        params: { ts: Date.now() },
       })
 
       return {

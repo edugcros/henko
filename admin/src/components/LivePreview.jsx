@@ -1,190 +1,243 @@
-import React from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  Button,
-  Card,
-  CardContent,
-  CardMedia,
-  Chip,
-  AppBar,
-  Toolbar,
-  Container,
-  Grid,
-  Rating,
-  Fab,
-} from '@mui/material';
-import { ShoppingCart, Favorite, Share } from '@mui/icons-material';
-import { ThemeProvider } from '@mui/material/styles';
-import { mapConfigToMuiTheme } from '@utils/themeMapper';
-import { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Box, Button, Paper, Typography } from '@mui/material'
+import { OpenInNew, Refresh } from '@mui/icons-material'
+import { env } from '../config/env.js'
 
-const LivePreview = ({ themeData }) => {
-    const muiTheme = useMemo(() => {
-    return mapConfigToMuiTheme(themeData);
-  }, [themeData]);
+const VIEWPORT_WIDTH = {
+  desktop: '100%',
+  tablet: 820,
+  mobile: 390,
+}
+
+const withProtocol = value => {
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+
+  const protocol = window.location.protocol || 'https:'
+  return `${protocol}//${value}`
+}
+
+const normalizePreviewUrl = value => {
+  const cleanValue = String(value || '').trim().replace(/\/$/, '')
+
+  if (!cleanValue) return ''
+
+  const url = new URL(withProtocol(cleanValue))
+  const isLocalStorefront =
+    url.hostname === 'henko.local' ||
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1'
+
+  if (!env.isProduction && isLocalStorefront && !url.port) {
+    url.port = '3002'
+  }
+
+  return url.toString().replace(/\/$/, '')
+}
+
+const getPreviewBaseUrl = () => {
+  const explicitUrl =
+    env.storefrontPreviewUrl ||
+    process.env.REACT_APP_STOREFRONT_PREVIEW_URL
+
+  if (explicitUrl) {
+    return normalizePreviewUrl(explicitUrl)
+  }
+
+  if (env.publicBaseDomain) {
+    return normalizePreviewUrl(env.publicBaseDomain)
+  }
+
+  const protocol = window.location.protocol || 'http:'
+  const hostname = window.location.hostname
+
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `${protocol}//${hostname}:3002`
+  }
+
+  if (hostname.startsWith('admin.')) {
+    return `${protocol}//${hostname.replace(/^admin\./, '')}`
+  }
+
+  return `${protocol}//${hostname}`
+}
+
+const getUrlOrigin = value => {
+  try {
+    return new URL(value).origin
+  } catch {
+    return ''
+  }
+}
+
+const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
+  const iframeRef = useRef(null)
+  const readyTimeoutRef = useRef(null)
+  const [iframeKey, setIframeKey] = useState(0)
+  const [iframeReady, setIframeReady] = useState(false)
+  const [loadWarning, setLoadWarning] = useState('')
+
+  const previewUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      source: 'admin',
+      ts: String(iframeKey),
+      adminOrigin: window.location.origin,
+    })
+
+    return `${getPreviewBaseUrl()}/theme-preview?${params.toString()}`
+  }, [iframeKey])
+
+  const previewTargetOrigin = useMemo(
+    () => getUrlOrigin(previewUrl),
+    [previewUrl],
+  )
+
+  const previewWidth = VIEWPORT_WIDTH[viewport] || VIEWPORT_WIDTH.desktop
+
+  const postPreview = useCallback(() => {
+    const targetWindow = iframeRef.current?.contentWindow
+
+    if (!targetWindow || !previewTargetOrigin) return
+
+    targetWindow.postMessage(
+      {
+        type: 'HENKO_THEME_PREVIEW_UPDATE',
+        payload: themeData,
+      },
+      previewTargetOrigin,
+    )
+  }, [previewTargetOrigin, themeData])
+
+  useEffect(() => {
+    const handleMessage = event => {
+      if (event.source !== iframeRef.current?.contentWindow) return
+      if (event.origin !== previewTargetOrigin) return
+
+      if (event.data?.type === 'HENKO_THEME_PREVIEW_READY') {
+        if (readyTimeoutRef.current) {
+          clearTimeout(readyTimeoutRef.current)
+          readyTimeoutRef.current = null
+        }
+
+        setIframeReady(true)
+        setLoadWarning('')
+        postPreview()
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [postPreview, previewTargetOrigin])
+
+  useEffect(() => {
+    setIframeReady(false)
+    setLoadWarning('')
+
+    if (readyTimeoutRef.current) {
+      clearTimeout(readyTimeoutRef.current)
+    }
+
+    readyTimeoutRef.current = setTimeout(() => {
+      setLoadWarning(
+        'La tienda no confirmó la conexión de preview. Revisá que el website esté levantado y que esta URL abra correctamente.',
+      )
+    }, 5000)
+
+    postPreview()
+    return () => {
+      if (readyTimeoutRef.current) {
+        clearTimeout(readyTimeoutRef.current)
+        readyTimeoutRef.current = null
+      }
+    }
+  }, [postPreview, previewUrl])
 
   return (
-    <ThemeProvider theme={muiTheme}>
-      <Paper 
-        elevation={3} 
-        sx={{ 
-          height: '100%', 
-          overflow: 'hidden',
+    <Paper
+      elevation={3}
+      sx={{
+        height: '100%',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Box
+        sx={{
+          p: 2,
+          borderBottom: 1,
+          borderColor: 'divider',
           display: 'flex',
-          flexDirection: 'column'
+          alignItems: 'center',
+          gap: 2,
         }}
       >
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="h6" fontWeight={600}>
-            Vista Previa en Tiempo Real
+            Vista Previa Real
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Así se verá tu tienda con estos cambios
+            {iframeReady ? 'Conectada con el storefront' : 'Esperando storefront'}
           </Typography>
         </Box>
 
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
-          {/* Mini Tienda Preview */}
-          <Box sx={{ bgcolor: 'background.default', minHeight: '100%' }}>
-            {/* Header */}
-            <AppBar position="static" elevation={1}>
-              <Toolbar>
-                <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
-                  Mi Tienda
-                </Typography>
-                <Button color="inherit">Inicio</Button>
-                <Button color="inherit">Productos</Button>
-                <Fab size="small" color="secondary" sx={{ ml: 2 }}>
-                  <ShoppingCart />
-                </Fab>
-              </Toolbar>
-            </AppBar>
+        <Button
+          size="small"
+          startIcon={<Refresh />}
+          onClick={() => setIframeKey(key => key + 1)}
+        >
+          Recargar
+        </Button>
+        <Button
+          size="small"
+          startIcon={<OpenInNew />}
+          href={previewUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Abrir
+        </Button>
+      </Box>
 
-            {/* Hero Section */}
-            <Box sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', py: 6, textAlign: 'center' }}>
-              <Container>
-                <Typography variant="h2" gutterBottom>
-                  Nueva Colección 2024
-                </Typography>
-                <Typography variant="h5" sx={{ mb: 3, opacity: 0.9 }}>
-                  Descubre los mejores productos al mejor precio
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                  <Button 
-                    variant="contained" 
-                    color="secondary"
-                    size="large"
-                    sx={{ px: 4 }}
-                  >
-                    Comprar Ahora
-                  </Button>
-                  <Button 
-                    variant="outlined" 
-                    sx={{ 
-                      borderColor: 'white', 
-                      color: 'white',
-                      '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' }
-                    }}
-                    size="large"
-                  >
-                    Ver Más
-                  </Button>
-                </Box>
-              </Container>
-            </Box>
+      <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'action.hover', p: 2 }}>
+        {loadWarning && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {loadWarning}
+            <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+              URL: {previewUrl}
+            </Typography>
+          </Alert>
+        )}
 
-            {/* Productos */}
-            <Container sx={{ py: 4 }}>
-              <Typography variant="h4" gutterBottom fontWeight={600}>
-                Productos Destacados
-              </Typography>
-              
-              <Grid container spacing={3}>
-                {[1, 2, 3].map((item) => (
-                  <Grid item xs={12} sm={6} md={4} key={item}>
-                    <Card>
-                      <CardMedia
-                        component="div"
-                        sx={{
-                          height: 200,
-                          bgcolor: 'grey.200',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Typography color="text.secondary">
-                          Imagen Producto {item}
-                        </Typography>
-                      </CardMedia>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography variant="h6" component="div" fontWeight={600}>
-                            Producto Premium {item}
-                          </Typography>
-                          <Chip 
-                            label="Nuevo" 
-                            color="secondary" 
-                            size="small"
-                          />
-                        </Box>
-                        
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                          Descripción del producto con características destacadas y calidad premium.
-                        </Typography>
-                        
-                        <Rating value={4.5} precision={0.5} size="small" readOnly sx={{ mb: 1 }} />
-                        
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
-                          <Typography variant="h6" color="primary" fontWeight={700}>
-                            $99.00
-                          </Typography>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
-                            <Button 
-                              variant="outlined" 
-                              size="small"
-                              startIcon={<Favorite />}
-                            >
-                              Fav
-                            </Button>
-                            <Button 
-                              variant="contained" 
-                              size="small"
-                              startIcon={<ShoppingCart />}
-                            >
-                              Agregar
-                            </Button>
-                          </Box>
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-
-              {/* Estado Buttons */}
-              <Box sx={{ mt: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <Button variant="contained" color="success" startIcon={<Share />}>
-                  Éxito
-                </Button>
-                <Button variant="contained" color="error">
-                  Error
-                </Button>
-                <Button variant="contained" color="warning">
-                  Advertencia
-                </Button>
-                <Button variant="outlined" color="primary">
-                  Outline Primario
-                </Button>
-              </Box>
-            </Container>
-          </Box>
+        <Box
+          sx={{
+            width: previewWidth,
+            maxWidth: '100%',
+            height: '100%',
+            mx: 'auto',
+            bgcolor: 'background.paper',
+            boxShadow: viewport === 'desktop' ? 'none' : 4,
+          }}
+        >
+          <Box
+            component="iframe"
+            ref={iframeRef}
+            key={iframeKey}
+            src={previewUrl}
+            title="Preview real de tienda"
+            onLoad={postPreview}
+            sx={{
+              width: '100%',
+              height: '100%',
+              border: 0,
+              display: 'block',
+              bgcolor: '#fff',
+            }}
+          />
         </Box>
-      </Paper>
-    </ThemeProvider>
-  );
-};
+      </Box>
+    </Paper>
+  )
+}
 
-export default LivePreview;
+export default LivePreview

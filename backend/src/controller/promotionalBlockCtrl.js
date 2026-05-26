@@ -17,6 +17,8 @@ import {
   findPublicBlocks,
   validateProductsBelongToTenant,
 } from '../services/promotionalBlockService.js'
+import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
+import logger from '../../config/logger.js'
 
 // =====================================================
 // HELPERS
@@ -84,6 +86,33 @@ const normalizeBlockSlug = ({ slug, title }) => {
   return normalized.slice(0, 140)
 }
 
+const scheduleWishlistPromotionNotifications = ({ tenantId, reason }) => {
+  setTimeout(async () => {
+    try {
+      const result = await notifyWishlistPromotions({
+        tenantId,
+        dryRun: false,
+        limit: 500,
+      })
+
+      logger.info('[PromotionalBlock] Avisos wishlist procesados', {
+        tenantId: String(tenantId),
+        reason,
+        sent: result.sent,
+        skipped: result.skipped,
+        failed: result.failed,
+        matchedUsers: result.matchedUsers,
+      })
+    } catch (error) {
+      logger.error('[PromotionalBlock] Error procesando avisos wishlist', {
+        tenantId: String(tenantId),
+        reason,
+        error: error.message,
+      })
+    }
+  }, 0)
+}
+
 // =====================================================
 // ADMIN: CREATE
 // =====================================================
@@ -138,6 +167,11 @@ export const createPromotionalBlock = expressAsyncHandler(async (req, res) => {
   const populated = await populateBlock({
     blockId: block._id,
     tenantId,
+  })
+
+  scheduleWishlistPromotionNotifications({
+    tenantId,
+    reason: 'promotion_created',
   })
 
   return res.status(201).json({
@@ -276,6 +310,11 @@ export const updatePromotionalBlock = expressAsyncHandler(async (req, res) => {
     tenantId,
   })
 
+  scheduleWishlistPromotionNotifications({
+    tenantId,
+    reason: 'promotion_updated',
+  })
+
   return res.status(200).json({
     success: true,
     message: 'Bloque promocional actualizado correctamente.',
@@ -314,6 +353,13 @@ export const togglePromotionalBlockStatus = expressAsyncHandler(async (req, res)
     blockId: block._id,
     tenantId,
   })
+
+  if (block.isActive) {
+    scheduleWishlistPromotionNotifications({
+      tenantId,
+      reason: 'promotion_activated',
+    })
+  }
 
   return res.status(200).json({
     success: true,

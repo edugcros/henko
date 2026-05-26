@@ -465,6 +465,11 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       aiSource,
       aiImageHash,
       aiNeedsReview,
+      aiAgentJobId: isValidObjectId(req.body.aiAgentJobId) ? req.body.aiAgentJobId : null,
+      aiAgentScheduledAt: req.body.aiAgentScheduledAt ? new Date(req.body.aiAgentScheduledAt) : null,
+      aiAutomationMode: ['manual', 'agent-assisted', 'agent-autosave'].includes(req.body.aiAutomationMode)
+        ? req.body.aiAutomationMode
+        : 'manual',
 
       createdBy: userId,
       updatedBy: userId,

@@ -24,10 +24,10 @@ const LayoutEditor = ({ value, onChange }) => {
         <Grid item xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Ancho Máximo del Contenedor: {layout.maxWidth || 1200}px
+              Ancho Máximo del Contenedor: {layout.maxWidth ?? 1200}px
             </Typography>
             <Slider
-              value={layout.maxWidth || 1200}
+              value={layout.maxWidth ?? 1200}
               onChange={(_, v) => handleChange('maxWidth', v)}
               min={800}
               max={1600}
@@ -46,10 +46,10 @@ const LayoutEditor = ({ value, onChange }) => {
         <Grid item xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Padding Horizontal: {layout.containerPadding || 24}px
+              Padding Horizontal: {layout.containerPadding ?? 0}px
             </Typography>
             <Slider
-              value={layout.containerPadding || 24}
+              value={layout.containerPadding ?? 0}
               onChange={(_, v) => handleChange('containerPadding', v)}
               min={0}
               max={64}
@@ -64,10 +64,10 @@ const LayoutEditor = ({ value, onChange }) => {
         <Grid item xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Radio de Bordes (Layout): {layout.borderRadius || 8}px
+              Radio de Bordes (Layout): {layout.borderRadius ?? 8}px
             </Typography>
             <Slider
-              value={layout.borderRadius || 8}
+              value={layout.borderRadius ?? 8}
               onChange={(_, v) => handleChange('borderRadius', v)}
               min={0}
               max={24}
@@ -82,10 +82,10 @@ const LayoutEditor = ({ value, onChange }) => {
         <Grid item xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Intensidad de Sombras: {layout.shadowIntensity || 2}
+              Intensidad de Sombras: {layout.shadowIntensity ?? 2}
             </Typography>
             <Slider
-              value={layout.shadowIntensity || 2}
+              value={layout.shadowIntensity ?? 2}
               onChange={(_, v) => handleChange('shadowIntensity', v)}
               min={0}
               max={5}
@@ -107,11 +107,11 @@ const LayoutEditor = ({ value, onChange }) => {
         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
           <Box
             sx={{
-              width: `${(layout.maxWidth || 1200) / 10}px`,
+              width: `${(layout.maxWidth ?? 1200) / 10}px`,
               maxWidth: '100%',
               height: 100,
               bgcolor: 'background.paper',
-              borderRadius: (layout.borderRadius || 8) / 4,
+              borderRadius: (layout.borderRadius ?? 8) / 4,
               boxShadow: layout.shadowIntensity 
                 ? `${layout.shadowIntensity}px ${layout.shadowIntensity}px ${layout.shadowIntensity * 3}px rgba(0,0,0,${0.1 + (layout.shadowIntensity * 0.02)})`
                 : 'none',
@@ -123,7 +123,7 @@ const LayoutEditor = ({ value, onChange }) => {
             }}
           >
             <Typography variant="caption" color="text.secondary">
-              {layout.maxWidth || 1200}px
+              {layout.maxWidth ?? 1200}px
             </Typography>
           </Box>
         </Box>

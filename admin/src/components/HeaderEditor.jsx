@@ -24,12 +24,13 @@ const TOGGLES = [
   { key: 'showCart', label: 'Mostrar Carrito' },
   { key: 'showAccount', label: 'Mostrar Cuenta' },
   { key: 'showWishlist', label: 'Mostrar Wishlist' },
+  { key: 'showCompare', label: 'Mostrar Comparador', defaultValue: false },
 ]
 
 // ===============================
 // COMPONENT
 // ===============================
-const HeaderEditor = ({ value = {}, onChange }) => {
+const HeaderEditor = ({ value = {}, onChange, onLogoUpload }) => {
   const header = value
 
   const update = (field, val) => {
@@ -77,6 +78,7 @@ const HeaderEditor = ({ value = {}, onChange }) => {
         <ImageUploader
           value={header.logo}
           onChange={updateLogo}
+          onUpload={onLogoUpload}
           label="Logo"
         />
 
@@ -105,12 +107,12 @@ const HeaderEditor = ({ value = {}, onChange }) => {
         </Typography>
 
         <Grid container spacing={1}>
-          {TOGGLES.map(({ key, label }) => (
+          {TOGGLES.map(({ key, label, defaultValue = true }) => (
             <Grid item xs={12} sm={6} key={key}>
               <FormControlLabel
                 control={
                   <Switch
-                    checked={header[key] !== false}
+                    checked={defaultValue ? header[key] !== false : header[key] === true}
                     onChange={(e) => update(key, e.target.checked)}
                   />
                 }

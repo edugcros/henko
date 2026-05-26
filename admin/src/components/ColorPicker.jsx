@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   Box,
   TextField,
@@ -6,7 +6,10 @@ import {
   Paper,
   Popover,
   InputAdornment,
+  IconButton,
+  Tooltip,
 } from '@mui/material'
+import RefreshIcon from '@mui/icons-material/Refresh'
 import { HexColorPicker } from 'react-colorful'
 
 // ===============================
@@ -23,9 +26,19 @@ const ColorPicker = ({
   value = '#000000',
   onChange,
   description,
+  helperText,
+  showReset = false,
+  onReset,
+  size = 'small',
+  sx,
 }) => {
   const [anchorEl, setAnchorEl] = useState(null)
+  const [draftValue, setDraftValue] = useState(value)
   const open = Boolean(anchorEl)
+
+  useEffect(() => {
+    setDraftValue(value)
+  }, [value])
 
   const handleOpen = (e) => setAnchorEl(e.currentTarget)
   const handleClose = () => setAnchorEl(null)
@@ -33,15 +46,26 @@ const ColorPicker = ({
   const handleInputChange = (e) => {
     const val = e.target.value
     if (val.length <= 7) {
-      onChange(val)
+      setDraftValue(val)
+      if (isValidHex(val)) {
+        onChange(val)
+      }
     }
   }
 
   const handleBlur = () => {
-    if (!isValidHex(value)) {
+    if (!isValidHex(draftValue)) {
+      setDraftValue('#000000')
       onChange('#000000')
     }
   }
+
+  const handlePickerChange = (color) => {
+    setDraftValue(color)
+    onChange(color)
+  }
+
+  const helpText = description || helperText
 
   return (
     <Paper
@@ -51,6 +75,7 @@ const ColorPicker = ({
         borderRadius: 2,
         border: '1px solid',
         borderColor: 'divider',
+        ...sx,
       }}
     >
       {/* Header */}
@@ -59,9 +84,9 @@ const ColorPicker = ({
           {label}
         </Typography>
 
-        {description && (
+        {helpText && (
           <Typography variant="caption" color="text.secondary">
-            {description}
+            {helpText}
           </Typography>
         )}
       </Box>
@@ -69,8 +94,8 @@ const ColorPicker = ({
       {/* Input + Preview */}
       <TextField
         fullWidth
-        size="small"
-        value={value}
+        size={size}
+        value={draftValue}
         onChange={handleInputChange}
         onBlur={handleBlur}
         placeholder="#3B82F6"
@@ -83,7 +108,7 @@ const ColorPicker = ({
                   width: 20,
                   height: 20,
                   borderRadius: 1,
-                  backgroundColor: value,
+                  backgroundColor: isValidHex(draftValue) ? draftValue : '#000000',
                   border: '1px solid',
                   borderColor: 'divider',
                   cursor: 'pointer',
@@ -91,6 +116,15 @@ const ColorPicker = ({
               />
             </InputAdornment>
           ),
+          endAdornment: showReset && onReset ? (
+            <InputAdornment position="end">
+              <Tooltip title="Restaurar color">
+                <IconButton size="small" edge="end" onClick={onReset}>
+                  <RefreshIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </InputAdornment>
+          ) : null,
         }}
         sx={{
           '& input': {
@@ -111,8 +145,8 @@ const ColorPicker = ({
       >
         <Box p={2}>
           <HexColorPicker
-            color={value}
-            onChange={onChange}
+            color={isValidHex(draftValue) ? draftValue : '#000000'}
+            onChange={handlePickerChange}
             style={{ width: 220, height: 180 }}
           />
 
@@ -125,7 +159,7 @@ const ColorPicker = ({
               color: 'text.secondary',
             }}
           >
-            {value.toUpperCase()}
+            {draftValue.toUpperCase()}
           </Box>
         </Box>
       </Popover>

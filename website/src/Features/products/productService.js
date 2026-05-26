@@ -41,8 +41,12 @@ const apiRequest = async (method, endpoint, { data, params, isMultipart = false 
     return res.data
   } catch (error) {
     const message = extractErrorMessage(error)
+    const enhancedError = new Error(message)
+    enhancedError.status = error?.response?.status
+    enhancedError.response = error?.response
+
     console.error('Product API Error:', message)
-    throw new Error(message)
+    throw enhancedError
   }
 }
 

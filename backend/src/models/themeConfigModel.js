@@ -140,7 +140,7 @@ const imageAssetSchema = new Schema(
       required: [true, 'La URL de la imagen es requerida'],
       trim: true,
       validate: {
-        validator: value => /^https?:\/\/.+/.test(value),
+        validator: value => /^https?:\/\/.+/.test(value) || /^\/uploads\/.+/.test(value),
         message: 'URL de imagen inválida',
       },
     },
@@ -317,6 +317,7 @@ const headerSchema = new Schema(
     showCart: { type: Boolean, default: true },
     showAccount: { type: Boolean, default: true },
     showWishlist: { type: Boolean, default: true },
+    showCompare: { type: Boolean, default: false },
     logoWidth: { type: Number, default: 120, min: 20, max: 400 },
     logo: { type: imageAssetSchema, default: null },
   },
@@ -390,6 +391,7 @@ const productsSchema = new Schema(
     },
     showBadge: { type: Boolean, default: true },
     showWishlist: { type: Boolean, default: true },
+    showQuickView: { type: Boolean, default: true },
     showCompare: { type: Boolean, default: false },
     showRating: { type: Boolean, default: true },
     showPrice: { type: Boolean, default: true },
@@ -705,7 +707,13 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
   vars[cssVar('product', 'grid', 'gap')] = varValue(products.gap, 24, 'px')
   vars[cssVar('product', 'hover')] = varValue(products.hoverEffect, 'lift', 'string')
   vars[cssVar('product', 'card', 'radius')] = varValue(products.cardImage?.borderRadius, 12, 'px')
-  vars[cssVar('product', 'card', 'aspect')] = varValue(products.cardImage?.aspectRatio, '1:1', 'string')
+  vars[cssVar('product', 'card', 'aspect')] = varValue(
+    products.imageAspectRatio || products.cardImage?.aspectRatio,
+    '1:1',
+    'string',
+  )
+  vars[cssVar('product', 'quick-view')] =
+    (products.showQuickView ?? products.cardLayout?.showQuickView ?? true) ? 'true' : 'false'
   vars[cssVar('product', 'title', 'size')] = varValue(products.cardTitle?.size, '1.1rem', 'string')
   vars[cssVar('product', 'title', 'weight')] = varValue(products.cardTitle?.weight, 600, 'number')
   vars[cssVar('product', 'price', 'size')] = varValue(products.cardPrice?.size, '1.25rem', 'string')

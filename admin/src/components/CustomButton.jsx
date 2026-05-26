@@ -42,10 +42,10 @@ const CustomButton = ({ value, onChange }) => {
         <Grid item xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Radio de Bordes: {buttons.radius || 8}px
+              Radio de Bordes: {buttons.radius ?? 8}px
             </Typography>
             <Slider
-              value={buttons.radius || 8}
+              value={buttons.radius ?? 8}
               onChange={(_, v) => handleChange('radius', v)}
               min={0}
               max={24}
@@ -60,10 +60,10 @@ const CustomButton = ({ value, onChange }) => {
         <Grid item xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Elevación (sombra): {buttons.elevation || 2}
+              Elevación (sombra): {buttons.elevation ?? 2}
             </Typography>
             <Slider
-              value={buttons.elevation || 2}
+              value={buttons.elevation ?? 2}
               onChange={(_, v) => handleChange('elevation', v)}
               min={0}
               max={8}
@@ -92,7 +92,7 @@ const CustomButton = ({ value, onChange }) => {
           <FormControl fullWidth size="small">
             <InputLabel>Tamaño por Defecto</InputLabel>
             <Select
-              value={buttons.size || 'medium'}
+              value={buttons.size ?? 'medium'}
               onChange={(e) => handleChange('size', e.target.value)}
             >
               {sizeOptions.map((opt) => (
@@ -107,7 +107,7 @@ const CustomButton = ({ value, onChange }) => {
           <FormControl fullWidth size="small">
             <InputLabel>Variante por Defecto</InputLabel>
             <Select
-              value={buttons.variant || 'contained'}
+              value={buttons.variant ?? 'contained'}
               onChange={(e) => handleChange('variant', e.target.value)}
             >
               {variantOptions.map((opt) => (
@@ -123,22 +123,22 @@ const CustomButton = ({ value, onChange }) => {
         <Typography variant="subtitle2" gutterBottom>Vista Previa</Typography>
         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Button
-            variant={buttons.variant || 'contained'}
-            size={buttons.size || 'medium'}
+            variant={buttons.variant ?? 'contained'}
+            size={buttons.size ?? 'medium'}
             sx={{ 
-              borderRadius: buttons.radius || 8,
+              borderRadius: buttons.radius ?? 8,
               textTransform: buttons.uppercase ? 'uppercase' : 'none',
-              boxShadow: buttons.elevation ? `${buttons.elevation}px ${buttons.elevation}px ${buttons.elevation * 2}px rgba(0,0,0,0.2)` : 'none'
+              boxShadow: (buttons.elevation ?? 2) > 0 ? `${buttons.elevation ?? 2}px ${buttons.elevation ?? 2}px ${(buttons.elevation ?? 2) * 2}px rgba(0,0,0,0.2)` : 'none'
             }}
           >
             Botón Primario
           </Button>
           <Button
-            variant={buttons.variant === 'contained' ? 'outlined' : 'contained'}
+            variant={(buttons.variant ?? 'contained') === 'contained' ? 'outlined' : 'contained'}
             color="secondary"
-            size={buttons.size || 'medium'}
+            size={buttons.size ?? 'medium'}
             sx={{ 
-              borderRadius: buttons.radius || 8,
+              borderRadius: buttons.radius ?? 8,
               textTransform: buttons.uppercase ? 'uppercase' : 'none'
             }}
           >

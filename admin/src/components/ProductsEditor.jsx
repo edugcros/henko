@@ -52,7 +52,7 @@ const ProductsEditor = ({ value, onChange }) => {
             <FormControl fullWidth size="small">
               <InputLabel>Tipo de Grid</InputLabel>
               <Select
-                value={products.gridStyle || 'grid'}
+                value={products.gridStyle ?? 'grid'}
                 onChange={(e) => handleChange('gridStyle', e.target.value)}
               >
                 {GRID_STYLES.map((opt) => (
@@ -66,11 +66,11 @@ const ProductsEditor = ({ value, onChange }) => {
 
           <Grid item xs={12} md={6}>
             <Typography variant="caption">
-              Columnas: {products.columns || 4}
+              Columnas: {products.columns ?? 4}
             </Typography>
             <Slider
               size="small"
-              value={products.columns || 4}
+              value={products.columns ?? 4}
               onChange={(_, v) => handleChange('columns', v)}
               min={1}
               max={6}
@@ -81,13 +81,13 @@ const ProductsEditor = ({ value, onChange }) => {
 
           <Grid item xs={12}>
             <Typography variant="caption">
-              Espaciado: {products.gap || 24}px
+              Espaciado: {products.gap ?? 24}px
             </Typography>
             <Slider
               size="small"
-              value={products.gap || 24}
+              value={products.gap ?? 24}
               onChange={(_, v) => handleChange('gap', v)}
-              min={8}
+              min={0}
               max={48}
               step={4}
               valueLabelDisplay="auto"
@@ -104,7 +104,7 @@ const ProductsEditor = ({ value, onChange }) => {
             <FormControl fullWidth size="small">
               <InputLabel>Efecto Hover</InputLabel>
               <Select
-                value={products.hoverEffect || 'lift'}
+                value={products.hoverEffect ?? 'lift'}
                 onChange={(e) => handleChange('hoverEffect', e.target.value)}
               >
                 {HOVER_EFFECTS.map((opt) => (
@@ -120,7 +120,7 @@ const ProductsEditor = ({ value, onChange }) => {
             <FormControl fullWidth size="small">
               <InputLabel>Aspect Ratio</InputLabel>
               <Select
-                value={products.imageAspectRatio || '1:1'}
+                value={products.imageAspectRatio ?? '1:1'}
                 onChange={(e) => handleChange('imageAspectRatio', e.target.value)}
               >
                 {ASPECT_RATIOS.map((opt) => (
@@ -134,11 +134,11 @@ const ProductsEditor = ({ value, onChange }) => {
 
           <Grid item xs={12}>
             <Typography variant="caption">
-              Productos por página: {products.itemsPerPage || 12}
+              Productos por página: {products.itemsPerPage ?? 12}
             </Typography>
             <Slider
               size="small"
-              value={products.itemsPerPage || 12}
+              value={products.itemsPerPage ?? 12}
               onChange={(_, v) => handleChange('itemsPerPage', v)}
               min={4}
               max={48}
@@ -153,18 +153,18 @@ const ProductsEditor = ({ value, onChange }) => {
       <Section title="Elementos" subtitle="Control de visibilidad en cards">
         <Grid container spacing={1}>
           {[
-            { key: 'showBadge', label: 'Badge' },
-            { key: 'showQuickView', label: 'Quick View' },
-            { key: 'showWishlist', label: 'Wishlist' },
-            { key: 'showCompare', label: 'Comparar' },
-            { key: 'showRating', label: 'Rating' },
-            { key: 'showPrice', label: 'Precio' },
-          ].map(({ key, label }) => (
+            { key: 'showBadge', label: 'Badge', defaultValue: true },
+            { key: 'showQuickView', label: 'Quick View', defaultValue: true },
+            { key: 'showWishlist', label: 'Wishlist', defaultValue: true },
+            { key: 'showCompare', label: 'Comparar', defaultValue: false },
+            { key: 'showRating', label: 'Rating', defaultValue: true },
+            { key: 'showPrice', label: 'Precio', defaultValue: true },
+          ].map(({ key, label, defaultValue }) => (
             <Grid item xs={12} md={6} key={key}>
               <FormControlLabel
                 control={
                   <Switch
-                    checked={products[key] !== false}
+                    checked={defaultValue ? products[key] !== false : products[key] === true}
                     onChange={(e) => handleChange(key, e.target.checked)}
                   />
                 }

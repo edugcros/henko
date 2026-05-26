@@ -3,10 +3,24 @@ import React from 'react'
 import { Box, Typography, Container, Button } from '@mui/material'
 import useThemeConfig from '@hooks/useThemeConfig'
 
+const getAssetUrl = asset => {
+  if (!asset) return null
+  if (typeof asset === 'string') return asset
+  return asset.url || null
+}
+
+const HEIGHTS = {
+  small: '40vh',
+  medium: '60vh',
+  large: '80vh',
+  fullscreen: '100vh',
+}
+
 const CustomHero = () => {
   const { themeConfig } = useThemeConfig()
   const hero = themeConfig?.hero
   const colors = themeConfig?.colors
+  const backgroundImage = getAssetUrl(hero?.backgroundImage)
 
   if (!hero?.enabled) return null
 
@@ -14,9 +28,9 @@ const CustomHero = () => {
     <Box
       sx={{
         position: 'relative',
-        height: hero?.height || '400px',
-        backgroundImage: hero?.backgroundImage
-          ? `url(${hero.backgroundImage})`
+        height: HEIGHTS[hero?.height] || hero?.height || '400px',
+        backgroundImage: backgroundImage
+          ? `url(${backgroundImage})`
           : `linear-gradient(135deg, ${colors?.primary} 0%, ${colors?.secondary} 100%)`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
@@ -24,7 +38,7 @@ const CustomHero = () => {
         alignItems: 'center',
         justifyContent: hero?.alignment || 'center',
         textAlign: hero?.alignment || 'center',
-        '&::before': hero?.backgroundImage
+        '&::before': backgroundImage
           ? {
               content: '""',
               position: 'absolute',

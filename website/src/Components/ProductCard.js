@@ -15,32 +15,35 @@ import {
   Visibility as VisibilityIcon,
 } from '@mui/icons-material'
 
-import { toggleWishlist } from '@features/user/userSlice'
+import { selectIsAuthenticated, selectWishlistIds, toggleWishlist } from '@features/user/userSlice'
 import { addToCompare } from '@features/compare/compareSlice'
 import { addOrUpdateCartItem } from '@features/cart/cartSlice'
-import { Newprimary } from '../theme/colors'
+import {
+  formatCurrency,
+  getActiveThemeConfig,
+  getCommerceSettings,
+  getProductThemeConfig,
+  getProductImage,
+  getProductRouteId,
+  getThemeColors,
+} from '@utils/themeRuntime'
 
 const EMPTY_ARRAY = []
 
-const formatter = new Intl.NumberFormat('es-AR', {
-  style: 'currency',
-  currency: 'ARS',
-})
-
 const TOAST_POSITION = 'bottom-center'
 
-const getToastBaseStyle = () => ({
+const getToastBaseStyle = colors => ({
   borderRadius: '16px',
   padding: '12px 14px',
   fontSize: '0.95rem',
   fontWeight: 600,
   minHeight: '54px',
   boxShadow: '0 12px 32px rgba(15, 23, 42, 0.18)',
-  border: `1px solid ${Newprimary?.borderGray || '#e5e7eb'}`,
+  border: `1px solid ${colors.border}`,
   backdropFilter: 'blur(8px)',
 })
 
-const notify = {
+const createNotify = colors => ({
   success: (message, options = {}) =>
     toast.success(message, {
       position: TOAST_POSITION,
@@ -50,14 +53,13 @@ const notify = {
       pauseOnHover: true,
       draggable: true,
       toastId: options.toastId,
-      icon: '🛒',
       style: {
-        ...getToastBaseStyle(),
+        ...getToastBaseStyle(colors),
         background: 'rgba(255,255,255,0.98)',
-        color: Newprimary?.textSecondary || '#111827',
+        color: colors.text,
       },
       progressStyle: {
-        background: Newprimary?.RoyalBlue || Newprimary?.primary || '#2563eb',
+        background: colors.primary,
       },
     }),
 
@@ -70,15 +72,14 @@ const notify = {
       pauseOnHover: true,
       draggable: true,
       toastId: options.toastId,
-      icon: '⚠️',
       style: {
-        ...getToastBaseStyle(),
-        background: '#fff7ed',
-        color: '#9a3412',
-        border: '1px solid #fdba74',
+        ...getToastBaseStyle(colors),
+        background: colors.surface,
+        color: colors.warning,
+        border: `1px solid ${colors.warning}`,
       },
       progressStyle: {
-        background: '#f59e0b',
+        background: colors.warning,
       },
     }),
 
@@ -91,27 +92,28 @@ const notify = {
       pauseOnHover: true,
       draggable: true,
       toastId: options.toastId,
-      icon: '⛔',
       style: {
-        ...getToastBaseStyle(),
-        background: '#fef2f2',
-        color: '#991b1b',
-        border: '1px solid #fecaca',
+        ...getToastBaseStyle(colors),
+        background: colors.surface,
+        color: colors.error,
+        border: `1px solid ${colors.error}`,
       },
       progressStyle: {
-        background: '#dc2626',
+        background: colors.error,
       },
     }),
-}
+})
 
 const cardStyles = {
-  width: 280,
-  m: 1,
+  width: '100%',
+  maxWidth: 280,
+  mx: 'auto',
+  my: 1,
   position: 'relative',
   overflow: 'hidden',
-  background: `linear-gradient(180deg, ${Newprimary?.borderGray || '#f8fafc'} 0%, #ffffff 100%)`,
+  background: 'linear-gradient(180deg, var(--product-soft-bg) 0%, var(--product-surface) 100%)',
   borderRadius: 4,
-  border: `1px solid ${Newprimary?.borderGray || '#e5e7eb'}`,
+  border: '1px solid var(--product-border)',
   boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
   transition: 'transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease',
   display: 'flex',
@@ -119,7 +121,7 @@ const cardStyles = {
   '&:hover': {
     transform: 'translateY(-6px)',
     boxShadow: '0 18px 40px rgba(15, 23, 42, 0.14)',
-    borderColor: Newprimary?.primary || '#cbd5e1',
+    borderColor: 'var(--product-primary)',
     '& .action-buttons': {
       opacity: 1,
       right: 12,
@@ -131,8 +133,8 @@ const cardStyles = {
 }
 
 const imageWrapperStyles = {
-  background: 'linear-gradient(180deg, rgb(62, 50, 50) 0%, rgba(248,250,252,1) 100%)',
-  borderBottom: `3px solid ${Newprimary?.borderGray || '#e5e7eb'}`,
+  background: 'linear-gradient(180deg, var(--product-image-bg) 0%, var(--product-soft-bg) 100%)',
+  borderBottom: '3px solid var(--product-border)',
 }
 
 const imageStyles = {
@@ -172,20 +174,20 @@ const actionButtonsStyles = {
 }
 
 const secondaryActionButtonStyles = {
-  bgcolor: '#fff',
+  bgcolor: 'var(--product-surface)',
   boxShadow: '0 8px 18px rgba(15, 23, 42, 0.12)',
-  border: `1px solid ${Newprimary?.borderGray || '#e5e7eb'}`,
+  border: '1px solid var(--product-border)',
   '&:hover': {
-    bgcolor: Newprimary?.gainsGray || '#f3f4f6',
+    bgcolor: 'var(--product-soft-bg)',
   },
 }
 
 const primaryActionButtonStyles = {
-  bgcolor: Newprimary?.primary || '#111827',
+  bgcolor: 'var(--product-primary)',
   color: '#fff',
   boxShadow: '0 10px 20px rgba(15, 23, 42, 0.18)',
   '&:hover': {
-    bgcolor: Newprimary?.RoyalBlue || '#1d4ed8',
+    bgcolor: 'var(--product-accent)',
   },
 }
 
@@ -193,9 +195,39 @@ const ProductCard = ({ item }) => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
 
-  const wishlistIds = useSelector(state => state.user?.wishlist?.wishlist) || EMPTY_ARRAY
+  const wishlistIds = useSelector(selectWishlistIds) || EMPTY_ARRAY
   const compareItems = useSelector(state => state.compare?.items) || EMPTY_ARRAY
   const user = useSelector(state => state.user?.user)
+  const isAuthenticated = useSelector(selectIsAuthenticated)
+  const themeState = useSelector(state => state.theme) || {}
+  const activeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const productTheme = useMemo(
+    () => getProductThemeConfig(activeConfig),
+    [activeConfig],
+  )
+  const commerceSettings = useMemo(
+    () => getCommerceSettings(activeConfig),
+    [activeConfig],
+  )
+  const notify = useMemo(() => createNotify(themeColors), [themeColors])
+  const themedCardStyles = useMemo(
+    () => ({
+      ...cardStyles,
+      '--product-primary': themeColors.primary,
+      '--product-secondary': themeColors.secondary,
+      '--product-accent': themeColors.accent || themeColors.primary,
+      '--product-error': themeColors.error,
+      '--product-border': themeColors.border,
+      '--product-surface': themeColors.surface,
+      '--product-soft-bg': themeColors.background,
+      '--product-text': themeColors.text,
+      '--product-muted': themeColors.textSecondary,
+      '--product-image-bg': themeColors.secondary,
+      '--product-card-padding': `${productTheme.cardPadding ?? activeConfig?.spacing?.cardPadding ?? 0}px`,
+    }),
+    [activeConfig?.spacing?.cardPadding, productTheme.cardPadding, themeColors],
+  )
 
   const isFavorite = useMemo(() => {
     if (!Array.isArray(wishlistIds)) return false
@@ -207,20 +239,24 @@ const ProductCard = ({ item }) => {
     })
   }, [wishlistIds, item?._id])
 
-  const productImage = item?.images?.[0]?.url || '/assets/images/placeholder.png'
+  const productImage = getProductImage(item)
+  const productRouteId = getProductRouteId(item)
   const productBrand = item?.marca || item?.brand || 'Marca'
   const productPrice = Number(item?.finalPrice ?? item?.price) || 0
   const originalPrice = Number(item?.originalPrice ?? item?.price) || 0
   const discountPercentage = Number(item?.discountPercentage || 0)
   const hasPromotion = Boolean(
-    item?.hasPromotion && discountPercentage > 0 && productPrice < originalPrice,
+    productTheme.showBadge !== false &&
+      item?.hasPromotion &&
+      discountPercentage > 0 &&
+      productPrice < originalPrice,
   )
   const trackAddToCart = useCallback(product => {
     try {
       const finalPrice = Number(product?.finalPrice ?? product?.price) || 0
 
       ReactGA.event('add_to_cart', {
-        currency: 'ARS',
+        currency: commerceSettings.currency,
         value: finalPrice,
         items: [
           {
@@ -235,14 +271,16 @@ const ProductCard = ({ item }) => {
     } catch {
       // Analytics no debe romper la UX
     }
-  }, [])
+  }, [commerceSettings.currency])
 
   const handleWishlist = useCallback(
     async e => {
       e.preventDefault()
       e.stopPropagation()
 
-      if (!user) {
+      if (productTheme.showWishlist === false) return
+
+      if (!user || !isAuthenticated) {
         notify.warning('Debes iniciar sesión para guardar favoritos.', {
           toastId: 'wishlist-login-required',
         })
@@ -257,13 +295,15 @@ const ProductCard = ({ item }) => {
         })
       }
     },
-    [dispatch, item?._id, user],
+    [dispatch, isAuthenticated, item?._id, notify, productTheme.showWishlist, user],
   )
 
   const handleCompare = useCallback(
     e => {
       e.preventDefault()
       e.stopPropagation()
+
+      if (productTheme.showCompare === false) return
 
       dispatch(addToCompare(item))
 
@@ -280,7 +320,7 @@ const ProductCard = ({ item }) => {
         })
       }
     },
-    [dispatch, item, compareItems.length, navigate],
+    [dispatch, item, compareItems.length, navigate, notify, productTheme.showCompare],
   )
 
   const handleAddToCart = useCallback(
@@ -340,13 +380,15 @@ const ProductCard = ({ item }) => {
       originalPrice,
       discountPercentage,
       hasPromotion,
+      notify,
     ],
   )
 
   if (!item?._id) return null
 
   return (
-    <Card component="article" sx={cardStyles}>
+    <Card component="article" sx={themedCardStyles}>
+      {productTheme.showWishlist !== false && (
       <Box sx={floatingWishlistStyles}>
         <Tooltip title={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}>
           <IconButton
@@ -359,9 +401,10 @@ const ProductCard = ({ item }) => {
           </IconButton>
         </Tooltip>
       </Box>
+      )}
 
       <Link
-        to={`/product/${item._id}`}
+        to={`/product/${productRouteId}`}
         style={{ textDecoration: 'none', color: 'inherit' }}
         aria-label={`Ver producto ${item.title}`}
       >
@@ -379,7 +422,13 @@ const ProductCard = ({ item }) => {
         </Box>
       </Link>
 
-      <CardContent sx={{ flexGrow: 1, pt: 1.5, px: 2, pb: 2 }}>
+      <CardContent
+        sx={{
+          flexGrow: 1,
+          p: 'var(--product-card-padding)',
+          '&:last-child': { pb: 'var(--product-card-padding)' },
+        }}
+      >
         <Typography
           variant="caption"
           sx={{
@@ -389,7 +438,7 @@ const ProductCard = ({ item }) => {
             fontWeight: 800,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            color: Newprimary?.error || '#2563eb',
+            color: 'var(--product-accent)',
           }}
         >
           {productBrand}
@@ -399,8 +448,8 @@ const ProductCard = ({ item }) => {
           sx={{
             fontSize: 14,
             fontWeight: 600,
-            fontFamily: 'math',
-            color: Newprimary?.black || '#111827',
+            fontFamily: 'inherit',
+            color: 'var(--product-text)',
             mb: 1,
             display: '-webkit-box',
             WebkitLineClamp: 2,
@@ -416,7 +465,7 @@ const ProductCard = ({ item }) => {
         </Typography>
 
         <Box>
-          {hasPromotion && (
+          {productTheme.showPrice !== false && hasPromotion && (
             <Typography
               sx={{
                 fontSize: 13,
@@ -426,25 +475,25 @@ const ProductCard = ({ item }) => {
                 lineHeight: 1.2,
               }}
             >
-              {formatter.format(originalPrice)}
+              {formatCurrency(originalPrice, activeConfig)}
             </Typography>
           )}
 
-          <Typography
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'start',
-              fontWeight: 800,
-              fontSize: 18,
-              color: hasPromotion
-                ? Newprimary?.error || '#dc2626'
-                : Newprimary?.darkBlue || '#1d4ed8',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            {formatter.format(productPrice)}
-          </Typography>
+          {productTheme.showPrice !== false && (
+            <Typography
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'start',
+                fontWeight: 800,
+                fontSize: 18,
+                color: 'var(--product-primary)',
+                letterSpacing: 0,
+              }}
+            >
+              {formatCurrency(productPrice, activeConfig)}
+            </Typography>
+          )}
 
           {hasPromotion && (
             <Typography
@@ -454,8 +503,8 @@ const ProductCard = ({ item }) => {
                 px: 1,
                 py: 0.25,
                 borderRadius: 999,
-                bgcolor: '#fee2e2',
-                color: '#991b1b',
+                bgcolor: 'var(--product-secondary, var(--product-primary))',
+                color: '#ffffff',
                 fontWeight: 800,
                 fontSize: 11,
               }}
@@ -466,7 +515,9 @@ const ProductCard = ({ item }) => {
         </Box>
       </CardContent>
 
+      {(productTheme.showCompare !== false || productTheme.showQuickView !== false) && (
       <Box className="action-buttons" sx={actionButtonsStyles}>
+        {productTheme.showCompare !== false && (
         <Tooltip title="Comparar" placement="left">
           <IconButton
             onClick={handleCompare}
@@ -477,11 +528,13 @@ const ProductCard = ({ item }) => {
             <CompareArrowsIcon fontSize="small" color="primary" />
           </IconButton>
         </Tooltip>
+        )}
 
+        {productTheme.showQuickView !== false && (
         <Tooltip title="Vista rápida" placement="left">
           <IconButton
             component={Link}
-            to={`/product/${item._id}`}
+            to={`/product/${productRouteId}`}
             sx={secondaryActionButtonStyles}
             size="small"
             aria-label="Ver producto"
@@ -489,6 +542,7 @@ const ProductCard = ({ item }) => {
             <VisibilityIcon fontSize="small" color="info" />
           </IconButton>
         </Tooltip>
+        )}
         {/*
         <Tooltip title="Añadir al carrito" placement="left">
           <IconButton
@@ -502,6 +556,7 @@ const ProductCard = ({ item }) => {
         </Tooltip>
 */}
       </Box>
+      )}
     </Card>
   )
 }
