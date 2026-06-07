@@ -23,6 +23,7 @@ import {
 } from '@mui/material'
 import { ExpandMore, ExpandLess, Search } from '@mui/icons-material'
 import { fetchPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSlice'
+import { useUserMetrics } from '../Hooks/useUserMetrics'
 import {
   getActiveThemeConfig,
   getSpacingThemeConfig,
@@ -30,6 +31,7 @@ import {
 } from '@utils/themeRuntime'
 
 import { selectPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSelectors'
+import { Newprimary } from '../theme/colors'
 
 const CATEGORY_PREVIEW_LIMIT = 6
 const DEFAULT_LIMIT = 10
@@ -142,6 +144,7 @@ const OurStore = () => {
   const itemsPerPage = toPositiveInt(searchParams.get('limit'), DEFAULT_LIMIT)
   const sort = searchParams.get('sort') || DEFAULT_SORT
   const searchQuery = searchParams.get('q') || ''
+  const { track, events } = useUserMetrics({ trackPageViews: false })
 
   useEffect(() => {
     setSearchInput(searchQuery)
@@ -290,12 +293,25 @@ const OurStore = () => {
   const handleSearchSubmit = useCallback(
     event => {
       event.preventDefault()
+      const query = searchInput.trim()
+
+      if (query) {
+        track(events.SEARCH, {
+          searchQuery: query,
+          category: selectedCategory || '',
+          metadata: {
+            source: 'our-store',
+            selectedSubcategory: selectedSubcategory || '',
+          },
+        })
+      }
+
       updateFilters({
-        q: searchInput.trim() || null,
+        q: query || null,
         page: 1,
       })
     },
-    [searchInput, updateFilters],
+    [events.SEARCH, searchInput, selectedCategory, selectedSubcategory, track, updateFilters],
   )
 
   const handleSearchClear = useCallback(() => {
@@ -347,16 +363,17 @@ const OurStore = () => {
           {/* Sidebar */}
           <Box flex={{ xs: '1 1 100%', md: '0 0 25%' }} minWidth={{ xs: '100%', md: 240 }}>
             <Paper
-              elevation={2}
+              elevation={3}
               sx={{
                 p: `${spacingTheme.cardPadding}px`,
+                mr:5,
                 borderRadius: 4,
                 border: '1px solid',
-                borderColor: themeColors.border,
+                borderColor: themeColors.cardBorder,
                 overflow: 'hidden',
                 position: { xs: 'static', md: 'sticky' },
                 top: 20,
-                background: themeColors.surface,
+                background: themeColors.cardBackground,
               }}
             >
               <Typography
@@ -397,17 +414,13 @@ const OurStore = () => {
                               borderRadius: 2,
                               py: 1,
                               px: `${spacingTheme.cardPadding}px`,
-                              color: isSelectedCategory ? 'primary.contrastText' : themeColors.text,
-                              bgcolor: isSelectedCategory ? themeColors.primary : 'transparent',
-                              '&:hover': {
-                                bgcolor: isSelectedCategory ? themeColors.primary : themeColors.background,
-                                color: isSelectedCategory ? 'primary.contrastText' : themeColors.primary,
-                              },
+                              color: isSelectedCategory ? themeColors.actionPrimaryText : themeColors.text,
+                              
                             }}
                           >
                             <Typography
                               sx={{
-                                color: isSelectedCategory ? 'primary.contrastText' : themeColors.text,
+                                color: isSelectedCategory ? themeColors.actionPrimaryText : themeColors.text,
                                 fontWeight: 600,
                                 textTransform: 'uppercase',
                                 fontSize: 12,
@@ -422,7 +435,7 @@ const OurStore = () => {
                               sx={{
                                 fontSize: 12,
                                 fontWeight: 700,
-                                color: isSelectedCategory ? 'primary.contrastText' : themeColors.textSecondary,
+                                color: isSelectedCategory ? themeColors.actionPrimaryText : themeColors.cardMutedText,
                                 ml: 1,
                                 whiteSpace: 'nowrap',
                               }}
@@ -437,9 +450,9 @@ const OurStore = () => {
                               minWidth: 42,
                               px: 0,
                               borderRadius: 2,
-                              color: themeColors.textSecondary,
-                              bgcolor: themeColors.background,
-                              '&:hover': { bgcolor: themeColors.surface },
+                              color: themeColors.cardMutedText,
+                              bgcolor: Newprimary.gainsGray,
+                              '&:hover': { bgcolor: themeColors.cardBackground },
                             }}
                           >
                             {isExpanded ? <ExpandLess /> : <ExpandMore />}
@@ -468,18 +481,18 @@ const OurStore = () => {
                                     px: `${spacingTheme.cardPadding}px`,
                                     fontSize: 13,
                                     color: isSelectedSubcategory
-                                      ? 'primary.contrastText'
-                                      : themeColors.textSecondary,
+                                      ? themeColors.actionPrimaryText
+                                      : themeColors.cardMutedText,
                                     bgcolor: isSelectedSubcategory
-                                      ? themeColors.primary
+                                      ? themeColors.actionPrimary
                                       : 'transparent',
                                     '&:hover': {
                                       bgcolor: isSelectedSubcategory
-                                        ? themeColors.primary
+                                        ? Newprimary.gainsGray
                                         : themeColors.background,
                                       color: isSelectedSubcategory
-                                        ? 'primary.contrastText'
-                                        : themeColors.primary,
+                                        ? themeColors.actionPrimaryText
+                                        : themeColors.link,
                                     },
                                   }}
                                 >
@@ -522,7 +535,7 @@ const OurStore = () => {
                   onClick={() => setShowAllCategories(prev => !prev)}
                   sx={{
                     mt: 1.5,
-                    color: themeColors.primary,
+                    color: themeColors.link,
                     textTransform: 'none',
                     fontWeight: 700,
                     fontSize: 16,
@@ -550,15 +563,18 @@ const OurStore = () => {
           </Box>
 
           {/* Contenido */}
-          <Box flex="1" width="100%">
+          <Box flex="1" width="100%" ml={4}>
             <Paper
               component="form"
               onSubmit={handleSearchSubmit}
               sx={{
                 p: `${spacingTheme.cardPadding}px`,
                 mb: 3,
-                borderRadius: 3,
-                border: `1px solid ${themeColors.border}`,
+                borderRadius1: 4,
+                border: '1px solid',
+                borderColor: Newprimary.WhiteSmoke,
+                color: themeColors.cardMutedText,
+                bgcolor: Newprimary.gainsGray,
                 display: 'flex',
                 gap: 2,
                 flexDirection: { xs: 'column', md: 'row' },
@@ -588,8 +604,12 @@ const OurStore = () => {
                     textTransform: 'none',
                     borderRadius: 2,
                     minWidth: 120,
-                    bgcolor: themeColors.primary,
-                    '&:hover': { bgcolor: themeColors.accent },
+                    bgcolor: themeColors.actionPrimary,
+                    color: themeColors.actionPrimaryText,
+                    '&:hover': {
+                      bgcolor: themeColors.actionSecondary,
+                      color: themeColors.actionSecondaryText,
+                    },
                   }}
                 >
                   Buscar
@@ -603,6 +623,14 @@ const OurStore = () => {
                     textTransform: 'none',
                     borderRadius: 2,
                     minWidth: 120,
+                    color: themeColors.link,
+                    borderColor: themeColors.border,
+                    bgcolor: themeColors.actionPrimary,
+                    color: themeColors.actionPrimaryText,
+                    '&:hover': {
+                      bgcolor: themeColors.actionSecondary,
+                      color: themeColors.actionSecondaryText,
+                    },
                   }}
                 >
                   Limpiar
@@ -619,18 +647,18 @@ const OurStore = () => {
               gap={2}
               sx={{
                 p: `${spacingTheme.cardPadding}px`,
-                bgcolor: themeColors.surface,
+                bgcolor: themeColors.cardBackground,
                 borderRadius: 3,
-                border: `1px solid ${themeColors.border}`,
+                border: `1px solid ${themeColors.cardBorder}`,
               }}
             >
               <Box>
-                <Typography variant="body2" color="text.secondary">
+                {/*{<Typography variant="body2" color="text.secondary">
                   Mostrando <b>{totalProducts}</b> productos
-                </Typography>
+                </Typography>}*/}
 
                 {activeFilterLabel && (
-                  <Typography variant="caption" sx={{ color: themeColors.textSecondary }}>
+                  <Typography variant="caption" sx={{ color: themeColors.cardMutedText }}>
                     {activeFilterLabel}
                   </Typography>
                 )}
@@ -706,11 +734,18 @@ const OurStore = () => {
                       count={totalPages}
                       page={page}
                       onChange={handlePageChange}
-                      color="primary"
                       sx={{
                         '& .MuiPaginationItem-root': {
                           fontWeight: 700,
                           borderRadius: 2,
+                          color: themeColors.text,
+                        },
+                        '& .MuiPaginationItem-root.Mui-selected': {
+                          bgcolor: themeColors.actionPrimary,
+                          color: themeColors.actionPrimaryText,
+                        },
+                        '& .MuiPaginationItem-root.Mui-selected:hover': {
+                          bgcolor: themeColors.actionPrimary,
                         },
                       }}
                     />

@@ -30,6 +30,25 @@ const isLocalhost = origin => {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
 }
 
+const isLocalDevelopmentOrigin = origin => {
+  if (!env.isDevelopment) return false
+
+  try {
+    const { protocol, hostname } = new URL(origin)
+
+    return (
+      protocol === 'http:' &&
+      (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('.local')
+      )
+    )
+  } catch {
+    return false
+  }
+}
+
 const isAllowedRootDomain = hostname => {
   return env.allowedRootDomains.some(root => {
     const cleanRoot = withoutWww(String(root).toLowerCase())
@@ -58,7 +77,7 @@ const isTenantOriginAllowed = async hostnameCandidates => {
 }
 
 export const corsOptions = {
-  credentials: true,
+  credentials: env.corsCredentials,
 
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
@@ -69,6 +88,8 @@ export const corsOptions = {
     'x-csrf-token',
     'X-Tenant-Domain',
     'x-tenant-domain',
+    'X-Metric-Session-Id',
+    'x-metric-session-id',
     'X-Requested-With',
     'x-access-token',
   ],
@@ -97,6 +118,11 @@ export const corsOptions = {
 
       // Localhost solo si está habilitado.
       if (env.allowLocalhost && isLocalhost(origin)) {
+        return callback(null, true)
+      }
+
+      // Desarrollo local con dominios tipo henko.local / api.henko.local.
+      if (isLocalDevelopmentOrigin(origin)) {
         return callback(null, true)
       }
 

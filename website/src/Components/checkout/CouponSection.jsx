@@ -18,9 +18,11 @@ import {
   Timer as TimerIcon,
   FlashOn as FlashIcon,
 } from '@mui/icons-material'
+import { useTheme } from '@mui/material/styles'
 import { useCoupon } from '@hooks/useCoupon'
 
 const CouponSection = ({ cart, onCouponApplied }) => {
+  const theme = useTheme()
   const [code, setCode] = useState('')
   const [expanded, setExpanded] = useState(false)
 
@@ -134,13 +136,18 @@ const CouponSection = ({ cart, onCouponApplied }) => {
                       p: 2,
                       borderRadius: 3,
                       borderStyle: 'dashed',
-                      borderColor: coupon.usageLimit <= 5 ? 'error.main' : 'primary.main',
+                      borderColor:
+                        coupon.usageLimit <= 5 ? 'error.main' : theme.palette.brand.main,
                       position: 'relative',
-                      bgcolor: 'action.hover',
+                      bgcolor: theme.palette.card.background,
                     }}
                   >
                     <Box sx={{ pr: 7 }}>
-                      <Typography variant="subtitle2" fontWeight="800" color="primary">
+                      <Typography
+                        variant="subtitle2"
+                        fontWeight="800"
+                        sx={{ color: theme.palette.brand.main }}
+                      >
                         {coupon.code} <FlashIcon sx={{ fontSize: 14 }} />
                       </Typography>
                       <Typography variant="caption" display="block" sx={{ mb: 1 }}>

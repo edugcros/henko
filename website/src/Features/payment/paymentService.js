@@ -52,22 +52,27 @@ const ensureCsrf = async ({ force = false } = {}) => {
 
 const apiRequest = async (method, endpoint, data, options = {}) => {
   try {
-    const csrfToken = await ensureCsrf()
+    const normalizedMethod = String(method || 'get').toLowerCase()
+    const isWrite = !['get', 'head', 'options'].includes(normalizedMethod)
+    const csrfToken = isWrite ? await ensureCsrf() : null
 
     const cleanEndpoint = endpoint === '/' ? '' : endpoint
     const url = `/payments${cleanEndpoint}`
 
     const response = await api({
-      method,
+      method: normalizedMethod,
       url,
       data,
       withCredentials: true,
+      ...options,
       headers: {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'x-csrf-token': csrfToken,
+        ...(isWrite && {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
+        }),
+        ...options.headers,
       },
-      ...options,
     })
 
     return response.data
@@ -100,6 +105,21 @@ const processPayment = async payload => {
   return apiRequest('post', '/process', payload)
 }
 
+const getPublicConfig = () =>
+  apiRequest('get', '/config', undefined, {
+    skipAuthRefresh: true,
+    skipCsrfRetry: true,
+  })
+
+const getPaymentStatus = orderId =>
+  apiRequest('get', `/status/${orderId}`, undefined, {
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
 export default {
+  getPublicConfig,
   processPayment,
+  getPaymentStatus,
 }

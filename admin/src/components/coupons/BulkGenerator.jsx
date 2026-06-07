@@ -1,7 +1,18 @@
 import React, { useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { generateBulkCoupons } from '@features/coupons/couponSlice';
 import './BulkGenerator.css';
 
+const formatDateTimeLocal = date => {
+  const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
+};
+
 const BulkGenerator = ({ onSuccess, onCancel }) => {
+  const dispatch = useDispatch();
+  const now = new Date();
+  const defaultEndDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
   const [config, setConfig] = useState({
     count: 10,
     prefix: '',
@@ -9,8 +20,8 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
     discountValue: 10,
     minPurchaseAmount: 0,
     usageLimitPerUser: 1,
-    startDate: new Date().toISOString().slice(0, 16),
-    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
+    startDate: formatDateTimeLocal(now),
+    endDate: formatDateTimeLocal(defaultEndDate),
     applicableProducts: []
   });
 
@@ -46,12 +57,13 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
 
     setLoading(true);
     try {
-      // Aquí llamas a tu API
-      // await couponApi.generateBulk(config);
-      console.log('Generando cupones:', config);
-      onSuccess?.();
+      const result = await dispatch(generateBulkCoupons(config)).unwrap();
+      onSuccess?.(result);
     } catch (error) {
-      console.error(error);
+      setErrors(prev => ({
+        ...prev,
+        submit: error?.message || 'No se pudieron generar los cupones',
+      }));
     } finally {
       setLoading(false);
     }
@@ -169,6 +181,7 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
         <code>{config.prefix}{'XXXXXX'.slice(0, 8 - config.prefix.length)}</code>
         <p>Ejemplo: <strong>{config.prefix}A7B9C2</strong></p>
       </div>
+      {errors.submit && <span className="error-text">{errors.submit}</span>}
 
       <div className="form-actions">
         <button type="button" onClick={onCancel} className="btn-secondary">

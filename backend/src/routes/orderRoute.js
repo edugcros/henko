@@ -8,6 +8,7 @@ import {
   createOrder,
   resendConfirmationEmail,
   getOrders,
+  getOrderById,
   getAllOrders,
   updateOrderStatus,
   updateOrderPaymentStatus,
@@ -44,67 +45,6 @@ const isAdminOrManager = expressAsyncHandler(async (req, res, next) => {
 })
 
 // =========================================================
-// CSRF CONDICIONAL PARA PREDEPLOY / TÚNEL
-// =========================================================
-
-const normalizePath = value => {
-  const normalized = String(value || '').replace(/\/+$/, '')
-  return normalized || '/'
-}
-
-const isTrustedPredeployOrigin = req => {
-  const origin = String(req.headers.origin || '').toLowerCase()
-
-  return [
-    'https://henko-web.vercel.app',
-    'https://henko-admin.vercel.app',
-  ].includes(origin)
-}
-
-const routePatternToRegex = pattern => {
-  const normalized = normalizePath(pattern)
-
-  const escaped = normalized
-    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\\:([^/]+)/g, '[^/]+')
-
-  return new RegExp(`^${escaped}$`)
-}
-
-const predeployCsrfExemptRoutes = [
-  // Storefront checkout durante túnel
-  { method: 'POST', path: '/create' },
-  { method: 'POST', path: '/:orderId/resend-email' },
-
-  // Admin order mutations durante túnel
-  { method: 'PUT', path: '/:id/status' },
-  { method: 'PUT', path: '/:id/payment-status' },
-  { method: 'PUT', path: '/:id/fulfillment-status' },
-  { method: 'POST', path: '/:id/cancel' },
-  { method: 'POST', path: '/:id/refund' },
-  { method: 'DELETE', path: '/:id' },
-]
-
-const matchesPredeployExemptRoute = req => {
-  const requestPath = normalizePath(req.path)
-
-  return predeployCsrfExemptRoutes.some(route => {
-    return (
-      route.method === req.method &&
-      routePatternToRegex(route.path).test(requestPath)
-    )
-  })
-}
-
-const shouldSkipCsrfForPredeploy = req => {
-  return (
-    process.env.PREDEPLOY_TUNNEL_MODE === 'true' &&
-    isTrustedPredeployOrigin(req) &&
-    matchesPredeployExemptRoute(req)
-  )
-}
-
-// =========================================================
 // CLIENTE / USUARIO AUTENTICADO - STOREFRONT
 // =========================================================
 
@@ -135,6 +75,14 @@ router.get(
   requireShopDomain,
   authMiddleware,
   getOrders,
+)
+
+router.get(
+  '/my-orders/:orderId',
+  resolveTenantByDomain,
+  requireShopDomain,
+  authMiddleware,
+  getOrderById,
 )
 
 /**

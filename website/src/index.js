@@ -25,12 +25,21 @@ const AppInitializer = () => {
       const isThemePreviewRoute = window.location.pathname === '/theme-preview'
 
       if (!isThemePreviewRoute) {
-        await initCsrf()
+        try {
+          await initCsrf()
+        } catch (error) {
+          console.warn('[AppInitializer] CSRF inicial no disponible:', {
+            message: error?.message,
+          })
+        }
       }
 
       setReady(true)
     }
-    initializeApp()
+    initializeApp().catch(error => {
+      console.error('[AppInitializer] Error inicializando app:', error)
+      setReady(true)
+    })
   }, [])
 
   if (!ready) return <SpinnerCentered />

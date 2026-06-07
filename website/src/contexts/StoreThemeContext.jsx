@@ -1,25 +1,17 @@
-// 📁 src/contexts/StoreThemeContext.jsx
 import React, {
-  useState,
-  useEffect,
-  useMemo,
   createContext,
   useContext,
-  useCallback,
+  useMemo,
 } from 'react'
 
-import { ThemeProvider as MUIThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
+import { ThemeProvider as MUIThemeProvider } from '@mui/material/styles'
 import { useSelector } from 'react-redux'
 
+import { useTenant } from './TenantContext'
 import { createStoreTheme } from './themeMapper'
-import tenantService from '../services/tenantService'
 
 const StoreThemeContext = createContext(null)
-
-// =====================================================
-// 🎨 Tema fallback seguro
-// =====================================================
 
 const createDefaultTheme = () => ({
   general: {
@@ -27,146 +19,101 @@ const createDefaultTheme = () => ({
     tagline: 'Bienvenidos',
   },
   colors: {
-    primary: '#3b82f6',
-    secondary: '#8b5cf6',
-    background: '#ffffff',
-    textPrimary: '#111827',
+    primary: '#2563eb',
+    secondary: '#64748b',
+    accent: '#0f172a',
+    background: '#f8fafc',
+    surface: '#ffffff',
+    text: '#111827',
+    mutedText: '#64748b',
+    border: '#e5e7eb',
+    actionPrimary: '#2563eb',
+    actionPrimaryText: '#ffffff',
+    actionSecondary: '#64748b',
+    actionSecondaryText: '#ffffff',
+    link: '#2563eb',
+    price: '#2563eb',
+    salePrice: '#dc2626',
+    badgeBackground: '#64748b',
+    badgeText: '#ffffff',
+    error: '#dc2626',
+    warning: '#f59e0b',
+    info: '#0288d1',
+    success: '#16a34a',
   },
   typography: {
     fontFamily: 'Inter, sans-serif',
     headingFont: 'Inter, sans-serif',
+    secondaryFont: 'Inter, sans-serif',
+    baseSize: 16,
+    lineHeight: 1.5,
+    scale: 1.25,
   },
-  header: {
-    height: 70,
-    sticky: true,
-    showCart: true,
-    showAccount: true,
-    showWishlist: true,
+  spacing: {
+    section: 64,
+    container: 24,
+    radius: 8,
+    cardPadding: 16,
+  },
+  layout: {
+    maxWidth: 1200,
+    containerPadding: 24,
+    borderRadius: 8,
+    shadowIntensity: 2,
+  },
+  buttons: {
+    radius: 8,
+    uppercase: false,
+    elevation: 2,
+    size: 'medium',
+    variant: 'contained',
   },
 })
-
-// =====================================================
-// 🧠 Helpers
-// =====================================================
-
-const getCurrentTenantDomain = () => {
-  return window.location.hostname.trim().toLowerCase()
-}
 
 const isThemePreviewRoute = () =>
   typeof window !== 'undefined' && window.location.pathname === '/theme-preview'
 
-// =====================================================
-// 🏪 Provider
-// =====================================================
-
 export const StoreThemeProvider = ({ children }) => {
-  const [themeData, setThemeData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
+  const tenant = useTenant()
   const reduxThemeState = useSelector(state => state.theme) || {}
   const { config: reduxConfig, previewMode, previewConfig } = reduxThemeState
 
-  const loadTheme = useCallback(async () => {
-    if (isThemePreviewRoute()) {
-      setThemeData(prev => prev || previewConfig || createDefaultTheme())
-      setError(null)
-      setLoading(false)
-      return
-    }
-
-    // -------------------------------------------------
-    // Preview mode del panel admin
-    // -------------------------------------------------
-    if (previewMode && previewConfig) {
-      setThemeData(previewConfig)
-      setError(null)
-      setLoading(false)
-      return
-    }
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      const currentDomain = getCurrentTenantDomain()
-
-      // 1. Resolver tenant por dominio real actual
-      const domain = window.location.hostname
-      const tenantResponse = await tenantService.resolveTenantByDomain(domain)
-
-      if (!tenantResponse?.success || !tenantResponse?.data?.tenantId) {
-        throw new Error(
-          tenantResponse?.error ||
-            'No se pudo resolver el comercio para este dominio',
-        )
-      }
-
-      const { tenantId } = tenantResponse.data
-
-      // 2. Obtener tema público del tenant
-      const themeResponse = await tenantService.getPublicTheme(tenantId)
-
-      if (!themeResponse?.success || !themeResponse?.data) {
-        throw new Error(
-          themeResponse?.error ||
-            'No se pudo cargar la configuración visual del comercio',
-        )
-      }
-
-      setThemeData(themeResponse.data)
-      setError(null)
-    } catch (err) {
-      console.error('❌ Error cargando tema:', err)
-
-      setError(
-        err?.response?.data?.message || err?.message || 'Error cargando tema',
-      )
-
-      // Fallback visual controlado para no romper la tienda
-      setThemeData(createDefaultTheme())
-    } finally {
-      setLoading(false)
-    }
-  }, [previewMode, previewConfig])
-
-  useEffect(() => {
-    loadTheme()
-
-    let intervalId = null
-
-    // Polling liviano para refrescar cambios públicos de theme.
-    // En preview mode no debe interferir con el estado del panel.
-    if (!previewMode) {
-      intervalId = setInterval(loadTheme, 30000)
-    }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId)
-    }
-  }, [loadTheme, previewMode])
+  const activeTheme = useMemo(() => {
+    if (previewMode && previewConfig) return previewConfig
+    if (reduxConfig) return reduxConfig
+    if (tenant?.themeConfig) return tenant.themeConfig
+    return createDefaultTheme()
+  }, [previewMode, previewConfig, reduxConfig, tenant?.themeConfig])
 
   const muiTheme = useMemo(() => {
-    const activeTheme = previewMode && previewConfig
-      ? previewConfig
-      : reduxConfig || themeData || createDefaultTheme()
+    return createStoreTheme(
+      activeTheme,
+      activeTheme?.tenantId || tenant?.tenantId || 'default',
+    )
+  }, [activeTheme, tenant?.tenantId])
 
-    return createStoreTheme(activeTheme, activeTheme?.tenantId || 'default')
-  }, [previewMode, previewConfig, reduxConfig, themeData])
+  const loading = useMemo(() => {
+    if (isThemePreviewRoute()) return false
+    return Boolean(
+      !previewMode &&
+        !reduxConfig &&
+        tenant?.isLoading &&
+        !tenant?.themeConfig,
+    )
+  }, [previewMode, reduxConfig, tenant?.isLoading, tenant?.themeConfig])
 
   const contextValue = useMemo(
     () => ({
-      themeData,
+      themeData: activeTheme,
       loading,
-      error,
-      refreshTheme: loadTheme,
+      error: tenant?.error || null,
+      refreshTheme: tenant?.refresh || (async () => {}),
       isPreview: previewMode,
     }),
-    [themeData, loading, error, loadTheme, previewMode],
+    [activeTheme, loading, tenant?.error, tenant?.refresh, previewMode],
   )
 
-  if (loading && !themeData && !isThemePreviewRoute()) {
+  if (loading) {
     return (
       <div
         style={{
@@ -191,10 +138,6 @@ export const StoreThemeProvider = ({ children }) => {
     </StoreThemeContext.Provider>
   )
 }
-
-// =====================================================
-// 🪝 Hook
-// =====================================================
 
 export const useStoreTheme = () => {
   const context = useContext(StoreThemeContext)

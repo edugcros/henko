@@ -243,7 +243,7 @@ const TypographyEditor = ({ value, onChange }) => {
                   variant={headingKey}
                   sx={{
                     fontFamily: typography.headingFont || 'Montserrat',
-                    color: 'primary.main',
+                    color: 'text.primary',
                   }}
                 >
                   {headingKey.toUpperCase()} Preview

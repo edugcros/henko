@@ -1,129 +1,267 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, Button, Typography, Row, Col, List, Tag, Space } from 'antd';
-import { CheckCircleFilled, RocketOutlined, CrownOutlined } from '@ant-design/icons';
+import React, { useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Button,
+  Card,
+  Col,
+  Divider,
+  Flex,
+  Row,
+  Space,
+  Tag,
+  Typography,
+  theme,
+} from 'antd'
+import {
+  CheckCircleFilled,
+  CrownOutlined,
+  LockOutlined,
+  RocketOutlined,
+} from '@ant-design/icons'
 
-const { Title, Text } = Typography;
+const { Paragraph, Text, Title } = Typography
+const { useToken } = theme
 
-const SubscriptionPage = () => {
-  const navigate = useNavigate();
+const SUBSCRIPTION_PLANS = Object.freeze([
+  {
+    id: 'starter',
+    name: 'Emprendedor',
+    description: 'Las herramientas esenciales para poner en marcha una tienda.',
+    monthlyPrice: 29,
+    icon: RocketOutlined,
+    features: [
+      'Hasta 100 productos',
+      'Dominio personalizado',
+      'Panel de estadísticas esencial',
+      'Soporte por correo electrónico',
+    ],
+    actionLabel: 'Elegir Emprendedor',
+    featured: false,
+  },
+  {
+    id: 'pro',
+    name: 'Profesional',
+    description: 'Automatización y capacidad para una operación en crecimiento.',
+    monthlyPrice: 99,
+    icon: CrownOutlined,
+    features: [
+      'Productos ilimitados',
+      'Analizador de productos con IA',
+      'Múltiples administradores',
+      'Reportes avanzados',
+      'Soporte prioritario',
+    ],
+    actionLabel: 'Elegir Profesional',
+    featured: true,
+  },
+])
 
-  const plans = [
-    {
-      id: 'starter',
-      name: 'Plan Emprendedor',
-      price: '29',
-      icon: <RocketOutlined style={{ fontSize: '32px', color: '#1890ff' }} />,
-      color: '#e6f7ff',
-      features: ['Hasta 100 productos', 'Soporte vía Email', 'Panel de estadísticas básico', '1 Dominio personalizado'],
-      buttonText: 'Empezar ahora',
-      popular: false,
-    },
-    {
-      id: 'pro',
-      name: 'Plan Profesional',
-      price: '99',
-      icon: <CrownOutlined style={{ fontSize: '32px', color: '#722ed1' }} />,
-      color: '#f9f0ff',
-      features: ['Productos ilimitados', 'Soporte VIP 24/7', 'IA Product Analyzer full', 'Múltiples administradores', 'Reportes avanzados'],
-      buttonText: 'Obtener Pro',
-      popular: true,
-    }
-  ];
+const formatMonthlyPrice = value =>
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(value)
 
-  const handleSelectPlan = (planId) => {
-    navigate('/signup', { state: { planId } });
-  };
+const PlanCard = ({ plan, onSelect }) => {
+  const { token } = useToken()
+  const PlanIcon = plan.icon
+  const accentColor = plan.featured ? token.colorPrimary : token.colorInfo
 
   return (
-    <div style={{ padding: '60px 20px', background: 'linear-gradient(180deg, #f0f2f5 0%, #ffffff 100%)', minHeight: '100vh' }}>
-      <div style={{ textAlign: 'center', marginBottom: '50px' }}>
-        <Title level={1} style={{ marginBottom: '16px' }}>Impulsa tu negocio</Title>
-        <Text type="secondary" style={{ fontSize: '18px' }}>
-          Elige el plan que mejor se adapte al crecimiento de tu tienda online.
+    <Card
+      aria-label={`Plan ${plan.name}`}
+      styles={{
+        body: {
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          padding: 28,
+        },
+      }}
+      style={{
+        height: '100%',
+        borderRadius: token.borderRadiusLG,
+        border: `1px solid ${
+          plan.featured ? token.colorPrimary : token.colorBorderSecondary
+        }`,
+        boxShadow: plan.featured ? token.boxShadowSecondary : 'none',
+      }}
+    >
+      <Flex justify="space-between" align="flex-start" gap={16}>
+        <Flex
+          align="center"
+          justify="center"
+          style={{
+            width: 52,
+            height: 52,
+            flex: '0 0 52px',
+            borderRadius: token.borderRadius,
+            color: accentColor,
+            background: plan.featured
+              ? token.colorPrimaryBg
+              : token.colorInfoBg,
+          }}
+        >
+          <PlanIcon aria-hidden style={{ fontSize: 25 }} />
+        </Flex>
+
+        {plan.featured && (
+          <Tag color="processing" style={{ marginInlineEnd: 0 }}>
+            Recomendado
+          </Tag>
+        )}
+      </Flex>
+
+      <Title level={2} style={{ margin: '22px 0 6px', fontSize: 25 }}>
+        {plan.name}
+      </Title>
+      <Paragraph
+        type="secondary"
+        style={{ minHeight: 44, marginBottom: 20, lineHeight: 1.55 }}
+      >
+        {plan.description}
+      </Paragraph>
+
+      <Flex align="baseline" gap={8}>
+        <Text
+          strong
+          style={{
+            color: token.colorTextHeading,
+            fontSize: 38,
+            lineHeight: 1.1,
+          }}
+        >
+          {formatMonthlyPrice(plan.monthlyPrice)}
         </Text>
-      </div>
+        <Text type="secondary">por mes</Text>
+      </Flex>
 
-      <Row gutter={[24, 24]} justify="center" style={{ maxWidth: '1000px', margin: '0 auto' }}>
-        {plans.map((plan) => (
-          <Col xs={24} sm={12} key={plan.id}>
-            <Card
-              hoverable
+      <Divider style={{ margin: '24px 0 18px' }} />
+
+      <Space
+        direction="vertical"
+        size={13}
+        style={{ width: '100%', flex: 1, marginBottom: 28 }}
+      >
+        {plan.features.map(feature => (
+          <Flex key={feature} align="flex-start" gap={10}>
+            <CheckCircleFilled
+              aria-hidden
               style={{
-                borderRadius: '16px',
-                border: plan.popular ? '2px solid #722ed1' : '1px solid #f0f0f0',
-                position: 'relative',
-                overflow: 'hidden',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column'
+                color: token.colorSuccess,
+                fontSize: 16,
+                marginTop: 3,
               }}
-            >
-              {plan.popular && (
-                <Tag color="#722ed1" style={{ position: 'absolute', top: 16, right: -30, transform: 'rotate(45deg)', width: '120px', textAlign: 'center' }}>
-                  POPULAR
-                </Tag>
-              )}
-
-              <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-                <div style={{ 
-                  background: plan.color, 
-                  width: '70px', 
-                  height: '70px', 
-                  borderRadius: '50%', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  margin: '0 auto 16px'
-                }}>
-                  {plan.icon}
-                </div>
-                <Title level={3} style={{ marginBottom: 0 }}>{plan.name}</Title>
-                <div style={{ margin: '16px 0' }}>
-                  <Text style={{ fontSize: '40px', fontWeight: 'bold' }}>${plan.price}</Text>
-                  <Text type="secondary"> / mes</Text>
-                </div>
-              </div>
-
-              <List
-                split={false}
-                dataSource={plan.features}
-                renderItem={(item) => (
-                  <List.Item style={{ padding: '8px 0' }}>
-                    <Space>
-                      <CheckCircleFilled style={{ color: '#52c41a' }} />
-                      <Text>{item}</Text>
-                    </Space>
-                  </List.Item>
-                )}
-                style={{ marginBottom: '32px', flexGrow: 1 }}
-              />
-
-              <Button
-                type={plan.popular ? 'primary' : 'default'}
-                size="large"
-                block
-                style={{ 
-                  borderRadius: '8px', 
-                  height: '50px', 
-                  fontWeight: 'bold',
-                  background: plan.popular ? '#722ed1' : '',
-                  borderColor: plan.popular ? '#722ed1' : ''
-                }}
-                onClick={() => handleSelectPlan(plan.id)}
-              >
-                {plan.buttonText}
-              </Button>
-            </Card>
-          </Col>
+            />
+            <Text style={{ lineHeight: 1.55 }}>{feature}</Text>
+          </Flex>
         ))}
-      </Row>
+      </Space>
 
-      <div style={{ textAlign: 'center', marginTop: '40px' }}>
-        <Text type="secondary">Todos los planes incluyen actualizaciones gratuitas y seguridad SSL.</Text>
-      </div>
-    </div>
-  );
-};
+      <Button
+        type={plan.featured ? 'primary' : 'default'}
+        size="large"
+        block
+        onClick={() => onSelect(plan.id)}
+        aria-label={`${plan.actionLabel}, ${formatMonthlyPrice(plan.monthlyPrice)} por mes`}
+        style={{ height: 48, fontWeight: 600 }}
+      >
+        {plan.actionLabel}
+      </Button>
+    </Card>
+  )
+}
 
-export default SubscriptionPage;
+const SubscriptionPage = () => {
+  const navigate = useNavigate()
+  const { token } = useToken()
+
+  const handleSelectPlan = useCallback(
+    planId => {
+      const selectedPlan = SUBSCRIPTION_PLANS.find(plan => plan.id === planId)
+
+      if (!selectedPlan) return
+
+      navigate(`/signup?plan=${encodeURIComponent(selectedPlan.id)}`, {
+        state: { planId: selectedPlan.id },
+      })
+    },
+    [navigate],
+  )
+
+  return (
+    <main
+      style={{
+        minHeight: '100vh',
+        padding: '56px 20px 40px',
+        background: token.colorBgLayout,
+      }}
+    >
+      <section
+        aria-labelledby="subscription-title"
+        style={{ width: '100%', maxWidth: 960, margin: '0 auto' }}
+      >
+        <header
+          style={{
+            maxWidth: 680,
+            margin: '0 auto 40px',
+            textAlign: 'center',
+          }}
+        >
+          <Text
+            strong
+            style={{
+              color: token.colorPrimary,
+              fontSize: 13,
+              textTransform: 'uppercase',
+            }}
+          >
+            Planes de suscripción
+          </Text>
+          <Title
+            id="subscription-title"
+            level={1}
+            style={{ margin: '10px 0 12px', fontSize: 38 }}
+          >
+            Elegí una base sólida para tu tienda
+          </Title>
+          <Paragraph
+            type="secondary"
+            style={{ margin: 0, fontSize: 17, lineHeight: 1.65 }}
+          >
+            Seleccioná la capacidad que necesitás hoy. Podrás cambiar de plan
+            cuando evolucione tu operación.
+          </Paragraph>
+        </header>
+
+        <Row gutter={[20, 20]} justify="center" align="stretch">
+          {SUBSCRIPTION_PLANS.map(plan => (
+            <Col xs={24} md={12} key={plan.id}>
+              <PlanCard plan={plan} onSelect={handleSelectPlan} />
+            </Col>
+          ))}
+        </Row>
+
+        <Flex
+          justify="center"
+          align="center"
+          gap={8}
+          wrap
+          style={{
+            marginTop: 28,
+            color: token.colorTextSecondary,
+            textAlign: 'center',
+          }}
+        >
+          <LockOutlined aria-hidden />
+          <Text type="secondary">
+            Conexión segura, actualizaciones incluidas y aislamiento por tienda.
+          </Text>
+        </Flex>
+      </section>
+    </main>
+  )
+}
+
+export default SubscriptionPage

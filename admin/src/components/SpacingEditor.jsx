@@ -8,8 +8,22 @@ import {
   TextField,
 } from '@mui/material';
 
+const DEFAULT_SPACING = {
+  section: 64,
+  container: 24,
+  radius: 12,
+  cardPadding: 16,
+};
+
+const PREVIEW_COLORS = {
+  block: '#334155',
+  measure: '#94a3b8',
+  canvas: '#e2e8f0',
+  success: '#16a34a',
+};
+
 const SpacingEditor = ({ value, onChange }) => {
-  const spacing = value || {};
+  const spacing = { ...DEFAULT_SPACING, ...(value || {}) };
 
   const handleChange = (field, newValue) => {
     onChange({ ...spacing, [field]: newValue });
@@ -38,7 +52,7 @@ const SpacingEditor = ({ value, onChange }) => {
                 <TextField
                   size="small"
                   type="number"
-                  value={spacing[key] ?? 0}
+                  value={spacing[key]}
                   onChange={(e) => handleChange(key, Number(e.target.value))}
                   sx={{ width: 80 }}
                   inputProps={{ min, max }}
@@ -46,7 +60,7 @@ const SpacingEditor = ({ value, onChange }) => {
               </Box>
               
               <Slider
-                value={spacing[key] ?? 0}
+                value={spacing[key]}
                 onChange={(_, v) => handleChange(key, v)}
                 min={min}
                 max={max}
@@ -63,28 +77,28 @@ const SpacingEditor = ({ value, onChange }) => {
               <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', height: 80, bgcolor: 'grey.100', borderRadius: 1 }}>
                 {key === 'section' && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Box sx={{ width: 60, height: 40, bgcolor: 'primary.main', borderRadius: 1 }} />
+                    <Box sx={{ width: 60, height: 40, bgcolor: PREVIEW_COLORS.block, borderRadius: 1 }} />
                     <Box sx={{ 
                       width: 20, 
-                      height: spacing[key] ?? 64, 
-                      bgcolor: 'secondary.main',
+                      height: spacing[key], 
+                      bgcolor: PREVIEW_COLORS.measure,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       borderRadius: 1
                     }}>
                       <Typography variant="caption" sx={{ transform: 'rotate(-90deg)', color: 'white', whiteSpace: 'nowrap' }}>
-                        {spacing[key] ?? 64}px
+                        {spacing[key]}px
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 60, height: 40, bgcolor: 'primary.main', borderRadius: 1 }} />
+                    <Box sx={{ width: 60, height: 40, bgcolor: PREVIEW_COLORS.block, borderRadius: 1 }} />
                   </Box>
                 )}
                 {key === 'container' && (
-                  <Box sx={{ width: '80%', height: 60, bgcolor: 'grey.300', borderRadius: 1, display: 'flex' }}>
-                    <Box sx={{ width: (spacing[key] ?? 24), bgcolor: 'secondary.main', height: '100%' }} />
-                    <Box sx={{ flex: 1, bgcolor: 'primary.main', height: '100%' }} />
-                    <Box sx={{ width: (spacing[key] ?? 24), bgcolor: 'secondary.main', height: '100%' }} />
+                  <Box sx={{ width: '80%', height: 60, bgcolor: PREVIEW_COLORS.canvas, borderRadius: 1, display: 'flex' }}>
+                    <Box sx={{ width: spacing[key], bgcolor: PREVIEW_COLORS.measure, height: '100%' }} />
+                    <Box sx={{ flex: 1, bgcolor: PREVIEW_COLORS.block, height: '100%' }} />
+                    <Box sx={{ width: spacing[key], bgcolor: PREVIEW_COLORS.measure, height: '100%' }} />
                   </Box>
                 )}
                 {key === 'radius' && (
@@ -92,20 +106,20 @@ const SpacingEditor = ({ value, onChange }) => {
                     <Box sx={{ 
                       width: 60, 
                       height: 60, 
-                      bgcolor: 'primary.main',
-                      borderRadius: (spacing[key] ?? 12) / 4
+                      bgcolor: PREVIEW_COLORS.block,
+                      borderRadius: spacing[key] / 4
                     }} />
                     <Box sx={{ 
                       width: 60, 
                       height: 60, 
-                      bgcolor: 'secondary.main',
-                      borderRadius: (spacing[key] ?? 12) / 2
+                      bgcolor: PREVIEW_COLORS.measure,
+                      borderRadius: spacing[key] / 2
                     }} />
                     <Box sx={{ 
                       width: 60, 
                       height: 60, 
-                      bgcolor: 'success.main',
-                      borderRadius: (spacing[key] ?? 12)
+                      bgcolor: PREVIEW_COLORS.success,
+                      borderRadius: spacing[key]
                     }} />
                   </Box>
                 )}
@@ -113,9 +127,9 @@ const SpacingEditor = ({ value, onChange }) => {
                   <Box sx={{ 
                     bgcolor: 'grey.200', 
                     borderRadius: 2,
-                    p: (spacing[key] ?? 0) / 8
+                    p: spacing[key] / 8
                   }}>
-                    <Box sx={{ width: 80, height: 50, bgcolor: 'primary.main', borderRadius: 1 }} />
+                    <Box sx={{ width: 80, height: 50, bgcolor: PREVIEW_COLORS.block, borderRadius: 1 }} />
                   </Box>
                 )}
               </Box>

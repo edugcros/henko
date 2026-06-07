@@ -17,6 +17,7 @@ import {
 
 import { env } from './config/env.js'
 import { corsOptions } from './config/corsOptions.js'
+import logger from './config/logger.js'
 
 import { notFound, errorHandler } from './src/middlewares/errorHandler.js'
 import apiRoutes from './src/routes/index.js'
@@ -151,8 +152,8 @@ const matchesRoute = (req, route) => {
 
   const matched = routeMethod === reqMethod && regex.test(reqPath)
 
-  if (process.env.PREDEPLOY_TUNNEL_MODE === 'true') {
-    console.log('[CSRF ROUTE MATCH]', {
+  if (!env.isProduction && String(process.env.PREDEPLOY_TUNNEL_MODE || '').toLowerCase() === 'true') {
+    logger.debug('[CSRF ROUTE MATCH]', {
       route: route.path,
       routeMethod,
       reqMethod,
@@ -173,10 +174,12 @@ const isTrustedPredeployTunnelRequest = req => {
     'https://henko-admin.vercel.app',
   ]
 
-  const enabled = String(process.env.PREDEPLOY_TUNNEL_MODE || '').toLowerCase() === 'true'
+  const enabled =
+    !env.isProduction &&
+    String(process.env.PREDEPLOY_TUNNEL_MODE || '').toLowerCase() === 'true'
 
   if (enabled) {
-    console.log('[PREDEPLOY CSRF CHECK]', {
+    logger.debug('[PREDEPLOY CSRF CHECK]', {
       enabled,
       origin,
       path: req.path,
@@ -228,13 +231,10 @@ const tunnelCsrfExemptRoutes = [
   { method: 'PATCH', path: `${env.apiPrefix}/product/:id` },
   { method: 'DELETE', path: `${env.apiPrefix}/product/:id` },
   { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
-  { method: 'PUT', path: `${env.apiPrefix}/product/:productId/upload-image` },
   { method: 'DELETE', path: `${env.apiPrefix}/product/:productId/image` },
   { method: 'PUT', path: `${env.apiPrefix}/product/:productId/variant-image` },
   { method: 'POST', path: `${env.apiPrefix}/product/:id/upload-image` },
   { method: 'POST', path: `${env.apiPrefix}/product/:productId/upload-image` },
-
-  { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
   // Wishlist
   { method: 'PUT', path: `${env.apiPrefix}/user/wishlist/:productId` },
 
@@ -267,16 +267,7 @@ const isCsrfExempt = req => {
   }
 
   if (isTrustedPredeployTunnelRequest(req)) {
-    const isMutatingMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
-
-    if (isMutatingMethod) {
-      console.log('[CSRF PREDEPLOY SKIP ALL MUTATIONS]', {
-        method: req.method,
-        path: req.path,
-        originalUrl: req.originalUrl,
-        origin: req.headers.origin,
-      })
-
+    if (tunnelCsrfExemptRoutes.some(route => matchesRoute(req, route))) {
       return true
     }
   }

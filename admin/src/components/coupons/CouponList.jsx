@@ -13,6 +13,8 @@ import {
   Typography,
   Chip,
   Box,
+  Avatar,
+  AvatarGroup,
   IconButton,
   Menu,
   MenuItem,
@@ -32,7 +34,7 @@ import {
   MoreVert as MoreVertIcon,
   Edit as EditIcon,
   ContentCopy as CloneIcon,
-  Block as BlockIcon,
+  DeleteOutline as DeleteIcon,
   DeleteForever as HardDeleteIcon,
   RestoreFromTrash as RestoreIcon,
   Layers as StackableIcon,
@@ -48,7 +50,8 @@ const STATUS_CONFIG = {
   inactive: { label: 'Inactivo', color: 'default' },
   scheduled: { label: 'Programado', color: 'info' },
   expired: { label: 'Expirado', color: 'warning' },
-  exhausted: { label: 'Agotado', color: 'error' }
+  exhausted: { label: 'Agotado', color: 'error' },
+  deleted: { label: 'Eliminado', color: 'error' }
 }
 
 const formatDate = (dateString) => {
@@ -57,11 +60,47 @@ const formatDate = (dateString) => {
   return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('es-ES')
 }
 
+const PLACEHOLDER_IMAGE = '/placeholder-product.png'
+
+const getImageBaseUrl = () => {
+  const rawBaseUrl =
+    process.env.REACT_APP_API_BASE_URL ||
+    process.env.REACT_APP_API_URL ||
+    ''
+
+  return rawBaseUrl.replace(/\/api\/?$/, '').replace(/\/$/, '')
+}
+
+const getProductId = (product) => {
+  if (!product || typeof product !== 'object') return String(product || '')
+  return product.id || product._id || product.productId || product.sku || ''
+}
+
+const getProductTitle = (product) => {
+  if (!product || typeof product !== 'object') return 'Producto'
+  return product.title || product.name || product.sku || 'Producto sin nombre'
+}
+
+const getProductImage = (product) => {
+  if (!product || typeof product !== 'object') return PLACEHOLDER_IMAGE
+
+  const image = product.images?.[0] || product.image || null
+  const url = typeof image === 'string'
+    ? image
+    : image?.url || image?.secure_url || image?.src || ''
+
+  if (!url) return PLACEHOLDER_IMAGE
+  if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url
+  if (url.startsWith('/')) return `${getImageBaseUrl()}${url}`
+  return `${getImageBaseUrl()}/${url}`
+}
+
 const getStatus = (coupon) => {
   const now = new Date()
   const start = coupon.startDate ? new Date(coupon.startDate) : null
   const end = coupon.endDate ? new Date(coupon.endDate) : null
   
+  if (coupon.isDeleted) return 'deleted'
   if (!coupon.isActive) return 'inactive'
   if (start && now < start) return 'scheduled'
   if (end && now > end) return 'expired'
@@ -94,10 +133,71 @@ const UsageProgress = ({ count, limit }) => {
   )
 }
 
+const ProductSummary = ({ products = [] }) => {
+  const visibleProducts = Array.isArray(products) ? products.filter(Boolean) : []
+
+  if (!visibleProducts.length) {
+    return (
+      <Chip
+        label="Todos los productos"
+        size="small"
+        variant="outlined"
+        color="primary"
+      />
+    )
+  }
+
+  const firstProduct = visibleProducts[0]
+  const extraCount = visibleProducts.length - 1
+
+  return (
+    <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 220 }}>
+      <AvatarGroup
+        max={3}
+        sx={{
+          '& .MuiAvatar-root': {
+            width: 34,
+            height: 34,
+            fontSize: 12,
+            borderColor: 'background.paper'
+          }
+        }}
+      >
+        {visibleProducts.slice(0, 3).map((product, index) => (
+          <Avatar
+            key={getProductId(product) || index}
+            alt={getProductTitle(product)}
+            src={getProductImage(product)}
+            imgProps={{
+              onError: (event) => {
+                event.currentTarget.onerror = null
+                event.currentTarget.src = PLACEHOLDER_IMAGE
+              }
+            }}
+          >
+            {getProductTitle(product).slice(0, 1)}
+          </Avatar>
+        ))}
+      </AvatarGroup>
+
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="body2" fontWeight={700} noWrap title={getProductTitle(firstProduct)}>
+          {getProductTitle(firstProduct)}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" noWrap display="block">
+          {extraCount > 0
+            ? `+${extraCount} producto${extraCount === 1 ? '' : 's'} más`
+            : firstProduct?.sku || 'Producto asignado'}
+        </Typography>
+      </Box>
+    </Stack>
+  )
+}
+
 const ActionMenu = ({ coupon, onEdit, onClone, onSoftDelete, onHardDelete, onRestore }) => {
   const [anchorEl, setAnchorEl] = useState(null)
   const open = Boolean(anchorEl)
-  const isInactive = coupon.isActive === false
+  const isDeleted = coupon.isDeleted === true
   const hasUsage = (coupon.usageCount || 0) > 0
 
   const handleOpen = (e) => setAnchorEl(e.currentTarget)
@@ -114,7 +214,7 @@ const ActionMenu = ({ coupon, onEdit, onClone, onSoftDelete, onHardDelete, onRes
         <MoreVertIcon fontSize="small" />
       </IconButton>
       <Menu anchorEl={anchorEl} open={open} onClose={handleClose} transformOrigin={{ horizontal: 'right', vertical: 'top' }} anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}>
-        {!isInactive ? (
+        {!isDeleted ? (
           <>
             <MenuItem onClick={() => handleAction(onEdit)}>
               <ListItemIcon><EditIcon fontSize="small" color="primary" /></ListItemIcon>
@@ -126,11 +226,7 @@ const ActionMenu = ({ coupon, onEdit, onClone, onSoftDelete, onHardDelete, onRes
             </MenuItem>
             <Divider />
             <MenuItem onClick={() => handleAction(onSoftDelete)}>
-              <ListItemIcon><BlockIcon fontSize="small" color="warning" /></ListItemIcon>
-              <ListItemText sx={{ color: 'warning.main' }}>Desactivar</ListItemText>
-            </MenuItem>
-            <MenuItem onClick={() => handleAction(onHardDelete)} disabled={hasUsage}>
-              <ListItemIcon><HardDeleteIcon fontSize="small" color="error" /></ListItemIcon>
+              <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
               <ListItemText sx={{ color: 'error.main' }}>Eliminar</ListItemText>
             </MenuItem>
           </>
@@ -141,7 +237,7 @@ const ActionMenu = ({ coupon, onEdit, onClone, onSoftDelete, onHardDelete, onRes
               <ListItemText sx={{ color: 'success.main' }}>Restaurar</ListItemText>
             </MenuItem>
             <Divider />
-            <MenuItem onClick={() => handleAction(onHardDelete)}>
+            <MenuItem onClick={() => handleAction(onHardDelete)} disabled={hasUsage}>
               <ListItemIcon><HardDeleteIcon fontSize="small" color="error" /></ListItemIcon>
               <ListItemText sx={{ color: 'error.main' }}>Eliminar Permanente</ListItemText>
             </MenuItem>
@@ -247,12 +343,7 @@ const CouponList = ({
                 </TableCell>
 
                 <TableCell>
-                  <Chip 
-                    label={!coupon.applicableProducts?.length ? 'Todos' : `${coupon.applicableProducts.length} prod.`}
-                    size="small"
-                    variant="outlined"
-                    color={!coupon.applicableProducts?.length ? 'primary' : 'default'}
-                  />
+                  <ProductSummary products={coupon.applicableProducts} />
                 </TableCell>
 
                 <TableCell>

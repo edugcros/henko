@@ -1,16 +1,35 @@
 export const DEFAULT_THEME_COLORS = {
-  primary: '#2563eb',
-  secondary: '#64748b',
-  accent: '#0f172a',
-  background: '#f8fafc',
-  surface: '#ffffff',
-  text: '#111827',
-  textSecondary: '#64748b',
-  border: '#e5e7eb',
-  error: '#dc2626',
-  warning: '#f59e0b',
+  primary: '#1976d2',
+  secondary: '#dc004e',
+  accent: '#ff9800',
+  background: '#ffffff',
+  surface: '#f5f5f5',
+  headerBackground: '#ffffff',
+  headerText: '#1a1a1a',
+  headerLink: '#1976d2',
+  headerIcon: '#666666',
+  cardBackground: '#f5f5f5',
+  cardText: '#1a1a1a',
+  cardMutedText: '#666666',
+  cardBorder: '#e0e0e0',
+  cardPrice: '#1976d2',
+  text: '#1a1a1a',
+  mutedText: '#666666',
+  textSecondary: '#666666',
+  border: '#e0e0e0',
+  actionPrimary: '#1976d2',
+  actionPrimaryText: '#ffffff',
+  actionSecondary: '#dc004e',
+  actionSecondaryText: '#ffffff',
+  link: '#1976d2',
+  price: '#1976d2',
+  salePrice: '#d32f2f',
+  badgeBackground: '#dc004e',
+  badgeText: '#ffffff',
+  error: '#d32f2f',
+  warning: '#ed6c02',
   info: '#0288d1',
-  success: '#16a34a',
+  success: '#2e7d32',
 }
 
 export const getActiveThemeConfig = themeState => {
@@ -21,15 +40,42 @@ export const getActiveThemeConfig = themeState => {
   return themeState?.config || {}
 }
 
-export const getThemeColors = config => ({
-  ...DEFAULT_THEME_COLORS,
-  ...(config?.colors || {}),
-  textSecondary:
-    config?.colors?.textSecondary ||
-    config?.colors?.mutedText ||
-    config?.colors?.textMuted ||
-    DEFAULT_THEME_COLORS.textSecondary,
-})
+export const getThemeColors = config => {
+  const colors = {
+    ...DEFAULT_THEME_COLORS,
+    ...(config?.colors || {}),
+  }
+
+  const textSecondary =
+    colors.mutedText ||
+    colors.textSecondary ||
+    colors.textMuted ||
+    DEFAULT_THEME_COLORS.textSecondary
+
+  return {
+    ...colors,
+    textSecondary,
+    mutedText: colors.mutedText || textSecondary,
+    headerBackground: colors.headerBackground,
+    headerText: colors.headerText,
+    headerLink: colors.headerLink,
+    headerIcon: colors.headerIcon,
+    cardBackground: colors.cardBackground,
+    cardText: colors.cardText,
+    cardMutedText: colors.cardMutedText,
+    cardBorder: colors.cardBorder,
+    cardPrice: colors.cardPrice,
+    actionPrimary: colors.actionPrimary,
+    actionPrimaryText: colors.actionPrimaryText,
+    actionSecondary: colors.actionSecondary,
+    actionSecondaryText: colors.actionSecondaryText,
+    link: colors.link,
+    price: colors.price,
+    salePrice: colors.salePrice,
+    badgeBackground: colors.badgeBackground,
+    badgeText: colors.badgeText,
+  }
+}
 
 export const getProductThemeConfig = config => ({
   gridStyle: 'grid',
@@ -79,17 +125,17 @@ export const getButtonThemeConfig = config => ({
 
 export const getLayoutThemeConfig = config => ({
   maxWidth: 1200,
-  containerPadding: 0,
+  containerPadding: 24,
   borderRadius: config?.spacing?.radius ?? 8,
   shadowIntensity: 2,
   ...(config?.layout || {}),
 })
 
 export const getSpacingThemeConfig = config => ({
-  section: 0,
-  container: 0,
+  section: 64,
+  container: 24,
   radius: 8,
-  cardPadding: 0,
+  cardPadding: 18,
   ...(config?.spacing || {}),
 })
 

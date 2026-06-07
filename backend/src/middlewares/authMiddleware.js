@@ -1,18 +1,10 @@
-import jwt from 'jsonwebtoken'
 import asyncHandler from 'express-async-handler'
 import logger from '../../config/logger.js'
-import mongoose from 'mongoose'
-
-// =====================================================
-// 🔎 Utils
-// =====================================================
-const parseBearer = req => {
-  const auth = req.headers?.authorization
-  if (!auth) return null
-
-  const [type, token] = auth.split(' ')
-  return type?.toLowerCase() === 'bearer' && token ? token : null
-}
+import {
+  decodeAccessToken,
+  getAccessTokenFromRequest,
+} from '../utils/authRequest.js'
+import { isValidObjectId } from '../utils/requestContext.js'
 
 // =====================================================
 // 🔐 AUTH MIDDLEWARE
@@ -21,11 +13,7 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
   // ---------------------------------------------------
   // 🥇 PRIORIDAD REAL (alineado con axiosConfig)
   // ---------------------------------------------------
-  const token =
-    parseBearer(req) ||               // 1️⃣ Header Authorization
-    req.cookies?.token ||             // 2️⃣ Cookie (fallback)
-    req.headers['x-access-token'] ||  // 3️⃣ Legacy
-    req.headers.token                 // 4️⃣ Legacy extremo
+  const token = getAccessTokenFromRequest(req)
   
   if (!token || token === 'undefined') {
     return res.status(401).json({
@@ -38,11 +26,9 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
     // -------------------------------------------------
     // 🔐 Verificar JWT
     // -------------------------------------------------
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
-      algorithms: ['HS256'],
-    })
+    const decoded = decodeAccessToken(token)
 
-    if (!mongoose.Types.ObjectId.isValid(decoded.sub)) {
+    if (!isValidObjectId(decoded.sub)) {
       return res
         .status(400)
         .json({ success: false, message: 'ID de usuario inválido en token' })

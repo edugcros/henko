@@ -1,9 +1,13 @@
 // 📁 src/pages/Profile/Profile.jsx
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useTenant } from '../contexts/TenantContext'
-import { logoutUser, clearState, getMe } from '@features/user/userSlice'
+import {
+  logoutUser,
+  clearState,
+  updateProfile,
+} from '@features/user/userSlice'
 import { persistor } from '@app/store'
 import Cookies from 'js-cookie'
 
@@ -28,6 +32,7 @@ import {
   useTheme,
   alpha,
   Skeleton,
+  Alert,
 } from '@mui/material'
 import {
   Person as PersonIcon,
@@ -49,29 +54,46 @@ const Profile = () => {
   const theme = useTheme()
   const { themeConfig, isReady } = useTenant()
 
-  const { user } = useSelector(state => state.user)
-  const { order, isLoading } = useSelector(state => state.order)
-  console.log(order)
-  const { wishlist } = useSelector(state => state.user)
+  const {
+    user,
+    wishlist,
+    isLoading: isUserLoading,
+  } = useSelector(state => state.user)
   const { cartItems } = useSelector(state => state.cart)
   const compareItems = useSelector(state => state.compare?.items || [])
 
   const [isEditing, setIsEditing] = useState(false)
-
   const [formData, setFormData] = useState({
-    name: user?.firstname + ' ' + user?.lastname || '',
+    firstname: '',
+    lastname: '',
     email: user?.email || '',
-    phone: user?.mobile || '',
-    address: user?.address || '',
+    mobile: '',
+    address: '',
   })
+  const [formError, setFormError] = useState('')
+  const [formSuccess, setFormSuccess] = useState('')
+
+  const resetFormFromUser = currentUser => {
+    setFormData({
+      firstname: currentUser?.firstname || '',
+      lastname: currentUser?.lastname || '',
+      email: currentUser?.email || '',
+      mobile: currentUser?.mobile || '',
+      address: currentUser?.address || '',
+    })
+  }
+
+  useEffect(() => {
+    resetFormFromUser(user)
+  }, [user])
 
   // Colores dinámicos del tema
   const colors = {
-    primary: themeConfig?.colors?.primary || theme.palette.primary.main,
+    primary: themeConfig?.colors?.primary || theme.palette.brand.main,
     background: themeConfig?.colors?.background || theme.palette.background.default,
   }
 
-  if (!isReady || isLoading) {
+  if (!isReady || (isUserLoading && !user)) {
     return (
       <Box p={4}>
         <Skeleton variant="text" width={300} height={60} />
@@ -89,7 +111,11 @@ const Profile = () => {
         <Button
           variant="contained"
           onClick={() => navigate('/login')}
-          sx={{ mt: 2, bgcolor: colors.primary }}
+          sx={{
+            mt: 2,
+            bgcolor: theme.palette.ctaPrimary.main,
+            color: theme.palette.ctaPrimary.contrastText,
+          }}
         >
           Iniciar Sesión
         </Button>
@@ -127,13 +153,44 @@ const Profile = () => {
   }
 
   const handleSave = async () => {
+    setFormError('')
+    setFormSuccess('')
+
+    const payload = {
+      firstname: formData.firstname.trim(),
+      lastname: formData.lastname.trim(),
+      mobile: formData.mobile.replace(/[\s()-]/g, ''),
+      address: formData.address.trim(),
+    }
+
+    if (!payload.firstname || !payload.lastname || !payload.mobile) {
+      setFormError('Nombre, apellido y teléfono son obligatorios.')
+      return
+    }
+
     try {
-      await dispatch(getMe(formData)).unwrap()
+      const result = await dispatch(updateProfile(payload)).unwrap()
+      resetFormFromUser(result.user)
+      setFormSuccess(result.message || 'Perfil actualizado correctamente.')
       setIsEditing(false)
     } catch (error) {
       console.error('Error actualizando perfil:', error)
+      setFormError(
+        typeof error === 'string'
+          ? error
+          : error?.message || 'No se pudo actualizar el perfil.',
+      )
     }
   }
+
+  const handleCancelEdit = () => {
+    resetFormFromUser(user)
+    setFormError('')
+    setIsEditing(false)
+  }
+
+  const fullName =
+    [user.firstname, user.lastname].filter(Boolean).join(' ') || 'Usuario'
 
   const stats = [
     {
@@ -194,14 +251,24 @@ const Profile = () => {
                   fontSize: 40,
                 }}
               >
-                {user.name?.charAt(0).toUpperCase() || <PersonIcon />}
+                {fullName.charAt(0).toUpperCase() || <PersonIcon />}
               </Avatar>
 
               <Typography variant="h6" fontWeight={700}>
-                {user.name || 'Usuario'}
+                {fullName}
               </Typography>
 
-              <Chip label={user.role || 'Cliente'} size="small" sx={{ mt: 1 }} color="primary" />
+              <Chip
+                label={user.role || 'Cliente'}
+                size="small"
+                variant="outlined"
+                sx={{
+                  mt: 1,
+                  bgcolor: alpha(theme.palette.brand.main, 0.12),
+                  color: theme.palette.brand.main,
+                  borderColor: alpha(theme.palette.brand.main, 0.28),
+                }}
+              />
             </Box>
 
             <Divider sx={{ my: 2 }} />
@@ -289,23 +356,58 @@ const Profile = () => {
                 </Button>
               ) : (
                 <Box>
-                  <IconButton onClick={() => setIsEditing(false)} color="error">
+                  <IconButton
+                    onClick={handleCancelEdit}
+                    color="error"
+                    disabled={isUserLoading}
+                  >
                     <CancelIcon />
                   </IconButton>
-                  <IconButton onClick={handleSave} color="success">
+                  <IconButton
+                    onClick={handleSave}
+                    color="success"
+                    disabled={isUserLoading}
+                  >
                     <SaveIcon />
                   </IconButton>
                 </Box>
               )}
             </Box>
 
+            {formError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {formError}
+              </Alert>
+            )}
+
+            {formSuccess && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                {formSuccess}
+              </Alert>
+            )}
+
             <Grid container spacing={3}>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Nombre"
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  value={formData.firstname}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, firstname: e.target.value }))
+                  }
+                  disabled={!isEditing}
+                  InputProps={{ readOnly: !isEditing }}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Apellido"
+                  value={formData.lastname}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, lastname: e.target.value }))
+                  }
                   disabled={!isEditing}
                   InputProps={{ readOnly: !isEditing }}
                 />
@@ -325,10 +427,26 @@ const Profile = () => {
                 <TextField
                   fullWidth
                   label="Teléfono"
-                  value={formData.phone}
-                  onChange={e => setFormData({ ...formData, mobile: e.target.value })}
+                  value={formData.mobile}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, mobile: e.target.value }))
+                  }
                   disabled={!isEditing}
                   InputProps={{ readOnly: !isEditing }}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Dirección"
+                  value={formData.address}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, address: e.target.value }))
+                  }
+                  disabled={!isEditing}
+                  InputProps={{ readOnly: !isEditing }}
+                  inputProps={{ maxLength: 200 }}
                 />
               </Grid>
             </Grid>

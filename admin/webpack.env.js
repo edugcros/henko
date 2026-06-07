@@ -29,6 +29,8 @@ const REQUIRED_PRODUCTION_KEYS = [
   'REACT_APP_API_BASE_URL',
   'REACT_APP_API_URL',
   'REACT_APP_ASSETS_BASE_URL',
+  'REACT_APP_PUBLIC_BASE_DOMAIN',
+  'REACT_APP_ADMIN_BASE_DOMAIN',
   'REACT_APP_TENANT_HEADER',
   'REACT_APP_CSRF_HEADER_NAME',
 ]
@@ -51,6 +53,24 @@ if (NODE_ENV === 'production') {
       `Variables REACT_APP requeridas faltantes para producción: ${missing.join(', ')}`,
     )
   }
+
+  const forbiddenPatterns = [/localhost/i, /127\.0\.0\.1/i, /henko\.local/i]
+
+  ;[
+    getEnvValue('REACT_APP_API_BASE_URL'),
+    getEnvValue('REACT_APP_API_URL'),
+    getEnvValue('REACT_APP_ASSETS_BASE_URL'),
+    getEnvValue('REACT_APP_PUBLIC_BASE_DOMAIN'),
+    getEnvValue('REACT_APP_ADMIN_BASE_DOMAIN'),
+  ].forEach(value => {
+    forbiddenPatterns.forEach(pattern => {
+      if (pattern.test(value)) {
+        throw new Error(
+          `Configuración inválida para producción en admin: ${value}`,
+        )
+      }
+    })
+  })
 }
 
 export const getClientEnvironment = () => {

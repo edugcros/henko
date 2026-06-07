@@ -8,7 +8,6 @@ import api, { fetchCsrfToken } from '@utils/axiosConfig'
 const normalizeAuthResponse = res => {
   if (!res) return null
   const raw = res?.data?.data || res?.data || res;
-  console.log('raw', raw)
   return {
     user: raw?.user || raw?.data?.user || null,
     token: raw?.token || raw?.data?.token || raw?.data?.accessToken || null,
@@ -62,8 +61,6 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
         ...options.headers,
       },
     }
-    console.log('config', config)
-
     if (data !== undefined) config.data = data
 
     const res = await api(config)
@@ -90,7 +87,6 @@ export const sendReply = async (id, message) => {
 };
 export const updateEnquiryStatus = async (id, status) => {
   const response = await apiRequest('put', `/${id}`, { status });
-  console.log('updateEnquiryStatus response', response)
   return response;
 };
 

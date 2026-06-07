@@ -42,8 +42,8 @@ const formatDateForInput = (date) => {
   try {
     const d = new Date(date)
     if (isNaN(d.getTime())) return ''
-    // Formato YYYY-MM-DDTHH:mm para datetime-local
-    return d.toISOString().slice(0, 16)
+    const timezoneOffsetMs = d.getTimezoneOffset() * 60 * 1000
+    return new Date(d.getTime() - timezoneOffsetMs).toISOString().slice(0, 16)
   } catch {
     return ''
   }
@@ -166,23 +166,25 @@ const CouponForm = ({
         if (value.trim().length < 5) return 'Mínimo 5 caracteres'
         return null
         
-      case 'discountValue':
+      case 'discountValue': {
         const num = parseFloat(value)
         if (isNaN(num) || num <= 0) return 'Debe ser mayor a 0'
         if (allValues.discountType === 'percentage' && num > 100) {
           return 'No puede exceder 100%'
         }
         return null
+      }
         
       case 'minPurchaseAmount':
         if (value && parseFloat(value) < 0) return 'No puede ser negativo'
         return null
         
-      case 'endDate':
+      case 'endDate': {
         const start = new Date(allValues.startDate)
         const end = new Date(value)
         if (end <= start) return 'Debe ser posterior a la fecha de inicio'
         return null
+      }
         
       case 'usageLimitPerUser':
         if (parseInt(value) < 1) return 'Mínimo 1 uso por usuario'

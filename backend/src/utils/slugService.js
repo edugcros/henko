@@ -2,9 +2,9 @@
 // VERSIÓN PRODUCCIÓN - SLUGS ÚNICOS POR TENANT
 
 import slugify from 'slugify'
-import mongoose from 'mongoose'
 
 import Product from '../models/productModel.js'
+import { isValidObjectId } from './requestContext.js'
 
 const DEFAULT_SLUG_BASE = 'producto'
 const MAX_SLUG_LENGTH = 80
@@ -38,7 +38,7 @@ const buildCandidateSlug = (baseSlug, counter) => {
  * @returns {Promise<string>}
  */
 export async function generateUniqueSlug({ title, tenantId, excludeId = null }) {
-  if (!tenantId || !mongoose.Types.ObjectId.isValid(String(tenantId))) {
+  if (!tenantId || !isValidObjectId(tenantId)) {
     throw new Error('tenantId inválido para generar slug')
   }
 

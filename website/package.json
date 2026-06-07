@@ -15,9 +15,10 @@
     "preview": "serve -s dist -l 3002",
     "clean": "rimraf dist build",
     "lint": "eslint src/**/*.{js,jsx} --fix",
-    "format": "prettier --write src/**/*.{js,jsx,css,scss,json,html}",
     "start": "npm run dev",
     "test": "jest --coverage --watchAll",
+    "format": "prettier --write \"src/**/*.{js,json}\" \"*.js\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.{js,json}\" \"*.js\" \"*.json\"",
     "test:watch": "jest --watchAll",
     "test:ci": "jest --ci",
     "deploy": "npm run clean && npm run build:prod"

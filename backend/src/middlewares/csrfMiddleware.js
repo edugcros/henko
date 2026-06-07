@@ -29,7 +29,6 @@ export const getCookieDomain = req => {
   const rootDomain = String(
     env.rootDomain ||
       env.publicBaseDomain ||
-      process.env.PRODUCTION_DOMAIN ||
       '',
   )
     .replace(/^\./, '')
@@ -56,23 +55,6 @@ export const getCookieDomain = req => {
   // no seteamos domain global; el navegador la asocia al host exacto.
   return undefined
 }
-
-/**
- * Middleware estático legacy.
- *
- * Se mantiene exportado por compatibilidad con rutas antiguas,
- * pero en la arquitectura actual debe preferirse csrfProtectionDynamic
- * aplicado globalmente desde app.js.
- */
-export const csrfProtection = csurf({
-  cookie: {
-    key: '_csrf',
-    httpOnly: true,
-    secure: env.csrfCookieSecure,
-    sameSite: env.csrfCookieSameSite,
-    path: '/',
-  },
-})
 
 /**
  * Middleware CSRF recomendado para arquitectura multi-tenant.
@@ -141,7 +123,7 @@ export const logCsrfStatus = (req, res, next) => {
         ? '✅'
         : '❌'
 
-    console.log(
+    logger.debug(
       `[CSRF] Secret: ${hasSecret} | Header: ${tokenInHeader} | Method: ${req.method} | Host: ${req.get('host')}`,
     )
   }

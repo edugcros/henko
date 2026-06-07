@@ -9,6 +9,10 @@ import {
   removeCartItem,
   emptyCart,
 } from '@features/cart/cartSlice'
+import {
+  trackUserMetric,
+  USER_METRIC_EVENTS,
+} from '../services/userMetricsService'
 
 export const useCart = () => {
   const dispatch = useDispatch()
@@ -29,6 +33,15 @@ export const useCart = () => {
       try {
         if (user) {
           await dispatch(addToCart(itemData)).unwrap()
+          trackUserMetric({
+            eventType: USER_METRIC_EVENTS.ADD_TO_CART,
+            productId: product._id,
+            value: product.price || 0,
+            quantity: 1,
+            metadata: {
+              title: product.title || '',
+            },
+          })
           toast.success('Producto agregado al carrito 🛒')
         } else {
           toast.info('Debes iniciar sesión para guardar tu carrito.')
@@ -53,6 +66,10 @@ export const useCart = () => {
   const removeItem = useCallback(
     async productId => {
       await dispatch(removeCartItem(productId))
+      trackUserMetric({
+        eventType: USER_METRIC_EVENTS.REMOVE_FROM_CART,
+        productId,
+      })
       toast.info('Producto eliminado del carrito.')
     },
     [dispatch],

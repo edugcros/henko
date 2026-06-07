@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import ReactStars from 'react-stars'
 import { useNavigate } from 'react-router-dom'
@@ -12,6 +12,10 @@ import {
   getProductRouteId,
   getThemeColors,
 } from '@utils/themeRuntime'
+import {
+  trackUserMetric,
+  USER_METRIC_EVENTS,
+} from '../services/userMetricsService'
 
 /**
  * HomeProductCard Optimizado
@@ -33,10 +37,10 @@ const HomeProductCard = React.memo(({ data }) => {
   // Extraemos el primer item con seguridad
   const item = useMemo(() => (Array.isArray(data) ? data[0] : data), [data])
 
-  if (!item) return null
-
-  const imageUrl = getProductImage(item)
-  const routeId = getProductRouteId(item)
+  const imageUrl = item ? getProductImage(item) : ''
+  const routeId = item ? getProductRouteId(item) : ''
+  const productId = item?._id || item?.id || item?.productId
+  const productPrice = Number(item?.finalPrice ?? item?.price) || 0
   const aspectRatio = productTheme.imageAspectRatio?.replace(':', ' / ') || '1 / 1'
   const hoverTransform = {
     none: 'none',
@@ -45,10 +49,44 @@ const HomeProductCard = React.memo(({ data }) => {
     border: 'none',
     scale: 'scale(1.02)',
   }[productTheme.hoverEffect || 'lift']
+  const cardBackground = themeColors.cardBackground
+  const cardBorder = themeColors.cardBorder
+  const cardText = themeColors.cardText
+  const cardMutedText = themeColors.cardMutedText
+  const cardPrice = themeColors.cardPrice
 
   const handleCardClick = () => {
+    trackUserMetric({
+      eventType: USER_METRIC_EVENTS.PRODUCT_CLICK,
+      productId,
+      value: productPrice,
+      category: item.category || item.categoryName || '',
+      metadata: {
+        title: item?.title,
+        brand: item?.brand || item?.marca || '',
+        placement: 'home_product_card',
+      },
+    })
     navigate(`/product/${routeId}`)
   }
+
+  useEffect(() => {
+    if (!productId) return
+
+    trackUserMetric({
+      eventType: USER_METRIC_EVENTS.PRODUCT_IMPRESSION,
+      productId,
+      value: productPrice,
+      category: item?.category || item?.categoryName || '',
+      metadata: {
+        title: item?.title,
+        brand: item?.brand || item?.marca || '',
+        placement: 'home_product_card',
+      },
+    })
+  }, [productId, productPrice, item?.category, item?.categoryName, item?.title, item?.brand, item?.marca])
+
+  if (!item) return null
 
   return (
     <Card
@@ -59,8 +97,8 @@ const HomeProductCard = React.memo(({ data }) => {
         borderRadius: 4, // 16px
         overflow: 'hidden',
         margin: '0 auto',
-        backgroundColor: themeColors.surface,
-        border: `1px solid ${themeColors.border}`,
+        backgroundColor: cardBackground,
+        border: `1px solid ${cardBorder}`,
         boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
         transition: 'transform 0.3s ease, box-shadow 0.3s ease',
         cursor: 'pointer',
@@ -69,8 +107,8 @@ const HomeProductCard = React.memo(({ data }) => {
           boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
           borderColor:
             productTheme.hoverEffect === 'border'
-              ? themeColors.primary
-              : themeColors.border,
+              ? themeColors.actionPrimary
+              : cardBorder,
         },
       }}
     >
@@ -79,7 +117,7 @@ const HomeProductCard = React.memo(({ data }) => {
         sx={{
           position: 'relative',
           aspectRatio,
-          bgcolor: themeColors.background,
+          bgcolor: cardBackground,
         }}
       >
         <CardMedia
@@ -102,7 +140,7 @@ const HomeProductCard = React.memo(({ data }) => {
         <Typography
           variant="caption"
           sx={{
-            color: 'text.secondary',
+            color: cardMutedText,
             textTransform: 'uppercase',
             letterSpacing: 1,
             fontWeight: 600,
@@ -125,6 +163,7 @@ const HomeProductCard = React.memo(({ data }) => {
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
             minHeight: '2.4em', // Mantiene altura constante
+            color: cardText,
           }}
         >
           {item.title}
@@ -138,7 +177,7 @@ const HomeProductCard = React.memo(({ data }) => {
             size={18}
             value={Number(item.totalrating) || 0}
             edit={false}
-            color2={themeColors.primary}
+            color2={themeColors.warning}
           />
         </Box>
         )}
@@ -149,7 +188,7 @@ const HomeProductCard = React.memo(({ data }) => {
           variant="h6"
           sx={{
             fontWeight: 800,
-            color: themeColors.primary,
+            color: cardPrice,
             fontSize: '1.15rem',
           }}
         >

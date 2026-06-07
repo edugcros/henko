@@ -1,52 +1,19 @@
 // 📁 src/components/ColorsPanel.jsx - VERSIÓN PRODUCCIÓN
 import React, { useCallback, useMemo } from 'react';
-import { Grid, Typography, Box, Tooltip, IconButton } from '@mui/material';
+import { Grid, Typography, Box, Tooltip, IconButton, Paper, Stack } from '@mui/material';
 import ColorPicker from '@components/ColorPicker';
 import RefreshIcon from '@mui/icons-material/Refresh';
-
-// Colores por defecto del sistema (para reset rápido)
-const DEFAULT_COLORS = {
-  primary: '#1976d2',
-  secondary: '#dc004e',
-  accent: '#ff9800',
-  background: '#ffffff',
-  surface: '#f5f5f5',
-  text: '#1a1a1a',
-  mutedText: '#666666',
-  border: '#e0e0e0',
-  success: '#2e7d32',
-  error: '#d32f2f',
-  info: '#0288d1',
-  warning: '#ed6c02',
-};
-
-// Presets de paletas populares
-const COLOR_PRESETS = [
-  { name: 'Azul Corporativo', primary: '#1565c0', secondary: '#ff6f00', accent: '#00b8d4' },
-  { name: 'Verde Natural', primary: '#2e7d32', secondary: '#558b2f', accent: '#fbc02d' },
-  { name: 'Rosa Moderno', primary: '#c2185b', secondary: '#7b1fa2', accent: '#ffd54f' },
-  { name: 'Oscuro Premium', primary: '#90caf9', secondary: '#f48fb1', accent: '#ffe082', background: '#121212', surface: '#1e1e1e', text: '#ffffff' },
-];
+import {
+  COLOR_PRESETS,
+  COLOR_ROLE_GROUPS,
+  DEFAULT_THEME_COLORS,
+} from '@features/theme/colorSystem';
 
 const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
-  // 🔥 Memoizar grupos de colores
-  const mainColors = useMemo(() => [
-    { key: 'primary', label: 'Primario', description: 'Botones principales, links y precios' },
-    { key: 'secondary', label: 'Secundario', description: 'Badges promocionales y apoyos visuales' },
-    { key: 'accent', label: 'Acento', description: 'CTAs especiales, iconos destacados e info' },
-    { key: 'background', label: 'Fondo', description: 'Fondo de la página' },
-    { key: 'surface', label: 'Superficie', description: 'Cards, modales, elementos elevados' },
-    { key: 'text', label: 'Texto Principal', description: 'Títulos y contenido principal' },
-    { key: 'mutedText', label: 'Texto Secundario', description: 'Subtítulos, descripciones' },
-    { key: 'border', label: 'Bordes', description: 'Líneas divisorias, inputs' },
-  ], []);
-
-  const stateColors = useMemo(() => [
-    { key: 'success', label: 'Éxito', description: 'Operaciones completadas, checkmarks' },
-    { key: 'error', label: 'Error', description: 'Errores, validaciones fallidas' },
-    { key: 'warning', label: 'Advertencia', description: 'Alertas, precauciones' },
-    { key: 'info', label: 'Info', description: 'Información neutral, tips' },
-  ], []);
+  const effectiveColors = useMemo(
+    () => ({ ...DEFAULT_THEME_COLORS, ...colors }),
+    [colors],
+  );
 
   // 🔥 Handler optimizado con validación
   const handleColorChange = useCallback((key, value) => {
@@ -62,22 +29,22 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
     if (updateField) {
       updateField(`colors.${key}`, value);
     } else if (onChange) {
-      onChange({ ...colors, [key]: value });
+      onChange({ ...effectiveColors, [key]: value });
     } else if (updateTheme) {
-      // Fallback: actualizar objeto completo
-      updateTheme('colors', { ...colors, [key]: value });
+      updateTheme('colors', { ...effectiveColors, [key]: value });
     }
-  }, [colors, updateField, updateTheme, onChange]);
+  }, [effectiveColors, updateField, updateTheme, onChange]);
 
   // 🔥 Reset individual de color
   const handleResetColor = useCallback((key) => {
-    handleColorChange(key, DEFAULT_COLORS[key]);
+    handleColorChange(key, DEFAULT_THEME_COLORS[key]);
   }, [handleColorChange]);
 
   // 🔥 Aplicar preset completo
   const handleApplyPreset = useCallback((preset) => {
-    const { name, ...presetColors } = preset;
-    const newColors = { ...colors, ...presetColors };
+    const presetColors = { ...preset };
+    delete presetColors.name;
+    const newColors = { ...effectiveColors, ...presetColors };
 
     if (onChange) {
       onChange(newColors);
@@ -87,21 +54,39 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
     if (updateTheme) {
       updateTheme('colors', newColors);
     }
-  }, [colors, updateTheme, onChange]);
+  }, [effectiveColors, updateTheme, onChange]);
 
   // 🔥 Reset todos los colores
   const handleResetAll = useCallback(() => {
     if (window.confirm('¿Restaurar todos los colores a valores por defecto?')) {
       if (onChange) {
-        onChange(DEFAULT_COLORS);
+        onChange(DEFAULT_THEME_COLORS);
         return;
       }
 
       if (updateTheme) {
-        updateTheme('colors', DEFAULT_COLORS);
+        updateTheme('colors', DEFAULT_THEME_COLORS);
       }
     }
   }, [updateTheme, onChange]);
+
+  const renderColorPicker = ({ key, label, appliesTo }, size = { xs: 12, sm: 6 }) => (
+    <Grid item xs={size.xs} sm={size.sm} key={key}>
+      <ColorPicker
+        label={label}
+        value={effectiveColors[key]}
+        onChange={(v) => handleColorChange(key, v)}
+        helperText={appliesTo}
+        showReset
+        onReset={() => handleResetColor(key)}
+        sx={{
+          '& .MuiInputBase-root': {
+            borderLeft: `4px solid ${effectiveColors[key]}`,
+          },
+        }}
+      />
+    </Grid>
+  );
 
   return (
     <Box>
@@ -147,98 +132,117 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
         </Box>
       </Box>
 
-      {/* COLORES PRINCIPALES */}
-      <Grid container spacing={2}>
-        <Grid item xs={12}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="subtitle2">
-              Colores Principales
-            </Typography>
-            <Tooltip title="Restaurar colores por defecto">
-              <IconButton size="small" onClick={handleResetAll}>
-                <RefreshIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Grid>
-
-        {mainColors.map(({ key, label, description }) => (
-          <Grid item xs={12} sm={6} key={key}>
-            <ColorPicker
-              label={label}
-              value={colors[key] || DEFAULT_COLORS[key]}
-              onChange={(v) => handleColorChange(key, v)}
-              helperText={description}
-              showReset
-              onReset={() => handleResetColor(key)}
-              // Preview del color actual
-              sx={{
-                '& .MuiInputBase-root': {
-                  borderLeft: `4px solid ${colors[key] || DEFAULT_COLORS[key]}`,
-                },
-              }}
-            />
-          </Grid>
-        ))}
-
-        {/* COLORES DE ESTADO */}
-        <Grid item xs={12}>
-          <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
-            Estados (Feedback)
+      <Stack spacing={3}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="subtitle2">
+            Sistema de color
           </Typography>
-        </Grid>
+          <Tooltip title="Restaurar colores por defecto">
+            <IconButton size="small" onClick={handleResetAll}>
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
 
-        {stateColors.map(({ key, label, description }) => (
-          <Grid item xs={6} sm={3} key={key}>
-            <ColorPicker
-              label={label}
-              value={colors[key] || DEFAULT_COLORS[key]}
-              onChange={(v) => handleColorChange(key, v)}
-              helperText={description}
-              size="small"
-              showReset
-              onReset={() => handleResetColor(key)}
-            />
-          </Grid>
+        {COLOR_ROLE_GROUPS.map((group) => (
+          <Paper key={group.id} variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              {group.title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {group.description}
+            </Typography>
+            <Grid container spacing={2}>
+              {group.fields.map((field) =>
+                renderColorPicker(
+                  field,
+                  group.id === 'feedback' ? { xs: 6, sm: 3 } : { xs: 12, sm: 6 },
+                ),
+              )}
+            </Grid>
+          </Paper>
         ))}
-      </Grid>
+      </Stack>
 
       {/* PREVIEW DE CONTRASTE */}
       <Box sx={{ mt: 3, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
         <Typography variant="subtitle2" gutterBottom>
-          Preview de Contraste
+          Preview semántico
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Box
             sx={{
               p: 2,
               borderRadius: 1,
-              bgcolor: colors.primary || DEFAULT_COLORS.primary,
-              color: colors.background || DEFAULT_COLORS.background,
+              bgcolor: effectiveColors.primary,
+              color: effectiveColors.background,
             }}
           >
-            Primario sobre Fondo
+            Marca primaria
           </Box>
           <Box
             sx={{
               p: 2,
               borderRadius: 1,
-              bgcolor: colors.surface || DEFAULT_COLORS.surface,
-              color: colors.text || DEFAULT_COLORS.text,
+              bgcolor: effectiveColors.actionPrimary,
+              color: effectiveColors.actionPrimaryText,
             }}
           >
-            Texto en Superficie
+            Botón primario
           </Box>
           <Box
             sx={{
               p: 2,
               borderRadius: 1,
-              bgcolor: colors.background || DEFAULT_COLORS.background,
-              color: colors.primary || DEFAULT_COLORS.primary,
-              border: `2px solid ${colors.border || DEFAULT_COLORS.border}`,
+              bgcolor: effectiveColors.headerBackground,
+              color: effectiveColors.headerText,
+              border: `1px solid ${effectiveColors.border}`,
             }}
           >
-            Primario en Fondo
+            Header
+          </Box>
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 1,
+              bgcolor: effectiveColors.cardBackground,
+              color: effectiveColors.cardText,
+              border: `2px solid ${effectiveColors.cardBorder}`,
+            }}
+          >
+            Card / Panel
+          </Box>
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 1,
+              bgcolor: effectiveColors.badgeBackground,
+              color: effectiveColors.badgeText,
+            }}
+          >
+            Badge comercial
+          </Box>
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 1,
+              bgcolor: effectiveColors.background,
+              color: effectiveColors.link,
+              border: `2px solid ${effectiveColors.border}`,
+            }}
+          >
+            Link general
+          </Box>
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 1,
+              bgcolor: effectiveColors.cardBackground,
+              color: effectiveColors.cardPrice,
+              border: `2px solid ${effectiveColors.cardBorder}`,
+            }}
+          >
+            Precio en card
           </Box>
         </Box>
       </Box>

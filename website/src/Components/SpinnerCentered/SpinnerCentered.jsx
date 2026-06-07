@@ -1,60 +1,91 @@
 // 📁 src/components/SpinnerCentered.jsx
 import React from 'react'
-import { Box, CircularProgress, Typography, Fade } from '@mui/material'
+import { Box, CircularProgress, Typography, Fade, keyframes } from '@mui/material'
 
-const SpinnerCentered = ({ message = 'Cargando...' }) => {
+const spin = keyframes`
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+`
+
+const spinReverse = keyframes`
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+`
+
+const SpinnerCentered = ({
+  message = 'Cargando...',
+  fullScreen = true,
+  minHeight,
+  transparent = false,
+}) => {
+  const primaryColor = '#2563eb'
+  const secondaryColor = '#111827'
+  const backgroundColor = transparent ? 'transparent' : 'rgba(255, 255, 255, 0.96)'
+
   return (
-    <Fade in={true} timeout={500}>
+    <Fade in timeout={350}>
       <Box
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
         sx={{
-          height: '100vh',
+          width: '100%',
+          minHeight: minHeight || (fullScreen ? '100vh' : 240),
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
-          backgroundColor: 'rgba(255,255,255,0.95)',
+          backgroundColor,
+          px: 3,
+          textAlign: 'center',
         }}
       >
-        {/* Loader animado */}
-        <Box sx={{ position: 'relative', width: 80, height: 80, mb: 3 }}>
+        <Box
+          sx={{
+            position: 'relative',
+            width: 80,
+            height: 80,
+            mb: 3,
+          }}
+        >
           <CircularProgress
             size={80}
-            thickness={5}
+            thickness={4.5}
+            variant="indeterminate"
             sx={{
-              color: 'primary.main',
+              color: primaryColor,
               position: 'absolute',
-              animation: 'spin 1.5s linear infinite',
+              inset: 0,
+              animation: `${spin} 1.35s linear infinite`,
             }}
           />
+
           <CircularProgress
             size={80}
-            thickness={5}
+            thickness={4.5}
+            variant="indeterminate"
             sx={{
-              color: 'secondary.main',
+              color: secondaryColor,
               position: 'absolute',
-              animation: 'spinReverse 1.5s linear infinite',
+              inset: 0,
+              opacity: 0.65,
+              animation: `${spinReverse} 1.65s linear infinite`,
             }}
           />
         </Box>
 
-        {/* Texto centrado */}
-        <Typography variant="h6" color="text.primary">
-          {message}
-        </Typography>
-
-        {/* Animaciones CSS */}
-        <style>
-          {`
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-            @keyframes spinReverse {
-              0% { transform: rotate(360deg); }
-              100% { transform: rotate(0deg); }
-            }
-          `}
-        </style>
+        {message ? (
+          <Typography
+            variant="h6"
+            sx={{
+              color: '#111827',
+              fontWeight: 600,
+              letterSpacing: '-0.01em',
+            }}
+          >
+            {message}
+          </Typography>
+        ) : null}
       </Box>
     </Fade>
   )

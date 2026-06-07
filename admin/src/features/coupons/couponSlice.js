@@ -2,6 +2,8 @@
 import { createSlice, createAsyncThunk, createAction } from '@reduxjs/toolkit'
 import { couponService, ValidationError, DuplicateError } from './couponService'
 
+const getCouponId = coupon => coupon?.id || coupon?._id
+
 // ======================================================
 // HELPERS
 // ======================================================
@@ -114,7 +116,6 @@ export const deleteCoupon = createAsyncThunk(
   async (id, thunkAPI) => {
     try {
       const response = await couponService.delete(id)
-      console.log('Response:', response);
       return response.id
     } catch (error) {
       const processedError = handleError(error)
@@ -143,7 +144,6 @@ export const updateCoupon = createAsyncThunk(
   async ({ id, data }, thunkAPI) => {
     try {
       const response = await couponService.update(id, data)
-      console.log('Response:', response);
       return response
     } catch (error) {
       const processedError = handleError(error)
@@ -346,8 +346,13 @@ export const couponSlice = createSlice({
         state.isSuccess = true
         state.createdCoupon = action.payload
         if (action.payload) {
-          state.coupons.unshift(action.payload)
-          state.pagination.total += 1
+          const createdId = getCouponId(action.payload)
+          const exists = state.coupons.some(c => getCouponId(c) === createdId)
+
+          if (!exists) {
+            state.coupons.unshift(action.payload)
+            state.pagination.total += 1
+          }
         }
       })
       .addCase(createCoupon.rejected, (state, action) => {
@@ -462,14 +467,16 @@ export const couponSlice = createSlice({
         state.isLoading = false
         state.isSuccess = true
         state.updatedCoupon = action.payload
-        const index = state.coupons.findIndex(c => 
-          c.id === action.payload?.id || c._id === action.payload?._id
-        )
+        const updatedId = getCouponId(action.payload)
+        const index = state.coupons.findIndex(c => getCouponId(c) === updatedId)
+
         if (index !== -1) {
           state.coupons[index] = action.payload
+        } else if (action.payload) {
+          state.coupons.unshift(action.payload)
         }
-        if (state.currentCoupon?.id === action.payload?.id || 
-            state.currentCoupon?._id === action.payload?._id) {
+
+        if (getCouponId(state.currentCoupon) === updatedId) {
           state.currentCoupon = action.payload
         }
       })

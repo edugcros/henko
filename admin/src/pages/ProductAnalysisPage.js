@@ -211,7 +211,7 @@ const ProductAnalysisPage = () => {
 
     try {
       await api.delete(`/product-analysis/${jobId}`)
-      toast.success('Imagen eliminada de la cola')
+      toast.success('Imagen y análisis eliminados permanentemente')
       fetchJobs()
     } catch (error) {
       setJobs(previousJobs)
@@ -228,8 +228,9 @@ const ProductAnalysisPage = () => {
       categoria: analysis.categoria || analysis.category || '',
       subcategoria: analysis.subcategoria || analysis.subcategory || '',
       marca: analysis.marca || analysis.brand || '',
-      price: analysis.suggestedPrice || analysis.precio_sugerido || '',
-      stock: 0,
+      price: analysis.suggestedPrice || analysis.precio_sugerido || 'A Definir',
+      currency: analysis.currency || 'ARS ',
+      stock: 5,
       publish: false,
     })
     setApproveOpen(true)

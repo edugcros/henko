@@ -9,6 +9,11 @@ import { fileURLToPath } from 'url'
 import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import Product from '../models/productModel.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
+import {
+  getUserIdFromRequest,
+  isValidObjectId,
+  toObjectId,
+} from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
 import * as aiVisionService from '../services/aiVisionService.js'
 
@@ -54,9 +59,14 @@ const rootDir = path.resolve(__dirname, '../../')
 // HELPERS
 // =====================================================
 
-const isObjectId = value => mongoose.Types.ObjectId.isValid(value)
+const markJobAsHidden = ({ job, userId = null, reason = '' }) => {
+  job.isHidden = true
+  job.hiddenAt = new Date()
+  job.hiddenBy = userId || null
+  job.hideReason = reason || 'Ocultado automáticamente.'
+}
 
-const toObjectId = value => new mongoose.Types.ObjectId(value)
+const isObjectId = value => isValidObjectId(value)
 
 const createSha256 = buffer => crypto.createHash('sha256').update(buffer).digest('hex')
 
@@ -135,7 +145,7 @@ const getTenantId = req => {
 }
 
 const getUserId = req => {
-  const userId = req.user?._id || req.user?.id
+  const userId = getUserIdFromRequest(req)
 
   if (!userId || !isObjectId(userId)) {
     return null
@@ -564,6 +574,52 @@ const readJobImageBuffer = async job => {
   return Buffer.from(await response.arrayBuffer())
 }
 
+const deleteJobImageFromStorage = async job => {
+  const publicId = normalizeString(job?.imagePublicId)
+
+  if (!publicId) {
+    return { deleted: false, storage: 'none' }
+  }
+
+  const uploadsDir = path.resolve(rootDir, 'uploads')
+  const localPath = path.resolve(uploadsDir, publicId)
+  const imageUrl = normalizeString(job?.imageUrl)
+  const isInsideUploads =
+    localPath === uploadsDir || localPath.startsWith(`${uploadsDir}${path.sep}`)
+  const isLocalAsset =
+    isInsideUploads &&
+    (
+      imageUrl.includes('/uploads/') ||
+      Boolean(path.extname(publicId))
+    )
+
+  if (isLocalAsset) {
+    try {
+      await fs.unlink(localPath)
+      return { deleted: true, storage: 'local' }
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        return { deleted: false, storage: 'local-missing' }
+      }
+
+      throw error
+    }
+  }
+
+  const { cloudinaryDeleteImg } = await import('../utils/cloudinary.js')
+  const result = await cloudinaryDeleteImg(publicId)
+
+  if (!result?.success) {
+    throw new Error(`No se pudo eliminar la imagen almacenada: ${result?.result || 'sin detalle'}`)
+  }
+
+  return {
+    deleted: true,
+    storage: 'cloudinary',
+    result: result.result,
+  }
+}
+
 const schedulerEnabled = process.env.PRODUCT_ANALYSIS_SCHEDULER_ENABLED !== 'false'
 const schedulerIntervalMs = Math.max(
   Number.parseInt(process.env.PRODUCT_ANALYSIS_SCHEDULER_INTERVAL_MS, 10) || 60000,
@@ -702,6 +758,14 @@ const createProductFromAnalysisJob = async ({ job, overrides = {}, userId = null
   job.approvedAt = new Date()
   job.approvedBy = userId
 
+  markJobAsHidden({
+    job,
+    userId,
+    reason: publish
+      ? 'Producto auto-publicado desde análisis IA.'
+      : 'Producto auto-creado como borrador desde análisis IA.',
+  })
+
   await job.save()
 
   return product
@@ -731,6 +795,101 @@ const ensureJobBelongsToTenant = async ({ jobId, tenantId }) => {
 // =====================================================
 // CONTROLLERS
 // =====================================================
+
+
+/**
+ * PATCH /api/product-analysis/:jobId/hide
+ *
+ * Oculta un análisis de la bandeja principal sin eliminarlo.
+ */
+export const hideAnalysisJob = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+  const userId = getUserId(req)
+
+  if (!tenantId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Tenant no resuelto.',
+    })
+  }
+
+  const job = await ensureJobBelongsToTenant({
+    jobId: req.params.jobId,
+    tenantId,
+  })
+
+  if (job.deletedAt) {
+    return res.status(404).json({
+      success: false,
+      message: 'El análisis fue eliminado.',
+    })
+  }
+
+  if (job.isHidden) {
+    return res.status(200).json({
+      success: true,
+      message: 'El análisis ya estaba oculto.',
+      job,
+    })
+  }
+
+  markJobAsHidden({
+    job,
+    userId,
+    reason: normalizeString(req.body?.reason) || 'Ocultado manualmente por administrador.',
+  })
+
+  await job.save()
+
+  return res.status(200).json({
+    success: true,
+    message: 'Análisis ocultado correctamente.',
+    job,
+  })
+})
+
+
+/**
+ * PATCH /api/product-analysis/:jobId/unhide
+ *
+ * Restaura un análisis oculto a la bandeja principal.
+ */
+export const unhideAnalysisJob = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+
+  if (!tenantId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Tenant no resuelto.',
+    })
+  }
+
+  const job = await ensureJobBelongsToTenant({
+    jobId: req.params.jobId,
+    tenantId,
+  })
+
+  if (job.deletedAt) {
+    return res.status(404).json({
+      success: false,
+      message: 'El análisis fue eliminado.',
+    })
+  }
+
+  job.isHidden = false
+  job.hiddenAt = null
+  job.hiddenBy = null
+  job.hideReason = ''
+
+  await job.save()
+
+  return res.status(200).json({
+    success: true,
+    message: 'Análisis restaurado correctamente.',
+    job,
+  })
+})
+
 
 /**
  * POST /api/product-analysis/import
@@ -790,18 +949,39 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
   const existing = await ProductAnalysisJob.findOne({
     tenantId,
     imageHash,
-    $or: [
-      { deletedAt: { $exists: false } },
-      { deletedAt: null },
-    ],
   })
 
   if (existing) {
-    return res.status(409).json({
-      success: false,
-      message: 'La imagen ya fue importada para análisis en este comercio.',
-      job: existing,
-    })
+    const isDiscardedLegacyJob =
+      Boolean(existing.deletedAt) ||
+      (
+        existing.status === JOB_STATUS.REJECTED &&
+        !existing.createdProductId
+      )
+
+    if (isDiscardedLegacyJob) {
+      await ProductAnalysisJob.deleteOne({
+        _id: existing._id,
+        tenantId,
+      })
+
+      try {
+        await deleteJobImageFromStorage(existing)
+      } catch (error) {
+        logger.warn('[ProductAnalysis] No se pudo limpiar la imagen del duplicado heredado', {
+          jobId: String(existing._id),
+          tenantId: String(tenantId),
+          error: error.message,
+        })
+      }
+    } else {
+      return res.status(409).json({
+        success: false,
+        code: 'PRODUCT_ANALYSIS_DUPLICATE',
+        message: 'La imagen ya fue importada para análisis en este comercio.',
+        job: existing,
+      })
+    }
   }
 
   const storedImage = await uploadImageToStorage({
@@ -809,35 +989,58 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
     tenantId,
   })
 
-  const job = await ProductAnalysisJob.create({
-    tenantId,
-    source,
-    originalFilename,
-    imageUrl: storedImage.url,
-    imagePublicId: storedImage.publicId,
-    imageHash,
-    status: shouldSchedule
-      ? JOB_STATUS.SCHEDULED
-      : autoAnalyze
-        ? JOB_STATUS.PROCESSING
+  let job
+
+  try {
+    job = await ProductAnalysisJob.create({
+      tenantId,
+      source,
+      originalFilename,
+      imageUrl: storedImage.url,
+      imagePublicId: storedImage.publicId,
+      imageHash,
+      status: shouldSchedule
+        ? JOB_STATUS.SCHEDULED
         : JOB_STATUS.PENDING,
-    scheduledAt,
-    autoCreateProduct,
-    autoPublishProduct,
-    startedAt: autoAnalyze && !shouldSchedule ? new Date() : undefined,
-    createdBy: userId,
-    metadata: {
-      mimeType: file.mimetype,
-      size: file.size,
-      sourcePath: normalizeString(req.body?.sourcePath),
-      sku: normalizeString(req.body?.sku),
-      autoAnalyze,
-      autoSaveProduct,
-      addProductAt: shouldSchedule ? scheduledAt : null,
-      uploadedFromIp: req.ip,
-      userAgent: req.get('user-agent'),
-    },
-  })
+      scheduledAt,
+      autoCreateProduct,
+      autoPublishProduct,
+      createdBy: userId,
+      metadata: {
+        mimeType: file.mimetype,
+        size: file.size,
+        sourcePath: normalizeString(req.body?.sourcePath),
+        sku: normalizeString(req.body?.sku),
+        autoAnalyze,
+        autoSaveProduct,
+        addProductAt: shouldSchedule ? scheduledAt : null,
+        uploadedFromIp: req.ip,
+        userAgent: req.get('user-agent'),
+      },
+    })
+  } catch (error) {
+    if (error?.code === 11000) {
+      try {
+        await deleteJobImageFromStorage({
+          imagePublicId: storedImage.publicId,
+          imageUrl: storedImage.url,
+        })
+      } catch (cleanupError) {
+        logger.warn('[ProductAnalysis] No se pudo limpiar imagen de importación duplicada', {
+          tenantId: String(tenantId),
+          error: cleanupError.message,
+        })
+      }
+
+      return res.status(409).json({
+        success: false,
+        code: 'PRODUCT_ANALYSIS_DUPLICATE',
+        message: 'La imagen ya fue importada para análisis en este comercio.',
+      })
+    }
+
+    throw error
+  }
 
   logger.info('[ProductAnalysis] Imagen importada', {
     tenantId: tenantId.toString(),
@@ -874,7 +1077,7 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
     })
   }
 
-  scheduleAnalysisJob({
+  const processedJob = await analyzeAndPersistJob({
     jobId: job._id,
     tenantId,
     file: {
@@ -884,10 +1087,15 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
     originalFilename,
   })
 
-  return res.status(202).json({
-    success: true,
-    message: 'Imagen importada. El análisis IA quedó en procesamiento.',
-    job,
+  const analysisSucceeded = processedJob.status === JOB_STATUS.COMPLETED ||
+    processedJob.status === JOB_STATUS.APPROVED
+
+  return res.status(analysisSucceeded ? 201 : 422).json({
+    success: analysisSucceeded,
+    message: analysisSucceeded
+      ? 'Imagen importada y analizada correctamente.'
+      : processedJob.error?.message || 'La IA no pudo completar el análisis.',
+    job: processedJob,
   })
 })
 
@@ -910,6 +1118,8 @@ export const listAnalysisJobs = asyncHandler(async (req, res) => {
   const status = normalizeString(req.query.status)
   const source = normalizeString(req.query.source)
   const search = normalizeString(req.query.search)
+  const showHidden = parseBoolean(req.query.showHidden)
+  const onlyHidden = parseBoolean(req.query.onlyHidden)
 
   const filter = {
     tenantId,
@@ -921,6 +1131,12 @@ export const listAnalysisJobs = asyncHandler(async (req, res) => {
         ],
       },
     ],
+  }
+
+  if (onlyHidden) {
+    filter.isHidden = true
+  } else if (!showHidden) {
+    filter.isHidden = { $ne: true }
   }
 
   if (status) {
@@ -959,6 +1175,8 @@ export const listAnalysisJobs = asyncHandler(async (req, res) => {
     totalPages: Math.ceil(total / limit),
     count: items.length,
     items,
+    showHidden,
+    onlyHidden,
   })
 })
 
@@ -1139,17 +1357,34 @@ export const completeAddProductJob = asyncHandler(async (req, res) => {
     })
   }
 
+  if (
+    job.status === JOB_STATUS.APPROVED &&
+    String(job.createdProductId || '') === productId
+  ) {
+    return res.status(200).json({
+      success: true,
+      message: 'El trabajo ya estaba vinculado al producto.',
+      job,
+    })
+  }
+
   job.status = JOB_STATUS.APPROVED
   job.createdProductId = toObjectId(productId)
   job.approvedAt = new Date()
   job.approvedBy = userId
   job.rejectionReason = ''
 
+  markJobAsHidden({
+    job,
+    userId,
+    reason: 'Producto creado desde AddProduct.',
+  })
+
   await job.save()
 
   return res.status(200).json({
     success: true,
-    message: 'Job vinculado al producto creado.',
+    message: 'Trabajo completado y vinculado al producto.',
     job,
   })
 })
@@ -1329,6 +1564,16 @@ export const approveAnalysisJob = asyncHandler(async (req, res) => {
       job.approvedAt = new Date()
       job.approvedBy = userId
 
+      markJobAsHidden({
+        job,
+        userId,
+        reason: publish
+          ? 'Producto publicado desde análisis IA.'
+          : 'Producto creado como borrador desde análisis IA.',
+      })
+
+      await job.save({ session })
+
       await job.save({ session })
     })
   } catch (error) {
@@ -1401,12 +1646,11 @@ export const rejectAnalysisJob = asyncHandler(async (req, res) => {
 /**
  * DELETE /api/product-analysis/:jobId
  *
- * Soft delete operativo.
- * No borra el producto creado.
+ * Eliminación permanente del trabajo y su imagen.
+ * No elimina un producto creado; sólo remueve su referencia al trabajo.
  */
 export const deleteAnalysisJob = asyncHandler(async (req, res) => {
   const tenantId = getTenantId(req)
-  const userId = getUserId(req)
 
   if (!tenantId) {
     return res.status(400).json({
@@ -1420,26 +1664,65 @@ export const deleteAnalysisJob = asyncHandler(async (req, res) => {
     tenantId,
   })
 
-  if (job.createdProductId) {
+  const unlinkResult = await Product.updateMany(
+    {
+      tenantId,
+      aiAgentJobId: job._id,
+    },
+    {
+      $unset: {
+        aiAgentJobId: 1,
+      },
+    },
+  )
+
+  const deleteResult = await ProductAnalysisJob.deleteOne({
+    _id: job._id,
+    tenantId,
+  })
+
+  if (deleteResult.deletedCount !== 1) {
     return res.status(409).json({
       success: false,
-      message:
-        'No se puede eliminar este análisis porque ya creó un producto. Rechazá o gestioná el producto asociado primero.',
-      productId: job.createdProductId,
+      message: 'El análisis cambió o ya fue eliminado. Actualizá la bandeja.',
     })
   }
 
-  job.deletedAt = new Date()
-  job.deletedBy = userId
-  job.status = JOB_STATUS.REJECTED
-  job.rejectionReason = 'Eliminado por administrador.'
+  let storageResult = {
+    deleted: false,
+    storage: 'not-attempted',
+  }
+  let storageWarning = null
 
-  await job.save()
+  try {
+    storageResult = await deleteJobImageFromStorage(job)
+  } catch (error) {
+    storageWarning = error.message
+    logger.warn('[ProductAnalysis] Trabajo eliminado; imagen pendiente de limpieza', {
+      jobId: String(job._id),
+      tenantId: String(tenantId),
+      error: error.message,
+    })
+  }
+
+  logger.info('[ProductAnalysis] Trabajo eliminado permanentemente', {
+    jobId: String(job._id),
+    tenantId: String(tenantId),
+    storage: storageResult.storage,
+    imageDeleted: storageResult.deleted,
+    unlinkedProducts: unlinkResult.modifiedCount || 0,
+  })
 
   return res.status(200).json({
     success: true,
-    message: 'Análisis eliminado correctamente.',
-    job,
+    message: 'Análisis e imagen eliminados permanentemente.',
+    data: {
+      jobId: String(job._id),
+      imageDeleted: storageResult.deleted,
+      storage: storageResult.storage,
+      storageWarning,
+      unlinkedProducts: unlinkResult.modifiedCount || 0,
+    },
   })
 })
 

@@ -76,7 +76,7 @@ const CustomHero = () => {
             opacity: 0.9,
           }}
         >
-          {hero?.subtitle || 'Descubre nuestros productos'}
+          {hero?.subtitle}
         </Typography>
         <Button
           variant="contained"

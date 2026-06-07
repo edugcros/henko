@@ -310,6 +310,8 @@ const ThemeCustomizer = () => {
             <HeaderEditor
               {...commonProps}
               value={sectionData.header}
+              colors={theme.colors || {}}
+              onColorChange={(key, color) => updateField(`colors.${key}`, color)}
               onChange={(v) => updateSection('header', v)}
               onLogoUpload={(file) => uploadImage({ 
                 file, 
@@ -405,6 +407,12 @@ const ThemeCustomizer = () => {
         minute: '2-digit' 
       })
     : null
+  const resolvedErrorMessage =
+    error?.message ||
+    autoSaveError?.message ||
+    error ||
+    autoSaveError ||
+    'Error al procesar la solicitud'
 
   // ==========================================
   // RENDER PRINCIPAL
@@ -582,7 +590,7 @@ const ThemeCustomizer = () => {
               },
             }}
           >
-            {tabs.map((tab, i) => (
+            {tabs.map(tab => (
               <Tab
                 key={tab.id}
                 icon={tab.icon}
@@ -773,7 +781,7 @@ const ThemeCustomizer = () => {
             onClose={() => setShowError(false)}
             variant="filled"
           >
-            {error || autoSaveError || 'Error al procesar la solicitud'}
+            {resolvedErrorMessage}
           </Alert>
         </Snackbar>
       </Box>

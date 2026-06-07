@@ -127,6 +127,16 @@ const rebuildPreviews = files =>
     .map(file => buildPreviewFromFile(file))
     .filter(Boolean)
 
+const waitForUiReset = () =>
+  new Promise(resolve => {
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => resolve())
+      return
+    }
+
+    setTimeout(resolve, 0)
+  })
+
 const buildProductPayloadFromAnalysis = ({
   analysis,
   job,
@@ -956,7 +966,7 @@ export default function AddProduct() {
 
     try {
       await api.delete(`/product-analysis/${selectedAgentJobId}`)
-      message.success('Imagen eliminada de la bandeja del agente')
+      message.success('Imagen y análisis eliminados permanentemente')
     } catch (error) {
       setAgentQueue(previousQueue)
       setSelectedAgentJobId(selectedAgentJobId)
@@ -966,7 +976,27 @@ export default function AddProduct() {
     }
   }, [agentQueue, selectedAgentJobId])
 
+  const resetProductWorkspace = useCallback(() => {
+    form.resetFields()
+    revokeBlobUrls(imagePreviews)
+    setFileList([])
+    setImagePreviews([])
+    setEditableTags([])
+    setVariants([])
+    setHasVariants(false)
+    setDynamicAttributes([])
+    setSelectedAttributes({})
+    setInputTagValue('')
+    setInputVisible(false)
+    setCurrentAgentJob(null)
+    resetIa()
+    dispatch(resetState())
+  }, [dispatch, form, imagePreviews, resetIa])
+
   const processAgentJobAutomatically = useCallback(async job => {
+    resetProductWorkspace()
+    await waitForUiReset()
+
     const response = await api.get(`/product-analysis/${job._id}/image-file`, {
       responseType: 'blob',
     })
@@ -1009,10 +1039,8 @@ export default function AddProduct() {
       productId,
     })
 
-    resetIa()
-
     return productId
-  }, [analyzeImage, dispatch, resetIa, user])
+  }, [analyzeImage, dispatch, resetProductWorkspace, user])
 
   const processAutoAgentQueue = useCallback(async () => {
     if (!autoAgentEnabled || autoAgentRef.current) return
@@ -1032,6 +1060,7 @@ export default function AddProduct() {
       for (const job of jobsToProcess) {
         try {
           await processAgentJobAutomatically(job)
+          setAgentQueue(current => current.filter(item => item._id !== job._id))
           message.success(`Producto creado automáticamente: ${job.originalFilename || job._id}`)
         } catch (error) {
           autoAgentFailedJobsRef.current.add(job._id)
@@ -1040,6 +1069,9 @@ export default function AddProduct() {
               error?.message ||
               `No se pudo guardar automáticamente ${job.originalFilename || job._id}`,
           )
+        } finally {
+          resetProductWorkspace()
+          await waitForUiReset()
         }
       }
 
@@ -1048,7 +1080,13 @@ export default function AddProduct() {
       autoAgentRef.current = false
       setAutoAgentRunning(false)
     }
-  }, [agentQueue, autoAgentEnabled, fetchAgentQueue, processAgentJobAutomatically])
+  }, [
+    agentQueue,
+    autoAgentEnabled,
+    fetchAgentQueue,
+    processAgentJobAutomatically,
+    resetProductWorkspace,
+  ])
 
   useEffect(() => {
     processAutoAgentQueue()
@@ -1295,19 +1333,9 @@ export default function AddProduct() {
           : 'Producto creado correctamente'
       )
 
-      form.resetFields()
-      revokeBlobUrls(imagePreviews)
-      setFileList([])
-      setImagePreviews([])
-      setEditableTags([])
-      setVariants([])
-      setHasVariants(false)
-      setDynamicAttributes([])
-      setSelectedAttributes({})
-      setInputTagValue('')
-      setInputVisible(false)
-      setCurrentAgentJob(null)
-      resetIa()
+      resetProductWorkspace()
+      await waitForUiReset()
+      await fetchAgentQueue()
     } catch (error) {
       console.error('Error al crear producto:', error)
       message.error(error?.message || 'Error al crear producto')
@@ -1322,79 +1350,197 @@ export default function AddProduct() {
         padding: '24px',
       }}
     >
-      <Row justify="center">
-        <Col xs={24} xl={20} xxl={16}>
-          <div style={{ marginBottom: 24, textAlign: 'center' }}>
-            <Title level={2} style={{ margin: 0 }}>
-              <ThunderboltOutlined style={{ color: token.colorPrimary, marginRight: 12 }} />
-              Agregar Producto
-            </Title>
-            <Text type="secondary">
-              Sube imágenes, crea variantes y asigna una imagen específica a cada una
-            </Text>
-          </div>
+<Row justify="center">
+  <Col xs={24} xl={22} xxl={18}>
+    <div
+      style={{
+        marginBottom: 28,
+        padding: '28px 28px 24px',
+        borderRadius: 24,
+        background: `linear-gradient(135deg, ${token.colorPrimary}14 0%, ${token.colorBgContainer} 52%, ${token.colorInfoBg || token.colorPrimaryBg} 100%)`,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
+      }}
+    >
+      <Row gutter={[24, 20]} align="middle" justify="space-between">
+        <Col xs={24} lg={15}>
+          <Space direction="vertical" size={8}>
+            <Space wrap size={10}>
+              <Tag color="processing" style={{ borderRadius: 999, padding: '3px 12px' }}>
+                AddProduct IA
+              </Tag>
+              <Tag color="success" style={{ borderRadius: 999, padding: '3px 12px' }}>
+                Multi-tenant
+              </Tag>
+              {hasVariants && (
+                <Tag color="blue" style={{ borderRadius: 999, padding: '3px 12px' }}>
+                  {variants.length} variantes
+                </Tag>
+              )}
+            </Space>
 
-          <Form form={form} layout="vertical" onFinish={handleFinish}>
-            <Card
-              title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <PictureOutlined />
-                  <span>Imágenes del Producto</span>
-                  <Tag color="red">Requerido</Tag>
-                </div>
-              }
-              style={{ marginBottom: 24, borderRadius: 12 }}
-            >
+            <Title level={2} style={{ margin: 0, letterSpacing: '-0.04em' }}>
+              <ThunderboltOutlined style={{ color: token.colorPrimary, marginRight: 12 }} />
+              Crear producto inteligente
+            </Title>
+
+            <Text type="secondary" style={{ fontSize: 15 }}>
+              Subí imágenes, analizá el producto con IA, configurá variantes y publicá con una experiencia lista para producción.
+            </Text>
+          </Space>
+        </Col>
+
+        <Col xs={24} lg={9}>
+          <Row gutter={[12, 12]}>
+            <Col span={8}>
               <div
                 style={{
-                  marginBottom: 16,
-                  padding: 16,
-                  borderRadius: 12,
-                  border: `1px solid ${token.colorBorder}`,
-                  background: token.colorFillAlter,
+                  padding: 14,
+                  borderRadius: 16,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  textAlign: 'center',
                 }}
               >
-                <Row gutter={[16, 16]} align="middle">
-                  <Col xs={24} lg={8}>
-                    <Space direction="vertical" size={4}>
-                      <Space wrap>
-                        <Tag color="processing">Agente</Tag>
-                        <Tag color={autoAgentEnabled ? 'success' : 'default'}>
-                          {autoAgentEnabled ? 'Auto activo' : 'Manual'}
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Imágenes
+                </Text>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>
+                  {fileList.length}
+                </div>
+              </div>
+            </Col>
+
+            <Col span={8}>
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 16,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  textAlign: 'center',
+                }}
+              >
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Variantes
+                </Text>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>
+                  {variants.length}
+                </div>
+              </div>
+            </Col>
+
+            <Col span={8}>
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 16,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  textAlign: 'center',
+                }}
+              >
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  IA
+                </Text>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>
+                  {iaResult ? 'OK' : '—'}
+                </div>
+              </div>
+            </Col>
+          </Row>
+        </Col>
+      </Row>
+    </div>
+
+    <Form form={form} layout="vertical" onFinish={handleFinish}>
+      <Row gutter={[24, 24]} align="top">
+        <Col xs={24} xl={15}>
+          <Card
+            title={
+              <Space size={10}>
+                <PictureOutlined style={{ color: token.colorPrimary }} />
+                <span>Imágenes del producto</span>
+                <Tag color="red" style={{ borderRadius: 999 }}>
+                  Requerido
+                </Tag>
+              </Space>
+            }
+            style={{
+              marginBottom: 24,
+              borderRadius: 20,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+            }}
+            bodyStyle={{ padding: 24 }}
+          >
+            <div
+              style={{
+                marginBottom: 20,
+                padding: 20,
+                borderRadius: 18,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                background: `linear-gradient(135deg, ${token.colorFillAlter}, ${token.colorBgContainer})`,
+              }}
+            >
+              <Row gutter={[18, 18]} align="middle">
+                <Col xs={24} lg={8}>
+                  <Space direction="vertical" size={6}>
+                    <Space wrap>
+                      <Tag color="processing" style={{ borderRadius: 999 }}>
+                        Agente
+                      </Tag>
+                      <Tag color={autoAgentEnabled ? 'success' : 'default'} style={{ borderRadius: 999 }}>
+                        {autoAgentEnabled ? 'Auto activo' : 'Manual'}
+                      </Tag>
+                      {autoAgentRunning && (
+                        <Tag color="blue" style={{ borderRadius: 999 }}>
+                          Procesando
                         </Tag>
-                        {autoAgentRunning && <Tag color="blue">Procesando</Tag>}
-                      </Space>
-                      <Text strong>Bandeja inteligente de imágenes</Text>
-                      <Text type="secondary">
-                        Las fotos llegan acá desde la carpeta del agente. Si están programadas, AddProduct las libera al horario indicado; si tienen AutoSave y el modo Auto está activo, se analizan y guardan solas.
-                      </Text>
+                      )}
                     </Space>
-                  </Col>
 
-                  <Col xs={24} lg={6}>
-                    <Row gutter={[8, 8]}>
-                      <Col span={8}>
-                        <div className="agent-metric">
-                          <Text type="secondary">Pendientes</Text>
-                          <Text strong>{agentQueueStats.pending}</Text>
-                        </div>
-                      </Col>
-                      <Col span={8}>
-                        <div className="agent-metric">
-                          <Text type="secondary">Programadas</Text>
-                          <Text strong>{agentQueueStats.scheduled}</Text>
-                        </div>
-                      </Col>
-                      <Col span={8}>
-                        <div className="agent-metric">
-                          <Text type="secondary">AutoSave</Text>
-                          <Text strong>{agentQueueStats.autoSave}</Text>
-                        </div>
-                      </Col>
-                    </Row>
-                  </Col>
+                    <Text strong style={{ fontSize: 15 }}>
+                      Bandeja inteligente
+                    </Text>
 
-                  <Col xs={24} lg={10}>
+                    <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.55 }}>
+                      Importá imágenes del agente, programalas o dejá que AutoSave cree productos con IA cuando el modo automático esté activo.
+                    </Text>
+                  </Space>
+                </Col>
+
+                <Col xs={24} lg={7}>
+                  <Row gutter={[10, 10]}>
+                    {[
+                      { label: 'Pendientes', value: agentQueueStats.pending },
+                      { label: 'Programadas', value: agentQueueStats.scheduled },
+                      { label: 'AutoSave', value: agentQueueStats.autoSave },
+                    ].map(metric => (
+                      <Col span={8} key={metric.label}>
+                        <div
+                          style={{
+                            padding: '12px 8px',
+                            borderRadius: 14,
+                            background: token.colorBgContainer,
+                            border: `1px solid ${token.colorBorderSecondary}`,
+                            textAlign: 'center',
+                          }}
+                        >
+                          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+                            {metric.label}
+                          </Text>
+                          <Text strong style={{ fontSize: 18 }}>
+                            {metric.value}
+                          </Text>
+                        </div>
+                      </Col>
+                    ))}
+                  </Row>
+                </Col>
+
+                <Col xs={24} lg={9}>
+                  <Space direction="vertical" size={10} style={{ width: '100%' }}>
                     <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
                       <Switch
                         checked={autoAgentEnabled}
@@ -1403,19 +1549,7 @@ export default function AddProduct() {
                         unCheckedChildren="Manual"
                         loading={autoAgentRunning}
                       />
-                      <Select
-                        loading={loadingAgentQueue}
-                        value={selectedAgentJobId}
-                        placeholder="Sin imágenes disponibles"
-                        style={{ minWidth: 280 }}
-                        onChange={setSelectedAgentJobId}
-                        options={agentQueue.map(job => ({
-                          value: job._id,
-                          label: job.status === 'scheduled'
-                            ? `${job.originalFilename || job._id} - ${formatDate(job.scheduledAt)}`
-                            : `${job.originalFilename || job._id}${job.metadata?.autoSaveProduct ? ' - AutoSave' : ''}`,
-                        }))}
-                      />
+
                       <Button
                         icon={<ReloadOutlined />}
                         onClick={fetchAgentQueue}
@@ -1423,6 +1557,24 @@ export default function AddProduct() {
                       >
                         Actualizar
                       </Button>
+                    </Space>
+
+                    <Select
+                      loading={loadingAgentQueue}
+                      value={selectedAgentJobId}
+                      placeholder="Sin imágenes disponibles"
+                      style={{ width: '100%' }}
+                      onChange={setSelectedAgentJobId}
+                      options={agentQueue.map(job => ({
+                        value: job._id,
+                        label:
+                          job.status === 'scheduled'
+                            ? `${job.originalFilename || job._id} - ${formatDate(job.scheduledAt)}`
+                            : `${job.originalFilename || job._id}${job.metadata?.autoSaveProduct ? ' - AutoSave' : ''}`,
+                      }))}
+                    />
+
+                    <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
                       <Button
                         type="primary"
                         icon={<CloudDownloadOutlined />}
@@ -1432,6 +1584,7 @@ export default function AddProduct() {
                       >
                         Cargar ahora
                       </Button>
+
                       <Popconfirm
                         title="Eliminar imagen"
                         description="La imagen se quitará de la bandeja del agente."
@@ -1451,264 +1604,286 @@ export default function AddProduct() {
                         </Button>
                       </Popconfirm>
                     </Space>
-                  </Col>
-                </Row>
-
-                {selectedAgentJob && (
-                  <Alert
-                    type={selectedAgentJob.status === 'scheduled' ? 'warning' : 'success'}
-                    showIcon
-                    style={{ marginTop: 12 }}
-                    message={
-                      selectedAgentJob.status === 'scheduled'
-                        ? `Programada para ${formatDate(selectedAgentJob.scheduledAt)}`
-                        : 'Disponible para AddProduct'
-                    }
-                    description={
-                      selectedAgentJob.metadata?.autoSaveProduct
-                        ? 'Esta imagen está marcada para AutoSave: con Auto activo, AddProduct la analiza con IA y crea el producto sin tocar el formulario.'
-                        : 'Esta imagen requiere toma manual: se carga al formulario, dispara la IA y queda lista para revisar antes de guardar.'
-                    }
-                  />
-                )}
-              </div>
-
-              {!fileList.length ? (
-                <Dragger
-                  multiple
-                  beforeUpload={() => false}
-                  fileList={fileList}
-                  onChange={handleUploadChange}
-                  onRemove={handleRemove}
-                  showUploadList={false}
-                  style={{
-                    borderRadius: 12,
-                    padding: 40,
-                    background: token.colorBgContainer,
-                    border: `2px dashed ${token.colorBorder}`,
-                  }}
-                >
-                  <div style={{ textAlign: 'center' }}>
-                    <div
-                      style={{
-                        width: 80,
-                        height: 80,
-                        borderRadius: '50%',
-                        background: `${token.colorPrimary}15`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        margin: '0 auto 16px',
-                      }}
-                    >
-                      <InboxOutlined style={{ fontSize: 36, color: token.colorPrimary }} />
-                    </div>
-                    <Text strong style={{ fontSize: 16, display: 'block' }}>
-                      Arrastra imágenes o tomalas desde la bandeja del agente
-                    </Text>
-                    <Text type="secondary">
-                      Las imágenes cargadas acá disparan el análisis IA de AddProduct.
-                    </Text>
-                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
-                      Soporta JPG, PNG y WEBP
-                    </Text>
-                  </div>
-                </Dragger>
-              ) : (
-                <ImagePreviewGrid
-                  previews={imagePreviews}
-                  fileList={fileList}
-                  onRemove={handleRemove}
-                  onAddMore={handleAddMoreImages}
-                />
-              )}
-            </Card>
-
-            <AIAnalysisPanel
-              iaResult={iaResult}
-              loading={loadingIa}
-              error={errorIa}
-              onReset={resetIa}
-            />
-
-            <Card
-              title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <ShoppingOutlined />
-                  <span>Información del Producto</span>
-                </div>
-              }
-              style={{ marginBottom: 24, borderRadius: 12 }}
-            >
-              <Row gutter={[16, 16]}>
-                <Col xs={24}>
-                  <Form.Item
-                    name="titulo"
-                    label="Título del producto"
-                    rules={[{ required: true, message: 'El título es obligatorio' }]}
-                  >
-                    <Input
-                      size="large"
-                      placeholder="Ej: Zapatillas Nike Air Max 90"
-                      prefix={<FileTextOutlined style={{ color: token.colorTextSecondary }} />}
-                      showCount
-                      maxLength={120}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24}>
-                  <Form.Item
-                    name="descripcion"
-                    label="Descripción"
-                    rules={[{ required: true, message: 'La descripción es obligatoria' }]}
-                  >
-                    <Input.TextArea
-                      rows={4}
-                      placeholder="Describe el producto con detalle..."
-                      showCount
-                      maxLength={2000}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    name="categoria"
-                    label="Categoría"
-                    rules={[{ required: true, message: 'La categoría es obligatoria' }]}
-                  >
-                    <Input
-                      size="large"
-                      placeholder="Ej: calzado deportivo"
-                      prefix={<BranchesOutlined style={{ color: token.colorTextSecondary }} />}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    name="subcategoria"
-                    label="Subcategoría"
-                    rules={[{ required: true, message: 'La subcategoría es obligatoria' }]}
-                  >
-                    <Input
-                      size="large"
-                      placeholder="Ej: running"
-                      prefix={<BranchesOutlined style={{ color: token.colorTextSecondary }} />}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    name="marca"
-                    label="Marca"
-                    rules={[{ required: true, message: 'La marca es obligatoria' }]}
-                  >
-                    <Input
-                      size="large"
-                      placeholder="Ej: Nike"
-                      prefix={<ShoppingOutlined style={{ color: token.colorTextSecondary }} />}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item name="material" label="Material">
-                    <Input
-                      size="large"
-                      placeholder="Ej: cuero, malla, aluminio"
-                      prefix={<InfoCircleOutlined style={{ color: token.colorTextSecondary }} />}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item name="color" label="Color general">
-                    <Input
-                      size="large"
-                      placeholder="Ej: Negro, Rojo, Azul"
-                      prefix={<FormatPainterOutlined style={{ color: token.colorTextSecondary }} />}
-                    />
-                  </Form.Item>
+                  </Space>
                 </Col>
               </Row>
-            </Card>
 
-            <Card
-              title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <ClusterOutlined />
-                  <span>Variantes del Producto</span>
-                  {dynamicAttributes.length > 0 && (
-                    <Tag color="success">{dynamicAttributes.length} atributos detectados</Tag>
-                  )}
-                </div>
-              }
-              extra={
-                <Switch
-                  checked={hasVariants}
-                  onChange={(checked) => {
-                    setHasVariants(checked)
-                    if (!checked) {
-                      setVariants([])
-                      setSelectedAttributes({})
-                    }
+              {selectedAgentJob && (
+                <Alert
+                  type={selectedAgentJob.status === 'scheduled' ? 'warning' : 'success'}
+                  showIcon
+                  style={{
+                    marginTop: 16,
+                    borderRadius: 14,
                   }}
-                  checkedChildren="SÍ"
-                  unCheckedChildren="NO"
+                  message={
+                    selectedAgentJob.status === 'scheduled'
+                      ? `Programada para ${formatDate(selectedAgentJob.scheduledAt)}`
+                      : 'Disponible para AddProduct'
+                  }
+                  description={
+                    selectedAgentJob.metadata?.autoSaveProduct
+                      ? 'Esta imagen está marcada para AutoSave: con Auto activo, AddProduct la analiza con IA y crea el producto sin tocar el formulario.'
+                      : 'Esta imagen requiere revisión manual: se carga al formulario, dispara la IA y queda lista para revisar antes de guardar.'
+                  }
                 />
-              }
-              style={{ marginBottom: 24, borderRadius: 12 }}
-            >
-              {hasVariants ? (
-                <>
-                  <Alert
-                    message="Configura atributos, genera combinaciones y asigna una imagen específica por variante."
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 16 }}
+              )}
+            </div>
+
+            {!fileList.length ? (
+              <Dragger
+                multiple
+                beforeUpload={() => false}
+                fileList={fileList}
+                onChange={handleUploadChange}
+                onRemove={handleRemove}
+                showUploadList={false}
+                style={{
+                  borderRadius: 20,
+                  padding: 44,
+                  background: `linear-gradient(135deg, ${token.colorBgContainer}, ${token.colorFillAlter})`,
+                  border: `2px dashed ${token.colorPrimaryBorder || token.colorBorder}`,
+                }}
+              >
+                <div style={{ textAlign: 'center' }}>
+                  <div
+                    style={{
+                      width: 88,
+                      height: 88,
+                      borderRadius: 24,
+                      background: `${token.colorPrimary}14`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 18px',
+                      border: `1px solid ${token.colorPrimaryBorder || token.colorBorder}`,
+                    }}
+                  >
+                    <InboxOutlined style={{ fontSize: 40, color: token.colorPrimary }} />
+                  </div>
+
+                  <Text strong style={{ fontSize: 17, display: 'block' }}>
+                    Arrastrá imágenes o importalas desde el agente
+                  </Text>
+
+                  <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
+                    Las imágenes cargadas disparan el análisis visual con IA.
+                  </Text>
+
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 10 }}>
+                    JPG, PNG y WEBP recomendados · Alta calidad mejora la precisión
+                  </Text>
+                </div>
+              </Dragger>
+            ) : (
+              <ImagePreviewGrid
+                previews={imagePreviews}
+                fileList={fileList}
+                onRemove={handleRemove}
+                onAddMore={handleAddMoreImages}
+              />
+            )}
+          </Card>
+
+          <AIAnalysisPanel
+            iaResult={iaResult}
+            loading={loadingIa}
+            error={errorIa}
+            onReset={resetIa}
+          />
+
+          <Card
+            title={
+              <Space size={10}>
+                <ShoppingOutlined style={{ color: token.colorPrimary }} />
+                <span>Información del producto</span>
+              </Space>
+            }
+            style={{
+              marginBottom: 24,
+              borderRadius: 20,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+            }}
+            bodyStyle={{ padding: 24 }}
+          >
+            <Row gutter={[18, 18]}>
+              <Col xs={24}>
+                <Form.Item
+                  name="titulo"
+                  label="Título del producto"
+                  rules={[{ required: true, message: 'El título es obligatorio' }]}
+                >
+                  <Input
+                    size="large"
+                    placeholder="Ej: Zapatillas Nike Air Max 90"
+                    prefix={<FileTextOutlined style={{ color: token.colorTextSecondary }} />}
+                    showCount
+                    maxLength={120}
                   />
+                </Form.Item>
+              </Col>
 
-                  {dynamicAttributes.length > 0 ? (
-                    <>
-                      <Row gutter={16} style={{ marginBottom: 16 }}>
-                        {dynamicAttributes.map(attr => (
-                          <Col span={12} key={attr.name}>
-                            <Form.Item
-                              label={
-                                <Space>
-                                  {attr.label}
-                                  {attr.values.length > 0 && (
-                                    <Tag size="small" color="blue">
-                                      {attr.values.length} sugeridos
-                                    </Tag>
-                                  )}
-                                </Space>
-                              }
-                            >
-                              <Select
-                                mode="tags"
-                                placeholder={`Selecciona o escribe ${attr.label.toLowerCase()}`}
-                                value={selectedAttributes[attr.name] || []}
-                                onChange={(values) => handleAttributeValuesChange(attr.name, values)}
-                                tokenSeparators={[',']}
-                                allowClear
-                                options={attr.values.map(value => ({ value, label: value }))}
-                              />
-                            </Form.Item>
-                          </Col>
-                        ))}
-                      </Row>
+              <Col xs={24}>
+                <Form.Item
+                  name="descripcion"
+                  label="Descripción"
+                  rules={[{ required: true, message: 'La descripción es obligatoria' }]}
+                >
+                  <Input.TextArea
+                    rows={5}
+                    placeholder="Describí beneficios, materiales, uso recomendado y detalles relevantes..."
+                    showCount
+                    maxLength={2000}
+                  />
+                </Form.Item>
+              </Col>
 
+              <Col xs={24} md={12}>
+                <Form.Item
+                  name="categoria"
+                  label="Categoría"
+                  rules={[{ required: true, message: 'La categoría es obligatoria' }]}
+                >
+                  <Input
+                    size="large"
+                    placeholder="Ej: calzado deportivo"
+                    prefix={<BranchesOutlined style={{ color: token.colorTextSecondary }} />}
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item
+                  name="subcategoria"
+                  label="Subcategoría"
+                  rules={[{ required: true, message: 'La subcategoría es obligatoria' }]}
+                >
+                  <Input
+                    size="large"
+                    placeholder="Ej: running"
+                    prefix={<BranchesOutlined style={{ color: token.colorTextSecondary }} />}
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item
+                  name="marca"
+                  label="Marca"
+                  rules={[{ required: true, message: 'La marca es obligatoria' }]}
+                >
+                  <Input
+                    size="large"
+                    placeholder="Ej: Nike"
+                    prefix={<ShoppingOutlined style={{ color: token.colorTextSecondary }} />}
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item name="material" label="Material">
+                  <Input
+                    size="large"
+                    placeholder="Ej: cuero, malla, aluminio"
+                    prefix={<InfoCircleOutlined style={{ color: token.colorTextSecondary }} />}
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24}>
+                <Form.Item name="color" label="Color general">
+                  <Input
+                    size="large"
+                    placeholder="Ej: Negro, Rojo, Azul"
+                    prefix={<FormatPainterOutlined style={{ color: token.colorTextSecondary }} />}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+
+          <Card
+            title={
+              <Space size={10}>
+                <ClusterOutlined style={{ color: token.colorPrimary }} />
+                <span>Variantes del producto</span>
+                {dynamicAttributes.length > 0 && (
+                  <Tag color="success" style={{ borderRadius: 999 }}>
+                    {dynamicAttributes.length} atributos detectados
+                  </Tag>
+                )}
+              </Space>
+            }
+            extra={
+              <Switch
+                checked={hasVariants}
+                onChange={checked => {
+                  setHasVariants(checked)
+                  if (!checked) {
+                    setVariants([])
+                    setSelectedAttributes({})
+                  }
+                }}
+                checkedChildren="SÍ"
+                unCheckedChildren="NO"
+              />
+            }
+            style={{
+              marginBottom: 24,
+              borderRadius: 20,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+            }}
+            bodyStyle={{ padding: 24 }}
+          >
+            {hasVariants ? (
+              <>
+                <Alert
+                  message="Configurá atributos, generá combinaciones y asigná una imagen específica por variante."
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 20, borderRadius: 14 }}
+                />
+
+                {dynamicAttributes.length > 0 ? (
+                  <>
+                    <Row gutter={[16, 16]} style={{ marginBottom: 18 }}>
+                      {dynamicAttributes.map(attr => (
+                        <Col xs={24} md={12} key={attr.name}>
+                          <Form.Item
+                            label={
+                              <Space>
+                                {attr.label}
+                                {attr.values.length > 0 && (
+                                  <Tag color="blue" style={{ borderRadius: 999 }}>
+                                    {attr.values.length} sugeridos
+                                  </Tag>
+                                )}
+                              </Space>
+                            }
+                          >
+                            <Select
+                              mode="tags"
+                              placeholder={`Seleccioná o escribí ${attr.label.toLowerCase()}`}
+                              value={selectedAttributes[attr.name] || []}
+                              onChange={values => handleAttributeValuesChange(attr.name, values)}
+                              tokenSeparators={[',']}
+                              allowClear
+                              options={attr.values.map(value => ({ value, label: value }))}
+                            />
+                          </Form.Item>
+                        </Col>
+                      ))}
+                    </Row>
+
+                    <Space wrap style={{ marginBottom: 18 }}>
                       <Button
                         type="dashed"
                         onClick={handleAddCustomAttribute}
                         icon={<PlusOutlined />}
-                        style={{ marginBottom: 16, marginRight: 8 }}
                       >
-                        Agregar atributo personalizado
+                        Agregar atributo
                       </Button>
 
                       <Button
@@ -1716,226 +1891,270 @@ export default function AddProduct() {
                         onClick={generateVariantsFromAttributes}
                         icon={<ReloadOutlined />}
                         disabled={!canGenerateVariants}
-                        style={{ marginBottom: 16 }}
                       >
                         Generar combinaciones
                       </Button>
-                    </>
-                  ) : (
-                    <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                      <Text type="secondary">La IA no detectó atributos específicos.</Text>
-                      <br />
-                      <Button
-                        type="primary"
-                        onClick={handleAddCustomAttribute}
-                        icon={<PlusOutlined />}
-                        style={{ marginTop: 8 }}
-                      >
-                        Agregar atributo manualmente
-                      </Button>
-                    </div>
-                  )}
+                    </Space>
+                  </>
+                ) : (
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      padding: '30px 16px',
+                      borderRadius: 16,
+                      border: `1px dashed ${token.colorBorder}`,
+                      background: token.colorFillAlter,
+                    }}
+                  >
+                    <Text type="secondary">
+                      La IA no detectó atributos específicos.
+                    </Text>
+                    <br />
+                    <Button
+                      type="primary"
+                      onClick={handleAddCustomAttribute}
+                      icon={<PlusOutlined />}
+                      style={{ marginTop: 12 }}
+                    >
+                      Agregar atributo manualmente
+                    </Button>
+                  </div>
+                )}
 
-                  {variants.length > 0 && (
-                    <>
-                      <Divider orientation="left">
-                        <AppstoreOutlined /> {variants.length} variantes configuradas
-                      </Divider>
+                {variants.length > 0 && (
+                  <>
+                    <Divider orientation="left">
+                      <Space>
+                        <AppstoreOutlined />
+                        <span>{variants.length} variantes configuradas</span>
+                      </Space>
+                    </Divider>
 
-                      <Table
-                        dataSource={variants}
-                        pagination={false}
-                        size="middle"
-                        scroll={{ x: 1200 }}
-                        rowKey="key"
-                        columns={[
-                          {
-                            title: 'Combinación',
-                            dataIndex: 'nombre',
-                            key: 'nombre',
-                            width: 240,
-                            render: (_, record) => (
-                              <div>
-                                <Tag color="blue" style={{ fontSize: 13, padding: '4px 8px' }}>
-                                  {record.nombre}
-                                </Tag>
-                                <br />
-                                <Text type="secondary" style={{ fontSize: 11 }}>
-                                  {Object.entries(record.combinacion).map(([k, v]) => `${k}:${v}`).join(', ')}
-                                </Text>
-                              </div>
-                            ),
-                          },
-                          {
-                            title: 'Precio ($)',
-                            dataIndex: 'price',
-                            key: 'price',
-                            width: 150,
-                            render: (_, record) => (
-                              <InputNumber
-                                prefix="$"
-                                style={{ width: '100%' }}
-                                min={0}
-                                value={record.price}
-                                onChange={(val) => {
-                                  setVariants(prev =>
-                                    prev.map(variant =>
-                                      variant.key === record.key
-                                        ? { ...variant, price: Number(val || 0) }
-                                        : variant
-                                    )
-                                  )
-                                }}
-                              />
-                            ),
-                          },
-                          {
-                            title: 'Stock',
-                            dataIndex: 'stock',
-                            key: 'stock',
-                            width: 120,
-                            render: (_, record) => (
-                              <InputNumber
-                                min={0}
-                                style={{ width: '100%' }}
-                                value={record.stock}
-                                onChange={(val) => {
-                                  setVariants(prev =>
-                                    prev.map(variant =>
-                                      variant.key === record.key
-                                        ? { ...variant, stock: Number(val || 0) }
-                                        : variant
-                                    )
-                                  )
-                                }}
-                              />
-                            ),
-                          },
-                          {
-                            title: 'SKU',
-                            dataIndex: 'sku',
-                            key: 'sku',
-                            width: 180,
-                            render: (_, record) => (
-                              <Input
-                                placeholder="Código único"
-                                value={record.sku}
-                                onChange={(e) => {
-                                  setVariants(prev =>
-                                    prev.map(variant =>
-                                      variant.key === record.key
-                                        ? { ...variant, sku: e.target.value }
-                                        : variant
-                                    )
-                                  )
-                                }}
-                              />
-                            ),
-                          },
-                          {
-                            title: 'Imagen de variante',
-                            key: 'image',
-                            width: 320,
-                            render: (_, record) => (
-                              <VariantImageSelector
-                                variant={record}
-                                localImages={localImages}
-                                onAssign={handleAssignVariantImage}
-                              />
-                            ),
-                          },
-                          {
-                            title: 'Preview',
-                            key: 'preview',
-                            width: 100,
-                            render: (_, record) => {
-                              const selectedLocal = localImages.find(img => img.uid === record.imageSourceUid)
-                              return selectedLocal?.preview ? (
-                                <img
-                                  src={selectedLocal.preview}
-                                  alt={record.nombre}
-                                  style={{
-                                    width: 56,
-                                    height: 56,
-                                    objectFit: 'cover',
-                                    borderRadius: 8,
-                                    border: '1px solid #eee',
-                                  }}
-                                />
-                              ) : (
-                                <Tag>Sin imagen</Tag>
-                              )
-                            },
-                          },
-                          {
-                            title: 'Activo',
-                            key: 'active',
-                            width: 80,
-                            align: 'center',
-                            render: (_, record) => (
-                              <Switch
-                                checked={record.isActive !== false}
-                                onChange={(checked) => {
-                                  setVariants(prev =>
-                                    prev.map(variant =>
-                                      variant.key === record.key
-                                        ? { ...variant, isActive: checked }
-                                        : variant
-                                    )
-                                  )
-                                }}
-                                size="small"
-                              />
-                            ),
-                          },
-                          {
-                            title: '',
-                            key: 'delete',
-                            width: 50,
-                            render: (_, record) => (
-                              <Button
-                                type="text"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={() => {
-                                  setVariants(prev => prev.filter(variant => variant.key !== record.key))
-                                }}
-                                size="small"
-                              />
-                            ),
-                          },
-                        ]}
-                      />
+                    <Table
+                      dataSource={variants}
+                      pagination={false}
+                      size="middle"
+                      scroll={{ x: 1280 }}
+                      rowKey="key"
+                      bordered={false}
+                      style={{
+                        borderRadius: 16,
+                        overflow: 'hidden',
+                      }}
+                      columns={[
+                        {
+                          title: 'Combinación',
+                          dataIndex: 'nombre',
+                          key: 'nombre',
+                          width: 260,
+                          fixed: 'left',
+                          render: (_, record) => (
+                            <Space direction="vertical" size={4}>
+                              <Tag color="blue" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 999 }}>
+                                {record.nombre}
+                              </Tag>
+                              <Text type="secondary" style={{ fontSize: 11 }}>
+                                {Object.entries(record.combinacion)
+                                  .map(([k, v]) => `${k}: ${v}`)
+                                  .join(' · ')}
+                              </Text>
+                            </Space>
+                          ),
+                        },
+                        {
+                          title: 'Precio',
+                          dataIndex: 'price',
+                          key: 'price',
+                          width: 150,
+                          render: (_, record) => (
+                            <InputNumber
+                              prefix="$"
+                              style={{ width: '100%' }}
+                              min={0}
+                              value={record.price}
+                              onChange={val => {
+                                setVariants(prev =>
+                                  prev.map(variant =>
+                                    variant.key === record.key
+                                      ? { ...variant, price: Number(val || 0) }
+                                      : variant,
+                                  ),
+                                )
+                              }}
+                            />
+                          ),
+                        },
+                        {
+                          title: 'Stock',
+                          dataIndex: 'stock',
+                          key: 'stock',
+                          width: 120,
+                          render: (_, record) => (
+                            <InputNumber
+                              min={0}
+                              style={{ width: '100%' }}
+                              value={record.stock}
+                              onChange={val => {
+                                setVariants(prev =>
+                                  prev.map(variant =>
+                                    variant.key === record.key
+                                      ? { ...variant, stock: Number(val || 0) }
+                                      : variant,
+                                  ),
+                                )
+                              }}
+                            />
+                          ),
+                        },
+                        {
+                          title: 'SKU opcional',
+                          dataIndex: 'sku',
+                          key: 'sku',
+                          width: 180,
+                          render: (_, record) => (
+                            <Input
+                              placeholder="Ej: FOX-BOTA-42"
+                              value={record.sku}
+                              onChange={e => {
+                                setVariants(prev =>
+                                  prev.map(variant =>
+                                    variant.key === record.key
+                                      ? { ...variant, sku: e.target.value }
+                                      : variant,
+                                  ),
+                                )
+                              }}
+                            />
+                          ),
+                        },
+                        {
+                          title: 'Imagen de variante',
+                          key: 'image',
+                          width: 330,
+                          render: (_, record) => (
+                            <VariantImageSelector
+                              variant={record}
+                              localImages={localImages}
+                              onAssign={handleAssignVariantImage}
+                            />
+                          ),
+                        },
+                        {
+                          title: 'Preview',
+                          key: 'preview',
+                          width: 110,
+                          render: (_, record) => {
+                            const selectedLocal = localImages.find(img => img.uid === record.imageSourceUid)
 
-                      <Alert
-                        type="warning"
-                        showIcon
-                        style={{ marginTop: 16 }}
-                        message="Si una variante no tiene imagen asignada, en la tienda se mostrará la imagen general del producto."
-                      />
-                    </>
-                  )}
-                </>
-              ) : (
-                <Text type="secondary">Este producto no tiene variaciones.</Text>
-              )}
-            </Card>
+                            return selectedLocal?.preview ? (
+                              <img
+                                src={selectedLocal.preview}
+                                alt={record.nombre}
+                                style={{
+                                  width: 64,
+                                  height: 64,
+                                  objectFit: 'cover',
+                                  borderRadius: 14,
+                                  border: `1px solid ${token.colorBorderSecondary}`,
+                                  boxShadow: '0 8px 18px rgba(15,23,42,.08)',
+                                }}
+                              />
+                            ) : (
+                              <Tag style={{ borderRadius: 999 }}>
+                                Sin imagen
+                              </Tag>
+                            )
+                          },
+                        },
+                        {
+                          title: 'Activo',
+                          key: 'active',
+                          width: 90,
+                          align: 'center',
+                          render: (_, record) => (
+                            <Switch
+                              checked={record.isActive !== false}
+                              onChange={checked => {
+                                setVariants(prev =>
+                                  prev.map(variant =>
+                                    variant.key === record.key
+                                      ? { ...variant, isActive: checked }
+                                      : variant,
+                                  ),
+                                )
+                              }}
+                              size="small"
+                            />
+                          ),
+                        },
+                        {
+                          title: '',
+                          key: 'delete',
+                          width: 60,
+                          render: (_, record) => (
+                            <Button
+                              type="text"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => {
+                                setVariants(prev => prev.filter(variant => variant.key !== record.key))
+                              }}
+                              size="small"
+                            />
+                          ),
+                        },
+                      ]}
+                    />
 
+                    <Alert
+                      type="warning"
+                      showIcon
+                      style={{ marginTop: 18, borderRadius: 14 }}
+                      message="Si una variante no tiene imagen asignada, se mostrará la imagen general del producto."
+                    />
+                  </>
+                )}
+              </>
+            ) : (
+              <div
+                style={{
+                  padding: 28,
+                  textAlign: 'center',
+                  borderRadius: 16,
+                  background: token.colorFillAlter,
+                  border: `1px dashed ${token.colorBorder}`,
+                }}
+              >
+                <Text type="secondary">
+                  Este producto no tiene variaciones. Activá el switch si necesitás talles, colores o modelos.
+                </Text>
+              </div>
+            )}
+          </Card>
+        </Col>
+
+        <Col xs={24} xl={9}>
+          <div style={{ position: 'sticky', top: 24 }}>
             <Card
               title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <DollarOutlined />
-                  <span>Precio y Disponibilidad</span>
-                  {hasVariants && <Tag color="blue">Gestión por variantes</Tag>}
-                </div>
+                <Space size={10}>
+                  <DollarOutlined style={{ color: token.colorPrimary }} />
+                  <span>Precio y disponibilidad</span>
+                </Space>
               }
-              style={{ marginBottom: 24, borderRadius: 12 }}
+              style={{
+                marginBottom: 24,
+                borderRadius: 20,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+              }}
+              bodyStyle={{ padding: 24 }}
             >
               <Row gutter={[16, 16]}>
-                <Col xs={24} md={hasVariants ? 12 : 8}>
+                <Col xs={24}>
                   <Form.Item
                     name="precio"
-                    label={hasVariants ? 'Precio Base (referencia)' : 'Precio'}
+                    label={hasVariants ? 'Precio base de referencia' : 'Precio'}
                     rules={[{ required: true, message: 'El precio es obligatorio' }]}
                   >
                     <InputNumber
@@ -1945,13 +2164,13 @@ export default function AddProduct() {
                       precision={2}
                       prefix="$"
                       placeholder="0.00"
-                      onChange={(value) => {
+                      onChange={value => {
                         if (hasVariants && variants.length > 0) {
                           setVariants(prev =>
                             prev.map(variant => ({
                               ...variant,
                               price: Number(variant.price || 0) === 0 ? Number(value || 0) : variant.price,
-                            }))
+                            })),
                           )
                         }
                       }}
@@ -1960,10 +2179,10 @@ export default function AddProduct() {
                 </Col>
 
                 {!hasVariants && (
-                  <Col xs={24} md={8}>
+                  <Col xs={24}>
                     <Form.Item
                       name="cantidad"
-                      label="Cantidad en Stock"
+                      label="Cantidad en stock"
                       rules={[{ required: true, message: 'La cantidad es obligatoria' }]}
                     >
                       <InputNumber
@@ -1977,13 +2196,13 @@ export default function AddProduct() {
                   </Col>
                 )}
 
-                <Col xs={24} md={hasVariants ? 12 : 8}>
+                <Col xs={24}>
                   <Form.Item
                     name="condicion"
                     label="Condición"
                     rules={[{ required: true, message: 'La condición es obligatoria' }]}
                   >
-                    <Select size="large" placeholder="Selecciona la condición">
+                    <Select size="large" placeholder="Seleccioná la condición">
                       <Select.Option value="nuevo">
                         <Tag color="success">Nuevo</Tag>
                       </Select.Option>
@@ -2000,22 +2219,28 @@ export default function AddProduct() {
 
               {hasVariants && (
                 <Alert
-                  message="El stock y la imagen se gestionan por variante. Si falta imagen de variante, se usa la imagen general."
+                  message="El stock y la imagen se gestionan por variante."
                   type="info"
                   showIcon
-                  style={{ marginTop: 16 }}
+                  style={{ marginTop: 8, borderRadius: 14 }}
                 />
               )}
             </Card>
 
             <Card
               title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <TagOutlined />
-                  <span>Tags y Etiquetas</span>
-                </div>
+                <Space size={10}>
+                  <TagOutlined style={{ color: token.colorPrimary }} />
+                  <span>Tags y etiquetas</span>
+                </Space>
               }
-              style={{ marginBottom: 24, borderRadius: 12 }}
+              style={{
+                marginBottom: 24,
+                borderRadius: 20,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+              }}
+              bodyStyle={{ padding: 24 }}
             >
               <div style={{ marginBottom: 16 }}>
                 {editableTags.map(tag => (
@@ -2024,7 +2249,12 @@ export default function AddProduct() {
                     closable
                     onClose={() => handleCloseTag(tag)}
                     color="blue"
-                    style={{ padding: '4px 12px', fontSize: 14, margin: '0 8px 8px 0' }}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: 13,
+                      margin: '0 8px 8px 0',
+                      borderRadius: 999,
+                    }}
                   >
                     {tag}
                   </Tag>
@@ -2035,9 +2265,9 @@ export default function AddProduct() {
                     ref={inputRef}
                     type="text"
                     size="small"
-                    style={{ width: 120 }}
+                    style={{ width: 140 }}
                     value={inputTagValue}
-                    onChange={(e) => setInputTagValue(e.target.value)}
+                    onChange={e => setInputTagValue(e.target.value)}
                     onBlur={handleInputConfirm}
                     onPressEnter={handleInputConfirm}
                   />
@@ -2046,56 +2276,74 @@ export default function AddProduct() {
                     onClick={() => setInputVisible(true)}
                     icon={<PlusOutlined />}
                     style={{
-                      padding: '4px 12px',
-                      fontSize: 14,
+                      padding: '5px 12px',
+                      fontSize: 13,
                       cursor: 'pointer',
                       borderStyle: 'dashed',
+                      borderRadius: 999,
                     }}
                   >
-                    Agregar Tag
+                    Agregar tag
                   </Tag>
                 )}
               </div>
 
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Los tags ayudan a encontrar el producto más fácilmente.
+                Los tags mejoran búsqueda, filtros y recomendaciones.
               </Text>
             </Card>
 
-            <Card style={{ borderRadius: 12 }}>
-              <Row gutter={16} align="middle">
-                <Col xs={24} md={16}>
-                  {isError && (
-                    <Alert
-                      type="error"
-                      message={productMessage || 'Error guardando producto'}
-                      showIcon
-                    />
-                  )}
-                </Col>
+            <Card
+              style={{
+                borderRadius: 20,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+              }}
+              bodyStyle={{ padding: 20 }}
+            >
+              <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                {isError && (
+                  <Alert
+                    type="error"
+                    message={productMessage || 'Error guardando producto'}
+                    showIcon
+                    style={{ borderRadius: 14 }}
+                  />
+                )}
 
-                <Col xs={24} md={8}>
-                  <Button
-                    htmlType="submit"
-                    type="primary"
-                    size="large"
-                    block
-                    loading={isLoading}
-                    icon={<CheckCircleOutlined />}
-                    style={{ height: 48, fontSize: 16, borderRadius: 8 }}
-                  >
-                    {isLoading
-                      ? 'Guardando...'
-                      : hasVariants
-                        ? `Guardar con ${variants.length} Variantes`
-                        : 'Guardar Producto'}
-                  </Button>
-                </Col>
-              </Row>
+                <Button
+                  htmlType="submit"
+                  type="primary"
+                  size="large"
+                  block
+                  loading={isLoading}
+                  icon={<CheckCircleOutlined />}
+                  style={{
+                    height: 52,
+                    fontSize: 16,
+                    fontWeight: 800,
+                    borderRadius: 14,
+                    boxShadow: `0 14px 28px ${token.colorPrimary}30`,
+                  }}
+                >
+                  {isLoading
+                    ? 'Guardando...'
+                    : hasVariants
+                      ? `Guardar con ${variants.length} variantes`
+                      : 'Guardar producto'}
+                </Button>
+
+                <Text type="secondary" style={{ fontSize: 12, textAlign: 'center', display: 'block' }}>
+                  Se validará tenant, imágenes, variantes y metadatos IA antes de publicar.
+                </Text>
+              </Space>
             </Card>
-          </Form>
+          </div>
         </Col>
       </Row>
+    </Form>
+  </Col>
+</Row>
 
       <style>{`
         @keyframes pulse {

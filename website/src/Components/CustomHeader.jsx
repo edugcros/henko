@@ -34,6 +34,7 @@ import {
 import { logoutUser, clearState } from '@features/user/userSlice'
 import { persistor } from '@app/store'
 import Cookies from 'js-cookie'
+import { getThemeColors } from '@utils/themeRuntime'
 
 // ==========================================
 // COMPONENTE
@@ -77,6 +78,8 @@ const CustomHeader = () => {
   const isReady =
     tenantReady || !!reduxConfig || (previewMode && !!previewConfig) || isThemePreviewRoute
 
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+
   // Datos de usuario
   const isAuthenticated = !!userState?.user
   const wishlistCount = userState?.wishlist?.length || 0
@@ -115,20 +118,13 @@ const CustomHeader = () => {
   // Colores
   const colors = useMemo(
     () => ({
-      primary: activeConfig?.colors?.primary || theme.palette.primary.main,
-      background:
-        activeConfig?.colors?.surface ||
-        activeConfig?.colors?.background ||
-        theme.palette.background.default,
-      text: activeConfig?.colors?.text || theme.palette.text.primary,
-      icon:
-        activeConfig?.colors?.mutedText ||
-        activeConfig?.colors?.textSecondary ||
-        activeConfig?.colors?.textMuted ||
-        theme.palette.text.secondary,
-      accion: activeConfig?.colors?.accent || theme.palette.primary.main,
+      primary: themeColors.primary,
+      background: themeColors.headerBackground,
+      text: themeColors.headerText,
+      icon: themeColors.headerIcon,
+      link: themeColors.headerLink,
     }),
-    [activeConfig?.colors, theme.palette],
+    [themeColors],
   )
 
   const typography = useMemo(
@@ -146,7 +142,7 @@ const CustomHeader = () => {
     return typeof logo === 'string' ? logo : logo?.url || null
   }, [activeConfig?.header?.logo])
 
-  const contrastColor = headerConfig.isTransparent ? '#ffffff' : colors.text
+  const contrastColor = colors.text
   const headerBackground = headerConfig.isTransparent
     ? 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)'
     : colors.background
@@ -339,11 +335,17 @@ const CustomHeader = () => {
                     width: `${headerConfig.logoWidth}px`,
                     maxHeight: `${headerConfig.height - 10}px`,
                     objectFit: 'contain',
-                    filter: headerConfig.isTransparent ? 'brightness(0) invert(1)' : 'none',
+                    filter: 'none',
                   }}
                 />
               ) : (
-                <Typography variant="h5" sx={{ fontWeight: 800, color: contrastColor }}>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    color: contrastColor,
+                    fontFamily: typography.headingFont,
+                  }}
+                >
                   {headerConfig.storeName}
                 </Typography>
               )}
@@ -356,11 +358,16 @@ const CustomHeader = () => {
                   key={link.label}
                   component={NavLink}
                   to={link.path}
+                  variant="text"
+                  color="inherit"
                   sx={{
-                    color: contrastColor,
+                    color: colors.link,
                     textTransform: 'none',
-                    fontWeight: 600,
+                    fontFamily: typography.fontFamily,
                     display: { xs: 'none', md: 'flex' },
+                    '&.active': {
+                      color: colors.text,
+                    },
                   }}
                 >
                   {link.label}
@@ -378,7 +385,10 @@ const CustomHeader = () => {
           >
             {displayLinks.map(({ label, path, icon: Icon, badge }) => (
               <Tooltip key={label} title={label}>
-                <IconButton onClick={() => navigate(path)} sx={{ color: colors.accion }}>
+                <IconButton
+                  onClick={() => navigate(path)}
+                  sx={{ color: colors.icon }}
+                >
                   {badge > 0 ? (
                     <Badge badgeContent={badge} color="error">
                       <Icon />
@@ -392,7 +402,10 @@ const CustomHeader = () => {
 
             {headerConfig.showSearch && (
               <Tooltip title="Buscar">
-                <IconButton onClick={() => navigate('/product')} sx={{ color: colors.accion }}>
+                <IconButton
+                  onClick={() => navigate('/product')}
+                  sx={{ color: colors.icon }}
+                >
                   <SearchIcon />
                 </IconButton>
               </Tooltip>
@@ -403,8 +416,8 @@ const CustomHeader = () => {
                 variant="outlined"
                 onClick={handleLogout}
                 sx={{
-                  color: colors.icon,
-                  borderColor: alpha(contrastColor, 0.5),
+                  color: colors.link,
+                  borderColor: alpha(colors.link, 0.5),
                   ml: 1,
                 }}
               >
@@ -413,7 +426,7 @@ const CustomHeader = () => {
             )}
 
             {isMobile && (
-              <IconButton onClick={toggleDrawer(true)} sx={{ color: contrastColor }}>
+              <IconButton onClick={toggleDrawer(true)} sx={{ color: colors.icon }}>
                 <MenuIcon />
               </IconButton>
             )}

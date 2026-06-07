@@ -1,17 +1,19 @@
 // 📁 src/middlewares/tenantMiddleware.js
 // VERSIÓN PRODUCCIÓN - MULTI-TENANT
 
-import mongoose from 'mongoose'
-
 import Tenant from '../models/tenantModel.js'
 import { sendResponse } from '../utils/response.js'
 import { env } from '../../config/env.js'
+import logger from '../../config/logger.js'
 
 import {
   getDomainCandidates,
   normalizeHostname,
-  normalizeSlug,
 } from '../utils/domainUtils.js'
+import {
+  isValidObjectId,
+  toObjectId,
+} from '../utils/requestContext.js'
 
 import {
   runWithTenantContext,
@@ -40,16 +42,6 @@ const tenantCache = new Map()
 // =====================================================
 // Utilidades internas
 // =====================================================
-
-const toObjectId = value => {
-  if (!value) return null
-
-  const id = String(value)
-
-  if (!mongoose.Types.ObjectId.isValid(id)) return null
-
-  return new mongoose.Types.ObjectId(id)
-}
 
 const getHeaderValue = (req, headerName) => {
   const value = req.headers?.[headerName]
@@ -361,7 +353,7 @@ export const resolveTenantByDomain = async (req, res, next) => {
         })
 
         if (isDev) {
-          console.log(`[DEV BYPASS] Tenant: ${defaultTenantId}`)
+          logger.debug(`[DEV BYPASS] Tenant: ${defaultTenantId}`)
         }
 
         return runWithTenantContext(context, () => next())
@@ -382,7 +374,7 @@ export const resolveTenantByDomain = async (req, res, next) => {
 
     if (!tenant) {
       if (isDev) {
-        console.error(`[TENANT ERROR] No encontrado: ${host}`, {
+        logger.warn(`[TENANT ERROR] No encontrado: ${host}`, {
           rawHost,
           candidates,
         })
@@ -402,7 +394,7 @@ export const resolveTenantByDomain = async (req, res, next) => {
     })
 
     if (isDev) {
-      console.log(
+      logger.debug(
         `[TENANT] ${tenant.name} | ${fromCache ? 'CACHE HIT' : 'CACHE MISS'} | ${isAdminContext ? 'ADMIN' : 'SHOP'} | ${host}`,
       )
     }
@@ -419,7 +411,7 @@ export const resolveTenantByDomain = async (req, res, next) => {
 // =====================================================
 
 export const requireTenant = (req, res, next) => {
-  if (!req.tenantId || !mongoose.Types.ObjectId.isValid(String(req.tenantId))) {
+  if (!req.tenantId || !isValidObjectId(req.tenantId)) {
     return sendResponse(res, 400, false, 'Tenant no identificado')
   }
 
@@ -480,7 +472,7 @@ export const cleanupTenantCache = () => {
   }
 
   if (isDev && cleaned > 0) {
-    console.log(`[CACHE CLEANUP] Eliminados: ${cleaned} entries`)
+    logger.debug(`[CACHE CLEANUP] Eliminados: ${cleaned} entries`)
   }
 
   return cleaned

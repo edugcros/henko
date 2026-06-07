@@ -110,11 +110,17 @@ if (env.isProduction) {
     throw new Error('Falta REACT_APP_MP_PUBLIC_KEY en producción')
   }
 
-  const isTestKey = String(env.mercadoPagoPublicKey).startsWith('TEST-')
+  const isTestKey =
+    String(env.mercadoPagoPublicKey).startsWith('TEST-') ||
+    String(env.mercadoPagoPublicKey).startsWith('TEST_USR-')
   const isProdKey = String(env.mercadoPagoPublicKey).startsWith('APP_USR-')
 
-  if (!isProdKey && !isTestKey) {
-    throw new Error('REACT_APP_MP_PUBLIC_KEY inválida')
+  if (!isProdKey) {
+    throw new Error('REACT_APP_MP_PUBLIC_KEY debe ser una clave productiva APP_USR- en producción')
+  }
+
+  if (isTestKey) {
+    throw new Error('REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en producción')
   }
 }
 

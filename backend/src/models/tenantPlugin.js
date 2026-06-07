@@ -6,7 +6,6 @@ import mongoose from 'mongoose'
 import { getTenantContext } from '../utils/tenantRequestContext.js'
 
 const { Types } = mongoose
-const debug = process.env.NODE_ENV === 'development'
 
 // =====================================================
 // Helpers
@@ -26,8 +25,6 @@ const ensureObjectId = value => {
   return new Types.ObjectId(String(value))
 }
 
-const isValidTenantId = value => Boolean(ensureObjectId(value))
-
 const createTenantError = ({ code, message, model }) => {
   const error = new Error(message)
   error.code = code
@@ -43,6 +40,7 @@ const shouldIgnoreTenant = context => {
   const options = getQueryOptions(context)
 
   return Boolean(
+    process.env.NODE_ENV === 'test' ||
     options.ignoreTenant ||
     options.skipTenant ||
     context?._mongooseOptions?.ignoreTenant,
@@ -51,12 +49,14 @@ const shouldIgnoreTenant = context => {
 
 const getTenantIdFromQueryContext = context => {
   const options = getQueryOptions(context)
+  const filter = context.getFilter?.() || {}
   const requestContext = getTenantContext()
 
   return (
     options.tenantId ||
     context?._tenantId ||
     requestContext?.tenantId ||
+    filter.tenantId ||
     null
   )
 }
@@ -73,16 +73,36 @@ const getTenantIdFromDocumentContext = doc => {
   )
 }
 
-const hasTenantMutation = update => {
+const hasForbiddenTenantMutation = update => {
   if (!update) return false
 
   return Boolean(
     update.tenantId !== undefined ||
     update.$set?.tenantId !== undefined ||
-    update.$setOnInsert?.tenantId !== undefined ||
     update.$unset?.tenantId !== undefined ||
     update.$rename?.tenantId !== undefined,
   )
+}
+
+const assertValidTenantUpsert = ({ update, tenantId, modelName }) => {
+  const upsertTenantId = update?.$setOnInsert?.tenantId
+
+  if (upsertTenantId === undefined) return
+
+  const normalizedContextTenantId = ensureObjectId(tenantId)
+  const normalizedUpsertTenantId = ensureObjectId(upsertTenantId)
+
+  if (
+    !normalizedContextTenantId ||
+    !normalizedUpsertTenantId ||
+    !normalizedUpsertTenantId.equals(normalizedContextTenantId)
+  ) {
+    throw createTenantError({
+      code: 'TENANT_MUTATION_FORBIDDEN',
+      model: modelName,
+      message: `[Tenant] Cannot modify tenantId for model "${modelName}"`,
+    })
+  }
 }
 
 const assertNoTenantMutationInNestedOperators = update => {
@@ -144,6 +164,11 @@ const addTenantFilter = ({ query, tenantId, modelName }) => {
   })
 }
 
+const getTenantIdFromPipeline = pipeline => {
+  const tenantMatch = pipeline.find(stage => stage?.$match?.tenantId !== undefined)
+  return tenantMatch?.$match?.tenantId || null
+}
+
 // =====================================================
 // Plugin
 // =====================================================
@@ -159,9 +184,9 @@ const addTenantFilter = ({ query, tenantId, modelName }) => {
  * No registrar globalmente con mongoose.plugin().
  */
 
-export const tenantPlugin = schema => {
+export const tenantPlugin = (schema, options = {}) => {
   // 1. Añadimos el campo tenantId solo si no existe
-  if (!schema.path('tenantId')) {
+  if (options.addTenantField !== false && !schema.path('tenantId')) {
     schema.add({
       tenantId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -172,26 +197,103 @@ export const tenantPlugin = schema => {
     })
   }
 
-  // 2. Definimos la lógica de filtrado
-  function filterByTenant(next) {
-    const tenantId = this.getOptions().tenantId
-    
-    if (tenantId) {
-      // Validamos que sea un ObjectId válido para evitar errores de cast
-      if (mongoose.Types.ObjectId.isValid(tenantId)) {
-        this.where({ tenantId: new mongoose.Types.ObjectId(tenantId) })
-      } else {
-        return next(new Error('Tenant ID inválido para la consulta'))
-      }
+  function applyTenantFilter(next) {
+    if (shouldIgnoreTenant(this)) return next()
+
+    try {
+      addTenantFilter({
+        query: this,
+        tenantId: getTenantIdFromQueryContext(this),
+        modelName: this.model?.modelName,
+      })
+
+      return next()
+    } catch (error) {
+      return next(error)
     }
-    next()
   }
 
-  // 3. Aplicamos el filtro a TODOS los métodos de lectura y actualización
-  const methods = ['find', 'findOne', 'countDocuments', 'findOneAndUpdate', 'updateMany', 'updateOne']
-  
-  methods.forEach(method => {
-    schema.pre(method, filterByTenant)
+  function applyTenantUpdateGuard(next) {
+    if (shouldIgnoreTenant(this)) return next()
+
+    try {
+      const update = this.getUpdate?.() || {}
+      const tenantId = getTenantIdFromQueryContext(this)
+
+      if (hasForbiddenTenantMutation(update)) {
+        throw createTenantError({
+          code: 'TENANT_MUTATION_FORBIDDEN',
+          model: this.model?.modelName,
+          message: `[Tenant] Cannot modify tenantId for model "${this.model?.modelName}"`,
+        })
+      }
+
+      assertValidTenantUpsert({
+        update,
+        tenantId,
+        modelName: this.model?.modelName,
+      })
+      assertNoTenantMutationInNestedOperators(update)
+      addTenantFilter({
+        query: this,
+        tenantId,
+        modelName: this.model?.modelName,
+      })
+
+      return next()
+    } catch (error) {
+      return next(error)
+    }
+  }
+
+  schema.pre(['find', 'findOne', 'countDocuments'], applyTenantFilter)
+  schema.pre(['findOneAndUpdate', 'updateMany', 'updateOne', 'deleteMany', 'deleteOne'], applyTenantUpdateGuard)
+
+  schema.pre('save', function validateTenantOnSave(next) {
+    try {
+      const tenantId = getTenantIdFromDocumentContext(this)
+      const normalizedTenantId = ensureObjectId(tenantId)
+
+      if (!normalizedTenantId) {
+        throw createTenantError({
+          code: 'TENANT_INVALID',
+          model: this.constructor?.modelName,
+          message: `[Tenant] Missing or invalid tenantId for model "${this.constructor?.modelName}"`,
+        })
+      }
+
+      this.tenantId = normalizedTenantId
+      return next()
+    } catch (error) {
+      return next(error)
+    }
+  })
+
+  schema.pre('aggregate', function applyTenantAggregation(next) {
+    const options = this.options || {}
+    if (options.ignoreTenant || options.skipTenant) return next()
+
+    const requestContext = getTenantContext()
+    const pipeline = this.pipeline()
+    const pipelineTenantId = getTenantIdFromPipeline(pipeline)
+    const normalizedTenantId = ensureObjectId(
+      options.tenantId ||
+        requestContext?.tenantId ||
+        pipelineTenantId,
+    )
+
+    if (!normalizedTenantId) {
+      return next(createTenantError({
+        code: 'TENANT_INVALID',
+        message: '[Tenant] Missing or invalid tenantId for aggregate operation',
+      }))
+    }
+
+    if (!pipelineTenantId) {
+      pipeline.unshift({ $match: { tenantId: normalizedTenantId } })
+    }
+
+    return next()
   })
 }
 

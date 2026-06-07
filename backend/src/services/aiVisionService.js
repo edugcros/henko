@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import AIPreference from '../models/aIPreference.js'
 import CorrectionLog from '../models/correctionLog.js'
 import mongoose from 'mongoose'
+import logger from '../../config/logger.js'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const MODEL_NAME = process.env.GEMINI_MODEL || 'models/gemini-3.1-flash-lite'
@@ -25,15 +26,15 @@ const SUPPORTED_MIME_TYPES = new Set([
 ])
 
 function logInfo(message, meta = {}) {
-  console.log('[AI VISION SERVICE]', JSON.stringify({ level: 'info', message, ...meta }))
+  logger.info('[AI VISION SERVICE]', { message, ...meta })
 }
 
 function logWarn(message, meta = {}) {
-  console.warn('[AI VISION SERVICE]', JSON.stringify({ level: 'warn', message, ...meta }))
+  logger.warn('[AI VISION SERVICE]', { message, ...meta })
 }
 
 function logError(message, meta = {}) {
-  console.error('[AI VISION SERVICE]', JSON.stringify({ level: 'error', message, ...meta }))
+  logger.error('[AI VISION SERVICE]', { message, ...meta })
 }
 
 function normalizeMimeType(mimeType) {
@@ -450,7 +451,6 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     throw new Error('tenantId inválido')
   }
 
-  const learningContext = await loadTenantLearningContext(normalizedTenantId)
   const hash = crypto.createHash('sha256').update(imageBuffer).digest('hex')
   const safeMime = normalizeMimeType(mimeType)
 

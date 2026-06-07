@@ -200,7 +200,7 @@ const loginUser = async userData => {
       )
     }
 
-    const { user, token } = normalized
+    const { token } = normalized
 
     if (token) {
       localStorage.setItem('token', token)

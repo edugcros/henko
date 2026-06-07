@@ -2,15 +2,12 @@
 import Consultas from '../models/enqModel.js'
 import asyncHandler from 'express-async-handler'
 import { sendEmail } from '../utils/sendEmail.js'
-import mongoose from 'mongoose'
 import validator from 'validator'
+import {
+  getTenantIdFromRequest,
+  isValidObjectId,
+} from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
-
-// 🔴 HELPER: Extraer tenantId del usuario autenticado (SIEMPRE del token/req.user)
-const getTenantIdFromRequest = req => {
-  // Prioridad: req.user (seteado por middleware de auth) > req.tenantId > null
-  return req.user?.tenantId || req.tenantId || null
-}
 
 // 🔴 HELPER: Verificar si el usuario tiene acceso al tenant
 /*const hasTenantAccess = (req, enquiryTenantId) => {
@@ -85,7 +82,7 @@ export const createEnquiry = asyncHandler(async (req, res) => {
   const { name, email, mobile, comment } = req.body
   
   // 🔴 OBTENER TENANT: De body (form público) o de usuario autenticado
-  let tenantId = req.body.tenantId || getTenantIdFromRequest(req)
+  const tenantId = getTenantIdFromRequest(req, { allowBodyTenantId: true })
 
   // Si viene de un form público sin auth, el tenantId debe venir en el body
   // Si viene del admin, lo tomamos del usuario
@@ -192,7 +189,7 @@ export const getEnquiryById = asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'No autorizado' })
   }
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'ID inválido' })
   }
 
@@ -215,7 +212,7 @@ export const updateEnquiryStatus = asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'No autorizado' })
   }
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'ID inválido' })
   }
 
@@ -248,7 +245,7 @@ export const deleteEnquiry = asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'No autorizado' })
   }
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'ID inválido' })
   }
 

@@ -152,9 +152,14 @@ export const autoSaveTheme = createAsyncThunk(
       // Silencioso - no muestra loading global
       return response
     } catch (error) {
+      const errorPayload = {
+        message: error.message,
+        status: error.status || null,
+      }
+
       // Auto-save fallido no es crítico
-      dispatch(setAutoSaveError(error.message))
-      return rejectWithValue(error.message)
+      dispatch(setAutoSaveError(errorPayload))
+      return rejectWithValue(errorPayload)
     }
   }
 )

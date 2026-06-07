@@ -259,14 +259,48 @@ export const resetPassword = createAsyncThunk(
 export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
   try {
     const response = await userService.getCurrentUser()
-    // Normalizamos: la data suele venir en response.data
-    const data = response.data || response
-    if (data.user) safeStorage.setUser(data.user)
-    return data
+
+    if (!response?.success || !response?.data?.user) {
+      return thunkAPI.rejectWithValue(
+        response?.message || 'Error al obtener perfil',
+      )
+    }
+
+    const { user, token } = response.data
+    safeStorage.setUser(user)
+    return { user, token }
   } catch (error) {
     return thunkAPI.rejectWithValue(error.response?.data || 'Error al obtener perfil')
   }
 })
+
+export const updateProfile = createAsyncThunk(
+  'user/update-profile',
+  async (profileData, thunkAPI) => {
+    try {
+      const response = await userService.updateUser(profileData)
+
+      if (!response?.success || !response?.data) {
+        return thunkAPI.rejectWithValue(
+          response?.message || 'No se pudo actualizar el perfil',
+        )
+      }
+
+      safeStorage.setUser(response.data)
+
+      return {
+        user: response.data,
+        message: response.message || 'Perfil actualizado correctamente',
+      }
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error?.response?.data?.message ||
+          error?.message ||
+          'No se pudo actualizar el perfil',
+      )
+    }
+  },
+)
 
 /**
  * toggleWishlist
@@ -397,15 +431,51 @@ const userSlice = createSlice({
       })
 
       // GET ME
-      .addCase(getMe.fulfilled, (state, action) => {
-        state.user = action.payload?.data || action.payload
-        state.token = action.payload?.token || null
-        state.isAuthenticated = true
+      .addCase(getMe.pending, state => {
+        state.isLoading = true
+        state.isError = false
+        state.message = ''
       })
-      .addCase(getMe.rejected, state => {
+      .addCase(getMe.fulfilled, (state, action) => {
+        state.isLoading = false
+        state.user = action.payload?.user || null
+        state.token = action.payload?.token || null
+        state.isAuthenticated = Boolean(action.payload?.user)
+        state.isError = false
+      })
+      .addCase(getMe.rejected, (state, action) => {
+        state.isLoading = false
         state.user = null
         state.token = null
         state.isAuthenticated = false
+        state.isError = true
+        state.message =
+          typeof action.payload === 'string'
+            ? action.payload
+            : action.payload?.message || 'Error al obtener perfil'
+      })
+
+      .addCase(updateProfile.pending, state => {
+        state.isLoading = true
+        state.isError = false
+        state.isSuccess = false
+        state.message = ''
+      })
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.isLoading = false
+        state.isSuccess = true
+        state.isError = false
+        state.user = action.payload.user
+        state.message = action.payload.message
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
+        state.isLoading = false
+        state.isSuccess = false
+        state.isError = true
+        state.message =
+          typeof action.payload === 'string'
+            ? action.payload
+            : action.payload?.message || 'No se pudo actualizar el perfil'
       })
 
       // --- REQUEST PASSWORD RESET ---

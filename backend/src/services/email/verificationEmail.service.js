@@ -1,15 +1,10 @@
 // 📁 src/services/email/verificationEmail.service.js
-import { env } from '../../../config/env.js'
 import { sendEmail } from '../../utils/sendEmail.js'
 import { buildFrontendUrl } from '../../utils/frontendUrl.js'
 
 // =====================================================
 // Helpers
 // =====================================================
-
-const trimTrailingSlash = value => {
-  return String(value || '').replace(/\/+$/, '')
-}
 
 const escapeHtml = value => {
   return String(value || '')
@@ -18,145 +13,6 @@ const escapeHtml = value => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
-}
-
-const ensureUrl = value => {
-  if (!value) return null
-
-  const clean = String(value).trim()
-
-  if (!clean) return null
-
-  if (clean.startsWith('http://') || clean.startsWith('https://')) {
-    return trimTrailingSlash(clean)
-  }
-
-  return trimTrailingSlash(`${env.isProduction ? 'https' : 'http'}://${clean}`)
-}
-
-const isLocalDomain = value => {
-  const raw = String(value || '').toLowerCase()
-
-  return (
-    raw.includes('localhost') ||
-    raw.includes('127.0.0.1') ||
-    raw.includes('henko.local') ||
-    raw.endsWith('.local')
-  )
-}
-
-const getDomainHostname = domain => {
-  if (!domain) return null
-
-  if (typeof domain === 'string') {
-    return domain
-  }
-
-  return domain.hostname || domain.normalizedHostname || null
-}
-
-const getPrimaryTenantDomain = tenant => {
-  if (!tenant) return null
-
-  const fromMethod = tenant.getPrimaryDomain?.()
-
-  if (fromMethod) {
-    return getDomainHostname(fromMethod)
-  }
-
-  const primaryActiveDomain =
-    tenant.domains?.find?.(
-      domain =>
-        typeof domain === 'object' &&
-        domain?.isPrimary &&
-        domain?.status === 'active',
-    ) || null
-
-  if (primaryActiveDomain) {
-    return getDomainHostname(primaryActiveDomain)
-  }
-
-  const firstActiveDomain =
-    tenant.domains?.find?.(domain => {
-      if (typeof domain === 'string') return Boolean(domain)
-
-      return domain?.status === 'active' && getDomainHostname(domain)
-    }) || null
-
-  return getDomainHostname(firstActiveDomain)
-}
-
-const appendDevelopmentPortIfNeeded = value => {
-  if (env.isProduction) return value
-
-  try {
-    const url = new URL(value)
-
-    if (!url.port && url.hostname.endsWith('.local')) {
-      url.port = '3002'
-    }
-
-    return trimTrailingSlash(url.toString())
-  } catch {
-    return value
-  }
-}
-
-const getTenantStorefrontUrl = tenant => {
-  if (!tenant) return null
-
-  if (tenant.shopUrl) return ensureUrl(tenant.shopUrl)
-  if (tenant.storefrontUrl) return ensureUrl(tenant.storefrontUrl)
-  if (tenant.urls?.storefront) return ensureUrl(tenant.urls.storefront)
-
-  const primaryDomain = getPrimaryTenantDomain(tenant)
-
-  if (!primaryDomain) return null
-
-  if (env.isProduction && isLocalDomain(primaryDomain)) {
-    return null
-  }
-
-  const url = ensureUrl(primaryDomain)
-
-  if (!url) return null
-
-  return trimTrailingSlash(appendDevelopmentPortIfNeeded(url))
-}
-
-const getFrontendBaseUrl = tenant => {
-  /**
-   * En producción/predeploy, la URL pública configurada por ENV manda.
-   * Esto evita generar emails con henko.local si el tenant todavía tiene
-   * ese dominio como primary en Atlas.
-   */
-  const envFallback =
-    env.clientUrl ||
-    env.shopFrontendUrl ||
-    process.env.CLIENT_URL ||
-    process.env.SHOP_FRONTEND_URL ||
-    process.env.APP_URL ||
-    null
-
-  if (envFallback) {
-    const url = ensureUrl(envFallback)
-
-    if (url && !(env.isProduction && isLocalDomain(url))) {
-      return url
-    }
-  }
-
-  const tenantUrl = getTenantStorefrontUrl(tenant)
-
-  if (tenantUrl) {
-    return tenantUrl
-  }
-
-  if (!env.isProduction) {
-    return 'http://henko.local:3002'
-  }
-
-  throw new Error('CLIENT_URL / SHOP_FRONTEND_URL no configurado')
 }
 
 // =====================================================

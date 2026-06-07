@@ -208,20 +208,39 @@ export const togglePromotionalBlockStatus = createAsyncThunk(
 
 export const deletePromotionalBlock = createAsyncThunk(
   'promotionalBlocks/delete',
-  async (blockId, { rejectWithValue }) => {
+  async (payload, { rejectWithValue }) => {
     try {
-      if (!blockId) {
+      const finalId =
+        typeof payload === 'string'
+          ? payload
+          : payload?.id || payload?.blockId
+
+      const hard =
+        typeof payload === 'object'
+          ? Boolean(payload?.hard)
+          : false
+
+      if (!finalId) {
         return rejectWithValue('ID del bloque promocional requerido')
       }
 
-      await promotionalBlocksService.deletePromotionalBlock(blockId)
-      return blockId
+      const response = await promotionalBlocksService.deletePromotionalBlock(
+        finalId,
+        { hard },
+      )
+
+      const normalized = normalizeEntityResponse(response)
+
+      return {
+        id: normalized?.id || normalized?._id || finalId,
+        hardDeleted: Boolean(normalized?.hardDeleted || hard),
+      }
     } catch (error) {
       return rejectWithValue(
-        getErrorMessage(error, 'Error al eliminar bloque promocional')
+        getErrorMessage(error, 'Error al eliminar bloque promocional'),
       )
     }
-  }
+  },
 )
 
 // =====================================================
@@ -428,13 +447,19 @@ const promotionalBlocksSlice = createSlice({
         state.successMessage = null
       })
       .addCase(deletePromotionalBlock.fulfilled, (state, action) => {
-        const deletedId = action.payload
+        const deletedId =
+          typeof action.payload === 'string'
+            ? String(action.payload)
+            : String(action.payload?.id || '')
 
         state.isDeleting = false
-        state.blocks = state.blocks.filter(block => block._id !== deletedId)
+
+        state.blocks = state.blocks.filter(block => String(block._id) !== deletedId)
+        state.publicBlocks = state.publicBlocks.filter(block => String(block._id) !== deletedId)
+
         state.meta.total = Math.max(0, Number(state.meta.total || 0) - 1)
 
-        if (state.selectedBlock?._id === deletedId) {
+        if (String(state.selectedBlock?._id || '') === deletedId) {
           state.selectedBlock = null
         }
 

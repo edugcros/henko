@@ -8,12 +8,10 @@ import React, {
   useMemo,
 } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import themeService from '@features/theme/themeService'
+import tenantService from '../services/tenantService'
 import {
-  updatePreviewConfig,
   setPreviewMode,
   updateLocalConfig,
-  getThemeConfig,
 } from '@features/theme/themeSlice'
 
 // ==========================================
@@ -149,7 +147,7 @@ export const TenantProvider = ({ children }) => {
 
       try {
         // 1. RESOLVER TENANT
-        const tenantRes = await themeService.resolveTenantByDomain(hostname)
+        const tenantRes = await tenantService.resolveTenantByDomain(hostname)
 
         if (!tenantRes.success) {
           throw new Error(tenantRes.error || 'Error resolviendo tenant')
@@ -164,7 +162,7 @@ export const TenantProvider = ({ children }) => {
 
         // 2. CARGAR TEMA (público para inicialización rápida)
 
-        const themeRes = await themeService.getPublicTheme(tenantId)
+        const themeRes = await tenantService.getPublicTheme(tenantId)
         if (!themeRes.success) {
           throw new Error(themeRes.error || 'Error cargando tema')
         }
@@ -256,11 +254,6 @@ export const TenantProvider = ({ children }) => {
       // Recargar
       await loadTenantAndTheme()
 
-      // También recargar en Redux si hay sesión
-      const token = localStorage.getItem('token')
-      if (token) {
-        dispatch(getThemeConfig())
-      }
     } catch (error) {
       console.error('[TenantContext] Error en refresh:', error)
     }

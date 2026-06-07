@@ -16,12 +16,15 @@ import {
   Skeleton,
   Fade,
   IconButton,
+  useTheme,
 } from '@mui/material'
+import { Newprimary } from '../theme/colors'
 import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import AddIcon from '@mui/icons-material/Add'
 import RemoveIcon from '@mui/icons-material/Remove'
-import { Newprimary } from '../theme/colors'
+import { useTenant } from '../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const CURRENCY = 'ARS'
 const FREE_SHIPPING_THRESHOLD = 0
@@ -160,7 +163,7 @@ const QuantityInput = memo(({ value, onChange, onIncrement, onDecrement, disable
 QuantityInput.displayName = 'QuantityInput'
 
 const CartItem = memo(
-  ({ item, quantity, onQuantityChange, onUpdateQuantity, onRemoveItem, isUpdating = false }) => {
+  ({ item, quantity, onQuantityChange, onUpdateQuantity, onRemoveItem, isUpdating = false, themeColors }) => {
     const productId = getItemProductId(item)
     const lineId = getItemLineId(item)
     const currentQty = typeof quantity === 'number' ? quantity : item.quantity || 1
@@ -291,7 +294,7 @@ const CartItem = memo(
                     variant="subtitle1"
                     sx={{
                       fontWeight: 600,
-                      color: '#111',
+                      color: themeColors.cardText,
                       textDecoration: 'none',
                       lineHeight: 1.3,
                       fontSize: { xs: '0.9rem', sm: '1rem' },
@@ -300,7 +303,7 @@ const CartItem = memo(
                       WebkitBoxOrient: 'vertical',
                       overflow: 'hidden',
                       '&:hover': {
-                        color: Newprimary.darkRed,
+                        color: themeColors.link,
                         textDecoration: 'underline',
                       },
                     }}
@@ -314,7 +317,7 @@ const CartItem = memo(
                       sx={{
                         display: 'block',
                         mt: 0.5,
-                        color: '#565959',
+                        color: themeColors.cardMutedText,
                         fontWeight: 600,
                       }}
                     >
@@ -328,7 +331,7 @@ const CartItem = memo(
                       sx={{
                         display: 'block',
                         mt: 0.25,
-                        color: '#007185',
+                        color: themeColors.link,
                         fontWeight: 600,
                       }}
                     >
@@ -341,7 +344,7 @@ const CartItem = memo(
                   variant="h6"
                   sx={{
                     fontWeight: 700,
-                    color: '#000',
+                    color: themeColors.cardPrice,
                     fontSize: { xs: '1rem', sm: '1.25rem' },
                     whiteSpace: 'nowrap',
                   }}
@@ -428,12 +431,13 @@ const CartItem = memo(
                   sx={{
                     textTransform: 'none',
                     color: '#007185',
+                    color: themeColors.link,
                     fontWeight: 500,
                     fontSize: '12px',
                     minWidth: 'auto',
                     p: '4px 8px',
                     '&:hover': {
-                      color: '#C7511F',
+                      color: themeColors.actionSecondary,
                       bgcolor: 'transparent',
                       textDecoration: 'underline',
                     },
@@ -443,7 +447,10 @@ const CartItem = memo(
                 </Button>
               </Box>
 
-              <Typography variant="body2" sx={{ mt: 1, color: '#565959', fontWeight: 500 }}>
+              <Typography
+                variant="body2"
+                sx={{ mt: 1, color: themeColors.cardMutedText, fontWeight: 500 }}
+              >
                 <span>Subtotal: ${(item.price * currentQty).toLocaleString('es-AR')}</span>
               </Typography>
             </Box>
@@ -458,7 +465,13 @@ CartItem.displayName = 'CartItem'
 
 const Cart = () => {
   const dispatch = useDispatch()
+  const theme = useTheme()
+  const { themeConfig } = useTenant()
   const { cartItems, isLoading } = useSelector(state => state.cart)
+  const themeColors = useMemo(
+    () => getThemeColors(themeConfig || {}),
+    [themeConfig],
+  )
   const [quantities, setQuantities] = useState({})
   const [updatingItems, setUpdatingItems] = useState(new Set())
   const [notification, setNotification] = useState({
@@ -769,7 +782,7 @@ const Cart = () => {
 
   if (isLoading && !cartItems.length) {
     return (
-      <Box sx={{ bgcolor: '#EAEDED', minHeight: '100vh', py: { xs: 2, md: 5 } }}>
+      <Box sx={{ bgcolor: themeColors.background, minHeight: '100vh', py: { xs: 2, md: 5 } }}>
         <Box sx={{ maxWidth: '1200px', mx: 'auto', px: { xs: 2, md: 4 } }}>
           <Grid container spacing={4}>
             <Grid item xs={12} md={9}>
@@ -805,7 +818,7 @@ const Cart = () => {
         sx={{
           textAlign: 'center',
           py: 15,
-          bgcolor: '#f8f9fa',
+          bgcolor: themeColors.background,
           minHeight: '60vh',
           display: 'flex',
           flexDirection: 'column',
@@ -826,13 +839,14 @@ const Cart = () => {
           variant="contained"
           size="large"
           sx={{
-            bgcolor: Newprimary.darkRed,
+            bgcolor: themeColors.actionPrimary,
+            color: themeColors.actionPrimaryText,
             textTransform: 'none',
             borderRadius: 2,
             px: 4,
             py: 1.5,
             fontWeight: 600,
-            '&:hover': { bgcolor: '#a71d1d' },
+            '&:hover': { bgcolor: themeColors.actionSecondary },
           }}
         >
           <span>Explorar Tienda</span>
@@ -842,7 +856,7 @@ const Cart = () => {
   }
 
   return (
-    <Box sx={{ bgcolor: '#EAEDED', minHeight: '100vh', py: { xs: 2, md: 5 } }}>
+    <Box sx={{ bgcolor: themeColors.background, minHeight: '100vh', py: { xs: 2, md: 5 } }}>
       <Box sx={{ maxWidth: '1200px', mx: 'auto', mb: 4, px: { xs: 2, md: 4 } }}>
         <Grid container spacing={4}>
           <Grid item xs={12} md={9}>
@@ -852,6 +866,9 @@ const Cart = () => {
                 borderRadius: 2,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
                 position: 'relative',
+                bgcolor: themeColors.cardBackground,
+                color: themeColors.cardText,
+                border: `1px solid ${themeColors.cardBorder}`,
               }}
             >
               <Box sx={{ mb: 2 }}>
@@ -885,6 +902,7 @@ const Cart = () => {
                       onUpdateQuantity={handleUpdateQuantity}
                       onRemoveItem={handleRemoveItem}
                       isUpdating={updatingItems.has(lineId)}
+                      themeColors={themeColors}
                     />
                   )
                 })}
@@ -895,14 +913,14 @@ const Cart = () => {
                   display: { xs: 'block', md: 'none' },
                   mt: 3,
                   pt: 2,
-                  borderTop: '1px solid #eee',
+                  borderTop: `1px solid ${themeColors.cardBorder}`,
                 }}
               >
                 <Typography variant="h6" sx={{ fontWeight: 700, textAlign: 'right' }}>
                   <span>
                     Subtotal ({totalQuantity} {totalQuantity === 1 ? 'producto' : 'productos'}):
                   </span>
-                  <Box component="span" sx={{ color: Newprimary.darkRed, ml: 1 }}>
+                  <Box component="span" sx={{ color: themeColors.cardPrice, ml: 1 }}>
                     ${totalAmount.toLocaleString('es-AR')}
                   </Box>
                 </Typography>
@@ -918,6 +936,9 @@ const Cart = () => {
                   borderRadius: 2,
                   boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
                   mb: 2,
+                  bgcolor: themeColors.cardBackground,
+                  color: themeColors.cardText,
+                  border: `1px solid ${themeColors.cardBorder}`,
                 }}
               >
                 {isEligibleForFreeShipping && (
@@ -927,13 +948,13 @@ const Cart = () => {
                       alignItems: 'center',
                       mb: 2,
                       p: 1.5,
-                      bgcolor: '#e7f4e4',
+                      bgcolor: themeColors.success ? `${themeColors.success}20` : '#e7f4e4',
                       borderRadius: 1,
                     }}
                   >
                     <Typography
                       sx={{
-                        color: '#007600',
+                        color: themeColors.success,
                         fontSize: '14px',
                         fontWeight: 700,
                         mr: 1,
@@ -941,7 +962,7 @@ const Cart = () => {
                     >
                       <span>✓</span>
                     </Typography>
-                    <Typography color="#007600" sx={{ fontWeight: 600, fontSize: '13px' }}>
+                    <Typography color={themeColors.success} sx={{ fontWeight: 600, fontSize: '13px' }}>
                       <span>Tu pedido califica para ENVÍO GRATIS.</span>
                     </Typography>
                   </Box>
@@ -954,7 +975,7 @@ const Cart = () => {
                     fontWeight: 700,
                     mb: 1,
                     fontSize: '1.1rem',
-                    color: Newprimary.darkBlueGray,
+                    color: themeColors.cardText,
                   }}
                 >
                   <span>Productos: {totalQuantity}</span>
@@ -965,14 +986,14 @@ const Cart = () => {
                     fontWeight: 800,
                     mb: 3,
                     fontSize: '1.25rem',
-                    color: Newprimary.darkBlueGray,
+                    color: themeColors.cardText,
                     display: 'flex',
                     alignItems: 'baseline',
                     gap: 1,
                   }}
                 >
                   <span>Total:</span>
-                  <Box component="span" sx={{ fontSize: '1.5rem', color: '#000' }}>
+                  <Box component="span" sx={{ fontSize: '1.5rem', color: themeColors.cardPrice }}>
                     ${totalAmount.toLocaleString('es-AR')}
                   </Box>
                 </Typography>
@@ -987,13 +1008,13 @@ const Cart = () => {
                   sx={{
                     py: 1.5,
                     borderRadius: 2,
-                    bgcolor: '#FFD814',
-                    color: '#0F1111',
+                    bgcolor: themeColors.actionPrimary,
+                    color: themeColors.actionPrimaryText,
                     fontWeight: 700,
                     textTransform: 'none',
                     fontSize: '15px',
                     boxShadow: '0 2px 5px rgba(213,217,217,0.5)',
-                    '&:hover': { bgcolor: '#F7CA00', boxShadow: 'none' },
+                    '&:hover': { bgcolor: themeColors.actionSecondary, boxShadow: 'none' },
                     '&:disabled': { bgcolor: '#ddd', color: '#666' },
                     mb: 2,
                   }}
@@ -1010,7 +1031,7 @@ const Cart = () => {
                   sx={{
                     display: 'block',
                     textAlign: 'center',
-                    color: '#565959',
+                    color: themeColors.cardMutedText,
                   }}
                 >
                   <span>Envío e impuestos calculados en el checkout</span>
@@ -1024,13 +1045,16 @@ const Cart = () => {
                 startIcon={<DeleteOutlineIcon />}
                 sx={{
                   textTransform: 'none',
-                  borderColor: '#D5D9D9',
-                  color: '#0F1111',
-                  bgcolor: '#fff',
+                  borderColor: themeColors.cardBorder,
+                  color: themeColors.cardText,
+                  bgcolor: themeColors.cardBackground,
                   borderRadius: 2,
                   fontWeight: 600,
                   py: 1,
-                  '&:hover': { bgcolor: '#F7FAFA', borderColor: '#D5D9D9' },
+                  '&:hover': {
+                    bgcolor: themeColors.cardBackground,
+                    borderColor: themeColors.cardBorder,
+                  },
                 }}
               >
                 <span>Vaciar Carrito</span>

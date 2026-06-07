@@ -82,6 +82,7 @@ import {
   selectPromotionalBlocksIsDeleting,
   selectPromotionalBlocksIsToggling,
 } from '@features/promotionalBlocks/promotionalBlocksSelectors'
+import { Newprimary } from '../../../website/src/theme/colors'
 
 // =====================================================
 // Configuración
@@ -186,6 +187,27 @@ const getProductFromItem = item => {
   return item?.productId && typeof item.productId === 'object'
     ? item.productId
     : null
+}
+
+const getProductImageUrl = product => {
+  const image = product?.images?.[0] || product?.image || null
+
+  if (!image) return '/assets/images/placeholder.png'
+
+  if (typeof image === 'string') return image
+
+  return (
+    image.url ||
+    image.secure_url ||
+    image.imageUrl ||
+    '/assets/images/placeholder.png'
+  )
+}
+
+const getPromotionalBlockProducts = block => {
+  return normalizeProductsArray(block?.products)
+    .map(item => getProductFromItem(item))
+    .filter(Boolean)
 }
 
 const normalizeProductsArray = products => {
@@ -332,7 +354,7 @@ const ConfirmDialog = ({
   title,
   message,
   confirmText = 'Confirmar',
-  confirmColor = 'primary',
+  confirmColor = Newprimary.darkBlueGray,
   loading = false,
   onConfirm,
   onCancel,
@@ -437,6 +459,7 @@ const PromotionalBlockRow = ({
   deleting,
 }) => {
   const status = getBlockStatus(block)
+  const previewProducts = getPromotionalBlockProducts(block)
 
   return (
     <TableRow hover>
@@ -458,6 +481,50 @@ const PromotionalBlockRow = ({
           label={getTypeLabel(block.type)}
           variant="outlined"
         />
+      </TableCell>
+
+      <TableCell sx={{ minWidth: 280 }}>
+        <Stack direction="row" alignItems="center" spacing={1.25}>
+          <Stack direction="row" spacing={0.75} sx={{ flexShrink: 0 }}>
+            {previewProducts.slice(0, 3).map(product => (
+              <Box
+                key={getEntityId(product)}
+                component="img"
+                src={getProductImageUrl(product)}
+                alt={product.title || 'Producto promocionado'}
+                onError={event => {
+                  event.currentTarget.onerror = null
+                  event.currentTarget.src = '/assets/images/placeholder.png'
+                }}
+                sx={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 1,
+                  objectFit: 'cover',
+                  bgcolor: 'grey.100',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+              />
+            ))}
+          </Stack>
+
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" noWrap>
+              {block.description || 'Sin descripción'}
+            </Typography>
+
+            <Typography variant="caption" color="text.secondary" noWrap display="block">
+              {previewProducts.length > 0
+                ? previewProducts
+                    .slice(0, 2)
+                    .map(product => product.title || 'Producto')
+                    .join(', ')
+                : 'Sin productos asociados'}
+              {previewProducts.length > 2 ? ` +${previewProducts.length - 2} más` : ''}
+            </Typography>
+          </Box>
+        </Stack>
       </TableCell>
 
       <TableCell>
@@ -882,7 +949,10 @@ const PromotionalBlocksPage = () => {
       }
 
       if (action === 'delete') {
-        await dispatch(deletePromotionalBlock(block._id)).unwrap()
+        await dispatch(deletePromotionalBlock({
+          id: block._id,
+          hard: true,
+        })).unwrap()
       }
 
       closeConfirmDialog()
@@ -1074,6 +1144,7 @@ const PromotionalBlocksPage = () => {
                 <TableRow>
                   <TableCell>Bloque</TableCell>
                   <TableCell>Tipo</TableCell>
+                  <TableCell>Descripción / productos</TableCell>
                   <TableCell>Ubicación</TableCell>
                   <TableCell>Productos</TableCell>
                   <TableCell>Estado</TableCell>
@@ -1089,6 +1160,7 @@ const PromotionalBlocksPage = () => {
                     <TableRow key={index}>
                       <TableCell><Skeleton width={220} /></TableCell>
                       <TableCell><Skeleton width={140} /></TableCell>
+                      <TableCell><Skeleton width={240} /></TableCell>
                       <TableCell><Skeleton width={100} /></TableCell>
                       <TableCell><Skeleton width={80} /></TableCell>
                       <TableCell><Skeleton width={110} /></TableCell>
@@ -1099,7 +1171,7 @@ const PromotionalBlocksPage = () => {
                   ))
                 ) : blocks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
+                    <TableCell colSpan={9} align="center" sx={{ py: 8 }}>
                       <BsCalendar size={48} color="#bbb" />
 
                       <Typography color="text.secondary" mt={2}>
@@ -1547,17 +1619,17 @@ const PromotionalBlocksPage = () => {
         open={confirmDialog.open}
         title={
           confirmDialog.action === 'delete'
-            ? 'Eliminar bloque promocional'
+            ? 'Eliminar definitivamente'
             : confirmDialog.block?.isActive
               ? 'Desactivar bloque promocional'
               : 'Activar bloque promocional'
         }
         message={
           confirmDialog.action === 'delete'
-            ? `¿Estás seguro de eliminar "${confirmDialog.block?.title}"? Esta acción no se puede deshacer.`
+            ? `¿Estás seguro de eliminar definitivamente "${confirmDialog.block?.title}" de la base de datos? Esta acción no se puede deshacer.`
             : `¿Querés ${confirmDialog.block?.isActive ? 'desactivar' : 'activar'} "${confirmDialog.block?.title}"?`
         }
-        confirmText={confirmDialog.action === 'delete' ? 'Eliminar' : 'Confirmar'}
+        confirmText={confirmDialog.action === 'delete' ? 'Eliminar definitivamente' : 'Confirmar'}
         confirmColor={confirmDialog.action === 'delete' ? 'error' : 'primary'}
         loading={isDeleting || isToggling}
         onConfirm={confirmAction}

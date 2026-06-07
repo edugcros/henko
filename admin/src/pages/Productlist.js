@@ -307,7 +307,7 @@ const Productlist = () => {
       setSnackbar({
         open: true,
         severity: 'success',
-        message: 'Producto eliminado correctamente',
+        message: 'Producto eliminado permanentemente',
       })
     } catch (error) {
       setSnackbar({

@@ -107,6 +107,23 @@ const FULFILLMENT_STATUSES = {
   RETURNED: 'returned',
 }
 
+const PAYMENT_TRANSITIONS = {
+  pending: ['pending', 'approved', 'rejected', 'cancelled'],
+  approved: ['approved'],
+  rejected: ['rejected'],
+  cancelled: ['cancelled'],
+  refunded: ['refunded'],
+}
+
+const FULFILLMENT_TRANSITIONS = {
+  unfulfilled: ['unfulfilled', 'preparing', 'ready_to_ship', 'shipped'],
+  preparing: ['preparing', 'ready_to_ship', 'shipped'],
+  ready_to_ship: ['ready_to_ship', 'shipped'],
+  shipped: ['shipped', 'delivered', 'returned'],
+  delivered: ['delivered'],
+  returned: ['returned'],
+}
+
 const CONFIRM_ACTIONS = {
   APPROVE_PAYMENT: 'approve_payment',
   CANCEL_ORDER: 'cancel_order',
@@ -161,9 +178,9 @@ const LEGACY_TO_UI_ORDER_STATUS = {
 }
 
 const UI_TO_LEGACY_ORDER_STATUS = {
-  open: ORDER_STATUSES.NOT_PROCESSED,
+  open: ORDER_STATUSES.OPEN,
   processing: ORDER_STATUSES.PROCESSING,
-  shipped: ORDER_STATUSES.DISPATCHED,
+  shipped: ORDER_STATUSES.SHIPPED,
   delivered: ORDER_STATUSES.DELIVERED,
   cancelled: ORDER_STATUSES.CANCELLED,
   refunded: ORDER_STATUSES.REFUNDED,
@@ -284,7 +301,7 @@ const normalizeOrderStatusForUI = status => {
 
 const normalizeOrderStatusForLegacyApi = status => {
   const normalized = normalizeString(status).toLowerCase()
-  return UI_TO_LEGACY_ORDER_STATUS[normalized] || ORDER_STATUSES.NOT_PROCESSED
+  return UI_TO_LEGACY_ORDER_STATUS[normalized] || ORDER_STATUSES.OPEN
 }
 
 const buildApiFilters = filters => {
@@ -292,7 +309,7 @@ const buildApiFilters = filters => {
 
   return {
     ...filters,
-    status: normalizedStatus ? normalizeOrderStatusForLegacyApi(normalizedStatus) : '',
+    status: normalizedStatus,
     q: normalizeString(filters.q).slice(0, CONFIG.MAX_SEARCH_LENGTH),
   }
 }
@@ -799,6 +816,13 @@ const OrderControlPanel = memo(
     const isCancelled = normalizedOrderStatus === ORDER_STATUSES.CANCELLED
     const isRefunded = normalizedOrderStatus === ORDER_STATUSES.REFUNDED
     const isFinalState = isCancelled || isRefunded
+    const isPaymentApproved = order.paymentStatus === PAYMENT_STATUSES.APPROVED
+    const allowedPaymentStatuses =
+      PAYMENT_TRANSITIONS[order.paymentStatus] || [order.paymentStatus]
+    const allowedFulfillmentStatuses =
+      FULFILLMENT_TRANSITIONS[order.fulfillmentStatus] || [
+        order.fulfillmentStatus,
+      ]
     const orderTotal = normalizeValue(order.totals?.total)
 
     return (
@@ -828,26 +852,15 @@ const OrderControlPanel = memo(
           Panel de Control
         </Typography>
 
-        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-          <InputLabel>Estado Comercial</InputLabel>
-          <Select
-            value={normalizedOrderStatus}
-            label="Estado Comercial"
-            onChange={e => onLegacyStatusChange(order._id, e.target.value)}
-            disabled={isFinalState || disabled}
-          >
-            <MenuItem value="open">Abierta</MenuItem>
-            <MenuItem value="processing">Procesando</MenuItem>
-            <MenuItem value="shipped">Enviada</MenuItem>
-            <MenuItem value="delivered">Entregada</MenuItem>
-            <MenuItem value="cancelled" sx={{ color: '#B12704' }}>
-              Cancelada
-            </MenuItem>
-            <MenuItem value="refunded" sx={{ color: '#6B21A8' }}>
-              Reembolsada
-            </MenuItem>
-          </Select>
-        </FormControl>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="caption" color="text.secondary" display="block">
+            Estado comercial
+          </Typography>
+          <StatusBadge status={normalizedOrderStatus} size="medium" />
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.75 }}>
+            Se calcula automáticamente según el pago y la logística.
+          </Typography>
+        </Box>
 
         <FormControl fullWidth size="small" sx={{ mb: 2 }}>
           <InputLabel>Estado del Pago</InputLabel>
@@ -855,21 +868,31 @@ const OrderControlPanel = memo(
             value={order.paymentStatus || PAYMENT_STATUSES.PENDING}
             label="Estado del Pago"
             onChange={e => onPaymentStatusChange(order._id, e.target.value, orderTotal)}
-            disabled={isRefunded || disabled}
+            disabled={isFinalState || disabled || allowedPaymentStatuses.length === 1}
           >
-            <MenuItem value="pending">Pendiente</MenuItem>
-            <MenuItem value="approved" sx={{ color: '#067D62' }}>
-              Aprobado
-            </MenuItem>
-            <MenuItem value="rejected" sx={{ color: '#B12704' }}>
-              Rechazado
-            </MenuItem>
-            <MenuItem value="cancelled" sx={{ color: '#B12704' }}>
-              Cancelado
-            </MenuItem>
-            <MenuItem value="refunded" sx={{ color: '#6B21A8' }}>
-              Reembolsado
-            </MenuItem>
+            {allowedPaymentStatuses.includes('pending') && (
+              <MenuItem value="pending">Pendiente</MenuItem>
+            )}
+            {allowedPaymentStatuses.includes('approved') && (
+              <MenuItem value="approved" sx={{ color: '#067D62' }}>
+                Aprobado
+              </MenuItem>
+            )}
+            {allowedPaymentStatuses.includes('rejected') && (
+              <MenuItem value="rejected" sx={{ color: '#B12704' }}>
+                Rechazado
+              </MenuItem>
+            )}
+            {allowedPaymentStatuses.includes('cancelled') && (
+              <MenuItem value="cancelled" sx={{ color: '#B12704' }}>
+                Cancelado
+              </MenuItem>
+            )}
+            {allowedPaymentStatuses.includes('refunded') && (
+              <MenuItem value="refunded" sx={{ color: '#6B21A8' }}>
+                Reembolsado
+              </MenuItem>
+            )}
           </Select>
         </FormControl>
 
@@ -879,16 +902,34 @@ const OrderControlPanel = memo(
             value={order.fulfillmentStatus || FULFILLMENT_STATUSES.UNFULFILLED}
             label="Estado Logístico"
             onChange={e => onFulfillmentStatusChange(order._id, e.target.value)}
-            disabled={isFinalState || disabled}
+            disabled={isFinalState || disabled || !isPaymentApproved}
           >
-            <MenuItem value="unfulfilled">Sin preparar</MenuItem>
-            <MenuItem value="preparing">Preparando</MenuItem>
-            <MenuItem value="ready_to_ship">Lista para envío</MenuItem>
-            <MenuItem value="shipped">En tránsito</MenuItem>
-            <MenuItem value="delivered">Entregada</MenuItem>
-            <MenuItem value="returned">Devuelta</MenuItem>
+            {allowedFulfillmentStatuses.includes('unfulfilled') && (
+              <MenuItem value="unfulfilled">Sin preparar</MenuItem>
+            )}
+            {allowedFulfillmentStatuses.includes('preparing') && (
+              <MenuItem value="preparing">Preparando</MenuItem>
+            )}
+            {allowedFulfillmentStatuses.includes('ready_to_ship') && (
+              <MenuItem value="ready_to_ship">Lista para envío</MenuItem>
+            )}
+            {allowedFulfillmentStatuses.includes('shipped') && (
+              <MenuItem value="shipped">En tránsito</MenuItem>
+            )}
+            {allowedFulfillmentStatuses.includes('delivered') && (
+              <MenuItem value="delivered">Entregada</MenuItem>
+            )}
+            {allowedFulfillmentStatuses.includes('returned') && (
+              <MenuItem value="returned">Devuelta</MenuItem>
+            )}
           </Select>
         </FormControl>
+
+        {!isPaymentApproved && !isFinalState && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            La logística se habilita cuando el pago está aprobado.
+          </Alert>
+        )}
 
         <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
           <Button

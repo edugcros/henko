@@ -5,8 +5,6 @@ import mongoose from 'mongoose'
 
 import {
   buildDomainKeys,
-  getDomainHostname,
-  isActiveDomain,
   normalizeDomainValue,
   normalizeHostname,
   normalizeSlug,
@@ -310,6 +308,12 @@ const tenantSchema = new Schema(
       },
 
       mercadopago: {
+        mode: {
+          type: String,
+          enum: ['test', 'production'],
+          default: 'test',
+        },
+
         publicKey: {
           type: String,
           trim: true,

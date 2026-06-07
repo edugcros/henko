@@ -1,7 +1,7 @@
-import mongoose from 'mongoose'
 import { sendResponse } from '../utils/response.js'
 import { body } from 'express-validator'
 import { handleValidationErrors } from '../middlewares/handleValidationErrors.js'
+import { isValidObjectId } from './requestContext.js'
 
 
 /**
@@ -27,7 +27,7 @@ export const validateMongoDbIdMiddleware = (source = 'user', key = '_id') => {
       return sendResponse(res, 400, false, 'Origen de ID no válido')
     }
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!isValidObjectId(id)) {
       return sendResponse(res, 400, false, `ID inválido: ${id}`)
     }
 

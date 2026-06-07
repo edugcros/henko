@@ -3,7 +3,6 @@
 
 import expressAsyncHandler from 'express-async-handler'
 import { validationResult } from 'express-validator'
-import mongoose from 'mongoose'
 
 import PromotionalBlock from '../models/promotionalBlockModel.js'
 import {
@@ -17,6 +16,10 @@ import {
   findPublicBlocks,
   validateProductsBelongToTenant,
 } from '../services/promotionalBlockService.js'
+import {
+  getUserIdFromRequest,
+  resolveTenantFromRequest,
+} from '../utils/requestContext.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import logger from '../../config/logger.js'
 
@@ -24,9 +27,7 @@ import logger from '../../config/logger.js'
 // HELPERS
 // =====================================================
 
-const isValidObjectId = value => mongoose.Types.ObjectId.isValid(String(value || ''))
-
-const getUserId = req => req.user?._id || req.user?.id || null
+const getUserId = getUserIdFromRequest
 
 const sendValidationErrors = (req, res) => {
   const errors = validationResult(req)
@@ -44,24 +45,12 @@ const sendValidationErrors = (req, res) => {
   return false
 }
 
-const resolveTenantContext = req => {
-  const domainTenantId = req.tenantId || req.tenant?._id || null
-  const userTenantId = req.user?.tenantId || req.user?.tenant?._id || null
-
-  if (!domainTenantId || !isValidObjectId(domainTenantId)) {
-    const error = new Error('Tenant no resuelto.')
-    error.statusCode = 400
-    throw error
-  }
-
-  if (userTenantId && String(userTenantId) !== String(domainTenantId)) {
-    const error = new Error('El usuario no pertenece al tenant resuelto por el dominio.')
-    error.statusCode = 403
-    throw error
-  }
-
-  return String(domainTenantId)
-}
+const resolveTenantContext = req =>
+  resolveTenantFromRequest(req, {
+    missingTenantMessage: 'Tenant no resuelto.',
+    mismatchMessage: 'El usuario no pertenece al tenant resuelto por el dominio.',
+    includeObjectId: false,
+  })
 
 const populateBlock = ({ blockId, tenantId }) => {
   return PromotionalBlock.findOne({
@@ -86,28 +75,45 @@ const normalizeBlockSlug = ({ slug, title }) => {
   return normalized.slice(0, 140)
 }
 
-const scheduleWishlistPromotionNotifications = ({ tenantId, reason }) => {
+const scheduleWishlistPromotionNotifications = ({ tenantId, blockId, reason }) => {
+  logger.info('[PromotionalBlock] Programando avisos wishlist', {
+    tenantId: String(tenantId),
+    blockId: blockId ? String(blockId) : null,
+    reason,
+  })
+
   setTimeout(async () => {
     try {
+      logger.info('[PromotionalBlock] Ejecutando avisos wishlist', {
+        tenantId: String(tenantId),
+        blockId: blockId ? String(blockId) : null,
+        reason,
+      })
+
       const result = await notifyWishlistPromotions({
         tenantId,
+        promotionBlockId: blockId,
         dryRun: false,
         limit: 500,
       })
 
       logger.info('[PromotionalBlock] Avisos wishlist procesados', {
         tenantId: String(tenantId),
+        blockId: blockId ? String(blockId) : null,
         reason,
+        scannedPromotions: result.scannedPromotions,
+        matchedUsers: result.matchedUsers,
         sent: result.sent,
         skipped: result.skipped,
         failed: result.failed,
-        matchedUsers: result.matchedUsers,
+        items: result.items,
       })
     } catch (error) {
       logger.error('[PromotionalBlock] Error procesando avisos wishlist', {
         tenantId: String(tenantId),
+        blockId: blockId ? String(blockId) : null,
         reason,
-        error: error.message,
+        error: error.stack || error.message,
       })
     }
   }, 0)
@@ -134,6 +140,7 @@ export const createPromotionalBlock = expressAsyncHandler(async (req, res) => {
   const existing = await PromotionalBlock.findOne({
     tenantId,
     slug,
+    isDeleted: false,
   })
     .setOptions({ tenantId })
     .select('_id')
@@ -171,6 +178,7 @@ export const createPromotionalBlock = expressAsyncHandler(async (req, res) => {
 
   scheduleWishlistPromotionNotifications({
     tenantId,
+    blockId: block._id,
     reason: 'promotion_created',
   })
 
@@ -277,6 +285,7 @@ export const updatePromotionalBlock = expressAsyncHandler(async (req, res) => {
     _id: { $ne: block._id },
     tenantId,
     slug: nextSlug,
+    isDeleted: false,
   })
     .setOptions({ tenantId })
     .select('_id')
@@ -312,6 +321,7 @@ export const updatePromotionalBlock = expressAsyncHandler(async (req, res) => {
 
   scheduleWishlistPromotionNotifications({
     tenantId,
+    blockId: block._id,
     reason: 'promotion_updated',
   })
 
@@ -357,6 +367,7 @@ export const togglePromotionalBlockStatus = expressAsyncHandler(async (req, res)
   if (block.isActive) {
     scheduleWishlistPromotionNotifications({
       tenantId,
+      blockId: block._id,
       reason: 'promotion_activated',
     })
   }
@@ -368,37 +379,84 @@ export const togglePromotionalBlockStatus = expressAsyncHandler(async (req, res)
   })
 })
 
+
 // =====================================================
-// ADMIN: SOFT DELETE
+// ADMIN: DELETE
+// Soft delete por defecto.
+// Hard delete físico con ?hard=true
 // =====================================================
 
 export const deletePromotionalBlock = expressAsyncHandler(async (req, res) => {
   if (sendValidationErrors(req, res)) return
 
   const tenantId = resolveTenantContext(req)
+  const userId = getUserId(req)
+
+  const hardDelete =
+    String(req.query.hard || '').trim().toLowerCase() === 'true'
 
   const block = await PromotionalBlock.findOne({
     _id: req.params.id,
     tenantId,
-    isDeleted: false,
+    ...(hardDelete ? {} : { isDeleted: false }),
   }).setOptions({ tenantId })
 
   if (!block) {
     return res.status(404).json({
       success: false,
-      message: 'Bloque promocional no encontrado.',
+      message: 'Bloque promocional no encontrado o ya eliminado.',
     })
   }
 
-  await block.softDelete({
-    userId: getUserId(req),
+  if (hardDelete) {
+    const result = await PromotionalBlock.deleteOne({
+      _id: block._id,
+      tenantId,
+    }).setOptions({ tenantId })
+
+    logger.warn('[PromotionalBlock] Bloque eliminado físicamente', {
+      tenantId: String(tenantId),
+      blockId: String(block._id),
+      deletedBy: userId ? String(userId) : null,
+      deletedCount: result.deletedCount,
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: 'Bloque promocional eliminado definitivamente.',
+      data: {
+        id: String(block._id),
+        hardDeleted: true,
+        deletedCount: result.deletedCount,
+      },
+    })
+  }
+
+  if (typeof block.softDelete === 'function') {
+    await block.softDelete({ userId })
+  } else {
+    block.isDeleted = true
+    block.isActive = false
+    block.visibility = 'hidden'
+    block.deletedAt = new Date()
+    block.deletedBy = userId || null
+    block.updatedBy = userId || null
+    await block.save()
+  }
+
+  logger.info('[PromotionalBlock] Bloque eliminado por soft delete', {
+    tenantId: String(tenantId),
+    blockId: String(block._id),
+    deletedBy: userId ? String(userId) : null,
   })
 
   return res.status(200).json({
     success: true,
     message: 'Bloque promocional eliminado correctamente.',
     data: {
-      id: block._id,
+      id: String(block._id),
+      hardDeleted: false,
+      isDeleted: true,
     },
   })
 })

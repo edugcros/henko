@@ -110,9 +110,13 @@ export const findAdminBlocks = async ({
 
   const query = {
     tenantId,
-    isDeleted: Boolean(includeDeleted),
   }
 
+  if (includeDeleted === true) {
+  // No filtra isDeleted: trae activos y eliminados.
+  } else {
+    query.isDeleted = false
+  }
   if (placement) query.placement = placement
   if (type) query.type = type
   if (!includeHidden) query.visibility = 'public'

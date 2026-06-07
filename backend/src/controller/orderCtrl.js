@@ -7,22 +7,54 @@ import crypto from 'crypto'
 import rateLimit from 'express-rate-limit'
 
 import {
-  sendOrderConfirmationEmail,
-  sendAdminNotificationEmail,
-} from '../services/emailService.js'
-import { resolveCartPricing } from '../services/cartPricingService.js'
+  dispatchOrderCreationEmails,
+  resendOrderConfirmationEmail,
+} from '../services/orderEmailService.js'
+import {
+  consumeCouponAtomic,
+  createCouponUsageRecord,
+  ensureCouponUsageAllowedForUser,
+  evaluateCouponDiscount,
+  findUsableCouponByCode,
+  findUsableCouponById,
+} from '../services/orderCouponService.js'
+import {
+  calculateCartLines,
+  clearCart,
+  validateCartOwnership,
+} from '../services/orderCartService.js'
+import {
+  decrementStockForLines,
+} from '../services/orderInventoryService.js'
+import { releaseReservedStock } from '../services/paymentOrderOpsService.js'
 
 import Order, {
+  ORDER_STATUS,
   PAYMENT_STATUS,
   FULFILLMENT_STATUS,
   REFUND_STATUS,
 } from '../models/orderModel.js'
-import Product from '../models/productModel.js'
 import Cart from '../models/cartModel.js'
-import Coupon from '../models/couponModel.js'
-import CouponUsage from '../models/CouponUsageModel.js'
-import User from '../models/userModel.js'
-import Tenant from '../models/tenantModel.js'
+import {
+  getActorIdFromRequest,
+  getUserIdFromRequest as getRequestUserId,
+  isValidObjectId,
+  resolveAuthorizedTenantFromRequest,
+  toObjectId,
+} from '../utils/requestContext.js'
+import {
+  ensureAdminOrManager,
+  runOrderTransaction,
+  validateUserTenantMembership,
+} from '../services/orderExecutionService.js'
+import { buildAdminOrdersQuery } from '../services/orderAdminQueryService.js'
+import {
+  appendOrderAdminAuditEntry,
+  cancelOrderWithInventoryRestore,
+  findOrderForAdminMutation,
+  orderRequiresForceDeletion,
+  refundOrderWithInventoryRestore,
+} from '../services/orderAdminMutationService.js'
 
 import logger from '../../config/logger.js'
 
@@ -40,9 +72,17 @@ export const LEGACY_ORDER_STATUS = {
   REFUNDED: 'refunded',
 }
 
-const ALLOWED_CURRENCIES = ['ARS', 'USD', 'EUR']
-const MAX_ORDER_LINES = 100
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const LEGACY_TO_ORDER_STATUS = {
+  [LEGACY_ORDER_STATUS.PAYMENT_PENDING]: ORDER_STATUS.OPEN,
+  [LEGACY_ORDER_STATUS.NOT_PROCESSED]: ORDER_STATUS.OPEN,
+  [LEGACY_ORDER_STATUS.PROCESSING]: ORDER_STATUS.PROCESSING,
+  [LEGACY_ORDER_STATUS.DISPATCHED]: ORDER_STATUS.SHIPPED,
+  [LEGACY_ORDER_STATUS.DELIVERED]: ORDER_STATUS.DELIVERED,
+  [LEGACY_ORDER_STATUS.CANCELLED]: ORDER_STATUS.CANCELLED,
+  [LEGACY_ORDER_STATUS.REFUNDED]: ORDER_STATUS.REFUNDED,
+}
 
 // =====================================================
 // MONEY
@@ -72,14 +112,13 @@ const Money = {
 // HELPERS BÁSICOS
 // =====================================================
 
-const isProd = process.env.NODE_ENV === 'production'
-const isValidId = id => mongoose.Types.ObjectId.isValid(String(id || ''))
+const isValidId = isValidObjectId
 
 const normalizeObjectId = value => {
   if (!value) return null
   if (value instanceof mongoose.Types.ObjectId) return value
   if (!isValidId(value)) return null
-  return new mongoose.Types.ObjectId(String(value))
+  return toObjectId(value)
 }
 
 const sanitizeString = (value, fallback = '') => {
@@ -89,6 +128,14 @@ const sanitizeString = (value, fallback = '') => {
 }
 
 const normalizeEmail = value => String(value || '').trim().toLowerCase()
+
+const sanitizePhone = value => {
+  return sanitizeString(value).slice(0, 50)
+}
+
+const sanitizeCountryCode = value => {
+  return sanitizeString(value || 'AR').slice(0, 2).toUpperCase() || 'AR'
+}
 
 const validateEmailOrThrow = email => {
   const normalized = normalizeEmail(email)
@@ -100,14 +147,8 @@ const validateEmailOrThrow = email => {
   return normalized
 }
 
-const safeDate = value => {
-  if (!value) return null
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
 const getUserIdFromRequest = req => {
-  const userId = req.user?.id || req.user?._id || null
+  const userId = getRequestUserId(req)
   return userId && isValidId(userId) ? String(userId) : null
 }
 
@@ -122,17 +163,6 @@ const toSafeLimit = (value, fallback = 20) => {
   return Math.min(parsed, 100)
 }
 
-const escapeRegex = value => {
-  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-const selectedAttributesToObject = value => {
-  if (!value) return {}
-  if (value instanceof Map) return Object.fromEntries(value)
-  if (typeof value === 'object' && !Array.isArray(value)) return value
-  return {}
-}
-
 const mapToObject = value => {
   if (!value) return {}
   if (value instanceof Map) return Object.fromEntries(value)
@@ -140,50 +170,20 @@ const mapToObject = value => {
   return {}
 }
 
-const findVariant = ({ product, cartItem }) => {
-  if (!product?.hasVariants) return null
-
-  const variantIdentifier =
-    cartItem.variantId ||
-    cartItem.selectedVariant?.id ||
-    cartItem.variantSku ||
-    cartItem.variantSKU ||
-    null
-
-  if (!variantIdentifier) return null
-
-  return (
-    product.variants?.find(variant => {
-      return (
-        String(variant._id) === String(variantIdentifier) ||
-        String(variant.id) === String(variantIdentifier) ||
-        String(variant.key) === String(variantIdentifier) ||
-        String(variant.sku) === String(variantIdentifier)
-      )
-    }) || null
-  )
+const normalizeOrderStatusInput = value => {
+  const normalized = sanitizeString(value).toLowerCase()
+  return LEGACY_TO_ORDER_STATUS[normalized] || normalized
 }
 
-const getProductImageUrl = product => {
-  return (
-    product?.images?.find?.(image => image?.isMain)?.url ||
-    product?.images?.[0]?.url ||
-    null
-  )
+const assertPaymentApprovedForFulfillment = order => {
+  if (order.paymentStatus !== PAYMENT_STATUS.APPROVED) {
+    const error = new Error(
+      'No se puede avanzar la preparación o envío de una orden sin pago aprobado',
+    )
+    error.statusCode = 400
+    throw error
+  }
 }
-
-const getVariantImageUrl = variant => variant?.image?.url || null
-
-const serializeLineForCouponUsage = line => ({
-  product: line.product,
-  titleSnapshot: line.titleSnapshot,
-  variantId: line.variantId,
-  variantKey: line.variantKey,
-  selectedAttributes: mapToObject(line.selectedAttributes),
-  originalPriceCents: line.originalPriceCents,
-  discountedPriceCents: line.priceCents,
-  quantity: line.count,
-})
 
 // =====================================================
 // RATE LIMITER POR TENANT
@@ -195,7 +195,7 @@ export const orderWriteLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: req => {
-    const userId = req.user?.id || req.user?._id || 'anonymous'
+    const userId = getActorIdFromRequest(req, 'anonymous')
     const tenantId = req.user?.tenantId || req.tenantId || 'no-tenant'
     return `${userId}:${tenantId}`
   },
@@ -210,121 +210,17 @@ export const orderWriteLimiter = rateLimit({
 // =====================================================
 
 const resolveTenantContext = req => {
-  const userTenantId = req.user?.tenantId ? String(req.user.tenantId) : null
-  const domainTenantId = req.tenantId ? String(req.tenantId) : null
-
-  if (!userTenantId || !isValidId(userTenantId)) {
-    const error = new Error('El usuario autenticado no tiene tenantId válido')
-    error.statusCode = 401
-    throw error
-  }
-
-  if (!domainTenantId || !isValidId(domainTenantId)) {
-    const error = new Error('Tenant no resuelto por dominio')
-    error.statusCode = 400
-    throw error
-  }
-
-  if (userTenantId !== domainTenantId) {
-    logger.warn(
-      `🚨 Tenant mismatch | user=${req.user?.id || req.user?._id} | userTenant=${userTenantId} | domainTenant=${domainTenantId} | ip=${req.ip} | endpoint=${req.method} ${req.originalUrl}`,
-    )
-
-    const error = new Error('Tenant inconsistente entre usuario autenticado y dominio')
-    error.statusCode = 403
-    throw error
-  }
-
-  return {
-    tenantId: userTenantId,
-    tenantObjectId: new mongoose.Types.ObjectId(userTenantId),
-  }
-}
-
-const validateUserTenantMembership = async ({
-  userId,
-  tenantId,
-  session = null,
-}) => {
-  const [user, tenant] = await Promise.all([
-    User.findOne({
-      _id: normalizeObjectId(userId),
-      tenantId: normalizeObjectId(tenantId),
-      isBlocked: { $ne: true },
-    })
-      .session(session)
-      .lean(),
-
-    Tenant.findOne({
-      _id: normalizeObjectId(tenantId),
-      status: 'active',
-    })
-      .session(session)
-      .lean(),
-  ])
-
-  if (!user) {
-    const error = new Error('Usuario no autorizado en este comercio')
-    error.statusCode = 403
-    throw error
-  }
-
-  if (!tenant) {
-    const error = new Error('Comercio no disponible temporalmente')
-    error.statusCode = 403
-    throw error
-  }
-
-  return { user, tenant }
-}
-
-const ensureAdminOrManager = req => {
-  const role = req.user?.role
-
-  if (!['admin', 'manager'].includes(role)) {
-    const error = new Error('Permisos insuficientes')
-    error.statusCode = 403
-    throw error
-  }
-}
-
-// =====================================================
-// TRANSACCIONES
-// =====================================================
-
-const isTransactionUnsupportedError = error => {
-  const message = String(error?.message || '')
-
-  return (
-    message.includes('Transaction numbers are only allowed') ||
-    message.includes('replica set') ||
-    message.includes('mongos')
-  )
-}
-
-const runOrderTransaction = async work => {
-  const session = await mongoose.startSession()
-
-  try {
-    let result
-
-    await session.withTransaction(async () => {
-      result = await work(session)
-    })
-
-    return result
-  } catch (error) {
-    if (!isProd && isTransactionUnsupportedError(error)) {
+  return resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+    missingTenantMessage: 'Tenant no resuelto por dominio',
+    missingUserTenantMessage: 'El usuario autenticado no tiene tenantId válido',
+    mismatchMessage: 'Tenant inconsistente entre usuario autenticado y dominio',
+    onMismatch: ({ domainTenantId, userTenantId }) => {
       logger.warn(
-        '⚠️ Mongo sin transacciones en desarrollo; usando fallback no transaccional',
+        `🚨 Tenant mismatch | user=${getActorIdFromRequest(req, 'anonymous')} | userTenant=${userTenantId} | domainTenant=${domainTenantId} | ip=${req.ip} | endpoint=${req.method} ${req.originalUrl}`,
       )
-      return work(null)
-    }
-
-    throw error
-  } finally {
-    await session.endSession()
-  }
+    },
+  })
 }
 
 // =====================================================
@@ -380,578 +276,6 @@ const enrichOrderForResponse = order => {
   }
 }
 
-const buildOrderForEmail = order => {
-  const enriched = enrichOrderForResponse(order)
-
-  return {
-    _id: enriched._id,
-    orderNumber: enriched.idempotencyKey?.slice(-8).toUpperCase(),
-    items: (enriched.products || []).map(line => ({
-      title: line.titleSnapshot,
-      price: line.price,
-      quantity: line.count,
-      image: line.imageSnapshot || '',
-      subtotal: line.subtotal,
-      variantSku: line.variantSku,
-      selectedAttributes: line.selectedAttributes,
-    })),
-    subtotal: enriched.totals?.subtotal || 0,
-    discount: enriched.totals?.discount || 0,
-    total: enriched.totals?.total || 0,
-    shippingAddress: enriched.shippingAddress,
-    currency: enriched.paymentIntent?.currency || 'ARS',
-    status: enriched.orderStatus,
-    createdAt: enriched.createdAt,
-  }
-}
-
-// =====================================================
-// HELPERS CARRITO / LÍNEAS
-// =====================================================
-
-const validateCartOwnership = ({ cart, userId, tenantId }) => {
-  if (!cart) {
-    throw new Error('El carrito no existe')
-  }
-
-  if (String(cart.userId) !== String(userId)) {
-    throw new Error('El carrito no pertenece al usuario actual')
-  }
-
-  if (String(cart.tenantId) !== String(tenantId)) {
-    throw new Error('El carrito no pertenece al comercio actual')
-  }
-
-  if (!Array.isArray(cart.products) || cart.products.length === 0) {
-    throw new Error('El carrito está vacío')
-  }
-
-  if (cart.products.length > MAX_ORDER_LINES) {
-    throw new Error(`La orden supera el máximo de ${MAX_ORDER_LINES} líneas`)
-  }
-}
-
-const calculateCartLines = async ({ cart, tenantId, session = null }) => {
-  const tenantObjectId = normalizeObjectId(tenantId)
-
-  if (!tenantObjectId) {
-    throw new Error('tenantId inválido para cálculo de carrito')
-  }
-
-  const productIds = cart.products
-    .map(item => item.productId)
-    .filter(Boolean)
-    .map(id => String(id))
-
-  if (!productIds.length) {
-    throw new Error('El carrito no contiene productos válidos')
-  }
-
-  const dbProducts = await Product.find({
-    _id: { $in: productIds },
-    tenantId: tenantObjectId,
-    isDeleted: { $ne: true },
-  })
-    .setOptions({ tenantId })
-    .session(session)
-    .lean()
-
-  const productMap = new Map(
-    dbProducts.map(product => [String(product._id), product]),
-  )
-
-  let currency = null
-  let subtotalCents = 0
-
-  const lines = []
-  const lineContexts = []
-
-  for (let index = 0; index < cart.products.length; index += 1) {
-    const cartItem = cart.products[index]
-    const product = productMap.get(String(cartItem.productId))
-
-    if (!product) {
-      throw new Error(`Producto no disponible en ítem ${index + 1}`)
-    }
-
-    const count = Number(cartItem.quantity)
-
-    if (!Number.isInteger(count) || count <= 0) {
-      throw new Error(`Cantidad inválida en ítem ${index + 1}`)
-    }
-
-    const variant = findVariant({ product, cartItem })
-
-    if (product.hasVariants && !variant) {
-      throw new Error(`La variante seleccionada ya no existe para "${product.title}"`)
-    }
-
-    if (variant && variant.isActive === false) {
-      throw new Error(`La variante seleccionada está inactiva para "${product.title}"`)
-    }
-
-    const availableStock = variant
-      ? Number(variant.stock ?? variant.quantity ?? 0)
-      : Number(product.stock ?? product.quantity ?? 0)
-
-    if (availableStock < count) {
-      throw new Error(
-        `Stock insuficiente para "${product.title}" (solicitado: ${count}, disponible: ${availableStock})`,
-      )
-    }
-
-    const pricing = await resolveCartPricing({
-      tenantId,
-      product,
-      variant,
-    })
-
-    const lineCurrency = String(
-      cartItem.currency || product.currency || 'ARS',
-    ).toUpperCase()
-
-    if (!ALLOWED_CURRENCIES.includes(lineCurrency)) {
-      throw new Error(`Moneda inválida: ${lineCurrency}`)
-    }
-
-    if (!currency) currency = lineCurrency
-
-    if (currency !== lineCurrency) {
-      throw new Error('Todas las líneas deben usar la misma moneda')
-    }
-
-    const priceCents = Money.fromDecimal(pricing.price)
-    const originalPriceCents = Money.fromDecimal(
-      pricing.originalPrice ?? pricing.price,
-    )
-    const lineSubtotalCents = Money.multiply(priceCents, count)
-    const originalSubtotalCents = Money.multiply(originalPriceCents, count)
-
-    subtotalCents += lineSubtotalCents
-
-    const persistedLine = {
-      tenantId: tenantObjectId,
-      product: normalizeObjectId(product._id),
-      count,
-      color:
-        cartItem.colorId && isValidId(cartItem.colorId)
-          ? normalizeObjectId(cartItem.colorId)
-          : null,
-
-      titleSnapshot: product.title,
-      slugSnapshot: product.slug || null,
-      imageSnapshot: getVariantImageUrl(variant) || getProductImageUrl(product),
-      skuSnapshot: variant?.sku || product.sku || null,
-
-      variantId: variant?._id || null,
-      variantKey: variant?.key || null,
-      variantSku: variant?.sku || null,
-      selectedAttributes: selectedAttributesToObject(
-        cartItem.selectedAttributes ||
-          cartItem.variantAttributes ||
-          cartItem.selectedVariant?.attributes,
-      ),
-
-      priceCents,
-      originalPriceCents,
-      discountPercentage: Number(pricing.discountPercentage || 0),
-      promotionId: pricing.promotionId || null,
-      promotionTitle: pricing.promotionTitle || null,
-      promotionType: pricing.promotionType || null,
-      subtotalCents: lineSubtotalCents,
-      originalSubtotalCents,
-      currency: lineCurrency,
-    }
-
-    lines.push(persistedLine)
-    lineContexts.push({
-      line: persistedLine,
-      product,
-      variant,
-    })
-  }
-
-  return {
-    lines,
-    lineContexts,
-    subtotalCents,
-    currency: currency || 'ARS',
-  }
-}
-
-// =====================================================
-// HELPERS CUPÓN
-// =====================================================
-
-const findUsableCouponById = async ({ couponId, tenantId, session = null }) => {
-  const now = new Date()
-
-  return Coupon.findOne({
-    _id: couponId,
-    tenantId,
-    isDeleted: false,
-    isActive: true,
-    startDate: { $lte: now },
-    endDate: { $gte: now },
-    $or: [
-      { usageLimit: null },
-      { usageLimit: { $exists: false } },
-      { $expr: { $lt: ['$usageCount', '$usageLimit'] } },
-    ],
-  })
-    .setOptions({ tenantId })
-    .session(session)
-}
-
-const findUsableCouponByCode = async ({ code, tenantId, session = null }) => {
-  const cleanCode = sanitizeString(code).toUpperCase()
-  if (!cleanCode) return null
-
-  const now = new Date()
-
-  return Coupon.findOne({
-    code: cleanCode,
-    tenantId,
-    isDeleted: false,
-    isActive: true,
-    startDate: { $lte: now },
-    endDate: { $gte: now },
-    $or: [
-      { usageLimit: null },
-      { usageLimit: { $exists: false } },
-      { $expr: { $lt: ['$usageCount', '$usageLimit'] } },
-    ],
-  })
-    .setOptions({ tenantId })
-    .session(session)
-}
-
-const ensureCouponUsageAllowedForUser = async ({
-  coupon,
-  userId,
-  tenantId,
-  session = null,
-}) => {
-  if (!coupon) return
-
-  const userUsageCount = await CouponUsage.countDocuments({
-    tenantId,
-    coupon: coupon._id,
-    user: userId,
-  })
-    .setOptions({ tenantId })
-    .session(session)
-
-  if (
-    coupon.usageLimitPerUser !== null &&
-    coupon.usageLimitPerUser !== undefined &&
-    userUsageCount >= coupon.usageLimitPerUser
-  ) {
-    throw new Error('Ya alcanzaste el límite de uso de este cupón')
-  }
-}
-
-const evaluateCouponDiscount = ({ coupon, lineContexts, subtotalCents }) => {
-  if (!coupon) {
-    return {
-      applicableLines: [],
-      applicableSubtotalCents: 0,
-      discountCents: 0,
-    }
-  }
-
-  const applicableLines = lineContexts.filter(({ product }) => {
-    if (typeof coupon.appliesToProduct === 'function') {
-      return coupon.appliesToProduct(product)
-    }
-
-    const applicableProducts = coupon.applicableProducts || []
-
-    if (!Array.isArray(applicableProducts) || applicableProducts.length === 0) {
-      return true
-    }
-
-    return applicableProducts.some(productId => {
-      return String(productId) === String(product._id)
-    })
-  })
-
-  if (!applicableLines.length) {
-    throw new Error('El cupón ya no aplica a ningún producto del carrito')
-  }
-
-  const applicableSubtotalCents = applicableLines.reduce((total, { line }) => {
-    return total + Number(line.subtotalCents || 0)
-  }, 0)
-
-  let discountCents = 0
-
-  if (typeof coupon.calculateDiscountCents === 'function') {
-    discountCents = coupon.calculateDiscountCents(applicableSubtotalCents)
-  } else if (coupon.discountType === 'percentage') {
-    discountCents = Math.round(
-      applicableSubtotalCents * (Number(coupon.discountValue || 0) / 100),
-    )
-  } else {
-    discountCents = Money.fromDecimal(coupon.discountValue || 0)
-  }
-
-  if (coupon.maxDiscountAmount) {
-    discountCents = Math.min(
-      discountCents,
-      Money.fromDecimal(coupon.maxDiscountAmount),
-    )
-  }
-
-  if (discountCents <= 0) {
-    throw new Error('El cupón ya no genera descuento para esta compra')
-  }
-
-  return {
-    applicableLines,
-    applicableSubtotalCents,
-    discountCents: Math.min(discountCents, subtotalCents),
-  }
-}
-
-const consumeCouponAtomic = async ({ coupon, tenantId, session = null }) => {
-  const now = new Date()
-
-  const consumed = await Coupon.findOneAndUpdate(
-    {
-      _id: coupon._id,
-      tenantId,
-      isDeleted: false,
-      isActive: true,
-      startDate: { $lte: now },
-      endDate: { $gte: now },
-      $or: [
-        { usageLimit: null },
-        { usageLimit: { $exists: false } },
-        { $expr: { $lt: ['$usageCount', '$usageLimit'] } },
-      ],
-    },
-    {
-      $inc: { usageCount: 1 },
-    },
-    {
-      new: true,
-      runValidators: true,
-      session,
-    },
-  ).setOptions({ tenantId })
-
-  if (!consumed) {
-    throw new Error('Cupón inválido, vencido o límite de uso alcanzado')
-  }
-
-  return consumed
-}
-
-const createCouponUsageRecord = async ({
-  coupon,
-  order,
-  lines,
-  userId,
-  tenantId,
-  subtotalCents,
-  discountCents,
-  finalCents,
-  currency,
-  req,
-  session = null,
-}) => {
-  if (!coupon) return null
-
-  const [usage] = await CouponUsage.create(
-    [
-      {
-        tenantId,
-        coupon: coupon._id,
-        couponCodeSnapshot: coupon.code,
-        discountTypeSnapshot: coupon.discountType,
-        discountValueSnapshot: coupon.discountValue,
-        user: userId,
-        order: order._id,
-        products: lines.map(serializeLineForCouponUsage),
-        originalAmountCents: subtotalCents,
-        discountAmountCents: discountCents,
-        finalAmountCents: finalCents,
-        currency,
-        ipAddress: req.clientContext?.ip || req.ip || null,
-        userAgent:
-          req.clientContext?.userAgent || req.headers['user-agent'] || null,
-      },
-    ],
-    { session },
-  )
-
-  return usage
-}
-
-// =====================================================
-// HELPERS STOCK
-// =====================================================
-
-const buildStockFieldMode = product => {
-  if (Object.prototype.hasOwnProperty.call(product, 'quantity')) {
-    return 'quantity'
-  }
-
-  return 'stock'
-}
-
-const decrementLineStock = async ({ line, tenantId, session = null }) => {
-  const baseFilter = {
-    _id: line.product,
-    tenantId,
-    isDeleted: { $ne: true },
-  }
-
-  let product
-
-  if (line.variantId) {
-    product = await Product.findOneAndUpdate(
-      {
-        ...baseFilter,
-        variants: {
-          $elemMatch: {
-            _id: line.variantId,
-            isActive: true,
-            stock: { $gte: line.count },
-          },
-        },
-        $or: [
-          { stock: { $gte: line.count } },
-          { quantity: { $gte: line.count } },
-        ],
-      },
-      {
-        $inc: {
-          'variants.$.stock': -line.count,
-          stock: -line.count,
-        },
-      },
-      {
-        new: true,
-        session,
-      },
-    ).setOptions({ tenantId })
-  } else {
-    const existingProduct = await Product.findOne(baseFilter)
-      .setOptions({ tenantId })
-      .session(session)
-      .lean()
-
-    if (!existingProduct) {
-      throw new Error(`Producto no disponible: ${line.titleSnapshot}`)
-    }
-
-    const stockField = buildStockFieldMode(existingProduct)
-
-    product = await Product.findOneAndUpdate(
-      {
-        ...baseFilter,
-        [stockField]: { $gte: line.count },
-      },
-      {
-        $inc: {
-          [stockField]: -line.count,
-        },
-      },
-      {
-        new: true,
-        session,
-      },
-    ).setOptions({ tenantId })
-  }
-
-  if (!product) {
-    throw new Error(`Stock insuficiente o producto no disponible: ${line.titleSnapshot}`)
-  }
-
-  const remainingStock = Number(product.stock ?? product.quantity ?? 0)
-
-  if (remainingStock <= 0 && product.status === 'active') {
-    product.status = 'out-of-stock'
-    await product.save({ session, tenantId })
-  }
-
-  return product
-}
-
-const incrementLineStock = async ({ line, tenantId, session = null }) => {
-  const baseFilter = {
-    _id: line.product,
-    tenantId,
-    isDeleted: { $ne: true },
-  }
-
-  let product
-
-  if (line.variantId) {
-    product = await Product.findOneAndUpdate(
-      {
-        ...baseFilter,
-        'variants._id': line.variantId,
-      },
-      {
-        $inc: {
-          'variants.$.stock': line.count,
-          stock: line.count,
-        },
-      },
-      {
-        new: true,
-        session,
-      },
-    ).setOptions({ tenantId })
-  } else {
-    const existingProduct = await Product.findOne(baseFilter)
-      .setOptions({ tenantId })
-      .session(session)
-      .lean()
-
-    if (!existingProduct) return null
-
-    const stockField = buildStockFieldMode(existingProduct)
-
-    product = await Product.findOneAndUpdate(
-      baseFilter,
-      {
-        $inc: {
-          [stockField]: line.count,
-        },
-      },
-      {
-        new: true,
-        session,
-      },
-    ).setOptions({ tenantId })
-  }
-
-  const currentStock = Number(product?.stock ?? product?.quantity ?? 0)
-
-  if (product && currentStock > 0 && product.status === 'out-of-stock') {
-    product.status = 'active'
-    await product.save({ session, tenantId })
-  }
-
-  return product
-}
-
-const decrementStockForLines = async ({ lines, tenantId, session = null }) => {
-  for (const line of lines) {
-    await decrementLineStock({ line, tenantId, session })
-  }
-}
-
-const restoreStockForLines = async ({ lines, tenantId, session = null }) => {
-  for (const line of lines) {
-    await incrementLineStock({ line, tenantId, session })
-  }
-}
-
 // =====================================================
 // HELPERS SHIPPING / CREACIÓN
 // =====================================================
@@ -963,9 +287,11 @@ const buildShippingAddress = ({ req, body }) => {
     firstName: sanitizeString(shippingAddress.firstName || req.user?.firstname),
     lastName: sanitizeString(shippingAddress.lastName || req.user?.lastname),
     email: validateEmailOrThrow(shippingAddress.email || req.user?.email),
-    phone: sanitizeString(shippingAddress.phone || req.user?.mobile)
-      .slice(0, 2)
-      .toUpperCase(),
+    phone: sanitizePhone(shippingAddress.phone || req.user?.mobile),
+    address: sanitizeString(shippingAddress.address).slice(0, 255),
+    city: sanitizeString(shippingAddress.city).slice(0, 100),
+    zipCode: sanitizeString(shippingAddress.zipCode).slice(0, 20),
+    country: sanitizeCountryCode(shippingAddress.country),
   }
 
   const requiredFields = [
@@ -992,15 +318,6 @@ const buildCustomerSnapshot = user => ({
   mobile: user.mobile || user.phone || '',
   validatedAt: new Date(),
 })
-
-const clearCart = async ({ cartId, tenantId, session = null }) => {
-  await Cart.deleteOne({
-    _id: cartId,
-    tenantId,
-  })
-    .setOptions({ tenantId })
-    .session(session)
-}
 
 // =====================================================
 // CREATE ORDER
@@ -1080,6 +397,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
         cart,
         tenantId,
         session,
+        money: Money,
       })
 
       let couponDoc = null
@@ -1122,6 +440,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
           coupon: couponDoc,
           lineContexts,
           subtotalCents,
+          money: Money,
         })
 
         discountCents = couponEvaluation.discountCents
@@ -1178,6 +497,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
         customerSnapshot: buildCustomerSnapshot(user),
         shippingAddress,
         paidAt: isCOD ? new Date() : null,
+        stockCommittedAt: isCOD ? new Date() : null,
 
         coupon: couponDoc
           ? {
@@ -1248,29 +568,11 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
   }
 
   if (isCOD) {
-    const orderForEmail = buildOrderForEmail(createdOrder)
-
-    sendOrderConfirmationEmail(orderForEmail, createdOrder.shippingAddress.email)
-      .then(result => {
-        if (result?.success) {
-          return Order.updateOne(
-            { _id: createdOrder._id, tenantId: tenantObjectId },
-            {
-              $set: {
-                emailSent: true,
-                emailSentAt: new Date(),
-              },
-            },
-          ).setOptions({ tenantId })
-        }
-
-        return null
-      })
-      .catch(error => logger.error(`❌ Error email orden: ${error.message}`))
-
-    sendAdminNotificationEmail(orderForEmail).catch(error =>
-      logger.error(`❌ Error email admin: ${error.message}`),
-    )
+    dispatchOrderCreationEmails({
+      order: createdOrder,
+      money: Money,
+      logger,
+    })
   }
 
   return res.status(201).json({
@@ -1337,17 +639,13 @@ export const resendConfirmationEmail = expressAsyncHandler(async (req, res) => {
     })
   }
 
-  const result = await sendOrderConfirmationEmail(
-    buildOrderForEmail(order),
-    order.shippingAddress.email,
-  )
+  const result = await resendOrderConfirmationEmail({
+    order,
+    tenantId: tenantObjectId,
+    money: Money,
+  })
 
   if (result?.success) {
-    await Order.updateOne(
-      { _id: order._id, tenantId: tenantObjectId },
-      { $set: { emailResentAt: new Date() } },
-    ).setOptions({ tenantId })
-
     return res.json({
       success: true,
       message: 'Email reenviado exitosamente',
@@ -1389,23 +687,42 @@ export const getOrders = expressAsyncHandler(async (req, res) => {
   const page = toSafePage(req.query.page)
   const limit = toSafeLimit(req.query.limit)
   const skip = (page - 1) * limit
+  const query = {
+    tenantId: tenantObjectId,
+    orderby: normalizeObjectId(userId),
+    isDeleted: false,
+  }
+
+  const requestedOrderStatus = normalizeOrderStatusInput(req.query.status)
+  const requestedPaymentStatus = sanitizeString(
+    req.query.paymentStatus,
+  ).toLowerCase()
+  const requestedFulfillmentStatus = sanitizeString(
+    req.query.fulfillmentStatus,
+  ).toLowerCase()
+
+  if (Object.values(ORDER_STATUS).includes(requestedOrderStatus)) {
+    query.orderStatus = requestedOrderStatus
+  }
+
+  if (Object.values(PAYMENT_STATUS).includes(requestedPaymentStatus)) {
+    query.paymentStatus = requestedPaymentStatus
+  }
+
+  if (
+    Object.values(FULFILLMENT_STATUS).includes(requestedFulfillmentStatus)
+  ) {
+    query.fulfillmentStatus = requestedFulfillmentStatus
+  }
 
   const [orders, total] = await Promise.all([
-    Order.find({
-      tenantId: tenantObjectId,
-      orderby: normalizeObjectId(userId),
-      isDeleted: false,
-    })
+    Order.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .setOptions({ tenantId }),
 
-    Order.countDocuments({
-      tenantId: tenantObjectId,
-      orderby: normalizeObjectId(userId),
-      isDeleted: false,
-    }).setOptions({ tenantId }),
+    Order.countDocuments(query).setOptions({ tenantId }),
   ])
 
   return res.status(200).json({
@@ -1420,49 +737,49 @@ export const getOrders = expressAsyncHandler(async (req, res) => {
   })
 })
 
-// =====================================================
-// STATUS UPDATES
-// =====================================================
+export const getOrderById = expressAsyncHandler(async (req, res) => {
+  const userId = getUserIdFromRequest(req)
 
-const getOrderForAdminMutation = async ({
-  orderId,
-  tenantObjectId,
-  tenantId,
-}) => {
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: 'No autorizado',
+    })
+  }
+
+  const { tenantId, tenantObjectId } = resolveTenantContext(req)
+  const { orderId } = req.params
+
   if (!isValidId(orderId)) {
-    const error = new Error('ID de orden inválido')
-    error.statusCode = 400
-    throw error
+    return res.status(400).json({
+      success: false,
+      message: 'ID de orden inválido',
+    })
   }
 
   const order = await Order.findOne({
     _id: normalizeObjectId(orderId),
     tenantId: tenantObjectId,
+    orderby: normalizeObjectId(userId),
     isDeleted: false,
   }).setOptions({ tenantId })
 
   if (!order) {
-    const error = new Error('Orden no encontrada')
-    error.statusCode = 404
-    throw error
+    return res.status(404).json({
+      success: false,
+      message: 'Orden no encontrada',
+    })
   }
 
-  return order
-}
-
-const addAdminAuditEntry = ({ order, action, req, performedBy, reason, metadata = {} }) => {
-  if (typeof order.addAuditEntry !== 'function') return
-
-  order.addAuditEntry({
-    action,
-    performedBy,
-    performedByRole: req.user?.role || 'admin',
-    reason,
-    metadata,
-    ipAddress: req.ip,
-    userAgent: req.headers['user-agent'],
+  return res.status(200).json({
+    success: true,
+    data: enrichOrderForResponse(order),
   })
-}
+})
+
+// =====================================================
+// STATUS UPDATES
+// =====================================================
 
 export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
   try {
@@ -1471,23 +788,26 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
     const { tenantId, tenantObjectId } = resolveTenantContext(req)
     const performedBy = normalizeObjectId(getUserIdFromRequest(req))
 
-    const order = await getOrderForAdminMutation({
+    const order = await findOrderForAdminMutation({
+      orderModel: Order,
       orderId: req.params.id,
       tenantObjectId,
       tenantId,
+      normalizeObjectId,
+      isValidId,
     })
 
     const currentStatus = String(order.orderStatus || '').toLowerCase()
 
-    const nextStatus = sanitizeString(
+    const nextStatus = normalizeOrderStatusInput(
       req.body?.orderStatus ?? req.body?.status ?? req.body?.nextStatus,
-    ).toLowerCase()
+    )
 
-    if (!Object.values(LEGACY_ORDER_STATUS).includes(nextStatus)) {
+    if (!Object.values(ORDER_STATUS).includes(nextStatus)) {
       return res.status(400).json({
         success: false,
         message: `Estado inválido. Permitidos: ${Object.values(
-          LEGACY_ORDER_STATUS,
+          ORDER_STATUS,
         ).join(', ')}`,
       })
     }
@@ -1500,17 +820,17 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       })
     }
 
-    if (nextStatus === LEGACY_ORDER_STATUS.CANCELLED) {
+    if (nextStatus === ORDER_STATUS.CANCELLED) {
       return cancelOrder(req, res)
     }
 
-    if (nextStatus === LEGACY_ORDER_STATUS.REFUNDED) {
+    if (nextStatus === ORDER_STATUS.REFUNDED) {
       return refundOrder(req, res)
     }
 
     const finalStatuses = [
-      LEGACY_ORDER_STATUS.CANCELLED,
-      LEGACY_ORDER_STATUS.REFUNDED,
+      ORDER_STATUS.CANCELLED,
+      ORDER_STATUS.REFUNDED,
     ]
 
     if (finalStatuses.includes(currentStatus)) {
@@ -1520,7 +840,7 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       })
     }
 
-    if (nextStatus === LEGACY_ORDER_STATUS.NOT_PROCESSED) {
+    if (nextStatus === ORDER_STATUS.OPEN) {
       if (order.fulfillmentStatus !== FULFILLMENT_STATUS.UNFULFILLED) {
         return res.status(400).json({
           success: false,
@@ -1529,16 +849,9 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       }
     }
 
-    if (nextStatus === LEGACY_ORDER_STATUS.PAYMENT_PENDING) {
-      if (order.paymentStatus !== PAYMENT_STATUS.PENDING) {
-        return res.status(400).json({
-          success: false,
-          message: 'La orden ya no está pendiente de pago',
-        })
-      }
-    }
+    if (nextStatus === ORDER_STATUS.PROCESSING) {
+      assertPaymentApprovedForFulfillment(order)
 
-    if (nextStatus === LEGACY_ORDER_STATUS.PROCESSING) {
       if (order.fulfillmentStatus === FULFILLMENT_STATUS.UNFULFILLED) {
         await order.updateFulfillmentStatus(FULFILLMENT_STATUS.PREPARING, {
           tenantId,
@@ -1549,7 +862,9 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       }
     }
 
-    if (nextStatus === LEGACY_ORDER_STATUS.DISPATCHED) {
+    if (nextStatus === ORDER_STATUS.SHIPPED) {
+      assertPaymentApprovedForFulfillment(order)
+
       await order.updateFulfillmentStatus(FULFILLMENT_STATUS.SHIPPED, {
         tenantId,
         performedBy,
@@ -1558,7 +873,9 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       })
     }
 
-    if (nextStatus === LEGACY_ORDER_STATUS.DELIVERED) {
+    if (nextStatus === ORDER_STATUS.DELIVERED) {
+      assertPaymentApprovedForFulfillment(order)
+
       await order.updateFulfillmentStatus(FULFILLMENT_STATUS.DELIVERED, {
         tenantId,
         performedBy,
@@ -1567,9 +884,7 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       })
     }
 
-    order.orderStatus = nextStatus
-
-    addAdminAuditEntry({
+    appendOrderAdminAuditEntry({
       order,
       action: 'order_status_updated',
       req,
@@ -1584,6 +899,7 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       },
     })
 
+    order.syncDerivedState()
     await order.save({ tenantId })
 
     return res.status(200).json({
@@ -1608,10 +924,13 @@ export const updateOrderPaymentStatus = expressAsyncHandler(async (req, res) => 
     const { tenantId, tenantObjectId } = resolveTenantContext(req)
     const performedBy = normalizeObjectId(getUserIdFromRequest(req))
 
-    const order = await getOrderForAdminMutation({
+    const order = await findOrderForAdminMutation({
+      orderModel: Order,
       orderId: req.params.id,
       tenantObjectId,
       tenantId,
+      normalizeObjectId,
+      isValidId,
     })
 
     const nextPaymentStatus = sanitizeString(req.body?.paymentStatus).toLowerCase()
@@ -1623,6 +942,40 @@ export const updateOrderPaymentStatus = expressAsyncHandler(async (req, res) => 
           PAYMENT_STATUS,
         ).join(', ')}`,
       })
+    }
+
+    if (nextPaymentStatus === PAYMENT_STATUS.REFUNDED) {
+      return res.status(400).json({
+        success: false,
+        code: 'USE_REFUND_FLOW',
+        message:
+          'El reembolso debe ejecutarse desde la acción de reembolso para preservar inventario y auditoría',
+      })
+    }
+
+    if (
+      nextPaymentStatus === PAYMENT_STATUS.APPROVED &&
+      order.paymentStatus === PAYMENT_STATUS.PENDING &&
+      !order.stockCommittedAt
+    ) {
+      await decrementStockForLines({
+        lines: order.products,
+        tenantId,
+      })
+
+      order.stockCommittedAt = new Date()
+      order.stockReservedAt = null
+    }
+
+    if (
+      [PAYMENT_STATUS.REJECTED, PAYMENT_STATUS.CANCELLED].includes(
+        nextPaymentStatus,
+      ) &&
+      order.paymentStatus === PAYMENT_STATUS.PENDING &&
+      order.stockReservedAt
+    ) {
+      await releaseReservedStock(order.products, tenantId)
+      order.stockReservedAt = null
     }
 
     await order.updatePaymentStatus(nextPaymentStatus, {
@@ -1654,10 +1007,13 @@ export const updateOrderFulfillmentStatus = expressAsyncHandler(async (req, res)
     const { tenantId, tenantObjectId } = resolveTenantContext(req)
     const performedBy = normalizeObjectId(getUserIdFromRequest(req))
 
-    const order = await getOrderForAdminMutation({
+    const order = await findOrderForAdminMutation({
+      orderModel: Order,
       orderId: req.params.id,
       tenantObjectId,
       tenantId,
+      normalizeObjectId,
+      isValidId,
     })
 
     const nextFulfillmentStatus = sanitizeString(
@@ -1719,34 +1075,25 @@ export const deleteOrder = expressAsyncHandler(async (req, res) => {
       'Eliminación definitiva desde panel admin',
     )
 
-    if (!isValidId(orderId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de orden inválido',
-      })
-    }
+    const order = await findOrderForAdminMutation({
+      orderModel: Order,
+      orderId,
+      tenantObjectId,
+      tenantId,
+      normalizeObjectId,
+      isValidId,
+      includeDeleted: true,
+    })
 
-    const order = await Order.findOne({
-      _id: normalizeObjectId(orderId),
-      tenantId: tenantObjectId,
-    }).setOptions({ tenantId })
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Orden no encontrada',
-      })
-    }
-
-    const paymentStatus = String(order.paymentStatus || '').toLowerCase()
-    const orderStatus = String(order.orderStatus || '').toLowerCase()
-    const fulfillmentStatus = String(order.fulfillmentStatus || '').toLowerCase()
-
-    const protectedOrder =
-      paymentStatus === PAYMENT_STATUS.APPROVED ||
-      orderStatus === LEGACY_ORDER_STATUS.DELIVERED ||
-      orderStatus === LEGACY_ORDER_STATUS.REFUNDED ||
-      fulfillmentStatus === FULFILLMENT_STATUS.DELIVERED
+    const {
+      protectedOrder,
+      paymentStatus,
+      orderStatus,
+      fulfillmentStatus,
+    } = orderRequiresForceDeletion({
+      order,
+      legacyOrderStatus: LEGACY_ORDER_STATUS,
+    })
 
     if (protectedOrder && !force) {
       return res.status(409).json({
@@ -1770,7 +1117,29 @@ export const deleteOrder = expressAsyncHandler(async (req, res) => {
      * Eliminar una orden no debe tocar inventario automáticamente.
      */
 
-    logger.warn('🗑️ Orden eliminada definitivamente desde admin', {
+    order.isDeleted = true
+    order.deletedAt = new Date()
+    order.deletedBy = performedBy
+    order.deleteReason = reason
+
+    appendOrderAdminAuditEntry({
+      order,
+      action: 'soft_deleted',
+      req,
+      performedBy,
+      reason,
+      metadata: {
+        force,
+        paymentStatus,
+        orderStatus,
+        fulfillmentStatus,
+        protectedOrder,
+      },
+    })
+
+    await order.save({ tenantId })
+
+    logger.warn('🗑️ Orden ocultada mediante eliminación lógica', {
       orderId: String(order._id),
       tenantId,
       performedBy: String(performedBy || ''),
@@ -1782,17 +1151,13 @@ export const deleteOrder = expressAsyncHandler(async (req, res) => {
       protectedOrder,
     })
 
-    await Order.deleteOne({
-      _id: normalizeObjectId(orderId),
-      tenantId: tenantObjectId,
-    }).setOptions({ tenantId })
-
     return res.status(200).json({
       success: true,
-      message: 'Orden eliminada definitivamente de la base de datos',
+      message: 'Orden eliminada del panel y preservada para auditoría',
       data: {
         id: String(order._id),
-        hardDeleted: true,
+        hardDeleted: false,
+        softDeleted: true,
       },
     })
   } catch (error) {
@@ -1818,39 +1183,18 @@ export const cancelOrder = expressAsyncHandler(async (req, res) => {
     const reason = sanitizeString(req.body?.reason, 'Cancelación manual')
 
     const order = await runOrderTransaction(async session => {
-      const orderToCancel = await Order.findOne({
-        _id: normalizeObjectId(req.params.id),
-        tenantId: tenantObjectId,
-        isDeleted: false,
-      })
-        .setOptions({ tenantId })
-        .session(session)
-
-      if (!orderToCancel) {
-        const error = new Error('Orden no encontrada')
-        error.statusCode = 404
-        throw error
-      }
-
-      if (!orderToCancel.stockRestoredAt) {
-        await restoreStockForLines({
-          lines: orderToCancel.products,
-          tenantId,
-          session,
-        })
-
-        orderToCancel.stockRestoredAt = new Date()
-      }
-
-      await orderToCancel.markCancelled({
+      return cancelOrderWithInventoryRestore({
+        orderModel: Order,
+        orderId: req.params.id,
+        tenantObjectId,
         tenantId,
-        cancelledBy: cancelledBy ? normalizeObjectId(cancelledBy) : null,
-        reason,
         session,
+        cancelledBy,
+        reason,
         req,
+        normalizeObjectId,
+        isValidId,
       })
-
-      return orderToCancel
     })
 
     return res.status(200).json({
@@ -1876,39 +1220,18 @@ export const refundOrder = expressAsyncHandler(async (req, res) => {
     const performedBy = normalizeObjectId(getUserIdFromRequest(req))
 
     const order = await runOrderTransaction(async session => {
-      const orderToRefund = await Order.findOne({
-        _id: normalizeObjectId(req.params.id),
-        tenantId: tenantObjectId,
-        isDeleted: false,
-      })
-        .setOptions({ tenantId })
-        .session(session)
-
-      if (!orderToRefund) {
-        const error = new Error('Orden no encontrada')
-        error.statusCode = 404
-        throw error
-      }
-
-      if (!orderToRefund.stockRestoredAt) {
-        await restoreStockForLines({
-          lines: orderToRefund.products,
-          tenantId,
-          session,
-        })
-
-        orderToRefund.stockRestoredAt = new Date()
-      }
-
-      await orderToRefund.markRefunded({
+      return refundOrderWithInventoryRestore({
+        orderModel: Order,
+        orderId: req.params.id,
+        tenantObjectId,
         tenantId,
+        session,
         performedBy,
         reason: sanitizeString(req.body?.reason, 'Reembolso manual'),
-        session,
         req,
+        normalizeObjectId,
+        isValidId,
       })
-
-      return orderToRefund
     })
 
     return res.status(200).json({
@@ -1941,88 +1264,18 @@ export const getAllOrders = expressAsyncHandler(async (req, res) => {
     const skip = (page - 1) * limit
 
     const {
-      status,
-      paymentStatus,
-      fulfillmentStatus,
-      from,
-      to,
-      q,
-      minTotal,
-      maxTotal,
-      sortBy = 'createdAt',
-      sortDir = 'desc',
-    } = req.query
-
-    const query = {
-      tenantId: tenantObjectId,
-      isDeleted: false,
-    }
-
-    if (status) query.orderStatus = String(status).toLowerCase()
-    if (paymentStatus) query.paymentStatus = String(paymentStatus).toLowerCase()
-    if (fulfillmentStatus) {
-      query.fulfillmentStatus = String(fulfillmentStatus).toLowerCase()
-    }
-
-    const fromDate = safeDate(from)
-    const toDate = safeDate(to)
-
-    if (fromDate || toDate) {
-      query.createdAt = {}
-      if (fromDate) query.createdAt.$gte = fromDate
-      if (toDate) query.createdAt.$lte = toDate
-    }
-
-    if (minTotal || maxTotal) {
-      query['paymentIntent.amountCents'] = {}
-
-      if (minTotal) {
-        query['paymentIntent.amountCents'].$gte = Money.fromDecimal(minTotal)
-      }
-
-      if (maxTotal) {
-        query['paymentIntent.amountCents'].$lte = Money.fromDecimal(maxTotal)
-      }
-    }
-
-    if (q?.trim()) {
-      const safeRegex = new RegExp(escapeRegex(q.trim().slice(0, 50)), 'i')
-
-      const users = await User.find({
-        tenantId: tenantObjectId,
-        $or: [
-          { email: safeRegex },
-          { firstname: safeRegex },
-          { lastname: safeRegex },
-        ],
-      })
-        .select('_id')
-        .lean()
-
-      const userIds = users.map(user => user._id)
-
-      query.$or = [
-        { idempotencyKey: safeRegex },
-        { 'paymentIntent.id': safeRegex },
-        { 'paymentIntent.providerPaymentId': safeRegex },
-        ...(userIds.length ? [{ orderby: { $in: userIds } }] : []),
-      ]
-    }
-
-    const sortFieldMap = {
-      createdAt: 'createdAt',
-      amount: 'paymentIntent.amountCents',
-      status: 'orderStatus',
-      paymentStatus: 'paymentStatus',
-      fulfillmentStatus: 'fulfillmentStatus',
-    }
-
-    const sortField = sortFieldMap[sortBy] || 'createdAt'
-    const sortOrder = sortDir === 'asc' ? 1 : -1
+      query,
+      filters,
+      sorting,
+    } = await buildAdminOrdersQuery({
+      tenantObjectId,
+      queryParams: req.query,
+      money: Money,
+    })
 
     const [orders, total] = await Promise.all([
       Order.find(query)
-        .sort({ [sortField]: sortOrder })
+        .sort({ [sorting.field]: sorting.direction === 'asc' ? 1 : -1 })
         .skip(skip)
         .limit(limit)
         .lean()
@@ -2044,17 +1297,8 @@ export const getAllOrders = expressAsyncHandler(async (req, res) => {
         limit,
       },
       meta: {
-        filters: {
-          status: status || null,
-          paymentStatus: paymentStatus || null,
-          fulfillmentStatus: fulfillmentStatus || null,
-          dateRange: from || to ? { from: from || null, to: to || null } : null,
-          search: q || null,
-        },
-        sorting: {
-          field: sortField,
-          direction: sortDir,
-        },
+        filters,
+        sorting,
       },
     })
   } catch (error) {

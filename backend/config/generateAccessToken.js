@@ -5,21 +5,21 @@ import { env } from './env.js'
 const ISSUER = 'henko-commerce-api'
 const AUDIENCE = 'henko-commerce-client'
 const TOKEN_VERSION = 1
+const RESERVED_CLAIMS = new Set([
+  'sub',
+  'iss',
+  'aud',
+  'iat',
+  'exp',
+  'nbf',
+  'jti',
+  'ver',
+])
 
 const sanitizeExtraPayload = payload => {
-  const {
-    sub,
-    iss,
-    aud,
-    iat,
-    exp,
-    nbf,
-    jti,
-    ver,
-    ...safePayload
-  } = payload || {}
-
-  return safePayload
+  return Object.fromEntries(
+    Object.entries(payload || {}).filter(([key]) => !RESERVED_CLAIMS.has(key)),
+  )
 }
 
 /**

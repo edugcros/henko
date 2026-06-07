@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Box, Typography, Button, Stack, Chip, Alert, Paper } from '@mui/material'
 import CheckIcon from '@mui/icons-material/Check'
+import { useTheme } from '@mui/material/styles'
 
 const ProductVariantSelector = ({ product, onVariantSelect, initialSelection = {} }) => {
+  const theme = useTheme()
   const [selectedAttributes, setSelectedAttributes] = useState(initialSelection)
 
   // Normalizar estructura de variantes (soporta ambos formatos)
@@ -85,7 +87,15 @@ const ProductVariantSelector = ({ product, onVariantSelect, initialSelection = {
   if (!product?.hasVariants && normalizedVariants.length === 0) return null
 
   return (
-    <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, bgcolor: '#fafafa' }}>
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 3,
+        borderRadius: 3,
+        bgcolor: theme.palette.card.background,
+        borderColor: theme.palette.card.border,
+      }}
+    >
       <Typography variant="h6" fontWeight={800} gutterBottom>
         Selecciona tus opciones
       </Typography>
@@ -105,7 +115,11 @@ const ProductVariantSelector = ({ product, onVariantSelect, initialSelection = {
               }}
             >
               {attrName}:{' '}
-              <Typography component="span" color="primary.main" fontWeight="bold">
+              <Typography
+                component="span"
+                sx={{ color: theme.palette.ctaPrimary.main }}
+                fontWeight="bold"
+              >
                 {selectedAttributes[attrName] || 'Seleccionar'}
               </Typography>
             </Typography>
@@ -129,7 +143,7 @@ const ProductVariantSelector = ({ product, onVariantSelect, initialSelection = {
                       position: 'relative',
                       backgroundColor: isColor ? value : undefined,
                       border: selected ? '2px solid' : '1px solid',
-                      borderColor: selected ? 'primary.main' : 'divider',
+                      borderColor: selected ? theme.palette.ctaPrimary.main : 'divider',
                       opacity: !valid ? 0.4 : 1,
                       '&:hover': {
                         transform: valid ? 'scale(1.05)' : 'none',
@@ -143,7 +157,7 @@ const ProductVariantSelector = ({ product, onVariantSelect, initialSelection = {
                             inset: -4,
                             borderRadius: '50%',
                             border: '2px solid',
-                            borderColor: 'primary.main',
+                            borderColor: theme.palette.ctaPrimary.main,
                           },
                         }),
                       // Tachado para opciones sin stock
@@ -197,7 +211,11 @@ const ProductVariantSelector = ({ product, onVariantSelect, initialSelection = {
               <Typography variant="caption" color="text.secondary" display="block">
                 SKU: {selectedVariant.sku}
               </Typography>
-              <Typography variant="h5" color="primary.main" fontWeight="bold">
+              <Typography
+                variant="h5"
+                sx={{ color: theme.palette.commercePrice.main }}
+                fontWeight="bold"
+              >
                 ${selectedVariant.price.toLocaleString('es-CL')}
               </Typography>
             </Box>
@@ -217,7 +235,10 @@ const ProductVariantSelector = ({ product, onVariantSelect, initialSelection = {
                 label={`${key}: ${value}`}
                 size="small"
                 variant="outlined"
-                color="primary"
+                sx={{
+                  color: theme.palette.ctaPrimary.main,
+                  borderColor: theme.palette.ctaPrimary.main,
+                }}
               />
             ))}
           </Stack>

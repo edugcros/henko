@@ -46,6 +46,15 @@ website/build/
 **/.env.*
 **/*.env.local
 
+# --- Secrets / local operational artifacts ---
+**/*service-account*.json
+**/ga-service.json
+**/cookies.txt
+**/*.pem
+**/*.key
+**/*.p12
+**/*.zip
+
 # --- VSCode / OS ---
 .vscode/
 *.code-workspace

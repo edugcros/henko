@@ -25,7 +25,7 @@ import {
   ToggleButtonGroup,
   Alert,
 } from '@mui/material'
-import { styled, useTheme } from '@mui/material/styles'
+import { styled, useTheme, alpha  } from '@mui/material/styles'
 import {
   ShoppingCartOutlined as CartIcon,
   Favorite as FavIcon,
@@ -58,6 +58,7 @@ import {
   getSpacingThemeConfig,
   getThemeColors,
 } from '@utils/themeRuntime'
+import { Newprimary } from '../theme/colors'
 
 const IMG_BOX_SIZE = 520
 
@@ -93,7 +94,7 @@ const ThumbButton = styled(Box, {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  border: `2px solid ${active ? theme.palette.primary.main : theme.palette.divider}`,
+  border: `2px solid ${active ? theme.palette.ctaPrimary.main : theme.palette.divider}`,
   transition: '0.2s',
   '&:hover': { transform: 'scale(1.05)' },
   '& img': {
@@ -207,30 +208,55 @@ const normalizeVariantForCart = (variant, selectedAttrs = {}) => {
 }
 
 const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) => {
-  const variantAttributes = product?.variantAttributes || []
-  const variants = product?.variants || []
+  const theme = useTheme()
+
+  const variantAttributes = useMemo(
+    () => (Array.isArray(product?.variantAttributes) ? product.variantAttributes : []),
+    [product?.variantAttributes],
+  )
+
+  const variants = useMemo(
+    () => (Array.isArray(product?.variants) ? product.variants : []),
+    [product?.variants],
+  )
+
   const [selections, setSelections] = useState({})
+
+  const ctaMain =
+    theme.palette.ctaPrimary?.main ||
+    theme.palette.primary.main
+
+  const ctaContrast =
+    theme.palette.ctaPrimary?.contrastText ||
+    theme.palette.primary.contrastText
 
   useEffect(() => {
     setSelections({})
   }, [product?._id])
 
   useEffect(() => {
-    const requiredKeys = variantAttributes.map(attr => attr.name)
+    const requiredKeys = variantAttributes
+      .map(attr => attr?.name)
+      .filter(Boolean)
+
     const hasAllSelections =
-      requiredKeys.length > 0 && requiredKeys.every(key => Boolean(selections[key]))
+      requiredKeys.length > 0 &&
+      requiredKeys.every(key => Boolean(selections[key]))
 
     if (!hasAllSelections) {
-      onVariantSelect(null, selections)
+      onVariantSelect?.(null, selections)
       return
     }
 
     const matchedVariant = variants.find(variant => {
       const variantAttrs = normalizeAttributes(variant)
-      return requiredKeys.every(key => variantAttrs[key] === selections[key])
+
+      return requiredKeys.every(key => {
+        return String(variantAttrs[key] || '') === String(selections[key] || '')
+      })
     })
 
-    onVariantSelect(matchedVariant || null, selections)
+    onVariantSelect?.(matchedVariant || null, selections)
   }, [selections, variants, variantAttributes, onVariantSelect])
 
   const getAvailableValues = useCallback(
@@ -239,17 +265,28 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
       delete otherSelections[attrName]
 
       const compatibleVariants = variants.filter(variant => {
+        if (variant?.isActive === false) return false
+
         const attrs = normalizeAttributes(variant)
-        return Object.entries(otherSelections).every(([key, value]) => attrs[key] === value)
+
+        return Object.entries(otherSelections).every(([key, value]) => {
+          if (!value) return true
+          return String(attrs[key] || '') === String(value || '')
+        })
       })
 
       const values = new Set()
+
       compatibleVariants.forEach(variant => {
         const attrs = normalizeAttributes(variant)
-        if (attrs[attrName]) values.add(attrs[attrName])
+        const value = attrs[attrName]
+
+        if (value) {
+          values.add(String(value))
+        }
       })
 
-      return Array.from(values)
+      return Array.from(values).sort((a, b) => a.localeCompare(b))
     },
     [variants],
   )
@@ -301,7 +338,7 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
 
   const handleClearAll = useCallback(() => {
     setSelections({})
-    onVariantSelect(null, {})
+    onVariantSelect?.(null, {})
   }, [onVariantSelect])
 
   if (!variantAttributes.length || !variants.length) {
@@ -313,10 +350,23 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
   }
 
   return (
-    <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-        <Typography variant="subtitle2" fontWeight={700}>
-          Selecciona tus opciones
+    <Box
+      sx={{
+        mt: 2,
+        p: 2,
+        bgcolor: theme.palette.background.paper,
+        border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+        borderRadius: 2,
+      }}
+    >
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        sx={{ mb: 1.5 }}
+      >
+        <Typography variant="subtitle2" fontWeight={800}>
+          Seleccioná tus opciones
         </Typography>
 
         <Button
@@ -330,27 +380,32 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
       </Stack>
 
       {variantAttributes.map((attr, index) => {
-        const availableValues = getAvailableValues(attr.name, selections)
+        const attrName = attr?.name
+        const attrLabel = attr?.label || attrName
+
+        if (!attrName) return null
+
+        const availableValues = getAvailableValues(attrName, selections)
         const isDisabled = index > 0 && !selections[variantAttributes[index - 1]?.name]
-        const currentValue = selections[attr.name] || ''
+        const currentValue = selections[attrName] || ''
 
         return (
-          <Box key={attr.name} sx={{ mb: 2 }}>
+          <Box key={attrName} sx={{ mb: 2 }}>
             <Stack
               direction="row"
               justifyContent="space-between"
               alignItems="center"
-              sx={{ mb: 0.5 }}
+              sx={{ mb: 0.75 }}
             >
               <Typography variant="caption" color="text.secondary" display="block">
-                {attr.label || attr.name} {currentValue ? '✓' : ''}
+                {attrLabel} {currentValue ? '✓' : ''}
               </Typography>
 
               {currentValue && (
                 <Button
                   size="small"
                   variant="text"
-                  onClick={() => handleClearAttribute(attr.name)}
+                  onClick={() => handleClearAttribute(attrName)}
                   sx={{
                     minWidth: 'auto',
                     p: 0,
@@ -396,9 +451,13 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
               <FormControl fullWidth size="small" disabled={isDisabled}>
                 <Select
                   value={currentValue}
-                  onChange={e => handleSelectionChange(attr.name, e.target.value || null)}
+                  onChange={event =>
+                    handleSelectionChange(attrName, event.target.value || null)
+                  }
                   displayEmpty
-                  renderValue={selected => selected || `Seleccionar ${attr.label || attr.name}`}
+                  renderValue={selected =>
+                    selected || `Seleccionar ${attrLabel}`
+                  }
                 >
                   <MenuItem value="">
                     <em>Quitar selección</em>
@@ -417,11 +476,20 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
       })}
 
       {selectedVariant ? (
-        <Box sx={{ mt: 2, p: 1.5, bgcolor: 'success.light', borderRadius: 1 }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2" fontWeight={600} color="success.dark">
-              Disponible: {selectedVariant.stock} unidades
+        <Box
+          sx={{
+            mt: 2,
+            p: 1.5,
+            bgcolor: alpha(theme.palette.success.main, 0.12),
+            border: `1px solid ${alpha(theme.palette.success.main, 0.24)}`,
+            borderRadius: 1.5,
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+            <Typography variant="body2" fontWeight={700} color='black'>
+              Disponible: {Number(selectedVariant.stock || 0)} unidades
             </Typography>
+
             <Chip
               label={selectedVariant.sku || 'Variante seleccionada'}
               size="small"
@@ -432,7 +500,7 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
         </Box>
       ) : (
         <Alert severity="warning" sx={{ mt: 2 }} icon={<StockIcon />}>
-          Selecciona todas las opciones para ver el precio y disponibilidad exactos.
+          Seleccioná todas las opciones para ver precio y disponibilidad exactos.
         </Alert>
       )}
     </Box>
@@ -1136,11 +1204,11 @@ const SingleProduct = () => {
                 sx={{
                   height: 60,
                   borderRadius: 3,
-                  bgcolor: isAvailable ? themeColors.primary : 'action.disabledBackground',
-                  color: isAvailable ? 'primary.contrastText' : 'text.disabled',
+                  bgcolor: isAvailable ? themeColors.actionPrimary : 'action.disabledBackground',
+                  color: isAvailable ? themeColors.actionPrimaryText : 'text.disabled',
                   fontWeight: 800,
                   '&:hover': {
-                    bgcolor: isAvailable ? themeColors.primary : 'action.disabledBackground',
+                    bgcolor: isAvailable ? themeColors.actionPrimary : 'action.disabledBackground',
                   },
                 }}
               >
@@ -1178,14 +1246,13 @@ const SingleProduct = () => {
                   {displayPrice.hasDiscount && (
                     <Typography
                       variant="body1"
-                      color="text.secondary"
-                      sx={{ textDecoration: 'line-through', fontWeight: 600 }}
+                      sx={{ color: themeColors.cardMutedText, textDecoration: 'line-through', fontWeight: 600 }}
                     >
                       {formatPrice(displayPrice.min)} - {formatPrice(displayPrice.max)}
                     </Typography>
                   )}
 
-                  <Typography variant="h4" fontWeight={800} color="primary">
+                  <Typography variant="h4" fontWeight={800} sx={{ color: themeColors.cardPrice }}>
                     {formatPrice(displayPrice.finalMin)} - {formatPrice(displayPrice.finalMax)}
                   </Typography>
 
@@ -1203,14 +1270,13 @@ const SingleProduct = () => {
                   {displayPrice?.hasDiscount && (
                     <Typography
                       variant="body1"
-                      color="text.secondary"
-                      sx={{ textDecoration: 'line-through', fontWeight: 600 }}
+                      sx={{ color: themeColors.cardMutedText, textDecoration: 'line-through', fontWeight: 600 }}
                     >
                       {formatPrice(displayPrice.original)}
                     </Typography>
                   )}
 
-                  <Typography variant="h4" fontWeight={800} color="primary">
+                  <Typography variant="h4" fontWeight={800} sx={{ color: themeColors.cardPrice }}>
                     {formatPrice(displayPrice.final)}
                   </Typography>
 
@@ -1218,18 +1284,25 @@ const SingleProduct = () => {
                     <Stack direction="row" spacing={1} mt={1} flexWrap="wrap">
                       <Chip
                         label={`${displayPrice.discountPercentage}% OFF`}
-                        color="secondary"
                         size="small"
-                        sx={{ fontWeight: 800 }}
+                        sx={{
+                          fontWeight: 800,
+                          bgcolor: themeColors.badgeBackground,
+                          color: themeColors.badgeText,
+                        }}
                       />
 
                       {activePromotionItem?.blockTitle && (
                         <Chip
                           label={activePromotionItem.blockTitle}
-                          color="primary"
                           variant="outlined"
                           size="small"
-                          sx={{ fontWeight: 700 }}
+                          sx={{
+                            fontWeight: 700,
+                            borderColor: themeColors.cardBorder,
+                            color: themeColors.cardText,
+                            bgcolor: themeColors.cardBackground,
+                          }}
                         />
                       )}
                     </Stack>
@@ -1238,7 +1311,7 @@ const SingleProduct = () => {
               )}
 
               {hasVariants && !normalizedSelectedVariant && (
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: themeColors.cardMutedText }}>
                   Selecciona opciones para ver precio exacto
                 </Typography>
               )}
@@ -1255,7 +1328,7 @@ const SingleProduct = () => {
               }}
             >
               <Stack direction="row" spacing={2} alignItems="center">
-                <Typography variant="h3" color="primary" fontWeight={900}>
+                <Typography variant="h3" sx={{ color: themeColors.cardPrice }} fontWeight={900}>
                   {iaAnalysis.score}
                 </Typography>
                 <Box>
@@ -1292,21 +1365,21 @@ const SingleProduct = () => {
 
             <Box>
               <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="h6" fontWeight={800} color="text.primary">
+                <Typography variant="h6" fontWeight={800} color= {Newprimary.darkBlueGray}>
                   Calificación general
                 </Typography>
                 <Button
                   size="small"
                   startIcon={<ReviewIcon />}
                   onClick={() => setShowRatingForm(!showRatingForm)}
-                  sx={{ textTransform: 'none', fontWeight: 700 }}
+                  sx={{ textTransform: 'none', fontWeight: 700, color: themeColors.text}}
                 >
                   {showRatingForm ? 'Cerrar' : 'Opinar'}
                 </Button>
               </Stack>
 
               <Stack direction="row" alignItems="center" spacing={2}>
-                <Typography variant="h4" fontWeight={900} color="text.primary">
+                <Typography variant="h3" fontWeight={900} color= {themeColors.text}>
                   {iaAnalysis.avg > 0 ? iaAnalysis.avg.toFixed(1) : '0.0'}
                 </Typography>
                 <Box>
@@ -1336,7 +1409,12 @@ const SingleProduct = () => {
                   }}
                 >
                   {normalizedSelectedVariant?.attributes && (
-                    <Typography variant="caption" color="primary" display="block" mb={1}>
+                    <Typography
+                      variant="caption"
+                      display="block"
+                      mb={1}
+                      sx={{ color: theme.palette.ctaPrimary.main }}
+                    >
                       Opinando sobre:{' '}
                       {Object.values(normalizedSelectedVariant.attributes).join(' / ')}
                     </Typography>
@@ -1392,8 +1470,8 @@ const SingleProduct = () => {
                           width: 28,
                           height: 28,
                           fontSize: 13,
-                          bgcolor: 'primary.main',
-                          color: 'primary.contrastText',
+                          bgcolor: theme.palette.brand.main,
+                          color: theme.palette.brand.contrastText,
                           fontWeight: 800,
                         }}
                       >
@@ -1403,7 +1481,15 @@ const SingleProduct = () => {
                           {getReviewerName(rev)}
                         </Typography>
                         {rev.variantId && (
-                          <Chip label="Variante" size="small" variant="outlined" color="primary" />
+                          <Chip
+                            label="Variante"
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              color: theme.palette.brand.main,
+                              borderColor: theme.palette.brand.main,
+                            }}
+                          />
                         )}
                         <ReactStars
                           count={5}
@@ -1434,7 +1520,8 @@ const SingleProduct = () => {
           sx={{
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center',
+            alignItems: 'center', 
+            mt:4
           }}
         >
           <Typography

@@ -4,7 +4,6 @@ import express from 'express'
 // Importaciones de rutas
 import userRoute from './userRoute.js'
 import productRouter from './productRoute.js'
-import brandRouter from './brandRoute.js'
 import colorRouter from './colorRoute.js'
 import enqRouter from './enqRoute.js'
 import emailRoutes from './emailRoute.js'
@@ -17,6 +16,7 @@ import dashboardRoute from './dashboardRoute.js'
 import tenantRoutes from './tenantRoutes.js'
 import promotionalBlockRoute from './promotionalBlockRoute.js'
 import productAnalysisRoutes from './productAnalysisRoutes.js'
+import userMetricsRoutes from './userMetricsRoutes.js'
 
 const router = express.Router()
 
@@ -32,12 +32,12 @@ router.use('/dash', dashboardRoute)
 router.use('/product', productRouter)
 router.use('/imgup', uploadRoutes)
 
-router.use('/brand', brandRouter)
 router.use('/color', colorRouter)
 router.use('/coupons', couponRouter)
 
 //AGENTE
 router.use('/product-analysis', productAnalysisRoutes)
+router.use('/metrics', userMetricsRoutes)
 
 // =======================================================
 // 🎨 TEMAS Y CONFIGURACIÓN VISUAL

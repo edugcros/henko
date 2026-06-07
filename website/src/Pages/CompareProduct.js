@@ -371,7 +371,7 @@ const AttributeCell = ({ value, type, isBest, isDifferent, rowKey }) => {
             sx={{
               fontSize: '0.75rem',
               height: 24,
-              bgcolor: isDifferent ? alpha(theme.palette.primary.main, 0.08) : 'transparent',
+              bgcolor: isDifferent ? alpha(theme.palette.brand.main, 0.08) : 'transparent',
             }}
           />
         ))}
@@ -616,7 +616,7 @@ const CompareProduct = () => {
           textAlign="center"
           py={12}
           sx={{
-            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.05)} 0%, transparent 100%)`,
+            background: `linear-gradient(135deg, ${alpha(theme.palette.brand.main, 0.05)} 0%, transparent 100%)`,
             borderRadius: 4,
           }}
         >
@@ -666,7 +666,7 @@ const CompareProduct = () => {
             p: 3,
             mb: 4,
             borderRadius: 3,
-            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.05)} 0%, transparent 100%)`,
+            background: `linear-gradient(135deg, ${alpha(theme.palette.brand.main, 0.05)} 0%, transparent 100%)`,
             border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
           }}
         >
@@ -728,7 +728,7 @@ const CompareProduct = () => {
                         transition: 'all 0.3s ease',
                         '&:hover': {
                           boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                          borderColor: alpha(theme.palette.primary.main, 0.3),
+                          borderColor: alpha(theme.palette.brand.main, 0.3),
                         },
                       }}
                     >
@@ -762,17 +762,24 @@ const CompareProduct = () => {
                       >
                         <Badge
                           badgeContent={product.variants?.length || 0}
-                          color="primary"
-                          sx={{ position: 'absolute', top: 16, left: 16 }}
+                          sx={{
+                            position: 'absolute',
+                            top: 16,
+                            left: 16,
+                            '& .MuiBadge-badge': {
+                              bgcolor: theme.palette.brand.main,
+                              color: theme.palette.brand.contrastText,
+                            },
+                          }}
                         >
                           <Avatar
                             sx={{
-                              bgcolor: alpha(theme.palette.primary.main, 0.1),
+                              bgcolor: alpha(theme.palette.brand.main, 0.1),
                               width: 40,
                               height: 40,
                             }}
                           >
-                            <Typography fontWeight={800} color="primary">
+                            <Typography fontWeight={800} sx={{ color: theme.palette.brand.main }}>
                               {index + 1}
                             </Typography>
                           </Avatar>
@@ -877,16 +884,16 @@ const CompareProduct = () => {
               <Box
                 sx={{
                   p: 2,
-                  bgcolor: alpha(theme.palette.primary.main, 0.03),
+                  bgcolor: alpha(theme.palette.brand.main, 0.03),
                   borderBottom: `1px solid ${theme.palette.divider}`,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 1.5,
                 }}
               >
-                <section.icon sx={{ color: 'primary.main', fontSize: 24 }} />
+                <section.icon sx={{ color: theme.palette.brand.main, fontSize: 24 }} />
 
-                <Typography variant="h6" fontWeight={800} color="primary">
+                <Typography variant="h6" fontWeight={800} sx={{ color: theme.palette.brand.main }}>
                   {section.title}
                 </Typography>
 
@@ -912,7 +919,7 @@ const CompareProduct = () => {
                                 ? 'background.paper'
                                 : alpha(theme.palette.grey[50], 0.5),
                             '&:hover': {
-                              bgcolor: alpha(theme.palette.primary.main, 0.02),
+                              bgcolor: alpha(theme.palette.brand.main, 0.02),
                             },
                           }}
                         >

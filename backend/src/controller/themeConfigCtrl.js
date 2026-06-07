@@ -11,6 +11,16 @@ import { fileURLToPath } from 'url'
 import ThemeConfig, {
   DEFAULT_THEME_CONFIG,
 } from '../models/themeConfigModel.js'
+import {
+  getUserIdFromRequest,
+  isValidObjectId,
+  resolveTenantFromRequest,
+  toObjectId,
+} from '../utils/requestContext.js'
+import {
+  sendErrorResponse,
+  sendSuccessResponse,
+} from '../utils/response.js'
 import logger from '../../config/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -64,22 +74,10 @@ const DEFAULT_PREVIEW_TTL_MINUTES = 30
 // RESPUESTAS
 // =====================================================
 
-const successResponse = (res, data, statusCode = 200) => {
-  return res.status(statusCode).json({
-    success: true,
-    data,
-  })
-}
+const successResponse = sendSuccessResponse
 
 const errorResponse = (res, message, statusCode = 400, errors = null) => {
-  const response = {
-    success: false,
-    message,
-  }
-
-  if (errors) response.errors = errors
-
-  return res.status(statusCode).json(response)
+  return sendErrorResponse(res, message, statusCode, errors ? { errors } : {})
 }
 
 const setNoStoreHeaders = res => {
@@ -95,40 +93,9 @@ const setNoStoreHeaders = res => {
 
 const isProd = process.env.NODE_ENV === 'production'
 
-const isValidObjectId = value => {
-  return mongoose.Types.ObjectId.isValid(String(value || ''))
-}
+const getUserId = getUserIdFromRequest
 
-const toObjectId = value => {
-  if (!isValidObjectId(value)) return null
-  return new mongoose.Types.ObjectId(String(value))
-}
-
-const getUserId = req => {
-  return req.user?._id || req.user?.id || null
-}
-
-const resolveTenantContext = req => {
-  const domainTenantId = req.tenantId || req.tenant?._id || null
-  const userTenantId = req.user?.tenantId || req.user?.tenant?._id || null
-
-  if (!domainTenantId || !isValidObjectId(domainTenantId)) {
-    const error = new Error('Tenant no resuelto')
-    error.statusCode = 400
-    throw error
-  }
-
-  if (userTenantId && String(userTenantId) !== String(domainTenantId)) {
-    const error = new Error('El usuario no pertenece al tenant resuelto por el dominio')
-    error.statusCode = 403
-    throw error
-  }
-
-  return {
-    tenantId: String(domainTenantId),
-    tenantObjectId: toObjectId(domainTenantId),
-  }
-}
+const resolveTenantContext = req => resolveTenantFromRequest(req)
 
 const isPlainObject = value => {
   return Boolean(
@@ -309,7 +276,6 @@ const ensureActiveTheme = async ({ tenantId, req, session = null }) => {
     { tenantId: tenantObjectId },
     {
       $setOnInsert: {
-        tenantId: tenantObjectId,
         version: 1,
         createdAt: new Date(),
         ...defaults,
@@ -402,7 +368,6 @@ const updateActiveThemeInPlace = async ({
 
   const update = {
     ...payload,
-    tenantId: tenantObjectId,
     isActive: true,
     isDefault: false,
     isPreview: false,
@@ -424,7 +389,6 @@ const updateActiveThemeInPlace = async ({
     {
       $set: update,
       $setOnInsert: {
-        tenantId: tenantObjectId,
         createdAt: new Date(),
       },
     },

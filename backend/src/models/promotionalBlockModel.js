@@ -259,7 +259,12 @@ const promotionalBlockSchema = new Schema(
 
 promotionalBlockSchema.index(
   { tenantId: 1, slug: 1 },
-  { unique: true },
+  {
+    unique: true,
+    partialFilterExpression: {
+      isDeleted: false,
+    },
+  },
 )
 
 promotionalBlockSchema.index({

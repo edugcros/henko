@@ -5,6 +5,16 @@ import webpack from 'webpack'
 import dotenv from 'dotenv'
 
 const CLIENT_ENV_PREFIX = /^REACT_APP_/i
+const REQUIRED_PRODUCTION_KEYS = [
+  'REACT_APP_NODE_ENV',
+  'REACT_APP_API_BASE_URL',
+  'REACT_APP_API_URL',
+  'REACT_APP_ASSETS_BASE_URL',
+  'REACT_APP_PUBLIC_BASE_DOMAIN',
+  'REACT_APP_TENANT_HEADER',
+  'REACT_APP_CSRF_HEADER_NAME',
+  'REACT_APP_MP_PUBLIC_KEY',
+]
 
 export const getEnvFile = () => {
   const nodeEnv = process.env.NODE_ENV || 'development'
@@ -58,6 +68,19 @@ export const getClientEnvironment = () => {
         NODE_ENV: process.env.NODE_ENV || 'development',
       }
     )
+
+  if ((process.env.NODE_ENV || 'development') === 'production') {
+    const missing = REQUIRED_PRODUCTION_KEYS.filter(key => {
+      const value = raw[key]
+      return value === undefined || value === null || String(value).trim() === ''
+    })
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Variables REACT_APP requeridas faltantes para producción: ${missing.join(', ')}`,
+      )
+    }
+  }
 
   const stringified = {
     'process.env': Object.keys(raw).reduce((acc, key) => {

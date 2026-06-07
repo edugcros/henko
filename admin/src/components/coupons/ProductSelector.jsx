@@ -111,7 +111,7 @@ const ProductSelector = ({
     if (currentString !== newString) {
       setLocalSelected(normalizedSelected)
     }
-  }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected])
 
   // Notificar cambios al padre (solo cuando cambia localSelected)
   useEffect(() => {
@@ -144,7 +144,7 @@ const ProductSelector = ({
           limit: LIMIT_PRODUCTS,
           isActive: true
         })).unwrap()
-      } catch (err) {
+      } catch {
         // Error silencioso - se muestra en UI
       }
     }

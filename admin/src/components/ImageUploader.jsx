@@ -85,7 +85,7 @@ const ImageUploader = ({
       }
 
       onChange(normalizeUploadedImage(result));
-    } catch (err) {
+    } catch {
       setError('Error subiendo imagen');
     } finally {
       setUploading(false);

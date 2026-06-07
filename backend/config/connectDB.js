@@ -29,7 +29,6 @@ if (String(process.env.MONGO_FORCE_PUBLIC_DNS || '').toLowerCase() === 'true') {
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 let listenersRegistered = false
-let shutdownHandlersRegistered = false
 
 const registerConnectionListeners = () => {
   if (listenersRegistered) return

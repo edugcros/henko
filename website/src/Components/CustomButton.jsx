@@ -17,7 +17,7 @@ const paddingButton = {
 
 const CustomButton = ({
   title,
-  size = 'medium',
+  size,
   startIcon,
   endIcon,
   disabled = false,
@@ -39,23 +39,27 @@ const CustomButton = ({
   ...props
 }) => {
   const theme = useTheme()
+  const buttonConfig = theme.storeTheme?.buttons || {}
+  const effectiveSize = size || buttonConfig.size || 'medium'
+  const effectiveVariant = props.variant || buttonConfig.variant || 'contained'
+  const buttonRadius = buttonConfig.radius ?? theme.shape.borderRadius
   const [anchorEl, setAnchorEl] = useState(null)
   const handleOpenMenu = useCallback(event => {
     setAnchorEl(event.currentTarget)
   }, [])
 
   const buttonStyles = {
-    backgroundColor: bgcolor || theme.palette.primary.main,
-    color: color || theme.palette.primary.contrastText,
-    fontWeight: 'bolder',
-    fontSize: sizeText[size],
-    padding: paddingButton[size],
-    borderRadius: '8px',
+    backgroundColor: bgcolor || theme.palette.ctaPrimary.main,
+    color: color || theme.palette.ctaPrimary.contrastText,
+    fontWeight: 700,
+    fontSize: sizeText[effectiveSize],
+    padding: paddingButton[effectiveSize],
+    borderRadius: `${buttonRadius}px`,
     fontFamily: 'inherit',
     display: 'flex',
     alignItems: 'center',
-    height: '32px',
-    textTransform: 'none',
+    minHeight: '36px',
+    textTransform: buttonConfig.uppercase ? 'uppercase' : 'none',
     border: '2px solid transparent',
     transition: 'all 0.25s ease-in-out',
     boxSizing: 'border-box',
@@ -65,7 +69,8 @@ const CustomButton = ({
       cursor: 'not-allowed',
     },
     '&:hover': {
-      backgroundColor: hoverBgcolor || theme.palette.primary.dark || theme.palette.primary.main,
+      backgroundColor:
+        hoverBgcolor || theme.palette.ctaPrimary.dark || theme.palette.ctaPrimary.main,
       border: hoverBorder || '2px solid transparent',
     },
     ...customStyle,
@@ -93,6 +98,8 @@ const CustomButton = ({
             {...props}
             id={id}
             type={typeButton}
+            variant={effectiveVariant}
+            size={effectiveSize}
             sx={buttonStyles}
             startIcon={startIcon}
             endIcon={endIcon}

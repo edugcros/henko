@@ -1,7 +1,36 @@
-// promotionalBlockUtils
+// 📁 src/utils/promotionalBlockUtils.js
+// VERSIÓN PRODUCCIÓN - NORMALIZACIÓN SEGURA / MULTI-TENANT SAFE
+
 import mongoose from 'mongoose'
 
-export const isValidObjectId = value => mongoose.Types.ObjectId.isValid(value)
+const MAX_TITLE_LENGTH = 120
+const MAX_LABEL_LENGTH = 80
+const MAX_PRODUCTS = 20
+
+const clampNumber = ({ value, min, max, fallback }) => {
+  const number = Number(value)
+
+  if (!Number.isFinite(number)) return fallback
+
+  return Math.min(max, Math.max(min, number))
+}
+
+const clampInteger = ({ value, min, max, fallback }) => {
+  return Math.trunc(
+    clampNumber({
+      value,
+      min,
+      max,
+      fallback,
+    }),
+  )
+}
+
+const cleanString = (value, maxLength = 255) => {
+  return String(value || '')
+    .trim()
+    .slice(0, maxLength)
+}
 
 export const normalizeSlug = value => {
   return String(value || '')
@@ -23,8 +52,47 @@ export const buildSlugFromTitle = title => {
   return slug
 }
 
-export const getTenantIdFromRequest = req => {
-  return req.tenantId || req.tenant?._id || req.user?.tenantId || req.user?.tenant?._id
+export const normalizeProductId = value => {
+  const raw =
+    value?._id ||
+    value?.id ||
+    value?.productId ||
+    value
+
+  const clean = String(raw || '').trim()
+
+  if (!mongoose.Types.ObjectId.isValid(clean)) {
+    return null
+  }
+
+  return new mongoose.Types.ObjectId(clean)
+}
+
+export const normalizeDiscountPercentage = value => {
+  return clampNumber({
+    value,
+    min: 0,
+    max: 100,
+    fallback: 0,
+  })
+}
+
+export const normalizePriority = value => {
+  return clampInteger({
+    value,
+    min: 1,
+    max: 100,
+    fallback: 1,
+  })
+}
+
+export const normalizeMaxItems = value => {
+  return clampInteger({
+    value,
+    min: 1,
+    max: MAX_PRODUCTS,
+    fallback: 5,
+  })
 }
 
 export const normalizePromotionalProducts = products => {
@@ -33,22 +101,33 @@ export const normalizePromotionalProducts = products => {
   const seen = new Set()
 
   return products
-    .filter(item => item?.productId)
-    .map(item => ({
-      productId: item.productId,
-      customTitle: String(item.customTitle || '').trim(),
-      customLabel: String(item.customLabel || '').trim(),
-      discountPercentage: Number(item.discountPercentage || 0),
-      priority: Number(item.priority || 1),
-      isActive: item.isActive !== false,
-    }))
-    .filter(item => {
-      const id = String(item.productId)
+    .slice(0, MAX_PRODUCTS)
+    .map((item, index) => {
+      const productId = normalizeProductId(item?.productId)
 
-      if (seen.has(id)) return false
+      if (!productId) return null
 
-      seen.add(id)
-      return true
+      const idKey = String(productId)
+
+      if (seen.has(idKey)) return null
+
+      seen.add(idKey)
+
+      return {
+        productId,
+        customTitle: cleanString(item?.customTitle, MAX_TITLE_LENGTH),
+        customLabel: cleanString(item?.customLabel, MAX_LABEL_LENGTH),
+        discountPercentage: normalizeDiscountPercentage(item?.discountPercentage),
+        priority: normalizePriority(item?.priority || index + 1),
+        isActive: item?.isActive !== false,
+      }
     })
-    .sort((a, b) => a.priority - b.priority)
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority
+      }
+
+      return String(a.productId).localeCompare(String(b.productId))
+    })
 }

@@ -35,7 +35,6 @@ import PhoneIcon from '@mui/icons-material/Phone';
 const Customers = () => {
   const dispatch = useDispatch();
   const { customers, isLoading, error } = useSelector(state => state.customers);
-  console.log(customers)
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [actionType, setActionType] = useState('');

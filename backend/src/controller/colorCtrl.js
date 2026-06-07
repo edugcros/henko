@@ -1,6 +1,6 @@
 import Color from '../models/colorModel.js'
 import asyncHandler from 'express-async-handler'
-import mongoose from 'mongoose'
+import { isValidObjectId } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
 
 // Crear un nuevo color
@@ -47,7 +47,7 @@ export const getAllColors = asyncHandler(async (req, res) => {
 // Obtener un color por ID
 export const getColorById = asyncHandler(async (req, res) => {
   const { id } = req.params
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'ID inválido' })
   }
 
@@ -64,7 +64,7 @@ export const updateColor = asyncHandler(async (req, res) => {
   const { id } = req.params
   let { title } = req.body
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'ID inválido' })
   }
 
@@ -96,7 +96,7 @@ export const updateColor = asyncHandler(async (req, res) => {
 // Eliminar un color
 export const deleteColor = asyncHandler(async (req, res) => {
   const { id } = req.params
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'ID inválido' })
   }
 

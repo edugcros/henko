@@ -78,7 +78,8 @@ const STATUS_OPTIONS = [
   { value: 'scheduled', label: '⏰ Programados' },
   { value: 'expired', label: '⌛ Expirados' },
   { value: 'exhausted', label: '∅ Agotados' },
-  { value: 'inactive', label: '⊘ Inactivos' }
+  { value: 'inactive', label: '⊘ Inactivos' },
+  { value: 'deleted', label: '🗑 Eliminados' }
 ]
 
 // ======================================================
@@ -236,8 +237,6 @@ const CouponsPage = () => {
       setShowForm(false)
       setEditingCoupon(null)
       dispatch(getAllCoupons(filters))
-    } catch (err) {
-      throw err
     } finally {
       setIsSubmitting(false)
     }
@@ -245,12 +244,12 @@ const CouponsPage = () => {
 
   const handleDelete = useCallback(async (coupon) => {
     const id = coupon?.id || coupon?._id
-    if (!window.confirm(`¿Desactivar el cupón "${coupon.code}"?`)) return
+    if (!window.confirm(`¿Eliminar el cupón "${coupon.code}"?\nPodrás restaurarlo desde el filtro "Eliminados".`)) return
     try {
       await dispatch(deleteCoupon(id)).unwrap()
       dispatch(getAllCoupons(filters))
     } catch (err) {
-      toast.error(err?.message || 'Error al desactivar')
+      toast.error(err?.message || 'Error al eliminar')
     }
   }, [dispatch, filters])
 
@@ -431,7 +430,9 @@ const CouponsPage = () => {
             onRestore={handleRestore}
             onHardDelete={handleHardDelete}
             onClone={handleClone}
-            showDeleted={filters.status === 'inactive'}
+            showDeleted={filters.status === 'deleted'}
+            pagination={pagination}
+            onPageChange={(page) => handleFilterChange('page', page)}
           />
         )}
       </Box>

@@ -791,6 +791,16 @@ const orderSchema = new Schema(
       default: null,
     },
 
+    stockCommittedAt: {
+      type: Date,
+      default: null,
+    },
+
+    stockReservedAt: {
+      type: Date,
+      default: null,
+    },
+
     isDeleted: {
       type: Boolean,
       default: false,

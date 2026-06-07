@@ -64,85 +64,6 @@ const registerAdminLimiter = rateLimit({
 })
 
 // ======================================================
-// 🧩 CSRF CONDICIONAL PARA PREDEPLOY / TÚNEL
-// ======================================================
-
-const normalizePath = value => {
-  const normalized = String(value || '').replace(/\/+$/, '')
-  return normalized || '/'
-}
-
-const isTrustedPredeployOrigin = req => {
-  const origin = String(req.headers.origin || '').toLowerCase()
-
-  return [
-    'https://henko-web.vercel.app',
-    'https://henko-admin.vercel.app',
-  ].includes(origin)
-}
-
-const routePatternToRegex = pattern => {
-  const normalized = normalizePath(pattern)
-
-  const escaped = normalized
-    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\\:([^/]+)/g, '[^/]+')
-
-  return new RegExp(`^${escaped}$`)
-}
-
-const predeployCsrfExemptRoutes = [
-  // Auth pública
-  { method: 'POST', path: '/login' },
-  { method: 'POST', path: '/admin-login' },
-  { method: 'POST', path: '/register' },
-  { method: 'POST', path: '/register-admin' },
-
-  // Carrito storefront durante túnel
-  { method: 'POST', path: '/cart' },
-  { method: 'DELETE', path: '/cart/empty' },
-  { method: 'DELETE', path: '/cart/:productId' },
-  { method: 'POST', path: '/cart/cash-order' },
-
-  // Wishlist durante túnel
-  { method: 'PUT', path: '/wishlist/:productId' },
-
-  // Sesión / refresh durante túnel
-  { method: 'POST', path: '/logout' },
-  { method: 'POST', path: '/refresh' },
-
-  // Perfil durante túnel
-  { method: 'PUT', path: '/password' },
-  { method: 'PUT', path: '/edit-user' },
-  { method: 'PUT', path: '/save-address' },
-
-  // Admin durante túnel
-  { method: 'PUT', path: '/block-user/:id' },
-  { method: 'PUT', path: '/unblock-user/:id' },
-  { method: 'DELETE', path: '/delete-user/:id' },
-]
-
-const matchesPredeployExemptRoute = req => {
-  const requestPath = normalizePath(req.path)
-
-  return predeployCsrfExemptRoutes.some(route => {
-    return (
-      route.method === req.method &&
-      routePatternToRegex(route.path).test(requestPath)
-    )
-  })
-}
-
-const shouldSkipCsrfForPredeploy = req => {
-  return (
-    process.env.PREDEPLOY_TUNNEL_MODE === 'true' &&
-    isTrustedPredeployOrigin(req) &&
-    matchesPredeployExemptRoute(req)
-  )
-}
-
-
-// ======================================================
 // 🔓 1. RUTAS PÚBLICAS
 // ======================================================
 
@@ -186,8 +107,6 @@ router.post(
 )
 
 // Refresh token.
-// En producción real debe ir con CSRF.
-// En túnel puede saltarse si PREDEPLOY_TUNNEL_MODE=true y origin es Vercel.
 router.post(
   '/refresh',
   handleRefreshToken,

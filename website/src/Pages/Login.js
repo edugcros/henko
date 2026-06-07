@@ -85,13 +85,6 @@ const Login = () => {
         }}
       >
         <CardContent sx={{ p: 4 }}>
-          <Typography
-            variant="h5"
-            align="center"
-            sx={{ fontWeight: 600, mb: 1, color: Newprimary.darkCyan }}
-          >
-            Panel de Administración
-          </Typography>
           <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
             Accedé a tu cuenta para continuar.
           </Typography>

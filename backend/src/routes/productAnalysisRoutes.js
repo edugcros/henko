@@ -16,6 +16,8 @@ import {
   rejectAnalysisJob,
   deleteAnalysisJob,
   runWishlistPromotionNotifications,
+  hideAnalysisJob,
+  unhideAnalysisJob,
 } from '../controller/productAnalysisController.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
@@ -85,6 +87,9 @@ router.use(agentOrAdminAuth)
 router.post('/import', upload.single('image'), importImageForAnalysis)
 router.post('/process-due', processDueAnalysisJobs)
 router.post('/wishlist-promotions/run', runWishlistPromotionNotifications)
+
+router.patch('/:jobId/hide', hideAnalysisJob)
+router.patch('/:jobId/unhide', unhideAnalysisJob)
 
 router.get('/', listAnalysisJobs)
 router.get('/:jobId/image-file', downloadAnalysisJobImage)

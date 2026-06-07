@@ -27,6 +27,7 @@ import {
   toggleAutoSave,
   discardChanges,
   clearError,
+  clearAutoSaveError,
   
   // Thunks
   fetchTheme,
@@ -48,8 +49,9 @@ import {
 // CONFIGURACIÓN
 // ==========================================
 
-const AUTO_SAVE_DELAY = 800
-const AUTO_SAVE_MAX_WAIT = 5000
+const AUTO_SAVE_DELAY = 1500
+const AUTO_SAVE_MAX_WAIT = 10000
+const AUTO_SAVE_RETRY_COOLDOWN = 15000
 
 // ==========================================
 // HOOK PRINCIPAL
@@ -74,6 +76,7 @@ export const useTheme = () => {
   // Refs para auto-save
   const pendingChanges = useRef({})
   const lastChangeTime = useRef(0)
+  const autoSaveBlockedUntil = useRef(0)
   
   // ==========================================
   // CARGA INICIAL
@@ -111,8 +114,9 @@ export const useTheme = () => {
   // ==========================================
   
   const debouncedAutoSave = useMemo(
-    () => debounce((changes) => {
+    () => debounce(async (changes) => {
       if (Object.keys(changes).length === 0) return
+      if (Date.now() < autoSaveBlockedUntil.current) return
       
       // Flatten changes para PATCH
       const patchData = {}
@@ -129,12 +133,23 @@ export const useTheme = () => {
         })
       })
       
-      dispatch(autoSaveTheme(patchData))
-      Object.entries(changes).forEach(([path, value]) => {
-        if (pendingChanges.current[path] === value) {
-          delete pendingChanges.current[path]
-        }
-      })
+      const result = await dispatch(autoSaveTheme(patchData))
+
+      if (autoSaveTheme.fulfilled.match(result)) {
+        autoSaveBlockedUntil.current = 0
+        dispatch(clearAutoSaveError())
+
+        Object.entries(changes).forEach(([path, value]) => {
+          if (pendingChanges.current[path] === value) {
+            delete pendingChanges.current[path]
+          }
+        })
+        return
+      }
+
+      if (result.payload?.status === 429) {
+        autoSaveBlockedUntil.current = Date.now() + AUTO_SAVE_RETRY_COOLDOWN
+      }
     }, AUTO_SAVE_DELAY, { maxWait: AUTO_SAVE_MAX_WAIT }),
     [dispatch]
   )
@@ -142,6 +157,16 @@ export const useTheme = () => {
   // Trigger auto-save cuando hay cambios
   useEffect(() => {
     if (hasChanges && autoSave.enabled && !isSaving) {
+      const cooldownRemaining = autoSaveBlockedUntil.current - Date.now()
+
+      if (cooldownRemaining > 0) {
+        const retryTimer = setTimeout(() => {
+          debouncedAutoSave({ ...pendingChanges.current })
+        }, cooldownRemaining + 50)
+
+        return () => clearTimeout(retryTimer)
+      }
+
       debouncedAutoSave({ ...pendingChanges.current })
     }
   }, [hasChanges, autoSave.enabled, isSaving, debouncedAutoSave])

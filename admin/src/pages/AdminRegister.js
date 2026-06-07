@@ -1,5 +1,6 @@
 // 📁 AdminRegister.js
 import React, { useMemo } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { useFormik } from 'formik'
 import { useDispatch, useSelector } from 'react-redux'
 import * as yup from 'yup'
@@ -49,6 +50,16 @@ const normalizeSlug = value => {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)+/g, '')
+}
+
+const PUBLIC_SIGNUP_PLANS = new Set(['starter', 'pro'])
+
+const resolveSignupPlan = (...candidates) => {
+  const selectedPlan = candidates.find(candidate =>
+    PUBLIC_SIGNUP_PLANS.has(String(candidate || '').toLowerCase()),
+  )
+
+  return selectedPlan ? String(selectedPlan).toLowerCase() : 'starter'
 }
 
 const ensureUrl = value => {
@@ -138,6 +149,11 @@ const validationSchema = yup.object({
     .string()
     .min(8, 'Mínimo 8 caracteres')
     .required('La contraseña es obligatoria'),
+
+  plan: yup
+    .string()
+    .oneOf([...PUBLIC_SIGNUP_PLANS], 'El plan seleccionado no es válido')
+    .required('Seleccioná un plan'),
 })
 
 // =====================================================
@@ -146,6 +162,8 @@ const validationSchema = yup.object({
 
 const AdminRegister = () => {
   const dispatch = useDispatch()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
 
   const {
     isSuccess,
@@ -159,6 +177,10 @@ const AdminRegister = () => {
 
   const platformDomain = env.publicBaseDomain || 'henko.com'
   const isProduction = env.isProduction
+  const selectedPlan = resolveSignupPlan(
+    searchParams.get('plan'),
+    location.state?.planId,
+  )
 
   const formik = useFormik({
     initialValues: {
@@ -169,7 +191,7 @@ const AdminRegister = () => {
       storeName: '',
       storeSlug: '',
       password: '',
-      plan: 'starter',
+      plan: selectedPlan,
     },
     validationSchema,
     onSubmit: async values => {

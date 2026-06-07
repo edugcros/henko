@@ -19,9 +19,6 @@ export const useCoupons = (initialFilters = {}) => {
     setError(null)
     
     try {
-      // DEBUG: Ver qué estamos enviando
-      console.log('Fetching coupons with filters:', filters)
-      
       // Si no hay filtros específicos, no enviar status para traer TODO
       const cleanFilters = {
         page: filters.page || 1,
@@ -31,11 +28,7 @@ export const useCoupons = (initialFilters = {}) => {
         ...(filters.search ? { search: filters.search } : {})
       }
       
-      console.log('Clean filters sent to API:', cleanFilters)
-      
       const result = await couponService.getCoupons(cleanFilters)
-      
-      console.log('Coupons received:', result)
       
       setCoupons(result.items)
       setPagination(result.pagination)

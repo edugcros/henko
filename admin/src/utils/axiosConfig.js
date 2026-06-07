@@ -4,10 +4,13 @@ import Cookies from 'js-cookie'
 import { env } from '../config/env.js'
 
 let _store = null
+const METRIC_SESSION_KEY = 'henko_metric_session_id'
 
 export const setApiStore = store => {
   _store = store
 }
+
+export const getApiStore = () => _store
 
 // =====================================================
 // Runtime guards
@@ -23,7 +26,6 @@ const assertApiBaseUrl = () => {
       'localhost',
       '127.0.0.1',
       'henko.local',
-      'api.henko.com',
     ]
 
     forbiddenValues.forEach(value => {
@@ -55,6 +57,21 @@ const getAuthToken = () => {
   )
 }
 
+const getMetricSessionId = () => {
+  if (typeof window === 'undefined') return null
+
+  let sessionId = localStorage.getItem(METRIC_SESSION_KEY)
+
+  if (!sessionId) {
+    sessionId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    localStorage.setItem(METRIC_SESSION_KEY, sessionId)
+  }
+
+  return sessionId
+}
+
 // =====================================================
 // Axios instance
 // =====================================================
@@ -82,15 +99,8 @@ const api = axios.create({
   },
 })
 
-console.log('[ADMIN API BOOT]', {
-  apiBaseUrl: API_BASE_URL,
-  envApiBaseUrl: env.apiBaseUrl,
-  reactApiBaseUrl: process.env.REACT_APP_API_BASE_URL,
-})
-
 // Debug temporal de producción
 if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-  // eslint-disable-next-line no-console
   console.log('[ADMIN API BOOT]', {
     apiBaseUrl: env.apiBaseUrl,
     nodeEnv: env.nodeEnv,
@@ -122,6 +132,7 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
         withCredentials: true,
         skipAuthRefresh: true,
         skipCsrfRetry: true,
+        skipMetricSession: true,
       })
       .then(res => {
         const token =
@@ -175,6 +186,13 @@ api.interceptors.request.use(
       if (tenantDomain) {
         config.headers[env.tenantHeader || 'x-tenant-domain'] = tenantDomain
       }
+    }
+
+    const metricSessionId = config.skipMetricSession
+      ? null
+      : getMetricSessionId()
+    if (metricSessionId) {
+      config.headers['x-metric-session-id'] = metricSessionId
     }
 
     const token = getAuthToken()

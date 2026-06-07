@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react'
+import React, { useMemo, useCallback, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
@@ -27,6 +27,11 @@ import {
   getProductRouteId,
   getThemeColors,
 } from '@utils/themeRuntime'
+import {
+  trackUserMetric,
+  USER_METRIC_EVENTS,
+} from '../services/userMetricsService'
+import { Newprimary } from '../theme/colors'
 
 const EMPTY_ARRAY = []
 
@@ -121,7 +126,7 @@ const cardStyles = {
   '&:hover': {
     transform: 'translateY(-6px)',
     boxShadow: '0 18px 40px rgba(15, 23, 42, 0.14)',
-    borderColor: 'var(--product-primary)',
+    borderColor: Newprimary.huesoCrema,
     '& .action-buttons': {
       opacity: 1,
       right: 12,
@@ -183,11 +188,12 @@ const secondaryActionButtonStyles = {
 }
 
 const primaryActionButtonStyles = {
-  bgcolor: 'var(--product-primary)',
-  color: '#fff',
+  bgcolor: 'var(--product-action-primary)',
+  color: 'var(--product-action-primary-text)',
   boxShadow: '0 10px 20px rgba(15, 23, 42, 0.18)',
   '&:hover': {
-    bgcolor: 'var(--product-accent)',
+    bgcolor: 'var(--product-action-secondary)',
+    color: 'var(--product-action-secondary-text)',
   },
 }
 
@@ -214,16 +220,29 @@ const ProductCard = ({ item }) => {
   const themedCardStyles = useMemo(
     () => ({
       ...cardStyles,
+      '--product-card-surface': themeColors.cardBackground,
+      '--product-card-border': themeColors.cardBorder,
+      '--product-card-text': themeColors.cardText,
+      '--product-card-muted': themeColors.cardMutedText,
+      '--product-card-price': themeColors.cardPrice,
       '--product-primary': themeColors.primary,
       '--product-secondary': themeColors.secondary,
-      '--product-accent': themeColors.accent || themeColors.primary,
+      '--product-accent': themeColors.accent,
+      '--product-action-primary': themeColors.actionPrimary,
+      '--product-action-primary-text': themeColors.actionPrimaryText,
+      '--product-action-secondary': themeColors.actionSecondary,
+      '--product-action-secondary-text': themeColors.actionSecondaryText,
+      '--product-price': themeColors.cardPrice,
+      '--product-sale-price': themeColors.salePrice,
+      '--product-badge-bg': themeColors.badgeBackground,
+      '--product-badge-text': themeColors.badgeText,
       '--product-error': themeColors.error,
-      '--product-border': themeColors.border,
-      '--product-surface': themeColors.surface,
-      '--product-soft-bg': themeColors.background,
-      '--product-text': themeColors.text,
-      '--product-muted': themeColors.textSecondary,
-      '--product-image-bg': themeColors.secondary,
+      '--product-border': themeColors.cardBorder,
+      '--product-surface': themeColors.cardBackground,
+      '--product-soft-bg': themeColors.cardBackground,
+      '--product-text': themeColors.cardText,
+      '--product-muted': themeColors.cardMutedText,
+      '--product-image-bg': themeColors.cardBackground,
       '--product-card-padding': `${productTheme.cardPadding ?? activeConfig?.spacing?.cardPadding ?? 0}px`,
     }),
     [activeConfig?.spacing?.cardPadding, productTheme.cardPadding, themeColors],
@@ -273,6 +292,38 @@ const ProductCard = ({ item }) => {
     }
   }, [commerceSettings.currency])
 
+  useEffect(() => {
+    if (!item?._id) return
+
+    trackUserMetric({
+      eventType: USER_METRIC_EVENTS.PRODUCT_IMPRESSION,
+      productId: item._id,
+      value: productPrice,
+      currency: commerceSettings.currency,
+      category: item.category || item.categoryName || '',
+      metadata: {
+        title: item.title,
+        brand: productBrand,
+        placement: 'product_card',
+      },
+    })
+  }, [item?._id, item?.title, item?.category, item?.categoryName, productBrand, productPrice, commerceSettings.currency])
+
+  const handleProductClick = useCallback(() => {
+    trackUserMetric({
+      eventType: USER_METRIC_EVENTS.PRODUCT_CLICK,
+      productId: item._id,
+      value: productPrice,
+      currency: commerceSettings.currency,
+      category: item.category || item.categoryName || '',
+      metadata: {
+        title: item.title,
+        brand: productBrand,
+        placement: 'product_card',
+      },
+    })
+  }, [commerceSettings.currency, item, productBrand, productPrice])
+
   const handleWishlist = useCallback(
     async e => {
       e.preventDefault()
@@ -289,13 +340,35 @@ const ProductCard = ({ item }) => {
 
       try {
         await dispatch(toggleWishlist(item._id)).unwrap()
+        trackUserMetric({
+          eventType: isFavorite
+            ? USER_METRIC_EVENTS.WISHLIST_REMOVE
+            : USER_METRIC_EVENTS.WISHLIST_ADD,
+          productId: item._id,
+          value: productPrice,
+          currency: commerceSettings.currency,
+          metadata: {
+            title: item.title,
+            placement: 'product_card',
+          },
+        })
       } catch {
         notify.error('No se pudo actualizar la lista de deseos.', {
           toastId: `wishlist-update-error-${item._id}`,
         })
       }
     },
-    [dispatch, isAuthenticated, item?._id, notify, productTheme.showWishlist, user],
+    [
+      dispatch,
+      isAuthenticated,
+      isFavorite,
+      item,
+      notify,
+      productPrice,
+      productTheme.showWishlist,
+      user,
+      commerceSettings.currency,
+    ],
   )
 
   const handleCompare = useCallback(
@@ -355,6 +428,25 @@ const ProductCard = ({ item }) => {
 
         if (addOrUpdateCartItem.fulfilled.match(resultAction)) {
           trackAddToCart(item)
+          trackUserMetric({
+            eventType: USER_METRIC_EVENTS.ADD_TO_CART,
+            productId: item._id,
+            value: productPrice,
+            currency: commerceSettings.currency,
+            quantity: 1,
+            items: [{
+              productId: item._id,
+              title: item.title,
+              sku: item.sku || '',
+              quantity: 1,
+              price: productPrice,
+              subtotal: productPrice,
+            }],
+            metadata: {
+              title: item.title,
+              placement: 'product_card',
+            },
+          })
           notify.success('Producto añadido al carrito.', {
             toastId: `cart-added-${item._id}`,
           })
@@ -381,6 +473,7 @@ const ProductCard = ({ item }) => {
       discountPercentage,
       hasPromotion,
       notify,
+      commerceSettings.currency,
     ],
   )
 
@@ -405,6 +498,7 @@ const ProductCard = ({ item }) => {
 
       <Link
         to={`/product/${productRouteId}`}
+        onClick={handleProductClick}
         style={{ textDecoration: 'none', color: 'inherit' }}
         aria-label={`Ver producto ${item.title}`}
       >
@@ -487,7 +581,7 @@ const ProductCard = ({ item }) => {
                 justifyContent: 'start',
                 fontWeight: 800,
                 fontSize: 18,
-                color: 'var(--product-primary)',
+                color: 'var(--product-price)',
                 letterSpacing: 0,
               }}
             >
@@ -503,8 +597,8 @@ const ProductCard = ({ item }) => {
                 px: 1,
                 py: 0.25,
                 borderRadius: 999,
-                bgcolor: 'var(--product-secondary, var(--product-primary))',
-                color: '#ffffff',
+                bgcolor: 'var(--product-badge-bg)',
+                color: 'var(--product-badge-text)',
                 fontWeight: 800,
                 fontSize: 11,
               }}
@@ -525,7 +619,7 @@ const ProductCard = ({ item }) => {
             size="small"
             aria-label="Comparar producto"
           >
-            <CompareArrowsIcon fontSize="small" color="primary" />
+            <CompareArrowsIcon fontSize="small" sx={{ color: 'var(--product-action-primary)' }} />
           </IconButton>
         </Tooltip>
         )}
@@ -539,7 +633,7 @@ const ProductCard = ({ item }) => {
             size="small"
             aria-label="Ver producto"
           >
-            <VisibilityIcon fontSize="small" color="info" />
+            <VisibilityIcon fontSize="small" sx={{ color: 'var(--product-action-primary)' }} />
           </IconButton>
         </Tooltip>
         )}

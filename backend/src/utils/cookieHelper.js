@@ -1,4 +1,5 @@
 // backend/src/utils/cookieHelper.js
+import { env } from '../../config/env.js'
 
 export const getCookieDomain = req => {
   // 1. Obtenemos el host actual (dinámico)
@@ -9,8 +10,13 @@ export const getCookieDomain = req => {
 
   // 3. CASO ESPECIAL: Si el host es tu dominio principal (SaaS)
   // Usamos la variable de entorno para asegurar que sea .henkoapp.com
-  if (process.env.PRODUCTION_DOMAIN && host.includes(process.env.PRODUCTION_DOMAIN)) {
-    return `.${process.env.PRODUCTION_DOMAIN.replace(/^\./, '')}`
+  const rootDomain = String(env.rootDomain || env.publicBaseDomain || '')
+    .replace(/^\./, '')
+    .trim()
+    .toLowerCase()
+
+  if (rootDomain && host.includes(rootDomain)) {
+    return `.${rootDomain}`
   }
 
   // 4. CASO TENANT: Si es un dominio de cliente diferente (tienda-pepe.com)

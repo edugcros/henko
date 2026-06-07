@@ -70,7 +70,7 @@ const buildHeaders = async ({ isMultipart = false, customHeaders = {} }) => {
   try {
     const csrfToken = await fetchCsrfToken()
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken
-  } catch (e) {
+  } catch {
     console.warn('[ThemeAPI] No se pudo obtener CSRF token')
   }
 
@@ -263,15 +263,18 @@ export const importTheme = (data) =>
 export const downloadExport = async (filename) => {
   const blob = await exportTheme()
   const url = window.URL.createObjectURL(blob)
+  let link = null
   
   try {
-    const link = document.createElement('a')
+    link = document.createElement('a')
     link.href = url
     link.download = filename || `theme-export-${Date.now()}.json`
     document.body.appendChild(link)
     link.click()
   } finally {
-    document.body.removeChild(link)
+    if (link?.parentNode) {
+      document.body.removeChild(link)
+    }
     window.URL.revokeObjectURL(url)
   }
 }

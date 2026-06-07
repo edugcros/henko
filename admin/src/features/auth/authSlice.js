@@ -106,7 +106,7 @@ export const refreshSession = createAsyncThunk('auth/refreshSession', async (_, 
 
 export const loginUser = createAsyncThunk(
   'user/admin-login',
-  async (userData, { rejectWithValue }) => {
+  async (userData, { dispatch, rejectWithValue }) => {
     try {
       const res = await authService.loginUser(userData)
 
@@ -131,7 +131,6 @@ export const loginUser = createAsyncThunk(
         secure: isProd,
         sameSite: 'Lax',
       })
-      console.log('Login exitoso:', { user, token })
       return { user, token }
     } catch (err) {
       return rejectWithValue(
@@ -239,11 +238,17 @@ const authSlice = createSlice({
         Cookies.remove('token', { path: '/' })
         sessionStorage.removeItem('user')
         sessionStorage.removeItem('csrfToken')
-      } catch {}
+      } catch {
+        // Limpieza best-effort: el navegador puede bloquear cookies/storage.
+      }
     },
     setCsrfToken: (state, action) => {
       state.csrfToken = action.payload
-      try { sessionStorage.setItem('csrfToken', action.payload) } catch {}
+      try {
+        sessionStorage.setItem('csrfToken', action.payload)
+      } catch {
+        // Persistencia best-effort para entornos con storage restringido.
+      }
     },
   },
   extraReducers: (builder) => {
@@ -273,12 +278,16 @@ const authSlice = createSlice({
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'Lax',
           })
-        } catch {}
+        } catch {
+          // Persistencia best-effort para navegadores con cookies restringidas.
+        }
       }
 
       try {
         sessionStorage.setItem('user', JSON.stringify(action.payload))
-      } catch {}
+      } catch {
+        // Persistencia best-effort para entornos con storage restringido.
+      }
     })
 
     .addCase(createUserAdmin.rejected, (state, action) => {
@@ -298,7 +307,6 @@ const authSlice = createSlice({
         state.message = ''
       })
       .addCase(loginUser.fulfilled, (state, action) => {
-        console.log('Login exitoso:', action.payload)
         state.isLoading = false
         state.isSuccess = true
         state.isAuthenticated = true

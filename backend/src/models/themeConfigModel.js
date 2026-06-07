@@ -39,10 +39,28 @@ export const DEFAULT_THEME_CONFIG = {
     secondary: '#dc004e',
     background: '#ffffff',
     surface: '#f5f5f5',
+    headerBackground: '#ffffff',
+    headerText: '#1a1a1a',
+    headerLink: '#1976d2',
+    headerIcon: '#666666',
+    cardBackground: '#f5f5f5',
+    cardText: '#1a1a1a',
+    cardMutedText: '#666666',
+    cardBorder: '#e0e0e0',
+    cardPrice: '#1976d2',
     text: '#1a1a1a',
     mutedText: '#666666',
     border: '#e0e0e0',
     accent: '#ff9800',
+    actionPrimary: '#1976d2',
+    actionPrimaryText: '#ffffff',
+    actionSecondary: '#dc004e',
+    actionSecondaryText: '#ffffff',
+    link: '#1976d2',
+    price: '#1976d2',
+    salePrice: '#d32f2f',
+    badgeBackground: '#dc004e',
+    badgeText: '#ffffff',
     error: '#d32f2f',
     warning: '#ed6c02',
     info: '#0288d1',
@@ -195,6 +213,51 @@ const colorSchema = new Schema(
       default: '#f5f5f5',
       validate: { validator: isValidColor, message: 'Color de superficie inválido' },
     },
+    headerBackground: {
+      type: String,
+      default: '#ffffff',
+      validate: { validator: isValidColor, message: 'Color de fondo de header inválido' },
+    },
+    headerText: {
+      type: String,
+      default: '#1a1a1a',
+      validate: { validator: isValidColor, message: 'Color de texto de header inválido' },
+    },
+    headerLink: {
+      type: String,
+      default: '#1976d2',
+      validate: { validator: isValidColor, message: 'Color de link de header inválido' },
+    },
+    headerIcon: {
+      type: String,
+      default: '#666666',
+      validate: { validator: isValidColor, message: 'Color de iconos de header inválido' },
+    },
+    cardBackground: {
+      type: String,
+      default: '#f5f5f5',
+      validate: { validator: isValidColor, message: 'Color de fondo de card inválido' },
+    },
+    cardText: {
+      type: String,
+      default: '#1a1a1a',
+      validate: { validator: isValidColor, message: 'Color de texto de card inválido' },
+    },
+    cardMutedText: {
+      type: String,
+      default: '#666666',
+      validate: { validator: isValidColor, message: 'Color de texto secundario de card inválido' },
+    },
+    cardBorder: {
+      type: String,
+      default: '#e0e0e0',
+      validate: { validator: isValidColor, message: 'Color de borde de card inválido' },
+    },
+    cardPrice: {
+      type: String,
+      default: '#1976d2',
+      validate: { validator: isValidColor, message: 'Color de precio en card inválido' },
+    },
     text: {
       type: String,
       default: '#1a1a1a',
@@ -214,6 +277,51 @@ const colorSchema = new Schema(
       type: String,
       default: '#ff9800',
       validate: { validator: isValidColor, message: 'Color de acento inválido' },
+    },
+    actionPrimary: {
+      type: String,
+      default: '#1976d2',
+      validate: { validator: isValidColor, message: 'Color de acción primaria inválido' },
+    },
+    actionPrimaryText: {
+      type: String,
+      default: '#ffffff',
+      validate: { validator: isValidColor, message: 'Color de texto en acción primaria inválido' },
+    },
+    actionSecondary: {
+      type: String,
+      default: '#dc004e',
+      validate: { validator: isValidColor, message: 'Color de acción secundaria inválido' },
+    },
+    actionSecondaryText: {
+      type: String,
+      default: '#ffffff',
+      validate: { validator: isValidColor, message: 'Color de texto en acción secundaria inválido' },
+    },
+    link: {
+      type: String,
+      default: '#1976d2',
+      validate: { validator: isValidColor, message: 'Color de links inválido' },
+    },
+    price: {
+      type: String,
+      default: '#1976d2',
+      validate: { validator: isValidColor, message: 'Color de precio inválido' },
+    },
+    salePrice: {
+      type: String,
+      default: '#d32f2f',
+      validate: { validator: isValidColor, message: 'Color de precio promocional inválido' },
+    },
+    badgeBackground: {
+      type: String,
+      default: '#dc004e',
+      validate: { validator: isValidColor, message: 'Color de fondo de badge inválido' },
+    },
+    badgeText: {
+      type: String,
+      default: '#ffffff',
+      validate: { validator: isValidColor, message: 'Color de texto de badge inválido' },
     },
     error: { type: String, default: '#d32f2f', validate: { validator: isValidColor } },
     warning: { type: String, default: '#ed6c02', validate: { validator: isValidColor } },
@@ -287,7 +395,7 @@ const heroSchema = new Schema(
     title: { type: String, maxlength: 200, trim: true },
     subtitle: {
       type: String,
-      default: 'Descubre productos increíbles',
+      default: '',
       maxlength: 300,
       trim: true,
     },
@@ -371,7 +479,7 @@ const productsSchema = new Schema(
     cardPrice: {
       size: { type: String, default: '1.25rem' },
       weight: { type: Number, default: 700, min: 100, max: 900 },
-      color: { type: String, default: 'primary' },
+      color: { type: String, default: 'price' },
     },
     cardImage: {
       aspectRatio: { type: String, default: '1:1' },
@@ -623,16 +731,52 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
 
   const vars = {}
   const colors = this.colors || {}
+  const actionPrimary = colors.actionPrimary || DEFAULT_THEME_CONFIG.colors.actionPrimary
+  const actionPrimaryText = colors.actionPrimaryText || DEFAULT_THEME_CONFIG.colors.actionPrimaryText
+  const actionSecondary = colors.actionSecondary || DEFAULT_THEME_CONFIG.colors.actionSecondary
+  const actionSecondaryText = colors.actionSecondaryText || DEFAULT_THEME_CONFIG.colors.actionSecondaryText
+  const link = colors.link || DEFAULT_THEME_CONFIG.colors.link
+  const price = colors.price || DEFAULT_THEME_CONFIG.colors.price
+  const headerBackground = colors.headerBackground || DEFAULT_THEME_CONFIG.colors.headerBackground
+  const headerText = colors.headerText || DEFAULT_THEME_CONFIG.colors.headerText
+  const headerLink = colors.headerLink || DEFAULT_THEME_CONFIG.colors.headerLink
+  const headerIcon = colors.headerIcon || DEFAULT_THEME_CONFIG.colors.headerIcon
+  const cardBackground = colors.cardBackground || DEFAULT_THEME_CONFIG.colors.cardBackground
+  const cardText = colors.cardText || DEFAULT_THEME_CONFIG.colors.cardText
+  const cardMutedText = colors.cardMutedText || DEFAULT_THEME_CONFIG.colors.cardMutedText
+  const cardBorder = colors.cardBorder || DEFAULT_THEME_CONFIG.colors.cardBorder
+  const cardPrice = colors.cardPrice || DEFAULT_THEME_CONFIG.colors.cardPrice
+  const salePrice = colors.salePrice || DEFAULT_THEME_CONFIG.colors.salePrice
+  const badgeBackground = colors.badgeBackground || DEFAULT_THEME_CONFIG.colors.badgeBackground
+  const badgeText = colors.badgeText || DEFAULT_THEME_CONFIG.colors.badgeText
 
   Object.assign(vars, {
     [cssVar('color', 'primary')]: varValue(colors.primary, '#1976d2', 'color'),
     [cssVar('color', 'secondary')]: varValue(colors.secondary, '#dc004e', 'color'),
     [cssVar('color', 'background')]: varValue(colors.background, '#ffffff', 'color'),
     [cssVar('color', 'surface')]: varValue(colors.surface, '#f5f5f5', 'color'),
+    [cssVar('color', 'header', 'background')]: varValue(headerBackground, DEFAULT_THEME_CONFIG.colors.headerBackground, 'color'),
+    [cssVar('color', 'header', 'text')]: varValue(headerText, DEFAULT_THEME_CONFIG.colors.headerText, 'color'),
+    [cssVar('color', 'header', 'link')]: varValue(headerLink, DEFAULT_THEME_CONFIG.colors.headerLink, 'color'),
+    [cssVar('color', 'header', 'icon')]: varValue(headerIcon, DEFAULT_THEME_CONFIG.colors.headerIcon, 'color'),
+    [cssVar('color', 'card', 'background')]: varValue(cardBackground, DEFAULT_THEME_CONFIG.colors.cardBackground, 'color'),
+    [cssVar('color', 'card', 'text')]: varValue(cardText, DEFAULT_THEME_CONFIG.colors.cardText, 'color'),
+    [cssVar('color', 'card', 'text-muted')]: varValue(cardMutedText, DEFAULT_THEME_CONFIG.colors.cardMutedText, 'color'),
+    [cssVar('color', 'card', 'border')]: varValue(cardBorder, DEFAULT_THEME_CONFIG.colors.cardBorder, 'color'),
+    [cssVar('color', 'card', 'price')]: varValue(cardPrice, DEFAULT_THEME_CONFIG.colors.cardPrice, 'color'),
     [cssVar('color', 'text')]: varValue(colors.text, '#1a1a1a', 'color'),
     [cssVar('color', 'text', 'muted')]: varValue(colors.mutedText, '#666666', 'color'),
     [cssVar('color', 'border')]: varValue(colors.border, '#e0e0e0', 'color'),
     [cssVar('color', 'accent')]: varValue(colors.accent, '#ff9800', 'color'),
+    [cssVar('color', 'action', 'primary')]: varValue(actionPrimary, '#1976d2', 'color'),
+    [cssVar('color', 'action', 'primary-text')]: varValue(actionPrimaryText, '#ffffff', 'color'),
+    [cssVar('color', 'action', 'secondary')]: varValue(actionSecondary, '#dc004e', 'color'),
+    [cssVar('color', 'action', 'secondary-text')]: varValue(actionSecondaryText, '#ffffff', 'color'),
+    [cssVar('color', 'link')]: varValue(link, DEFAULT_THEME_CONFIG.colors.link, 'color'),
+    [cssVar('color', 'price')]: varValue(price, DEFAULT_THEME_CONFIG.colors.price, 'color'),
+    [cssVar('color', 'price', 'sale')]: varValue(salePrice, DEFAULT_THEME_CONFIG.colors.salePrice, 'color'),
+    [cssVar('color', 'badge', 'background')]: varValue(badgeBackground, DEFAULT_THEME_CONFIG.colors.badgeBackground, 'color'),
+    [cssVar('color', 'badge', 'text')]: varValue(badgeText, DEFAULT_THEME_CONFIG.colors.badgeText, 'color'),
     [cssVar('color', 'error')]: varValue(colors.error, '#d32f2f', 'color'),
     [cssVar('color', 'warning')]: varValue(colors.warning, '#ed6c02', 'color'),
     [cssVar('color', 'info')]: varValue(colors.info, '#0288d1', 'color'),

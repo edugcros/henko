@@ -5,8 +5,10 @@ import express from 'express'
 import rateLimit from 'express-rate-limit'
 
 import {
+  getPaymentPublicConfig,
   processPayment,
   mpWebhook,
+  getPaymentStatus,
 } from '../controller/paymentController.js'
 
 import { authMiddleware } from '../middlewares/authMiddleware.js'
@@ -60,6 +62,14 @@ const mpWebhookLimiter = rateLimit({
 // STOREFRONT / CUSTOMER
 // =====================================================
 
+router.get(
+  '/config',
+  resolveTenantByDomain,
+  requireTenant,
+  requireShopDomain,
+  getPaymentPublicConfig,
+)
+
 /**
  * Procesar pago desde storefront autenticado.
  *
@@ -83,6 +93,15 @@ router.post(
   authMiddleware,
   paymentWriteLimiter,
   processPayment,
+)
+
+router.get(
+  '/status/:orderId',
+  resolveTenantByDomain,
+  requireTenant,
+  requireShopDomain,
+  authMiddleware,
+  getPaymentStatus,
 )
 
 // =====================================================

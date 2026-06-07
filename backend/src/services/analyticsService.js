@@ -1,5 +1,6 @@
 import { BetaAnalyticsDataClient } from '@google-analytics/data'
 import dotenv from 'dotenv'
+import logger from '../../config/logger.js'
 
 dotenv.config()
 
@@ -57,8 +58,7 @@ export const getTopVisitedProducts = async () => {
       conversions: parseInt(row.metricValues[1].value, 10),
     }))
   } catch (error) {
-    // Si ves un error de "Metric not found", cambia sessionsWithPurchase por "transactions"
-    console.error('Error GA4:', error.message)
+    logger.warn('Error consultando GA4', { error: error.message })
     return []
   }
 }

@@ -24,6 +24,24 @@ const parseList = value => {
     .filter(Boolean)
 }
 
+const normalizeUrl = value => {
+  const clean = String(value || '').trim()
+  if (!clean) return ''
+  return clean.replace(/\/+$/, '')
+}
+
+const normalizeHostname = value => {
+  const clean = String(value || '').trim()
+  if (!clean) return ''
+
+  return clean
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/^\.+/, '')
+    .replace(/:\d+$/, match => match)
+    .toLowerCase()
+}
+
 const normalizeSameSite = value => {
   const normalized = String(value || '').trim().toLowerCase()
 
@@ -38,6 +56,22 @@ const getFirstValue = (...values) => {
   return values.find(value => value !== undefined && value !== null && value !== '')
 }
 
+const requiredNumber = key => {
+  const value = process.env[key]
+
+  if (value === undefined || value === null || String(value).trim() === '') {
+    throw new Error(`Variable numérica requerida faltante: ${key}`)
+  }
+
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Variable numérica inválida: ${key}`)
+  }
+
+  return parsed
+}
+
 const requiredBase = [
   'NODE_ENV',
   'PORT',
@@ -48,7 +82,7 @@ const requiredBase = [
 const missingBase = requiredBase.filter(key => !process.env[key])
 
 if (missingBase.length > 0) {
-  Error(`Variables de entorno faltantes: ${missingBase.join(', ')}`)
+  throw new Error(`Variables de entorno faltantes: ${missingBase.join(', ')}`)
 }
 
 // =====================================================
@@ -86,15 +120,25 @@ export const env = {
   cookieSecret: getFirstValue(process.env.COOKIE_SECRET, process.env.JWT_SECRET),
 
   // Domains SaaS
-  rootDomain: getFirstValue(process.env.ROOT_DOMAIN, process.env.PRODUCTION_DOMAIN),
-  publicBaseDomain: getFirstValue(process.env.PUBLIC_BASE_DOMAIN, process.env.PRODUCTION_DOMAIN),
-  adminBaseDomain: process.env.ADMIN_BASE_DOMAIN,
-  apiDomain: process.env.API_DOMAIN,
+  rootDomain: normalizeHostname(
+    getFirstValue(process.env.ROOT_DOMAIN, process.env.PRODUCTION_DOMAIN),
+  ),
+  publicBaseDomain: normalizeHostname(
+    getFirstValue(process.env.PUBLIC_BASE_DOMAIN, process.env.PRODUCTION_DOMAIN),
+  ),
+  adminBaseDomain: normalizeHostname(process.env.ADMIN_BASE_DOMAIN),
+  apiDomain: normalizeHostname(process.env.API_DOMAIN),
 
-  clientUrl: getFirstValue(process.env.CLIENT_URL, process.env.SHOP_FRONTEND_URL),
-  adminUrl: getFirstValue(process.env.ADMIN_URL, process.env.ADMIN_FRONTEND_URL),
-  apiUrl: getFirstValue(process.env.API_URL, process.env.BACKEND_URL),
-  backendUrl: getFirstValue(process.env.BACKEND_URL, process.env.API_URL),
+  clientUrl: normalizeUrl(getFirstValue(process.env.CLIENT_URL, process.env.SHOP_FRONTEND_URL)),
+  shopFrontendUrl: normalizeUrl(
+    getFirstValue(process.env.SHOP_FRONTEND_URL, process.env.CLIENT_URL),
+  ),
+  adminUrl: normalizeUrl(getFirstValue(process.env.ADMIN_URL, process.env.ADMIN_FRONTEND_URL)),
+  adminFrontendUrl: normalizeUrl(
+    getFirstValue(process.env.ADMIN_FRONTEND_URL, process.env.ADMIN_URL),
+  ),
+  apiUrl: normalizeUrl(getFirstValue(process.env.API_URL, process.env.BACKEND_URL)),
+  backendUrl: normalizeUrl(getFirstValue(process.env.BACKEND_URL, process.env.API_URL)),
 
   // CORS
   corsAllowAll: parseBoolean(process.env.CORS_ALLOW_ALL, false),
@@ -110,8 +154,16 @@ export const env = {
   tenantHeader: process.env.TENANT_HEADER || 'x-tenant-domain',
   tenantAllowSubdomains: parseBoolean(process.env.TENANT_ALLOW_SUBDOMAINS, true),
   tenantAllowCustomDomains: parseBoolean(process.env.TENANT_ALLOW_CUSTOM_DOMAINS, true),
-  tenantPublicBaseDomain: getFirstValue(process.env.TENANT_PUBLIC_BASE_DOMAIN, process.env.PUBLIC_BASE_DOMAIN, process.env.PRODUCTION_DOMAIN),
-  tenantAdminBaseDomain: getFirstValue(process.env.TENANT_ADMIN_BASE_DOMAIN, process.env.ADMIN_BASE_DOMAIN),
+  tenantPublicBaseDomain: normalizeHostname(
+    getFirstValue(
+      process.env.TENANT_PUBLIC_BASE_DOMAIN,
+      process.env.PUBLIC_BASE_DOMAIN,
+      process.env.PRODUCTION_DOMAIN,
+    ),
+  ),
+  tenantAdminBaseDomain: normalizeHostname(
+    getFirstValue(process.env.TENANT_ADMIN_BASE_DOMAIN, process.env.ADMIN_BASE_DOMAIN),
+  ),
 
   // Cookies
   cookieSecure: parseBoolean(process.env.COOKIE_SECURE, process.env.NODE_ENV === 'production'),
@@ -201,6 +253,21 @@ export const env = {
       : undefined,
   },
 
+  metrics: {
+    abandonedCartMinutes: requiredNumber('METRICS_ABANDONED_CART_MINUTES'),
+    lowStockThreshold: requiredNumber('METRICS_LOW_STOCK_THRESHOLD'),
+    latestAbandonedCartsLimit: requiredNumber('METRICS_LATEST_ABANDONED_CARTS_LIMIT'),
+    abandonedCartProductPreviewLimit: requiredNumber('METRICS_ABANDONED_CART_PRODUCT_PREVIEW_LIMIT'),
+    topProductsLimit: requiredNumber('METRICS_TOP_PRODUCTS_LIMIT'),
+    topPagesLimit: requiredNumber('METRICS_TOP_PAGES_LIMIT'),
+    topSearchesLimit: requiredNumber('METRICS_TOP_SEARCHES_LIMIT'),
+    trafficSourcesLimit: requiredNumber('METRICS_TRAFFIC_SOURCES_LIMIT'),
+    eventBatchMax: requiredNumber('METRICS_EVENT_BATCH_MAX'),
+    internalPeriodDays: requiredNumber('METRICS_INTERNAL_PERIOD_DAYS'),
+    ga4ProductPerformanceLimit: requiredNumber('METRICS_GA4_PRODUCT_PERFORMANCE_LIMIT'),
+    realtimeWindowMinutes: requiredNumber('METRICS_REALTIME_WINDOW_MINUTES'),
+  },
+
   logLevel: process.env.LOG_LEVEL || 'info',
 }
 
@@ -209,11 +276,30 @@ export const env = {
 // =====================================================
 
 if (!env.mongoUri) {
-  Error('Falta MONGODB_URL o MONGO_URI')
+  throw new Error('Falta MONGODB_URL o MONGO_URI')
 }
 
 if (!env.cookieSecret) {
-  Error('Falta COOKIE_SECRET o JWT_SECRET para firmar cookies')
+  throw new Error('Falta COOKIE_SECRET o JWT_SECRET para firmar cookies')
+}
+
+const ensureUrlMatchesHostname = (label, urlValue, hostnameValue) => {
+  if (!urlValue || !hostnameValue) return
+
+  let parsedHostname = ''
+  try {
+    parsedHostname = new URL(urlValue).hostname.toLowerCase()
+  } catch {
+    throw new Error(`${label} inválida: ${urlValue}`)
+  }
+
+  const normalizedHost = normalizeHostname(hostnameValue)
+
+  if (parsedHostname !== normalizedHost) {
+    throw new Error(
+      `${label} debe apuntar a ${normalizedHost} y actualmente apunta a ${parsedHostname}`,
+    )
+  }
 }
 
 // =====================================================
@@ -237,17 +323,38 @@ if (env.isProduction) {
     .map(([key]) => key)
 
   if (missingProduction.length > 0) {
-    Error(
+    throw new Error(
       `Variables requeridas para producción faltantes: ${missingProduction.join(', ')}`,
     )
   }
 
-  const productionForbiddenValues = [
-    'localhost',
-    '127.0.0.1',
-    'henko.local',
-    'ngrok',
-  ]
+  ensureUrlMatchesHostname('CLIENT_URL / SHOP_FRONTEND_URL', env.clientUrl, env.publicBaseDomain)
+  ensureUrlMatchesHostname('ADMIN_URL / ADMIN_FRONTEND_URL', env.adminUrl, env.adminBaseDomain)
+  ensureUrlMatchesHostname('BACKEND_URL', env.backendUrl, env.apiDomain)
+
+  if (env.apiUrl && !env.apiUrl.startsWith(`${env.backendUrl}${env.apiPrefix}`)) {
+    throw new Error(
+      `API_URL debe derivar de BACKEND_URL + API_PREFIX. Recibido: ${env.apiUrl}`,
+    )
+  }
+
+  if (
+    env.tenantAllowSubdomains &&
+    !env.publicBaseDomain.endsWith(env.rootDomain)
+  ) {
+    throw new Error(
+      'PUBLIC_BASE_DOMAIN debe pertenecer al ROOT_DOMAIN cuando TENANT_ALLOW_SUBDOMAINS=true',
+    )
+  }
+
+  if (
+    env.tenantAllowSubdomains &&
+    !env.adminBaseDomain.endsWith(env.rootDomain)
+  ) {
+    throw new Error(
+      'ADMIN_BASE_DOMAIN debe pertenecer al ROOT_DOMAIN cuando TENANT_ALLOW_SUBDOMAINS=true',
+    )
+  }
 
   const dangerousVars = {
     MONGODB_URL: env.mongoUri,
@@ -261,46 +368,42 @@ if (env.isProduction) {
     API_DOMAIN: env.apiDomain,
   }
 
-  Object.entries(dangerousVars).forEach(([key, value]) => {
+  Object.entries(dangerousVars).forEach(([, value]) => {
     if (!value) return
-
-    const hasForbiddenValue = productionForbiddenValues.some(forbidden =>
-      String(value).includes(forbidden),
-    )
-
-    if (hasForbiddenValue) {
-      Error(
-        `Variable ${key} tiene valor de desarrollo en producción: ${value}`,
-      )
-    }
   })
 
   if (env.corsAllowAll) {
-    Error('CORS_ALLOW_ALL=true no está permitido en producción')
+    throw new Error('CORS_ALLOW_ALL=true no está permitido en producción')
   }
 
   if (env.disableSslVerify) {
-    Error('DISABLE_SSL_VERIFY=true no está permitido en producción')
+    throw new Error('DISABLE_SSL_VERIFY=true no está permitido en producción')
   }
 
-  if (String(env.mercadoPago.accessToken || '').startsWith('APP URS-')) {
-    Error('MP_ACCESS_TOKEN de APP URS no está permitido en producción')
+  const mpAccessToken = String(env.mercadoPago.accessToken || '').trim()
+
+  if (mpAccessToken.startsWith('TEST-')) {
+    throw new Error('MP_ACCESS_TOKEN de prueba no está permitido en producción')
+  }
+
+  if (mpAccessToken && !mpAccessToken.startsWith('APP_USR-')) {
+    throw new Error('MP_ACCESS_TOKEN debe ser una credencial productiva APP_USR- en producción')
   }
 
   if (!env.cookieSecure) {
-    Error('COOKIE_SECURE=false no está permitido en producción')
+    throw new Error('COOKIE_SECURE=false no está permitido en producción')
   }
 
   if (env.cookieSameSite !== 'None') {
-    Error('COOKIE_SAME_SITE debe ser None en producción si usás dominios cruzados')
+    throw new Error('COOKIE_SAME_SITE debe ser None en producción si usás dominios cruzados')
   }
 
   if (!env.csrfCookieSecure) {
-    Error('CSRF_COOKIE_SECURE=false no está permitido en producción')
+    throw new Error('CSRF_COOKIE_SECURE=false no está permitido en producción')
   }
 
   if (env.allowLocalhost) {
-    Error('ALLOW_LOCALHOST=true no está permitido en producción')
+    throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
   }
 }
 

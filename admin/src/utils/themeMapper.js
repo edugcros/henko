@@ -1,4 +1,5 @@
 import { createTheme } from '@mui/material/styles';
+import { DEFAULT_THEME_COLORS } from '../features/theme/colorSystem';
 
 /**
  * Mapper robusto config → MUI Theme
@@ -14,10 +15,15 @@ export const mapConfigToMuiTheme = (config) => {
     buttons = {},
   } = config;
 
-  const primary = safeHex(colors.primary, '#1976d2');
-  const secondary = safeHex(colors.secondary, '#dc004e');
-  const background = safeHex(colors.background, '#ffffff');
-  const surface = safeHex(colors.surface, '#f5f5f5');
+  const primary = safeHex(colors.primary, DEFAULT_THEME_COLORS.primary);
+  const secondary = safeHex(colors.secondary, DEFAULT_THEME_COLORS.secondary);
+  const background = safeHex(colors.background, DEFAULT_THEME_COLORS.background);
+  const surface = safeHex(colors.surface, DEFAULT_THEME_COLORS.surface);
+  const cardSurface = safeHex(colors.cardBackground, DEFAULT_THEME_COLORS.cardBackground);
+  const cardBorder = safeHex(colors.cardBorder, DEFAULT_THEME_COLORS.cardBorder);
+  const cardText = safeHex(colors.cardText, DEFAULT_THEME_COLORS.cardText);
+  const actionPrimary = safeHex(colors.actionPrimary, DEFAULT_THEME_COLORS.actionPrimary);
+  const actionSecondary = safeHex(colors.actionSecondary, DEFAULT_THEME_COLORS.actionSecondary);
 
   // 🎯 PALETTE CORREGIDO
   const palette = {
@@ -42,9 +48,47 @@ export const mapConfigToMuiTheme = (config) => {
       paper: surface,
     },
 
+    brand: {
+      main: primary,
+      contrastText: getContrastText(primary),
+    },
+
+    accent: {
+      main: safeHex(colors.accent, DEFAULT_THEME_COLORS.accent),
+      contrastText: getContrastText(safeHex(colors.accent, DEFAULT_THEME_COLORS.accent)),
+    },
+
+    ctaPrimary: {
+      main: actionPrimary,
+      dark: darken(actionPrimary, 0.12),
+      contrastText: safeHex(
+        colors.actionPrimaryText,
+        DEFAULT_THEME_COLORS.actionPrimaryText,
+      ),
+    },
+
+    ctaSecondary: {
+      main: actionSecondary,
+      dark: darken(actionSecondary, 0.12),
+      contrastText: safeHex(
+        colors.actionSecondaryText,
+        DEFAULT_THEME_COLORS.actionSecondaryText,
+      ),
+    },
+
+    commercePrice: {
+      main: safeHex(colors.price, DEFAULT_THEME_COLORS.price),
+      contrastText: getContrastText(safeHex(colors.price, DEFAULT_THEME_COLORS.price)),
+    },
+
+    commerceSalePrice: {
+      main: safeHex(colors.salePrice, DEFAULT_THEME_COLORS.salePrice),
+      contrastText: getContrastText(safeHex(colors.salePrice, DEFAULT_THEME_COLORS.salePrice)),
+    },
+
     text: {
-      primary: safeHex(colors.text, '#1a1a1a'),
-      secondary: safeHex(colors.mutedText, '#666666'),
+      primary: safeHex(colors.text, DEFAULT_THEME_COLORS.text),
+      secondary: safeHex(colors.mutedText || colors.textSecondary, DEFAULT_THEME_COLORS.mutedText),
     },
 
     error: { main: safeHex(colors.error, '#d32f2f') },
@@ -77,22 +121,93 @@ export const mapConfigToMuiTheme = (config) => {
 
   // 🎯 SPACING REAL
   const muiSpacing = (factor) => {
-    const base = spacing.container || 8;
+    const base = spacing.base || spacing.unit || 8;
     return base * factor;
   };
 
   // 🎯 SHAPE
   const shape = {
-    borderRadius: layout.borderRadius ?? 8,
+    borderRadius: spacing.radius ?? layout.borderRadius ?? 8,
   };
 
   // 🎯 COMPONENT OVERRIDES
   const components = {
     MuiButton: {
       styleOverrides: {
-        root: {
-          borderRadius: buttons.radius ?? 8,
-          textTransform: buttons.uppercase ? 'uppercase' : 'none',
+        root: ({ ownerState }) => {
+          const isPrimaryAction = !ownerState?.color || ownerState.color === 'primary';
+          const isSecondaryAction = ownerState?.color === 'secondary';
+
+          return {
+            borderRadius: buttons.radius ?? 8,
+            textTransform: buttons.uppercase ? 'uppercase' : 'none',
+            ...(ownerState?.variant === 'contained' && isPrimaryAction
+              ? {
+                  backgroundColor: actionPrimary,
+                  color: safeHex(
+                    colors.actionPrimaryText,
+                    DEFAULT_THEME_COLORS.actionPrimaryText,
+                  ),
+                  '&:hover': {
+                    backgroundColor: darken(actionPrimary, 0.12),
+                  },
+                }
+              : {}),
+            ...(ownerState?.variant === 'contained' && isSecondaryAction
+              ? {
+                  backgroundColor: actionSecondary,
+                  color: safeHex(
+                    colors.actionSecondaryText,
+                    DEFAULT_THEME_COLORS.actionSecondaryText,
+                  ),
+                  '&:hover': {
+                    backgroundColor: darken(actionSecondary, 0.12),
+                  },
+                }
+              : {}),
+            ...(ownerState?.variant === 'outlined' && isPrimaryAction
+              ? {
+                  borderColor: actionPrimary,
+                  color: actionPrimary,
+                }
+              : {}),
+            ...(ownerState?.variant === 'outlined' && isSecondaryAction
+              ? {
+                  borderColor: actionSecondary,
+                  color: actionSecondary,
+                }
+              : {}),
+            ...(ownerState?.variant === 'text' && isPrimaryAction
+              ? {
+                  color: actionPrimary,
+                }
+              : {}),
+            ...(ownerState?.variant === 'text' && isSecondaryAction
+              ? {
+                  color: actionSecondary,
+                }
+              : {}),
+          };
+        },
+        containedPrimary: {
+          backgroundColor: actionPrimary,
+          color: safeHex(
+            colors.actionPrimaryText,
+            DEFAULT_THEME_COLORS.actionPrimaryText,
+          ),
+          '&:hover': {
+            backgroundColor: darken(actionPrimary, 0.12),
+          },
+        },
+        containedSecondary: {
+          backgroundColor: actionSecondary,
+          color: safeHex(
+            colors.actionSecondaryText,
+            DEFAULT_THEME_COLORS.actionSecondaryText,
+          ),
+          '&:hover': {
+            backgroundColor: darken(actionSecondary, 0.12),
+          },
         },
       },
     },
@@ -100,7 +215,18 @@ export const mapConfigToMuiTheme = (config) => {
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: layout.borderRadius ?? 8,
+          borderRadius: spacing.radius ?? layout.borderRadius ?? 8,
+          backgroundColor: cardSurface,
+          border: `1px solid ${cardBorder}`,
+          color: cardText,
+        },
+      },
+    },
+
+    MuiPaper: {
+      styleOverrides: {
+        rounded: {
+          borderRadius: spacing.radius ?? layout.borderRadius ?? 8,
         },
       },
     },
@@ -210,14 +336,30 @@ export const mapConfigToCssVars = (config) => {
   const { colors = {}, spacing = {}, typography = {} } = config;
 
   return {
-    '--color-primary': colors.primary,
-    '--color-secondary': colors.secondary,
-    '--color-background': colors.background,
-    '--color-surface': colors.surface,
-    '--color-text': colors.text,
-    '--color-muted': colors.mutedText,
+    '--color-primary': colors.primary || DEFAULT_THEME_COLORS.primary,
+    '--color-secondary': colors.secondary || DEFAULT_THEME_COLORS.secondary,
+    '--color-background': colors.background || DEFAULT_THEME_COLORS.background,
+    '--color-surface': colors.surface || DEFAULT_THEME_COLORS.surface,
+    '--color-header-background': colors.headerBackground || DEFAULT_THEME_COLORS.headerBackground,
+    '--color-header-text': colors.headerText || DEFAULT_THEME_COLORS.headerText,
+    '--color-header-link': colors.headerLink || DEFAULT_THEME_COLORS.headerLink,
+    '--color-header-icon': colors.headerIcon || DEFAULT_THEME_COLORS.headerIcon,
+    '--color-card-background': colors.cardBackground || DEFAULT_THEME_COLORS.cardBackground,
+    '--color-card-text': colors.cardText || DEFAULT_THEME_COLORS.cardText,
+    '--color-card-muted': colors.cardMutedText || DEFAULT_THEME_COLORS.cardMutedText,
+    '--color-card-border': colors.cardBorder || DEFAULT_THEME_COLORS.cardBorder,
+    '--color-card-price': colors.cardPrice || DEFAULT_THEME_COLORS.cardPrice,
+    '--color-action-primary': colors.actionPrimary || DEFAULT_THEME_COLORS.actionPrimary,
+    '--color-action-primary-text': colors.actionPrimaryText || DEFAULT_THEME_COLORS.actionPrimaryText,
+    '--color-action-secondary': colors.actionSecondary || DEFAULT_THEME_COLORS.actionSecondary,
+    '--color-action-secondary-text': colors.actionSecondaryText || DEFAULT_THEME_COLORS.actionSecondaryText,
+    '--color-link': colors.link || DEFAULT_THEME_COLORS.link,
+    '--color-price': colors.price || DEFAULT_THEME_COLORS.price,
+    '--color-sale-price': colors.salePrice || DEFAULT_THEME_COLORS.salePrice,
+    '--color-text': colors.text || DEFAULT_THEME_COLORS.text,
+    '--color-muted': colors.mutedText || DEFAULT_THEME_COLORS.mutedText,
     '--spacing-section': `${spacing.section || 24}px`,
-    '--spacing-container': `${spacing.container || 8}px`,
+    '--spacing-container': `${spacing.container || 24}px`,
     '--font-family': typography.fontFamily,
     '--font-size-base': `${typography.baseSize || 16}px`,
   };

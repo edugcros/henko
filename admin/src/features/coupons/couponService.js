@@ -144,7 +144,7 @@ const normalizeCoupon = (data) => {
   const endDate = data.endDate ? new Date(data.endDate) : null
   const deletedAt = data.deletedAt ? new Date(data.deletedAt) : null
 
-  const isDeleted = !!deletedAt
+  const isDeleted = data.isDeleted === true || !!deletedAt
 
   let status = 'inactive'
   let isValid = false
@@ -234,15 +234,31 @@ const normalizeCoupon = (data) => {
 }
 
 
-const normalizeProductRef = (product) => ({
-  id: product._id?.toString() || product.id?.toString(),
-  name: product.title || product.name,
-  title: product.title || product.name,
-  sku: product.sku,
-  price: parseFloat(product.price) || 0,
-  images: product.images || [],
-  category: product.category
-})
+const normalizeProductRef = (product) => {
+  if (!product || typeof product !== 'object') {
+    const id = product?.toString?.() || ''
+
+    return {
+      id,
+      name: '',
+      title: '',
+      sku: '',
+      price: 0,
+      images: [],
+      category: ''
+    }
+  }
+
+  return {
+    id: product._id?.toString() || product.id?.toString(),
+    name: product.title || product.name,
+    title: product.title || product.name,
+    sku: product.sku,
+    price: parseFloat(product.price) || 0,
+    images: product.images || [],
+    category: product.category || product.categoria
+  }
+}
 
 const calculateExpiresIn = (endDate) => {
   const days = Math.ceil((new Date(endDate) - new Date()) / (1000 * 60 * 60 * 24))
@@ -281,7 +297,6 @@ export const couponService = {
    */
   delete: async (id) => {
     if (!id) throw new ValidationError('ID requerido', 'id')
-    console.log('id', id)
     const response = await couponApi.delete(id)
     
     cache.invalidate(`coupons:${id}`)
@@ -290,7 +305,8 @@ export const couponService = {
     
     return {
       success: true,
-      message: 'Cupón desactivado',
+      message: 'Cupón eliminado',
+      id,
       data: response?.data
     }
   },
@@ -300,7 +316,6 @@ export const couponService = {
    */
   permanentDeleteCoupon: async (id, options = {}) => {
     const { force = false } = options
-    console.log('force', force, id)
     if (!id) throw new ValidationError('ID requerido', 'id')
     
     try {
@@ -408,7 +423,6 @@ export const couponService = {
       
     const cleanData = {
       ...data,
-      code: data?.code,
       description: data.description?.trim(),
       discountValue: parseFloat(data.discountValue),
       minPurchaseAmount: parseFloat(data.minPurchaseAmount) || 0,
@@ -421,6 +435,10 @@ export const couponService = {
       endDate: data.endDate
     }
 
+    if (data.code?.trim()) {
+      cleanData.code = data.code.trim().toUpperCase()
+    }
+
     try {
       const response = await couponApi.create(cleanData)
       const normalized = normalizeCoupon(response?.data || response)
@@ -429,7 +447,12 @@ export const couponService = {
       return normalized
     } catch (error) {
       if (error.isDuplicate || error.code === 'DUPLICATE_CODE') {
-        throw new DuplicateError(`El código "${cleanData.code}" ya existe`, 'code')
+        throw new DuplicateError(
+          cleanData.code
+            ? `El código "${cleanData.code}" ya existe`
+            : 'No se pudo generar un código único. Intenta nuevamente.',
+          'code',
+        )
       }
       if (error.code === 'NO_TENANT') {
         throw new ValidationError('Error de configuración: Tenant no identificado', 'tenant')
@@ -449,10 +472,15 @@ export const couponService = {
 
     const cleanData = {
       ...data,
-      ...(data.code && { code: data.code.trim() }),
       ...(data.description && { description: data.description.trim() }),
       ...(data.discountValue !== undefined && { discountValue: parseFloat(data.discountValue) }),
       ...(data.applicableProducts && { applicableProducts: data.applicableProducts.filter(Boolean) })
+    }
+
+    if (data.code?.trim()) {
+      cleanData.code = data.code.trim().toUpperCase()
+    } else {
+      delete cleanData.code
     }
 
     try {
@@ -503,16 +531,17 @@ export const couponService = {
         prefix: prefix.toUpperCase(),
         ...couponData
       })
+      const payload = response?.data || response
 
       cache.invalidate('coupons:list')
       
       return {
         success: true,
-        created: parseInt(response?.created) || 0,
-        failed: parseInt(response?.failed) || 0,
-        total: (response?.created || 0) + (response?.failed || 0),
-        coupons: (response?.coupons || []).map(normalizeCoupon),
-        errors: response?.errors || []
+        created: parseInt(payload?.created) || 0,
+        failed: parseInt(payload?.failed) || 0,
+        total: (payload?.created || 0) + (payload?.failed || 0),
+        coupons: (payload?.coupons || []).map(normalizeCoupon),
+        errors: payload?.errors || []
       }
     } catch (error) {
       if (error.isDuplicate) {

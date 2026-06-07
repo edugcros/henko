@@ -2,6 +2,7 @@
 
 import multer from 'multer'
 import sharp from 'sharp'
+import logger from '../../config/logger.js'
 
 const MAX_SIZE_MB = Number(process.env.MAX_IMAGE_MB || 5)
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
@@ -76,7 +77,7 @@ export const productImgResize = async (req, res, next) => {
         file.safeName = `${Date.now()}-${safeBase}.webp`
         file.mimetype = 'image/webp' // Actualizar MIME type
         
-        console.log(`✅ Procesado: ${file.originalname} -> ${processed.length} bytes`)
+        logger.debug(`Imagen procesada: ${file.originalname} -> ${processed.length} bytes`)
       }),
     )
 
@@ -87,7 +88,7 @@ export const productImgResize = async (req, res, next) => {
 
     next()
   } catch (err) {
-    console.error('❌ Error en productImgResize:', err)
+    logger.error('Error en productImgResize', { error: err.message, stack: err.stack })
     next(err)
   }
 }

@@ -19,6 +19,15 @@ const DEFAULT_THEME = {
     mutedText: '#757575',
     border: '#e0e0e0',
     accent: '#ff9800',
+    actionPrimary: '#1976d2',
+    actionPrimaryText: '#ffffff',
+    actionSecondary: '#dc004e',
+    actionSecondaryText: '#ffffff',
+    link: '#1976d2',
+    price: '#1976d2',
+    salePrice: '#f44336',
+    badgeBackground: '#dc004e',
+    badgeText: '#ffffff',
     error: '#f44336',
     warning: '#ff9800',
     info: '#2196f3',
@@ -85,6 +94,24 @@ const buildFontFamily = config => {
   return formatted.join(', ')
 }
 
+const resolveSemanticColors = colors => ({
+  ...colors,
+  textSecondary:
+    colors.mutedText ||
+    colors.textSecondary ||
+    colors.textMuted ||
+    DEFAULT_THEME.colors.mutedText,
+  actionPrimary: colors.actionPrimary || DEFAULT_THEME.colors.actionPrimary,
+  actionPrimaryText: colors.actionPrimaryText || '#ffffff',
+  actionSecondary: colors.actionSecondary || DEFAULT_THEME.colors.actionSecondary,
+  actionSecondaryText: colors.actionSecondaryText || '#ffffff',
+  link: colors.link || DEFAULT_THEME.colors.link,
+  price: colors.price || DEFAULT_THEME.colors.price,
+  salePrice: colors.salePrice || DEFAULT_THEME.colors.salePrice,
+  badgeBackground: colors.badgeBackground || DEFAULT_THEME.colors.badgeBackground,
+  badgeText: colors.badgeText || '#ffffff',
+})
+
 // ==========================================
 // COMPONENTE
 // ==========================================
@@ -112,7 +139,7 @@ const DynamicThemeProvider = ({ children }) => {
 
     // Merge profundo con defaults
     return {
-      colors: { ...DEFAULT_THEME.colors, ...source.colors },
+      colors: resolveSemanticColors({ ...DEFAULT_THEME.colors, ...source.colors }),
       typography: { ...DEFAULT_THEME.typography, ...source.typography },
       layout: { ...DEFAULT_THEME.layout, ...source.layout },
       buttons: { ...DEFAULT_THEME.buttons, ...source.buttons },
@@ -143,9 +170,23 @@ const DynamicThemeProvider = ({ children }) => {
       mode: darkMode ? 'dark' : 'light',
       primary: {
         main: sanitizeColor(colors.primary, DEFAULT_THEME.colors.primary),
+        contrastText: '#ffffff',
       },
       secondary: {
         main: sanitizeColor(colors.secondary, DEFAULT_THEME.colors.secondary),
+        contrastText: '#ffffff',
+      },
+      brand: {
+        main: sanitizeColor(colors.primary, DEFAULT_THEME.colors.primary),
+        contrastText: '#ffffff',
+      },
+      ctaPrimary: {
+        main: sanitizeColor(colors.actionPrimary, DEFAULT_THEME.colors.actionPrimary),
+        contrastText: sanitizeColor(colors.actionPrimaryText, DEFAULT_THEME.colors.actionPrimaryText),
+      },
+      ctaSecondary: {
+        main: sanitizeColor(colors.actionSecondary, DEFAULT_THEME.colors.actionSecondary),
+        contrastText: sanitizeColor(colors.actionSecondaryText, DEFAULT_THEME.colors.actionSecondaryText),
       },
       error: { main: sanitizeColor(colors.error, DEFAULT_THEME.colors.error) },
       warning: {
@@ -167,10 +208,7 @@ const DynamicThemeProvider = ({ children }) => {
           : sanitizeColor(colors.text, DEFAULT_THEME.colors.text),
         secondary: darkMode
           ? '#b0b0b0'
-          : sanitizeColor(
-            colors.mutedText || colors.textSecondary || colors.textMuted,
-            DEFAULT_THEME.colors.mutedText,
-          ),
+          : sanitizeColor(colors.textSecondary, DEFAULT_THEME.colors.mutedText),
       },
       divider: sanitizeColor(colors.border, DEFAULT_THEME.colors.border),
     }
@@ -251,7 +289,7 @@ const DynamicThemeProvider = ({ children }) => {
                 background: darkMode ? '#1e1e1e' : '#f1f1f1',
               },
               '&::-webkit-scrollbar-thumb': {
-                background: palette.primary.main,
+                background: palette.brand.main,
                 borderRadius: '4px',
               },
             },

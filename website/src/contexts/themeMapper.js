@@ -91,17 +91,36 @@ const createModularScale = (base = 16, ratio = 1.25) => {
 
 const DEFAULTS = {
   colors: {
-    primary: '#3b82f6',
-    secondary: '#8b5cf6',
+    primary: '#1976d2',
+    secondary: '#dc004e',
     background: '#ffffff',
     surface: '#f5f5f5',
-    text: '#212121',
-    textMuted: '#757575',
-    error: '#ef4444',
-    warning: '#f59e0b',
-    success: '#10b981',
-    accent: '#2196f3',
+    headerBackground: '#ffffff',
+    headerText: '#1a1a1a',
+    headerLink: '#1976d2',
+    headerIcon: '#666666',
+    cardBackground: '#f5f5f5',
+    cardText: '#1a1a1a',
+    cardMutedText: '#666666',
+    cardBorder: '#e0e0e0',
+    cardPrice: '#1976d2',
+    text: '#1a1a1a',
+    mutedText: '#666666',
+    textMuted: '#666666',
     border: '#e0e0e0',
+    actionPrimary: '#1976d2',
+    actionPrimaryText: '#ffffff',
+    actionSecondary: '#dc004e',
+    actionSecondaryText: '#ffffff',
+    link: '#1976d2',
+    price: '#1976d2',
+    salePrice: '#d32f2f',
+    badgeBackground: '#dc004e',
+    badgeText: '#ffffff',
+    error: '#d32f2f',
+    warning: '#ed6c02',
+    success: '#2e7d32',
+    accent: '#ff9800',
   },
 
   typography: {
@@ -136,11 +155,29 @@ const normalizeTheme = (dbTheme = {}) => {
     colors: {
       ...DEFAULTS.colors,
       ...colors,
+      headerBackground: colors.headerBackground || DEFAULTS.colors.headerBackground,
+      headerText: colors.headerText || DEFAULTS.colors.headerText,
+      headerLink: colors.headerLink || DEFAULTS.colors.headerLink,
+      headerIcon: colors.headerIcon || DEFAULTS.colors.headerIcon,
+      cardBackground: colors.cardBackground || DEFAULTS.colors.cardBackground,
+      cardText: colors.cardText || DEFAULTS.colors.cardText,
+      cardMutedText: colors.cardMutedText || DEFAULTS.colors.cardMutedText,
+      cardBorder: colors.cardBorder || DEFAULTS.colors.cardBorder,
+      cardPrice: colors.cardPrice || DEFAULTS.colors.cardPrice,
       textMuted:
-        colors.textMuted ||
         colors.mutedText ||
+        colors.textMuted ||
         colors.textSecondary ||
         DEFAULTS.colors.textMuted,
+      actionPrimary: colors.actionPrimary || DEFAULTS.colors.actionPrimary,
+      actionPrimaryText: colors.actionPrimaryText || DEFAULTS.colors.actionPrimaryText,
+      actionSecondary: colors.actionSecondary || DEFAULTS.colors.actionSecondary,
+      actionSecondaryText: colors.actionSecondaryText || DEFAULTS.colors.actionSecondaryText,
+      link: colors.link || DEFAULTS.colors.link,
+      price: colors.price || DEFAULTS.colors.price,
+      salePrice: colors.salePrice || DEFAULTS.colors.salePrice,
+      badgeBackground: colors.badgeBackground || DEFAULTS.colors.badgeBackground,
+      badgeText: colors.badgeText || DEFAULTS.colors.badgeText,
     },
 
     typography: {
@@ -164,19 +201,27 @@ const normalizeTheme = (dbTheme = {}) => {
     },
 
     spacing: {
-      section: 0,
-      container: 0,
-      cardPadding: 0,
+      section: 64,
+      container: 24,
+      radius: 8,
+      cardPadding: 16,
       ...spacing,
     },
     layout: {
       maxWidth: 1200,
-      containerPadding: spacing.container ?? 0,
+      containerPadding: layout.containerPadding ?? spacing.container ?? 24,
       ...layout,
     },
-    buttons,
+    buttons: {
+      radius: 8,
+      uppercase: false,
+      elevation: 2,
+      size: 'medium',
+      variant: 'contained',
+      ...buttons,
+    },
     borderRadius: {
-      md: layout.borderRadius ?? spacing.radius ?? dbTheme.borderRadius?.md,
+      md: spacing.radius ?? layout.borderRadius ?? dbTheme.borderRadius?.md,
       ...(dbTheme.borderRadius || {}),
     },
     shadows: dbTheme.shadows || {},
@@ -222,6 +267,7 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
   }
 
   const muiTheme = createTheme({
+    storeTheme: theme,
     palette: {
       mode: theme.mode,
       primary: {
@@ -230,6 +276,48 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
       },
       secondary: {
         main: theme.colors.secondary,
+        contrastText: getContrastText(theme.colors.secondary),
+      },
+      brand: {
+        main: theme.colors.primary,
+        contrastText: getContrastText(theme.colors.primary),
+      },
+      accent: {
+        main: theme.colors.accent,
+        contrastText: getContrastText(theme.colors.accent),
+      },
+      ctaPrimary: {
+        main: theme.colors.actionPrimary,
+        dark: theme.colors.actionPrimary,
+        contrastText:
+          theme.colors.actionPrimaryText || getContrastText(theme.colors.actionPrimary),
+      },
+      ctaSecondary: {
+        main: theme.colors.actionSecondary,
+        dark: theme.colors.actionSecondary,
+        contrastText:
+          theme.colors.actionSecondaryText || getContrastText(theme.colors.actionSecondary),
+      },
+      commercePrice: {
+        main: theme.colors.price,
+        contrastText: getContrastText(theme.colors.price),
+      },
+      commerceSalePrice: {
+        main: theme.colors.salePrice,
+        contrastText: getContrastText(theme.colors.salePrice),
+      },
+      header: {
+        background: theme.colors.headerBackground,
+        text: theme.colors.headerText,
+        link: theme.colors.headerLink,
+        icon: theme.colors.headerIcon,
+      },
+      card: {
+        background: theme.colors.cardBackground,
+        text: theme.colors.cardText,
+        mutedText: theme.colors.cardMutedText,
+        border: theme.colors.cardBorder,
+        price: theme.colors.cardPrice,
       },
       error: { main: theme.colors.error },
       warning: { main: theme.colors.warning },
@@ -280,20 +368,88 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
     },
 
     shape: {
-      borderRadius: parseBorderRadius(theme.borderRadius?.md),
+      borderRadius: parseBorderRadius(theme.spacing.radius ?? theme.borderRadius?.md),
     },
 
+    spacing: factor => (theme.spacing.unit ?? theme.spacing.base ?? 8) * factor,
+
     components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            fontFamily: buildFontStack(theme.typography.fontFamily.body),
+            fontSize: `${theme.typography.baseSize}px`,
+            lineHeight: theme.typography.lineHeight,
+          },
+          button: {
+            fontFamily: buildFontStack(theme.typography.fontFamily.body),
+          },
+          input: {
+            fontFamily: buildFontStack(theme.typography.fontFamily.body),
+          },
+        },
+      },
       MuiButton: {
         defaultProps: {
           variant: theme.buttons.variant ?? 'contained',
           size: theme.buttons.size ?? 'medium',
         },
         styleOverrides: {
-          root: {
-            borderRadius: `${theme.buttons.radius ?? theme.spacing.radius ?? 8}px`,
-            boxShadow: createElevationShadow(theme.buttons.elevation),
-            textTransform: theme.buttons.uppercase ? 'uppercase' : 'none',
+          root: ({ ownerState }) => {
+            const isPrimaryAction = !ownerState?.color || ownerState.color === 'primary'
+            const isSecondaryAction = ownerState?.color === 'secondary'
+
+            return {
+              borderRadius: `${theme.buttons.radius ?? theme.spacing.radius ?? 8}px`,
+              boxShadow: createElevationShadow(theme.buttons.elevation),
+              textTransform: theme.buttons.uppercase ? 'uppercase' : 'none',
+              ...(ownerState?.variant === 'contained' && isPrimaryAction
+                ? {
+                    backgroundColor: theme.colors.actionPrimary,
+                    color:
+                      theme.colors.actionPrimaryText ||
+                      getContrastText(theme.colors.actionPrimary),
+                    '&:hover': {
+                      backgroundColor: theme.colors.actionPrimary,
+                      filter: 'brightness(0.92)',
+                    },
+                  }
+                : {}),
+              ...(ownerState?.variant === 'contained' && isSecondaryAction
+                ? {
+                    backgroundColor: theme.colors.actionSecondary,
+                    color:
+                      theme.colors.actionSecondaryText ||
+                      getContrastText(theme.colors.actionSecondary),
+                    '&:hover': {
+                      backgroundColor: theme.colors.actionSecondary,
+                      filter: 'brightness(0.92)',
+                    },
+                  }
+                : {}),
+              ...(ownerState?.variant === 'outlined' && isPrimaryAction
+                ? {
+                    borderColor: theme.colors.actionPrimary,
+                    color: theme.colors.actionPrimary,
+                  }
+                : {}),
+              ...(ownerState?.variant === 'outlined' && isSecondaryAction
+                ? {
+                    borderColor: theme.colors.actionSecondary,
+                    color: theme.colors.actionSecondary,
+                  }
+                : {}),
+              ...(ownerState?.variant === 'text' && isPrimaryAction
+                ? {
+                    color: theme.colors.actionPrimary,
+                  }
+                : {}),
+              ...(ownerState?.variant === 'text' && isSecondaryAction
+                ? {
+                    color: theme.colors.actionSecondary,
+                  }
+                : {}),
+            }
           },
         },
       },
@@ -302,6 +458,9 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
           root: {
             borderRadius: `${theme.spacing.radius ?? theme.layout.borderRadius ?? 8}px`,
             boxShadow: createElevationShadow(theme.layout.shadowIntensity),
+            backgroundColor: theme.colors.cardBackground,
+            border: `1px solid ${theme.colors.cardBorder}`,
+            color: theme.colors.cardText,
           },
         },
       },

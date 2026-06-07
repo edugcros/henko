@@ -49,12 +49,18 @@ import { createOrder, resetOrderState } from '@features/orders/orderSlice'
 import { getMe } from '@features/user/userSlice'
 import { useCoupon } from '@hooks/useCoupon'
 import env from '../config/env'
+import {
+  trackUserMetric,
+  USER_METRIC_EVENTS,
+} from '../services/userMetricsService'
+import { Newprimary } from '../theme/colors'
 
 // ======================================================
 // CONSTANTES
 // ======================================================
 
 const STEPS = ['Revisión', 'Entrega', 'Pago', 'Confirmación']
+const METRIC_CURRENCY = 'ARS'
 
 // ======================================================
 // HELPERS GENERALES
@@ -376,6 +382,22 @@ const normalizePaymentPayload = result => {
   const data = result?.data || result?.payload || result
 
   return data?.payment || data?.data || data
+}
+
+const buildMetricItems = cartItems => {
+  return cartItems.map(item => {
+    const quantity = getItemQuantity(item)
+    const price = getItemUnitPrice(item)
+
+    return {
+      productId: getItemId(item),
+      title: getItemTitle(item),
+      sku: item?.sku || item?.variantSku || item?.selectedVariant?.sku || '',
+      quantity,
+      price,
+      subtotal: clampMoney(price * quantity),
+    }
+  })
 }
 
 // ======================================================
@@ -717,7 +739,7 @@ const CheckoutPage = () => {
     }
 
     const validFormat =
-      publicKey.startsWith('APP URS-') || publicKey.startsWith('APP_USR-')
+      publicKey.startsWith('TEST-') || publicKey.startsWith('APP_USR-')
 
     if (!validFormat) {
       setMpReady(false)
@@ -1061,6 +1083,26 @@ const handleGoToPayment = async () => {
       return
     }
 
+    const metricItems = buildMetricItems(cartItems)
+
+    trackUserMetric({
+      eventType: USER_METRIC_EVENTS.CHECKOUT_STEP,
+      value: toNumber(total, 0),
+      currency: METRIC_CURRENCY,
+      quantity: itemCount,
+      items: metricItems,
+      commerce: {
+        cartValue: toNumber(subtotal, 0),
+        orderValue: toNumber(total, 0),
+        discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+        itemsCount: itemCount,
+      },
+      metadata: {
+        step: 'shipping_submitted',
+        coupon: isCouponValid ? appliedCoupon?.code : '',
+      },
+    })
+
     try {
       const result = await dispatch(
         createOrder({
@@ -1098,6 +1140,24 @@ const handleGoToPayment = async () => {
 
       if (order?._id || order?.id) {
         setCheckoutOrder(order)
+        trackUserMetric({
+          eventType: USER_METRIC_EVENTS.CHECKOUT_STEP,
+          orderId: order._id || order.id,
+          value: toNumber(total, 0),
+          currency: METRIC_CURRENCY,
+          quantity: itemCount,
+          items: metricItems,
+          commerce: {
+            cartValue: toNumber(subtotal, 0),
+            orderValue: toNumber(total, 0),
+            discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+            itemsCount: itemCount,
+          },
+          metadata: {
+            step: 'order_created',
+            coupon: isCouponValid ? appliedCoupon?.code : '',
+          },
+        })
         setActiveStep(2)
         window.scrollTo({ top: 0, behavior: 'smooth' })
       } else {
@@ -1137,11 +1197,71 @@ const handleGoToPayment = async () => {
         },
       }
 
+      const metricItems = buildMetricItems(cartItems)
+      const orderId = order._id || order.id
+
+      trackUserMetric({
+        eventType: USER_METRIC_EVENTS.PAYMENT_ATTEMPT,
+        orderId,
+        value: toNumber(total, 0),
+        currency: METRIC_CURRENCY,
+        quantity: itemCount,
+        items: metricItems,
+        commerce: {
+          orderValue: toNumber(total, 0),
+          discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+          itemsCount: itemCount,
+        },
+        metadata: {
+          paymentMethod: formData.payment_method_id || '',
+          installments: formData.installments || '',
+        },
+      })
+
       try {
         const result = await dispatch(processPaymentAction(paymentPayload)).unwrap()
         const payment = normalizePaymentPayload(result)
 
         if (payment?.success && payment?.status === 'approved') {
+          const paymentId = payment.id?.toString?.() || payment.paymentId?.toString?.() || ''
+
+          trackUserMetric({
+            eventType: USER_METRIC_EVENTS.PAYMENT_APPROVED,
+            orderId,
+            paymentId,
+            value: toNumber(total, 0),
+            currency: METRIC_CURRENCY,
+            quantity: itemCount,
+            items: metricItems,
+            commerce: {
+              orderValue: toNumber(total, 0),
+              discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+              itemsCount: itemCount,
+            },
+            metadata: {
+              paymentMethod: formData.payment_method_id || '',
+              status: payment.status,
+            },
+          })
+
+          trackUserMetric({
+            eventType: USER_METRIC_EVENTS.PURCHASE,
+            orderId,
+            paymentId,
+            value: toNumber(total, 0),
+            currency: METRIC_CURRENCY,
+            quantity: itemCount,
+            items: metricItems,
+            commerce: {
+              orderValue: toNumber(total, 0),
+              discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+              itemsCount: itemCount,
+            },
+            metadata: {
+              coupon: isCouponValid ? appliedCoupon?.code : '',
+            },
+          })
+
           setPaymentStatus({
             completed: true,
             data: payment,
@@ -1156,17 +1276,79 @@ const handleGoToPayment = async () => {
           payment?.success &&
           ['pending', 'in_process'].includes(payment?.status)
         ) {
+          trackUserMetric({
+            eventType: USER_METRIC_EVENTS.CHECKOUT_STEP,
+            orderId,
+            value: toNumber(total, 0),
+            currency: METRIC_CURRENCY,
+            quantity: itemCount,
+            items: metricItems,
+            commerce: {
+              orderValue: toNumber(total, 0),
+              discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+              itemsCount: itemCount,
+            },
+            metadata: {
+              step: 'payment_pending',
+              status: payment.status,
+            },
+          })
           alert(payment?.message || 'Pago pendiente de confirmación.')
           return
         }
 
+        trackUserMetric({
+          eventType: USER_METRIC_EVENTS.PAYMENT_REJECTED,
+          orderId,
+          value: toNumber(total, 0),
+          currency: METRIC_CURRENCY,
+          quantity: itemCount,
+          items: metricItems,
+          commerce: {
+            orderValue: toNumber(total, 0),
+            discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+            itemsCount: itemCount,
+          },
+          metadata: {
+            paymentMethod: formData.payment_method_id || '',
+            status: payment?.status || 'rejected',
+          },
+        })
+
         alert(getPaymentErrorMessage(payment))
       } catch (error) {
         console.error('Error procesando pago:', error)
+        trackUserMetric({
+          eventType: USER_METRIC_EVENTS.PAYMENT_REJECTED,
+          orderId,
+          value: toNumber(total, 0),
+          currency: METRIC_CURRENCY,
+          quantity: itemCount,
+          items: metricItems,
+          commerce: {
+            orderValue: toNumber(total, 0),
+            discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+            itemsCount: itemCount,
+          },
+          metadata: {
+            paymentMethod: formData.payment_method_id || '',
+            status: 'error',
+          },
+        })
         alert(getPaymentErrorMessage(error))
       }
     },
-    [activeOrder, dispatch, shippingData.email],
+    [
+      activeOrder,
+      dispatch,
+      shippingData.email,
+      cartItems,
+      total,
+      itemCount,
+      isCouponValid,
+      validDiscount,
+      appliedCoupon,
+    ],
   )
 
   const handleNextStep = () => {
@@ -1285,7 +1467,11 @@ const handleGoToPayment = async () => {
                 <Typography variant="body2" color="text.secondary">
                   ID de Transacción
                 </Typography>
-                <Typography variant="h6" fontWeight={700} color="primary.main">
+                <Typography
+                  variant="h6"
+                  fontWeight={700}
+                  sx={{ color: 'commercePrice.main' }}
+                >
                   #{successData.id}
                 </Typography>
               </Paper>
@@ -1473,7 +1659,7 @@ const handleGoToPayment = async () => {
                         <Typography
                           variant="subtitle1"
                           fontWeight={700}
-                          color="primary.main"
+                          sx={{ color: 'brand.main' }}
                         >
                           Cupones disponibles
                         </Typography>
@@ -1494,7 +1680,7 @@ const handleGoToPayment = async () => {
                                   border: '2px dashed',
                                   borderColor: coupon.isSpecific
                                     ? 'warning.main'
-                                    : 'primary.main',
+                                    : 'brand.main',
                                   borderRadius: 3,
                                   cursor: 'pointer',
                                   transition: 'all 0.2s ease',
@@ -1504,7 +1690,7 @@ const handleGoToPayment = async () => {
                                   '&:hover': {
                                     bgcolor: coupon.isSpecific
                                       ? 'warning.100'
-                                      : 'primary.50',
+                                      : 'action.hover',
                                     transform: 'translateY(-2px)',
                                     boxShadow: 1,
                                   },
@@ -1520,7 +1706,7 @@ const handleGoToPayment = async () => {
                                     sx={{
                                       bgcolor: coupon.isSpecific
                                         ? 'warning.main'
-                                        : 'primary.main',
+                                        : 'brand.main',
                                       color: 'white',
                                       px: 2,
                                       py: 1,
@@ -1594,7 +1780,7 @@ const handleGoToPayment = async () => {
                           <Button
                             fullWidth
                             onClick={() => setShowAllCoupons(true)}
-                            sx={{ textTransform: 'none', color: 'primary.main' }}
+                            sx={{ textTransform: 'none', color: 'brand.main' }}
                           >
                             Ver {coupons.length - 3} cupones más
                           </Button>
@@ -2137,7 +2323,7 @@ const handleGoToPayment = async () => {
                     <Typography variant="h6" fontWeight={800}>
                       Total
                     </Typography>
-                    <Typography variant="h5" fontWeight={800} color="primary.main">
+                    <Typography variant="h5" fontWeight={800} color={Newprimary.darkBlueGray}>
                       {formatMoney(total)}
                     </Typography>
                   </Box>

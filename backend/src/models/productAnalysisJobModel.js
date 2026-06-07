@@ -57,6 +57,29 @@ const productAnalysisJobSchema = new mongoose.Schema(
       index: true,
     },
 
+    isHidden: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    hiddenAt: {
+      type: Date,
+      default: null,
+    },
+
+    hiddenBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    hideReason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     scheduledAt: {
       type: Date,
       default: null,

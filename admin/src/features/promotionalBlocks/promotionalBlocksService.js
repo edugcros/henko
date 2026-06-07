@@ -178,12 +178,26 @@ const togglePromotionalBlockStatus = async (blockIdOrPayload, maybeIsActive) => 
 /**
  * Eliminar bloque promocional.
  */
-const deletePromotionalBlock = async blockId => {
+const deletePromotionalBlock = async (blockId, options = {}) => {
   if (!blockId) {
     throw new Error('ID del bloque promocional requerido')
   }
 
-  return apiRequest('delete', `/${blockId}`)
+  const params = new URLSearchParams()
+
+  if (options.hard === true) {
+    params.set('hard', 'true')
+  }
+
+  const query = params.toString()
+
+  const url = query
+    ? `/promotional-blocks/${blockId}?${query}`
+    : `/promotional-blocks/${blockId}`
+
+  const response = await api.delete(url)
+
+  return response.data
 }
 
 /**

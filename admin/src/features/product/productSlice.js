@@ -171,7 +171,7 @@ export const deleteProduct = createAsyncThunk(
   async (productId, thunkAPI) => {
     try {
       const response = await productService.deleteProduct(productId)
-      toast.success('Producto eliminado correctamente')
+      toast.success('Producto eliminado permanentemente')
       return { ...response, productId }
     } catch (error) {
       const message = normalizeErrorMessage(error, 'Error al eliminar producto')

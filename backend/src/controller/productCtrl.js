@@ -3,6 +3,11 @@
 
 import Product from '../models/productModel.js'
 import User from '../models/userModel.js'
+import Cart from '../models/cartModel.js'
+import Coupon from '../models/couponModel.js'
+import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
+import PromotionalBlock from '../models/promotionalBlockModel.js'
+import WishlistPromotionNotification from '../models/wishlistPromotionNotificationModel.js'
 
 import expressAsyncHandler from 'express-async-handler'
 import rateLimit from 'express-rate-limit'
@@ -11,7 +16,14 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import mongoose from 'mongoose'
 
-import { cloudinaryUploadImg } from '../utils/cloudinary.js'
+import {
+  cloudinaryDeleteImg,
+  cloudinaryUploadImg,
+} from '../utils/cloudinary.js'
+import {
+  getUserIdFromRequest,
+  isValidObjectId,
+} from '../utils/requestContext.js'
 import { validateMongoDbIdMiddleware } from '../utils/validation.js'
 import { generateUniqueSlug } from '../utils/slugService.js'
 import { registerVisualFeedback } from '../services/aiLearningService.js'
@@ -39,6 +51,60 @@ const DEFAULT_PUBLIC_PRODUCTS_LIMIT = 12
 
 const ensureDir = async dir => {
   await fs.mkdir(dir, { recursive: true })
+}
+
+const deleteStoredProductImage = async publicId => {
+  const normalizedPublicId = normalizeText(publicId)
+
+  if (!normalizedPublicId) return false
+
+  const driver = String(process.env.STORAGE_DRIVER || 'cloudinary').toLowerCase()
+
+  if (driver === 'cloudinary') {
+    const result = await cloudinaryDeleteImg(normalizedPublicId)
+    return result?.success === true
+  }
+
+  const uploadsDir = path.resolve(rootDir, 'uploads')
+  const imagePath = path.resolve(uploadsDir, normalizedPublicId)
+
+  if (
+    imagePath !== uploadsDir &&
+    !imagePath.startsWith(`${uploadsDir}${path.sep}`)
+  ) {
+    throw new Error('Ruta de imagen fuera del directorio permitido')
+  }
+
+  try {
+    await fs.unlink(imagePath)
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+const removeProductFromCarts = async ({ productId, tenantId }) => {
+  const carts = await Cart.find({
+    tenantId,
+    'products.productId': productId,
+  })
+
+  let modifiedCount = 0
+
+  for (const cart of carts) {
+    const previousLength = cart.products.length
+    cart.products = cart.products.filter(
+      item => String(item.productId) !== String(productId),
+    )
+
+    if (cart.products.length !== previousLength) {
+      await cart.save()
+      modifiedCount += 1
+    }
+  }
+
+  return modifiedCount
 }
 
 
@@ -127,8 +193,6 @@ const toSafeNumber = (value, fallback = 0, { min = 0 } = {}) => {
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-const isValidObjectId = value => mongoose.Types.ObjectId.isValid(String(value || ''))
-
 const requireTenantId = (tenantId, message = 'Tenant no resuelto') => {
   if (!tenantId || !isValidObjectId(tenantId)) {
     const error = new Error(message)
@@ -151,7 +215,7 @@ const requireUserTenantId = req => {
   return tenantId
 }
 
-const getRequestUserId = req => req.user?._id || req.user?.id || null
+const getRequestUserId = getUserIdFromRequest
 
 const assertSameResolvedTenant = (req, tenantId) => {
   if (req.tenantId && String(req.tenantId) !== String(tenantId)) {
@@ -187,6 +251,119 @@ const normalizeVariantImage = image => {
     public_id: normalizeText(image.public_id, ''),
     url: normalizeText(image.url, ''),
   }
+}
+
+const slugifySkuPart = value => {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase()
+    .slice(0, 24)
+}
+
+const isWeakSku = sku => {
+  const normalized = String(sku || '').trim().toLowerCase()
+
+  if (!normalized) return true
+
+  return [
+    '1',
+    '2',
+    '3',
+    'sku',
+    'default',
+    'sin-sku',
+    'n/a',
+    'na',
+    'null',
+    'undefined',
+  ].includes(normalized)
+}
+
+const getVariantAttributesForSku = variant => {
+  const attrs =
+    variant?.attributes ||
+    variant?.attributeValues ||
+    variant?.selectedAttributes ||
+    {}
+
+  if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs)) {
+    return {}
+  }
+
+  return attrs
+}
+
+const buildVariantSignature = variant => {
+  const attrs = getVariantAttributesForSku(variant)
+
+  return Object.entries(attrs)
+    .filter(([, value]) => {
+      return value !== undefined && value !== null && String(value).trim()
+    })
+    .sort(([a], [b]) => String(a).localeCompare(String(b)))
+    .map(([key, value]) => {
+      const keyPart = slugifySkuPart(key)
+      const valuePart = slugifySkuPart(value)
+
+      return [keyPart, valuePart].filter(Boolean).join('-')
+    })
+    .filter(Boolean)
+    .join('-')
+}
+
+const generateVariantSku = ({ productTitle, variant, index }) => {
+  const titlePart = slugifySkuPart(productTitle || 'PRODUCTO').slice(0, 18)
+  const variantPart = buildVariantSignature(variant)
+  const indexPart = String(index + 1).padStart(2, '0')
+
+  return [titlePart, variantPart, indexPart]
+    .filter(Boolean)
+    .join('-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+}
+
+const ensureUniqueVariantSkus = (variants = [], productTitle = '') => {
+  if (!Array.isArray(variants)) return []
+
+  const used = new Set()
+
+  return variants.map((variant, index) => {
+    const currentSku = String(variant?.sku || '').trim()
+    let baseSku = currentSku
+    const normalizedCurrentSku = currentSku.toLowerCase()
+
+    if (isWeakSku(currentSku) || used.has(normalizedCurrentSku)) {
+      baseSku = generateVariantSku({
+        productTitle,
+        variant,
+        index,
+      })
+    }
+
+    if (!baseSku) {
+      baseSku = `PRODUCTO-${String(index + 1).padStart(2, '0')}`
+    }
+
+    let uniqueSku = baseSku
+    let counter = 2
+
+    while (used.has(String(uniqueSku).toLowerCase())) {
+      uniqueSku = `${baseSku}-${counter}`
+      counter += 1
+    }
+
+    used.add(String(uniqueSku).toLowerCase())
+
+    return {
+      ...variant,
+      sku: uniqueSku,
+    }
+  })
 }
 
 const normalizeVariantsPayload = (rawVariants, tenantId) => {
@@ -338,6 +515,37 @@ const sendControllerError = (res, error, fallbackMessage) => {
   })
 }
 
+const normalizeSku = value => {
+  const clean = String(value || '')
+    .trim()
+    .toUpperCase()
+
+  if (!clean) return null
+  if (['NULL', 'UNDEFINED', 'N/A', 'NA', 'SIN-SKU', 'SKU'].includes(clean)) return null
+
+  return clean
+}
+
+const buildProductSku = ({ title, tenantId }) => {
+  const titlePart = String(title || 'PRODUCTO')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase()
+    .slice(0, 24)
+
+  const tenantPart = String(tenantId || '')
+    .slice(-6)
+    .toUpperCase()
+
+  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase()
+
+  return [titlePart || 'PRODUCTO', tenantPart, randomPart]
+    .filter(Boolean)
+    .join('-')
+}
+
 // =====================================================
 // 🧠 CREATE PRODUCT + AI LEARNING
 // =====================================================
@@ -347,23 +555,6 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     assertSameResolvedTenant(req, tenantId)
 
     const userId = getRequestUserId(req)
-
-    // =====================================================
-    // 🧠 DEBUG TEMPORAL - CONFIRMAR PAYLOAD IA
-    // =====================================================
-    logger.info('🧠 AI payload recibido en createProduct', {
-      iaGenerated: req.body.iaGenerated,
-      hasAiOriginalOutput: Boolean(req.body.aiOriginalOutput),
-      aiOriginalOutputType: typeof req.body.aiOriginalOutput,
-      aiOriginalOutputPreview:
-        typeof req.body.aiOriginalOutput === 'string'
-          ? req.body.aiOriginalOutput.slice(0, 300)
-          : req.body.aiOriginalOutput,
-      aiConfidence: req.body.aiConfidence,
-      aiSource: req.body.aiSource,
-      aiImageHash: req.body.aiImageHash,
-      aiNeedsReview: req.body.aiNeedsReview,
-    })
 
     const finalTitle = normalizeText(req.body.title, 'Producto sin título')
 
@@ -382,26 +573,14 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       req.body.variantAttributes || [],
     )
 
-    const variants = normalizeVariantsPayload(rawVariants, tenantId)
+    const normalizedVariants = normalizeVariantsPayload(rawVariants, tenantId)
+    const variants = ensureUniqueVariantSkus(normalizedVariants, finalTitle)
     const variantAttributes = normalizeVariantAttributesPayload(rawVariantAttributes)
 
     const safeBody = sanitizeCreateProductInput(req.body)
 
     const atributos = safeJsonParse(req.body.atributos, {})
     const tags = safeJsonParse(req.body.tags, [])
-
-    logger.info('🧠 AI payload recibido en createProduct', {
-      iaGenerated: req.body.iaGenerated,
-      hasAiOriginalOutput: Boolean(req.body.aiOriginalOutput),
-      aiOriginalOutputType: typeof req.body.aiOriginalOutput,
-      aiOriginalOutputPreview:
-    typeof req.body.aiOriginalOutput === 'string'
-      ? req.body.aiOriginalOutput.slice(0, 300)
-      : req.body.aiOriginalOutput,
-      aiConfidence: req.body.aiConfidence,
-      aiSource: req.body.aiSource,
-      aiImageHash: req.body.aiImageHash,
-    })
 
     const aiOriginal = safeJsonParse(req.body.aiOriginalOutput, null)
 
@@ -437,6 +616,15 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       req.body.aiNeedsReview === 'true' ||
       false
 
+    const normalizedProductSku = normalizeSku(req.body.sku)
+
+    const productSku =
+        normalizedProductSku ||
+        buildProductSku({
+          title: finalTitle,
+          tenantId,
+        })
+        
     const product = new Product({
       ...safeBody,
 
@@ -447,6 +635,8 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       variants,
       variantAttributes,
       hasVariants,
+
+      sku: productSku,
 
       images: [],
 
@@ -525,6 +715,19 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     })
   } catch (error) {
     logger.error(`❌ Error en createProduct: ${error.stack || error.message}`)
+
+    if (
+      error?.name === 'ValidationError' ||
+      error?.message?.toLowerCase?.().includes('sku') ||
+      error?.message?.toLowerCase?.().includes('duplicada') ||
+      error?.message?.toLowerCase?.().includes('duplicado')
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'Datos inválidos para crear el producto',
+      })
+    }
+
     return sendControllerError(res, error, 'Error creando producto')
   }
 })
@@ -826,7 +1029,7 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
 })
 
 // =====================================================
-// SOFT DELETE PRODUCT
+// PERMANENT DELETE PRODUCT
 // =====================================================
 
 export const deleteProduct = expressAsyncHandler(async (req, res) => {
@@ -840,7 +1043,6 @@ export const deleteProduct = expressAsyncHandler(async (req, res) => {
     const product = await Product.findOne({
       _id: productId,
       tenantId,
-      isDeleted: { $ne: true },
     }).setOptions({ tenantId })
 
     if (!product) {
@@ -851,13 +1053,115 @@ export const deleteProduct = expressAsyncHandler(async (req, res) => {
       })
     }
 
-    await product.softDelete({ userId: getRequestUserId(req) })
+    const productObjectId = product._id
+    const imagePublicIds = [
+      ...(product.images || []).map(image => image?.public_id),
+      ...(product.variants || []).map(variant => variant?.image?.public_id),
+    ]
+      .map(normalizeText)
+      .filter(Boolean)
 
-    logger.info(`🗑️ Producto archivado lógicamente: ID ${productId}`)
+    const uniqueImagePublicIds = [...new Set(imagePublicIds)]
+
+    const [
+      cartsModified,
+      wishlistResult,
+      promotionsResult,
+      couponsResult,
+      notificationsResult,
+      analysisJobsResult,
+    ] = await Promise.all([
+      removeProductFromCarts({
+        productId: productObjectId,
+        tenantId,
+      }),
+      User.updateMany(
+        { tenantId, wishlist: productObjectId },
+        { $pull: { wishlist: productObjectId } },
+      ),
+      PromotionalBlock.updateMany(
+        { tenantId, 'products.productId': productObjectId },
+        { $pull: { products: { productId: productObjectId } } },
+      ),
+      Coupon.updateMany(
+        {
+          tenantId,
+          $or: [
+            { applicableProducts: productObjectId },
+            { excludedProducts: productObjectId },
+          ],
+        },
+        {
+          $pull: {
+            applicableProducts: productObjectId,
+            excludedProducts: productObjectId,
+          },
+        },
+      ),
+      WishlistPromotionNotification.deleteMany({
+        tenantId,
+        productId: productObjectId,
+      }),
+      ProductAnalysisJob.updateMany(
+        { tenantId, createdProductId: productObjectId },
+        { $set: { createdProductId: null } },
+      ),
+    ])
+
+    const deleteResult = await Product.deleteOne({
+      _id: productObjectId,
+      tenantId,
+    }).setOptions({ tenantId })
+
+    if (deleteResult.deletedCount !== 1) {
+      return res.status(409).json({
+        success: false,
+        message: 'El producto cambió o ya fue eliminado. Actualizá el listado.',
+      })
+    }
+
+    const imageCleanupResults = await Promise.allSettled(
+      uniqueImagePublicIds.map(deleteStoredProductImage),
+    )
+    const imageCleanupFailures = imageCleanupResults.filter(
+      result => result.status === 'rejected',
+    )
+
+    if (imageCleanupFailures.length) {
+      logger.warn('[Product] Algunas imágenes no pudieron eliminarse del storage', {
+        productId,
+        tenantId: String(tenantId),
+        failures: imageCleanupFailures.map(result => result.reason?.message),
+      })
+    }
+
+    logger.info('[Product] Producto eliminado permanentemente', {
+      productId,
+      tenantId: String(tenantId),
+      cartsModified,
+      wishlistsModified: wishlistResult.modifiedCount || 0,
+      promotionsModified: promotionsResult.modifiedCount || 0,
+      couponsModified: couponsResult.modifiedCount || 0,
+      notificationsDeleted: notificationsResult.deletedCount || 0,
+      analysisJobsUnlinked: analysisJobsResult.modifiedCount || 0,
+      imagesScheduled: uniqueImagePublicIds.length,
+      imageCleanupFailures: imageCleanupFailures.length,
+    })
 
     return res.status(200).json({
       success: true,
-      message: 'Producto eliminado correctamente',
+      message: 'Producto eliminado permanentemente',
+      data: {
+        productId,
+        cartsModified,
+        wishlistsModified: wishlistResult.modifiedCount || 0,
+        promotionsModified: promotionsResult.modifiedCount || 0,
+        couponsModified: couponsResult.modifiedCount || 0,
+        notificationsDeleted: notificationsResult.deletedCount || 0,
+        imagesDeleted:
+          uniqueImagePublicIds.length - imageCleanupFailures.length,
+        imageCleanupFailures: imageCleanupFailures.length,
+      },
     })
   } catch (error) {
     logger.error(`❌ Error en deleteProduct: ${error.stack || error.message}`)
@@ -1354,13 +1658,55 @@ export const toggleHelpfulVote = expressAsyncHandler(async (req, res) => {
 // RATE LIMITER
 // =====================================================
 
+const getRateLimitTenantKey = req => {
+  const tenantId =
+    req.tenant?._id?.toString?.() ||
+    req.user?.tenantId?.toString?.() ||
+    req.headers?.['x-tenant-id'] ||
+    req.headers?.['x-tenant-domain'] ||
+    req.hostname ||
+    'unknown-tenant'
+
+  const forwardedFor = String(req.headers?.['x-forwarded-for'] || '')
+    .split(',')[0]
+    .trim()
+
+  return `${tenantId}:${forwardedFor || req.ip || req.socket?.remoteAddress || 'unknown-client'}`
+}
+
+const productRateLimitHandler = message => (req, res, _next, options) => {
+  const resetTime = req.rateLimit?.resetTime
+  const retryAfter = resetTime
+    ? Math.max(1, Math.ceil((new Date(resetTime).getTime() - Date.now()) / 1000))
+    : Math.ceil((options.windowMs || 60 * 1000) / 1000)
+
+  res.setHeader('Retry-After', String(retryAfter))
+
+  return res.status(options.statusCode).json({
+    success: false,
+    message,
+    retryAfter,
+  })
+}
+
+export const productPublicReadLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitTenantKey,
+  handler: productRateLimitHandler(
+    'Demasiadas solicitudes de catálogo, intenta nuevamente en unos segundos.',
+  ),
+})
+
 export const rateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    success: false,
-    message: 'Demasiadas solicitudes, intenta nuevamente más tarde.',
-  },
+  keyGenerator: getRateLimitTenantKey,
+  handler: productRateLimitHandler(
+    'Demasiadas solicitudes, intenta nuevamente más tarde.',
+  ),
 })

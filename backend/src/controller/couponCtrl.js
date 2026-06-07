@@ -2,13 +2,18 @@
 // VERSIÓN PRODUCCIÓN - TENANT-SAFE / CARRITO SERVER-SIDE / ADMIN
 
 import crypto from 'node:crypto'
-import mongoose from 'mongoose'
 
 import Coupon from '../models/couponModel.js'
 import Product from '../models/productModel.js'
 import Cart from '../models/cartModel.js'
 import CouponUsage from '../models/CouponUsageModel.js'
 import { resolveCartPricing } from '../services/cartPricingService.js'
+import {
+  getUserIdFromRequest,
+  isValidObjectId,
+  resolveTenantFromRequest,
+  toObjectId,
+} from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
 
 // =====================================================
@@ -30,9 +35,7 @@ const SAFE_SORT_FIELDS = new Set([
 // HELPERS GENERALES
 // =====================================================
 
-const isValidId = value => mongoose.Types.ObjectId.isValid(String(value || ''))
-const toObjectId = value => (isValidId(value) ? new mongoose.Types.ObjectId(String(value)) : null)
-const toCents = value => Math.round(Number(value || 0) * 100)
+const isValidId = isValidObjectId
 const fromCents = value => Number((Number(value || 0) / 100).toFixed(2))
 
 const sanitizeString = (value, fallback = '') => {
@@ -54,29 +57,9 @@ const toSafeLimit = (value, fallback = 20) => {
   return Math.min(parsed, 100)
 }
 
-const getUserId = req => req.user?._id || req.user?.id || null
+const getUserId = getUserIdFromRequest
 
-const resolveTenantContext = req => {
-  const domainTenantId = req.tenantId ? String(req.tenantId) : null
-  const userTenantId = req.user?.tenantId ? String(req.user.tenantId) : null
-
-  if (!domainTenantId || !isValidId(domainTenantId)) {
-    const error = new Error('Tenant no resuelto')
-    error.statusCode = 400
-    throw error
-  }
-
-  if (userTenantId && userTenantId !== domainTenantId) {
-    const error = new Error('El usuario no pertenece al tenant resuelto por el dominio')
-    error.statusCode = 403
-    throw error
-  }
-
-  return {
-    tenantId: domainTenantId,
-    tenantObjectId: toObjectId(domainTenantId),
-  }
-}
+const resolveTenantContext = req => resolveTenantFromRequest(req)
 
 const ensureAdminUser = req => {
   if (req.user?.role !== 'admin') {
@@ -180,6 +163,61 @@ const formatPublicCoupon = coupon => ({
   applicableProducts: coupon.applicableProducts || [],
   applicableCategories: coupon.applicableCategories || [],
 })
+
+const getCouponUnavailablePayload = (coupon, now = new Date()) => {
+  if (!coupon) {
+    return {
+      status: 404,
+      code: 'COUPON_NOT_FOUND',
+      message: 'Cupón no encontrado',
+    }
+  }
+
+  if (coupon.isDeleted) {
+    return {
+      status: 404,
+      code: 'COUPON_NOT_FOUND',
+      message: 'Cupón no encontrado',
+    }
+  }
+
+  if (!coupon.isActive) {
+    return {
+      status: 400,
+      code: 'COUPON_INACTIVE',
+      message: 'Cupón inactivo',
+    }
+  }
+
+  if (coupon.startDate && now < coupon.startDate) {
+    return {
+      status: 400,
+      code: 'COUPON_SCHEDULED',
+      message: 'Cupón programado para más adelante',
+    }
+  }
+
+  if (coupon.endDate && now > coupon.endDate) {
+    return {
+      status: 400,
+      code: 'COUPON_EXPIRED',
+      message: 'Cupón vencido',
+    }
+  }
+
+  if (
+    coupon.usageLimit !== null &&
+    Number(coupon.usageCount || 0) >= Number(coupon.usageLimit)
+  ) {
+    return {
+      status: 400,
+      code: 'COUPON_EXHAUSTED',
+      message: 'Cupón sin usos disponibles',
+    }
+  }
+
+  return null
+}
 
 const generateCouponCode = async ({ tenantId, prefix = 'CUPON' }) => {
   const cleanPrefix = sanitizeString(prefix, 'CUPON')
@@ -376,15 +414,20 @@ export const validateCoupon = async (req, res) => {
     }
 
     const [coupon, cart] = await Promise.all([
-      Coupon.findActiveByCode({ tenantId, code }),
+      Coupon.findOne({
+        tenantId,
+        code,
+      }).setOptions({ tenantId }),
       loadCurrentCart({ userId, tenantId }),
     ])
 
-    if (!coupon) {
-      return res.status(404).json({
+    const unavailable = getCouponUnavailablePayload(coupon)
+
+    if (unavailable) {
+      return res.status(unavailable.status).json({
         success: false,
-        code: 'COUPON_NOT_FOUND',
-        message: 'Cupón no encontrado',
+        code: unavailable.code,
+        message: unavailable.message,
       })
     }
 
@@ -604,12 +647,19 @@ export const createCoupon = async (req, res) => {
   try {
     ensureAdminUser(req)
     const { tenantId } = resolveTenantContext(req)
+    const requestedCode = sanitizeString(req.body?.code)
+    const code = requestedCode
+      ? requestedCode.toUpperCase()
+      : await generateCouponCode({ tenantId, prefix: req.body?.prefix || 'CUPON' })
 
     const coupon = await Coupon.create({
       ...req.body,
+      code,
       tenantId,
       createdBy: getUserId(req),
     })
+
+    await coupon.populate('applicableProducts', 'title sku price images')
 
     return res.status(201).json({
       success: true,
@@ -772,12 +822,20 @@ export const updateCoupon = async (req, res) => {
     ])
 
     Object.entries(req.body || {}).forEach(([key, value]) => {
-      if (!forbiddenFields.has(key)) {
-        coupon[key] = value
+      if (forbiddenFields.has(key)) return
+
+      if (key === 'code') {
+        const nextCode = sanitizeString(value)
+        if (!nextCode) return
+        coupon.code = nextCode.toUpperCase()
+        return
       }
+
+      coupon[key] = value
     })
 
     await coupon.save()
+    await coupon.populate('applicableProducts', 'title sku price images')
 
     return res.status(200).json({
       success: true,
@@ -849,6 +907,7 @@ export const getDeletedCoupons = async (req, res) => {
     const [coupons, total] = await Promise.all([
       Coupon.find(query)
         .setOptions({ tenantId })
+        .populate('applicableProducts', 'title sku price images')
         .sort({ deletedAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -945,6 +1004,19 @@ export const permanentDeleteCoupon = async (req, res) => {
     }).setOptions({ tenantId })
 
     if (!deleted) {
+      const activeCoupon = await Coupon.exists({
+        _id: id,
+        tenantId,
+        isDeleted: false,
+      }).setOptions({ tenantId })
+
+      if (activeCoupon) {
+        return res.status(409).json({
+          success: false,
+          message: 'Primero desactiva el cupón antes de eliminarlo permanentemente',
+        })
+      }
+
       return res.status(404).json({
         success: false,
         message: 'Cupón eliminado no encontrado',
@@ -1009,6 +1081,8 @@ export const cloneCoupon = async (req, res) => {
       },
     })
 
+    await cloned.populate('applicableProducts', 'title sku price images')
+
     return res.status(201).json({
       success: true,
       data: cloned,
@@ -1040,6 +1114,8 @@ export const generateBulkCoupons = async (req, res) => {
         const coupon = await Coupon.create({
           ...req.body,
           code,
+          prefix: undefined,
+          count: undefined,
           tenantId,
           createdBy: getUserId(req),
           usageCount: 0,
@@ -1047,6 +1123,8 @@ export const generateBulkCoupons = async (req, res) => {
           deletedAt: null,
           deletedBy: null,
         })
+
+        await coupon.populate('applicableProducts', 'title sku price images')
 
         results.push(coupon)
       } catch (error) {

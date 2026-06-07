@@ -80,6 +80,14 @@ if (env.isProduction) {
     throw new Error('REACT_APP_API_BASE_URL es obligatorio en producción')
   }
 
+  if (!env.publicBaseDomain) {
+    throw new Error('REACT_APP_PUBLIC_BASE_DOMAIN es obligatorio en producción')
+  }
+
+  if (!env.adminBaseDomain) {
+    throw new Error('REACT_APP_ADMIN_BASE_DOMAIN es obligatorio en producción')
+  }
+
   if (/localhost|127\.0\.0\.1|henko\.local/i.test(env.apiBaseUrl)) {
     throw new Error(
       `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,

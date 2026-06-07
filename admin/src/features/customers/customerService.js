@@ -1,7 +1,6 @@
 // src/features/customers/customerService.js
 import api from '@utils/axiosConfig'
 
-const API_URL = '/user'
 const inflight = new Map()
 
 const apiRequest = async (method, endpoint, data, params, signal) => {

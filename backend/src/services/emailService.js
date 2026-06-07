@@ -3,6 +3,7 @@
 
 import nodemailer from 'nodemailer'
 import logger from '../../config/logger.js'
+import { env } from '../../config/env.js'
 
 // =====================================================
 // CONSTANTES
@@ -51,10 +52,6 @@ const formatMoney = (value, currency = 'ARS') => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(num) ? num : 0)
-}
-
-const normalizeEmail = value => {
-  return validateEmail(value)
 }
 
 const normalizeObject = value => {
@@ -125,9 +122,9 @@ const getStoreUrl = tenantConfig => {
     sanitizeString(tenantConfig?.storeUrl) ||
     sanitizeString(tenantConfig?.url) ||
     sanitizeString(tenantConfig?.domain) ||
-    sanitizeString(process.env.CLIENT_URL) ||
-    sanitizeString(process.env.SHOP_FRONTEND_URL) ||
-    sanitizeString(process.env.APP_URL) ||
+    sanitizeString(env.clientUrl) ||
+    sanitizeString(env.shopFrontendUrl) ||
+    sanitizeString(env.app?.url) ||
     ''
   )
 }
@@ -643,6 +640,7 @@ export const sendEmail = async ({
   tenantConfig = {},
   from = null,
   replyTo = null,
+  attachments = [],
   maxRetries = 3,
 }) => {
   const validTo = validateEmail(to)
@@ -662,6 +660,7 @@ export const sendEmail = async ({
     html,
     text,
     replyTo: replyTo || getReplyTo(tenantConfig),
+    attachments: Array.isArray(attachments) ? attachments : [],
   }
 
   Object.keys(mailOptions).forEach(key => {
@@ -1039,7 +1038,6 @@ export const sendAdminNotificationEmail = async (
   order,
   recipientAdminEmail = null,
   tenantConfig = {},
-  context = {},
 ) => {
   const safeOrder = normalizeObject(order)
 

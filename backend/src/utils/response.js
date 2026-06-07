@@ -1,20 +1,35 @@
-export const respondSuccess = (res, statusCode = 200, message = 'OK', data = null) => {
-  return res.status(statusCode).json({
-    success: true,
-    message,
-    data,
-  })
+export const sendResponse = (
+  res,
+  statusCode,
+  success,
+  message = null,
+  data = null,
+  extra = {},
+) => {
+  const payload = {
+    success,
+    ...(message !== null && message !== undefined ? { message } : {}),
+    ...(data !== null && data !== undefined ? { data } : {}),
+    ...extra,
+  }
+
+  return res.status(statusCode).json(payload)
 }
 
-export const respondError = (res, statusCode = 500, message = 'Error', data = null) => {
-  return res.status(statusCode).json({
-    success: false,
-    message,
-    data,
-  })
+export const sendSuccessResponse = (
+  res,
+  data,
+  statusCode = 200,
+  extra = {},
+) => {
+  return sendResponse(res, statusCode, true, null, data, extra)
 }
 
-// Alias genérico
-export const sendResponse = (res, statusCode, success, message, data = null) => {
-  return res.status(statusCode).json({ success, message, data })
+export const sendErrorResponse = (
+  res,
+  message,
+  statusCode = 400,
+  extra = {},
+) => {
+  return sendResponse(res, statusCode, false, message, null, extra)
 }

@@ -14,8 +14,20 @@ import {
   Button,
 } from '@mui/material';
 
-const CustomButton = ({ value, onChange }) => {
-  const buttons = value || {};
+const CustomButton = ({ value, onChange, theme }) => {
+  const buttons = {
+    radius: 8,
+    uppercase: false,
+    elevation: 2,
+    size: 'medium',
+    variant: 'contained',
+    ...(value || {}),
+  };
+  const colors = theme?.colors || {};
+  const actionPrimary = colors.actionPrimary || '#1976d2';
+  const actionPrimaryText = colors.actionPrimaryText || '#ffffff';
+  const actionSecondary = colors.actionSecondary || '#dc004e';
+  const actionSecondaryText = colors.actionSecondaryText || '#ffffff';
 
   const handleChange = (field, newValue) => {
     onChange({ ...buttons, [field]: newValue });
@@ -42,10 +54,10 @@ const CustomButton = ({ value, onChange }) => {
         <Grid item xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Radio de Bordes: {buttons.radius ?? 8}px
+              Radio de Bordes: {buttons.radius}px
             </Typography>
             <Slider
-              value={buttons.radius ?? 8}
+              value={buttons.radius}
               onChange={(_, v) => handleChange('radius', v)}
               min={0}
               max={24}
@@ -60,10 +72,10 @@ const CustomButton = ({ value, onChange }) => {
         <Grid item xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Elevación (sombra): {buttons.elevation ?? 2}
+              Elevación (sombra): {buttons.elevation}
             </Typography>
             <Slider
-              value={buttons.elevation ?? 2}
+              value={buttons.elevation}
               onChange={(_, v) => handleChange('elevation', v)}
               min={0}
               max={8}
@@ -79,7 +91,7 @@ const CustomButton = ({ value, onChange }) => {
           <FormControlLabel
             control={
               <Switch
-                checked={buttons.uppercase || false}
+                checked={buttons.uppercase}
                 onChange={(e) => handleChange('uppercase', e.target.checked)}
               />
             }
@@ -92,7 +104,7 @@ const CustomButton = ({ value, onChange }) => {
           <FormControl fullWidth size="small">
             <InputLabel>Tamaño por Defecto</InputLabel>
             <Select
-              value={buttons.size ?? 'medium'}
+              value={buttons.size}
               onChange={(e) => handleChange('size', e.target.value)}
             >
               {sizeOptions.map((opt) => (
@@ -107,7 +119,7 @@ const CustomButton = ({ value, onChange }) => {
           <FormControl fullWidth size="small">
             <InputLabel>Variante por Defecto</InputLabel>
             <Select
-              value={buttons.variant ?? 'contained'}
+              value={buttons.variant}
               onChange={(e) => handleChange('variant', e.target.value)}
             >
               {variantOptions.map((opt) => (
@@ -123,23 +135,38 @@ const CustomButton = ({ value, onChange }) => {
         <Typography variant="subtitle2" gutterBottom>Vista Previa</Typography>
         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Button
-            variant={buttons.variant ?? 'contained'}
-            size={buttons.size ?? 'medium'}
+            variant={buttons.variant}
+            size={buttons.size}
             sx={{ 
-              borderRadius: buttons.radius ?? 8,
+              borderRadius: buttons.radius,
               textTransform: buttons.uppercase ? 'uppercase' : 'none',
-              boxShadow: (buttons.elevation ?? 2) > 0 ? `${buttons.elevation ?? 2}px ${buttons.elevation ?? 2}px ${(buttons.elevation ?? 2) * 2}px rgba(0,0,0,0.2)` : 'none'
+              bgcolor: actionPrimary,
+              color: actionPrimaryText,
+              boxShadow: buttons.elevation > 0 ? `0 ${buttons.elevation * 2}px ${buttons.elevation * 6}px rgba(0,0,0,0.18)` : 'none',
+              '&:hover': {
+                bgcolor: actionPrimary,
+                color: actionPrimaryText,
+                filter: 'brightness(0.92)',
+              },
             }}
           >
             Botón Primario
           </Button>
           <Button
-            variant={(buttons.variant ?? 'contained') === 'contained' ? 'outlined' : 'contained'}
-            color="secondary"
-            size={buttons.size ?? 'medium'}
+            variant={buttons.variant === 'contained' ? 'outlined' : 'contained'}
+            size={buttons.size}
             sx={{ 
-              borderRadius: buttons.radius ?? 8,
-              textTransform: buttons.uppercase ? 'uppercase' : 'none'
+              borderRadius: buttons.radius,
+              textTransform: buttons.uppercase ? 'uppercase' : 'none',
+              borderColor: actionSecondary,
+              color: buttons.variant === 'contained' ? actionSecondaryText : actionSecondary,
+              bgcolor: buttons.variant === 'contained' ? actionSecondary : 'transparent',
+              '&:hover': {
+                borderColor: actionSecondary,
+                color: buttons.variant === 'contained' ? actionSecondaryText : actionSecondary,
+                bgcolor: buttons.variant === 'contained' ? actionSecondary : 'transparent',
+                filter: 'brightness(0.92)',
+              },
             }}
           >
             Botón Secundario

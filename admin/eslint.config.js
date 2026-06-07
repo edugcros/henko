@@ -3,6 +3,7 @@ import reactPlugin from 'eslint-plugin-react'
 import prettierPlugin from 'eslint-plugin-prettier'
 import unusedImports from 'eslint-plugin-unused-imports'
 import babelParser from '@babel/eslint-parser'
+import globals from 'globals'
 
 export default [
   js.configs.recommended,
@@ -50,10 +51,10 @@ export default [
         },
       },
       globals: {
-        browser: true,
-        es2021: true,
-        node: true,
-        jest: true,
+        ...globals.browser,
+        ...globals.es2021,
+        ...globals.node,
+        ...globals.jest,
         vi: 'readonly',
         describe: 'readonly',
         test: 'readonly',

@@ -28,12 +28,15 @@ import {
   StepLabel,
   StepContent,
   CircularProgress,
+  Stack,
 } from '@mui/material';
 import {
   TrendingUp as TrendIcon,
   People as UsersIcon,
   ShoppingCart as CartIcon,
+  RemoveShoppingCart as AbandonedCartIcon,
   Visibility as ViewsIcon,
+  Payments as PaymentsIcon,
   Refresh as RefreshIcon,
   Settings as SettingsIcon,
   Analytics as AnalyticsIcon,
@@ -62,6 +65,12 @@ import { useSnackbar } from 'notistack';
 import { analyticsAPI } from '../services/api';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+
+const formatNumber = (value) => Number(value || 0).toLocaleString('es-AR');
+const formatMoney = (value) => `$${Number(value || 0).toLocaleString('es-AR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})}`;
 
 // ============================================================================
 // SUB-COMPONENTE: Vista de Dashboard (Métricas)
@@ -149,8 +158,8 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
           </Button>
         }
       >
-        <Typography variant="h6">Google Analytics no configurado</Typography>
-        <Typography variant="body2">{error.message}</Typography>
+        <Typography variant="h6">Métricas no disponibles</Typography>
+        <Typography variant="body2">{error.message || 'Todavía no hay datos suficientes para mostrar.'}</Typography>
       </Alert>
     );
   }
@@ -173,7 +182,7 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
     <Box>
       {/* Header con controles */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h6">Vista general</Typography>
+        <Typography variant="h6">Vista general del negocio</Typography>
         <Box display="flex" gap={2}>
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Período</InputLabel>
@@ -199,45 +208,145 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
 
       {/* KPIs */}
       <Grid container spacing={3} mb={3}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <KpiCard
-            title="Sesiones"
-            value={data?.summary?.sessions?.toLocaleString()}
-            icon={ViewsIcon}
-            trend={data?.comparison?.changes?.sessions}
+            title="Ventas"
+            value={formatMoney(data?.summary?.revenue)}
+            icon={TrendIcon}
+            trend={data?.summary?.revenueGrowth}
             color="#0088FE"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <KpiCard
-            title="Usuarios"
-            value={data?.summary?.users?.toLocaleString()}
-            icon={UsersIcon}
-            trend={data?.comparison?.changes?.users}
+            title="Órdenes pagadas"
+            value={formatNumber(data?.summary?.paidOrders)}
+            icon={CartIcon}
+            trend={data?.summary?.ordersGrowth}
             color="#00C49F"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <KpiCard
-            title="Revenue"
-            value={data?.summary?.revenue 
-              ? `$${data.summary.revenue.toLocaleString()}` 
-              : '-'}
-            icon={TrendIcon}
-            trend={data?.comparison?.changes?.revenue}
+            title="Ticket promedio"
+            value={formatMoney(data?.summary?.averageOrderValue)}
+            icon={ViewsIcon}
             color="#FFBB28"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <KpiCard
-            title="Conversiones"
-            value={data?.summary?.conversions?.toLocaleString()}
-            icon={CartIcon}
-            trend={data?.comparison?.changes?.transactions}
+            title="Carritos abandonados"
+            value={formatNumber(data?.summary?.abandonedCarts)}
+            icon={AbandonedCartIcon}
             color="#FF8042"
           />
         </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Valor abandonado"
+            value={formatMoney(data?.summary?.abandonedCartValue)}
+            icon={AbandonedCartIcon}
+            color="#8884D8"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Conversión real"
+            value={`${Number(data?.summary?.conversionRate || 0).toFixed(2)}%`}
+            icon={UsersIcon}
+            color="#00A896"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Sesiones"
+            value={formatNumber(data?.summary?.sessions)}
+            icon={ViewsIcon}
+            color="#455A64"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Vistas de producto"
+            value={formatNumber(data?.summary?.productViews)}
+            icon={ViewsIcon}
+            color="#5E35B1"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="CTR producto"
+            value={`${Number(data?.summary?.productClickThroughRate || 0).toFixed(2)}%`}
+            icon={ViewsIcon}
+            color="#7B1FA2"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Add to cart"
+            value={formatNumber(data?.summary?.addToCart)}
+            icon={CartIcon}
+            color="#2E7D32"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Tasa add to cart"
+            value={`${Number(data?.summary?.addToCartRate || 0).toFixed(2)}%`}
+            icon={CartIcon}
+            color="#43A047"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Checkout iniciados"
+            value={formatNumber(data?.summary?.checkoutStarts)}
+            icon={CartIcon}
+            color="#EF6C00"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Aprobación pagos"
+            value={`${Number(data?.summary?.paymentApprovalRate || 0).toFixed(2)}%`}
+            icon={PaymentsIcon}
+            color="#1565C0"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Activos ahora"
+            value={formatNumber(data?.realtime?.activeUsers)}
+            icon={UsersIcon}
+            color="#00897B"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Búsquedas"
+            value={formatNumber(data?.summary?.searches)}
+            icon={AnalyticsIcon}
+            color="#00897B"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <KpiCard
+            title="Inicios de sesión"
+            value={formatNumber(data?.summary?.logins)}
+            icon={UsersIcon}
+            color="#3949AB"
+          />
+        </Grid>
       </Grid>
+
+      {!loading && data?.definitions?.abandonedCart && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Carrito abandonado: se cuenta cuando un carrito del tenant tiene productos y no se actualiza durante{' '}
+          {data.definitions.abandonedCart.thresholdMinutes} minutos. Fuente:{' '}
+          {data.definitions.abandonedCart.source}.{data.definitions.abandonedCart.dateField}.
+        </Alert>
+      )}
 
       {/* Gráficos */}
       <Grid container spacing={3}>
@@ -246,7 +355,7 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Tendencia de Sesiones
+                Ventas y órdenes por día
               </Typography>
               <Box height={300}>
                 {loading ? (
@@ -268,8 +377,15 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
                       />
                       <Line 
                         type="monotone" 
-                        dataKey="sessions" 
+                        dataKey="revenue" 
                         stroke="#0088FE" 
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="orders" 
+                        stroke="#00C49F" 
                         strokeWidth={2}
                         dot={false}
                       />
@@ -286,7 +402,7 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Fuentes de Tráfico
+                Productos más vendidos
               </Typography>
               <Box height={300}>
                 {loading ? (
@@ -295,15 +411,15 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={data?.traffic?.sources?.slice(0, 5) || []}
-                        dataKey="sessions"
-                        nameKey="channel"
+                        data={(data?.topProducts || []).slice(0, 5)}
+                        dataKey="revenue"
+                        nameKey="title"
                         cx="50%"
                         cy="50%"
                         outerRadius={80}
                         label
                       >
-                        {(data?.traffic?.sources || []).slice(0, 5).map((entry, index) => (
+                        {(data?.topProducts || []).slice(0, 5).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
@@ -331,9 +447,12 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
                     <BarChart 
                       data={[
                         { name: 'Sesiones', value: data.ecommerce.funnel.sessions?.eventCount || 0 },
+                        { name: 'Impresiones', value: data.ecommerce.funnel.productImpression?.sessions || 0 },
+                        { name: 'Clicks', value: data.ecommerce.funnel.productClick?.sessions || 0 },
                         { name: 'Ver Producto', value: data.ecommerce.funnel.viewItem?.eventCount || 0 },
                         { name: 'Add to Cart', value: data.ecommerce.funnel.addToCart?.eventCount || 0 },
                         { name: 'Checkout', value: data.ecommerce.funnel.beginCheckout?.eventCount || 0 },
+                        { name: 'Pago', value: data.ecommerce.funnel.paymentAttempt?.eventCount || 0 },
                         { name: 'Compra', value: data.ecommerce.funnel.purchase?.eventCount || 0 },
                       ]}
                       layout="vertical"
@@ -347,6 +466,64 @@ const AnalyticsDashboardView = ({ onNotConfigured }) => {
                   </ResponsiveContainer>
                 ) : null}
               </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Páginas más vistas
+              </Typography>
+              {loading ? (
+                <Skeleton variant="rectangular" height={180} />
+              ) : (
+                <Stack spacing={1.5}>
+                  {(data?.userBehavior?.topPages || []).slice(0, 6).map(page => (
+                    <Box key={page.path} display="flex" alignItems="center" justifyContent="space-between" gap={2}>
+                      <Typography variant="body2" noWrap title={page.path}>
+                        {page.path}
+                      </Typography>
+                      <Chip size="small" label={`${formatNumber(page.views)} vistas`} />
+                    </Box>
+                  ))}
+                  {(data?.userBehavior?.topPages || []).length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      Todavía no hay visitas registradas.
+                    </Typography>
+                  )}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Búsquedas frecuentes
+              </Typography>
+              {loading ? (
+                <Skeleton variant="rectangular" height={180} />
+              ) : (
+                <Stack spacing={1.5}>
+                  {(data?.userBehavior?.topSearches || []).slice(0, 6).map(search => (
+                    <Box key={search.query} display="flex" alignItems="center" justifyContent="space-between" gap={2}>
+                      <Typography variant="body2" noWrap title={search.query}>
+                        {search.query}
+                      </Typography>
+                      <Chip size="small" label={`${formatNumber(search.count)} veces`} />
+                    </Box>
+                  ))}
+                  {(data?.userBehavior?.topSearches || []).length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      Todavía no hay búsquedas registradas.
+                    </Typography>
+                  )}
+                </Stack>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -480,9 +657,6 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
   };
 
   const handleSave = async () => {
-      console.log('[DEBUG] handleSave called');
-  console.log('[DEBUG] formData:', formData);
-  console.log('[DEBUG] status:', status);
     if (!formData.measurementId) {
       enqueueSnackbar('Measurement ID es requerido', { variant: 'warning' });
       return;
@@ -789,21 +963,8 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
 // ============================================================================
 
 const Dashboard = () => {
-  const [activeTab, setActiveTab] = useState(0);
-  const [isConfigured, setIsConfigured] = useState(false);
-
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
-
   const handleNotConfigured = () => {
-    setIsConfigured(false);
-    setActiveTab(1); // Auto-switch a config si no está configurado
-  };
-
-  const handleConfigurationSuccess = () => {
-    setIsConfigured(true);
-    setActiveTab(0); // Volver a dashboard
+    // Las métricas internas no requieren configuración externa.
   };
 
   return (
@@ -812,38 +973,16 @@ const Dashboard = () => {
       <Box mb={3}>
         <Typography variant="h4" gutterBottom>
           <AnalyticsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Analytics
+          Métricas
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Métricas y configuración de Google Analytics 4
+          Ventas, órdenes, productos y carritos abandonados del tenant actual
         </Typography>
       </Box>
 
-      {/* Tabs */}
-      <Paper sx={{ mb: 3 }}>
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          indicatorColor="primary"
-          textColor="primary"
-          variant="fullWidth"
-        >
-          <Tab icon={<AnalyticsIcon />} label="Dashboard" />
-          <Tab icon={<SettingsIcon />} label="Configuración" />
-        </Tabs>
-      </Paper>
-
-      {/* Contenido */}
-      {activeTab === 0 && (
-        <AnalyticsDashboardView 
-          onNotConfigured={handleNotConfigured} 
-        />
-      )}
-      {activeTab === 1 && (
-        <AnalyticsConfigView 
-          onConfigurationSuccess={handleConfigurationSuccess} 
-        />
-      )}
+      <AnalyticsDashboardView 
+        onNotConfigured={handleNotConfigured} 
+      />
     </Box>
   );
 };

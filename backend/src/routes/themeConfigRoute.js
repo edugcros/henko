@@ -92,22 +92,63 @@ const handleMulterError = (err, req, res, next) => {
 // RATE LIMITERS
 // =====================================================
 
+const getAdminRateLimitKey = req => {
+  const actorId = req.user?._id || req.user?.id || req.ip || 'anonymous'
+  const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
+
+  return `${tenantId}:${actorId}`
+}
+
+const createRateLimitHandler = message => {
+  return (req, res, _next, options) => {
+    const retryAfterSeconds = Number(req.rateLimit?.resetTime)
+      ? Math.max(
+        1,
+        Math.ceil((new Date(req.rateLimit.resetTime).getTime() - Date.now()) / 1000),
+      )
+      : undefined
+
+    if (retryAfterSeconds) {
+      res.setHeader('Retry-After', String(retryAfterSeconds))
+    }
+
+    return res.status(options.statusCode).json({
+      success: false,
+      message,
+      retryAfter: retryAfterSeconds,
+    })
+  }
+}
+
 const strictLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   skip: req => req.method === 'GET',
-  keyGenerator: req => {
-    const actorId = req.user?._id || req.user?.id || req.ip || 'anonymous'
-    const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
+  keyGenerator: getAdminRateLimitKey,
+  handler: createRateLimitHandler('Demasiadas modificaciones, espere un momento'),
+})
 
-    return `${tenantId}:${actorId}`
-  },
-  message: {
-    success: false,
-    message: 'Demasiadas modificaciones, espere un momento',
-  },
+const patchLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: req => req.method !== 'PATCH',
+  keyGenerator: getAdminRateLimitKey,
+  handler: createRateLimitHandler(
+    'Demasiadas modificaciones automáticas. Espere unos segundos y continúe.',
+  ),
+})
+
+const previewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getAdminRateLimitKey,
+  handler: createRateLimitHandler('Demasiadas acciones de preview, espere un momento'),
 })
 
 const publicLimiter = rateLimit({
@@ -262,7 +303,7 @@ router.patch(
   requireTenant,
   authMiddleware,
   isAdmin,
-  strictLimiter,
+  patchLimiter,
   patchTheme,
 )
 
@@ -276,7 +317,7 @@ router.post(
   requireTenant,
   authMiddleware,
   isAdmin,
-  strictLimiter,
+  previewLimiter,
   createPreview,
 )
 

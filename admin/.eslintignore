@@ -1,9 +1,0 @@
-node_modules/
-dist/
-build/
-.vscode/
-coverage/
-*.config.js
-*.config.mjs
-webpack.*.js
-public/

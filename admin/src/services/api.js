@@ -75,13 +75,13 @@ export const userAPI = {
 
 export const analyticsAPI = {
   getStatus: () =>
-    api.get('/analytics/status'),
+    api.get('/dash/stats'),
 
   configure: data =>
     api.post('/analytics/config', data),
 
   getDashboard: params =>
-    api.get('/analytics/dashboard', {
+    api.get('/dash/stats', {
       params,
     }),
 

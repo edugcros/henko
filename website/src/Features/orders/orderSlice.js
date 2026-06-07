@@ -11,11 +11,16 @@ import orderService from './orderService.js'
 export const createOrder = createAsyncThunk('order/create', async (orderData, thunkAPI) => {
   try {
     const response = await orderService.createOrder(orderData)
-    console.log('CREATE ORDER RESPONSE:', response)
 
-    return response // 🔹 response.data ya contiene la orden
+    if (!response?.success) {
+      return thunkAPI.rejectWithValue({
+        message: response?.message || 'Error creando la orden',
+        code: response?.code || null,
+      })
+    }
+
+    return response
   } catch (error) {
-    console.error('CREATE ORDER ERROR:', error)
     return thunkAPI.rejectWithValue({
       message: error.message || 'Error creando la orden',
     })
@@ -26,11 +31,11 @@ export const createOrder = createAsyncThunk('order/create', async (orderData, th
 export const getOrdersThunk = createAsyncThunk('order/getOrders', async (params, thunkAPI) => {
   try {
     const response = await orderService.getOrders(params)
-    console.log('RESPONSE:', response)
-    // 🔴 VALIDAR RESPUESTA
-    if (!response.success) {
-      return thunkAPI.rejectWithValue(response.message)
+
+    if (!response?.success) {
+      return thunkAPI.rejectWithValue(response?.message || 'Error cargando órdenes')
     }
+
     return response
   } catch (error) {
     return thunkAPI.rejectWithValue(error.message)
@@ -40,7 +45,16 @@ export const getOrdersThunk = createAsyncThunk('order/getOrders', async (params,
 // Obtener una orden puntual (opcional)
 export const getOrderById = createAsyncThunk('order/get-by-id', async (id, thunkAPI) => {
   try {
-    return await orderService.getOrderById(id)
+    const response = await orderService.getOrderById(id)
+
+    if (!response?.success) {
+      return thunkAPI.rejectWithValue({
+        message: response?.message || 'Error obteniendo la orden',
+        code: response?.code || null,
+      })
+    }
+
+    return response
   } catch (error) {
     return thunkAPI.rejectWithValue(error.response?.data || { message: error.message })
   }
@@ -116,15 +130,15 @@ const orderSlice = createSlice({
       })
       .addCase(getOrdersThunk.fulfilled, (state, action) => {
         state.list.isLoading = false
+        state.list.isError = false
+        state.list.message = null
 
-        // 🔴 CORREGIDO: Manejar estructura correcta
-        const payload = action.payload?.data || {}
-        const orders = payload.data || []
-        const pagination = payload.pagination || {}
+        const orders = action.payload?.data || []
+        const pagination = action.payload?.pagination || {}
 
         state.list.data = {
           data: Array.isArray(orders) ? orders : [],
-          pagination: pagination,
+          pagination,
         }
       })
       .addCase(getOrdersThunk.rejected, (state, action) => {
@@ -143,7 +157,7 @@ const orderSlice = createSlice({
       .addCase(getOrderById.fulfilled, (state, action) => {
         state.isLoading = false
         state.isSuccess = true
-        state.selectedOrder = action.payload?.data || action.payload
+        state.selectedOrder = action.payload?.data || null
       })
       .addCase(getOrderById.rejected, (state, action) => {
         state.isLoading = false

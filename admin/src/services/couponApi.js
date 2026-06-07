@@ -20,30 +20,27 @@ const getAuthToken = () => {
          null
 }
 
-export const getTenantId = (req) => {
-  // Obtener de diferentes fuentes posibles
-  const tenantId = req.tenantId || req.user?.tenantId || req.headers['x-tenant-id']
-  
-  if (!tenantId) return null
-  
-  // 🔴 NORMALIZAR: Siempre retornar string o ObjectId consistente
-  if (typeof tenantId === 'string' && mongoose.Types.ObjectId.isValid(tenantId)) {
-    return tenantId // Mantener como string para flexibilidad
+export const getTenantId = (source = {}) => {
+  const tenantId =
+    source.tenantId ||
+    source.tenant?._id ||
+    source.user?.tenantId ||
+    localStorage.getItem('tenantId') ||
+    null
+
+  if (tenantId) return String(tenantId)
+
+  if (typeof window !== 'undefined') {
+    return window.location.hostname
   }
-  
-  if (tenantId instanceof mongoose.Types.ObjectId) {
-    return tenantId.toString()
-  }
-  
-  return tenantId
+
+  return null
 }
 
-// Helper para convertir a ObjectId cuando sea necesario
-export const toObjectId = (id) => {
+export const toObjectId = id => {
   if (!id) return null
-  if (id instanceof mongoose.Types.ObjectId) return id
-  if (mongoose.Types.ObjectId.isValid(id)) return new mongoose.Types.ObjectId(id)
-  return null
+  const normalized = String(id)
+  return /^[a-f\d]{24}$/i.test(normalized) ? normalized : null
 }
 
 // ======================================================
@@ -191,11 +188,18 @@ export const couponApi = {
 
   // Crear cupón
   create: (data) => {
-    return request('post', '', {
+    const payload = {
       ...data,
-      code: data.code,
       description: data.description?.trim()
-    })
+    }
+
+    if (data.code?.trim()) {
+      payload.code = data.code.trim().toUpperCase()
+    } else {
+      delete payload.code
+    }
+
+    return request('post', '', payload)
   },
 
 
@@ -205,8 +209,13 @@ export const couponApi = {
 
     const payload = {
       ...data,
-      ...(data.code && { code: data.code.trim() }),
       ...(data.description && { description: data.description.trim() })
+    }
+
+    if (data.code?.trim()) {
+      payload.code = data.code.trim().toUpperCase()
+    } else {
+      delete payload.code
     }
 
     return request('put', `/${id}`, payload)
@@ -250,7 +259,6 @@ export const couponApi = {
   // Restaurar cupón desactivado - NUEVO
   restore: (id) => {
     if (!id) throw new ApiError('ID requerido', 'MISSING_ID', 400)
-      console.log('id', id)
     return request('patch', `/${id}/restore`, {})
   },
 
@@ -306,11 +314,6 @@ export const couponApi = {
     })
   },
 
-  // Estadísticas
-  getStats: (id) => {
-    if (!id) throw new ApiError('ID requerido', 'MISSING_ID', 400)
-    return request('get', `/${id}/stats`)
-  }
 }
 
 export { ApiError }

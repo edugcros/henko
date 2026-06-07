@@ -4,6 +4,7 @@ import Cookies from 'js-cookie'
 import { env } from '../config/env.js'
 
 let _store = null
+const METRIC_SESSION_KEY = 'henko_metric_session_id'
 
 export const setApiStore = store => {
   _store = store
@@ -85,6 +86,21 @@ const getAuthToken = () => {
   if (isValidToken(localToken)) return localToken
 
   return null
+}
+
+const getMetricSessionId = () => {
+  if (typeof window === 'undefined') return null
+
+  let sessionId = localStorage.getItem(METRIC_SESSION_KEY)
+
+  if (!sessionId) {
+    sessionId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    localStorage.setItem(METRIC_SESSION_KEY, sessionId)
+  }
+
+  return sessionId
 }
 
 const isSafeMethod = method => {
@@ -173,6 +189,7 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
       skipAuthRefresh: true,
       skipCsrfRetry: true,
       skipCsrf: true,
+      skipMetricSession: true,
     })
     .then(res => {
       const token =
@@ -242,6 +259,13 @@ api.interceptors.request.use(
       if (tenantDomain) {
         requestConfig.headers[getTenantHeaderName()] = tenantDomain
       }
+    }
+
+    const metricSessionId = requestConfig.skipMetricSession
+      ? null
+      : getMetricSessionId()
+    if (metricSessionId) {
+      requestConfig.headers['x-metric-session-id'] = metricSessionId
     }
 
     if (requestConfig.skipTenantHeader) {

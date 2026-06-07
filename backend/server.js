@@ -10,7 +10,7 @@ import logger from './config/logger.js'
 // Configuración servidor
 // =====================================================
 
-const PORT = env.PORT || 5000
+const PORT = env.port || 5000
 let serverInstance = null
 let isShuttingDown = false
 

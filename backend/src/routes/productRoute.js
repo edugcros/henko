@@ -14,6 +14,7 @@ import {
   deleteProduct,
   rating,
   rateLimiter,
+  productPublicReadLimiter,
   uploadProductImage,
   deleteProductImage,
   toggleHelpfulVote,
@@ -88,61 +89,6 @@ router.post(
     }
   }),
 )
-
-const normalizePath = value => {
-  const normalized = String(value || '').replace(/\/+$/, '')
-  return normalized || '/'
-}
-
-const isTrustedPredeployOrigin = req => {
-  const origin = String(req.headers.origin || '').toLowerCase()
-
-  return [
-    'https://henko-web.vercel.app',
-    'https://henko-admin.vercel.app',
-  ].includes(origin)
-}
-
-const routePatternToRegex = pattern => {
-  const normalized = normalizePath(pattern)
-
-  const regexSource = normalized
-    .split('/')
-    .map(segment => {
-      if (segment.startsWith(':')) {
-        return '[^/]+'
-      }
-
-      return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    })
-    .join('/')
-
-  return new RegExp(`^${regexSource}$`)
-}
-
-const predeployCsrfExemptRoutes = [
-  { method: 'PUT', path: '/rating/:productId' },
-  { method: 'PUT', path: '/:productId/rating/:ratingId/helpful' },
-]
-
-const matchesPredeployExemptRoute = req => {
-  const requestPath = normalizePath(req.path)
-
-  return predeployCsrfExemptRoutes.some(route => {
-    return (
-      route.method === req.method &&
-      routePatternToRegex(route.path).test(requestPath)
-    )
-  })
-}
-
-const shouldSkipCsrfForPredeploy = req => {
-  return (
-    process.env.PREDEPLOY_TUNNEL_MODE === 'true' &&
-    isTrustedPredeployOrigin(req) &&
-    matchesPredeployExemptRoute(req)
-  )
-}
 
 const conditionalCsrfProtection = (req, res, next) => {
   // La protección CSRF ya se aplica de forma global en app.js antes de montar rutas.
@@ -242,29 +188,29 @@ router.put(
 
 router.get(
   '/categories',
-  rateLimiter,
   resolveTenantByDomain,
+  productPublicReadLimiter,
   getProductCategories,
 )
 
 router.get(
   '/categories/:category/config',
-  rateLimiter,
   resolveTenantByDomain,
+  productPublicReadLimiter,
   getCategoryConfig,
 )
 
 router.get(
   '/',
-  rateLimiter,
   resolveTenantByDomain,
+  productPublicReadLimiter,
   getAllProduct,
 )
 
 router.get(
   '/:productId',
-  rateLimiter,
   resolveTenantByDomain,
+  productPublicReadLimiter,
   getaProduct,
 )
 

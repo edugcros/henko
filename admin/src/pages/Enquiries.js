@@ -52,7 +52,6 @@ const Enquiries = () => {
   const { enquiries, isLoading, isSuccess, message: msg } = useSelector(
     (state) => state.enquiry
   );
-  console.log('Enquiries from Redux:', enquiries);
   // Estados para modales
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);

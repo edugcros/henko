@@ -20,6 +20,7 @@ import PrivateLayout from './Components/privateLayout'
 import SpinnerCentered from './Components/SpinnerCentered/SpinnerCentered'
 import ThemePreview from './Pages/ThemePreview'
 import { useAuth } from '@hooks/useAuth'
+import { useUserMetrics } from './Hooks/useUserMetrics'
 
 import './App.css'
 
@@ -27,6 +28,7 @@ const App = () => {
   const { isLoading: authLoading } = useAuth()
   const location = useLocation()
   const isThemePreviewRoute = location.pathname === '/theme-preview'
+  useUserMetrics()
 
   useEffect(() => {
     ReactGA.send({

@@ -1,11 +1,38 @@
 // 📁 src/services/statsService.js
 
-import Order from '../models/orderModel.js'
+import Order, {
+  ORDER_STATUS,
+  PAYMENT_STATUS,
+} from '../models/orderModel.js'
 import Product from '../models/productModel.js'
 import User from '../models/userModel.js'
+import Cart from '../models/cartModel.js'
+import UserMetricEvent, { USER_METRIC_EVENTS } from '../models/userMetricEventModel.js'
 import { Money } from '../utils/money.js'
 import mongoose from 'mongoose'
-import { GA4ReportingService } from './analytics/ga4Reporting.service.js'
+import { env } from '../../config/env.js'
+
+const PAID_PAYMENT_STATUSES = [PAYMENT_STATUS.APPROVED]
+const ACTIVE_ORDER_STATUSES = [
+  ORDER_STATUS.PROCESSING,
+  ORDER_STATUS.SHIPPED,
+  ORDER_STATUS.DELIVERED,
+]
+
+const metricsConfig = env.metrics
+
+const loadGA4ReportingService = async () => {
+  try {
+    const module = await import('./analytics/ga4Reporting.service.js')
+    return module.GA4ReportingService || module.default || null
+  } catch (error) {
+    if (error?.code !== 'ERR_MODULE_NOT_FOUND') {
+      throw error
+    }
+
+    return null
+  }
+}
 
 // ============================================================================
 // 1. MÉTRICAS PRINCIPALES DEL DASHBOARD (KPIs)
@@ -25,13 +52,35 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     userStats,
     productStats,
     lowStockProducts,
+    abandonedCartStats,
+    topProducts,
+    userBehaviorStats,
+    realtimeStats,
+    paymentStats,
   ] = await Promise.all([
     getSalesStats(tenantId, dateRange),
     getOrderStats(tenantId, dateRange),
     getUserStats(tenantId, dateRange),
     getProductStats(tenantId),
     getLowStockProducts(tenantId),
+    getAbandonedCartStats(tenantId, dateRange),
+    getTopSellingProducts(tenantId, dateRange, metricsConfig.topProductsLimit),
+    getUserBehaviorStats(tenantId, dateRange),
+    getRealtimeStats(tenantId),
+    getPaymentStats(tenantId, dateRange),
   ])
+
+  const conversionRate = calculateRate(orderStats.paidOrders, userBehaviorStats.sessions)
+  const daily = mergeDailyMetrics(
+    salesStats.dailyBreakdown,
+    orderStats.dailyBreakdown,
+    userBehaviorStats.dailyActivity,
+  )
+  const funnel = buildInternalFunnel({
+    userBehaviorStats,
+    paidOrders: orderStats.paidOrders,
+    abandonedCarts: abandonedCartStats.count,
+  })
 
   return {
     summary: {
@@ -40,16 +89,69 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
       orders: orderStats.totalOrders,
       ordersGrowth: orderStats.growth,
       averageOrderValue: orderStats.averageOrderValue,
+      paidOrders: orderStats.paidOrders,
+      pendingOrders: orderStats.pendingOrders,
       customers: userStats.totalCustomers,
       newCustomers: userStats.newCustomers,
+      users: userStats.totalCustomers,
+      sessions: userBehaviorStats.sessions,
+      pageViews: userBehaviorStats.pageViews,
+      productViews: userBehaviorStats.productViews,
+      searches: userBehaviorStats.searches,
+      logins: userBehaviorStats.logins,
+      productImpressions: userBehaviorStats.productImpressions,
+      productClicks: userBehaviorStats.productClicks,
+      addToCart: userBehaviorStats.addToCart,
+      removeFromCart: userBehaviorStats.removeFromCart,
+      checkoutStarts: userBehaviorStats.checkoutStarts,
+      paymentAttempts: paymentStats.attempts,
+      paymentApproved: paymentStats.approved,
+      paymentRejected: paymentStats.rejected,
+      purchaseEvents: userBehaviorStats.purchases,
+      authenticatedSessions: userBehaviorStats.authenticatedSessions,
+      anonymousSessions: userBehaviorStats.anonymousSessions,
+      conversions: orderStats.paidOrders,
       products: productStats.totalProducts,
       activeProducts: productStats.activeProducts,
+      abandonedCarts: abandonedCartStats.count,
+      abandonedCartValue: abandonedCartStats.value,
+      abandonedCartItems: abandonedCartStats.items,
+      conversionRate,
+      productClickThroughRate: calculateRate(userBehaviorStats.productClicks, userBehaviorStats.productImpressions),
+      productViewRate: calculateRate(userBehaviorStats.productViewSessions, userBehaviorStats.sessions),
+      addToCartRate: calculateRate(userBehaviorStats.addToCartSessions, userBehaviorStats.sessions),
+      checkoutStartRate: calculateRate(userBehaviorStats.checkoutStartSessions, userBehaviorStats.sessions),
+      paymentApprovalRate: paymentStats.approvalRate,
     },
     lowStock: lowStockProducts,
+    abandonedCarts: abandonedCartStats,
+    topProducts,
+    userBehavior: userBehaviorStats,
+    orderStatusBreakdown: orderStats.statusBreakdown,
+    paymentStatusBreakdown: orderStats.paymentStatusBreakdown,
     trends: {
+      daily,
       dailyRevenue: salesStats.dailyBreakdown,
       dailyOrders: orderStats.dailyBreakdown,
     },
+    traffic: {
+      sources: userBehaviorStats.sources,
+    },
+    ecommerce: {
+      funnel,
+      payment: paymentStats,
+    },
+    definitions: {
+      abandonedCart: abandonedCartStats.definition,
+      conversionRate: {
+        source: 'orders + storefront sessions',
+        formula: 'paidOrders / sessions * 100',
+        paidOrderPaymentStatuses: PAID_PAYMENT_STATUSES,
+        paidOrderStatuses: ACTIVE_ORDER_STATUSES,
+      },
+      realtime: realtimeStats.definition,
+    },
+    realtime: realtimeStats,
   }
 }
 
@@ -60,7 +162,8 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
 const getSalesStats = async (tenantId, dateRange) => {
   const matchStage = {
     tenantId: new mongoose.Types.ObjectId(tenantId),
-    orderStatus: { $in: ['processing', 'delivered', 'dispatched'] },
+    paymentStatus: { $in: PAID_PAYMENT_STATUSES },
+    orderStatus: { $in: ACTIVE_ORDER_STATUSES },
     isDeleted: false,
     createdAt: { $gte: dateRange.start, $lte: dateRange.end },
   }
@@ -117,7 +220,10 @@ const getSalesStats = async (tenantId, dateRange) => {
     aggregateByDate(current.daily || []),
     dateRange.start,
     dateRange.end,
-  )
+  ).map(day => ({
+    ...day,
+    revenue: Money.toDecimal(day.revenue),
+  }))
 
   return {
     totalRevenue: Money.toDecimal(current.totalRevenue),
@@ -145,6 +251,16 @@ const getOrderStats = async (tenantId, dateRange) => {
         $group: {
           _id: null,
           totalOrders: { $sum: 1 },
+          paidOrders: {
+            $sum: {
+              $cond: [{ $in: ['$paymentStatus', PAID_PAYMENT_STATUSES] }, 1, 0],
+            },
+          },
+          pendingOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', 'pending'] }, 1, 0],
+            },
+          },
           totalAmount: { $sum: '$paymentIntent.amountCents' },
           daily: {
             $push: {
@@ -154,6 +270,9 @@ const getOrderStats = async (tenantId, dateRange) => {
           },
           statusBreakdown: {
             $push: '$orderStatus',
+          },
+          paymentStatusBreakdown: {
+            $push: '$paymentStatus',
           },
         },
       },
@@ -191,11 +310,19 @@ const getOrderStats = async (tenantId, dateRange) => {
     return acc
   }, {})
 
+  const paymentStatusCounts = (current.paymentStatusBreakdown || []).reduce((acc, status) => {
+    acc[status || 'unknown'] = (acc[status || 'unknown'] || 0) + 1
+    return acc
+  }, {})
+
   return {
     totalOrders: current.totalOrders,
+    paidOrders: current.paidOrders || 0,
+    pendingOrders: current.pendingOrders || 0,
     averageOrderValue: parseFloat(aov.toFixed(2)),
     growth: parseFloat(growth),
     statusBreakdown: statusCounts,
+    paymentStatusBreakdown: paymentStatusCounts,
     dailyBreakdown: fillMissingDays(
       aggregateByDate(current.daily || [], 'count'),
       dateRange.start,
@@ -250,19 +377,24 @@ const getProductStats = async tenantId => {
           $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] },
         },
         outOfStock: {
-          $sum: { $cond: [{ $lte: ['$quantity', 0] }, 1, 0] },
+          $sum: { $cond: [{ $lte: ['$stock', 0] }, 1, 0] },
         },
         lowStock: {
           $sum: {
             $cond: [
-              { $and: [{ $gt: ['$quantity', 0] }, { $lte: ['$quantity', '$minStockAlert'] }] },
+              {
+                $and: [
+                  { $gt: ['$stock', 0] },
+                  { $lte: ['$stock', { $ifNull: ['$minStockAlert', metricsConfig.lowStockThreshold] }] },
+                ],
+              },
               1,
               0,
             ],
           },
         },
         totalInventoryValue: {
-          $sum: { $multiply: ['$price', '$quantity'] },
+          $sum: { $multiply: ['$price', '$stock'] },
         },
       },
     },
@@ -285,25 +417,25 @@ const getProductStats = async tenantId => {
   }
 }
 
-const getLowStockProducts = async (tenantId, limit = 10) => {
+const getLowStockProducts = async (tenantId, limit = metricsConfig.topProductsLimit) => {
   const products = await Product.find({
     tenantId: new mongoose.Types.ObjectId(tenantId),
     isDeleted: false,
-    $expr: { $lte: ['$quantity', '$minStockAlert'] },
-    quantity: { $gt: 0 }, // Excluir sin stock (son out of stock, no low stock)
+    $expr: { $lte: ['$stock', { $ifNull: ['$minStockAlert', metricsConfig.lowStockThreshold] }] },
+    stock: { $gt: 0 },
   })
-    .select('name sku quantity minStockAlert price images')
-    .sort({ quantity: 1 })
+    .select('title name sku stock minStockAlert price images')
+    .sort({ stock: 1 })
     .limit(limit)
     .lean()
 
   return products.map(p => ({
     id: p._id,
-    name: p.name,
+    name: p.title || p.name,
     sku: p.sku,
-    currentStock: p.quantity,
-    minStock: p.minStockAlert,
-    stockStatus: p.quantity === 0 ? 'out_of_stock' : 'low_stock',
+    currentStock: p.stock,
+    minStock: p.minStockAlert || metricsConfig.lowStockThreshold,
+    stockStatus: p.stock === 0 ? 'out_of_stock' : 'low_stock',
     price: Money.toDecimal(p.price),
     image: p.images?.[0]?.url || null,
   }))
@@ -317,7 +449,7 @@ const getLowStockProducts = async (tenantId, limit = 10) => {
  * Datos para gráfico de ventas (usado en adminController.getSalesChartData)
  * y también internamente para el dashboard
  */
-export const getSalesChartDataInternal = async (tenantId, days = 7) => {
+export const getSalesChartDataInternal = async (tenantId, days = metricsConfig.internalPeriodDays) => {
   const startDate = new Date()
   startDate.setDate(startDate.getDate() - parseInt(days))
   startDate.setHours(0, 0, 0, 0)
@@ -327,7 +459,8 @@ export const getSalesChartDataInternal = async (tenantId, days = 7) => {
       $match: {
         tenantId: new mongoose.Types.ObjectId(tenantId),
         isDeleted: false,
-        orderStatus: { $in: ['processing', 'delivered', 'dispatched'] },
+        paymentStatus: { $in: PAID_PAYMENT_STATUSES },
+        orderStatus: { $in: ACTIVE_ORDER_STATUSES },
         createdAt: { $gte: startDate },
       },
     },
@@ -415,20 +548,42 @@ export const getUnifiedMarketingStats = async tenant => {
  */
 const getGA4ReportingStats = async (tenant, ga4) => {
   try {
+    const GA4ReportingService = await loadGA4ReportingService()
+
+    if (!GA4ReportingService) {
+      const internalStats = await getInternalMarketingStats(tenant._id)
+
+      return {
+        analytics: {
+          configured: true,
+          measurementId: ga4.measurementId,
+          hasReportingAccess: false,
+          message: 'GA4 Reporting no está instalado. Se muestran métricas internas.',
+        },
+        status: 'partially_configured',
+        internal: internalStats,
+      }
+    }
+
     const service = new GA4ReportingService(ga4.serviceAccountKey)
     
-    // Período: últimos 30 días
+    // Período configurado para métricas internas.
     const endDate = new Date().toISOString().split('T')[0]
-    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    const ga4PeriodMs = metricsConfig.internalPeriodDays * 24 * 60 * 60 * 1000
+    const startDate = new Date(Date.now() - ga4PeriodMs)
       .toISOString().split('T')[0]
 
     // Obtener datos en paralelo
     const [metrics, funnel, products, sources, realtime] = await Promise.all([
       service.getDashboardMetrics(startDate, endDate).catch(() => null),
       service.getEcommerceFunnel(startDate, endDate).catch(() => null),
-      service.getProductPerformance(startDate, endDate, 5).catch(() => null),
+      service.getProductPerformance(
+        startDate,
+        endDate,
+        metricsConfig.ga4ProductPerformanceLimit,
+      ).catch(() => null),
       service.getTrafficSources(startDate, endDate).catch(() => null),
-      service.getRealtimeMetrics().catch(() => ({ activeUsers: 0, pageViews: 0 })),
+      service.getRealtimeMetrics().catch(() => null),
     ])
 
     // Calcular métricas de conversión internas vs GA4
@@ -460,7 +615,7 @@ const getGA4ReportingStats = async (tenant, ga4) => {
           conversions: parseInt(s.conversions || 0),
           revenue: parseFloat(s.eventValue || 0),
         })) || [],
-        realtime: realtime || { activeUsers: 0, pageViews: 0 },
+        realtime: realtime || null,
       },
       status: 'connected',
       internal: internalStats,
@@ -482,7 +637,13 @@ const getGA4ReportingStats = async (tenant, ga4) => {
  * Estadísticas de marketing internas (sin GA4)
  */
 const getInternalMarketingStats = async tenantId => {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const internalPeriodMs = metricsConfig.internalPeriodDays * 24 * 60 * 60 * 1000
+  const periodStart = new Date(Date.now() - internalPeriodMs)
+
+  const dateRange = {
+    start: periodStart,
+    end: new Date(),
+  }
 
   const [orders, abandonedCarts, topProducts] = await Promise.all([
     // Órdenes completadas
@@ -490,8 +651,9 @@ const getInternalMarketingStats = async tenantId => {
       {
         $match: {
           tenantId: new mongoose.Types.ObjectId(tenantId),
-          orderStatus: { $in: ['processing', 'delivered', 'dispatched'] },
-          createdAt: { $gte: thirtyDaysAgo },
+          paymentStatus: { $in: PAID_PAYMENT_STATUSES },
+          orderStatus: { $in: ACTIVE_ORDER_STATUSES },
+          createdAt: { $gte: periodStart },
         },
       },
       {
@@ -504,29 +666,29 @@ const getInternalMarketingStats = async tenantId => {
       },
     ]),
 
-    // Carritos abandonados (simulado - necesitarías modelo de Cart)
-    Promise.resolve({ count: 0 }), // Placeholder
+    getAbandonedCartStats(tenantId, dateRange),
 
     // Top productos vendidos
     Order.aggregate([
       {
         $match: {
           tenantId: new mongoose.Types.ObjectId(tenantId),
-          orderStatus: { $in: ['processing', 'delivered', 'dispatched'] },
-          createdAt: { $gte: thirtyDaysAgo },
+          paymentStatus: { $in: PAID_PAYMENT_STATUSES },
+          orderStatus: { $in: ACTIVE_ORDER_STATUSES },
+          createdAt: { $gte: periodStart },
         },
       },
       { $unwind: '$products' },
       {
         $group: {
           _id: '$products.product',
-          name: { $first: '$products.name' },
-          quantity: { $sum: '$products.quantity' },
-          revenue: { $sum: { $multiply: ['$products.price', '$products.quantity'] } },
+          name: { $first: '$products.titleSnapshot' },
+          quantity: { $sum: '$products.count' },
+          revenue: { $sum: '$products.subtotalCents' },
         },
       },
       { $sort: { revenue: -1 } },
-      { $limit: 5 },
+      { $limit: metricsConfig.topProductsLimit },
     ]),
   ])
 
@@ -537,7 +699,7 @@ const getInternalMarketingStats = async tenantId => {
     revenue: Money.toDecimal(orderStats.revenue),
     averageOrderValue: Money.toDecimal(orderStats.avgOrderValue || 0),
     abandonedCarts: abandonedCarts.count,
-    conversionRate: 0, // Necesitarías sessions de GA4 para calcular esto
+    conversionRate: calculateRate(orderStats.count, abandonedCarts.count + orderStats.count),
     topProducts: topProducts.map(p => ({
       productId: p._id,
       name: p.name,
@@ -622,6 +784,12 @@ const fillMissingDays = (data, startDate, endDate) => {
       revenue: existing?.revenue || existing?.value || 0,
       orders: existing?.orders || existing?.count || 0,
       items: existing?.items || 0,
+      events: existing?.events || 0,
+      sessions: existing?.sessions || 0,
+      pageViews: existing?.pageViews || 0,
+      productViews: existing?.productViews || 0,
+      addToCart: existing?.addToCart || 0,
+      checkoutStarts: existing?.checkoutStarts || 0,
     })
 
     current.setDate(current.getDate() + 1)
@@ -639,7 +807,7 @@ const fillMissingDays = (data, startDate, endDate) => {
  * Versión simplificada usada por adminController
  */
 export const getAdminDashboardMetrics = async (tenantId, options = {}) => {
-  const { days = 30 } = options
+  const { days = metricsConfig.internalPeriodDays } = options
 
   const [basicStats, chartData] = await Promise.all([
     getDashboardStats(tenantId, `${days}d`),
@@ -659,7 +827,8 @@ export const getExportableStats = async (tenantId, startDate, endDate) => {
   const matchStage = {
     tenantId: new mongoose.Types.ObjectId(tenantId),
     isDeleted: false,
-    orderStatus: { $in: ['processing', 'delivered', 'dispatched'] },
+    paymentStatus: { $in: PAID_PAYMENT_STATUSES },
+    orderStatus: { $in: ACTIVE_ORDER_STATUSES },
     createdAt: {
       $gte: new Date(startDate),
       $lte: new Date(endDate),
@@ -680,4 +849,639 @@ export const getExportableStats = async (tenantId, startDate, endDate) => {
     subtotal: Money.toDecimal(o.paymentIntent?.amountCents || 0),
     total: Money.toDecimal(o.paymentIntent?.amountCents || 0),
   }))
+}
+
+const getAbandonedCartStats = async (tenantId, dateRange) => {
+  const thresholdMinutes = metricsConfig.abandonedCartMinutes
+  const thresholdMs = thresholdMinutes * 60 * 1000
+  const abandonedBefore = new Date(Date.now() - thresholdMs)
+  const latestLimit = metricsConfig.latestAbandonedCartsLimit
+  const productPreviewLimit = metricsConfig.abandonedCartProductPreviewLimit
+
+  const carts = await Cart.aggregate([
+    {
+      $match: {
+        tenantId: new mongoose.Types.ObjectId(tenantId),
+        updatedAt: {
+          $gte: dateRange.start,
+          $lte: abandonedBefore,
+        },
+        products: { $exists: true, $ne: [] },
+      },
+    },
+    {
+      $project: {
+        userId: 1,
+        updatedAt: 1,
+        itemCount: { $sum: '$products.quantity' },
+        value: {
+          $cond: [
+            { $gt: ['$totalAfterDiscount', 0] },
+            '$totalAfterDiscount',
+            '$cartTotal',
+          ],
+        },
+        products: {
+          $slice: [
+            {
+              $map: {
+                input: '$products',
+                as: 'product',
+                in: {
+                  productId: '$$product.productId',
+                  title: '$$product.title',
+                  quantity: '$$product.quantity',
+                  subtotal: '$$product.subtotal',
+                },
+              },
+            },
+            productPreviewLimit,
+          ],
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        count: { $sum: 1 },
+        value: { $sum: '$value' },
+        items: { $sum: '$itemCount' },
+        latest: {
+          $push: {
+            cartId: '$_id',
+            userId: '$userId',
+            updatedAt: '$updatedAt',
+            itemCount: '$itemCount',
+            value: '$value',
+            products: '$products',
+          },
+        },
+      },
+    },
+  ])
+
+  const result = carts[0] || { count: 0, value: 0, items: 0, latest: [] }
+
+  return {
+    count: result.count,
+    value: Number(result.value || 0),
+    items: result.items,
+    definition: {
+      source: 'Cart',
+      countedWhen: 'El carrito pertenece al tenant, tiene productos y no fue actualizado dentro del umbral configurado.',
+      dateField: 'updatedAt',
+      periodStart: dateRange.start,
+      periodEnd: dateRange.end,
+      abandonedBefore,
+      thresholdMinutes,
+      valueField: 'totalAfterDiscount si es mayor a 0; si no, cartTotal',
+      productPreviewLimit,
+      latestLimit,
+    },
+    latest: (result.latest || [])
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+      .slice(0, latestLimit),
+  }
+}
+
+const getTopSellingProducts = async (tenantId, dateRange, limit = metricsConfig.topProductsLimit) => {
+  const rows = await Order.aggregate([
+    {
+      $match: {
+        tenantId: new mongoose.Types.ObjectId(tenantId),
+        isDeleted: false,
+        paymentStatus: { $in: PAID_PAYMENT_STATUSES },
+        orderStatus: { $in: ACTIVE_ORDER_STATUSES },
+        createdAt: { $gte: dateRange.start, $lte: dateRange.end },
+      },
+    },
+    { $unwind: '$products' },
+    {
+      $group: {
+        _id: '$products.product',
+        title: { $first: '$products.titleSnapshot' },
+        sku: { $first: '$products.skuSnapshot' },
+        quantity: { $sum: '$products.count' },
+        revenueCents: { $sum: '$products.subtotalCents' },
+      },
+    },
+    { $sort: { revenueCents: -1 } },
+    { $limit: limit },
+  ])
+
+  return rows.map(row => ({
+    productId: row._id,
+    title: row.title || 'Producto',
+    sku: row.sku || null,
+    quantity: row.quantity || 0,
+    revenue: Money.toDecimal(row.revenueCents || 0),
+  }))
+}
+
+const getRealtimeStats = async tenantId => {
+  const windowMinutes = metricsConfig.realtimeWindowMinutes
+  const since = new Date(Date.now() - windowMinutes * 60 * 1000)
+  const tenantObjectId = new mongoose.Types.ObjectId(tenantId)
+
+  const [summary] = await UserMetricEvent.aggregate([
+    {
+      $match: {
+        tenantId: tenantObjectId,
+        occurredAt: { $gte: since },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        activeUsers: { $addToSet: '$sessionId' },
+        authenticatedUsers: { $addToSet: '$userId' },
+        pageViews: {
+          $sum: { $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.PAGE_VIEW] }, 1, 0] },
+        },
+        productViews: {
+          $sum: { $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.PRODUCT_VIEW] }, 1, 0] },
+        },
+        addToCart: {
+          $sum: { $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.ADD_TO_CART] }, 1, 0] },
+        },
+        checkoutStarts: {
+          $sum: { $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.CHECKOUT_START] }, 1, 0] },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        activeUsers: { $size: '$activeUsers' },
+        authenticatedUsers: {
+          $size: {
+            $filter: {
+              input: '$authenticatedUsers',
+              as: 'user',
+              cond: { $ne: ['$$user', null] },
+            },
+          },
+        },
+        pageViews: 1,
+        productViews: 1,
+        addToCart: 1,
+        checkoutStarts: 1,
+      },
+    },
+  ])
+
+  return {
+    activeUsers: summary?.activeUsers || 0,
+    authenticatedUsers: summary?.authenticatedUsers || 0,
+    pageViews: summary?.pageViews || 0,
+    productViews: summary?.productViews || 0,
+    addToCart: summary?.addToCart || 0,
+    checkoutStarts: summary?.checkoutStarts || 0,
+    definition: {
+      source: 'UserMetricEvent',
+      windowMinutes,
+      since,
+      formula: 'Sesiones únicas con eventos ocurridos dentro de la ventana configurada.',
+    },
+  }
+}
+
+const getPaymentStats = async (tenantId, dateRange) => {
+  const tenantObjectId = new mongoose.Types.ObjectId(tenantId)
+
+  const [eventRows, orderRows] = await Promise.all([
+    UserMetricEvent.aggregate([
+      {
+        $match: {
+          tenantId: tenantObjectId,
+          occurredAt: { $gte: dateRange.start, $lte: dateRange.end },
+          eventType: {
+            $in: [
+              USER_METRIC_EVENTS.PAYMENT_ATTEMPT,
+              USER_METRIC_EVENTS.PAYMENT_APPROVED,
+              USER_METRIC_EVENTS.PAYMENT_REJECTED,
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: '$eventType',
+          count: { $sum: 1 },
+          sessions: { $addToSet: '$sessionId' },
+          value: { $sum: '$value' },
+        },
+      },
+    ]),
+    Order.aggregate([
+      {
+        $match: {
+          tenantId: tenantObjectId,
+          isDeleted: false,
+          createdAt: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$paymentStatus',
+          orders: { $sum: 1 },
+          revenueCents: { $sum: '$paymentIntent.amountCents' },
+        },
+      },
+    ]),
+  ])
+
+  const eventMap = eventRows.reduce((acc, row) => {
+    acc[row._id] = {
+      count: row.count || 0,
+      sessions: row.sessions?.length || 0,
+      value: row.value || 0,
+    }
+    return acc
+  }, {})
+
+  const orderBreakdown = orderRows.reduce((acc, row) => {
+    const key = row._id || 'unknown'
+    acc[key] = {
+      orders: row.orders || 0,
+      revenue: Money.toDecimal(row.revenueCents || 0),
+    }
+    return acc
+  }, {})
+
+  const attempts = eventMap[USER_METRIC_EVENTS.PAYMENT_ATTEMPT]?.count || 0
+  const approved = eventMap[USER_METRIC_EVENTS.PAYMENT_APPROVED]?.count || 0
+  const rejected = eventMap[USER_METRIC_EVENTS.PAYMENT_REJECTED]?.count || 0
+
+  return {
+    attempts,
+    approved,
+    rejected,
+    approvalRate: calculateRate(approved, attempts),
+    attemptedValue: eventMap[USER_METRIC_EVENTS.PAYMENT_ATTEMPT]?.value || 0,
+    approvedValue: eventMap[USER_METRIC_EVENTS.PAYMENT_APPROVED]?.value || 0,
+    rejectedValue: eventMap[USER_METRIC_EVENTS.PAYMENT_REJECTED]?.value || 0,
+    orderBreakdown,
+  }
+}
+
+const getUserBehaviorStats = async (tenantId, dateRange) => {
+  const tenantObjectId = new mongoose.Types.ObjectId(tenantId)
+  const matchStage = {
+    tenantId: tenantObjectId,
+    occurredAt: { $gte: dateRange.start, $lte: dateRange.end },
+  }
+
+  const [
+    counters,
+    sessionRows,
+    topPages,
+    topSearches,
+    sources,
+    deviceBreakdown,
+    funnelRows,
+    dailyActivity,
+  ] = await Promise.all([
+    UserMetricEvent.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$eventType',
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+    UserMetricEvent.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$sessionId',
+          userId: { $max: '$userId' },
+          firstSeenAt: { $min: '$occurredAt' },
+          lastSeenAt: { $max: '$occurredAt' },
+          events: { $sum: 1 },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          sessions: { $sum: 1 },
+          authenticatedSessions: {
+            $sum: { $cond: [{ $ne: ['$userId', null] }, 1, 0] },
+          },
+          anonymousSessions: {
+            $sum: { $cond: [{ $eq: ['$userId', null] }, 1, 0] },
+          },
+          averageEventsPerSession: { $avg: '$events' },
+        },
+      },
+    ]),
+    UserMetricEvent.aggregate([
+      {
+        $match: {
+          ...matchStage,
+          eventType: 'page_view',
+        },
+      },
+      {
+        $group: {
+          _id: '$path',
+          views: { $sum: 1 },
+          sessions: { $addToSet: '$sessionId' },
+        },
+      },
+      {
+        $project: {
+          path: '$_id',
+          views: 1,
+          sessions: { $size: '$sessions' },
+          _id: 0,
+        },
+      },
+      { $sort: { views: -1 } },
+      { $limit: metricsConfig.topPagesLimit },
+    ]),
+    UserMetricEvent.aggregate([
+      {
+        $match: {
+          ...matchStage,
+          eventType: 'search',
+          searchQuery: { $nin: ['', null] },
+        },
+      },
+      {
+        $group: {
+          _id: { $toLower: '$searchQuery' },
+          count: { $sum: 1 },
+          sessions: { $addToSet: '$sessionId' },
+        },
+      },
+      {
+        $project: {
+          query: '$_id',
+          count: 1,
+          sessions: { $size: '$sessions' },
+          _id: 0,
+        },
+      },
+      { $sort: { count: -1 } },
+      { $limit: metricsConfig.topSearchesLimit },
+    ]),
+    UserMetricEvent.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            $ifNull: ['$attribution.utmSource', 'direct'],
+          },
+          sessions: { $addToSet: '$sessionId' },
+          users: { $addToSet: '$userId' },
+          conversions: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    '$eventType',
+                    [
+                      USER_METRIC_EVENTS.PURCHASE,
+                      USER_METRIC_EVENTS.PAYMENT_APPROVED,
+                    ],
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          channel: {
+            $cond: [{ $eq: ['$_id', ''] }, 'direct', '$_id'],
+          },
+          sessions: { $size: '$sessions' },
+          users: {
+            $size: {
+              $filter: {
+                input: '$users',
+                as: 'user',
+                cond: { $ne: ['$$user', null] },
+              },
+            },
+          },
+          conversions: 1,
+          _id: 0,
+        },
+      },
+      { $sort: { sessions: -1 } },
+      { $limit: metricsConfig.trafficSourcesLimit },
+    ]),
+    UserMetricEvent.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$device.type',
+          count: { $sum: 1 },
+          sessions: { $addToSet: '$sessionId' },
+        },
+      },
+      {
+        $project: {
+          type: { $ifNull: ['$_id', 'unknown'] },
+          events: '$count',
+          sessions: { $size: '$sessions' },
+          _id: 0,
+        },
+      },
+      { $sort: { sessions: -1 } },
+    ]),
+    UserMetricEvent.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$eventType',
+          sessions: { $addToSet: '$sessionId' },
+        },
+      },
+      {
+        $project: {
+          eventType: '$_id',
+          sessions: { $size: '$sessions' },
+          _id: 0,
+        },
+      },
+    ]),
+    UserMetricEvent.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$occurredAt' } },
+          events: { $sum: 1 },
+          sessions: { $addToSet: '$sessionId' },
+          pageViews: {
+            $sum: { $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.PAGE_VIEW] }, 1, 0] },
+          },
+          productViews: {
+            $sum: { $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.PRODUCT_VIEW] }, 1, 0] },
+          },
+          addToCart: {
+            $sum: { $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.ADD_TO_CART] }, 1, 0] },
+          },
+          checkoutStarts: {
+            $sum: { $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.CHECKOUT_START] }, 1, 0] },
+          },
+        },
+      },
+      {
+        $project: {
+          date: '$_id',
+          events: 1,
+          sessions: { $size: '$sessions' },
+          pageViews: 1,
+          productViews: 1,
+          addToCart: 1,
+          checkoutStarts: 1,
+          _id: 0,
+        },
+      },
+      { $sort: { date: 1 } },
+    ]),
+  ])
+
+  const counterMap = counters.reduce((acc, item) => {
+    acc[item._id] = item.count
+    return acc
+  }, {})
+
+  const sessionEventMap = funnelRows.reduce((acc, item) => {
+    acc[item.eventType] = item.sessions
+    return acc
+  }, {})
+
+  const sessions = sessionRows[0] || {
+    sessions: 0,
+    authenticatedSessions: 0,
+    anonymousSessions: 0,
+    averageEventsPerSession: 0,
+  }
+
+  return {
+    sessions: sessions.sessions || 0,
+    authenticatedSessions: sessions.authenticatedSessions || 0,
+    anonymousSessions: sessions.anonymousSessions || 0,
+    averageEventsPerSession: Number((sessions.averageEventsPerSession || 0).toFixed(2)),
+    pageViews: counterMap[USER_METRIC_EVENTS.PAGE_VIEW] || 0,
+    productImpressions: counterMap[USER_METRIC_EVENTS.PRODUCT_IMPRESSION] || 0,
+    productClicks: counterMap[USER_METRIC_EVENTS.PRODUCT_CLICK] || 0,
+    productViews: counterMap[USER_METRIC_EVENTS.PRODUCT_VIEW] || 0,
+    searches: counterMap[USER_METRIC_EVENTS.SEARCH] || 0,
+    logins: counterMap[USER_METRIC_EVENTS.LOGIN] || 0,
+    logouts: counterMap[USER_METRIC_EVENTS.LOGOUT] || 0,
+    addToCart: counterMap[USER_METRIC_EVENTS.ADD_TO_CART] || 0,
+    removeFromCart: counterMap[USER_METRIC_EVENTS.REMOVE_FROM_CART] || 0,
+    wishlistAdds: counterMap[USER_METRIC_EVENTS.WISHLIST_ADD] || 0,
+    checkoutStarts: counterMap[USER_METRIC_EVENTS.CHECKOUT_START] || 0,
+    checkoutSteps: counterMap[USER_METRIC_EVENTS.CHECKOUT_STEP] || 0,
+    paymentAttempts: counterMap[USER_METRIC_EVENTS.PAYMENT_ATTEMPT] || 0,
+    paymentApproved: counterMap[USER_METRIC_EVENTS.PAYMENT_APPROVED] || 0,
+    paymentRejected: counterMap[USER_METRIC_EVENTS.PAYMENT_REJECTED] || 0,
+    purchases: counterMap[USER_METRIC_EVENTS.PURCHASE] || 0,
+    productImpressionSessions: sessionEventMap[USER_METRIC_EVENTS.PRODUCT_IMPRESSION] || 0,
+    productClickSessions: sessionEventMap[USER_METRIC_EVENTS.PRODUCT_CLICK] || 0,
+    productViewSessions: sessionEventMap[USER_METRIC_EVENTS.PRODUCT_VIEW] || 0,
+    addToCartSessions: sessionEventMap[USER_METRIC_EVENTS.ADD_TO_CART] || 0,
+    checkoutStartSessions: sessionEventMap[USER_METRIC_EVENTS.CHECKOUT_START] || 0,
+    paymentAttemptSessions: sessionEventMap[USER_METRIC_EVENTS.PAYMENT_ATTEMPT] || 0,
+    topPages,
+    topSearches,
+    sources,
+    deviceBreakdown,
+    dailyActivity: fillMissingDays(dailyActivity, dateRange.start, dateRange.end),
+  }
+}
+
+const calculateRate = (numerator, denominator) => {
+  const base = Number(denominator || 0)
+  if (base <= 0) return 0
+  return Number(((Number(numerator || 0) / base) * 100).toFixed(2))
+}
+
+const mergeDailyMetrics = (revenueRows = [], orderRows = [], activityRows = []) => {
+  const orderMap = new Map(orderRows.map(row => [row.date, row]))
+  const activityMap = new Map(activityRows.map(row => [row.date, row]))
+
+  return revenueRows.map(row => {
+    const orders = orderMap.get(row.date)?.orders || 0
+    const activity = activityMap.get(row.date) || {}
+
+    return {
+      date: row.date,
+      revenue: row.revenue || 0,
+      orders,
+      sessions: activity.sessions || 0,
+      pageViews: activity.pageViews || 0,
+      productViews: activity.productViews || 0,
+      addToCart: activity.addToCart || 0,
+      checkoutStarts: activity.checkoutStarts || 0,
+      conversions: orders,
+    }
+  })
+}
+
+const buildInternalFunnel = ({ userBehaviorStats, paidOrders, abandonedCarts }) => {
+  const sessions = userBehaviorStats.sessions || 0
+
+  return {
+    sessions: {
+      eventCount: sessions,
+      rate: 100,
+      source: 'UserMetricEvent.sessionId',
+    },
+    productImpression: {
+      eventCount: userBehaviorStats.productImpressions || 0,
+      sessions: userBehaviorStats.productImpressionSessions || 0,
+      rate: calculateRate(userBehaviorStats.productImpressionSessions, sessions),
+      source: USER_METRIC_EVENTS.PRODUCT_IMPRESSION,
+    },
+    productClick: {
+      eventCount: userBehaviorStats.productClicks || 0,
+      sessions: userBehaviorStats.productClickSessions || 0,
+      rate: calculateRate(userBehaviorStats.productClickSessions, sessions),
+      source: USER_METRIC_EVENTS.PRODUCT_CLICK,
+    },
+    viewItem: {
+      eventCount: userBehaviorStats.productViews || 0,
+      sessions: userBehaviorStats.productViewSessions || 0,
+      rate: calculateRate(userBehaviorStats.productViewSessions, sessions),
+      source: USER_METRIC_EVENTS.PRODUCT_VIEW,
+    },
+    addToCart: {
+      eventCount: userBehaviorStats.addToCart || 0,
+      sessions: userBehaviorStats.addToCartSessions || 0,
+      rate: calculateRate(userBehaviorStats.addToCartSessions, sessions),
+      source: USER_METRIC_EVENTS.ADD_TO_CART,
+    },
+    beginCheckout: {
+      eventCount: userBehaviorStats.checkoutStarts || 0,
+      sessions: userBehaviorStats.checkoutStartSessions || 0,
+      rate: calculateRate(userBehaviorStats.checkoutStartSessions, sessions),
+      source: USER_METRIC_EVENTS.CHECKOUT_START,
+    },
+    paymentAttempt: {
+      eventCount: userBehaviorStats.paymentAttempts || 0,
+      sessions: userBehaviorStats.paymentAttemptSessions || 0,
+      rate: calculateRate(userBehaviorStats.paymentAttemptSessions, sessions),
+      source: USER_METRIC_EVENTS.PAYMENT_ATTEMPT,
+    },
+    purchase: {
+      eventCount: paidOrders || 0,
+      rate: calculateRate(paidOrders, sessions),
+      source: 'Order paymentStatus approved',
+    },
+    abandonedCart: {
+      eventCount: abandonedCarts || 0,
+      source: 'Cart',
+    },
+  }
 }

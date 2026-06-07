@@ -24,9 +24,28 @@ const initialState = {
   status: 'idle',
   isLoading: false,
   isCategoriesLoading: false,
+  currentFetchKey: null,
+  lastFetchKey: null,
+  lastFetchedAt: null,
+  lastCategoriesFetchedAt: null,
   error: null,
   categoriesError: null,
 }
+
+const PRODUCT_LIST_CACHE_TTL_MS = 10 * 1000
+const PRODUCT_CATEGORIES_CACHE_TTL_MS = 5 * 60 * 1000
+
+const getProductState = state => state.product || state.products || {}
+
+const createFetchKey = (params = {}) =>
+  JSON.stringify(
+    Object.entries(params || {})
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .sort(([left], [right]) => left.localeCompare(right)),
+  )
+
+const isFresh = (timestamp, ttl) =>
+  Boolean(timestamp) && Date.now() - Number(timestamp) < ttl
 
 const normalizeProduct = (product = {}) => ({
   ...product,
@@ -59,6 +78,26 @@ export const getAllProducts = createAsyncThunk(
       return rejectWithValue(error?.message || 'Error al cargar productos')
     }
   },
+  {
+    condition: (params = {}, { getState }) => {
+      const productState = getProductState(getState())
+      const fetchKey = createFetchKey(params)
+
+      if (productState.isLoading && productState.currentFetchKey === fetchKey) {
+        return false
+      }
+
+      if (
+        productState.lastFetchKey === fetchKey &&
+        isFresh(productState.lastFetchedAt, PRODUCT_LIST_CACHE_TTL_MS)
+      ) {
+        return false
+      }
+
+      return true
+    },
+    dispatchConditionRejection: false,
+  },
 )
 
 export const getProductCategories = createAsyncThunk(
@@ -69,6 +108,26 @@ export const getProductCategories = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error?.message || 'Error al cargar categorías')
     }
+  },
+  {
+    condition: (_, { getState }) => {
+      const productState = getProductState(getState())
+
+      if (productState.isCategoriesLoading) {
+        return false
+      }
+
+      if (
+        Array.isArray(productState.categories) &&
+        productState.categories.length > 0 &&
+        isFresh(productState.lastCategoriesFetchedAt, PRODUCT_CATEGORIES_CACHE_TTL_MS)
+      ) {
+        return false
+      }
+
+      return true
+    },
+    dispatchConditionRejection: false,
   },
 )
 
@@ -186,14 +245,18 @@ const productSlice = createSlice({
   extraReducers: builder => {
     builder
       // All products
-      .addCase(getAllProducts.pending, state => {
+      .addCase(getAllProducts.pending, (state, action) => {
         state.status = 'loading'
         state.isLoading = true
+        state.currentFetchKey = createFetchKey(action.meta.arg)
         state.error = null
       })
       .addCase(getAllProducts.fulfilled, (state, action) => {
         state.status = 'succeeded'
         state.isLoading = false
+        state.currentFetchKey = null
+        state.lastFetchKey = createFetchKey(action.meta.arg)
+        state.lastFetchedAt = Date.now()
         state.error = null
 
         const productsRaw = Array.isArray(action.payload?.data) ? action.payload.data : []
@@ -217,6 +280,7 @@ const productSlice = createSlice({
       .addCase(getAllProducts.rejected, (state, action) => {
         state.status = 'failed'
         state.isLoading = false
+        state.currentFetchKey = null
         state.error = action.payload || 'Error al cargar productos'
       })
 
@@ -227,6 +291,7 @@ const productSlice = createSlice({
       })
       .addCase(getProductCategories.fulfilled, (state, action) => {
         state.isCategoriesLoading = false
+        state.lastCategoriesFetchedAt = Date.now()
         state.categoriesError = null
         state.categories = Array.isArray(action.payload?.data) ? action.payload.data : []
       })

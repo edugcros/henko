@@ -5,8 +5,12 @@ import User from '../models/userModel.js'
 import Product from '../models/productModel.js'
 import Cart from '../models/cartModel.js'
 import Tenant from '../models/tenantModel.js'
+import UserMetricEvent, {
+  USER_METRIC_EVENTS,
+} from '../models/userMetricEventModel.js'
 
 import { resolveCartPricing } from '../services/cartPricingService.js'
+import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import { env } from '../../config/env.js'
 import { verifyRefreshToken } from '../../config/generateRefreshToken.js'
 import { generateAccessToken } from '../../config/generateAccessToken.js'
@@ -18,6 +22,10 @@ import { normalizeArgentinePhone } from '../utils/normalizePhone.js'
 import { sendResetPasswordEmail, sendVerificationEmail } from '../services/email/verificationEmail.service.js'
 import { sendResponse } from '../utils/response.js'
 import { getCookieDomain } from '../utils/cookieHelper.js'
+import {
+  getUserIdFromRequest,
+  isValidObjectId,
+} from '../utils/requestContext.js'
 
 import expressAsyncHandler from 'express-async-handler'
 import { body, validationResult } from 'express-validator'
@@ -80,7 +88,7 @@ const uniqueValues = values => {
   return [...new Set(values.filter(Boolean).map(value => String(value).toLowerCase()))]
 }
 
-const isValidId = id => mongoose.Types.ObjectId.isValid(id)
+const isValidId = isValidObjectId
 
 const requireValidId = (id, message = 'ID inválido') => {
   if (!isValidId(id)) {
@@ -90,14 +98,20 @@ const requireValidId = (id, message = 'ID inválido') => {
   }
 }
 
-const getRequestUserId = req => req.user?.id || req.user?._id
+const getRequestUserId = getUserIdFromRequest
 
 const sanitizeProfilePayload = payload => {
   const clean = {}
 
   for (const field of USER_PROFILE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(payload || {}, field)) {
-      clean[field] = payload[field]
+      const value = payload[field]
+
+      if (field === 'mobile') {
+        clean.mobile = normalizeArgentinePhone(value)
+      } else {
+        clean[field] = String(value || '').trim()
+      }
     }
   }
 
@@ -168,6 +182,72 @@ const getTenantDomainFromRequest = req => {
     req.headers.host ||
     ''
   )
+}
+
+const getMetricSessionIdFromRequest = req => {
+  return (
+    req.headers['x-metric-session-id'] ||
+    req.headers['x-session-id'] ||
+    crypto.randomUUID()
+  )
+}
+
+const recordAuthMetric = ({ req, user, tenant, eventType, source }) => {
+  if (!tenant?._id || !user?._id) return
+
+  UserMetricEvent.create({
+    tenantId: tenant._id,
+    userId: user._id,
+    sessionId: getMetricSessionIdFromRequest(req),
+    eventType,
+    source,
+    path: req.originalUrl || req.path || '/',
+    device: {
+      userAgent: req.headers['user-agent'] || '',
+      language: req.headers['accept-language'] || '',
+    },
+    metadata: {
+      role: user.role,
+    },
+  }).catch(error => {
+    logger.warn(`No se pudo registrar métrica de autenticación: ${error.message}`)
+  })
+}
+
+const scheduleWishlistPromotionNotification = ({
+  tenantId,
+  userId,
+  productId,
+}) => {
+  setTimeout(async () => {
+    try {
+      const result = await notifyWishlistPromotions({
+        tenantId,
+        userId,
+        productId,
+        dryRun: false,
+        limit: 1,
+      })
+
+      logger.info('[Wishlist] Aviso de promoción procesado al agregar favorito', {
+        tenantId: String(tenantId),
+        userId: String(userId),
+        productId: String(productId),
+        scannedPromotions: result.scannedPromotions,
+        matchedUsers: result.matchedUsers,
+        sent: result.sent,
+        skipped: result.skipped,
+        failed: result.failed,
+      })
+    } catch (error) {
+      logger.error('[Wishlist] Error procesando aviso de promoción', {
+        tenantId: String(tenantId),
+        userId: String(userId),
+        productId: String(productId),
+        error: error.stack || error.message,
+      })
+    }
+  }, 0)
 }
 
 const resolveAdminTenantFromRequest = async req => {
@@ -428,6 +508,10 @@ export const createUserAdmin = [
       }
       return true
     }),
+  body('plan')
+    .optional()
+    .isIn(['starter', 'pro'])
+    .withMessage('El plan seleccionado no es válido'),
 
   expressAsyncHandler(async (req, res) => {
     const errors = validationResult(req)
@@ -436,10 +520,19 @@ export const createUserAdmin = [
     }
 
     const email = normalizeEmail(req.body.email)
-    const { password, firstname, lastname, mobile, storeName, storeSlug } = req.body
+    const {
+      password,
+      firstname,
+      lastname,
+      mobile,
+      storeName,
+      storeSlug,
+    } = req.body
     const finalSlug = normalizeSlug(storeSlug)
     const finalMobile = normalizeArgentinePhone(mobile)
-    const plan = 'starter'
+    const plan = ['starter', 'pro'].includes(req.body.plan)
+      ? req.body.plan
+      : 'starter'
 
     const { shopDomain, adminDomain, shopUrl, adminUrl } = buildTenantDomains(finalSlug)
     const shopDomainCandidates = uniqueValues([shopDomain, normalizeDomain(shopDomain)])
@@ -741,6 +834,13 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
 
   sendAuthCookies(res, req, refreshToken)
   logger.info(`Login exitoso: ${email} (${user.role}) | tenant=${tenant._id}`)
+  recordAuthMetric({
+    req,
+    user,
+    tenant,
+    eventType: USER_METRIC_EVENTS.LOGIN,
+    source: isAdmin ? 'admin' : 'storefront',
+  })
 
   return res.status(200).json({
     success: true,
@@ -846,11 +946,21 @@ export const logout = expressAsyncHandler(async (req, res) => {
   if (refreshToken) {
     try {
       const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET)
-      await User.findByIdAndUpdate(
+      const user = await User.findByIdAndUpdate(
         decoded.sub || decoded.id,
         { refreshToken: null },
-        { validateBeforeSave: false },
+        { validateBeforeSave: false, new: false },
       ).setOptions({ ignoreTenant: true })
+
+      if (user?.tenantId) {
+        recordAuthMetric({
+          req,
+          user,
+          tenant: { _id: user.tenantId },
+          eventType: USER_METRIC_EVENTS.LOGOUT,
+          source: user.role === 'admin' ? 'admin' : 'storefront',
+        })
+      }
     } catch (err) {
       logger.warn(`Refresh token inválido o expirado al cerrar sesión: ${err.message}`)
     }
@@ -1134,6 +1244,14 @@ export const toggleWishlist = expressAsyncHandler(async (req, res) => {
   const message = alreadyAdded
     ? 'Producto eliminado de la lista de deseos.'
     : 'Producto añadido a la lista de deseos.'
+
+  if (!alreadyAdded) {
+    scheduleWishlistPromotionNotification({
+      tenantId,
+      userId,
+      productId,
+    })
+  }
 
   return sendResponse(res, 200, true, message, updatedUser.wishlist.filter(Boolean))
 })

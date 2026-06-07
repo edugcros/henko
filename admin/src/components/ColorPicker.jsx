@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Box,
   TextField,
@@ -11,6 +11,7 @@ import {
 } from '@mui/material'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { HexColorPicker } from 'react-colorful'
+import { debounce } from 'lodash'
 
 // ===============================
 // Utils
@@ -36,12 +37,27 @@ const ColorPicker = ({
   const [draftValue, setDraftValue] = useState(value)
   const open = Boolean(anchorEl)
 
+  const debouncedPickerCommit = useMemo(
+    () =>
+      debounce((color) => {
+        onChange(color)
+      }, 120),
+    [onChange],
+  )
+
   useEffect(() => {
     setDraftValue(value)
   }, [value])
 
+  useEffect(() => {
+    return () => debouncedPickerCommit.cancel()
+  }, [debouncedPickerCommit])
+
   const handleOpen = (e) => setAnchorEl(e.currentTarget)
-  const handleClose = () => setAnchorEl(null)
+  const handleClose = () => {
+    debouncedPickerCommit.flush()
+    setAnchorEl(null)
+  }
 
   const handleInputChange = (e) => {
     const val = e.target.value
@@ -62,7 +78,7 @@ const ColorPicker = ({
 
   const handlePickerChange = (color) => {
     setDraftValue(color)
-    onChange(color)
+    debouncedPickerCommit(color)
   }
 
   const helpText = description || helperText
