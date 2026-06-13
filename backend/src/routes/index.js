@@ -6,10 +6,8 @@ import userRoute from './userRoute.js'
 import productRouter from './productRoute.js'
 import colorRouter from './colorRoute.js'
 import enqRouter from './enqRoute.js'
-import emailRoutes from './emailRoute.js'
 import couponRouter from './couponRoute.js'
 import orderRoute from './orderRoute.js'
-import uploadRoutes from './uploadRoute.js'
 import themeConfigRoute from './themeConfigRoute.js'
 import paymentRoutes from './paymentRoutes.js'
 import dashboardRoute from './dashboardRoute.js'
@@ -17,6 +15,11 @@ import tenantRoutes from './tenantRoutes.js'
 import promotionalBlockRoute from './promotionalBlockRoute.js'
 import productAnalysisRoutes from './productAnalysisRoutes.js'
 import userMetricsRoutes from './userMetricsRoutes.js'
+import aiAgentRoutes from './aiAgentRoutes.js'
+import whatsappRoutes from './whatsappRoutes.js'
+import aiWebchatRoutes from './aiWebchatRoutes.js'
+import aiLeadAdminRoutes from './aiLeadAdminRoutes.js'
+
 
 const router = express.Router()
 
@@ -30,14 +33,17 @@ router.use('/dash', dashboardRoute)
 // 🛍️ CATÁLOGO DE PRODUCTOS
 // =======================================================
 router.use('/product', productRouter)
-router.use('/imgup', uploadRoutes)
 
 router.use('/color', colorRouter)
 router.use('/coupons', couponRouter)
+router.use('/ai-webchat', aiWebchatRoutes)
 
 //AGENTE
 router.use('/product-analysis', productAnalysisRoutes)
 router.use('/metrics', userMetricsRoutes)
+router.use('/ai-agent', aiAgentRoutes)
+router.use('/ai-agent', aiLeadAdminRoutes)
+router.use('/whatsapp', whatsappRoutes)
 
 // =======================================================
 // 🎨 TEMAS Y CONFIGURACIÓN VISUAL
@@ -61,7 +67,6 @@ router.use('/promotional-blocks', promotionalBlockRoute)
 // 📬 COMUNICACIÓN
 // =======================================================
 router.use('/enquiry', enqRouter)
-router.use('/email', emailRoutes)
 
 // =======================================================
 // 📦 ÓRDENES Y PEDIDOS

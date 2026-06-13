@@ -15,7 +15,9 @@ export function normalizeError(err) {
   const msg =
     err?.message ||
     err?.response?.data?.message ||
-    (typeof err === 'object' ? JSON.stringify(err, null, 2) : 'Error desconocido')
+    (typeof err === 'object'
+      ? JSON.stringify(err, null, 2)
+      : 'Error desconocido')
 
   return new Error(msg)
 }

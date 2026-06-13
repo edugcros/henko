@@ -26,10 +26,7 @@ const normalizeAuthResponse = response => {
       raw?.data?.accessToken ||
       null,
 
-    refreshToken:
-      raw?.refreshToken ||
-      raw?.data?.refreshToken ||
-      null,
+    refreshToken: raw?.refreshToken || raw?.data?.refreshToken || null,
   }
 }
 
@@ -96,9 +93,7 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
       !['get', 'head', 'options'].includes(String(method).toLowerCase()) &&
       options.skipCsrf !== true
 
-    const csrfToken = shouldUseCsrf
-      ? await ensureCsrf()
-      : null
+    const csrfToken = shouldUseCsrf ? await ensureCsrf() : null
 
     const isValidToken = token => {
       return (
@@ -110,9 +105,7 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     }
 
     const rawToken =
-      localStorage.getItem('token') ||
-      Cookies.get('token') ||
-      null
+      localStorage.getItem('token') || Cookies.get('token') || null
 
     const token = isValidToken(rawToken) ? rawToken : null
 
@@ -207,11 +200,11 @@ const loginUser = async userData => {
     }
 
     return {
-    success: true,
-    data: {
-      user: normalized?.user,
-      token: normalized?.token,
-    },
+      success: true,
+      data: {
+        user: normalized?.user,
+        token: normalized?.token,
+      },
     }
   } catch (error) {
     throwApiError(error, 'Error al iniciar sesión')
@@ -286,14 +279,15 @@ const logoutUser = async () => {
 
 const inflight = new Map()
 
-const makeQueryKey = (params = {}) => JSON.stringify({
-  page: params.page ?? 1,
-  limit: params.limit ?? 20,
-  status: params.status || null,
-  q: params.q || null,
-  from: params.from || null,
-  to: params.to || null,
-})
+const makeQueryKey = (params = {}) =>
+  JSON.stringify({
+    page: params.page ?? 1,
+    limit: params.limit ?? 20,
+    status: params.status || null,
+    q: params.q || null,
+    from: params.from || null,
+    to: params.to || null,
+  })
 
 const getOrders = async (params = {}, { signal } = {}) => {
   const key = makeQueryKey(params)
@@ -344,7 +338,9 @@ const updateOrderStatus = async (id, status) => {
     )
 
     if (response.data?.success === false) {
-      throw new Error(response.data?.message || 'No se pudo actualizar el estado')
+      throw new Error(
+        response.data?.message || 'No se pudo actualizar el estado',
+      )
     }
 
     return response.data
@@ -375,9 +371,7 @@ const refreshToken = async () => {
 
     const normalized = normalizeAuthResponse(response.data)
     const token =
-      normalized?.token ||
-      response.data?.token ||
-      response.data?.accessToken
+      normalized?.token || response.data?.token || response.data?.accessToken
 
     if (!token) {
       throw new Error('Token ausente en refresh')
@@ -395,10 +389,7 @@ const refreshToken = async () => {
     })
 
     const user =
-      me?.data?.data?.user ||
-      me?.data?.data ||
-      me?.data?.user ||
-      null
+      me?.data?.data?.user || me?.data?.data || me?.data?.user || null
 
     return {
       success: true,

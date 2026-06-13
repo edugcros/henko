@@ -7,6 +7,7 @@ import mongoSanitize from 'express-mongo-sanitize'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import cors from 'cors'
+import aiLeadAdminRoutes from './src/routes/aiLeadAdminRoutes.js'
 
 import {
   csrfProtectionDynamic,
@@ -68,6 +69,10 @@ app.use(morgan(env.isProduction ? 'combined' : 'dev'))
 app.use(
   express.json({
     limit: env.isProduction ? '1mb' : '5mb',
+    verify: (req, res, buf) => {
+      // Necesario para validar x-hub-signature-256 de Meta/WhatsApp.
+      req.rawBody = buf
+    },
   }),
 )
 
@@ -201,8 +206,13 @@ const csrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/user/forgot-password` },
   { method: 'PUT', path: `${env.apiPrefix}/user/reset-password` },
 
+  { method: 'POST', path: `${env.apiPrefix}/whatsapp/webhook` },
+  { method: 'POST', path: `${env.apiPrefix}/ai-webchat/message` },
   // Webhook externo real de Mercado Pago.
   { method: 'POST', path: `${env.apiPrefix}/payments/webhook/mercadopago` },
+
+  // Webhook externo real de WhatsApp/Meta. Valida firma propia x-hub-signature-256.
+  { method: 'POST', path: `${env.apiPrefix}/whatsapp/webhook` },
 
   // Agente local de análisis por API key. El endpoint mantiene autenticación propia.
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/import` },
@@ -259,6 +269,9 @@ const tunnelCsrfExemptRoutes = [
   // Productos
   { method: 'PUT', path: `${env.apiPrefix}/product/rating/:productId` },
   { method: 'PUT', path: `${env.apiPrefix}/product/:productId/rating/:ratingId/helpful` },
+
+  // Leads
+  app.use(`${env.apiPrefix}/ai-agent`, aiLeadAdminRoutes),
 ]
 
 const isCsrfExempt = req => {

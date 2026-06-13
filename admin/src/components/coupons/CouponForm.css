@@ -87,8 +87,14 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ======================================================
@@ -126,9 +132,9 @@
    INPUTS
    ====================================================== */
 
-input[type="text"],
-input[type="number"],
-input[type="datetime-local"],
+input[type='text'],
+input[type='number'],
+input[type='datetime-local'],
 textarea,
 select {
   width: 100%;
@@ -237,7 +243,7 @@ textarea {
   margin-bottom: 0 !important;
 }
 
-.checkbox-label input[type="checkbox"] {
+.checkbox-label input[type='checkbox'] {
   width: 20px;
   height: 20px;
   cursor: pointer;
@@ -363,7 +369,9 @@ textarea {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ======================================================
@@ -374,30 +382,30 @@ textarea {
   .form-content {
     padding: 16px;
   }
-  
+
   .form-row.two-columns {
     flex-direction: column;
     gap: 20px;
   }
-  
+
   .form-row.two-columns .form-group {
     margin-bottom: 0;
   }
-  
+
   .tab-button {
     padding: 12px 8px;
     font-size: 13px;
   }
-  
+
   .tab-icon {
     display: none;
   }
-  
+
   .form-actions {
     flex-direction: column-reverse;
     padding: 16px;
   }
-  
+
   .btn-primary,
   .btn-secondary {
     width: 100%;
@@ -431,7 +439,7 @@ button:focus-visible {
   .tab-button.active {
     border: 2px solid #2196f3;
   }
-  
+
   .btn-primary {
     border: 2px solid #1976d2;
   }

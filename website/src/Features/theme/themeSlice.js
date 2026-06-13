@@ -24,7 +24,9 @@ export const getThemeConfig = createAsyncThunk(
       const response = await themeService.getThemeConfig(token)
 
       if (!response.success) {
-        return rejectWithValue(response.error || 'Error al cargar configuración')
+        return rejectWithValue(
+          response.error || 'Error al cargar configuración',
+        )
       }
 
       return response
@@ -75,7 +77,11 @@ export const uploadThemeAsset = createAsyncThunk(
   async ({ file, assetType }, { getState, rejectWithValue }) => {
     try {
       const token = getToken(getState)
-      const response = await themeService.uploadThemeAsset(token, file, assetType)
+      const response = await themeService.uploadThemeAsset(
+        token,
+        file,
+        assetType,
+      )
 
       if (!response.success) {
         return rejectWithValue(response.error || 'Error al subir imagen')

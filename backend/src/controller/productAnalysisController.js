@@ -42,6 +42,10 @@ const ALLOWED_SOURCES = new Set(Object.values(JOB_SOURCE))
 
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
+const AUTO_PUBLISH_MIN_CONFIDENCE = Math.min(
+  Math.max(Number(process.env.AI_AUTO_PUBLISH_MIN_CONFIDENCE || 0.9), 0),
+  1,
+)
 
 const SAFE_SORT_FIELDS = new Set([
   'createdAt',
@@ -252,6 +256,21 @@ const sanitizeAnalysis = analysis => {
   }
 }
 
+const canAutoPublishAnalysis = analysis => {
+  return Boolean(
+    analysis &&
+    analysis.confidence >= AUTO_PUBLISH_MIN_CONFIDENCE &&
+    normalizeString(analysis.titulo || analysis.title) &&
+    normalizeString(analysis.categoria || analysis.category) &&
+    (
+      typeof analysis.suggestedPrice === 'number' ||
+      typeof analysis.precio_sugerido === 'number'
+    ) &&
+    !analysis.needsReview &&
+    analysis.aiProcessed !== false,
+  )
+}
+
 /**
  * Adapter de storage.
  *
@@ -365,25 +384,51 @@ const runVisualAnalysis = async ({ tenantId, file, originalFilename }) => {
 }
 
 const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFilename = '' }) => {
-  const job = await ProductAnalysisJob.findOne({ _id: jobId, tenantId })
+  let job = await ProductAnalysisJob.findOneAndUpdate(
+    {
+      _id: jobId,
+      tenantId,
+      status: {
+        $in: [
+          JOB_STATUS.PENDING,
+          JOB_STATUS.SCHEDULED,
+          JOB_STATUS.FAILED,
+        ],
+      },
+      $or: [
+        { deletedAt: { $exists: false } },
+        { deletedAt: null },
+      ],
+    },
+    {
+      $set: {
+        status: JOB_STATUS.PROCESSING,
+        startedAt: new Date(),
+      },
+      $unset: {
+        error: 1,
+        failedAt: 1,
+      },
+    },
+    {
+      new: true,
+    },
+  )
 
   if (!job) {
-    throw new Error('Job de análisis no encontrado')
-  }
+    job = await ProductAnalysisJob.findOne({ _id: jobId, tenantId })
+    if (!job) {
+      throw new Error('Job de análisis no encontrado')
+    }
 
-  if (job.deletedAt || job.status === JOB_STATUS.REJECTED) {
-    logger.info('[ProductAnalysis] Job omitido porque fue eliminado o rechazado', {
+    logger.info('[ProductAnalysis] Job no reclamado para análisis', {
       tenantId: tenantId.toString(),
       jobId: job._id.toString(),
       status: job.status,
+      deleted: Boolean(job.deletedAt),
     })
     return job
   }
-
-  job.status = JOB_STATUS.PROCESSING
-  job.startedAt = job.startedAt || new Date()
-  job.error = undefined
-  await job.save()
 
   try {
     let rawAnalysis
@@ -404,6 +449,12 @@ const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFile
       throw new Error('No hay buffer disponible y la IA no soporta análisis desde URL')
     }
 
+    if (!rawAnalysis || rawAnalysis.aiProcessed === false) {
+      const error = new Error('El proveedor de IA no produjo un análisis válido')
+      error.code = 'AI_ANALYSIS_FAILED'
+      throw error
+    }
+
     const analysis = sanitizeAnalysis(rawAnalysis)
 
     job.status = JOB_STATUS.COMPLETED
@@ -415,10 +466,24 @@ const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFile
     await job.save()
 
     if (job.autoCreateProduct && !job.createdProductId) {
+      const publish = job.autoPublishProduct && canAutoPublishAnalysis({
+        ...rawAnalysis,
+        ...analysis,
+      })
+
+      if (job.autoPublishProduct && !publish) {
+        logger.warn('[ProductAnalysis] Auto-publicación bloqueada por calidad insuficiente', {
+          tenantId: tenantId.toString(),
+          jobId: job._id.toString(),
+          confidence: analysis.confidence,
+          minimumConfidence: AUTO_PUBLISH_MIN_CONFIDENCE,
+        })
+      }
+
       await createProductFromAnalysisJob({
         job,
         userId: job.createdBy || null,
-        publish: job.autoPublishProduct,
+        publish,
       })
     }
 
@@ -434,6 +499,8 @@ const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFile
     job.error = {
       message: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      code: error.code || 'AI_ANALYSIS_FAILED',
+      retryable: error.retryable === true,
     }
     job.failedAt = new Date()
 
@@ -952,6 +1019,38 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
   })
 
   if (existing) {
+    const canRetryExistingAnalysis =
+      autoAnalyze &&
+      existing.status === JOB_STATUS.FAILED &&
+      existing.error?.retryable === true &&
+      !existing.deletedAt
+
+    if (canRetryExistingAnalysis) {
+      const retriedJob = await analyzeAndPersistJob({
+        jobId: existing._id,
+        tenantId,
+        file: {
+          buffer: Buffer.from(file.buffer),
+          mimetype: file.mimetype,
+        },
+        originalFilename,
+      })
+      const retrySucceeded =
+        retriedJob.status === JOB_STATUS.COMPLETED ||
+        retriedJob.status === JOB_STATUS.APPROVED
+
+      return res.status(
+        retrySucceeded ? 200 : retriedJob.error?.retryable ? 503 : 422,
+      ).json({
+        success: retrySucceeded,
+        code: retrySucceeded ? undefined : retriedJob.error?.code,
+        message: retrySucceeded
+          ? 'Imagen reanalizada correctamente.'
+          : retriedJob.error?.message || 'La IA no pudo completar el reanálisis.',
+        job: retriedJob,
+      })
+    }
+
     const isDiscardedLegacyJob =
       Boolean(existing.deletedAt) ||
       (
@@ -1090,7 +1189,9 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
   const analysisSucceeded = processedJob.status === JOB_STATUS.COMPLETED ||
     processedJob.status === JOB_STATUS.APPROVED
 
-  return res.status(analysisSucceeded ? 201 : 422).json({
+  const failureStatus = processedJob.error?.retryable ? 503 : 422
+
+  return res.status(analysisSucceeded ? 201 : failureStatus).json({
     success: analysisSucceeded,
     message: analysisSucceeded
       ? 'Imagen importada y analizada correctamente.'

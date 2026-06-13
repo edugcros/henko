@@ -27,15 +27,25 @@ import {
   getUserCart,
   emptyCart,
   removeFromCart,
-  getCsrfToken,
   createUserAdmin,
   verifyEmail,
 } from '../controller/userCtrl.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
-import { resolveTenantByDomain } from '../middlewares/tenantMiddleware.js'
+import {
+  requireAdminDomain,
+  requireTenant,
+  resolveTenantByDomain,
+} from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
+const adminContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
+  authMiddleware,
+  isAdmin,
+]
 
 // ======================================================
 // 🛡️ RATE LIMITS PÚBLICOS SENSIBLES
@@ -66,10 +76,6 @@ const registerAdminLimiter = rateLimit({
 // ======================================================
 // 🔓 1. RUTAS PÚBLICAS
 // ======================================================
-
-// Bootstrap CSRF.
-// Debe quedar público para que el frontend obtenga el token inicial.
-router.get('/csrf-token', getCsrfToken)
 
 // Verificación de email por token global seguro.
 // No requiere tenant porque el token ya es aleatorio, hasheado y de un solo uso.
@@ -225,42 +231,32 @@ router.delete(
 
 router.get(
   '/all-users',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   getAllUsers,
 )
 
 router.put(
   '/block-user/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   blockUser,
 )
 
 router.put(
   '/unblock-user/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   unblockUser,
 )
 
 router.delete(
   '/delete-user/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   deleteUser,
 )
 
 // ⚠️ Debe ir al final porque captura rutas dinámicas.
 router.get(
   '/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   getUserById,
 )
 

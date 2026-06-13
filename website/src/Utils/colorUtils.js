@@ -7,8 +7,12 @@ export const parseColorToCss = colorValue => {
   // 🎨 Formatos válidos: HEX, RGB(A), HSL(A), nombres de color
   if (
     /^#([0-9A-Fa-f]{3}){1,2}$/.test(cleanValue) || // #fff o #ffffff
-    /^rgb(a)?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(,\s*\d*\.?\d+)?\s*\)$/.test(cleanValue) || // rgb() o rgba()
-    /^hsl(a)?\(\s*\d+\s*,\s*\d+%?,\s*\d+%?(,\s*\d*\.?\d+)?\s*\)$/.test(cleanValue) || // hsl() o hsla()
+    /^rgb(a)?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(,\s*\d*\.?\d+)?\s*\)$/.test(
+      cleanValue,
+    ) || // rgb() o rgba()
+    /^hsl(a)?\(\s*\d+\s*,\s*\d+%?,\s*\d+%?(,\s*\d*\.?\d+)?\s*\)$/.test(
+      cleanValue,
+    ) || // hsl() o hsla()
     /^[a-zA-Z]+$/.test(cleanValue) // "red", "blue", etc.
   ) {
     return cleanValue

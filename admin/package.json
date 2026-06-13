@@ -7,11 +7,11 @@
     "extends": "./babel.config.cjs"
   },
   "scripts": {
-    "dev": "cross-env NODE_ENV=development HOST=admin.henko.local webpack serve --port 3001 --mode development",
-    "dev:local": "cross-env NODE_ENV=development HOST=localhost webpack serve --port 3001 --mode development",
-    "build": "cross-env NODE_ENV=production webpack --mode production",
-    "build:prod": "cross-env NODE_ENV=production webpack --mode production",
-    "build:staging": "cross-env NODE_ENV=staging webpack --mode production",
+    "dev": "cross-env APP_ENV=development REACT_APP_NODE_ENV=development NODE_ENV=development HOST=admin.henko.local webpack serve --port 3001 --mode development",
+    "dev:local": "cross-env APP_ENV=development REACT_APP_NODE_ENV=development NODE_ENV=development HOST=localhost webpack serve --port 3001 --mode development",
+    "build": "cross-env APP_ENV=production REACT_APP_NODE_ENV=production webpack --mode production",
+    "build:prod": "cross-env APP_ENV=production REACT_APP_NODE_ENV=production webpack --mode production",
+    "build:staging": "cross-env APP_ENV=staging REACT_APP_NODE_ENV=staging webpack --mode production",
     "preview": "serve -s dist -l 3001",
     "clean": "rimraf dist build",
     "lint": "eslint src/**/*.{js,jsx} --fix",

@@ -5,14 +5,20 @@ import { env } from './config/env.js'
 import connectDB, { closeDB } from './config/connectDB.js'
 import app from './app.js'
 import logger from './config/logger.js'
+import {
+  startAiCartRecoveryWorker,
+  stopAiCartRecoveryWorker,
+} from './src/workers/aiCartRecoveryWorker.js'
 
 // =====================================================
 // Configuración servidor
 // =====================================================
 
 const PORT = env.port || 5000
+
 let serverInstance = null
 let isShuttingDown = false
+let isServerListening = false
 
 // =====================================================
 // Arranque
@@ -25,13 +31,26 @@ const startServer = async () => {
     logger.info('🟢 Conexión a MongoDB establecida')
 
     serverInstance = app.listen(PORT, '0.0.0.0', () => {
+      isServerListening = true
+
       logger.info(`🚀 API running on port ${PORT}`)
       logger.info(`🌍 Entorno: ${env.nodeEnv}`)
       logger.info(`🔗 API Prefix: ${env.apiPrefix}`)
+
+      startAiCartRecoveryWorker({ logger })
     })
 
     serverInstance.on('error', err => {
+      isServerListening = false
+
       logger.error(`❌ Error en servidor HTTP: ${err.message}`)
+
+      if (err.code === 'EADDRINUSE') {
+        logger.error(`❌ El puerto ${PORT} ya está en uso. Cerrá el proceso anterior o cambiá PORT.`)
+        logger.error(`👉 Windows: netstat -ano | findstr :${PORT}`)
+        logger.error('👉 Luego: taskkill /PID TU_PID /F')
+      }
+
       shutdown('HTTP_ERROR')
     })
   } catch (error) {
@@ -46,12 +65,15 @@ const startServer = async () => {
 
 const shutdown = async signal => {
   if (isShuttingDown) return
+
   isShuttingDown = true
 
   logger.warn(`⚠️ Señal recibida: ${signal}`)
 
   try {
-    if (serverInstance) {
+    stopAiCartRecoveryWorker()
+
+    if (serverInstance && isServerListening) {
       await new Promise((resolve, reject) => {
         serverInstance.close(error => {
           if (error) return reject(error)
@@ -59,6 +81,7 @@ const shutdown = async signal => {
         })
       })
 
+      isServerListening = false
       logger.info('🛑 Servidor HTTP cerrado')
     }
 

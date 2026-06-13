@@ -27,12 +27,20 @@ import {
 import { isAdmin, authMiddleware } from '../middlewares/authMiddleware.js'
 
 import {
+  requireAdminDomain,
   resolveTenantByDomain,
   requireShopDomain,
   requireTenant,
 } from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
+const adminContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
+  authMiddleware,
+  isAdmin,
+]
 
 // =====================================================
 // MULTER
@@ -246,10 +254,7 @@ router.get(
  */
 router.get(
   '/admin',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   getThemeForAdmin,
 )
 
@@ -259,10 +264,7 @@ router.get(
  */
 router.get(
   '/admin/history',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   getThemeHistory,
 )
 
@@ -272,10 +274,7 @@ router.get(
  */
 router.get(
   '/admin/export',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   exportTheme,
 )
 
@@ -285,10 +284,7 @@ router.get(
  */
 router.put(
   '/admin',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   strictLimiter,
   updateTheme,
 )
@@ -299,10 +295,7 @@ router.put(
  */
 router.patch(
   '/admin',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   patchLimiter,
   patchTheme,
 )
@@ -313,10 +306,7 @@ router.patch(
  */
 router.post(
   '/admin/preview',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   previewLimiter,
   createPreview,
 )
@@ -327,10 +317,7 @@ router.post(
  */
 router.post(
   '/admin/preview/:previewId/activate',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   strictLimiter,
   activatePreview,
 )
@@ -341,10 +328,7 @@ router.post(
  */
 router.post(
   '/admin/reset',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   strictLimiter,
   resetTheme,
 )
@@ -355,10 +339,7 @@ router.post(
  */
 router.post(
   '/admin/maintenance',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   strictLimiter,
   toggleMaintenance,
 )
@@ -369,10 +350,7 @@ router.post(
  */
 router.post(
   '/admin/rollback',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   strictLimiter,
   rollbackTheme,
 )
@@ -383,10 +361,7 @@ router.post(
  */
 router.post(
   '/admin/validate',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   strictLimiter,
   validateTheme,
 )
@@ -397,10 +372,7 @@ router.post(
  */
 router.post(
   '/admin/import',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   strictLimiter,
   importTheme,
 )
@@ -411,10 +383,7 @@ router.post(
  */
 router.post(
   '/admin/upload-image',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   strictLimiter,
   upload.single('image'),
   handleMulterError,

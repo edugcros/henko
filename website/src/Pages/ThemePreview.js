@@ -4,10 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import CustomHeader from '@components/CustomHeader'
 import Footer from '@components/Footer'
 import Home from '@pages/Home'
-import {
-  setPreviewMode,
-  updatePreviewConfig,
-} from '@features/theme/themeSlice'
+import { setPreviewMode, updatePreviewConfig } from '@features/theme/themeSlice'
 import { env } from '../config/env.js'
 
 const PREVIEW_STORAGE_KEY = 'henko_theme_preview_config'
@@ -20,7 +17,9 @@ const parseOrigins = value =>
 
 const getOrigin = value => {
   try {
-    return new URL(value).origin
+    if (!value || typeof window === 'undefined') return ''
+
+    return new window.URL(value).origin
   } catch {
     return ''
   }
@@ -36,10 +35,7 @@ const getAllowedAdminOrigins = () => {
         'http://127.0.0.1:3001',
       ]
 
-  return new Set([
-    ...configuredOrigins,
-    ...localOrigins,
-  ].filter(Boolean))
+  return new Set([...configuredOrigins, ...localOrigins].filter(Boolean))
 }
 
 const readStoredPreview = () => {
@@ -57,9 +53,16 @@ const ThemePreview = () => {
 
   useEffect(() => {
     const allowedAdminOrigins = getAllowedAdminOrigins()
+
+    const searchParams =
+      typeof window !== 'undefined'
+        ? new window.URLSearchParams(window.location.search)
+        : null
+
     const requestedParentOrigin =
-      getOrigin(new URLSearchParams(window.location.search).get('adminOrigin')) ||
-      getOrigin(document.referrer)
+      getOrigin(searchParams?.get('adminOrigin')) ||
+      getOrigin(typeof document !== 'undefined' ? document.referrer : '')
+
     const parentOrigin = allowedAdminOrigins.has(requestedParentOrigin)
       ? requestedParentOrigin
       : [...allowedAdminOrigins][0]
@@ -81,12 +84,17 @@ const ThemePreview = () => {
       if (!message || message.type !== 'HENKO_THEME_PREVIEW_UPDATE') return
       if (!message.payload || typeof message.payload !== 'object') return
 
-      sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(message.payload))
+      sessionStorage.setItem(
+        PREVIEW_STORAGE_KEY,
+        JSON.stringify(message.payload),
+      )
+
       dispatch(updatePreviewConfig(message.payload))
       dispatch(setPreviewMode(true))
     }
 
     window.addEventListener('message', handleMessage)
+
     window.parent?.postMessage(
       { type: 'HENKO_THEME_PREVIEW_READY' },
       parentOrigin || window.location.origin,

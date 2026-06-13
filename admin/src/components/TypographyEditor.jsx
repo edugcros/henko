@@ -1,4 +1,4 @@
-import React from 'react';
+import React from 'react'
 import {
   Box,
   Typography,
@@ -13,8 +13,8 @@ import {
   Tabs,
   Tab,
   Divider,
-} from '@mui/material';
-import { FontDownload } from '@mui/icons-material';
+} from '@mui/material'
+import { FontDownload } from '@mui/icons-material'
 
 const GOOGLE_FONTS = [
   'Roboto',
@@ -29,31 +29,67 @@ const GOOGLE_FONTS = [
   'Source Sans Pro',
   'Work Sans',
   'Nunito',
-];
+]
 
 const TRANSFORM_OPTIONS = [
   { value: 'none', label: 'Normal' },
   { value: 'uppercase', label: 'MAYÚSCULAS' },
   { value: 'lowercase', label: 'minúsculas' },
   { value: 'capitalize', label: 'Capitalizar' },
-];
+]
 
 const DEFAULT_HEADINGS = {
-  h1: { size: 30, weight: 700, lineHeight: 1.2, letterSpacing: -0.5, transform: 'none' },
-  h2: { size: 32, weight: 700, lineHeight: 1.3, letterSpacing: -0.3, transform: 'none' },
-  h3: { size: 28, weight: 600, lineHeight: 1.3, letterSpacing: 0, transform: 'none' },
-  h4: { size: 24, weight: 600, lineHeight: 1.4, letterSpacing: 0, transform: 'none' },
-  h5: { size: 20, weight: 500, lineHeight: 1.4, letterSpacing: 0, transform: 'none' },
-  h6: { size: 18, weight: 500, lineHeight: 1.5, letterSpacing: 0, transform: 'none' },
-};
+  h1: {
+    size: 30,
+    weight: 700,
+    lineHeight: 1.2,
+    letterSpacing: -0.5,
+    transform: 'none',
+  },
+  h2: {
+    size: 32,
+    weight: 700,
+    lineHeight: 1.3,
+    letterSpacing: -0.3,
+    transform: 'none',
+  },
+  h3: {
+    size: 28,
+    weight: 600,
+    lineHeight: 1.3,
+    letterSpacing: 0,
+    transform: 'none',
+  },
+  h4: {
+    size: 24,
+    weight: 600,
+    lineHeight: 1.4,
+    letterSpacing: 0,
+    transform: 'none',
+  },
+  h5: {
+    size: 20,
+    weight: 500,
+    lineHeight: 1.4,
+    letterSpacing: 0,
+    transform: 'none',
+  },
+  h6: {
+    size: 18,
+    weight: 500,
+    lineHeight: 1.5,
+    letterSpacing: 0,
+    transform: 'none',
+  },
+}
 
 const TypographyEditor = ({ value, onChange }) => {
-  const typography = value || {};
-  const headings = typography.headings || DEFAULT_HEADINGS;
+  const typography = value || {}
+  const headings = typography.headings || DEFAULT_HEADINGS
 
   const handleGlobalChange = (field, newValue) => {
-    onChange({ ...typography, [field]: newValue });
-  };
+    onChange({ ...typography, [field]: newValue })
+  }
 
   const handleHeadingChange = (headingKey, field, newValue) => {
     onChange({
@@ -65,8 +101,8 @@ const TypographyEditor = ({ value, onChange }) => {
           [field]: newValue,
         },
       },
-    });
-  };
+    })
+  }
 
   const handleSecondaryChange = (field, newValue) => {
     onChange({
@@ -75,23 +111,25 @@ const TypographyEditor = ({ value, onChange }) => {
         ...(typography.secondary || {}),
         [field]: newValue,
       },
-    });
-  };
+    })
+  }
 
   return (
     <Box>
       {/* Fuentes Globales */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Fuentes</Typography>
+        <Typography variant="h6" gutterBottom>
+          Fuentes
+        </Typography>
         <Grid container spacing={3}>
           <Grid item xs={12} md={4}>
             <FormControl fullWidth size="small">
               <InputLabel>Fuente Principal</InputLabel>
               <Select
                 value={typography.fontFamily || 'Roboto'}
-                onChange={(e) => handleGlobalChange('fontFamily', e.target.value)}
+                onChange={e => handleGlobalChange('fontFamily', e.target.value)}
               >
-                {GOOGLE_FONTS.map((font) => (
+                {GOOGLE_FONTS.map(font => (
                   <MenuItem key={font} value={font}>
                     <span style={{ fontFamily: font }}>{font}</span>
                   </MenuItem>
@@ -104,9 +142,11 @@ const TypographyEditor = ({ value, onChange }) => {
               <InputLabel>Fuente Headings</InputLabel>
               <Select
                 value={typography.headingFont || 'Montserrat'}
-                onChange={(e) => handleGlobalChange('headingFont', e.target.value)}
+                onChange={e =>
+                  handleGlobalChange('headingFont', e.target.value)
+                }
               >
-                {GOOGLE_FONTS.map((font) => (
+                {GOOGLE_FONTS.map(font => (
                   <MenuItem key={font} value={font}>
                     <span style={{ fontFamily: font }}>{font}</span>
                   </MenuItem>
@@ -119,9 +159,11 @@ const TypographyEditor = ({ value, onChange }) => {
               <InputLabel>Fuente Secundaria</InputLabel>
               <Select
                 value={typography.secondaryFont || 'Open Sans'}
-                onChange={(e) => handleGlobalChange('secondaryFont', e.target.value)}
+                onChange={e =>
+                  handleGlobalChange('secondaryFont', e.target.value)
+                }
               >
-                {GOOGLE_FONTS.map((font) => (
+                {GOOGLE_FONTS.map(font => (
                   <MenuItem key={font} value={font}>
                     <span style={{ fontFamily: font }}>{font}</span>
                   </MenuItem>
@@ -182,7 +224,9 @@ const TypographyEditor = ({ value, onChange }) => {
 
       {/* Secondary Typography */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Tipografía Secundaria</Typography>
+        <Typography variant="h6" gutterBottom>
+          Tipografía Secundaria
+        </Typography>
         <Grid container spacing={2}>
           <Grid item xs={6}>
             <TextField
@@ -191,7 +235,9 @@ const TypographyEditor = ({ value, onChange }) => {
               label="Tamaño (px)"
               type="number"
               value={typography.secondary?.size || 14}
-              onChange={(e) => handleSecondaryChange('size', Number(e.target.value))}
+              onChange={e =>
+                handleSecondaryChange('size', Number(e.target.value))
+              }
             />
           </Grid>
           <Grid item xs={6}>
@@ -201,11 +247,15 @@ const TypographyEditor = ({ value, onChange }) => {
               label="Peso"
               type="number"
               value={typography.secondary?.weight || 400}
-              onChange={(e) => handleSecondaryChange('weight', Number(e.target.value))}
+              onChange={e =>
+                handleSecondaryChange('weight', Number(e.target.value))
+              }
             />
           </Grid>
           <Grid item xs={6}>
-            <Typography variant="body2" gutterBottom>Line Height</Typography>
+            <Typography variant="body2" gutterBottom>
+              Line Height
+            </Typography>
             <Slider
               value={typography.secondary?.lineHeight || 1.6}
               onChange={(_, v) => handleSecondaryChange('lineHeight', v)}
@@ -216,7 +266,9 @@ const TypographyEditor = ({ value, onChange }) => {
             />
           </Grid>
           <Grid item xs={6}>
-            <Typography variant="body2" gutterBottom>Letter Spacing</Typography>
+            <Typography variant="body2" gutterBottom>
+              Letter Spacing
+            </Typography>
             <Slider
               value={typography.secondary?.letterSpacing || 0}
               onChange={(_, v) => handleSecondaryChange('letterSpacing', v)}
@@ -231,15 +283,27 @@ const TypographyEditor = ({ value, onChange }) => {
 
       {/* Headings Individuales */}
       <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>Encabezados (H1-H6)</Typography>
-        
-        {['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map((headingKey) => {
-          const heading = headings[headingKey] || DEFAULT_HEADINGS[headingKey];
-          
+        <Typography variant="h6" gutterBottom>
+          Encabezados (H1-H6)
+        </Typography>
+
+        {['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(headingKey => {
+          const heading = headings[headingKey] || DEFAULT_HEADINGS[headingKey]
+
           return (
-            <Box key={headingKey} sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography 
+            <Box
+              key={headingKey}
+              sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  mb: 2,
+                }}
+              >
+                <Typography
                   variant={headingKey}
                   sx={{
                     fontFamily: typography.headingFont || 'Montserrat',
@@ -251,9 +315,15 @@ const TypographyEditor = ({ value, onChange }) => {
                 <FormControl size="small" sx={{ width: 120 }}>
                   <Select
                     value={heading.transform || 'none'}
-                    onChange={(e) => handleHeadingChange(headingKey, 'transform', e.target.value)}
+                    onChange={e =>
+                      handleHeadingChange(
+                        headingKey,
+                        'transform',
+                        e.target.value,
+                      )
+                    }
                   >
-                    {TRANSFORM_OPTIONS.map((opt) => (
+                    {TRANSFORM_OPTIONS.map(opt => (
                       <MenuItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </MenuItem>
@@ -270,7 +340,13 @@ const TypographyEditor = ({ value, onChange }) => {
                     label="Tamaño (px)"
                     type="number"
                     value={heading.size}
-                    onChange={(e) => handleHeadingChange(headingKey, 'size', Number(e.target.value))}
+                    onChange={e =>
+                      handleHeadingChange(
+                        headingKey,
+                        'size',
+                        Number(e.target.value),
+                      )
+                    }
                   />
                 </Grid>
                 <Grid item xs={6} sm={3}>
@@ -280,7 +356,13 @@ const TypographyEditor = ({ value, onChange }) => {
                     label="Peso"
                     type="number"
                     value={heading.weight}
-                    onChange={(e) => handleHeadingChange(headingKey, 'weight', Number(e.target.value))}
+                    onChange={e =>
+                      handleHeadingChange(
+                        headingKey,
+                        'weight',
+                        Number(e.target.value),
+                      )
+                    }
                   />
                 </Grid>
                 <Grid item xs={6} sm={3}>
@@ -288,7 +370,9 @@ const TypographyEditor = ({ value, onChange }) => {
                   <Slider
                     size="small"
                     value={heading.lineHeight}
-                    onChange={(_, v) => handleHeadingChange(headingKey, 'lineHeight', v)}
+                    onChange={(_, v) =>
+                      handleHeadingChange(headingKey, 'lineHeight', v)
+                    }
                     min={0.8}
                     max={2}
                     step={0.1}
@@ -300,7 +384,9 @@ const TypographyEditor = ({ value, onChange }) => {
                   <Slider
                     size="small"
                     value={heading.letterSpacing}
-                    onChange={(_, v) => handleHeadingChange(headingKey, 'letterSpacing', v)}
+                    onChange={(_, v) =>
+                      handleHeadingChange(headingKey, 'letterSpacing', v)
+                    }
                     min={-2}
                     max={2}
                     step={0.1}
@@ -309,11 +395,11 @@ const TypographyEditor = ({ value, onChange }) => {
                 </Grid>
               </Grid>
             </Box>
-          );
+          )
         })}
       </Paper>
     </Box>
-  );
-};
+  )
+}
 
-export default TypographyEditor;
+export default TypographyEditor

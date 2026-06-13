@@ -310,12 +310,24 @@ const buildShippingAddress = ({ req, body }) => {
   return result
 }
 
-const buildCustomerSnapshot = user => ({
+const buildCustomerSnapshot = ({ user, shippingAddress }) => ({
   userId: user._id,
-  firstname: user.firstname || user.firstName || '',
-  lastname: user.lastname || user.lastName || '',
-  email: normalizeEmail(user.email || ''),
-  mobile: user.mobile || user.phone || '',
+  firstname:
+    shippingAddress.firstName ||
+    user.firstname ||
+    user.firstName ||
+    '',
+  lastname:
+    shippingAddress.lastName ||
+    user.lastname ||
+    user.lastName ||
+    '',
+  email: normalizeEmail(shippingAddress.email),
+  mobile:
+    shippingAddress.phone ||
+    user.mobile ||
+    user.phone ||
+    '',
   validatedAt: new Date(),
 })
 
@@ -344,7 +356,6 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
       message: error.message,
     })
   }
-
   const isCOD = Boolean(req.body?.COD)
   const bodyCouponCode = sanitizeString(
     req.body?.coupon || req.body?.couponDetails?.code,
@@ -494,7 +505,10 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
         fulfillmentStatus: FULFILLMENT_STATUS.UNFULFILLED,
         refundStatus: REFUND_STATUS.NONE,
         orderby: normalizeObjectId(userId),
-        customerSnapshot: buildCustomerSnapshot(user),
+        customerSnapshot: buildCustomerSnapshot({
+          user,
+          shippingAddress,
+        }),
         shippingAddress,
         paidAt: isCOD ? new Date() : null,
         stockCommittedAt: isCOD ? new Date() : null,
@@ -568,10 +582,11 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
   }
 
   if (isCOD) {
-    dispatchOrderCreationEmails({
+    await dispatchOrderCreationEmails({
       order: createdOrder,
-      money: Money,
-      logger,
+      buyerEmail:
+        createdOrder.shippingAddress?.email ||
+        createdOrder.customerSnapshot?.email,
     })
   }
 
@@ -642,7 +657,9 @@ export const resendConfirmationEmail = expressAsyncHandler(async (req, res) => {
   const result = await resendOrderConfirmationEmail({
     order,
     tenantId: tenantObjectId,
-    money: Money,
+    buyerEmail:
+      order.shippingAddress?.email ||
+      order.customerSnapshot?.email,
   })
 
   if (result?.success) {

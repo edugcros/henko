@@ -3,11 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useTenant } from '../contexts/TenantContext'
-import {
-  logoutUser,
-  clearState,
-  updateProfile,
-} from '@features/user/userSlice'
+import { logoutUser, clearState, updateProfile } from '@features/user/userSlice'
 import { persistor } from '@app/store'
 import Cookies from 'js-cookie'
 
@@ -90,7 +86,8 @@ const Profile = () => {
   // Colores dinámicos del tema
   const colors = {
     primary: themeConfig?.colors?.primary || theme.palette.brand.main,
-    background: themeConfig?.colors?.background || theme.palette.background.default,
+    background:
+      themeConfig?.colors?.background || theme.palette.background.default,
   }
 
   if (!isReady || (isUserLoading && !user)) {
@@ -127,7 +124,8 @@ const Profile = () => {
     try {
       const token = Cookies.get('token')
       if (token) {
-        const refreshToken = (await import('@features/user/userService')).default
+        const refreshToken = (await import('@features/user/userService'))
+          .default
         try {
           const refreshResponse = await refreshToken()
           if (refreshResponse.success && refreshResponse.token) {
@@ -225,7 +223,12 @@ const Profile = () => {
         bgcolor: alpha(colors.background, 0.5),
       }}
     >
-      <Typography variant="h4" fontWeight={800} gutterBottom sx={{ color: 'text.primary' }}>
+      <Typography
+        variant="h4"
+        fontWeight={800}
+        gutterBottom
+        sx={{ color: 'text.primary' }}
+      >
         Mi Perfil
       </Typography>
 
@@ -285,9 +288,11 @@ const Profile = () => {
                 <ListItemIcon>
                   <PhoneIcon color="action" />
                 </ListItemIcon>
-                <ListItemText primary="Teléfono" secondary={user.mobile || 'No especificado'} />
+                <ListItemText
+                  primary="Teléfono"
+                  secondary={user.mobile || 'No especificado'}
+                />
               </ListItem>
-
             </List>
 
             <Button
@@ -341,7 +346,12 @@ const Profile = () => {
               mb: 3,
             }}
           >
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              mb={3}
+            >
               <Typography variant="h6" fontWeight={700}>
                 Información Personal
               </Typography>
@@ -393,7 +403,10 @@ const Profile = () => {
                   label="Nombre"
                   value={formData.firstname}
                   onChange={e =>
-                    setFormData(prev => ({ ...prev, firstname: e.target.value }))
+                    setFormData(prev => ({
+                      ...prev,
+                      firstname: e.target.value,
+                    }))
                   }
                   disabled={!isEditing}
                   InputProps={{ readOnly: !isEditing }}

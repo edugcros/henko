@@ -1,3 +1,4 @@
+// 📁 website/src/services/userMetricsService.js
 import api from '../Utils/axiosConfig'
 
 const SESSION_KEY = 'henko_metric_session_id'
@@ -23,51 +24,78 @@ export const USER_METRIC_EVENTS = {
   LOGOUT: 'logout',
 }
 
+const canUseBrowser = () => typeof window !== 'undefined'
+
 const createSessionId = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID()
+  if (
+    canUseBrowser() &&
+    window.crypto &&
+    typeof window.crypto.randomUUID === 'function'
+  ) {
+    return window.crypto.randomUUID()
   }
 
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 export const getMetricSessionId = () => {
-  if (typeof window === 'undefined') return createSessionId()
+  if (!canUseBrowser()) return createSessionId()
 
-  const existing = localStorage.getItem(SESSION_KEY)
-  if (existing) return existing
+  try {
+    const existing = window.localStorage.getItem(SESSION_KEY)
+    if (existing) return existing
 
-  const next = createSessionId()
-  localStorage.setItem(SESSION_KEY, next)
-  return next
+    const next = createSessionId()
+    window.localStorage.setItem(SESSION_KEY, next)
+
+    return next
+  } catch {
+    return createSessionId()
+  }
 }
 
 const getAttribution = () => {
-  if (typeof window === 'undefined') return {}
+  if (!canUseBrowser()) return {}
 
-  const params = new URLSearchParams(window.location.search)
+  try {
+    const params = new window.URLSearchParams(window.location.search)
 
-  return {
-    utmSource: params.get('utm_source') || '',
-    utmMedium: params.get('utm_medium') || '',
-    utmCampaign: params.get('utm_campaign') || '',
+    return {
+      utmSource: params.get('utm_source') || '',
+      utmMedium: params.get('utm_medium') || '',
+      utmCampaign: params.get('utm_campaign') || '',
+    }
+  } catch {
+    return {}
   }
 }
 
 const getDevice = () => {
-  if (typeof window === 'undefined') return {}
+  if (!canUseBrowser()) return {}
 
   return {
-    language: navigator.language || '',
+    language: window.navigator?.language || '',
   }
+}
+
+const getCurrentPath = () => {
+  if (!canUseBrowser()) return ''
+
+  return `${window.location.pathname}${window.location.search}`
+}
+
+const getCurrentReferrer = () => {
+  if (typeof document === 'undefined') return ''
+
+  return document.referrer || ''
 }
 
 const normalizeEvent = event => ({
   ...event,
   source: SOURCE,
   sessionId: event.sessionId || getMetricSessionId(),
-  path: event.path || `${window.location.pathname}${window.location.search}`,
-  referrer: event.referrer ?? document.referrer ?? '',
+  path: event.path || getCurrentPath(),
+  referrer: event.referrer ?? getCurrentReferrer(),
   attribution: {
     ...getAttribution(),
     ...(event.attribution || {}),
@@ -80,7 +108,7 @@ const normalizeEvent = event => ({
 })
 
 export const trackUserMetric = async event => {
-  if (!event?.eventType || typeof window === 'undefined') return null
+  if (!event?.eventType || !canUseBrowser()) return null
 
   try {
     return await api.post('/metrics/events', normalizeEvent(event), {
@@ -102,15 +130,20 @@ export const trackUserMetric = async event => {
 
 export const trackUserMetricBatch = async events => {
   const validEvents = (events || []).filter(event => event?.eventType)
-  if (validEvents.length === 0 || typeof window === 'undefined') return null
+
+  if (validEvents.length === 0 || !canUseBrowser()) return null
 
   try {
-    return await api.post('/metrics/events', {
-      events: validEvents.map(normalizeEvent),
-    }, {
-      skipAuthRefresh: true,
-      skipCsrfRetry: true,
-    })
+    return await api.post(
+      '/metrics/events',
+      {
+        events: validEvents.map(normalizeEvent),
+      },
+      {
+        skipAuthRefresh: true,
+        skipCsrfRetry: true,
+      },
+    )
   } catch {
     return null
   }

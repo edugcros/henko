@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { generateBulkCoupons } from '@features/coupons/couponSlice';
-import './BulkGenerator.css';
+import React, { useState } from 'react'
+import { useDispatch } from 'react-redux'
+import { generateBulkCoupons } from '@features/coupons/couponSlice'
+import './BulkGenerator.css'
 
 const formatDateTimeLocal = date => {
-  const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000;
-  return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
-};
+  const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16)
+}
 
 const BulkGenerator = ({ onSuccess, onCancel }) => {
-  const dispatch = useDispatch();
-  const now = new Date();
-  const defaultEndDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const dispatch = useDispatch()
+  const now = new Date()
+  const defaultEndDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
   const [config, setConfig] = useState({
     count: 10,
@@ -22,52 +22,52 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
     usageLimitPerUser: 1,
     startDate: formatDateTimeLocal(now),
     endDate: formatDateTimeLocal(defaultEndDate),
-    applicableProducts: []
-  });
+    applicableProducts: [],
+  })
 
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState({})
 
-  const handleChange = (e) => {
-    const { name, value, type } = e.target;
+  const handleChange = e => {
+    const { name, value, type } = e.target
     setConfig(prev => ({
       ...prev,
-      [name]: type === 'number' ? parseFloat(value) || 0 : value
-    }));
-  };
+      [name]: type === 'number' ? parseFloat(value) || 0 : value,
+    }))
+  }
 
   const validate = () => {
-    const newErrors = {};
+    const newErrors = {}
     if (config.count < 1 || config.count > 100) {
-      newErrors.count = 'Debe generar entre 1 y 100 cupones';
+      newErrors.count = 'Debe generar entre 1 y 100 cupones'
     }
     if (config.discountValue <= 0) {
-      newErrors.discountValue = 'El descuento debe ser mayor a 0';
+      newErrors.discountValue = 'El descuento debe ser mayor a 0'
     }
     if (config.discountType === 'percentage' && config.discountValue > 100) {
-      newErrors.discountValue = 'No puede exceder 100%';
+      newErrors.discountValue = 'No puede exceder 100%'
     }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
+  const handleSubmit = async e => {
+    e.preventDefault()
+    if (!validate()) return
 
-    setLoading(true);
+    setLoading(true)
     try {
-      const result = await dispatch(generateBulkCoupons(config)).unwrap();
-      onSuccess?.(result);
+      const result = await dispatch(generateBulkCoupons(config)).unwrap()
+      onSuccess?.(result)
     } catch (error) {
       setErrors(prev => ({
         ...prev,
         submit: error?.message || 'No se pudieron generar los cupones',
-      }));
+      }))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <form onSubmit={handleSubmit} className="bulk-generator">
@@ -108,7 +108,11 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
       <div className="form-row">
         <div className="form-group">
           <label>Tipo de Descuento</label>
-          <select name="discountType" value={config.discountType} onChange={handleChange}>
+          <select
+            name="discountType"
+            value={config.discountType}
+            onChange={handleChange}
+          >
             <option value="percentage">Porcentaje (%)</option>
             <option value="fixed_amount">Monto Fijo ($)</option>
           </select>
@@ -125,7 +129,9 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
             min="0"
             className={errors.discountValue ? 'error' : ''}
           />
-          {errors.discountValue && <span className="error-text">{errors.discountValue}</span>}
+          {errors.discountValue && (
+            <span className="error-text">{errors.discountValue}</span>
+          )}
         </div>
       </div>
 
@@ -178,8 +184,13 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
 
       <div className="preview-box">
         <h4>Vista previa del código:</h4>
-        <code>{config.prefix}{'XXXXXX'.slice(0, 8 - config.prefix.length)}</code>
-        <p>Ejemplo: <strong>{config.prefix}A7B9C2</strong></p>
+        <code>
+          {config.prefix}
+          {'XXXXXX'.slice(0, 8 - config.prefix.length)}
+        </code>
+        <p>
+          Ejemplo: <strong>{config.prefix}A7B9C2</strong>
+        </p>
       </div>
       {errors.submit && <span className="error-text">{errors.submit}</span>}
 
@@ -192,7 +203,7 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
         </button>
       </div>
     </form>
-  );
-};
+  )
+}
 
-export default BulkGenerator;
+export default BulkGenerator

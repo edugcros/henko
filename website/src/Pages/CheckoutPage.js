@@ -44,7 +44,10 @@ import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 import ReactGA from 'react-ga4'
 
 import { applyCoupon, resetCouponState } from '@features/coupon/couponSlice'
-import { processPaymentAction, resetPayment } from '@features/payment/paymentSlice'
+import {
+  processPaymentAction,
+  resetPayment,
+} from '@features/payment/paymentSlice'
 import { createOrder, resetOrderState } from '@features/orders/orderSlice'
 import { getMe } from '@features/user/userSlice'
 import { useCoupon } from '@hooks/useCoupon'
@@ -151,10 +154,7 @@ const buildShippingDataFromUser = user => {
       nameRest.join(' '),
     ),
 
-    email: pickFirst(
-      user.email,
-      user.profile?.email,
-    ),
+    email: pickFirst(user.email, user.profile?.email),
 
     phone: pickFirst(
       user.phone,
@@ -187,7 +187,8 @@ const getItemImage = item => {
   }
 
   if (item.product?.images?.[0]) {
-    if (typeof item.product.images[0] === 'string') return item.product.images[0]
+    if (typeof item.product.images[0] === 'string')
+      return item.product.images[0]
     return item.product.images[0]?.url || null
   }
 
@@ -306,7 +307,8 @@ const normalizeCouponPayload = raw => {
       coupon.minPurchaseAmount ?? data.minPurchaseAmount ?? 0,
     ),
     maxDiscountAmount:
-      coupon.maxDiscountAmount !== undefined || data.maxDiscountAmount !== undefined
+      coupon.maxDiscountAmount !== undefined ||
+      data.maxDiscountAmount !== undefined
         ? clampMoney(coupon.maxDiscountAmount ?? data.maxDiscountAmount ?? 0)
         : null,
     applicableProducts: Array.isArray(applicableProducts)
@@ -314,8 +316,8 @@ const normalizeCouponPayload = raw => {
       : [],
     isSpecific: Boolean(
       coupon.isSpecific ||
-        data.isSpecific ||
-        (Array.isArray(applicableProducts) && applicableProducts.length > 0),
+      data.isSpecific ||
+      (Array.isArray(applicableProducts) && applicableProducts.length > 0),
     ),
     specificProductId: normalizeId(
       coupon.specificProductId ||
@@ -447,10 +449,7 @@ const CheckoutPage = () => {
   const orderState = useSelector(state => state.order || {})
   const paymentState = useSelector(state => state.payment || {})
 
-  const {
-    currentOrder,
-    isLoading: orderLoading,
-  } = orderState
+  const { currentOrder, isLoading: orderLoading } = orderState
 
   const {
     isLoading: paymentLoading,
@@ -560,27 +559,28 @@ const CheckoutPage = () => {
   // CARRITO NORMALIZADO
   // ======================================================
 
-  const { cartItems, isLoading, subtotal, productIds, itemCount } = useMemo(() => {
-    const items = cartState?.items || cartState?.cartItems || []
+  const { cartItems, isLoading, subtotal, productIds, itemCount } =
+    useMemo(() => {
+      const items = cartState?.items || cartState?.cartItems || []
 
-    const ids = items.map(getItemId).filter(Boolean)
+      const ids = items.map(getItemId).filter(Boolean)
 
-    const calculatedSubtotal = items.reduce((acc, item) => {
-      return acc + getItemUnitPrice(item) * getItemQuantity(item)
-    }, 0)
+      const calculatedSubtotal = items.reduce((acc, item) => {
+        return acc + getItemUnitPrice(item) * getItemQuantity(item)
+      }, 0)
 
-    const count = items.reduce((acc, item) => {
-      return acc + getItemQuantity(item)
-    }, 0)
+      const count = items.reduce((acc, item) => {
+        return acc + getItemQuantity(item)
+      }, 0)
 
-    return {
-      cartItems: items,
-      isLoading: cartState?.isLoading || false,
-      productIds: ids,
-      subtotal: clampMoney(calculatedSubtotal),
-      itemCount: count,
-    }
-  }, [cartState])
+      return {
+        cartItems: items,
+        isLoading: cartState?.isLoading || false,
+        productIds: ids,
+        subtotal: clampMoney(calculatedSubtotal),
+        itemCount: count,
+      }
+    }, [cartState])
 
   // ======================================================
   // CUPÓN NORMALIZADO
@@ -701,7 +701,8 @@ const CheckoutPage = () => {
       reason: productValidation.reason,
       hasProductRestriction: productValidation.hasProductRestriction,
       applicableSubtotal,
-      savingsPercentage: subtotal > 0 ? clampMoney((discount / subtotal) * 100) : 0,
+      savingsPercentage:
+        subtotal > 0 ? clampMoney((discount / subtotal) * 100) : 0,
     }
   }, [appliedCoupon, cartItems, subtotal])
 
@@ -884,7 +885,9 @@ const CheckoutPage = () => {
   useEffect(() => {
     if (appliedCoupon && !isCouponValid && !couponState.isLoading) {
       dispatch(resetCouponState())
-      setLocalCouponError(couponReason || 'Este cupón no es válido para tu carrito')
+      setLocalCouponError(
+        couponReason || 'Este cupón no es válido para tu carrito',
+      )
     }
   }, [
     appliedCoupon,
@@ -941,7 +944,9 @@ const CheckoutPage = () => {
 
   const applyCouponCode = useCallback(
     async rawCode => {
-      const code = String(rawCode || '').trim().toUpperCase()
+      const code = String(rawCode || '')
+        .trim()
+        .toUpperCase()
 
       if (!code) {
         setLocalCouponError('Ingresa un código de cupón')
@@ -1018,7 +1023,7 @@ const CheckoutPage = () => {
 
   const handleCopyCode = async code => {
     try {
-      await navigator.clipboard.writeText(code)
+      await window.navigator.clipboard.writeText(code)
     } catch {
       console.error('Error copiando cupón')
     }
@@ -1044,12 +1049,7 @@ const CheckoutPage = () => {
   const validateShippingForm = useCallback(() => {
     const errors = {}
 
-    const required = [
-      'firstName',
-      'lastName',
-      'phone',
-      'email',
-    ]
+    const required = ['firstName', 'lastName', 'phone', 'email']
 
     required.forEach(field => {
       if (!sanitizeText(shippingData[field])) {
@@ -1076,7 +1076,7 @@ const CheckoutPage = () => {
     return Object.keys(errors).length === 0
   }, [shippingData])
 
-const handleGoToPayment = async () => {
+  const handleGoToPayment = async () => {
     if (!validateShippingForm()) {
       const firstError = document.querySelector('[data-error="true"]')
       firstError?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1165,9 +1165,11 @@ const handleGoToPayment = async () => {
       }
     } catch (error) {
       console.error('Error al crear orden:', error)
-      alert(
+      window.alert(
         `Error al crear la orden: ${
-          error?.message || error?.response?.data?.message || 'Intente nuevamente'
+          error?.message ||
+          error?.response?.data?.message ||
+          'Intente nuevamente'
         }`,
       )
     }
@@ -1178,7 +1180,7 @@ const handleGoToPayment = async () => {
       const order = activeOrder
 
       if (!order?._id && !order?.id) {
-        alert('Error: No se encontró la orden de compra')
+        window.alert('Error: No se encontró la orden de compra')
         return
       }
 
@@ -1219,11 +1221,14 @@ const handleGoToPayment = async () => {
       })
 
       try {
-        const result = await dispatch(processPaymentAction(paymentPayload)).unwrap()
+        const result = await dispatch(
+          processPaymentAction(paymentPayload),
+        ).unwrap()
         const payment = normalizePaymentPayload(result)
 
         if (payment?.success && payment?.status === 'approved') {
-          const paymentId = payment.id?.toString?.() || payment.paymentId?.toString?.() || ''
+          const paymentId =
+            payment.id?.toString?.() || payment.paymentId?.toString?.() || ''
 
           trackUserMetric({
             eventType: USER_METRIC_EVENTS.PAYMENT_APPROVED,
@@ -1293,7 +1298,7 @@ const handleGoToPayment = async () => {
               status: payment.status,
             },
           })
-          alert(payment?.message || 'Pago pendiente de confirmación.')
+          window.alert(payment?.message || 'Pago pendiente de confirmación.')
           return
         }
 
@@ -1315,7 +1320,7 @@ const handleGoToPayment = async () => {
           },
         })
 
-        alert(getPaymentErrorMessage(payment))
+        window.alert(getPaymentErrorMessage(payment))
       } catch (error) {
         console.error('Error procesando pago:', error)
         trackUserMetric({
@@ -1335,7 +1340,7 @@ const handleGoToPayment = async () => {
             status: 'error',
           },
         })
-        alert(getPaymentErrorMessage(error))
+        window.alert(getPaymentErrorMessage(error))
       }
     },
     [
@@ -1408,7 +1413,8 @@ const handleGoToPayment = async () => {
           {nominalLabel}
           {validDiscount > 0 && (
             <span style={{ color: '#2e7d32', fontWeight: 600 }}>
-              {' '}→ Ahorro: {formatMoney(validDiscount)}
+              {' '}
+              → Ahorro: {formatMoney(validDiscount)}
             </span>
           )}
         </>
@@ -1419,7 +1425,8 @@ const handleGoToPayment = async () => {
       <>
         {nominalLabel}
         <span style={{ color: '#2e7d32', fontWeight: 600 }}>
-          {' '}→ Aplicado: {formatMoney(validDiscount)}
+          {' '}
+          → Aplicado: {formatMoney(validDiscount)}
         </span>
         <span style={{ display: 'block', color: '#6b7280', marginTop: 2 }}>
           Se aplicó hasta cubrir el subtotal del producto.
@@ -1504,9 +1511,15 @@ const handleGoToPayment = async () => {
                 </Box>
 
                 {isCouponValid && validDiscount > 0 && (
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Box
+                    sx={{ display: 'flex', justifyContent: 'space-between' }}
+                  >
                     <Typography variant="body2">Cupón aplicado:</Typography>
-                    <Typography variant="body2" color="success.main" fontWeight={600}>
+                    <Typography
+                      variant="body2"
+                      color="success.main"
+                      fontWeight={600}
+                    >
                       {appliedCoupon.code} (-{formatMoney(validDiscount)})
                     </Typography>
                   </Box>
@@ -1578,7 +1591,12 @@ const handleGoToPayment = async () => {
       <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
         <Stack spacing={3} sx={{ mb: 4 }}>
           <Breadcrumbs separator={<NavigateNext fontSize="small" />}>
-            <MuiLink component={Link} to="/cart" color="inherit" underline="hover">
+            <MuiLink
+              component={Link}
+              to="/cart"
+              color="inherit"
+              underline="hover"
+            >
               Carrito
             </MuiLink>
             <Typography
@@ -1654,7 +1672,12 @@ const handleGoToPayment = async () => {
 
                   {!appliedCoupon && coupons.length > 0 && (
                     <Box sx={{ mb: 4 }}>
-                      <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                        mb={2}
+                      >
                         <AutoAwesome color="primary" />
                         <Typography
                           variant="subtitle1"
@@ -1666,115 +1689,117 @@ const handleGoToPayment = async () => {
                       </Stack>
 
                       <Stack spacing={2}>
-                        {(showAllCoupons ? availableCoupons : availableCoupons.slice(0, 3))
-                          .map(rawCoupon => {
-                            const coupon = normalizeCouponPayload(rawCoupon)
-                            if (!coupon?.code) return null
+                        {(showAllCoupons
+                          ? availableCoupons
+                          : availableCoupons.slice(0, 3)
+                        ).map(rawCoupon => {
+                          const coupon = normalizeCouponPayload(rawCoupon)
+                          if (!coupon?.code) return null
 
-                            return (
-                              <Paper
-                                key={coupon.code}
-                                elevation={0}
-                                sx={{
-                                  p: 2.5,
-                                  border: '2px dashed',
-                                  borderColor: coupon.isSpecific
-                                    ? 'warning.main'
-                                    : 'brand.main',
-                                  borderRadius: 3,
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s ease',
+                          return (
+                            <Paper
+                              key={coupon.code}
+                              elevation={0}
+                              sx={{
+                                p: 2.5,
+                                border: '2px dashed',
+                                borderColor: coupon.isSpecific
+                                  ? 'warning.main'
+                                  : 'brand.main',
+                                borderRadius: 3,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                bgcolor: coupon.isSpecific
+                                  ? 'warning.50'
+                                  : 'background.paper',
+                                '&:hover': {
                                   bgcolor: coupon.isSpecific
-                                    ? 'warning.50'
-                                    : 'background.paper',
-                                  '&:hover': {
-                                    bgcolor: coupon.isSpecific
-                                      ? 'warning.100'
-                                      : 'action.hover',
-                                    transform: 'translateY(-2px)',
-                                    boxShadow: 1,
-                                  },
-                                }}
-                                onClick={() => handleApplySpecificCoupon(coupon)}
+                                    ? 'warning.100'
+                                    : 'action.hover',
+                                  transform: 'translateY(-2px)',
+                                  boxShadow: 1,
+                                },
+                              }}
+                              onClick={() => handleApplySpecificCoupon(coupon)}
+                            >
+                              <Stack
+                                direction={{ xs: 'column', sm: 'row' }}
+                                spacing={2}
+                                alignItems={{ sm: 'center' }}
                               >
-                                <Stack
-                                  direction={{ xs: 'column', sm: 'row' }}
-                                  spacing={2}
-                                  alignItems={{ sm: 'center' }}
+                                <Box
+                                  sx={{
+                                    bgcolor: coupon.isSpecific
+                                      ? 'warning.main'
+                                      : 'brand.main',
+                                    color: 'white',
+                                    px: 2,
+                                    py: 1,
+                                    borderRadius: 2,
+                                    fontWeight: 800,
+                                    fontSize: '1rem',
+                                    letterSpacing: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1,
+                                  }}
                                 >
-                                  <Box
-                                    sx={{
-                                      bgcolor: coupon.isSpecific
-                                        ? 'warning.main'
-                                        : 'brand.main',
-                                      color: 'white',
-                                      px: 2,
-                                      py: 1,
-                                      borderRadius: 2,
-                                      fontWeight: 800,
-                                      fontSize: '1rem',
-                                      letterSpacing: 1,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 1,
-                                    }}
-                                  >
-                                    {coupon.code}
-                                    <IconButton
-                                      size="small"
-                                      sx={{ color: 'white', p: 0.3 }}
-                                      onClick={event => {
-                                        event.stopPropagation()
-                                        handleCopyCode(coupon.code)
-                                      }}
-                                    >
-                                      <ContentCopy fontSize="small" />
-                                    </IconButton>
-                                  </Box>
-
-                                  <Box flex={1}>
-                                    <Typography variant="body1" fontWeight={700}>
-                                      {renderCouponValueLabel(coupon)}
-                                    </Typography>
-
-                                    {coupon.isSpecific ? (
-                                      <Typography
-                                        variant="caption"
-                                        color="warning.dark"
-                                        display="block"
-                                        fontWeight={600}
-                                      >
-                                        🔒 Solo válido para:{' '}
-                                        <strong>
-                                          {coupon.specificProductName ||
-                                            'producto seleccionado'}
-                                        </strong>
-                                      </Typography>
-                                    ) : (
-                                      <Typography
-                                        variant="caption"
-                                        color="text.secondary"
-                                        display="block"
-                                      >
-                                        Válido para todos los productos
-                                      </Typography>
-                                    )}
-                                  </Box>
-
-                                  <Button
-                                    variant="contained"
+                                  {coupon.code}
+                                  <IconButton
                                     size="small"
+                                    sx={{ color: 'white', p: 0.3 }}
                                     onClick={event => {
                                       event.stopPropagation()
-                                      handleApplySpecificCoupon(coupon)
+                                      handleCopyCode(coupon.code)
                                     }}
                                   >
-                                    Aplicar
-                                  </Button>
-                                </Stack>
-                              </Paper>
-                            )
-                          })}
+                                    <ContentCopy fontSize="small" />
+                                  </IconButton>
+                                </Box>
+
+                                <Box flex={1}>
+                                  <Typography variant="body1" fontWeight={700}>
+                                    {renderCouponValueLabel(coupon)}
+                                  </Typography>
+
+                                  {coupon.isSpecific ? (
+                                    <Typography
+                                      variant="caption"
+                                      color="warning.dark"
+                                      display="block"
+                                      fontWeight={600}
+                                    >
+                                      🔒 Solo válido para:{' '}
+                                      <strong>
+                                        {coupon.specificProductName ||
+                                          'producto seleccionado'}
+                                      </strong>
+                                    </Typography>
+                                  ) : (
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      display="block"
+                                    >
+                                      Válido para todos los productos
+                                    </Typography>
+                                  )}
+                                </Box>
+
+                                <Button
+                                  variant="contained"
+                                  size="small"
+                                  onClick={event => {
+                                    event.stopPropagation()
+                                    handleApplySpecificCoupon(coupon)
+                                  }}
+                                >
+                                  Aplicar
+                                </Button>
+                              </Stack>
+                            </Paper>
+                          )
+                        })}
 
                         {coupons.length > 3 && !showAllCoupons && (
                           <Button
@@ -1800,7 +1825,9 @@ const handleGoToPayment = async () => {
                       const isAffectedByCoupon =
                         appliedCoupon &&
                         Array.isArray(applicableItems) &&
-                        applicableItems.some(candidate => getItemId(candidate) === itemId)
+                        applicableItems.some(
+                          candidate => getItemId(candidate) === itemId,
+                        )
 
                       return (
                         <Paper
@@ -1818,7 +1845,11 @@ const handleGoToPayment = async () => {
                               : 'background.paper',
                           }}
                         >
-                          <Stack direction="row" spacing={2} alignItems="center">
+                          <Stack
+                            direction="row"
+                            spacing={2}
+                            alignItems="center"
+                          >
                             <Badge badgeContent={quantity} color="primary">
                               <Avatar
                                 src={getItemImage(item)}
@@ -1833,7 +1864,11 @@ const handleGoToPayment = async () => {
                             </Badge>
 
                             <Box flex={1} minWidth={0}>
-                              <Typography variant="body1" fontWeight={600} noWrap>
+                              <Typography
+                                variant="body1"
+                                fontWeight={600}
+                                noWrap
+                              >
                                 {getItemTitle(item)}
                               </Typography>
 
@@ -1847,7 +1882,12 @@ const handleGoToPayment = async () => {
                                 </Typography>
                               )}
 
-                              <Stack direction="row" spacing={1} alignItems="center" mt={0.5}>
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                                mt={0.5}
+                              >
                                 {originalPrice && (
                                   <Typography
                                     variant="body2"
@@ -1857,7 +1897,10 @@ const handleGoToPayment = async () => {
                                     {formatMoney(originalPrice)}
                                   </Typography>
                                 )}
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                >
                                   {formatMoney(unitPrice)} c/u
                                 </Typography>
                               </Stack>
@@ -1889,7 +1932,9 @@ const handleGoToPayment = async () => {
                                     fontWeight: 600,
                                     cursor: 'pointer',
                                   }}
-                                  onClick={() => handleApplySpecificCoupon(specificCoupon)}
+                                  onClick={() =>
+                                    handleApplySpecificCoupon(specificCoupon)
+                                  }
                                 />
                               )}
                             </Box>
@@ -1963,7 +2008,8 @@ const handleGoToPayment = async () => {
 
                   {!isUserProfileLoading && shippingAutoFilled && (
                     <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
-                      Cargamos tus datos desde tu cuenta. Podés corregirlos antes de continuar.
+                      Cargamos tus datos desde tu cuenta. Podés corregirlos
+                      antes de continuar.
                     </Alert>
                   )}
 
@@ -1974,7 +2020,12 @@ const handleGoToPayment = async () => {
                         label="Nombre"
                         required
                         value={shippingData.firstName}
-                        onChange={event => handleShippingFieldChange('firstName', event.target.value)}
+                        onChange={event =>
+                          handleShippingFieldChange(
+                            'firstName',
+                            event.target.value,
+                          )
+                        }
                         error={Boolean(formErrors.firstName)}
                         helperText={formErrors.firstName || ''}
                         data-error={Boolean(formErrors.firstName)}
@@ -1989,7 +2040,12 @@ const handleGoToPayment = async () => {
                         label="Apellido"
                         required
                         value={shippingData.lastName}
-                        onChange={event => handleShippingFieldChange('lastName', event.target.value)}
+                        onChange={event =>
+                          handleShippingFieldChange(
+                            'lastName',
+                            event.target.value,
+                          )
+                        }
                         error={Boolean(formErrors.lastName)}
                         helperText={formErrors.lastName || ''}
                         data-error={Boolean(formErrors.lastName)}
@@ -2005,7 +2061,9 @@ const handleGoToPayment = async () => {
                         type="email"
                         required
                         value={shippingData.email}
-                        onChange={event => handleShippingFieldChange('email', event.target.value)}
+                        onChange={event =>
+                          handleShippingFieldChange('email', event.target.value)
+                        }
                         error={Boolean(formErrors.email)}
                         helperText={formErrors.email || ''}
                         data-error={Boolean(formErrors.email)}
@@ -2023,7 +2081,9 @@ const handleGoToPayment = async () => {
                         label="Teléfono"
                         required
                         value={shippingData.phone}
-                        onChange={event => handleShippingFieldChange('phone', event.target.value)}
+                        onChange={event =>
+                          handleShippingFieldChange('phone', event.target.value)
+                        }
                         error={Boolean(formErrors.phone)}
                         helperText={formErrors.phone || ''}
                         data-error={Boolean(formErrors.phone)}
@@ -2069,7 +2129,11 @@ const handleGoToPayment = async () => {
                   <Button
                     onClick={() => setActiveStep(1)}
                     startIcon={<ArrowBackIos fontSize="small" />}
-                    sx={{ mb: 3, color: 'text.secondary', textTransform: 'none' }}
+                    sx={{
+                      mb: 3,
+                      color: 'text.secondary',
+                      textTransform: 'none',
+                    }}
                   >
                     Volver a datos de entrega
                   </Button>
@@ -2110,7 +2174,7 @@ const handleGoToPayment = async () => {
                           onReady={() => console.log('✅ Mercado Pago listo')}
                           onError={error => {
                             console.error('❌ Error MP:', error)
-                            alert(
+                            window.alert(
                               `Error en el formulario de pago: ${
                                 error?.message || 'Error desconocido'
                               }`,
@@ -2130,13 +2194,15 @@ const handleGoToPayment = async () => {
                     </Paper>
                   ) : (
                     <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                      No se encontró la orden de compra. Por favor, vuelve al paso anterior.
+                      No se encontró la orden de compra. Por favor, vuelve al
+                      paso anterior.
                     </Alert>
                   )}
 
                   <Alert severity="info" sx={{ mt: 3, borderRadius: 2 }}>
                     <Typography variant="body2">
-                      🔒 Tu pago está protegido por Mercado Pago. No almacenamos los datos de tu tarjeta.
+                      🔒 Tu pago está protegido por Mercado Pago. No almacenamos
+                      los datos de tu tarjeta.
                     </Typography>
                   </Alert>
                 </Box>
@@ -2157,10 +2223,14 @@ const handleGoToPayment = async () => {
                 }}
               >
                 <Typography variant="subtitle1" fontWeight={700} mb={2}>
-                  Resumen ({itemCount} {itemCount === 1 ? 'producto' : 'productos'})
+                  Resumen ({itemCount}{' '}
+                  {itemCount === 1 ? 'producto' : 'productos'})
                 </Typography>
 
-                <Stack spacing={2} sx={{ maxHeight: 300, overflow: 'auto', mb: 2 }}>
+                <Stack
+                  spacing={2}
+                  sx={{ maxHeight: 300, overflow: 'auto', mb: 2 }}
+                >
                   {cartItems.map(item => {
                     const unitPrice = getItemUnitPrice(item)
                     const originalPrice = getItemOriginalPrice(item)
@@ -2208,7 +2278,11 @@ const handleGoToPayment = async () => {
                             {getItemTitle(item)}
                           </Typography>
 
-                          <Stack direction="row" spacing={1} alignItems="center">
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                          >
                             {originalPrice && (
                               <Typography
                                 variant="caption"
@@ -2218,7 +2292,10 @@ const handleGoToPayment = async () => {
                                 {formatMoney(originalPrice)}
                               </Typography>
                             )}
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
                               {formatMoney(unitPrice)} c/u
                             </Typography>
                           </Stack>
@@ -2235,7 +2312,9 @@ const handleGoToPayment = async () => {
                 <Divider sx={{ my: 2 }} />
 
                 <Stack spacing={1.5}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Box
+                    sx={{ display: 'flex', justifyContent: 'space-between' }}
+                  >
                     <Typography variant="body2" color="text.secondary">
                       Subtotal
                     </Typography>
@@ -2298,7 +2377,9 @@ const handleGoToPayment = async () => {
                     </Alert>
                   )}
 
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Box
+                    sx={{ display: 'flex', justifyContent: 'space-between' }}
+                  >
                     <Typography variant="body2" color="text.secondary">
                       Envío
                     </Typography>
@@ -2323,7 +2404,11 @@ const handleGoToPayment = async () => {
                     <Typography variant="h6" fontWeight={800}>
                       Total
                     </Typography>
-                    <Typography variant="h5" fontWeight={800} color={Newprimary.darkBlueGray}>
+                    <Typography
+                      variant="h5"
+                      fontWeight={800}
+                      color={Newprimary.darkBlueGray}
+                    >
                       {formatMoney(total)}
                     </Typography>
                   </Box>
@@ -2387,15 +2472,16 @@ const handleGoToPayment = async () => {
                               {renderAppliedCouponDetail()}
                             </Typography>
 
-                            {hasProductRestriction && applicableItems.length > 0 && (
-                              <Typography
-                                variant="caption"
-                                display="block"
-                                sx={{ mt: 0.5, color: 'text.secondary' }}
-                              >
-                                Solo en {applicableItems.length} producto(s)
-                              </Typography>
-                            )}
+                            {hasProductRestriction &&
+                              applicableItems.length > 0 && (
+                                <Typography
+                                  variant="caption"
+                                  display="block"
+                                  sx={{ mt: 0.5, color: 'text.secondary' }}
+                                >
+                                  Solo en {applicableItems.length} producto(s)
+                                </Typography>
+                              )}
                           </Box>
 
                           <Button
@@ -2433,7 +2519,11 @@ const handleGoToPayment = async () => {
                           </Typography>
                         </Box>
 
-                        <Button size="small" onClick={handleRemoveCoupon} color="inherit">
+                        <Button
+                          size="small"
+                          onClick={handleRemoveCoupon}
+                          color="inherit"
+                        >
                           Quitar
                         </Button>
                       </Box>

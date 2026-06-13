@@ -7,7 +7,7 @@ import api, { fetchCsrfToken } from '@utils/axiosConfig'
 // ======================================================
 const normalizeAuthResponse = res => {
   if (!res) return null
-  const raw = res?.data?.data || res?.data || res;
+  const raw = res?.data?.data || res?.data || res
   return {
     user: raw?.user || raw?.data?.user || null,
     token: raw?.token || raw?.data?.token || raw?.data?.accessToken || null,
@@ -20,16 +20,16 @@ const normalizeAuthResponse = res => {
 const handleApiError = (error, fallback = 'Error inesperado') => {
   // Prioridad 1: Error enviado por el Backend (res.status(400).send({message: '...'}))
   // Prioridad 2: Error de Axios (error.message)
-  const msg = error?.response?.data?.message || error?.message || fallback;
+  const msg = error?.response?.data?.message || error?.message || fallback
 
-  console.error('API Error:', msg);
-  
+  console.error('API Error:', msg)
+
   // Retornamos un objeto con el mismo "shape" que el éxito pero con success: false
-  return { 
-    success: false, 
+  return {
+    success: false,
     message: msg,
-    errors: error?.response?.data?.errors || [] // Por si envías lista de validaciones
-  };
+    errors: error?.response?.data?.errors || [], // Por si envías lista de validaciones
+  }
 }
 
 // ======================================================
@@ -65,7 +65,6 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
 
     const res = await api(config)
     return res.data
-    
   } catch (err) {
     return handleApiError(err)
   }
@@ -75,34 +74,34 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
 
 export const getEnquiries = async () => {
   // Especificamos el endpoint '/' para obtener todas
-  const response = await apiRequest('get', '/get');
-  return response;
-};
+  const response = await apiRequest('get', '/get')
+  return response
+}
 
 // src/features/enquiry/enquiryService.js
 export const sendReply = async (id, message) => {
   // ⚠️ Importante: Verifica si tu backend usa /enquiry/reply o solo /reply
-  const response = await apiRequest('post', `/reply/${id}`, { message });
-  return response.data;
-};
+  const response = await apiRequest('post', `/reply/${id}`, { message })
+  return response.data
+}
 export const updateEnquiryStatus = async (id, status) => {
-  const response = await apiRequest('put', `/${id}`, { status });
-  return response;
-};
+  const response = await apiRequest('put', `/${id}`, { status })
+  return response
+}
 
 // 🔴 ALTERNATIVA: Si prefieres mantener updateEnquiry, crea un alias
-export const updateEnquiry = updateEnquiryStatus;
+export const updateEnquiry = updateEnquiryStatus
 
-export const deleteEnquiry = async (id) => {
-  const response = await apiRequest('delete', `/${id}`);
-  return response;
-};
+export const deleteEnquiry = async id => {
+  const response = await apiRequest('delete', `/${id}`)
+  return response
+}
 
 const enquiryService = {
   getEnquiries,
   sendReply,
   updateEnquiry,
   deleteEnquiry,
-};
+}
 
-export default enquiryService;
+export default enquiryService

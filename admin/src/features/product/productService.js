@@ -63,18 +63,25 @@ const normalizeAiProductPayload = productData => {
     : null
 
   normalized.iaGenerated =
-    normalizeBoolean(normalized.iaGenerated) || Boolean(aiOriginalOutputAsString)
+    normalizeBoolean(normalized.iaGenerated) ||
+    Boolean(aiOriginalOutputAsString)
 
   if (aiOriginalOutputAsString) {
     normalized.aiOriginalOutput = aiOriginalOutputAsString
   }
 
-  if (normalized.aiConfidence !== undefined && normalized.aiConfidence !== null) {
+  if (
+    normalized.aiConfidence !== undefined &&
+    normalized.aiConfidence !== null
+  ) {
     const confidence = Number(normalized.aiConfidence)
     normalized.aiConfidence = Number.isFinite(confidence) ? confidence : null
   }
 
-  if (normalized.aiNeedsReview !== undefined && normalized.aiNeedsReview !== null) {
+  if (
+    normalized.aiNeedsReview !== undefined &&
+    normalized.aiNeedsReview !== null
+  ) {
     normalized.aiNeedsReview = normalizeBoolean(normalized.aiNeedsReview)
   }
 
@@ -231,12 +238,19 @@ const deleteProductImage = async (productId, publicId) => {
 /**
  * Obtener configuración de una categoría.
  */
-const getCategoryConfig = async category => {
+const getCategoryConfig = async (category, subcategory = null) => {
   if (!category) {
     throw new Error('Categoría requerida')
   }
 
-  return apiRequest('get', `/categories/${encodeURIComponent(category)}/config`)
+  return apiRequest(
+    'get',
+    `/categories/${encodeURIComponent(category)}/config`,
+    undefined,
+    {
+      params: subcategory ? { subcategory } : undefined,
+    },
+  )
 }
 
 /**
@@ -244,6 +258,29 @@ const getCategoryConfig = async category => {
  */
 const getCategories = async () => {
   return apiRequest('get', '/categories')
+}
+
+/**
+ * Crea o reemplaza la plantilla de variantes de una subcategoría.
+ */
+const saveCategoryConfig = async ({
+  category,
+  subcategory,
+  variantAttributes,
+  replace = false,
+}) => {
+  if (!category || !subcategory) {
+    throw new Error('Categoría y subcategoría requeridas')
+  }
+
+  return apiRequest('put', '/categories/config', {
+    category,
+    subcategory,
+    variantAttributes: Array.isArray(variantAttributes)
+      ? variantAttributes
+      : [],
+    replace,
+  })
 }
 
 /**
@@ -332,6 +369,7 @@ const productService = {
   rateProduct,
   getCategoryConfig,
   getCategories,
+  saveCategoryConfig,
   toggleHelpfulRating,
   assignVariantImage,
 }

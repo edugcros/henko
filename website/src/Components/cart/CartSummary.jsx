@@ -37,7 +37,11 @@ const CartSummary = ({ cart, onCheckout }) => {
   const itemCount = items.length
 
   const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0),
+    () =>
+      items.reduce(
+        (sum, item) => sum + (item.price || 0) * (item.quantity || 0),
+        0,
+      ),
     [items],
   )
 
@@ -46,7 +50,8 @@ const CartSummary = ({ cart, onCheckout }) => {
   const SHIPPING_COST = 500
 
   const shipping = useMemo(
-    () => (subtotal >= SHIPPING_THRESHOLD || subtotal === 0 ? 0 : SHIPPING_COST),
+    () =>
+      subtotal >= SHIPPING_THRESHOLD || subtotal === 0 ? 0 : SHIPPING_COST,
     [subtotal],
   )
 
@@ -106,7 +111,11 @@ const CartSummary = ({ cart, onCheckout }) => {
 
         <Stack spacing={2} sx={{ mt: 3 }}>
           {/* Conteo de productos */}
-          <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+          >
             <Typography color="text.secondary" variant="body1">
               Productos ({itemCount})
             </Typography>
@@ -157,7 +166,11 @@ const CartSummary = ({ cart, onCheckout }) => {
           )}
 
           {/* Envío */}
-          <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+          >
             <Typography
               variant="body1"
               display="flex"
@@ -169,7 +182,9 @@ const CartSummary = ({ cart, onCheckout }) => {
               Envío
             </Typography>
             <Typography
-              color={shipping === 0 && subtotal > 0 ? 'success.main' : 'text.primary'}
+              color={
+                shipping === 0 && subtotal > 0 ? 'success.main' : 'text.primary'
+              }
               fontWeight="600"
             >
               {shipping === 0
@@ -198,7 +213,12 @@ const CartSummary = ({ cart, onCheckout }) => {
           <Divider sx={{ borderStyle: 'dashed', my: 1, borderWidth: 1 }} />
 
           {/* Total Final */}
-          <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ pt: 1 }}>
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            sx={{ pt: 1 }}
+          >
             <Typography variant="h5" fontWeight="800">
               Total
             </Typography>
@@ -224,7 +244,11 @@ const CartSummary = ({ cart, onCheckout }) => {
             boxShadow: 4,
           }}
         >
-          {validating ? <CircularProgress size={24} color="inherit" /> : 'Finalizar compra'}
+          {validating ? (
+            <CircularProgress size={24} color="inherit" />
+          ) : (
+            'Finalizar compra'
+          )}
         </Button>
       </CardContent>
     </Card>

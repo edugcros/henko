@@ -1,22 +1,15 @@
-import React from 'react';
-import {
-  Box,
-  Typography,
-  Slider,
-  Paper,
-  Grid,
-  TextField,
-} from '@mui/material';
+import React from 'react'
+import { Box, Typography, Slider, Paper, Grid, TextField } from '@mui/material'
 
 const BorderRadiusControl = ({ value, onChange }) => {
   // value es un objeto: { none, sm, md, lg, xl, full }
-  
+
   const handleChange = (key, newValue) => {
     onChange({
       ...value,
-      [key]: `${newValue}rem`
-    });
-  };
+      [key]: `${newValue}rem`,
+    })
+  }
 
   const presets = [
     { key: 'none', label: 'Ninguno', max: 0 },
@@ -25,36 +18,47 @@ const BorderRadiusControl = ({ value, onChange }) => {
     { key: 'lg', label: 'Grande', max: 1.5 },
     { key: 'xl', label: 'Extra', max: 2 },
     { key: 'full', label: 'Completo', max: 50 },
-  ];
+  ]
 
-  const getNumericValue = (val) => parseFloat(val?.replace('rem', '') || 0);
+  const getNumericValue = val => parseFloat(val?.replace('rem', '') || 0)
 
   return (
-    <Paper elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}>
+    <Paper
+      elevation={0}
+      sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}
+    >
       <Typography variant="h6" gutterBottom>
         Bordes Redondeados
       </Typography>
-      
+
       <Grid container spacing={3}>
-        {presets.map((preset) => {
-          const numericValue = getNumericValue(value?.[preset.key]);
-          
+        {presets.map(preset => {
+          const numericValue = getNumericValue(value?.[preset.key])
+
           return (
             <Grid item xs={12} sm={6} key={preset.key}>
               <Box sx={{ mb: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    mb: 1,
+                  }}
+                >
                   <Typography variant="body2" fontWeight={500}>
                     {preset.label}
                   </Typography>
                   <TextField
                     size="small"
                     value={value?.[preset.key] || '0rem'}
-                    onChange={(e) => onChange({ ...value, [preset.key]: e.target.value })}
+                    onChange={e =>
+                      onChange({ ...value, [preset.key]: e.target.value })
+                    }
                     sx={{ width: 80 }}
                     inputProps={{ style: { textAlign: 'center' } }}
                   />
                 </Box>
-                
+
                 <Slider
                   value={numericValue}
                   onChange={(_, newVal) => handleChange(preset.key, newVal)}
@@ -67,9 +71,9 @@ const BorderRadiusControl = ({ value, onChange }) => {
                     { value: preset.max, label: `${preset.max}` },
                   ]}
                   valueLabelDisplay="auto"
-                  valueLabelFormat={(val) => `${val}rem`}
+                  valueLabelFormat={val => `${val}rem`}
                 />
-                
+
                 {/* Visual Preview */}
                 <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
                   <Box
@@ -83,11 +87,11 @@ const BorderRadiusControl = ({ value, onChange }) => {
                 </Box>
               </Box>
             </Grid>
-          );
+          )
         })}
       </Grid>
     </Paper>
-  );
-};
+  )
+}
 
-export default BorderRadiusControl;
+export default BorderRadiusControl

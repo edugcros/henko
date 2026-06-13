@@ -94,8 +94,12 @@
 
 /* Animaciones */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
@@ -114,11 +118,11 @@
   .modal-backdrop {
     padding: 10px;
   }
-  
+
   .modal-container {
     max-height: 95vh;
   }
-  
+
   .modal-body {
     padding: 16px;
   }

@@ -24,11 +24,20 @@ import {
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 import {
+  requireAdminDomain,
+  requireTenant,
   requireShopDomain,
   resolveTenantByDomain,
 } from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
+const adminContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
+  authMiddleware,
+  isAdmin,
+]
 
 // =====================================================
 // PUBLIC STOREFRONT ROUTES
@@ -88,9 +97,7 @@ router.get(
  */
 router.get(
   '/',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   getPromotionalBlocksValidator,
   getAdminPromotionalBlocks,
 )
@@ -101,9 +108,7 @@ router.get(
  */
 router.post(
   '/',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   createPromotionalBlockValidator,
   createPromotionalBlock,
 )
@@ -117,9 +122,7 @@ router.post(
  */
 router.patch(
   '/:id/status',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   togglePromotionalBlockStatusValidator,
   togglePromotionalBlockStatus,
 )
@@ -130,9 +133,7 @@ router.patch(
  */
 router.get(
   '/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   promotionalBlockIdValidator,
   getAdminPromotionalBlockById,
 )
@@ -143,9 +144,7 @@ router.get(
  */
 router.put(
   '/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   promotionalBlockIdValidator,
   updatePromotionalBlockValidator,
   updatePromotionalBlock,
@@ -157,9 +156,7 @@ router.put(
  */
 router.delete(
   '/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   promotionalBlockIdValidator,
   deletePromotionalBlock,
 )

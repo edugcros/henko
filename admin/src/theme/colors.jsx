@@ -1,29 +1,28 @@
 export const primary = {
-    white: '#ffffff',
-    whiteLight: '#f5f5f5',
-    black: '#000000',
-    lightBlue: '#00A0D6',
-    paleBlue: '#6A5ACD',
-    paleBlueStrong: '#00b3e3',
-    primaryLight: '#E6F7FF',
-    primaryMedium: '#91D5FF',
-    successLight: '#F6FFED',
-    succesExtraLight: '#F5FCF8',
-    successMedium: '#B7EB8F',
-    succesDark: '#3B873E',
-    warningLight: '#FFFBE6',
-    warningMedium: '#FFE58F',
-    warningIntense: '#E0A800',
-    warningLeve:'#FFD84D',
-    disabled: '#bdbdbd',
-    headerGreenCard: '#7CB342',
-    azul: '#34485E',
-    dark: '#0B79D0',
-    mediumGray: '#737373',
-    
-  }
+  white: '#ffffff',
+  whiteLight: '#f5f5f5',
+  black: '#000000',
+  lightBlue: '#00A0D6',
+  paleBlue: '#6A5ACD',
+  paleBlueStrong: '#00b3e3',
+  primaryLight: '#E6F7FF',
+  primaryMedium: '#91D5FF',
+  successLight: '#F6FFED',
+  succesExtraLight: '#F5FCF8',
+  successMedium: '#B7EB8F',
+  succesDark: '#3B873E',
+  warningLight: '#FFFBE6',
+  warningMedium: '#FFE58F',
+  warningIntense: '#E0A800',
+  warningLeve: '#FFD84D',
+  disabled: '#bdbdbd',
+  headerGreenCard: '#7CB342',
+  azul: '#34485E',
+  dark: '#0B79D0',
+  mediumGray: '#737373',
+}
 
-  // Colores principales y branding extendido
+// Colores principales y branding extendido
 export const Newprimary = {
   // Branding base
   white: '#ffffff',
@@ -67,40 +66,38 @@ export const Newprimary = {
   warning: '#FFA82E',
   success: '#26874A',
   // Para MUI compatibility (⚡️ claves estándar, con main)
-  info: '#29b6f6',       // Light blue
+  info: '#29b6f6', // Light blue
   // (puedes redefinir los siguientes si querés otros tonos corporativos)
   // success: '#43a047', // Si querés un verde diferente, sobreescribí este.
   // warning: '#ffa726', // Si querés un naranja diferente, sobreescribí este.
   // error:   '#e53935', // Si querés un rojo diferente, sobreescribí este.
 }
 
-
-  export const grey = {
-    heading: '#464646',
-    textPrimary: '#595959',
-    textSecondary: '#8C8C8C',
-    dividers: '#E8E8E8',
-    background: '#F5F5F5',
-    normal: '#D9D9D9',
-    medium: '#737373',
-    dark: '#4A4A4A',
-    disabled: '#BFBFBF'
-  }
+export const grey = {
+  heading: '#464646',
+  textPrimary: '#595959',
+  textSecondary: '#8C8C8C',
+  dividers: '#E8E8E8',
+  background: '#F5F5F5',
+  normal: '#D9D9D9',
+  medium: '#737373',
+  dark: '#4A4A4A',
+  disabled: '#BFBFBF',
+}
 
 export const typography = {
   fontFamily: 'Nunito, Open Sans, sans-serif',
-    fontSize: 14,
-    h1: { fontWeight: 700 },
-    h2: { fontWeight: 700 },
-    h3: { fontWeight: 700 },
-    h4: { fontWeight: 700 },
-    h5: { fontWeight: 700 },
-    h6: { fontWeight: 600 },
-    subtitle1: { fontWeight: 500 },
-    subtitle2: { fontWeight: 400 },
-    button: {
-      textTransform: 'none',
-      fontWeight: 700,
-    },
+  fontSize: 14,
+  h1: { fontWeight: 700 },
+  h2: { fontWeight: 700 },
+  h3: { fontWeight: 700 },
+  h4: { fontWeight: 700 },
+  h5: { fontWeight: 700 },
+  h6: { fontWeight: 600 },
+  subtitle1: { fontWeight: 500 },
+  subtitle2: { fontWeight: 400 },
+  button: {
+    textTransform: 'none',
+    fontWeight: 700,
+  },
 }
-  

@@ -26,29 +26,29 @@ const initialState = {
   config: null,
   originalConfig: null,
   previewConfig: null, // Para modo preview sin guardar
-  
+
   // Estados UI
   isLoading: false,
   isSaving: false,
   isSuccess: false,
   isError: false,
   error: null,
-  
+
   // Auto-save
   hasUnsavedChanges: false,
   lastSaved: null,
   autoSaveEnabled: true,
   autoSaveError: null,
-  
+
   // Preview system
   previewMode: false,
   previewId: null,
   activeSection: 'general',
-  
+
   // Versionado
   history: [],
   isHistoryLoading: false,
-  
+
   // Cache
   lastFetched: null,
 }
@@ -57,7 +57,7 @@ const initialState = {
 // HELPERS
 // ==========================================
 
-const deepClone = (obj) => JSON.parse(JSON.stringify(obj))
+const deepClone = obj => JSON.parse(JSON.stringify(obj))
 const isEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
 const isImageField = key => ['backgroundImage', 'logo', 'favicon'].includes(key)
@@ -73,7 +73,8 @@ const normalizeImageAsset = value => {
     value
 
   if (!image) return null
-  if (typeof image === 'string') return image.trim() ? { url: image.trim(), public_id: '' } : null
+  if (typeof image === 'string')
+    return image.trim() ? { url: image.trim(), public_id: '' } : null
   if (typeof image !== 'object') return null
 
   const url = typeof image.url === 'string' ? image.url.trim() : ''
@@ -130,7 +131,7 @@ export const fetchTheme = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const saveTheme = createAsyncThunk(
@@ -141,7 +142,7 @@ export const saveTheme = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const autoSaveTheme = createAsyncThunk(
@@ -161,7 +162,7 @@ export const autoSaveTheme = createAsyncThunk(
       dispatch(setAutoSaveError(errorPayload))
       return rejectWithValue(errorPayload)
     }
-  }
+  },
 )
 
 export const resetThemeToDefault = createAsyncThunk(
@@ -172,7 +173,7 @@ export const resetThemeToDefault = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const uploadThemeImage = createAsyncThunk(
@@ -181,14 +182,14 @@ export const uploadThemeImage = createAsyncThunk(
     try {
       const uploadResponse = await uploadImage(file, type)
       const imageData = normalizeUploadedImageAsset(uploadResponse)
-      
+
       if (!imageData?.url) throw new Error('Respuesta de upload inválida')
-      
+
       // Construir update nested por fieldPath
       const keys = fieldPath.split('.')
       const updateData = {}
       let current = updateData
-      
+
       keys.forEach((key, index) => {
         if (index === keys.length - 1) {
           current[key] = {
@@ -200,13 +201,13 @@ export const uploadThemeImage = createAsyncThunk(
           current = current[key]
         }
       })
-      
+
       const themeResponse = await apiPatchTheme(updateData)
       return { image: imageData, theme: themeResponse }
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const createThemePreview = createAsyncThunk(
@@ -217,7 +218,7 @@ export const createThemePreview = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const activateThemePreview = createAsyncThunk(
@@ -228,7 +229,7 @@ export const activateThemePreview = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const fetchThemeHistory = createAsyncThunk(
@@ -239,7 +240,7 @@ export const fetchThemeHistory = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const rollbackToVersion = createAsyncThunk(
@@ -250,7 +251,7 @@ export const rollbackToVersion = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const exportThemeToFile = createAsyncThunk(
@@ -262,7 +263,7 @@ export const exportThemeToFile = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const importThemeFromFile = createAsyncThunk(
@@ -273,7 +274,7 @@ export const importThemeFromFile = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const toggleMaintenanceMode = createAsyncThunk(
@@ -284,7 +285,7 @@ export const toggleMaintenanceMode = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 export const validateThemeConfig = createAsyncThunk(
@@ -295,7 +296,7 @@ export const validateThemeConfig = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.message)
     }
-  }
+  },
 )
 
 // ==========================================
@@ -310,11 +311,11 @@ const themeSlice = createSlice({
     updateField: (state, action) => {
       const { path, value } = action.payload
       const keys = path.split('.')
-      
+
       // Crear copia y actualizar
       const newConfig = deepClone(state.config)
       let target = newConfig
-      
+
       for (let i = 0; i < keys.length - 1; i++) {
         const key = keys[i]
         if (!target[key] || typeof target[key] !== 'object') {
@@ -322,68 +323,74 @@ const themeSlice = createSlice({
         }
         target = target[key]
       }
-      
-      target[keys[keys.length - 1]] = sanitizeThemeValue(value, keys[keys.length - 1])
+
+      target[keys[keys.length - 1]] = sanitizeThemeValue(
+        value,
+        keys[keys.length - 1],
+      )
       state.config = newConfig
       state.hasUnsavedChanges = !isEqual(newConfig, state.originalConfig)
     },
-    
+
     updateSection: (state, action) => {
       const { section, data } = action.payload
       state.config = {
         ...state.config,
-        [section]: { ...state.config[section], ...sanitizeThemeValue(data, section) },
+        [section]: {
+          ...state.config[section],
+          ...sanitizeThemeValue(data, section),
+        },
       }
       state.hasUnsavedChanges = !isEqual(state.config, state.originalConfig)
     },
-    
+
     setPreviewData: (state, action) => {
       state.previewConfig = sanitizeThemeValue(action.payload)
     },
-    
-    clearPreview: (state) => {
+
+    clearPreview: state => {
       state.previewConfig = null
       state.previewId = null
     },
-    
+
     setActiveSection: (state, action) => {
       state.activeSection = action.payload
     },
-    
-    togglePreviewMode: (state) => {
+
+    togglePreviewMode: state => {
       state.previewMode = !state.previewMode
     },
-    
-    toggleAutoSave: (state) => {
+
+    toggleAutoSave: state => {
       state.autoSaveEnabled = !state.autoSaveEnabled
     },
-    
+
     setAutoSaveError: (state, action) => {
       state.autoSaveError = action.payload
     },
-    
-    clearAutoSaveError: (state) => {
+
+    clearAutoSaveError: state => {
       state.autoSaveError = null
     },
-    
-    discardChanges: (state) => {
+
+    discardChanges: state => {
       state.config = deepClone(state.originalConfig)
       state.hasUnsavedChanges = false
       state.previewConfig = null
     },
-    
-    clearError: (state) => {
+
+    clearError: state => {
       state.isError = false
       state.error = null
     },
-    
+
     resetState: () => initialState,
   },
-  
-  extraReducers: (builder) => {
+
+  extraReducers: builder => {
     // Fetch
     builder
-      .addCase(fetchTheme.pending, (state) => {
+      .addCase(fetchTheme.pending, state => {
         state.isLoading = true
         state.isError = false
         state.error = null
@@ -400,9 +407,9 @@ const themeSlice = createSlice({
         state.isError = true
         state.error = action.payload
       })
-    
-    // Save (manual)
-      .addCase(saveTheme.pending, (state) => {
+
+      // Save (manual)
+      .addCase(saveTheme.pending, state => {
         state.isSaving = true
         state.isError = false
       })
@@ -419,8 +426,8 @@ const themeSlice = createSlice({
         state.isError = true
         state.error = action.payload
       })
-    
-    // Auto-save (silencioso)
+
+      // Auto-save (silencioso)
       .addCase(autoSaveTheme.fulfilled, (state, action) => {
         const savedConfig = sanitizeThemeValue(unwrapApiData(action.payload))
         state.config = savedConfig
@@ -429,9 +436,9 @@ const themeSlice = createSlice({
         state.lastSaved = new Date().toISOString()
         state.autoSaveError = null
       })
-    
-    // Reset
-      .addCase(resetThemeToDefault.pending, (state) => {
+
+      // Reset
+      .addCase(resetThemeToDefault.pending, state => {
         state.isLoading = true
       })
       .addCase(resetThemeToDefault.fulfilled, (state, action) => {
@@ -445,9 +452,9 @@ const themeSlice = createSlice({
         state.isError = true
         state.error = action.payload
       })
-    
-    // Upload
-      .addCase(uploadThemeImage.pending, (state) => {
+
+      // Upload
+      .addCase(uploadThemeImage.pending, state => {
         state.isSaving = true
       })
       .addCase(uploadThemeImage.fulfilled, (state, action) => {
@@ -461,12 +468,14 @@ const themeSlice = createSlice({
         state.isError = true
         state.error = action.payload
       })
-    
-    // Preview system
+
+      // Preview system
       .addCase(createThemePreview.fulfilled, (state, action) => {
         const previewPayload = unwrapApiData(action.payload)
         state.previewId = previewPayload?.previewId
-        state.previewConfig = sanitizeThemeValue(previewPayload?.data || state.previewConfig)
+        state.previewConfig = sanitizeThemeValue(
+          previewPayload?.data || state.previewConfig,
+        )
       })
       .addCase(activateThemePreview.fulfilled, (state, action) => {
         state.config = sanitizeThemeValue(unwrapApiData(action.payload))
@@ -476,27 +485,27 @@ const themeSlice = createSlice({
         state.previewMode = false
         state.hasUnsavedChanges = false
       })
-    
-    // History
-      .addCase(fetchThemeHistory.pending, (state) => {
+
+      // History
+      .addCase(fetchThemeHistory.pending, state => {
         state.isHistoryLoading = true
       })
       .addCase(fetchThemeHistory.fulfilled, (state, action) => {
         state.isHistoryLoading = false
         state.history = action.payload
       })
-      .addCase(fetchThemeHistory.rejected, (state) => {
+      .addCase(fetchThemeHistory.rejected, state => {
         state.isHistoryLoading = false
       })
-    
-    // Rollback
+
+      // Rollback
       .addCase(rollbackToVersion.fulfilled, (state, action) => {
         state.config = sanitizeThemeValue(unwrapApiData(action.payload))
         state.originalConfig = deepClone(state.config)
         state.hasUnsavedChanges = false
       })
-    
-    // Import
+
+      // Import
       .addCase(importThemeFromFile.fulfilled, (state, action) => {
         state.config = sanitizeThemeValue(unwrapApiData(action.payload))
         state.originalConfig = deepClone(state.config)
@@ -509,37 +518,37 @@ const themeSlice = createSlice({
 // SELECTORS
 // ==========================================
 
-export const selectTheme = (state) => state.theme.config
-export const selectOriginalTheme = (state) => state.theme.originalConfig
-export const selectPreviewTheme = (state) => state.theme.previewConfig
-export const selectActiveTheme = (state) => 
+export const selectTheme = state => state.theme.config
+export const selectOriginalTheme = state => state.theme.originalConfig
+export const selectPreviewTheme = state => state.theme.previewConfig
+export const selectActiveTheme = state =>
   state.theme.previewMode ? state.theme.previewConfig : state.theme.config
 
-export const selectThemeSection = (section) => (state) => 
+export const selectThemeSection = section => state =>
   state.theme.config?.[section]
 
-export const selectHasUnsavedChanges = (state) => state.theme.hasUnsavedChanges
-export const selectIsLoading = (state) => state.theme.isLoading
-export const selectIsSaving = (state) => state.theme.isSaving
-export const selectThemeError = (state) => state.theme.error
+export const selectHasUnsavedChanges = state => state.theme.hasUnsavedChanges
+export const selectIsLoading = state => state.theme.isLoading
+export const selectIsSaving = state => state.theme.isSaving
+export const selectThemeError = state => state.theme.error
 
-export const selectAutoSaveStatus = (state) => ({
+export const selectAutoSaveStatus = state => ({
   enabled: state.theme.autoSaveEnabled,
   lastSaved: state.theme.lastSaved,
   error: state.theme.autoSaveError,
 })
 
-export const selectPreviewStatus = (state) => ({
+export const selectPreviewStatus = state => ({
   active: state.theme.previewMode,
   previewId: state.theme.previewId,
 })
 
-export const selectThemeHistory = (state) => state.theme.history
+export const selectThemeHistory = state => state.theme.history
 
-export const selectActiveSection = (state) => state.theme.activeSection
+export const selectActiveSection = state => state.theme.activeSection
 
 // Selector compuesto para UI
-export const selectThemeStatus = (state) => ({
+export const selectThemeStatus = state => ({
   loading: state.theme.isLoading,
   saving: state.theme.isSaving,
   hasChanges: state.theme.hasUnsavedChanges,

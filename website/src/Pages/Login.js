@@ -14,14 +14,21 @@ import {
   CircularProgress,
   Divider,
 } from '@mui/material'
-import { loginUser, clearState, setCsrfToken } from '@features/user/userSlice.js'
+import {
+  loginUser,
+  clearState,
+  setCsrfToken,
+} from '@features/user/userSlice.js'
 import { fetchCsrfToken } from '@utils/axiosConfig'
 import { Newprimary } from '../theme/colors'
 import { useState } from 'react'
 
 // Esquema de validación
 const validationSchema = yup.object({
-  email: yup.string().email('Debe ser un correo válido').required('El correo es obligatorio'),
+  email: yup
+    .string()
+    .email('Debe ser un correo válido')
+    .required('El correo es obligatorio'),
   password: yup.string().required('La contraseña es obligatoria'),
 })
 
@@ -31,7 +38,9 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Extraemos el estado global de Redux
-  const { user, token, isError, isSuccess, message } = useSelector(state => state.user || {})
+  const { user, token, isError, isSuccess, message } = useSelector(
+    state => state.user || {},
+  )
 
   // 1. Limpieza: Al desmontar el componente, reseteamos errores y estados de carga
   useEffect(() => {
@@ -85,7 +94,12 @@ const Login = () => {
         }}
       >
         <CardContent sx={{ p: 4 }}>
-          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography
+            variant="body2"
+            align="center"
+            color="text.secondary"
+            sx={{ mb: 3 }}
+          >
             Accedé a tu cuenta para continuar.
           </Typography>
 
@@ -145,11 +159,19 @@ const Login = () => {
               }}
               disabled={isSubmitting}
             >
-              {isSubmitting ? <CircularProgress size={24} color="inherit" /> : 'Ingresar'}
+              {isSubmitting ? (
+                <CircularProgress size={24} color="inherit" />
+              ) : (
+                'Ingresar'
+              )}
             </Button>
 
             {isError && (
-              <Typography color="error" align="center" sx={{ mt: 2, fontSize: '0.875rem' }}>
+              <Typography
+                color="error"
+                align="center"
+                sx={{ mt: 2, fontSize: '0.875rem' }}
+              >
                 {message || 'Credenciales inválidas o error de conexión.'}
               </Typography>
             )}

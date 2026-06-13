@@ -12,7 +12,8 @@ export default {
 
     // ✅ FIXED: esta es la línea correcta para archivos estáticos
     '\\.(css|less|scss|sass)$': '<rootDir>/src/test/__mocks__/styleMock.js',
-    '\\.(jpg|jpeg|png|gif|webp|svg|eot|ttf|woff|woff2)$': '<rootDir>/src/test/__mocks__/fileMock.js'
+    '\\.(jpg|jpeg|png|gif|webp|svg|eot|ttf|woff|woff2)$':
+      '<rootDir>/src/test/__mocks__/fileMock.js',
   },
   transform: {
     '^.+\\.(js|jsx)$': 'babel-jest',

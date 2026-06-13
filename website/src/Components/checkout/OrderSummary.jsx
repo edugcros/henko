@@ -12,9 +12,18 @@ import {
 } from '@mui/material'
 import ShoppingCartCheckoutIcon from '@mui/icons-material/ShoppingCartCheckout'
 
-const OrderSummary = ({ cart, discount = 0, shipping = 0, onCheckout, loading }) => {
+const OrderSummary = ({
+  cart,
+  discount = 0,
+  shipping = 0,
+  onCheckout,
+  loading,
+}) => {
   const subtotal =
-    cart.items?.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0) || 0
+    cart.items?.reduce(
+      (sum, item) => sum + item.price * (item.quantity || 1),
+      0,
+    ) || 0
 
   const total = Math.max(0, subtotal - discount + shipping)
 
@@ -49,7 +58,11 @@ const OrderSummary = ({ cart, discount = 0, shipping = 0, onCheckout, loading })
                 primary={item.label}
                 primaryTypographyProps={{ color: 'text.secondary' }}
               />
-              <Typography variant="body1" fontWeight={600} color={item.color || 'inherit'}>
+              <Typography
+                variant="body1"
+                fontWeight={600}
+                color={item.color || 'inherit'}
+              >
                 {isNegative ? '-' : ''}${Math.abs(item.value).toLocaleString()}
                 {item.label === 'Envío' && shipping === 0 && ' (Gratis)'}
               </Typography>

@@ -1,81 +1,101 @@
 // 📁 src/components/ColorsPanel.jsx - VERSIÓN PRODUCCIÓN
-import React, { useCallback, useMemo } from 'react';
-import { Grid, Typography, Box, Tooltip, IconButton, Paper, Stack } from '@mui/material';
-import ColorPicker from '@components/ColorPicker';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import React, { useCallback, useMemo } from 'react'
+import {
+  Grid,
+  Typography,
+  Box,
+  Tooltip,
+  IconButton,
+  Paper,
+  Stack,
+} from '@mui/material'
+import ColorPicker from '@components/ColorPicker'
+import RefreshIcon from '@mui/icons-material/Refresh'
 import {
   COLOR_PRESETS,
   COLOR_ROLE_GROUPS,
   DEFAULT_THEME_COLORS,
-} from '@features/theme/colorSystem';
+} from '@features/theme/colorSystem'
 
 const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
   const effectiveColors = useMemo(
     () => ({ ...DEFAULT_THEME_COLORS, ...colors }),
     [colors],
-  );
+  )
 
   // 🔥 Handler optimizado con validación
-  const handleColorChange = useCallback((key, value) => {
-    // Validar formato HEX
-    const hexRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-    
-    if (!hexRegex.test(value)) {
-      console.warn(`Color inválido para ${key}:`, value);
-      return;
-    }
+  const handleColorChange = useCallback(
+    (key, value) => {
+      // Validar formato HEX
+      const hexRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/
 
-    // Usar updateField con path notation (si está disponible) o updateTheme
-    if (updateField) {
-      updateField(`colors.${key}`, value);
-    } else if (onChange) {
-      onChange({ ...effectiveColors, [key]: value });
-    } else if (updateTheme) {
-      updateTheme('colors', { ...effectiveColors, [key]: value });
-    }
-  }, [effectiveColors, updateField, updateTheme, onChange]);
+      if (!hexRegex.test(value)) {
+        console.warn(`Color inválido para ${key}:`, value)
+        return
+      }
+
+      // Usar updateField con path notation (si está disponible) o updateTheme
+      if (updateField) {
+        updateField(`colors.${key}`, value)
+      } else if (onChange) {
+        onChange({ ...effectiveColors, [key]: value })
+      } else if (updateTheme) {
+        updateTheme('colors', { ...effectiveColors, [key]: value })
+      }
+    },
+    [effectiveColors, updateField, updateTheme, onChange],
+  )
 
   // 🔥 Reset individual de color
-  const handleResetColor = useCallback((key) => {
-    handleColorChange(key, DEFAULT_THEME_COLORS[key]);
-  }, [handleColorChange]);
+  const handleResetColor = useCallback(
+    key => {
+      handleColorChange(key, DEFAULT_THEME_COLORS[key])
+    },
+    [handleColorChange],
+  )
 
   // 🔥 Aplicar preset completo
-  const handleApplyPreset = useCallback((preset) => {
-    const presetColors = { ...preset };
-    delete presetColors.name;
-    const newColors = { ...effectiveColors, ...presetColors };
+  const handleApplyPreset = useCallback(
+    preset => {
+      const presetColors = { ...preset }
+      delete presetColors.name
+      const newColors = { ...effectiveColors, ...presetColors }
 
-    if (onChange) {
-      onChange(newColors);
-      return;
-    }
+      if (onChange) {
+        onChange(newColors)
+        return
+      }
 
-    if (updateTheme) {
-      updateTheme('colors', newColors);
-    }
-  }, [effectiveColors, updateTheme, onChange]);
+      if (updateTheme) {
+        updateTheme('colors', newColors)
+      }
+    },
+    [effectiveColors, updateTheme, onChange],
+  )
 
   // 🔥 Reset todos los colores
   const handleResetAll = useCallback(() => {
     if (window.confirm('¿Restaurar todos los colores a valores por defecto?')) {
       if (onChange) {
-        onChange(DEFAULT_THEME_COLORS);
-        return;
+        onChange(DEFAULT_THEME_COLORS)
+        return
       }
 
       if (updateTheme) {
-        updateTheme('colors', DEFAULT_THEME_COLORS);
+        updateTheme('colors', DEFAULT_THEME_COLORS)
       }
     }
-  }, [updateTheme, onChange]);
+  }, [updateTheme, onChange])
 
-  const renderColorPicker = ({ key, label, appliesTo }, size = { xs: 12, sm: 6 }) => (
+  const renderColorPicker = (
+    { key, label, appliesTo },
+    size = { xs: 12, sm: 6 },
+  ) => (
     <Grid item xs={size.xs} sm={size.sm} key={key}>
       <ColorPicker
         label={label}
         value={effectiveColors[key]}
-        onChange={(v) => handleColorChange(key, v)}
+        onChange={v => handleColorChange(key, v)}
         helperText={appliesTo}
         showReset
         onReset={() => handleResetColor(key)}
@@ -86,7 +106,7 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
         }}
       />
     </Grid>
-  );
+  )
 
   return (
     <Box>
@@ -96,7 +116,7 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
           Paletas Rápidas
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {COLOR_PRESETS.map((preset) => (
+          {COLOR_PRESETS.map(preset => (
             <Tooltip key={preset.name} title={preset.name}>
               <Box
                 onClick={() => handleApplyPreset(preset)}
@@ -114,18 +134,20 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
                   },
                 }}
               >
-                {[preset.primary, preset.secondary, preset.accent].map((color, i) => (
-                  <Box
-                    key={i}
-                    sx={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 1,
-                      bgcolor: color,
-                      border: '1px solid rgba(0,0,0,0.1)',
-                    }}
-                  />
-                ))}
+                {[preset.primary, preset.secondary, preset.accent].map(
+                  (color, i) => (
+                    <Box
+                      key={i}
+                      sx={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 1,
+                        bgcolor: color,
+                        border: '1px solid rgba(0,0,0,0.1)',
+                      }}
+                    />
+                  ),
+                )}
               </Box>
             </Tooltip>
           ))}
@@ -133,10 +155,14 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
       </Box>
 
       <Stack spacing={3}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="subtitle2">
-            Sistema de color
-          </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <Typography variant="subtitle2">Sistema de color</Typography>
           <Tooltip title="Restaurar colores por defecto">
             <IconButton size="small" onClick={handleResetAll}>
               <RefreshIcon fontSize="small" />
@@ -144,7 +170,7 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
           </Tooltip>
         </Box>
 
-        {COLOR_ROLE_GROUPS.map((group) => (
+        {COLOR_ROLE_GROUPS.map(group => (
           <Paper key={group.id} variant="outlined" sx={{ p: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
               {group.title}
@@ -153,10 +179,12 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
               {group.description}
             </Typography>
             <Grid container spacing={2}>
-              {group.fields.map((field) =>
+              {group.fields.map(field =>
                 renderColorPicker(
                   field,
-                  group.id === 'feedback' ? { xs: 6, sm: 3 } : { xs: 12, sm: 6 },
+                  group.id === 'feedback'
+                    ? { xs: 6, sm: 3 }
+                    : { xs: 12, sm: 6 },
                 ),
               )}
             </Grid>
@@ -247,7 +275,7 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
         </Box>
       </Box>
     </Box>
-  );
-};
+  )
+}
 
-export default React.memo(ColorsPanel);
+export default React.memo(ColorsPanel)

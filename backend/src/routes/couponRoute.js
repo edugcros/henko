@@ -22,6 +22,8 @@ import {
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 import {
+  requireAdminDomain,
+  requireTenant,
   resolveTenantByDomain,
   requireShopDomain,
 } from '../middlewares/tenantMiddleware.js'
@@ -29,6 +31,13 @@ import {
 import { validateCouponCreation } from '../middlewares/validation.js'
 
 const router = express.Router()
+const adminContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
+  authMiddleware,
+  isAdmin,
+]
 
 // =====================================================
 // STOREFRONT / CUSTOMER
@@ -93,9 +102,7 @@ router.get(
  */
 router.post(
   '/',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   
   validateCouponCreation,
   createCoupon,
@@ -107,9 +114,7 @@ router.post(
  */
 router.post(
   '/bulk',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   
   generateBulkCoupons,
 )
@@ -120,9 +125,7 @@ router.post(
  */
 router.get(
   '/',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   getCoupons,
 )
 
@@ -132,9 +135,7 @@ router.get(
  */
 router.get(
   '/deleted',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   getDeletedCoupons,
 )
 
@@ -144,9 +145,7 @@ router.get(
  */
 router.delete(
   '/:id/permanent',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   
   permanentDeleteCoupon,
 )
@@ -157,9 +156,7 @@ router.delete(
  */
 router.patch(
   '/:id/restore',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   
   restoreCoupon,
 )
@@ -170,9 +167,7 @@ router.patch(
  */
 router.post(
   '/:id/clone',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   
   cloneCoupon,
 )
@@ -183,9 +178,7 @@ router.post(
  */
 router.put(
   '/:couponId/products',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   
   assignProductsToCoupon,
 )
@@ -196,9 +189,7 @@ router.put(
  */
 router.get(
   '/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   getCouponById,
 )
 
@@ -208,9 +199,7 @@ router.get(
  */
 router.put(
   '/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   
   updateCoupon,
 )
@@ -221,9 +210,7 @@ router.put(
  */
 router.delete(
   '/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   
   deleteCoupon,
 )

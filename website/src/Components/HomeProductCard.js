@@ -27,8 +27,14 @@ const HomeProductCard = React.memo(({ data }) => {
   const navigate = useNavigate()
 
   const themeState = useSelector(state => state.theme) || {}
-  const activeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
-  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const activeConfig = useMemo(
+    () => getActiveThemeConfig(themeState),
+    [themeState],
+  )
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
   const productTheme = useMemo(
     () => getProductThemeConfig(activeConfig),
     [activeConfig],
@@ -41,7 +47,8 @@ const HomeProductCard = React.memo(({ data }) => {
   const routeId = item ? getProductRouteId(item) : ''
   const productId = item?._id || item?.id || item?.productId
   const productPrice = Number(item?.finalPrice ?? item?.price) || 0
-  const aspectRatio = productTheme.imageAspectRatio?.replace(':', ' / ') || '1 / 1'
+  const aspectRatio =
+    productTheme.imageAspectRatio?.replace(':', ' / ') || '1 / 1'
   const hoverTransform = {
     none: 'none',
     zoom: 'scale(1.02)',
@@ -84,7 +91,15 @@ const HomeProductCard = React.memo(({ data }) => {
         placement: 'home_product_card',
       },
     })
-  }, [productId, productPrice, item?.category, item?.categoryName, item?.title, item?.brand, item?.marca])
+  }, [
+    productId,
+    productPrice,
+    item?.category,
+    item?.categoryName,
+    item?.title,
+    item?.brand,
+    item?.marca,
+  ])
 
   if (!item) return null
 
@@ -171,29 +186,29 @@ const HomeProductCard = React.memo(({ data }) => {
 
         {/* Rating */}
         {productTheme.showRating !== false && (
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          <ReactStars
-            count={5}
-            size={18}
-            value={Number(item.totalrating) || 0}
-            edit={false}
-            color2={themeColors.warning}
-          />
-        </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <ReactStars
+              count={5}
+              size={18}
+              value={Number(item.totalrating) || 0}
+              edit={false}
+              color2={themeColors.warning}
+            />
+          </Box>
         )}
 
         {/* Precio */}
         {productTheme.showPrice !== false && (
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 800,
-            color: cardPrice,
-            fontSize: '1.15rem',
-          }}
-        >
-          {formatCurrency(item.price || 0, activeConfig)}
-        </Typography>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 800,
+              color: cardPrice,
+              fontSize: '1.15rem',
+            }}
+          >
+            {formatCurrency(item.price || 0, activeConfig)}
+          </Typography>
         )}
       </CardContent>
     </Card>

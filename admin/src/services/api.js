@@ -48,11 +48,9 @@ export const userAPI = {
       skipCsrf: true,
     }),
 
-  getProfile: () =>
-    api.get('/user/profile'),
+  getProfile: () => api.get('/user/profile'),
 
-  getMe: () =>
-    api.get('/user/me'),
+  getMe: () => api.get('/user/me'),
 
   refresh: () =>
     api.post(
@@ -65,8 +63,7 @@ export const userAPI = {
       },
     ),
 
-  logout: () =>
-    api.post('/user/logout'),
+  logout: () => api.post('/user/logout'),
 }
 
 // ============================================================================
@@ -74,22 +71,18 @@ export const userAPI = {
 // ============================================================================
 
 export const analyticsAPI = {
-  getStatus: () =>
-    api.get('/dash/stats'),
+  getStatus: () => api.get('/dash/stats'),
 
-  configure: data =>
-    api.post('/analytics/config', data),
+  configure: data => api.post('/analytics/config', data),
 
   getDashboard: params =>
     api.get('/dash/stats', {
       params,
     }),
 
-  getRealtime: () =>
-    api.get('/analytics/realtime'),
+  getRealtime: () => api.get('/analytics/realtime'),
 
-  trackEvent: data =>
-    api.post('/analytics/track', data),
+  trackEvent: data => api.post('/analytics/track', data),
 }
 
 // ============================================================================
@@ -104,8 +97,7 @@ export const tenantAPI = {
       skipCsrfRetry: true,
     }),
 
-  getCurrent: () =>
-    api.get('/tenants/current'),
+  getCurrent: () => api.get('/tenants/current'),
 }
 
 // ============================================================================
@@ -119,17 +111,13 @@ export const themeAPI = {
       skipCsrfRetry: true,
     }),
 
-  getAdminTheme: () =>
-    api.get('/theme/admin'),
+  getAdminTheme: () => api.get('/theme/admin'),
 
-  updateAdminTheme: data =>
-    api.put('/theme/admin', data),
+  updateAdminTheme: data => api.put('/theme/admin', data),
 
-  patchAdminTheme: data =>
-    api.patch('/theme/admin', data),
+  patchAdminTheme: data => api.patch('/theme/admin', data),
 
-  resetTheme: () =>
-    api.post('/theme/admin/reset'),
+  resetTheme: () => api.post('/theme/admin/reset'),
 }
 
 // ============================================================================
@@ -137,20 +125,15 @@ export const themeAPI = {
 // ============================================================================
 
 export const productAPI = {
-  getAll: params =>
-    api.get('/product', { params }),
+  getAll: params => api.get('/product', { params }),
 
-  getById: id =>
-    api.get(`/product/${id}`),
+  getById: id => api.get(`/product/${id}`),
 
-  create: data =>
-    api.post('/product', data),
+  create: data => api.post('/product', data),
 
-  update: (id, data) =>
-    api.put(`/product/${id}`, data),
+  update: (id, data) => api.put(`/product/${id}`, data),
 
-  delete: id =>
-    api.delete(`/product/${id}`),
+  delete: id => api.delete(`/product/${id}`),
 }
 
 // ============================================================================
@@ -158,17 +141,13 @@ export const productAPI = {
 // ============================================================================
 
 export const orderAPI = {
-  getAll: params =>
-    api.get('/order/getAll', { params }),
+  getAll: params => api.get('/order/getAll', { params }),
 
-  getById: id =>
-    api.get(`/order/${id}`),
+  getById: id => api.get(`/order/${id}`),
 
-  updateStatus: (id, status) =>
-    api.put(`/order/${id}/status`, { status }),
+  updateStatus: (id, status) => api.put(`/order/${id}/status`, { status }),
 
-  delete: id =>
-    api.delete(`/order/${id}`),
+  delete: id => api.delete(`/order/${id}`),
 }
 
 // ============================================================================

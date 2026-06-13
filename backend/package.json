@@ -11,6 +11,8 @@
     "start:dev": "cross-env NODE_ENV=development node server.js",
     "check:env:dev": "cross-env NODE_ENV=development node src/scripts/checkEnv.js",
     "check:env:prod": "cross-env NODE_ENV=production node src/scripts/checkEnv.js",
+    "migrate:catalog-variants": "cross-env NODE_ENV=development node src/scripts/backfillCatalogVariantTemplates.js",
+    "migrate:catalog-variants:prod": "cross-env NODE_ENV=production node src/scripts/backfillCatalogVariantTemplates.js",
     "lint": "eslint . --ext .js",
     "fix": "eslint . --ext .js --fix",
     "test": "cross-env NODE_ENV=test node --experimental-vm-modules ./node_modules/jest/bin/jest.js"

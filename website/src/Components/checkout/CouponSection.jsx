@@ -43,7 +43,8 @@ const CouponSection = ({ cart, onCouponApplied }) => {
     if (!productCoupons || !Array.isArray(productCoupons)) return []
 
     return productCoupons.filter(coupon => {
-      const isAvailable = coupon.isActive && (coupon.usageLimit > coupon.usageCount || 0)
+      const isAvailable =
+        coupon.isActive && (coupon.usageLimit > coupon.usageCount || 0)
 
       // Buscamos si algún ID del cupón coincide con algún ID del producto en el carrito
       const isApplicable = cart.items?.some(item => {
@@ -59,7 +60,11 @@ const CouponSection = ({ cart, onCouponApplied }) => {
   useEffect(() => {
     if (cart.items?.length > 0) {
       // Recopilamos todos los IDs únicos para evitar llamadas duplicadas
-      const uniqueIds = [...new Set(cart.items.map(item => item.productId || item._id || item.id))]
+      const uniqueIds = [
+        ...new Set(
+          cart.items.map(item => item.productId || item._id || item.id),
+        ),
+      ]
       uniqueIds.forEach(id => fetchProductCoupons(id, cart.userId))
     }
   }, [cart.items, cart.userId, fetchProductCoupons])
@@ -137,7 +142,9 @@ const CouponSection = ({ cart, onCouponApplied }) => {
                       borderRadius: 3,
                       borderStyle: 'dashed',
                       borderColor:
-                        coupon.usageLimit <= 5 ? 'error.main' : theme.palette.brand.main,
+                        coupon.usageLimit <= 5
+                          ? 'error.main'
+                          : theme.palette.brand.main,
                       position: 'relative',
                       bgcolor: theme.palette.card.background,
                     }}
@@ -150,10 +157,18 @@ const CouponSection = ({ cart, onCouponApplied }) => {
                       >
                         {coupon.code} <FlashIcon sx={{ fontSize: 14 }} />
                       </Typography>
-                      <Typography variant="caption" display="block" sx={{ mb: 1 }}>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ mb: 1 }}
+                      >
                         {coupon.description}
                       </Typography>
-                      <Typography variant="body2" fontWeight="700" color="success.main">
+                      <Typography
+                        variant="body2"
+                        fontWeight="700"
+                        color="success.main"
+                      >
                         {coupon.discountValue}% DE DESCUENTO
                       </Typography>
                     </Box>

@@ -196,7 +196,9 @@ button:disabled {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ======================================================
@@ -218,32 +220,31 @@ button:disabled {
   .coupons-page {
     padding: 16px;
   }
-  
+
   .page-header {
     flex-direction: column;
   }
-  
+
   .header-actions {
     width: 100%;
   }
-  
+
   .header-actions button {
     flex: 1;
     justify-content: center;
   }
-  
+
   .filters-bar {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .filter-group {
     width: 100%;
   }
-  
+
   .filter-group select,
   .filter-group input {
     width: 100%;
   }
 }
-

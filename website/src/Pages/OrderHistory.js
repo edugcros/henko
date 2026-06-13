@@ -122,7 +122,9 @@ const ProductLine = ({ item }) => {
 
         {attributeEntries.length > 0 && (
           <Typography variant="caption" color="text.secondary" display="block">
-            {attributeEntries.map(([key, value]) => `${key}: ${value}`).join(' · ')}
+            {attributeEntries
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(' · ')}
           </Typography>
         )}
       </Box>
@@ -135,8 +137,10 @@ const ProductLine = ({ item }) => {
 }
 
 const OrderCard = ({ order, expanded, onToggle }) => {
-  const total = order?.totals?.total ?? Number(order?.paymentIntent?.amountCents || 0) / 100
-  const currency = order?.paymentIntent?.currency || order?.products?.[0]?.currency || 'ARS'
+  const total =
+    order?.totals?.total ?? Number(order?.paymentIntent?.amountCents || 0) / 100
+  const currency =
+    order?.paymentIntent?.currency || order?.products?.[0]?.currency || 'ARS'
 
   return (
     <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
@@ -168,9 +172,18 @@ const OrderCard = ({ order, expanded, onToggle }) => {
           </Box>
         </Stack>
 
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 2 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          flexWrap="wrap"
+          sx={{ mt: 2 }}
+        >
           <OrderStatusChip value={order?.orderStatus} labels={ORDER_LABELS} />
-          <OrderStatusChip value={order?.paymentStatus} labels={PAYMENT_LABELS} />
+          <OrderStatusChip
+            value={order?.paymentStatus}
+            labels={PAYMENT_LABELS}
+          />
           <OrderStatusChip
             value={order?.fulfillmentStatus}
             labels={FULFILLMENT_LABELS}
@@ -214,7 +227,11 @@ const OrderCard = ({ order, expanded, onToggle }) => {
                   Entrega
                 </Typography>
               </Stack>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
                 {order?.shippingAddress?.address || 'Dirección no informada'}
                 {order?.shippingAddress?.city
                   ? `, ${order.shippingAddress.city}`
@@ -271,7 +288,13 @@ const OrderHistory = () => {
   )
 
   return (
-    <Box sx={{ minHeight: '70vh', bgcolor: 'background.default', py: { xs: 3, md: 5 } }}>
+    <Box
+      sx={{
+        minHeight: '70vh',
+        bgcolor: 'background.default',
+        py: { xs: 3, md: 5 },
+      }}
+    >
       <Container maxWidth="lg">
         <Typography variant="h4" fontWeight={800}>
           Mis pedidos
@@ -291,8 +314,13 @@ const OrderHistory = () => {
             <CircularProgress />
           </Stack>
         ) : orders.length === 0 ? (
-          <Paper variant="outlined" sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
-            <ReceiptLongOutlined sx={{ fontSize: 48, color: 'text.disabled' }} />
+          <Paper
+            variant="outlined"
+            sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}
+          >
+            <ReceiptLongOutlined
+              sx={{ fontSize: 48, color: 'text.disabled' }}
+            />
             <Typography variant="h6" fontWeight={700} sx={{ mt: 1 }}>
               Todavía no tenés pedidos
             </Typography>
@@ -305,7 +333,9 @@ const OrderHistory = () => {
                 order={order}
                 expanded={expandedId === order._id}
                 onToggle={() =>
-                  setExpandedId(current => (current === order._id ? null : order._id))
+                  setExpandedId(current =>
+                    current === order._id ? null : order._id,
+                  )
                 }
               />
             ))}

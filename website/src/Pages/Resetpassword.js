@@ -14,7 +14,9 @@ const ResetPassword = () => {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
 
-  const { isLoading, isError, isSuccess, message } = useSelector(state => state.user)
+  const { isLoading, isError, isSuccess, message } = useSelector(
+    state => state.user,
+  )
 
   const handleSubmit = e => {
     e.preventDefault()
@@ -67,7 +69,11 @@ const ResetPassword = () => {
                 onChange={e => setConfirmPassword(e.target.value)}
               />
               <div className="mt-3 d-flex justify-content-center flex-column gap-15 align-items-center">
-                <button className="button border-0" type="submit" disabled={isLoading}>
+                <button
+                  className="button border-0"
+                  type="submit"
+                  disabled={isLoading}
+                >
                   {isLoading ? 'Restableciendo...' : 'Restablecer'}
                 </button>
               </div>

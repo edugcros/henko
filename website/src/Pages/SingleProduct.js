@@ -25,7 +25,7 @@ import {
   ToggleButtonGroup,
   Alert,
 } from '@mui/material'
-import { styled, useTheme, alpha  } from '@mui/material/styles'
+import { styled, useTheme, alpha } from '@mui/material/styles'
 import {
   ShoppingCartOutlined as CartIcon,
   Favorite as FavIcon,
@@ -207,11 +207,18 @@ const normalizeVariantForCart = (variant, selectedAttrs = {}) => {
   }
 }
 
-const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) => {
+const ProductVariantSelector = ({
+  product,
+  onVariantSelect,
+  selectedVariant,
+}) => {
   const theme = useTheme()
 
   const variantAttributes = useMemo(
-    () => (Array.isArray(product?.variantAttributes) ? product.variantAttributes : []),
+    () =>
+      Array.isArray(product?.variantAttributes)
+        ? product.variantAttributes
+        : [],
     [product?.variantAttributes],
   )
 
@@ -222,13 +229,10 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
 
   const [selections, setSelections] = useState({})
 
-  const ctaMain =
-    theme.palette.ctaPrimary?.main ||
-    theme.palette.primary.main
+  const ctaMain = theme.palette.ctaPrimary?.main || theme.palette.primary.main
 
   const ctaContrast =
-    theme.palette.ctaPrimary?.contrastText ||
-    theme.palette.primary.contrastText
+    theme.palette.ctaPrimary?.contrastText || theme.palette.primary.contrastText
 
   useEffect(() => {
     setSelections({})
@@ -302,7 +306,9 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
           updated[attrName] = value
         }
 
-        const changedIndex = variantAttributes.findIndex(attr => attr.name === attrName)
+        const changedIndex = variantAttributes.findIndex(
+          attr => attr.name === attrName,
+        )
 
         variantAttributes.forEach((attr, index) => {
           if (index > changedIndex) {
@@ -320,7 +326,9 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
     attrName => {
       setSelections(prev => {
         const updated = { ...prev }
-        const changedIndex = variantAttributes.findIndex(attr => attr.name === attrName)
+        const changedIndex = variantAttributes.findIndex(
+          attr => attr.name === attrName,
+        )
 
         delete updated[attrName]
 
@@ -373,7 +381,11 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
           size="small"
           variant="text"
           onClick={handleClearAll}
-          sx={{ textTransform: 'none', fontWeight: 700 }}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            color: Newprimary.darkBlueGray,
+          }}
         >
           Limpiar selección
         </Button>
@@ -386,7 +398,8 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
         if (!attrName) return null
 
         const availableValues = getAvailableValues(attrName, selections)
-        const isDisabled = index > 0 && !selections[variantAttributes[index - 1]?.name]
+        const isDisabled =
+          index > 0 && !selections[variantAttributes[index - 1]?.name]
         const currentValue = selections[attrName] || ''
 
         return (
@@ -397,7 +410,11 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
               alignItems="center"
               sx={{ mb: 0.75 }}
             >
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                color={Newprimary.DodgerBlue}
+                display="block"
+              >
                 {attrLabel} {currentValue ? '✓' : ''}
               </Typography>
 
@@ -412,6 +429,7 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
                     textTransform: 'none',
                     fontSize: 12,
                     fontWeight: 700,
+                    color: Newprimary.darkBlueGray,
                   }}
                 >
                   Quitar
@@ -439,7 +457,8 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
                     value={value}
                     sx={{
                       minWidth: 40,
-                      bgcolor: currentValue === value ? 'primary.main' : 'transparent',
+                      bgcolor:
+                        currentValue === value ? 'primary.main' : 'transparent',
                       color: currentValue === value ? 'white' : 'inherit',
                     }}
                   >
@@ -485,8 +504,17 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
             borderRadius: 1.5,
           }}
         >
-          <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-            <Typography variant="body2" fontWeight={700} color='black'>
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+            gap={1}
+          >
+            <Typography
+              variant="caption"
+              fontWeight={500}
+              color={Newprimary.darkBlueGray}
+            >
               Disponible: {Number(selectedVariant.stock || 0)} unidades
             </Typography>
 
@@ -500,7 +528,8 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
         </Box>
       ) : (
         <Alert severity="warning" sx={{ mt: 2 }} icon={<StockIcon />}>
-          Seleccioná todas las opciones para ver precio y disponibilidad exactos.
+          Seleccioná todas las opciones para ver precio y disponibilidad
+          exactos.
         </Alert>
       )}
     </Box>
@@ -541,10 +570,7 @@ const getReviewerName = review => {
   if (!review) return 'Cliente'
 
   const directName =
-    review.postedByName ||
-    review.userName ||
-    review.name ||
-    review.reviewerName
+    review.postedByName || review.userName || review.name || review.reviewerName
 
   if (directName && String(directName).trim()) {
     return String(directName).trim()
@@ -590,7 +616,10 @@ const SingleProduct = () => {
   const { wishlist, user } = useSelector(s => s.user)
   const isAuthenticated = useSelector(selectIsAuthenticated)
   const themeState = useSelector(state => state.theme) || {}
-  const activeThemeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const activeThemeConfig = useMemo(
+    () => getActiveThemeConfig(themeState),
+    [themeState],
+  )
   const layoutConfig = useMemo(
     () => getLayoutThemeConfig(activeThemeConfig),
     [activeThemeConfig],
@@ -709,7 +738,9 @@ const SingleProduct = () => {
       return variantImageUrl
     }
 
-    return productImages?.[activeImg]?.url || productImages?.[0]?.url || placeholder
+    return (
+      productImages?.[activeImg]?.url || productImages?.[0]?.url || placeholder
+    )
   }, [variantImageUrl, productImages, activeImg])
 
   useEffect(() => {
@@ -721,15 +752,18 @@ const SingleProduct = () => {
 
     const ratingsArray = Array.isArray(product.ratings)
       ? product.ratings.filter(review => {
-        const star = Number(review?.star)
-        return star >= 1 && star <= 5
-      })
+          const star = Number(review?.star)
+          return star >= 1 && star <= 5
+        })
       : []
     const count = ratingsArray.length
     const persistedAverage = Number(product.totalrating) || 0
     const avg =
       count > 0
-        ? ratingsArray.reduce((acc, curr) => acc + (Number(curr.star) || 0), 0) / count
+        ? ratingsArray.reduce(
+            (acc, curr) => acc + (Number(curr.star) || 0),
+            0,
+          ) / count
         : persistedAverage
 
     return {
@@ -748,7 +782,9 @@ const SingleProduct = () => {
 
   const displayPrice = useMemo(() => {
     const applyDiscount = price => {
-      return hasActivePromotion ? getDiscountedPrice(price, promotionDiscount) : Number(price || 0)
+      return hasActivePromotion
+        ? getDiscountedPrice(price, promotionDiscount)
+        : Number(price || 0)
     }
 
     if (normalizedSelectedVariant?.price > 0) {
@@ -804,7 +840,13 @@ const SingleProduct = () => {
       discountPercentage: promotionDiscount,
       isRange: false,
     }
-  }, [normalizedSelectedVariant, hasVariants, product, hasActivePromotion, promotionDiscount])
+  }, [
+    normalizedSelectedVariant,
+    hasVariants,
+    product,
+    hasActivePromotion,
+    promotionDiscount,
+  ])
   const displayStock = useMemo(() => {
     if (normalizedSelectedVariant) return normalizedSelectedVariant.stock
 
@@ -900,14 +942,15 @@ const SingleProduct = () => {
     }
 
     try {
-      const { originalPrice, finalPrice, discountPercentage, hasPromotion } = resolveCartPricing({
-        displayPrice,
-        hasVariants,
-        normalizedSelectedVariant,
-        product,
-        hasActivePromotion,
-        promotionDiscount,
-      })
+      const { originalPrice, finalPrice, discountPercentage, hasPromotion } =
+        resolveCartPricing({
+          displayPrice,
+          hasVariants,
+          normalizedSelectedVariant,
+          product,
+          hasActivePromotion,
+          promotionDiscount,
+        })
 
       const resolvedImage = hasVariants
         ? normalizedSelectedVariant?.image || activeImageUrl || placeholder
@@ -981,7 +1024,9 @@ const SingleProduct = () => {
       await dispatch(addOrUpdateCartItem(cartItem)).unwrap()
 
       toast.success(
-        hasPromotion ? '¡Producto en oferta añadido al carrito!' : '¡Añadido al carrito!',
+        hasPromotion
+          ? '¡Producto en oferta añadido al carrito!'
+          : '¡Añadido al carrito!',
       )
     } catch (err) {
       console.error('INICIE SESION PARA COMPRAR:', err)
@@ -1071,7 +1116,9 @@ const SingleProduct = () => {
       email: user ? user.email : guestData.email,
       mobile: user ? user.mobile : guestData.mobile,
       comment: `Consulta sobre: ${product.title}${
-        normalizedSelectedVariant?.sku ? ` (Variante: ${normalizedSelectedVariant.sku})` : ''
+        normalizedSelectedVariant?.sku
+          ? ` (Variante: ${normalizedSelectedVariant.sku})`
+          : ''
       } - Mensaje: ${question}`,
       tenantId: product.tenantId,
     }
@@ -1158,7 +1205,8 @@ const SingleProduct = () => {
 
               <MainImageWindow
                 onMouseMove={e => {
-                  const { left, top, width, height } = e.currentTarget.getBoundingClientRect()
+                  const { left, top, width, height } =
+                    e.currentTarget.getBoundingClientRect()
                   setZoomPos({
                     x: ((e.pageX - window.scrollX - left) / width) * 100,
                     y: ((e.pageY - window.scrollY - top) / height) * 100,
@@ -1204,11 +1252,17 @@ const SingleProduct = () => {
                 sx={{
                   height: 60,
                   borderRadius: 3,
-                  bgcolor: isAvailable ? themeColors.actionPrimary : 'action.disabledBackground',
-                  color: isAvailable ? themeColors.actionPrimaryText : 'text.disabled',
+                  bgcolor: isAvailable
+                    ? themeColors.actionPrimary
+                    : 'action.disabledBackground',
+                  color: isAvailable
+                    ? themeColors.actionPrimaryText
+                    : 'text.disabled',
                   fontWeight: 800,
                   '&:hover': {
-                    bgcolor: isAvailable ? themeColors.actionPrimary : 'action.disabledBackground',
+                    bgcolor: isAvailable
+                      ? themeColors.actionPrimary
+                      : 'action.disabledBackground',
                   },
                 }}
               >
@@ -1221,7 +1275,9 @@ const SingleProduct = () => {
 
               <IconButton
                 onClick={() =>
-                  user ? dispatch(toggleWishlist(product._id)) : toast.error('Inicia sesión')
+                  user
+                    ? dispatch(toggleWishlist(product._id))
+                    : toast.error('Inicia sesión')
                 }
                 sx={{
                   borderRadius: 3,
@@ -1246,14 +1302,24 @@ const SingleProduct = () => {
                   {displayPrice.hasDiscount && (
                     <Typography
                       variant="body1"
-                      sx={{ color: themeColors.cardMutedText, textDecoration: 'line-through', fontWeight: 600 }}
+                      sx={{
+                        color: themeColors.cardMutedText,
+                        textDecoration: 'line-through',
+                        fontWeight: 600,
+                      }}
                     >
-                      {formatPrice(displayPrice.min)} - {formatPrice(displayPrice.max)}
+                      {formatPrice(displayPrice.min)} -{' '}
+                      {formatPrice(displayPrice.max)}
                     </Typography>
                   )}
 
-                  <Typography variant="h4" fontWeight={800} sx={{ color: themeColors.cardPrice }}>
-                    {formatPrice(displayPrice.finalMin)} - {formatPrice(displayPrice.finalMax)}
+                  <Typography
+                    variant="h4"
+                    fontWeight={800}
+                    sx={{ color: themeColors.cardPrice }}
+                  >
+                    {formatPrice(displayPrice.finalMin)} -{' '}
+                    {formatPrice(displayPrice.finalMax)}
                   </Typography>
 
                   {displayPrice.hasDiscount && (
@@ -1270,13 +1336,21 @@ const SingleProduct = () => {
                   {displayPrice?.hasDiscount && (
                     <Typography
                       variant="body1"
-                      sx={{ color: themeColors.cardMutedText, textDecoration: 'line-through', fontWeight: 600 }}
+                      sx={{
+                        color: themeColors.cardMutedText,
+                        textDecoration: 'line-through',
+                        fontWeight: 600,
+                      }}
                     >
                       {formatPrice(displayPrice.original)}
                     </Typography>
                   )}
 
-                  <Typography variant="h4" fontWeight={800} sx={{ color: themeColors.cardPrice }}>
+                  <Typography
+                    variant="h4"
+                    fontWeight={800}
+                    sx={{ color: themeColors.cardPrice }}
+                  >
                     {formatPrice(displayPrice.final)}
                   </Typography>
 
@@ -1311,11 +1385,13 @@ const SingleProduct = () => {
               )}
 
               {hasVariants && !normalizedSelectedVariant && (
-                <Typography variant="body2" sx={{ color: themeColors.cardMutedText }}>
+                <Typography
+                  variant="body2"
+                  sx={{ color: themeColors.cardMutedText }}
+                >
                   Selecciona opciones para ver precio exacto
                 </Typography>
               )}
-
             </Box>
 
             <Paper
@@ -1328,7 +1404,11 @@ const SingleProduct = () => {
               }}
             >
               <Stack direction="row" spacing={2} alignItems="center">
-                <Typography variant="h3" sx={{ color: themeColors.cardPrice }} fontWeight={900}>
+                <Typography
+                  variant="h3"
+                  sx={{ color: themeColors.cardPrice }}
+                  fontWeight={900}
+                >
                   {iaAnalysis.score}
                 </Typography>
                 <Box>
@@ -1337,7 +1417,8 @@ const SingleProduct = () => {
                     fontWeight={800}
                     sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                   >
-                    <AIIcon fontSize="small" /> IA ANALYTICS: {iaAnalysis.summary}
+                    <AIIcon fontSize="small" /> IA ANALYTICS:{' '}
+                    {iaAnalysis.summary}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     {iaAnalysis.reason}
@@ -1364,22 +1445,39 @@ const SingleProduct = () => {
             <Divider />
 
             <Box>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="h6" fontWeight={800} color= {Newprimary.darkBlueGray}>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+                mb={1}
+              >
+                <Typography
+                  variant="h6"
+                  fontWeight={800}
+                  color={Newprimary.darkBlueGray}
+                >
                   Calificación general
                 </Typography>
                 <Button
                   size="small"
                   startIcon={<ReviewIcon />}
                   onClick={() => setShowRatingForm(!showRatingForm)}
-                  sx={{ textTransform: 'none', fontWeight: 700, color: themeColors.text}}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    color: themeColors.text,
+                  }}
                 >
                   {showRatingForm ? 'Cerrar' : 'Opinar'}
                 </Button>
               </Stack>
 
               <Stack direction="row" alignItems="center" spacing={2}>
-                <Typography variant="h3" fontWeight={900} color= {themeColors.text}>
+                <Typography
+                  variant="h3"
+                  fontWeight={900}
+                  color={themeColors.text}
+                >
                   {iaAnalysis.avg > 0 ? iaAnalysis.avg.toFixed(1) : '0.0'}
                 </Typography>
                 <Box>
@@ -1416,14 +1514,18 @@ const SingleProduct = () => {
                       sx={{ color: theme.palette.ctaPrimary.main }}
                     >
                       Opinando sobre:{' '}
-                      {Object.values(normalizedSelectedVariant.attributes).join(' / ')}
+                      {Object.values(normalizedSelectedVariant.attributes).join(
+                        ' / ',
+                      )}
                     </Typography>
                   )}
                   <ReactStars
                     count={5}
                     size={28}
                     value={userStar}
-                    onChange={value => setUserStar(Math.trunc(Number(value)) || 0)}
+                    onChange={value =>
+                      setUserStar(Math.trunc(Number(value)) || 0)
+                    }
                     color2={themeColors.warning}
                   />
                   <TextField
@@ -1457,7 +1559,12 @@ const SingleProduct = () => {
             <Divider />
 
             <Box>
-              <Typography variant="h6" fontWeight={900} mb={2} color="text.primary">
+              <Typography
+                variant="h6"
+                fontWeight={900}
+                mb={2}
+                color="text.primary"
+              >
                 Reseñas recientes
               </Typography>
               <Stack spacing={2.5}>
@@ -1465,18 +1572,18 @@ const SingleProduct = () => {
                   product.ratings.map((rev, i) => (
                     <Box key={rev._id || i}>
                       <Stack direction="row" spacing={1} alignItems="center">
-                      <Avatar
-                        sx={{
-                          width: 28,
-                          height: 28,
-                          fontSize: 13,
-                          bgcolor: theme.palette.brand.main,
-                          color: theme.palette.brand.contrastText,
-                          fontWeight: 800,
-                        }}
-                      >
-                        {getReviewerInitial(rev)}
-                      </Avatar>
+                        <Avatar
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            fontSize: 13,
+                            bgcolor: theme.palette.brand.main,
+                            color: theme.palette.brand.contrastText,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {getReviewerInitial(rev)}
+                        </Avatar>
                         <Typography variant="caption" fontWeight={800}>
                           {getReviewerName(rev)}
                         </Typography>
@@ -1499,13 +1606,20 @@ const SingleProduct = () => {
                           color2={themeColors.warning}
                         />
                       </Stack>
-                      <Typography variant="body2" color="text.primary" sx={{ mt: 0.5, pl: 4 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.primary"
+                        sx={{ mt: 0.5, pl: 4 }}
+                      >
                         {rev.comment || 'Calificó sin comentar.'}
                       </Typography>
                     </Box>
                   ))
                 ) : (
-                  <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ fontStyle: 'italic', color: 'text.secondary' }}
+                  >
                     Sé el primero en opinar.
                   </Typography>
                 )}
@@ -1520,8 +1634,8 @@ const SingleProduct = () => {
           sx={{
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center', 
-            mt:4
+            alignItems: 'center',
+            mt: 4,
           }}
         >
           <Typography
@@ -1566,7 +1680,10 @@ const SingleProduct = () => {
           Preguntas al vendedor
         </Typography>
 
-        <Paper sx={{ p: 3, borderRadius: 4, bgcolor: 'background.paper' }} variant="outlined">
+        <Paper
+          sx={{ p: 3, borderRadius: 4, bgcolor: 'background.paper' }}
+          variant="outlined"
+        >
           <Stack spacing={2.5}>
             {!user && (
               <Grid container spacing={2}>
@@ -1577,7 +1694,9 @@ const SingleProduct = () => {
                     name="name"
                     size="small"
                     value={guestData.name}
-                    onChange={e => setGuestData({ ...guestData, name: e.target.value })}
+                    onChange={e =>
+                      setGuestData({ ...guestData, name: e.target.value })
+                    }
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -1587,7 +1706,9 @@ const SingleProduct = () => {
                     name="email"
                     size="small"
                     value={guestData.email}
-                    onChange={e => setGuestData({ ...guestData, email: e.target.value })}
+                    onChange={e =>
+                      setGuestData({ ...guestData, email: e.target.value })
+                    }
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -1597,7 +1718,9 @@ const SingleProduct = () => {
                     name="mobile"
                     size="small"
                     value={guestData.mobile}
-                    onChange={e => setGuestData({ ...guestData, mobile: e.target.value })}
+                    onChange={e =>
+                      setGuestData({ ...guestData, mobile: e.target.value })
+                    }
                   />
                 </Grid>
               </Grid>

@@ -17,28 +17,51 @@ const parseBoolean = (value, fallback = false) => {
   return String(value).trim().toLowerCase() === 'true'
 }
 
+const sanitizeEnvValue = value => {
+  if (value === undefined || value === null) return undefined
+
+  return String(value)
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '')
+    .trim()
+}
+
+const sanitizeMercadoPagoPublicKey = value => {
+  return sanitizeEnvValue(value) || ''
+}
+
+const isMercadoPagoTestKey = value => {
+  const key = sanitizeMercadoPagoPublicKey(value)
+
+  return key.startsWith('TEST-') || key.startsWith('TEST_USR-')
+}
+
+const isMercadoPagoProdKey = value => {
+  const key = sanitizeMercadoPagoPublicKey(value)
+
+  return key.startsWith('APP_USR-')
+}
+
+const hasInternalWhitespace = value => {
+  return /\s/.test(String(value || ''))
+}
+
 const nodeEnv =
-  getValue('REACT_APP_NODE_ENV') ||
-  process.env.NODE_ENV ||
-  'development'
+  getValue('REACT_APP_NODE_ENV') || process.env.NODE_ENV || 'development'
 
 const isProduction =
   getValue('REACT_APP_NODE_ENV') === 'production' ||
   process.env.NODE_ENV === 'production'
 
-const predeployMode = parseBoolean(
-  getValue('REACT_APP_PREDEPLOY_MODE'),
-  false,
+const predeployMode = parseBoolean(getValue('REACT_APP_PREDEPLOY_MODE'), false)
+
+const apiBaseUrl = getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL')
+
+const mercadoPagoPublicKey = sanitizeMercadoPagoPublicKey(
+  getValue('REACT_APP_MP_PUBLIC_KEY'),
 )
 
-const apiBaseUrl =
-  getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL')
-
-const mercadoPagoPublicKey =
-  getValue('REACT_APP_MP_PUBLIC_KEY')
-
-const adminPreviewOrigins =
-  getValue('REACT_APP_ADMIN_PREVIEW_ORIGINS')
+const adminPreviewOrigins = getValue('REACT_APP_ADMIN_PREVIEW_ORIGINS')
 
 export const env = {
   nodeEnv,
@@ -47,47 +70,59 @@ export const env = {
 
   apiBaseUrl,
 
-  tenantHeader:
-    getValue('REACT_APP_TENANT_HEADER') ||
-    'x-tenant-domain',
+  tenantHeader: getValue('REACT_APP_TENANT_HEADER') || 'x-tenant-domain',
 
-  csrfHeaderName:
-    getValue('REACT_APP_CSRF_HEADER_NAME') ||
-    'x-csrf-token',
+  csrfHeaderName: getValue('REACT_APP_CSRF_HEADER_NAME') || 'x-csrf-token',
 
-  publicBaseDomain:
-    getValue('REACT_APP_PUBLIC_BASE_DOMAIN', 'REACT_APP_PRODUCTION_DOMAIN'),
+  publicBaseDomain: getValue(
+    'REACT_APP_PUBLIC_BASE_DOMAIN',
+    'REACT_APP_PRODUCTION_DOMAIN',
+  ),
 
   adminPreviewOrigins,
 
-  assetsBaseUrl:
-    getValue('REACT_APP_ASSETS_BASE_URL'),
+  assetsBaseUrl: getValue('REACT_APP_ASSETS_BASE_URL'),
 
-  enableTenantDomainResolution:
-    parseBoolean(
-      getValue('REACT_APP_ENABLE_TENANT_DOMAIN_RESOLUTION'),
-      true,
-    ),
+  enableTenantDomainResolution: parseBoolean(
+    getValue('REACT_APP_ENABLE_TENANT_DOMAIN_RESOLUTION'),
+    true,
+  ),
 
-  enablePromotionalBlocks:
-    parseBoolean(
-      getValue('REACT_APP_ENABLE_PROMOTIONAL_BLOCKS'),
-      true,
-    ),
+  enablePromotionalBlocks: parseBoolean(
+    getValue('REACT_APP_ENABLE_PROMOTIONAL_BLOCKS'),
+    true,
+  ),
 
-  enableAiFeatures:
-    parseBoolean(
-      getValue('REACT_APP_ENABLE_AI_FEATURES'),
-      true,
-    ),
+  enableAiFeatures: parseBoolean(
+    getValue('REACT_APP_ENABLE_AI_FEATURES'),
+    true,
+  ),
 
   mercadoPagoPublicKey,
 
-  gaMeasurementId:
-    getValue('REACT_APP_GA_MEASUREMENT_ID'),
+  // Alias compatible con CheckoutPage.jsx y otros componentes.
+  mpPublicKey: mercadoPagoPublicKey,
 
-  debugApi:
-    parseBoolean(getValue('REACT_APP_DEBUG_API'), false),
+  gaMeasurementId: getValue('REACT_APP_GA_MEASUREMENT_ID'),
+
+  debugApi: parseBoolean(getValue('REACT_APP_DEBUG_API'), false),
+}
+
+if (
+  env.mercadoPagoPublicKey &&
+  hasInternalWhitespace(env.mercadoPagoPublicKey)
+) {
+  throw new Error('REACT_APP_MP_PUBLIC_KEY inválida: contiene espacios')
+}
+
+if (
+  env.mercadoPagoPublicKey &&
+  !isMercadoPagoTestKey(env.mercadoPagoPublicKey) &&
+  !isMercadoPagoProdKey(env.mercadoPagoPublicKey)
+) {
+  throw new Error(
+    'REACT_APP_MP_PUBLIC_KEY inválida: debe comenzar con TEST- o APP_USR-',
+  )
 }
 
 if (env.isProduction) {
@@ -96,6 +131,7 @@ if (env.isProduction) {
     '127.0.0.1',
     'henko.local',
     'http://',
+    'https://',
   ]
 
   forbiddenApiValues.forEach(value => {
@@ -110,17 +146,16 @@ if (env.isProduction) {
     throw new Error('Falta REACT_APP_MP_PUBLIC_KEY en producción')
   }
 
-  const isTestKey =
-    String(env.mercadoPagoPublicKey).startsWith('TEST-') ||
-    String(env.mercadoPagoPublicKey).startsWith('TEST_USR-')
-  const isProdKey = String(env.mercadoPagoPublicKey).startsWith('APP_USR-')
-
-  if (!isProdKey) {
-    throw new Error('REACT_APP_MP_PUBLIC_KEY debe ser una clave productiva APP_USR- en producción')
+  if (!isMercadoPagoProdKey(env.mercadoPagoPublicKey)) {
+    throw new Error(
+      'REACT_APP_MP_PUBLIC_KEY debe ser una clave productiva APP_USR- en producción',
+    )
   }
 
-  if (isTestKey) {
-    throw new Error('REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en producción')
+  if (isMercadoPagoTestKey(env.mercadoPagoPublicKey)) {
+    throw new Error(
+      'REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en producción',
+    )
   }
 }
 

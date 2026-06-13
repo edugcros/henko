@@ -1,5 +1,5 @@
 // 📁 src/Components/CustomHeader.jsx
-import React, { useMemo, useEffect } from 'react'
+import React, { useMemo } from 'react'
 import {
   AppBar,
   Toolbar,
@@ -33,8 +33,56 @@ import {
 } from '@mui/icons-material'
 import { logoutUser, clearState } from '@features/user/userSlice'
 import { persistor } from '@app/store'
-import Cookies from 'js-cookie'
 import { getThemeColors } from '@utils/themeRuntime'
+
+// ==========================================
+// HELPERS DE COLOR
+// ==========================================
+
+const normalizeAlpha = value => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return 0.72
+  return Math.min(1, Math.max(0, number))
+}
+
+const makeColorTranslucent = (value, opacity = 0.72) => {
+  const alphaValue = normalizeAlpha(opacity)
+  const raw = String(value || '').trim()
+
+  if (!raw) {
+    return `rgba(255, 255, 255, ${alphaValue})`
+  }
+
+  if (raw.startsWith('rgba(')) {
+    return raw.replace(/rgba\(([^)]+),\s*[\d.]+\)/, `rgba($1, ${alphaValue})`)
+  }
+
+  if (raw.startsWith('rgb(')) {
+    return raw.replace('rgb(', 'rgba(').replace(')', `, ${alphaValue})`)
+  }
+
+  if (raw.startsWith('#')) {
+    const cleanHex = raw.replace('#', '')
+
+    const normalizedHex =
+      cleanHex.length === 3
+        ? cleanHex
+            .split('')
+            .map(char => char + char)
+            .join('')
+        : cleanHex
+
+    if (/^[0-9a-fA-F]{6}$/.test(normalizedHex)) {
+      const red = parseInt(normalizedHex.slice(0, 2), 16)
+      const green = parseInt(normalizedHex.slice(2, 4), 16)
+      const blue = parseInt(normalizedHex.slice(4, 6), 16)
+
+      return `rgba(${red}, ${green}, ${blue}, ${alphaValue})`
+    }
+  }
+
+  return raw
+}
 
 // ==========================================
 // COMPONENTE
@@ -74,11 +122,18 @@ const CustomHeader = () => {
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
   const isThemePreviewRoute =
-    typeof window !== 'undefined' && window.location.pathname === '/theme-preview'
+    typeof window !== 'undefined' &&
+    window.location.pathname === '/theme-preview'
   const isReady =
-    tenantReady || !!reduxConfig || (previewMode && !!previewConfig) || isThemePreviewRoute
+    tenantReady ||
+    !!reduxConfig ||
+    (previewMode && !!previewConfig) ||
+    isThemePreviewRoute
 
-  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
 
   // Datos de usuario
   const isAuthenticated = !!userState?.user
@@ -129,8 +184,10 @@ const CustomHeader = () => {
 
   const typography = useMemo(
     () => ({
-      fontFamily: activeConfig?.typography?.fontFamily || theme.typography.fontFamily,
-      headingFont: activeConfig?.typography?.headingFont || theme.typography.fontFamily,
+      fontFamily:
+        activeConfig?.typography?.fontFamily || theme.typography.fontFamily,
+      headingFont:
+        activeConfig?.typography?.headingFont || theme.typography.fontFamily,
     }),
     [activeConfig?.typography, theme.typography],
   )
@@ -143,9 +200,29 @@ const CustomHeader = () => {
   }, [activeConfig?.header?.logo])
 
   const contrastColor = colors.text
+
+  const configuredHeaderBackground =
+    colors.background || theme.palette.background.paper
+
   const headerBackground = headerConfig.isTransparent
-    ? 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)'
-    : colors.background
+    ? `linear-gradient(
+        to bottom,
+        ${makeColorTranslucent(configuredHeaderBackground, 0.78)} 0%,
+        ${makeColorTranslucent(configuredHeaderBackground, 0.52)} 100%
+      )`
+    : configuredHeaderBackground
+
+  const headerBackdropFilter = headerConfig.isTransparent
+    ? 'blur(14px) saturate(160%)'
+    : 'none'
+
+  const headerBoxShadow = headerConfig.isTransparent
+    ? '0 8px 28px rgba(15, 23, 42, 0.08)'
+    : undefined
+
+  const headerBorderBottom = headerConfig.isTransparent
+    ? `1px solid ${makeColorTranslucent(contrastColor, 0.12)}`
+    : 'none'
 
   // ==========================================
   // LINKS - CON VISIBILIDAD FORZADA PARA DEBUG
@@ -163,7 +240,6 @@ const CustomHeader = () => {
         icon: WishlistIcon,
         badge: isAuthenticated ? wishlistCount : null,
       })
-    } else {
     }
 
     // Comparar
@@ -217,7 +293,7 @@ const CustomHeader = () => {
       await persistor.purge()
       dispatch(clearState())
       navigate('/login')
-    } catch (error) {
+    } catch {
       dispatch(clearState())
       navigate('/login')
     }
@@ -238,7 +314,11 @@ const CustomHeader = () => {
       <List>
         {menuLinks.map(({ label, path }) => (
           <ListItem key={label} disablePadding>
-            <ListItemButton component={Link} to={path} onClick={toggleDrawer(false)}>
+            <ListItemButton
+              component={Link}
+              to={path}
+              onClick={toggleDrawer(false)}
+            >
               <ListItemText primary={label} />
             </ListItemButton>
           </ListItem>
@@ -250,7 +330,11 @@ const CustomHeader = () => {
       <List>
         {displayLinks.map(({ label, path, icon: Icon, badge }) => (
           <ListItem key={label} disablePadding>
-            <ListItemButton component={Link} to={path} onClick={toggleDrawer(false)}>
+            <ListItemButton
+              component={Link}
+              to={path}
+              onClick={toggleDrawer(false)}
+            >
               <Box display="flex" alignItems="center" gap={2}>
                 {badge > 0 ? (
                   <Badge badgeContent={badge} color="error">
@@ -277,7 +361,10 @@ const CustomHeader = () => {
                   toggleDrawer(false)()
                 }}
               >
-                <ListItemText primary="Cerrar Sesión" sx={{ color: 'error.main' }} />
+                <ListItemText
+                  primary="Cerrar Sesión"
+                  sx={{ color: 'error.main' }}
+                />
               </ListItemButton>
             </ListItem>
           </List>
@@ -312,6 +399,10 @@ const CustomHeader = () => {
           background: headerBackground,
           color: contrastColor,
           fontFamily: typography.fontFamily,
+          backdropFilter: headerBackdropFilter,
+          WebkitBackdropFilter: headerBackdropFilter,
+          boxShadow: headerBoxShadow,
+          borderBottom: headerBorderBottom,
         }}
       >
         <Toolbar
@@ -325,31 +416,35 @@ const CustomHeader = () => {
           {/* LOGO */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {headerConfig.showLogo && (
-            <Box component={Link} to="/" sx={{ textDecoration: 'none', color: 'inherit' }}>
-              {logoUrl ? (
-                <Box
-                  component="img"
-                  src={logoUrl}
-                  alt={headerConfig.storeName}
-                  sx={{
-                    width: `${headerConfig.logoWidth}px`,
-                    maxHeight: `${headerConfig.height - 10}px`,
-                    objectFit: 'contain',
-                    filter: 'none',
-                  }}
-                />
-              ) : (
-                <Typography
-                  variant="h5"
-                  sx={{
-                    color: contrastColor,
-                    fontFamily: typography.headingFont,
-                  }}
-                >
-                  {headerConfig.storeName}
-                </Typography>
-              )}
-            </Box>
+              <Box
+                component={Link}
+                to="/"
+                sx={{ textDecoration: 'none', color: 'inherit' }}
+              >
+                {logoUrl ? (
+                  <Box
+                    component="img"
+                    src={logoUrl}
+                    alt={headerConfig.storeName}
+                    sx={{
+                      width: `${headerConfig.logoWidth}px`,
+                      maxHeight: `${headerConfig.height - 10}px`,
+                      objectFit: 'contain',
+                      filter: 'none',
+                    }}
+                  />
+                ) : (
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      color: contrastColor,
+                      fontFamily: typography.headingFont,
+                    }}
+                  >
+                    {headerConfig.storeName}
+                  </Typography>
+                )}
+              </Box>
             )}
 
             {!isMobile &&
@@ -426,7 +521,10 @@ const CustomHeader = () => {
             )}
 
             {isMobile && (
-              <IconButton onClick={toggleDrawer(true)} sx={{ color: colors.icon }}>
+              <IconButton
+                onClick={toggleDrawer(true)}
+                sx={{ color: colors.icon }}
+              >
                 <MenuIcon />
               </IconButton>
             )}

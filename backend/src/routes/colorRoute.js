@@ -8,12 +8,24 @@ import {
 } from '../controller/colorCtrl.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
+import {
+  requireAdminDomain,
+  requireTenant,
+  resolveTenantByDomain,
+} from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
+const adminContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
+  authMiddleware,
+  isAdmin,
+]
 
-router.post('/', authMiddleware, isAdmin, createColor)
-router.put('/:id', authMiddleware, isAdmin, updateColor)
-router.delete('/:id', authMiddleware, isAdmin, deleteColor)
+router.post('/', adminContext, createColor)
+router.put('/:id', adminContext, updateColor)
+router.delete('/:id', adminContext, deleteColor)
 router.get('/:id', getColorById)
 router.get('/', getAllColors)
 

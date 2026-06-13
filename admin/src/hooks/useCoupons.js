@@ -8,7 +8,7 @@ export const useCoupons = (initialFilters = {}) => {
     total: 0,
     page: 1,
     pages: 1,
-    limit: 20
+    limit: 20,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -17,19 +17,21 @@ export const useCoupons = (initialFilters = {}) => {
   const fetchCoupons = useCallback(async () => {
     setLoading(true)
     setError(null)
-    
+
     try {
       // Si no hay filtros específicos, no enviar status para traer TODO
       const cleanFilters = {
         page: filters.page || 1,
         limit: filters.limit || 20,
         // Solo enviar status si el usuario lo pidió explícitamente
-        ...(filters.status && filters.status !== 'all' ? { status: filters.status } : {}),
-        ...(filters.search ? { search: filters.search } : {})
+        ...(filters.status && filters.status !== 'all'
+          ? { status: filters.status }
+          : {}),
+        ...(filters.search ? { search: filters.search } : {}),
       }
-      
+
       const result = await couponService.getCoupons(cleanFilters)
-      
+
       setCoupons(result.items)
       setPagination(result.pagination)
     } catch (err) {
@@ -51,7 +53,7 @@ export const useCoupons = (initialFilters = {}) => {
     error,
     filters,
     setFilters,
-    refetch: fetchCoupons
+    refetch: fetchCoupons,
   }
 }
 

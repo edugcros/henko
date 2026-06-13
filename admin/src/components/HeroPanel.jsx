@@ -65,7 +65,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
           control={
             <Switch
               checked={hero.enabled !== false}
-              onChange={(e) => update('enabled', e.target.checked)}
+              onChange={e => update('enabled', e.target.checked)}
             />
           }
           label="Mostrar Hero"
@@ -86,7 +86,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                   fullWidth
                   label="Título"
                   value={hero.title || ''}
-                  onChange={(e) => update('title', e.target.value)}
+                  onChange={e => update('title', e.target.value)}
                 />
               </Grid>
 
@@ -97,7 +97,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                   rows={2}
                   label="Subtítulo"
                   value={hero.subtitle || ''}
-                  onChange={(e) => update('subtitle', e.target.value)}
+                  onChange={e => update('subtitle', e.target.value)}
                 />
               </Grid>
             </Grid>
@@ -115,9 +115,9 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                   <InputLabel>Alineación</InputLabel>
                   <Select
                     value={hero.alignment || 'center'}
-                    onChange={(e) => update('alignment', e.target.value)}
+                    onChange={e => update('alignment', e.target.value)}
                   >
-                    {ALIGNMENTS.map((a) => (
+                    {ALIGNMENTS.map(a => (
                       <MenuItem key={a} value={a}>
                         {a}
                       </MenuItem>
@@ -131,9 +131,9 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                   <InputLabel>Altura</InputLabel>
                   <Select
                     value={hero.height || 'medium'}
-                    onChange={(e) => update('height', e.target.value)}
+                    onChange={e => update('height', e.target.value)}
                   >
-                    {Object.keys(HEIGHTS).map((h) => (
+                    {Object.keys(HEIGHTS).map(h => (
                       <MenuItem key={h} value={h}>
                         {h}
                       </MenuItem>
@@ -154,7 +154,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
               control={
                 <Switch
                   checked={hero.showCta !== false}
-                  onChange={(e) => update('showCta', e.target.checked)}
+                  onChange={e => update('showCta', e.target.checked)}
                 />
               }
               label="Mostrar CTA"
@@ -167,7 +167,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                     fullWidth
                     label="Texto"
                     value={hero.ctaText || ''}
-                    onChange={(e) => update('ctaText', e.target.value)}
+                    onChange={e => update('ctaText', e.target.value)}
                   />
                 </Grid>
 
@@ -176,7 +176,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                     fullWidth
                     label="Link"
                     value={hero.ctaLink || ''}
-                    onChange={(e) => update('ctaLink', e.target.value)}
+                    onChange={e => update('ctaLink', e.target.value)}
                   />
                 </Grid>
               </Grid>
@@ -191,7 +191,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
 
             <ImageUploader
               value={hero.backgroundImage}
-              onChange={(img) => update('backgroundImage', img)}
+              onChange={img => update('backgroundImage', img)}
               onUpload={onImageUpload}
               label="Imagen"
             />
@@ -256,10 +256,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                 </Typography>
 
                 {hero.showCta !== false && (
-                  <Button
-                    variant="contained"
-                    sx={{ mt: 2 }}
-                  >
+                  <Button variant="contained" sx={{ mt: 2 }}>
                     {hero.ctaText || 'Ver más'}
                   </Button>
                 )}

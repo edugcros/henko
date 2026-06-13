@@ -35,6 +35,62 @@ export const withoutWww = value => {
   return String(value || '').replace(/^www\./, '')
 }
 
+/**
+ * Construye los dominios internos de un tenant sin repetir el slug cuando el
+ * tenant representa el dominio raíz de la plataforma.
+ *
+ * Ejemplos:
+ * - henko + henko.local => henko.local / admin.henko.local
+ * - tienda + henko.local => tienda.henko.local / admin.tienda.henko.local
+ */
+export const buildPlatformTenantDomains = ({
+  slug,
+  publicBaseDomain,
+  adminBaseDomain,
+}) => {
+  const normalizedSlug = normalizeSlug(slug)
+  const publicBase = normalizeHostname(publicBaseDomain)
+  const adminBase = normalizeHostname(adminBaseDomain)
+
+  if (!normalizedSlug) {
+    throw new Error('Slug requerido para construir dominios del tenant')
+  }
+
+  if (!publicBase) {
+    throw new Error('Dominio público base requerido')
+  }
+
+  const shopDomain =
+    publicBase === normalizedSlug || publicBase.startsWith(`${normalizedSlug}.`)
+      ? publicBase
+      : `${normalizedSlug}.${publicBase}`
+
+  if (!adminBase) {
+    return {
+      shopDomain,
+      adminDomain: `admin.${shopDomain}`,
+    }
+  }
+
+  if (shopDomain === publicBase) {
+    return {
+      shopDomain,
+      adminDomain: adminBase,
+    }
+  }
+
+  const adminPrefix = adminBase.endsWith(`.${publicBase}`)
+    ? adminBase.slice(0, -(publicBase.length + 1))
+    : ''
+
+  return {
+    shopDomain,
+    adminDomain: adminPrefix
+      ? `${adminPrefix}.${shopDomain}`
+      : `admin.${shopDomain}`,
+  }
+}
+
 // =====================================================
 // Candidatos de resolución
 // =====================================================

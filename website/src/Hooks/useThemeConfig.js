@@ -17,40 +17,101 @@ const CONFIG = {
 }
 
 // ==========================================
+// HELPERS DE ENTORNO
+// ==========================================
+
+const canUseBrowser = () => typeof window !== 'undefined'
+
+const canUseLocalStorage = () =>
+  canUseBrowser() && typeof window.localStorage !== 'undefined'
+
+const getCurrentHostname = () => {
+  if (!canUseBrowser()) return ''
+
+  return window.location?.hostname || ''
+}
+
+const delay = ms =>
+  new Promise(resolve => {
+    if (canUseBrowser() && typeof window.setTimeout === 'function') {
+      window.setTimeout(resolve, ms)
+      return
+    }
+
+    resolve()
+  })
+
+const createAbortController = () => {
+  if (canUseBrowser() && typeof window.AbortController === 'function') {
+    return new window.AbortController()
+  }
+
+  return null
+}
+
+// ==========================================
 // UTILIDADES DE CACHE
 // ==========================================
 
 const getCachedConfig = () => {
+  if (!canUseLocalStorage()) return null
+
   try {
-    const cached = localStorage.getItem(CONFIG.CACHE_KEY)
+    const cached = window.localStorage.getItem(CONFIG.CACHE_KEY)
     if (!cached) return null
 
     const { data, timestamp, hostname } = JSON.parse(cached)
 
-    // Invalidar si cambió el dominio o expiró
-    if (hostname !== window.location.hostname || Date.now() - timestamp > CONFIG.CACHE_TTL) {
-      localStorage.removeItem(CONFIG.CACHE_KEY)
+    const currentHostname = getCurrentHostname()
+
+    if (
+      hostname !== currentHostname ||
+      Date.now() - Number(timestamp || 0) > CONFIG.CACHE_TTL
+    ) {
+      window.localStorage.removeItem(CONFIG.CACHE_KEY)
       return null
     }
 
-    return data
+    return data || null
   } catch {
     return null
   }
 }
 
 const setCachedConfig = data => {
+  if (!canUseLocalStorage()) return
+
   try {
-    localStorage.setItem(
+    window.localStorage.setItem(
       CONFIG.CACHE_KEY,
       JSON.stringify({
         data,
         timestamp: Date.now(),
-        hostname: window.location.hostname,
+        hostname: getCurrentHostname(),
       }),
     )
   } catch (error) {
     console.warn('[useThemeConfig] No se pudo guardar en cache:', error)
+  }
+}
+
+const removeCachedConfig = () => {
+  if (!canUseLocalStorage()) return
+
+  try {
+    window.localStorage.removeItem(CONFIG.CACHE_KEY)
+  } catch {
+    // Silencioso: cache no crítico.
+  }
+}
+
+const getAuthToken = () => {
+  if (!canUseLocalStorage()) return null
+
+  try {
+    return window.localStorage.getItem('token')
+  } catch {
+    return null
   }
 }
 
@@ -60,23 +121,28 @@ const setCachedConfig = data => {
 
 export const useThemeConfig = () => {
   const dispatch = useDispatch()
+
   const abortControllerRef = useRef(null)
   const retryCountRef = useRef(0)
   const isMountedRef = useRef(true)
 
-  const [state, setState] = useState(() => ({
-    themeConfig: getCachedConfig(),
-    isLoading: !getCachedConfig(),
-    error: null,
-    tenantId: null,
-    tenantName: null,
-  }))
+  const [state, setState] = useState(() => {
+    const cachedConfig = getCachedConfig()
+
+    return {
+      themeConfig: cachedConfig,
+      isLoading: !cachedConfig,
+      error: null,
+      tenantId: cachedConfig?.tenantId || null,
+      tenantName: cachedConfig?.tenantName || null,
+    }
+  })
 
   // ==========================================
   // FUNCIÓN DE FETCH CON RETRY
   // ==========================================
 
-  const fetchWithRetry = useCallback(async (operation, operationName) => {
+  const fetchWithRetry = useCallback(async operation => {
     try {
       const result = await operation()
 
@@ -86,23 +152,20 @@ export const useThemeConfig = () => {
 
       return result
     } catch (error) {
-      // No reintentar si el componente se desmontó
-      if (error.message === 'COMPONENT_UNMOUNTED' || !isMountedRef.current) {
+      if (error?.message === 'COMPONENT_UNMOUNTED' || !isMountedRef.current) {
         throw error
       }
 
-      // Reintentar solo en errores de red o 5xx
       const shouldRetry =
-        !error.response || (error.response?.status >= 500 && error.response?.status < 600)
+        !error?.response ||
+        (error.response?.status >= 500 && error.response?.status < 600)
 
       if (shouldRetry && retryCountRef.current < CONFIG.MAX_RETRIES) {
         retryCountRef.current += 1
 
-        await new Promise(resolve =>
-          setTimeout(resolve, CONFIG.RETRY_DELAY * retryCountRef.current),
-        )
+        await delay(CONFIG.RETRY_DELAY * retryCountRef.current)
 
-        return fetchWithRetry(operation, operationName)
+        return fetchWithRetry(operation)
       }
 
       throw error
@@ -116,31 +179,36 @@ export const useThemeConfig = () => {
   useEffect(() => {
     isMountedRef.current = true
 
-    // Si ya tenemos cache, no forzar loading visual
     const hasCache = !!state.themeConfig
 
     const initSaaS = async () => {
-      // Cancelar petición anterior si existe
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
-      abortControllerRef.current = new AbortController()
+
+      abortControllerRef.current = createAbortController()
       retryCountRef.current = 0
 
       try {
         if (!hasCache) {
-          setState(prev => ({ ...prev, isLoading: true, error: null }))
+          setState(prev => ({
+            ...prev,
+            isLoading: true,
+            error: null,
+          }))
         }
 
-        const hostname = window.location.hostname
+        const hostname = getCurrentHostname()
+
+        if (!hostname) {
+          throw new Error('No se pudo detectar el dominio actual')
+        }
 
         // 1. RESOLVER TENANT
-        const tenantRes = await fetchWithRetry(
-          () =>
-            themeService.resolveTenantByDomain(hostname, {
-              signal: abortControllerRef.current.signal,
-            }),
-          'resolveTenant',
+        const tenantRes = await fetchWithRetry(() =>
+          themeService.resolveTenantByDomain(hostname, {
+            signal: abortControllerRef.current?.signal,
+          }),
         )
 
         const tenantData = tenantRes?.data
@@ -148,16 +216,16 @@ export const useThemeConfig = () => {
         const tenantName = tenantData?.name || tenantData?.storeName
 
         if (!tenantRes?.success || !tenantId) {
-          throw new Error(tenantRes?.message || `No se encontró tenant para: ${hostname}`)
+          throw new Error(
+            tenantRes?.message || `No se encontró tenant para: ${hostname}`,
+          )
         }
 
         // 2. CARGAR TEMA
-        const themeRes = await fetchWithRetry(
-          () =>
-            themeService.getPublicTheme(tenantId, {
-              signal: abortControllerRef.current.signal,
-            }),
-          'getPublicTheme',
+        const themeRes = await fetchWithRetry(() =>
+          themeService.getPublicTheme(tenantId, {
+            signal: abortControllerRef.current?.signal,
+          }),
         )
 
         if (!themeRes?.success || !themeRes?.data) {
@@ -176,14 +244,15 @@ export const useThemeConfig = () => {
           tenantName:
             tenantName ||
             themeRes.data?.general?.storeName ||
-            themeRes.data?.storeName,
+            themeRes.data?.storeName ||
+            CONFIG.DEFAULT_STORE_NAME,
           _loadedAt: Date.now(),
           _source: 'api',
         }
 
-        // 4. ACTUALIZAR ESTADOS (solo si sigue montado)
         if (!isMountedRef.current) return
 
+        // 4. ACTUALIZAR ESTADOS
         setState({
           themeConfig: configFull,
           isLoading: false,
@@ -195,28 +264,28 @@ export const useThemeConfig = () => {
         // 5. SINCRONIZAR CON REDUX Y CACHE
         setCachedConfig(configFull)
         dispatch(updatePreviewConfig(configFull))
-
-        // Desactivar modo preview si estaba activo (carga real)
         dispatch(setPreviewMode(false))
       } catch (error) {
-        if (error.message === 'COMPONENT_UNMOUNTED') return
+        if (error?.message === 'COMPONENT_UNMOUNTED') return
 
-        // Intentar usar cache como fallback
         const cached = getCachedConfig()
 
         if (cached && isMountedRef.current) {
           console.warn('[useThemeConfig] Usando cache como fallback')
+
           setState({
             themeConfig: cached,
             isLoading: false,
             error: {
-              message: 'Usando datos en cache. Algunos cambios pueden no reflejarse.',
-              originalError: error.message,
-              isOffline: !error.response,
+              message:
+                'Usando datos en cache. Algunos cambios pueden no reflejarse.',
+              originalError: error?.message || 'Error desconocido',
+              isOffline: !error?.response,
             },
-            tenantId: cached.tenantId,
-            tenantName: cached.tenantName,
+            tenantId: cached.tenantId || null,
+            tenantName: cached.tenantName || cached.storeName || null,
           })
+
           dispatch(updatePreviewConfig(cached))
           return
         }
@@ -227,9 +296,9 @@ export const useThemeConfig = () => {
             themeConfig: null,
             isLoading: false,
             error: {
-              message: error.message || 'Error cargando configuración',
-              isOffline: !error.response,
-              status: error.response?.status,
+              message: error?.message || 'Error cargando configuración',
+              isOffline: !error?.response,
+              status: error?.response?.status,
             },
           }))
         }
@@ -238,35 +307,31 @@ export const useThemeConfig = () => {
 
     initSaaS()
 
-    // Cleanup
     return () => {
       isMountedRef.current = false
       abortControllerRef.current?.abort()
     }
-  }, [dispatch, fetchWithRetry]) // Solo se ejecuta al montar
+  }, [dispatch, fetchWithRetry, state.themeConfig])
 
   // ==========================================
   // ACCIONES EXPUESTAS
   // ==========================================
 
-  /**
-   * Refrescar configuración manualmente
-   */
   const refresh = useCallback(async () => {
-    // Invalidar cache
-    localStorage.removeItem(CONFIG.CACHE_KEY)
+    removeCachedConfig()
     retryCountRef.current = 0
 
-    setState(prev => ({ ...prev, isLoading: true, error: null }))
+    setState(prev => ({
+      ...prev,
+      isLoading: true,
+      error: null,
+    }))
 
-    // Forzar re-ejecución del effect
-    // Nota: En una implementación real, podrías usar una key de estado
-    window.location.reload() // Fallback simple para producción
+    if (canUseBrowser()) {
+      window.location.reload()
+    }
   }, [])
 
-  /**
-   * Actualizar configuración optimistamente (para el editor)
-   */
   const updateOptimistic = useCallback(
     partialConfig => {
       setState(prev => {
@@ -274,9 +339,9 @@ export const useThemeConfig = () => {
           ...prev.themeConfig,
           ...partialConfig,
           _source: 'optimistic',
+          _updatedAt: Date.now(),
         }
 
-        // Sincronizar con Redux para preview en tiempo real
         dispatch(updatePreviewConfig(newConfig))
         dispatch(setPreviewMode(true))
 
@@ -289,9 +354,6 @@ export const useThemeConfig = () => {
     [dispatch],
   )
 
-  /**
-   * Guardar configuración (persistir cambios)
-   */
   const persist = useCallback(
     async newConfig => {
       if (!state.tenantId) {
@@ -299,17 +361,25 @@ export const useThemeConfig = () => {
       }
 
       try {
-        const token = localStorage.getItem('token')
+        const token = getAuthToken()
         const result = await themeService.updateThemeConfig(token, newConfig)
 
-        if (result.success) {
-          // Actualizar cache y estados
-          const persisted = { ...newConfig, _source: 'persisted' }
+        if (result?.success) {
+          const persisted = {
+            ...newConfig,
+            tenantId: state.tenantId,
+            tenantName: state.tenantName,
+            _source: 'persisted',
+            _updatedAt: Date.now(),
+          }
+
           setCachedConfig(persisted)
+
           setState(prev => ({
             ...prev,
             themeConfig: persisted,
           }))
+
           dispatch(updatePreviewConfig(persisted))
           dispatch(setPreviewMode(false))
         }
@@ -320,46 +390,45 @@ export const useThemeConfig = () => {
         throw error
       }
     },
-    [state.tenantId, dispatch],
+    [state.tenantId, state.tenantName, dispatch],
   )
 
   // ==========================================
-  // VALOR RETORNADO (MEMOIZADO)
+  // VALOR RETORNADO
   // ==========================================
 
-  const value = useMemo(
-    () => ({
-      // Datos principales
+  const value = useMemo(() => {
+    const cachedConfig = getCachedConfig()
+
+    return {
       themeConfig: state.themeConfig,
       isLoading: state.isLoading,
       error: state.error,
 
-      // Metadata del tenant
       tenantId: state.tenantId,
       tenantName: state.tenantName,
 
-      // Estados derivados
       isReady: !state.isLoading && !!state.themeConfig,
       hasError: !!state.error && !state.themeConfig,
       isOffline: state.error?.isOffline || false,
-      isCached: state.themeConfig?._source === 'cache' || (!!getCachedConfig() && state.isLoading),
+      isCached:
+        state.themeConfig?._source === 'cache' ||
+        (!!cachedConfig && state.isLoading),
 
-      // Acciones
       refresh,
       updateOptimistic,
       persist,
-    }),
-    [
-      state.themeConfig,
-      state.isLoading,
-      state.error,
-      state.tenantId,
-      state.tenantName,
-      refresh,
-      updateOptimistic,
-      persist,
-    ],
-  )
+    }
+  }, [
+    state.themeConfig,
+    state.isLoading,
+    state.error,
+    state.tenantId,
+    state.tenantName,
+    refresh,
+    updateOptimistic,
+    persist,
+  ])
 
   return value
 }

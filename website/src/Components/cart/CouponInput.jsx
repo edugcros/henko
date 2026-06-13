@@ -75,7 +75,12 @@ const CouponInput = ({
             </Typography>
           </Box>
 
-          <IconButton onClick={handleRemove} disabled={disabled} color="error" size="small">
+          <IconButton
+            onClick={handleRemove}
+            disabled={disabled}
+            color="error"
+            size="small"
+          >
             <CloseIcon />
           </IconButton>
         </Box>
@@ -129,7 +134,11 @@ const CouponInput = ({
         {loading ? 'Validando...' : 'Aplicar cupón'}
       </Button>
 
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ mt: 1, display: 'block' }}
+      >
         ¿Tienes un cupón de descuento? Ingrésalo aquí
       </Typography>
     </Box>

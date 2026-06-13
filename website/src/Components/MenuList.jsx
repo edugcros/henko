@@ -47,7 +47,10 @@ const MenuList = ({ anchorEl, setAnchorEl, ListMenu }) => {
       sx={menuListStyles.root}
     >
       {ListMenu.map(item => (
-        <MenuItem key={item.title} onClick={() => handleClose(item.handleOnClick)}>
+        <MenuItem
+          key={item.title}
+          onClick={() => handleClose(item.handleOnClick)}
+        >
           <ListItemText sx={menuListStyles.listItemText} primary={item.title} />
         </MenuItem>
       ))}

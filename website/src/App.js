@@ -1,26 +1,28 @@
-// 📁 website/src/App.js - VERSIÓN CORREGIDA
+// 📁 website/src/App.js
 
 import React, { useEffect, Suspense } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import ReactGA from 'react-ga4'
 
-// Rutas
 import {
   publicRoutes,
   publicDynamicRoutes,
+  authRoutes,
   protectedRoutes,
   privateRoutes,
   fallbackRoute,
 } from './Route/routesConfig'
 
-// Componentes
-import { RouteRenderer } from './Components/RouteWrappers'
-import PublicLayout from './Components/publicLayout'
-import PrivateLayout from './Components/privateLayout'
-import SpinnerCentered from './Components/SpinnerCentered/SpinnerCentered'
-import ThemePreview from './Pages/ThemePreview'
+import AiChatWidget from '@components/AiChatWidget'
+import AiCartActionBridge from '@components/AiCartActionBridge'
+
+import { RouteRenderer } from '@components/RouteWrappers'
+import PublicLayout from '@components/publicLayout'
+import PrivateLayout from '@components/privateLayout'
+import SpinnerCentered from '@components/SpinnerCentered/SpinnerCentered.jsx'
+import ThemePreview from '@pages/ThemePreview'
 import { useAuth } from '@hooks/useAuth'
-import { useUserMetrics } from './Hooks/useUserMetrics'
+import { useUserMetrics } from '@hooks/useUserMetrics'
 
 import './App.css'
 
@@ -28,6 +30,7 @@ const App = () => {
   const { isLoading: authLoading } = useAuth()
   const location = useLocation()
   const isThemePreviewRoute = location.pathname === '/theme-preview'
+
   useUserMetrics()
 
   useEffect(() => {
@@ -42,28 +45,40 @@ const App = () => {
     return <SpinnerCentered />
   }
 
-  // ✅ SIN Providers duplicados - ya están en index.js
   return (
     <Suspense fallback={<SpinnerCentered />}>
       <Routes>
         <Route path="/theme-preview" element={<ThemePreview />} />
 
-        {/* --- RUTAS PÚBLICAS --- */}
-        <Route path="/" element={<PublicLayout />}>
-          {RouteRenderer({ routes: publicRoutes, isPublic: true })}
+        {/* RUTAS PÚBLICAS UNIVERSALES */}
+        <Route element={<PublicLayout />}>
+          {RouteRenderer({ routes: publicRoutes })}
           {RouteRenderer({ routes: publicDynamicRoutes })}
+
+          {/* SOLO NO LOGUEADOS: login, signup, forgot, reset */}
+          {RouteRenderer({ routes: authRoutes, isPublic: true })}
         </Route>
 
-        {/* --- RUTAS PRIVADAS --- */}
+        {/* RUTAS PRIVADAS */}
         <Route element={<PrivateLayout />}>
-          {RouteRenderer({ routes: protectedRoutes, isPublic: false })}
-          {RouteRenderer({ routes: privateRoutes, isPrivate: true })}
+          {protectedRoutes.length > 0 &&
+            RouteRenderer({
+              routes: protectedRoutes,
+              isPrivate: true,
+            })}
+
+          {RouteRenderer({
+            routes: privateRoutes,
+            isPrivate: true,
+          })}
         </Route>
 
-        {/* --- FALLBACKS --- */}
+        {/* FALLBACK ÚNICO */}
         {RouteRenderer({ routes: [fallbackRoute] })}
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      <AiChatWidget />
+      <AiCartActionBridge />
     </Suspense>
   )
 }

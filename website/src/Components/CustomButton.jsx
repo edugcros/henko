@@ -70,7 +70,9 @@ const CustomButton = ({
     },
     '&:hover': {
       backgroundColor:
-        hoverBgcolor || theme.palette.ctaPrimary.dark || theme.palette.ctaPrimary.main,
+        hoverBgcolor ||
+        theme.palette.ctaPrimary.dark ||
+        theme.palette.ctaPrimary.main,
       border: hoverBorder || '2px solid transparent',
     },
     ...customStyle,
@@ -112,7 +114,13 @@ const CustomButton = ({
         </Box>
       </Tooltip>
 
-      {ListMenu && <MenuList anchorEl={anchorEl} setAnchorEl={setAnchorEl} ListMenu={ListMenu} />}
+      {ListMenu && (
+        <MenuList
+          anchorEl={anchorEl}
+          setAnchorEl={setAnchorEl}
+          ListMenu={ListMenu}
+        />
+      )}
     </>
   )
 }

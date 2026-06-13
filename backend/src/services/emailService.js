@@ -10,6 +10,7 @@ import { env } from '../../config/env.js'
 // =====================================================
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const isProd = process.env.NODE_ENV === 'production'
 
 // =====================================================
 // HELPERS BÁSICOS
@@ -148,7 +149,7 @@ const getAdminEmail = (recipientAdminEmail = null, tenantConfig = {}) => {
     validateEmail(tenantConfig?.email) ||
     validateEmail(tenantConfig?.settings?.store?.contactEmail) ||
     validateEmail(tenantConfig?.footer?.email) ||
-    validateEmail(process.env.ADMIN_EMAIL)
+    (!isProd ? validateEmail(process.env.ADMIN_EMAIL) : null)
   )
 }
 
@@ -556,20 +557,49 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
 
       const transporter = await getTransporter()
       const info = await transporter.sendMail(mailOptions)
+      const normalizedRecipient = validateEmail(mailOptions.to)
+      const accepted = (info.accepted || [])
+        .map(value => validateEmail(String(value)))
+        .filter(Boolean)
+      const rejected = (info.rejected || [])
+        .map(value => validateEmail(String(value)))
+        .filter(Boolean)
+      const recipientAccepted =
+        Boolean(normalizedRecipient) &&
+        accepted.includes(normalizedRecipient) &&
+        !rejected.includes(normalizedRecipient)
+
+      if (!recipientAccepted) {
+        logger.error('❌ SMTP no aceptó al destinatario', {
+          messageId: info.messageId || null,
+          acceptedCount: accepted.length,
+          rejectedCount: rejected.length,
+          response: info.response || null,
+        })
+
+        return {
+          success: false,
+          error: 'SMTP_RECIPIENT_NOT_ACCEPTED',
+          messageId: info.messageId || null,
+          accepted,
+          rejected,
+          response: info.response || null,
+          attempt,
+        }
+      }
 
       logger.info('✅ Email enviado correctamente', {
         messageId: info.messageId,
-        to: mailOptions.to,
-        accepted: info.accepted,
-        rejected: info.rejected,
+        acceptedCount: accepted.length,
+        rejectedCount: rejected.length,
         response: info.response,
       })
 
       return {
         success: true,
         messageId: info.messageId,
-        accepted: info.accepted,
-        rejected: info.rejected,
+        accepted,
+        rejected,
         response: info.response,
         attempt,
       }
@@ -1047,7 +1077,8 @@ export const sendAdminNotificationEmail = async (
     orderId: safeOrder?._id?.toString?.() || safeOrder?.id || null,
     recipientAdminEmail,
     tenantAdminEmail: tenantConfig?.adminEmail,
-    envAdminEmail: process.env.ADMIN_EMAIL,
+    developmentFallbackConfigured:
+      !isProd && Boolean(validateEmail(process.env.ADMIN_EMAIL)),
     resolvedEmail: to,
   })
 
@@ -1055,7 +1086,8 @@ export const sendAdminNotificationEmail = async (
     logger.warn('⚠️ No hay email de admin configurado', {
       recipientAdminEmail,
       tenantAdminEmail: tenantConfig?.adminEmail,
-      envAdminEmail: process.env.ADMIN_EMAIL,
+      developmentFallbackConfigured:
+        !isProd && Boolean(validateEmail(process.env.ADMIN_EMAIL)),
     })
 
     return {

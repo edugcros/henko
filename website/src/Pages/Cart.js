@@ -2,7 +2,12 @@ import React, { useEffect, useState, useMemo, useCallback, memo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import ReactGA from 'react-ga4'
-import { getCart, addOrUpdateCartItem, removeCartItem, emptyCart } from '@features/cart/cartSlice'
+import {
+  getCart,
+  addOrUpdateCartItem,
+  removeCartItem,
+  emptyCart,
+} from '@features/cart/cartSlice'
 import {
   Box,
   Typography,
@@ -31,7 +36,11 @@ const FREE_SHIPPING_THRESHOLD = 0
 const FALLBACK_IMAGE = '/assets/images/placeholder.png'
 
 const getItemLineId = item => {
-  return item.cartKey || item.rowId || `${item.productId}::${item.variantId || 'base'}`
+  return (
+    item.cartKey ||
+    item.rowId ||
+    `${item.productId}::${item.variantId || 'base'}`
+  )
 }
 
 const getItemProductId = item => {
@@ -44,7 +53,10 @@ const getItemImage = item => {
 
 const getVariantLabel = item => {
   const attrs =
-    item.selectedAttributes || item.variantAttributes || item.selectedVariant?.attributes || {}
+    item.selectedAttributes ||
+    item.variantAttributes ||
+    item.selectedVariant?.attributes ||
+    {}
   const values = Object.entries(attrs)
     .filter(([, value]) => Boolean(value))
     .map(([, value]) => value)
@@ -65,8 +77,10 @@ const buildCartPayloadFromItem = (item, quantity) => ({
   cartKey: item.cartKey,
 
   variantId: item.variantId || item.selectedVariant?.id || null,
-  variantSku: item.variantSku || item.variantSKU || item.selectedVariant?.sku || null,
-  variantSKU: item.variantSKU || item.variantSku || item.selectedVariant?.sku || null,
+  variantSku:
+    item.variantSku || item.variantSKU || item.selectedVariant?.sku || null,
+  variantSKU:
+    item.variantSKU || item.variantSku || item.selectedVariant?.sku || null,
   selectedAttributes: item.selectedAttributes || {},
   variantAttributes: item.variantAttributes || item.selectedAttributes || {},
   selectedVariant: item.selectedVariant
@@ -82,91 +96,103 @@ const buildCartPayloadFromItem = (item, quantity) => ({
   gender: item.gender || null,
 })
 
-const QuantityInput = memo(({ value, onChange, onIncrement, onDecrement, disabled, max }) => {
-  const displayValue = value === '' || value === undefined || value === null ? '' : String(value)
+const QuantityInput = memo(
+  ({ value, onChange, onIncrement, onDecrement, disabled, max }) => {
+    const displayValue =
+      value === '' || value === undefined || value === null ? '' : String(value)
 
-  const handleChange = e => {
-    const val = e.target.value
-    if (val === '' || /^\d+$/.test(val)) {
-      onChange(val === '' ? '' : parseInt(val, 10))
+    const handleChange = e => {
+      const val = e.target.value
+      if (val === '' || /^\d+$/.test(val)) {
+        onChange(val === '' ? '' : parseInt(val, 10))
+      }
     }
-  }
 
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        bgcolor: '#F0F2F2',
-        borderRadius: 2,
-        border: '1px solid #D5D9D9',
-        boxShadow: '0 2px 5px rgba(15,17,17,.15)',
-        overflow: 'hidden',
-        height: '40px',
-      }}
-    >
-      <IconButton
-        onClick={onDecrement}
-        disabled={disabled || value <= 1}
-        size="small"
+    return (
+      <Box
         sx={{
-          borderRadius: 0,
-          p: 1,
-          height: '100%',
-          '&:hover': { bgcolor: '#E3E6E6' },
-          '&:disabled': { color: '#ccc' },
+          display: 'flex',
+          alignItems: 'center',
+          bgcolor: '#F0F2F2',
+          borderRadius: 2,
+          border: '1px solid #D5D9D9',
+          boxShadow: '0 2px 5px rgba(15,17,17,.15)',
+          overflow: 'hidden',
+          height: '40px',
         }}
       >
-        <RemoveIcon fontSize="small" />
-      </IconButton>
+        <IconButton
+          onClick={onDecrement}
+          disabled={disabled || value <= 1}
+          size="small"
+          sx={{
+            borderRadius: 0,
+            p: 1,
+            height: '100%',
+            '&:hover': { bgcolor: '#E3E6E6' },
+            '&:disabled': { color: '#ccc' },
+          }}
+        >
+          <RemoveIcon fontSize="small" />
+        </IconButton>
 
-      <input
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={displayValue}
-        onChange={handleChange}
-        disabled={disabled}
-        style={{
-          width: '50px',
-          height: '100%',
-          textAlign: 'center',
-          fontSize: '14px',
-          fontWeight: 700,
-          color: disabled ? '#999' : Newprimary.darkBlueGray,
-          border: 'none',
-          backgroundColor: 'transparent',
-          outline: 'none',
-          padding: '0 4px',
-          fontFamily: 'inherit',
-        }}
-      />
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={displayValue}
+          onChange={handleChange}
+          disabled={disabled}
+          style={{
+            width: '50px',
+            height: '100%',
+            textAlign: 'center',
+            fontSize: '14px',
+            fontWeight: 700,
+            color: disabled ? '#999' : Newprimary.darkBlueGray,
+            border: 'none',
+            backgroundColor: 'transparent',
+            outline: 'none',
+            padding: '0 4px',
+            fontFamily: 'inherit',
+          }}
+        />
 
-      <IconButton
-        onClick={onIncrement}
-        disabled={disabled || value >= max}
-        size="small"
-        sx={{
-          borderRadius: 0,
-          p: 1,
-          height: '100%',
-          '&:hover': { bgcolor: '#E3E6E6' },
-          '&:disabled': { color: '#ccc' },
-        }}
-      >
-        <AddIcon fontSize="small" />
-      </IconButton>
-    </Box>
-  )
-})
+        <IconButton
+          onClick={onIncrement}
+          disabled={disabled || value >= max}
+          size="small"
+          sx={{
+            borderRadius: 0,
+            p: 1,
+            height: '100%',
+            '&:hover': { bgcolor: '#E3E6E6' },
+            '&:disabled': { color: '#ccc' },
+          }}
+        >
+          <AddIcon fontSize="small" />
+        </IconButton>
+      </Box>
+    )
+  },
+)
 
 QuantityInput.displayName = 'QuantityInput'
 
 const CartItem = memo(
-  ({ item, quantity, onQuantityChange, onUpdateQuantity, onRemoveItem, isUpdating = false, themeColors }) => {
+  ({
+    item,
+    quantity,
+    onQuantityChange,
+    onUpdateQuantity,
+    onRemoveItem,
+    isUpdating = false,
+    themeColors,
+  }) => {
     const productId = getItemProductId(item)
     const lineId = getItemLineId(item)
-    const currentQty = typeof quantity === 'number' ? quantity : item.quantity || 1
+    const currentQty =
+      typeof quantity === 'number' ? quantity : item.quantity || 1
     const needsUpdate = currentQty !== item.quantity
     const isOutOfStock = item.stock <= 0
     const maxStock = Math.max(1, item.stock || 999)
@@ -175,7 +201,10 @@ const CartItem = memo(
 
     const handleQtyChange = useCallback(
       val => {
-        if (val === '' || (typeof val === 'number' && val >= 1 && val <= maxStock)) {
+        if (
+          val === '' ||
+          (typeof val === 'number' && val >= 1 && val <= maxStock)
+        ) {
           onQuantityChange(lineId, val)
         }
       },
@@ -263,7 +292,10 @@ const CartItem = memo(
                     bgcolor: 'rgba(255,255,255,0.7)',
                   }}
                 >
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: '#b12704' }}>
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 700, color: '#b12704' }}
+                  >
                     Agotado
                   </Typography>
                 </Box>
@@ -374,7 +406,9 @@ const CartItem = memo(
                     display: 'inline-block',
                   }}
                 />
-                {isOutOfStock ? 'Agotado momentáneamente' : `En stock (${item.stock} disponibles)`}
+                {isOutOfStock
+                  ? 'Agotado momentáneamente'
+                  : `En stock (${item.stock} disponibles)`}
               </Typography>
 
               <Box
@@ -421,7 +455,11 @@ const CartItem = memo(
                   </Button>
                 )}
 
-                <Divider orientation="vertical" flexItem sx={{ height: 20, my: 'auto', mx: 0.5 }} />
+                <Divider
+                  orientation="vertical"
+                  flexItem
+                  sx={{ height: 20, my: 'auto', mx: 0.5 }}
+                />
 
                 <Button
                   size="small"
@@ -431,7 +469,6 @@ const CartItem = memo(
                   sx={{
                     textTransform: 'none',
                     color: '#007185',
-                    color: themeColors.link,
                     fontWeight: 500,
                     fontSize: '12px',
                     minWidth: 'auto',
@@ -449,9 +486,15 @@ const CartItem = memo(
 
               <Typography
                 variant="body2"
-                sx={{ mt: 1, color: themeColors.cardMutedText, fontWeight: 500 }}
+                sx={{
+                  mt: 1,
+                  color: themeColors.cardMutedText,
+                  fontWeight: 500,
+                }}
               >
-                <span>Subtotal: ${(item.price * currentQty).toLocaleString('es-AR')}</span>
+                <span>
+                  Subtotal: ${(item.price * currentQty).toLocaleString('es-AR')}
+                </span>
               </Typography>
             </Box>
           </Box>
@@ -481,23 +524,24 @@ const Cart = () => {
     itemId: null,
   })
 
-  const { totalAmount, totalQuantity, isEligibleForFreeShipping } = useMemo(() => {
-    let amount = 0
-    let quantity = 0
+  const { totalAmount, totalQuantity, isEligibleForFreeShipping } =
+    useMemo(() => {
+      let amount = 0
+      let quantity = 0
 
-    cartItems?.forEach(item => {
-      const lineId = getItemLineId(item)
-      const q = quantities[lineId] ?? item.quantity ?? 0
-      amount += item.price * q
-      quantity += q
-    })
+      cartItems?.forEach(item => {
+        const lineId = getItemLineId(item)
+        const q = quantities[lineId] ?? item.quantity ?? 0
+        amount += item.price * q
+        quantity += q
+      })
 
-    return {
-      totalAmount: amount,
-      totalQuantity: quantity,
-      isEligibleForFreeShipping: amount >= FREE_SHIPPING_THRESHOLD,
-    }
-  }, [cartItems, quantities])
+      return {
+        totalAmount: amount,
+        totalQuantity: quantity,
+        isEligibleForFreeShipping: amount >= FREE_SHIPPING_THRESHOLD,
+      }
+    }, [cartItems, quantities])
 
   const trackViewCart = useCallback(items => {
     if (items.length > 0 && typeof ReactGA !== 'undefined') {
@@ -631,7 +675,9 @@ const Cart = () => {
           }),
         ).unwrap()
 
-        await dispatch(addOrUpdateCartItem(buildCartPayloadFromItem(item, numericQty))).unwrap()
+        await dispatch(
+          addOrUpdateCartItem(buildCartPayloadFromItem(item, numericQty)),
+        ).unwrap()
 
         setNotification({
           open: true,
@@ -665,7 +711,9 @@ const Cart = () => {
       const itemTotal = item.price * item.quantity
 
       if (itemTotal > 100000) {
-        const confirmed = window.confirm(`¿Estás seguro de eliminar "${item.title}" del carrito?`)
+        const confirmed = window.confirm(
+          `¿Estás seguro de eliminar "${item.title}" del carrito?`,
+        )
         if (!confirmed) return
       }
 
@@ -782,12 +830,23 @@ const Cart = () => {
 
   if (isLoading && !cartItems.length) {
     return (
-      <Box sx={{ bgcolor: themeColors.background, minHeight: '100vh', py: { xs: 2, md: 5 } }}>
+      <Box
+        sx={{
+          bgcolor: themeColors.background,
+          minHeight: '100vh',
+          py: { xs: 2, md: 5 },
+        }}
+      >
         <Box sx={{ maxWidth: '1200px', mx: 'auto', px: { xs: 2, md: 4 } }}>
           <Grid container spacing={4}>
             <Grid item xs={12} md={9}>
               <Paper sx={{ p: 3, borderRadius: 2 }}>
-                <Skeleton variant="text" width="60%" height={40} sx={{ mb: 2 }} />
+                <Skeleton
+                  variant="text"
+                  width="60%"
+                  height={40}
+                  sx={{ mb: 2 }}
+                />
                 {[1, 2, 3].map(i => (
                   <Box key={i} sx={{ display: 'flex', gap: 2, mb: 2 }}>
                     <Skeleton variant="rectangular" width={120} height={120} />
@@ -802,7 +861,12 @@ const Cart = () => {
             </Grid>
             <Grid item xs={12} md={3}>
               <Paper sx={{ p: 3, borderRadius: 2 }}>
-                <Skeleton variant="text" width="100%" height={30} sx={{ mb: 2 }} />
+                <Skeleton
+                  variant="text"
+                  width="100%"
+                  height={30}
+                  sx={{ mb: 2 }}
+                />
                 <Skeleton variant="rectangular" width="100%" height={50} />
               </Paper>
             </Grid>
@@ -856,7 +920,13 @@ const Cart = () => {
   }
 
   return (
-    <Box sx={{ bgcolor: themeColors.background, minHeight: '100vh', py: { xs: 2, md: 5 } }}>
+    <Box
+      sx={{
+        bgcolor: themeColors.background,
+        minHeight: '100vh',
+        py: { xs: 2, md: 5 },
+      }}
+    >
       <Box sx={{ maxWidth: '1200px', mx: 'auto', mb: 4, px: { xs: 2, md: 4 } }}>
         <Grid container spacing={4}>
           <Grid item xs={12} md={9}>
@@ -883,7 +953,8 @@ const Cart = () => {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   <span>
-                    {totalQuantity} {totalQuantity === 1 ? 'producto' : 'productos'}
+                    {totalQuantity}{' '}
+                    {totalQuantity === 1 ? 'producto' : 'productos'}
                   </span>
                 </Typography>
               </Box>
@@ -916,11 +987,18 @@ const Cart = () => {
                   borderTop: `1px solid ${themeColors.cardBorder}`,
                 }}
               >
-                <Typography variant="h6" sx={{ fontWeight: 700, textAlign: 'right' }}>
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: 700, textAlign: 'right' }}
+                >
                   <span>
-                    Subtotal ({totalQuantity} {totalQuantity === 1 ? 'producto' : 'productos'}):
+                    Subtotal ({totalQuantity}{' '}
+                    {totalQuantity === 1 ? 'producto' : 'productos'}):
                   </span>
-                  <Box component="span" sx={{ color: themeColors.cardPrice, ml: 1 }}>
+                  <Box
+                    component="span"
+                    sx={{ color: themeColors.cardPrice, ml: 1 }}
+                  >
                     ${totalAmount.toLocaleString('es-AR')}
                   </Box>
                 </Typography>
@@ -948,7 +1026,9 @@ const Cart = () => {
                       alignItems: 'center',
                       mb: 2,
                       p: 1.5,
-                      bgcolor: themeColors.success ? `${themeColors.success}20` : '#e7f4e4',
+                      bgcolor: themeColors.success
+                        ? `${themeColors.success}20`
+                        : '#e7f4e4',
                       borderRadius: 1,
                     }}
                   >
@@ -962,7 +1042,10 @@ const Cart = () => {
                     >
                       <span>✓</span>
                     </Typography>
-                    <Typography color={themeColors.success} sx={{ fontWeight: 600, fontSize: '13px' }}>
+                    <Typography
+                      color={themeColors.success}
+                      sx={{ fontWeight: 600, fontSize: '13px' }}
+                    >
                       <span>Tu pedido califica para ENVÍO GRATIS.</span>
                     </Typography>
                   </Box>
@@ -993,7 +1076,10 @@ const Cart = () => {
                   }}
                 >
                   <span>Total:</span>
-                  <Box component="span" sx={{ fontSize: '1.5rem', color: themeColors.cardPrice }}>
+                  <Box
+                    component="span"
+                    sx={{ fontSize: '1.5rem', color: themeColors.cardPrice }}
+                  >
                     ${totalAmount.toLocaleString('es-AR')}
                   </Box>
                 </Typography>
@@ -1014,7 +1100,10 @@ const Cart = () => {
                     textTransform: 'none',
                     fontSize: '15px',
                     boxShadow: '0 2px 5px rgba(213,217,217,0.5)',
-                    '&:hover': { bgcolor: themeColors.actionSecondary, boxShadow: 'none' },
+                    '&:hover': {
+                      bgcolor: themeColors.actionSecondary,
+                      boxShadow: 'none',
+                    },
                     '&:disabled': { bgcolor: '#ddd', color: '#666' },
                     mb: 2,
                   }}

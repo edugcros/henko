@@ -11,6 +11,7 @@ import UserMetricEvent, { USER_METRIC_EVENTS } from '../models/userMetricEventMo
 import { Money } from '../utils/money.js'
 import mongoose from 'mongoose'
 import { env } from '../../config/env.js'
+import logger from '../../config/logger.js'
 
 const PAID_PAYMENT_STATUSES = [PAYMENT_STATUS.APPROVED]
 const ACTIVE_ORDER_STATUSES = [
@@ -530,7 +531,9 @@ export const getUnifiedMarketingStats = async tenant => {
     }
 
   } catch (error) {
-    console.error('[GA4 Unified Stats Error]', error)
+    logger.error('[GA4 Unified Stats Error]', {
+      message: error?.message || 'Error desconocido',
+    })
     return {
       analytics: {
         configured: true,
@@ -628,7 +631,9 @@ const getGA4ReportingStats = async (tenant, ga4) => {
     }
 
   } catch (error) {
-    console.error('[GA4 Reporting Stats Error]', error)
+    logger.error('[GA4 Reporting Stats Error]', {
+      message: error?.message || 'Error desconocido',
+    })
     throw error
   }
 }

@@ -41,7 +41,8 @@ const SUBSCRIPTION_PLANS = Object.freeze([
   {
     id: 'pro',
     name: 'Profesional',
-    description: 'Automatización y capacidad para una operación en crecimiento.',
+    description:
+      'Automatización y capacidad para una operación en crecimiento.',
     monthlyPrice: 99,
     icon: CrownOutlined,
     features: [
@@ -82,9 +83,7 @@ const PlanCard = ({ plan, onSelect }) => {
       style={{
         height: '100%',
         borderRadius: token.borderRadiusLG,
-        border: `1px solid ${
-          plan.featured ? token.colorPrimary : token.colorBorderSecondary
-        }`,
+        border: `1px solid ${plan.featured ? token.colorPrimary : token.colorBorderSecondary}`,
         boxShadow: plan.featured ? token.boxShadowSecondary : 'none',
       }}
     >

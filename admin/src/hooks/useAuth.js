@@ -5,12 +5,15 @@ import { jwtDecode } from 'jwt-decode'
 import { fetchCsrfToken } from '@utils/axiosConfig'
 import { logoutUser, setCsrfToken } from '@features/auth/authSlice'
 
-const getTokenFromCookie = () => Cookies.get('token') || sessionStorage.getItem('token') || null
+const getTokenFromCookie = () =>
+  Cookies.get('token') || sessionStorage.getItem('token') || null
 const getUserFromStorage = () => {
   try {
     const item = sessionStorage.getItem('user')
     return item && item !== 'undefined' ? JSON.parse(item) : null
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
 
 export const useAuth = () => {
@@ -21,7 +24,9 @@ export const useAuth = () => {
     csrfToken: csrfTokenRedux,
     isLoading,
   } = useSelector(state => state.user)
-  const [csrfToken, setCsrfTokenState] = useState(csrfTokenRedux || sessionStorage.getItem('csrfToken') || '')
+  const [csrfToken, setCsrfTokenState] = useState(
+    csrfTokenRedux || sessionStorage.getItem('csrfToken') || '',
+  )
   const [decodedToken, setDecodedToken] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -47,7 +52,9 @@ export const useAuth = () => {
       if (isMounted) setDecodedToken(null)
     }
     setLoading(false)
-    return () => { isMounted = false }
+    return () => {
+      isMounted = false
+    }
   }, [tokenRedux, dispatch])
 
   const fetchAndSetCsrf = useCallback(async () => {
@@ -64,11 +71,13 @@ export const useAuth = () => {
     return csrf
   }, [dispatch])
 
-  useEffect(() => { fetchAndSetCsrf() }, [fetchAndSetCsrf])
+  useEffect(() => {
+    fetchAndSetCsrf()
+  }, [fetchAndSetCsrf])
 
   const user = useMemo(
     () => userRedux || getUserFromStorage() || decodedToken,
-    [userRedux, decodedToken]
+    [userRedux, decodedToken],
   )
   const userRole = decodedToken?.role || user?.role || 'user'
   const isBlocked = !!decodedToken?.isBlocked
@@ -77,11 +86,11 @@ export const useAuth = () => {
     () =>
       Boolean(
         decodedToken &&
-        (tokenRedux || getTokenFromCookie()) &&
-        user?.role &&
-        !isBlocked
+          (tokenRedux || getTokenFromCookie()) &&
+          user?.role &&
+          !isBlocked,
       ),
-    [decodedToken, tokenRedux, user, isBlocked]
+    [decodedToken, tokenRedux, user, isBlocked],
   )
 
   const dologoutUser = useCallback(() => {

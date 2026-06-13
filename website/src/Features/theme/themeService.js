@@ -34,7 +34,10 @@ const normalizeTenantResponse = response => {
 }
 
 const handleServiceError = (error, fallback = 'Error inesperado') => {
-  console.error('[themeService]', error?.response?.data || error?.message || error)
+  console.error(
+    '[themeService]',
+    error?.response?.data || error?.message || error,
+  )
 
   return {
     success: false,
@@ -133,7 +136,10 @@ const themeService = {
         message: response.data?.message,
       }
     } catch (error) {
-      return handleServiceError(error, 'Error actualizando configuración de tema')
+      return handleServiceError(
+        error,
+        'Error actualizando configuración de tema',
+      )
     }
   },
 
@@ -168,10 +174,14 @@ const themeService = {
    */
   previewThemeConfig: async (token, config) => {
     try {
-      const response = await api.post('/theme/admin/preview', cleanMongoFields(config), {
-        timeout: 10000,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
+      const response = await api.post(
+        '/theme/admin/preview',
+        cleanMongoFields(config),
+        {
+          timeout: 10000,
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      )
 
       return {
         success: true,

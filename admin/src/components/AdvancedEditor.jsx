@@ -1,4 +1,4 @@
-import React from 'react';
+import React from 'react'
 import {
   Box,
   Typography,
@@ -7,25 +7,37 @@ import {
   Switch,
   FormControlLabel,
   TextField,
-} from '@mui/material';
+} from '@mui/material'
 
-const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJSChange }) => {
-  const advanced = value || {};
+const AdvancedEditor = ({
+  value,
+  customCSS,
+  customJS,
+  onChange,
+  onCSSChange,
+  onJSChange,
+}) => {
+  const advanced = value || {}
 
   const handleChange = (field, newValue) => {
-    onChange({ ...advanced, [field]: newValue });
-  };
+    onChange({ ...advanced, [field]: newValue })
+  }
 
   return (
     <Box>
       {/* Performance */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Rendimiento</Typography>
+        <Typography variant="h6" gutterBottom>
+          Rendimiento
+        </Typography>
         <Grid container spacing={2}>
           {[
             { key: 'lazyLoadImages', label: 'Lazy Loading de Imágenes' },
             { key: 'preloadFonts', label: 'Precargar Fuentes' },
-            { key: 'optimizeImages', label: 'Optimización Automática de Imágenes' },
+            {
+              key: 'optimizeImages',
+              label: 'Optimización Automática de Imágenes',
+            },
             { key: 'enableServiceWorker', label: 'Service Worker (PWA)' },
           ].map(({ key, label }) => (
             <Grid item xs={12} sm={6} key={key}>
@@ -33,7 +45,7 @@ const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJ
                 control={
                   <Switch
                     checked={advanced[key] !== false}
-                    onChange={(e) => handleChange(key, e.target.checked)}
+                    onChange={e => handleChange(key, e.target.checked)}
                   />
                 }
                 label={label}
@@ -45,28 +57,34 @@ const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJ
 
       {/* Analytics */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Analytics</Typography>
+        <Typography variant="h6" gutterBottom>
+          Analytics
+        </Typography>
         <TextField
           fullWidth
           label="Google Analytics ID (G-XXXXXXXXXX)"
           value={advanced.analyticsId || ''}
-          onChange={(e) => handleChange('analyticsId', e.target.value)}
+          onChange={e => handleChange('analyticsId', e.target.value)}
           placeholder="G-XXXXXXXXXX"
         />
       </Paper>
 
       {/* Custom Code */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Código Personalizado</Typography>
-        
+        <Typography variant="h6" gutterBottom>
+          Código Personalizado
+        </Typography>
+
         <Box sx={{ mb: 3 }}>
-          <Typography variant="subtitle2" gutterBottom>CSS Personalizado</Typography>
+          <Typography variant="subtitle2" gutterBottom>
+            CSS Personalizado
+          </Typography>
           <TextField
             fullWidth
             multiline
             rows={6}
             value={customCSS || ''}
-            onChange={(e) => onCSSChange(e.target.value)}
+            onChange={e => onCSSChange(e.target.value)}
             placeholder="/* Tu CSS personalizado aquí */"
             sx={{
               '& .MuiInputBase-root': {
@@ -78,17 +96,19 @@ const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJ
         </Box>
 
         <Box>
-          <Typography variant="subtitle2" gutterBottom>JavaScript Personalizado</Typography>
+          <Typography variant="subtitle2" gutterBottom>
+            JavaScript Personalizado
+          </Typography>
           <TextField
             fullWidth
             multiline
             rows={6}
             value={customJS ?? advanced.customJS ?? ''}
-            onChange={(e) => {
+            onChange={e => {
               if (onJSChange) {
-                onJSChange(e.target.value);
+                onJSChange(e.target.value)
               } else {
-                handleChange('customJS', e.target.value);
+                handleChange('customJS', e.target.value)
               }
             }}
             placeholder="// Tu JavaScript personalizado aquí"
@@ -104,7 +124,9 @@ const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJ
 
       {/* Danger Zone */}
       <Paper sx={{ p: 3, borderColor: 'error.main', border: 1 }}>
-        <Typography variant="h6" color="error" gutterBottom>Zona de Peligro</Typography>
+        <Typography variant="h6" color="error" gutterBottom>
+          Zona de Peligro
+        </Typography>
         <Typography variant="body2" color="text.secondary" paragraph>
           Estas acciones son irreversibles.
         </Typography>
@@ -124,7 +146,7 @@ const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJ
         </Box>
       </Paper>
     </Box>
-  );
-};
+  )
+}
 
-export default AdvancedEditor;
+export default AdvancedEditor

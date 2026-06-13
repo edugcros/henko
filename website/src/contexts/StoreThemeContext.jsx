@@ -1,8 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useMemo,
-} from 'react'
+import React, { createContext, useContext, useMemo } from 'react'
 
 import CssBaseline from '@mui/material/CssBaseline'
 import { ThemeProvider as MUIThemeProvider } from '@mui/material/styles'
@@ -95,10 +91,7 @@ export const StoreThemeProvider = ({ children }) => {
   const loading = useMemo(() => {
     if (isThemePreviewRoute()) return false
     return Boolean(
-      !previewMode &&
-        !reduxConfig &&
-        tenant?.isLoading &&
-        !tenant?.themeConfig,
+      !previewMode && !reduxConfig && tenant?.isLoading && !tenant?.themeConfig,
     )
   }, [previewMode, reduxConfig, tenant?.isLoading, tenant?.themeConfig])
 

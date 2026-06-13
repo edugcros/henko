@@ -9,22 +9,22 @@ const getCouponId = coupon => coupon?.id || coupon?._id
 // ======================================================
 
 // Manejo centralizado de errores
-const handleError = (error) => {
+const handleError = error => {
   // Si es nuestro error personalizado, extraer información útil
   if (error instanceof couponService.DuplicateError) {
     return {
       message: error.message,
       code: error.code,
       field: error.field,
-      isValidation: true
+      isValidation: true,
     }
   }
-  
+
   if (error instanceof couponService.ValidationError) {
     return {
       message: error.message,
       code: error.code,
-      isValidation: true
+      isValidation: true,
     }
   }
 
@@ -32,7 +32,7 @@ const handleError = (error) => {
   return {
     message: error.message || 'Error inesperado',
     code: error.code || 'UNKNOWN_ERROR',
-    isValidation: false
+    isValidation: false,
   }
 }
 
@@ -51,7 +51,7 @@ export const getAllCoupons = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Permanent Delete
@@ -65,7 +65,7 @@ export const permanentDeleteCoupon = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Restore Coupon
@@ -79,7 +79,7 @@ export const restoreCoupon = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Get Deleted Coupons
@@ -93,7 +93,7 @@ export const getDeletedCoupons = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Crear cupón
@@ -107,7 +107,7 @@ export const createCoupon = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Eliminar cupón
@@ -121,7 +121,7 @@ export const deleteCoupon = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Obtener un cupón
@@ -135,7 +135,7 @@ export const getCouponById = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Actualizar cupón
@@ -149,7 +149,7 @@ export const updateCoupon = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Clonar cupón
@@ -163,7 +163,7 @@ export const cloneCoupon = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Generar cupones masivos
@@ -177,7 +177,7 @@ export const generateBulkCoupons = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Validar cupón (para checkout)
@@ -185,13 +185,17 @@ export const validateCoupon = createAsyncThunk(
   'coupon/validate',
   async ({ code, cartItems, subtotal, userId }, thunkAPI) => {
     try {
-      const response = await couponService.validate(code, { cartItems, subtotal, userId })
+      const response = await couponService.validate(code, {
+        cartItems,
+        subtotal,
+        userId,
+      })
       return response
     } catch (error) {
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Asignar productos a cupón
@@ -199,13 +203,17 @@ export const assignProductsToCoupon = createAsyncThunk(
   'coupon/assignProducts',
   async ({ couponId, productIds, mode = 'add' }, thunkAPI) => {
     try {
-      const response = await couponService.assignProducts(couponId, productIds, mode)
+      const response = await couponService.assignProducts(
+        couponId,
+        productIds,
+        mode,
+      )
       return response
     } catch (error) {
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Obtener estadísticas
@@ -219,7 +227,7 @@ export const getCouponStats = createAsyncThunk(
       const processedError = handleError(error)
       return thunkAPI.rejectWithValue(processedError)
     }
-  }
+  },
 )
 
 // Reset state
@@ -237,36 +245,36 @@ const initialState = {
     pages: 1,
     limit: 20,
     hasNext: false,
-    hasPrev: false
+    hasPrev: false,
   },
 
-    // Papelera
+  // Papelera
   deletedCoupons: [],
   deletedPagination: {
     total: 0,
     page: 1,
     pages: 1,
-    limit: 20
+    limit: 20,
   },
   isLoadingDeleted: false,
-  
+
   // Single coupon
   currentCoupon: null,
-  
+
   // Estados UI globales
   isLoading: false,
   isSuccess: false,
   isError: false,
   message: '',
-  
+
   // Error estructurado
   error: {
     message: '',
     code: null,
     field: null,
-    isValidation: false
+    isValidation: false,
   },
-  
+
   // Estados específicos por operación
   createdCoupon: null,
   updatedCoupon: null,
@@ -276,9 +284,9 @@ const initialState = {
   validationResult: null,
   assignmentResult: null,
   stats: {},
-  
+
   // Cache
-  lastFilters: {}
+  lastFilters: {},
 }
 
 // ======================================================
@@ -288,33 +296,33 @@ export const couponSlice = createSlice({
   name: 'coupon',
   initialState,
   reducers: {
-    clearCurrentCoupon: (state) => {
+    clearCurrentCoupon: state => {
       state.currentCoupon = null
     },
-    clearMessages: (state) => {
+    clearMessages: state => {
       state.isError = false
       state.isSuccess = false
       state.message = ''
       state.error = initialState.error
     },
-    clearError: (state) => {
+    clearError: state => {
       state.isError = false
       state.error = initialState.error
     },
     setFilters: (state, action) => {
       state.lastFilters = action.payload
     },
-    clearValidationResult: (state) => {
+    clearValidationResult: state => {
       state.validationResult = null
     },
-    clearBulkResult: (state) => {
+    clearBulkResult: state => {
       state.bulkResult = null
-    }
+    },
   },
-  extraReducers: (builder) => {
+  extraReducers: builder => {
     builder
       // ---------- GET ALL ----------
-      .addCase(getAllCoupons.pending, (state) => {
+      .addCase(getAllCoupons.pending, state => {
         state.isLoading = true
         state.isError = false
         state.error = initialState.error
@@ -334,7 +342,7 @@ export const couponSlice = createSlice({
       })
 
       // ---------- CREATE ----------
-      .addCase(createCoupon.pending, (state) => {
+      .addCase(createCoupon.pending, state => {
         state.isLoading = true
         state.isError = false
         state.isSuccess = false
@@ -363,18 +371,18 @@ export const couponSlice = createSlice({
       })
 
       // ---------- PERMANENT DELETE ----------
-      .addCase(permanentDeleteCoupon.pending, (state) => {
+      .addCase(permanentDeleteCoupon.pending, state => {
         state.isLoading = true
       })
       .addCase(permanentDeleteCoupon.fulfilled, (state, action) => {
         state.isLoading = false
         state.isSuccess = true
         // Eliminar de ambas listas (activos y eliminados)
-        state.coupons = state.coupons.filter(c => 
-          c.id !== action.payload.id && c._id !== action.payload.id
+        state.coupons = state.coupons.filter(
+          c => c.id !== action.payload.id && c._id !== action.payload.id,
         )
-        state.deletedCoupons = (state.deletedCoupons || []).filter(c => 
-          c.id !== action.payload.id && c._id !== action.payload.id
+        state.deletedCoupons = (state.deletedCoupons || []).filter(
+          c => c.id !== action.payload.id && c._id !== action.payload.id,
         )
         state.pagination.total = Math.max(0, state.pagination.total - 1)
         state.message = 'Cupón eliminado permanentemente'
@@ -383,26 +391,31 @@ export const couponSlice = createSlice({
         state.isLoading = false
         state.isError = true
         state.error = action.payload
-        state.message = action.payload?.message || 'Error al eliminar permanentemente'
+        state.message =
+          action.payload?.message || 'Error al eliminar permanentemente'
       })
 
       // ---------- RESTORE ----------
-      .addCase(restoreCoupon.pending, (state) => {
+      .addCase(restoreCoupon.pending, state => {
         state.isLoading = true
       })
       .addCase(restoreCoupon.fulfilled, (state, action) => {
         state.isLoading = false
         state.isSuccess = true
         // Mover de eliminados a activos
-        state.deletedCoupons = state.deletedCoupons.filter(c => c.id !== action.payload.data.id);
-          // Lo añadimos o actualizamos en la lista principal
-          const index = state.coupons.findIndex(c => c.id === action.payload.data.id);
-          if (index !== -1) {
-            state.coupons[index] = action.payload.data;
-          } else {
-            state.coupons.unshift(action.payload.data);
-          }
-        })
+        state.deletedCoupons = state.deletedCoupons.filter(
+          c => c.id !== action.payload.data.id,
+        )
+        // Lo añadimos o actualizamos en la lista principal
+        const index = state.coupons.findIndex(
+          c => c.id === action.payload.data.id,
+        )
+        if (index !== -1) {
+          state.coupons[index] = action.payload.data
+        } else {
+          state.coupons.unshift(action.payload.data)
+        }
+      })
       .addCase(restoreCoupon.rejected, (state, action) => {
         state.isLoading = false
         state.isError = true
@@ -411,7 +424,7 @@ export const couponSlice = createSlice({
       })
 
       // ---------- GET DELETED ----------
-      .addCase(getDeletedCoupons.pending, (state) => {
+      .addCase(getDeletedCoupons.pending, state => {
         state.isLoadingDeleted = true
       })
       .addCase(getDeletedCoupons.fulfilled, (state, action) => {
@@ -425,14 +438,16 @@ export const couponSlice = createSlice({
       })
 
       // ---------- DELETE ----------
-      .addCase(deleteCoupon.pending, (state) => {
+      .addCase(deleteCoupon.pending, state => {
         state.isLoading = true
       })
       .addCase(deleteCoupon.fulfilled, (state, action) => {
         state.isLoading = false
         state.isSuccess = true
         state.deletedCouponId = action.payload
-        state.coupons = state.coupons.filter(c => c.id !== action.payload && c._id !== action.payload)
+        state.coupons = state.coupons.filter(
+          c => c.id !== action.payload && c._id !== action.payload,
+        )
         state.pagination.total = Math.max(0, state.pagination.total - 1)
       })
       .addCase(deleteCoupon.rejected, (state, action) => {
@@ -443,7 +458,7 @@ export const couponSlice = createSlice({
       })
 
       // ---------- GET BY ID ----------
-      .addCase(getCouponById.pending, (state) => {
+      .addCase(getCouponById.pending, state => {
         state.isLoading = true
         state.currentCoupon = null
       })
@@ -460,7 +475,7 @@ export const couponSlice = createSlice({
       })
 
       // ---------- UPDATE ----------
-      .addCase(updateCoupon.pending, (state) => {
+      .addCase(updateCoupon.pending, state => {
         state.isLoading = true
       })
       .addCase(updateCoupon.fulfilled, (state, action) => {
@@ -488,7 +503,7 @@ export const couponSlice = createSlice({
       })
 
       // ---------- CLONE ----------
-      .addCase(cloneCoupon.pending, (state) => {
+      .addCase(cloneCoupon.pending, state => {
         state.isLoading = true
       })
       .addCase(cloneCoupon.fulfilled, (state, action) => {
@@ -508,7 +523,7 @@ export const couponSlice = createSlice({
       })
 
       // ---------- GENERATE BULK ----------
-      .addCase(generateBulkCoupons.pending, (state) => {
+      .addCase(generateBulkCoupons.pending, state => {
         state.isLoading = true
       })
       .addCase(generateBulkCoupons.fulfilled, (state, action) => {
@@ -528,22 +543,22 @@ export const couponSlice = createSlice({
       })
 
       // ---------- VALIDATE ----------
-      .addCase(validateCoupon.pending, (state) => {
+      .addCase(validateCoupon.pending, state => {
         state.validationResult = null
       })
       .addCase(validateCoupon.fulfilled, (state, action) => {
         state.validationResult = action.payload
       })
       .addCase(validateCoupon.rejected, (state, action) => {
-        state.validationResult = { 
-          valid: false, 
+        state.validationResult = {
+          valid: false,
           message: action.payload?.message || 'Cupón inválido',
-          error: action.payload
+          error: action.payload,
         }
       })
 
       // ---------- ASSIGN PRODUCTS ----------
-      .addCase(assignProductsToCoupon.pending, (state) => {
+      .addCase(assignProductsToCoupon.pending, state => {
         state.isLoading = true
       })
       .addCase(assignProductsToCoupon.fulfilled, (state, action) => {
@@ -551,26 +566,30 @@ export const couponSlice = createSlice({
         state.isSuccess = true
         state.assignmentResult = action.payload
         // Actualizar en lista si existe
-        const index = state.coupons.findIndex(c => 
-          c.id === action.payload?.id || c._id === action.payload?._id
+        const index = state.coupons.findIndex(
+          c => c.id === action.payload?.id || c._id === action.payload?._id,
         )
         if (index !== -1) {
           state.coupons[index] = action.payload
         }
-        if (state.currentCoupon?.id === action.payload?.id || 
-            state.currentCoupon?._id === action.payload?._id) {
+        if (
+          state.currentCoupon?.id === action.payload?.id ||
+          state.currentCoupon?._id === action.payload?._id
+        ) {
           state.currentCoupon = action.payload
         }
       })
       .addCase(assignProductsToCoupon.rejected, (state, action) => {
         state.isLoading = false
         state.isError = true
-        state.error = action.payload || { message: 'Error al asignar productos' }
+        state.error = action.payload || {
+          message: 'Error al asignar productos',
+        }
         state.message = action.payload?.message || 'Error al asignar productos'
       })
 
       // ---------- GET STATS ----------
-      .addCase(getCouponStats.pending, (state) => {
+      .addCase(getCouponStats.pending, state => {
         // No bloquear UI
       })
       .addCase(getCouponStats.fulfilled, (state, action) => {
@@ -582,23 +601,23 @@ export const couponSlice = createSlice({
 
       // ---------- RESET ----------
       .addCase(resetCouponState, () => initialState)
-  }
+  },
 })
 
 // Exportar actions síncronos
-export const { 
-  clearCurrentCoupon, 
-  clearMessages, 
+export const {
+  clearCurrentCoupon,
+  clearMessages,
   clearError,
   setFilters,
   clearValidationResult,
-  clearBulkResult
+  clearBulkResult,
 } = couponSlice.actions
 
 // Exportar selectors útiles
-export const selectCouponError = (state) => state.coupon.error
-export const selectIsDuplicateError = (state) => 
+export const selectCouponError = state => state.coupon.error
+export const selectIsDuplicateError = state =>
   state.coupon.error?.code === 'DUPLICATE_CODE'
-export const selectErrorField = (state) => state.coupon.error?.field
+export const selectErrorField = state => state.coupon.error?.field
 
 export default couponSlice.reducer

@@ -6,13 +6,51 @@ import webpack from 'webpack'
 
 const __dirname = path.resolve()
 
-const NODE_ENV = process.env.NODE_ENV || 'development'
+// =====================================================
+// ENV RESOLUTION
+// =====================================================
 
-const envFile =
-  NODE_ENV === 'production'
-    ? '.env.production'
-    : '.env.development'
+const clean = value => {
+  if (value === undefined || value === null) return ''
+  return String(value).trim()
+}
 
+const normalizeAppEnv = value => {
+  const normalized = clean(value).toLowerCase()
+
+  if (['development', 'staging', 'production'].includes(normalized)) {
+    return normalized
+  }
+
+  return 'development'
+}
+
+/**
+ * NODE_ENV debe quedar reservado para React/Webpack:
+ * - development en dev server
+ * - production en builds optimizados
+ *
+ * APP_ENV define qué archivo .env cargar:
+ * - .env.development
+ * - .env.staging
+ * - .env.production
+ */
+const APP_ENV = normalizeAppEnv(
+  process.env.APP_ENV ||
+    process.env.REACT_APP_NODE_ENV ||
+    process.env.NODE_ENV ||
+    'development',
+)
+
+const WEBPACK_MODE = clean(process.env.NODE_ENV) || 'production'
+
+const envFileMap = {
+  development: '.env.development',
+  staging: '.env.staging',
+  production: '.env.production',
+}
+
+const envFile = envFileMap[APP_ENV] || '.env.development'
 const envPath = path.resolve(__dirname, envFile)
 
 if (fs.existsSync(envPath)) {
@@ -24,7 +62,10 @@ if (fs.existsSync(envPath)) {
   )
 }
 
-const REQUIRED_PRODUCTION_KEYS = [
+// Forzamos coherencia pública después de cargar dotenv.
+process.env.REACT_APP_NODE_ENV = APP_ENV
+
+const REQUIRED_DEPLOY_KEYS = [
   'REACT_APP_NODE_ENV',
   'REACT_APP_API_BASE_URL',
   'REACT_APP_API_URL',
@@ -34,6 +75,8 @@ const REQUIRED_PRODUCTION_KEYS = [
   'REACT_APP_TENANT_HEADER',
   'REACT_APP_CSRF_HEADER_NAME',
 ]
+
+const DEPLOY_ENVS = new Set(['staging', 'production'])
 
 const getEnvValue = key => {
   const value = process.env[key]
@@ -45,33 +88,133 @@ const getEnvValue = key => {
   return String(value).trim()
 }
 
-if (NODE_ENV === 'production') {
-  const missing = REQUIRED_PRODUCTION_KEYS.filter(key => !getEnvValue(key))
+const isHttpsUrl = value => {
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+const isValidUrl = value => {
+  try {
+    const url = new URL(value)
+    return Boolean(url.protocol && url.hostname)
+  } catch {
+    return false
+  }
+}
+
+const hasForbiddenDeployValue = value => {
+  return /localhost|127\.0\.0\.1|0\.0\.0\.0|henko\.local|\.local|\.test/i.test(
+    String(value || ''),
+  )
+}
+
+const hasPlaceholder = value => {
+  const normalized = String(value || '').trim().toUpperCase()
+
+  if (!normalized) return false
+
+  return [
+    'CHANGE_ME',
+    'REPLACE_ME',
+    'REEMPLAZAR',
+    'PEGAR_ACA',
+    'YOUR_',
+    'TU_',
+  ].some(token => normalized.includes(token))
+}
+
+const assertDeployEnv = () => {
+  const missing = REQUIRED_DEPLOY_KEYS.filter(key => !getEnvValue(key))
 
   if (missing.length > 0) {
     throw new Error(
-      `Variables REACT_APP requeridas faltantes para producción: ${missing.join(', ')}`,
+      `Variables REACT_APP requeridas faltantes para ${APP_ENV}: ${missing.join(', ')}`,
     )
   }
 
-  const forbiddenPatterns = [/localhost/i, /127\.0\.0\.1/i, /henko\.local/i]
+  const apiBaseUrl = getEnvValue('REACT_APP_API_BASE_URL')
+  const apiUrl = getEnvValue('REACT_APP_API_URL')
+  const assetsBaseUrl = getEnvValue('REACT_APP_ASSETS_BASE_URL')
+  const publicBaseDomain = getEnvValue('REACT_APP_PUBLIC_BASE_DOMAIN')
+  const adminBaseDomain = getEnvValue('REACT_APP_ADMIN_BASE_DOMAIN')
+  const storefrontPreviewUrl = getEnvValue('REACT_APP_STOREFRONT_PREVIEW_URL')
+  const mpPublicKey = getEnvValue('REACT_APP_MP_PUBLIC_KEY')
+  const debugApi = getEnvValue('REACT_APP_DEBUG_API').toLowerCase()
+
+  if (!isValidUrl(apiBaseUrl)) {
+    throw new Error(`REACT_APP_API_BASE_URL inválido: ${apiBaseUrl}`)
+  }
+
+  if (!apiBaseUrl.endsWith('/api')) {
+    throw new Error(
+      `REACT_APP_API_BASE_URL debe terminar en /api. Recibido: ${apiBaseUrl}`,
+    )
+  }
+
+  if (apiUrl && !isValidUrl(apiUrl)) {
+    throw new Error(`REACT_APP_API_URL inválido: ${apiUrl}`)
+  }
+
+  if (assetsBaseUrl && !isValidUrl(assetsBaseUrl)) {
+    throw new Error(`REACT_APP_ASSETS_BASE_URL inválido: ${assetsBaseUrl}`)
+  }
+
+  if (storefrontPreviewUrl && !isValidUrl(storefrontPreviewUrl)) {
+    throw new Error(
+      `REACT_APP_STOREFRONT_PREVIEW_URL inválido: ${storefrontPreviewUrl}`,
+    )
+  }
 
   ;[
-    getEnvValue('REACT_APP_API_BASE_URL'),
-    getEnvValue('REACT_APP_API_URL'),
-    getEnvValue('REACT_APP_ASSETS_BASE_URL'),
-    getEnvValue('REACT_APP_PUBLIC_BASE_DOMAIN'),
-    getEnvValue('REACT_APP_ADMIN_BASE_DOMAIN'),
+    apiBaseUrl,
+    apiUrl,
+    assetsBaseUrl,
+    publicBaseDomain,
+    adminBaseDomain,
+    storefrontPreviewUrl,
   ].forEach(value => {
-    forbiddenPatterns.forEach(pattern => {
-      if (pattern.test(value)) {
+    if (value && hasForbiddenDeployValue(value)) {
+      throw new Error(
+        `Configuración inválida para ${APP_ENV} en admin: ${value}`,
+      )
+    }
+  })
+
+  ;[apiBaseUrl, apiUrl, assetsBaseUrl, storefrontPreviewUrl]
+    .filter(Boolean)
+    .forEach(value => {
+      if (!isHttpsUrl(value)) {
         throw new Error(
-          `Configuración inválida para producción en admin: ${value}`,
+          `Las URLs públicas deben usar HTTPS en ${APP_ENV}: ${value}`,
         )
       }
     })
-  })
+
+  if (debugApi === 'true') {
+    throw new Error(`REACT_APP_DEBUG_API=true no está permitido en ${APP_ENV}`)
+  }
+
+  if (mpPublicKey && mpPublicKey.startsWith('TEST-')) {
+    throw new Error(
+      `REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en ${APP_ENV}`,
+    )
+  }
+
+  if (hasPlaceholder(mpPublicKey)) {
+    throw new Error('REACT_APP_MP_PUBLIC_KEY contiene placeholder')
+  }
 }
+
+if (DEPLOY_ENVS.has(APP_ENV)) {
+  assertDeployEnv()
+}
+
+// =====================================================
+// CLIENT ENV
+// =====================================================
 
 export const getClientEnvironment = () => {
   const raw = Object.keys(process.env)
@@ -82,9 +225,12 @@ export const getClientEnvironment = () => {
         return acc
       },
       {
-        NODE_ENV,
-        REACT_APP_NODE_ENV:
-          getEnvValue('REACT_APP_NODE_ENV') || NODE_ENV,
+        /**
+         * Para webpack --mode production, NODE_ENV debe ser production.
+         * Para webpack serve --mode development, NODE_ENV debe ser development.
+         */
+        NODE_ENV: WEBPACK_MODE,
+        REACT_APP_NODE_ENV: APP_ENV,
       },
     )
 
@@ -111,6 +257,7 @@ export const createEnvPlugin = () => {
 
   console.log('[webpack] Variables públicas inyectadas:', {
     NODE_ENV: clientEnv.raw.NODE_ENV,
+    APP_ENV,
     REACT_APP_NODE_ENV: clientEnv.raw.REACT_APP_NODE_ENV,
     REACT_APP_API_BASE_URL: clientEnv.raw.REACT_APP_API_BASE_URL,
     REACT_APP_API_URL: clientEnv.raw.REACT_APP_API_URL,

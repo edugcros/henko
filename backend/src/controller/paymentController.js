@@ -6,6 +6,7 @@ import crypto from 'node:crypto'
 import Order, {
   PAYMENT_STATUS,
 } from '../models/orderModel.js'
+import User from '../models/userModel.js'
 
 import { Money } from '../utils/money.js'
 import {
@@ -26,8 +27,7 @@ import {
   reserveStockAtomic,
 } from '../services/paymentOrderOpsService.js'
 import {
-  processPendingEmails,
-  queuePaymentEmails,
+  dispatchApprovedPaymentEmails,
 } from '../services/paymentEmailService.js'
 import {
   buildMercadoPagoPaymentData,
@@ -37,9 +37,9 @@ import {
 } from '../services/paymentMercadoPagoService.js'
 import {
   createMercadoPagoPaymentClient,
+  getTenantMercadoPagoContext,
   getTenantPaymentPublicConfig,
   getTenantConfig,
-  getTenantToken,
 } from '../services/paymentTenantConfigService.js'
 import {
   applyMercadoPagoStatusToOrder,
@@ -79,6 +79,140 @@ const getUserId = getUserIdFromRequest
 
 const getSafeErrorMessage = error => {
   return error?.message || 'Error inesperado'
+}
+
+const resolveAuthenticatedBuyerEmail = async ({
+  userId,
+  tenantId,
+  fallbackOrder = null,
+}) => {
+  const user = await User.findOne({
+    _id: toObjectId(userId),
+    tenantId: toObjectId(tenantId),
+    isBlocked: { $ne: true },
+  })
+    .select('email')
+    .lean()
+
+  const email = [
+    fallbackOrder?.shippingAddress?.email,
+    fallbackOrder?.customerSnapshot?.email,
+    fallbackOrder?.paymentIntent?.payerEmail,
+    user?.email,
+  ]
+    .map(normalizeEmail)
+    .find(candidate => candidate && isValidEmail(candidate))
+
+  if (!email || !isValidEmail(email)) {
+    const error = new Error('El usuario comprador no tiene un email válido')
+    error.statusCode = 400
+    error.code = 'BUYER_EMAIL_INVALID'
+    throw error
+  }
+
+  return email
+}
+
+const buildPaymentIdempotencyKey = ({ order, tenantId, token }) => {
+  const digest = crypto
+    .createHash('sha256')
+    .update(
+      [
+        String(tenantId),
+        String(order?._id || ''),
+        String(order?.paymentIntent?.id || ''),
+        String(token || ''),
+      ].join(':'),
+    )
+    .digest('hex')
+    .slice(0, 32)
+
+  return `pay_${digest}`
+}
+
+const applyProviderPaymentResult = async ({
+  order,
+  mpPayment,
+  tenantId,
+  userId,
+  buyerEmail,
+  tenantConfig = null,
+}) => {
+  const previousStatus = order.paymentStatus
+
+  applyMercadoPagoStatusToOrder({
+    order,
+    mpStatus: mpPayment.status,
+    providerPaymentId: mpPayment.id,
+    paymentMethodId:
+      mpPayment.payment_method_id || order.paymentIntent?.method,
+    installments:
+      mpPayment.installments ?? order.paymentIntent?.installments,
+    payerEmail: buyerEmail,
+    statusDetail: mpPayment.status_detail,
+    providerRawStatus: mpPayment.status,
+  })
+
+  if (
+    order.paymentStatus === PAYMENT_STATUS.APPROVED &&
+    !order.stockCommittedAt
+  ) {
+    await confirmSoldStock(order.products, tenantId)
+    order.stockCommittedAt = new Date()
+    order.stockReservedAt = null
+  } else if (
+    NEGATIVE_PAYMENT_STATUSES.has(order.paymentStatus) &&
+    order.stockReservedAt
+  ) {
+    await releaseReservedStock(order.products, tenantId)
+    order.stockReservedAt = null
+  }
+
+  await order.save({ tenantId })
+
+  let emailResult = null
+
+  if (order.paymentStatus === PAYMENT_STATUS.APPROVED) {
+    await clearUserCartAfterApprovedPayment({
+      userId,
+      tenantId,
+    })
+
+    try {
+      emailResult = await dispatchApprovedPaymentEmails({
+        order,
+        buyerEmail,
+        tenantConfig: tenantConfig || await getTenantConfig(tenantId),
+        context: {
+          user: {
+            _id: userId,
+            email: buyerEmail,
+          },
+          payer: {
+            email: buyerEmail,
+          },
+        },
+      })
+    } catch (error) {
+      logger.error('❌ Pago aprobado, pero falló la notificación por email', {
+        orderId: order._id?.toString?.(),
+        tenantId: String(tenantId),
+        message: getSafeErrorMessage(error),
+      })
+
+      emailResult = {
+        customerEmailSent: false,
+        adminEmailSent: false,
+        error: getSafeErrorMessage(error),
+      }
+    }
+  }
+
+  return {
+    previousStatus,
+    paymentStatus: order.paymentStatus,
+    emailResult,
+  }
 }
 
 // =====================================================
@@ -138,16 +272,19 @@ export const getPaymentPublicConfig = async (req, res) => {
 // =====================================================
 
 export const processPayment = async (req, res) => {
-  const {
-    orderId: bodyOrderId,
-    cartId: bodyCartId,
-    token,
-    payment_method_id: paymentMethodId,
-    installments,
-    payer,
-    issuer_id: issuerId,
-    shippingAddress,
-  } = req.body || {}
+  const body = req.body || {}
+
+  const bodyOrderId = body.orderId || body.order_id || null
+  const bodyCartId = body.cartId || body.cart_id || null
+
+  const token = sanitizeString(body.token)
+  const paymentMethodId = sanitizeString(
+    body.paymentMethodId || body.payment_method_id,
+  )
+  const issuerId = sanitizeString(body.issuerId || body.issuer_id)
+  const installments = body.installments
+  const payer = body.payer || {}
+  const shippingAddress = body.shippingAddress || body.shipping_address || {}
 
   const orderId = bodyOrderId || null
   const cartId = bodyCartId || null
@@ -157,10 +294,12 @@ export const processPayment = async (req, res) => {
   let tenantId = null
   let stockReserved = false
   let lockAcquired = false
+  let mappedError = null
 
   try {
     const userId = getUserId(req)
     const tenantContext = resolveTenantContext(req)
+
     tenantId = tenantContext.tenantId
 
     if (!userId || !isValidObjectId(userId)) {
@@ -191,14 +330,6 @@ export const processPayment = async (req, res) => {
       })
     }
 
-    if (!payer?.email || !isValidEmail(payer.email)) {
-      return res.status(400).json({
-        success: false,
-        code: 'PAYER_EMAIL_INVALID',
-        message: 'Email del pagador inválido',
-      })
-    }
-
     if (String(token).trim().length < 10) {
       return res.status(400).json({
         success: false,
@@ -207,16 +338,10 @@ export const processPayment = async (req, res) => {
       })
     }
 
-    const tenantConfig = await getTenantConfig(tenantId)
-    const mpToken = await getTenantToken(tenantId)
-
-    if (!mpToken) {
-      return res.status(503).json({
-        success: false,
-        code: 'MP_CREDENTIALS_NOT_FOUND',
-        message: 'Mercado Pago no está configurado correctamente para este comercio.',
-      })
-    }
+    const [tenantConfig, mercadoPagoContext] = await Promise.all([
+      getTenantConfig(tenantId),
+      getTenantMercadoPagoContext(tenantId),
+    ])
 
     if (cartId && !orderId) {
       order = await createOrderFromCart({
@@ -255,6 +380,12 @@ export const processPayment = async (req, res) => {
       })
     }
 
+    const buyerEmail = await resolveAuthenticatedBuyerEmail({
+      userId,
+      tenantId,
+      fallbackOrder: order,
+    })
+
     if (order.paymentStatus === PAYMENT_STATUS.APPROVED) {
       return res.status(409).json({
         success: false,
@@ -263,10 +394,18 @@ export const processPayment = async (req, res) => {
       })
     }
 
+    if (!order.paymentIntent?.id) {
+      order.paymentIntent = {
+        ...(order.paymentIntent || {}),
+        id: crypto.randomUUID(),
+      }
+    }
+
     if (!order.stockReservedAt && !order.stockCommittedAt) {
       await reserveStockAtomic(order.products, tenantId)
       stockReserved = true
       order.stockReservedAt = new Date()
+      await order.save({ tenantId })
     }
 
     const {
@@ -281,7 +420,10 @@ export const processPayment = async (req, res) => {
       paymentMethodId,
       installments,
       issuerId,
-      payer,
+      payer: {
+        ...payer,
+        email: buyerEmail,
+      },
     })
 
     logger.info('🚀 Enviando pago a Mercado Pago', {
@@ -294,14 +436,53 @@ export const processPayment = async (req, res) => {
       hasNotificationUrl: Boolean(paymentData.notification_url),
     })
 
-    const payment = createMercadoPagoPaymentClient(mpToken)
+    const payment = createMercadoPagoPaymentClient(
+      mercadoPagoContext.accessToken,
+    )
 
-    const mpPayment = await payment.create({
-      body: paymentData,
-      requestOptions: {
-        idempotencyKey: `${tenantId}_${order._id}_${order.paymentIntent?.id}`,
-      },
+    /**
+     * Idempotency key corta.
+     * Evita claves largas tipo tenantId_orderId_uuid que pueden generar
+     * comportamiento inconsistente en proveedores externos.
+     */
+    const idempotencyKey = buildPaymentIdempotencyKey({
+      order,
+      tenantId,
+      token,
     })
+
+    let mpPayment
+
+    try {
+      mpPayment = await payment.create({
+        body: paymentData,
+        requestOptions: {
+          idempotencyKey,
+        },
+      })
+    } catch (mpError) {
+      logger.error('❌ RAW MP SDK ERROR FULL', {
+        name: mpError?.name,
+        message: mpError?.message,
+        status: mpError?.status,
+        statusCode: mpError?.statusCode,
+        code: mpError?.code,
+        cause: mpError?.cause,
+        api_response: mpError?.api_response,
+        response: mpError?.response
+          ? {
+            status: mpError.response.status,
+            data: mpError.response.data,
+            headers: mpError.response.headers,
+          }
+          : null,
+        orderId: order._id?.toString?.(),
+        tenantId: String(tenantId),
+        idempotencyKey,
+      })
+
+      throw mpError
+    }
 
     logger.info('✅ Mercado Pago respondió', {
       orderId: order._id?.toString?.(),
@@ -311,55 +492,20 @@ export const processPayment = async (req, res) => {
       statusDetail: mpPayment.status_detail,
     })
 
-    applyMercadoPagoStatusToOrder({
+    const settlement = await applyProviderPaymentResult({
       order,
-      mpStatus: mpPayment.status,
-      providerPaymentId: mpPayment.id,
-      paymentMethodId,
-      installments: validatedInstallments,
-      payerEmail: payer.email,
-      statusDetail: mpPayment.status_detail,
-      providerRawStatus: mpPayment.status,
+      mpPayment: {
+        ...mpPayment,
+        payment_method_id: paymentMethodId,
+        installments: validatedInstallments,
+      },
+      tenantId,
+      userId,
+      buyerEmail,
+      tenantConfig,
     })
 
-    const normalizedPaymentStatus = order.paymentStatus
-
-    if (normalizedPaymentStatus === PAYMENT_STATUS.APPROVED) {
-      await confirmSoldStock(order.products, tenantId)
-      order.stockCommittedAt = order.stockCommittedAt || new Date()
-      order.stockReservedAt = null
-      stockReserved = false
-    } else if (NEGATIVE_PAYMENT_STATUSES.has(normalizedPaymentStatus)) {
-      await releaseReservedStock(order.products, tenantId)
-      order.stockReservedAt = null
-      stockReserved = false
-    } else {
-      // pending / in_process: mantenemos reserva para resolver vía webhook/job.
-      stockReserved = false
-    }
-
-    await order.save({ tenantId })
-
-    if (normalizedPaymentStatus === PAYMENT_STATUS.APPROVED) {
-      await clearUserCartAfterApprovedPayment({
-        userId,
-        tenantId,
-      })
-
-      const emailResult = await queuePaymentEmails({
-        order,
-        payer,
-        req,
-        tenantConfig,
-      })
-
-      logger.info('📧 Resultado emails post-pago', {
-        orderId: order._id?.toString?.(),
-        tenantId: String(tenantId),
-        customerEmailSent: emailResult.customerEmailSent,
-        adminEmailSent: emailResult.adminEmailSent,
-      })
-    }
+    stockReserved = false
 
     return res.status(200).json({
       success: true,
@@ -371,35 +517,56 @@ export const processPayment = async (req, res) => {
       installments: validatedInstallments,
       orderId: order._id,
       paymentStatus: order.paymentStatus,
-      emailQueued: normalizedPaymentStatus === PAYMENT_STATUS.APPROVED,
+      emailSent: Boolean(settlement.emailResult?.customerEmailSent),
     })
   } catch (error) {
     if (stockReserved && order) {
-      await releaseReservedStock(order.products, tenantId)
-      order.stockReservedAt = null
-      stockReserved = false
+      try {
+        await releaseReservedStock(order.products, tenantId)
+        order.stockReservedAt = null
+        stockReserved = false
+      } catch (releaseError) {
+        logger.error('❌ Error liberando stock tras fallo de pago', {
+          message: getSafeErrorMessage(releaseError),
+          tenantId: tenantId ? String(tenantId) : null,
+          orderId: order?._id?.toString?.() || bodyOrderId || null,
+        })
+      }
     }
 
     logger.error('❌ PAYMENT ERROR DETALLADO', {
-      message: error.message,
-      name: error.name,
-      status: error.status,
-      statusCode: error.statusCode,
-      cause: error.cause,
-      code: error.code,
-      api_response: error.api_response,
-      response: error.response,
+      message: error?.message,
+      name: error?.name,
+      status: error?.status,
+      statusCode: error?.statusCode,
+      cause: error?.cause,
+      code: error?.code,
+      api_response: error?.api_response,
+      response: error?.response,
       tenantId: tenantId ? String(tenantId) : null,
       orderId: order?._id?.toString?.() || bodyOrderId || null,
     })
 
+    mappedError = mapMercadoPagoError(error)
+
     if (order && order.paymentStatus !== PAYMENT_STATUS.APPROVED) {
       try {
-        const mappedError = mapMercadoPagoError(error)
-
         order.paymentError = getSafeErrorMessage(error)
         order.paymentErrorCode = mappedError.code
         order.lastPaymentAttemptAt = new Date()
+
+        order.addAuditEntry?.({
+          action: 'payment_failed',
+          performedByRole: 'system',
+          reason: mappedError.message,
+          metadata: {
+            code: mappedError.code,
+            details: mappedError.details,
+            provider: 'mercadopago',
+            originalMessage: error?.message || null,
+            status: error?.status || error?.statusCode || null,
+          },
+        })
 
         await order.save({ tenantId: order.tenantId })
       } catch (saveError) {
@@ -410,26 +577,27 @@ export const processPayment = async (req, res) => {
       }
     }
 
-    const mappedError = mapMercadoPagoError(error)
-
     return res.status(mappedError.status).json({
       success: false,
       code: mappedError.code,
       message: mappedError.message,
       details: mappedError.details,
+      status: mappedError.status,
       debug: isProd
         ? undefined
         : {
-          originalMessage: error.message,
-          status: error.status || error.statusCode,
-          cause: error.cause,
-          apiResponse: error.api_response,
-          response: error.response,
+          originalMessage: error?.message,
+          name: error?.name,
+          status: error?.status || error?.statusCode,
+          code: error?.code,
+          cause: error?.cause,
+          apiResponse: error?.api_response,
+          response: error?.response,
         },
     })
   } finally {
     if (lockAcquired) {
-      await releasePaymentLock(lockResourceId)
+      await releasePaymentLock(lockResourceId, tenantId)
     }
   }
 }
@@ -439,12 +607,10 @@ export const processPayment = async (req, res) => {
 // =====================================================
 
 export const mpWebhook = async (req, res) => {
-  res.status(200).end()
-
   try {
     if (!verifyMercadoPagoWebhookSignature(req)) {
       logger.warn('⚠️ Webhook Mercado Pago con firma inválida')
-      return
+      return res.status(401).json({ success: false })
     }
 
     const paymentId =
@@ -454,7 +620,7 @@ export const mpWebhook = async (req, res) => {
 
     if (!paymentId) {
       logger.warn('⚠️ Webhook sin paymentId')
-      return
+      return res.status(400).json({ success: false })
     }
 
     const webhookRequestId =
@@ -473,7 +639,7 @@ export const mpWebhook = async (req, res) => {
         webhookId,
         paymentId: String(paymentId),
       })
-      return
+      return res.status(200).json({ success: true, duplicate: true })
     }
 
     const rawIdentity = await resolveWebhookOrderIdentity(paymentId)
@@ -482,7 +648,7 @@ export const mpWebhook = async (req, res) => {
       logger.warn('⚠️ Webhook: orden no encontrada para pago', {
         paymentId: String(paymentId),
       })
-      return
+      return res.status(404).json({ success: false })
     }
 
     const tenantId = String(rawIdentity.tenantId)
@@ -499,7 +665,7 @@ export const mpWebhook = async (req, res) => {
         tenantId,
       })
 
-      return
+      return res.status(404).json({ success: false })
     }
 
     if (String(order.paymentIntent?.providerPaymentId || '') !== String(paymentId)) {
@@ -508,21 +674,13 @@ export const mpWebhook = async (req, res) => {
         orderId: order._id?.toString?.(),
       })
 
-      return
+      return res.status(409).json({ success: false })
     }
 
-    const mpToken = await getTenantToken(tenantId)
-
-    if (!mpToken) {
-      logger.error('❌ Webhook: token de Mercado Pago no encontrado', {
-        tenantId,
-        paymentId: String(paymentId),
-      })
-
-      return
-    }
-
-    const payment = createMercadoPagoPaymentClient(mpToken)
+    const mercadoPagoContext = await getTenantMercadoPagoContext(tenantId)
+    const payment = createMercadoPagoPaymentClient(
+      mercadoPagoContext.accessToken,
+    )
     const mpInfo = await payment.get({ id: paymentId })
 
     if (!mpInfo?.status) {
@@ -530,55 +688,21 @@ export const mpWebhook = async (req, res) => {
         paymentId: String(paymentId),
       })
 
-      return
+      return res.status(502).json({ success: false })
     }
 
-    const previousStatus = order.paymentStatus
-
-    applyMercadoPagoStatusToOrder({
-      order,
-      mpStatus: mpInfo.status,
-      providerPaymentId: paymentId,
-      paymentMethodId: mpInfo.payment_method_id || order.paymentIntent?.method,
-      installments: mpInfo.installments ?? order.paymentIntent?.installments,
-      payerEmail: mpInfo.payer?.email || order.paymentIntent?.payerEmail,
-      statusDetail: mpInfo.status_detail,
-      providerRawStatus: mpInfo.status,
+    const buyerEmail = await resolveAuthenticatedBuyerEmail({
+      userId: order.orderby,
+      tenantId,
+      fallbackOrder: order,
     })
-
-    if (
-      previousStatus !== PAYMENT_STATUS.APPROVED &&
-      order.paymentStatus === PAYMENT_STATUS.APPROVED
-    ) {
-      await confirmSoldStock(order.products, tenantId)
-      order.stockCommittedAt = order.stockCommittedAt || new Date()
-      order.stockReservedAt = null
-
-      await order.save({ tenantId })
-
-      await clearUserCartAfterApprovedPayment({
-        userId: order.orderby,
-        tenantId,
-      })
-
-      const tenantConfig = await getTenantConfig(tenantId)
-
-      await queuePaymentEmails({
-        order,
-        payer: { email: order.paymentIntent?.payerEmail },
-        req: {},
-        tenantConfig,
-      })
-    } else if (
-      previousStatus === PAYMENT_STATUS.PENDING &&
-      NEGATIVE_PAYMENT_STATUSES.has(order.paymentStatus)
-    ) {
-      await releaseReservedStock(order.products, tenantId)
-      order.stockReservedAt = null
-      await order.save({ tenantId })
-    } else {
-      await order.save({ tenantId })
-    }
+    const settlement = await applyProviderPaymentResult({
+      order,
+      mpPayment: mpInfo,
+      tenantId,
+      userId: order.orderby,
+      buyerEmail,
+    })
 
     await markWebhookProcessed(
       webhookId,
@@ -591,14 +715,18 @@ export const mpWebhook = async (req, res) => {
     logger.info('Webhook: orden actualizada', {
       orderId: order._id?.toString?.(),
       paymentId: String(paymentId),
-      previousStatus,
+      previousStatus: settlement.previousStatus,
       newStatus: order.paymentStatus,
     })
+
+    return res.status(200).json({ success: true })
   } catch (error) {
     logger.error('❌ Webhook Error Mercado Pago', {
       message: getSafeErrorMessage(error),
       stack: error.stack,
     })
+
+    return res.status(500).json({ success: false })
   }
 }
 
@@ -641,6 +769,32 @@ export const getPaymentStatus = async (req, res) => {
       })
     }
 
+    if (
+      order.paymentStatus === PAYMENT_STATUS.PENDING &&
+      order.paymentIntent?.providerPaymentId
+    ) {
+      const mercadoPagoContext = await getTenantMercadoPagoContext(tenantId)
+      const payment = createMercadoPagoPaymentClient(
+        mercadoPagoContext.accessToken,
+      )
+      const mpInfo = await payment.get({
+        id: order.paymentIntent.providerPaymentId,
+      })
+      const buyerEmail = await resolveAuthenticatedBuyerEmail({
+        userId,
+        tenantId,
+        fallbackOrder: order,
+      })
+
+      await applyProviderPaymentResult({
+        order,
+        mpPayment: mpInfo,
+        tenantId,
+        userId,
+        buyerEmail,
+      })
+    }
+
     return res.status(200).json({
       success: true,
       data: {
@@ -678,5 +832,4 @@ export default {
   processPayment,
   mpWebhook,
   getPaymentStatus,
-  processPendingEmails,
 }

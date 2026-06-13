@@ -1,7 +1,9 @@
-// 📄 src/routes/routesConfig.js — Configuración central de rutas para producción
+// 📄 src/Route/routesConfig.js
+// Configuración centralizada de rutas para producción
+
 import { lazy } from 'react'
 
-// 🔹 Páginas esenciales (precarga inmediata)
+// 🔹 Páginas esenciales
 import Home from '@pages/Home'
 import About from '@pages/About'
 import Contact from '@pages/Contact'
@@ -9,27 +11,49 @@ import PrivacyPolicy from '@pages/PrivacyPolicy'
 import RefundPolicy from '@pages/RefundPolicy'
 import ShippingPolicy from '@pages/ShippingPolicy'
 import TermAndConditions from '@pages/TermAndConditions'
-import OurStore from '@pages/OurStore'
 import SingleProduct from '@pages/SingleProduct'
 import Unauthorized from '@pages/Unauthorized'
 import NotFound from '@pages/NotFound/NotFound.js'
-import VerifyEmail from '../Components/VerifyEmail'
+import VerifyEmail from '@components/VerifyEmail'
+import SubscriptionCTA from '@components/SubscriptionCTA'
 
-// 🔸 Páginas diferidas (lazy load)
-const Cart = lazy(() => import('@pages/Cart'))
-const CheckoutPage = lazy(() => import('@pages/CheckoutPage'))
-const Wishlist = lazy(() => import('@pages/Wishlist'))
-const CompareProduct = lazy(() => import('@pages/CompareProduct'))
-const Login = lazy(() => import('@pages/Login'))
-const Signup = lazy(() => import('@pages/Signup'))
-const ForgotPassword = lazy(() => import('@pages/Forgotpassword'))
-const ResetPassword = lazy(() => import('@pages/Resetpassword'))
+// ⚠️ Desactivado hasta que exista un export default real.
+// import SubscriptionCTA from '@components/SubscriptionCTA'
 
-// 🔴 NUEVO: Páginas adicionales (solo estas, no duplicar)
-const OrderHistory = lazy(() => import('../Pages/OrderHistory'))
-const Profile = lazy(() => import('../Pages/Profile'))
+const lazyDefault = importer =>
+  lazy(async () => {
+    const module = await importer()
 
-// ✅ Rutas públicas (no requieren autenticación)
+    if (!module?.default) {
+      throw new Error(
+        '[routesConfig] Lazy import inválido: el módulo no tiene export default.',
+      )
+    }
+
+    return {
+      default: module.default,
+    }
+  })
+
+// 🔸 Páginas diferidas
+const Cart = lazyDefault(() => import('@pages/Cart'))
+const CheckoutPage = lazyDefault(() => import('@pages/CheckoutPage'))
+const Wishlist = lazyDefault(() => import('@pages/Wishlist'))
+const OurStore = lazyDefault(() => import('@pages/OurStore'))
+const CompareProduct = lazyDefault(() => import('@pages/CompareProduct'))
+
+// 🔐 Auth pages: solo usuarios NO logueados
+const Login = lazyDefault(() => import('@pages/Login'))
+const Signup = lazyDefault(() => import('@pages/Signup'))
+const ForgotPassword = lazyDefault(() => import('@pages/Forgotpassword'))
+const ResetPassword = lazyDefault(() => import('@pages/Resetpassword'))
+
+// 🔒 Private pages
+const OrderHistory = lazyDefault(() => import('@pages/OrderHistory'))
+const Profile = lazyDefault(() => import('@pages/Profile'))
+
+// ✅ Rutas públicas universales:
+// entran usuarios logueados, no logueados y admins.
 export const publicRoutes = [
   { path: '/', Component: Home },
   { path: '/about', Component: About },
@@ -39,25 +63,30 @@ export const publicRoutes = [
   { path: '/refund-policy', Component: RefundPolicy },
   { path: '/shipping-policy', Component: ShippingPolicy },
   { path: '/terms-and-conditions', Component: TermAndConditions },
-  { path: '/login', Component: Login },
-  { path: '/signup', Component: Signup },
   { path: '/unauthorized', Component: Unauthorized },
   { path: '/verify-email', Component: VerifyEmail },
+
+  // Reactivar solo cuando el componente exista y tenga export default:
+  { path: '/subscription-cta', Component: SubscriptionCTA },
 ]
 
-// ✅ Rutas públicas dinámicas (con parámetros)
+// ✅ Rutas públicas dinámicas universales
 export const publicDynamicRoutes = [
-  { path: '/forgot-password', Component: ForgotPassword },
-  { path: '/reset-password/:token', Component: ResetPassword },
   { path: '/product/:id', Component: SingleProduct },
 ]
 
-// 🔐 Rutas protegidas (no requieren login pero son sensibles)
-export const protectedRoutes = [
-  // 💡 token incluido si lo requiere el backend
+// 🔐 Rutas solo para usuarios NO logueados
+export const authRoutes = [
+  { path: '/login', Component: Login },
+  { path: '/signup', Component: Signup },
+  { path: '/forgot-password', Component: ForgotPassword },
+  { path: '/reset-password/:token', Component: ResetPassword },
 ]
 
-// 🔐 Rutas privadas (requieren autenticación y roles específicos)
+// 🔐 Rutas protegidas especiales
+export const protectedRoutes = []
+
+// 🔒 Rutas privadas: requieren login
 export const privateRoutes = [
   { path: '/cart', Component: Cart, allowedRoles: ['user', 'admin'] },
   {
@@ -75,19 +104,48 @@ export const privateRoutes = [
   { path: '/profile', Component: Profile, allowedRoles: ['user', 'admin'] },
 ]
 
-// 🧠 Conjuntos para validaciones rápidas
+// 🔚 Fallback
+export const fallbackRoute = {
+  path: '*',
+  Component: NotFound,
+}
+
+// 🧠 Sets de validación
 export const publicRoutesSet = new Set(publicRoutes.map(route => route.path))
-export const publicDynamicRoutesSet = new Set(publicDynamicRoutes.map(route => route.path))
-export const protectedRoutesSet = new Set(protectedRoutes.map(route => route.path))
+
+export const publicDynamicRoutesSet = new Set(
+  publicDynamicRoutes.map(route => route.path),
+)
+
+export const authRoutesSet = new Set(authRoutes.map(route => route.path))
+
+export const protectedRoutesSet = new Set(
+  protectedRoutes.map(route => route.path),
+)
+
 export const privateRoutesSet = new Set(privateRoutes.map(route => route.path))
 
-// 🔁 Set global (si se requiere validar cualquier ruta)
 export const allRoutesSet = new Set([
   ...publicRoutesSet,
   ...publicDynamicRoutesSet,
+  ...authRoutesSet,
   ...protectedRoutesSet,
   ...privateRoutesSet,
 ])
 
-// 🔚 Fallback para rutas no encontradas
-export const fallbackRoute = { path: '*', Component: NotFound }
+if (process.env.NODE_ENV !== 'production') {
+  console.table(
+    [
+      ...publicRoutes,
+      ...publicDynamicRoutes,
+      ...authRoutes,
+      ...protectedRoutes,
+      ...privateRoutes,
+      fallbackRoute,
+    ].map(route => ({
+      path: route.path,
+      componentType: typeof route.Component,
+      isValid: Boolean(route.Component),
+    })),
+  )
+}

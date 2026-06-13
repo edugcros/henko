@@ -1,6 +1,7 @@
 import { bucket } from '../../config/storage.js'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
+import logger from '../../config/logger.js'
 
 export const uploadImage = (file, tenantId) => {
   return new Promise((resolve, reject) => {
@@ -23,7 +24,10 @@ export const uploadImage = (file, tenantId) => {
     })
 
     stream.on('error', err => {
-      console.error('GCS Upload Error:', err)
+      logger.error('GCS Upload Error', {
+        tenantId: String(tenantId),
+        message: err?.message || 'Error desconocido',
+      })
       reject(err)
     })
 

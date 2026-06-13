@@ -11,7 +11,7 @@ export const uploadProductImage = createAsyncThunk(
     } catch (error) {
       return thunkAPI.rejectWithValue(error?.message || 'Error subiendo imagen')
     }
-  }
+  },
 )
 
 export const delImg = createAsyncThunk(
@@ -21,9 +21,11 @@ export const delImg = createAsyncThunk(
       await uploadService.deleteImg(public_id)
       return public_id
     } catch (error) {
-      return thunkAPI.rejectWithValue(error?.message || 'Error eliminando imagen')
+      return thunkAPI.rejectWithValue(
+        error?.message || 'Error eliminando imagen',
+      )
     }
-  }
+  },
 )
 
 const initialState = {
@@ -42,7 +44,9 @@ const uploadSlice = createSlice({
   },
   extraReducers: builder => {
     builder
-      .addCase(uploadProductImage.pending, state => { state.isLoading = true })
+      .addCase(uploadProductImage.pending, state => {
+        state.isLoading = true
+      })
       .addCase(uploadProductImage.fulfilled, (state, action) => {
         state.images = [...state.images, ...action.payload]
         state.isLoading = false
@@ -54,9 +58,13 @@ const uploadSlice = createSlice({
         state.isError = true
         state.message = action.payload
       })
-      .addCase(delImg.pending, state => { state.isLoading = true })
+      .addCase(delImg.pending, state => {
+        state.isLoading = true
+      })
       .addCase(delImg.fulfilled, (state, action) => {
-        state.images = state.images.filter(img => img.public_id !== action.payload)
+        state.images = state.images.filter(
+          img => img.public_id !== action.payload,
+        )
         state.isLoading = false
         state.isSuccess = true
       })
@@ -65,7 +73,7 @@ const uploadSlice = createSlice({
         state.isError = true
         state.message = action.payload
       })
-  }
+  },
 })
 
 export const { resetUploadState } = uploadSlice.actions

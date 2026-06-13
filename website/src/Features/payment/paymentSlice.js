@@ -34,10 +34,7 @@ const normalizePaymentError = error => {
   return {
     success: false,
     code: error.code || 'PAYMENT_ERROR',
-    message:
-      error.message ||
-      error.details ||
-      'Error en el proceso de pago',
+    message: error.message || error.details || 'Error en el proceso de pago',
     details: error.details || null,
     status: error.status || null,
     debug: error.debug || null,
@@ -56,16 +53,12 @@ export const processPaymentAction = createAsyncThunk(
       const response = await paymentService.processPayment(payload)
 
       if (response?.success !== true) {
-        return thunkAPI.rejectWithValue(
-          normalizePaymentError(response),
-        )
+        return thunkAPI.rejectWithValue(normalizePaymentError(response))
       }
 
       return response
     } catch (error) {
-      return thunkAPI.rejectWithValue(
-        normalizePaymentError(error),
-      )
+      return thunkAPI.rejectWithValue(normalizePaymentError(error))
     }
   },
 )

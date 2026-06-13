@@ -27,10 +27,7 @@ const normalizeAuthResponse = response => {
       raw?.data?.accessToken ||
       null,
 
-    refreshToken:
-      raw?.refreshToken ||
-      raw?.data?.refreshToken ||
-      null,
+    refreshToken: raw?.refreshToken || raw?.data?.refreshToken || null,
   }
 }
 
@@ -90,9 +87,7 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
   const isReadOnly = ['get', 'head', 'options'].includes(normalizedMethod)
 
   try {
-    const shouldUseCsrf =
-      !isReadOnly &&
-      options.skipCsrf !== true
+    const shouldUseCsrf = !isReadOnly && options.skipCsrf !== true
 
     const csrfToken = shouldUseCsrf ? await ensureCsrf() : null
 
@@ -123,7 +118,11 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     const status = error?.response?.status
     const message = extractApiError(error, 'Error en la petición')
 
-    if (status === 403 && /csrf|token/i.test(message) && options.skipCsrf !== true) {
+    if (
+      status === 403 &&
+      /csrf|token/i.test(message) &&
+      options.skipCsrf !== true
+    ) {
       try {
         resetCsrf()
 
@@ -316,9 +315,7 @@ const updatePassword = passwordData => {
 
 const requestPasswordReset = emailOrPayload => {
   const email =
-    typeof emailOrPayload === 'string'
-      ? emailOrPayload
-      : emailOrPayload?.email
+    typeof emailOrPayload === 'string' ? emailOrPayload : emailOrPayload?.email
 
   return apiRequest('post', '/forgot-password', {
     email: sanitizeText(email).toLowerCase(),
@@ -334,20 +331,13 @@ const resetPassword = payloadOrToken => {
         }
 
   const token = sanitizeText(
-    payload.token ||
-      payload.resetToken ||
-      payload.passwordResetToken,
+    payload.token || payload.resetToken || payload.passwordResetToken,
   )
 
-  const finalPassword = sanitizeText(
-    payload.newPassword ||
-      payload.password,
-  )
+  const finalPassword = sanitizeText(payload.newPassword || payload.password)
 
   const confirmPassword = sanitizeText(
-    payload.confirmPassword ||
-      payload.passwordConfirm ||
-      finalPassword,
+    payload.confirmPassword || payload.passwordConfirm || finalPassword,
   )
 
   return apiRequest('put', '/reset-password', {
@@ -382,7 +372,8 @@ const refreshToken = async () => {
     }
 
     const normalized = normalizeAuthResponse(response.data)
-    const token = normalized?.token || response.data?.token || response.data?.accessToken
+    const token =
+      normalized?.token || response.data?.token || response.data?.accessToken
 
     if (!token) {
       throw new Error('Token ausente en refresh')

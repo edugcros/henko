@@ -134,7 +134,12 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
 
           {/* Info del producto */}
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" fontWeight={600} noWrap sx={{ mb: 0.5 }}>
+            <Typography
+              variant="subtitle1"
+              fontWeight={600}
+              noWrap
+              sx={{ mb: 0.5 }}
+            >
               {item.name || item.title}
             </Typography>
 
@@ -165,7 +170,10 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
 
             {/* Precio mobile */}
             {isMobile && (
-              <Typography variant="h6" sx={{ mt: 1, color: theme.palette.commercePrice.main }}>
+              <Typography
+                variant="h6"
+                sx={{ mt: 1, color: theme.palette.commercePrice.main }}
+              >
                 {formatPrice(item.price)}
               </Typography>
             )}
@@ -174,7 +182,11 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
           {/* Precio desktop */}
           {!isMobile && (
             <Box sx={{ textAlign: 'center', minWidth: 100 }}>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                display="block"
+              >
                 Precio
               </Typography>
               <Typography variant="body1" fontWeight={600}>
@@ -185,7 +197,12 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
 
           {/* Cantidad */}
           <Box sx={{ textAlign: 'center' }}>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              display="block"
+              sx={{ mb: 0.5 }}
+            >
               Cantidad
             </Typography>
             <Box
@@ -198,7 +215,9 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
             >
               <IconButton
                 size="small"
-                onClick={() => onUpdateQuantity?.(item.id, (item.quantity || 1) - 1)}
+                onClick={() =>
+                  onUpdateQuantity?.(item.id, (item.quantity || 1) - 1)
+                }
                 disabled={(item.quantity || 1) <= 1}
                 sx={{
                   border: 1,
@@ -222,7 +241,9 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
 
               <IconButton
                 size="small"
-                onClick={() => onUpdateQuantity?.(item.id, (item.quantity || 1) + 1)}
+                onClick={() =>
+                  onUpdateQuantity?.(item.id, (item.quantity || 1) + 1)
+                }
                 disabled={(item.quantity || 1) >= (item.stock || 99)}
                 sx={{
                   border: 1,
@@ -250,10 +271,18 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
           {/* Subtotal desktop */}
           {!isMobile && (
             <Box sx={{ textAlign: 'center', minWidth: 100 }}>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                display="block"
+              >
                 Subtotal
               </Typography>
-              <Typography variant="body1" fontWeight={700} sx={{ color: theme.palette.commercePrice.main }}>
+              <Typography
+                variant="body1"
+                fontWeight={700}
+                sx={{ color: theme.palette.commercePrice.main }}
+              >
                 {formatPrice((item.price || 0) * (item.quantity || 1))}
               </Typography>
             </Box>
@@ -272,7 +301,11 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
               <Typography variant="body2" color="text.secondary">
                 Subtotal
               </Typography>
-              <Typography variant="h6" fontWeight={700} sx={{ color: theme.palette.commercePrice.main }}>
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                sx={{ color: theme.palette.commercePrice.main }}
+              >
                 {formatPrice((item.price || 0) * (item.quantity || 1))}
               </Typography>
             </Box>
@@ -306,8 +339,15 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
           }}
         >
           <Typography variant="body2">{items.length} productos</Typography>
-          <Typography variant="h6" fontWeight={700} sx={{ color: theme.palette.commercePrice.main }}>
-            Total: {formatPrice(items.reduce((sum, item) => sum + item.price * item.quantity, 0))}
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{ color: theme.palette.commercePrice.main }}
+          >
+            Total:{' '}
+            {formatPrice(
+              items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+            )}
           </Typography>
         </Paper>
       )}

@@ -1,21 +1,40 @@
-// src/services/aiVisionService.js
+// 📁 src/services/aiVisionService.js
 import crypto from 'crypto'
+import dns from 'dns/promises'
+import net from 'net'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import mongoose from 'mongoose'
 import AIPreference from '../models/aIPreference.js'
 import CorrectionLog from '../models/correctionLog.js'
-import mongoose from 'mongoose'
 import logger from '../../config/logger.js'
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-const MODEL_NAME = process.env.GEMINI_MODEL || 'models/gemini-3.1-flash-lite'
-const MIN_CONFIDENCE = Number(process.env.AI_MIN_CONFIDENCE || 0.65)
-const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || 3)
+const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim()
 
-if (!GEMINI_API_KEY) {
-  throw new Error('GEMINI_API_KEY no está configurada')
+const normalizeGeminiModelName = value => {
+  const model = String(value || 'gemini-2.5-flash').trim()
+  return model.replace(/^models\//, '')
 }
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
+const MODEL_NAME = normalizeGeminiModelName(
+  process.env.GEMINI_IMAGE_MODEL ||
+    process.env.GOOGLE_IMAGE_MODEL ||
+    process.env.GEMINI_MODEL ||
+    'gemini-2.5-flash',
+)
+
+const MIN_CONFIDENCE = Number(process.env.AI_MIN_CONFIDENCE || 0.65)
+const MAX_RETRIES = Math.min(
+  Math.max(Number(process.env.GEMINI_MAX_RETRIES || 3), 1),
+  5,
+)
+const MAX_IMAGE_BYTES = Math.min(
+  Math.max(Number(process.env.AI_IMAGE_MAX_BYTES || 10 * 1024 * 1024), 512 * 1024),
+  15 * 1024 * 1024,
+)
+const REMOTE_IMAGE_TIMEOUT_MS = Math.min(
+  Math.max(Number(process.env.AI_REMOTE_IMAGE_TIMEOUT_MS || 30000), 3000),
+  60000,
+)
 
 const SUPPORTED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -25,26 +44,116 @@ const SUPPORTED_MIME_TYPES = new Set([
   'image/heif',
 ])
 
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  'localhost.localdomain',
+])
+
+const MATERIALS = [
+  'algodón',
+  'poliéster',
+  'cuero',
+  'eco-cuero',
+  'cuero sintético',
+  'denim',
+  'lona',
+  'plástico',
+  'goma',
+  'metal',
+  'aluminio',
+  'acero',
+  'madera',
+  'vidrio',
+  'cerámica',
+  'tela',
+  'gamuza',
+  'nylon',
+  'silicona',
+]
+
+let genAI = null
+
+const getGeminiClient = () => {
+  if (!GEMINI_API_KEY) {
+    const error = new Error('GEMINI_API_KEY no está configurada')
+    error.code = 'AI_PROVIDER_DISABLED'
+    error.retryable = false
+    throw error
+  }
+
+  if (!genAI) {
+    genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
+  }
+
+  return genAI
+}
+
 function logInfo(message, meta = {}) {
-  logger.info('[AI VISION SERVICE]', { message, ...meta })
+  logger.info('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
 }
 
 function logWarn(message, meta = {}) {
-  logger.warn('[AI VISION SERVICE]', { message, ...meta })
+  logger.warn('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
 }
 
 function logError(message, meta = {}) {
-  logger.error('[AI VISION SERVICE]', { message, ...meta })
+  logger.error('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
+}
+
+function sanitizeLogMeta(meta = {}) {
+  const safe = { ...meta }
+
+  delete safe.apiKey
+  delete safe.GEMINI_API_KEY
+  delete safe.imageBuffer
+  delete safe.base64
+  delete safe.rawImage
+
+  if (safe.imageUrl) {
+    try {
+      const url = new URL(String(safe.imageUrl))
+      safe.imageUrl = `${url.protocol}//${url.hostname}${url.pathname}`
+    } catch {
+      safe.imageUrl = '[invalid-url]'
+    }
+  }
+
+  return safe
 }
 
 function normalizeMimeType(mimeType) {
   if (!mimeType || typeof mimeType !== 'string') return 'image/jpeg'
-  const normalized = mimeType.trim().toLowerCase()
+
+  const normalized = mimeType.split(';')[0].trim().toLowerCase()
+
   return SUPPORTED_MIME_TYPES.has(normalized) ? normalized : 'image/jpeg'
 }
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function isRetryableGeminiError(error) {
+  const message = String(error?.message || '').toLowerCase()
+  const status = Number(error?.status || error?.statusCode || 0)
+
+  return (
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    message.includes('429') ||
+    message.includes('quota') ||
+    message.includes('rate limit') ||
+    message.includes('timeout') ||
+    message.includes('503') ||
+    message.includes('500') ||
+    message.includes('temporarily unavailable') ||
+    message.includes('deadline exceeded') ||
+    message.includes('socket') ||
+    message.includes('network')
+  )
 }
 
 async function withRetry(fn, maxRetries = MAX_RETRIES) {
@@ -56,22 +165,15 @@ async function withRetry(fn, maxRetries = MAX_RETRIES) {
     } catch (error) {
       lastError = error
 
-      const message = String(error?.message || '').toLowerCase()
-      const isTransient =
-        message.includes('429') ||
-        message.includes('quota') ||
-        message.includes('rate limit') ||
-        message.includes('timeout') ||
-        message.includes('503') ||
-        message.includes('500') ||
-        message.includes('temporarily unavailable') ||
-        message.includes('deadline exceeded')
+      const retryable = isRetryableGeminiError(error)
 
-      if (!isTransient || attempt === maxRetries) {
+      if (!retryable || attempt === maxRetries) {
         throw error
       }
 
-      const backoffMs = 400 * attempt * attempt
+      const jitterMs = Math.floor(Math.random() * 180)
+      const backoffMs = 500 * attempt * attempt + jitterMs
+
       logWarn('Retry transitorio contra Gemini', {
         attempt,
         maxRetries,
@@ -86,26 +188,33 @@ async function withRetry(fn, maxRetries = MAX_RETRIES) {
   throw lastError
 }
 
-function safeString(value, { lower = false, upper = false } = {}) {
-  if (typeof value !== 'string') return null
-  const clean = value.trim()
+function safeString(value, { lower = false, upper = false, maxLength = 500 } = {}) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null
+
+  const clean = String(value).trim()
+
   if (!clean) return null
-  if (lower) return clean.toLowerCase()
-  if (upper) return clean.toUpperCase()
-  return clean
+
+  const truncated = clean.slice(0, maxLength)
+
+  if (lower) return truncated.toLowerCase()
+  if (upper) return truncated.toUpperCase()
+
+  return truncated
 }
 
-function uniqueStringArray(value, { lower = false } = {}) {
+function uniqueStringArray(value, { lower = false, maxItems = 30 } = {}) {
   if (!Array.isArray(value)) return []
+
   const out = value
-    .map(v => safeString(String(v ?? ''), { lower }))
+    .map(v => safeString(String(v ?? ''), { lower, maxLength: 80 }))
     .filter(Boolean)
 
-  return [...new Set(out)]
+  return [...new Set(out)].slice(0, maxItems)
 }
 
 function normalizeTags(value) {
-  return uniqueStringArray(value, { lower: true })
+  return uniqueStringArray(value, { lower: true, maxItems: 20 })
 }
 
 function normalizeAttributes(atributos) {
@@ -116,8 +225,14 @@ function normalizeAttributes(atributos) {
   const normalized = {}
 
   for (const [key, value] of Object.entries(atributos)) {
-    const cleanKey = safeString(String(key ?? ''), { lower: true })
-    const cleanValue = safeString(String(value ?? ''))
+    const cleanKey = safeString(String(key ?? ''), {
+      lower: true,
+      maxLength: 60,
+    })
+    const cleanValue = safeString(String(value ?? ''), {
+      maxLength: 120,
+    })
+
     if (cleanKey && cleanValue) {
       normalized[cleanKey] = cleanValue
     }
@@ -126,9 +241,33 @@ function normalizeAttributes(atributos) {
   return normalized
 }
 
-function clampConfidence(value) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 0.5
-  return Math.max(0, Math.min(1, value))
+function clampConfidence(value, fallback = 0.5) {
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed)) return fallback
+
+  return Math.max(0, Math.min(1, parsed))
+}
+
+function normalizePrice(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value >= 0 ? Math.round(value) : null
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value
+      .replace(/[^\d,.-]/g, '')
+      .replace(/\.(?=\d{3})/g, '')
+      .replace(',', '.')
+
+    const parsed = Number(normalized)
+
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.round(parsed)
+    }
+  }
+
+  return null
 }
 
 function extractJsonObject(rawText) {
@@ -136,7 +275,12 @@ function extractJsonObject(rawText) {
     throw new Error('Respuesta vacía o inválida del modelo')
   }
 
-  const trimmed = rawText.trim()
+  const trimmed = rawText
+    .trim()
+    .replace(/^```json/i, '')
+    .replace(/^```/i, '')
+    .replace(/```$/i, '')
+    .trim()
 
   try {
     return JSON.parse(trimmed)
@@ -154,7 +298,8 @@ function extractJsonObject(rawText) {
 }
 
 function normalizePreferenceType(type) {
-  const clean = safeString(type, { lower: true })
+  const clean = safeString(type, { lower: true, maxLength: 80 })
+
   if (!clean) return null
 
   if (clean === 'categoria') return 'category'
@@ -183,12 +328,16 @@ async function loadTenantLearningContext(tenantId) {
   try {
     const preferences = await AIPreference.find({ tenantId })
       .sort({ usageCount: -1, confidence: -1, updatedAt: -1 })
+      .limit(250)
       .lean()
 
     for (const pref of preferences) {
       const type = normalizePreferenceType(pref.type)
-      const correctedValue = safeString(pref.correctedValue)
-      const rawInput = safeString(pref.rawInput, { lower: true })
+      const correctedValue = safeString(pref.correctedValue, { maxLength: 120 })
+      const rawInput = safeString(pref.rawInput, {
+        lower: true,
+        maxLength: 120,
+      })
 
       if (!type || !correctedValue) continue
 
@@ -208,14 +357,18 @@ async function loadTenantLearningContext(tenantId) {
             : 1,
         confidence:
           typeof pref.confidence === 'number' && Number.isFinite(pref.confidence)
-            ? pref.confidence
+            ? clampConfidence(pref.confidence)
             : 0.7,
         source: pref.source || 'manual',
       })
     }
 
-    context.knownCategories = [...new Set(context.knownCategories)]
-    context.knownBrands = [...new Set(context.knownBrands)]
+    context.knownCategories = [...new Set(context.knownCategories)].slice(0, 80)
+    context.knownBrands = [...new Set(context.knownBrands)].slice(0, 80)
+
+    for (const [type, values] of Object.entries(context.preferencesByType)) {
+      context.preferencesByType[type] = values.slice(0, 40)
+    }
   } catch (error) {
     logError('Error cargando aIPreference', {
       tenantId,
@@ -226,7 +379,7 @@ async function loadTenantLearningContext(tenantId) {
   try {
     const recentCorrections = await CorrectionLog.find({ tenantId })
       .sort({ createdAt: -1 })
-      .limit(20)
+      .limit(30)
       .lean()
 
     const rules = []
@@ -234,16 +387,19 @@ async function loadTenantLearningContext(tenantId) {
     for (const item of recentCorrections) {
       if (Array.isArray(item.learnedRules)) {
         for (const learned of item.learnedRules) {
-          const rule = safeString(learned?.rule)
+          const rule = safeString(learned?.rule, { maxLength: 240 })
           if (rule) rules.push(rule)
         }
       }
 
-      const hint = safeString(item?.metadata?.businessRuleHint)
+      const hint = safeString(item?.metadata?.businessRuleHint, {
+        maxLength: 240,
+      })
+
       if (hint) rules.push(hint)
     }
 
-    context.learnedRules = [...new Set(rules)].slice(0, 15)
+    context.learnedRules = [...new Set(rules)].slice(0, 20)
   } catch (error) {
     logError('Error cargando correctionLog', {
       tenantId,
@@ -295,27 +451,12 @@ REGLAS OBLIGATORIAS:
 17. La confidence general debe ser un número entre 0 y 1.
 18. No inventes variantes si no hay evidencia.
 19. Material y precio son campos prioritarios: intentá resolverlos con el mayor criterio posible sin inventar.
+20. No sobreestimes marcas premium: solo indicá marca si hay logo, etiqueta, texto visible o evidencia muy fuerte.
+21. Si la imagen contiene varios objetos, describí el producto más dominante y marcá "multiple_objects_detected" en reasoningFlags.
+22. Si no se puede identificar un producto comercial claro, devolvé null en titulo/categoria y requiresHumanReview true.
 
 MATERIALES COMERCIALES POSIBLES SEGÚN CONTEXTO:
-- algodón
-- poliéster
-- cuero
-- eco-cuero
-- cuero sintético
-- denim
-- lona
-- plástico
-- goma
-- metal
-- aluminio
-- acero
-- madera
-- vidrio
-- cerámica
-- tela
-- gamuza
-- nylon
-- silicona
+${MATERIALS.map(material => `- ${material}`).join('\n')}
 
 ESQUEMA JSON OBLIGATORIO:
 {
@@ -341,15 +482,15 @@ ESQUEMA JSON OBLIGATORIO:
 }
 
 CRITERIOS DE CALIDAD:
-- titulo: corto, comercial y claro
-- descripcion: profesional, útil para catálogo, sin exageraciones
-- categoria y subcategoria: específicas y comerciales
-- marca: solo con evidencia razonable
-- precio_sugerido: estimar solo si hay base visual/comercial razonable
-- price_reasoning: breve explicación de por qué se estimó ese valor
-- atributos.material: priorizar el material principal visible o más probable
-- material_confidence: entre 0 y 1
-- reasoningFlags: usar flags como "uncertain_brand", "taxonomy_inferred", "price_low_confidence", "material_inferred", "new_pattern_detected"
+- titulo: corto, comercial y claro.
+- descripcion: profesional, útil para catálogo, sin exageraciones.
+- categoria y subcategoria: específicas y comerciales.
+- marca: solo con evidencia razonable.
+- precio_sugerido: estimar solo si hay base visual/comercial razonable.
+- price_reasoning: breve explicación de por qué se estimó ese valor.
+- atributos.material: priorizar el material principal visible o más probable.
+- material_confidence: entre 0 y 1.
+- reasoningFlags: usar flags como "uncertain_brand", "taxonomy_inferred", "price_low_confidence", "material_inferred", "multiple_objects_detected", "new_pattern_detected".
 
 Devolvé solamente el JSON.
 `.trim()
@@ -358,31 +499,37 @@ Devolvé solamente el JSON.
 function normalizeAnalysis(parsed, { hash, tenantId }) {
   const confidence = clampConfidence(parsed?.confidence)
 
-  const titulo = safeString(parsed?.titulo)
-  const descripcion = safeString(parsed?.descripcion)
-  const categoria = safeString(parsed?.categoria)
-  const subcategoria = safeString(parsed?.subcategoria)
-  const marca = safeString(parsed?.marca)
-  const moneda = safeString(parsed?.moneda, { upper: true }) || 'ARS'
+  const titulo = safeString(parsed?.titulo, { maxLength: 160 })
+  const descripcion = safeString(parsed?.descripcion, { maxLength: 1200 })
+  const categoria = safeString(parsed?.categoria, { maxLength: 120 })
+  const subcategoria = safeString(parsed?.subcategoria, { maxLength: 120 })
+  const marca = safeString(parsed?.marca, { maxLength: 120 })
+  const moneda = safeString(parsed?.moneda, { upper: true, maxLength: 12 }) || 'ARS'
 
   const atributos = normalizeAttributes(parsed?.atributos)
-
-  const precio_sugerido =
-    typeof parsed?.precio_sugerido === 'number' && Number.isFinite(parsed.precio_sugerido)
-      ? parsed.precio_sugerido
-      : null
-
+  const precio_sugerido = normalizePrice(parsed?.precio_sugerido)
   const material_confidence = clampConfidence(parsed?.material_confidence)
   const price_confidence = clampConfidence(parsed?.price_confidence)
-  const price_reasoning = safeString(parsed?.price_reasoning)
+  const price_reasoning = safeString(parsed?.price_reasoning, { maxLength: 500 })
+
+  const reasoningFlags = uniqueStringArray(parsed?.reasoningFlags, {
+    maxItems: 30,
+  })
+
+  const hasLowConfidence = confidence < MIN_CONFIDENCE
+  const hasMissingCriticalData =
+    !titulo || !categoria || !atributos?.material || precio_sugerido == null
+  const hasLowPriceConfidence =
+    precio_sugerido != null && price_confidence < Math.max(MIN_CONFIDENCE, 0.7)
+  const hasLowMaterialConfidence =
+    atributos?.material && material_confidence < Math.max(MIN_CONFIDENCE, 0.7)
 
   const needsReview =
     parsed?.requiresHumanReview === true ||
-    confidence < MIN_CONFIDENCE ||
-    !titulo ||
-    !categoria ||
-    !atributos?.material ||
-    precio_sugerido == null
+    hasLowConfidence ||
+    hasMissingCriticalData ||
+    hasLowPriceConfidence ||
+    hasLowMaterialConfidence
 
   return {
     titulo,
@@ -399,7 +546,7 @@ function normalizeAnalysis(parsed, { hash, tenantId }) {
     tags: normalizeTags(parsed?.tags),
     hasVariants: Boolean(parsed?.hasVariants),
     confidence,
-    reasoningFlags: uniqueStringArray(parsed?.reasoningFlags),
+    reasoningFlags,
     needsReview,
     hash,
     source: MODEL_NAME,
@@ -408,61 +555,164 @@ function normalizeAnalysis(parsed, { hash, tenantId }) {
   }
 }
 
-function buildFallbackResult({ hash, tenantId, error }) {
-  const message = String(error?.message || '')
-  const lower = message.toLowerCase()
-  const isQuotaError = message.includes('429') || lower.includes('quota')
+function buildProviderError(error) {
+  const message = error?.message || 'error desconocido'
+  const analysisError = new Error(
+    `El proveedor de IA no pudo completar el análisis: ${message}`,
+    { cause: error },
+  )
 
-  return {
-    titulo: null,
-    descripcion: isQuotaError
-      ? 'Cuota de IA excedida temporalmente.'
-      : 'Error técnico en el servicio de visión.',
-    categoria: null,
-    subcategoria: null,
-    marca: null,
-    precio_sugerido: null,
-    price_confidence: 0,
-    price_reasoning: null,
-    moneda: 'ARS',
-    atributos: {},
-    material_confidence: 0,
-    tags: ['revision-pendiente'],
-    hasVariants: false,
-    confidence: 0,
-    reasoningFlags: ['analysis_failed'],
-    needsReview: true,
-    hash,
-    source: 'fallback-error',
-    tenantId,
-    aiProcessed: false,
-    errorInfo: message,
+  analysisError.code = error?.code || 'AI_ANALYSIS_FAILED'
+  analysisError.retryable = isRetryableGeminiError(error)
+
+  return analysisError
+}
+
+function validateImageBuffer(imageBuffer) {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+    const error = new Error('imageBuffer inválido')
+    error.code = 'INVALID_IMAGE_BUFFER'
+    error.retryable = false
+    throw error
+  }
+
+  if (imageBuffer.length === 0) {
+    const error = new Error('La imagen está vacía')
+    error.code = 'EMPTY_IMAGE'
+    error.retryable = false
+    throw error
+  }
+
+  if (imageBuffer.length > MAX_IMAGE_BYTES) {
+    const error = new Error('La imagen supera el tamaño máximo permitido')
+    error.code = 'IMAGE_TOO_LARGE'
+    error.retryable = false
+    throw error
+  }
+}
+
+function isPrivateIp(ip) {
+  if (!ip) return true
+
+  if (net.isIP(ip) === 4) {
+    const parts = ip.split('.').map(Number)
+
+    return (
+      parts[0] === 10 ||
+      parts[0] === 127 ||
+      (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+      (parts[0] === 192 && parts[1] === 168) ||
+      (parts[0] === 169 && parts[1] === 254) ||
+      parts[0] === 0
+    )
+  }
+
+  if (net.isIP(ip) === 6) {
+    const normalized = ip.toLowerCase()
+
+    return (
+      normalized === '::1' ||
+      normalized.startsWith('fc') ||
+      normalized.startsWith('fd') ||
+      normalized.startsWith('fe80:')
+    )
+  }
+
+  return true
+}
+
+function validateRemoteImageUrl(imageUrl) {
+  let url
+
+  try {
+    url = new URL(imageUrl)
+  } catch {
+    const error = new Error('imageUrl inválida')
+    error.code = 'INVALID_IMAGE_URL'
+    error.retryable = false
+    throw error
+  }
+
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    const error = new Error('Protocolo de imagen no permitido')
+    error.code = 'INVALID_IMAGE_PROTOCOL'
+    error.retryable = false
+    throw error
+  }
+
+  const hostname = url.hostname.toLowerCase()
+
+  if (BLOCKED_HOSTNAMES.has(hostname)) {
+    const error = new Error('Host de imagen no permitido')
+    error.code = 'BLOCKED_IMAGE_HOST'
+    error.retryable = false
+    throw error
+  }
+
+  return url
+}
+
+async function assertSafeRemoteHost(url) {
+  const hostname = url.hostname
+
+  if (net.isIP(hostname)) {
+    if (isPrivateIp(hostname)) {
+      const error = new Error('IP de imagen no permitida')
+      error.code = 'BLOCKED_PRIVATE_IMAGE_IP'
+      error.retryable = false
+      throw error
+    }
+
+    return
+  }
+
+  const records = await dns.lookup(hostname, { all: true })
+
+  if (!records.length) {
+    const error = new Error('No se pudo resolver el host de la imagen')
+    error.code = 'IMAGE_HOST_RESOLUTION_FAILED'
+    error.retryable = true
+    throw error
+  }
+
+  for (const record of records) {
+    if (isPrivateIp(record.address)) {
+      const error = new Error('Host de imagen resuelve a IP privada')
+      error.code = 'BLOCKED_PRIVATE_IMAGE_HOST'
+      error.retryable = false
+      throw error
+    }
   }
 }
 
 export async function analyzeImage(imageBuffer, mimeType, tenantId) {
-  if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
-    throw new Error('imageBuffer inválido')
-  }
+  validateImageBuffer(imageBuffer)
 
   const normalizedTenantId = String(tenantId || '').trim()
 
   if (!mongoose.Types.ObjectId.isValid(normalizedTenantId)) {
-    throw new Error('tenantId inválido')
+    const error = new Error('tenantId inválido')
+    error.code = 'INVALID_TENANT_ID'
+    error.retryable = false
+    throw error
   }
 
   const hash = crypto.createHash('sha256').update(imageBuffer).digest('hex')
   const safeMime = normalizeMimeType(mimeType)
 
   try {
+    const client = getGeminiClient()
     const learningContext = await loadTenantLearningContext(normalizedTenantId)
 
     logInfo('Contexto de aprendizaje cargado', {
-      tenantId,
+      tenantId: normalizedTenantId,
       hash,
+      model: MODEL_NAME,
       knownCategories: learningContext.knownCategories.length,
       knownBrands: learningContext.knownBrands.length,
       learnedRules: learningContext.learnedRules.length,
+      imageBytes: imageBuffer.length,
+      mimeType: safeMime,
     })
 
     const prompt = buildPrompt({
@@ -473,7 +723,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
       preferencesByType: learningContext.preferencesByType,
     })
 
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME })
+    const model = client.getGenerativeModel({ model: MODEL_NAME })
 
     const result = await withRetry(async () => {
       return model.generateContent({
@@ -502,26 +752,34 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     const response = await result.response
     const rawText = response.text()
     const parsed = extractJsonObject(rawText)
-    const normalized = normalizeAnalysis(parsed, { hash, tenantId })
+    const normalized = normalizeAnalysis(parsed, {
+      hash,
+      tenantId: normalizedTenantId,
+    })
 
     logInfo('Análisis IA completado', {
-      tenantId,
+      tenantId: normalizedTenantId,
       hash,
+      model: MODEL_NAME,
       confidence: normalized.confidence,
       needsReview: normalized.needsReview,
       categoria: normalized.categoria,
       marca: normalized.marca,
+      priceConfidence: normalized.price_confidence,
+      materialConfidence: normalized.material_confidence,
     })
 
     return normalized
   } catch (error) {
     logError('analyzeImage failed', {
-      tenantId,
+      tenantId: normalizedTenantId,
       hash,
+      model: MODEL_NAME,
       error: error?.message,
+      code: error?.code,
     })
 
-    return buildFallbackResult({ hash, tenantId, error })
+    throw buildProviderError(error)
   }
 }
 
@@ -531,17 +789,66 @@ export async function analyzeProductImage({ tenantId, imageBuffer, mimeType }) {
 
 export async function analyzeProductImageFromUrl({ tenantId, imageUrl }) {
   if (!imageUrl || typeof imageUrl !== 'string') {
-    throw new Error('imageUrl inválida')
+    const error = new Error('imageUrl inválida')
+    error.code = 'INVALID_IMAGE_URL'
+    error.retryable = false
+    throw error
   }
 
-  const response = await fetch(imageUrl)
+  const url = validateRemoteImageUrl(imageUrl)
+  await assertSafeRemoteHost(url)
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REMOTE_IMAGE_TIMEOUT_MS)
+
+  let response
+
+  try {
+    response = await fetch(url.toString(), {
+      signal: controller.signal,
+      redirect: 'error',
+      headers: {
+        Accept: [...SUPPORTED_MIME_TYPES].join(', '),
+        'User-Agent': 'Henko-AI-Vision/1.0',
+      },
+    })
+  } catch (error) {
+    const fetchError = new Error(
+      `No se pudo descargar la imagen remota: ${error?.message || 'error desconocido'}`,
+      { cause: error },
+    )
+    fetchError.code = error?.name === 'AbortError' ? 'IMAGE_FETCH_TIMEOUT' : 'IMAGE_FETCH_FAILED'
+    fetchError.retryable = error?.name === 'AbortError'
+    throw fetchError
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!response.ok) {
-    throw new Error(`No se pudo descargar la imagen (${response.status})`)
+    const error = new Error(`No se pudo descargar la imagen (${response.status})`)
+    error.code = 'IMAGE_DOWNLOAD_FAILED'
+    error.retryable = response.status >= 500 || response.status === 429
+    throw error
   }
 
-  const contentType = response.headers.get('content-type') || 'image/jpeg'
+  const contentType = normalizeMimeType(response.headers.get('content-type') || 'image/jpeg')
+  const contentLength = Number(response.headers.get('content-length') || 0)
+
+  if (contentLength > MAX_IMAGE_BYTES) {
+    const error = new Error('La imagen remota supera el tamaño máximo permitido')
+    error.code = 'IMAGE_TOO_LARGE'
+    error.retryable = false
+    throw error
+  }
+
   const arrayBuffer = await response.arrayBuffer()
+
+  if (arrayBuffer.byteLength > MAX_IMAGE_BYTES) {
+    const error = new Error('La imagen remota supera el tamaño máximo permitido')
+    error.code = 'IMAGE_TOO_LARGE'
+    error.retryable = false
+    throw error
+  }
 
   return analyzeImage(Buffer.from(arrayBuffer), contentType, tenantId)
 }

@@ -641,8 +641,6 @@ export const notifyWishlistPromotions = async ({
   }
 
   const users = [...usersById.values()].slice(0, safeLimit)
-  console.log('users',users)
-
 
   logger.info('[WishlistPromotionNotifier] Usuarios con wishlist detectados', {
     tenantId: String(normalizedTenantId),
@@ -667,8 +665,6 @@ export const notifyWishlistPromotions = async ({
 
   for (const user of users) {
     const recipientEmail = normalizeEmail(user.email)
-    console.log('recipientEmail',recipientEmail)
-
 
     if (!recipientEmail) {
       skipped += 1
@@ -798,12 +794,10 @@ export const notifyWishlistPromotions = async ({
           product,
           promotion,
         })
-console.log('emailContent',emailContent)
 
         logger.info('[WishlistPromotionNotifier] Enviando email de wishlist', {
           tenantId: String(normalizedTenantId),
           userId: String(user?._id),
-          recipientEmail,
           userRole: getUserRole(user),
           productId: String(product._id),
           promotionId: String(promotion.promotionId),

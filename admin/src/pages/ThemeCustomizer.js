@@ -45,7 +45,7 @@ import {
 
 import { ThemeProvider } from '@mui/material/styles'
 import adminBaseTheme from '../theme/muiTheme'
-import {useTheme} from '@hooks/useThemeConfig'
+import { useTheme } from '@hooks/useThemeConfig'
 
 // Panels
 import ColorsPanel from '@components/ColorsPanel'
@@ -84,38 +84,37 @@ const ThemeCustomizer = () => {
     theme,
     activeTheme,
     hasChanges,
-    
+
     // Status
     isLoading,
     isSaving,
     error,
-    
+
     // Auto-save
     autoSaveEnabled,
     lastSaved,
     autoSaveError,
     toggleAutoSave,
-    
+
     // Preview system
     previewMode,
     previewId,
     togglePreview,
     clearPreview,
     createPreview,
-    
+
     // Actions
     updateField,
     updateSection,
     save,
     discard,
     reset,
-    
+
     // Images
     uploadImage,
-    
+
     // Versioning
     rollback,
-    
   } = useTheme()
 
   // ==========================================
@@ -140,18 +139,56 @@ const ThemeCustomizer = () => {
   // CONFIGURACIÓN TABS
   // ==========================================
 
-  const tabs = useMemo(() => [
-    { icon: <PaletteIcon />, label: 'Colores', id: 'colors', hasPanel: true },
-    { icon: <TextFieldsIcon />, label: 'Tipografía', id: 'typography', hasPanel: true },
-    { icon: <TuneIcon />, label: 'Espaciado', id: 'spacing', hasPanel: true },
-    { icon: <SmartButtonIcon />, label: 'Botones', id: 'buttons', hasPanel: true },
-    { icon: <ViewCompactIcon />, label: 'Layout', id: 'layout', hasPanel: true },
-    { icon: <ImageIcon />, label: 'Hero', id: 'hero', hasPanel: true },
-    { icon: <WebIcon />, label: 'Header/Footer', id: 'header-footer', hasPanel: true },
-    { icon: <ShoppingBagIcon />, label: 'Productos', id: 'products', hasPanel: true },
-    { icon: <AnimationIcon />, label: 'Animaciones', id: 'animations', hasPanel: true },
-    { icon: <SettingsIcon />, label: 'Avanzado', id: 'advanced', hasPanel: true },
-  ], [])
+  const tabs = useMemo(
+    () => [
+      { icon: <PaletteIcon />, label: 'Colores', id: 'colors', hasPanel: true },
+      {
+        icon: <TextFieldsIcon />,
+        label: 'Tipografía',
+        id: 'typography',
+        hasPanel: true,
+      },
+      { icon: <TuneIcon />, label: 'Espaciado', id: 'spacing', hasPanel: true },
+      {
+        icon: <SmartButtonIcon />,
+        label: 'Botones',
+        id: 'buttons',
+        hasPanel: true,
+      },
+      {
+        icon: <ViewCompactIcon />,
+        label: 'Layout',
+        id: 'layout',
+        hasPanel: true,
+      },
+      { icon: <ImageIcon />, label: 'Hero', id: 'hero', hasPanel: true },
+      {
+        icon: <WebIcon />,
+        label: 'Header/Footer',
+        id: 'header-footer',
+        hasPanel: true,
+      },
+      {
+        icon: <ShoppingBagIcon />,
+        label: 'Productos',
+        id: 'products',
+        hasPanel: true,
+      },
+      {
+        icon: <AnimationIcon />,
+        label: 'Animaciones',
+        id: 'animations',
+        hasPanel: true,
+      },
+      {
+        icon: <SettingsIcon />,
+        label: 'Avanzado',
+        id: 'advanced',
+        hasPanel: true,
+      },
+    ],
+    [],
+  )
 
   // ==========================================
   // HANDLERS
@@ -168,7 +205,11 @@ const ThemeCustomizer = () => {
   }, [save, clearPreview])
 
   const handleReset = useCallback(async () => {
-    if (window.confirm('¿Resetear todo el tema a valores por defecto? Se perderán todos los cambios.')) {
+    if (
+      window.confirm(
+        '¿Resetear todo el tema a valores por defecto? Se perderán todos los cambios.',
+      )
+    ) {
       const result = await reset()
       if (result.meta?.requestStatus === 'fulfilled') {
         setShowSuccess(true)
@@ -208,24 +249,27 @@ const ThemeCustomizer = () => {
   // HELPERS DE DATOS
   // ==========================================
 
-  const getSectionData = useCallback((tabId) => {
-    if (!theme) return {}
-    
-    // Tab compuesto: Header + Footer
-    if (tabId === 'header-footer') {
-      return {
-        header: theme.header || {},
-        footer: theme.footer || {},
+  const getSectionData = useCallback(
+    tabId => {
+      if (!theme) return {}
+
+      // Tab compuesto: Header + Footer
+      if (tabId === 'header-footer') {
+        return {
+          header: theme.header || {},
+          footer: theme.footer || {},
+        }
       }
-    }
-    
-    return theme[tabId] || {}
-  }, [theme])
+
+      return theme[tabId] || {}
+    },
+    [theme],
+  )
 
   const currentTab = tabs[activeTab]
-  const sectionData = useMemo(() => 
-    getSectionData(currentTab?.id), 
-    [currentTab?.id, getSectionData]
+  const sectionData = useMemo(
+    () => getSectionData(currentTab?.id),
+    [currentTab?.id, getSectionData],
   )
 
   // ==========================================
@@ -249,7 +293,7 @@ const ThemeCustomizer = () => {
             {...commonProps}
             colors={sectionData}
             updateField={updateField}
-            onChange={(colors) => updateSection('colors', colors)}
+            onChange={colors => updateSection('colors', colors)}
           />
         )
 
@@ -259,7 +303,7 @@ const ThemeCustomizer = () => {
             {...commonProps}
             value={sectionData}
             updateField={updateField}
-            onChange={(v) => updateSection('typography', v)}
+            onChange={v => updateSection('typography', v)}
           />
         )
 
@@ -268,7 +312,7 @@ const ThemeCustomizer = () => {
           <SpacingEditor
             {...commonProps}
             value={sectionData}
-            onChange={(v) => updateSection('spacing', v)}
+            onChange={v => updateSection('spacing', v)}
           />
         )
 
@@ -277,7 +321,7 @@ const ThemeCustomizer = () => {
           <CustomButton
             {...commonProps}
             value={sectionData}
-            onChange={(v) => updateSection('buttons', v)}
+            onChange={v => updateSection('buttons', v)}
           />
         )
 
@@ -286,7 +330,7 @@ const ThemeCustomizer = () => {
           <LayoutEditor
             {...commonProps}
             value={sectionData}
-            onChange={(v) => updateSection('layout', v)}
+            onChange={v => updateSection('layout', v)}
           />
         )
 
@@ -295,12 +339,14 @@ const ThemeCustomizer = () => {
           <HeroEditor
             {...commonProps}
             value={sectionData}
-            onChange={(v) => updateSection('hero', v)}
-            onImageUpload={(file) => uploadImage({ 
-              file, 
-              type: 'hero', 
-              fieldPath: 'hero.backgroundImage' 
-            })}
+            onChange={v => updateSection('hero', v)}
+            onImageUpload={file =>
+              uploadImage({
+                file,
+                type: 'hero',
+                fieldPath: 'hero.backgroundImage',
+              })
+            }
           />
         )
 
@@ -311,24 +357,30 @@ const ThemeCustomizer = () => {
               {...commonProps}
               value={sectionData.header}
               colors={theme.colors || {}}
-              onColorChange={(key, color) => updateField(`colors.${key}`, color)}
-              onChange={(v) => updateSection('header', v)}
-              onLogoUpload={(file) => uploadImage({ 
-                file, 
-                type: 'logo', 
-                fieldPath: 'header.logo' 
-              })}
+              onColorChange={(key, color) =>
+                updateField(`colors.${key}`, color)
+              }
+              onChange={v => updateSection('header', v)}
+              onLogoUpload={file =>
+                uploadImage({
+                  file,
+                  type: 'logo',
+                  fieldPath: 'header.logo',
+                })
+              }
             />
             <Divider />
             <FooterEditor
               {...commonProps}
               value={sectionData.footer}
-              onChange={(v) => updateSection('footer', v)}
-              onLogoUpload={(file) => uploadImage({ 
-                file, 
-                type: 'logo', 
-                fieldPath: 'footer.logo' 
-              })}
+              onChange={v => updateSection('footer', v)}
+              onLogoUpload={file =>
+                uploadImage({
+                  file,
+                  type: 'logo',
+                  fieldPath: 'footer.logo',
+                })
+              }
             />
           </Stack>
         )
@@ -338,7 +390,7 @@ const ThemeCustomizer = () => {
           <ProductsEditor
             {...commonProps}
             value={sectionData}
-            onChange={(v) => updateSection('products', v)}
+            onChange={v => updateSection('products', v)}
           />
         )
 
@@ -347,7 +399,7 @@ const ThemeCustomizer = () => {
           <AnimationsEditor
             {...commonProps}
             value={sectionData}
-            onChange={(v) => updateSection('animations', v)}
+            onChange={v => updateSection('animations', v)}
           />
         )
 
@@ -358,9 +410,9 @@ const ThemeCustomizer = () => {
             value={sectionData}
             customCSS={theme.advanced?.customCSS || ''}
             customJS={theme.advanced?.customJS || ''}
-            onChange={(v) => updateSection('advanced', v)}
-            onCSSChange={(v) => updateField('advanced.customCSS', v)}
-            onJSChange={(v) => updateField('advanced.customJS', v)}
+            onChange={v => updateSection('advanced', v)}
+            onCSSChange={v => updateField('advanced.customCSS', v)}
+            onJSChange={v => updateField('advanced.customJS', v)}
           />
         )
 
@@ -375,15 +427,17 @@ const ThemeCustomizer = () => {
 
   if (isLoading || !theme) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        height: '100vh', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        flexDirection: 'column',
-        gap: 2,
-        bgcolor: 'background.default',
-      }}>
+      <Box
+        sx={{
+          display: 'flex',
+          height: '100vh',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          gap: 2,
+          bgcolor: 'background.default',
+        }}
+      >
         <CircularProgress size={60} thickness={4} />
         <Typography variant="h6" color="text.secondary">
           Cargando configuración del tema...
@@ -401,10 +455,10 @@ const ThemeCustomizer = () => {
   const faviconUrl = theme.general?.favicon?.url
 
   // Formatear último guardado
-  const lastSavedText = lastSaved 
-    ? new Date(lastSaved).toLocaleTimeString('es-ES', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+  const lastSavedText = lastSaved
+    ? new Date(lastSaved).toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit',
       })
     : null
   const resolvedErrorMessage =
@@ -421,14 +475,13 @@ const ThemeCustomizer = () => {
   return (
     <ThemeProvider theme={adminBaseTheme}>
       <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-        
         {/* ==========================================
             APP BAR (HEADER)
         ========================================== */}
-        <AppBar 
-          position="fixed" 
-          sx={{ 
-            zIndex: (t) => t.zIndex.drawer + 1,
+        <AppBar
+          position="fixed"
+          sx={{
+            zIndex: t => t.zIndex.drawer + 1,
             bgcolor: 'background.paper',
             color: 'text.primary',
             boxShadow: 1,
@@ -441,19 +494,19 @@ const ThemeCustomizer = () => {
             </Typography>
 
             {/* Info Tenant */}
-            <Chip 
-              label={`Tenant: ${tenantId || 'default'}`} 
-              size="small" 
+            <Chip
+              label={`Tenant: ${tenantId || 'default'}`}
+              size="small"
               variant="outlined"
-              sx={{ mr: 2 }} 
+              sx={{ mr: 2 }}
             />
 
             {/* Indicador de cambios */}
             {hasChanges && (
               <Badge color="warning" variant="dot" sx={{ mr: 2 }}>
-                <Chip 
-                  label="Sin guardar" 
-                  size="small" 
+                <Chip
+                  label="Sin guardar"
+                  size="small"
                   color="warning"
                   variant="outlined"
                 />
@@ -461,7 +514,13 @@ const ThemeCustomizer = () => {
             )}
 
             {/* Auto-save Toggle */}
-            <Tooltip title={autoSaveEnabled ? 'Auto-guardado activado' : 'Auto-guardado desactivado'}>
+            <Tooltip
+              title={
+                autoSaveEnabled
+                  ? 'Auto-guardado activado'
+                  : 'Auto-guardado desactivado'
+              }
+            >
               <FormControlLabel
                 control={
                   <Switch
@@ -498,7 +557,7 @@ const ThemeCustomizer = () => {
 
             {/* Historial */}
             <Tooltip title="Historial de versiones">
-              <IconButton 
+              <IconButton
                 onClick={() => setShowHistory(true)}
                 size="small"
                 sx={{ mr: 1 }}
@@ -509,8 +568,8 @@ const ThemeCustomizer = () => {
 
             {/* Reset */}
             <Tooltip title="Resetear tema">
-              <IconButton 
-                onClick={handleReset} 
+              <IconButton
+                onClick={handleReset}
                 disabled={isSaving}
                 size="small"
                 color="error"
@@ -540,10 +599,22 @@ const ThemeCustomizer = () => {
               color={hasChanges ? 'primary' : 'success'}
               onClick={handleSave}
               disabled={isSaving || (!hasChanges && !previewMode)}
-              startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+              startIcon={
+                isSaving ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : (
+                  <SaveIcon />
+                )
+              }
               size="small"
             >
-              {isSaving ? 'Guardando...' : previewMode ? 'Guardar Cambios' : hasChanges ? 'Guardar' : 'Guardado'}
+              {isSaving
+                ? 'Guardando...'
+                : previewMode
+                  ? 'Guardar Cambios'
+                  : hasChanges
+                    ? 'Guardar'
+                    : 'Guardado'}
             </Button>
           </Toolbar>
         </AppBar>
@@ -601,23 +672,32 @@ const ThemeCustomizer = () => {
           </Tabs>
 
           {/* Contenido del Panel */}
-          <Box sx={{ 
-            flex: 1, 
-            overflow: 'auto',
-            p: 3,
-          }}>
+          <Box
+            sx={{
+              flex: 1,
+              overflow: 'auto',
+              p: 3,
+            }}
+          >
             {/* Info General */}
             <Paper sx={{ p: 2, mb: 3 }} variant="outlined">
-              <Typography variant="subtitle2" gutterBottom color="text.secondary" fontWeight={600}>
+              <Typography
+                variant="subtitle2"
+                gutterBottom
+                color="text.secondary"
+                fontWeight={600}
+              >
                 Información General
               </Typography>
-              
+
               <Stack spacing={2}>
                 <TextField
                   fullWidth
                   label="Nombre de la Tienda"
                   value={storeName}
-                  onChange={(e) => updateField('general.storeName', e.target.value)}
+                  onChange={e =>
+                    updateField('general.storeName', e.target.value)
+                  }
                   size="small"
                   variant="outlined"
                 />
@@ -626,17 +706,17 @@ const ThemeCustomizer = () => {
                   fullWidth
                   label="Slogan"
                   value={tagline}
-                  onChange={(e) => updateField('general.tagline', e.target.value)}
+                  onChange={e => updateField('general.tagline', e.target.value)}
                   size="small"
                   variant="outlined"
                 />
 
                 {faviconUrl && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <img 
-                      src={faviconUrl} 
-                      alt="Favicon" 
-                      style={{ width: 16, height: 16 }} 
+                    <img
+                      src={faviconUrl}
+                      alt="Favicon"
+                      style={{ width: 16, height: 16 }}
                     />
                     <Typography variant="caption" color="text.secondary">
                       Favicon cargado
@@ -670,38 +750,44 @@ const ThemeCustomizer = () => {
         >
           {/* Toolbar de Preview */}
           {previewMode && (
-            <Paper 
-              sx={{ 
-                p: 1, 
-                mx: 2, 
-                mt: 2, 
-                display: 'flex', 
+            <Paper
+              sx={{
+                p: 1,
+                mx: 2,
+                mt: 2,
+                display: 'flex',
                 gap: 1,
                 alignItems: 'center',
-              }} 
+              }}
               variant="outlined"
             >
               <Typography variant="caption" fontWeight={600} sx={{ mr: 1 }}>
                 Vista Previa:
               </Typography>
-              
+
               <Button
                 size="small"
-                variant={previewViewport === 'desktop' ? 'contained' : 'outlined'}
+                variant={
+                  previewViewport === 'desktop' ? 'contained' : 'outlined'
+                }
                 onClick={() => setPreviewViewport('desktop')}
               >
                 Desktop
               </Button>
               <Button
                 size="small"
-                variant={previewViewport === 'tablet' ? 'contained' : 'outlined'}
+                variant={
+                  previewViewport === 'tablet' ? 'contained' : 'outlined'
+                }
                 onClick={() => setPreviewViewport('tablet')}
               >
                 Tablet
               </Button>
               <Button
                 size="small"
-                variant={previewViewport === 'mobile' ? 'contained' : 'outlined'}
+                variant={
+                  previewViewport === 'mobile' ? 'contained' : 'outlined'
+                }
                 onClick={() => setPreviewViewport('mobile')}
               >
                 Mobile
@@ -711,10 +797,10 @@ const ThemeCustomizer = () => {
 
               {previewId && (
                 <>
-                  <Chip 
-                    label="Preview no publicado" 
-                    color="info" 
-                    size="small" 
+                  <Chip
+                    label="Preview no publicado"
+                    color="info"
+                    size="small"
                     variant="outlined"
                   />
                   <Button
@@ -733,7 +819,7 @@ const ThemeCustomizer = () => {
 
           {/* Preview Component */}
           <Box sx={{ flex: 1, p: previewMode ? 2 : 3, overflow: 'auto' }}>
-            <LivePreview 
+            <LivePreview
               themeData={activeTheme || theme}
               viewport={previewViewport}
               isPreview={previewMode}
@@ -744,7 +830,7 @@ const ThemeCustomizer = () => {
         {/* ==========================================
             MODALES Y FEEDBACK
         ========================================== */}
-        
+
         {/* Historial de Versiones */}
         <VersionHistory
           open={showHistory}
@@ -760,8 +846,8 @@ const ThemeCustomizer = () => {
           onClose={() => setShowSuccess(false)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         >
-          <Alert 
-            severity="success" 
+          <Alert
+            severity="success"
             onClose={() => setShowSuccess(false)}
             variant="filled"
           >
@@ -776,8 +862,8 @@ const ThemeCustomizer = () => {
           onClose={() => setShowError(false)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         >
-          <Alert 
-            severity="error" 
+          <Alert
+            severity="error"
             onClose={() => setShowError(false)}
             variant="filled"
           >

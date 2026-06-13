@@ -3,6 +3,7 @@ import reactPlugin from 'eslint-plugin-react'
 import prettierPlugin from 'eslint-plugin-prettier'
 import unusedImports from 'eslint-plugin-unused-imports'
 import babelParser from '@babel/eslint-parser'
+import globals from 'globals' // 1. Importa el paquete oficial de globales
 
 export default [
   js.configs.recommended,
@@ -50,31 +51,21 @@ export default [
         },
       },
       globals: {
-        browser: true,
-        es2021: true,
-        node: true,
-        jest: true,
+        // 2. Desenrolla los entornos usando el operador spread (...)
+        ...globals.browser, 
+        ...globals.node,
+        ...globals.jest,
+        
+        // 3. Tus globales personalizados o anulaciones se quedan aquí
         vi: 'readonly',
         describe: 'readonly',
         test: 'readonly',
         expect: 'readonly',
         beforeEach: 'readonly',
         afterEach: 'readonly',
-        es6: true,
-        console: 'readonly',
-        localStorage: 'readonly',
-        sessionStorage: 'readonly',
-        document: 'readonly',
-        window: 'readonly',
-        FormData: 'readonly',
-        URLSearchParams: 'readonly',
-        process: true,
-        module: 'readonly',
         __webpack_require__: 'readonly',
         __webpack_exports__: 'readonly',
         __unused_webpack_module: 'readonly',
-        self: 'readonly',
-        setTimeout: 'readonly',
       },
     },
     plugins: {

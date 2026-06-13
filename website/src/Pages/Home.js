@@ -1,5 +1,12 @@
 // 📁 src/pages/Home.jsx
-import React, { Suspense, useEffect, useState, memo, useMemo, useCallback } from 'react'
+import React, {
+  Suspense,
+  useEffect,
+  useState,
+  memo,
+  useMemo,
+  useCallback,
+} from 'react'
 
 import { useDispatch, useSelector } from 'react-redux'
 import { Link, useNavigate } from 'react-router-dom'
@@ -60,7 +67,8 @@ import { Newprimary } from '../theme/colors'
 
 const DEFAULT_IMAGES = {
   hero: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=1200&h=800&fit=crop',
-  special: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&h=600&fit=crop',
+  special:
+    'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&h=600&fit=crop',
   product: '/assets/images/placeholder.png',
   brand: '/assets/images/brand-placeholder.png',
 }
@@ -88,55 +96,62 @@ const getFinalPrice = (price, discountPercentage) => {
   return numericPrice - numericPrice * (discount / 100)
 }
 
-const SafeImage = memo(({ src, alt, fallbackSrc = DEFAULT_IMAGES.product, sx = {}, ...props }) => {
-  const [imgSrc, setImgSrc] = useState(src || fallbackSrc)
-  const [hasError, setHasError] = useState(false)
+const SafeImage = memo(
+  ({ src, alt, fallbackSrc = DEFAULT_IMAGES.product, sx = {}, ...props }) => {
+    const [imgSrc, setImgSrc] = useState(src || fallbackSrc)
+    const [hasError, setHasError] = useState(false)
 
-  useEffect(() => {
-    setImgSrc(src || fallbackSrc)
-    setHasError(false)
-  }, [src, fallbackSrc])
+    useEffect(() => {
+      setImgSrc(src || fallbackSrc)
+      setHasError(false)
+    }, [src, fallbackSrc])
 
-  const handleError = () => {
-    if (!hasError && imgSrc !== fallbackSrc) {
-      console.warn(`Image failed to load: ${src}, using fallback`)
-      setImgSrc(fallbackSrc)
-      setHasError(true)
+    const handleError = () => {
+      if (!hasError && imgSrc !== fallbackSrc) {
+        console.warn(`Image failed to load: ${src}, using fallback`)
+        setImgSrc(fallbackSrc)
+        setHasError(true)
+      }
     }
-  }
 
-  if (hasError && !fallbackSrc) {
+    if (hasError && !fallbackSrc) {
+      return (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'grey.100',
+            color: 'grey.400',
+            ...sx,
+          }}
+        >
+          <BsImageAlt size={32} />
+        </Box>
+      )
+    }
+
     return (
       <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: 'grey.100',
-          color: 'grey.400',
-          ...sx,
-        }}
-      >
-        <BsImageAlt size={32} />
-      </Box>
+        component="img"
+        src={imgSrc}
+        alt={alt || 'Imagen'}
+        onError={handleError}
+        sx={{ objectFit: 'cover', ...sx }}
+        {...props}
+      />
     )
-  }
-
-  return (
-    <Box
-      component="img"
-      src={imgSrc}
-      alt={alt || 'Imagen'}
-      onError={handleError}
-      sx={{ objectFit: 'cover', ...sx }}
-      {...props}
-    />
-  )
-})
+  },
+)
 
 SafeImage.displayName = 'SafeImage'
 
-const PromotionalSpecialProduct = ({ item, formatPrice, themeColors, isDark = false }) => {
+const PromotionalSpecialProduct = ({
+  item,
+  formatPrice,
+  themeColors,
+  isDark = false,
+}) => {
   const theme = useTheme()
   const product = getProductFromPromotionalItem(item)
 
@@ -158,9 +173,7 @@ const PromotionalSpecialProduct = ({ item, formatPrice, themeColors, isDark = fa
     ? alpha(theme.palette.common.white, 0.12)
     : alpha(themeColors.actionPrimary, 0.06)
 
-  const contentColor = isDark
-    ? theme.palette.common.white
-    : themeColors.text
+  const contentColor = isDark ? theme.palette.common.white : themeColors.text
 
   const secondaryTextColor = isDark
     ? alpha(theme.palette.common.white, 0.7)
@@ -184,7 +197,8 @@ const PromotionalSpecialProduct = ({ item, formatPrice, themeColors, isDark = fa
         border: `1px solid ${cardBorder}`,
         boxShadow: 'none',
         backdropFilter: 'blur(10px)',
-        transition: 'background-color .18s ease, transform .18s ease, border-color .18s ease',
+        transition:
+          'background-color .18s ease, transform .18s ease, border-color .18s ease',
         '&:hover': {
           bgcolor: cardHoverBackground,
           borderColor: alpha(themeColors.actionPrimary, 0.25),
@@ -237,7 +251,11 @@ const PromotionalSpecialProduct = ({ item, formatPrice, themeColors, isDark = fa
           )}
         </Stack>
 
-        <Typography fontWeight={850} noWrap sx={{ fontSize: 14.25, lineHeight: 1.22 }}>
+        <Typography
+          fontWeight={850}
+          noWrap
+          sx={{ fontSize: 14.25, lineHeight: 1.22 }}
+        >
           {item.customTitle || product.title}
         </Typography>
 
@@ -264,7 +282,10 @@ const PromotionalSpecialProduct = ({ item, formatPrice, themeColors, isDark = fa
             </Typography>
           )}
 
-          <Typography fontWeight={900} sx={{ color: currentPriceColor, fontSize: 14.5 }}>
+          <Typography
+            fontWeight={900}
+            sx={{ color: currentPriceColor, fontSize: 14.5 }}
+          >
             {formatPrice(finalPrice)}
           </Typography>
         </Stack>
@@ -293,7 +314,10 @@ const Home = () => {
     return {}
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
 
   const spacingConfig = useMemo(
     () => getSpacingThemeConfig(activeConfig),
@@ -319,7 +343,9 @@ const Home = () => {
   const { isLoading } = useSelector(state => state.product)
 
   const promotionalBlocks = useSelector(selectPublicPromotionalBlocks) || []
-  const promotionalBlocksLoading = useSelector(selectPublicPromotionalBlocksLoading)
+  const promotionalBlocksLoading = useSelector(
+    selectPublicPromotionalBlocksLoading,
+  )
 
   const SKELETON_ARRAY = Array.from({ length: 4 }, (_, i) => i)
 
@@ -328,12 +354,16 @@ const Home = () => {
   const { track, events } = useUserMetrics({ trackPageViews: false })
 
   const { user } = useSelector(state => state.user)
-  const tenantId = tenantContext?.tenantId || tenantConfig?.tenantId || user?.tenantId
+  const tenantId =
+    tenantContext?.tenantId || tenantConfig?.tenantId || user?.tenantId
 
   const heroConfig = useMemo(() => {
     const isValidUrl = url => {
       if (!url) return false
-      return typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
+      return (
+        typeof url === 'string' &&
+        (url.startsWith('http') || url.startsWith('/'))
+      )
     }
 
     const hero = activeConfig?.hero || {}
@@ -355,9 +385,7 @@ const Home = () => {
       ctaText: hero.ctaText || 'Ver productos',
       ctaLink: hero.ctaLink || '/product',
       showCta: hero.showCta !== false,
-      bannerImage: isValidUrl(heroImage)
-        ? heroImage
-        : DEFAULT_IMAGES.hero,
+      bannerImage: isValidUrl(heroImage) ? heroImage : DEFAULT_IMAGES.hero,
       specialBanner: isValidUrl(activeConfig?.specialBanner)
         ? activeConfig.specialBanner
         : DEFAULT_IMAGES.special,
@@ -381,7 +409,9 @@ const Home = () => {
     if (!weeklyOffersBlock?.products) return []
 
     return weeklyOffersBlock.products
-      .filter(item => item?.isActive !== false && getProductFromPromotionalItem(item))
+      .filter(
+        item => item?.isActive !== false && getProductFromPromotionalItem(item),
+      )
       .sort((a, b) => Number(a.priority || 1) - Number(b.priority || 1))
       .slice(0, weeklyOffersBlock.maxItems || 5)
   }, [weeklyOffersBlock])
@@ -390,7 +420,9 @@ const Home = () => {
     if (!Array.isArray(block?.products)) return []
 
     return block.products
-      .filter(item => item?.isActive !== false && getProductFromPromotionalItem(item))
+      .filter(
+        item => item?.isActive !== false && getProductFromPromotionalItem(item),
+      )
       .sort((a, b) => Number(a.priority || 1) - Number(b.priority || 1))
       .slice(0, block.maxItems || 5)
   }, [])
@@ -417,7 +449,10 @@ const Home = () => {
       const title = product.title || ''
       const category = product.category || product.categoria || ''
 
-      return title.toLowerCase().includes(query) || category.toLowerCase().includes(query)
+      return (
+        title.toLowerCase().includes(query) ||
+        category.toLowerCase().includes(query)
+      )
     })
 
     setSearchResults(results.slice(0, 10))
@@ -513,11 +548,7 @@ const Home = () => {
             borderBottom: `1px solid ${alpha(borderColor, 0.48)}`,
           }}
         >
-          <Container
-            maxWidth={false}
-            disableGutters
-            sx={sectionSx}
-          >
+          <Container maxWidth={false} disableGutters sx={sectionSx}>
             <Paper
               elevation={0}
               sx={{
@@ -709,11 +740,19 @@ const Home = () => {
                       />
 
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 750 }} noWrap>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontWeight: 750 }}
+                          noWrap
+                        >
                           {product.title}
                         </Typography>
 
-                        <Typography variant="caption" sx={{ color: textSecondary }} noWrap>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: textSecondary }}
+                          noWrap
+                        >
                           {product.category || product.categoria}
                         </Typography>
                       </Box>
@@ -835,17 +874,14 @@ const Home = () => {
                 display: 'block',
                 mb: 0.25,
                 color: Newprimary.black,
-                letterSpacing: 1.6,
                 fontWeight: 900,
                 fontSize: 21,
-                fontWeight: 900,
                 letterSpacing: 1.6,
                 lineHeight: 1,
               }}
             >
               Selección destacada
             </Typography>
-
           </Box>
 
           <Button
@@ -868,7 +904,10 @@ const Home = () => {
           </Button>
         </Stack>
 
-        <Grid container spacing={Math.max(0, Math.round((productConfig.gap ?? 24) / 8))}>
+        <Grid
+          container
+          spacing={Math.max(0, Math.round((productConfig.gap ?? 24) / 8))}
+        >
           {isLoading
             ? [...Array(4)].map((_, index) => (
                 <Grid
@@ -912,11 +951,7 @@ const Home = () => {
                 py: { xs: 2.5, md: 3.5 },
               }}
             >
-              <Container
-                maxWidth={false}
-                disableGutters
-                sx={sectionSx}
-              >
+              <Container maxWidth={false} disableGutters sx={sectionSx}>
                 <Paper
                   elevation={0}
                   sx={{
@@ -970,11 +1005,7 @@ const Home = () => {
                     py: { xs: 2.5, md: 3.5 },
                   }}
                 >
-                  <Container
-                    maxWidth={false}
-                    disableGutters
-                    sx={sectionSx}
-                  >
+                  <Container maxWidth={false} disableGutters sx={sectionSx}>
                     <Paper
                       elevation={0}
                       sx={{
@@ -1042,7 +1073,8 @@ const Home = () => {
 
                             <Stack spacing={1.35}>
                               {items.map(item => {
-                                const product = getProductFromPromotionalItem(item)
+                                const product =
+                                  getProductFromPromotionalItem(item)
 
                                 return (
                                   <Suspense
@@ -1114,11 +1146,7 @@ const Home = () => {
                 py: { xs: 2.5, md: 3.5 },
               }}
             >
-              <Container
-                maxWidth={false}
-                disableGutters
-                sx={sectionSx}
-              >
+              <Container maxWidth={false} disableGutters sx={sectionSx}>
                 <Paper
                   elevation={0}
                   sx={{
@@ -1153,8 +1181,14 @@ const Home = () => {
           {featuredPromotionalBlocks.map(block => {
             const items = Array.isArray(block.products)
               ? block.products
-                  .filter(item => item?.isActive !== false && getProductFromPromotionalItem(item))
-                  .sort((a, b) => Number(a.priority || 1) - Number(b.priority || 1))
+                  .filter(
+                    item =>
+                      item?.isActive !== false &&
+                      getProductFromPromotionalItem(item),
+                  )
+                  .sort(
+                    (a, b) => Number(a.priority || 1) - Number(b.priority || 1),
+                  )
                   .slice(0, block.maxItems || 4)
               : []
 

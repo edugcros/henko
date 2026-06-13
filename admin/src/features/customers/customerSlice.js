@@ -22,7 +22,7 @@ export const getUsers = createAsyncThunk(
     } catch (err) {
       return thunkAPI.rejectWithValue(err.message)
     }
-  }
+  },
 )
 
 export const removeUser = createAsyncThunk(
@@ -34,7 +34,7 @@ export const removeUser = createAsyncThunk(
     } catch (err) {
       return thunkAPI.rejectWithValue(err.message)
     }
-  }
+  },
 )
 
 export const toggleBlockUser = createAsyncThunk(
@@ -47,7 +47,7 @@ export const toggleBlockUser = createAsyncThunk(
     } catch (err) {
       return thunkAPI.rejectWithValue(err.message)
     }
-  }
+  },
 )
 
 // =====================
@@ -72,9 +72,7 @@ const customersSlice = createSlice({
       })
       .addCase(getUsers.fulfilled, (state, action) => {
         state.isLoading = false
-        state.customers = Array.isArray(action.payload)
-          ? action.payload
-          : []
+        state.customers = Array.isArray(action.payload) ? action.payload : []
       })
       .addCase(getUsers.rejected, (state, action) => {
         state.isLoading = false
@@ -87,9 +85,7 @@ const customersSlice = createSlice({
       })
       .addCase(removeUser.fulfilled, (state, action) => {
         state.isLoading = false
-        state.customers = state.customers.filter(
-          u => u._id !== action.payload,
-        )
+        state.customers = state.customers.filter(u => u._id !== action.payload)
       })
       .addCase(removeUser.rejected, (state, action) => {
         state.isLoading = false
@@ -106,9 +102,7 @@ const customersSlice = createSlice({
 
         if (!updated?._id) return
 
-        const index = state.customers.findIndex(
-          u => u._id === updated._id,
-        )
+        const index = state.customers.findIndex(u => u._id === updated._id)
 
         if (index !== -1) {
           state.customers[index] = updated

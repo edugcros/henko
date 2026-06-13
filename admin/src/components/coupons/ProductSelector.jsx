@@ -1,11 +1,5 @@
 // src/components/coupons/ProductSelector.jsx
-import React, { 
-  useState, 
-  useEffect, 
-  useCallback, 
-  useMemo, 
-  useRef 
-} from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getProducts } from '../../features/product/productSlice'
 import './ProductSelector.css'
@@ -33,40 +27,40 @@ const useDebounce = (value, delay) => {
   return debouncedValue
 }
 
-const normalizeId = (id) => id?.toString?.() || id
+const normalizeId = id => id?.toString?.() || id
 
 // ======================================================
 // COMPONENTE
 // ======================================================
 
-const ProductSelector = ({ 
-  selected = [], 
+const ProductSelector = ({
+  selected = [],
   onChange,
   disabled = false,
-  maxSelection = null // límite opcional de selección
+  maxSelection = null, // límite opcional de selección
 }) => {
   const dispatch = useDispatch()
-  
+
   // Refs para control de montaje y prevención de memory leaks
   const isMounted = useRef(false)
   const previousOnChange = useRef(onChange)
-  
+
   // Selectores optimizados
-  const { 
-    items: products, 
+  const {
+    items: products,
     isLoading,
-    error: productsError 
-  } = useSelector((state) => ({
+    error: productsError,
+  } = useSelector(state => ({
     items: state.product.products || [],
     isLoading: state.product.isLoading,
-    error: state.product.error
+    error: state.product.error,
   }))
 
   // Estados locales
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
-  const [localSelected, setLocalSelected] = useState(() => 
-    selected.map(normalizeId)
+  const [localSelected, setLocalSelected] = useState(() =>
+    selected.map(normalizeId),
   )
   const [imageErrors, setImageErrors] = useState(new Set())
 
@@ -80,16 +74,18 @@ const ProductSelector = ({
   // Carga inicial de productos - SOLO UNA VEZ
   useEffect(() => {
     isMounted.current = true
-    
+
     const loadProducts = async () => {
       const tenantId = localStorage.getItem('tenantId')
-      
+
       try {
-        await dispatch(getProducts({ 
-          tenantId: tenantId || undefined,
-          limit: LIMIT_PRODUCTS,
-          isActive: true // Solo productos activos
-        })).unwrap()
+        await dispatch(
+          getProducts({
+            tenantId: tenantId || undefined,
+            limit: LIMIT_PRODUCTS,
+            isActive: true, // Solo productos activos
+          }),
+        ).unwrap()
       } catch (err) {
         console.error('Error cargando productos:', err)
       }
@@ -107,7 +103,7 @@ const ProductSelector = ({
     const normalizedSelected = selected.map(normalizeId)
     const currentString = JSON.stringify(localSelected.sort())
     const newString = JSON.stringify(normalizedSelected.sort())
-    
+
     if (currentString !== newString) {
       setLocalSelected(normalizedSelected)
     }
@@ -117,15 +113,16 @@ const ProductSelector = ({
   useEffect(() => {
     // Evitar llamada inicial y comparar con valor anterior
     if (!isMounted.current) return
-    
+
     const normalizedSelected = selected.map(normalizeId)
-    const hasChanged = JSON.stringify(localSelected.sort()) !== 
-                       JSON.stringify(normalizedSelected.sort())
-    
+    const hasChanged =
+      JSON.stringify(localSelected.sort()) !==
+      JSON.stringify(normalizedSelected.sort())
+
     if (hasChanged && previousOnChange.current === onChange) {
       onChange?.([...localSelected]) // Crear nueva referencia
     }
-    
+
     previousOnChange.current = onChange
   }, [localSelected, onChange]) // selected omitido intencionalmente
 
@@ -135,15 +132,17 @@ const ProductSelector = ({
 
     const searchProducts = async () => {
       const tenantId = localStorage.getItem('tenantId')
-      
+
       try {
-        await dispatch(getProducts({
-          tenantId: tenantId || undefined,
-          search: debouncedSearch || undefined,
-          categoria: category || undefined,
-          limit: LIMIT_PRODUCTS,
-          isActive: true
-        })).unwrap()
+        await dispatch(
+          getProducts({
+            tenantId: tenantId || undefined,
+            search: debouncedSearch || undefined,
+            categoria: category || undefined,
+            limit: LIMIT_PRODUCTS,
+            isActive: true,
+          }),
+        ).unwrap()
       } catch {
         // Error silencioso - se muestra en UI
       }
@@ -159,26 +158,29 @@ const ProductSelector = ({
   // HANDLERS
   // ======================================================
 
-  const toggleProduct = useCallback((productId) => {
-    if (disabled) return
+  const toggleProduct = useCallback(
+    productId => {
+      if (disabled) return
 
-    const normalizedProductId = normalizeId(productId)
-    
-    setLocalSelected(prev => {
-      const isSelected = prev.includes(normalizedProductId)
-      
-      // Validar límite de selección
-      if (!isSelected && maxSelection && prev.length >= maxSelection) {
-        return prev // No permitir exceder límite
-      }
-      
-      return isSelected
-        ? prev.filter(id => id !== normalizedProductId)
-        : [...prev, normalizedProductId]
-    })
-  }, [disabled, maxSelection])
+      const normalizedProductId = normalizeId(productId)
 
-  const handleImageError = useCallback((productId) => {
+      setLocalSelected(prev => {
+        const isSelected = prev.includes(normalizedProductId)
+
+        // Validar límite de selección
+        if (!isSelected && maxSelection && prev.length >= maxSelection) {
+          return prev // No permitir exceder límite
+        }
+
+        return isSelected
+          ? prev.filter(id => id !== normalizedProductId)
+          : [...prev, normalizedProductId]
+      })
+    },
+    [disabled, maxSelection],
+  )
+
+  const handleImageError = useCallback(productId => {
     setImageErrors(prev => new Set(prev).add(productId))
   }, [])
 
@@ -189,7 +191,7 @@ const ProductSelector = ({
 
   const selectAll = useCallback(() => {
     if (disabled) return
-    
+
     const allIds = products.map(p => normalizeId(p._id))
     setLocalSelected(maxSelection ? allIds.slice(0, maxSelection) : allIds)
   }, [disabled, maxSelection, products])
@@ -217,17 +219,19 @@ const ProductSelector = ({
   // RENDER HELPERS
   // ======================================================
 
-  const getImageUrl = (product) => {
+  const getImageUrl = product => {
     if (imageErrors.has(product._id)) return PLACEHOLDER_IMAGE
-    
+
     const image = product.images?.[0]
     if (!image) return PLACEHOLDER_IMAGE
-    
+
     // Manejar diferentes formatos de imagen
     if (typeof image === 'string') {
-      return image.startsWith('http') ? image : `${process.env.REACT_APP_API_URL || ''}${image}`
+      return image.startsWith('http')
+        ? image
+        : `${process.env.REACT_APP_API_URL || ''}${image}`
     }
-    
+
     return image.url || image.secure_url || PLACEHOLDER_IMAGE
   }
 
@@ -244,12 +248,12 @@ const ProductSelector = ({
             type="text"
             placeholder="Buscar productos..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={e => setSearch(e.target.value)}
             disabled={disabled || isLoading}
             aria-label="Buscar productos"
           />
           {search && (
-            <button 
+            <button
               className="clear-search"
               onClick={() => setSearch('')}
               aria-label="Limpiar búsqueda"
@@ -258,29 +262,31 @@ const ProductSelector = ({
             </button>
           )}
         </div>
-        
-        <select 
-          value={category} 
-          onChange={(e) => setCategory(e.target.value)}
+
+        <select
+          value={category}
+          onChange={e => setCategory(e.target.value)}
           disabled={disabled || isLoading}
           aria-label="Filtrar por categoría"
         >
           <option value="">Todas las categorías</option>
           {availableCategories.map(cat => (
-            <option key={cat} value={cat}>{cat}</option>
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
           ))}
         </select>
 
         {/* Acciones masivas */}
         <div className="bulk-actions">
-          <button 
+          <button
             onClick={selectAll}
             disabled={disabled || isAllSelected}
             className="btn-select-all"
           >
             Seleccionar todos
           </button>
-          <button 
+          <button
             onClick={clearSelection}
             disabled={disabled || localSelected.length === 0}
             className="btn-clear"
@@ -299,9 +305,7 @@ const ProductSelector = ({
       )}
 
       {productsError && (
-        <div className="state-message error">
-          Error: {productsError}
-        </div>
+        <div className="state-message error">Error: {productsError}</div>
       )}
 
       {/* Grid de productos */}
@@ -309,25 +313,24 @@ const ProductSelector = ({
         <div className="products-grid">
           {products.length === 0 ? (
             <div className="state-message empty">
-              {debouncedSearch || category 
+              {debouncedSearch || category
                 ? 'No se encontraron productos con estos filtros'
-                : 'No hay productos disponibles'
-              }
+                : 'No hay productos disponibles'}
             </div>
           ) : (
             products.map(product => {
               const productId = normalizeId(product._id)
               const isSelected = localSelected.includes(productId)
-              
+
               return (
-                <div 
+                <div
                   key={productId}
                   className={`product-card ${isSelected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
                   onClick={() => toggleProduct(productId)}
                   role="checkbox"
                   aria-checked={isSelected}
                   tabIndex={disabled ? -1 : 0}
-                  onKeyDown={(e) => {
+                  onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       toggleProduct(productId)
@@ -335,7 +338,7 @@ const ProductSelector = ({
                   }}
                 >
                   <div className="product-image">
-                    <img 
+                    <img
                       src={getImageUrl(product)}
                       alt={product.title || 'Producto'}
                       loading="lazy"
@@ -347,7 +350,7 @@ const ProductSelector = ({
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="product-info">
                     <h4 title={product.title}>{product.title}</h4>
                     <p className="price">
@@ -368,18 +371,17 @@ const ProductSelector = ({
           )}
         </div>
       )}
-      
+
       {/* Footer con contador */}
       <div className="selector-footer">
         <span className="selection-count">
-          {localSelected.length} producto{localSelected.length !== 1 ? 's' : ''} seleccionado
+          {localSelected.length} producto{localSelected.length !== 1 ? 's' : ''}{' '}
+          seleccionado
           {maxSelection && ` / ${maxSelection} máximo`}
         </span>
-        
+
         {maxSelection && localSelected.length >= maxSelection && (
-          <span className="limit-warning">
-            Límite alcanzado
-          </span>
+          <span className="limit-warning">Límite alcanzado</span>
         )}
       </div>
     </div>
@@ -391,8 +393,10 @@ export default React.memo(ProductSelector, (prevProps, nextProps) => {
   // Comparación profunda de selected
   const prevSelected = JSON.stringify(prevProps.selected?.sort())
   const nextSelected = JSON.stringify(nextProps.selected?.sort())
-  
-  return prevSelected === nextSelected && 
-         prevProps.disabled === nextProps.disabled &&
-         prevProps.maxSelection === nextProps.maxSelection
+
+  return (
+    prevSelected === nextSelected &&
+    prevProps.disabled === nextProps.disabled &&
+    prevProps.maxSelection === nextProps.maxSelection
+  )
 })

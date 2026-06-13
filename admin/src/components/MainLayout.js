@@ -60,7 +60,7 @@ const MainLayout = () => {
   const { selectedKey, openKey } = useMemo(() => {
     const key = location.pathname.replace('/admin/', '') || 'dashboard'
     const group = adminMenuItems.find(item =>
-      item.children?.some(child => child.key === key)
+      item.children?.some(child => child.key === key),
     )
     return { selectedKey: key, openKey: group?.key }
   }, [location.pathname])
@@ -117,10 +117,7 @@ const MainLayout = () => {
           <Box key={group.key}>
             <ListItemButton onClick={() => handleGroupToggle(group.key)}>
               <ListItemIcon>
-                <Badge
-                  color="error"
-                  variant={group.isNew ? 'dot' : 'standard'}
-                >
+                <Badge color="error" variant={group.isNew ? 'dot' : 'standard'}>
                   <GroupIcon sx={{ color: group.iconColor }} />
                 </Badge>
               </ListItemIcon>
@@ -147,9 +144,7 @@ const MainLayout = () => {
                           <ItemIcon sx={{ color: item.iconColor }} />
                         </Badge>
                       </ListItemIcon>
-                      {!collapsed && (
-                        <ListItemText primary={item.label} />
-                      )}
+                      {!collapsed && <ListItemText primary={item.label} />}
                     </ListItemButton>
                   )
                 })}
@@ -166,10 +161,7 @@ const MainLayout = () => {
           onClick={() => navigate(`/admin/${group.key}`)}
         >
           <ListItemIcon>
-            <Badge
-              color="error"
-              variant={group.isNew ? 'dot' : 'standard'}
-            >
+            <Badge color="error" variant={group.isNew ? 'dot' : 'standard'}>
               <GroupIcon sx={{ color: group.iconColor }} />
             </Badge>
           </ListItemIcon>

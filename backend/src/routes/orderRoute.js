@@ -21,6 +21,8 @@ import {
 
 import { authMiddleware } from '../middlewares/authMiddleware.js'
 import {
+  requireAdminDomain,
+  requireTenant,
   resolveTenantByDomain,
   requireShopDomain,
 } from '../middlewares/tenantMiddleware.js'
@@ -34,7 +36,7 @@ const router = express.Router()
 const isAdminOrManager = expressAsyncHandler(async (req, res, next) => {
   const role = req.user?.role
 
-  if (['admin', 'manager', 'owner', 'superadmin'].includes(role)) {
+  if (['admin', 'moderator'].includes(role)) {
     return next()
   }
 
@@ -111,6 +113,8 @@ router.post(
 router.get(
   '/getAll',
   resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
   authMiddleware,
   isAdminOrManager,
   getAllOrders,
@@ -123,6 +127,8 @@ router.get(
 router.put(
   '/:id/status',
   resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
   authMiddleware,
   isAdminOrManager,
   orderWriteLimiter,
@@ -136,6 +142,8 @@ router.put(
 router.put(
   '/:id/payment-status',
   resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
   authMiddleware,
   isAdminOrManager,
   orderWriteLimiter,
@@ -149,6 +157,8 @@ router.put(
 router.put(
   '/:id/fulfillment-status',
   resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
   authMiddleware,
   isAdminOrManager,
   orderWriteLimiter,
@@ -162,6 +172,8 @@ router.put(
 router.post(
   '/:id/cancel',
   resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
   authMiddleware,
   isAdminOrManager,
   orderWriteLimiter,
@@ -175,6 +187,8 @@ router.post(
 router.post(
   '/:id/refund',
   resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
   authMiddleware,
   isAdminOrManager,
   orderWriteLimiter,
@@ -191,6 +205,8 @@ router.post(
 router.delete(
   '/:id',
   resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
   authMiddleware,
   isAdminOrManager,
   orderWriteLimiter,

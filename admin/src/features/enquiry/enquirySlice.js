@@ -10,9 +10,11 @@ export const getEnquiries = createAsyncThunk(
       const res = await enquiryService.getEnquiries()
       return res.data
     } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data?.message || error.message)
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message,
+      )
     }
-  }
+  },
 )
 
 // 📌 CORREGIDO: Nombre de función coincide con service
@@ -24,9 +26,11 @@ export const updateEnquiryStatus = createAsyncThunk(
       const res = await enquiryService.updateEnquiry(id, status)
       return res.data
     } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data?.message || error.message)
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message,
+      )
     }
-  }
+  },
 )
 
 // 📌 Responder consulta y enviar Email
@@ -35,11 +39,13 @@ export const sendReplyEnquiry = createAsyncThunk(
   async ({ id, message }, thunkAPI) => {
     try {
       const res = await enquiryService.sendReply(id, message)
-      return res.data 
+      return res.data
     } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data?.message || error.message)
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message,
+      )
     }
-  }
+  },
 )
 
 // 📌 Eliminar consulta
@@ -50,9 +56,11 @@ export const deleteEnquiry = createAsyncThunk(
       const res = await enquiryService.deleteEnquiry(id)
       return { id, message: res.message }
     } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data?.message || error.message)
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message,
+      )
     }
-  }
+  },
 )
 
 const initialState = {
@@ -100,7 +108,7 @@ export const enquirySlice = createSlice({
         state.isSuccess = true
         const updated = action.payload
         state.enquiries = state.enquiries.map(e =>
-          e._id === updated._id ? updated : e
+          e._id === updated._id ? updated : e,
         )
       })
       .addCase(updateEnquiryStatus.rejected, (state, action) => {
@@ -114,14 +122,14 @@ export const enquirySlice = createSlice({
         state.isLoading = true
       })
       .addCase(sendReplyEnquiry.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
-        const updatedEnq = action.payload?.data || action.payload;
+        state.isLoading = false
+        state.isSuccess = true
+        const updatedEnq = action.payload?.data || action.payload
         if (updatedEnq && updatedEnq._id) {
-          state.enquiries = state.enquiries.map((enq) =>
-            enq._id === updatedEnq._id ? updatedEnq : enq
-          );
-          state.message = "Respuesta enviada con éxito";
+          state.enquiries = state.enquiries.map(enq =>
+            enq._id === updatedEnq._id ? updatedEnq : enq,
+          )
+          state.message = 'Respuesta enviada con éxito'
         }
       })
       .addCase(sendReplyEnquiry.rejected, (state, action) => {
@@ -137,7 +145,9 @@ export const enquirySlice = createSlice({
       .addCase(deleteEnquiry.fulfilled, (state, action) => {
         state.isLoading = false
         state.isSuccess = true
-        state.enquiries = state.enquiries.filter(e => e._id !== action.payload.id)
+        state.enquiries = state.enquiries.filter(
+          e => e._id !== action.payload.id,
+        )
         state.message = action.payload.message
       })
       .addCase(deleteEnquiry.rejected, (state, action) => {

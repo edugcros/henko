@@ -89,7 +89,9 @@ const buildFontFamily = config => {
   if (fonts.length === 0) return DEFAULT_THEME.typography.fontFamily
 
   // Asegurar que cada fuente tenga comillas si tiene espacios
-  const formatted = fonts.map(f => (f.includes(' ') && !f.startsWith('"') ? `"${f}"` : f))
+  const formatted = fonts.map(f =>
+    f.includes(' ') && !f.startsWith('"') ? `"${f}"` : f,
+  )
 
   return formatted.join(', ')
 }
@@ -103,12 +105,14 @@ const resolveSemanticColors = colors => ({
     DEFAULT_THEME.colors.mutedText,
   actionPrimary: colors.actionPrimary || DEFAULT_THEME.colors.actionPrimary,
   actionPrimaryText: colors.actionPrimaryText || '#ffffff',
-  actionSecondary: colors.actionSecondary || DEFAULT_THEME.colors.actionSecondary,
+  actionSecondary:
+    colors.actionSecondary || DEFAULT_THEME.colors.actionSecondary,
   actionSecondaryText: colors.actionSecondaryText || '#ffffff',
   link: colors.link || DEFAULT_THEME.colors.link,
   price: colors.price || DEFAULT_THEME.colors.price,
   salePrice: colors.salePrice || DEFAULT_THEME.colors.salePrice,
-  badgeBackground: colors.badgeBackground || DEFAULT_THEME.colors.badgeBackground,
+  badgeBackground:
+    colors.badgeBackground || DEFAULT_THEME.colors.badgeBackground,
   badgeText: colors.badgeText || '#ffffff',
 })
 
@@ -121,10 +125,19 @@ const DynamicThemeProvider = ({ children }) => {
   // HOOKS
   // ==========================================
 
-  const { themeConfig: tenantConfig, isReady: tenantReady, isLoading: tenantLoading } = useTenant()
+  const {
+    themeConfig: tenantConfig,
+    isReady: tenantReady,
+    isLoading: tenantLoading,
+  } = useTenant()
 
   const reduxState = useSelector(state => state.theme) || {}
-  const { config: reduxConfig, previewMode, previewConfig, isLoading: reduxLoading } = reduxState
+  const {
+    config: reduxConfig,
+    previewMode,
+    previewConfig,
+    isLoading: reduxLoading,
+  } = reduxState
 
   const styleTagRef = useRef(null)
   const prevConfigRef = useRef(null)
@@ -135,11 +148,17 @@ const DynamicThemeProvider = ({ children }) => {
 
   const activeConfig = useMemo(() => {
     // Cadena de prioridad: Preview > Redux > Tenant > Default
-    const source = previewMode && previewConfig ? previewConfig : reduxConfig || tenantConfig || {}
+    const source =
+      previewMode && previewConfig
+        ? previewConfig
+        : reduxConfig || tenantConfig || {}
 
     // Merge profundo con defaults
     return {
-      colors: resolveSemanticColors({ ...DEFAULT_THEME.colors, ...source.colors }),
+      colors: resolveSemanticColors({
+        ...DEFAULT_THEME.colors,
+        ...source.colors,
+      }),
       typography: { ...DEFAULT_THEME.typography, ...source.typography },
       layout: { ...DEFAULT_THEME.layout, ...source.layout },
       buttons: { ...DEFAULT_THEME.buttons, ...source.buttons },
@@ -181,12 +200,24 @@ const DynamicThemeProvider = ({ children }) => {
         contrastText: '#ffffff',
       },
       ctaPrimary: {
-        main: sanitizeColor(colors.actionPrimary, DEFAULT_THEME.colors.actionPrimary),
-        contrastText: sanitizeColor(colors.actionPrimaryText, DEFAULT_THEME.colors.actionPrimaryText),
+        main: sanitizeColor(
+          colors.actionPrimary,
+          DEFAULT_THEME.colors.actionPrimary,
+        ),
+        contrastText: sanitizeColor(
+          colors.actionPrimaryText,
+          DEFAULT_THEME.colors.actionPrimaryText,
+        ),
       },
       ctaSecondary: {
-        main: sanitizeColor(colors.actionSecondary, DEFAULT_THEME.colors.actionSecondary),
-        contrastText: sanitizeColor(colors.actionSecondaryText, DEFAULT_THEME.colors.actionSecondaryText),
+        main: sanitizeColor(
+          colors.actionSecondary,
+          DEFAULT_THEME.colors.actionSecondary,
+        ),
+        contrastText: sanitizeColor(
+          colors.actionSecondaryText,
+          DEFAULT_THEME.colors.actionSecondaryText,
+        ),
       },
       error: { main: sanitizeColor(colors.error, DEFAULT_THEME.colors.error) },
       warning: {
@@ -200,7 +231,9 @@ const DynamicThemeProvider = ({ children }) => {
         default: darkMode
           ? '#121212'
           : sanitizeColor(colors.background, DEFAULT_THEME.colors.background),
-        paper: darkMode ? '#1e1e1e' : sanitizeColor(colors.surface, DEFAULT_THEME.colors.surface),
+        paper: darkMode
+          ? '#1e1e1e'
+          : sanitizeColor(colors.surface, DEFAULT_THEME.colors.surface),
       },
       text: {
         primary: darkMode
@@ -214,8 +247,18 @@ const DynamicThemeProvider = ({ children }) => {
     }
 
     const fontFamily = buildFontFamily(typography)
-    const baseSize = parseNumber(typography.baseSize, 12, 24, DEFAULT_THEME.typography.baseSize)
-    const borderRadius = parseNumber(layout.borderRadius, 0, 32, DEFAULT_THEME.layout.borderRadius)
+    const baseSize = parseNumber(
+      typography.baseSize,
+      12,
+      24,
+      DEFAULT_THEME.typography.baseSize,
+    )
+    const borderRadius = parseNumber(
+      layout.borderRadius,
+      0,
+      32,
+      DEFAULT_THEME.layout.borderRadius,
+    )
 
     return createTheme({
       palette,
@@ -264,7 +307,12 @@ const DynamicThemeProvider = ({ children }) => {
       },
       shape: { borderRadius },
       spacing: factor => {
-        const unit = parseNumber(layout.spacing, 4, 32, DEFAULT_THEME.layout.spacing)
+        const unit = parseNumber(
+          layout.spacing,
+          4,
+          32,
+          DEFAULT_THEME.layout.spacing,
+        )
         return unit * factor
       },
       breakpoints: {
@@ -298,7 +346,12 @@ const DynamicThemeProvider = ({ children }) => {
         MuiButton: {
           styleOverrides: {
             root: {
-              borderRadius: parseNumber(buttons.radius, 0, 50, DEFAULT_THEME.buttons.radius),
+              borderRadius: parseNumber(
+                buttons.radius,
+                0,
+                50,
+                DEFAULT_THEME.buttons.radius,
+              ),
               textTransform: buttons.uppercase ? 'uppercase' : 'none',
               fontWeight: 600,
             },
@@ -342,7 +395,8 @@ const DynamicThemeProvider = ({ children }) => {
     }
 
     // Favicon
-    const faviconUrl = favicon?.url || (typeof favicon === 'string' ? favicon : null)
+    const faviconUrl =
+      favicon?.url || (typeof favicon === 'string' ? favicon : null)
     if (faviconUrl) {
       let link = document.querySelector("link[rel~='icon']")
       if (!link) {

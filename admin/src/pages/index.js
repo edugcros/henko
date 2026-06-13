@@ -11,11 +11,11 @@ import Productlist from './Productlist'
 import SubscriptionPage from './SubscriptionPage'
 import NotFound from './NotFound' // Asegurate de tener esta también
 import ThemeCustomizer from './ThemeCustomizer'
-import CouponsPage  from './CouponsPage'
+import CouponsPage from './CouponsPage'
 import EditProduct from './EditProduct'
 import PromotionalBlocksPage from './PromotionalBlocksPage'
 import ProductAnalysisPage from './ProductAnalysisPage'
-
+import AiCommercialInboxPage from './AiCommercialInboxPage'
 
 const pages = {
   Dashboard,
@@ -24,6 +24,7 @@ const pages = {
   SubscriptionPage,
   Forgotpassword,
   Resetpassword,
+  AiCommercialInboxPage,
   AdminOrdersPage,
   AdminRegister,
   Customers,

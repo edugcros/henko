@@ -7,7 +7,7 @@ import Cookies from 'js-cookie'
 // ==========================================
 
 const API_BASE = '/theme/admin' // Todos los admin van aquí
-const PUBLIC_BASE = '/theme'    // Públicos sin /admin
+const PUBLIC_BASE = '/theme' // Públicos sin /admin
 
 const DEFAULT_TIMEOUT = 30000
 const UPLOAD_TIMEOUT = 60000
@@ -31,7 +31,8 @@ export const normalizeImageAsset = value => {
     value
 
   if (!image) return null
-  if (typeof image === 'string') return image.trim() ? { url: image.trim(), public_id: '' } : null
+  if (typeof image === 'string')
+    return image.trim() ? { url: image.trim(), public_id: '' } : null
   if (typeof image !== 'object') return null
 
   const url = typeof image.url === 'string' ? image.url.trim() : ''
@@ -49,7 +50,9 @@ const sanitizePayload = (value, key = '') => {
   if (typeof File !== 'undefined' && value instanceof File) return undefined
   if (typeof Blob !== 'undefined' && value instanceof Blob) return undefined
   if (Array.isArray(value)) {
-    return value.map(item => sanitizePayload(item)).filter(item => item !== undefined)
+    return value
+      .map(item => sanitizePayload(item))
+      .filter(item => item !== undefined)
   }
 
   return Object.entries(value).reduce((acc, [childKey, childValue]) => {
@@ -65,7 +68,7 @@ const sanitizePayload = (value, key = '') => {
  */
 const buildHeaders = async ({ isMultipart = false, customHeaders = {} }) => {
   const headers = { ...customHeaders }
-  
+
   // CSRF
   try {
     const csrfToken = await fetchCsrfToken()
@@ -100,12 +103,15 @@ const handleHttpError = (error, context) => {
     403: 'No tiene permisos para esta acción.',
     404: 'Recurso no encontrado.',
     413: 'Archivo demasiado grande. Máximo 5MB permitido.',
-    422: 'Validación fallida: ' + (data?.errors?.map(e => e.message).join(', ') || message),
+    422:
+      'Validación fallida: ' +
+      (data?.errors?.map(e => e.message).join(', ') || message),
     429: 'Demasiadas peticiones. Espere un momento.',
     500: 'Error interno del servidor. Intente más tarde.',
   }
 
-  const userMessage = errorMap[status] || message || `Error ${status || 'desconocido'}`
+  const userMessage =
+    errorMap[status] || message || `Error ${status || 'desconocido'}`
 
   if (process.env.NODE_ENV === 'development') {
     console.error(`[ThemeAPI Error] ${context}:`, {
@@ -137,7 +143,7 @@ const request = async (method, endpoint, options = {}) => {
   } = options
 
   const url = `${baseUrl}${endpoint}`
-  
+
   try {
     const headers = await buildHeaders({ isMultipart, customHeaders })
 
@@ -164,7 +170,6 @@ const request = async (method, endpoint, options = {}) => {
 
     const response = await api(config)
     return response.data
-
   } catch (error) {
     handleHttpError(error, `${method} ${url}`)
   }
@@ -177,20 +182,19 @@ const request = async (method, endpoint, options = {}) => {
 /**
  * Obtener tema público (para storefront/preview)
  */
-export const getPublicTheme = () => 
-  request('GET', '', { baseUrl: PUBLIC_BASE })
+export const getPublicTheme = () => request('GET', '', { baseUrl: PUBLIC_BASE })
 
 /**
  * Obtener tema por tenantId específico
  */
-export const getPublicThemeById = (tenantId) => 
+export const getPublicThemeById = tenantId =>
   request('GET', `/public/${tenantId}`, { baseUrl: PUBLIC_BASE })
 
 /**
  * Obtener CSS generado (para <link> tag)
  */
-export const getThemeCSS = () => 
-  request('GET', '/theme.css', { 
+export const getThemeCSS = () =>
+  request('GET', '/theme.css', {
     baseUrl: PUBLIC_BASE,
     responseType: 'text',
   })
@@ -202,43 +206,38 @@ export const getThemeCSS = () =>
 /**
  * Obtener tema completo para edición
  */
-export const getTheme = () => 
-  request('GET', '')
+export const getTheme = () => request('GET', '')
 
 /**
  * Actualización completa (con validación full)
  */
-export const updateTheme = (data) => 
-  request('PUT', '', { data })
+export const updateTheme = data => request('PUT', '', { data })
 
 /**
  * Actualización parcial (auto-save)
  */
-export const patchTheme = (data) => 
-  request('PATCH', '', { data })
+export const patchTheme = data => request('PATCH', '', { data })
 
 /**
  * Crear preview sin activar
  */
-export const createPreview = (data) => 
-  request('POST', '/preview', { data })
+export const createPreview = data => request('POST', '/preview', { data })
 
 /**
  * Activar preview como tema principal
  */
-export const activatePreview = (previewId) => 
+export const activatePreview = previewId =>
   request('POST', `/preview/${previewId}/activate`)
 
 /**
  * Resetear a defaults
  */
-export const resetTheme = () => 
-  request('POST', '/reset')
+export const resetTheme = () => request('POST', '/reset')
 
 /**
  * Toggle modo mantenimiento
  */
-export const toggleMaintenance = (enabled) => 
+export const toggleMaintenance = enabled =>
   request('POST', '/maintenance', { data: { enabled } })
 
 // ==========================================
@@ -248,23 +247,22 @@ export const toggleMaintenance = (enabled) =>
 /**
  * Exportar tema como JSON
  */
-export const exportTheme = () => 
+export const exportTheme = () =>
   request('GET', '/export', { responseType: 'blob' })
 
 /**
  * Importar tema desde JSON
  */
-export const importTheme = (data) => 
-  request('POST', '/import', { data })
+export const importTheme = data => request('POST', '/import', { data })
 
 /**
  * Descargar export automáticamente
  */
-export const downloadExport = async (filename) => {
+export const downloadExport = async filename => {
   const blob = await exportTheme()
   const url = window.URL.createObjectURL(blob)
   let link = null
-  
+
   try {
     link = document.createElement('a')
     link.href = url
@@ -286,20 +284,19 @@ export const downloadExport = async (filename) => {
 /**
  * Obtener historial de versiones
  */
-export const getThemeHistory = (limit = 10) => 
+export const getThemeHistory = (limit = 10) =>
   request('GET', `/history?limit=${limit}`)
 
 /**
  * Rollback a versión específica
  */
-export const rollbackTheme = (version) => 
+export const rollbackTheme = version =>
   request('POST', '/rollback', { data: { version } })
 
 /**
  * Validar configuración sin guardar
  */
-export const validateTheme = (data) => 
-  request('POST', '/validate', { data })
+export const validateTheme = data => request('POST', '/validate', { data })
 
 // ==========================================
 // UPLOADS
@@ -320,9 +317,9 @@ export const uploadImage = (file, type = 'generic') => {
   })
 }
 
-export const uploadLogo = (file) => uploadImage(file, 'logo')
-export const uploadHeroImage = (file) => uploadImage(file, 'hero')
-export const uploadFavicon = (file) => uploadImage(file, 'favicon')
+export const uploadLogo = file => uploadImage(file, 'logo')
+export const uploadHeroImage = file => uploadImage(file, 'hero')
+export const uploadFavicon = file => uploadImage(file, 'favicon')
 
 // ==========================================
 // EXPORT LEGACY (default object)
@@ -333,7 +330,7 @@ const themeApi = {
   getPublicTheme,
   getPublicThemeById,
   getThemeCSS,
-  
+
   // Admin
   getTheme,
   updateTheme,
@@ -342,17 +339,17 @@ const themeApi = {
   activatePreview,
   resetTheme,
   toggleMaintenance,
-  
+
   // Import/Export
   exportTheme,
   importTheme,
   downloadExport,
-  
+
   // Versionado
   getThemeHistory,
   rollbackTheme,
   validateTheme,
-  
+
   // Uploads
   uploadImage,
   uploadLogo,

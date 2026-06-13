@@ -6,6 +6,7 @@ import { toast } from 'react-toastify'
 const initialState = {
   products: [],
   categories: [],
+  facets: [],
   singleProduct: {},
   meta: {
     total: 0,
@@ -20,6 +21,7 @@ const initialState = {
     categoria: null,
     subcategoria: null,
     sort: null,
+    attributes: {},
   },
   status: 'idle',
   isLoading: false,
@@ -40,7 +42,9 @@ const getProductState = state => state.product || state.products || {}
 const createFetchKey = (params = {}) =>
   JSON.stringify(
     Object.entries(params || {})
-      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .filter(
+        ([, value]) => value !== undefined && value !== null && value !== '',
+      )
       .sort(([left], [right]) => left.localeCompare(right)),
   )
 
@@ -52,7 +56,9 @@ const normalizeProduct = (product = {}) => ({
   images: Array.isArray(product.images) ? product.images : [],
   ratings: Array.isArray(product.ratings) ? product.ratings : [],
   variants: Array.isArray(product.variants) ? product.variants : [],
-  variantAttributes: Array.isArray(product.variantAttributes) ? product.variantAttributes : [],
+  variantAttributes: Array.isArray(product.variantAttributes)
+    ? product.variantAttributes
+    : [],
   totalrating: product.totalrating || 0,
 })
 
@@ -120,7 +126,10 @@ export const getProductCategories = createAsyncThunk(
       if (
         Array.isArray(productState.categories) &&
         productState.categories.length > 0 &&
-        isFresh(productState.lastCategoriesFetchedAt, PRODUCT_CATEGORIES_CACHE_TTL_MS)
+        isFresh(
+          productState.lastCategoriesFetchedAt,
+          PRODUCT_CATEGORIES_CACHE_TTL_MS,
+        )
       ) {
         return false
       }
@@ -180,7 +189,9 @@ export const rateProduct = createAsyncThunk(
 
       return response
     } catch (error) {
-      if ([401, 403].includes(Number(error?.status || error?.response?.status))) {
+      if (
+        [401, 403].includes(Number(error?.status || error?.response?.status))
+      ) {
         thunkAPI.dispatch(resetAuthState())
         return thunkAPI.rejectWithValue(
           'Tu sesión expiró. Iniciá sesión nuevamente para publicar una reseña.',
@@ -202,7 +213,9 @@ export const toggleHelpfulVote = createAsyncThunk(
     try {
       return await productService.toggleHelpfulRating(data)
     } catch (error) {
-      return thunkAPI.rejectWithValue(error?.message || 'No se pudo procesar tu voto')
+      return thunkAPI.rejectWithValue(
+        error?.message || 'No se pudo procesar tu voto',
+      )
     }
   },
 )
@@ -211,7 +224,10 @@ export const uploadProductImage = createAsyncThunk(
   'product/uploadProductImage',
   async ({ productId, images }, { rejectWithValue }) => {
     try {
-      const response = await productService.uploadProductImage(productId, images)
+      const response = await productService.uploadProductImage(
+        productId,
+        images,
+      )
       toast.success('Imagen subida correctamente')
       return response?.data || response || []
     } catch (error) {
@@ -248,6 +264,7 @@ const productSlice = createSlice({
       .addCase(getAllProducts.pending, (state, action) => {
         state.status = 'loading'
         state.isLoading = true
+        state.facets = []
         state.currentFetchKey = createFetchKey(action.meta.arg)
         state.error = null
       })
@@ -259,9 +276,14 @@ const productSlice = createSlice({
         state.lastFetchedAt = Date.now()
         state.error = null
 
-        const productsRaw = Array.isArray(action.payload?.data) ? action.payload.data : []
+        const productsRaw = Array.isArray(action.payload?.data)
+          ? action.payload.data
+          : []
 
         state.products = productsRaw.map(normalizeProduct)
+        state.facets = Array.isArray(action.payload?.facets)
+          ? action.payload.facets
+          : []
         state.meta = {
           total: action.payload?.meta?.total || 0,
           page: action.payload?.meta?.page || 1,
@@ -275,12 +297,18 @@ const productSlice = createSlice({
           categoria: action.payload?.filters?.categoria || null,
           subcategoria: action.payload?.filters?.subcategoria || null,
           sort: action.payload?.filters?.sort || null,
+          attributes:
+            action.payload?.filters?.attributes &&
+            typeof action.payload.filters.attributes === 'object'
+              ? action.payload.filters.attributes
+              : {},
         }
       })
       .addCase(getAllProducts.rejected, (state, action) => {
         state.status = 'failed'
         state.isLoading = false
         state.currentFetchKey = null
+        state.facets = []
         state.error = action.payload || 'Error al cargar productos'
       })
 
@@ -293,7 +321,9 @@ const productSlice = createSlice({
         state.isCategoriesLoading = false
         state.lastCategoriesFetchedAt = Date.now()
         state.categoriesError = null
-        state.categories = Array.isArray(action.payload?.data) ? action.payload.data : []
+        state.categories = Array.isArray(action.payload?.data)
+          ? action.payload.data
+          : []
       })
       .addCase(getProductCategories.rejected, (state, action) => {
         state.isCategoriesLoading = false
@@ -323,7 +353,9 @@ const productSlice = createSlice({
         const { ratingId, helpfulVotes } = action.payload || {}
 
         if (state.singleProduct && Array.isArray(state.singleProduct.ratings)) {
-          const ratingIndex = state.singleProduct.ratings.findIndex(r => r._id === ratingId)
+          const ratingIndex = state.singleProduct.ratings.findIndex(
+            r => r._id === ratingId,
+          )
           if (ratingIndex !== -1) {
             state.singleProduct.ratings[ratingIndex].helpfulVotes = helpfulVotes
           }

@@ -46,7 +46,9 @@ const resetCsrf = () => {
 
 const apiRequest = async (method, endpoint, data, options = {}) => {
   const normalizedMethod = String(method || 'get').toLowerCase()
-  const isMutatingRequest = ['post', 'put', 'patch', 'delete'].includes(normalizedMethod)
+  const isMutatingRequest = ['post', 'put', 'patch', 'delete'].includes(
+    normalizedMethod,
+  )
 
   const headers = {
     Accept: 'application/json',

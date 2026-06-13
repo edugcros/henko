@@ -3,7 +3,10 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
 import Container from '@components/Container'
 import ProductCard from '@components/ProductCard'
-import { getAllProducts, getProductCategories } from '@features/products/productSlice'
+import {
+  getAllProducts,
+  getProductCategories,
+} from '@features/products/productSlice'
 
 import {
   Box,
@@ -20,6 +23,10 @@ import {
   Collapse,
   TextField,
   InputAdornment,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  Chip,
 } from '@mui/material'
 import { ExpandMore, ExpandLess, Search } from '@mui/icons-material'
 import { fetchPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSlice'
@@ -36,6 +43,7 @@ import { Newprimary } from '../theme/colors'
 const CATEGORY_PREVIEW_LIMIT = 6
 const DEFAULT_LIMIT = 10
 const DEFAULT_SORT = 'created-desc'
+const VARIANT_FILTER_PREFIX = 'attr.'
 
 const toPositiveInt = (value, fallback) => {
   const parsed = Number(value)
@@ -114,11 +122,95 @@ const findPromotionForProduct = (product, promotionalBlocks = []) => {
   return null
 }
 
+const formatAttributeLabel = value => {
+  const normalized = String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+  return normalized
+    ? normalized.charAt(0).toUpperCase() + normalized.slice(1)
+    : 'Característica'
+}
+
+const getMatchingVariantContext = (product, filters) => {
+  const entries = Object.entries(filters || {}).filter(
+    ([, values]) => Array.isArray(values) && values.length > 0,
+  )
+
+  if (entries.length === 0 || !Array.isArray(product?.variants)) return null
+
+  const availableVariants = product.variants
+    .filter(
+      variant => variant?.isActive !== false && Number(variant?.stock || 0) > 0,
+    )
+    .map(variant => ({
+      variant,
+      attributes:
+        variant?.attributes && typeof variant.attributes === 'object'
+          ? variant.attributes
+          : variant?.combinacion && typeof variant.combinacion === 'object'
+            ? variant.combinacion
+            : {},
+    }))
+
+  const exactMatches = availableVariants.filter(({ attributes }) =>
+    entries.every(([attributeKey, acceptedValues]) =>
+      acceptedValues.includes(String(attributes[attributeKey] ?? '')),
+    ),
+  )
+  const exactVariant = exactMatches[0]?.variant || null
+  const exactVariantWithImage = exactMatches.find(
+    ({ variant }) => variant?.image?.url || variant?.image,
+  )?.variant
+
+  if (exactVariantWithImage) {
+    return {
+      variant: exactVariant,
+      image: exactVariantWithImage.image,
+    }
+  }
+
+  const closestVariantWithImage = availableVariants
+    .map(candidate => ({
+      ...candidate,
+      matchScore: entries.reduce(
+        (score, [attributeKey, acceptedValues]) =>
+          score +
+          (acceptedValues.includes(
+            String(candidate.attributes[attributeKey] ?? ''),
+          )
+            ? 1
+            : 0),
+        0,
+      ),
+    }))
+    .filter(
+      ({ variant, matchScore }) =>
+        matchScore > 0 && Boolean(variant?.image?.url || variant?.image),
+    )
+    .sort((left, right) => right.matchScore - left.matchScore)[0]?.variant
+
+  return exactVariant
+    ? {
+        variant: exactVariant,
+        image: closestVariantWithImage?.image || exactVariant.image || null,
+      }
+    : null
+}
+
+const removeVariantFilterParams = params => {
+  const variantKeys = [...params.keys()]
+
+  variantKeys
+    .filter(key => key.startsWith(VARIANT_FILTER_PREFIX))
+    .forEach(key => params.delete(key))
+}
+
 const OurStore = () => {
   const dispatch = useDispatch()
   const {
     products = [],
     categories = [],
+    facets = [],
     isLoading,
     isCategoriesLoading,
     meta,
@@ -126,8 +218,14 @@ const OurStore = () => {
 
   const promotionalBlocks = useSelector(selectPublicPromotionalBlocks)
   const themeState = useSelector(state => state.theme) || {}
-  const activeThemeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
-  const themeColors = useMemo(() => getThemeColors(activeThemeConfig), [activeThemeConfig])
+  const activeThemeConfig = useMemo(
+    () => getActiveThemeConfig(themeState),
+    [themeState],
+  )
+  const themeColors = useMemo(
+    () => getThemeColors(activeThemeConfig),
+    [activeThemeConfig],
+  )
   const spacingTheme = useMemo(
     () => getSpacingThemeConfig(activeThemeConfig),
     [activeThemeConfig],
@@ -144,6 +242,33 @@ const OurStore = () => {
   const itemsPerPage = toPositiveInt(searchParams.get('limit'), DEFAULT_LIMIT)
   const sort = searchParams.get('sort') || DEFAULT_SORT
   const searchQuery = searchParams.get('q') || ''
+  const selectedVariantFilters = useMemo(() => {
+    const filters = {}
+
+    for (const [paramKey] of searchParams.entries()) {
+      if (!paramKey.startsWith(VARIANT_FILTER_PREFIX)) continue
+
+      const attributeKey = paramKey.slice(VARIANT_FILTER_PREFIX.length)
+      if (!attributeKey || filters[attributeKey]) continue
+
+      const values = searchParams
+        .getAll(paramKey)
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .slice(-1)
+
+      if (values.length > 0) filters[attributeKey] = values
+    }
+
+    return filters
+  }, [searchParams])
+  const serializedVariantFilters = useMemo(
+    () =>
+      Object.keys(selectedVariantFilters).length > 0
+        ? JSON.stringify(selectedVariantFilters)
+        : undefined,
+    [selectedVariantFilters],
+  )
   const { track, events } = useUserMetrics({ trackPageViews: false })
 
   useEffect(() => {
@@ -155,8 +280,12 @@ const OurStore = () => {
   }, [dispatch])
 
   const updateFilters = useCallback(
-    (newValues, { replace = false } = {}) => {
+    (newValues, { replace = false, clearVariantFilters = false } = {}) => {
       const params = new URLSearchParams(searchParams)
+
+      if (clearVariantFilters) {
+        removeVariantFilterParams(params)
+      }
 
       Object.entries(newValues).forEach(([key, value]) => {
         if (
@@ -191,17 +320,28 @@ const OurStore = () => {
         categoria: selectedCategory || undefined,
         subcategoria: selectedSubcategory || undefined,
         q: searchQuery || undefined,
+        attributes: serializedVariantFilters,
+        includeFacets: Boolean(selectedCategory && selectedSubcategory),
       }),
     )
-  }, [dispatch, page, itemsPerPage, sort, selectedCategory, selectedSubcategory, searchQuery])
+  }, [
+    dispatch,
+    page,
+    itemsPerPage,
+    sort,
+    selectedCategory,
+    selectedSubcategory,
+    searchQuery,
+    serializedVariantFilters,
+  ])
 
   const visibleCategories = useMemo(() => {
-    return showAllCategories ? categories : categories.slice(0, CATEGORY_PREVIEW_LIMIT)
+    return showAllCategories
+      ? categories
+      : categories.slice(0, CATEGORY_PREVIEW_LIMIT)
   }, [categories, showAllCategories])
 
   const totalPages = meta?.totalPages || 1
-  const totalProducts = meta?.total || 0
-
   useEffect(() => {
     if (selectedCategory) {
       setExpandedCategories(prev => ({
@@ -220,13 +360,17 @@ const OurStore = () => {
 
   const handleCategoryClick = useCallback(
     categoryName => {
-      const nextCategory = selectedCategory === categoryName ? null : categoryName
+      const nextCategory =
+        selectedCategory === categoryName ? null : categoryName
 
-      updateFilters({
-        categoria: nextCategory,
-        subcategoria: null,
-        page: 1,
-      })
+      updateFilters(
+        {
+          categoria: nextCategory,
+          subcategoria: null,
+          page: 1,
+        },
+        { clearVariantFilters: true },
+      )
 
       if (nextCategory) {
         setExpandedCategories(prev => ({
@@ -241,13 +385,17 @@ const OurStore = () => {
   const handleSubcategoryClick = useCallback(
     (categoryName, subcategoryName) => {
       const shouldClear =
-        selectedCategory === categoryName && selectedSubcategory === subcategoryName
+        selectedCategory === categoryName &&
+        selectedSubcategory === subcategoryName
 
-      updateFilters({
-        categoria: categoryName,
-        subcategoria: shouldClear ? null : subcategoryName,
-        page: 1,
-      })
+      updateFilters(
+        {
+          categoria: categoryName,
+          subcategoria: shouldClear ? null : subcategoryName,
+          page: 1,
+        },
+        { clearVariantFilters: true },
+      )
 
       setExpandedCategories(prev => ({
         ...prev,
@@ -261,6 +409,29 @@ const OurStore = () => {
     setSearchInput('')
     setSearchParams({})
   }, [setSearchParams])
+
+  const handleVariantFilterChange = useCallback(
+    (attributeKey, value) => {
+      const paramKey = `${VARIANT_FILTER_PREFIX}${attributeKey}`
+      const params = new URLSearchParams(searchParams)
+
+      params.delete(paramKey)
+      if (value) params.set(paramKey, value)
+      params.delete('page')
+      setSearchParams(params)
+    },
+    [searchParams, setSearchParams],
+  )
+
+  const handleRemoveVariantFilter = useCallback(
+    (attributeKey, value) => {
+      const selectedValue = selectedVariantFilters[attributeKey]?.[0]
+      if (selectedValue === value) {
+        handleVariantFilterChange(attributeKey, null)
+      }
+    },
+    [handleVariantFilterChange, selectedVariantFilters],
+  )
 
   const handleItemsPerPageChange = useCallback(
     event => {
@@ -311,7 +482,14 @@ const OurStore = () => {
         page: 1,
       })
     },
-    [events.SEARCH, searchInput, selectedCategory, selectedSubcategory, track, updateFilters],
+    [
+      events.SEARCH,
+      searchInput,
+      selectedCategory,
+      selectedSubcategory,
+      track,
+      updateFilters,
+    ],
   )
 
   const handleSearchClear = useCallback(() => {
@@ -328,18 +506,98 @@ const OurStore = () => {
     if (selectedCategory) parts.push(`Categoría: ${selectedCategory}`)
     if (selectedSubcategory) parts.push(`Subcategoría: ${selectedSubcategory}`)
     if (searchQuery) parts.push(`Búsqueda: "${searchQuery}"`)
+    const selectedVariantCount = Object.values(selectedVariantFilters).reduce(
+      (total, values) => total + values.length,
+      0,
+    )
+    if (selectedVariantCount > 0) {
+      parts.push(`${selectedVariantCount} filtros de variantes`)
+    }
 
     return parts.join(' · ')
-  }, [selectedCategory, selectedSubcategory, searchQuery])
+  }, [
+    selectedCategory,
+    selectedSubcategory,
+    searchQuery,
+    selectedVariantFilters,
+  ])
+
+  const selectedCategoryData = useMemo(
+    () =>
+      categories.find(category => category.name === selectedCategory) || null,
+    [categories, selectedCategory],
+  )
+
+  const selectedSubcategoryData = useMemo(
+    () =>
+      selectedCategoryData?.subcategories?.find(
+        subcategory => subcategory.name === selectedSubcategory,
+      ) || null,
+    [selectedCategoryData, selectedSubcategory],
+  )
+
+  const variantAttributeLabels = useMemo(() => {
+    const labelMap = new Map()
+
+    for (const attribute of selectedSubcategoryData?.variantAttributes || []) {
+      if (attribute?.name) {
+        labelMap.set(
+          attribute.name,
+          attribute.label || formatAttributeLabel(attribute.name),
+        )
+      }
+    }
+
+    return labelMap
+  }, [selectedSubcategoryData])
+
+  const visibleFacets = useMemo(() => {
+    if (!selectedCategory || !selectedSubcategory) return []
+
+    return facets
+      .filter(facet => Array.isArray(facet.options) && facet.options.length > 0)
+      .map(facet => ({
+        ...facet,
+        label:
+          variantAttributeLabels.get(facet.key) ||
+          formatAttributeLabel(facet.key),
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label, 'es'))
+  }, [facets, selectedCategory, selectedSubcategory, variantAttributeLabels])
+
+  const selectedVariantChips = useMemo(
+    () =>
+      Object.entries(selectedVariantFilters).flatMap(([attributeKey, values]) =>
+        values.map(value => ({
+          attributeKey,
+          label:
+            variantAttributeLabels.get(attributeKey) ||
+            formatAttributeLabel(attributeKey),
+          value,
+        })),
+      ),
+    [selectedVariantFilters, variantAttributeLabels],
+  )
 
   const productsWithPromotions = useMemo(() => {
     return products.map(product => {
       const promotion = findPromotionForProduct(product, promotionalBlocks)
+      const matchingVariantContext = getMatchingVariantContext(
+        product,
+        selectedVariantFilters,
+      )
+      const productWithFilterContext = matchingVariantContext
+        ? {
+            ...product,
+            filterMatchedVariant: matchingVariantContext.variant,
+            displayImage: matchingVariantContext.image,
+          }
+        : product
 
-      if (!promotion?.hasPromotion) return product
+      if (!promotion?.hasPromotion) return productWithFilterContext
 
       return {
-        ...product,
+        ...productWithFilterContext,
         hasPromotion: true,
         promotionId: promotion.blockId,
         promotionTitle: promotion.blockTitle,
@@ -349,7 +607,7 @@ const OurStore = () => {
         finalPrice: promotion.finalPrice,
       }
     })
-  }, [products, promotionalBlocks])
+  }, [products, promotionalBlocks, selectedVariantFilters])
 
   return (
     <Box sx={{ bgcolor: themeColors.background, minHeight: '100vh' }}>
@@ -361,12 +619,15 @@ const OurStore = () => {
           flexDirection={{ xs: 'column', md: 'row' }}
         >
           {/* Sidebar */}
-          <Box flex={{ xs: '1 1 100%', md: '0 0 25%' }} minWidth={{ xs: '100%', md: 240 }}>
+          <Box
+            flex={{ xs: '1 1 100%', md: '0 0 25%' }}
+            minWidth={{ xs: '100%', md: 240 }}
+          >
             <Paper
               elevation={3}
               sx={{
                 p: `${spacingTheme.cardPadding}px`,
-                mr:5,
+                mr: 5,
                 borderRadius: 4,
                 border: '1px solid',
                 borderColor: themeColors.cardBorder,
@@ -382,9 +643,10 @@ const OurStore = () => {
                   mb: 2,
                   fontWeight: 700,
                   color: themeColors.text,
+                  textAlign: 'center',
                 }}
               >
-                Categorías
+                Categorías y subcategorías
               </Typography>
 
               <Divider sx={{ mb: 2 }} />
@@ -392,14 +654,21 @@ const OurStore = () => {
               {isCategoriesLoading ? (
                 <Stack spacing={1}>
                   {[...Array(6)].map((_, i) => (
-                    <Skeleton key={i} variant="rectangular" height={38} sx={{ borderRadius: 2 }} />
+                    <Skeleton
+                      key={i}
+                      variant="rectangular"
+                      height={38}
+                      sx={{ borderRadius: 2 }}
+                    />
                   ))}
                 </Stack>
               ) : (
                 <Stack spacing={0.5}>
                   {visibleCategories.map(category => {
-                    const isSelectedCategory = selectedCategory === category.name
-                    const isExpanded = expandedCategories[category.name] || isSelectedCategory
+                    const isSelectedCategory =
+                      selectedCategory === category.name
+                    const isExpanded =
+                      expandedCategories[category.name] || isSelectedCategory
 
                     return (
                       <Box key={category.name}>
@@ -414,13 +683,16 @@ const OurStore = () => {
                               borderRadius: 2,
                               py: 1,
                               px: `${spacingTheme.cardPadding}px`,
-                              color: isSelectedCategory ? themeColors.actionPrimaryText : themeColors.text,
-                              
+                              color: isSelectedCategory
+                                ? themeColors.actionPrimaryText
+                                : themeColors.text,
                             }}
                           >
                             <Typography
                               sx={{
-                                color: isSelectedCategory ? themeColors.actionPrimaryText : themeColors.text,
+                                color: isSelectedCategory
+                                  ? themeColors.actionPrimaryText
+                                  : themeColors.text,
                                 fontWeight: 600,
                                 textTransform: 'uppercase',
                                 fontSize: 12,
@@ -435,7 +707,9 @@ const OurStore = () => {
                               sx={{
                                 fontSize: 12,
                                 fontWeight: 700,
-                                color: isSelectedCategory ? themeColors.actionPrimaryText : themeColors.cardMutedText,
+                                color: isSelectedCategory
+                                  ? themeColors.actionPrimaryText
+                                  : themeColors.cardMutedText,
                                 ml: 1,
                                 whiteSpace: 'nowrap',
                               }}
@@ -445,14 +719,18 @@ const OurStore = () => {
                           </Button>
 
                           <Button
-                            onClick={() => toggleCategoryExpansion(category.name)}
+                            onClick={() =>
+                              toggleCategoryExpansion(category.name)
+                            }
                             sx={{
                               minWidth: 42,
                               px: 0,
                               borderRadius: 2,
                               color: themeColors.cardMutedText,
                               bgcolor: Newprimary.gainsGray,
-                              '&:hover': { bgcolor: themeColors.cardBackground },
+                              '&:hover': {
+                                bgcolor: themeColors.cardBackground,
+                              },
                             }}
                           >
                             {isExpanded ? <ExpandLess /> : <ExpandMore />}
@@ -463,15 +741,21 @@ const OurStore = () => {
                           <Stack spacing={0.5} sx={{ mt: 0.75, ml: 1.5 }}>
                             {category.subcategories?.map(subcategory => {
                               const isSelectedSubcategory =
-                                isSelectedCategory && selectedSubcategory === subcategory.name
+                                isSelectedCategory &&
+                                selectedSubcategory === subcategory.name
 
                               return (
                                 <Button
                                   key={`${category.name}-${subcategory.name}`}
                                   fullWidth
-                                  variant={isSelectedSubcategory ? 'contained' : 'text'}
+                                  variant={
+                                    isSelectedSubcategory ? 'contained' : 'text'
+                                  }
                                   onClick={() =>
-                                    handleSubcategoryClick(category.name, subcategory.name)
+                                    handleSubcategoryClick(
+                                      category.name,
+                                      subcategory.name,
+                                    )
                                   }
                                   sx={{
                                     justifyContent: 'space-between',
@@ -535,7 +819,7 @@ const OurStore = () => {
                   onClick={() => setShowAllCategories(prev => !prev)}
                   sx={{
                     mt: 1.5,
-                    color: themeColors.link,
+                    color: Newprimary.darkBlueGray,
                     textTransform: 'none',
                     fontWeight: 700,
                     fontSize: 16,
@@ -547,7 +831,88 @@ const OurStore = () => {
                 </Button>
               )}
 
-              {(selectedCategory || selectedSubcategory || searchQuery) && (
+              {visibleFacets.length > 0 && (
+                <>
+                  <Divider sx={{ my: 2.5 }} />
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ mb: 1.5, fontWeight: 800, color: themeColors.text }}
+                  >
+                    Filtrar por características
+                  </Typography>
+
+                  <Stack spacing={2}>
+                    {visibleFacets.map(facet => (
+                      <Box key={facet.key}>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: 'block',
+                            mb: 0.5,
+                            color: themeColors.text,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {facet.label}
+                        </Typography>
+
+                        <RadioGroup
+                          value={selectedVariantFilters[facet.key]?.[0] || ''}
+                          onChange={event =>
+                            handleVariantFilterChange(
+                              facet.key,
+                              event.target.value,
+                            )
+                          }
+                        >
+                          {facet.options.map(option => {
+                            return (
+                              <FormControlLabel
+                                key={`${facet.key}-${option.value}`}
+                                value={option.value}
+                                control={<Radio size="small" />}
+                                label={
+                                  <Box
+                                    component="span"
+                                    sx={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      gap: 1,
+                                      width: '100%',
+                                      fontSize: 13,
+                                    }}
+                                  >
+                                    <span>{option.value}</span>
+                                    <Typography
+                                      component="span"
+                                      variant="caption"
+                                      sx={{ color: themeColors.cardMutedText }}
+                                    >
+                                      {option.count}
+                                    </Typography>
+                                  </Box>
+                                }
+                                sx={{
+                                  m: 0,
+                                  width: '100%',
+                                  '& .MuiFormControlLabel-label': {
+                                    flex: 1,
+                                  },
+                                }}
+                              />
+                            )
+                          })}
+                        </RadioGroup>
+                      </Box>
+                    ))}
+                  </Stack>
+                </>
+              )}
+
+              {(selectedCategory ||
+                selectedSubcategory ||
+                searchQuery ||
+                selectedVariantChips.length > 0) && (
                 <Button
                   fullWidth
                   size="small"
@@ -623,7 +988,6 @@ const OurStore = () => {
                     textTransform: 'none',
                     borderRadius: 2,
                     minWidth: 120,
-                    color: themeColors.link,
                     borderColor: themeColors.border,
                     bgcolor: themeColors.actionPrimary,
                     color: themeColors.actionPrimaryText,
@@ -658,13 +1022,44 @@ const OurStore = () => {
                 </Typography>}*/}
 
                 {activeFilterLabel && (
-                  <Typography variant="caption" sx={{ color: themeColors.cardMutedText }}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: themeColors.cardMutedText }}
+                  >
                     {activeFilterLabel}
                   </Typography>
                 )}
+
+                {selectedVariantChips.length > 0 && (
+                  <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
+                    {selectedVariantChips.map(chip => (
+                      <Chip
+                        key={`${chip.attributeKey}-${chip.value}`}
+                        size="small"
+                        label={`${chip.label}: ${chip.value}`}
+                        onDelete={() =>
+                          handleRemoveVariantFilter(
+                            chip.attributeKey,
+                            chip.value,
+                          )
+                        }
+                        sx={{
+                          bgcolor: themeColors.background,
+                          color: themeColors.text,
+                          border: `1px solid ${themeColors.border}`,
+                        }}
+                      />
+                    ))}
+                  </Stack>
+                )}
               </Box>
 
-              <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+              <Stack
+                direction="row"
+                alignItems="center"
+                spacing={2}
+                flexWrap="wrap"
+              >
                 <Typography variant="caption" sx={{ fontWeight: 700 }}>
                   ORDENAR:
                 </Typography>
@@ -706,7 +1101,11 @@ const OurStore = () => {
               <Grid container spacing={3}>
                 {[...Array(6)].map((_, i) => (
                   <Grid item xs={12} sm={6} lg={4} key={i}>
-                    <Skeleton variant="rectangular" height={280} sx={{ borderRadius: 4 }} />
+                    <Skeleton
+                      variant="rectangular"
+                      height={280}
+                      sx={{ borderRadius: 4 }}
+                    />
                     <Skeleton width="80%" sx={{ mt: 1 }} />
                     <Skeleton width="40%" />
                   </Grid>

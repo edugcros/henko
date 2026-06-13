@@ -5,7 +5,15 @@ import { toast } from 'react-toastify'
 import PropTypes from 'prop-types'
 import ReactGA from 'react-ga4'
 
-import { Card, CardMedia, CardContent, Typography, IconButton, Box, Tooltip } from '@mui/material'
+import {
+  Card,
+  CardMedia,
+  CardContent,
+  Typography,
+  IconButton,
+  Box,
+  Tooltip,
+} from '@mui/material'
 
 import {
   FavoriteBorder as FavoriteBorderIcon,
@@ -15,7 +23,11 @@ import {
   Visibility as VisibilityIcon,
 } from '@mui/icons-material'
 
-import { selectIsAuthenticated, selectWishlistIds, toggleWishlist } from '@features/user/userSlice'
+import {
+  selectIsAuthenticated,
+  selectWishlistIds,
+  toggleWishlist,
+} from '@features/user/userSlice'
 import { addToCompare } from '@features/compare/compareSlice'
 import { addOrUpdateCartItem } from '@features/cart/cartSlice'
 import {
@@ -116,11 +128,13 @@ const cardStyles = {
   my: 1,
   position: 'relative',
   overflow: 'hidden',
-  background: 'linear-gradient(180deg, var(--product-soft-bg) 0%, var(--product-surface) 100%)',
+  background:
+    'linear-gradient(180deg, var(--product-soft-bg) 0%, var(--product-surface) 100%)',
   borderRadius: 4,
   border: '1px solid var(--product-border)',
   boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-  transition: 'transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease',
+  transition:
+    'transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease',
   display: 'flex',
   flexDirection: 'column',
   '&:hover': {
@@ -138,7 +152,8 @@ const cardStyles = {
 }
 
 const imageWrapperStyles = {
-  background: 'linear-gradient(180deg, var(--product-image-bg) 0%, var(--product-soft-bg) 100%)',
+  background:
+    'linear-gradient(180deg, var(--product-image-bg) 0%, var(--product-soft-bg) 100%)',
   borderBottom: '3px solid var(--product-border)',
 }
 
@@ -206,8 +221,14 @@ const ProductCard = ({ item }) => {
   const user = useSelector(state => state.user?.user)
   const isAuthenticated = useSelector(selectIsAuthenticated)
   const themeState = useSelector(state => state.theme) || {}
-  const activeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
-  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const activeConfig = useMemo(
+    () => getActiveThemeConfig(themeState),
+    [themeState],
+  )
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
   const productTheme = useMemo(
     () => getProductThemeConfig(activeConfig),
     [activeConfig],
@@ -266,31 +287,34 @@ const ProductCard = ({ item }) => {
   const discountPercentage = Number(item?.discountPercentage || 0)
   const hasPromotion = Boolean(
     productTheme.showBadge !== false &&
-      item?.hasPromotion &&
-      discountPercentage > 0 &&
-      productPrice < originalPrice,
+    item?.hasPromotion &&
+    discountPercentage > 0 &&
+    productPrice < originalPrice,
   )
-  const trackAddToCart = useCallback(product => {
-    try {
-      const finalPrice = Number(product?.finalPrice ?? product?.price) || 0
+  const trackAddToCart = useCallback(
+    product => {
+      try {
+        const finalPrice = Number(product?.finalPrice ?? product?.price) || 0
 
-      ReactGA.event('add_to_cart', {
-        currency: commerceSettings.currency,
-        value: finalPrice,
-        items: [
-          {
-            item_id: product?._id,
-            item_name: product?.title,
-            item_brand: product?.brand || product?.marca || 'Generic',
-            price: finalPrice,
-            quantity: 1,
-          },
-        ],
-      })
-    } catch {
-      // Analytics no debe romper la UX
-    }
-  }, [commerceSettings.currency])
+        ReactGA.event('add_to_cart', {
+          currency: commerceSettings.currency,
+          value: finalPrice,
+          items: [
+            {
+              item_id: product?._id,
+              item_name: product?.title,
+              item_brand: product?.brand || product?.marca || 'Generic',
+              price: finalPrice,
+              quantity: 1,
+            },
+          ],
+        })
+      } catch {
+        // Analytics no debe romper la UX
+      }
+    },
+    [commerceSettings.currency],
+  )
 
   useEffect(() => {
     if (!item?._id) return
@@ -307,7 +331,15 @@ const ProductCard = ({ item }) => {
         placement: 'product_card',
       },
     })
-  }, [item?._id, item?.title, item?.category, item?.categoryName, productBrand, productPrice, commerceSettings.currency])
+  }, [
+    item?._id,
+    item?.title,
+    item?.category,
+    item?.categoryName,
+    productBrand,
+    productPrice,
+    commerceSettings.currency,
+  ])
 
   const handleProductClick = useCallback(() => {
     trackUserMetric({
@@ -393,7 +425,14 @@ const ProductCard = ({ item }) => {
         })
       }
     },
-    [dispatch, item, compareItems.length, navigate, notify, productTheme.showCompare],
+    [
+      dispatch,
+      item,
+      compareItems.length,
+      navigate,
+      notify,
+      productTheme.showCompare,
+    ],
   )
 
   const handleAddToCart = useCallback(
@@ -434,14 +473,16 @@ const ProductCard = ({ item }) => {
             value: productPrice,
             currency: commerceSettings.currency,
             quantity: 1,
-            items: [{
-              productId: item._id,
-              title: item.title,
-              sku: item.sku || '',
-              quantity: 1,
-              price: productPrice,
-              subtotal: productPrice,
-            }],
+            items: [
+              {
+                productId: item._id,
+                title: item.title,
+                sku: item.sku || '',
+                quantity: 1,
+                price: productPrice,
+                subtotal: productPrice,
+              },
+            ],
             metadata: {
               title: item.title,
               placement: 'product_card',
@@ -482,18 +523,22 @@ const ProductCard = ({ item }) => {
   return (
     <Card component="article" sx={themedCardStyles}>
       {productTheme.showWishlist !== false && (
-      <Box sx={floatingWishlistStyles}>
-        <Tooltip title={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}>
-          <IconButton
-            onClick={handleWishlist}
-            color="error"
-            aria-label={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
-            sx={wishlistButtonStyles}
+        <Box sx={floatingWishlistStyles}>
+          <Tooltip
+            title={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
           >
-            {isFavorite ? <FavoriteIcon /> : <FavoriteBorderIcon />}
-          </IconButton>
-        </Tooltip>
-      </Box>
+            <IconButton
+              onClick={handleWishlist}
+              color="error"
+              aria-label={
+                isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'
+              }
+              sx={wishlistButtonStyles}
+            >
+              {isFavorite ? <FavoriteIcon /> : <FavoriteBorderIcon />}
+            </IconButton>
+          </Tooltip>
+        </Box>
       )}
 
       <Link
@@ -609,35 +654,42 @@ const ProductCard = ({ item }) => {
         </Box>
       </CardContent>
 
-      {(productTheme.showCompare !== false || productTheme.showQuickView !== false) && (
-      <Box className="action-buttons" sx={actionButtonsStyles}>
-        {productTheme.showCompare !== false && (
-        <Tooltip title="Comparar" placement="left">
-          <IconButton
-            onClick={handleCompare}
-            sx={secondaryActionButtonStyles}
-            size="small"
-            aria-label="Comparar producto"
-          >
-            <CompareArrowsIcon fontSize="small" sx={{ color: 'var(--product-action-primary)' }} />
-          </IconButton>
-        </Tooltip>
-        )}
+      {(productTheme.showCompare !== false ||
+        productTheme.showQuickView !== false) && (
+        <Box className="action-buttons" sx={actionButtonsStyles}>
+          {productTheme.showCompare !== false && (
+            <Tooltip title="Comparar" placement="left">
+              <IconButton
+                onClick={handleCompare}
+                sx={secondaryActionButtonStyles}
+                size="small"
+                aria-label="Comparar producto"
+              >
+                <CompareArrowsIcon
+                  fontSize="small"
+                  sx={{ color: 'var(--product-action-primary)' }}
+                />
+              </IconButton>
+            </Tooltip>
+          )}
 
-        {productTheme.showQuickView !== false && (
-        <Tooltip title="Vista rápida" placement="left">
-          <IconButton
-            component={Link}
-            to={`/product/${productRouteId}`}
-            sx={secondaryActionButtonStyles}
-            size="small"
-            aria-label="Ver producto"
-          >
-            <VisibilityIcon fontSize="small" sx={{ color: 'var(--product-action-primary)' }} />
-          </IconButton>
-        </Tooltip>
-        )}
-        {/*
+          {productTheme.showQuickView !== false && (
+            <Tooltip title="Vista rápida" placement="left">
+              <IconButton
+                component={Link}
+                to={`/product/${productRouteId}`}
+                sx={secondaryActionButtonStyles}
+                size="small"
+                aria-label="Ver producto"
+              >
+                <VisibilityIcon
+                  fontSize="small"
+                  sx={{ color: 'var(--product-action-primary)' }}
+                />
+              </IconButton>
+            </Tooltip>
+          )}
+          {/*
         <Tooltip title="Añadir al carrito" placement="left">
           <IconButton
             onClick={handleAddToCart}
@@ -649,7 +701,7 @@ const ProductCard = ({ item }) => {
           </IconButton>
         </Tooltip>
 */}
-      </Box>
+        </Box>
       )}
     </Card>
   )

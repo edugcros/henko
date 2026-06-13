@@ -55,9 +55,7 @@ const normalizeProductList = payload => {
       ? payload.data
       : []
 
-  return rawProducts
-    .map(normalizeProduct)
-    .filter(Boolean)
+  return rawProducts.map(normalizeProduct).filter(Boolean)
 }
 
 const normalizeSingleProduct = payload => {
@@ -144,7 +142,10 @@ export const updateAProduct = createAsyncThunk(
       toast.success('Producto actualizado correctamente')
       return response
     } catch (error) {
-      const message = normalizeErrorMessage(error, 'Error al actualizar producto')
+      const message = normalizeErrorMessage(
+        error,
+        'Error al actualizar producto',
+      )
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
@@ -155,7 +156,10 @@ export const uploadProductImage = createAsyncThunk(
   'product/uploadImage',
   async ({ productId, imageFile }, thunkAPI) => {
     try {
-      const response = await productService.uploadProductImage(productId, imageFile)
+      const response = await productService.uploadProductImage(
+        productId,
+        imageFile,
+      )
       toast.success('Imagen subida correctamente')
       return response
     } catch (error) {
@@ -185,7 +189,10 @@ export const deleteProductImage = createAsyncThunk(
   'product/deleteImage',
   async ({ productId, publicId }, thunkAPI) => {
     try {
-      const response = await productService.deleteProductImage(productId, publicId)
+      const response = await productService.deleteProductImage(
+        productId,
+        publicId,
+      )
       toast.success('Imagen eliminada correctamente')
       return response
     } catch (error) {
@@ -217,7 +224,10 @@ export const assignVariantImage = createAsyncThunk(
 
       return response
     } catch (error) {
-      const message = normalizeErrorMessage(error, 'Error asignando imagen a variante')
+      const message = normalizeErrorMessage(
+        error,
+        'Error asignando imagen a variante',
+      )
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
@@ -304,7 +314,10 @@ const productSlice = createSlice({
         state.createdProduct = normalizeSingleProduct(action.payload)
 
         if (state.createdProduct) {
-          state.products = replaceProductInList(state.products, state.createdProduct)
+          state.products = replaceProductInList(
+            state.products,
+            state.createdProduct,
+          )
         }
       })
       .addCase(createProducts.rejected, (state, action) => {
@@ -350,7 +363,10 @@ const productSlice = createSlice({
         state.updatedProduct = normalizeSingleProduct(action.payload)
 
         if (state.updatedProduct) {
-          state.products = replaceProductInList(state.products, state.updatedProduct)
+          state.products = replaceProductInList(
+            state.products,
+            state.updatedProduct,
+          )
 
           if (state.singleProduct?._id === state.updatedProduct._id) {
             state.singleProduct = state.updatedProduct
@@ -378,7 +394,9 @@ const productSlice = createSlice({
 
         const deletedId = action.payload?.productId
         state.deletedProduct = deletedId || null
-        state.products = state.products.filter(product => product._id !== deletedId)
+        state.products = state.products.filter(
+          product => product._id !== deletedId,
+        )
 
         if (state.singleProduct?._id === deletedId) {
           state.singleProduct = null
@@ -408,7 +426,10 @@ const productSlice = createSlice({
 
         if (state.singleProduct) {
           state.singleProduct.images = uploadedImages
-          state.products = replaceProductInList(state.products, state.singleProduct)
+          state.products = replaceProductInList(
+            state.products,
+            state.singleProduct,
+          )
         }
       })
       .addCase(uploadProductImage.rejected, (state, action) => {
@@ -434,7 +455,10 @@ const productSlice = createSlice({
 
         if (state.singleProduct) {
           state.singleProduct.images = remainingImages
-          state.products = replaceProductInList(state.products, state.singleProduct)
+          state.products = replaceProductInList(
+            state.products,
+            state.singleProduct,
+          )
         }
       })
       .addCase(deleteProductImage.rejected, (state, action) => {

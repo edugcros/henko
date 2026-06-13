@@ -23,21 +23,21 @@ const DEFAULT_COUPON = {
   excludedProducts: [],
   stackable: false,
   priority: 0,
-  isActive: true
+  isActive: true,
 }
 
 const TABS = [
   { id: 'basic', label: 'Básico', icon: '📝' },
   { id: 'conditions', label: 'Condiciones', icon: '⚙️' },
   { id: 'products', label: 'Productos', icon: '🛍️' },
-  { id: 'advanced', label: 'Avanzado', icon: '🔧' }
+  { id: 'advanced', label: 'Avanzado', icon: '🔧' },
 ]
 
 // ======================================================
 // UTILIDADES
 // ======================================================
 
-const formatDateForInput = (date) => {
+const formatDateForInput = date => {
   if (!date) return ''
   try {
     const d = new Date(date)
@@ -54,38 +54,40 @@ const getDefaultDates = () => {
   const oneWeekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
   return {
     startDate: formatDateForInput(now),
-    endDate: formatDateForInput(oneWeekLater)
+    endDate: formatDateForInput(oneWeekLater),
   }
 }
 
-const normalizeProducts = (products) => {
+const normalizeProducts = products => {
   if (!Array.isArray(products)) return []
-  return products.map(p => p?._id?.toString?.() || p?.id?.toString?.() || p?.toString?.()).filter(Boolean)
+  return products
+    .map(p => p?._id?.toString?.() || p?.id?.toString?.() || p?.toString?.())
+    .filter(Boolean)
 }
 
 // ======================================================
 // COMPONENTE
 // ======================================================
 
-const CouponForm = ({ 
-  initialData, 
-  onSubmit, 
+const CouponForm = ({
+  initialData,
+  onSubmit,
   onCancel,
   isSubmitting = false,
-  serverErrors = null
+  serverErrors = null,
 }) => {
   const isMounted = useRef(false)
   const formRef = useRef(null)
-  
+
   // Estados
   const [formData, setFormData] = useState(() => {
     const defaults = getDefaultDates()
     return {
       ...DEFAULT_COUPON,
-      ...defaults
+      ...defaults,
     }
   })
-  
+
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState({})
   const [activeTab, setActiveTab] = useState('basic')
@@ -99,10 +101,12 @@ const CouponForm = ({
   // Cargar datos iniciales
   useEffect(() => {
     isMounted.current = true
-    
+
     if (initialData) {
-      const normalizedProducts = normalizeProducts(initialData.applicableProducts)
-      
+      const normalizedProducts = normalizeProducts(
+        initialData.applicableProducts,
+      )
+
       setFormData(prev => ({
         ...prev,
         ...initialData,
@@ -120,13 +124,13 @@ const CouponForm = ({
         excludedProducts: normalizeProducts(initialData.excludedProducts),
         stackable: !!initialData.stackable,
         priority: initialData.priority ?? 0,
-        isActive: initialData.isActive !== false
+        isActive: initialData.isActive !== false,
       }))
-      
+
       setAutoGenerate(!initialData.code)
       setProductCount(normalizedProducts.length)
     }
-    
+
     return () => {
       isMounted.current = false
     }
@@ -137,9 +141,9 @@ const CouponForm = ({
     if (serverErrors) {
       setErrors(prev => ({
         ...prev,
-        ...serverErrors
+        ...serverErrors,
       }))
-      
+
       // Auto-focus al primer error
       const firstErrorField = Object.keys(serverErrors)[0]
       if (firstErrorField) {
@@ -153,56 +157,59 @@ const CouponForm = ({
   // VALIDACIÓN
   // ======================================================
 
-  const validateField = useCallback((name, value, allValues = formData) => {
-    switch (name) {
-      case 'code':
-        if (!autoGenerate && (!value || value.trim().length < 3)) {
-          return 'El código debe tener al menos 3 caracteres'
+  const validateField = useCallback(
+    (name, value, allValues = formData) => {
+      switch (name) {
+        case 'code':
+          if (!autoGenerate && (!value || value.trim().length < 3)) {
+            return 'El código debe tener al menos 3 caracteres'
+          }
+          return null
+
+        case 'description':
+          if (!value?.trim()) return 'La descripción es requerida'
+          if (value.trim().length < 5) return 'Mínimo 5 caracteres'
+          return null
+
+        case 'discountValue': {
+          const num = parseFloat(value)
+          if (isNaN(num) || num <= 0) return 'Debe ser mayor a 0'
+          if (allValues.discountType === 'percentage' && num > 100) {
+            return 'No puede exceder 100%'
+          }
+          return null
         }
-        return null
-        
-      case 'description':
-        if (!value?.trim()) return 'La descripción es requerida'
-        if (value.trim().length < 5) return 'Mínimo 5 caracteres'
-        return null
-        
-      case 'discountValue': {
-        const num = parseFloat(value)
-        if (isNaN(num) || num <= 0) return 'Debe ser mayor a 0'
-        if (allValues.discountType === 'percentage' && num > 100) {
-          return 'No puede exceder 100%'
+
+        case 'minPurchaseAmount':
+          if (value && parseFloat(value) < 0) return 'No puede ser negativo'
+          return null
+
+        case 'endDate': {
+          const start = new Date(allValues.startDate)
+          const end = new Date(value)
+          if (end <= start) return 'Debe ser posterior a la fecha de inicio'
+          return null
         }
-        return null
+
+        case 'usageLimitPerUser':
+          if (parseInt(value) < 1) return 'Mínimo 1 uso por usuario'
+          return null
+
+        default:
+          return null
       }
-        
-      case 'minPurchaseAmount':
-        if (value && parseFloat(value) < 0) return 'No puede ser negativo'
-        return null
-        
-      case 'endDate': {
-        const start = new Date(allValues.startDate)
-        const end = new Date(value)
-        if (end <= start) return 'Debe ser posterior a la fecha de inicio'
-        return null
-      }
-        
-      case 'usageLimitPerUser':
-        if (parseInt(value) < 1) return 'Mínimo 1 uso por usuario'
-        return null
-        
-      default:
-        return null
-    }
-  }, [autoGenerate, formData])
+    },
+    [autoGenerate, formData],
+  )
 
   const validateForm = useCallback(() => {
     const newErrors = {}
     let isValid = true
-    
+
     // Validar todos los campos requeridos
     const fieldsToValidate = ['description', 'discountValue', 'endDate']
     if (!autoGenerate) fieldsToValidate.push('code')
-    
+
     fieldsToValidate.forEach(field => {
       const error = validateField(field, formData[field], formData)
       if (error) {
@@ -210,7 +217,7 @@ const CouponForm = ({
         isValid = false
       }
     })
-    
+
     setErrors(newErrors)
     return isValid
   }, [formData, autoGenerate, validateField])
@@ -219,46 +226,49 @@ const CouponForm = ({
   // HANDLERS
   // ======================================================
 
-  const handleChange = useCallback((e) => {
-    const { name, value, type, checked } = e.target
-    const newValue = type === 'checkbox' ? checked : value
-    
-    setFormData(prev => ({
-      ...prev,
-      [name]: newValue
-    }))
-    
-    // Marcar como tocado
-    setTouched(prev => ({ ...prev, [name]: true }))
-    
-    // Validación en tiempo real
-    const error = validateField(name, newValue, {
-      ...formData,
-      [name]: newValue
-    })
-    
-    setErrors(prev => ({
-      ...prev,
-      [name]: error
-    }))
-  }, [formData, validateField])
+  const handleChange = useCallback(
+    e => {
+      const { name, value, type, checked } = e.target
+      const newValue = type === 'checkbox' ? checked : value
 
-  const handleBlur = useCallback((e) => {
+      setFormData(prev => ({
+        ...prev,
+        [name]: newValue,
+      }))
+
+      // Marcar como tocado
+      setTouched(prev => ({ ...prev, [name]: true }))
+
+      // Validación en tiempo real
+      const error = validateField(name, newValue, {
+        ...formData,
+        [name]: newValue,
+      })
+
+      setErrors(prev => ({
+        ...prev,
+        [name]: error,
+      }))
+    },
+    [formData, validateField],
+  )
+
+  const handleBlur = useCallback(e => {
     const { name } = e.target
     setTouched(prev => ({ ...prev, [name]: true }))
   }, [])
 
-  const handleProductsChange = useCallback((products) => {
+  const handleProductsChange = useCallback(products => {
     const normalized = normalizeProducts(products)
     setFormData(prev => ({
       ...prev,
-      applicableProducts: normalized
+      applicableProducts: normalized,
     }))
     setProductCount(normalized.length)
     setTouched(prev => ({ ...prev, applicableProducts: true }))
   }, [])
 
-  const handleAutoGenerateChange = useCallback((e) => {
+  const handleAutoGenerateChange = useCallback(e => {
     const checked = e.target.checked
     setAutoGenerate(checked)
     if (checked) {
@@ -267,96 +277,106 @@ const CouponForm = ({
     }
   }, [])
 
-  const handleTabChange = useCallback((tabId) => {
-    // Validar tab actual antes de cambiar
-    if (activeTab === 'basic') {
-      const requiredFields = autoGenerate 
-        ? ['description', 'discountValue'] 
-        : ['code', 'description', 'discountValue']
-      
-      const hasErrors = requiredFields.some(field => {
-        const error = validateField(field, formData[field])
-        return !!error
-      })
-      
-      if (hasErrors) {
-        setTouched(prev => ({
-          ...prev,
-          ...requiredFields.reduce((acc, f) => ({ ...acc, [f]: true }), {})
-        }))
-        // No cambiar de tab si hay errores
+  const handleTabChange = useCallback(
+    tabId => {
+      // Validar tab actual antes de cambiar
+      if (activeTab === 'basic') {
+        const requiredFields = autoGenerate
+          ? ['description', 'discountValue']
+          : ['code', 'description', 'discountValue']
+
+        const hasErrors = requiredFields.some(field => {
+          const error = validateField(field, formData[field])
+          return !!error
+        })
+
+        if (hasErrors) {
+          setTouched(prev => ({
+            ...prev,
+            ...requiredFields.reduce((acc, f) => ({ ...acc, [f]: true }), {}),
+          }))
+          // No cambiar de tab si hay errores
+          return
+        }
+      }
+
+      setActiveTab(tabId)
+    },
+    [activeTab, autoGenerate, formData, validateField],
+  )
+
+  const handleSubmit = useCallback(
+    e => {
+      e.preventDefault()
+
+      // Marcar todos como tocados
+      const allFields = Object.keys(formData)
+      setTouched(allFields.reduce((acc, key) => ({ ...acc, [key]: true }), {}))
+
+      if (!validateForm()) {
+        // Scroll al primer error
+        const firstErrorElement = formRef.current?.querySelector('.error')
+        firstErrorElement?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        })
         return
       }
-    }
-    
-    setActiveTab(tabId)
-  }, [activeTab, autoGenerate, formData, validateField])
 
-  const handleSubmit = useCallback((e) => {
-    e.preventDefault()
-    
-    // Marcar todos como tocados
-    const allFields = Object.keys(formData)
-    setTouched(allFields.reduce((acc, key) => ({ ...acc, [key]: true }), {}))
-    
-    if (!validateForm()) {
-      // Scroll al primer error
-      const firstErrorElement = formRef.current?.querySelector('.error')
-      firstErrorElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      return
-    }
-    
       const dataToSubmit = {
         ...formData,
-        ...(autoGenerate
-          ? {}
-          : { code: formData.code.trim().toUpperCase() }),
+        ...(autoGenerate ? {} : { code: formData.code.trim().toUpperCase() }),
         description: formData.description.trim(),
         discountValue: parseFloat(formData.discountValue),
         minPurchaseAmount: parseFloat(formData.minPurchaseAmount) || 0,
         maxDiscountAmount: formData.maxDiscountAmount
           ? parseFloat(formData.maxDiscountAmount)
           : null,
-        usageLimit: formData.usageLimit
-          ? parseInt(formData.usageLimit)
-          : null,
+        usageLimit: formData.usageLimit ? parseInt(formData.usageLimit) : null,
         usageLimitPerUser: parseInt(formData.usageLimitPerUser) || 1,
         priority: parseInt(formData.priority) || 0,
-        applicableProducts: formData.applicableProducts
+        applicableProducts: formData.applicableProducts,
       }
 
-          
-    onSubmit?.(dataToSubmit)
-  }, [formData, autoGenerate, validateForm, onSubmit])
+      onSubmit?.(dataToSubmit)
+    },
+    [formData, autoGenerate, validateForm, onSubmit],
+  )
 
   // ======================================================
   // RENDER HELPERS
   // ======================================================
 
-  const getTabLabel = useCallback((tab) => {
-    if (tab.id === 'products') {
-      return `${tab.label} (${productCount})`
-    }
-    return tab.label
-  }, [productCount])
+  const getTabLabel = useCallback(
+    tab => {
+      if (tab.id === 'products') {
+        return `${tab.label} (${productCount})`
+      }
+      return tab.label
+    },
+    [productCount],
+  )
 
-  const inputProps = useCallback((name) => ({
-    name,
-    value: formData[name],
-    onChange: handleChange,
-    onBlur: handleBlur,
-    'aria-invalid': !!errors[name],
-    'aria-describedby': errors[name] ? `${name}-error` : undefined
-  }), [formData, errors, handleChange, handleBlur])
+  const inputProps = useCallback(
+    name => ({
+      name,
+      value: formData[name],
+      onChange: handleChange,
+      onBlur: handleBlur,
+      'aria-invalid': !!errors[name],
+      'aria-describedby': errors[name] ? `${name}-error` : undefined,
+    }),
+    [formData, errors, handleChange, handleBlur],
+  )
 
   // ======================================================
   // RENDER
   // ======================================================
 
   return (
-    <form 
+    <form
       ref={formRef}
-      onSubmit={handleSubmit} 
+      onSubmit={handleSubmit}
       className="coupon-form"
       noValidate
     >
@@ -387,21 +407,21 @@ const CouponForm = ({
       <div className="form-content">
         {/* Tab Básico */}
         {activeTab === 'basic' && (
-          <div 
-            id="panel-basic"
-            role="tabpanel"
-            className="tab-panel"
-          >
-            <div className={`form-group checkbox-group ${autoGenerate ? 'checked' : ''}`}>
+          <div id="panel-basic" role="tabpanel" className="tab-panel">
+            <div
+              className={`form-group checkbox-group ${autoGenerate ? 'checked' : ''}`}
+            >
               <label className="checkbox-label">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={autoGenerate}
                   onChange={handleAutoGenerateChange}
                   disabled={isSubmitting}
                 />
                 <span className="checkmark"></span>
-                <span className="label-text">Generar código automáticamente</span>
+                <span className="label-text">
+                  Generar código automáticamente
+                </span>
               </label>
               <small className="help-text">
                 El sistema creará un código único aleatorio
@@ -409,7 +429,9 @@ const CouponForm = ({
             </div>
 
             {!autoGenerate && (
-              <div className={`form-group ${errors.code && touched.code ? 'has-error' : ''}`}>
+              <div
+                className={`form-group ${errors.code && touched.code ? 'has-error' : ''}`}
+              >
                 <label htmlFor="code">
                   Código del Cupón <span className="required">*</span>
                 </label>
@@ -432,7 +454,9 @@ const CouponForm = ({
               </div>
             )}
 
-            <div className={`form-group ${errors.description && touched.description ? 'has-error' : ''}`}>
+            <div
+              className={`form-group ${errors.description && touched.description ? 'has-error' : ''}`}
+            >
               <label htmlFor="description">
                 Descripción <span className="required">*</span>
               </label>
@@ -444,16 +468,22 @@ const CouponForm = ({
                 {...inputProps('description')}
               />
               {errors.description && touched.description && (
-                <span id="description-error" className="error-message" role="alert">
+                <span
+                  id="description-error"
+                  className="error-message"
+                  role="alert"
+                >
                   {errors.description}
                 </span>
               )}
             </div>
 
             <div className="form-row two-columns">
-              <div className={`form-group ${errors.discountValue && touched.discountValue ? 'has-error' : ''}`}>
+              <div
+                className={`form-group ${errors.discountValue && touched.discountValue ? 'has-error' : ''}`}
+              >
                 <label htmlFor="discountType">Tipo de Descuento</label>
-                <select 
+                <select
                   id="discountType"
                   disabled={isSubmitting}
                   {...inputProps('discountType')}
@@ -463,7 +493,9 @@ const CouponForm = ({
                 </select>
               </div>
 
-              <div className={`form-group ${errors.discountValue && touched.discountValue ? 'has-error' : ''}`}>
+              <div
+                className={`form-group ${errors.discountValue && touched.discountValue ? 'has-error' : ''}`}
+              >
                 <label htmlFor="discountValue">
                   Valor <span className="required">*</span>
                 </label>
@@ -482,7 +514,11 @@ const CouponForm = ({
                   />
                 </div>
                 {errors.discountValue && touched.discountValue && (
-                  <span id="discountValue-error" className="error-message" role="alert">
+                  <span
+                    id="discountValue-error"
+                    className="error-message"
+                    role="alert"
+                  >
                     {errors.discountValue}
                   </span>
                 )}
@@ -491,7 +527,9 @@ const CouponForm = ({
 
             {formData.discountType === 'percentage' && (
               <div className="form-group">
-                <label htmlFor="maxDiscountAmount">Descuento Máximo (opcional)</label>
+                <label htmlFor="maxDiscountAmount">
+                  Descuento Máximo (opcional)
+                </label>
                 <div className="input-with-prefix">
                   <span className="prefix">$</span>
                   <input
@@ -544,10 +582,14 @@ const CouponForm = ({
                   disabled={isSubmitting}
                   {...inputProps('usageLimit')}
                 />
-                <small className="help-text">Dejar vacío para usos ilimitados</small>
+                <small className="help-text">
+                  Dejar vacío para usos ilimitados
+                </small>
               </div>
 
-              <div className={`form-group ${errors.usageLimitPerUser ? 'has-error' : ''}`}>
+              <div
+                className={`form-group ${errors.usageLimitPerUser ? 'has-error' : ''}`}
+              >
                 <label htmlFor="usageLimitPerUser">Límite por Usuario</label>
                 <input
                   id="usageLimitPerUser"
@@ -573,7 +615,9 @@ const CouponForm = ({
                 />
               </div>
 
-              <div className={`form-group ${errors.endDate && touched.endDate ? 'has-error' : ''}`}>
+              <div
+                className={`form-group ${errors.endDate && touched.endDate ? 'has-error' : ''}`}
+              >
                 <label htmlFor="endDate">
                   Fecha de Fin <span className="required">*</span>
                 </label>
@@ -585,7 +629,11 @@ const CouponForm = ({
                   {...inputProps('endDate')}
                 />
                 {errors.endDate && touched.endDate && (
-                  <span id="endDate-error" className="error-message" role="alert">
+                  <span
+                    id="endDate-error"
+                    className="error-message"
+                    role="alert"
+                  >
                     {errors.endDate}
                   </span>
                 )}
@@ -603,20 +651,22 @@ const CouponForm = ({
               disabled={isSubmitting}
               maxSelection={100}
             />
-            
-            <div className={`info-box ${productCount === 0 ? 'info' : 'success'}`}>
+
+            <div
+              className={`info-box ${productCount === 0 ? 'info' : 'success'}`}
+            >
               <span className="info-icon">
                 {productCount === 0 ? '💡' : '✓'}
               </span>
               <div className="info-content">
                 <strong>
-                  {productCount === 0 
-                    ? 'Cupón universal' 
+                  {productCount === 0
+                    ? 'Cupón universal'
                     : `${productCount} producto(s) seleccionado(s)`}
                 </strong>
                 <p>
-                  {productCount === 0 
-                    ? 'El cupón aplicará a TODOS los productos de la tienda.' 
+                  {productCount === 0
+                    ? 'El cupón aplicará a TODOS los productos de la tienda.'
                     : 'El cupón solo aplicará a los productos seleccionados.'}
                 </p>
               </div>
@@ -637,7 +687,9 @@ const CouponForm = ({
                   disabled={isSubmitting}
                 />
                 <span className="checkmark"></span>
-                <span className="label-text">Permitir combinación con otros cupones</span>
+                <span className="label-text">
+                  Permitir combinación con otros cupones
+                </span>
               </label>
               <small className="help-text">
                 Los clientes podrán usar este cupón junto con otros
@@ -678,26 +730,24 @@ const CouponForm = ({
 
       {/* Acciones */}
       <div className="form-actions">
-        <button 
-          type="button" 
-          onClick={onCancel} 
+        <button
+          type="button"
+          onClick={onCancel}
           className="btn-secondary"
           disabled={isSubmitting}
         >
           Cancelar
         </button>
-        <button 
-          type="submit" 
-          className="btn-primary"
-          disabled={isSubmitting}
-        >
+        <button type="submit" className="btn-primary" disabled={isSubmitting}>
           {isSubmitting ? (
             <>
               <span className="spinner-small"></span>
               {initialData ? 'Actualizando...' : 'Creando...'}
             </>
+          ) : initialData ? (
+            'Actualizar Cupón'
           ) : (
-            initialData ? 'Actualizar Cupón' : 'Crear Cupón'
+            'Crear Cupón'
           )}
         </button>
       </div>
@@ -726,18 +776,18 @@ CouponForm.propTypes = {
     excludedProducts: PropTypes.array,
     stackable: PropTypes.bool,
     priority: PropTypes.number,
-    isActive: PropTypes.bool
+    isActive: PropTypes.bool,
   }),
   onSubmit: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
   isSubmitting: PropTypes.bool,
-  serverErrors: PropTypes.object
+  serverErrors: PropTypes.object,
 }
 
 CouponForm.defaultProps = {
   initialData: null,
   isSubmitting: false,
-  serverErrors: null
+  serverErrors: null,
 }
 
 export default React.memo(CouponForm)

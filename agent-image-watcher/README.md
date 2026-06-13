@@ -1,69 +1,69 @@
 # Henko Product Image Agent
 
-Agente local para tomar imágenes de una carpeta y registrarlas en la cola de AddProduct.
+Worker local de ingesta para el pipeline de análisis visual de productos.
 
-## Flujo
+## Responsabilidad
 
-1. Copiá una imagen en `WATCH_FOLDER`.
-2. El agente espera a que el archivo termine de copiarse.
-3. Sube la imagen al backend como trabajo de AddProduct.
-4. Mueve la imagen a `PROCESSED_FOLDER` si salió bien o a `FAILED_FOLDER` si falló.
-5. Escribe el estado operativo en `agent-status.json`.
+El proceso observa una carpeta, valida cada imagen, la entrega de forma idempotente
+al backend y conserva el archivo en `processed` o `failed`. El análisis IA se
+ejecuta en el backend mediante Gemini, dentro del contexto del tenant.
 
-El agente no ejecuta IA. La IA se ejecuta en AddProduct.
+No crea una segunda implementación de IA local. Su función es garantizar una
+entrega confiable, observable y limitada hacia el servicio central.
 
-## Programar una imagen
+## Garantías operativas
 
-Para programar una imagen puntual, agregá un archivo con el mismo nombre y extensión `.schedule.json`.
+- clave técnica ligada al tenant en el backend;
+- análisis IA habilitado por defecto;
+- validación de extensión, tamaño y firma binaria;
+- cola con concurrencia configurable;
+- reintentos exponenciales para fallos transitorios;
+- deduplicación local de eventos e idempotencia por SHA-256;
+- bloqueo de instancia para evitar procesamientos dobles;
+- escritura atómica de `agent-status.json`;
+- preservación de errores en archivos `.error.json`;
+- cierre ordenado mediante `SIGINT` y `SIGTERM`;
+- el `ADMIN_TOKEN` queda prohibido en producción.
 
-Ejemplo:
+## Configuración
 
-- `zapatilla.jpg`
-- `zapatilla.schedule.json`
+Copiar `agent.env.example` como `.env` y completar únicamente secretos locales.
+
+La clave enviada en `AGENT_API_KEY` debe estar registrada como hash SHA-256 para
+el mismo `TENANT_DOMAIN` en `PRODUCT_ANALYSIS_AGENT_KEYS_JSON` del backend.
+
+Para generar el hash:
+
+```powershell
+node -e "const c=require('crypto'); console.log(c.createHash('sha256').update(process.argv[1]).digest('hex'))" "CLAVE_DEL_AGENTE"
+```
+
+## Sidecar opcional
+
+Una imagen `producto.jpg` puede acompañarse con `producto.schedule.json`:
 
 ```json
 {
-  "sendAt": "2026-05-26T09:30:00-03:00",
-  "autoSaveProduct": true,
+  "sendAt": "2026-06-10T09:30:00-03:00",
+  "autoAnalyze": true,
+  "autoCreateProduct": false,
+  "autoSaveProduct": false,
   "autoPublishProduct": false
 }
 ```
 
-## Automatización global
+`autoPublishProduct` sólo es válido junto con `autoCreateProduct`.
 
-En `.env`:
+## Estados
 
-```env
-AUTO_SAVE_PRODUCT=true
-AUTO_PUBLISH_PRODUCT=false
-AGENT_DEFAULT_SEND_AT=2026-05-26T09:30:00-03:00
-```
+- `processed`: el backend aceptó la imagen o confirmó que ya existía.
+- `failed`: validación, autenticación o procesamiento rechazado.
+- `agent-status.json`: salud, heartbeat, cola, contadores y eventos recientes.
 
-`AUTO_SAVE_PRODUCT=true` permite que AddProduct, con modo Auto activo, analice con IA y guarde el producto.
+Los archivos fallidos incluyen un `<imagen>.error.json` con código HTTP y motivo.
 
-## Avisos de promociones en wishlist
+## Producción
 
-El agente también puede pedirle al backend que revise promociones activas y avise por email a usuarios que tengan esos productos en su lista de deseos.
-
-En `.env`:
-
-```env
-PROMOTION_NOTIFIER_ENABLED=true
-PROMOTION_NOTIFIER_ENDPOINT=/product-analysis/wishlist-promotions/run
-PROMOTION_NOTIFIER_INTERVAL_MINUTES=60
-PROMOTION_NOTIFIER_DRY_RUN=false
-```
-
-El cruce de datos se hace en backend, respetando `tenantId`. El backend registra cada combinación usuario/producto/promoción para no enviar avisos duplicados.
-
-## Estado visual
-
-El agente imprime un resumen en consola y mantiene `agent-status.json` dentro de `WATCH_FOLDER`.
-
-Ese archivo muestra:
-
-- carpeta monitoreada
-- tenant
-- endpoint
-- contadores de detectadas, enviadas, programadas, duplicadas y fallidas
-- últimos 20 eventos
+Ejecutar mediante un supervisor como systemd, Windows Service, Docker o PM2.
+Debe existir una sola instancia por `WATCH_FOLDER`. `API_BASE_URL` debe utilizar
+HTTPS y cada tenant debe disponer de una credencial independiente.

@@ -1,12 +1,17 @@
 {
   "name": "agent-image-watcher",
   "version": "1.0.0",
-  "description": "",
+  "description": "Worker local multitenant para ingesta y análisis IA de imágenes de productos",
+  "private": true,
   "type": "module",
   "main": "agent.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "start": "node agent.js",
-    "test": "node --check agent.js"
+    "check": "node --check agent.js",
+    "test": "node --test test/*.test.js"
   },
   "keywords": [],
   "author": "",

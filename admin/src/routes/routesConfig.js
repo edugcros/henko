@@ -1,5 +1,5 @@
 // admin/src/routes/routesConfig.js
-import react  from 'react'
+import react from 'react'
 
 import pages from '@pages'
 
@@ -13,7 +13,7 @@ export const publicRoutes = [
 // ✅ Rutas públicas dinámicas (con parámetros como tokens)
 export const publicDynamicRoutes = [
   { path: '/reset-password/:token', Component: pages.Resetpassword },
-    {
+  {
     path: '/admin/edit-product/:productId',
     Component: pages.EditProduct,
   },
@@ -51,6 +51,12 @@ export const privateRoutes = [
   {
     path: '/admin/enquiries',
     Component: pages.Enquiries,
+    allowedRoles: ['admin'],
+  },
+
+  {
+    path: '/admin/ai-commercial-inbox',
+    Component: pages.AiCommercialInboxPage,
     allowedRoles: ['admin'],
   },
 

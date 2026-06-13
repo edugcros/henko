@@ -22,7 +22,10 @@ import { registerUser, clearState } from '@features/user/userSlice'
 const validationSchema = yup.object({
   firstname: yup.string().required('El nombre es obligatorio'),
   lastname: yup.string().required('El apellido es obligatorio'),
-  email: yup.string().email('Correo inválido').required('El correo es obligatorio'),
+  email: yup
+    .string()
+    .email('Correo inválido')
+    .required('El correo es obligatorio'),
   mobile: yup.string().required('El número de celular es obligatorio'),
   password: yup.string().required('La contraseña es obligatoria'),
 })
@@ -57,7 +60,15 @@ const Signup = () => {
     },
   })
 
-  const { handleSubmit, handleChange, handleBlur, values, errors, touched, setFieldValue } = formik
+  const {
+    handleSubmit,
+    handleChange,
+    handleBlur,
+    values,
+    errors,
+    touched,
+    setFieldValue,
+  } = formik
 
   return (
     <>
@@ -82,10 +93,20 @@ const Signup = () => {
               backgroundColor: '#fff',
             }}
           >
-            <Typography variant="h5" align="center" fontWeight="600" gutterBottom>
+            <Typography
+              variant="h5"
+              align="center"
+              fontWeight="600"
+              gutterBottom
+            >
               Crear cuenta
             </Typography>
-            <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
+            <Typography
+              variant="body2"
+              align="center"
+              color="text.secondary"
+              sx={{ mb: 3 }}
+            >
               Registrate para acceder a tu cuenta
             </Typography>
 
@@ -133,14 +154,17 @@ const Signup = () => {
                       onChange={e => {
                         // Limpieza en tiempo real: solo números y quitar el '0' o '15' inicial si lo pegan
                         const val = e.target.value.replace(/\D/g, '')
-                        const cleanedVal = val.startsWith('0') ? val.substring(1) : val
+                        const cleanedVal = val.startsWith('0')
+                          ? val.substring(1)
+                          : val
                         // Actualizamos Formik manualmente para asegurar la limpieza
                         setFieldValue('mobile', cleanedVal)
                       }}
                       onBlur={handleBlur}
                       error={touched.mobile && Boolean(errors.mobile)}
                       helperText={
-                        (touched.mobile && errors.mobile) || 'Sin 0 y sin 15. Ej: 3585132769'
+                        (touched.mobile && errors.mobile) ||
+                        'Sin 0 y sin 15. Ej: 3585132769'
                       }
                       variant="outlined"
                       InputProps={{
@@ -192,7 +216,11 @@ const Signup = () => {
                   </Typography>
                 )}
                 {isSuccess && (
-                  <Typography variant="body2" color="success.main" align="center">
+                  <Typography
+                    variant="body2"
+                    color="success.main"
+                    align="center"
+                  >
                     Usuario registrado correctamente
                   </Typography>
                 )}
@@ -219,9 +247,16 @@ const Signup = () => {
                 </Button>
 
                 {/* Link a login */}
-                <Typography variant="body2" align="center" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  align="center"
+                  color="text.secondary"
+                >
                   ¿Ya tenés cuenta?{' '}
-                  <Link to="/login" style={{ textDecoration: 'none', color: '#1976d2' }}>
+                  <Link
+                    to="/login"
+                    style={{ textDecoration: 'none', color: '#1976d2' }}
+                  >
                     Iniciar sesión
                   </Link>
                 </Typography>

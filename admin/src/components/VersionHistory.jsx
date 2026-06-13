@@ -29,13 +29,7 @@ import {
 import { useTheme } from '@hooks/useThemeConfig'
 
 const VersionHistory = ({ open, onClose }) => {
-  const {
-    history,
-    isHistoryLoading,
-    loadHistory,
-    rollback,
-    theme,
-  } = useTheme()
+  const { history, isHistoryLoading, loadHistory, rollback, theme } = useTheme()
 
   const [selectedVersion, setSelectedVersion] = useState(null)
   const [isRollingBack, setIsRollingBack] = useState(false)
@@ -47,8 +41,12 @@ const VersionHistory = ({ open, onClose }) => {
     }
   }, [open, loadHistory])
 
-  const handleRollback = async (version) => {
-    if (!window.confirm(`¿Volver a la versión ${version}? Se perderán los cambios actuales.`)) {
+  const handleRollback = async version => {
+    if (
+      !window.confirm(
+        `¿Volver a la versión ${version}? Se perderán los cambios actuales.`,
+      )
+    ) {
       return
     }
 
@@ -63,7 +61,7 @@ const VersionHistory = ({ open, onClose }) => {
     }
   }
 
-  const formatDate = (dateString) => {
+  const formatDate = dateString => {
     if (!dateString) return 'Fecha desconocida'
     return new Date(dateString).toLocaleString('es-ES', {
       day: '2-digit',
@@ -81,15 +79,17 @@ const VersionHistory = ({ open, onClose }) => {
       maxWidth="sm"
       fullWidth
       PaperProps={{
-        sx: { minHeight: 500 }
+        sx: { minHeight: 500 },
       }}
     >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        pb: 1,
-      }}>
+      <DialogTitle
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          pb: 1,
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <RestoreIcon color="primary" />
           <Typography variant="h6" component="span">
@@ -110,7 +110,7 @@ const VersionHistory = ({ open, onClose }) => {
             Versión Actual
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Chip 
+            <Chip
               icon={<SaveIcon fontSize="small" />}
               label={`v${theme?.version || 1}`}
               color="primary"
@@ -164,7 +164,9 @@ const VersionHistory = ({ open, onClose }) => {
                 >
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box
+                        sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                      >
                         <Typography variant="body2" fontWeight={600}>
                           Versión {item.version}
                         </Typography>
@@ -174,19 +176,42 @@ const VersionHistory = ({ open, onClose }) => {
                       </Box>
                     }
                     secondary={
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 0.5,
+                          mt: 0.5,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.5,
+                          }}
+                        >
                           <CalendarIcon fontSize="inherit" color="action" />
                           <Typography variant="caption" color="text.secondary">
                             {formatDate(item.updatedAt)}
                           </Typography>
                         </Box>
                         {item.lastModifiedBy && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.5,
+                            }}
+                          >
                             <PersonIcon fontSize="inherit" color="action" />
-                            <Typography variant="caption" color="text.secondary">
-                              {typeof item.lastModifiedBy === 'object' 
-                                ? item.lastModifiedBy.email || item.lastModifiedBy.name
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {typeof item.lastModifiedBy === 'object'
+                                ? item.lastModifiedBy.email ||
+                                  item.lastModifiedBy.name
                                 : 'Usuario'}
                             </Typography>
                           </Box>
@@ -202,7 +227,11 @@ const VersionHistory = ({ open, onClose }) => {
       </DialogContent>
 
       <DialogActions sx={{ p: 2, pt: 1 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ flexGrow: 1 }}
+        >
           {history?.length > 0 ? `${history.length} versiones encontradas` : ''}
         </Typography>
         <Button onClick={onClose} color="inherit">
@@ -212,18 +241,20 @@ const VersionHistory = ({ open, onClose }) => {
 
       {/* Overlay de carga durante rollback */}
       {isRollingBack && (
-        <Box sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          bgcolor: 'rgba(255,255,255,0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1,
-        }}>
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            bgcolor: 'rgba(255,255,255,0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1,
+          }}
+        >
           <Box sx={{ textAlign: 'center' }}>
             <CircularProgress size={50} />
             <Typography variant="body2" sx={{ mt: 2 }}>

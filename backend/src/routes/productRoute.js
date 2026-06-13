@@ -10,6 +10,7 @@ import {
   getAllProduct,
   getProductCategories,
   getCategoryConfig,
+  upsertCategoryConfig,
   updateProduct,
   deleteProduct,
   rating,
@@ -22,11 +23,32 @@ import {
 } from '../controller/productCtrl.js'
 
 import { isAdmin, authMiddleware } from '../middlewares/authMiddleware.js'
-import { resolveTenantByDomain } from '../middlewares/tenantMiddleware.js'
+import {
+  requireAdminDomain,
+  requireShopDomain,
+  requireTenant,
+  resolveTenantByDomain,
+} from '../middlewares/tenantMiddleware.js'
 import { uploadPhoto, productImgResize } from '../middlewares/uploadImage.js'
 import { analyzeImage } from '../services/aiVisionService.js'
 
 const router = express.Router()
+const adminContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
+  authMiddleware,
+  isAdmin,
+]
+const shopContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireShopDomain,
+]
+const tenantReadContext = [
+  resolveTenantByDomain,
+  requireTenant,
+]
 
 // =========================================================
 // RATE LIMITERS ESPECÍFICOS
@@ -40,9 +62,7 @@ const aiVisualLimiter = rateLimiter
 
 router.post(
   '/analyze-visual',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   uploadPhoto.single('images'),
   productImgResize,
   aiVisualLimiter,
@@ -71,19 +91,85 @@ router.post(
         data: result,
       })
     } catch (error) {
-      if (
-        error?.message?.includes('429') ||
-        error?.message?.toLowerCase?.().includes('rate limit')
-      ) {
+      const status =
+        error?.status ||
+        error?.statusCode ||
+        error?.response?.status ||
+        error?.cause?.status
+
+      const rawMessage = String(
+        error?.message ||
+          error?.response?.data?.error?.message ||
+          error?.response?.data?.message ||
+          '',
+      )
+
+      const message = rawMessage.toLowerCase()
+
+      console.error('[PRODUCT_ANALYZE_VISUAL_ERROR]', {
+        status,
+        retryable: Boolean(error?.retryable),
+        code: error?.code,
+        name: error?.name,
+        message: rawMessage,
+        tenantId,
+      })
+
+      const isGeminiRateLimit =
+        status === 429 ||
+        message.includes('429') ||
+        message.includes('quota') ||
+        message.includes('rate limit') ||
+        message.includes('too many requests') ||
+        message.includes('resource exhausted')
+
+      const isAuthError =
+        status === 401 ||
+        status === 403 ||
+        message.includes('api key') ||
+        message.includes('permission') ||
+        message.includes('unauthorized') ||
+        message.includes('forbidden')
+
+      const isModelError =
+        status === 400 &&
+        (
+          message.includes('model') ||
+          message.includes('not found') ||
+          message.includes('invalid argument')
+        )
+
+      if (isGeminiRateLimit) {
         return res.status(429).json({
           success: false,
+          code: 'AI_RATE_LIMIT',
           message:
-            'La IA está saturada. Intentá nuevamente en 60 segundos o completá los datos manualmente.',
+            'La IA está saturada o se alcanzó la cuota de Gemini. Intentá nuevamente en 60 segundos o completá los datos manualmente.',
+          retryAfter: 60,
+        })
+      }
+
+      if (isAuthError) {
+        return res.status(502).json({
+          success: false,
+          code: 'AI_AUTH_ERROR',
+          message:
+            'La IA no está configurada correctamente. Revisá la API Key de Gemini.',
+        })
+      }
+
+      if (isModelError) {
+        return res.status(502).json({
+          success: false,
+          code: 'AI_MODEL_ERROR',
+          message:
+            'El modelo de IA configurado no es válido. Revisá GEMINI_MODEL / GOOGLE_IMAGE_MODEL.',
         })
       }
 
       return res.status(500).json({
         success: false,
+        code: 'AI_ANALYSIS_ERROR',
         message: 'Error al analizar la imagen con IA',
       })
     }
@@ -100,11 +186,15 @@ const conditionalCsrfProtection = (req, res, next) => {
 // CRUD PRODUCTO - ADMIN
 // =========================================================
 
+router.put(
+  '/categories/config',
+  adminContext,
+  upsertCategoryConfig,
+)
+
 router.post(
   '/',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   uploadPhoto.fields([
     { name: 'images', maxCount: 10 },
     { name: 'variantImages', maxCount: 20 },
@@ -115,17 +205,13 @@ router.post(
 
 router.put(
   '/:id',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   updateProduct,
 )
 
 router.delete(
   '/:productId',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   deleteProduct,
 )
 
@@ -135,9 +221,7 @@ router.delete(
 
 router.post(
   '/:productId/upload-image',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   uploadPhoto.array('images', 5),
   productImgResize,
   uploadProductImage,
@@ -145,9 +229,7 @@ router.post(
 
 router.delete(
   '/:productId/image',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   deleteProductImage,
 )
 
@@ -157,9 +239,7 @@ router.delete(
 
 router.put(
   '/:productId/variant-image',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   assignVariantImage,
 )
 
@@ -169,7 +249,7 @@ router.put(
 
 router.put(
   '/:productId/rating/:ratingId/helpful',
-  resolveTenantByDomain,
+  shopContext,
   authMiddleware,
   conditionalCsrfProtection,
   toggleHelpfulVote,
@@ -177,7 +257,7 @@ router.put(
 
 router.put(
   '/rating/:productId',
-  resolveTenantByDomain,
+  shopContext,
   authMiddleware,
   rating,
 )
@@ -188,28 +268,28 @@ router.put(
 
 router.get(
   '/categories',
-  resolveTenantByDomain,
+  tenantReadContext,
   productPublicReadLimiter,
   getProductCategories,
 )
 
 router.get(
   '/categories/:category/config',
-  resolveTenantByDomain,
+  tenantReadContext,
   productPublicReadLimiter,
   getCategoryConfig,
 )
 
 router.get(
   '/',
-  resolveTenantByDomain,
+  tenantReadContext,
   productPublicReadLimiter,
   getAllProduct,
 )
 
 router.get(
   '/:productId',
-  resolveTenantByDomain,
+  tenantReadContext,
   productPublicReadLimiter,
   getaProduct,
 )

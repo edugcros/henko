@@ -233,14 +233,35 @@ export const env = {
   ai: {
     provider: process.env.LLM_PROVIDER || 'google',
     geminiApiKey: process.env.GEMINI_API_KEY,
+
     geminiModel: getFirstValue(
       process.env.GEMINI_MODEL,
       process.env.GOOGLE_MODEL,
-      'models/gemini-2.5-flash',
+      'gemini-2.0-flash',
     ),
-    googleTextModel: process.env.GOOGLE_TEXT_MODEL,
-    googleImageModel: process.env.GOOGLE_IMAGE_MODEL,
+
+    geminiImageModel: getFirstValue(
+      process.env.GEMINI_IMAGE_MODEL,
+      process.env.GOOGLE_IMAGE_MODEL,
+      process.env.GEMINI_MODEL,
+      process.env.GOOGLE_MODEL,
+      'gemini-2.0-flash',
+    ),
+
+    googleTextModel: process.env.GOOGLE_TEXT_MODEL || 'gemini-2.0-flash',
+    googleImageModel: process.env.GOOGLE_IMAGE_MODEL || 'gemini-2.0-flash',
     minConfidence: Number(process.env.AI_MIN_CONFIDENCE || 0.65),
+  },
+
+  productAnalysis: {
+    agentKeysJson: process.env.PRODUCT_ANALYSIS_AGENT_KEYS_JSON,
+    rateLimitWindowMs: Number(
+      process.env.PRODUCT_ANALYSIS_RATE_LIMIT_WINDOW_MS || 900000,
+    ),
+    rateLimitMax: Number(process.env.PRODUCT_ANALYSIS_RATE_LIMIT_MAX || 240),
+    autoPublishMinConfidence: Number(
+      process.env.AI_AUTO_PUBLISH_MIN_CONFIDENCE || 0.9,
+    ),
   },
 
   // Google Analytics Server
@@ -316,6 +337,7 @@ if (env.isProduction) {
     ['CLIENT_URL / SHOP_FRONTEND_URL', env.clientUrl],
     ['ADMIN_URL / ADMIN_FRONTEND_URL', env.adminUrl],
     ['API_URL / BACKEND_URL', env.apiUrl],
+    ['PRODUCT_ANALYSIS_AGENT_KEYS_JSON', env.productAnalysis.agentKeysJson],
   ]
 
   const missingProduction = requiredProduction
@@ -404,6 +426,37 @@ if (env.isProduction) {
 
   if (env.allowLocalhost) {
     throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
+  }
+
+  if (process.env.PRODUCT_ANALYSIS_AGENT_KEY) {
+    throw new Error(
+      'PRODUCT_ANALYSIS_AGENT_KEY global no está permitido en producción; use PRODUCT_ANALYSIS_AGENT_KEYS_JSON',
+    )
+  }
+
+  let productAnalysisAgentKeys
+  try {
+    productAnalysisAgentKeys = JSON.parse(env.productAnalysis.agentKeysJson)
+  } catch {
+    throw new Error('PRODUCT_ANALYSIS_AGENT_KEYS_JSON debe contener JSON válido')
+  }
+
+  const invalidAgentKeys = Object.entries(productAnalysisAgentKeys || {}).filter(
+    ([domain, keyHash]) => (
+      !normalizeHostname(domain) ||
+      !/^[a-f0-9]{64}$/i.test(String(keyHash || '').trim())
+    ),
+  )
+
+  if (
+    !productAnalysisAgentKeys ||
+    Array.isArray(productAnalysisAgentKeys) ||
+    Object.keys(productAnalysisAgentKeys).length === 0 ||
+    invalidAgentKeys.length > 0
+  ) {
+    throw new Error(
+      'PRODUCT_ANALYSIS_AGENT_KEYS_JSON debe mapear cada dominio a un hash SHA-256',
+    )
   }
 }
 

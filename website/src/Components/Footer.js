@@ -27,9 +27,10 @@ const Footer = () => {
   const theme = useTheme()
   const { themeConfig } = useTenant()
   const themeState = useSelector(state => state.theme) || {}
-  const activeConfig = themeState.previewMode && themeState.previewConfig
-    ? themeState.previewConfig
-    : themeState.config || themeConfig || {}
+  const activeConfig =
+    themeState.previewMode && themeState.previewConfig
+      ? themeState.previewConfig
+      : themeState.config || themeConfig || {}
   const footer = activeConfig?.footer || {}
   const general = activeConfig?.general || {}
   const footerLogo = getAssetUrl(footer.logo)
@@ -57,49 +58,53 @@ const Footer = () => {
       >
         <Container maxWidth="lg">
           {footer.showNewsletter !== false && (
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={5}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <Box
-                  component="img"
-                  src={newsletter}
-                  alt="newsletter"
-                  sx={{ width: 40, height: 40 }}
-                />
-                <Typography variant="subtitle1" fontWeight="600" sx={{ fontSize: 16 }}>
-                  {footer.newsletterText || 'Suscribite a nuestro Newsletter'}
-                </Typography>
-              </Stack>
-            </Grid>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={5}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Box
+                    component="img"
+                    src={newsletter}
+                    alt="newsletter"
+                    sx={{ width: 40, height: 40 }}
+                  />
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight="600"
+                    sx={{ fontSize: 16 }}
+                  >
+                    {footer.newsletterText || 'Suscribite a nuestro Newsletter'}
+                  </Typography>
+                </Stack>
+              </Grid>
 
-            <Grid item xs={12} md={7}>
-              <Stack direction="row" spacing={1}>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  placeholder="Tu correo electrónico"
-                  size="small"
-                  sx={{
-                    bgcolor: '#fff',
-                    borderRadius: 1,
-                    input: { color: '#000' },
-                  }}
-                />
-                <Button
-                  variant="contained"
-                  sx={{
-                    bgcolor: theme.palette.warning.main,
-                    color: '#000',
-                    fontWeight: 600,
-                    px: 2,
-                    '&:hover': { bgcolor: theme.palette.warning.dark },
-                  }}
-                >
-                  Enviar
-                </Button>
-              </Stack>
+              <Grid item xs={12} md={7}>
+                <Stack direction="row" spacing={1}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    placeholder="Tu correo electrónico"
+                    size="small"
+                    sx={{
+                      bgcolor: '#fff',
+                      borderRadius: 1,
+                      input: { color: '#000' },
+                    }}
+                  />
+                  <Button
+                    variant="contained"
+                    sx={{
+                      bgcolor: theme.palette.warning.main,
+                      color: '#000',
+                      fontWeight: 600,
+                      px: 2,
+                      '&:hover': { bgcolor: theme.palette.warning.dark },
+                    }}
+                  >
+                    Enviar
+                  </Button>
+                </Stack>
+              </Grid>
             </Grid>
-          </Grid>
           )}
         </Container>
       </Box>
@@ -115,30 +120,37 @@ const Footer = () => {
                   component="img"
                   src={footerLogo}
                   alt={general.storeName || 'Logo'}
-                  sx={{ maxWidth: 140, maxHeight: 56, objectFit: 'contain', mb: 1.5 }}
+                  sx={{
+                    maxWidth: 140,
+                    maxHeight: 56,
+                    objectFit: 'contain',
+                    mb: 1.5,
+                  }}
                 />
               )}
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
                 {general.storeName || 'Contacto'}
               </Typography>
               <Typography variant="body2" color="grey.400">
-                {footer.description || general.tagline || 'Tu tienda de confianza.'}
+                {footer.description ||
+                  general.tagline ||
+                  'Tu tienda de confianza.'}
               </Typography>
               {footer.phone && (
-              <Typography variant="body2" sx={{ mt: 1, color: 'grey.300' }}>
-                Tel:{' '}
-                <a href={`tel:${footer.phone}`} style={{ color: '#fff' }}>
-                  {footer.phone}
-                </a>
-              </Typography>
+                <Typography variant="body2" sx={{ mt: 1, color: 'grey.300' }}>
+                  Tel:{' '}
+                  <a href={`tel:${footer.phone}`} style={{ color: '#fff' }}>
+                    {footer.phone}
+                  </a>
+                </Typography>
               )}
               {footer.email && (
-              <Typography variant="body2" sx={{ mt: 0.5, color: 'grey.300' }}>
-                Email:{' '}
-                <a href={`mailto:${footer.email}`} style={{ color: '#fff' }}>
-                  {footer.email}
-                </a>
-              </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5, color: 'grey.300' }}>
+                  Email:{' '}
+                  <a href={`mailto:${footer.email}`} style={{ color: '#fff' }}>
+                    {footer.email}
+                  </a>
+                </Typography>
               )}
 
               <Stack direction="row" spacing={1.5} mt={2}>
@@ -147,23 +159,25 @@ const Footer = () => {
                   { Icon: Instagram, url: social.instagram },
                   { Icon: GitHub, url: social.facebook },
                   { Icon: YouTube, url: social.youtube },
-                ].filter(item => item.url).map(({ Icon, url }, i) => (
-                  <IconButton
-                    key={i}
-                    component="a"
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    color="inherit"
-                    size="small"
-                    sx={{
-                      bgcolor: 'rgba(255,255,255,0.08)',
-                      '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
-                    }}
-                  >
-                    <Icon fontSize="small" />
-                  </IconButton>
-                ))}
+                ]
+                  .filter(item => item.url)
+                  .map(({ Icon, url }, i) => (
+                    <IconButton
+                      key={i}
+                      component="a"
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      color="inherit"
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(255,255,255,0.08)',
+                        '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
+                      }}
+                    >
+                      <Icon fontSize="small" />
+                    </IconButton>
+                  ))}
               </Stack>
             </Grid>
 

@@ -130,6 +130,11 @@ const productAnalysisJobSchema = new mongoose.Schema(
     error: {
       message: String,
       stack: String,
+      code: String,
+      retryable: {
+        type: Boolean,
+        default: false,
+      },
     },
 
     startedAt: Date,

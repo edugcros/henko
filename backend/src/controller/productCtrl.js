@@ -8,6 +8,13 @@ import Coupon from '../models/couponModel.js'
 import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import PromotionalBlock from '../models/promotionalBlockModel.js'
 import WishlistPromotionNotification from '../models/wishlistPromotionNotificationModel.js'
+import {
+  findCatalogCategory,
+  listCatalogCategories,
+  normalizeCatalogKey,
+  upsertSubcategoryVariantTemplate,
+} from '../services/catalogCategoryService.js'
+import { registerAiCatalogChangedEvent } from '../services/aiAgent/aiCatalogEventService.js'
 
 import expressAsyncHandler from 'express-async-handler'
 import rateLimit from 'express-rate-limit'
@@ -44,6 +51,8 @@ const ALLOWED_PRODUCT_CONDITIONS = ['nuevo', 'usado', 'reacondicionado']
 const ALLOWED_VARIANT_ATTRIBUTE_TYPES = ['select', 'color', 'text']
 const MAX_PUBLIC_PRODUCTS_LIMIT = 100
 const DEFAULT_PUBLIC_PRODUCTS_LIMIT = 12
+const MAX_VARIANT_FILTER_ATTRIBUTES = 12
+const MAX_VARIANT_FILTER_VALUES = 30
 
 // =====================================================
 // HELPERS GENERALES
@@ -192,6 +201,131 @@ const toSafeNumber = (value, fallback = 0, { min = 0 } = {}) => {
 }
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const normalizeVariantFilterKey = value => {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '')
+}
+
+const parseVariantFilters = rawValue => {
+  if (!rawValue) return {}
+
+  let parsed = rawValue
+
+  if (typeof rawValue === 'string') {
+    try {
+      parsed = JSON.parse(rawValue)
+    } catch {
+      return {}
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+
+  return Object.entries(parsed)
+    .slice(0, MAX_VARIANT_FILTER_ATTRIBUTES)
+    .reduce((acc, [rawKey, rawValues]) => {
+      const key = normalizeVariantFilterKey(rawKey)
+      if (!key) return acc
+
+      const values = [
+        ...new Set(
+          (Array.isArray(rawValues) ? rawValues : [rawValues])
+            .slice(0, MAX_VARIANT_FILTER_VALUES)
+            .map(value => normalizeText(String(value)))
+            .filter(Boolean),
+        ),
+      ]
+
+      if (values.length > 0) acc[key] = values
+      return acc
+    }, {})
+}
+
+const buildVariantFilterMatch = variantFilters => {
+  const entries = Object.entries(variantFilters)
+  if (entries.length === 0) return null
+
+  return {
+    $elemMatch: {
+      isActive: { $ne: false },
+      stock: { $gt: 0 },
+      ...Object.fromEntries(
+        entries.map(([key, values]) => [
+          `attributes.${key}`,
+          { $in: values },
+        ]),
+      ),
+    },
+  }
+}
+
+const buildVariantFacets = async ({ tenantId, match }) => {
+  const rows = await Product.aggregate([
+    { $match: match },
+    { $unwind: '$variants' },
+    {
+      $match: {
+        'variants.isActive': { $ne: false },
+        'variants.stock': { $gt: 0 },
+      },
+    },
+    {
+      $project: {
+        productId: '$_id',
+        attributes: { $objectToArray: '$variants.attributes' },
+      },
+    },
+    { $unwind: '$attributes' },
+    {
+      $match: {
+        'attributes.k': { $type: 'string', $ne: '' },
+        'attributes.v': { $type: 'string', $ne: '' },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          key: '$attributes.k',
+          value: '$attributes.v',
+        },
+        productIds: { $addToSet: '$productId' },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        key: '$_id.key',
+        value: '$_id.value',
+        count: { $size: '$productIds' },
+      },
+    },
+    { $sort: { key: 1, value: 1 } },
+  ]).option({ tenantId })
+
+  const facetMap = new Map()
+
+  for (const row of rows) {
+    const key = normalizeVariantFilterKey(row.key)
+    if (!key) continue
+
+    if (!facetMap.has(key)) {
+      facetMap.set(key, {
+        key,
+        options: [],
+      })
+    }
+
+    facetMap.get(key).options.push({
+      value: row.value,
+      count: row.count,
+    })
+  }
+
+  return [...facetMap.values()]
+}
 
 const requireTenantId = (tenantId, message = 'Tenant no resuelto') => {
   if (!tenantId || !isValidObjectId(tenantId)) {
@@ -515,6 +649,23 @@ const sendControllerError = (res, error, fallbackMessage) => {
   })
 }
 
+const syncProductCatalogTemplate = async ({
+  tenantId,
+  product,
+  userId,
+}) => {
+  if (!product?.categoria || !product?.subcategoria) return null
+
+  return upsertSubcategoryVariantTemplate({
+    tenantId,
+    category: product.categoria,
+    subcategory: product.subcategoria,
+    variantAttributes: product.variantAttributes,
+    variants: product.variants,
+    userId,
+  })
+}
+
 const normalizeSku = value => {
   const clean = String(value || '')
     .trim()
@@ -666,6 +817,27 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     })
 
     await product.save()
+    await registerAiCatalogChangedEvent({
+      tenantId,
+      productId: product._id,
+      action: 'product_created',
+    })
+
+    try {
+      await syncProductCatalogTemplate({
+        tenantId,
+        product,
+        userId,
+      })
+    } catch (catalogError) {
+      logger.error('❌ No se pudo sincronizar la plantilla de subcategoría', {
+        category: product.categoria,
+        error: catalogError.message,
+        productId: String(product._id),
+        subcategory: product.subcategoria,
+        tenantId: String(tenantId),
+      })
+    }
 
     // =====================================================
     // 🧠 HUMAN FEEDBACK / AUTO LEARNING
@@ -739,18 +911,28 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
 export const getaProduct = expressAsyncHandler(async (req, res) => {
   const { productId } = req.params
   const tenantId = requireTenantId(req.tenantId)
+  const cleanParam = String(productId || '').trim()
 
-  if (!isValidObjectId(productId)) {
+  if (!cleanParam) {
     return res.status(400).json({
       success: false,
-      message: 'ID de producto inválido',
+      message: 'Producto requerido',
     })
   }
 
-  const product = await Product.findOne({
-    _id: productId,
-    ...buildStorefrontMatch(tenantId),
-  })
+  const storefrontMatch = buildStorefrontMatch(tenantId)
+
+  const productQuery = isValidObjectId(cleanParam)
+    ? {
+      _id: cleanParam,
+      ...storefrontMatch,
+    }
+    : {
+      slug: cleanParam,
+      ...storefrontMatch,
+    }
+
+  const product = await Product.findOne(productQuery)
     .setOptions({ tenantId })
     .lean()
 
@@ -784,16 +966,21 @@ export const getAllProduct = expressAsyncHandler(async (req, res) => {
   const categoria = normalizeText(req.query.categoria)
   const subcategoria = normalizeText(req.query.subcategoria)
   const sort = normalizeText(req.query.sort)
+  const variantFilters = parseVariantFilters(req.query.attributes)
+  const includeFacets =
+    Boolean(categoria && subcategoria) &&
+    (req.query.includeFacets === true ||
+      String(req.query.includeFacets || '').toLowerCase() === 'true')
 
-  const query = buildStorefrontMatch(tenantId)
+  const baseQuery = buildStorefrontMatch(tenantId)
 
-  if (categoria) query.categoria = categoria
-  if (subcategoria) query.subcategoria = subcategoria
+  if (categoria) baseQuery.categoria = categoria
+  if (subcategoria) baseQuery.subcategoria = subcategoria
 
   if (q) {
     const safeRegex = new RegExp(escapeRegex(q), 'i')
 
-    query.$or = [
+    baseQuery.$or = [
       { title: safeRegex },
       { description: safeRegex },
       { marca: safeRegex },
@@ -803,9 +990,13 @@ export const getAllProduct = expressAsyncHandler(async (req, res) => {
     ]
   }
 
+  const query = { ...baseQuery }
+  const variantMatch = buildVariantFilterMatch(variantFilters)
+  if (variantMatch) query.variants = variantMatch
+
   const skip = (page - 1) * limit
 
-  const [products, total] = await Promise.all([
+  const [products, total, facets] = await Promise.all([
     Product.find(query)
       .setOptions({ tenantId })
       .sort(getSafePublicSort(sort))
@@ -813,6 +1004,12 @@ export const getAllProduct = expressAsyncHandler(async (req, res) => {
       .limit(limit)
       .lean(),
     Product.countDocuments(query).setOptions({ tenantId }),
+    includeFacets
+      ? buildVariantFacets({
+        tenantId,
+        match: baseQuery,
+      })
+      : Promise.resolve([]),
   ])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -833,7 +1030,9 @@ export const getAllProduct = expressAsyncHandler(async (req, res) => {
       categoria: categoria || null,
       subcategoria: subcategoria || null,
       sort: sort || null,
+      attributes: variantFilters,
     },
+    facets,
   })
 })
 
@@ -879,15 +1078,62 @@ export const getProductCategories = expressAsyncHandler(async (req, res) => {
     { $sort: { name: 1 } },
   ]).option({ tenantId })
 
+  const configuredCategories = await listCatalogCategories(tenantId)
+  const configuredCategoryMap = new Map(
+    configuredCategories.map(category => [category.normalizedName, category]),
+  )
+
+  const data = []
+  for (const row of rows) {
+    const categoryKey = normalizeCatalogKey(row.name)
+    const configuredCategory = configuredCategoryMap.get(categoryKey)
+    const configuredSubcategoryMap = new Map(
+      (configuredCategory?.subcategories || [])
+        .filter(subcategory => subcategory.isActive !== false)
+        .map(subcategory => [subcategory.normalizedName, subcategory]),
+    )
+
+    const category = {
+      id: configuredCategory?._id,
+      name: row.name,
+      count: row.count,
+      configured: Boolean(configuredCategory),
+      subcategories: [],
+    }
+
+    for (const subcategory of row.subcategories || []) {
+      const subcategoryKey = normalizeCatalogKey(subcategory.name)
+      const configuredSubcategory = configuredSubcategoryMap.get(subcategoryKey)
+
+      category.subcategories.push({
+        id: configuredSubcategory?._id,
+        name: subcategory.name,
+        count: subcategory.count,
+        configured: Boolean(configuredSubcategory),
+        variantAttributes: configuredSubcategory?.variantAttributes || [],
+      })
+    }
+
+    category.subcategories.sort((a, b) =>
+      String(a.name).localeCompare(String(b.name), 'es'),
+    )
+    data.push(category)
+  }
+
+  data.sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), 'es'),
+  )
+
   return res.status(200).json({
     success: true,
-    data: rows,
+    data,
   })
 })
 
 export const getCategoryConfig = expressAsyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req.tenantId)
   const categoria = decodeURIComponent(req.params.category || '').trim()
+  const requestedSubcategory = normalizeText(req.query.subcategory)
 
   if (!categoria) {
     return res.status(400).json({
@@ -919,13 +1165,106 @@ export const getCategoryConfig = expressAsyncHandler(async (req, res) => {
     { $sort: { name: 1 } },
   ]).option({ tenantId })
 
+  const configuredCategory = await findCatalogCategory({
+    tenantId,
+    category: categoria,
+  })
+
+  const configuredSubcategoryMap = new Map(
+    (configuredCategory?.subcategories || [])
+      .filter(subcategory => subcategory.isActive !== false)
+      .map(subcategory => [subcategory.normalizedName, subcategory]),
+  )
+
+  const configuredSubcategories = rows.map(row => {
+    const configuredSubcategory = configuredSubcategoryMap.get(
+      normalizeCatalogKey(row.name),
+    )
+
+    return {
+      id: configuredSubcategory?._id,
+      name: row.name,
+      count: row.count,
+      configured: Boolean(configuredSubcategory),
+      variantAttributes: configuredSubcategory?.variantAttributes || [],
+    }
+  })
+
+  configuredSubcategories.sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), 'es'),
+  )
+
+  const selectedSubcategory = requestedSubcategory
+    ? configuredSubcategories.find(
+      subcategory =>
+        normalizeCatalogKey(subcategory.name) ===
+        normalizeCatalogKey(requestedSubcategory),
+    ) || null
+    : null
+
   return res.status(200).json({
     success: true,
     data: {
-      categoria,
-      subcategories: rows,
+      categoria: configuredCategory?.name || categoria,
+      configured: Boolean(configuredCategory),
+      subcategories: configuredSubcategories,
+      selectedSubcategory,
+      variantAttributes: selectedSubcategory?.variantAttributes || [],
     },
   })
+})
+
+export const upsertCategoryConfig = expressAsyncHandler(async (req, res) => {
+  try {
+    const tenantId = requireUserTenantId(req)
+    assertSameResolvedTenant(req, tenantId)
+
+    const category = normalizeText(req.body.category || req.body.categoria)
+    const subcategory = normalizeText(
+      req.body.subcategory || req.body.subcategoria,
+    )
+
+    if (!category || !subcategory) {
+      return res.status(400).json({
+        success: false,
+        message: 'Categoría y subcategoría son obligatorias',
+      })
+    }
+
+    const variantAttributes = safeJsonParse(
+      req.body.variantAttributes,
+      req.body.variantAttributes || [],
+    )
+
+    if (!Array.isArray(variantAttributes)) {
+      return res.status(400).json({
+        success: false,
+        message: 'variantAttributes debe ser un arreglo',
+      })
+    }
+
+    const catalogCategory = await upsertSubcategoryVariantTemplate({
+      tenantId,
+      category,
+      subcategory,
+      variantAttributes,
+      userId: getRequestUserId(req),
+      replace: req.body.replace === true || req.body.replace === 'true',
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: 'Plantilla de subcategoría guardada',
+      data: catalogCategory,
+    })
+  } catch (error) {
+    logger.error(`❌ Error en upsertCategoryConfig: ${error.stack || error.message}`)
+    return sendControllerError(
+      res,
+      error,
+      'Error guardando la configuración de subcategoría',
+    )
+  }
 })
 
 // =====================================================
@@ -995,6 +1334,22 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
 
     Object.assign(product, updates)
     await product.save()
+
+    try {
+      await syncProductCatalogTemplate({
+        tenantId,
+        product,
+        userId: getRequestUserId(req),
+      })
+    } catch (catalogError) {
+      logger.error('❌ No se pudo sincronizar la plantilla de subcategoría', {
+        category: product.categoria,
+        error: catalogError.message,
+        productId: String(product._id),
+        subcategory: product.subcategoria,
+        tenantId: String(tenantId),
+      })
+    }
 
     const aiOriginal = safeJsonParse(req.body.aiOriginalOutput, null)
 

@@ -1,24 +1,19 @@
-import React from 'react';
-import {
-  Box,
-  Typography,
-  Slider,
-  Paper,
-  Grid,
-  TextField,
-} from '@mui/material';
+import React from 'react'
+import { Box, Typography, Slider, Paper, Grid, TextField } from '@mui/material'
 
 const LayoutEditor = ({ value, onChange }) => {
-  const layout = value || {};
+  const layout = value || {}
 
   const handleChange = (field, newValue) => {
-    onChange({ ...layout, [field]: newValue });
-  };
+    onChange({ ...layout, [field]: newValue })
+  }
 
   return (
     <Paper sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom>Layout General</Typography>
-      
+      <Typography variant="h6" gutterBottom>
+        Layout General
+      </Typography>
+
       <Grid container spacing={3}>
         {/* Max Width */}
         <Grid item xs={12}>
@@ -103,7 +98,9 @@ const LayoutEditor = ({ value, onChange }) => {
 
       {/* Visual Preview */}
       <Box sx={{ mt: 3, p: 3, bgcolor: 'grey.100', borderRadius: 2 }}>
-        <Typography variant="subtitle2" gutterBottom align="center">Preview del Contenedor</Typography>
+        <Typography variant="subtitle2" gutterBottom align="center">
+          Preview del Contenedor
+        </Typography>
         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
           <Box
             sx={{
@@ -112,8 +109,8 @@ const LayoutEditor = ({ value, onChange }) => {
               height: 100,
               bgcolor: 'background.paper',
               borderRadius: (layout.borderRadius ?? 8) / 4,
-              boxShadow: layout.shadowIntensity 
-                ? `${layout.shadowIntensity}px ${layout.shadowIntensity}px ${layout.shadowIntensity * 3}px rgba(0,0,0,${0.1 + (layout.shadowIntensity * 0.02)})`
+              boxShadow: layout.shadowIntensity
+                ? `${layout.shadowIntensity}px ${layout.shadowIntensity}px ${layout.shadowIntensity * 3}px rgba(0,0,0,${0.1 + layout.shadowIntensity * 0.02})`
                 : 'none',
               border: '2px solid',
               borderColor: 'primary.main',
@@ -129,7 +126,7 @@ const LayoutEditor = ({ value, onChange }) => {
         </Box>
       </Box>
     </Paper>
-  );
-};
+  )
+}
 
-export default LayoutEditor;
+export default LayoutEditor

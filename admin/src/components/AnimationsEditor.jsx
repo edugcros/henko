@@ -68,7 +68,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
     onChange({ ...animations, [field]: val })
   }
 
-  const applyPreset = (preset) => {
+  const applyPreset = preset => {
     const config = PRESETS[preset] || PRESETS.smooth
     onChange({
       ...animations,
@@ -84,7 +84,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
     const stagger = animations.stagger ?? 0.1
     const hoverScale = animations.hoverScale ?? 1.02
 
-    return (i) => ({
+    return i => ({
       transition: `all ${duration}ms ${easing} ${i * stagger}s`,
       '&:hover': {
         transform: `scale(${hoverScale})`,
@@ -104,9 +104,9 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
           <InputLabel>Preset</InputLabel>
           <Select
             value={animations.preset || 'smooth'}
-            onChange={(e) => applyPreset(e.target.value)}
+            onChange={e => applyPreset(e.target.value)}
           >
-            {SELECTS.preset.map((opt) => (
+            {SELECTS.preset.map(opt => (
               <MenuItem key={opt.value} value={opt.value}>
                 {opt.label}
               </MenuItem>
@@ -127,9 +127,9 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
               <InputLabel>Page Transition</InputLabel>
               <Select
                 value={animations.pageTransitions || 'fade'}
-                onChange={(e) => update('pageTransitions', e.target.value)}
+                onChange={e => update('pageTransitions', e.target.value)}
               >
-                {SELECTS.pageTransitions.map((opt) => (
+                {SELECTS.pageTransitions.map(opt => (
                   <MenuItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </MenuItem>
@@ -143,9 +143,9 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
               <InputLabel>Element Entrance</InputLabel>
               <Select
                 value={animations.elementEntrance || 'fadeUp'}
-                onChange={(e) => update('elementEntrance', e.target.value)}
+                onChange={e => update('elementEntrance', e.target.value)}
               >
-                {SELECTS.elementEntrance.map((opt) => (
+                {SELECTS.elementEntrance.map(opt => (
                   <MenuItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </MenuItem>
@@ -203,9 +203,9 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
               <InputLabel>Easing</InputLabel>
               <Select
                 value={animations.easing || 'ease-in-out'}
-                onChange={(e) => update('easing', e.target.value)}
+                onChange={e => update('easing', e.target.value)}
               >
-                {SELECTS.easing.map((opt) => (
+                {SELECTS.easing.map(opt => (
                   <MenuItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </MenuItem>
@@ -240,7 +240,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
           control={
             <Switch
               checked={animations.respectPrefersReducedMotion !== false}
-              onChange={(e) =>
+              onChange={e =>
                 update('respectPrefersReducedMotion', e.target.checked)
               }
             />
@@ -256,7 +256,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
         </Typography>
 
         <Box display="flex" gap={2} justifyContent="center">
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2].map(i => (
             <Box
               key={i}
               sx={{

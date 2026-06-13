@@ -34,14 +34,13 @@ const safeStorage = {
   },
 }
 
-
 // ---------------------------
 // Estado inicial
 // ---------------------------
 
 const initialState = {
   user: safeStorage.getUser(),
-  token: null, 
+  token: null,
   csrfToken: sessionStorage.getItem('csrfToken'),
   isAuthenticated: !!safeStorage.getUser(),
   isLoading: false,
@@ -50,7 +49,7 @@ const initialState = {
   message: '',
   loading: { createAdmin: false, orders: false },
   error: { createAdmin: null, orders: null },
-  orders: { data: [], pagination: null, inFlightKey: null }
+  orders: { data: [], pagination: null, inFlightKey: null },
 }
 
 // ---------------------------
@@ -64,7 +63,9 @@ export const createUserAdmin = createAsyncThunk(
       const response = await authService.registerAdmin(payload)
 
       if (!response?.success) {
-        return rejectWithValue(response?.message || 'Error al crear el comercio')
+        return rejectWithValue(
+          response?.message || 'Error al crear el comercio',
+        )
       }
 
       return response.data || response
@@ -72,37 +73,43 @@ export const createUserAdmin = createAsyncThunk(
       return rejectWithValue(
         error?.response?.data?.message ||
           error?.message ||
-          'Error al crear el comercio'
+          'Error al crear el comercio',
       )
     }
-  }
+  },
 )
 
 export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
   try {
-    const response = await authService.getCurrentUser();
+    const response = await authService.getCurrentUser()
     // Normalizamos: la data suele venir en response.data
-    const data = response.data || response;
-    if (data.user) safeStorage.setUser(data.user);
-    return data;
+    const data = response.data || response
+    if (data.user) safeStorage.setUser(data.user)
+    return data
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response?.data || 'Error al obtener perfil');
-  }
-});
-
-export const refreshSession = createAsyncThunk('auth/refreshSession', async (_, thunkAPI) => {
-  try {
-    const res = await authService.refreshToken()
-    if (!res?.success || !res.data) return thunkAPI.rejectWithValue('Refresh inválido')
-    
-    const { user, token } = res.data
-    safeStorage.setUser(user) // Sincronizamos storage
-    return { user, token } 
-  } catch (error) {
-    safeStorage.removeAuth()
-    return thunkAPI.rejectWithValue(error?.response?.data || 'Refresh failed')
+    return thunkAPI.rejectWithValue(
+      error.response?.data || 'Error al obtener perfil',
+    )
   }
 })
+
+export const refreshSession = createAsyncThunk(
+  'auth/refreshSession',
+  async (_, thunkAPI) => {
+    try {
+      const res = await authService.refreshToken()
+      if (!res?.success || !res.data)
+        return thunkAPI.rejectWithValue('Refresh inválido')
+
+      const { user, token } = res.data
+      safeStorage.setUser(user) // Sincronizamos storage
+      return { user, token }
+    } catch (error) {
+      safeStorage.removeAuth()
+      return thunkAPI.rejectWithValue(error?.response?.data || 'Refresh failed')
+    }
+  },
+)
 
 export const loginUser = createAsyncThunk(
   'user/admin-login',
@@ -111,9 +118,9 @@ export const loginUser = createAsyncThunk(
       const res = await authService.loginUser(userData)
 
       // 🔥 VALIDACIÓN CORRECTA
-    if (!res || res.success !== true || !res.data) {
-      return rejectWithValue('Respuesta inválida del servidor durante login')
-    }
+      if (!res || res.success !== true || !res.data) {
+        return rejectWithValue('Respuesta inválida del servidor durante login')
+      }
 
       const { user, token, csrfToken } = res.data
 
@@ -134,28 +141,37 @@ export const loginUser = createAsyncThunk(
       return { user, token }
     } catch (err) {
       return rejectWithValue(
-        err?.response?.data?.message || 'Error de autenticación'
+        err?.response?.data?.message || 'Error de autenticación',
       )
     }
-  }
+  },
 )
 
-
 // params: { page, limit, status, q, from, to }
-let loadingOrders = false;
+let loadingOrders = false
 
-const makeKey = (p={}) => JSON.stringify({
-  page: p.page ?? 1, limit: p.limit ?? 20,
-  status: p.status || null, q: p.q || null, from: p.from || null, to: p.to || null
-})
+const makeKey = (p = {}) =>
+  JSON.stringify({
+    page: p.page ?? 1,
+    limit: p.limit ?? 20,
+    status: p.status || null,
+    q: p.q || null,
+    from: p.from || null,
+    to: p.to || null,
+  })
 
 export const getOrders = createAsyncThunk(
   'orders/getAll',
   async (params, { rejectWithValue }) => {
     try {
-      const res = await authService.getOrders(params)   // debe devolver { success, data, pagination }
-      if (!res?.success) throw new Error(res?.message || 'Error al obtener órdenes')
-      return { data: res.data || [], pagination: res.pagination || null, _qk: makeKey(params) }
+      const res = await authService.getOrders(params) // debe devolver { success, data, pagination }
+      if (!res?.success)
+        throw new Error(res?.message || 'Error al obtener órdenes')
+      return {
+        data: res.data || [],
+        pagination: res.pagination || null,
+        _qk: makeKey(params),
+      }
     } catch (e) {
       return rejectWithValue(e?.message || 'Error al obtener órdenes')
     }
@@ -166,8 +182,8 @@ export const getOrders = createAsyncThunk(
       const key = makeKey(params)
       if (s?.orders?.inFlightKey && s.orders.inFlightKey === key) return false
       return true
-    }
-  }
+    },
+  },
 )
 
 // Actualizar estado de una orden (Admin)
@@ -176,40 +192,43 @@ export const updateOrderStatus = createAsyncThunk(
   async ({ id, status }, { rejectWithValue }) => {
     try {
       const res = await authService.updateOrderStatus(id, status)
-      if (!res?.success) throw new Error(res?.message || 'No se pudo actualizar el estado')
+      if (!res?.success)
+        throw new Error(res?.message || 'No se pudo actualizar el estado')
       return res.data // orden actualizada
     } catch (error) {
-      return rejectWithValue(error?.message || 'No se pudo actualizar el estado')
+      return rejectWithValue(
+        error?.message || 'No se pudo actualizar el estado',
+      )
     }
-  }
+  },
 )
 
 export const logoutUser = createAsyncThunk(
-  'user/logout', 
+  'user/logout',
   async (_, { rejectWithValue }) => {
     try {
       // 1. Llamada al service (que a su vez llama al backend)
-      const res = await authService.logoutUser();
+      const res = await authService.logoutUser()
 
       // 2. Limpieza de storage local (Lo que el JS SÍ controla)
-      safeStorage.removeAuth();
-      sessionStorage.clear(); // Borra cualquier rastro de tenant o estado temporal
+      safeStorage.removeAuth()
+      sessionStorage.clear() // Borra cualquier rastro de tenant o estado temporal
 
       // 3. Feedback visual
-      toast.success('Sesión cerrada correctamente');
+      toast.success('Sesión cerrada correctamente')
 
-      return res; 
+      return res
     } catch (err) {
       // Aunque falle la petición (ej. el servidor está caído),
       // forzamos la limpieza local para que el usuario no quede atrapado
-      safeStorage.removeAuth();
-      sessionStorage.clear();
-      
-      const message = err?.message || 'Error al cerrar sesión';
-      return rejectWithValue(message);
+      safeStorage.removeAuth()
+      sessionStorage.clear()
+
+      const message = err?.message || 'Error al cerrar sesión'
+      return rejectWithValue(message)
     }
-  }
-);
+  },
+)
 
 // ---------------------------
 // Slice
@@ -218,13 +237,13 @@ const authSlice = createSlice({
   name: 'user',
   initialState,
   reducers: {
-    clearState: (state) => {
+    clearState: state => {
       state.isError = false
       state.message = ''
       state.isSuccess = false
       state.isLoading = false
     },
-    resetAuthState: (state) => {
+    resetAuthState: state => {
       state.user = null
       state.token = null
       state.csrfToken = null
@@ -251,53 +270,53 @@ const authSlice = createSlice({
       }
     },
   },
-  extraReducers: (builder) => {
+  extraReducers: builder => {
     builder
-    .addCase(createUserAdmin.pending, (state) => {
-      state.loading.createAdmin = true
-      state.error.createAdmin = null
-      state.isLoading = true
-    })
+      .addCase(createUserAdmin.pending, state => {
+        state.loading.createAdmin = true
+        state.error.createAdmin = null
+        state.isLoading = true
+      })
 
-    .addCase(createUserAdmin.fulfilled, (state, action) => {
-      state.loading.createAdmin = false
-      state.isLoading = false
-      state.isSuccess = true
-      state.isError = false
-      state.error.createAdmin = null
-      state.message = ''
+      .addCase(createUserAdmin.fulfilled, (state, action) => {
+        state.loading.createAdmin = false
+        state.isLoading = false
+        state.isSuccess = true
+        state.isError = false
+        state.error.createAdmin = null
+        state.message = ''
 
-      state.user = action.payload
-      state.isAuthenticated = Boolean(action.payload?.token)
-      state.token = action.payload?.token || null
+        state.user = action.payload
+        state.isAuthenticated = Boolean(action.payload?.token)
+        state.token = action.payload?.token || null
 
-      if (action.payload?.token) {
-        try {
-          Cookies.set('token', action.payload.token, {
-            path: '/',
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'Lax',
-          })
-        } catch {
-          // Persistencia best-effort para navegadores con cookies restringidas.
+        if (action.payload?.token) {
+          try {
+            Cookies.set('token', action.payload.token, {
+              path: '/',
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: 'Lax',
+            })
+          } catch {
+            // Persistencia best-effort para navegadores con cookies restringidas.
+          }
         }
-      }
 
-      try {
-        sessionStorage.setItem('user', JSON.stringify(action.payload))
-      } catch {
-        // Persistencia best-effort para entornos con storage restringido.
-      }
-    })
+        try {
+          sessionStorage.setItem('user', JSON.stringify(action.payload))
+        } catch {
+          // Persistencia best-effort para entornos con storage restringido.
+        }
+      })
 
-    .addCase(createUserAdmin.rejected, (state, action) => {
-      state.loading.createAdmin = false
-      state.isLoading = false
-      state.isSuccess = false
-      state.isError = true
-      state.error.createAdmin = action.payload
-      state.message = action.payload || 'Error al crear el comercio'
-    })
+      .addCase(createUserAdmin.rejected, (state, action) => {
+        state.loading.createAdmin = false
+        state.isLoading = false
+        state.isSuccess = false
+        state.isError = true
+        state.error.createAdmin = action.payload
+        state.message = action.payload || 'Error al crear el comercio'
+      })
 
       // login
       .addCase(loginUser.pending, state => {
@@ -330,7 +349,11 @@ const authSlice = createSlice({
         state.isLoading = false
         state.orders = {
           data: action.payload?.data || [],
-          pagination: action.payload?.pagination || { total: 0, page: 1, pages: 1 },
+          pagination: action.payload?.pagination || {
+            total: 0,
+            page: 1,
+            pages: 1,
+          },
           inFlightKey: null,
         }
         state.isSuccess = true
@@ -343,10 +366,10 @@ const authSlice = createSlice({
         state.orders.inFlightKey = null
       })
       // update order status (admin)
-      .addCase(updateOrderStatus.pending, (state) => {})
+      .addCase(updateOrderStatus.pending, state => {})
       .addCase(updateOrderStatus.fulfilled, (state, action) => {
         const updated = action.payload
-        const idx = state.orders.data.findIndex((o) => o._id === updated._id)
+        const idx = state.orders.data.findIndex(o => o._id === updated._id)
         if (idx >= 0) state.orders.data[idx] = updated
         state.isSuccess = true
       })
@@ -356,55 +379,58 @@ const authSlice = createSlice({
       })
 
       // logout
-      .addCase(logoutUser.pending, (state) => { state.isLoading = true })
-      .addCase(logoutUser.fulfilled, (state) => {
+      .addCase(logoutUser.pending, state => {
+        state.isLoading = true
+      })
+      .addCase(logoutUser.fulfilled, state => {
         // 1. Resetear estados de carga y errores
-        state.isLoading = false;
-        state.isSuccess = true; // Cambiar a true indica que la acción de logout terminó bien
-        state.isError = false;
-        state.message = '';
+        state.isLoading = false
+        state.isSuccess = true // Cambiar a true indica que la acción de logout terminó bien
+        state.isError = false
+        state.message = ''
 
         // 2. Limpiar datos del usuario
-        state.user = null;
-        state.token = null;
-        state.csrfToken = null;
-        state.isAuthenticated = false;
+        state.user = null
+        state.token = null
+        state.csrfToken = null
+        state.isAuthenticated = false
 
         // 3. Limpiar datos de negocio (importante para multi-tenant)
-        state.orders = { data: [], pagination: null };
+        state.orders = { data: [], pagination: null }
 
         // 🔥 NOTA: El try/catch con Cookies y sessionStorage NO VA AQUÍ.
         // Eso ya lo ejecutamos en el Thunk antes de llegar a este punto.
       })
-     .addCase(logoutUser.rejected, (state, action) => {
-        state.isLoading = false;
+      .addCase(logoutUser.rejected, (state, action) => {
+        state.isLoading = false
         // Mantenemos el error para mostrar un toast de "El servidor no respondió, pero se cerró la sesión local"
-        state.isError = true;
-        state.message = action.payload || "Error al cerrar sesión en el servidor";
+        state.isError = true
+        state.message =
+          action.payload || 'Error al cerrar sesión en el servidor'
 
         // --- Limpieza de Estado ---
-        state.user = null;
-        state.token = null;
-        state.csrfToken = null;
-        state.isAuthenticated = false;
-        state.orders = { data: [], pagination: null };
+        state.user = null
+        state.token = null
+        state.csrfToken = null
+        state.isAuthenticated = false
+        state.orders = { data: [], pagination: null }
 
-        // 🔥 NOTA: La limpieza de Cookies y sessionStorage ya debe estar en el 
+        // 🔥 NOTA: La limpieza de Cookies y sessionStorage ya debe estar en el
         // catch del createAsyncThunk que escribimos antes. No la repitas aquí.
       })
 
-            /* ---------- GET ME ---------- */
+      /* ---------- GET ME ---------- */
       .addCase(getMe.fulfilled, (state, action) => {
-        state.user = action.payload?.data || action.payload;
-        state.token = action.payload?.token || null;
+        state.user = action.payload?.data || action.payload
+        state.token = action.payload?.token || null
         state.isAuthenticated = true
       })
-      .addCase(getMe.rejected, (state) => {
+      .addCase(getMe.rejected, state => {
         state.user = null
         state.token = null
         state.isAuthenticated = false
       })
-      
+
       .addCase(refreshSession.fulfilled, (state, action) => {
         const { user, token } = action.payload
         state.user = user

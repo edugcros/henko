@@ -18,7 +18,9 @@ const withProtocol = value => {
 }
 
 const normalizePreviewUrl = value => {
-  const cleanValue = String(value || '').trim().replace(/\/$/, '')
+  const cleanValue = String(value || '')
+    .trim()
+    .replace(/\/$/, '')
 
   if (!cleanValue) return ''
 
@@ -37,8 +39,7 @@ const normalizePreviewUrl = value => {
 
 const getPreviewBaseUrl = () => {
   const explicitUrl =
-    env.storefrontPreviewUrl ||
-    process.env.REACT_APP_STOREFRONT_PREVIEW_URL
+    env.storefrontPreviewUrl || process.env.REACT_APP_STOREFRONT_PREVIEW_URL
 
   if (explicitUrl) {
     return normalizePreviewUrl(explicitUrl)
@@ -177,7 +178,9 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
             Vista Previa Real
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {iframeReady ? 'Conectada con el storefront' : 'Esperando storefront'}
+            {iframeReady
+              ? 'Conectada con el storefront'
+              : 'Esperando storefront'}
           </Typography>
         </Box>
 

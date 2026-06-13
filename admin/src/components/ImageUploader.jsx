@@ -1,12 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react'
 import {
   Box,
   Typography,
   IconButton,
   CircularProgress,
   Button,
-} from '@mui/material';
-import { CloudUpload, Delete, Image as ImageIcon } from '@mui/icons-material';
+} from '@mui/material'
+import { CloudUpload, Delete, Image as ImageIcon } from '@mui/icons-material'
 
 const ImageUploader = ({
   value,
@@ -15,31 +15,31 @@ const ImageUploader = ({
   onUpload, // 🔥 inyectable (S3, Cloudinary, etc)
   maxSizeMB = 5,
 }) => {
-  const [uploading, setUploading] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [error, setError] = useState(null);
-  const inputRef = useRef();
+  const [uploading, setUploading] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [error, setError] = useState(null)
+  const inputRef = useRef()
 
   // 🔥 Cleanup URL.createObjectURL
   useEffect(() => {
     return () => {
       if (value?.url?.startsWith('blob:')) {
-        URL.revokeObjectURL(value.url);
+        URL.revokeObjectURL(value.url)
       }
-    };
-  }, [value]);
+    }
+  }, [value])
 
-  const validateFile = (file) => {
+  const validateFile = file => {
     if (!file.type.startsWith('image/')) {
-      return 'Solo se permiten imágenes';
+      return 'Solo se permiten imágenes'
     }
     if (file.size > maxSizeMB * 1024 * 1024) {
-      return `Máximo ${maxSizeMB}MB`;
+      return `Máximo ${maxSizeMB}MB`
     }
-    return null;
-  };
+    return null
+  }
 
-  const normalizeUploadedImage = (result) => {
+  const normalizeUploadedImage = result => {
     const image =
       result?.image ||
       result?.data?.image ||
@@ -47,68 +47,68 @@ const ImageUploader = ({
       result?.payload?.image ||
       result?.payload?.data ||
       result?.payload ||
-      result;
+      result
 
     if (!image?.url) {
-      throw new Error('Respuesta de upload inválida');
+      throw new Error('Respuesta de upload inválida')
     }
 
     return {
       url: image.url,
       public_id: image.public_id || image.publicId || '',
-    };
-  };
+    }
+  }
 
-  const handleUpload = async (file) => {
-    const validationError = validateFile(file);
+  const handleUpload = async file => {
+    const validationError = validateFile(file)
     if (validationError) {
-      setError(validationError);
-      return;
+      setError(validationError)
+      return
     }
 
-    setError(null);
-    setUploading(true);
+    setError(null)
+    setUploading(true)
 
     try {
-      let result;
+      let result
 
       if (onUpload) {
         // 🔥 producción real
-        result = await onUpload(file);
+        result = await onUpload(file)
       } else {
         // fallback dev
-        await new Promise((r) => setTimeout(r, 800));
+        await new Promise(r => setTimeout(r, 800))
         result = {
           public_id: `temp_${Date.now()}`,
           url: URL.createObjectURL(file),
-        };
+        }
       }
 
-      onChange(normalizeUploadedImage(result));
+      onChange(normalizeUploadedImage(result))
     } catch {
-      setError('Error subiendo imagen');
+      setError('Error subiendo imagen')
     } finally {
-      setUploading(false);
+      setUploading(false)
     }
-  };
+  }
 
-  const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (file) handleUpload(file);
-  };
+  const handleFileSelect = e => {
+    const file = e.target.files?.[0]
+    if (file) handleUpload(file)
+  }
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragging(false);
+  const handleDrop = e => {
+    e.preventDefault()
+    setDragging(false)
 
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleUpload(file);
-  };
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleUpload(file)
+  }
 
   const removeImage = () => {
-    onChange(null);
-    setError(null);
-  };
+    onChange(null)
+    setError(null)
+  }
 
   return (
     <Box>
@@ -117,9 +117,9 @@ const ImageUploader = ({
       </Typography>
 
       <Box
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
+        onDragOver={e => {
+          e.preventDefault()
+          setDragging(true)
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
@@ -153,9 +153,9 @@ const ImageUploader = ({
 
             <IconButton
               size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeImage();
+              onClick={e => {
+                e.stopPropagation()
+                removeImage()
               }}
               sx={{
                 position: 'absolute',
@@ -206,7 +206,7 @@ const ImageUploader = ({
         </Button>
       )}
     </Box>
-  );
-};
+  )
+}
 
-export default ImageUploader;
+export default ImageUploader

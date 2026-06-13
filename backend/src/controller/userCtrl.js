@@ -22,6 +22,7 @@ import { normalizeArgentinePhone } from '../utils/normalizePhone.js'
 import { sendResetPasswordEmail, sendVerificationEmail } from '../services/email/verificationEmail.service.js'
 import { sendResponse } from '../utils/response.js'
 import { getCookieDomain } from '../utils/cookieHelper.js'
+import { buildPlatformTenantDomains } from '../utils/domainUtils.js'
 import {
   getUserIdFromRequest,
   isValidObjectId,
@@ -154,8 +155,15 @@ const buildTenantDomains = storeSlug => {
     ? env.publicBaseDomain
     : env.tenantPublicBaseDomain || env.publicBaseDomain || 'henko.local'
 
-  const shopDomain = `${storeSlug}.${baseDomain}`
-  const adminDomain = `admin.${storeSlug}.${baseDomain}`
+  const adminBaseDomain =
+    env.tenantAdminBaseDomain ||
+    env.adminBaseDomain ||
+    `admin.${baseDomain}`
+  const { shopDomain, adminDomain } = buildPlatformTenantDomains({
+    slug: storeSlug,
+    publicBaseDomain: baseDomain,
+    adminBaseDomain,
+  })
   const protocol = env.isProduction ? 'https' : 'http'
 
   return {

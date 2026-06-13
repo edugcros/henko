@@ -1,5 +1,5 @@
 import React from 'react'
-import { Paper, Typography, Box } from '@mui/material';
+import { Paper, Typography, Box } from '@mui/material'
 
 const Section = ({ title, subtitle, children }) => {
   return (
@@ -25,7 +25,7 @@ const Section = ({ title, subtitle, children }) => {
 
       {children}
     </Paper>
-  );
-};
+  )
+}
 
-export default Section;
+export default Section

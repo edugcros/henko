@@ -1,22 +1,21 @@
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
 
-
 // ======================================================
 // Manejo uniforme de errores
 // ======================================================
 const handleApiError = (error, fallback = 'Error inesperado') => {
   // Prioridad 1: Error enviado por el Backend (res.status(400).send({message: '...'}))
   // Prioridad 2: Error de Axios (error.message)
-  const msg = error?.response?.data?.message || error?.message || fallback;
+  const msg = error?.response?.data?.message || error?.message || fallback
 
-  console.error('API Error:', msg);
-  
+  console.error('API Error:', msg)
+
   // Retornamos un objeto con el mismo "shape" que el éxito pero con success: false
-  return { 
-    success: false, 
+  return {
+    success: false,
     message: msg,
-    errors: error?.response?.data?.errors || [] // Por si envías lista de validaciones
-  };
+    errors: error?.response?.data?.errors || [], // Por si envías lista de validaciones
+  }
 }
 
 // ======================================================
@@ -53,19 +52,18 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
 
     const res = await api(config)
     return res.data
-    
   } catch (err) {
     return handleApiError(err)
   }
 }
 
 const getStats = async () => {
-  const response = await apiRequest('get', '/stats');
-  return response.data;
-};
+  const response = await apiRequest('get', '/stats')
+  return response.data
+}
 
 const dashboardService = {
   getStats,
-};
+}
 
-export default dashboardService;
+export default dashboardService

@@ -16,8 +16,7 @@ import { debounce } from 'lodash'
 // ===============================
 // Utils
 // ===============================
-const isValidHex = (hex) =>
-  /^#([0-9A-F]{3}){1,2}$/i.test(hex)
+const isValidHex = hex => /^#([0-9A-F]{3}){1,2}$/i.test(hex)
 
 // ===============================
 // Component
@@ -39,7 +38,7 @@ const ColorPicker = ({
 
   const debouncedPickerCommit = useMemo(
     () =>
-      debounce((color) => {
+      debounce(color => {
         onChange(color)
       }, 120),
     [onChange],
@@ -53,13 +52,13 @@ const ColorPicker = ({
     return () => debouncedPickerCommit.cancel()
   }, [debouncedPickerCommit])
 
-  const handleOpen = (e) => setAnchorEl(e.currentTarget)
+  const handleOpen = e => setAnchorEl(e.currentTarget)
   const handleClose = () => {
     debouncedPickerCommit.flush()
     setAnchorEl(null)
   }
 
-  const handleInputChange = (e) => {
+  const handleInputChange = e => {
     const val = e.target.value
     if (val.length <= 7) {
       setDraftValue(val)
@@ -76,7 +75,7 @@ const ColorPicker = ({
     }
   }
 
-  const handlePickerChange = (color) => {
+  const handlePickerChange = color => {
     setDraftValue(color)
     debouncedPickerCommit(color)
   }
@@ -124,7 +123,9 @@ const ColorPicker = ({
                   width: 20,
                   height: 20,
                   borderRadius: 1,
-                  backgroundColor: isValidHex(draftValue) ? draftValue : '#000000',
+                  backgroundColor: isValidHex(draftValue)
+                    ? draftValue
+                    : '#000000',
                   border: '1px solid',
                   borderColor: 'divider',
                   cursor: 'pointer',
@@ -132,15 +133,16 @@ const ColorPicker = ({
               />
             </InputAdornment>
           ),
-          endAdornment: showReset && onReset ? (
-            <InputAdornment position="end">
-              <Tooltip title="Restaurar color">
-                <IconButton size="small" edge="end" onClick={onReset}>
-                  <RefreshIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </InputAdornment>
-          ) : null,
+          endAdornment:
+            showReset && onReset ? (
+              <InputAdornment position="end">
+                <Tooltip title="Restaurar color">
+                  <IconButton size="small" edge="end" onClick={onReset}>
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ) : null,
         }}
         sx={{
           '& input': {

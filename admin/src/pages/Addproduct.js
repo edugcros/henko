@@ -13,6 +13,7 @@ import {
   Row,
   Col,
   Select,
+  AutoComplete,
   message,
   Upload,
   Empty,
@@ -45,6 +46,7 @@ import {
   ThunderboltOutlined,
   CheckOutlined,
   CloudDownloadOutlined,
+  SaveOutlined,
 } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import useProductAnalyzer from '../hooks/useProductAnalyzer'
@@ -55,6 +57,7 @@ import {
   resetState,
   assignVariantImage,
 } from '@features/product/productSlice'
+import productService from '@features/product/productService'
 
 const { Title, Text, Paragraph } = Typography
 const { Dragger } = Upload
@@ -84,6 +87,29 @@ const buildVariantName = (attributes = {}) =>
     .join(' / ')
 
 const safeArray = value => (Array.isArray(value) ? value : [])
+const MAX_GENERATED_VARIANTS = 200
+
+const buildGeneratedVariantSku = (productTitle, attributes, index) => {
+  const titlePart = slugifyKeyPart(productTitle || 'producto')
+    .replace(/-/g, '')
+    .slice(0, 12)
+    .toUpperCase()
+  const attributePart = Object.values(attributes || {})
+    .map(value =>
+      slugifyKeyPart(value).replace(/-/g, '').slice(0, 8).toUpperCase(),
+    )
+    .filter(Boolean)
+    .join('-')
+
+  return [
+    titlePart || 'PRODUCTO',
+    attributePart,
+    String(index + 1).padStart(2, '0'),
+  ]
+    .filter(Boolean)
+    .join('-')
+    .slice(0, 64)
+}
 
 const formatDate = value => {
   if (!value) return ''
@@ -123,13 +149,14 @@ const buildPreviewFromFile = file => {
 }
 
 const rebuildPreviews = files =>
-  files
-    .map(file => buildPreviewFromFile(file))
-    .filter(Boolean)
+  files.map(file => buildPreviewFromFile(file)).filter(Boolean)
 
 const waitForUiReset = () =>
   new Promise(resolve => {
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.requestAnimationFrame === 'function'
+    ) {
       window.requestAnimationFrame(() => resolve())
       return
     }
@@ -144,12 +171,16 @@ const buildProductPayloadFromAnalysis = ({
   publish = false,
   automationMode = 'agent-assisted',
 }) => {
-  const detectedAttrs = analysis?.atributos_detectados || analysis?.atributos || {}
+  const detectedAttrs =
+    analysis?.atributos_detectados || analysis?.atributos || {}
   const colorValue = Array.isArray(detectedAttrs.color)
     ? detectedAttrs.color.join(', ')
     : detectedAttrs.color || analysis?.color || ''
   const colorArray = normalizeString(colorValue)
-    ? String(colorValue).split(',').map(color => color.trim().toLowerCase()).filter(Boolean)
+    ? String(colorValue)
+        .split(',')
+        .map(color => color.trim().toLowerCase())
+        .filter(Boolean)
     : []
   const title =
     normalizeString(analysis?.titulo || analysis?.title) ||
@@ -170,29 +201,50 @@ const buildProductPayloadFromAnalysis = ({
     description:
       normalizeString(analysis?.descripcion || analysis?.description) ||
       'Descripción generada automáticamente pendiente de revisión.',
-    categoria: normalizeString(analysis?.categoria || analysis?.category || 'sin categoria').toLowerCase(),
-    subcategoria: normalizeString(analysis?.subcategoria || analysis?.subcategory || 'general'),
+    categoria: normalizeString(
+      analysis?.categoria || analysis?.category || 'sin categoria',
+    ).toLowerCase(),
+    subcategoria: normalizeString(
+      analysis?.subcategoria || analysis?.subcategory || 'general',
+    ),
     marca: normalizeString(analysis?.marca || analysis?.brand || 'sin marca'),
-    price: Number(analysis?.precio_sugerido || analysis?.suggestedPrice || analysis?.precio || analysis?.price || 0),
+    price: Number(
+      analysis?.precio_sugerido ||
+        analysis?.suggestedPrice ||
+        analysis?.precio ||
+        analysis?.price ||
+        0,
+    ),
     stock: Number(analysis?.cantidad || analysis?.stock || 1),
     condicion: analysis?.condicion || 'nuevo',
     color: colorArray,
     material: normalizeString(detectedAttrs.material || analysis?.material),
     atributos: {
-      ...(detectedAttrs && typeof detectedAttrs === 'object' ? detectedAttrs : {}),
+      ...(detectedAttrs && typeof detectedAttrs === 'object'
+        ? detectedAttrs
+        : {}),
       color: colorArray.length === 1 ? colorArray[0] : colorArray,
       material: normalizeString(detectedAttrs.material || analysis?.material),
     },
     hasVariants: false,
     variantAttributes: [],
     variants: [],
-    tags: safeArray(analysis?.tags).map(tag => String(tag).toLowerCase().trim()).filter(Boolean),
+    tags: safeArray(analysis?.tags)
+      .map(tag => String(tag).toLowerCase().trim())
+      .filter(Boolean),
     iaGenerated: true,
     aiOriginalOutput: JSON.stringify(normalizedAnalysis),
     aiConfidence: normalizedAnalysis?.confidence ?? null,
-    aiSource: normalizedAnalysis?.source || normalizedAnalysis?.model || 'gemini',
-    aiImageHash: normalizedAnalysis?.hash || normalizedAnalysis?.imageHash || job?.imageHash || null,
-    aiNeedsReview: normalizedAnalysis?.needsReview === true || normalizedAnalysis?.requiresHumanReview === true,
+    aiSource:
+      normalizedAnalysis?.source || normalizedAnalysis?.model || 'gemini',
+    aiImageHash:
+      normalizedAnalysis?.hash ||
+      normalizedAnalysis?.imageHash ||
+      job?.imageHash ||
+      null,
+    aiNeedsReview:
+      normalizedAnalysis?.needsReview === true ||
+      normalizedAnalysis?.requiresHumanReview === true,
     aiAgentJobId: job?._id || null,
     aiAgentScheduledAt: job?.scheduledAt || job?.metadata?.addProductAt || null,
     aiAutomationMode: automationMode,
@@ -201,7 +253,13 @@ const buildProductPayloadFromAnalysis = ({
   }
 }
 
-const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 }) => {
+const AIAnalysisPanel = ({
+  iaResult,
+  loading,
+  error,
+  onReset,
+  confidence = 85,
+}) => {
   const { token } = useToken()
 
   if (loading) {
@@ -216,9 +274,14 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
       >
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
           <div className="ai-pulse-animation">
-            <RobotOutlined style={{ fontSize: 48, color: token.colorPrimary }} />
+            <RobotOutlined
+              style={{ fontSize: 48, color: token.colorPrimary }}
+            />
           </div>
-          <Text strong style={{ fontSize: 16, display: 'block', margin: '16px 0 8px' }}>
+          <Text
+            strong
+            style={{ fontSize: 16, display: 'block', margin: '16px 0 8px' }}
+          >
             Analizando imagen con IA
           </Text>
           <div style={{ width: 200, margin: '0 auto' }}>
@@ -256,7 +319,12 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
         message="Error en el análisis de IA"
         description={error}
         action={
-          <Button size="small" danger onClick={onReset} icon={<ReloadOutlined />}>
+          <Button
+            size="small"
+            danger
+            onClick={onReset}
+            icon={<ReloadOutlined />}
+          >
             Reintentar
           </Button>
         }
@@ -267,19 +335,66 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
 
   if (!iaResult) return null
 
-  const suggestedVariants = iaResult.variantes_sugeridas || iaResult.variantes || []
-  const detectedAttributes = iaResult.atributos_detectados || iaResult.atributos || {}
+  const suggestedVariants =
+    iaResult.variantes_sugeridas || iaResult.variantes || []
+  const detectedAttributes =
+    iaResult.atributos_detectados || iaResult.atributos || {}
 
   const detectedFields = [
-    { key: 'titulo', label: 'Título', icon: <FileTextOutlined />, value: iaResult.titulo },
-    { key: 'categoria', label: 'Categoría', icon: <AppstoreOutlined />, value: iaResult.categoria },
-    { key: 'subcategoria', label: 'Subcategoría', icon: <BranchesOutlined />, value: iaResult.subcategoria },
-    { key: 'marca', label: 'Marca', icon: <ShoppingOutlined />, value: iaResult.marca },
-    { key: 'precio', label: 'Precio Sugerido', icon: <DollarOutlined />, value: iaResult.precio_sugerido },
-    { key: 'color', label: 'Color', icon: <FormatPainterOutlined />, value: detectedAttributes.color },
-    { key: 'material', label: 'Material', icon: <InfoCircleOutlined />, value: detectedAttributes.material },
-    { key: 'talla', label: 'Talla/Talle', icon: <CheckOutlined />, value: detectedAttributes.talla || detectedAttributes.talle },
-    { key: 'sexo', label: 'Sexo/Género', icon: <CheckOutlined />, value: detectedAttributes.sexo || detectedAttributes.genero },
+    {
+      key: 'titulo',
+      label: 'Título',
+      icon: <FileTextOutlined />,
+      value: iaResult.titulo,
+    },
+    {
+      key: 'categoria',
+      label: 'Categoría',
+      icon: <AppstoreOutlined />,
+      value: iaResult.categoria,
+    },
+    {
+      key: 'subcategoria',
+      label: 'Subcategoría',
+      icon: <BranchesOutlined />,
+      value: iaResult.subcategoria,
+    },
+    {
+      key: 'marca',
+      label: 'Marca',
+      icon: <ShoppingOutlined />,
+      value: iaResult.marca,
+    },
+    {
+      key: 'precio',
+      label: 'Precio Sugerido',
+      icon: <DollarOutlined />,
+      value: iaResult.precio_sugerido,
+    },
+    {
+      key: 'color',
+      label: 'Color',
+      icon: <FormatPainterOutlined />,
+      value: detectedAttributes.color,
+    },
+    {
+      key: 'material',
+      label: 'Material',
+      icon: <InfoCircleOutlined />,
+      value: detectedAttributes.material,
+    },
+    {
+      key: 'talla',
+      label: 'Talla/Talle',
+      icon: <CheckOutlined />,
+      value: detectedAttributes.talla || detectedAttributes.talle,
+    },
+    {
+      key: 'sexo',
+      label: 'Sexo/Género',
+      icon: <CheckOutlined />,
+      value: detectedAttributes.sexo || detectedAttributes.genero,
+    },
   ].filter(field => field.value)
 
   const hasTags = safeArray(iaResult.tags).length > 0
@@ -302,7 +417,10 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
             {confidence}% confianza
           </Tag>
           {hasSuggestedVariants && (
-            <Badge count={suggestedVariants.length} style={{ backgroundColor: token.colorSuccess }}>
+            <Badge
+              count={suggestedVariants.length}
+              style={{ backgroundColor: token.colorSuccess }}
+            >
               <Tag color="processing">Variantes detectadas</Tag>
             </Badge>
           )}
@@ -321,14 +439,27 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
                 borderRadius: 8,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  marginBottom: 4,
+                }}
+              >
                 <span style={{ color: token.colorPrimary }}>{field.icon}</span>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {field.label}
                 </Text>
               </div>
-              <Text strong style={{ fontSize: 14 }} ellipsis={{ tooltip: true }}>
-                {Array.isArray(field.value) ? field.value.join(', ') : field.value}
+              <Text
+                strong
+                style={{ fontSize: 14 }}
+                ellipsis={{ tooltip: true }}
+              >
+                {Array.isArray(field.value)
+                  ? field.value.join(', ')
+                  : field.value}
               </Text>
             </Card>
           </Col>
@@ -337,7 +468,14 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
 
       {hasSuggestedVariants && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              marginBottom: 8,
+            }}
+          >
             <ClusterOutlined style={{ color: token.colorPrimary }} />
             <Text type="secondary" style={{ fontSize: 12 }}>
               Variantes sugeridas por IA
@@ -348,7 +486,9 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
               <Tag key={idx} color="purple" style={{ padding: '4px 12px' }}>
                 {typeof variant === 'string'
                   ? variant
-                  : Object.entries(variant).map(([k, v]) => `${k}:${v}`).join(' / ')}
+                  : Object.entries(variant)
+                      .map(([k, v]) => `${k}:${v}`)
+                      .join(' / ')}
               </Tag>
             ))}
           </Space>
@@ -357,7 +497,14 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
 
       {hasTags && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              marginBottom: 8,
+            }}
+          >
             <TagOutlined style={{ color: token.colorPrimary }} />
             <Text type="secondary" style={{ fontSize: 12 }}>
               Tags detectados
@@ -375,7 +522,14 @@ const AIAnalysisPanel = ({ iaResult, loading, error, onReset, confidence = 85 })
 
       {iaResult.descripcion && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              marginBottom: 8,
+            }}
+          >
             <FileTextOutlined style={{ color: token.colorPrimary }} />
             <Text type="secondary" style={{ fontSize: 12 }}>
               Descripción generada
@@ -405,7 +559,11 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
   if (!previews.length) {
     return (
       <Empty
-        image={<PictureOutlined style={{ fontSize: 64, color: token.colorTextDisabled }} />}
+        image={
+          <PictureOutlined
+            style={{ fontSize: 64, color: token.colorTextDisabled }}
+          />
+        }
         description="No hay imágenes seleccionadas"
         style={{ padding: 40 }}
       />
@@ -509,8 +667,13 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
               className="add-more-images"
             >
               <div style={{ textAlign: 'center' }}>
-                <PlusOutlined style={{ fontSize: 24, color: token.colorTextSecondary }} />
-                <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                <PlusOutlined
+                  style={{ fontSize: 24, color: token.colorTextSecondary }}
+                />
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, display: 'block' }}
+                >
                   Agregar más
                 </Text>
               </div>
@@ -528,7 +691,7 @@ const VariantImageSelector = ({ variant, localImages, onAssign }) => {
       value={variant.imageSourceUid || undefined}
       placeholder="Seleccionar imagen"
       style={{ width: '100%' }}
-      onChange={(value) => onAssign(variant.key, value || null)}
+      onChange={value => onAssign(variant.key, value || null)}
       allowClear
       options={localImages.map(img => ({
         value: img.uid,
@@ -575,13 +738,19 @@ export default function AddProduct() {
   const [inputVisible, setInputVisible] = useState(false)
   const [dynamicAttributes, setDynamicAttributes] = useState([])
   const [selectedAttributes, setSelectedAttributes] = useState({})
+  const [newAttributeName, setNewAttributeName] = useState('')
+  const [newAttributeType, setNewAttributeType] = useState('select')
+  const [catalogCategories, setCatalogCategories] = useState([])
+  const [catalogTemplate, setCatalogTemplate] = useState(null)
+  const [loadingCatalogTemplate, setLoadingCatalogTemplate] = useState(false)
+  const [savingCatalogTemplate, setSavingCatalogTemplate] = useState(false)
   const [agentQueue, setAgentQueue] = useState([])
   const [selectedAgentJobId, setSelectedAgentJobId] = useState(null)
   const [loadingAgentQueue, setLoadingAgentQueue] = useState(false)
   const [importingAgentImage, setImportingAgentImage] = useState(false)
   const [deletingAgentImage, setDeletingAgentImage] = useState(false)
   const [autoAgentEnabled, setAutoAgentEnabled] = useState(() =>
-    getStoredBoolean('addProduct.agentAutoMode', false)
+    getStoredBoolean('addProduct.agentAutoMode', false),
   )
   const [autoAgentRunning, setAutoAgentRunning] = useState(false)
   const [currentAgentJob, setCurrentAgentJob] = useState(null)
@@ -592,7 +761,35 @@ export default function AddProduct() {
 
   const user = useSelector(state => state.user.user)
   const tenantId = user?.tenantId?._id || user?.tenantId || null
-  const { isLoading, isError, message: productMessage } = useSelector(state => state.product)
+  const {
+    isLoading,
+    isError,
+    message: productMessage,
+  } = useSelector(state => state.product)
+  const selectedCategory = Form.useWatch('categoria', form)
+  const selectedSubcategory = Form.useWatch('subcategoria', form)
+
+  const categoryOptions = useMemo(
+    () =>
+      catalogCategories.map(category => ({
+        value: category.name,
+        label: category.name,
+      })),
+    [catalogCategories],
+  )
+
+  const subcategoryOptions = useMemo(() => {
+    const category = catalogCategories.find(
+      item =>
+        normalizeString(item.name).toLowerCase() ===
+        normalizeString(selectedCategory).toLowerCase(),
+    )
+
+    return safeArray(category?.subcategories).map(subcategory => ({
+      value: subcategory.name,
+      label: subcategory.name,
+    }))
+  }, [catalogCategories, selectedCategory])
 
   const localImages = useMemo(() => {
     return fileList.map((file, index) => ({
@@ -602,9 +799,27 @@ export default function AddProduct() {
     }))
   }, [fileList, imagePreviews])
 
-  const canGenerateVariants = useMemo(() => {
-    return Object.values(selectedAttributes).some(values => Array.isArray(values) && values.length > 0)
-  }, [selectedAttributes])
+  const configuredVariantAttributes = useMemo(
+    () =>
+      dynamicAttributes.filter(
+        attribute => safeArray(selectedAttributes[attribute.name]).length > 0,
+      ),
+    [dynamicAttributes, selectedAttributes],
+  )
+
+  const variantCombinationCount = useMemo(() => {
+    if (configuredVariantAttributes.length === 0) return 0
+
+    return configuredVariantAttributes.reduce(
+      (total, attribute) =>
+        total * safeArray(selectedAttributes[attribute.name]).length,
+      1,
+    )
+  }, [configuredVariantAttributes, selectedAttributes])
+
+  const canGenerateVariants =
+    variantCombinationCount > 0 &&
+    variantCombinationCount <= MAX_GENERATED_VARIANTS
 
   const agentQueueStats = useMemo(() => {
     return agentQueue.reduce(
@@ -638,9 +853,115 @@ export default function AddProduct() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem('addProduct.agentAutoMode', String(autoAgentEnabled))
+      window.localStorage.setItem(
+        'addProduct.agentAutoMode',
+        String(autoAgentEnabled),
+      )
     }
   }, [autoAgentEnabled])
+
+  useEffect(() => {
+    let mounted = true
+
+    productService
+      .getCategories()
+      .then(response => {
+        if (!mounted) return
+        setCatalogCategories(safeArray(response?.data))
+      })
+      .catch(error => {
+        if (mounted) {
+          message.warning(
+            error?.message || 'No se pudo cargar el catálogo de categorías',
+          )
+        }
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const category = normalizeString(selectedCategory)
+    const subcategory = normalizeString(selectedSubcategory)
+
+    if (!category || !subcategory) {
+      setCatalogTemplate(null)
+      return undefined
+    }
+
+    let cancelled = false
+    const timeout = setTimeout(async () => {
+      setLoadingCatalogTemplate(true)
+
+      try {
+        const response = await productService.getCategoryConfig(
+          category,
+          subcategory,
+        )
+        if (cancelled) return
+
+        const template = response?.data?.selectedSubcategory || null
+        const templateAttributes = safeArray(
+          template?.variantAttributes || response?.data?.variantAttributes,
+        )
+
+        setCatalogTemplate(template)
+
+        if (templateAttributes.length === 0) return
+
+        setDynamicAttributes(current => {
+          const merged = new Map(
+            current.map(attribute => [attribute.name, attribute]),
+          )
+
+          templateAttributes.forEach(attribute => {
+            const name = normalizeString(attribute.name)
+              .toLowerCase()
+              .replace(/\s+/g, '_')
+
+            if (!name) return
+
+            const previous = merged.get(name)
+            const values = [
+              ...new Set([
+                ...safeArray(previous?.values),
+                ...safeArray(attribute.values),
+              ]),
+            ]
+
+            merged.set(name, {
+              ...previous,
+              name,
+              label: attribute.label || previous?.label || name,
+              type: attribute.type || previous?.type || 'select',
+              values,
+              required: attribute.required === true,
+            })
+          })
+
+          return [...merged.values()]
+        })
+        setHasVariants(true)
+      } catch (error) {
+        if (!cancelled) {
+          setCatalogTemplate(null)
+          message.warning(
+            error?.message ||
+              'No se pudo cargar la plantilla de la subcategoría',
+          )
+        }
+      } finally {
+        if (!cancelled) setLoadingCatalogTemplate(false)
+      }
+    }, 350)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
+  }, [selectedCategory, selectedSubcategory])
 
   const fetchAgentQueue = useCallback(async () => {
     setLoadingAgentQueue(true)
@@ -653,17 +974,22 @@ export default function AddProduct() {
         },
       })
 
-      const items = (Array.isArray(data?.items) ? data.items : [])
-        .filter(item =>
+      const items = (Array.isArray(data?.items) ? data.items : []).filter(
+        item =>
           ['pending', 'scheduled'].includes(item.status) &&
-          item.metadata?.autoAnalyze === false
-        )
+          item.metadata?.autoAnalyze === false,
+      )
       setAgentQueue(items)
       setSelectedAgentJobId(current =>
-        current && items.some(item => item._id === current) ? current : items[0]?._id || null
+        current && items.some(item => item._id === current)
+          ? current
+          : items[0]?._id || null,
       )
     } catch (error) {
-      message.error(error?.response?.data?.message || 'No se pudo cargar la cola del agente')
+      message.error(
+        error?.response?.data?.message ||
+          'No se pudo cargar la cola del agente',
+      )
     } finally {
       setLoadingAgentQueue(false)
     }
@@ -681,12 +1007,17 @@ export default function AddProduct() {
   useEffect(() => {
     if (!iaResult) return
 
-    const detectedAttrs = iaResult.atributos_detectados || iaResult.atributos || {}
-    const suggestedVariants = iaResult.variantes_sugeridas || iaResult.variantes || []
+    const detectedAttrs =
+      iaResult.atributos_detectados || iaResult.atributos || {}
+    const suggestedVariants =
+      iaResult.variantes_sugeridas || iaResult.variantes || []
 
     const attrsFromIA = []
 
-    if (suggestedVariants.length > 0 && typeof suggestedVariants[0] === 'object') {
+    if (
+      suggestedVariants.length > 0 &&
+      typeof suggestedVariants[0] === 'object'
+    ) {
       const firstVariant = suggestedVariants[0]
       Object.keys(firstVariant).forEach(key => {
         if (!['precio', 'stock', 'sku', 'price'].includes(key)) {
@@ -694,7 +1025,9 @@ export default function AddProduct() {
             name: key,
             label: key.charAt(0).toUpperCase() + key.slice(1),
             type: 'select',
-            values: [...new Set(suggestedVariants.map(v => v[key]).filter(Boolean))],
+            values: [
+              ...new Set(suggestedVariants.map(v => v[key]).filter(Boolean)),
+            ],
           })
         }
       })
@@ -715,11 +1048,28 @@ export default function AddProduct() {
     })
 
     if (attrsFromIA.length === 0) {
-      if (detectedAttrs.talla || detectedAttrs.talle || iaResult.categoria?.toLowerCase().includes('ropa')) {
-        attrsFromIA.push({ name: 'talla', label: 'Talla/Talle', type: 'select', values: [] })
+      if (
+        detectedAttrs.talla ||
+        detectedAttrs.talle ||
+        iaResult.categoria?.toLowerCase().includes('ropa')
+      ) {
+        attrsFromIA.push({
+          name: 'talla',
+          label: 'Talla/Talle',
+          type: 'select',
+          values: [],
+        })
       }
-      if (detectedAttrs.color || iaResult.categoria?.toLowerCase().includes('moda')) {
-        attrsFromIA.push({ name: 'color', label: 'Color', type: 'color', values: [] })
+      if (
+        detectedAttrs.color ||
+        iaResult.categoria?.toLowerCase().includes('moda')
+      ) {
+        attrsFromIA.push({
+          name: 'color',
+          label: 'Color',
+          type: 'color',
+          values: [],
+        })
       }
       if (detectedAttrs.sexo || detectedAttrs.genero) {
         attrsFromIA.push({
@@ -739,7 +1089,7 @@ export default function AddProduct() {
       categoria: iaResult.categoria || '',
       subcategoria: iaResult.subcategoria || '',
       marca: iaResult.marca || iaResult.brand || '',
-      precio: iaResult.precio_sugerido || iaResult.precio || iaResult.price ,
+      precio: iaResult.precio_sugerido || iaResult.precio || iaResult.price,
       cantidad: iaResult.cantidad || iaResult.stock || 1,
       condicion: iaResult.condicion || 'nuevo',
       color: Array.isArray(detectedAttrs.color)
@@ -757,14 +1107,19 @@ export default function AddProduct() {
             typeof variant === 'string'
               ? { variante: variant }
               : Object.fromEntries(
-                  Object.entries(variant).filter(([key]) => !['precio', 'stock', 'sku', 'price'].includes(key))
+                  Object.entries(variant).filter(
+                    ([key]) =>
+                      !['precio', 'stock', 'sku', 'price'].includes(key),
+                  ),
                 )
 
           return {
             key: buildVariantKey(combination) || `v-${idx}-${Date.now()}`,
             nombre: buildVariantName(combination) || `Variante ${idx + 1}`,
             combinacion: combination,
-            price: Number(variant.precio || variant.price || iaResult.precio_sugerido || 0),
+            price: Number(
+              variant.precio || variant.price || iaResult.precio_sugerido || 0,
+            ),
             stock: Number(variant.stock || 0),
             sku: variant.sku || '',
             isActive: true,
@@ -778,7 +1133,11 @@ export default function AddProduct() {
         if (typeof suggestedVariants[0] === 'object') {
           Object.keys(suggestedVariants[0]).forEach(key => {
             if (!['precio', 'stock', 'sku', 'price'].includes(key)) {
-              usedAttrs[key] = [...new Set(suggestedVariants.map(item => item[key]).filter(Boolean))]
+              usedAttrs[key] = [
+                ...new Set(
+                  suggestedVariants.map(item => item[key]).filter(Boolean),
+                ),
+              ]
             }
           })
         }
@@ -791,15 +1150,19 @@ export default function AddProduct() {
       .filter(Boolean)
 
     setEditableTags([...new Set(cleanTags)])
-    message.success(`Campos autocompletados por IA${attrsFromIA.length > 0 ? ` • ${attrsFromIA.length} atributos detectados` : ''}`)
+    message.success(
+      `Campos autocompletados por IA${attrsFromIA.length > 0 ? ` • ${attrsFromIA.length} atributos detectados` : ''}`,
+    )
   }, [iaResult, form])
 
   const handleAddCustomAttribute = useCallback(() => {
-    const name = window.prompt('Nombre del atributo (ej: material, estilo, lado, talle):')
-    if (!name) return
+    const label = normalizeString(newAttributeName)
+    const normalizedName = slugifyKeyPart(label).replace(/-/g, '_')
 
-    const label = window.prompt('Etiqueta visible (ej: Material):') || name
-    const normalizedName = name.toLowerCase().trim().replace(/\s+/g, '_')
+    if (!normalizedName) {
+      message.warning('Escribí el nombre del atributo')
+      return
+    }
 
     setDynamicAttributes(prev => {
       if (prev.some(attr => attr.name === normalizedName)) {
@@ -811,28 +1174,127 @@ export default function AddProduct() {
         ...prev,
         {
           name: normalizedName,
-          label: label.trim(),
-          type: 'select',
+          label,
+          type: newAttributeType,
           values: [],
         },
       ]
     })
-  }, [])
+    setNewAttributeName('')
+    setNewAttributeType('select')
+  }, [newAttributeName, newAttributeType])
 
   const handleAttributeValuesChange = useCallback((attrName, values) => {
+    const normalizedValues = [
+      ...new Set(
+        safeArray(values)
+          .map(value => normalizeString(value))
+          .filter(Boolean),
+      ),
+    ]
+
     setSelectedAttributes(prev => ({
       ...prev,
-      [attrName]: safeArray(values).filter(Boolean),
+      [attrName]: normalizedValues,
     }))
+
+    setDynamicAttributes(prev =>
+      prev.map(attribute =>
+        attribute.name === attrName
+          ? {
+              ...attribute,
+              values: [
+                ...new Set([
+                  ...safeArray(attribute.values),
+                  ...normalizedValues,
+                ]),
+              ],
+            }
+          : attribute,
+      ),
+    )
   }, [])
 
-  const generateVariantsFromAttributes = useCallback(() => {
-    const activeAttrs = dynamicAttributes.filter(
-      attr => Array.isArray(selectedAttributes[attr.name]) && selectedAttributes[attr.name].length > 0
+  const handleRemoveVariantAttribute = useCallback(attrName => {
+    setDynamicAttributes(prev =>
+      prev.filter(attribute => attribute.name !== attrName),
     )
+    setSelectedAttributes(prev => {
+      const next = { ...prev }
+      delete next[attrName]
+      return next
+    })
+    setVariants([])
+  }, [])
+
+  const handleSaveCatalogTemplate = useCallback(async () => {
+    const category = normalizeString(form.getFieldValue('categoria'))
+    const subcategory = normalizeString(form.getFieldValue('subcategoria'))
+
+    if (!category || !subcategory) {
+      message.warning(
+        'Completá categoría y subcategoría antes de guardar la plantilla',
+      )
+      return
+    }
+
+    if (dynamicAttributes.length === 0) {
+      message.warning('Agregá al menos un atributo de variante')
+      return
+    }
+
+    setSavingCatalogTemplate(true)
+
+    try {
+      const response = await productService.saveCategoryConfig({
+        category,
+        subcategory,
+        variantAttributes: dynamicAttributes.map((attribute, index) => ({
+          name: attribute.name,
+          label: attribute.label,
+          type: attribute.type || 'select',
+          values: [
+            ...new Set([
+              ...safeArray(attribute.values),
+              ...safeArray(selectedAttributes[attribute.name]),
+            ]),
+          ],
+          required: attribute.required === true,
+          sortOrder: index,
+        })),
+      })
+
+      const savedCategory = response?.data
+      const savedSubcategory = safeArray(savedCategory?.subcategories).find(
+        item =>
+          normalizeString(item.name).toLowerCase() ===
+          subcategory.toLowerCase(),
+      )
+
+      setCatalogTemplate(savedSubcategory || { name: subcategory })
+      message.success(`Plantilla de "${subcategory}" guardada`)
+
+      const categoriesResponse = await productService.getCategories()
+      setCatalogCategories(safeArray(categoriesResponse?.data))
+    } catch (error) {
+      message.error(error?.message || 'No se pudo guardar la plantilla')
+    } finally {
+      setSavingCatalogTemplate(false)
+    }
+  }, [dynamicAttributes, form, selectedAttributes])
+
+  const generateVariantsFromAttributes = useCallback(() => {
+    const activeAttrs = configuredVariantAttributes
 
     if (activeAttrs.length === 0) {
-      message.warning('Selecciona al menos un atributo con valores')
+      message.warning('Agregá valores a por lo menos un atributo')
+      return
+    }
+
+    if (variantCombinationCount > MAX_GENERATED_VARIANTS) {
+      message.error(
+        `La selección produciría ${variantCombinationCount} variantes. El máximo permitido es ${MAX_GENERATED_VARIANTS}.`,
+      )
       return
     }
 
@@ -848,7 +1310,7 @@ export default function AddProduct() {
           ...generateCombinations(attrs, index + 1, {
             ...current,
             [attr.name]: value,
-          })
+          }),
         )
       })
 
@@ -857,7 +1319,10 @@ export default function AddProduct() {
 
     const combinations = generateCombinations(activeAttrs)
     const basePrice = Number(form.getFieldValue('precio') || 0)
-    const previousByKey = new Map(variants.map(variant => [variant.key, variant]))
+    const productTitle = form.getFieldValue('titulo')
+    const previousByKey = new Map(
+      variants.map(variant => [variant.key, variant]),
+    )
 
     const newVariants = combinations.map((combination, idx) => {
       const key = buildVariantKey(combination) || `v-${idx}-${Date.now()}`
@@ -869,7 +1334,9 @@ export default function AddProduct() {
         combinacion: combination,
         price: previous?.price ?? basePrice,
         stock: previous?.stock ?? 0,
-        sku: previous?.sku ?? '',
+        sku:
+          previous?.sku ||
+          buildGeneratedVariantSku(productTitle, combination, idx),
         isActive: previous?.isActive ?? true,
         imageSourceUid: previous?.imageSourceUid ?? null,
       }
@@ -877,20 +1344,29 @@ export default function AddProduct() {
 
     setVariants(newVariants)
     message.success(`${newVariants.length} variantes generadas`)
-  }, [dynamicAttributes, form, selectedAttributes, variants])
+  }, [
+    configuredVariantAttributes,
+    form,
+    selectedAttributes,
+    variantCombinationCount,
+    variants,
+  ])
 
-  const handleUploadChange = useCallback(({ fileList: newFileList }) => {
-    const uniqueFiles = dedupeByUid(newFileList)
+  const handleUploadChange = useCallback(
+    ({ fileList: newFileList }) => {
+      const uniqueFiles = dedupeByUid(newFileList)
 
-    revokeBlobUrls(imagePreviews)
-    setFileList(uniqueFiles)
-    setImagePreviews(rebuildPreviews(uniqueFiles))
+      revokeBlobUrls(imagePreviews)
+      setFileList(uniqueFiles)
+      setImagePreviews(rebuildPreviews(uniqueFiles))
 
-    if (uniqueFiles.length > 0 && !iaResult && !loadingIa) {
-      const fileToAnalyze = uniqueFiles[0]?.originFileObj
-      if (fileToAnalyze) analyzeImage(fileToAnalyze)
-    }
-  }, [analyzeImage, iaResult, imagePreviews, loadingIa])
+      if (uniqueFiles.length > 0 && !iaResult && !loadingIa) {
+        const fileToAnalyze = uniqueFiles[0]?.originFileObj
+        if (fileToAnalyze) analyzeImage(fileToAnalyze)
+      }
+    },
+    [analyzeImage, iaResult, imagePreviews, loadingIa],
+  )
 
   const handleImportAgentImage = useCallback(async () => {
     if (!selectedAgentJobId) {
@@ -901,19 +1377,26 @@ export default function AddProduct() {
     const selectedJob = selectedAgentJob
 
     if (selectedJob?.status === 'scheduled') {
-      message.warning('La imagen todavía está programada. Va a estar disponible en el horario indicado.')
+      message.warning(
+        'La imagen todavía está programada. Va a estar disponible en el horario indicado.',
+      )
       return
     }
 
     setImportingAgentImage(true)
     try {
-      const response = await api.get(`/product-analysis/${selectedAgentJobId}/image-file`, {
-        responseType: 'blob',
-      })
+      const response = await api.get(
+        `/product-analysis/${selectedAgentJobId}/image-file`,
+        {
+          responseType: 'blob',
+        },
+      )
 
       const blob = response.data
-      const filename = selectedJob?.originalFilename || `agent-image-${Date.now()}.jpg`
-      const mimeType = blob?.type || selectedJob?.metadata?.mimeType || 'image/jpeg'
+      const filename =
+        selectedJob?.originalFilename || `agent-image-${Date.now()}.jpg`
+      const mimeType =
+        blob?.type || selectedJob?.metadata?.mimeType || 'image/jpeg'
       const imageFile = new File([blob], filename, { type: mimeType })
       const uploadFile = {
         uid: `agent-${selectedAgentJobId}-${Date.now()}`,
@@ -929,10 +1412,14 @@ export default function AddProduct() {
       setFileList(merged)
       setImagePreviews(rebuildPreviews(merged))
 
-      await api.post(`/product-analysis/${selectedAgentJobId}/import-to-add-product`)
+      await api.post(
+        `/product-analysis/${selectedAgentJobId}/import-to-add-product`,
+      )
       setCurrentAgentJob(selectedJob)
 
-      setAgentQueue(current => current.filter(job => job._id !== selectedAgentJobId))
+      setAgentQueue(current =>
+        current.filter(job => job._id !== selectedAgentJobId),
+      )
       setSelectedAgentJobId(null)
 
       if (!iaResult && !loadingIa) {
@@ -941,7 +1428,10 @@ export default function AddProduct() {
 
       message.success('Imagen del agente cargada en AddProduct')
     } catch (error) {
-      message.error(error?.response?.data?.message || 'No se pudo importar la imagen del agente')
+      message.error(
+        error?.response?.data?.message ||
+          'No se pudo importar la imagen del agente',
+      )
     } finally {
       setImportingAgentImage(false)
     }
@@ -960,7 +1450,9 @@ export default function AddProduct() {
     if (!selectedAgentJobId) return
 
     const previousQueue = agentQueue
-    setAgentQueue(current => current.filter(job => job._id !== selectedAgentJobId))
+    setAgentQueue(current =>
+      current.filter(job => job._id !== selectedAgentJobId),
+    )
     setSelectedAgentJobId(null)
     setDeletingAgentImage(true)
 
@@ -970,7 +1462,9 @@ export default function AddProduct() {
     } catch (error) {
       setAgentQueue(previousQueue)
       setSelectedAgentJobId(selectedAgentJobId)
-      message.error(error?.response?.data?.message || 'No se pudo eliminar la imagen')
+      message.error(
+        error?.response?.data?.message || 'No se pudo eliminar la imagen',
+      )
     } finally {
       setDeletingAgentImage(false)
     }
@@ -993,62 +1487,69 @@ export default function AddProduct() {
     dispatch(resetState())
   }, [dispatch, form, imagePreviews, resetIa])
 
-  const processAgentJobAutomatically = useCallback(async job => {
-    resetProductWorkspace()
-    await waitForUiReset()
+  const processAgentJobAutomatically = useCallback(
+    async job => {
+      resetProductWorkspace()
+      await waitForUiReset()
 
-    const response = await api.get(`/product-analysis/${job._id}/image-file`, {
-      responseType: 'blob',
-    })
+      const response = await api.get(
+        `/product-analysis/${job._id}/image-file`,
+        {
+          responseType: 'blob',
+        },
+      )
 
-    const blob = response.data
-    const filename = job.originalFilename || `agent-image-${Date.now()}.jpg`
-    const mimeType = blob?.type || job.metadata?.mimeType || 'image/jpeg'
-    const imageFile = new File([blob], filename, { type: mimeType })
-    const analysis = await analyzeImage(imageFile)
+      const blob = response.data
+      const filename = job.originalFilename || `agent-image-${Date.now()}.jpg`
+      const mimeType = blob?.type || job.metadata?.mimeType || 'image/jpeg'
+      const imageFile = new File([blob], filename, { type: mimeType })
+      const analysis = await analyzeImage(imageFile)
 
-    if (!analysis) {
-      throw new Error('La IA no devolvió análisis para la imagen')
-    }
+      if (!analysis) {
+        throw new Error('La IA no devolvió análisis para la imagen')
+      }
 
-    const productPayload = buildProductPayloadFromAnalysis({
-      analysis,
-      job,
-      user,
-      publish: Boolean(job.autoPublishProduct),
-      automationMode: 'agent-autosave',
-    })
+      const productPayload = buildProductPayloadFromAnalysis({
+        analysis,
+        job,
+        user,
+        publish: Boolean(job.autoPublishProduct),
+        automationMode: 'agent-autosave',
+      })
 
-    const created = await dispatch(createProducts(productPayload)).unwrap()
-    const createdPayload = created?.data || created
-    const productId = createdPayload?._id
+      const created = await dispatch(createProducts(productPayload)).unwrap()
+      const createdPayload = created?.data || created
+      const productId = createdPayload?._id
 
-    if (!productId) {
-      throw new Error('No se pudo obtener el ID del producto creado')
-    }
+      if (!productId) {
+        throw new Error('No se pudo obtener el ID del producto creado')
+      }
 
-    await dispatch(
-      uploadProductImage({
+      await dispatch(
+        uploadProductImage({
+          productId,
+          imageFile,
+        }),
+      ).unwrap()
+
+      await api.post(`/product-analysis/${job._id}/import-to-add-product`)
+      await api.post(`/product-analysis/${job._id}/complete-add-product`, {
         productId,
-        imageFile,
-      }),
-    ).unwrap()
+      })
 
-    await api.post(`/product-analysis/${job._id}/import-to-add-product`)
-    await api.post(`/product-analysis/${job._id}/complete-add-product`, {
-      productId,
-    })
-
-    return productId
-  }, [analyzeImage, dispatch, resetProductWorkspace, user])
+      return productId
+    },
+    [analyzeImage, dispatch, resetProductWorkspace, user],
+  )
 
   const processAutoAgentQueue = useCallback(async () => {
     if (!autoAgentEnabled || autoAgentRef.current) return
 
-    const jobsToProcess = agentQueue.filter(job =>
-      job.status === 'pending' &&
-      job.metadata?.autoSaveProduct === true &&
-      !autoAgentFailedJobsRef.current.has(job._id)
+    const jobsToProcess = agentQueue.filter(
+      job =>
+        job.status === 'pending' &&
+        job.metadata?.autoSaveProduct === true &&
+        !autoAgentFailedJobsRef.current.has(job._id),
     )
 
     if (!jobsToProcess.length) return
@@ -1061,7 +1562,9 @@ export default function AddProduct() {
         try {
           await processAgentJobAutomatically(job)
           setAgentQueue(current => current.filter(item => item._id !== job._id))
-          message.success(`Producto creado automáticamente: ${job.originalFilename || job._id}`)
+          message.success(
+            `Producto creado automáticamente: ${job.originalFilename || job._id}`,
+          )
         } catch (error) {
           autoAgentFailedJobsRef.current.add(job._id)
           message.error(
@@ -1092,39 +1595,45 @@ export default function AddProduct() {
     processAutoAgentQueue()
   }, [processAutoAgentQueue])
 
-  const handleAddMoreImages = useCallback(({ fileList: incomingFiles }) => {
-    setFileList(prevList => {
-      const merged = dedupeByUid([...prevList, ...incomingFiles])
+  const handleAddMoreImages = useCallback(
+    ({ fileList: incomingFiles }) => {
+      setFileList(prevList => {
+        const merged = dedupeByUid([...prevList, ...incomingFiles])
+        revokeBlobUrls(imagePreviews)
+        setImagePreviews(rebuildPreviews(merged))
+        return merged
+      })
+    },
+    [imagePreviews],
+  )
+
+  const handleRemove = useCallback(
+    file => {
+      const updated = fileList.filter(item => item.uid !== file.uid)
+
       revokeBlobUrls(imagePreviews)
-      setImagePreviews(rebuildPreviews(merged))
-      return merged
-    })
-  }, [imagePreviews])
+      setFileList(updated)
+      setImagePreviews(rebuildPreviews(updated))
 
-  const handleRemove = useCallback((file) => {
-    const updated = fileList.filter(item => item.uid !== file.uid)
-
-    revokeBlobUrls(imagePreviews)
-    setFileList(updated)
-    setImagePreviews(rebuildPreviews(updated))
-
-    setVariants(prev =>
-      prev.map(variant =>
-        variant.imageSourceUid === file.uid
-          ? { ...variant, imageSourceUid: null }
-          : variant
+      setVariants(prev =>
+        prev.map(variant =>
+          variant.imageSourceUid === file.uid
+            ? { ...variant, imageSourceUid: null }
+            : variant,
+        ),
       )
-    )
 
-    if (!updated.length) {
-      resetIa()
-      setDynamicAttributes([])
-      setSelectedAttributes({})
-      setVariants([])
-    }
-  }, [fileList, imagePreviews, resetIa])
+      if (!updated.length) {
+        resetIa()
+        setDynamicAttributes([])
+        setSelectedAttributes({})
+        setVariants([])
+      }
+    },
+    [fileList, imagePreviews, resetIa],
+  )
 
-  const handleCloseTag = useCallback((removedTag) => {
+  const handleCloseTag = useCallback(removedTag => {
     setEditableTags(prev => prev.filter(tag => tag !== removedTag))
   }, [])
 
@@ -1142,22 +1651,22 @@ export default function AddProduct() {
       prev.map(variant =>
         variant.key === variantKey
           ? { ...variant, imageSourceUid: imageSourceUid || null }
-          : variant
-      )
+          : variant,
+      ),
     )
   }, [])
 
   const normalizedIaResult =
-  iaResult && typeof iaResult === 'object'
-    ? {
-        ...iaResult,
-        appliedAt: new Date().toISOString(),
-        appliedBy: user?._id || user?.id || null,
-        sourceContext: 'admin-add-product',
-      }
-    : null
+    iaResult && typeof iaResult === 'object'
+      ? {
+          ...iaResult,
+          appliedAt: new Date().toISOString(),
+          appliedBy: user?._id || user?.id || null,
+          sourceContext: 'admin-add-product',
+        }
+      : null
 
-  const handleFinish = async (values) => {
+  const handleFinish = async values => {
     if (!fileList.length) {
       message.error('Debes subir al menos una imagen')
       return
@@ -1172,23 +1681,34 @@ export default function AddProduct() {
       const invalidVariants = variants.filter(
         variant =>
           variant.isActive !== false &&
-          (!normalizeString(variant.sku) || Number(variant.stock) < 0 || Number(variant.price) < 0)
+          (!normalizeString(variant.sku) ||
+            Number(variant.stock) < 0 ||
+            Number(variant.price) < 0),
       )
 
       if (invalidVariants.length > 0) {
-        message.error(`Hay ${invalidVariants.length} variantes con datos incompletos`)
+        message.error(
+          `Hay ${invalidVariants.length} variantes con datos incompletos`,
+        )
         return
       }
     }
 
     try {
       const colorArray = normalizeString(values.color)
-        ? values.color.split(',').map(color => color.trim().toLowerCase()).filter(Boolean)
+        ? values.color
+            .split(',')
+            .map(color => color.trim().toLowerCase())
+            .filter(Boolean)
         : []
 
       const variantAttributesConfig = hasVariants
         ? dynamicAttributes
-            .filter(attr => Array.isArray(selectedAttributes[attr.name]) && selectedAttributes[attr.name].length > 0)
+            .filter(
+              attr =>
+                Array.isArray(selectedAttributes[attr.name]) &&
+                selectedAttributes[attr.name].length > 0,
+            )
             .map(attr => ({
               name: attr.name,
               label: attr.label,
@@ -1252,7 +1772,10 @@ export default function AddProduct() {
           normalizedIaResult?.requiresHumanReview === true ||
           false,
         aiAgentJobId: currentAgentJob?._id || null,
-        aiAgentScheduledAt: currentAgentJob?.scheduledAt || currentAgentJob?.metadata?.addProductAt || null,
+        aiAgentScheduledAt:
+          currentAgentJob?.scheduledAt ||
+          currentAgentJob?.metadata?.addProductAt ||
+          null,
         aiAutomationMode: currentAgentJob ? 'agent-assisted' : 'manual',
 
         status: 'active',
@@ -1276,7 +1799,7 @@ export default function AddProduct() {
           uploadProductImage({
             productId,
             imageFile: file.originFileObj,
-          })
+          }),
         ).unwrap()
 
         const imagesArray = Array.isArray(uploadResult?.data)
@@ -1298,12 +1821,15 @@ export default function AddProduct() {
         for (const localVariant of variants) {
           if (!localVariant.imageSourceUid) continue
 
-          const selectedUploadedImage = uploadedByUid.get(localVariant.imageSourceUid)
+          const selectedUploadedImage = uploadedByUid.get(
+            localVariant.imageSourceUid,
+          )
           if (!selectedUploadedImage?.url) continue
 
-          const createdVariant = createdVariants.find(variant =>
-            variant.key === localVariant.key ||
-            buildVariantKey(variant.attributes || {}) === localVariant.key
+          const createdVariant = createdVariants.find(
+            variant =>
+              variant.key === localVariant.key ||
+              buildVariantKey(variant.attributes || {}) === localVariant.key,
           )
 
           if (!createdVariant?._id) continue
@@ -1316,21 +1842,24 @@ export default function AddProduct() {
                 public_id: selectedUploadedImage.public_id,
                 url: selectedUploadedImage.url,
               },
-            })
+            }),
           ).unwrap()
         }
       }
 
       if (currentAgentJob?._id) {
-        await api.post(`/product-analysis/${currentAgentJob._id}/complete-add-product`, {
-          productId,
-        })
+        await api.post(
+          `/product-analysis/${currentAgentJob._id}/complete-add-product`,
+          {
+            productId,
+          },
+        )
       }
 
       message.success(
         hasVariants
           ? `Producto creado correctamente con ${variants.length} variantes`
-          : 'Producto creado correctamente'
+          : 'Producto creado correctamente',
       )
 
       resetProductWorkspace()
@@ -1350,1000 +1879,1309 @@ export default function AddProduct() {
         padding: '24px',
       }}
     >
-<Row justify="center">
-  <Col xs={24} xl={22} xxl={18}>
-    <div
-      style={{
-        marginBottom: 28,
-        padding: '28px 28px 24px',
-        borderRadius: 24,
-        background: `linear-gradient(135deg, ${token.colorPrimary}14 0%, ${token.colorBgContainer} 52%, ${token.colorInfoBg || token.colorPrimaryBg} 100%)`,
-        border: `1px solid ${token.colorBorderSecondary}`,
-        boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
-      }}
-    >
-      <Row gutter={[24, 20]} align="middle" justify="space-between">
-        <Col xs={24} lg={15}>
-          <Space direction="vertical" size={8}>
-            <Space wrap size={10}>
-              <Tag color="processing" style={{ borderRadius: 999, padding: '3px 12px' }}>
-                AddProduct IA
-              </Tag>
-              <Tag color="success" style={{ borderRadius: 999, padding: '3px 12px' }}>
-                Multi-tenant
-              </Tag>
-              {hasVariants && (
-                <Tag color="blue" style={{ borderRadius: 999, padding: '3px 12px' }}>
-                  {variants.length} variantes
-                </Tag>
-              )}
-            </Space>
-
-            <Title level={2} style={{ margin: 0, letterSpacing: '-0.04em' }}>
-              <ThunderboltOutlined style={{ color: token.colorPrimary, marginRight: 12 }} />
-              Crear producto inteligente
-            </Title>
-
-            <Text type="secondary" style={{ fontSize: 15 }}>
-              Subí imágenes, analizá el producto con IA, configurá variantes y publicá con una experiencia lista para producción.
-            </Text>
-          </Space>
-        </Col>
-
-        <Col xs={24} lg={9}>
-          <Row gutter={[12, 12]}>
-            <Col span={8}>
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 16,
-                  background: token.colorBgContainer,
-                  border: `1px solid ${token.colorBorderSecondary}`,
-                  textAlign: 'center',
-                }}
-              >
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Imágenes
-                </Text>
-                <div style={{ fontSize: 22, fontWeight: 800 }}>
-                  {fileList.length}
-                </div>
-              </div>
-            </Col>
-
-            <Col span={8}>
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 16,
-                  background: token.colorBgContainer,
-                  border: `1px solid ${token.colorBorderSecondary}`,
-                  textAlign: 'center',
-                }}
-              >
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Variantes
-                </Text>
-                <div style={{ fontSize: 22, fontWeight: 800 }}>
-                  {variants.length}
-                </div>
-              </div>
-            </Col>
-
-            <Col span={8}>
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 16,
-                  background: token.colorBgContainer,
-                  border: `1px solid ${token.colorBorderSecondary}`,
-                  textAlign: 'center',
-                }}
-              >
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  IA
-                </Text>
-                <div style={{ fontSize: 22, fontWeight: 800 }}>
-                  {iaResult ? 'OK' : '—'}
-                </div>
-              </div>
-            </Col>
-          </Row>
-        </Col>
-      </Row>
-    </div>
-
-    <Form form={form} layout="vertical" onFinish={handleFinish}>
-      <Row gutter={[24, 24]} align="top">
-        <Col xs={24} xl={15}>
-          <Card
-            title={
-              <Space size={10}>
-                <PictureOutlined style={{ color: token.colorPrimary }} />
-                <span>Imágenes del producto</span>
-                <Tag color="red" style={{ borderRadius: 999 }}>
-                  Requerido
-                </Tag>
-              </Space>
-            }
+      <Row justify="center">
+        <Col xs={24} xl={22} xxl={18}>
+          <div
             style={{
-              marginBottom: 24,
-              borderRadius: 20,
+              marginBottom: 28,
+              padding: '28px 28px 24px',
+              borderRadius: 24,
+              background: `linear-gradient(135deg, ${token.colorPrimary}14 0%, ${token.colorBgContainer} 52%, ${token.colorInfoBg || token.colorPrimaryBg} 100%)`,
               border: `1px solid ${token.colorBorderSecondary}`,
-              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+              boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
             }}
-            bodyStyle={{ padding: 24 }}
           >
-            <div
-              style={{
-                marginBottom: 20,
-                padding: 20,
-                borderRadius: 18,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                background: `linear-gradient(135deg, ${token.colorFillAlter}, ${token.colorBgContainer})`,
-              }}
-            >
-              <Row gutter={[18, 18]} align="middle">
-                <Col xs={24} lg={8}>
-                  <Space direction="vertical" size={6}>
-                    <Space wrap>
-                      <Tag color="processing" style={{ borderRadius: 999 }}>
-                        Agente
+            <Row gutter={[24, 20]} align="middle" justify="space-between">
+              <Col xs={24} lg={15}>
+                <Space direction="vertical" size={8}>
+                  <Space wrap size={10}>
+                    <Tag
+                      color="processing"
+                      style={{ borderRadius: 999, padding: '3px 12px' }}
+                    >
+                      AddProduct IA
+                    </Tag>
+                    <Tag
+                      color="success"
+                      style={{ borderRadius: 999, padding: '3px 12px' }}
+                    >
+                      Multi-tenant
+                    </Tag>
+                    {hasVariants && (
+                      <Tag
+                        color="blue"
+                        style={{ borderRadius: 999, padding: '3px 12px' }}
+                      >
+                        {variants.length} variantes
                       </Tag>
-                      <Tag color={autoAgentEnabled ? 'success' : 'default'} style={{ borderRadius: 999 }}>
-                        {autoAgentEnabled ? 'Auto activo' : 'Manual'}
+                    )}
+                  </Space>
+
+                  <Title
+                    level={2}
+                    style={{ margin: 0, letterSpacing: '-0.04em' }}
+                  >
+                    <ThunderboltOutlined
+                      style={{ color: token.colorPrimary, marginRight: 12 }}
+                    />
+                    Crear producto inteligente
+                  </Title>
+
+                  <Text type="secondary" style={{ fontSize: 15 }}>
+                    Subí imágenes, analizá el producto con IA, configurá
+                    variantes y publicá con una experiencia lista para
+                    producción.
+                  </Text>
+                </Space>
+              </Col>
+
+              <Col xs={24} lg={9}>
+                <Row gutter={[12, 12]}>
+                  <Col span={8}>
+                    <div
+                      style={{
+                        padding: 14,
+                        borderRadius: 16,
+                        background: token.colorBgContainer,
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Imágenes
+                      </Text>
+                      <div style={{ fontSize: 22, fontWeight: 800 }}>
+                        {fileList.length}
+                      </div>
+                    </div>
+                  </Col>
+
+                  <Col span={8}>
+                    <div
+                      style={{
+                        padding: 14,
+                        borderRadius: 16,
+                        background: token.colorBgContainer,
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Variantes
+                      </Text>
+                      <div style={{ fontSize: 22, fontWeight: 800 }}>
+                        {variants.length}
+                      </div>
+                    </div>
+                  </Col>
+
+                  <Col span={8}>
+                    <div
+                      style={{
+                        padding: 14,
+                        borderRadius: 16,
+                        background: token.colorBgContainer,
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        IA
+                      </Text>
+                      <div style={{ fontSize: 22, fontWeight: 800 }}>
+                        {iaResult ? 'OK' : '—'}
+                      </div>
+                    </div>
+                  </Col>
+                </Row>
+              </Col>
+            </Row>
+          </div>
+
+          <Form form={form} layout="vertical" onFinish={handleFinish}>
+            <Row gutter={[24, 24]} align="top">
+              <Col xs={24} xl={15}>
+                <Card
+                  title={
+                    <Space size={10}>
+                      <PictureOutlined style={{ color: token.colorPrimary }} />
+                      <span>Imágenes del producto</span>
+                      <Tag color="red" style={{ borderRadius: 999 }}>
+                        Requerido
                       </Tag>
-                      {autoAgentRunning && (
-                        <Tag color="blue" style={{ borderRadius: 999 }}>
-                          Procesando
+                    </Space>
+                  }
+                  style={{
+                    marginBottom: 24,
+                    borderRadius: 20,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                  }}
+                  bodyStyle={{ padding: 24 }}
+                >
+                  <div
+                    style={{
+                      marginBottom: 20,
+                      padding: 20,
+                      borderRadius: 18,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      background: `linear-gradient(135deg, ${token.colorFillAlter}, ${token.colorBgContainer})`,
+                    }}
+                  >
+                    <Row gutter={[18, 18]} align="middle">
+                      <Col xs={24} lg={8}>
+                        <Space direction="vertical" size={6}>
+                          <Space wrap>
+                            <Tag
+                              color="processing"
+                              style={{ borderRadius: 999 }}
+                            >
+                              Agente
+                            </Tag>
+                            <Tag
+                              color={autoAgentEnabled ? 'success' : 'default'}
+                              style={{ borderRadius: 999 }}
+                            >
+                              {autoAgentEnabled ? 'Auto activo' : 'Manual'}
+                            </Tag>
+                            {autoAgentRunning && (
+                              <Tag color="blue" style={{ borderRadius: 999 }}>
+                                Procesando
+                              </Tag>
+                            )}
+                          </Space>
+
+                          <Text strong style={{ fontSize: 15 }}>
+                            Bandeja inteligente
+                          </Text>
+
+                          <Text
+                            type="secondary"
+                            style={{ fontSize: 13, lineHeight: 1.55 }}
+                          >
+                            Importá imágenes del agente, programalas o dejá que
+                            AutoSave cree productos con IA cuando el modo
+                            automático esté activo.
+                          </Text>
+                        </Space>
+                      </Col>
+
+                      <Col xs={24} lg={7}>
+                        <Row gutter={[10, 10]}>
+                          {[
+                            {
+                              label: 'Pendientes',
+                              value: agentQueueStats.pending,
+                            },
+                            {
+                              label: 'Programadas',
+                              value: agentQueueStats.scheduled,
+                            },
+                            {
+                              label: 'AutoSave',
+                              value: agentQueueStats.autoSave,
+                            },
+                          ].map(metric => (
+                            <Col span={8} key={metric.label}>
+                              <div
+                                style={{
+                                  padding: '12px 8px',
+                                  borderRadius: 14,
+                                  background: token.colorBgContainer,
+                                  border: `1px solid ${token.colorBorderSecondary}`,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                <Text
+                                  type="secondary"
+                                  style={{ fontSize: 11, display: 'block' }}
+                                >
+                                  {metric.label}
+                                </Text>
+                                <Text strong style={{ fontSize: 18 }}>
+                                  {metric.value}
+                                </Text>
+                              </div>
+                            </Col>
+                          ))}
+                        </Row>
+                      </Col>
+
+                      <Col xs={24} lg={9}>
+                        <Space
+                          direction="vertical"
+                          size={10}
+                          style={{ width: '100%' }}
+                        >
+                          <Space
+                            wrap
+                            style={{
+                              justifyContent: 'flex-end',
+                              width: '100%',
+                            }}
+                          >
+                            <Switch
+                              checked={autoAgentEnabled}
+                              onChange={setAutoAgentEnabled}
+                              checkedChildren="Auto"
+                              unCheckedChildren="Manual"
+                              loading={autoAgentRunning}
+                            />
+
+                            <Button
+                              icon={<ReloadOutlined />}
+                              onClick={fetchAgentQueue}
+                              loading={loadingAgentQueue || autoAgentRunning}
+                            >
+                              Actualizar
+                            </Button>
+                          </Space>
+
+                          <Select
+                            loading={loadingAgentQueue}
+                            value={selectedAgentJobId}
+                            placeholder="Sin imágenes disponibles"
+                            style={{ width: '100%' }}
+                            onChange={setSelectedAgentJobId}
+                            options={agentQueue.map(job => ({
+                              value: job._id,
+                              label:
+                                job.status === 'scheduled'
+                                  ? `${job.originalFilename || job._id} - ${formatDate(job.scheduledAt)}`
+                                  : `${job.originalFilename || job._id}${job.metadata?.autoSaveProduct ? ' - AutoSave' : ''}`,
+                            }))}
+                          />
+
+                          <Space
+                            wrap
+                            style={{
+                              justifyContent: 'flex-end',
+                              width: '100%',
+                            }}
+                          >
+                            <Button
+                              type="primary"
+                              icon={<CloudDownloadOutlined />}
+                              onClick={handleImportAgentImage}
+                              loading={importingAgentImage}
+                              disabled={
+                                !selectedAgentJobId ||
+                                selectedAgentJob?.status === 'scheduled'
+                              }
+                            >
+                              Cargar ahora
+                            </Button>
+
+                            <Popconfirm
+                              title="Eliminar imagen"
+                              description="La imagen se quitará de la bandeja del agente."
+                              okText="Eliminar"
+                              cancelText="Cancelar"
+                              okButtonProps={{ danger: true }}
+                              onConfirm={handleDeleteAgentImage}
+                              disabled={!selectedAgentJobId}
+                            >
+                              <Button
+                                danger
+                                icon={<DeleteOutlined />}
+                                loading={deletingAgentImage}
+                                disabled={!selectedAgentJobId}
+                              >
+                                Eliminar
+                              </Button>
+                            </Popconfirm>
+                          </Space>
+                        </Space>
+                      </Col>
+                    </Row>
+
+                    {selectedAgentJob && (
+                      <Alert
+                        type={
+                          selectedAgentJob.status === 'scheduled'
+                            ? 'warning'
+                            : 'success'
+                        }
+                        showIcon
+                        style={{
+                          marginTop: 16,
+                          borderRadius: 14,
+                        }}
+                        message={
+                          selectedAgentJob.status === 'scheduled'
+                            ? `Programada para ${formatDate(selectedAgentJob.scheduledAt)}`
+                            : 'Disponible para AddProduct'
+                        }
+                        description={
+                          selectedAgentJob.metadata?.autoSaveProduct
+                            ? 'Esta imagen está marcada para AutoSave: con Auto activo, AddProduct la analiza con IA y crea el producto sin tocar el formulario.'
+                            : 'Esta imagen requiere revisión manual: se carga al formulario, dispara la IA y queda lista para revisar antes de guardar.'
+                        }
+                      />
+                    )}
+                  </div>
+
+                  {!fileList.length ? (
+                    <Dragger
+                      multiple
+                      beforeUpload={() => false}
+                      fileList={fileList}
+                      onChange={handleUploadChange}
+                      onRemove={handleRemove}
+                      showUploadList={false}
+                      style={{
+                        borderRadius: 20,
+                        padding: 44,
+                        background: `linear-gradient(135deg, ${token.colorBgContainer}, ${token.colorFillAlter})`,
+                        border: `2px dashed ${token.colorPrimaryBorder || token.colorBorder}`,
+                      }}
+                    >
+                      <div style={{ textAlign: 'center' }}>
+                        <div
+                          style={{
+                            width: 88,
+                            height: 88,
+                            borderRadius: 24,
+                            background: `${token.colorPrimary}14`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 18px',
+                            border: `1px solid ${token.colorPrimaryBorder || token.colorBorder}`,
+                          }}
+                        >
+                          <InboxOutlined
+                            style={{ fontSize: 40, color: token.colorPrimary }}
+                          />
+                        </div>
+
+                        <Text strong style={{ fontSize: 17, display: 'block' }}>
+                          Arrastrá imágenes o importalas desde el agente
+                        </Text>
+
+                        <Text
+                          type="secondary"
+                          style={{ display: 'block', marginTop: 6 }}
+                        >
+                          Las imágenes cargadas disparan el análisis visual con
+                          IA.
+                        </Text>
+
+                        <Text
+                          type="secondary"
+                          style={{
+                            fontSize: 12,
+                            display: 'block',
+                            marginTop: 10,
+                          }}
+                        >
+                          JPG, PNG y WEBP recomendados · Alta calidad mejora la
+                          precisión
+                        </Text>
+                      </div>
+                    </Dragger>
+                  ) : (
+                    <ImagePreviewGrid
+                      previews={imagePreviews}
+                      fileList={fileList}
+                      onRemove={handleRemove}
+                      onAddMore={handleAddMoreImages}
+                    />
+                  )}
+                </Card>
+
+                <AIAnalysisPanel
+                  iaResult={iaResult}
+                  loading={loadingIa}
+                  error={errorIa}
+                  onReset={resetIa}
+                />
+
+                <Card
+                  title={
+                    <Space size={10}>
+                      <ShoppingOutlined style={{ color: token.colorPrimary }} />
+                      <span>Información del producto</span>
+                    </Space>
+                  }
+                  style={{
+                    marginBottom: 24,
+                    borderRadius: 20,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                  }}
+                  bodyStyle={{ padding: 24 }}
+                >
+                  <Row gutter={[18, 18]}>
+                    <Col xs={24}>
+                      <Form.Item
+                        name="titulo"
+                        label="Título del producto"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'El título es obligatorio',
+                          },
+                        ]}
+                      >
+                        <Input
+                          size="large"
+                          placeholder="Ej: Zapatillas Nike Air Max 90"
+                          prefix={
+                            <FileTextOutlined
+                              style={{ color: token.colorTextSecondary }}
+                            />
+                          }
+                          showCount
+                          maxLength={120}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24}>
+                      <Form.Item
+                        name="descripcion"
+                        label="Descripción"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'La descripción es obligatoria',
+                          },
+                        ]}
+                      >
+                        <Input.TextArea
+                          rows={5}
+                          placeholder="Describí beneficios, materiales, uso recomendado y detalles relevantes..."
+                          showCount
+                          maxLength={2000}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        name="categoria"
+                        label="Categoría"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'La categoría es obligatoria',
+                          },
+                        ]}
+                      >
+                        <AutoComplete
+                          size="large"
+                          placeholder="Ej: calzado deportivo"
+                          options={categoryOptions}
+                          filterOption={(inputValue, option) =>
+                            String(option?.value || '')
+                              .toLowerCase()
+                              .includes(inputValue.toLowerCase())
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        name="subcategoria"
+                        label="Subcategoría"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'La subcategoría es obligatoria',
+                          },
+                        ]}
+                      >
+                        <AutoComplete
+                          size="large"
+                          placeholder="Ej: running"
+                          options={subcategoryOptions}
+                          filterOption={(inputValue, option) =>
+                            String(option?.value || '')
+                              .toLowerCase()
+                              .includes(inputValue.toLowerCase())
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        name="marca"
+                        label="Marca"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'La marca es obligatoria',
+                          },
+                        ]}
+                      >
+                        <Input
+                          size="large"
+                          placeholder="Ej: Nike"
+                          prefix={
+                            <ShoppingOutlined
+                              style={{ color: token.colorTextSecondary }}
+                            />
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <Form.Item name="material" label="Material">
+                        <Input
+                          size="large"
+                          placeholder="Ej: cuero, malla, aluminio"
+                          prefix={
+                            <InfoCircleOutlined
+                              style={{ color: token.colorTextSecondary }}
+                            />
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24}>
+                      <Form.Item name="color" label="Color general">
+                        <Input
+                          size="large"
+                          placeholder="Ej: Negro, Rojo, Azul"
+                          prefix={
+                            <FormatPainterOutlined
+                              style={{ color: token.colorTextSecondary }}
+                            />
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                <Card
+                  title={
+                    <Space size={10}>
+                      <ClusterOutlined style={{ color: token.colorPrimary }} />
+                      <span>Variantes del producto</span>
+                      {dynamicAttributes.length > 0 && (
+                        <Tag color="success" style={{ borderRadius: 999 }}>
+                          {dynamicAttributes.length} atributos detectados
                         </Tag>
                       )}
                     </Space>
-
-                    <Text strong style={{ fontSize: 15 }}>
-                      Bandeja inteligente
-                    </Text>
-
-                    <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.55 }}>
-                      Importá imágenes del agente, programalas o dejá que AutoSave cree productos con IA cuando el modo automático esté activo.
-                    </Text>
-                  </Space>
-                </Col>
-
-                <Col xs={24} lg={7}>
-                  <Row gutter={[10, 10]}>
-                    {[
-                      { label: 'Pendientes', value: agentQueueStats.pending },
-                      { label: 'Programadas', value: agentQueueStats.scheduled },
-                      { label: 'AutoSave', value: agentQueueStats.autoSave },
-                    ].map(metric => (
-                      <Col span={8} key={metric.label}>
-                        <div
-                          style={{
-                            padding: '12px 8px',
-                            borderRadius: 14,
-                            background: token.colorBgContainer,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                            textAlign: 'center',
-                          }}
-                        >
-                          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-                            {metric.label}
-                          </Text>
-                          <Text strong style={{ fontSize: 18 }}>
-                            {metric.value}
-                          </Text>
-                        </div>
-                      </Col>
-                    ))}
-                  </Row>
-                </Col>
-
-                <Col xs={24} lg={9}>
-                  <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                    <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
-                      <Switch
-                        checked={autoAgentEnabled}
-                        onChange={setAutoAgentEnabled}
-                        checkedChildren="Auto"
-                        unCheckedChildren="Manual"
-                        loading={autoAgentRunning}
+                  }
+                  extra={
+                    <Switch
+                      checked={hasVariants}
+                      onChange={checked => {
+                        setHasVariants(checked)
+                        if (!checked) {
+                          setVariants([])
+                          setSelectedAttributes({})
+                        }
+                      }}
+                      checkedChildren="SÍ"
+                      unCheckedChildren="NO"
+                    />
+                  }
+                  style={{
+                    marginBottom: 24,
+                    borderRadius: 20,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                  }}
+                  bodyStyle={{ padding: 24 }}
+                >
+                  {hasVariants ? (
+                    <>
+                      <Alert
+                        message={
+                          catalogTemplate
+                            ? `Plantilla de "${catalogTemplate.name}" aplicada. Elegí los valores disponibles para este producto.`
+                            : 'Configurá atributos, generá combinaciones y asigná una imagen específica por variante.'
+                        }
+                        description={
+                          loadingCatalogTemplate
+                            ? 'Consultando la configuración de la subcategoría...'
+                            : catalogTemplate
+                              ? 'Los atributos pertenecen a la subcategoría; precio, stock y SKU siguen siendo propios de cada producto.'
+                              : undefined
+                        }
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 20, borderRadius: 14 }}
                       />
 
-                      <Button
-                        icon={<ReloadOutlined />}
-                        onClick={fetchAgentQueue}
-                        loading={loadingAgentQueue || autoAgentRunning}
-                      >
-                        Actualizar
-                      </Button>
-                    </Space>
-
-                    <Select
-                      loading={loadingAgentQueue}
-                      value={selectedAgentJobId}
-                      placeholder="Sin imágenes disponibles"
-                      style={{ width: '100%' }}
-                      onChange={setSelectedAgentJobId}
-                      options={agentQueue.map(job => ({
-                        value: job._id,
-                        label:
-                          job.status === 'scheduled'
-                            ? `${job.originalFilename || job._id} - ${formatDate(job.scheduledAt)}`
-                            : `${job.originalFilename || job._id}${job.metadata?.autoSaveProduct ? ' - AutoSave' : ''}`,
-                      }))}
-                    />
-
-                    <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
-                      <Button
-                        type="primary"
-                        icon={<CloudDownloadOutlined />}
-                        onClick={handleImportAgentImage}
-                        loading={importingAgentImage}
-                        disabled={!selectedAgentJobId || selectedAgentJob?.status === 'scheduled'}
-                      >
-                        Cargar ahora
-                      </Button>
-
-                      <Popconfirm
-                        title="Eliminar imagen"
-                        description="La imagen se quitará de la bandeja del agente."
-                        okText="Eliminar"
-                        cancelText="Cancelar"
-                        okButtonProps={{ danger: true }}
-                        onConfirm={handleDeleteAgentImage}
-                        disabled={!selectedAgentJobId}
-                      >
-                        <Button
-                          danger
-                          icon={<DeleteOutlined />}
-                          loading={deletingAgentImage}
-                          disabled={!selectedAgentJobId}
-                        >
-                          Eliminar
-                        </Button>
-                      </Popconfirm>
-                    </Space>
-                  </Space>
-                </Col>
-              </Row>
-
-              {selectedAgentJob && (
-                <Alert
-                  type={selectedAgentJob.status === 'scheduled' ? 'warning' : 'success'}
-                  showIcon
-                  style={{
-                    marginTop: 16,
-                    borderRadius: 14,
-                  }}
-                  message={
-                    selectedAgentJob.status === 'scheduled'
-                      ? `Programada para ${formatDate(selectedAgentJob.scheduledAt)}`
-                      : 'Disponible para AddProduct'
-                  }
-                  description={
-                    selectedAgentJob.metadata?.autoSaveProduct
-                      ? 'Esta imagen está marcada para AutoSave: con Auto activo, AddProduct la analiza con IA y crea el producto sin tocar el formulario.'
-                      : 'Esta imagen requiere revisión manual: se carga al formulario, dispara la IA y queda lista para revisar antes de guardar.'
-                  }
-                />
-              )}
-            </div>
-
-            {!fileList.length ? (
-              <Dragger
-                multiple
-                beforeUpload={() => false}
-                fileList={fileList}
-                onChange={handleUploadChange}
-                onRemove={handleRemove}
-                showUploadList={false}
-                style={{
-                  borderRadius: 20,
-                  padding: 44,
-                  background: `linear-gradient(135deg, ${token.colorBgContainer}, ${token.colorFillAlter})`,
-                  border: `2px dashed ${token.colorPrimaryBorder || token.colorBorder}`,
-                }}
-              >
-                <div style={{ textAlign: 'center' }}>
-                  <div
-                    style={{
-                      width: 88,
-                      height: 88,
-                      borderRadius: 24,
-                      background: `${token.colorPrimary}14`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto 18px',
-                      border: `1px solid ${token.colorPrimaryBorder || token.colorBorder}`,
-                    }}
-                  >
-                    <InboxOutlined style={{ fontSize: 40, color: token.colorPrimary }} />
-                  </div>
-
-                  <Text strong style={{ fontSize: 17, display: 'block' }}>
-                    Arrastrá imágenes o importalas desde el agente
-                  </Text>
-
-                  <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                    Las imágenes cargadas disparan el análisis visual con IA.
-                  </Text>
-
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 10 }}>
-                    JPG, PNG y WEBP recomendados · Alta calidad mejora la precisión
-                  </Text>
-                </div>
-              </Dragger>
-            ) : (
-              <ImagePreviewGrid
-                previews={imagePreviews}
-                fileList={fileList}
-                onRemove={handleRemove}
-                onAddMore={handleAddMoreImages}
-              />
-            )}
-          </Card>
-
-          <AIAnalysisPanel
-            iaResult={iaResult}
-            loading={loadingIa}
-            error={errorIa}
-            onReset={resetIa}
-          />
-
-          <Card
-            title={
-              <Space size={10}>
-                <ShoppingOutlined style={{ color: token.colorPrimary }} />
-                <span>Información del producto</span>
-              </Space>
-            }
-            style={{
-              marginBottom: 24,
-              borderRadius: 20,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-            }}
-            bodyStyle={{ padding: 24 }}
-          >
-            <Row gutter={[18, 18]}>
-              <Col xs={24}>
-                <Form.Item
-                  name="titulo"
-                  label="Título del producto"
-                  rules={[{ required: true, message: 'El título es obligatorio' }]}
-                >
-                  <Input
-                    size="large"
-                    placeholder="Ej: Zapatillas Nike Air Max 90"
-                    prefix={<FileTextOutlined style={{ color: token.colorTextSecondary }} />}
-                    showCount
-                    maxLength={120}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24}>
-                <Form.Item
-                  name="descripcion"
-                  label="Descripción"
-                  rules={[{ required: true, message: 'La descripción es obligatoria' }]}
-                >
-                  <Input.TextArea
-                    rows={5}
-                    placeholder="Describí beneficios, materiales, uso recomendado y detalles relevantes..."
-                    showCount
-                    maxLength={2000}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="categoria"
-                  label="Categoría"
-                  rules={[{ required: true, message: 'La categoría es obligatoria' }]}
-                >
-                  <Input
-                    size="large"
-                    placeholder="Ej: calzado deportivo"
-                    prefix={<BranchesOutlined style={{ color: token.colorTextSecondary }} />}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="subcategoria"
-                  label="Subcategoría"
-                  rules={[{ required: true, message: 'La subcategoría es obligatoria' }]}
-                >
-                  <Input
-                    size="large"
-                    placeholder="Ej: running"
-                    prefix={<BranchesOutlined style={{ color: token.colorTextSecondary }} />}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="marca"
-                  label="Marca"
-                  rules={[{ required: true, message: 'La marca es obligatoria' }]}
-                >
-                  <Input
-                    size="large"
-                    placeholder="Ej: Nike"
-                    prefix={<ShoppingOutlined style={{ color: token.colorTextSecondary }} />}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="material" label="Material">
-                  <Input
-                    size="large"
-                    placeholder="Ej: cuero, malla, aluminio"
-                    prefix={<InfoCircleOutlined style={{ color: token.colorTextSecondary }} />}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24}>
-                <Form.Item name="color" label="Color general">
-                  <Input
-                    size="large"
-                    placeholder="Ej: Negro, Rojo, Azul"
-                    prefix={<FormatPainterOutlined style={{ color: token.colorTextSecondary }} />}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-
-          <Card
-            title={
-              <Space size={10}>
-                <ClusterOutlined style={{ color: token.colorPrimary }} />
-                <span>Variantes del producto</span>
-                {dynamicAttributes.length > 0 && (
-                  <Tag color="success" style={{ borderRadius: 999 }}>
-                    {dynamicAttributes.length} atributos detectados
-                  </Tag>
-                )}
-              </Space>
-            }
-            extra={
-              <Switch
-                checked={hasVariants}
-                onChange={checked => {
-                  setHasVariants(checked)
-                  if (!checked) {
-                    setVariants([])
-                    setSelectedAttributes({})
-                  }
-                }}
-                checkedChildren="SÍ"
-                unCheckedChildren="NO"
-              />
-            }
-            style={{
-              marginBottom: 24,
-              borderRadius: 20,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-            }}
-            bodyStyle={{ padding: 24 }}
-          >
-            {hasVariants ? (
-              <>
-                <Alert
-                  message="Configurá atributos, generá combinaciones y asigná una imagen específica por variante."
-                  type="info"
-                  showIcon
-                  style={{ marginBottom: 20, borderRadius: 14 }}
-                />
-
-                {dynamicAttributes.length > 0 ? (
-                  <>
-                    <Row gutter={[16, 16]} style={{ marginBottom: 18 }}>
-                      {dynamicAttributes.map(attr => (
-                        <Col xs={24} md={12} key={attr.name}>
-                          <Form.Item
-                            label={
-                              <Space>
-                                {attr.label}
-                                {attr.values.length > 0 && (
-                                  <Tag color="blue" style={{ borderRadius: 999 }}>
-                                    {attr.values.length} sugeridos
-                                  </Tag>
-                                )}
-                              </Space>
-                            }
-                          >
+                      <div style={{ marginBottom: 20 }}>
+                        <Row gutter={[12, 12]} align="bottom">
+                          <Col xs={24} md={12}>
+                            <Text strong>1. Crear atributo</Text>
+                            <Input
+                              value={newAttributeName}
+                              onChange={event =>
+                                setNewAttributeName(event.target.value)
+                              }
+                              onPressEnter={handleAddCustomAttribute}
+                              placeholder="Ej: Talle, Color, Capacidad"
+                              style={{ marginTop: 8 }}
+                            />
+                          </Col>
+                          <Col xs={18} md={8}>
+                            <Text strong>Tipo</Text>
                             <Select
-                              mode="tags"
-                              placeholder={`Seleccioná o escribí ${attr.label.toLowerCase()}`}
-                              value={selectedAttributes[attr.name] || []}
-                              onChange={values => handleAttributeValuesChange(attr.name, values)}
-                              tokenSeparators={[',']}
-                              allowClear
-                              options={attr.values.map(value => ({ value, label: value }))}
+                              value={newAttributeType}
+                              onChange={setNewAttributeType}
+                              style={{ width: '100%', marginTop: 8 }}
+                              options={[
+                                { value: 'select', label: 'Lista de opciones' },
+                                { value: 'color', label: 'Color' },
+                                { value: 'text', label: 'Texto' },
+                              ]}
+                            />
+                          </Col>
+                          <Col xs={24} md={4}>
+                            <Button
+                              block
+                              type="primary"
+                              onClick={handleAddCustomAttribute}
+                              icon={<PlusOutlined />}
+                              aria-label="Agregar atributo"
+                            >
+                              Agregar
+                            </Button>
+                          </Col>
+                        </Row>
+                      </div>
+
+                      <Divider orientation="left" plain>
+                        2. Definir valores
+                      </Divider>
+
+                      {dynamicAttributes.length > 0 ? (
+                        <Space
+                          direction="vertical"
+                          size={12}
+                          style={{ width: '100%' }}
+                        >
+                          {dynamicAttributes.map((attr, index) => (
+                            <div
+                              key={attr.name}
+                              style={{
+                                padding: 16,
+                                border: `1px solid ${token.colorBorderSecondary}`,
+                                borderRadius: 8,
+                                background: token.colorBgContainer,
+                              }}
+                            >
+                              <Row gutter={[12, 12]} align="middle">
+                                <Col xs={24} md={7}>
+                                  <Space>
+                                    <Badge
+                                      count={index + 1}
+                                      color={token.colorPrimary}
+                                    />
+                                    <div>
+                                      <Text strong>{attr.label}</Text>
+                                      <br />
+                                      <Text
+                                        type="secondary"
+                                        style={{ fontSize: 12 }}
+                                      >
+                                        Atributo
+                                      </Text>
+                                    </div>
+                                  </Space>
+                                </Col>
+                                <Col xs={20} md={15}>
+                                  <Select
+                                    mode="tags"
+                                    placeholder={`Escribí valores: ${attr.label} 39, 40, 41`}
+                                    value={selectedAttributes[attr.name] || []}
+                                    onChange={values =>
+                                      handleAttributeValuesChange(
+                                        attr.name,
+                                        values,
+                                      )
+                                    }
+                                    tokenSeparators={[',']}
+                                    allowClear
+                                    style={{ width: '100%' }}
+                                    options={safeArray(attr.values).map(
+                                      value => ({
+                                        value,
+                                        label: value,
+                                      }),
+                                    )}
+                                  />
+                                </Col>
+                                <Col
+                                  xs={4}
+                                  md={2}
+                                  style={{ textAlign: 'right' }}
+                                >
+                                  <Button
+                                    type="text"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={() =>
+                                      handleRemoveVariantAttribute(attr.name)
+                                    }
+                                    aria-label={`Eliminar atributo ${attr.label}`}
+                                  />
+                                </Col>
+                              </Row>
+                            </div>
+                          ))}
+                        </Space>
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="Todavía no hay atributos. Creá Talle, Color u otra característica."
+                        />
+                      )}
+
+                      <div
+                        style={{
+                          marginTop: 18,
+                          padding: 16,
+                          borderRadius: 8,
+                          background: token.colorFillAlter,
+                          border: `1px solid ${token.colorBorderSecondary}`,
+                        }}
+                      >
+                        <Row
+                          gutter={[12, 12]}
+                          align="middle"
+                          justify="space-between"
+                        >
+                          <Col flex="auto">
+                            <Text strong>3. Generar variantes</Text>
+                            <br />
+                            <Text type="secondary">
+                              {variantCombinationCount > 0
+                                ? `${configuredVariantAttributes.length} atributos producirán ${variantCombinationCount} variantes individuales.`
+                                : 'Agregá uno o más valores para calcular las combinaciones.'}
+                            </Text>
+                          </Col>
+                          <Col>
+                            <Space wrap>
+                              <Button
+                                onClick={handleSaveCatalogTemplate}
+                                icon={<SaveOutlined />}
+                                loading={savingCatalogTemplate}
+                                disabled={dynamicAttributes.length === 0}
+                              >
+                                Guardar plantilla
+                              </Button>
+                              <Button
+                                type="primary"
+                                onClick={generateVariantsFromAttributes}
+                                icon={<ReloadOutlined />}
+                                disabled={!canGenerateVariants}
+                              >
+                                Generar {variantCombinationCount || 0} variantes
+                              </Button>
+                            </Space>
+                          </Col>
+                        </Row>
+                        {variantCombinationCount > MAX_GENERATED_VARIANTS && (
+                          <Alert
+                            type="error"
+                            showIcon
+                            style={{ marginTop: 12 }}
+                            message={`Reducí los valores: el máximo es ${MAX_GENERATED_VARIANTS} variantes.`}
+                          />
+                        )}
+                      </div>
+
+                      {variants.length > 0 && (
+                        <>
+                          <Divider orientation="left">
+                            <Space>
+                              <AppstoreOutlined />
+                              <span>
+                                {variants.length} variantes configuradas
+                              </span>
+                            </Space>
+                          </Divider>
+
+                          <Table
+                            dataSource={variants}
+                            pagination={false}
+                            size="middle"
+                            scroll={{ x: 1280 }}
+                            rowKey="key"
+                            bordered={false}
+                            style={{
+                              borderRadius: 16,
+                              overflow: 'hidden',
+                            }}
+                            columns={[
+                              {
+                                title: 'Variante',
+                                dataIndex: 'nombre',
+                                key: 'nombre',
+                                width: 260,
+                                fixed: 'left',
+                                render: (_, record) => (
+                                  <Space wrap size={[4, 6]}>
+                                    {Object.entries(record.combinacion).map(
+                                      ([attribute, value]) => (
+                                        <Tag
+                                          key={`${record.key}-${attribute}`}
+                                          color="blue"
+                                          style={{ margin: 0, borderRadius: 4 }}
+                                        >
+                                          {dynamicAttributes.find(
+                                            item => item.name === attribute,
+                                          )?.label || attribute}
+                                          : {value}
+                                        </Tag>
+                                      ),
+                                    )}
+                                  </Space>
+                                ),
+                              },
+                              {
+                                title: 'Precio',
+                                dataIndex: 'price',
+                                key: 'price',
+                                width: 150,
+                                render: (_, record) => (
+                                  <InputNumber
+                                    prefix="$"
+                                    style={{ width: '100%' }}
+                                    min={0}
+                                    value={record.price}
+                                    onChange={val => {
+                                      setVariants(prev =>
+                                        prev.map(variant =>
+                                          variant.key === record.key
+                                            ? {
+                                                ...variant,
+                                                price: Number(val || 0),
+                                              }
+                                            : variant,
+                                        ),
+                                      )
+                                    }}
+                                  />
+                                ),
+                              },
+                              {
+                                title: 'Stock',
+                                dataIndex: 'stock',
+                                key: 'stock',
+                                width: 120,
+                                render: (_, record) => (
+                                  <InputNumber
+                                    min={0}
+                                    style={{ width: '100%' }}
+                                    value={record.stock}
+                                    onChange={val => {
+                                      setVariants(prev =>
+                                        prev.map(variant =>
+                                          variant.key === record.key
+                                            ? {
+                                                ...variant,
+                                                stock: Number(val || 0),
+                                              }
+                                            : variant,
+                                        ),
+                                      )
+                                    }}
+                                  />
+                                ),
+                              },
+                              {
+                                title: 'SKU opcional',
+                                dataIndex: 'sku',
+                                key: 'sku',
+                                width: 180,
+                                render: (_, record) => (
+                                  <Input
+                                    placeholder="Ej: FOX-BOTA-42"
+                                    value={record.sku}
+                                    onChange={e => {
+                                      setVariants(prev =>
+                                        prev.map(variant =>
+                                          variant.key === record.key
+                                            ? {
+                                                ...variant,
+                                                sku: e.target.value,
+                                              }
+                                            : variant,
+                                        ),
+                                      )
+                                    }}
+                                  />
+                                ),
+                              },
+                              {
+                                title: 'Imagen de variante',
+                                key: 'image',
+                                width: 330,
+                                render: (_, record) => (
+                                  <VariantImageSelector
+                                    variant={record}
+                                    localImages={localImages}
+                                    onAssign={handleAssignVariantImage}
+                                  />
+                                ),
+                              },
+                              {
+                                title: 'Preview',
+                                key: 'preview',
+                                width: 110,
+                                render: (_, record) => {
+                                  const selectedLocal = localImages.find(
+                                    img => img.uid === record.imageSourceUid,
+                                  )
+
+                                  return selectedLocal?.preview ? (
+                                    <img
+                                      src={selectedLocal.preview}
+                                      alt={record.nombre}
+                                      style={{
+                                        width: 64,
+                                        height: 64,
+                                        objectFit: 'cover',
+                                        borderRadius: 14,
+                                        border: `1px solid ${token.colorBorderSecondary}`,
+                                        boxShadow:
+                                          '0 8px 18px rgba(15,23,42,.08)',
+                                      }}
+                                    />
+                                  ) : (
+                                    <Tag style={{ borderRadius: 999 }}>
+                                      Sin imagen
+                                    </Tag>
+                                  )
+                                },
+                              },
+                              {
+                                title: 'Activo',
+                                key: 'active',
+                                width: 90,
+                                align: 'center',
+                                render: (_, record) => (
+                                  <Switch
+                                    checked={record.isActive !== false}
+                                    onChange={checked => {
+                                      setVariants(prev =>
+                                        prev.map(variant =>
+                                          variant.key === record.key
+                                            ? { ...variant, isActive: checked }
+                                            : variant,
+                                        ),
+                                      )
+                                    }}
+                                    size="small"
+                                  />
+                                ),
+                              },
+                              {
+                                title: '',
+                                key: 'delete',
+                                width: 60,
+                                render: (_, record) => (
+                                  <Button
+                                    type="text"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={() => {
+                                      setVariants(prev =>
+                                        prev.filter(
+                                          variant => variant.key !== record.key,
+                                        ),
+                                      )
+                                    }}
+                                    size="small"
+                                  />
+                                ),
+                              },
+                            ]}
+                          />
+
+                          <Alert
+                            type="warning"
+                            showIcon
+                            style={{ marginTop: 18, borderRadius: 14 }}
+                            message="Si una variante no tiene imagen asignada, se mostrará la imagen general del producto."
+                          />
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div
+                      style={{
+                        padding: 28,
+                        textAlign: 'center',
+                        borderRadius: 16,
+                        background: token.colorFillAlter,
+                        border: `1px dashed ${token.colorBorder}`,
+                      }}
+                    >
+                      <Text type="secondary">
+                        Este producto no tiene variaciones. Activá el switch si
+                        necesitás talles, colores o modelos.
+                      </Text>
+                    </div>
+                  )}
+                </Card>
+              </Col>
+
+              <Col xs={24} xl={9}>
+                <div style={{ position: 'sticky', top: 24 }}>
+                  <Card
+                    title={
+                      <Space size={10}>
+                        <DollarOutlined style={{ color: token.colorPrimary }} />
+                        <span>Precio y disponibilidad</span>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    bodyStyle={{ padding: 24 }}
+                  >
+                    <Row gutter={[16, 16]}>
+                      <Col xs={24}>
+                        <Form.Item
+                          name="precio"
+                          label={
+                            hasVariants ? 'Precio base de referencia' : 'Precio'
+                          }
+                          rules={[
+                            {
+                              required: true,
+                              message: 'El precio es obligatorio',
+                            },
+                          ]}
+                        >
+                          <InputNumber
+                            size="large"
+                            style={{ width: '100%' }}
+                            min={0}
+                            precision={2}
+                            prefix="$"
+                            placeholder="0.00"
+                            onChange={value => {
+                              if (hasVariants && variants.length > 0) {
+                                setVariants(prev =>
+                                  prev.map(variant => ({
+                                    ...variant,
+                                    price:
+                                      Number(variant.price || 0) === 0
+                                        ? Number(value || 0)
+                                        : variant.price,
+                                  })),
+                                )
+                              }
+                            }}
+                          />
+                        </Form.Item>
+                      </Col>
+
+                      {!hasVariants && (
+                        <Col xs={24}>
+                          <Form.Item
+                            name="cantidad"
+                            label="Cantidad en stock"
+                            rules={[
+                              {
+                                required: true,
+                                message: 'La cantidad es obligatoria',
+                              },
+                            ]}
+                          >
+                            <InputNumber
+                              size="large"
+                              style={{ width: '100%' }}
+                              min={1}
+                              placeholder="1"
+                              prefix={
+                                <NumberOutlined
+                                  style={{ color: token.colorTextSecondary }}
+                                />
+                              }
                             />
                           </Form.Item>
                         </Col>
-                      ))}
+                      )}
+
+                      <Col xs={24}>
+                        <Form.Item
+                          name="condicion"
+                          label="Condición"
+                          rules={[
+                            {
+                              required: true,
+                              message: 'La condición es obligatoria',
+                            },
+                          ]}
+                        >
+                          <Select
+                            size="large"
+                            placeholder="Seleccioná la condición"
+                          >
+                            <Select.Option value="nuevo">
+                              <Tag color="success">Nuevo</Tag>
+                            </Select.Option>
+                            <Select.Option value="usado">
+                              <Tag color="warning">Usado</Tag>
+                            </Select.Option>
+                            <Select.Option value="reacondicionado">
+                              <Tag color="processing">Reacondicionado</Tag>
+                            </Select.Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
                     </Row>
 
-                    <Space wrap style={{ marginBottom: 18 }}>
-                      <Button
-                        type="dashed"
-                        onClick={handleAddCustomAttribute}
-                        icon={<PlusOutlined />}
-                      >
-                        Agregar atributo
-                      </Button>
-
-                      <Button
-                        type="primary"
-                        onClick={generateVariantsFromAttributes}
-                        icon={<ReloadOutlined />}
-                        disabled={!canGenerateVariants}
-                      >
-                        Generar combinaciones
-                      </Button>
-                    </Space>
-                  </>
-                ) : (
-                  <div
-                    style={{
-                      textAlign: 'center',
-                      padding: '30px 16px',
-                      borderRadius: 16,
-                      border: `1px dashed ${token.colorBorder}`,
-                      background: token.colorFillAlter,
-                    }}
-                  >
-                    <Text type="secondary">
-                      La IA no detectó atributos específicos.
-                    </Text>
-                    <br />
-                    <Button
-                      type="primary"
-                      onClick={handleAddCustomAttribute}
-                      icon={<PlusOutlined />}
-                      style={{ marginTop: 12 }}
-                    >
-                      Agregar atributo manualmente
-                    </Button>
-                  </div>
-                )}
-
-                {variants.length > 0 && (
-                  <>
-                    <Divider orientation="left">
-                      <Space>
-                        <AppstoreOutlined />
-                        <span>{variants.length} variantes configuradas</span>
-                      </Space>
-                    </Divider>
-
-                    <Table
-                      dataSource={variants}
-                      pagination={false}
-                      size="middle"
-                      scroll={{ x: 1280 }}
-                      rowKey="key"
-                      bordered={false}
-                      style={{
-                        borderRadius: 16,
-                        overflow: 'hidden',
-                      }}
-                      columns={[
-                        {
-                          title: 'Combinación',
-                          dataIndex: 'nombre',
-                          key: 'nombre',
-                          width: 260,
-                          fixed: 'left',
-                          render: (_, record) => (
-                            <Space direction="vertical" size={4}>
-                              <Tag color="blue" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 999 }}>
-                                {record.nombre}
-                              </Tag>
-                              <Text type="secondary" style={{ fontSize: 11 }}>
-                                {Object.entries(record.combinacion)
-                                  .map(([k, v]) => `${k}: ${v}`)
-                                  .join(' · ')}
-                              </Text>
-                            </Space>
-                          ),
-                        },
-                        {
-                          title: 'Precio',
-                          dataIndex: 'price',
-                          key: 'price',
-                          width: 150,
-                          render: (_, record) => (
-                            <InputNumber
-                              prefix="$"
-                              style={{ width: '100%' }}
-                              min={0}
-                              value={record.price}
-                              onChange={val => {
-                                setVariants(prev =>
-                                  prev.map(variant =>
-                                    variant.key === record.key
-                                      ? { ...variant, price: Number(val || 0) }
-                                      : variant,
-                                  ),
-                                )
-                              }}
-                            />
-                          ),
-                        },
-                        {
-                          title: 'Stock',
-                          dataIndex: 'stock',
-                          key: 'stock',
-                          width: 120,
-                          render: (_, record) => (
-                            <InputNumber
-                              min={0}
-                              style={{ width: '100%' }}
-                              value={record.stock}
-                              onChange={val => {
-                                setVariants(prev =>
-                                  prev.map(variant =>
-                                    variant.key === record.key
-                                      ? { ...variant, stock: Number(val || 0) }
-                                      : variant,
-                                  ),
-                                )
-                              }}
-                            />
-                          ),
-                        },
-                        {
-                          title: 'SKU opcional',
-                          dataIndex: 'sku',
-                          key: 'sku',
-                          width: 180,
-                          render: (_, record) => (
-                            <Input
-                              placeholder="Ej: FOX-BOTA-42"
-                              value={record.sku}
-                              onChange={e => {
-                                setVariants(prev =>
-                                  prev.map(variant =>
-                                    variant.key === record.key
-                                      ? { ...variant, sku: e.target.value }
-                                      : variant,
-                                  ),
-                                )
-                              }}
-                            />
-                          ),
-                        },
-                        {
-                          title: 'Imagen de variante',
-                          key: 'image',
-                          width: 330,
-                          render: (_, record) => (
-                            <VariantImageSelector
-                              variant={record}
-                              localImages={localImages}
-                              onAssign={handleAssignVariantImage}
-                            />
-                          ),
-                        },
-                        {
-                          title: 'Preview',
-                          key: 'preview',
-                          width: 110,
-                          render: (_, record) => {
-                            const selectedLocal = localImages.find(img => img.uid === record.imageSourceUid)
-
-                            return selectedLocal?.preview ? (
-                              <img
-                                src={selectedLocal.preview}
-                                alt={record.nombre}
-                                style={{
-                                  width: 64,
-                                  height: 64,
-                                  objectFit: 'cover',
-                                  borderRadius: 14,
-                                  border: `1px solid ${token.colorBorderSecondary}`,
-                                  boxShadow: '0 8px 18px rgba(15,23,42,.08)',
-                                }}
-                              />
-                            ) : (
-                              <Tag style={{ borderRadius: 999 }}>
-                                Sin imagen
-                              </Tag>
-                            )
-                          },
-                        },
-                        {
-                          title: 'Activo',
-                          key: 'active',
-                          width: 90,
-                          align: 'center',
-                          render: (_, record) => (
-                            <Switch
-                              checked={record.isActive !== false}
-                              onChange={checked => {
-                                setVariants(prev =>
-                                  prev.map(variant =>
-                                    variant.key === record.key
-                                      ? { ...variant, isActive: checked }
-                                      : variant,
-                                  ),
-                                )
-                              }}
-                              size="small"
-                            />
-                          ),
-                        },
-                        {
-                          title: '',
-                          key: 'delete',
-                          width: 60,
-                          render: (_, record) => (
-                            <Button
-                              type="text"
-                              danger
-                              icon={<DeleteOutlined />}
-                              onClick={() => {
-                                setVariants(prev => prev.filter(variant => variant.key !== record.key))
-                              }}
-                              size="small"
-                            />
-                          ),
-                        },
-                      ]}
-                    />
-
-                    <Alert
-                      type="warning"
-                      showIcon
-                      style={{ marginTop: 18, borderRadius: 14 }}
-                      message="Si una variante no tiene imagen asignada, se mostrará la imagen general del producto."
-                    />
-                  </>
-                )}
-              </>
-            ) : (
-              <div
-                style={{
-                  padding: 28,
-                  textAlign: 'center',
-                  borderRadius: 16,
-                  background: token.colorFillAlter,
-                  border: `1px dashed ${token.colorBorder}`,
-                }}
-              >
-                <Text type="secondary">
-                  Este producto no tiene variaciones. Activá el switch si necesitás talles, colores o modelos.
-                </Text>
-              </div>
-            )}
-          </Card>
-        </Col>
-
-        <Col xs={24} xl={9}>
-          <div style={{ position: 'sticky', top: 24 }}>
-            <Card
-              title={
-                <Space size={10}>
-                  <DollarOutlined style={{ color: token.colorPrimary }} />
-                  <span>Precio y disponibilidad</span>
-                </Space>
-              }
-              style={{
-                marginBottom: 24,
-                borderRadius: 20,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-              }}
-              bodyStyle={{ padding: 24 }}
-            >
-              <Row gutter={[16, 16]}>
-                <Col xs={24}>
-                  <Form.Item
-                    name="precio"
-                    label={hasVariants ? 'Precio base de referencia' : 'Precio'}
-                    rules={[{ required: true, message: 'El precio es obligatorio' }]}
-                  >
-                    <InputNumber
-                      size="large"
-                      style={{ width: '100%' }}
-                      min={0}
-                      precision={2}
-                      prefix="$"
-                      placeholder="0.00"
-                      onChange={value => {
-                        if (hasVariants && variants.length > 0) {
-                          setVariants(prev =>
-                            prev.map(variant => ({
-                              ...variant,
-                              price: Number(variant.price || 0) === 0 ? Number(value || 0) : variant.price,
-                            })),
-                          )
-                        }
-                      }}
-                    />
-                  </Form.Item>
-                </Col>
-
-                {!hasVariants && (
-                  <Col xs={24}>
-                    <Form.Item
-                      name="cantidad"
-                      label="Cantidad en stock"
-                      rules={[{ required: true, message: 'La cantidad es obligatoria' }]}
-                    >
-                      <InputNumber
-                        size="large"
-                        style={{ width: '100%' }}
-                        min={1}
-                        placeholder="1"
-                        prefix={<NumberOutlined style={{ color: token.colorTextSecondary }} />}
+                    {hasVariants && (
+                      <Alert
+                        message="El stock y la imagen se gestionan por variante."
+                        type="info"
+                        showIcon
+                        style={{ marginTop: 8, borderRadius: 14 }}
                       />
-                    </Form.Item>
-                  </Col>
-                )}
+                    )}
+                  </Card>
 
-                <Col xs={24}>
-                  <Form.Item
-                    name="condicion"
-                    label="Condición"
-                    rules={[{ required: true, message: 'La condición es obligatoria' }]}
-                  >
-                    <Select size="large" placeholder="Seleccioná la condición">
-                      <Select.Option value="nuevo">
-                        <Tag color="success">Nuevo</Tag>
-                      </Select.Option>
-                      <Select.Option value="usado">
-                        <Tag color="warning">Usado</Tag>
-                      </Select.Option>
-                      <Select.Option value="reacondicionado">
-                        <Tag color="processing">Reacondicionado</Tag>
-                      </Select.Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              {hasVariants && (
-                <Alert
-                  message="El stock y la imagen se gestionan por variante."
-                  type="info"
-                  showIcon
-                  style={{ marginTop: 8, borderRadius: 14 }}
-                />
-              )}
-            </Card>
-
-            <Card
-              title={
-                <Space size={10}>
-                  <TagOutlined style={{ color: token.colorPrimary }} />
-                  <span>Tags y etiquetas</span>
-                </Space>
-              }
-              style={{
-                marginBottom: 24,
-                borderRadius: 20,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-              }}
-              bodyStyle={{ padding: 24 }}
-            >
-              <div style={{ marginBottom: 16 }}>
-                {editableTags.map(tag => (
-                  <Tag
-                    key={tag}
-                    closable
-                    onClose={() => handleCloseTag(tag)}
-                    color="blue"
+                  <Card
+                    title={
+                      <Space size={10}>
+                        <TagOutlined style={{ color: token.colorPrimary }} />
+                        <span>Tags y etiquetas</span>
+                      </Space>
+                    }
                     style={{
-                      padding: '5px 12px',
-                      fontSize: 13,
-                      margin: '0 8px 8px 0',
-                      borderRadius: 999,
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                     }}
+                    bodyStyle={{ padding: 24 }}
                   >
-                    {tag}
-                  </Tag>
-                ))}
+                    <div style={{ marginBottom: 16 }}>
+                      {editableTags.map(tag => (
+                        <Tag
+                          key={tag}
+                          closable
+                          onClose={() => handleCloseTag(tag)}
+                          color="blue"
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: 13,
+                            margin: '0 8px 8px 0',
+                            borderRadius: 999,
+                          }}
+                        >
+                          {tag}
+                        </Tag>
+                      ))}
 
-                {inputVisible ? (
-                  <Input
-                    ref={inputRef}
-                    type="text"
-                    size="small"
-                    style={{ width: 140 }}
-                    value={inputTagValue}
-                    onChange={e => setInputTagValue(e.target.value)}
-                    onBlur={handleInputConfirm}
-                    onPressEnter={handleInputConfirm}
-                  />
-                ) : (
-                  <Tag
-                    onClick={() => setInputVisible(true)}
-                    icon={<PlusOutlined />}
+                      {inputVisible ? (
+                        <Input
+                          ref={inputRef}
+                          type="text"
+                          size="small"
+                          style={{ width: 140 }}
+                          value={inputTagValue}
+                          onChange={e => setInputTagValue(e.target.value)}
+                          onBlur={handleInputConfirm}
+                          onPressEnter={handleInputConfirm}
+                        />
+                      ) : (
+                        <Tag
+                          onClick={() => setInputVisible(true)}
+                          icon={<PlusOutlined />}
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: 13,
+                            cursor: 'pointer',
+                            borderStyle: 'dashed',
+                            borderRadius: 999,
+                          }}
+                        >
+                          Agregar tag
+                        </Tag>
+                      )}
+                    </div>
+
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Los tags mejoran búsqueda, filtros y recomendaciones.
+                    </Text>
+                  </Card>
+
+                  <Card
                     style={{
-                      padding: '5px 12px',
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      borderStyle: 'dashed',
-                      borderRadius: 999,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
                     }}
+                    bodyStyle={{ padding: 20 }}
                   >
-                    Agregar tag
-                  </Tag>
-                )}
-              </div>
+                    <Space
+                      direction="vertical"
+                      size={14}
+                      style={{ width: '100%' }}
+                    >
+                      {isError && (
+                        <Alert
+                          type="error"
+                          message={productMessage || 'Error guardando producto'}
+                          showIcon
+                          style={{ borderRadius: 14 }}
+                        />
+                      )}
 
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Los tags mejoran búsqueda, filtros y recomendaciones.
-              </Text>
-            </Card>
+                      <Button
+                        htmlType="submit"
+                        type="primary"
+                        size="large"
+                        block
+                        loading={isLoading}
+                        icon={<CheckCircleOutlined />}
+                        style={{
+                          height: 52,
+                          fontSize: 16,
+                          fontWeight: 800,
+                          borderRadius: 14,
+                          boxShadow: `0 14px 28px ${token.colorPrimary}30`,
+                        }}
+                      >
+                        {isLoading
+                          ? 'Guardando...'
+                          : hasVariants
+                            ? `Guardar con ${variants.length} variantes`
+                            : 'Guardar producto'}
+                      </Button>
 
-            <Card
-              style={{
-                borderRadius: 20,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
-              }}
-              bodyStyle={{ padding: 20 }}
-            >
-              <Space direction="vertical" size={14} style={{ width: '100%' }}>
-                {isError && (
-                  <Alert
-                    type="error"
-                    message={productMessage || 'Error guardando producto'}
-                    showIcon
-                    style={{ borderRadius: 14 }}
-                  />
-                )}
-
-                <Button
-                  htmlType="submit"
-                  type="primary"
-                  size="large"
-                  block
-                  loading={isLoading}
-                  icon={<CheckCircleOutlined />}
-                  style={{
-                    height: 52,
-                    fontSize: 16,
-                    fontWeight: 800,
-                    borderRadius: 14,
-                    boxShadow: `0 14px 28px ${token.colorPrimary}30`,
-                  }}
-                >
-                  {isLoading
-                    ? 'Guardando...'
-                    : hasVariants
-                      ? `Guardar con ${variants.length} variantes`
-                      : 'Guardar producto'}
-                </Button>
-
-                <Text type="secondary" style={{ fontSize: 12, textAlign: 'center', display: 'block' }}>
-                  Se validará tenant, imágenes, variantes y metadatos IA antes de publicar.
-                </Text>
-              </Space>
-            </Card>
-          </div>
+                      <Text
+                        type="secondary"
+                        style={{
+                          fontSize: 12,
+                          textAlign: 'center',
+                          display: 'block',
+                        }}
+                      >
+                        Se validará tenant, imágenes, variantes y metadatos IA
+                        antes de publicar.
+                      </Text>
+                    </Space>
+                  </Card>
+                </div>
+              </Col>
+            </Row>
+          </Form>
         </Col>
       </Row>
-    </Form>
-  </Col>
-</Row>
 
       <style>{`
         @keyframes pulse {

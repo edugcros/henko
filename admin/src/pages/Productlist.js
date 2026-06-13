@@ -54,7 +54,10 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-const normalizeText = value => String(value || '').trim().toLowerCase()
+const normalizeText = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
 
 const getTenantId = user => {
   if (!user?.tenantId) return null
@@ -158,7 +161,12 @@ const Productlist = () => {
   const dispatch = useDispatch()
   const theme = useTheme()
 
-  const { products = [], isLoading, isError, message } = useSelector(state => state.product)
+  const {
+    products = [],
+    isLoading,
+    isError,
+    message,
+  } = useSelector(state => state.product)
   const user = useSelector(state => state.user.user)
 
   const tenantId = useMemo(() => getTenantId(user), [user])
@@ -265,7 +273,10 @@ const Productlist = () => {
     return rows
   }, [products, searchTerm, sortBy, sortOrder])
 
-  const totalPages = Math.max(1, Math.ceil(processedProducts.length / rowsPerPage))
+  const totalPages = Math.max(
+    1,
+    Math.ceil(processedProducts.length / rowsPerPage),
+  )
 
   const paginatedProducts = useMemo(() => {
     const start = (page - 1) * rowsPerPage
@@ -274,13 +285,17 @@ const Productlist = () => {
 
   const stats = useMemo(() => {
     const total = processedProducts.length
-    const active = processedProducts.filter(product => product.status === 'active').length
+    const active = processedProducts.filter(
+      product => product.status === 'active',
+    ).length
     const lowStock = processedProducts.filter(product => {
       const stock = product._calculatedStock
       const minAlert = product._minStockAlert
       return stock > 0 && stock < minAlert
     }).length
-    const outOfStock = processedProducts.filter(product => product._calculatedStock === 0).length
+    const outOfStock = processedProducts.filter(
+      product => product._calculatedStock === 0,
+    ).length
 
     return { total, active, lowStock, outOfStock }
   }, [processedProducts])
@@ -289,7 +304,7 @@ const Productlist = () => {
   // HANDLERS
   // ============================================================================
 
-  const handleDeleteClick = useCallback((product) => {
+  const handleDeleteClick = useCallback(product => {
     setSelectedProduct(product)
     setConfirmOpen(true)
   }, [])
@@ -321,7 +336,7 @@ const Productlist = () => {
     }
   }, [dispatch, selectedProduct])
 
-  const handleSort = useCallback((field) => {
+  const handleSort = useCallback(field => {
     setSortBy(prevField => {
       if (prevField === field) {
         setSortOrder(prevOrder => (prevOrder === 'asc' ? 'desc' : 'asc'))
@@ -337,29 +352,36 @@ const Productlist = () => {
     setSnackbar(prev => ({ ...prev, open: false }))
   }, [])
 
-  const getStockStatus = useCallback((stock, minAlert) => {
-    if (stock === 0) {
-      return {
-        label: 'Sin stock',
-        bgColor: theme.palette.error.main,
-        icon: <TrendingDownIcon fontSize="small" />,
+  const getStockStatus = useCallback(
+    (stock, minAlert) => {
+      if (stock === 0) {
+        return {
+          label: 'Sin stock',
+          bgColor: theme.palette.error.main,
+          icon: <TrendingDownIcon fontSize="small" />,
+        }
       }
-    }
 
-    if (stock < minAlert) {
-      return {
-        label: 'Stock bajo',
-        bgColor: theme.palette.warning.main,
-        icon: <TrendingDownIcon fontSize="small" />,
+      if (stock < minAlert) {
+        return {
+          label: 'Stock bajo',
+          bgColor: theme.palette.warning.main,
+          icon: <TrendingDownIcon fontSize="small" />,
+        }
       }
-    }
 
-    return {
-      label: 'Disponible',
-      bgColor: theme.palette.success.main,
-      icon: <TrendingUpIcon fontSize="small" />,
-    }
-  }, [theme.palette.error.main, theme.palette.success.main, theme.palette.warning.main])
+      return {
+        label: 'Disponible',
+        bgColor: theme.palette.success.main,
+        icon: <TrendingUpIcon fontSize="small" />,
+      }
+    },
+    [
+      theme.palette.error.main,
+      theme.palette.success.main,
+      theme.palette.warning.main,
+    ],
+  )
 
   // ============================================================================
   // RENDER STATES
@@ -367,7 +389,12 @@ const Productlist = () => {
 
   if (isLoading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="60vh"
+      >
         <CircularProgress size={60} />
       </Box>
     )
@@ -375,13 +402,19 @@ const Productlist = () => {
 
   return (
     <Box p={3}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
         <Box>
           <Typography variant="h4" fontWeight={700}>
             Productos
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {stats.total} productos • {stats.active} activos • {stats.lowStock} stock bajo • {stats.outOfStock} sin stock
+            {stats.total} productos • {stats.active} activos • {stats.lowStock}{' '}
+            stock bajo • {stats.outOfStock} sin stock
           </Typography>
         </Box>
 
@@ -423,13 +456,17 @@ const Productlist = () => {
       </Stack>
 
       <Card sx={{ mb: 3, p: 2, borderRadius: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={2}
+          alignItems="center"
+        >
           <TextField
             fullWidth
             size="small"
             placeholder="Buscar por nombre, marca, categoría, subcategoría o SKU..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -445,7 +482,7 @@ const Productlist = () => {
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <Select
               value={rowsPerPage}
-              onChange={(e) => setRowsPerPage(Number(e.target.value))}
+              onChange={e => setRowsPerPage(Number(e.target.value))}
             >
               <MenuItem value={10}>10 por página</MenuItem>
               <MenuItem value={25}>25 por página</MenuItem>
@@ -464,22 +501,40 @@ const Productlist = () => {
       <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 2 }}>
         <Table size="small">
           <TableHead>
-            <TableRow sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
-              <TableCell onClick={() => handleSort('title')} sx={{ cursor: 'pointer', fontWeight: 700 }}>
-                Producto {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
+            <TableRow
+              sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.05) }}
+            >
+              <TableCell
+                onClick={() => handleSort('title')}
+                sx={{ cursor: 'pointer', fontWeight: 700 }}
+              >
+                Producto{' '}
+                {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
               </TableCell>
               <TableCell sx={{ fontWeight: 700 }}>SKU</TableCell>
-              <TableCell onClick={() => handleSort('categoria')} sx={{ cursor: 'pointer', fontWeight: 700 }}>
-                Categoría {sortBy === 'categoria' && (sortOrder === 'asc' ? '↑' : '↓')}
+              <TableCell
+                onClick={() => handleSort('categoria')}
+                sx={{ cursor: 'pointer', fontWeight: 700 }}
+              >
+                Categoría{' '}
+                {sortBy === 'categoria' && (sortOrder === 'asc' ? '↑' : '↓')}
               </TableCell>
-              <TableCell onClick={() => handleSort('price')} sx={{ cursor: 'pointer', fontWeight: 700 }}>
+              <TableCell
+                onClick={() => handleSort('price')}
+                sx={{ cursor: 'pointer', fontWeight: 700 }}
+              >
                 Precio {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
               </TableCell>
-              <TableCell onClick={() => handleSort('stock')} sx={{ cursor: 'pointer', fontWeight: 700 }}>
+              <TableCell
+                onClick={() => handleSort('stock')}
+                sx={{ cursor: 'pointer', fontWeight: 700 }}
+              >
                 Stock {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}
               </TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Estado</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>Acciones</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700 }}>
+                Acciones
+              </TableCell>
             </TableRow>
           </TableHead>
 
@@ -495,7 +550,10 @@ const Productlist = () => {
                   hover
                   sx={{
                     '&:last-child td, &:last-child th': { border: 0 },
-                    backgroundColor: stock === 0 ? alpha(theme.palette.error.main, 0.05) : 'inherit',
+                    backgroundColor:
+                      stock === 0
+                        ? alpha(theme.palette.error.main, 0.05)
+                        : 'inherit',
                   }}
                 >
                   <TableCell>
@@ -521,7 +579,11 @@ const Productlist = () => {
                   </TableCell>
 
                   <TableCell>
-                    <Typography variant="body2" fontFamily="monospace" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      fontFamily="monospace"
+                      color="text.secondary"
+                    >
                       {product._sku}
                     </Typography>
                   </TableCell>
@@ -584,10 +646,18 @@ const Productlist = () => {
 
                   <TableCell>
                     <Chip
-                      label={product.status === 'active' ? 'Activo' : product.status || 'Sin estado'}
+                      label={
+                        product.status === 'active'
+                          ? 'Activo'
+                          : product.status || 'Sin estado'
+                      }
                       size="small"
-                      color={product.status === 'active' ? 'success' : 'default'}
-                      variant={product.status === 'active' ? 'filled' : 'outlined'}
+                      color={
+                        product.status === 'active' ? 'success' : 'default'
+                      }
+                      variant={
+                        product.status === 'active' ? 'filled' : 'outlined'
+                      }
                     />
                   </TableCell>
 
@@ -595,7 +665,9 @@ const Productlist = () => {
                     <Tooltip title="Editar">
                       <IconButton
                         size="small"
-                        onClick={() => navigate(`/admin/edit-product/${product._id}`)}
+                        onClick={() =>
+                          navigate(`/admin/edit-product/${product._id}`)
+                        }
                         sx={{ color: theme.palette.primary.main }}
                       >
                         <EditIcon fontSize="small" />
@@ -642,14 +714,18 @@ const Productlist = () => {
         </Box>
       )}
 
-      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>
-          ¿Eliminar producto?
-        </DialogTitle>
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>¿Eliminar producto?</DialogTitle>
 
         <DialogContent>
           <Typography>
-            Estás por eliminar <strong>{selectedProduct?.title}</strong>. Esta acción no se puede deshacer.
+            Estás por eliminar <strong>{selectedProduct?.title}</strong>. Esta
+            acción no se puede deshacer.
           </Typography>
         </DialogContent>
 

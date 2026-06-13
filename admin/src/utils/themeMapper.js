@@ -1,11 +1,11 @@
-import { createTheme } from '@mui/material/styles';
-import { DEFAULT_THEME_COLORS } from '../features/theme/colorSystem';
+import { createTheme } from '@mui/material/styles'
+import { DEFAULT_THEME_COLORS } from '../features/theme/colorSystem'
 
 /**
  * Mapper robusto config → MUI Theme
  */
-export const mapConfigToMuiTheme = (config) => {
-  if (!config) return createTheme();
+export const mapConfigToMuiTheme = config => {
+  if (!config) return createTheme()
 
   const {
     colors = {},
@@ -13,17 +13,26 @@ export const mapConfigToMuiTheme = (config) => {
     spacing = {},
     layout = {},
     buttons = {},
-  } = config;
+  } = config
 
-  const primary = safeHex(colors.primary, DEFAULT_THEME_COLORS.primary);
-  const secondary = safeHex(colors.secondary, DEFAULT_THEME_COLORS.secondary);
-  const background = safeHex(colors.background, DEFAULT_THEME_COLORS.background);
-  const surface = safeHex(colors.surface, DEFAULT_THEME_COLORS.surface);
-  const cardSurface = safeHex(colors.cardBackground, DEFAULT_THEME_COLORS.cardBackground);
-  const cardBorder = safeHex(colors.cardBorder, DEFAULT_THEME_COLORS.cardBorder);
-  const cardText = safeHex(colors.cardText, DEFAULT_THEME_COLORS.cardText);
-  const actionPrimary = safeHex(colors.actionPrimary, DEFAULT_THEME_COLORS.actionPrimary);
-  const actionSecondary = safeHex(colors.actionSecondary, DEFAULT_THEME_COLORS.actionSecondary);
+  const primary = safeHex(colors.primary, DEFAULT_THEME_COLORS.primary)
+  const secondary = safeHex(colors.secondary, DEFAULT_THEME_COLORS.secondary)
+  const background = safeHex(colors.background, DEFAULT_THEME_COLORS.background)
+  const surface = safeHex(colors.surface, DEFAULT_THEME_COLORS.surface)
+  const cardSurface = safeHex(
+    colors.cardBackground,
+    DEFAULT_THEME_COLORS.cardBackground,
+  )
+  const cardBorder = safeHex(colors.cardBorder, DEFAULT_THEME_COLORS.cardBorder)
+  const cardText = safeHex(colors.cardText, DEFAULT_THEME_COLORS.cardText)
+  const actionPrimary = safeHex(
+    colors.actionPrimary,
+    DEFAULT_THEME_COLORS.actionPrimary,
+  )
+  const actionSecondary = safeHex(
+    colors.actionSecondary,
+    DEFAULT_THEME_COLORS.actionSecondary,
+  )
 
   // 🎯 PALETTE CORREGIDO
   const palette = {
@@ -55,7 +64,9 @@ export const mapConfigToMuiTheme = (config) => {
 
     accent: {
       main: safeHex(colors.accent, DEFAULT_THEME_COLORS.accent),
-      contrastText: getContrastText(safeHex(colors.accent, DEFAULT_THEME_COLORS.accent)),
+      contrastText: getContrastText(
+        safeHex(colors.accent, DEFAULT_THEME_COLORS.accent),
+      ),
     },
 
     ctaPrimary: {
@@ -78,24 +89,31 @@ export const mapConfigToMuiTheme = (config) => {
 
     commercePrice: {
       main: safeHex(colors.price, DEFAULT_THEME_COLORS.price),
-      contrastText: getContrastText(safeHex(colors.price, DEFAULT_THEME_COLORS.price)),
+      contrastText: getContrastText(
+        safeHex(colors.price, DEFAULT_THEME_COLORS.price),
+      ),
     },
 
     commerceSalePrice: {
       main: safeHex(colors.salePrice, DEFAULT_THEME_COLORS.salePrice),
-      contrastText: getContrastText(safeHex(colors.salePrice, DEFAULT_THEME_COLORS.salePrice)),
+      contrastText: getContrastText(
+        safeHex(colors.salePrice, DEFAULT_THEME_COLORS.salePrice),
+      ),
     },
 
     text: {
       primary: safeHex(colors.text, DEFAULT_THEME_COLORS.text),
-      secondary: safeHex(colors.mutedText || colors.textSecondary, DEFAULT_THEME_COLORS.mutedText),
+      secondary: safeHex(
+        colors.mutedText || colors.textSecondary,
+        DEFAULT_THEME_COLORS.mutedText,
+      ),
     },
 
     error: { main: safeHex(colors.error, '#d32f2f') },
     warning: { main: safeHex(colors.warning, '#ed6c02') },
     info: { main: safeHex(colors.info, '#0288d1') },
     success: { main: safeHex(colors.success, '#2e7d32') },
-  };
+  }
 
   // 🎯 TYPOGRAPHY CORREGIDO
   const muiTypography = {
@@ -117,26 +135,27 @@ export const mapConfigToMuiTheme = (config) => {
       textTransform: buttons.uppercase ? 'uppercase' : 'none',
       fontWeight: 500,
     },
-  };
+  }
 
   // 🎯 SPACING REAL
-  const muiSpacing = (factor) => {
-    const base = spacing.base || spacing.unit || 8;
-    return base * factor;
-  };
+  const muiSpacing = factor => {
+    const base = spacing.base || spacing.unit || 8
+    return base * factor
+  }
 
   // 🎯 SHAPE
   const shape = {
     borderRadius: spacing.radius ?? layout.borderRadius ?? 8,
-  };
+  }
 
   // 🎯 COMPONENT OVERRIDES
   const components = {
     MuiButton: {
       styleOverrides: {
         root: ({ ownerState }) => {
-          const isPrimaryAction = !ownerState?.color || ownerState.color === 'primary';
-          const isSecondaryAction = ownerState?.color === 'secondary';
+          const isPrimaryAction =
+            !ownerState?.color || ownerState.color === 'primary'
+          const isSecondaryAction = ownerState?.color === 'secondary'
 
           return {
             borderRadius: buttons.radius ?? 8,
@@ -187,7 +206,7 @@ export const mapConfigToMuiTheme = (config) => {
                   color: actionSecondary,
                 }
               : {}),
-          };
+          }
         },
         containedPrimary: {
           backgroundColor: actionPrimary,
@@ -230,7 +249,7 @@ export const mapConfigToMuiTheme = (config) => {
         },
       },
     },
-  };
+  }
 
   return createTheme({
     palette,
@@ -238,85 +257,83 @@ export const mapConfigToMuiTheme = (config) => {
     spacing: muiSpacing,
     shape,
     components,
-  });
-};
+  })
+}
 
 //
 // 🧠 HELPERS REALES (SIN PLACEHOLDERS)
 //
 
 // HEX → RGB
-const isValidHex = (hex) => /^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(hex || '');
+const isValidHex = hex => /^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(hex || '')
 
-const safeHex = (hex, fallback) => (isValidHex(hex) ? hex : fallback);
+const safeHex = (hex, fallback) => (isValidHex(hex) ? hex : fallback)
 
-const hexToRgb = (hex) => {
-  const clean = hex.replace('#', '');
-  const bigint = parseInt(clean, 16);
+const hexToRgb = hex => {
+  const clean = hex.replace('#', '')
+  const bigint = parseInt(clean, 16)
 
   if (clean.length === 3) {
     return {
       r: ((bigint >> 8) & 15) * 17,
       g: ((bigint >> 4) & 15) * 17,
       b: (bigint & 15) * 17,
-    };
+    }
   }
 
   return {
     r: (bigint >> 16) & 255,
     g: (bigint >> 8) & 255,
     b: bigint & 255,
-  };
-};
+  }
+}
 
 // RGB → HEX
 const rgbToHex = (r, g, b) =>
   '#' +
   [r, g, b]
-    .map((x) => {
-      const safeValue = Math.max(0, Math.min(255, Math.round(x)));
-      const hex = safeValue.toString(16);
-      return hex.length === 1 ? '0' + hex : hex;
+    .map(x => {
+      const safeValue = Math.max(0, Math.min(255, Math.round(x)))
+      const hex = safeValue.toString(16)
+      return hex.length === 1 ? '0' + hex : hex
     })
-    .join('');
+    .join('')
 
 // Lighten
 const lighten = (hex, amount = 0.2) => {
-  const { r, g, b } = hexToRgb(hex);
+  const { r, g, b } = hexToRgb(hex)
   return rgbToHex(
     Math.min(255, r + 255 * amount),
     Math.min(255, g + 255 * amount),
-    Math.min(255, b + 255 * amount)
-  );
-};
+    Math.min(255, b + 255 * amount),
+  )
+}
 
 // Darken
 const darken = (hex, amount = 0.2) => {
-  const { r, g, b } = hexToRgb(hex);
+  const { r, g, b } = hexToRgb(hex)
   return rgbToHex(
     Math.max(0, r - 255 * amount),
     Math.max(0, g - 255 * amount),
-    Math.max(0, b - 255 * amount)
-  );
-};
+    Math.max(0, b - 255 * amount),
+  )
+}
 
 // Luminancia (para modo light/dark)
-const getLuminance = (hex) => {
-  const { r, g, b } = hexToRgb(hex);
-  const a = [r, g, b].map((v) => {
-    v /= 255;
-    return v <= 0.03928
-      ? v / 12.92
-      : Math.pow((v + 0.055) / 1.055, 2.4);
-  });
+const getLuminance = hex => {
+  const { r, g, b } = hexToRgb(hex)
+  const a = [r, g, b].map(v => {
+    v /= 255
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  })
 
-  return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
-};
+  return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]
+}
 
 // Contraste automático
-const getContrastText = (bg) => {
-  return getLuminance(bg) > 0.5 ? '#000' : '#fff';
-};
+const getContrastText = bg => {
+  return getLuminance(bg) > 0.5 ? '#000' : '#fff'
+}
 
 // Headings
 const mapHeading = (heading = {}, fallbackSize) => ({
@@ -325,34 +342,41 @@ const mapHeading = (heading = {}, fallbackSize) => ({
   lineHeight: heading.lineHeight || 1.3,
   letterSpacing: heading.letterSpacing ?? -0.3,
   textTransform: heading.transform || 'none',
-});
+})
 
 //
 // 🎯 CSS VARIABLES (opcional pero útil)
 //
-export const mapConfigToCssVars = (config) => {
-  if (!config) return {};
+export const mapConfigToCssVars = config => {
+  if (!config) return {}
 
-  const { colors = {}, spacing = {}, typography = {} } = config;
+  const { colors = {}, spacing = {}, typography = {} } = config
 
   return {
     '--color-primary': colors.primary || DEFAULT_THEME_COLORS.primary,
     '--color-secondary': colors.secondary || DEFAULT_THEME_COLORS.secondary,
     '--color-background': colors.background || DEFAULT_THEME_COLORS.background,
     '--color-surface': colors.surface || DEFAULT_THEME_COLORS.surface,
-    '--color-header-background': colors.headerBackground || DEFAULT_THEME_COLORS.headerBackground,
+    '--color-header-background':
+      colors.headerBackground || DEFAULT_THEME_COLORS.headerBackground,
     '--color-header-text': colors.headerText || DEFAULT_THEME_COLORS.headerText,
     '--color-header-link': colors.headerLink || DEFAULT_THEME_COLORS.headerLink,
     '--color-header-icon': colors.headerIcon || DEFAULT_THEME_COLORS.headerIcon,
-    '--color-card-background': colors.cardBackground || DEFAULT_THEME_COLORS.cardBackground,
+    '--color-card-background':
+      colors.cardBackground || DEFAULT_THEME_COLORS.cardBackground,
     '--color-card-text': colors.cardText || DEFAULT_THEME_COLORS.cardText,
-    '--color-card-muted': colors.cardMutedText || DEFAULT_THEME_COLORS.cardMutedText,
+    '--color-card-muted':
+      colors.cardMutedText || DEFAULT_THEME_COLORS.cardMutedText,
     '--color-card-border': colors.cardBorder || DEFAULT_THEME_COLORS.cardBorder,
     '--color-card-price': colors.cardPrice || DEFAULT_THEME_COLORS.cardPrice,
-    '--color-action-primary': colors.actionPrimary || DEFAULT_THEME_COLORS.actionPrimary,
-    '--color-action-primary-text': colors.actionPrimaryText || DEFAULT_THEME_COLORS.actionPrimaryText,
-    '--color-action-secondary': colors.actionSecondary || DEFAULT_THEME_COLORS.actionSecondary,
-    '--color-action-secondary-text': colors.actionSecondaryText || DEFAULT_THEME_COLORS.actionSecondaryText,
+    '--color-action-primary':
+      colors.actionPrimary || DEFAULT_THEME_COLORS.actionPrimary,
+    '--color-action-primary-text':
+      colors.actionPrimaryText || DEFAULT_THEME_COLORS.actionPrimaryText,
+    '--color-action-secondary':
+      colors.actionSecondary || DEFAULT_THEME_COLORS.actionSecondary,
+    '--color-action-secondary-text':
+      colors.actionSecondaryText || DEFAULT_THEME_COLORS.actionSecondaryText,
     '--color-link': colors.link || DEFAULT_THEME_COLORS.link,
     '--color-price': colors.price || DEFAULT_THEME_COLORS.price,
     '--color-sale-price': colors.salePrice || DEFAULT_THEME_COLORS.salePrice,
@@ -362,5 +386,5 @@ export const mapConfigToCssVars = (config) => {
     '--spacing-container': `${spacing.container || 24}px`,
     '--font-family': typography.fontFamily,
     '--font-size-base': `${typography.baseSize || 16}px`,
-  };
-};
+  }
+}

@@ -25,7 +25,6 @@ const AppInitializer = () => {
     initializeApp()
   }, [])
 
-
   if (!ready) return <SpinnerCentered /> // loading mientras CSRF se inicializa
 
   return (

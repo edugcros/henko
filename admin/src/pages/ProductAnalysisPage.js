@@ -66,7 +66,12 @@ const STATUS_COLOR = {
 const getJobId = job => job?._id || job?.id
 
 const getAnalysisTitle = job => {
-  return job?.analysis?.titulo || job?.analysis?.title || job?.originalFilename || 'Sin título'
+  return (
+    job?.analysis?.titulo ||
+    job?.analysis?.title ||
+    job?.originalFilename ||
+    'Sin título'
+  )
 }
 
 const formatDate = value => {
@@ -114,11 +119,16 @@ const ProductAnalysisPage = () => {
   const fetchJobs = useCallback(async () => {
     setLoading(true)
     try {
-      const { data } = await api.get('/product-analysis', { params: queryParams })
+      const { data } = await api.get('/product-analysis', {
+        params: queryParams,
+      })
       setJobs(Array.isArray(data?.items) ? data.items : [])
       setLastUpdatedAt(new Date())
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo cargar la cola de análisis')
+      toast.error(
+        error?.response?.data?.message ||
+          'No se pudo cargar la cola de análisis',
+      )
     } finally {
       setLoading(false)
     }
@@ -139,7 +149,9 @@ const ProductAnalysisPage = () => {
       await api.post('/product-analysis/process-due')
       await fetchJobs()
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo actualizar la cola')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo actualizar la cola',
+      )
     } finally {
       setRefreshing(false)
     }
@@ -156,8 +168,14 @@ const ProductAnalysisPage = () => {
     form.append('originalFilename', file.name)
     form.append('autoAnalyze', String(!sendToAddProduct))
     form.append('autoCreateProduct', 'false')
-    form.append('autoSaveProduct', String(sendToAddProduct && autoSaveInAddProduct))
-    form.append('autoPublishProduct', String(sendToAddProduct && autoSaveInAddProduct && autoPublishProduct))
+    form.append(
+      'autoSaveProduct',
+      String(sendToAddProduct && autoSaveInAddProduct),
+    )
+    form.append(
+      'autoPublishProduct',
+      String(sendToAddProduct && autoSaveInAddProduct && autoPublishProduct),
+    )
     if (scheduledAt) {
       form.append('scheduledAt', new Date(scheduledAt).toISOString())
     }
@@ -176,7 +194,9 @@ const ProductAnalysisPage = () => {
       )
       fetchJobs()
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo importar la imagen')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo importar la imagen',
+      )
     } finally {
       setUploading(false)
     }
@@ -188,7 +208,9 @@ const ProductAnalysisPage = () => {
       toast.success('Reintento iniciado')
       fetchJobs()
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo reintentar el análisis')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo reintentar el análisis',
+      )
     }
   }
 
@@ -200,7 +222,9 @@ const ProductAnalysisPage = () => {
       toast.success('Análisis rechazado')
       fetchJobs()
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo rechazar el análisis')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo rechazar el análisis',
+      )
     }
   }
 
@@ -215,7 +239,9 @@ const ProductAnalysisPage = () => {
       fetchJobs()
     } catch (error) {
       setJobs(previousJobs)
-      toast.error(error?.response?.data?.message || 'No se pudo eliminar la imagen')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo eliminar la imagen',
+      )
     }
   }
 
@@ -238,13 +264,18 @@ const ProductAnalysisPage = () => {
 
   const approveJob = async () => {
     try {
-      await api.post(`/product-analysis/${getJobId(selectedJob)}/approve`, approveForm)
+      await api.post(
+        `/product-analysis/${getJobId(selectedJob)}/approve`,
+        approveForm,
+      )
       toast.success('Producto creado como borrador')
       setApproveOpen(false)
       setSelectedJob(null)
       fetchJobs()
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo aprobar el análisis')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo aprobar el análisis',
+      )
     }
   }
 
@@ -258,13 +289,18 @@ const ProductAnalysisPage = () => {
           borderColor: 'divider',
         }}
       >
-        <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" gap={3}>
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          justifyContent="space-between"
+          gap={3}
+        >
           <Box>
             <Typography variant="h5" fontWeight={800}>
               Cola de imágenes del agente
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              El agente deja imágenes acá. AddProduct toma la imagen y recién ahí ejecuta la IA.
+              El agente deja imágenes acá. AddProduct toma la imagen y recién
+              ahí ejecuta la IA.
             </Typography>
           </Box>
 
@@ -276,7 +312,12 @@ const ProductAnalysisPage = () => {
               disabled={uploading}
             >
               {scheduledAt ? 'Programar imagen' : 'Subir imagen'}
-              <input hidden accept="image/*" type="file" onChange={handleUpload} />
+              <input
+                hidden
+                accept="image/*"
+                type="file"
+                onChange={handleUpload}
+              />
             </Button>
             <Button
               variant="outlined"
@@ -292,7 +333,10 @@ const ProductAnalysisPage = () => {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, minmax(0, 1fr))' },
+            gridTemplateColumns: {
+              xs: '1fr 1fr',
+              md: 'repeat(4, minmax(0, 1fr))',
+            },
             gap: 1.5,
             mt: 3,
           }}
@@ -318,28 +362,35 @@ const ProductAnalysisPage = () => {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 420px) 220px 260px' },
+            gridTemplateColumns: {
+              xs: '1fr',
+              md: 'minmax(240px, 420px) 220px 260px',
+            },
             gap: 2,
             mt: 3,
           }}
         >
-            <TextField
-              fullWidth
-              size="small"
-              label="Buscar"
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-            />
+          <TextField
+            fullWidth
+            size="small"
+            label="Buscar"
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
           <FormControl fullWidth size="small">
             <InputLabel>Estado</InputLabel>
-            <Select label="Estado" value={status} onChange={event => setStatus(event.target.value)}>
+            <Select
+              label="Estado"
+              value={status}
+              onChange={event => setStatus(event.target.value)}
+            >
               {STATUS_OPTIONS.map(option => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
@@ -358,7 +409,12 @@ const ProductAnalysisPage = () => {
           />
         </Box>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} gap={2} mt={2} alignItems={{ md: 'center' }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          gap={2}
+          mt={2}
+          alignItems={{ md: 'center' }}
+        >
           <FormControlLabel
             control={
               <Switch
@@ -372,7 +428,9 @@ const ProductAnalysisPage = () => {
             control={
               <Switch
                 checked={autoSaveInAddProduct}
-                onChange={event => setAutoSaveInAddProduct(event.target.checked)}
+                onChange={event =>
+                  setAutoSaveInAddProduct(event.target.checked)
+                }
                 disabled={!sendToAddProduct}
               />
             }
@@ -389,7 +447,11 @@ const ProductAnalysisPage = () => {
             label="Publicar al autosave"
           />
           {lastUpdatedAt && (
-            <Typography variant="caption" color="text.secondary" sx={{ ml: { md: 'auto' } }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ ml: { md: 'auto' } }}
+            >
               Última actualización: {formatDate(lastUpdatedAt)}
             </Typography>
           )}
@@ -420,9 +482,15 @@ const ProductAnalysisPage = () => {
                   />
                 </TableCell>
                 <TableCell>
-                  <Typography fontWeight={700}>{getAnalysisTitle(job)}</Typography>
+                  <Typography fontWeight={700}>
+                    {getAnalysisTitle(job)}
+                  </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {[job.analysis?.categoria, job.analysis?.subcategoria, job.analysis?.marca]
+                    {[
+                      job.analysis?.categoria,
+                      job.analysis?.subcategoria,
+                      job.analysis?.marca,
+                    ]
                       .filter(Boolean)
                       .join(' / ') || job.originalFilename}
                   </Typography>
@@ -443,9 +511,15 @@ const ProductAnalysisPage = () => {
                 <TableCell>
                   {job.scheduledAt ? (
                     <Stack spacing={0.5}>
-                      <Typography variant="body2">{formatDate(job.scheduledAt)}</Typography>
-                      {job.metadata?.autoAnalyze === false && <Chip label="AddProduct" size="small" />}
-                      {job.metadata?.autoSaveProduct && <Chip label="AutoSave" size="small" color="primary" />}
+                      <Typography variant="body2">
+                        {formatDate(job.scheduledAt)}
+                      </Typography>
+                      {job.metadata?.autoAnalyze === false && (
+                        <Chip label="AddProduct" size="small" />
+                      )}
+                      {job.metadata?.autoSaveProduct && (
+                        <Chip label="AutoSave" size="small" color="primary" />
+                      )}
                     </Stack>
                   ) : (
                     '-'
@@ -458,7 +532,13 @@ const ProductAnalysisPage = () => {
                       <IconButton
                         onClick={() => retryJob(job)}
                         disabled={
-                          ['approved', 'rejected', 'processing', 'scheduled', 'imported'].includes(job.status) ||
+                          [
+                            'approved',
+                            'rejected',
+                            'processing',
+                            'scheduled',
+                            'imported',
+                          ].includes(job.status) ||
                           job.metadata?.autoAnalyze === false
                         }
                       >
@@ -471,7 +551,10 @@ const ProductAnalysisPage = () => {
                       <IconButton
                         color="success"
                         onClick={() => openApprove(job)}
-                        disabled={job.status !== 'completed' || Boolean(job.createdProductId)}
+                        disabled={
+                          job.status !== 'completed' ||
+                          Boolean(job.createdProductId)
+                        }
                       >
                         <CheckCircleIcon />
                       </IconButton>
@@ -482,7 +565,11 @@ const ProductAnalysisPage = () => {
                       <IconButton
                         color="warning"
                         onClick={() => rejectJob(job)}
-                        disabled={job.status === 'approved' || job.status === 'rejected' || job.status === 'imported'}
+                        disabled={
+                          job.status === 'approved' ||
+                          job.status === 'rejected' ||
+                          job.status === 'imported'
+                        }
                       >
                         <CancelIcon />
                       </IconButton>
@@ -507,7 +594,9 @@ const ProductAnalysisPage = () => {
               <TableRow>
                 <TableCell colSpan={7}>
                   <Box textAlign="center" py={6}>
-                    <Typography color="text.secondary">No hay imágenes en la cola.</Typography>
+                    <Typography color="text.secondary">
+                      No hay imágenes en la cola.
+                    </Typography>
                   </Box>
                 </TableCell>
               </TableRow>
@@ -516,7 +605,12 @@ const ProductAnalysisPage = () => {
         </Table>
       </TableContainer>
 
-      <Dialog open={approveOpen} onClose={() => setApproveOpen(false)} maxWidth="md" fullWidth>
+      <Dialog
+        open={approveOpen}
+        onClose={() => setApproveOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>Aprobar análisis</DialogTitle>
         <DialogContent>
           <Box
@@ -533,7 +627,12 @@ const ProductAnalysisPage = () => {
                 fullWidth
                 label={field}
                 value={approveForm[field] || ''}
-                onChange={event => setApproveForm(prev => ({ ...prev, [field]: event.target.value }))}
+                onChange={event =>
+                  setApproveForm(prev => ({
+                    ...prev,
+                    [field]: event.target.value,
+                  }))
+                }
               />
             ))}
             <TextField
@@ -542,7 +641,12 @@ const ProductAnalysisPage = () => {
               minRows={3}
               label="descripcion"
               value={approveForm.descripcion || ''}
-              onChange={event => setApproveForm(prev => ({ ...prev, descripcion: event.target.value }))}
+              onChange={event =>
+                setApproveForm(prev => ({
+                  ...prev,
+                  descripcion: event.target.value,
+                }))
+              }
               sx={{ gridColumn: { md: '1 / -1' } }}
             />
             <TextField
@@ -550,14 +654,24 @@ const ProductAnalysisPage = () => {
               type="number"
               label="Precio"
               value={approveForm.price}
-              onChange={event => setApproveForm(prev => ({ ...prev, price: Number(event.target.value) }))}
+              onChange={event =>
+                setApproveForm(prev => ({
+                  ...prev,
+                  price: Number(event.target.value),
+                }))
+              }
             />
             <TextField
               fullWidth
               type="number"
               label="Stock"
               value={approveForm.stock}
-              onChange={event => setApproveForm(prev => ({ ...prev, stock: Number(event.target.value) }))}
+              onChange={event =>
+                setApproveForm(prev => ({
+                  ...prev,
+                  stock: Number(event.target.value),
+                }))
+              }
             />
           </Box>
         </DialogContent>

@@ -77,42 +77,51 @@ export const getThemeColors = config => {
   }
 }
 
-export const getProductThemeConfig = config => ({
-  gridStyle: 'grid',
-  columns: 4,
-  gap: 24,
-  hoverEffect: 'lift',
-  imageAspectRatio: '1:1',
-  itemsPerPage: 12,
-  showBadge: true,
-  showQuickView: true,
-  showWishlist: true,
-  showCompare: false,
-  showRating: true,
-  showPrice: true,
-  ...(config?.productCard || {}),
-  ...(config?.products || {}),
-  imageAspectRatio:
-    config?.products?.imageAspectRatio ||
-    config?.products?.cardImage?.aspectRatio ||
-    config?.productCard?.imageAspectRatio ||
-    '1:1',
-  showQuickView:
-    config?.products?.showQuickView ??
-    config?.products?.cardLayout?.showQuickView ??
-    config?.productCard?.showQuickView ??
-    true,
-  showRating:
-    config?.products?.showRating ??
-    config?.products?.cardLayout?.showRating ??
-    config?.productCard?.showRating ??
-    true,
-  cardPadding:
-    config?.products?.cardLayout?.padding ??
-    config?.spacing?.cardPadding ??
-    config?.productCard?.cardPadding ??
-    0,
-})
+export const getProductThemeConfig = config => {
+  const productCard = config?.productCard || {}
+  const products = config?.products || {}
+  const cardLayout = products?.cardLayout || {}
+  const cardImage = products?.cardImage || {}
+
+  return {
+    gridStyle: 'grid',
+    columns: 4,
+    gap: 24,
+    hoverEffect: 'lift',
+    itemsPerPage: 12,
+    showBadge: true,
+    showWishlist: true,
+    showCompare: false,
+    showPrice: true,
+
+    ...productCard,
+    ...products,
+
+    imageAspectRatio:
+      products.imageAspectRatio ||
+      cardImage.aspectRatio ||
+      productCard.imageAspectRatio ||
+      '1:1',
+
+    showQuickView:
+      products.showQuickView ??
+      cardLayout.showQuickView ??
+      productCard.showQuickView ??
+      true,
+
+    showRating:
+      products.showRating ??
+      cardLayout.showRating ??
+      productCard.showRating ??
+      true,
+
+    cardPadding:
+      cardLayout.padding ??
+      config?.spacing?.cardPadding ??
+      productCard.cardPadding ??
+      0,
+  }
+}
 
 export const getButtonThemeConfig = config => ({
   radius: 8,
@@ -168,6 +177,8 @@ export const getAssetUrl = asset => {
 
 export const getProductImage = product => {
   const candidates = [
+    product?.displayImage,
+    product?.filterMatchedVariant?.image,
     product?.images?.[0],
     product?.image,
     product?.imageUrl,
@@ -184,7 +195,8 @@ export const getProductImage = product => {
 }
 
 export const getProductRouteId = product => {
-  const rawId = product?._id || product?.id || product?.productId || product?.slug
+  const rawId =
+    product?._id || product?.id || product?.productId || product?.slug
 
   if (!rawId) return ''
   if (typeof rawId === 'object') return rawId._id || rawId.id || ''

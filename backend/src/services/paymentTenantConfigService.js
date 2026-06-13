@@ -97,7 +97,12 @@ const assertCompatibleMpMode = ({ token, tenantMode }) => {
 
 export const getTenantConfig = async tenantId => {
   try {
-    const tenant = await Tenant.findById(tenantId).lean()
+    const tenant = await Tenant.findById(tenantId)
+      .populate({
+        path: 'ownerUserId',
+        select: 'email',
+      })
+      .lean()
 
     if (!tenant) {
       return {
@@ -106,7 +111,9 @@ export const getTenantConfig = async tenantId => {
           sanitizeString(process.env.APP_NAME) ||
           'Tienda',
         storeLogo: sanitizeString(process.env.EMAIL_LOGO_URL) || null,
-        adminEmail: normalizeEmail(process.env.ADMIN_EMAIL) || null,
+        adminEmail:
+          (!isProd ? normalizeEmail(process.env.ADMIN_EMAIL) : null) ||
+          null,
         primaryColor:
           sanitizeString(process.env.EMAIL_PRIMARY_COLOR) ||
           '#111827',
@@ -129,10 +136,10 @@ export const getTenantConfig = async tenantId => {
         sanitizeString(process.env.EMAIL_LOGO_URL) ||
         null,
       adminEmail:
-        normalizeEmail(tenant.adminEmail) ||
+        normalizeEmail(tenant.ownerUserId?.email) ||
         normalizeEmail(tenant.settings?.store?.contactEmail) ||
         normalizeEmail(tenant.footer?.email) ||
-        normalizeEmail(process.env.ADMIN_EMAIL) ||
+        (!isProd ? normalizeEmail(process.env.ADMIN_EMAIL) : null) ||
         null,
       primaryColor:
         sanitizeString(tenant.settings?.branding?.primaryColor) ||
@@ -169,7 +176,9 @@ export const getTenantConfig = async tenantId => {
         sanitizeString(process.env.APP_NAME) ||
         'Tienda',
       storeLogo: sanitizeString(process.env.EMAIL_LOGO_URL) || null,
-      adminEmail: normalizeEmail(process.env.ADMIN_EMAIL) || null,
+      adminEmail:
+        (!isProd ? normalizeEmail(process.env.ADMIN_EMAIL) : null) ||
+        null,
       primaryColor:
         sanitizeString(process.env.EMAIL_PRIMARY_COLOR) ||
         '#111827',
@@ -181,76 +190,14 @@ export const getTenantConfig = async tenantId => {
 }
 
 export const getTenantToken = async tenantId => {
-  try {
-    const tenant = await Tenant.findById(tenantId)
-      .select(
-        '+integrations.mercadopago.accessToken integrations.mercadopago.publicKey integrations.mercadopago.isEnabled integrations.mercadopago.mode',
-      )
-      .lean()
-
-    const mercadoPago = tenant?.integrations?.mercadopago || {}
-
-    const tenantToken = sanitizeString(mercadoPago.accessToken)
-    const envToken = sanitizeString(env.mercadoPago?.accessToken)
-
-    const tenantTokenIsValid = isValidMpAccessToken(tenantToken)
-    const envTokenIsValid = isValidMpAccessToken(envToken)
-
-    logger.info('🔐 Resolviendo token Mercado Pago', {
-      tenantId: tenant?._id?.toString?.() || null,
-      mpEnabled: Boolean(mercadoPago.isEnabled),
-      mpMode: mercadoPago.mode || null,
-      hasTenantToken: tenantTokenIsValid,
-      tenantTokenPrefix: tenantTokenIsValid ? getMpTokenPrefix(tenantToken) : null,
-      hasEnvToken: envTokenIsValid,
-      envTokenPrefix: envTokenIsValid ? getMpTokenPrefix(envToken) : null,
-      nodeEnv: process.env.NODE_ENV,
-    })
-
-    if (mercadoPago.isEnabled && tenantToken) {
-      if (!tenantTokenIsValid) {
-        const error = new Error(
-          'Mercado Pago del tenant tiene un Access Token inválido o placeholder',
-        )
-        error.statusCode = 500
-        throw error
-      }
-
-      assertCompatibleMpMode({
-        token: tenantToken,
-        tenantMode: mercadoPago.mode,
-      })
-
-      return tenantToken
-    }
-
-    if (!isProd && envTokenIsValid) {
-      logger.warn('⚠️ Usando MP_ACCESS_TOKEN global por fallback en desarrollo', {
-        tenantId: tenant?._id?.toString?.() || null,
-        envTokenPrefix: getMpTokenPrefix(envToken),
-      })
-
-      return envToken
-    }
-
-    const error = new Error('Mercado Pago no está configurado para este comercio')
-    error.statusCode = 400
-    throw error
-  } catch (error) {
-    logger.error('❌ Error obteniendo token Mercado Pago', {
-      tenantId: String(tenantId),
-      message: getSafeErrorMessage(error),
-      statusCode: error.statusCode,
-    })
-
-    return null
-  }
+  const context = await getTenantMercadoPagoContext(tenantId)
+  return context.accessToken
 }
 
-export const getTenantPaymentPublicConfig = async tenantId => {
+export const getTenantMercadoPagoContext = async tenantId => {
   const tenant = await Tenant.findById(tenantId)
     .select(
-      'integrations.mercadopago.publicKey integrations.mercadopago.isEnabled integrations.mercadopago.mode',
+      '+integrations.mercadopago.accessToken integrations.mercadopago.publicKey integrations.mercadopago.isEnabled integrations.mercadopago.mode',
     )
     .lean()
 
@@ -261,40 +208,79 @@ export const getTenantPaymentPublicConfig = async tenantId => {
   }
 
   const mercadoPago = tenant.integrations?.mercadopago || {}
+  const tenantAccessToken = sanitizeString(mercadoPago.accessToken)
   const tenantPublicKey = sanitizeString(mercadoPago.publicKey)
+  const envAccessToken = sanitizeString(env.mercadoPago?.accessToken)
   const envPublicKey = sanitizeString(env.mercadoPago?.publicKey)
-  const publicKey =
-    mercadoPago.isEnabled && tenantPublicKey
-      ? tenantPublicKey
-      : !isProd
-        ? envPublicKey
-        : ''
-  const mode = inferMpPublicKeyMode(publicKey)
 
-  if (!publicKey || !mode) {
+  const useTenantCredentials = Boolean(mercadoPago.isEnabled)
+  const useDevelopmentFallback = !isProd && !useTenantCredentials
+
+  const accessToken = useTenantCredentials
+    ? tenantAccessToken
+    : useDevelopmentFallback
+      ? envAccessToken
+      : ''
+  const publicKey = useTenantCredentials
+    ? tenantPublicKey
+    : useDevelopmentFallback
+      ? envPublicKey
+      : ''
+  const accessTokenMode = inferMpTokenMode(accessToken)
+  const publicKeyMode = inferMpPublicKeyMode(publicKey)
+  const configuredMode = sanitizeString(mercadoPago.mode)
+
+  logger.info('🔐 Resolviendo credenciales Mercado Pago', {
+    tenantId: tenant._id?.toString?.() || String(tenantId),
+    source: useTenantCredentials ? 'tenant' : useDevelopmentFallback ? 'development-env' : 'none',
+    configuredMode: configuredMode || null,
+    accessTokenMode,
+    publicKeyMode,
+    accessTokenPrefix: isValidMpAccessToken(accessToken)
+      ? getMpTokenPrefix(accessToken)
+      : null,
+    hasPublicKey: Boolean(publicKeyMode),
+  })
+
+  if (!isValidMpAccessToken(accessToken) || !publicKey || !publicKeyMode) {
     const error = new Error(
-      'Mercado Pago no tiene una Public Key válida para este comercio',
+      'Mercado Pago no tiene credenciales válidas para este comercio',
     )
     error.statusCode = 503
+    error.code = 'MP_CREDENTIALS_NOT_FOUND'
     throw error
   }
 
-  if (
-    mercadoPago.mode &&
-    ['test', 'production'].includes(mercadoPago.mode) &&
-    mercadoPago.mode !== mode
-  ) {
+  assertCompatibleMpMode({
+    token: accessToken,
+    tenantMode: configuredMode || null,
+  })
+
+  if (accessTokenMode !== publicKeyMode) {
     const error = new Error(
-      `MP_MODE_MISMATCH: tenant=${mercadoPago.mode}, publicKey=${mode}`,
+      `MP_MODE_MISMATCH: accessToken=${accessTokenMode}, publicKey=${publicKeyMode}`,
     )
     error.statusCode = 503
+    error.code = 'MP_MODE_MISMATCH'
     throw error
   }
 
   return {
-    enabled: Boolean(mercadoPago.isEnabled || (!isProd && envPublicKey)),
+    enabled: true,
+    source: useTenantCredentials ? 'tenant' : 'development-env',
+    accessToken,
     publicKey,
-    mode,
+    mode: accessTokenMode,
+  }
+}
+
+export const getTenantPaymentPublicConfig = async tenantId => {
+  const context = await getTenantMercadoPagoContext(tenantId)
+
+  return {
+    enabled: context.enabled,
+    publicKey: context.publicKey,
+    mode: context.mode,
   }
 }
 

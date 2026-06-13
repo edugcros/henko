@@ -20,7 +20,11 @@ export const useUserMetrics = ({ trackPageViews = true } = {}) => {
   useEffect(() => {
     const path = `${location.pathname}${location.search}`
 
-    if (!trackPageViews || lastPageRef.current === path || location.pathname === '/theme-preview') {
+    if (
+      !trackPageViews ||
+      lastPageRef.current === path ||
+      location.pathname === '/theme-preview'
+    ) {
       return
     }
 
@@ -33,8 +37,13 @@ export const useUserMetrics = ({ trackPageViews = true } = {}) => {
       },
     })
 
-    if (location.pathname.startsWith('/product/') && location.pathname !== '/product') {
-      const productIdOrSlug = decodeURIComponent(location.pathname.replace('/product/', ''))
+    if (
+      location.pathname.startsWith('/product/') &&
+      location.pathname !== '/product'
+    ) {
+      const productIdOrSlug = decodeURIComponent(
+        location.pathname.replace('/product/', ''),
+      )
 
       track(USER_METRIC_EVENTS.PRODUCT_VIEW, {
         path,

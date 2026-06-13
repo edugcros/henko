@@ -1,6 +1,15 @@
 import React, { useCallback } from 'react'
 import { useLocation, useNavigate, Link as RouterLink } from 'react-router-dom'
-import { Breadcrumbs, Link, Typography, Button, Box, Container, Fade, Tooltip } from '@mui/material'
+import {
+  Breadcrumbs,
+  Link,
+  Typography,
+  Button,
+  Box,
+  Container,
+  Fade,
+  Tooltip,
+} from '@mui/material'
 import {
   ArrowBack as ArrowBackIcon,
   Home as HomeIcon,
@@ -12,7 +21,11 @@ import PropTypes from 'prop-types'
  * Componente Breadcrumb mejorado con navegación hacia atrás
  * y breadcrumbs dinámicos basados en la URL
  */
-const BreadCrumb = ({ title, showBackButton = true, showBreadcrumbs = false }) => {
+const BreadCrumb = ({
+  title,
+  showBackButton = true,
+  showBreadcrumbs = false,
+}) => {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -22,7 +35,8 @@ const BreadCrumb = ({ title, showBackButton = true, showBreadcrumbs = false }) =
       .split('/')
       .filter(Boolean)
       .map((segment, index, array) => ({
-        label: segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' '),
+        label:
+          segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' '),
         path: `/${array.slice(0, index + 1).join('/')}`,
         isLast: index === array.length - 1,
       }))
@@ -112,7 +126,10 @@ const BreadCrumb = ({ title, showBackButton = true, showBreadcrumbs = false }) =
                 }}
               >
                 <HomeIcon sx={{ mr: 0.5, fontSize: 18 }} />
-                <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                <Box
+                  component="span"
+                  sx={{ display: { xs: 'none', sm: 'inline' } }}
+                >
                   Inicio
                 </Box>
               </Link>

@@ -22,11 +22,7 @@ const assertApiBaseUrl = () => {
   }
 
   if (env.isProduction) {
-    const forbiddenValues = [
-      'localhost',
-      '127.0.0.1',
-      'henko.local',
-    ]
+    const forbiddenValues = ['localhost', '127.0.0.1', 'henko.local']
 
     forbiddenValues.forEach(value => {
       if (String(env.apiBaseUrl).includes(value)) {
@@ -50,26 +46,44 @@ const getTenantDomain = () => {
 }
 
 const getAuthToken = () => {
-  return (
-    Cookies.get('token') ||
-    localStorage.getItem('token') ||
-    null
-  )
+  if (typeof window === 'undefined') {
+    return Cookies.get('token') || null
+  }
+
+  try {
+    return Cookies.get('token') || window.localStorage.getItem('token') || null
+  } catch {
+    return Cookies.get('token') || null
+  }
+}
+
+const createMetricSessionId = () => {
+  if (
+    typeof window !== 'undefined' &&
+    window.crypto &&
+    typeof window.crypto.randomUUID === 'function'
+  ) {
+    return window.crypto.randomUUID()
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 const getMetricSessionId = () => {
   if (typeof window === 'undefined') return null
 
-  let sessionId = localStorage.getItem(METRIC_SESSION_KEY)
+  try {
+    let sessionId = window.localStorage.getItem(METRIC_SESSION_KEY)
 
-  if (!sessionId) {
-    sessionId = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-    localStorage.setItem(METRIC_SESSION_KEY, sessionId)
+    if (!sessionId) {
+      sessionId = createMetricSessionId()
+      window.localStorage.setItem(METRIC_SESSION_KEY, sessionId)
+    }
+
+    return sessionId
+  } catch {
+    return createMetricSessionId()
   }
-
-  return sessionId
 }
 
 // =====================================================
@@ -101,12 +115,12 @@ const api = axios.create({
 
 // Debug temporal de producción
 if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-  console.log('[ADMIN API BOOT]', {
+  /*console.log('[ADMIN API BOOT]', {
     apiBaseUrl: env.apiBaseUrl,
     nodeEnv: env.nodeEnv,
     adminBaseDomain: env.adminBaseDomain,
     publicBaseDomain: env.publicBaseDomain,
-  })
+  })*/
 }
 
 // =====================================================
@@ -202,16 +216,19 @@ api.interceptors.request.use(
     }
 
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-      console.log('[ADMIN API REQUEST]', {
+      /*console.log('[ADMIN API REQUEST]', {
         method: config.method,
         baseURL: config.baseURL,
         url: config.url,
         fullURL: `${config.baseURL || ''}${config.url || ''}`,
         tenant: config.headers[env.tenantHeader || 'x-tenant-domain'],
-      })
+      })*/
     }
+
     const isFormData =
-      typeof FormData !== 'undefined' && config.data instanceof FormData
+      typeof window !== 'undefined' &&
+      typeof window.FormData !== 'undefined' &&
+      config.data instanceof window.FormData
 
     if (isFormData || config.isMultipart) {
       delete config.headers['Content-Type']
@@ -259,10 +276,7 @@ api.interceptors.response.use(
 
     const isCsrfError =
       status === 403 &&
-      (
-        code === 'EBADCSRFTOKEN' ||
-        message.toLowerCase().includes('csrf')
-      )
+      (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
 
     if (isCsrfError && !originalRequest.skipCsrfRetry) {
       originalRequest._retry = true

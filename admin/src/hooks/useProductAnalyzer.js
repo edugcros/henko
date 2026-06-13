@@ -113,7 +113,9 @@ export default function useProductAnalyzer() {
         const resData = response.data
 
         if (!resData?.success) {
-          throw new Error(resData?.message || 'La IA no pudo clasificar el producto')
+          throw new Error(
+            resData?.message || 'La IA no pudo clasificar el producto',
+          )
         }
 
         const data = resData?.data || null

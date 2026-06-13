@@ -337,7 +337,7 @@ const buildPayload = form => {
       customLabel: String(item.customLabel || '').trim(),
       discountPercentage: Math.min(
         100,
-        Math.max(0, safeNumber(item.discountPercentage, 0))
+        Math.max(0, safeNumber(item.discountPercentage, 0)),
       ),
       priority: safeNumber(item.priority, index + 1),
       isActive: item.isActive !== false,
@@ -360,13 +360,16 @@ const ConfirmDialog = ({
   onCancel,
 }) => {
   return (
-    <Dialog open={open} onClose={loading ? undefined : onCancel} maxWidth="xs" fullWidth>
+    <Dialog
+      open={open}
+      onClose={loading ? undefined : onCancel}
+      maxWidth="xs"
+      fullWidth
+    >
       <DialogTitle>{title}</DialogTitle>
 
       <DialogContent>
-        <Typography color="text.secondary">
-          {message}
-        </Typography>
+        <Typography color="text.secondary">{message}</Typography>
       </DialogContent>
 
       <DialogActions>
@@ -387,12 +390,7 @@ const ConfirmDialog = ({
   )
 }
 
-const ProductPickerCard = ({
-  product,
-  selected,
-  disabled,
-  onToggle,
-}) => {
+const ProductPickerCard = ({ product, selected, disabled, onToggle }) => {
   return (
     <Card
       onClick={() => {
@@ -433,7 +431,12 @@ const ProductPickerCard = ({
           ${product.price || 0}
         </Typography>
 
-        <Typography variant="caption" color="text.secondary" display="block" noWrap>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          display="block"
+          noWrap
+        >
           {product.categoria || product.category || 'Sin categoría'}
         </Typography>
 
@@ -465,9 +468,7 @@ const PromotionalBlockRow = ({
     <TableRow hover>
       <TableCell>
         <Box>
-          <Typography fontWeight={800}>
-            {block.title}
-          </Typography>
+          <Typography fontWeight={800}>{block.title}</Typography>
 
           <Typography variant="caption" color="text.secondary">
             /{block.slug}
@@ -514,22 +515,27 @@ const PromotionalBlockRow = ({
               {block.description || 'Sin descripción'}
             </Typography>
 
-            <Typography variant="caption" color="text.secondary" noWrap display="block">
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              noWrap
+              display="block"
+            >
               {previewProducts.length > 0
                 ? previewProducts
                     .slice(0, 2)
                     .map(product => product.title || 'Producto')
                     .join(', ')
                 : 'Sin productos asociados'}
-              {previewProducts.length > 2 ? ` +${previewProducts.length - 2} más` : ''}
+              {previewProducts.length > 2
+                ? ` +${previewProducts.length - 2} más`
+                : ''}
             </Typography>
           </Box>
         </Stack>
       </TableCell>
 
-      <TableCell>
-        {getPlacementLabel(block.placement)}
-      </TableCell>
+      <TableCell>{getPlacementLabel(block.placement)}</TableCell>
 
       <TableCell>
         <Typography variant="body2">
@@ -548,9 +554,7 @@ const PromotionalBlockRow = ({
       </TableCell>
 
       <TableCell>
-        <Typography variant="body2">
-          {formatDate(block.startDate)}
-        </Typography>
+        <Typography variant="body2">{formatDate(block.startDate)}</Typography>
 
         <Typography variant="caption" color="text.secondary">
           hasta {formatDate(block.endDate)}
@@ -604,10 +608,9 @@ const PromotionalBlocksPage = () => {
   const isDeleting = useSelector(selectPromotionalBlocksIsDeleting)
   const isToggling = useSelector(selectPromotionalBlocksIsToggling)
 
-  const {
-    products = [],
-    isLoading: productsLoading = false,
-  } = useSelector(state => state.product || {})
+  const { products = [], isLoading: productsLoading = false } = useSelector(
+    state => state.product || {},
+  )
 
   const [page, setPage] = useState(1)
   const [typeFilter, setTypeFilter] = useState('')
@@ -643,13 +646,15 @@ const PromotionalBlocksPage = () => {
   }, [searchQuery])
 
   const loadBlocks = useCallback(() => {
-    dispatch(fetchPromotionalBlocks({
-      page,
-      limit: CONFIG.DEFAULT_LIMIT,
-      type: typeFilter || undefined,
-      placement: placementFilter || undefined,
-      q: debouncedSearch || undefined,
-    }))
+    dispatch(
+      fetchPromotionalBlocks({
+        page,
+        limit: CONFIG.DEFAULT_LIMIT,
+        type: typeFilter || undefined,
+        placement: placementFilter || undefined,
+        q: debouncedSearch || undefined,
+      }),
+    )
   }, [dispatch, page, typeFilter, placementFilter, debouncedSearch])
 
   useEffect(() => {
@@ -679,15 +684,18 @@ const PromotionalBlocksPage = () => {
   // =====================================================
 
   const activeBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'active').length
+    return blocks.filter(block => getBlockStatus(block).value === 'active')
+      .length
   }, [blocks])
 
   const scheduledBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'scheduled').length
+    return blocks.filter(block => getBlockStatus(block).value === 'scheduled')
+      .length
   }, [blocks])
 
   const expiredBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'expired').length
+    return blocks.filter(block => getBlockStatus(block).value === 'expired')
+      .length
   }, [blocks])
 
   const normalizedProducts = useMemo(() => {
@@ -703,10 +711,14 @@ const PromotionalBlocksPage = () => {
 
     return normalizedProducts.filter(product => {
       const title = String(product.title || '').toLowerCase()
-      const category = String(product.categoria || product.category || '').toLowerCase()
+      const category = String(
+        product.categoria || product.category || '',
+      ).toLowerCase()
       const brand = String(product.marca || product.brand || '').toLowerCase()
 
-      return !q || title.includes(q) || category.includes(q) || brand.includes(q)
+      return (
+        !q || title.includes(q) || category.includes(q) || brand.includes(q)
+      )
     })
   }, [normalizedProducts, productSearch])
 
@@ -776,22 +788,30 @@ const PromotionalBlocksPage = () => {
     const productId = getEntityId(product)
 
     setForm(prev => {
-      const exists = prev.products.some(item => getEntityId(item.productId) === productId)
+      const exists = prev.products.some(
+        item => getEntityId(item.productId) === productId,
+      )
 
       if (exists) {
         return {
           ...prev,
-          products: prev.products.filter(item => getEntityId(item.productId) !== productId),
+          products: prev.products.filter(
+            item => getEntityId(item.productId) !== productId,
+          ),
         }
       }
 
       if (prev.products.length >= Number(prev.maxItems)) {
-        toast.warning(`Máximo ${prev.maxItems} productos permitidos en este bloque`)
+        toast.warning(
+          `Máximo ${prev.maxItems} productos permitidos en este bloque`,
+        )
         return prev
       }
 
       if (prev.products.length >= CONFIG.MAX_PRODUCTS_PER_BLOCK) {
-        toast.warning(`Máximo técnico permitido: ${CONFIG.MAX_PRODUCTS_PER_BLOCK} productos`)
+        toast.warning(
+          `Máximo técnico permitido: ${CONFIG.MAX_PRODUCTS_PER_BLOCK} productos`,
+        )
         return prev
       }
 
@@ -875,12 +895,16 @@ const PromotionalBlocksPage = () => {
     const maxItems = safeNumber(form.maxItems, CONFIG.DEFAULT_MAX_ITEMS)
 
     if (maxItems < 1 || maxItems > CONFIG.MAX_PRODUCTS_PER_BLOCK) {
-      toast.error(`El máximo de productos debe estar entre 1 y ${CONFIG.MAX_PRODUCTS_PER_BLOCK}`)
+      toast.error(
+        `El máximo de productos debe estar entre 1 y ${CONFIG.MAX_PRODUCTS_PER_BLOCK}`,
+      )
       return false
     }
 
     if (form.products.length > maxItems) {
-      toast.error(`Seleccionaste ${form.products.length} productos, pero el máximo configurado es ${maxItems}`)
+      toast.error(
+        `Seleccionaste ${form.products.length} productos, pero el máximo configurado es ${maxItems}`,
+      )
       return false
     }
 
@@ -894,10 +918,12 @@ const PromotionalBlocksPage = () => {
 
     try {
       if (editingBlock?._id) {
-        await dispatch(updatePromotionalBlock({
-          id: editingBlock._id,
-          data: payload,
-        })).unwrap()
+        await dispatch(
+          updatePromotionalBlock({
+            id: editingBlock._id,
+            data: payload,
+          }),
+        ).unwrap()
       } else {
         await dispatch(createPromotionalBlock(payload)).unwrap()
       }
@@ -905,7 +931,11 @@ const PromotionalBlocksPage = () => {
       closeModal()
       loadBlocks()
     } catch (err) {
-      toast.error(typeof err === 'string' ? err : err?.message || 'Error al guardar el bloque')
+      toast.error(
+        typeof err === 'string'
+          ? err
+          : err?.message || 'Error al guardar el bloque',
+      )
     }
   }
 
@@ -942,23 +972,31 @@ const PromotionalBlocksPage = () => {
 
     try {
       if (action === 'toggle') {
-        await dispatch(togglePromotionalBlockStatus({
-          id: block._id,
-          isActive: !block.isActive,
-        })).unwrap()
+        await dispatch(
+          togglePromotionalBlockStatus({
+            id: block._id,
+            isActive: !block.isActive,
+          }),
+        ).unwrap()
       }
 
       if (action === 'delete') {
-        await dispatch(deletePromotionalBlock({
-          id: block._id,
-          hard: true,
-        })).unwrap()
+        await dispatch(
+          deletePromotionalBlock({
+            id: block._id,
+            hard: true,
+          }),
+        ).unwrap()
       }
 
       closeConfirmDialog()
       loadBlocks()
     } catch (err) {
-      toast.error(typeof err === 'string' ? err : err?.message || 'Error al procesar la acción')
+      toast.error(
+        typeof err === 'string'
+          ? err
+          : err?.message || 'Error al procesar la acción',
+      )
     }
   }
 
@@ -970,7 +1008,11 @@ const PromotionalBlocksPage = () => {
     <Box sx={{ bgcolor: '#F5F5F7', minHeight: '100vh', pb: 8 }}>
       <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #e0e0e0', py: 3 }}>
         <Container maxWidth="xl">
-          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            justifyContent="space-between"
+            spacing={2}
+          >
             <Box>
               <Stack direction="row" alignItems="center" spacing={2} mb={1}>
                 <Button
@@ -987,7 +1029,8 @@ const PromotionalBlocksPage = () => {
               </Stack>
 
               <Typography color="text.secondary">
-                Gestioná ofertas, destacados, novedades, liquidaciones y campañas visibles por tenant.
+                Gestioná ofertas, destacados, novedades, liquidaciones y
+                campañas visibles por tenant.
               </Typography>
             </Box>
 
@@ -1012,9 +1055,7 @@ const PromotionalBlocksPage = () => {
               <Typography variant="h3" fontWeight={900} color="primary">
                 {activeBlocksCount}
               </Typography>
-              <Typography color="text.secondary">
-                Bloques activos
-              </Typography>
+              <Typography color="text.secondary">Bloques activos</Typography>
             </Paper>
           </Grid>
 
@@ -1023,9 +1064,7 @@ const PromotionalBlocksPage = () => {
               <Typography variant="h3" fontWeight={900} color="warning.main">
                 {scheduledBlocksCount}
               </Typography>
-              <Typography color="text.secondary">
-                Programados
-              </Typography>
+              <Typography color="text.secondary">Programados</Typography>
             </Paper>
           </Grid>
 
@@ -1034,9 +1073,7 @@ const PromotionalBlocksPage = () => {
               <Typography variant="h3" fontWeight={900} color="error">
                 {expiredBlocksCount}
               </Typography>
-              <Typography color="text.secondary">
-                Expirados
-              </Typography>
+              <Typography color="text.secondary">Expirados</Typography>
             </Paper>
           </Grid>
 
@@ -1045,9 +1082,7 @@ const PromotionalBlocksPage = () => {
               <Typography variant="h3" fontWeight={900}>
                 {meta?.total || 0}
               </Typography>
-              <Typography color="text.secondary">
-                Total configurados
-              </Typography>
+              <Typography color="text.secondary">Total configurados</Typography>
             </Paper>
           </Grid>
         </Grid>
@@ -1158,15 +1193,33 @@ const PromotionalBlocksPage = () => {
                 {isFetching ? (
                   [...Array(4)].map((_, index) => (
                     <TableRow key={index}>
-                      <TableCell><Skeleton width={220} /></TableCell>
-                      <TableCell><Skeleton width={140} /></TableCell>
-                      <TableCell><Skeleton width={240} /></TableCell>
-                      <TableCell><Skeleton width={100} /></TableCell>
-                      <TableCell><Skeleton width={80} /></TableCell>
-                      <TableCell><Skeleton width={110} /></TableCell>
-                      <TableCell><Skeleton width={180} /></TableCell>
-                      <TableCell><Skeleton width={60} /></TableCell>
-                      <TableCell><Skeleton width={100} /></TableCell>
+                      <TableCell>
+                        <Skeleton width={220} />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton width={140} />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton width={240} />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton width={100} />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton width={80} />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton width={110} />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton width={180} />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton width={60} />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton width={100} />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : blocks.length === 0 ? (
@@ -1219,20 +1272,18 @@ const PromotionalBlocksPage = () => {
 
         <Alert severity="info" sx={{ mt: 3 }}>
           <Typography variant="body2">
-            Los bloques públicos se muestran en el website solo si están activos, visibles,
-            dentro del rango de fechas y pertenecen al tenant actual.
+            Los bloques públicos se muestran en el website solo si están
+            activos, visibles, dentro del rango de fechas y pertenecen al tenant
+            actual.
           </Typography>
         </Alert>
       </Container>
 
-      <Dialog
-        open={modalOpen}
-        onClose={closeModal}
-        maxWidth="lg"
-        fullWidth
-      >
+      <Dialog open={modalOpen} onClose={closeModal} maxWidth="lg" fullWidth>
         <DialogTitle>
-          {editingBlock ? 'Editar bloque promocional' : 'Nuevo bloque promocional'}
+          {editingBlock
+            ? 'Editar bloque promocional'
+            : 'Nuevo bloque promocional'}
         </DialogTitle>
 
         <DialogContent dividers>
@@ -1392,7 +1443,9 @@ const PromotionalBlocksPage = () => {
                 control={
                   <Switch
                     checked={form.isActive}
-                    onChange={event => setField('isActive', event.target.checked)}
+                    onChange={event =>
+                      setField('isActive', event.target.checked)
+                    }
                   />
                 }
                 label="Activo"
@@ -1465,7 +1518,8 @@ const PromotionalBlocksPage = () => {
                   filteredProducts.map(product => {
                     const productId = getEntityId(product)
                     const selected = selectedProductIds.has(productId)
-                    const disabled = !selected && form.products.length >= Number(form.maxItems)
+                    const disabled =
+                      !selected && form.products.length >= Number(form.maxItems)
 
                     return (
                       <ProductPickerCard
@@ -1490,7 +1544,9 @@ const PromotionalBlocksPage = () => {
                 <Stack spacing={2}>
                   {form.products.map((item, index) => {
                     const productId = getEntityId(item.productId)
-                    const product = normalizedProducts.find(p => getEntityId(p) === productId)
+                    const product = normalizedProducts.find(
+                      p => getEntityId(p) === productId,
+                    )
 
                     return (
                       <Paper key={productId} sx={{ p: 2, borderRadius: 2 }}>
@@ -1500,7 +1556,10 @@ const PromotionalBlocksPage = () => {
                               {product?.title || `Producto ${index + 1}`}
                             </Typography>
 
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
                               {productId}
                             </Typography>
                           </Grid>
@@ -1512,7 +1571,11 @@ const PromotionalBlocksPage = () => {
                               label="Etiqueta"
                               value={item.customLabel}
                               onChange={event =>
-                                updateSelectedProductField(productId, 'customLabel', event.target.value)
+                                updateSelectedProductField(
+                                  productId,
+                                  'customLabel',
+                                  event.target.value,
+                                )
                               }
                             />
                           </Grid>
@@ -1524,7 +1587,11 @@ const PromotionalBlocksPage = () => {
                               label="Título personalizado"
                               value={item.customTitle}
                               onChange={event =>
-                                updateSelectedProductField(productId, 'customTitle', event.target.value)
+                                updateSelectedProductField(
+                                  productId,
+                                  'customTitle',
+                                  event.target.value,
+                                )
                               }
                             />
                           </Grid>
@@ -1544,7 +1611,7 @@ const PromotionalBlocksPage = () => {
                                 updateSelectedProductField(
                                   productId,
                                   'discountPercentage',
-                                  event.target.value
+                                  event.target.value,
                                 )
                               }
                             />
@@ -1562,7 +1629,11 @@ const PromotionalBlocksPage = () => {
                                 max: 100,
                               }}
                               onChange={event =>
-                                updateSelectedProductField(productId, 'priority', event.target.value)
+                                updateSelectedProductField(
+                                  productId,
+                                  'priority',
+                                  event.target.value,
+                                )
                               }
                             />
                           </Grid>
@@ -1571,7 +1642,11 @@ const PromotionalBlocksPage = () => {
                             <Switch
                               checked={item.isActive !== false}
                               onChange={event =>
-                                updateSelectedProductField(productId, 'isActive', event.target.checked)
+                                updateSelectedProductField(
+                                  productId,
+                                  'isActive',
+                                  event.target.checked,
+                                )
                               }
                             />
                           </Grid>
@@ -1629,7 +1704,11 @@ const PromotionalBlocksPage = () => {
             ? `¿Estás seguro de eliminar definitivamente "${confirmDialog.block?.title}" de la base de datos? Esta acción no se puede deshacer.`
             : `¿Querés ${confirmDialog.block?.isActive ? 'desactivar' : 'activar'} "${confirmDialog.block?.title}"?`
         }
-        confirmText={confirmDialog.action === 'delete' ? 'Eliminar definitivamente' : 'Confirmar'}
+        confirmText={
+          confirmDialog.action === 'delete'
+            ? 'Eliminar definitivamente'
+            : 'Confirmar'
+        }
         confirmColor={confirmDialog.action === 'delete' ? 'error' : 'primary'}
         loading={isDeleting || isToggling}
         onConfirm={confirmAction}

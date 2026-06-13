@@ -17,20 +17,11 @@ const normalizeApiError = (error, fallback) => ({
   success: false,
   status: error?.response?.status || null,
   code: error?.response?.data?.code || null,
-  message:
-    error?.response?.data?.message ||
-    error?.message ||
-    fallback,
+  message: error?.response?.data?.message || error?.message || fallback,
   errors: error?.response?.data?.errors || [],
 })
 
-const apiRequest = async ({
-  method,
-  endpoint,
-  data,
-  params,
-  signal,
-}) => {
+const apiRequest = async ({ method, endpoint, data, params, signal }) => {
   try {
     const normalizedMethod = String(method || 'get').toLowerCase()
     const headers = {
@@ -54,7 +45,10 @@ const apiRequest = async ({
 
     return response.data
   } catch (error) {
-    return normalizeApiError(error, 'No se pudo completar la operación de órdenes')
+    return normalizeApiError(
+      error,
+      'No se pudo completar la operación de órdenes',
+    )
   }
 }
 

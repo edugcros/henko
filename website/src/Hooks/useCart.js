@@ -16,7 +16,9 @@ import {
 
 export const useCart = () => {
   const dispatch = useDispatch()
-  const { cartItems, cartTotal, isLoading } = useSelector(state => state.cart || {})
+  const { cartItems, cartTotal, isLoading } = useSelector(
+    state => state.cart || {},
+  )
   const user = useSelector(state => state.user?.user || null)
 
   // === Agregar producto ===

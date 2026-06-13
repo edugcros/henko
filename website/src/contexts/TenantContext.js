@@ -9,10 +9,7 @@ import React, {
 } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import tenantService from '../services/tenantService'
-import {
-  setPreviewMode,
-  updateLocalConfig,
-} from '@features/theme/themeSlice'
+import { setPreviewMode, updateLocalConfig } from '@features/theme/themeSlice'
 
 // ==========================================
 // CONFIGURACIÓN
@@ -133,7 +130,10 @@ export const TenantProvider = ({ children }) => {
 
   const loadTenantAndTheme = useCallback(
     async (attempt = 1) => {
-      if (typeof window !== 'undefined' && window.location.pathname === '/theme-preview') {
+      if (
+        typeof window !== 'undefined' &&
+        window.location.pathname === '/theme-preview'
+      ) {
         setLocalState(prev => ({
           ...prev,
           isLoading: false,
@@ -203,10 +203,10 @@ export const TenantProvider = ({ children }) => {
 
         // RETRY LOGIC
         if (attempt < CONFIG.RETRY_ATTEMPTS) {
-          await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY))
-          return loadTenantAndTheme(attempt + 1)
+          await new Promise(resolve => {
+            window.setTimeout(resolve, CONFIG.RETRY_DELAY)
+          })
         }
-
         // FALLBACK A CACHE
         const cached = loadFromCache()
         if (cached) {
@@ -228,7 +228,11 @@ export const TenantProvider = ({ children }) => {
           isLoading: false,
           error: {
             message: error.message,
-            isOffline: !navigator.onLine,
+            isOffline:
+              typeof window !== 'undefined' &&
+              typeof window.navigator !== 'undefined'
+                ? !window.navigator.onLine
+                : false,
             timestamp: Date.now(),
           },
           initialized: true,
@@ -253,7 +257,6 @@ export const TenantProvider = ({ children }) => {
 
       // Recargar
       await loadTenantAndTheme()
-
     } catch (error) {
       console.error('[TenantContext] Error en refresh:', error)
     }
@@ -424,7 +427,10 @@ export const withTenant = Component => {
       )
     }
 
-    return <Component {...props} tenant={tenant} />
+    return React.createElement(Component, {
+      ...props,
+      tenant,
+    })
   }
 }
 

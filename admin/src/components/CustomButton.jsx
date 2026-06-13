@@ -1,4 +1,4 @@
-import React from 'react';
+import React from 'react'
 import {
   Box,
   Typography,
@@ -12,7 +12,7 @@ import {
   Switch,
   FormControlLabel,
   Button,
-} from '@mui/material';
+} from '@mui/material'
 
 const CustomButton = ({ value, onChange, theme }) => {
   const buttons = {
@@ -22,33 +22,35 @@ const CustomButton = ({ value, onChange, theme }) => {
     size: 'medium',
     variant: 'contained',
     ...(value || {}),
-  };
-  const colors = theme?.colors || {};
-  const actionPrimary = colors.actionPrimary || '#1976d2';
-  const actionPrimaryText = colors.actionPrimaryText || '#ffffff';
-  const actionSecondary = colors.actionSecondary || '#dc004e';
-  const actionSecondaryText = colors.actionSecondaryText || '#ffffff';
+  }
+  const colors = theme?.colors || {}
+  const actionPrimary = colors.actionPrimary || '#1976d2'
+  const actionPrimaryText = colors.actionPrimaryText || '#ffffff'
+  const actionSecondary = colors.actionSecondary || '#dc004e'
+  const actionSecondaryText = colors.actionSecondaryText || '#ffffff'
 
   const handleChange = (field, newValue) => {
-    onChange({ ...buttons, [field]: newValue });
-  };
+    onChange({ ...buttons, [field]: newValue })
+  }
 
   const sizeOptions = [
     { value: 'small', label: 'Pequeño' },
     { value: 'medium', label: 'Mediano' },
     { value: 'large', label: 'Grande' },
-  ];
+  ]
 
   const variantOptions = [
     { value: 'text', label: 'Texto' },
     { value: 'outlined', label: 'Contorno' },
     { value: 'contained', label: 'Sólido' },
-  ];
+  ]
 
   return (
     <Paper sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom>Configuración de Botones</Typography>
-      
+      <Typography variant="h6" gutterBottom>
+        Configuración de Botones
+      </Typography>
+
       <Grid container spacing={3}>
         {/* Radio de bordes */}
         <Grid item xs={12}>
@@ -62,7 +64,11 @@ const CustomButton = ({ value, onChange, theme }) => {
               min={0}
               max={24}
               step={1}
-              marks={[{ value: 0, label: '0' }, { value: 12, label: '12' }, { value: 24, label: '24' }]}
+              marks={[
+                { value: 0, label: '0' },
+                { value: 12, label: '12' },
+                { value: 24, label: '24' },
+              ]}
               valueLabelDisplay="auto"
             />
           </Box>
@@ -92,7 +98,7 @@ const CustomButton = ({ value, onChange, theme }) => {
             control={
               <Switch
                 checked={buttons.uppercase}
-                onChange={(e) => handleChange('uppercase', e.target.checked)}
+                onChange={e => handleChange('uppercase', e.target.checked)}
               />
             }
             label="Texto en Mayúsculas"
@@ -105,10 +111,12 @@ const CustomButton = ({ value, onChange, theme }) => {
             <InputLabel>Tamaño por Defecto</InputLabel>
             <Select
               value={buttons.size}
-              onChange={(e) => handleChange('size', e.target.value)}
+              onChange={e => handleChange('size', e.target.value)}
             >
-              {sizeOptions.map((opt) => (
-                <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+              {sizeOptions.map(opt => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -120,10 +128,12 @@ const CustomButton = ({ value, onChange, theme }) => {
             <InputLabel>Variante por Defecto</InputLabel>
             <Select
               value={buttons.variant}
-              onChange={(e) => handleChange('variant', e.target.value)}
+              onChange={e => handleChange('variant', e.target.value)}
             >
-              {variantOptions.map((opt) => (
-                <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+              {variantOptions.map(opt => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -131,18 +141,38 @@ const CustomButton = ({ value, onChange, theme }) => {
       </Grid>
 
       {/* Preview */}
-      <Box sx={{ mt: 4, p: 3, bgcolor: 'grey.100', borderRadius: 2, textAlign: 'center' }}>
-        <Typography variant="subtitle2" gutterBottom>Vista Previa</Typography>
-        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+      <Box
+        sx={{
+          mt: 4,
+          p: 3,
+          bgcolor: 'grey.100',
+          borderRadius: 2,
+          textAlign: 'center',
+        }}
+      >
+        <Typography variant="subtitle2" gutterBottom>
+          Vista Previa
+        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 2,
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
           <Button
             variant={buttons.variant}
             size={buttons.size}
-            sx={{ 
+            sx={{
               borderRadius: buttons.radius,
               textTransform: buttons.uppercase ? 'uppercase' : 'none',
               bgcolor: actionPrimary,
               color: actionPrimaryText,
-              boxShadow: buttons.elevation > 0 ? `0 ${buttons.elevation * 2}px ${buttons.elevation * 6}px rgba(0,0,0,0.18)` : 'none',
+              boxShadow:
+                buttons.elevation > 0
+                  ? `0 ${buttons.elevation * 2}px ${buttons.elevation * 6}px rgba(0,0,0,0.18)`
+                  : 'none',
               '&:hover': {
                 bgcolor: actionPrimary,
                 color: actionPrimaryText,
@@ -155,16 +185,28 @@ const CustomButton = ({ value, onChange, theme }) => {
           <Button
             variant={buttons.variant === 'contained' ? 'outlined' : 'contained'}
             size={buttons.size}
-            sx={{ 
+            sx={{
               borderRadius: buttons.radius,
               textTransform: buttons.uppercase ? 'uppercase' : 'none',
               borderColor: actionSecondary,
-              color: buttons.variant === 'contained' ? actionSecondaryText : actionSecondary,
-              bgcolor: buttons.variant === 'contained' ? actionSecondary : 'transparent',
+              color:
+                buttons.variant === 'contained'
+                  ? actionSecondaryText
+                  : actionSecondary,
+              bgcolor:
+                buttons.variant === 'contained'
+                  ? actionSecondary
+                  : 'transparent',
               '&:hover': {
                 borderColor: actionSecondary,
-                color: buttons.variant === 'contained' ? actionSecondaryText : actionSecondary,
-                bgcolor: buttons.variant === 'contained' ? actionSecondary : 'transparent',
+                color:
+                  buttons.variant === 'contained'
+                    ? actionSecondaryText
+                    : actionSecondary,
+                bgcolor:
+                  buttons.variant === 'contained'
+                    ? actionSecondary
+                    : 'transparent',
                 filter: 'brightness(0.92)',
               },
             }}
@@ -174,7 +216,7 @@ const CustomButton = ({ value, onChange, theme }) => {
         </Box>
       </Box>
     </Paper>
-  );
-};
+  )
+}
 
-export default CustomButton;
+export default CustomButton

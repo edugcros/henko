@@ -1,10 +1,25 @@
 // src/components/checkout/CartItemEditable.jsx
 import React from 'react'
-import { Box, Typography, TextField, Button, IconButton, Paper, Tooltip } from '@mui/material'
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  IconButton,
+  Paper,
+  Tooltip,
+} from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { Link } from 'react-router-dom'
 
-const CartItemEditable = ({ item, quantity, onQuantityChange, onUpdate, onRemove, isUpdating }) => {
+const CartItemEditable = ({
+  item,
+  quantity,
+  onQuantityChange,
+  onUpdate,
+  onRemove,
+  isUpdating,
+}) => {
   const productId = item.productId?._id || item.productId
   const needsUpdate = quantity !== item.quantity
 
@@ -71,7 +86,10 @@ const CartItemEditable = ({ item, quantity, onQuantityChange, onUpdate, onRemove
             >
               {item.title}
             </Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#000', whiteSpace: 'nowrap' }}>
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 700, color: '#000', whiteSpace: 'nowrap' }}
+            >
               ${(item.price * item.quantity).toLocaleString()}
             </Typography>
           </Box>
@@ -108,14 +126,19 @@ const CartItemEditable = ({ item, quantity, onQuantityChange, onUpdate, onRemove
                 border: '1px solid #D5D9D9',
               }}
             >
-              <Typography variant="caption" sx={{ mr: 1, color: '#565959', fontWeight: 700 }}>
+              <Typography
+                variant="caption"
+                sx={{ mr: 1, color: '#565959', fontWeight: 700 }}
+              >
                 Cant:
               </Typography>
               <TextField
                 type="number"
                 variant="standard"
                 value={quantity}
-                onChange={e => onQuantityChange(productId, e.target.value, item.stock)}
+                onChange={e =>
+                  onQuantityChange(productId, e.target.value, item.stock)
+                }
                 disabled={isUpdating}
                 InputProps={{ disableUnderline: true }}
                 inputProps={{
@@ -161,7 +184,11 @@ const CartItemEditable = ({ item, quantity, onQuantityChange, onUpdate, onRemove
             </Tooltip>
           </Box>
 
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', mt: 0.5 }}
+          >
             ${item.price.toLocaleString()} c/u
           </Typography>
         </Box>

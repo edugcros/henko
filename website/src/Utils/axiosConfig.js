@@ -12,10 +12,10 @@ export const setApiStore = store => {
 
 const clearClientAuthState = () => {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('token')
-    sessionStorage.removeItem('user')
-    sessionStorage.removeItem('wishlist')
-    sessionStorage.removeItem('csrfToken')
+    window.localStorage.removeItem('token')
+    window.sessionStorage.removeItem('user')
+    window.sessionStorage.removeItem('wishlist')
+    window.sessionStorage.removeItem('csrfToken')
   }
 
   Cookies.remove('token', { path: '/' })
@@ -37,11 +37,7 @@ const assertApiBaseUrl = () => {
   }
 
   if (env.isProduction) {
-    const forbiddenValues = [
-      'localhost',
-      '127.0.0.1',
-      'henko.local',
-    ]
+    const forbiddenValues = ['localhost', '127.0.0.1', 'henko.local']
 
     forbiddenValues.forEach(value => {
       if (String(env.apiBaseUrl).includes(value)) {
@@ -78,9 +74,7 @@ const isValidToken = token => {
 const getAuthToken = () => {
   const cookieToken = Cookies.get('token')
   const localToken =
-    typeof window !== 'undefined'
-      ? localStorage.getItem('token')
-      : null
+    typeof window !== 'undefined' ? localStorage.getItem('token') : null
 
   if (isValidToken(cookieToken)) return cookieToken
   if (isValidToken(localToken)) return localToken
@@ -88,19 +82,33 @@ const getAuthToken = () => {
   return null
 }
 
+const createMetricSessionId = () => {
+  if (
+    typeof window !== 'undefined' &&
+    window.crypto &&
+    typeof window.crypto.randomUUID === 'function'
+  ) {
+    return window.crypto.randomUUID()
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 const getMetricSessionId = () => {
   if (typeof window === 'undefined') return null
 
-  let sessionId = localStorage.getItem(METRIC_SESSION_KEY)
+  try {
+    let sessionId = window.localStorage.getItem(METRIC_SESSION_KEY)
 
-  if (!sessionId) {
-    sessionId = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-    localStorage.setItem(METRIC_SESSION_KEY, sessionId)
+    if (!sessionId) {
+      sessionId = createMetricSessionId()
+      window.localStorage.setItem(METRIC_SESSION_KEY, sessionId)
+    }
+
+    return sessionId
+  } catch {
+    return createMetricSessionId()
   }
-
-  return sessionId
 }
 
 const isSafeMethod = method => {
@@ -150,13 +158,13 @@ const api = axios.create({
 })
 
 if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-  console.log('[WEBSITE API BOOT]', {
+  /*console.log('[WEBSITE API BOOT]', {
     apiBaseUrl: env.apiBaseUrl,
     nodeEnv: env.nodeEnv,
     publicBaseDomain: env.publicBaseDomain,
     tenantHeader: env.tenantHeader,
     csrfHeaderName: env.csrfHeaderName,
-  })
+  })*/
 }
 
 // =====================================================
@@ -294,7 +302,7 @@ api.interceptors.request.use(
     }
 
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-      console.log('[WEBSITE API REQUEST]', {
+      /*console.log('[WEBSITE API REQUEST]', {
         method: requestConfig.method,
         baseURL: requestConfig.baseURL,
         url: requestConfig.url,
@@ -302,7 +310,7 @@ api.interceptors.request.use(
         tenant: requestConfig.headers[getTenantHeaderName()],
         hasAuth: Boolean(requestConfig.headers.Authorization),
         hasCsrf: Boolean(requestConfig.headers[getCsrfHeaderName()]),
-      })
+      })*/
     }
 
     return requestConfig
@@ -338,7 +346,7 @@ api.interceptors.response.use(
     const message = error.response?.data?.message || ''
 
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-      console.log('[WEBSITE API RESPONSE ERROR DEBUG]', {
+      /*console.log('[WEBSITE API RESPONSE ERROR DEBUG]', {
         host: typeof window !== 'undefined' ? window.location.host : null,
         tenantHeaderName: getTenantHeaderName(),
         tenantHeaderValue:
@@ -350,7 +358,7 @@ api.interceptors.response.use(
         fullURL: `${originalRequest.baseURL || ''}${originalRequest.url || ''}`,
         status,
         code,
-      })
+      })*/
     }
 
     // =====================================================
@@ -359,10 +367,7 @@ api.interceptors.response.use(
 
     const isCsrfError =
       status === 403 &&
-      (
-        code === 'EBADCSRFTOKEN' ||
-        message.toLowerCase().includes('csrf')
-      )
+      (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
 
     if (
       isCsrfError &&

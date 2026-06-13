@@ -32,7 +32,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .empty-icon {
@@ -369,21 +371,21 @@
   .data-table {
     font-size: 13px;
   }
-  
+
   .data-table th,
   .data-table td {
     padding: 12px 8px;
   }
-  
+
   .description-cell {
     max-width: 120px;
   }
-  
+
   .action-buttons {
     flex-direction: column;
     gap: 4px;
   }
-  
+
   .btn-icon {
     width: 28px;
     height: 28px;
@@ -414,7 +416,7 @@
   .status-badge {
     border: 1px solid currentColor;
   }
-  
+
   .discount-value {
     border: 1px solid white;
   }
@@ -442,9 +444,15 @@
 }
 
 /* Colores de acciones en el menú */
-.menu-item.success { color: #2e7d32; }
-.menu-item.warning { color: #ed6c02; }
-.menu-item.danger { color: #d32f2f; }
+.menu-item.success {
+  color: #2e7d32;
+}
+.menu-item.warning {
+  color: #ed6c02;
+}
+.menu-item.danger {
+  color: #d32f2f;
+}
 
 .menu-item:disabled {
   opacity: 0.5;
@@ -474,5 +482,9 @@
   transition: width 0.3s ease;
 }
 
-.progress-bar.warning .progress-fill { background: #ff9800; }
-.progress-bar.danger .progress-fill { background: #f44336; }
+.progress-bar.warning .progress-fill {
+  background: #ff9800;
+}
+.progress-bar.danger .progress-fill {
+  background: #f44336;
+}
