@@ -71,6 +71,7 @@ export const buildAdminOrdersQuery = async ({
         { lastname: safeRegex },
       ],
     })
+      .setOptions({ tenantId: String(tenantObjectId) })
       .select('_id')
       .lean()
 

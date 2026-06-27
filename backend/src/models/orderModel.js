@@ -817,16 +817,6 @@ const orderSchema = new Schema(
       default: null,
     },
 
-    adminEmailSent: {
-      type: Boolean,
-      default: false,
-    },
-
-    adminEmailSentAt: {
-      type: Date,
-      default: null,
-    },
-
     deletedAt: {
       type: Date,
       default: null,

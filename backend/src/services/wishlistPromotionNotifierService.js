@@ -13,6 +13,9 @@ import { sendEmail } from './emailService.js'
 import { env } from '../../config/env.js'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const DEFAULT_STOREFRONT_DEV_PORT = String(
+  env.storefrontPort || process.env.STOREFRONT_PORT || 3002,
+)
 
 const ADMIN_ROLES = new Set([
   'admin',
@@ -117,6 +120,21 @@ const isCustomerLikeUser = user => {
   return CUSTOMER_ROLES.has(role) && !isAdminLikeUser(user)
 }
 
+const canReceivePromotionEmails = user => {
+  if (!user) return false
+  if (user.isBlocked === true) return false
+  if (user.unsubscribed === true) return false
+  if (user.unsubscribeAll === true) return false
+  if (user.marketingConsent === false) return false
+  if (user.emailMarketingConsent === false) return false
+  if (user.notifications?.promotions === false) return false
+  if (user.notifications?.emailPromotions === false) return false
+  if (user.preferences?.promotions === false) return false
+  if (user.preferences?.emailPromotions === false) return false
+
+  return true
+}
+
 const getTenantOwnerIds = tenant => {
   return [
     tenant?.ownerUserId,
@@ -210,11 +228,35 @@ const buildStoreUrl = tenant => {
   return configured.replace(/\/+$/, '')
 }
 
+const normalizeStoreUrlForRuntime = storeUrl => {
+  const cleanUrl = sanitizeString(storeUrl).replace(/\/+$/, '')
+
+  if (!cleanUrl) return ''
+
+  try {
+    const url = new URL(cleanUrl)
+    const isLocalDomain =
+      url.hostname === 'localhost' ||
+      url.hostname === '127.0.0.1' ||
+      url.hostname.endsWith('.local')
+
+    if (isLocalDomain && !url.port) {
+      url.port = DEFAULT_STOREFRONT_DEV_PORT
+    }
+
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    return cleanUrl
+  }
+}
+
 const buildProductUrl = ({ tenant, product }) => {
-  const storeUrl = buildStoreUrl(tenant)
+  const storeUrl = normalizeStoreUrlForRuntime(buildStoreUrl(tenant))
   if (!storeUrl || !product?._id) return ''
 
-  return `${storeUrl}:3002/product/${product._id}`
+  const productSlugOrId = sanitizeString(product.slug) || String(product._id)
+
+  return `${storeUrl}/product/${encodeURIComponent(productSlugOrId)}`
 }
 
 const getProductImage = product => {
@@ -252,7 +294,6 @@ const buildPromotionEmail = ({ tenant, user, product, promotion }) => {
     'Promoción especial'
 
   const subject = `${productTitle} tiene ${discount}% OFF en ${storeName}`
-
   const html = `
     <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
       <h2 style="margin: 0 0 12px;">Hola ${escapeHtml(userName)},</h2>
@@ -320,7 +361,7 @@ const getActivePromotionItems = async ({
     tenantId,
     isDeleted: false,
     isActive: true,
-    visibility: 'public',
+    visibility: { $in: ['public', 'visible', 'published'] },
     startDate: { $lte: now },
     endDate: { $gte: now },
     products: {
@@ -414,10 +455,16 @@ const getWishlistProductIdsFromMetrics = async ({
   productIds,
   userId = null,
 }) => {
+  const productIdStrings = (productIds || []).map(id => String(id))
+
   const events = await UserMetricEvent.find({
     tenantId,
-    productId: { $in: productIds },
     userId: userId || { $ne: null },
+    $or: [
+      { productId: { $in: productIds } },
+      { productRef: { $in: productIdStrings } },
+      { 'metadata.productId': { $in: productIdStrings } },
+    ],
     eventType: {
       $in: [
         USER_METRIC_EVENTS.WISHLIST_ADD,
@@ -427,18 +474,29 @@ const getWishlistProductIdsFromMetrics = async ({
   })
     .sort({ occurredAt: -1, createdAt: -1 })
     .limit(5000)
-    .select('userId productId eventType occurredAt createdAt')
+    .select('userId productId productRef eventType occurredAt createdAt metadata')
     .lean()
 
   const latestByUserProduct = new Map()
 
   events.forEach(event => {
-    if (!event.userId || !event.productId) return
+    if (!event.userId) return
 
-    const key = `${String(event.userId)}::${String(event.productId)}`
+    const productKey =
+      event.productId ||
+      event.productRef ||
+      event.metadata?.productId ||
+      ''
+
+    if (!productKey) return
+
+    const key = `${String(event.userId)}::${String(productKey)}`
 
     if (!latestByUserProduct.has(key)) {
-      latestByUserProduct.set(key, event)
+      latestByUserProduct.set(key, {
+        ...event,
+        productKey: String(productKey),
+      })
     }
   })
 
@@ -450,12 +508,13 @@ const getWishlistProductIdsFromMetrics = async ({
     const userKey = String(event.userId)
     const current = productIdsByUser.get(userKey) || new Set()
 
-    current.add(String(event.productId))
+    current.add(String(event.productKey))
     productIdsByUser.set(userKey, current)
   })
 
   return productIdsByUser
 }
+
 
 
 
@@ -606,7 +665,7 @@ export const notifyWishlistPromotions = async ({
   const usersFromWishlist = await User.find(userQuery)
     .setOptions({ tenantId: normalizedTenantId })
     .select(
-      '_id email firstname lastname firstName lastName name wishlist role userType accountType type isAdmin isOwner isSuperAdmin',
+      '_id email firstname lastname firstName lastName name wishlist role userType accountType type isAdmin isOwner isSuperAdmin isBlocked unsubscribed unsubscribeAll marketingConsent emailMarketingConsent notifications preferences',
     )
     .limit(safeLimit)
     .lean()
@@ -630,7 +689,7 @@ export const notifyWishlistPromotions = async ({
     })
       .setOptions({ tenantId: normalizedTenantId })
       .select(
-        '_id email firstname lastname firstName lastName name wishlist role userType accountType type isAdmin isOwner isSuperAdmin',
+        '_id email firstname lastname firstName lastName name wishlist role userType accountType type isAdmin isOwner isSuperAdmin isBlocked unsubscribed unsubscribeAll marketingConsent emailMarketingConsent notifications preferences',
       )
       .limit(Math.max(0, safeLimit - usersById.size))
       .lean()
@@ -692,6 +751,17 @@ export const notifyWishlistPromotions = async ({
       continue
     }
 
+    if (!canReceivePromotionEmails(user)) {
+      skipped += 1
+      results.push({
+        status: 'skipped',
+        reason: 'marketing_consent_disabled',
+        email: recipientEmail,
+        userId: user._id,
+      })
+      continue
+    }
+
     const wishlistSet = new Set(
       (user.wishlist || []).map(id => String(id)),
     )
@@ -732,6 +802,7 @@ export const notifyWishlistPromotions = async ({
 
       const existing =
         await WishlistPromotionNotification.findOne(notificationKey)
+          .setOptions({ tenantId: normalizedTenantId })
 
       if (existing?.status === 'sent' || existing?.status === 'pending') {
         skipped += 1

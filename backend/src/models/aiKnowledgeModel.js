@@ -5,7 +5,13 @@ const { Schema } = mongoose
 
 const aiKnowledgeSchema = new Schema(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true, immutable: true },
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: true,
+      index: true,
+      immutable: true,
+    },
     type: {
       type: String,
       enum: ['faq', 'policy', 'product_hint', 'objection', 'sales_script', 'custom', 'learning_suggestion'],
@@ -17,11 +23,23 @@ const aiKnowledgeSchema = new Schema(
     source: { type: String, enum: ['admin', 'conversation', 'import', 'system'], default: 'admin' },
     status: { type: String, enum: ['draft', 'pending_approval', 'approved', 'rejected', 'archived'], default: 'approved', index: true },
     confidence: { type: Number, default: 1, min: 0, max: 1 },
-    tags: { type: [String], default: [] },
+    tags: {
+      type: [String],
+      default: [],
+      set: value => (Array.isArray(value) ? [...new Set(value.map(item => String(item || '').trim().toLowerCase()).filter(Boolean))].slice(0, 80) : []),
+    },
+    relatedSuggestionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'AiLearningSuggestion',
+      default: null,
+    },
     relatedConversationId: { type: Schema.Types.ObjectId, ref: 'AiConversation', default: null },
     approvedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     approvedAt: { type: Date, default: null },
+    archivedAt: { type: Date, default: null },
+    metadata: { type: Schema.Types.Mixed, default: {} },
   },
+  
   { timestamps: true },
 )
 

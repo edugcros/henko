@@ -1,345 +1,395 @@
-// src/pages/ThemeCustomizer.jsx - VERSIÓN PRODUCCIÓN REFACTORIZADA
-import React, { useState, useMemo, useCallback, useEffect } from 'react'
+// src/pages/ThemeCustomizer.jsx - Store Design admin
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
-  Box,
-  Drawer,
-  AppBar,
-  Toolbar,
-  Typography,
-  Button,
-  Tabs,
-  Tab,
-  Paper,
-  TextField,
-  Chip,
   Alert,
-  Snackbar,
-  Divider,
-  IconButton,
-  Tooltip,
-  Switch,
-  FormControlLabel,
-  CircularProgress,
+  AppBar,
   Badge,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Divider,
+  Drawer,
+  FormControlLabel,
+  IconButton,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  ListSubheader,
+  Paper,
+  Snackbar,
   Stack,
+  Switch,
+  TextField,
+  Toolbar,
+  Tooltip,
+  Typography,
+  useMediaQuery,
 } from '@mui/material'
-
 import {
-  Save as SaveIcon,
-  Refresh as ResetIcon,
-  Palette as PaletteIcon,
-  TextFields as TextFieldsIcon,
-  SmartButton as SmartButtonIcon,
-  ViewCompact as ViewCompactIcon,
-  Settings as SettingsIcon,
-  Image as ImageIcon,
+  ThemeProvider,
+  alpha,
+  useTheme as useMuiTheme,
+} from '@mui/material/styles'
+import {
   Animation as AnimationIcon,
-  Tune as TuneIcon,
-  ShoppingBag as ShoppingBagIcon,
-  Web as WebIcon,
-  Preview as PreviewIcon,
-  History as HistoryIcon,
+  ArrowBack as ArrowBackIcon,
+  ChevronRight as ChevronRightIcon,
   CloudUpload as CloudUploadIcon,
+  History as HistoryIcon,
+  Image as ImageIcon,
+  Menu as MenuIcon,
+  OpenInFull as FocusPreviewIcon,
+  Palette as PaletteIcon,
+  Preview as PreviewIcon,
+  Refresh as ResetIcon,
+  Save as SaveIcon,
+  Settings as SettingsIcon,
+  ShoppingBag as ShoppingBagIcon,
+  SmartButton as SmartButtonIcon,
+  TextFields as TextFieldsIcon,
+  Tune as TuneIcon,
+  ViewCompact as ViewCompactIcon,
+  Web as WebIcon,
 } from '@mui/icons-material'
 
-import { ThemeProvider } from '@mui/material/styles'
 import adminBaseTheme from '../theme/muiTheme'
 import { useTheme } from '@hooks/useThemeConfig'
+import {
+  AdvancedEditor,
+  AnimationsEditor,
+  ColorsPanel,
+  CustomButton,
+  FooterEditor,
+  HeaderEditor,
+  HeroPanel as HeroEditor,
+  LayoutEditor,
+  LivePreview,
+  ProductsEditor,
+  SpacingEditor,
+  TypographyEditor,
+  VersionHistory,
+} from '@features/theme/editors'
 
-// Panels
-import ColorsPanel from '@components/ColorsPanel'
-import TypographyEditor from '@components/TypographyEditor'
-import SpacingEditor from '@components/SpacingEditor'
-import CustomButton from '@components/CustomButton'
-import LayoutEditor from '@components/LayoutEditor'
-import HeroEditor from '@components/HeroPanel'
-import HeaderEditor from '@components/HeaderEditor'
-import FooterEditor from '@components/FooterEditor'
-import ProductsEditor from '@components/ProductsEditor'
-import AnimationsEditor from '@components/AnimationsEditor'
-import AdvancedEditor from '@components/AdvancedEditor'
-import LivePreview from '@components/LivePreview'
-import VersionHistory from '@components/VersionHistory'
+const APP_BAR_HEIGHT = 72
+const DRAWER_WIDTH = 440
 
-const DRAWER_WIDTH = 380
+const SECTION_LIBRARY = [
+  {
+    id: 'colors',
+    label: 'Colores',
+    description: 'Paleta semántica del storefront.',
+    appliesTo: 'Fondo, textos, header, cards, botones, precios y estados.',
+    icon: <PaletteIcon fontSize="small" />,
+    help: 'Cada color tiene un rol concreto. La edición está separada por marca, layout, header, cards, acciones y señales comerciales.',
+  },
+  {
+    id: 'typography',
+    label: 'Tipografía',
+    description: 'Fuentes, lectura y jerarquía visual.',
+    appliesTo: 'Títulos, párrafos, texto auxiliar, links y botones.',
+    icon: <TextFieldsIcon fontSize="small" />,
+    help: 'Define cómo se lee la tienda: familias tipográficas, escala base, títulos H1-H6 y texto secundario.',
+  },
+  {
+    id: 'spacing',
+    label: 'Espaciado',
+    description: 'Densidad, aire y radios.',
+    appliesTo: 'Separación entre secciones, contenedores, cards y bordes.',
+    icon: <TuneIcon fontSize="small" />,
+    help: 'Controla la respiración visual del sitio y evita layouts apretados o demasiado dispersos.',
+  },
+  {
+    id: 'buttons',
+    label: 'Botones',
+    description: 'Jerarquía y apariencia de acciones.',
+    appliesTo:
+      'CTA primarios, secundarios, estados hover y botones reutilizables.',
+    icon: <SmartButtonIcon fontSize="small" />,
+    help: 'Afecta los botones de compra, navegación, formularios y llamadas a la acción.',
+  },
+  {
+    id: 'layout',
+    label: 'Layout',
+    description: 'Estructura general de página.',
+    appliesTo: 'Anchos máximos, padding de contenedor, radios y sombras.',
+    icon: <ViewCompactIcon fontSize="small" />,
+    help: 'Define el marco donde se renderiza la tienda y la sensación general del layout.',
+  },
+  {
+    id: 'hero',
+    label: 'Hero',
+    description: 'Bloque principal de la Home.',
+    appliesTo: 'Banner superior, imagen, alineación, textos destacados y CTA.',
+    icon: <ImageIcon fontSize="small" />,
+    help: 'Edita el primer impacto visual de la tienda y su bloque de comunicación principal.',
+  },
+  {
+    id: 'header-footer',
+    label: 'Header / Footer',
+    description: 'Navegación, identidad y cierre.',
+    appliesTo: 'Header, logo, navegación, iconos, newsletter, footer y redes.',
+    icon: <WebIcon fontSize="small" />,
+    help: 'Agrupa los elementos persistentes que acompañan al usuario durante toda la tienda.',
+  },
+  {
+    id: 'products',
+    label: 'Productos',
+    description: 'Listado y cards comerciales.',
+    appliesTo: 'Grilla, cards, imagen, badges, precio, rating y acciones.',
+    icon: <ShoppingBagIcon fontSize="small" />,
+    help: 'Controla cómo se presentan los productos en catálogo y bloques destacados.',
+  },
+  {
+    id: 'animations',
+    label: 'Animaciones',
+    description: 'Movimiento y microinteracciones.',
+    appliesTo: 'Hover, transiciones, apariciones y sensación de respuesta.',
+    icon: <AnimationIcon fontSize="small" />,
+    help: 'Ajusta movimiento sin comprometer performance o legibilidad en mobile.',
+  },
+  {
+    id: 'advanced',
+    label: 'Avanzado',
+    description: 'CSS y JS custom.',
+    appliesTo: 'Reglas globales y ajustes específicos del tema.',
+    icon: <SettingsIcon fontSize="small" />,
+    help: 'Reservado para ajustes puntuales que no estén cubiertos por los controles visuales.',
+  },
+]
 
-// ==========================================
-// COMPONENTE PRINCIPAL
-// ==========================================
+const VIEWPORT_CONFIG = {
+  desktop: { label: 'Desktop', width: '100%', maxWidth: '100%' },
+  tablet: { label: 'Tablet', width: '820px', maxWidth: '100%' },
+  mobile: { label: 'Mobile', width: '390px', maxWidth: '100%' },
+}
+
+const findActiveSection = id =>
+  SECTION_LIBRARY.find(section => section.id === id) || SECTION_LIBRARY[0]
 
 const ThemeCustomizer = () => {
+  const muiTheme = useMuiTheme()
+  const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const { tenantId } = useParams()
 
-  // UI State local
-  const [activeTab, setActiveTab] = useState(0)
+  const [activeSectionId, setActiveSectionId] = useState('colors')
+  const [showHistory, setShowHistory] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [showError, setShowError] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
-  const [previewViewport, setPreviewViewport] = useState('desktop') // desktop | tablet | mobile
+  const [previewViewport, setPreviewViewport] = useState('desktop')
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+  const [focusPreview, setFocusPreview] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(true)
 
-  // Hook de tema (Redux)
   const {
-    // Data
-    theme,
+    activatePreview,
     activeTheme,
-    hasChanges,
-
-    // Status
-    isLoading,
-    isSaving,
-    error,
-
-    // Auto-save
     autoSaveEnabled,
-    lastSaved,
     autoSaveError,
-    toggleAutoSave,
-
-    // Preview system
-    previewMode,
-    previewId,
-    togglePreview,
+    clearError,
     clearPreview,
     createPreview,
-
-    // Actions
+    discard,
+    error,
+    hasChanges,
+    isLoading,
+    isSaving,
+    lastSaved,
+    loadHistory,
+    previewId,
+    previewMode,
+    reset,
+    rollback,
+    save,
+    setSection,
+    theme,
+    toggleAutoSave,
+    togglePreview,
     updateField,
     updateSection,
-    save,
-    discard,
-    reset,
-
-    // Images
     uploadImage,
-
-    // Versioning
-    rollback,
   } = useTheme()
 
-  // ==========================================
-  // EFECTOS
-  // ==========================================
-
-  // Mostrar errores del hook
-  useEffect(() => {
-    if (error || autoSaveError) {
-      setShowError(true)
-    }
-  }, [error, autoSaveError])
-
-  // Crear preview al entrar en modo preview
-  useEffect(() => {
-    if (previewMode && !previewId && hasChanges) {
-      createPreview()
-    }
-  }, [previewMode, previewId, hasChanges, createPreview])
-
-  // ==========================================
-  // CONFIGURACIÓN TABS
-  // ==========================================
-
-  const tabs = useMemo(
-    () => [
-      { icon: <PaletteIcon />, label: 'Colores', id: 'colors', hasPanel: true },
-      {
-        icon: <TextFieldsIcon />,
-        label: 'Tipografía',
-        id: 'typography',
-        hasPanel: true,
-      },
-      { icon: <TuneIcon />, label: 'Espaciado', id: 'spacing', hasPanel: true },
-      {
-        icon: <SmartButtonIcon />,
-        label: 'Botones',
-        id: 'buttons',
-        hasPanel: true,
-      },
-      {
-        icon: <ViewCompactIcon />,
-        label: 'Layout',
-        id: 'layout',
-        hasPanel: true,
-      },
-      { icon: <ImageIcon />, label: 'Hero', id: 'hero', hasPanel: true },
-      {
-        icon: <WebIcon />,
-        label: 'Header/Footer',
-        id: 'header-footer',
-        hasPanel: true,
-      },
-      {
-        icon: <ShoppingBagIcon />,
-        label: 'Productos',
-        id: 'products',
-        hasPanel: true,
-      },
-      {
-        icon: <AnimationIcon />,
-        label: 'Animaciones',
-        id: 'animations',
-        hasPanel: true,
-      },
-      {
-        icon: <SettingsIcon />,
-        label: 'Avanzado',
-        id: 'advanced',
-        hasPanel: true,
-      },
-    ],
-    [],
+  const activeSection = useMemo(
+    () => findActiveSection(activeSectionId),
+    [activeSectionId],
   )
 
-  // ==========================================
-  // HANDLERS
-  // ==========================================
+  const sectionData = useMemo(() => {
+    if (!theme) return {}
+    if (activeSectionId === 'header-footer') {
+      return {
+        header: theme.header || {},
+        footer: theme.footer || {},
+      }
+    }
+    return theme[activeSectionId] || {}
+  }, [activeSectionId, theme])
+
+  useEffect(() => {
+    if (error || autoSaveError) setShowError(true)
+  }, [error, autoSaveError])
+
+  useEffect(() => {
+    if (previewMode && !previewId && !isSaving) createPreview()
+  }, [createPreview, isSaving, previewId, previewMode])
+
+  useEffect(() => {
+    if (!isMobile) setMobileDrawerOpen(false)
+  }, [isMobile])
+
+  useEffect(() => {
+    setSection?.(activeSectionId)
+  }, [activeSectionId, setSection])
+
+  const handleSectionSelect = useCallback(sectionId => {
+    setActiveSectionId(sectionId)
+    setFocusPreview(false)
+    setSettingsOpen(true)
+  }, [])
 
   const handleSave = useCallback(async () => {
     const result = await save()
-    if (result.meta?.requestStatus === 'fulfilled') {
+    if (result?.meta?.requestStatus === 'fulfilled') {
       setShowSuccess(true)
-      clearPreview() // Limpiar preview si existía
+      clearPreview()
     } else {
       setShowError(true)
     }
-  }, [save, clearPreview])
+  }, [clearPreview, save])
 
   const handleReset = useCallback(async () => {
-    if (
-      window.confirm(
-        '¿Resetear todo el tema a valores por defecto? Se perderán todos los cambios.',
-      )
-    ) {
-      const result = await reset()
-      if (result.meta?.requestStatus === 'fulfilled') {
-        setShowSuccess(true)
-      }
+    const shouldReset = window.confirm(
+      '¿Resetear todo el tema a valores por defecto? Esta acción no se puede deshacer.',
+    )
+    if (!shouldReset) return
+
+    const result = await reset()
+    if (result?.meta?.requestStatus === 'fulfilled') {
+      setShowSuccess(true)
+      clearError()
+    } else {
+      setShowError(true)
     }
-  }, [reset])
+  }, [clearError, reset])
 
   const handleDiscard = useCallback(() => {
-    if (hasChanges && window.confirm('¿Descartar cambios no guardados?')) {
-      discard()
-    }
-  }, [hasChanges, discard])
-
-  const handleTabChange = useCallback((_, newValue) => {
-    setActiveTab(newValue)
-  }, [])
-
-  const handleTogglePreview = useCallback(() => {
-    if (previewMode) {
-      // Salir del preview
-      togglePreview()
-    } else {
-      // Entrar al preview
-      togglePreview()
-    }
-  }, [previewMode, togglePreview])
+    if (!hasChanges) return
+    if (window.confirm('¿Descartar cambios no guardados?')) discard()
+  }, [discard, hasChanges])
 
   const handlePublishPreview = useCallback(async () => {
+    if (isSaving) return
+
+    if (previewId) {
+      const activateResult = await activatePreview(previewId)
+      if (activateResult?.meta?.requestStatus === 'fulfilled') {
+        setShowSuccess(true)
+        clearPreview()
+        setShowHistory(false)
+        return
+      }
+    }
+
     const result = await save()
-    if (result.meta?.requestStatus === 'fulfilled') {
+    if (result?.meta?.requestStatus === 'fulfilled') {
       setShowSuccess(true)
       clearPreview()
+      setShowHistory(false)
+    } else {
+      setShowError(true)
     }
-  }, [save, clearPreview])
+  }, [activatePreview, clearPreview, isSaving, previewId, save])
 
-  // ==========================================
-  // HELPERS DE DATOS
-  // ==========================================
+  const handleGeneratePreview = useCallback(() => {
+    if (!isSaving) createPreview()
+  }, [createPreview, isSaving])
 
-  const getSectionData = useCallback(
-    tabId => {
-      if (!theme) return {}
+  const resolvedErrorMessage =
+    error?.message ||
+    autoSaveError?.message ||
+    error ||
+    autoSaveError ||
+    'Error al procesar la solicitud'
 
-      // Tab compuesto: Header + Footer
-      if (tabId === 'header-footer') {
-        return {
-          header: theme.header || {},
-          footer: theme.footer || {},
-        }
-      }
+  const storeName = theme?.general?.storeName || 'Mi Tienda'
+  console.log(theme?.general?.tagline)
+  const tagline = theme?.general?.tagline || ''
+  const faviconUrl = theme?.general?.favicon?.url
 
-      return theme[tabId] || {}
-    },
-    [theme],
-  )
+  const lastSavedText = lastSaved
+    ? new Date(lastSaved).toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null
 
-  const currentTab = tabs[activeTab]
-  const sectionData = useMemo(
-    () => getSectionData(currentTab?.id),
-    [currentTab?.id, getSectionData],
-  )
-
-  // ==========================================
-  // RENDER DE PANELS
-  // ==========================================
+  const previewWidth =
+    previewViewport === 'desktop'
+      ? VIEWPORT_CONFIG.desktop.width
+      : VIEWPORT_CONFIG[previewViewport].width
 
   const renderPanel = useCallback(() => {
-    if (!theme || !currentTab) return null
+    if (!theme) return null
 
-    const { id } = currentTab
-
-    // Props comunes para todos los panels
-    const commonProps = {
-      theme, // Tema completo para referencias cruzadas
+    const common = {
+      theme,
+      themeData: theme,
+      sectionMeta: activeSection,
     }
 
-    switch (id) {
+    switch (activeSectionId) {
       case 'colors':
         return (
           <ColorsPanel
-            {...commonProps}
+            {...common}
             colors={sectionData}
             updateField={updateField}
             onChange={colors => updateSection('colors', colors)}
           />
         )
-
       case 'typography':
         return (
           <TypographyEditor
-            {...commonProps}
+            {...common}
             value={sectionData}
             updateField={updateField}
-            onChange={v => updateSection('typography', v)}
+            onChange={value => updateSection('typography', value)}
           />
         )
-
       case 'spacing':
         return (
           <SpacingEditor
-            {...commonProps}
+            {...common}
             value={sectionData}
-            onChange={v => updateSection('spacing', v)}
+            onChange={value => updateSection('spacing', value)}
           />
         )
-
       case 'buttons':
         return (
           <CustomButton
-            {...commonProps}
+            {...common}
             value={sectionData}
-            onChange={v => updateSection('buttons', v)}
+            onChange={value => updateSection('buttons', value)}
           />
         )
-
       case 'layout':
         return (
           <LayoutEditor
-            {...commonProps}
+            {...common}
             value={sectionData}
-            onChange={v => updateSection('layout', v)}
+            onChange={value => updateSection('layout', value)}
           />
         )
-
       case 'hero':
         return (
           <HeroEditor
-            {...commonProps}
+            {...common}
             value={sectionData}
-            onChange={v => updateSection('hero', v)}
+            onChange={value => updateSection('hero', value)}
             onImageUpload={file =>
               uploadImage({
                 file,
@@ -349,18 +399,17 @@ const ThemeCustomizer = () => {
             }
           />
         )
-
       case 'header-footer':
         return (
-          <Stack spacing={3}>
+          <Stack spacing={2}>
             <HeaderEditor
-              {...commonProps}
+              {...common}
               value={sectionData.header}
               colors={theme.colors || {}}
               onColorChange={(key, color) =>
                 updateField(`colors.${key}`, color)
               }
-              onChange={v => updateSection('header', v)}
+              onChange={value => updateSection('header', value)}
               onLogoUpload={file =>
                 uploadImage({
                   file,
@@ -371,9 +420,9 @@ const ThemeCustomizer = () => {
             />
             <Divider />
             <FooterEditor
-              {...commonProps}
+              {...common}
               value={sectionData.footer}
-              onChange={v => updateSection('footer', v)}
+              onChange={value => updateSection('footer', value)}
               onLogoUpload={file =>
                 uploadImage({
                   file,
@@ -384,61 +433,63 @@ const ThemeCustomizer = () => {
             />
           </Stack>
         )
-
       case 'products':
         return (
           <ProductsEditor
-            {...commonProps}
+            {...common}
             value={sectionData}
-            onChange={v => updateSection('products', v)}
+            onChange={value => updateSection('products', value)}
           />
         )
-
       case 'animations':
         return (
           <AnimationsEditor
-            {...commonProps}
+            {...common}
             value={sectionData}
-            onChange={v => updateSection('animations', v)}
+            onChange={value => updateSection('animations', value)}
           />
         )
-
       case 'advanced':
         return (
           <AdvancedEditor
-            {...commonProps}
+            {...common}
             value={sectionData}
             customCSS={theme.advanced?.customCSS || ''}
             customJS={theme.advanced?.customJS || ''}
-            onChange={v => updateSection('advanced', v)}
-            onCSSChange={v => updateField('advanced.customCSS', v)}
-            onJSChange={v => updateField('advanced.customJS', v)}
+            onChange={value => updateSection('advanced', value)}
+            onCSSChange={value => updateField('advanced.customCSS', value)}
+            onJSChange={value => updateField('advanced.customJS', value)}
           />
         )
-
       default:
         return null
     }
-  }, [currentTab, sectionData, theme, updateSection, updateField, uploadImage])
-
-  // ==========================================
-  // RENDER: LOADING
-  // ==========================================
+  }, [
+    activeSection,
+    activeSectionId,
+    sectionData,
+    theme,
+    updateField,
+    updateSection,
+    uploadImage,
+  ])
 
   if (isLoading || !theme) {
     return (
       <Box
         sx={{
+          minHeight: '100vh',
           display: 'flex',
-          height: '100vh',
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'column',
           gap: 2,
           bgcolor: 'background.default',
+          p: 3,
+          textAlign: 'center',
         }}
       >
-        <CircularProgress size={60} thickness={4} />
+        <CircularProgress size={56} thickness={4} />
         <Typography variant="h6" color="text.secondary">
           Cargando configuración del tema...
         </Typography>
@@ -446,74 +497,68 @@ const ThemeCustomizer = () => {
     )
   }
 
-  // ==========================================
-  // DATOS DERIVADOS
-  // ==========================================
-
-  const storeName = theme.general?.storeName || 'Mi Tienda'
-  const tagline = theme.general?.tagline || ''
-  const faviconUrl = theme.general?.favicon?.url
-
-  // Formatear último guardado
-  const lastSavedText = lastSaved
-    ? new Date(lastSaved).toLocaleTimeString('es-ES', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : null
-  const resolvedErrorMessage =
-    error?.message ||
-    autoSaveError?.message ||
-    error ||
-    autoSaveError ||
-    'Error al procesar la solicitud'
-
-  // ==========================================
-  // RENDER PRINCIPAL
-  // ==========================================
+  const showDrawer = !previewMode && !focusPreview
 
   return (
     <ThemeProvider theme={adminBaseTheme}>
-      <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-        {/* ==========================================
-            APP BAR (HEADER)
-        ========================================== */}
+      <Box
+        sx={{
+          height: '100vh',
+          overflow: 'hidden',
+          bgcolor: 'background.default',
+        }}
+      >
         <AppBar
           position="fixed"
           sx={{
-            zIndex: t => t.zIndex.drawer + 1,
+            zIndex: appTheme => appTheme.zIndex.drawer + 2,
             bgcolor: 'background.paper',
             color: 'text.primary',
             boxShadow: 1,
           }}
         >
-          <Toolbar>
-            {/* Logo/Título */}
-            <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 600 }}>
-              Theme Builder
-            </Typography>
+          <Toolbar sx={{ minHeight: APP_BAR_HEIGHT, gap: 1, flexWrap: 'wrap' }}>
+            {isMobile && showDrawer && (
+              <IconButton
+                size="small"
+                edge="start"
+                color="inherit"
+                aria-label="Abrir secciones"
+                onClick={() => setMobileDrawerOpen(true)}
+              >
+                <MenuIcon />
+              </IconButton>
+            )}
 
-            {/* Info Tenant */}
+            <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 260 } }}>
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 800, lineHeight: 1.15 }}
+              >
+                Diseñador de tienda
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {activeSection.label}: {activeSection.appliesTo}
+              </Typography>
+            </Box>
+
             <Chip
-              label={`Tenant: ${tenantId || 'default'}`}
               size="small"
+              label={`Tenant: ${tenantId || 'default'}`}
               variant="outlined"
-              sx={{ mr: 2 }}
             />
 
-            {/* Indicador de cambios */}
             {hasChanges && (
-              <Badge color="warning" variant="dot" sx={{ mr: 2 }}>
+              <Badge color="warning" variant="dot">
                 <Chip
-                  label="Sin guardar"
                   size="small"
+                  label="Sin guardar"
                   color="warning"
                   variant="outlined"
                 />
               </Badge>
             )}
 
-            {/* Auto-save Toggle */}
             <Tooltip
               title={
                 autoSaveEnabled
@@ -524,81 +569,95 @@ const ThemeCustomizer = () => {
               <FormControlLabel
                 control={
                   <Switch
+                    size="small"
                     checked={autoSaveEnabled}
                     onChange={toggleAutoSave}
-                    size="small"
                   />
                 }
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <CloudUploadIcon fontSize="small" />
-                    <Typography variant="caption">
-                      Auto{lastSavedText && `: ${lastSavedText}`}
-                    </Typography>
-                  </Box>
+                  <Typography variant="caption">
+                    Auto {lastSavedText ? lastSavedText : ''}
+                  </Typography>
                 }
-                sx={{ mr: 2 }}
+                sx={{ m: 0 }}
               />
             </Tooltip>
 
-            {/* Preview Toggle */}
-            <Tooltip title={previewMode ? 'Editar' : 'Vista previa'}>
+            {!previewMode && !isMobile && (
+              <Tooltip
+                title={
+                  focusPreview ? 'Volver al editor' : 'Ampliar vista previa'
+                }
+              >
+                <Button
+                  size="small"
+                  variant={focusPreview ? 'contained' : 'outlined'}
+                  startIcon={<FocusPreviewIcon />}
+                  onClick={() => setFocusPreview(value => !value)}
+                >
+                  {focusPreview ? 'Editar' : 'Preview grande'}
+                </Button>
+              </Tooltip>
+            )}
+
+            <Tooltip
+              title={
+                previewMode ? 'Salir de vista previa' : 'Entrar en vista previa'
+              }
+            >
               <Button
                 variant={previewMode ? 'contained' : 'outlined'}
                 color="info"
-                onClick={handleTogglePreview}
-                startIcon={<PreviewIcon />}
                 size="small"
-                sx={{ mr: 1 }}
+                onClick={togglePreview}
+                startIcon={<PreviewIcon />}
               >
-                {previewMode ? 'Editando Preview' : 'Preview'}
+                {previewMode ? 'Salir preview' : 'Preview'}
               </Button>
             </Tooltip>
 
-            {/* Historial */}
             <Tooltip title="Historial de versiones">
               <IconButton
-                onClick={() => setShowHistory(true)}
                 size="small"
-                sx={{ mr: 1 }}
+                aria-label="Abrir historial"
+                onClick={() => {
+                  loadHistory?.(20)
+                  setShowHistory(true)
+                }}
               >
                 <HistoryIcon />
               </IconButton>
             </Tooltip>
 
-            {/* Reset */}
             <Tooltip title="Resetear tema">
               <IconButton
-                onClick={handleReset}
-                disabled={isSaving}
                 size="small"
                 color="error"
-                sx={{ mr: 1 }}
+                aria-label="Resetear tema"
+                disabled={isSaving}
+                onClick={handleReset}
               >
                 <ResetIcon />
               </IconButton>
             </Tooltip>
 
-            {/* Descartar (solo si hay cambios) */}
             {hasChanges && (
               <Button
+                size="small"
                 variant="outlined"
-                color="inherit"
                 onClick={handleDiscard}
                 disabled={isSaving}
-                size="small"
-                sx={{ mr: 1 }}
               >
                 Descartar
               </Button>
             )}
 
-            {/* Guardar */}
             <Button
+              size="small"
               variant="contained"
-              color={hasChanges ? 'primary' : 'success'}
               onClick={handleSave}
-              disabled={isSaving || (!hasChanges && !previewMode)}
+              disabled={isSaving || !hasChanges}
+              color={hasChanges ? 'primary' : 'success'}
               startIcon={
                 isSaving ? (
                   <CircularProgress size={16} color="inherit" />
@@ -606,243 +665,380 @@ const ThemeCustomizer = () => {
                   <SaveIcon />
                 )
               }
-              size="small"
             >
               {isSaving
                 ? 'Guardando...'
-                : previewMode
-                  ? 'Guardar Cambios'
-                  : hasChanges
-                    ? 'Guardar'
-                    : 'Guardado'}
+                : hasChanges
+                  ? 'Guardar'
+                  : 'Actualizado'}
             </Button>
           </Toolbar>
         </AppBar>
 
-        {/* ==========================================
-            SIDEBAR (EDITOR)
-        ========================================== */}
-        <Drawer
-          variant="permanent"
-          sx={{
-            width: DRAWER_WIDTH,
-            flexShrink: 0,
-            display: previewMode ? 'none' : 'block',
-            '& .MuiDrawer-paper': {
-              width: DRAWER_WIDTH,
-              boxSizing: 'border-box',
-              mt: 8,
-              height: 'calc(100% - 64px)',
-              display: 'flex',
-              flexDirection: 'column',
-              borderRight: 1,
-              borderColor: 'divider',
-            },
-          }}
+        <Box
+          sx={{ display: 'flex', height: '100%', pt: `${APP_BAR_HEIGHT}px` }}
         >
-          {/* Tabs */}
-          <Tabs
-            value={activeTab}
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              borderBottom: 1,
-              borderColor: 'divider',
-              minHeight: 48,
-              '& .MuiTabs-flexContainer': {
-                gap: 0.5,
-              },
-              '& .MuiTab-root': {
-                minHeight: 48,
-                textTransform: 'none',
-                fontSize: 13,
-                fontWeight: 500,
-              },
-            }}
-          >
-            {tabs.map(tab => (
-              <Tab
-                key={tab.id}
-                icon={tab.icon}
-                label={tab.label}
-                iconPosition="start"
-              />
-            ))}
-          </Tabs>
-
-          {/* Contenido del Panel */}
-          <Box
-            sx={{
-              flex: 1,
-              overflow: 'auto',
-              p: 3,
-            }}
-          >
-            {/* Info General */}
-            <Paper sx={{ p: 2, mb: 3 }} variant="outlined">
-              <Typography
-                variant="subtitle2"
-                gutterBottom
-                color="text.secondary"
-                fontWeight={600}
+          {showDrawer && (
+            <Drawer
+              variant={isMobile ? 'temporary' : 'permanent'}
+              open={isMobile ? mobileDrawerOpen : true}
+              onClose={() => setMobileDrawerOpen(false)}
+              ModalProps={{ keepMounted: true }}
+              PaperProps={{
+                sx: {
+                  width: DRAWER_WIDTH,
+                  top: `${APP_BAR_HEIGHT}px`,
+                  height: `calc(100% - ${APP_BAR_HEIGHT}px)`,
+                  boxSizing: 'border-box',
+                  borderRight: 1,
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                },
+              }}
+              sx={{
+                width: isMobile ? 0 : DRAWER_WIDTH,
+                flexShrink: 0,
+                [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH },
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  height: '100%',
+                  minHeight: 0,
+                }}
               >
-                Información General
-              </Typography>
+                {settingsOpen ? (
+                  <>
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderBottom: 1,
+                        borderColor: 'divider',
+                        display: 'flex',
+                        gap: 1,
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      <Tooltip title="Volver a secciones">
+                        <IconButton
+                          size="small"
+                          aria-label="Volver a secciones"
+                          onClick={() => setSettingsOpen(false)}
+                        >
+                          <ArrowBackIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
 
-              <Stack spacing={2}>
-                <TextField
-                  fullWidth
-                  label="Nombre de la Tienda"
-                  value={storeName}
-                  onChange={e =>
-                    updateField('general.storeName', e.target.value)
-                  }
-                  size="small"
-                  variant="outlined"
-                />
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={850}
+                          sx={{ lineHeight: 1.2 }}
+                        >
+                          {activeSection.label}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ mt: 0.5, display: 'block' }}
+                        >
+                          {activeSection.help}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={activeSection.appliesTo}
+                          sx={{ mt: 1, maxWidth: '100%' }}
+                        />
+                      </Box>
+                    </Box>
 
-                <TextField
-                  fullWidth
-                  label="Slogan"
-                  value={tagline}
-                  onChange={e => updateField('general.tagline', e.target.value)}
-                  size="small"
-                  variant="outlined"
-                />
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        overflow: 'auto',
+                        minHeight: 0,
+                        flex: 1,
+                      }}
+                    >
+                      {renderPanel()}
+                    </Box>
+                  </>
+                ) : (
+                  <Box
+                    sx={{
+                      p: 2,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      height: '100%',
+                      minHeight: 0,
+                      gap: 2,
+                    }}
+                  >
+                    <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5 }}>
+                      <Typography
+                        variant="subtitle2"
+                        fontWeight={800}
+                        gutterBottom
+                      >
+                        Identidad general
+                      </Typography>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="Nombre de la tienda"
+                        value={storeName}
+                        onChange={event =>
+                          updateField('general.storeName', event.target.value)
+                        }
+                        sx={{ mt: 1.5 }}
+                      />
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="Slogan"
+                        value={tagline}
+                        onChange={event =>
+                          updateField('general.tagline', event.target.value)
+                        }
+                        sx={{ mt: 1.5 }}
+                      />
+                      {faviconUrl && (
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          spacing={1}
+                          sx={{ mt: 1.5 }}
+                        >
+                          <CloudUploadIcon color="action" fontSize="small" />
+                          <Typography variant="caption" color="text.secondary">
+                            Favicon cargado
+                          </Typography>
+                        </Stack>
+                      )}
+                    </Paper>
 
-                {faviconUrl && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <img
-                      src={faviconUrl}
-                      alt="Favicon"
-                      style={{ width: 16, height: 16 }}
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      Favicon cargado
-                    </Typography>
+                    <List
+                      disablePadding
+                      subheader={
+                        <ListSubheader sx={{ px: 0 }}>
+                          Secciones de diseño
+                        </ListSubheader>
+                      }
+                      sx={{ overflow: 'auto', pb: 1 }}
+                    >
+                      {SECTION_LIBRARY.map(section => {
+                        const selected = activeSectionId === section.id
+                        return (
+                          <ListItem
+                            key={section.id}
+                            disablePadding
+                            sx={{ mb: 0.5 }}
+                          >
+                            <ListItemButton
+                              selected={selected}
+                              onClick={() => handleSectionSelect(section.id)}
+                              sx={{
+                                borderRadius: 1.5,
+                                alignItems: 'flex-start',
+                                border: '1px solid',
+                                borderColor: selected
+                                  ? alpha(muiTheme.palette.primary.main, 0.35)
+                                  : 'transparent',
+                              }}
+                            >
+                              <ListItemIcon sx={{ minWidth: 34, mt: 0.25 }}>
+                                {section.icon}
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={section.label}
+                                secondary={section.description}
+                                primaryTypographyProps={{
+                                  fontWeight: selected ? 800 : 600,
+                                }}
+                                secondaryTypographyProps={{
+                                  variant: 'caption',
+                                }}
+                              />
+                              <ChevronRightIcon
+                                fontSize="small"
+                                color="action"
+                                sx={{ mt: 0.5 }}
+                              />
+                            </ListItemButton>
+                          </ListItem>
+                        )
+                      })}
+                    </List>
                   </Box>
                 )}
-              </Stack>
-            </Paper>
+              </Box>
+            </Drawer>
+          )}
 
-            <Divider sx={{ mb: 2 }} />
-
-            {/* Panel Dinámico */}
-            {renderPanel()}
-          </Box>
-        </Drawer>
-
-        {/* ==========================================
-            PREVIEW AREA
-        ========================================== */}
-        <Box
-          component="main"
-          sx={{
-            flexGrow: 1,
-            mt: 8,
-            height: 'calc(100vh - 64px)',
-            overflow: 'auto',
-            bgcolor: 'background.default',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {/* Toolbar de Preview */}
-          {previewMode && (
-            <Paper
-              sx={{
-                p: 1,
-                mx: 2,
-                mt: 2,
-                display: 'flex',
-                gap: 1,
-                alignItems: 'center',
-              }}
-              variant="outlined"
-            >
-              <Typography variant="caption" fontWeight={600} sx={{ mr: 1 }}>
-                Vista Previa:
-              </Typography>
-
-              <Button
-                size="small"
-                variant={
-                  previewViewport === 'desktop' ? 'contained' : 'outlined'
-                }
-                onClick={() => setPreviewViewport('desktop')}
+          <Box
+            component="main"
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              height: '100%',
+              overflow: 'hidden',
+              position: 'relative',
+              p: { xs: 1, md: 1.5 },
+            }}
+          >
+            {previewMode && (
+              <Paper
+                elevation={0}
+                sx={{
+                  mb: 1,
+                  p: 1,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                  alignItems: 'center',
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1.5,
+                }}
               >
-                Desktop
-              </Button>
-              <Button
-                size="small"
-                variant={
-                  previewViewport === 'tablet' ? 'contained' : 'outlined'
-                }
-                onClick={() => setPreviewViewport('tablet')}
-              >
-                Tablet
-              </Button>
-              <Button
-                size="small"
-                variant={
-                  previewViewport === 'mobile' ? 'contained' : 'outlined'
-                }
-                onClick={() => setPreviewViewport('mobile')}
-              >
-                Mobile
-              </Button>
-
-              <Box sx={{ flexGrow: 1 }} />
-
-              {previewId && (
-                <>
-                  <Chip
-                    label="Preview no publicado"
-                    color="info"
+                <Typography variant="caption" fontWeight={800}>
+                  Vista previa
+                </Typography>
+                {Object.keys(VIEWPORT_CONFIG).map(viewport => (
+                  <Button
+                    key={viewport}
                     size="small"
-                    variant="outlined"
-                  />
+                    variant={
+                      previewViewport === viewport ? 'contained' : 'outlined'
+                    }
+                    onClick={() => setPreviewViewport(viewport)}
+                  >
+                    {VIEWPORT_CONFIG[viewport].label}
+                  </Button>
+                ))}
+                <Box sx={{ flex: 1 }} />
+                <Typography variant="caption" color="text.secondary">
+                  {previewId ? 'Snapshot generado' : 'Sin snapshot'}
+                </Typography>
+                {previewId ? (
                   <Button
                     size="small"
                     variant="contained"
                     color="success"
                     onClick={handlePublishPreview}
+                    disabled={isSaving || (!hasChanges && !previewId)}
+                  >
+                    Publicar preview
+                  </Button>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="info"
+                    onClick={handleGeneratePreview}
                     disabled={isSaving}
                   >
-                    Publicar Cambios
+                    Generar preview
                   </Button>
-                </>
-              )}
-            </Paper>
-          )}
+                )}
+              </Paper>
+            )}
 
-          {/* Preview Component */}
-          <Box sx={{ flex: 1, p: previewMode ? 2 : 3, overflow: 'auto' }}>
-            <LivePreview
-              themeData={activeTheme || theme}
-              viewport={previewViewport}
-              isPreview={previewMode}
-            />
+            <Box
+              sx={{
+                height: previewMode ? `calc(100% - 58px)` : '100%',
+                minHeight: 0,
+              }}
+            >
+              <Paper
+                variant="outlined"
+                sx={{
+                  height: '100%',
+                  minHeight: 0,
+                  overflow: 'hidden',
+                  borderRadius: 1.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                {!previewMode && (
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderBottom: 1,
+                      borderColor: 'divider',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Typography variant="subtitle2" fontWeight={850}>
+                      Vista previa de la tienda
+                    </Typography>
+                    <Box sx={{ flex: 1 }} />
+                    {Object.keys(VIEWPORT_CONFIG).map(viewport => (
+                      <Button
+                        key={viewport}
+                        size="small"
+                        variant={
+                          previewViewport === viewport
+                            ? 'contained'
+                            : 'outlined'
+                        }
+                        onClick={() => setPreviewViewport(viewport)}
+                      >
+                        {VIEWPORT_CONFIG[viewport].label}
+                      </Button>
+                    ))}
+                  </Box>
+                )}
+
+                <Box
+                  sx={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: 'auto',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    bgcolor: 'action.hover',
+                    p: previewViewport === 'desktop' ? 0 : 1.5,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: previewWidth,
+                      maxWidth: VIEWPORT_CONFIG[previewViewport].maxWidth,
+                      minWidth: 0,
+                      height: '100%',
+                      transition: 'width 180ms ease',
+                    }}
+                  >
+                    <LivePreview
+                      themeData={activeTheme || theme}
+                      viewport={previewViewport}
+                      isPreview={previewMode}
+                    />
+                  </Box>
+                </Box>
+              </Paper>
+            </Box>
           </Box>
         </Box>
 
-        {/* ==========================================
-            MODALES Y FEEDBACK
-        ========================================== */}
-
-        {/* Historial de Versiones */}
         <VersionHistory
           open={showHistory}
           onClose={() => setShowHistory(false)}
           onRollback={rollback}
-          history={[]} // Se carga vía loadHistory
         />
 
-        {/* Snackbar Success */}
         <Snackbar
           open={showSuccess}
-          autoHideDuration={3000}
+          autoHideDuration={3500}
           onClose={() => setShowSuccess(false)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         >
@@ -851,11 +1047,10 @@ const ThemeCustomizer = () => {
             onClose={() => setShowSuccess(false)}
             variant="filled"
           >
-            Tema guardado correctamente
+            Tema guardado correctamente.
           </Alert>
         </Snackbar>
 
-        {/* Snackbar Error */}
         <Snackbar
           open={showError}
           autoHideDuration={6000}

@@ -1,7 +1,10 @@
 // 📁 src/models/aiAgentModel.js
 // VERSIÓN GO PRODUCCIÓN - Agente IA Comercial Multitenant
 import mongoose from 'mongoose'
-import { encryptSecret, decryptSecret } from '../services/aiAgent/aiCryptoService.js'
+import {
+  encryptSecret,
+  decryptSecret,
+} from '../services/aiAgent/aiCryptoService.js'
 
 const { Schema } = mongoose
 
@@ -18,7 +21,7 @@ const aiAgentSchema = new Schema(
 
     name: {
       type: String,
-      default: 'Asistente Henko',
+      default: 'Asistente virtual',
       trim: true,
       maxlength: 100,
     },
@@ -92,7 +95,12 @@ const aiAgentSchema = new Schema(
       },
       faq: [
         {
-          question: { type: String, required: true, trim: true, maxlength: 500 },
+          question: {
+            type: String,
+            required: true,
+            trim: true,
+            maxlength: 500,
+          },
           answer: { type: String, required: true, trim: true, maxlength: 2500 },
           enabled: { type: Boolean, default: true },
         },
@@ -103,11 +111,24 @@ const aiAgentSchema = new Schema(
       blockedTopics: { type: [String], default: [] },
       humanHandoffKeywords: {
         type: [String],
-        default: ['reclamo', 'denuncia', 'abogado', 'estafa', 'no me llegó', 'fraude'],
+        default: [
+          'reclamo',
+          'denuncia',
+          'abogado',
+          'estafa',
+          'no me llegó',
+          'fraude',
+        ],
       },
       optOutKeywords: {
         type: [String],
-        default: ['stop', 'baja', 'cancelar', 'no me escribas', 'no quiero recibir'],
+        default: [
+          'stop',
+          'baja',
+          'cancelar',
+          'no me escribas',
+          'no quiero recibir',
+        ],
       },
     },
 
@@ -142,9 +163,18 @@ const aiAgentSchema = new Schema(
 )
 
 aiAgentSchema.index({ tenantId: 1, enabled: 1 })
-aiAgentSchema.index({ 'channels.whatsapp.phoneNumberId': 1 }, { sparse: true })
+aiAgentSchema.index(
+  { 'channels.whatsapp.phoneNumberId': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'channels.whatsapp.phoneNumberId': { $gt: '' },
+    },
+  },
+)
 aiAgentSchema.index({ tenantId: 1 }, { unique: true })
 
-const AiAgent = mongoose.models.AiAgent || mongoose.model('AiAgent', aiAgentSchema)
+const AiAgent =
+  mongoose.models.AiAgent || mongoose.model('AiAgent', aiAgentSchema)
 
 export default AiAgent

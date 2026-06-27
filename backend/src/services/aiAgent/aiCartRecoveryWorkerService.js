@@ -1,12 +1,23 @@
-// 📁 src/services/aiAgent/aiCartRecoveryWorkerService.js
+import crypto from 'node:crypto'
 import AiAgent from '../../models/aiAgentModel.js'
 import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
 import AiCampaignRule from '../../models/aiCampaignRuleModel.js'
-import AiContactPreference from '../../models/aiContactPreferenceModel.js'
 import Tenant from '../../models/tenantModel.js'
-import { sendWhatsappTextMessage } from './whatsappService.js'
+import {
+  canContactCustomer,
+  isWithinWhatsappCustomerWindow,
+  registerCustomerContact,
+} from './aiContactPolicyService.js'
+import {
+  sendWhatsappTemplateMessage,
+  sendWhatsappTextMessage,
+} from './whatsappService.js'
 
 const clean = value => String(value || '').trim()
+const PROCESSING_LEASE_MS = Math.min(
+  Math.max(Number(process.env.AI_CART_RECOVERY_LEASE_MS || 120000), 30000),
+  600000,
+)
 
 const formatMoneyFromCents = (cents, currency = 'ARS') => {
   const amount = Number(cents || 0) / 100
@@ -23,45 +34,58 @@ const formatMoneyFromCents = (cents, currency = 'ARS') => {
 }
 
 const normalizeBusinessHour = value => {
-  const cleanValue = clean(value)
+  const match = clean(value).match(/^(\d{2}):(\d{2})$/)
+  if (!match) return null
 
-  if (!/^\d{2}:\d{2}$/.test(cleanValue)) {
-    return null
-  }
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour > 23 || minute > 59) return null
 
-  const [hour, minute] = cleanValue.split(':').map(Number)
+  return { hour, minute, total: hour * 60 + minute }
+}
 
-  if (
-    !Number.isInteger(hour) ||
-    !Number.isInteger(minute) ||
-    hour < 0 ||
-    hour > 23 ||
-    minute < 0 ||
-    minute > 59
-  ) {
-    return null
-  }
+const getTenantTimezone = tenant => {
+  return (
+    clean(tenant?.timezone) ||
+    clean(tenant?.settings?.timezone) ||
+    clean(process.env.DEFAULT_TIMEZONE) ||
+    'America/Argentina/Buenos_Aires'
+  )
+}
 
-  return {
-    hour,
-    minute,
-    total: hour * 60 + minute,
+const getTimeParts = (date, timezone) => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date)
+    const values = Object.fromEntries(
+      parts.map(part => [part.type, part.value]),
+    )
+    return { hour: Number(values.hour), minute: Number(values.minute) }
+  } catch {
+    return { hour: date.getHours(), minute: date.getMinutes() }
   }
 }
 
-const canSendByBusinessHours = rule => {
+const canSendByBusinessHours = ({ rule, tenant }) => {
   if (!rule?.trigger?.onlyBusinessHours) return true
 
   const start =
     normalizeBusinessHour(rule?.trigger?.businessHours?.start) ||
     normalizeBusinessHour('09:00')
-
   const end =
     normalizeBusinessHour(rule?.trigger?.businessHours?.end) ||
     normalizeBusinessHour('20:00')
+  const now = getTimeParts(new Date(), getTenantTimezone(tenant))
+  const current = now.hour * 60 + now.minute
 
-  const now = new Date()
-  const current = now.getHours() * 60 + now.getMinutes()
+  // Soporta ventanas que cruzan medianoche, por ejemplo 20:00 → 02:00.
+  if (start.total > end.total) {
+    return current >= start.total || current <= end.total
+  }
 
   return current >= start.total && current <= end.total
 }
@@ -70,148 +94,212 @@ const getNextBusinessHour = rule => {
   const start =
     normalizeBusinessHour(rule?.trigger?.businessHours?.start) ||
     normalizeBusinessHour('09:00')
-
   const nextAttempt = new Date()
   nextAttempt.setHours(start.hour, start.minute, 0, 0)
 
-  if (nextAttempt <= new Date()) {
-    nextAttempt.setDate(nextAttempt.getDate() + 1)
-  }
-
+  if (nextAttempt <= new Date()) nextAttempt.setDate(nextAttempt.getDate() + 1)
   return nextAttempt
 }
 
-const replaceTemplateVars = (template, recovery, tenant) => {
+const buildTemplateValues = (recovery, tenant) => {
   const items = recovery?.cartSnapshot?.items || []
   const firstItem = items[0]
-  const itemCount = items.length
-  const total = formatMoneyFromCents(
-    recovery?.cartSnapshot?.subtotalCents,
-    recovery?.cartSnapshot?.currency || tenant?.currency || 'ARS',
-  )
-
   const customerName =
     clean(recovery?.customer?.name).split(/\s+/)[0] || 'Hola'
 
-  return clean(template)
-    .replaceAll('{{customerName}}', customerName)
-    .replaceAll('{{productName}}', firstItem?.title || 'tu producto')
-    .replaceAll('{{itemCount}}', String(itemCount))
-    .replaceAll('{{cartTotal}}', total)
-    .replaceAll('{{checkoutUrl}}', recovery?.cartSnapshot?.checkoutUrl || '')
-}
-
-const canContactCustomer = async ({ tenantId, channel, destination }) => {
-  const cleanDestination = clean(destination)
-
-  if (!tenantId || !cleanDestination) {
-    return {
-      allowed: false,
-      reason: 'missing_tenant_or_destination',
-    }
-  }
-
-  const preference = await AiContactPreference.findOne({
-    tenantId,
-    channel,
-    destination: cleanDestination,
-  }).setOptions({ tenantId })
-
-  if (preference?.optedOut) {
-    return {
-      allowed: false,
-      reason: 'customer_opted_out',
-    }
-  }
-
-  const minHoursBetweenContacts = Number(
-    process.env.AI_MIN_HOURS_BETWEEN_CONTACTS || 6,
-  )
-
-  if (preference?.lastContactAt) {
-    const diffMs = Date.now() - preference.lastContactAt.getTime()
-    const diffHours = diffMs / (1000 * 60 * 60)
-
-    if (diffHours < minHoursBetweenContacts) {
-      return {
-        allowed: false,
-        reason: 'contact_too_recent',
-      }
-    }
-  }
-
   return {
-    allowed: true,
-    reason: 'allowed',
+    customerName,
+    productName: firstItem?.title || 'tu producto',
+    itemCount: String(items.length),
+    cartTotal: formatMoneyFromCents(
+      recovery?.cartSnapshot?.subtotalCents,
+      recovery?.cartSnapshot?.currency || tenant?.currency || 'ARS',
+    ),
+    checkoutUrl: recovery?.cartSnapshot?.checkoutUrl || '',
   }
 }
 
-const registerCustomerContact = async ({ tenantId, channel, destination }) => {
-  const cleanDestination = clean(destination)
+const buildDefaultRecoveryMessage = values => {
+  return `Hola ${values.customerName}, vimos que dejaste ${values.productName} en tu carrito por ${values.cartTotal}. Podés retomarlo acá: ${values.checkoutUrl}`
+}
 
-  if (!tenantId || !cleanDestination) return null
+const replaceTemplateVars = (template, values) => {
+  const baseTemplate = clean(template) || buildDefaultRecoveryMessage(values)
 
-  return AiContactPreference.findOneAndUpdate(
+  return baseTemplate
+    .replaceAll('{{customerName}}', values.customerName)
+    .replaceAll('{{productName}}', values.productName)
+    .replaceAll('{{itemCount}}', values.itemCount)
+    .replaceAll('{{cartTotal}}', values.cartTotal)
+    .replaceAll('{{checkoutUrl}}', values.checkoutUrl)
+}
+
+const claimNextRecovery = async () => {
+  const now = new Date()
+  const lockToken = crypto.randomUUID()
+  const recovery = await AiCartRecovery.findOneAndUpdate(
     {
-      tenantId,
-      channel,
-      destination: cleanDestination,
+      status: 'scheduled',
+      scheduledAt: { $lte: now },
+      $and: [
+        {
+          $or: [
+            { expiresAt: null },
+            { expiresAt: { $exists: false } },
+            { expiresAt: { $gt: now } },
+          ],
+        },
+        {
+          $or: [
+            { processingLeaseExpiresAt: null },
+            { processingLeaseExpiresAt: { $exists: false } },
+            { processingLeaseExpiresAt: { $lte: now } },
+          ],
+        },
+      ],
     },
     {
       $set: {
-        lastContactAt: new Date(),
+        status: 'processing',
+        processingLock: lockToken,
+        processingStartedAt: now,
+        processingLeaseExpiresAt: new Date(now.getTime() + PROCESSING_LEASE_MS),
       },
-      $inc: {
-        contactCount24h: 1,
-      },
+      $inc: { attempts: 1 },
+    },
+    { new: true, sort: { scheduledAt: 1 } },
+  )
+    .setOptions({ ignoreTenant: true })
+    .select('+processingLock')
+
+  return recovery ? { recovery, lockToken } : null
+}
+
+const markExpiredProcessingAsFailed = async () => {
+  const now = new Date()
+
+  return AiCartRecovery.updateMany(
+    {
+      status: 'processing',
+      processingLeaseExpiresAt: { $lte: now },
     },
     {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
+      $set: {
+        status: 'failed',
+        'metadata.lastError': 'processing_lease_expired',
+        'metadata.lastErrorCode': 'PROCESSING_LEASE_EXPIRED',
+        'metadata.failedAt': now,
+        'metadata.requiresManualReview': true,
+      },
+      $unset: {
+        processingLock: 1,
+        processingStartedAt: 1,
+        processingLeaseExpiresAt: 1,
+      },
     },
-  ).setOptions({ tenantId })
+  ).setOptions({ ignoreTenant: true })
+}
+
+
+const markExpiredScheduledRecoveries = async () => {
+  const now = new Date()
+
+  return AiCartRecovery.updateMany(
+    {
+      status: { $in: ['pending', 'scheduled'] },
+      expiresAt: { $ne: null, $lte: now },
+    },
+    {
+      $set: {
+        status: 'expired',
+        'metadata.expiredAt': now,
+        'metadata.expiredReason': 'recovery_expired',
+      },
+    },
+  ).setOptions({ ignoreTenant: true })
+}
+
+const finishRecovery = async ({ recovery, lockToken, status, set = {} }) => {
+  return AiCartRecovery.findOneAndUpdate(
+    {
+      _id: recovery._id,
+      tenantId: recovery.tenantId,
+      status: 'processing',
+      processingLock: lockToken,
+    },
+    {
+      $set: { status, ...set },
+      $unset: {
+        processingLock: 1,
+        processingStartedAt: 1,
+        processingLeaseExpiresAt: 1,
+      },
+    },
+    { new: true },
+  ).setOptions({ tenantId: recovery.tenantId })
+}
+
+const cancelRecovery = (params, reason) => {
+  return finishRecovery({
+    ...params,
+    status: 'cancelled',
+    set: {
+      'metadata.cancelledReason': reason,
+    },
+  })
+}
+
+const failRecovery = (params, error) => {
+  return finishRecovery({
+    ...params,
+    status: 'failed',
+    set: {
+      'metadata.lastError': clean(error?.message || error),
+      'metadata.lastErrorCode': clean(error?.code),
+      'metadata.failedAt': new Date(),
+      'metadata.requiresManualReview': true,
+    },
+  })
 }
 
 export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
   const cleanLimit = Math.min(Math.max(Number(limit || 25), 1), 100)
-
-  const recoveries = await AiCartRecovery.find({
-    status: 'scheduled',
-    scheduledAt: {
-      $lte: new Date(),
-    },
-  })
-    .sort({ scheduledAt: 1 })
-    .limit(cleanLimit)
-
   const results = []
 
-  for (const recovery of recoveries) {
+  await Promise.all([
+    markExpiredProcessingAsFailed(),
+    markExpiredScheduledRecoveries(),
+  ])
+
+  for (let index = 0; index < cleanLimit; index += 1) {
+    const claimed = await claimNextRecovery()
+    if (!claimed) break
+
+    const { recovery, lockToken } = claimed
     const tenantId = recovery.tenantId
+    const lockParams = { recovery, lockToken }
 
     try {
       if (!tenantId) {
-        recovery.status = 'failed'
-        recovery.metadata = {
-          ...recovery.metadata,
-          lastError: 'missing_tenant_id',
-        }
-        await recovery.save()
+        await failRecovery(lockParams, 'missing_tenant_id')
         continue
       }
 
       const [tenant, agent, rule] = await Promise.all([
-        Tenant.findById(tenantId).lean(),
+        Tenant.findById(tenantId).setOptions({ ignoreTenant: true }).lean(),
         AiAgent.findOne({
           tenantId,
           enabled: true,
           'channels.whatsapp.enabled': true,
         })
-          .select('+channels.whatsapp.accessTokenEncrypted +channels.whatsapp.accessToken')
+          .select('+channels.whatsapp.accessToken')
           .setOptions({ tenantId }),
         recovery?.metadata?.ruleId
-          ? AiCampaignRule.findById(recovery.metadata.ruleId).setOptions({ tenantId })
+          ? AiCampaignRule.findOne({
+            _id: recovery.metadata.ruleId,
+            tenantId,
+            enabled: true,
+          }).setOptions({ tenantId })
           : AiCampaignRule.findOne({
             tenantId,
             type: 'abandoned_cart',
@@ -220,157 +308,159 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
           }).setOptions({ tenantId }),
       ])
 
-      if (!tenant || !agent || !rule?.enabled) {
-        recovery.status = 'cancelled'
-        recovery.metadata = {
-          ...recovery.metadata,
-          cancelledReason: 'tenant_agent_or_rule_disabled',
-        }
-        await recovery.save({ tenantId })
-
-        results.push({
-          recoveryId: recovery._id,
-          status: 'cancelled',
-          reason: 'tenant_agent_or_rule_disabled',
-        })
-
+      if (!tenant || !agent || !rule) {
+        await cancelRecovery(lockParams, 'tenant_agent_or_rule_disabled')
+        results.push({ recoveryId: recovery._id, status: 'cancelled' })
         continue
       }
 
-      if (!clean(recovery?.customer?.phone)) {
-        recovery.status = 'cancelled'
-        recovery.metadata = {
-          ...recovery.metadata,
-          cancelledReason: 'missing_customer_phone',
-        }
-        await recovery.save({ tenantId })
-
-        results.push({
-          recoveryId: recovery._id,
-          status: 'cancelled',
-          reason: 'missing_customer_phone',
-        })
-
+      const destination = clean(recovery?.customer?.phone)
+      if (!destination) {
+        await cancelRecovery(lockParams, 'missing_customer_phone')
+        results.push({ recoveryId: recovery._id, status: 'cancelled' })
         continue
       }
 
-      if (!canSendByBusinessHours(rule)) {
-        recovery.scheduledAt = getNextBusinessHour(rule)
-        await recovery.save({ tenantId })
-
+      if (!canSendByBusinessHours({ rule, tenant })) {
+        const scheduledAt = getNextBusinessHour(rule)
+        await finishRecovery({
+          ...lockParams,
+          status: 'scheduled',
+          set: {
+            scheduledAt,
+            attempts: Math.max(Number(recovery.attempts || 1) - 1, 0),
+          },
+        })
         results.push({
           recoveryId: recovery._id,
           status: 'rescheduled',
-          scheduledAt: recovery.scheduledAt,
+          scheduledAt,
         })
-
         continue
       }
 
-      if (recovery.attempts >= Number(rule?.trigger?.maxAttempts || 2)) {
-        recovery.status = 'expired'
-        await recovery.save({ tenantId })
-
-        results.push({
-          recoveryId: recovery._id,
-          status: 'expired',
-        })
-
+      if (recovery.attempts > Number(rule?.trigger?.maxAttempts || 2)) {
+        await finishRecovery({ ...lockParams, status: 'expired' })
+        results.push({ recoveryId: recovery._id, status: 'expired' })
         continue
       }
 
       const policy = await canContactCustomer({
         tenantId,
         channel: 'whatsapp',
-        destination: recovery.customer.phone,
+        destination,
+        minHoursBetweenContacts: Number(
+          rule?.trigger?.minHoursBetweenContacts || 6,
+        ),
+        requireMarketingConsent: true,
       })
 
       if (!policy.allowed) {
-        recovery.status = 'cancelled'
-        recovery.metadata = {
-          ...recovery.metadata,
-          cancelledReason: policy.reason,
-        }
-        await recovery.save({ tenantId })
-
+        await cancelRecovery(lockParams, policy.reason)
         results.push({
           recoveryId: recovery._id,
           status: 'cancelled',
           reason: policy.reason,
         })
-
         continue
       }
 
-      const message = replaceTemplateVars(rule.messageTemplate, recovery, tenant)
-
       const phoneNumberId = clean(agent?.channels?.whatsapp?.phoneNumberId)
-
-      const accessToken =
-        clean(agent?.channels?.whatsapp?.accessToken) ||
-        clean(agent?.channels?.whatsapp?.accessTokenEncrypted)
-
+      const accessToken = clean(agent?.channels?.whatsapp?.accessToken)
       if (!phoneNumberId || !accessToken) {
-        recovery.status = 'failed'
-        recovery.metadata = {
-          ...recovery.metadata,
-          lastError: 'missing_whatsapp_credentials',
-        }
-        await recovery.save({ tenantId })
-
+        await failRecovery(lockParams, 'missing_whatsapp_credentials')
         results.push({
           recoveryId: recovery._id,
           status: 'failed',
           error: 'missing_whatsapp_credentials',
         })
-
         continue
       }
 
-      await sendWhatsappTextMessage({
-        phoneNumberId,
-        accessToken,
-        to: recovery.customer.phone,
-        text: message,
-      })
+      const values = buildTemplateValues(recovery, tenant)
 
-      recovery.status = 'sent'
-      recovery.sentAt = new Date()
-      recovery.attempts += 1
-      recovery.lastMessage = message
-      recovery.metadata = {
-        ...recovery.metadata,
-        lastSentBy: 'ai_cart_recovery_worker',
+      if (!values.checkoutUrl) {
+        await cancelRecovery(lockParams, 'missing_checkout_url')
+        results.push({
+          recoveryId: recovery._id,
+          status: 'cancelled',
+          reason: 'missing_checkout_url',
+        })
+        continue
+      }
+      const withinCustomerWindow = isWithinWhatsappCustomerWindow(
+        policy.preference,
+      )
+
+      if (withinCustomerWindow) {
+        await sendWhatsappTextMessage({
+          phoneNumberId,
+          accessToken,
+          to: destination,
+          text: replaceTemplateVars(rule.messageTemplate, values),
+        })
+      } else {
+        const templateName = clean(rule?.whatsappTemplate?.name)
+        if (!rule?.whatsappTemplate?.enabled || !templateName) {
+          await cancelRecovery(lockParams, 'whatsapp_template_required')
+          results.push({
+            recoveryId: recovery._id,
+            status: 'cancelled',
+            reason: 'whatsapp_template_required',
+          })
+          continue
+        }
+
+        await sendWhatsappTemplateMessage({
+          phoneNumberId,
+          accessToken,
+          to: destination,
+          templateName,
+          languageCode: rule.whatsappTemplate.languageCode || 'es_AR',
+          bodyParameters: [
+            values.customerName,
+            values.productName,
+            values.cartTotal,
+            values.checkoutUrl,
+          ],
+        })
       }
 
-      await recovery.save({ tenantId })
-
-      rule.stats.sent += 1
-      await rule.save({ tenantId })
-
-      await registerCustomerContact({
-        tenantId,
-        channel: 'whatsapp',
-        destination: recovery.customer.phone,
-      })
-
-      results.push({
-        recoveryId: recovery._id,
+      const sentAt = new Date()
+      await finishRecovery({
+        ...lockParams,
         status: 'sent',
+        set: {
+          sentAt,
+          lastMessage: replaceTemplateVars(rule.messageTemplate, values),
+          'metadata.lastSentBy': 'ai_cart_recovery_worker',
+          'metadata.sentAsTemplate': !withinCustomerWindow,
+        },
       })
+
+      await Promise.all([
+        AiCampaignRule.updateOne(
+          { _id: rule._id, tenantId },
+          { $inc: { 'stats.sent': 1 } },
+        ).setOptions({ tenantId }),
+        AiAgent.updateOne(
+          { _id: agent._id, tenantId },
+          { $inc: { 'stats.cartRecoveriesSent': 1 } },
+        ).setOptions({ tenantId }),
+        registerCustomerContact({
+          tenantId,
+          channel: 'whatsapp',
+          destination,
+        }),
+      ])
+
+      results.push({ recoveryId: recovery._id, status: 'sent' })
     } catch (error) {
-      recovery.status = 'failed'
-      recovery.metadata = {
-        ...recovery.metadata,
-        lastError: error.message,
-      }
-
-      await recovery.save({ tenantId }).catch(() => null)
-
+      await failRecovery(lockParams, error).catch(() => null)
       results.push({
         recoveryId: recovery._id,
         status: 'failed',
-        error: error.message,
+        error: clean(error?.message || error),
       })
     }
   }

@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo } from 'react'
+// 📁 website/src/components/HomeProductCard.jsx
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import PropTypes from 'prop-types'
 import ReactStars from 'react-stars'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardMedia, CardContent, Typography, Box } from '@mui/material'
 import { useSelector } from 'react-redux'
+
 import {
   formatCurrency,
   getActiveThemeConfig,
@@ -12,122 +14,202 @@ import {
   getProductRouteId,
   getThemeColors,
 } from '@utils/themeRuntime'
+
 import {
   trackUserMetric,
   USER_METRIC_EVENTS,
 } from '../services/userMetricsService'
 
-/**
- * HomeProductCard Optimizado
- * - Utiliza MUI para consistencia visual.
- * - Soporta colores dinámicos del Tenant.
- * - Optimizado con React.memo para listas largas.
- */
-const HomeProductCard = React.memo(({ data }) => {
-  const navigate = useNavigate()
+const FALLBACK_IMAGE = '/assets/images/placeholder.png'
 
-  const themeState = useSelector(state => state.theme) || {}
-  const activeConfig = useMemo(
-    () => getActiveThemeConfig(themeState),
-    [themeState],
-  )
-  const themeColors = useMemo(
-    () => getThemeColors(activeConfig),
-    [activeConfig],
-  )
-  const productTheme = useMemo(
-    () => getProductThemeConfig(activeConfig),
-    [activeConfig],
-  )
+const getProductId = item => {
+  return item?._id || item?.id || item?.productId || item?.slug || ''
+}
 
-  // Extraemos el primer item con seguridad
-  const item = useMemo(() => (Array.isArray(data) ? data[0] : data), [data])
+const getProductTitle = item => {
+  return item?.title || item?.name || 'Producto'
+}
 
-  const imageUrl = item ? getProductImage(item) : ''
-  const routeId = item ? getProductRouteId(item) : ''
-  const productId = item?._id || item?.id || item?.productId
-  const productPrice = Number(item?.finalPrice ?? item?.price) || 0
-  const aspectRatio =
-    productTheme.imageAspectRatio?.replace(':', ' / ') || '1 / 1'
-  const hoverTransform = {
+const getProductBrand = item => {
+  return item?.brand || item?.marca || item?.manufacturer || 'General'
+}
+
+const getProductCategory = item => {
+  return item?.category || item?.categoryName || item?.categoria || ''
+}
+
+const getProductPrice = item => {
+  return Number(item?.finalPrice ?? item?.price ?? item?.precio ?? 0) || 0
+}
+
+const normalizeAspectRatio = value => {
+  const clean = String(value || '').trim()
+
+  if (!clean) return '1 / 1'
+
+  return clean.replace(':', ' / ')
+}
+
+const getHoverTransform = effect => {
+  const effects = {
     none: 'none',
     zoom: 'scale(1.02)',
     lift: 'translateY(-5px)',
     border: 'none',
     scale: 'scale(1.02)',
-  }[productTheme.hoverEffect || 'lift']
+  }
+
+  return effects[effect] || effects.lift
+}
+
+/**
+ * HomeProductCard Producción
+ * - Compatible con theme runtime multitenant.
+ * - Registra product_impression y product_click.
+ * - Evita impresiones duplicadas por React StrictMode.
+ * - Usa finalPrice cuando exista.
+ * - Accesible con teclado.
+ */
+const HomeProductCard = React.memo(({ data, placement = 'home_product_card' }) => {
+  const navigate = useNavigate()
+  const impressionTrackedRef = useRef('')
+
+  const themeState = useSelector(state => state.theme) || {}
+
+  const activeConfig = useMemo(
+    () => getActiveThemeConfig(themeState),
+    [themeState],
+  )
+
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
+
+  const productTheme = useMemo(
+    () => getProductThemeConfig(activeConfig),
+    [activeConfig],
+  )
+
+  const item = useMemo(() => {
+    if (Array.isArray(data)) return data[0] || null
+    return data || null
+  }, [data])
+
+  const productId = useMemo(() => getProductId(item), [item])
+  const routeId = useMemo(() => (item ? getProductRouteId(item) : ''), [item])
+  const title = useMemo(() => getProductTitle(item), [item])
+  const brand = useMemo(() => getProductBrand(item), [item])
+  const category = useMemo(() => getProductCategory(item), [item])
+  const productPrice = useMemo(() => getProductPrice(item), [item])
+  const imageUrl = useMemo(() => {
+    return item ? getProductImage(item) || FALLBACK_IMAGE : FALLBACK_IMAGE
+  }, [item])
+
+  const aspectRatio = normalizeAspectRatio(productTheme.imageAspectRatio)
+  const hoverTransform = getHoverTransform(productTheme.hoverEffect)
+
   const cardBackground = themeColors.cardBackground
   const cardBorder = themeColors.cardBorder
   const cardText = themeColors.cardText
   const cardMutedText = themeColors.cardMutedText
   const cardPrice = themeColors.cardPrice
 
-  const handleCardClick = () => {
+  const metricPayload = useMemo(() => ({
+    productId,
+    value: productPrice,
+    category,
+    currency: item?.currency || activeConfig?.currency || 'ARS',
+    metadata: {
+      title,
+      brand,
+      slug: item?.slug || '',
+      routeId,
+      placement,
+    },
+  }), [
+    productId,
+    productPrice,
+    category,
+    item?.currency,
+    item?.slug,
+    activeConfig?.currency,
+    title,
+    brand,
+    routeId,
+    placement,
+  ])
+
+  const handleCardClick = useCallback(() => {
+    if (!item || !routeId) return
+
     trackUserMetric({
       eventType: USER_METRIC_EVENTS.PRODUCT_CLICK,
-      productId,
-      value: productPrice,
-      category: item.category || item.categoryName || '',
-      metadata: {
-        title: item?.title,
-        brand: item?.brand || item?.marca || '',
-        placement: 'home_product_card',
-      },
+      ...metricPayload,
     })
+
     navigate(`/product/${routeId}`)
-  }
+  }, [item, routeId, metricPayload, navigate])
+
+  const handleKeyDown = useCallback(event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleCardClick()
+    }
+  }, [handleCardClick])
 
   useEffect(() => {
-    if (!productId) return
+    if (!item || !productId) return
+
+    const impressionKey = `${productId}:${routeId}:${placement}`
+
+    if (impressionTrackedRef.current === impressionKey) return
+
+    impressionTrackedRef.current = impressionKey
 
     trackUserMetric({
       eventType: USER_METRIC_EVENTS.PRODUCT_IMPRESSION,
-      productId,
-      value: productPrice,
-      category: item?.category || item?.categoryName || '',
-      metadata: {
-        title: item?.title,
-        brand: item?.brand || item?.marca || '',
-        placement: 'home_product_card',
-      },
+      ...metricPayload,
     })
-  }, [
-    productId,
-    productPrice,
-    item?.category,
-    item?.categoryName,
-    item?.title,
-    item?.brand,
-    item?.marca,
-  ])
+  }, [item, productId, routeId, placement, metricPayload])
 
   if (!item) return null
 
   return (
     <Card
+      role="button"
+      tabIndex={0}
+      aria-label={`Ver producto ${title}`}
       onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
       sx={{
         width: '100%',
         maxWidth: 260,
-        borderRadius: 4, // 16px
+        borderRadius: 4,
         overflow: 'hidden',
         margin: '0 auto',
         backgroundColor: cardBackground,
         border: `1px solid ${cardBorder}`,
         boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-        transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-        cursor: 'pointer',
+        transition: 'transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease',
+        cursor: routeId ? 'pointer' : 'default',
+        outline: 'none',
         '&:hover': {
-          transform: hoverTransform,
-          boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
+          transform: routeId ? hoverTransform : 'none',
+          boxShadow: routeId
+            ? '0 8px 20px rgba(0,0,0,0.12)'
+            : '0 4px 12px rgba(0,0,0,0.08)',
           borderColor:
             productTheme.hoverEffect === 'border'
               ? themeColors.actionPrimary
               : cardBorder,
         },
+        '&:focus-visible': {
+          boxShadow: `0 0 0 3px ${themeColors.actionPrimary || '#111827'}33`,
+          borderColor: themeColors.actionPrimary || cardBorder,
+        },
       }}
     >
-      {/* Contenedor de Imagen */}
       <Box
         sx={{
           position: 'relative',
@@ -138,20 +220,23 @@ const HomeProductCard = React.memo(({ data }) => {
         <CardMedia
           component="img"
           image={imageUrl}
-          alt={item.title}
+          alt={title}
+          loading="lazy"
+          onError={event => {
+            event.currentTarget.src = FALLBACK_IMAGE
+          }}
           sx={{
             position: 'absolute',
             top: 0,
             width: '100%',
             height: '100%',
-            objectFit: 'contain', // Mejor que cover para productos
+            objectFit: 'contain',
             p: 1,
           }}
         />
       </Box>
 
       <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-        {/* Marca */}
         <Typography
           variant="caption"
           sx={{
@@ -159,14 +244,15 @@ const HomeProductCard = React.memo(({ data }) => {
             textTransform: 'uppercase',
             letterSpacing: 1,
             fontWeight: 600,
+            display: 'block',
           }}
         >
-          {item.brand || 'General'}
+          {brand}
         </Typography>
 
-        {/* Título - Limitado a 2 líneas para no romper el diseño */}
         <Typography
           variant="subtitle1"
+          title={title}
           sx={{
             mt: 0.5,
             mb: 1,
@@ -177,14 +263,13 @@ const HomeProductCard = React.memo(({ data }) => {
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
-            minHeight: '2.4em', // Mantiene altura constante
+            minHeight: '2.4em',
             color: cardText,
           }}
         >
-          {item.title}
+          {title}
         </Typography>
 
-        {/* Rating */}
         {productTheme.showRating !== false && (
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
             <ReactStars
@@ -197,7 +282,6 @@ const HomeProductCard = React.memo(({ data }) => {
           </Box>
         )}
 
-        {/* Precio */}
         {productTheme.showPrice !== false && (
           <Typography
             variant="h6"
@@ -207,7 +291,7 @@ const HomeProductCard = React.memo(({ data }) => {
               fontSize: '1.15rem',
             }}
           >
-            {formatCurrency(item.price || 0, activeConfig)}
+            {formatCurrency(productPrice, activeConfig)}
           </Typography>
         )}
       </CardContent>
@@ -218,7 +302,11 @@ const HomeProductCard = React.memo(({ data }) => {
 HomeProductCard.displayName = 'HomeProductCard'
 
 HomeProductCard.propTypes = {
-  data: PropTypes.oneOfType([PropTypes.array, PropTypes.object]).isRequired,
+  data: PropTypes.oneOfType([
+    PropTypes.array,
+    PropTypes.object,
+  ]).isRequired,
+  placement: PropTypes.string,
 }
 
 export default HomeProductCard

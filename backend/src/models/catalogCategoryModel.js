@@ -1,43 +1,31 @@
+// 📁 src/models/catalogCategoryModel.js
+// VERSIÓN PRODUCCIÓN - MULTI-TENANT / CATEGORY-DRIVEN COMMERCE / VARIANTES / ATRIBUTOS DINÁMICOS
+
 import mongoose from 'mongoose'
 
 import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
-const ALLOWED_ATTRIBUTE_TYPES = ['select', 'color', 'text']
+const ATTRIBUTE_TYPES = [
+  'text',
+  'textarea',
+  'number',
+  'select',
+  'multiselect',
+  'boolean',
+  'color',
+]
 
-const normalizeText = value => String(value || '').trim()
+const normalizeText = value => (typeof value === 'string' ? value.trim() : value)
 
-const normalizeKey = value => {
-  return normalizeText(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-}
-
-const normalizeSlug = value => normalizeKey(value).replace(/_/g, '-')
-
-const normalizeValues = values => {
-  const seen = new Set()
-
-  return (Array.isArray(values) ? values : [])
-    .map(normalizeText)
-    .filter(value => {
-      const key = value.toLocaleLowerCase('es')
-      if (!value || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-}
-
-const variantAttributeTemplateSchema = new Schema(
+const catalogAttributeSchema = new Schema(
   {
     name: {
       type: String,
       required: true,
       trim: true,
+      lowercase: true,
     },
     label: {
       type: String,
@@ -46,14 +34,36 @@ const variantAttributeTemplateSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ALLOWED_ATTRIBUTE_TYPES,
-      default: 'select',
+      enum: ATTRIBUTE_TYPES,
+      default: 'text',
     },
     values: {
       type: [String],
       default: [],
     },
+    unit: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    group: {
+      type: String,
+      trim: true,
+      default: 'General',
+    },
     required: {
+      type: Boolean,
+      default: false,
+    },
+    visible: {
+      type: Boolean,
+      default: true,
+    },
+    filterable: {
+      type: Boolean,
+      default: false,
+    },
+    searchable: {
       type: Boolean,
       default: false,
     },
@@ -61,10 +71,14 @@ const variantAttributeTemplateSchema = new Schema(
       type: Number,
       default: 0,
     },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: '',
+    },
   },
-  {
-    _id: false,
-  },
+  { _id: false },
 )
 
 const subcategorySchema = new Schema(
@@ -78,29 +92,60 @@ const subcategorySchema = new Schema(
       type: String,
       required: true,
       trim: true,
+      lowercase: true,
+      index: true,
     },
     slug: {
       type: String,
       required: true,
       trim: true,
+      lowercase: true,
     },
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
     },
     sortOrder: {
       type: Number,
       default: 0,
     },
     variantAttributes: {
-      type: [variantAttributeTemplateSchema],
+      type: [catalogAttributeSchema],
       default: [],
     },
+    productAttributes: {
+      type: [catalogAttributeSchema],
+      default: [],
+    },
+    productFields: {
+      type: [catalogAttributeSchema],
+      default: [],
+    },
+    specifications: {
+      type: [catalogAttributeSchema],
+      default: [],
+    },
+    requiredAttributes: {
+      type: [catalogAttributeSchema],
+      default: [],
+    },
+    seoTemplate: {
+      metaTitlePattern: { type: String, trim: true, default: '' },
+      metaDescriptionPattern: { type: String, trim: true, default: '' },
+      keywordHints: { type: [String], default: [] },
+    },
+    logisticsTemplate: {
+      shippingType: {
+        type: String,
+        enum: ['standard', 'fragile', 'refrigerated', 'digital', 'pickup_only', 'custom', ''],
+        default: '',
+      },
+      warranty: { type: String, trim: true, default: '' },
+      originCountry: { type: String, trim: true, default: '' },
+    },
   },
-  {
-    _id: true,
-    timestamps: true,
-  },
+  { _id: true, timestamps: true },
 )
 
 const catalogCategorySchema = new Schema(
@@ -120,11 +165,13 @@ const catalogCategorySchema = new Schema(
       type: String,
       required: true,
       trim: true,
+      lowercase: true,
     },
     slug: {
       type: String,
       required: true,
       trim: true,
+      lowercase: true,
     },
     isActive: {
       type: Boolean,
@@ -152,76 +199,54 @@ const catalogCategorySchema = new Schema(
   },
   {
     timestamps: true,
-    minimize: false,
   },
 )
 
-catalogCategorySchema.index(
-  { tenantId: 1, normalizedName: 1 },
-  { unique: true, name: 'uniq_catalog_category_per_tenant' },
-)
+const normalizeValues = values => {
+  const unique = new Map()
 
-catalogCategorySchema.pre('validate', function normalizeCatalogCategory(next) {
-  try {
-    this.name = normalizeText(this.name)
-    this.normalizedName = normalizeKey(this.name)
-    this.slug = normalizeSlug(this.name)
-
-    const subcategoryNames = new Set()
-
-    for (const subcategory of this.subcategories || []) {
-      subcategory.name = normalizeText(subcategory.name)
-      subcategory.normalizedName = normalizeKey(subcategory.name)
-      subcategory.slug = normalizeSlug(subcategory.name)
-
-      if (!subcategory.normalizedName) {
-        throw new Error('Cada subcategoría debe tener un nombre válido')
-      }
-
-      if (subcategoryNames.has(subcategory.normalizedName)) {
-        throw new Error(`La subcategoría "${subcategory.name}" está duplicada`)
-      }
-      subcategoryNames.add(subcategory.normalizedName)
-
-      const attributeNames = new Set()
-
-      for (const [index, attribute] of (subcategory.variantAttributes || []).entries()) {
-        attribute.name = normalizeKey(attribute.name || attribute.label)
-        attribute.label = normalizeText(attribute.label || attribute.name)
-        attribute.values = normalizeValues(attribute.values)
-        attribute.sortOrder = Number.isFinite(Number(attribute.sortOrder))
-          ? Number(attribute.sortOrder)
-          : index
-
-        if (!ALLOWED_ATTRIBUTE_TYPES.includes(attribute.type)) {
-          attribute.type = 'select'
-        }
-
-        if (!attribute.name || !attribute.label) {
-          throw new Error('Los atributos de variante requieren nombre y etiqueta')
-        }
-
-        if (attributeNames.has(attribute.name)) {
-          throw new Error(
-            `El atributo "${attribute.label}" está duplicado en "${subcategory.name}"`,
-          )
-        }
-        attributeNames.add(attribute.name)
-      }
-    }
-
-    next()
-  } catch (error) {
-    next(error)
+  for (const rawValue of Array.isArray(values) ? values : []) {
+    const value = String(rawValue || '').trim()
+    if (!value) continue
+    unique.set(value.toLocaleLowerCase('es'), value)
   }
+
+  return [...unique.values()]
+}
+
+catalogAttributeSchema.pre('validate', function normalizeAttribute(next) {
+  this.name = String(this.name || '').trim().toLowerCase()
+  this.label = normalizeText(this.label) || this.name
+  this.type = ATTRIBUTE_TYPES.includes(this.type) ? this.type : 'text'
+  this.values = normalizeValues(this.values)
+  this.unit = normalizeText(this.unit) || ''
+  this.group = normalizeText(this.group) || 'General'
+  next()
 })
+
+subcategorySchema.pre('validate', function normalizeSubcategory(next) {
+  this.name = normalizeText(this.name)
+  this.normalizedName = String(this.normalizedName || '').trim().toLowerCase()
+  this.slug = String(this.slug || this.normalizedName).trim().toLowerCase()
+  next()
+})
+
+catalogCategorySchema.pre('validate', function normalizeCategory(next) {
+  this.name = normalizeText(this.name)
+  this.normalizedName = String(this.normalizedName || '').trim().toLowerCase()
+  this.slug = String(this.slug || this.normalizedName).trim().toLowerCase()
+  next()
+})
+
+catalogCategorySchema.index({ tenantId: 1, normalizedName: 1 }, { unique: true })
+catalogCategorySchema.index({ tenantId: 1, isActive: 1, sortOrder: 1, name: 1 })
+catalogCategorySchema.index({ tenantId: 1, 'subcategories.normalizedName': 1 })
 
 catalogCategorySchema.plugin(tenantPlugin, {
   addTenantField: false,
 })
 
 const CatalogCategory =
-  mongoose.models.CatalogCategory ||
-  mongoose.model('CatalogCategory', catalogCategorySchema)
+  mongoose.models.CatalogCategory || mongoose.model('CatalogCategory', catalogCategorySchema)
 
 export default CatalogCategory

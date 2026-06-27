@@ -1,7 +1,7 @@
 // 📁 src/middlewares/csrfMiddleware.js
-import csurf from 'csurf'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
+import crypto from 'node:crypto'
 
 /**
  * Determina el dominio de cookie de forma segura.
@@ -60,21 +60,176 @@ export const getCookieDomain = req => {
  * Middleware CSRF recomendado para arquitectura multi-tenant.
  * Calcula domain dinámico por request.
  */
-export const csrfProtectionDynamic = (req, res, next) => {
-  const dynamicDomain = getCookieDomain(req)
+const CSRF_SECRET_COOKIE = '_csrf'
+const CSRF_TOKEN_MAX_AGE_MS = 15 * 60 * 1000
 
-  return csurf({
-    cookie: {
-      key: '_csrf',
-      httpOnly: true,
-      secure: env.csrfCookieSecure,
-      sameSite: env.csrfCookieSameSite,
-      domain: dynamicDomain,
-      path: '/',
-    },
-  })(req, res, next)
+const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+const getCsrfSigningSecret = () => {
+  const secret =
+    env.csrfSecret ||
+    process.env.CSRF_SECRET ||
+    env.cookieSecret ||
+    process.env.COOKIE_SECRET
+
+  if (!secret) {
+    throw new Error('CSRF_SECRET or COOKIE_SECRET is required')
+  }
+
+  if (env.isProduction && String(secret).length < 32) {
+    throw new Error('CSRF secret must contain at least 32 characters in production')
+  }
+
+  return String(secret)
 }
 
+const signValue = value => {
+  return crypto
+    .createHmac('sha256', getCsrfSigningSecret())
+    .update(String(value))
+    .digest('base64url')
+}
+
+const safeEqual = (a, b) => {
+  const left = Buffer.from(String(a || ''))
+  const right = Buffer.from(String(b || ''))
+
+  if (left.length !== right.length) {
+    return false
+  }
+
+  return crypto.timingSafeEqual(left, right)
+}
+
+const createSignedSecretCookie = () => {
+  const secretValue = crypto.randomBytes(32).toString('base64url')
+  const signature = signValue(secretValue)
+
+  return {
+    secretValue,
+    cookieValue: `${secretValue}.${signature}`,
+  }
+}
+
+const readSignedSecretCookie = req => {
+  const raw = String(req.cookies?.[CSRF_SECRET_COOKIE] || '')
+  const [secretValue, signature] = raw.split('.')
+
+  if (!secretValue || !signature) {
+    return null
+  }
+
+  const expectedSignature = signValue(secretValue)
+
+  if (!safeEqual(signature, expectedSignature)) {
+    return null
+  }
+
+  return secretValue
+}
+
+const setSignedSecretCookie = (req, res) => {
+  const { secretValue, cookieValue } = createSignedSecretCookie()
+  const cookieDomain = getCookieDomain(req)
+
+  res.cookie(CSRF_SECRET_COOKIE, cookieValue, {
+    httpOnly: true,
+    secure: env.csrfCookieSecure,
+    sameSite: env.csrfCookieSameSite,
+    domain: cookieDomain,
+    path: '/',
+    maxAge: CSRF_TOKEN_MAX_AGE_MS,
+  })
+
+  return secretValue
+}
+
+const createPublicCsrfToken = secretValue => {
+  const nonce = crypto.randomBytes(32).toString('base64url')
+  const signature = signValue(`${secretValue}.${nonce}`)
+
+  return `${nonce}.${signature}`
+}
+
+const verifyPublicCsrfToken = (token, secretValue) => {
+  if (!token || typeof token !== 'string') {
+    return false
+  }
+
+  const [nonce, signature] = token.split('.')
+
+  if (!nonce || !signature) {
+    return false
+  }
+
+  const expectedSignature = signValue(`${secretValue}.${nonce}`)
+
+  return safeEqual(signature, expectedSignature)
+}
+
+const getCsrfTokenFromRequest = req => {
+  const configuredHeader = String(env.csrfHeaderName || 'x-csrf-token').toLowerCase()
+
+  return (
+    req.headers[configuredHeader] ||
+    req.headers['x-csrf-token'] ||
+    req.headers['X-CSRF-Token'] ||
+    req.body?._csrf
+  )
+}
+
+const createCsrfError = () => {
+  const error = new Error('CSRF token inválido o ausente')
+  error.code = 'EBADCSRFTOKEN'
+  error.statusCode = 403
+  return error
+}
+
+/**
+ * Middleware CSRF compatible con el contrato anterior de csurf:
+ * - Mantiene req.csrfToken()
+ * - Mantiene cookie interna _csrf
+ * - Mantiene validación por header X-CSRF-Token
+ * - Mantiene dominio dinámico multi-tenant
+ */
+export const csrfProtectionDynamic = (req, res, next) => {
+  try {
+    const method = String(req.method || '').toUpperCase()
+    const isUnsafeMethod = unsafeMethods.has(method)
+
+    let secretValue = readSignedSecretCookie(req)
+
+    if (!secretValue) {
+      if (isUnsafeMethod) {
+        return next(createCsrfError())
+      }
+
+      secretValue = setSignedSecretCookie(req, res)
+    }
+
+    req.csrfToken = (options = {}) => {
+      if (options?.overwrite) {
+        secretValue = setSignedSecretCookie(req, res)
+      }
+
+      return createPublicCsrfToken(secretValue)
+    }
+
+    if (!isUnsafeMethod) {
+      return next()
+    }
+
+    const requestToken = getCsrfTokenFromRequest(req)
+
+    if (!verifyPublicCsrfToken(requestToken, secretValue)) {
+      return next(createCsrfError())
+    }
+
+    return next()
+  } catch (error) {
+    return next(error)
+  }
+}
 /**
  * Handler único y centralizado para errores CSRF.
  */

@@ -8,7 +8,7 @@ import {
   Switch,
   FormControlLabel,
 } from '@mui/material'
-import ImageUploader from './ImageUploader'
+import ImageUploader from '@components/ImageUploader'
 
 const SOCIAL_PLATFORMS = [
   {

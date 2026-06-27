@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Box, LinearProgress } from '@mui/material'
 import { useDispatch, useSelector } from 'react-redux'
 import CustomHeader from '@components/CustomHeader'
@@ -50,8 +50,9 @@ const readStoredPreview = () => {
 const ThemePreview = () => {
   const dispatch = useDispatch()
   const previewConfig = useSelector(state => state.theme?.previewConfig)
+  const [isConnected, setIsConnected] = useState(false)
 
-  useEffect(() => {
+  const previewHandshake = useMemo(() => {
     const allowedAdminOrigins = getAllowedAdminOrigins()
 
     const searchParams =
@@ -67,6 +68,13 @@ const ThemePreview = () => {
       ? requestedParentOrigin
       : [...allowedAdminOrigins][0]
 
+    return {
+      allowedAdminOrigins,
+      parentOrigin: parentOrigin || window.location.origin,
+    }
+  }, [])
+
+  useEffect(() => {
     const storedPreview = readStoredPreview()
 
     if (storedPreview) {
@@ -80,7 +88,7 @@ const ThemePreview = () => {
       const message = event.data
 
       if (event.source !== window.parent) return
-      if (!allowedAdminOrigins.has(event.origin)) return
+      if (!previewHandshake.allowedAdminOrigins.has(event.origin)) return
       if (!message || message.type !== 'HENKO_THEME_PREVIEW_UPDATE') return
       if (!message.payload || typeof message.payload !== 'object') return
 
@@ -91,19 +99,29 @@ const ThemePreview = () => {
 
       dispatch(updatePreviewConfig(message.payload))
       dispatch(setPreviewMode(true))
+      setIsConnected(true)
     }
 
     window.addEventListener('message', handleMessage)
 
     window.parent?.postMessage(
       { type: 'HENKO_THEME_PREVIEW_READY' },
-      parentOrigin || window.location.origin,
+      previewHandshake.parentOrigin,
     )
+    setIsConnected(true)
 
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [dispatch])
+  }, [dispatch, previewHandshake])
+
+  if (!isConnected) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+        <LinearProgress />
+      </Box>
+    )
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>

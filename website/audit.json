@@ -1,0 +1,759 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@rollup/plugin-terser": {
+      "name": "@rollup/plugin-terser",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["serialize-javascript"],
+      "effects": [],
+      "range": "0.2.0 - 0.4.4",
+      "nodes": ["node_modules/@rollup/plugin-terser"],
+      "fixAvailable": {
+        "name": "@rollup/plugin-terser",
+        "version": "1.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "bin-build": {
+      "name": "bin-build",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["download", "execa", "tempfile"],
+      "effects": [
+        "cwebp-bin",
+        "gifsicle",
+        "jpegtran-bin",
+        "mozjpeg",
+        "optipng-bin",
+        "pngquant-bin"
+      ],
+      "range": "*",
+      "nodes": ["node_modules/bin-build"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "bin-check": {
+      "name": "bin-check",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["execa"],
+      "effects": ["bin-wrapper"],
+      "range": ">=4.1.0",
+      "nodes": ["node_modules/bin-check"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "bin-version": {
+      "name": "bin-version",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["find-versions"],
+      "effects": ["bin-version-check"],
+      "range": "<=4.0.0",
+      "nodes": ["node_modules/bin-version"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "bin-version-check": {
+      "name": "bin-version-check",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["bin-version"],
+      "effects": ["bin-wrapper"],
+      "range": "<=4.0.0",
+      "nodes": ["node_modules/bin-version-check"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "bin-wrapper": {
+      "name": "bin-wrapper",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["bin-check", "bin-version-check", "download"],
+      "effects": [
+        "cwebp-bin",
+        "gifsicle",
+        "jpegtran-bin",
+        "mozjpeg",
+        "optipng-bin",
+        "pngquant-bin"
+      ],
+      "range": ">=0.4.0",
+      "nodes": ["node_modules/bin-wrapper"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "cacheable-request": {
+      "name": "cacheable-request",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["http-cache-semantics"],
+      "effects": ["got"],
+      "range": "0.1.0 - 2.1.4",
+      "nodes": ["node_modules/cacheable-request"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "compression-webpack-plugin": {
+      "name": "compression-webpack-plugin",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["serialize-javascript"],
+      "effects": [],
+      "range": "6.0.0 - 11.1.0",
+      "nodes": ["node_modules/compression-webpack-plugin"],
+      "fixAvailable": {
+        "name": "compression-webpack-plugin",
+        "version": "12.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "copy-webpack-plugin": {
+      "name": "copy-webpack-plugin",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["serialize-javascript"],
+      "effects": [],
+      "range": "6.1.1 - 13.0.1",
+      "nodes": ["node_modules/copy-webpack-plugin"],
+      "fixAvailable": {
+        "name": "copy-webpack-plugin",
+        "version": "14.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "cross-spawn": {
+      "name": "cross-spawn",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1104663,
+          "name": "cross-spawn",
+          "dependency": "cross-spawn",
+          "title": "Regular Expression Denial of Service (ReDoS) in cross-spawn",
+          "url": "https://github.com/advisories/GHSA-3xgq-45jj-v275",
+          "severity": "high",
+          "cwe": ["CWE-1333"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<6.0.6"
+        }
+      ],
+      "effects": ["execa"],
+      "range": "<6.0.6",
+      "nodes": [
+        "node_modules/bin-build/node_modules/cross-spawn",
+        "node_modules/bin-check/node_modules/cross-spawn",
+        "node_modules/exec-buffer/node_modules/cross-spawn"
+      ],
+      "fixAvailable": {
+        "name": "imagemin-webp",
+        "version": "6.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "cwebp-bin": {
+      "name": "cwebp-bin",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["bin-build", "bin-wrapper"],
+      "effects": ["imagemin-webp"],
+      "range": ">=3.0.0",
+      "nodes": ["node_modules/cwebp-bin"],
+      "fixAvailable": {
+        "name": "imagemin-webp",
+        "version": "6.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "download": {
+      "name": "download",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": ["got"],
+      "effects": ["bin-build", "bin-wrapper"],
+      "range": ">=4.0.0",
+      "nodes": ["node_modules/bin-wrapper/node_modules/download", "node_modules/download"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "exec-buffer": {
+      "name": "exec-buffer",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["execa", "tempfile"],
+      "effects": ["imagemin-webp"],
+      "range": "*",
+      "nodes": ["node_modules/exec-buffer"],
+      "fixAvailable": {
+        "name": "imagemin-webp",
+        "version": "6.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "execa": {
+      "name": "execa",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["cross-spawn"],
+      "effects": ["bin-build", "bin-check", "exec-buffer"],
+      "range": "0.5.0 - 0.9.0",
+      "nodes": [
+        "node_modules/bin-build/node_modules/execa",
+        "node_modules/bin-check/node_modules/execa",
+        "node_modules/exec-buffer/node_modules/execa"
+      ],
+      "fixAvailable": {
+        "name": "imagemin-webp",
+        "version": "6.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "fast-xml-parser": {
+      "name": "fast-xml-parser",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1117911,
+          "name": "fast-xml-parser",
+          "dependency": "fast-xml-parser",
+          "title": "fast-xml-parser XMLBuilder: XML Comment and CDATA Injection via Unescaped Delimiters",
+          "url": "https://github.com/advisories/GHSA-gh4j-gqv2-49f6",
+          "severity": "moderate",
+          "cwe": ["CWE-91"],
+          "cvss": {
+            "score": 6.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+          },
+          "range": "<5.7.0"
+        }
+      ],
+      "effects": ["is-svg"],
+      "range": "<5.7.0",
+      "nodes": ["node_modules/fast-xml-parser"],
+      "fixAvailable": {
+        "name": "imagemin-svgo",
+        "version": "12.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "file-type": {
+      "name": "file-type",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1114301,
+          "name": "file-type",
+          "dependency": "file-type",
+          "title": "file-type affected by infinite loop in ASF parser on malformed input with zero-size sub-header",
+          "url": "https://github.com/advisories/GHSA-5v7r-6r5c-r473",
+          "severity": "moderate",
+          "cwe": ["CWE-835"],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+          },
+          "range": ">=13.0.0 <21.3.1"
+        }
+      ],
+      "effects": ["imagemin", "imagemin-jpegtran"],
+      "range": "13.0.0 - 21.3.0",
+      "nodes": ["node_modules/file-type"],
+      "fixAvailable": {
+        "name": "imagemin",
+        "version": "7.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "find-versions": {
+      "name": "find-versions",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["semver-regex"],
+      "effects": ["bin-version"],
+      "range": "<=3.2.0",
+      "nodes": ["node_modules/find-versions"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "gifsicle": {
+      "name": "gifsicle",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["bin-build", "bin-wrapper"],
+      "effects": ["imagemin-gifsicle"],
+      "range": ">=3.0.0",
+      "nodes": ["node_modules/gifsicle"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "got": {
+      "name": "got",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1088948,
+          "name": "got",
+          "dependency": "got",
+          "title": "Got allows a redirect to a UNIX socket",
+          "url": "https://github.com/advisories/GHSA-pfrx-2q88-qq97",
+          "severity": "moderate",
+          "cwe": [],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+          },
+          "range": "<11.8.5"
+        },
+        "cacheable-request"
+      ],
+      "effects": ["download"],
+      "range": "<=11.8.3",
+      "nodes": ["node_modules/bin-wrapper/node_modules/got", "node_modules/got"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "http-cache-semantics": {
+      "name": "http-cache-semantics",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1102456,
+          "name": "http-cache-semantics",
+          "dependency": "http-cache-semantics",
+          "title": "http-cache-semantics vulnerable to Regular Expression Denial of Service",
+          "url": "https://github.com/advisories/GHSA-rc47-6667-2j5j",
+          "severity": "high",
+          "cwe": ["CWE-1333"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<4.1.1"
+        }
+      ],
+      "effects": ["cacheable-request"],
+      "range": "<4.1.1",
+      "nodes": ["node_modules/http-cache-semantics"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "image-minimizer-webpack-plugin": {
+      "name": "image-minimizer-webpack-plugin",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["serialize-javascript"],
+      "effects": [],
+      "range": "<=4.1.4",
+      "nodes": ["node_modules/image-minimizer-webpack-plugin"],
+      "fixAvailable": {
+        "name": "image-minimizer-webpack-plugin",
+        "version": "5.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "imagemin": {
+      "name": "imagemin",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["file-type"],
+      "effects": [],
+      "range": ">=8.0.0",
+      "nodes": ["node_modules/imagemin"],
+      "fixAvailable": {
+        "name": "imagemin",
+        "version": "7.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "imagemin-gifsicle": {
+      "name": "imagemin-gifsicle",
+      "severity": "high",
+      "isDirect": true,
+      "via": ["gifsicle"],
+      "effects": [],
+      "range": ">=6.0.0",
+      "nodes": ["node_modules/imagemin-gifsicle"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "imagemin-jpegtran": {
+      "name": "imagemin-jpegtran",
+      "severity": "high",
+      "isDirect": true,
+      "via": ["file-type", "jpegtran-bin"],
+      "effects": [],
+      "range": ">=6.0.0",
+      "nodes": ["node_modules/imagemin-jpegtran"],
+      "fixAvailable": {
+        "name": "imagemin-jpegtran",
+        "version": "7.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "imagemin-mozjpeg": {
+      "name": "imagemin-mozjpeg",
+      "severity": "high",
+      "isDirect": true,
+      "via": ["mozjpeg"],
+      "effects": [],
+      "range": ">=8.0.0",
+      "nodes": ["node_modules/imagemin-mozjpeg"],
+      "fixAvailable": {
+        "name": "imagemin-mozjpeg",
+        "version": "7.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "imagemin-optipng": {
+      "name": "imagemin-optipng",
+      "severity": "high",
+      "isDirect": true,
+      "via": ["optipng-bin"],
+      "effects": [],
+      "range": ">=6.0.0",
+      "nodes": ["node_modules/imagemin-optipng"],
+      "fixAvailable": {
+        "name": "imagemin-optipng",
+        "version": "5.2.1",
+        "isSemVerMajor": true
+      }
+    },
+    "imagemin-pngquant": {
+      "name": "imagemin-pngquant",
+      "severity": "high",
+      "isDirect": true,
+      "via": ["pngquant-bin"],
+      "effects": [],
+      "range": ">=5.1.0",
+      "nodes": ["node_modules/imagemin-pngquant"],
+      "fixAvailable": {
+        "name": "imagemin-pngquant",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "imagemin-svgo": {
+      "name": "imagemin-svgo",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["is-svg"],
+      "effects": [],
+      "range": "10.0.0 - 11.0.1",
+      "nodes": ["node_modules/imagemin-svgo"],
+      "fixAvailable": {
+        "name": "imagemin-svgo",
+        "version": "12.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "imagemin-webp": {
+      "name": "imagemin-webp",
+      "severity": "high",
+      "isDirect": true,
+      "via": ["cwebp-bin", "exec-buffer"],
+      "effects": [],
+      "range": ">=5.0.0",
+      "nodes": ["node_modules/imagemin-webp"],
+      "fixAvailable": {
+        "name": "imagemin-webp",
+        "version": "6.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "is-svg": {
+      "name": "is-svg",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": ["fast-xml-parser"],
+      "effects": ["imagemin-svgo"],
+      "range": "4.3.0 - 5.1.0",
+      "nodes": ["node_modules/is-svg"],
+      "fixAvailable": {
+        "name": "imagemin-svgo",
+        "version": "12.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "jpegtran-bin": {
+      "name": "jpegtran-bin",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["bin-build", "bin-wrapper"],
+      "effects": ["imagemin-jpegtran"],
+      "range": ">=3.0.0",
+      "nodes": ["node_modules/jpegtran-bin"],
+      "fixAvailable": {
+        "name": "imagemin-jpegtran",
+        "version": "7.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "mozjpeg": {
+      "name": "mozjpeg",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["bin-build", "bin-wrapper"],
+      "effects": ["imagemin-mozjpeg"],
+      "range": ">=4.0.0",
+      "nodes": ["node_modules/mozjpeg"],
+      "fixAvailable": {
+        "name": "imagemin-mozjpeg",
+        "version": "7.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "optipng-bin": {
+      "name": "optipng-bin",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["bin-build", "bin-wrapper"],
+      "effects": ["imagemin-optipng"],
+      "range": ">=3.0.0",
+      "nodes": ["node_modules/optipng-bin"],
+      "fixAvailable": {
+        "name": "imagemin-optipng",
+        "version": "5.2.1",
+        "isSemVerMajor": true
+      }
+    },
+    "pngquant-bin": {
+      "name": "pngquant-bin",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["bin-build", "bin-wrapper"],
+      "effects": ["imagemin-pngquant"],
+      "range": ">=3.0.0",
+      "nodes": ["node_modules/pngquant-bin"],
+      "fixAvailable": {
+        "name": "imagemin-pngquant",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "semver-regex": {
+      "name": "semver-regex",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1092475,
+          "name": "semver-regex",
+          "dependency": "semver-regex",
+          "title": "semver-regex Regular Expression Denial of Service (ReDOS)",
+          "url": "https://github.com/advisories/GHSA-44c6-4v22-4mhx",
+          "severity": "high",
+          "cwe": ["CWE-400", "CWE-1333"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<3.1.3"
+        },
+        {
+          "source": 1092605,
+          "name": "semver-regex",
+          "dependency": "semver-regex",
+          "title": "Regular expression denial of service in semver-regex",
+          "url": "https://github.com/advisories/GHSA-4x5v-gmq8-25ch",
+          "severity": "low",
+          "cwe": ["CWE-1333"],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<3.1.4"
+        }
+      ],
+      "effects": ["find-versions"],
+      "range": "<=3.1.3",
+      "nodes": ["node_modules/semver-regex"],
+      "fixAvailable": {
+        "name": "imagemin-gifsicle",
+        "version": "5.2.0",
+        "isSemVerMajor": true
+      }
+    },
+    "serialize-javascript": {
+      "name": "serialize-javascript",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1113686,
+          "name": "serialize-javascript",
+          "dependency": "serialize-javascript",
+          "title": "Serialize JavaScript is Vulnerable to RCE via RegExp.flags and Date.prototype.toISOString()",
+          "url": "https://github.com/advisories/GHSA-5c6j-r48x-rmvq",
+          "severity": "high",
+          "cwe": ["CWE-96"],
+          "cvss": {
+            "score": 8.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+          },
+          "range": "<=7.0.2"
+        },
+        {
+          "source": 1119440,
+          "name": "serialize-javascript",
+          "dependency": "serialize-javascript",
+          "title": "Serialize JavaScript has CPU Exhaustion Denial of Service via crafted array-like objects",
+          "url": "https://github.com/advisories/GHSA-qj8w-gfj5-8c6v",
+          "severity": "moderate",
+          "cwe": ["CWE-400", "CWE-834"],
+          "cvss": {
+            "score": 5.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": ">=5.0.0 <7.0.5"
+        }
+      ],
+      "effects": [
+        "@rollup/plugin-terser",
+        "compression-webpack-plugin",
+        "copy-webpack-plugin",
+        "image-minimizer-webpack-plugin"
+      ],
+      "range": "<=7.0.4",
+      "nodes": ["node_modules/serialize-javascript"],
+      "fixAvailable": {
+        "name": "compression-webpack-plugin",
+        "version": "12.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "sockjs": {
+      "name": "sockjs",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": ["uuid"],
+      "effects": ["webpack-dev-server"],
+      "range": ">=0.3.17",
+      "nodes": ["node_modules/sockjs"],
+      "fixAvailable": {
+        "name": "webpack-dev-server",
+        "version": "1.16.5",
+        "isSemVerMajor": true
+      }
+    },
+    "tempfile": {
+      "name": "tempfile",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": ["uuid"],
+      "effects": ["bin-build", "exec-buffer"],
+      "range": "<=4.0.0",
+      "nodes": ["node_modules/tempfile"],
+      "fixAvailable": {
+        "name": "imagemin-webp",
+        "version": "6.1.0",
+        "isSemVerMajor": true
+      }
+    },
+    "uuid": {
+      "name": "uuid",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1119441,
+          "name": "uuid",
+          "dependency": "uuid",
+          "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "severity": "moderate",
+          "cwe": ["CWE-787", "CWE-1285"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+          },
+          "range": "<11.1.1"
+        }
+      ],
+      "effects": ["sockjs", "tempfile"],
+      "range": "<11.1.1",
+      "nodes": ["node_modules/sockjs/node_modules/uuid", "node_modules/uuid"],
+      "fixAvailable": {
+        "name": "webpack-dev-server",
+        "version": "1.16.5",
+        "isSemVerMajor": true
+      }
+    },
+    "webpack-dev-server": {
+      "name": "webpack-dev-server",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["sockjs"],
+      "effects": [],
+      "range": ">=2.0.0-beta",
+      "nodes": ["node_modules/webpack-dev-server"],
+      "fixAvailable": {
+        "name": "webpack-dev-server",
+        "version": "1.16.5",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 14,
+      "high": 26,
+      "critical": 0,
+      "total": 40
+    },
+    "dependencies": {
+      "prod": 206,
+      "dev": 1284,
+      "optional": 20,
+      "peer": 8,
+      "peerOptional": 0,
+      "total": 1497
+    }
+  }
+}

@@ -6,23 +6,49 @@ import {
   archiveLearningSuggestion,
   rejectLearningSuggestion,
 } from '../services/aiAgent/aiAgentLearningService.js'
-import { getUserIdFromRequest } from '../utils/requestContext.js'
+import {
+  getUserIdFromRequest,
+  isValidObjectId,
+  resolveAuthorizedTenantFromRequest,
+} from '../utils/requestContext.js'
 
 const clean = value => String(value || '').trim()
+const allowedStatuses = new Set([
+  'pending_review',
+  'approving',
+  'approved',
+  'rejected',
+  'archived',
+])
+const allowedTypes = new Set([
+  'faq_suggestion',
+  'product_gap',
+  'policy_gap',
+  'handoff_pattern',
+  'conversion_pattern',
+  'negative_signal',
+  'general',
+])
+const requireTenantId = req =>
+  resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  }).tenantId
 
-const getTenantId = req => {
-  return req.tenant?._id || req.resolvedTenant?._id || req.tenantId || req.user?.tenantId
+const validateSuggestionId = (req, res) => {
+  if (isValidObjectId(req.params.id)) return true
+
+  res.status(400).json({
+    success: false,
+    message: 'ID de sugerencia inválido',
+  })
+  return false
 }
 
 export const listAiLearningSuggestions = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
-
-  if (!tenantId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Tenant no resuelto',
+  const { tenantId, tenantObjectId } =
+    resolveAuthorizedTenantFromRequest(req, {
+      requireUserTenant: true,
     })
-  }
 
   const status = clean(req.query.status || 'pending_review')
   const type = clean(req.query.type)
@@ -35,11 +61,16 @@ export const listAiLearningSuggestions = asyncHandler(async (req, res) => {
     tenantId,
   }
 
-  if (status !== 'all') query.status = status
-  if (type && type !== 'all') query.type = type
+  if (status !== 'all' && allowedStatuses.has(status)) query.status = status
+  if (type && type !== 'all' && allowedTypes.has(type)) query.type = type
 
   if (search) {
-    const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    const regex = new RegExp(
+      search
+        .slice(0, 120)
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      'i',
+    )
     query.$or = [
       { title: regex },
       { question: regex },
@@ -57,19 +88,20 @@ export const listAiLearningSuggestions = asyncHandler(async (req, res) => {
       })
       .skip(skip)
       .limit(limit)
+      .setOptions({ tenantId })
       .lean(),
 
-    AiLearningSuggestion.countDocuments(query),
+    AiLearningSuggestion.countDocuments(query).setOptions({ tenantId }),
 
     AiLearningSuggestion.aggregate([
-      { $match: { tenantId } },
+      { $match: { tenantId: tenantObjectId } },
       {
         $group: {
           _id: '$status',
           count: { $sum: 1 },
         },
       },
-    ]),
+    ]).option({ tenantId }),
   ])
 
   return res.status(200).json({
@@ -91,12 +123,15 @@ export const listAiLearningSuggestions = asyncHandler(async (req, res) => {
 })
 
 export const getAiLearningSuggestionById = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
+  const tenantId = requireTenantId(req)
+  if (!validateSuggestionId(req, res)) return
 
   const suggestion = await AiLearningSuggestion.findOne({
     _id: req.params.id,
     tenantId,
-  }).lean()
+  })
+    .setOptions({ tenantId })
+    .lean()
 
   if (!suggestion) {
     return res.status(404).json({
@@ -112,16 +147,19 @@ export const getAiLearningSuggestionById = asyncHandler(async (req, res) => {
 })
 
 export const approveAiLearningSuggestion = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
+  const tenantId = requireTenantId(req)
+  if (!validateSuggestionId(req, res)) return
   const reviewerId = getUserIdFromRequest(req)
 
   const suggestion = await approveLearningSuggestion({
     tenantId,
     suggestionId: req.params.id,
     reviewerId,
-    title: req.body?.title,
-    content: req.body?.content,
-    tags: req.body?.tags,
+    title: clean(req.body?.title).slice(0, 200),
+    content: clean(req.body?.content).slice(0, 10000),
+    tags: Array.isArray(req.body?.tags)
+      ? req.body.tags.map(clean).filter(Boolean).slice(0, 50)
+      : [],
   })
 
   return res.status(200).json({
@@ -132,7 +170,8 @@ export const approveAiLearningSuggestion = asyncHandler(async (req, res) => {
 })
 
 export const rejectAiLearningSuggestion = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
+  const tenantId = requireTenantId(req)
+  if (!validateSuggestionId(req, res)) return
   const reviewerId = getUserIdFromRequest(req)
 
   const suggestion = await rejectLearningSuggestion({
@@ -150,7 +189,8 @@ export const rejectAiLearningSuggestion = asyncHandler(async (req, res) => {
 })
 
 export const archiveAiLearningSuggestion = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
+  const tenantId = requireTenantId(req)
+  if (!validateSuggestionId(req, res)) return
   const reviewerId = getUserIdFromRequest(req)
 
   const suggestion = await archiveLearningSuggestion({

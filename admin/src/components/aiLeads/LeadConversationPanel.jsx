@@ -5,6 +5,8 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
+import Button from '@mui/material/Button'
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever'
 
 const formatDate = value => {
   if (!value) return ''
@@ -27,7 +29,11 @@ const getRoleLabel = role => {
   return role || 'Sistema'
 }
 
-const LeadConversationPanel = ({ conversation }) => {
+const LeadConversationPanel = ({
+  conversation,
+  loading = false,
+  onDeleteConversation,
+}) => {
   const messages = conversation?.messages || []
 
   if (!conversation) {
@@ -81,6 +87,20 @@ const LeadConversationPanel = ({ conversation }) => {
           </Box>
           <Chip size="small" label={`${messages.length} mensajes`} />
         </Stack>
+
+        {conversation?._id && (
+          <Button
+            size="small"
+            color="error"
+            variant="outlined"
+            startIcon={<DeleteForeverIcon />}
+            disabled={loading}
+            onClick={() => onDeleteConversation?.(conversation)}
+            sx={{ mt: 1.5, textTransform: 'none', fontWeight: 800 }}
+          >
+            Eliminar conversación de BD
+          </Button>
+        )}
       </Box>
 
       <Box

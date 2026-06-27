@@ -63,7 +63,7 @@ export const privateRoutes = [
   // 📦 Catálogo
   {
     path: '/admin/addproduct',
-    Component: pages.Addproduct,
+    Component: pages.AddProduct,
     allowedRoles: ['admin'],
   },
   {

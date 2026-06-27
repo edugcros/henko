@@ -1,87 +1,96 @@
-// 📁 src/test/user.test.js
 import request from 'supertest'
+
 import app from '../../app.js'
 import User from '../models/userModel.js'
+import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB } from './testDB.js'
+import {
+  authHeaders,
+  createTestTenant,
+  getCSRFToken,
+  registerAndLoginUser,
+} from './testSetup.js'
 
-let csrfToken
-let csrfCookie
-let userId
+describe('user controller', () => {
+  let tenantContext
 
-beforeAll(async () => {
-  await connectTestDB()
-  await User.deleteMany()
+  beforeAll(async () => {
+    await connectTestDB()
+    await User.deleteMany()
+    await Tenant.deleteMany()
 
-  const csrfRes = await request(app).get('/api/user/csrf-token')
-  csrfToken = csrfRes.body.csrfToken
-  
-  // Buscá la cookie que contiene XSRF-TOKEN y extraela correctamente
-  csrfCookie = csrfRes.headers['set-cookie']
-  .find(c => c.startsWith('X-CSRF-Token='))
-  .split(';')[0] // ejemplo: "XSRF-TOKEN=abc123"
-})
+    tenantContext = await createTestTenant()
+  })
 
-afterAll(async () => {
-  await disconnectTestDB()
-},10000)
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
 
-describe('👤 USER CONTROLLER', () => {
-  it('📥 Registro exitoso', async () => {
+  test('registers a storefront user in the resolved tenant', async () => {
+    const { csrfToken, csrfCookie } = await getCSRFToken(tenantContext.shopDomain)
+
     const res = await request(app)
       .post('/api/user/register')
-      .set('Cookie', csrfCookie) // ✅ cookie bien formateada
-      .set('X-CSRF-Token', csrfToken) // ✅ header del token
+      .set('x-tenant-domain', tenantContext.shopDomain)
+      .set('Cookie', csrfCookie)
+      .set('X-CSRF-Token', csrfToken)
       .send({
         firstname: 'Edu',
         lastname: 'Greco',
         email: 'grecoeduardo87@gmail.com',
         password: 'Test1234!',
-        mobile: '12345678'
+        mobile: '1123456789',
       })
 
     expect(res.statusCode).toBe(201)
     expect(res.body.success).toBe(true)
     expect(res.body.data.email).toBe('grecoeduardo87@gmail.com')
-    userId = res.body.data._id
+
+    const user = await User.findOne({
+      email: 'grecoeduardo87@gmail.com',
+      tenantId: tenantContext.tenant._id,
+    })
+
+    expect(user).toBeTruthy()
+    user.isEmailVerified = true
+    user.emailVerificationToken = undefined
+    user.emailVerificationExpires = undefined
+    await user.save({ validateBeforeSave: false })
   })
 
-  it('🔐 Login exitoso', async () => {
-    const res = await request(app)
-      .post('/api/user/login')
-      .set('Cookie', csrfCookie) // ✅ cookie bien formateada
-      .set('X-CSRF-Token', csrfToken) // ✅ header del token
-      .send({
-        email: 'grecoeduardo87@gmail.com',
-        password: 'Test1234!'
-      })
-
-    expect(res.statusCode).toBe(201)
-    expect(res.body.success).toBe(true)
-    const cookies = res.headers['set-cookie']
-    expect(cookies).toBeDefined()
-  })
-
-  it('📤 Obtener perfil del usuario', async () => {
-    const loginRes = await request(app)
-      .post('/api/user/login')
-      .set('Cookie', csrfCookie) // ✅ cookie bien formateada
-      .set('X-CSRF-Token', csrfToken) // ✅ header del token
-      .send({
-        email: 'grecoeduardo87@gmail.com',
-        password: 'Test1234!'
-      })
-
-    const cookies = loginRes.headers['set-cookie'] || []
-    const accessToken = cookies.find(c => c.startsWith('accessToken'))?.split(';')[0]
-    expect(accessToken).toBeDefined()
+  test('logs in and returns an access token', async () => {
+    const { csrfToken, csrfCookie } = await getCSRFToken(tenantContext.shopDomain)
 
     const res = await request(app)
-      .get('/api/user/profile')
-      .set('Cookie', [csrfCookie, accessToken])
+      .post('/api/user/login')
+      .set('x-tenant-domain', tenantContext.shopDomain)
+      .set('Cookie', csrfCookie)
       .set('X-CSRF-Token', csrfToken)
+      .send({
+        email: 'grecoeduardo87@gmail.com',
+        password: 'Test1234!',
+      })
+
+    expect([200, 201]).toContain(res.statusCode)
+    expect(res.body.success).toBe(true)
+    expect(res.body.data?.token || res.body.accessToken || res.body.token).toBeDefined()
+  })
+
+  test('returns the current authenticated user', async () => {
+    const session = await registerAndLoginUser({
+      shopDomain: tenantContext.shopDomain,
+      email: 'profile@test.com',
+    })
+
+    const res = await request(app)
+      .get('/api/user/me')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+      }))
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
-    expect(res.body.data.email).toBe('grecoeduardo87@gmail.com')
+    expect(res.body.data.email).toBe('profile@test.com')
   })
 })

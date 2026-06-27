@@ -311,6 +311,16 @@ aiLeadSchema.index({ tenantId: 1, 'customer.phone': 1, status: 1 })
 aiLeadSchema.index({ tenantId: 1, 'customer.email': 1, status: 1 })
 aiLeadSchema.index({ tenantId: 1, channel: 1, lastInteractionAt: -1 })
 aiLeadSchema.index({ tenantId: 1, assignedTo: 1, status: 1 })
+aiLeadSchema.index(
+  { tenantId: 1, conversationId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      conversationId: { $type: 'objectId' },
+      deletedAt: { $exists: false },
+    },
+  },
+)
 
 const AiLead = mongoose.models.AiLead || mongoose.model('AiLead', aiLeadSchema)
 

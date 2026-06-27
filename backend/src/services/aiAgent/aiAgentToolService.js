@@ -7,8 +7,15 @@ const escapeRegex = value => {
   return clean(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+const normalize = value => {
+  return clean(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
 const buildSearchRegex = query => {
-  const words = clean(query)
+  const words = normalize(query)
     .split(/\s+/)
     .map(word => word.trim())
     .filter(word => word.length >= 3)
@@ -55,7 +62,13 @@ export const searchRelevantKnowledgeForAgent = async ({
       .sort({ score: { $meta: 'textScore' } })
       .limit(cleanLimit)
       .lean()
-  } catch {
+  } catch (error) {
+    const isMissingTextIndex =
+      error?.code === 27 ||
+      /text index|required for \$text|text search/i.test(error?.message || '')
+
+    if (!isMissingTextIndex) throw error
+
     const regex = buildSearchRegex(cleanQuery)
 
     if (!regex) return []

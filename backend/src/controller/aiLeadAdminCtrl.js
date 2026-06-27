@@ -9,6 +9,8 @@ import {
   scheduleLeadFollowUp,
   updateLeadStatus,
 } from '../services/aiAgent/aiLeadCommercialService.js'
+import { provisionAiAgentDefaultsForTenant } from '../services/aiAgent/aiAgentProvisioningService.js'
+import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 
 const { Types } = mongoose
 
@@ -16,34 +18,12 @@ const clean = value => String(value || '').trim()
 const clampLimit = value => Math.min(Math.max(Number(value || 20), 1), 100)
 const toPage = value => Math.max(Number(value || 1), 1)
 const isValidObjectId = value => Types.ObjectId.isValid(String(value || ''))
-
-const getRequestTenantId = req => {
-  const rawTenantId =
-    req?.user?.tenantId ||
-    req?.user?.tenant?._id ||
-    req?.tenantId ||
-    req?.tenant?._id ||
-    req?.headers?.['x-tenant-id']
-
-  const tenantId = clean(rawTenantId)
-
-  if (!tenantId || !Types.ObjectId.isValid(tenantId)) {
-    return null
-  }
-
-  return tenantId
-}
+const toTenantObjectId = tenantId => new Types.ObjectId(String(tenantId))
 
 const requireTenantId = req => {
-  const tenantId = getRequestTenantId(req)
-
-  if (!tenantId) {
-    const error = new Error('Tenant no identificado')
-    error.statusCode = 400
-    throw error
-  }
-
-  return tenantId
+  return resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  }).tenantId
 }
 
 const sendNotFound = res =>
@@ -102,7 +82,7 @@ const buildLeadMatch = req => {
   }
 
   if (q) {
-    const regex = new RegExp(escapeRegex(q), 'i')
+    const regex = new RegExp(escapeRegex(q.slice(0, 120)), 'i')
     const searchOr = [
       { 'customer.name': regex },
       { 'customer.email': regex },
@@ -141,9 +121,14 @@ const buildProductOfInterest = product => ({
 
 export const getAiLeadSummary = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
-  const tenantObjectId = new Types.ObjectId(String(tenantId))
+  const tenantObjectId = toTenantObjectId(tenantId)
   const now = new Date()
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  await provisionAiAgentDefaultsForTenant({
+    tenantId,
+    tenant: req.tenant,
+  })
 
   const [byStatus, today, pendingFollowUps, scoreStats] = await Promise.all([
     AiLead.aggregate([
@@ -281,6 +266,7 @@ export const getAiLeadById = asyncHandler(async (req, res) => {
 
 export const patchAiLeadStatus = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
+  if (!isValidObjectId(req.params.leadId)) return sendNotFound(res)
 
   const lead = await updateLeadStatus({
     tenantId,
@@ -297,11 +283,20 @@ export const patchAiLeadStatus = asyncHandler(async (req, res) => {
 
 export const patchAiLeadAssign = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
+  if (!isValidObjectId(req.params.leadId)) return sendNotFound(res)
+
+  const assignedTo = req.body.assignedTo || null
+  if (assignedTo && !isValidObjectId(assignedTo)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Usuario asignado inválido',
+    })
+  }
 
   const lead = await assignLead({
     tenantId,
     leadId: req.params.leadId,
-    assignedTo: req.body.assignedTo || null,
+    assignedTo,
   })
 
   if (!lead) return sendNotFound(res)
@@ -311,11 +306,20 @@ export const patchAiLeadAssign = asyncHandler(async (req, res) => {
 
 export const patchAiLeadFollowUp = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
+  if (!isValidObjectId(req.params.leadId)) return sendNotFound(res)
+
+  const nextFollowUpAt = req.body.nextFollowUpAt || null
+  if (nextFollowUpAt && Number.isNaN(new Date(nextFollowUpAt).getTime())) {
+    return res.status(400).json({
+      success: false,
+      message: 'Fecha de seguimiento inválida',
+    })
+  }
 
   const lead = await scheduleLeadFollowUp({
     tenantId,
     leadId: req.params.leadId,
-    nextFollowUpAt: req.body.nextFollowUpAt || null,
+    nextFollowUpAt,
   })
 
   if (!lead) return sendNotFound(res)
@@ -325,6 +329,7 @@ export const patchAiLeadFollowUp = asyncHandler(async (req, res) => {
 
 export const postAiLeadNote = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
+  if (!isValidObjectId(req.params.leadId)) return sendNotFound(res)
   const text = clean(req.body.text)
 
   if (!text) {
@@ -348,6 +353,7 @@ export const postAiLeadNote = asyncHandler(async (req, res) => {
 
 export const markAiLeadWon = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
+  if (!isValidObjectId(req.params.leadId)) return sendNotFound(res)
 
   const lead = await updateLeadStatus({
     tenantId,
@@ -364,6 +370,7 @@ export const markAiLeadWon = asyncHandler(async (req, res) => {
 
 export const markAiLeadLost = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
+  if (!isValidObjectId(req.params.leadId)) return sendNotFound(res)
 
   const lead = await updateLeadStatus({
     tenantId,
@@ -380,6 +387,7 @@ export const markAiLeadLost = asyncHandler(async (req, res) => {
 
 export const discardAiLead = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
+  if (!isValidObjectId(req.params.leadId)) return sendNotFound(res)
 
   const lead = await updateLeadStatus({
     tenantId,
@@ -396,6 +404,7 @@ export const discardAiLead = asyncHandler(async (req, res) => {
 
 export const deleteAiLead = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
+  const tenantObjectId = toTenantObjectId(tenantId)
   const { leadId } = req.params
 
   if (!isValidObjectId(leadId)) return sendNotFound(res)
@@ -431,9 +440,67 @@ export const deleteAiLead = asyncHandler(async (req, res) => {
 
   if (!lead) return sendNotFound(res)
 
+  const conversationIds = [
+    lead.conversationId,
+    lead.lastConversationId,
+  ].filter(isValidObjectId)
+
+  if (conversationIds.length) {
+    await AiConversation.updateMany(
+      {
+        _id: { $in: conversationIds },
+        tenantId: tenantObjectId,
+        deletedAt: { $exists: false },
+      },
+      {
+        $set: {
+          deletedAt: lead.deletedAt || new Date(),
+          deletedBy: req.user?._id || null,
+          deletedReason:
+            reason || 'Lead eliminado desde bandeja comercial',
+        },
+      },
+    ).setOptions({ tenantId })
+  }
+
   return res.json({
     success: true,
+    message: 'Lead eliminado correctamente',
     data: normalizeLead(lead),
+    deletedId: String(lead._id),
+  })
+})
+
+export const permanentlyDeleteAiLead = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const { leadId } = req.params
+
+  if (!isValidObjectId(leadId)) return sendNotFound(res)
+
+  const lead = await AiLead.findOne({
+    _id: leadId,
+    tenantId,
+  })
+    .setOptions({ tenantId })
+    .select('_id conversationId lastConversationId')
+    .lean()
+
+  if (!lead) return sendNotFound(res)
+
+  await AiLead.deleteOne({
+    _id: leadId,
+    tenantId,
+  }).setOptions({ tenantId })
+
+  return res.json({
+    success: true,
+    message: 'Lead eliminado permanentemente',
+    data: {
+      deletedId: String(lead._id),
+      conversationIds: [lead.conversationId, lead.lastConversationId]
+        .filter(Boolean)
+        .map(String),
+    },
   })
 })
 
@@ -487,7 +554,7 @@ export const removeLeadProductOfInterest = asyncHandler(async (req, res) => {
     createdBy: req.user?._id || null,
   })
 
-  await lead.save()
+  await lead.save({ tenantId })
 
   return res.json({
     success: true,

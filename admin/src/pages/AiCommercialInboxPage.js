@@ -12,10 +12,15 @@ import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import LeadList from '@components/aiLeads/LeadList.jsx'
 import LeadConversationPanel from '@components/aiLeads/LeadConversationPanel.jsx'
 import LeadDetailPanel from '@components/aiLeads/LeadDetailPanel.jsx'
+import { permanentlyDeleteAiConversation } from '../services/aiAgentAdminService.js'
 import {
   addAiLeadNote,
   deleteAiLead,
@@ -25,6 +30,7 @@ import {
   getAiLeadSummary,
   markAiLeadLost,
   markAiLeadWon,
+  permanentlyDeleteAiLead,
   removeAiLeadProductOfInterest,
   scheduleAiLeadFollowUp,
   updateAiLeadProductsOfInterest,
@@ -77,8 +83,9 @@ const normalizeSummary = value => ({
 })
 
 const getLeadId = lead => lead?.id || lead?._id || ''
+const getConversationId = item => item?.id || item?._id || ''
 
-const SummaryCard = ({ label, value, tone }) => (
+const SummaryCardComponent = ({ label, value, tone }) => (
   <Paper
     variant="outlined"
     sx={{
@@ -111,6 +118,8 @@ const AiCommercialInboxPage = () => {
   const [detailLoading, setDetailLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
+  const [conversationToDelete, setConversationToDelete] = useState(null)
+  const [conversationDeleteText, setConversationDeleteText] = useState('')
 
   const params = useMemo(
     () => ({
@@ -211,7 +220,8 @@ const AiCommercialInboxPage = () => {
       setError('')
 
       try {
-        await action()
+        const result = await action()
+        if (result?.skipRefresh) return
         await refreshAll()
       } catch (err) {
         console.error('[AI_LEAD_ACTION_ERROR]', err)
@@ -289,34 +299,48 @@ const AiCommercialInboxPage = () => {
         </Stack>
 
         {error && (
-          <Alert severity="error" onClose={() => setError('')} sx={{ borderRadius: 3 }}>
+          <Alert
+            severity="error"
+            onClose={() => setError('')}
+            sx={{ borderRadius: 3 }}
+          >
             {error}
           </Alert>
         )}
 
         <Grid container spacing={2}>
           <Grid item xs={6} md={2}>
-            <SummaryCard label="Total" value={summary.total} />
+            <SummaryCardComponent label="Total" value={summary.total} />
           </Grid>
 
           <Grid item xs={6} md={2}>
-            <SummaryCard label="Nuevos hoy" value={summary.today} />
+            <SummaryCardComponent label="Nuevos hoy" value={summary.today} />
           </Grid>
 
           <Grid item xs={6} md={2}>
-            <SummaryCard label="Calientes" value={summary.hot} tone="hot" />
+            <SummaryCardComponent
+              label="Calientes"
+              value={summary.hot}
+              tone="hot"
+            />
           </Grid>
 
           <Grid item xs={6} md={2}>
-            <SummaryCard label="Seguimientos" value={summary.pendingFollowUps} />
+            <SummaryCardComponent
+              label="Seguimientos"
+              value={summary.pendingFollowUps}
+            />
           </Grid>
 
           <Grid item xs={6} md={2}>
-            <SummaryCard label="Ganados" value={summary.won} />
+            <SummaryCardComponent label="Ganados" value={summary.won} />
           </Grid>
 
           <Grid item xs={6} md={2}>
-            <SummaryCard label="Score prom." value={summary.averageLeadScore} />
+            <SummaryCardComponent
+              label="Score prom."
+              value={summary.averageLeadScore}
+            />
           </Grid>
         </Grid>
 
@@ -402,7 +426,11 @@ const AiCommercialInboxPage = () => {
                   borderBottom: theme => `1px solid ${theme.palette.divider}`,
                 }}
               >
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
                   <Typography fontWeight={900}>Leads</Typography>
                   <Chip size="small" label={leads.length} />
                 </Stack>
@@ -469,6 +497,19 @@ const AiCommercialInboxPage = () => {
                     setSelectedLeadId(null)
                     setSelectedLead(null)
                     setConversation(null)
+                    await Promise.all([loadSummary(), loadLeads()])
+                    return { skipRefresh: true }
+                  })
+                }}
+                onPermanentDelete={() => {
+                  if (!selectedId) return
+                  runAction(async () => {
+                    await permanentlyDeleteAiLead(selectedId)
+                    setSelectedLeadId(null)
+                    setSelectedLead(null)
+                    setConversation(null)
+                    await Promise.all([loadSummary(), loadLeads()])
+                    return { skipRefresh: true }
                   })
                 }}
                 onRemoveProductOfInterest={(productRef, reason) => {
@@ -496,7 +537,11 @@ const AiCommercialInboxPage = () => {
             <LeadConversationPanel
               conversation={conversation}
               lead={selectedLead}
-              loading={detailLoading}
+              loading={detailLoading || actionLoading}
+              onDeleteConversation={item => {
+                setConversationToDelete(item)
+                setConversationDeleteText('')
+              }}
             />
           </Grid>
         </Grid>
@@ -509,6 +554,70 @@ const AiCommercialInboxPage = () => {
           desde el backend.
         </Typography>
       </Stack>
+
+      <Dialog
+        open={Boolean(conversationToDelete)}
+        onClose={() => {
+          if (!actionLoading) setConversationToDelete(null)
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle fontWeight={900}>
+          Eliminar conversación de la base
+        </DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Alert severity="error">
+              Esta acción borra físicamente la conversación. El lead queda sin
+              historial asociado a esa conversación.
+            </Alert>
+
+            <TextField
+              label="Escribí ELIMINAR"
+              value={conversationDeleteText}
+              onChange={event => setConversationDeleteText(event.target.value)}
+              disabled={actionLoading}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => setConversationToDelete(null)}
+            disabled={actionLoading}
+            sx={{ textTransform: 'none', fontWeight: 800 }}
+          >
+            Cancelar
+          </Button>
+
+          <Button
+            color="error"
+            variant="contained"
+            disabled={
+              actionLoading ||
+              conversationDeleteText.trim() !== 'ELIMINAR' ||
+              !getConversationId(conversationToDelete)
+            }
+            onClick={() => {
+              const conversationId = getConversationId(conversationToDelete)
+              if (!conversationId) return
+
+              runAction(async () => {
+                await permanentlyDeleteAiConversation(conversationId)
+                setConversation(null)
+                setConversationToDelete(null)
+                setConversationDeleteText('')
+              })
+            }}
+            sx={{ textTransform: 'none', fontWeight: 900 }}
+          >
+            Eliminar de BD
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

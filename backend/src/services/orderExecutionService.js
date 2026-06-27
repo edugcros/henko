@@ -6,6 +6,7 @@ import { toObjectId } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
 
 const isProd = process.env.NODE_ENV === 'production'
+const ADMIN_ORDER_ROLES = ['admin', 'moderator', 'manager', 'owner', 'superadmin']
 
 const isTransactionUnsupportedError = error => {
   const message = String(error?.message || '')
@@ -82,7 +83,7 @@ export const validateUserTenantMembership = async ({
 export const ensureAdminOrManager = req => {
   const role = req.user?.role
 
-  if (!['admin', 'manager', 'owner', 'superadmin'].includes(role)) {
+  if (!ADMIN_ORDER_ROLES.includes(role)) {
     const error = new Error('Permisos insuficientes')
     error.statusCode = 403
     throw error

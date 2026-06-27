@@ -52,10 +52,10 @@ export default [
       },
       globals: {
         // 2. Desenrolla los entornos usando el operador spread (...)
-        ...globals.browser, 
+        ...globals.browser,
         ...globals.node,
         ...globals.jest,
-        
+
         // 3. Tus globales personalizados o anulaciones se quedan aquí
         vi: 'readonly',
         describe: 'readonly',

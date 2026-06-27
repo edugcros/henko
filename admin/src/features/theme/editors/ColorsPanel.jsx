@@ -17,7 +17,13 @@ import {
   DEFAULT_THEME_COLORS,
 } from '@features/theme/colorSystem'
 
-const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
+const ColorsPanel = ({
+  colors = {},
+  updateTheme,
+  updateField,
+  onChange,
+  sectionMeta,
+}) => {
   const effectiveColors = useMemo(
     () => ({ ...DEFAULT_THEME_COLORS, ...colors }),
     [colors],
@@ -110,6 +116,17 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange }) => {
 
   return (
     <Box>
+      {sectionMeta?.appliesTo && (
+        <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
+          <Typography variant="subtitle2" fontWeight={600}>
+            {sectionMeta.label || 'Colores'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {sectionMeta.appliesTo}
+          </Typography>
+        </Paper>
+      )}
+
       {/* PRESETS RÁPIDOS */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="subtitle2" gutterBottom>

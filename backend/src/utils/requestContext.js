@@ -20,15 +20,15 @@ export const getActorIdFromRequest = (req, fallback = null) => {
 
 export const getTenantIdFromRequest = (
   req,
-  { allowBodyTenantId = false } = {},
+  { allowBodyTenantId = false, preferUserTenant = true } = {},
 ) => {
-  const candidates = [
-    req.user?.tenantId,
-    req.user?.tenant?._id,
-    req.tenantId,
-    req.tenant?._id,
-    allowBodyTenantId ? req.body?.tenantId : null,
-  ]
+  const userCandidates = [req.user?.tenantId, req.user?.tenant?._id]
+  const domainCandidates = [req.tenantId, req.tenant?._id]
+  const bodyCandidates = allowBodyTenantId ? [req.body?.tenantId] : []
+
+  const candidates = preferUserTenant
+    ? [...userCandidates, ...domainCandidates, ...bodyCandidates]
+    : [...domainCandidates, ...userCandidates, ...bodyCandidates]
 
   const tenantId = candidates.find(value => isValidObjectId(value))
   return tenantId ? String(tenantId) : null
@@ -81,12 +81,21 @@ export const resolveTenantFromRequest = (
   }
 }
 
+/**
+ * Resolución autorizada de tenant para endpoints públicos y admin.
+ *
+ * Reglas GO producción:
+ * - Storefront/webchat público: normalmente resuelve por dominio/header.
+ * - Admin autenticado: debe poder resolver por req.user.tenantId aunque el Host sea api.*.
+ * - Si llegan ambos tenantId y no coinciden, se bloquea salvo bypass explícito.
+ */
 export const resolveAuthorizedTenantFromRequest = (
   req,
   {
     requireUserTenant = false,
     allowPrivilegedRoleBypass = false,
     privilegedRoles = ['admin', 'manager', 'superadmin'],
+    allowUserTenantFallback = true,
     missingTenantMessage = 'Tenant no resuelto',
     missingUserTenantMessage = 'El usuario autenticado no tiene tenantId válido',
     mismatchMessage = 'El usuario no pertenece al tenant resuelto por el dominio',
@@ -96,9 +105,36 @@ export const resolveAuthorizedTenantFromRequest = (
     onMismatch = null,
   } = {},
 ) => {
-  const domainTenantId = getTenantIdFromRequest(req)
-  const userTenantId = req.user?.tenantId || req.user?.tenant?._id || null
-  const normalizedUserTenantId = isValidObjectId(userTenantId) ? String(userTenantId) : null
+  const rawDomainTenantId = req.tenantId || req.tenant?._id || null
+  const domainTenantId = isValidObjectId(rawDomainTenantId)
+    ? String(rawDomainTenantId)
+    : null
+
+  const rawUserTenantId = req.user?.tenantId || req.user?.tenant?._id || null
+  const userTenantId = isValidObjectId(rawUserTenantId)
+    ? String(rawUserTenantId)
+    : null
+
+  if (requireUserTenant && !userTenantId) {
+    const error = new Error(missingUserTenantMessage)
+    error.statusCode = missingUserTenantStatus
+    throw error
+  }
+
+  if (!domainTenantId && !userTenantId) {
+    const error = new Error(missingTenantMessage)
+    error.statusCode = missingTenantStatus
+    throw error
+  }
+
+  if (!domainTenantId && userTenantId && allowUserTenantFallback) {
+    return {
+      tenantId: userTenantId,
+      tenantObjectId: toObjectId(userTenantId),
+      userTenantId,
+      source: 'user',
+    }
+  }
 
   if (!domainTenantId) {
     const error = new Error(missingTenantMessage)
@@ -106,23 +142,17 @@ export const resolveAuthorizedTenantFromRequest = (
     throw error
   }
 
-  if (requireUserTenant && !normalizedUserTenantId) {
-    const error = new Error(missingUserTenantMessage)
-    error.statusCode = missingUserTenantStatus
-    throw error
-  }
-
-  if (normalizedUserTenantId && normalizedUserTenantId !== String(domainTenantId)) {
+  if (userTenantId && userTenantId !== domainTenantId) {
     const role = req.user?.role || null
     const privileged = allowPrivilegedRoleBypass && privilegedRoles.includes(role)
     const allowedTenantIds = getAllowedTenantIdsFromRequest(req)
-    const explicitlyAllowed = allowedTenantIds.includes(String(domainTenantId))
+    const explicitlyAllowed = allowedTenantIds.includes(domainTenantId)
 
     if (!privileged && !explicitlyAllowed) {
       if (typeof onMismatch === 'function') {
         onMismatch({
-          domainTenantId: String(domainTenantId),
-          userTenantId: normalizedUserTenantId,
+          domainTenantId,
+          userTenantId,
           allowedTenantIds,
           role,
         })
@@ -135,8 +165,9 @@ export const resolveAuthorizedTenantFromRequest = (
   }
 
   return {
-    tenantId: String(domainTenantId),
+    tenantId: domainTenantId,
     tenantObjectId: toObjectId(domainTenantId),
-    userTenantId: normalizedUserTenantId,
+    userTenantId,
+    source: 'domain',
   }
 }

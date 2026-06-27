@@ -16,6 +16,8 @@ import {
   selectPreviewStatus,
   selectActiveSection,
   selectThemeStatus,
+  selectThemeHistory,
+  selectIsHistoryLoading,
 
   // Actions
   updateField as updateFieldAction,
@@ -71,6 +73,8 @@ export const useTheme = () => {
   const autoSave = useSelector(selectAutoSaveStatus)
   const preview = useSelector(selectPreviewStatus)
   const activeSection = useSelector(selectActiveSection)
+  const history = useSelector(selectThemeHistory)
+  const isHistoryLoading = useSelector(selectIsHistoryLoading)
   const status = useSelector(selectThemeStatus)
 
   // Refs para auto-save
@@ -353,6 +357,8 @@ export const useTheme = () => {
     // Versioning
     loadHistory,
     rollback,
+    history,
+    isHistoryLoading,
 
     // Import/Export
     exportTheme,

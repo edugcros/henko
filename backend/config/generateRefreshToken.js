@@ -4,8 +4,8 @@ import crypto from 'crypto'
 import bcrypt from 'bcrypt'
 import { env } from './env.js'
 
-const ISSUER = 'henko-commerce-api'
-const AUDIENCE = 'henko-commerce-client'
+const getIssuer = () => env.jwtIssuer || 'commerce-platform-api'
+const getAudience = () => env.jwtAudience || 'commerce-platform-client'
 const TOKEN_VERSION = 1
 
 /**
@@ -36,8 +36,8 @@ export const generateRefreshToken = async (userId, extraPayload = {}) => {
     role: String(extraPayload.role || 'user'),
     jti,
     type: 'refresh',
-    iss: ISSUER,
-    aud: AUDIENCE,
+    iss: getIssuer(),
+    aud: getAudience(),
     ver: TOKEN_VERSION,
   }
 
@@ -69,8 +69,8 @@ export const verifyRefreshToken = async token => {
   try {
     return jwt.verify(token, env.refreshTokenSecret, {
       algorithms: ['HS256'],
-      issuer: ISSUER,
-      audience: AUDIENCE,
+      issuer: getIssuer(),
+      audience: getAudience(),
     })
   } catch (err) {
     const error = new Error('Refresh token inválido o expirado')

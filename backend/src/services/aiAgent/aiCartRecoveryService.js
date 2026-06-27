@@ -1,5 +1,5 @@
 // 📁 src/services/aiAgent/aiCartRecoveryService.js
-// Adaptado a Henko: Cart.products, User.mobile, Product.title/price/stock/images, Tenant.domains.
+import mongoose from 'mongoose'
 import AiAgent from '../../models/aiAgentModel.js'
 import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
 import AiCampaignRule from '../../models/aiCampaignRuleModel.js'
@@ -13,25 +13,46 @@ const toCents = value => {
   return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) : 0
 }
 
+const toSafePositiveNumber = (value, fallback = 0) => {
+  const number = Number(value)
+  return Number.isFinite(number) && number > 0 ? number : fallback
+}
+
+const normalizeProductId = value => {
+  const cleanValue = clean(value?._id || value?.id || value)
+  return cleanValue || null
+}
+
 const addMinutes = (date, minutes) => {
   return new Date(date.getTime() + Number(minutes || 0) * 60 * 1000)
 }
 
 const getUserPhone = user => {
-  return clean(user?.mobile || user?.phone || user?.telefono || user?.profile?.mobile || user?.profile?.phone || '')
+  return clean(
+    user?.mobile ||
+      user?.phone ||
+      user?.telefono ||
+      user?.profile?.mobile ||
+      user?.profile?.phone ||
+      '',
+  )
 }
 
 const getUserName = user => {
   const explicit = clean(user?.name || user?.fullName)
   if (explicit) return explicit
 
-  return clean(`${user?.firstname || user?.firstName || ''} ${user?.lastname || user?.lastName || ''}`)
+  return clean(
+    `${user?.firstname || user?.firstName || ''} ${user?.lastname || user?.lastName || ''}`,
+  )
 }
 
 const resolveTenantDomain = tenant => {
   const domains = Array.isArray(tenant?.domains) ? tenant.domains : []
 
-  const primary = domains.find(domain => domain?.status === 'active' && domain?.isPrimary)
+  const primary = domains.find(
+    domain => domain?.status === 'active' && domain?.isPrimary,
+  )
   const firstActive = domains.find(domain => domain?.status === 'active')
   const selected = primary || firstActive
 
@@ -39,24 +60,34 @@ const resolveTenantDomain = tenant => {
 }
 
 const buildCheckoutUrl = ({ tenant, recoveryId }) => {
+  const domain = resolveTenantDomain(tenant)
   const explicitBaseUrl =
     process.env.PUBLIC_STOREFRONT_URL ||
     process.env.FRONTEND_URL ||
     process.env.WEBSITE_URL ||
     ''
 
-  if (explicitBaseUrl) {
+  if (explicitBaseUrl && explicitBaseUrl.includes('{domain}') && domain) {
+    const resolved = explicitBaseUrl.replaceAll('{domain}', domain)
+    return `${resolved.replace(/\/+$/, '')}/checkout?recovery=${recoveryId}`
+  }
+
+  if (domain) {
+    const protocol =
+      domain.includes('localhost') || domain.includes('.local')
+        ? 'http'
+        : 'https'
+    return `${protocol}://${domain.replace(/\/+$/, '')}/checkout?recovery=${recoveryId}`
+  }
+
+  if (
+    explicitBaseUrl &&
+    process.env.AI_ALLOW_GLOBAL_STOREFRONT_URL === 'true'
+  ) {
     return `${explicitBaseUrl.replace(/\/+$/, '')}/checkout?recovery=${recoveryId}`
   }
 
-  const domain = resolveTenantDomain(tenant)
-  if (!domain) return ''
-
-  const protocol = domain.includes('localhost') || domain.includes('.local')
-    ? 'http'
-    : 'https'
-
-  return `${protocol}://${domain.replace(/\/+$/, '')}/checkout?recovery=${recoveryId}`
+  return ''
 }
 
 const getImageUrl = ({ cartItem, product }) => {
@@ -79,7 +110,11 @@ const getVariantSnapshot = item => {
   return {
     cartKey: item?.cartKey || null,
     variantId: item?.variantId || item?.selectedVariant?.id || null,
-    variantSku: item?.variantSku || item?.variantSKU || item?.selectedVariant?.sku || null,
+    variantSku:
+      item?.variantSku ||
+      item?.variantSKU ||
+      item?.selectedVariant?.sku ||
+      null,
     selectedAttributes:
       item?.selectedAttributes ||
       item?.variantAttributes ||
@@ -123,9 +158,7 @@ export const createCartRecoveryFromCart = async ({
       .lean(),
 
     userId
-      ? User.findOne({ _id: userId, tenantId })
-        .setOptions({ tenantId })
-        .lean()
+      ? User.findOne({ _id: userId, tenantId }).setOptions({ tenantId }).lean()
       : null,
   ])
 
@@ -143,7 +176,7 @@ export const createCartRecoveryFromCart = async ({
     tenantId,
     cartId: cart._id,
     status: {
-      $in: ['pending', 'scheduled', 'sent', 'responded'],
+      $in: ['pending', 'scheduled', 'processing', 'sent', 'responded', 'converted'],
     },
   }).setOptions({ tenantId })
 
@@ -151,9 +184,13 @@ export const createCartRecoveryFromCart = async ({
     return existing
   }
 
-  const productIds = cartItems
-    .map(item => item?.productId || item?.product || null)
-    .filter(Boolean)
+  const productIds = [
+    ...new Set(
+      cartItems
+        .map(item => normalizeProductId(item?.productId || item?.product))
+        .filter(Boolean),
+    ),
+  ]
 
   const products = await Product.find({
     _id: { $in: productIds },
@@ -161,24 +198,30 @@ export const createCartRecoveryFromCart = async ({
     isDeleted: { $ne: true },
   })
     .setOptions({ tenantId })
-    .select('title slug images price compareAtPrice currency stock hasVariants variants status visibility')
+    .select(
+      'title slug images price compareAtPrice currency stock hasVariants variants status visibility',
+    )
     .lean()
 
-  const productMap = new Map(products.map(product => [String(product._id), product]))
+  const productMap = new Map(
+    products.map(product => [String(product._id), product]),
+  )
 
   const snapshotItems = cartItems
     .map(item => {
-      const productId = item?.productId || item?.product || null
+      const productId = normalizeProductId(item?.productId || item?.product)
       if (!productId) return null
 
       const product = productMap.get(String(productId))
-      const price = Number(item?.price ?? item?.selectedVariant?.price ?? product?.price ?? 0)
-      const quantity = Math.max(Number(item?.quantity || item?.count || 1), 1)
+      const price = Number(
+        item?.price ?? item?.selectedVariant?.price ?? product?.price ?? 0,
+      )
+      const quantity = Math.max(toSafePositiveNumber(item?.quantity || item?.count, 1), 1)
       const title = clean(item?.title || product?.title || 'Producto')
       const slug = clean(product?.slug)
 
       return {
-        productId,
+        productId: String(productId),
         title,
         quantity,
         priceCents: toCents(price),
@@ -193,45 +236,65 @@ export const createCartRecoveryFromCart = async ({
     return null
   }
 
-  const subtotalCents = toCents(cart.totalAfterDiscount || cart.cartTotal) ||
-    snapshotItems.reduce((total, item) => total + item.priceCents * item.quantity, 0)
+  const subtotalCents =
+    toCents(cart.totalAfterDiscount || cart.cartTotal) ||
+    snapshotItems.reduce(
+      (total, item) => total + item.priceCents * item.quantity,
+      0,
+    )
 
-  if (subtotalCents < Number(rule.trigger?.minCartAmountCents || 0)) {
+  if (subtotalCents < toSafePositiveNumber(rule.trigger?.minCartAmountCents, 0)) {
     return null
   }
 
-  const recovery = await AiCartRecovery.create({
-    tenantId,
-    userId,
-    cartId: cart._id,
-    channel: 'whatsapp',
-    customer: {
-      name: getUserName(user),
-      phone,
-      email: clean(user.email),
-    },
-    cartSnapshot: {
-      items: snapshotItems,
-      subtotalCents,
-      currency: clean(cartItems[0]?.currency || tenant?.currency || 'ARS') || 'ARS',
-      checkoutUrl: '',
-    },
-    status: 'scheduled',
-    recoveryStage: 1,
-    scheduledAt: addMinutes(new Date(), rule.trigger?.delayMinutes || 30),
-    attempts: 0,
-    metadata: {
-      ruleId: rule._id,
-      source: 'cart_abandoned_detector',
-      cartUpdatedAt: cart.updatedAt || null,
-    },
-  })
-
-  recovery.cartSnapshot.checkoutUrl = buildCheckoutUrl({
+  const cartVersion = new Date(cart.updatedAt || cart.createdAt || 0).getTime()
+  const dedupeKey = `${String(cart._id)}:${cartVersion}`
+  const recoveryId = new mongoose.Types.ObjectId()
+  const checkoutUrl = buildCheckoutUrl({
     tenant,
-    recoveryId: recovery._id,
+    recoveryId,
   })
 
-  await recovery.save({ tenantId })
-  return recovery
+  return AiCartRecovery.findOneAndUpdate(
+    { tenantId, dedupeKey },
+    {
+      $setOnInsert: {
+        _id: recoveryId,
+        tenantId,
+        dedupeKey,
+        userId,
+        cartId: cart._id,
+        channel: 'whatsapp',
+        customer: {
+          name: getUserName(user),
+          phone,
+          email: clean(user.email),
+        },
+        cartSnapshot: {
+          items: snapshotItems,
+          subtotalCents,
+          currency:
+            clean(cartItems[0]?.currency || tenant?.currency || 'ARS') || 'ARS',
+          checkoutUrl,
+        },
+        status: 'scheduled',
+        recoveryStage: 1,
+        scheduledAt: addMinutes(new Date(), rule.trigger?.delayMinutes || 30),
+        expiresAt: addMinutes(
+          new Date(),
+          toSafePositiveNumber(
+            process.env.AI_CART_RECOVERY_EXPIRE_MINUTES,
+            60 * 24 * 7,
+          ),
+        ),
+        attempts: 0,
+        metadata: {
+          ruleId: rule._id,
+          source: 'cart_abandoned_detector',
+          cartUpdatedAt: cart.updatedAt || null,
+        },
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  ).setOptions({ tenantId })
 }

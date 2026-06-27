@@ -3,15 +3,50 @@ import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 import logger from '../../config/logger.js'
 
+const ALLOWED_IMAGE_MIMES = new Map([
+  ['image/jpeg', '.jpg'],
+  ['image/png', '.png'],
+  ['image/webp', '.webp'],
+])
+
+const normalizeTenantId = tenantId => {
+  const clean = String(tenantId || '').trim()
+  if (!/^[a-f\d]{24}$/i.test(clean)) {
+    throw new Error('tenantId inválido para storage')
+  }
+
+  return clean
+}
+
+const getSafeImageExtension = file => {
+  const mimeExtension = ALLOWED_IMAGE_MIMES.get(file?.mimetype)
+  if (!mimeExtension) {
+    throw new Error('Formato de imagen no permitido')
+  }
+
+  const originalExtension = path.extname(file.originalname || '').toLowerCase()
+  return [...ALLOWED_IMAGE_MIMES.values()].includes(originalExtension)
+    ? originalExtension
+    : mimeExtension
+}
+
 export const uploadImage = (file, tenantId) => {
   return new Promise((resolve, reject) => {
-    if (!file || !file.buffer) {
-      return reject(new Error('Archivo inválido o corrupto'))
+    let normalizedTenantId
+    let extension
+
+    try {
+      if (!file || !file.buffer) {
+        throw new Error('Archivo inválido o corrupto')
+      }
+
+      normalizedTenantId = normalizeTenantId(tenantId)
+      extension = getSafeImageExtension(file)
+    } catch (error) {
+      return reject(error)
     }
 
-    // Sanitización del nombre: remover caracteres especiales que rompen URLs
-    const extension = path.extname(file.originalname)
-    const fileName = `tenants/${tenantId}/products/${uuidv4()}${extension}`
+    const fileName = `tenants/${normalizedTenantId}/products/${uuidv4()}${extension}`
     
     const fileUpload = bucket.file(fileName)
 
@@ -25,7 +60,7 @@ export const uploadImage = (file, tenantId) => {
 
     stream.on('error', err => {
       logger.error('GCS Upload Error', {
-        tenantId: String(tenantId),
+        tenantId: normalizedTenantId,
         message: err?.message || 'Error desconocido',
       })
       reject(err)

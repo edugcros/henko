@@ -88,6 +88,38 @@ const buildVariantName = (attributes = {}) =>
 
 const safeArray = value => (Array.isArray(value) ? value : [])
 const MAX_GENERATED_VARIANTS = 200
+const MAX_PRODUCT_IMAGES = 12
+const MAX_IMAGE_SIZE_MB = 12
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+])
+
+
+const DYNAMIC_FIELD_TYPES = [
+  { value: 'text', label: 'Texto corto' },
+  { value: 'textarea', label: 'Texto largo' },
+  { value: 'number', label: 'Número' },
+  { value: 'select', label: 'Lista' },
+  { value: 'multiselect', label: 'Selección múltiple' },
+  { value: 'color', label: 'Color' },
+  { value: 'boolean', label: 'Sí / No' },
+]
+
+const SHIPPING_TYPE_OPTIONS = [
+  { value: 'standard', label: 'Envío estándar' },
+  { value: 'fragile', label: 'Frágil / embalaje especial' },
+  { value: 'refrigerated', label: 'Refrigerado' },
+  { value: 'digital', label: 'Digital / sin envío físico' },
+  { value: 'pickup_only', label: 'Solo retiro' },
+]
+
+const DEFAULT_DYNAMIC_FIELD_TYPES = new Set(DYNAMIC_FIELD_TYPES.map(item => item.value))
+
 
 const buildGeneratedVariantSku = (productTitle, attributes, index) => {
   const titlePart = slugifyKeyPart(productTitle || 'producto')
@@ -109,6 +141,370 @@ const buildGeneratedVariantSku = (productTitle, attributes, index) => {
     .filter(Boolean)
     .join('-')
     .slice(0, 64)
+}
+
+
+const normalizeNumberValue = value => {
+  const parsed = Number(value ?? 0)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+}
+
+const normalizeSku = value => {
+  const clean = normalizeString(value).toUpperCase()
+
+  if (!clean) return ''
+  if (/^\d+$/.test(clean)) return ''
+  if (/^SKU-?\d+$/i.test(clean)) return ''
+  if (/^VAR-?\d+$/i.test(clean)) return ''
+
+  return clean
+}
+
+const buildVariantDisplayName = variant => {
+  return (
+    normalizeString(variant?.nombre) ||
+    buildVariantName(variant?.combinacion || variant?.attributes || {}) ||
+    'Variante'
+  )
+}
+
+const getVariantStockTotal = variants =>
+  safeArray(variants)
+    .filter(variant => variant?.isActive !== false)
+    .reduce((total, variant) => total + normalizeNumberValue(variant?.stock), 0)
+
+const getVariantAttributesConfig = (dynamicAttributes, selectedAttributes) => {
+  return safeArray(dynamicAttributes)
+    .filter(attr => safeArray(selectedAttributes?.[attr.name]).length > 0)
+    .map((attr, index) => ({
+      name: attr.name,
+      label: attr.label || attr.name,
+      type: attr.type || 'select',
+      values: [
+        ...new Set([
+          ...safeArray(attr.values),
+          ...safeArray(selectedAttributes?.[attr.name]),
+        ]),
+      ],
+      required: attr.required === true,
+      sortOrder: index,
+    }))
+}
+
+const getUploadFileObject = file => file?.originFileObj || file
+
+const isAllowedImageFile = file => {
+  const fileObject = getUploadFileObject(file)
+  const mimeType = fileObject?.type || file?.type || ''
+  const filename = fileObject?.name || file?.name || ''
+  const extension = filename.split('.').pop()?.toLowerCase()
+  const extensionAllowed = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].includes(extension)
+
+  return ALLOWED_IMAGE_TYPES.has(mimeType) || extensionAllowed
+}
+
+const sanitizeUploadFiles = files => {
+  const uniqueFiles = dedupeByUid(safeArray(files)).filter(file => {
+    const fileObject = getUploadFileObject(file)
+    if (!fileObject) return false
+    return isAllowedImageFile(file)
+  })
+
+  return uniqueFiles.slice(0, MAX_PRODUCT_IMAGES)
+}
+
+const validateSelectedFiles = files => {
+  const invalidType = safeArray(files).find(file => !isAllowedImageFile(file))
+  if (invalidType) {
+    return `El archivo ${invalidType.name || 'seleccionado'} no tiene un formato de imagen permitido.`
+  }
+
+  const tooLarge = safeArray(files).find(file => {
+    const fileObject = getUploadFileObject(file)
+    return Number(fileObject?.size || file?.size || 0) > MAX_IMAGE_SIZE_BYTES
+  })
+
+  if (tooLarge) {
+    return `El archivo ${tooLarge.name || 'seleccionado'} supera ${MAX_IMAGE_SIZE_MB}MB.`
+  }
+
+  if (safeArray(files).length > MAX_PRODUCT_IMAGES) {
+    return `Podés cargar hasta ${MAX_PRODUCT_IMAGES} imágenes por producto.`
+  }
+
+  return null
+}
+
+const getJobFlag = (job, key) => Boolean(job?.[key] ?? job?.metadata?.[key])
+
+const validateVariantsForSubmit = variants => {
+  if (!safeArray(variants).length) {
+    return 'Activaste variantes, pero todavía no generaste ninguna combinación.'
+  }
+
+  const activeVariants = safeArray(variants).filter(variant => variant.isActive !== false)
+  if (!activeVariants.length) {
+    return 'El producto necesita al menos una variante activa.'
+  }
+
+  const variantKeys = new Set()
+  const variantSkus = new Set()
+
+  for (const variant of activeVariants) {
+    const combination = variant?.combinacion || variant?.attributes || {}
+    const variantKey = buildVariantKey(combination)
+    const name = buildVariantDisplayName(variant)
+
+    if (!variantKey) {
+      return `La variante "${name}" no tiene una combinación válida.`
+    }
+
+    if (variantKeys.has(variantKey)) {
+      return `Hay variantes duplicadas con la misma combinación: ${name}.`
+    }
+
+    variantKeys.add(variantKey)
+
+    if (normalizeNumberValue(variant.price) <= 0) {
+      return `La variante "${name}" necesita un precio mayor a 0.`
+    }
+
+    if (normalizeNumberValue(variant.stock) < 0) {
+      return `La variante "${name}" tiene stock inválido.`
+    }
+
+    const sku = normalizeSku(variant.sku)
+    if (sku) {
+      if (variantSkus.has(sku)) {
+        return `Hay variantes con SKU duplicado: ${sku}.`
+      }
+
+      variantSkus.add(sku)
+    }
+  }
+
+  return null
+}
+
+
+const normalizeDynamicFieldType = value => {
+  const clean = normalizeString(value).toLowerCase()
+
+  if (['textarea', 'longtext', 'long_text', 'multiline'].includes(clean)) return 'textarea'
+  if (['number', 'numeric', 'integer', 'float'].includes(clean)) return 'number'
+  if (['select', 'dropdown', 'enum', 'list'].includes(clean)) return 'select'
+  if (['multiselect', 'multi_select', 'tags', 'array'].includes(clean)) return 'multiselect'
+  if (['color', 'colour'].includes(clean)) return 'color'
+  if (['boolean', 'bool', 'switch', 'checkbox'].includes(clean)) return 'boolean'
+  if (['text', 'string', 'input'].includes(clean)) return 'text'
+
+  return DEFAULT_DYNAMIC_FIELD_TYPES.has(clean) ? clean : 'text'
+}
+
+const parseDynamicFieldOptions = value => {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(item => normalizeString(item)).filter(Boolean))]
+  }
+
+  if (typeof value === 'string') {
+    return [
+      ...new Set(
+        value
+          .split(/[,;|\n]+/g)
+          .map(item => normalizeString(item))
+          .filter(Boolean),
+      ),
+    ]
+  }
+
+  return []
+}
+
+const normalizeDynamicFieldDefinition = (field, index = 0) => {
+  if (!field) return null
+
+  if (typeof field === 'string') {
+    const name = slugifyKeyPart(field).replace(/-/g, '_')
+    if (!name) return null
+
+    return {
+      name,
+      label: field,
+      type: 'text',
+      values: [],
+      required: false,
+      sortOrder: index,
+      source: 'template',
+    }
+  }
+
+  const rawName =
+    field.name ||
+    field.key ||
+    field.field ||
+    field.code ||
+    field.id ||
+    field.label ||
+    field.title
+  const name = slugifyKeyPart(rawName).replace(/-/g, '_')
+
+  if (!name) return null
+
+  return {
+    name,
+    label: normalizeString(field.label || field.title || field.name || name),
+    type: normalizeDynamicFieldType(field.type || field.inputType || field.kind),
+    values: parseDynamicFieldOptions(
+      field.values || field.options || field.enum || field.allowedValues,
+    ),
+    unit: normalizeString(field.unit || field.suffix || ''),
+    placeholder: normalizeString(field.placeholder || field.help || ''),
+    required:
+      field.required === true ||
+      field.isRequired === true ||
+      field.mandatory === true,
+    sortOrder: Number.isFinite(Number(field.sortOrder)) ? Number(field.sortOrder) : index,
+    source: field.source || 'template',
+  }
+}
+
+const extractTemplateDynamicFields = templatePayload => {
+  const candidates = [
+    templatePayload?.productAttributes,
+    templatePayload?.productFields,
+    templatePayload?.categoryAttributes,
+    templatePayload?.attributes,
+    templatePayload?.atributos,
+    templatePayload?.specifications,
+    templatePayload?.specs,
+    templatePayload?.fields,
+    templatePayload?.requiredAttributes,
+    templatePayload?.selectedSubcategory?.productAttributes,
+    templatePayload?.selectedSubcategory?.productFields,
+    templatePayload?.selectedSubcategory?.categoryAttributes,
+    templatePayload?.selectedSubcategory?.attributes,
+    templatePayload?.selectedSubcategory?.atributos,
+    templatePayload?.selectedSubcategory?.specifications,
+    templatePayload?.selectedSubcategory?.specs,
+    templatePayload?.selectedSubcategory?.fields,
+    templatePayload?.selectedSubcategory?.requiredAttributes,
+  ]
+
+  const map = new Map()
+
+  candidates.forEach(candidate => {
+    if (!candidate) return
+
+    const entries = Array.isArray(candidate)
+      ? candidate
+      : typeof candidate === 'object'
+        ? Object.entries(candidate).map(([key, value]) => (
+            typeof value === 'object' && value !== null
+              ? { name: key, ...value }
+              : { name: key, type: typeof value === 'number' ? 'number' : 'text' }
+          ))
+        : []
+
+    entries.forEach((item, index) => {
+      const normalized = normalizeDynamicFieldDefinition(item, index)
+      if (!normalized) return
+
+      const previous = map.get(normalized.name)
+      map.set(normalized.name, {
+        ...previous,
+        ...normalized,
+        values: [
+          ...new Set([
+            ...safeArray(previous?.values),
+            ...safeArray(normalized.values),
+          ]),
+        ],
+        required: previous?.required === true || normalized.required === true,
+      })
+    })
+  })
+
+  return Array.from(map.values()).sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+  )
+}
+
+const normalizeDynamicFieldValues = (fields = [], rawValues = {}) => {
+  const result = {}
+
+  safeArray(fields).forEach(field => {
+    const rawValue = rawValues?.[field.name]
+
+    if (field.type === 'boolean') {
+      if (rawValue !== undefined) result[field.name] = Boolean(rawValue)
+      return
+    }
+
+    if (field.type === 'number') {
+      if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+        result[field.name] = normalizeNumberValue(rawValue)
+      }
+      return
+    }
+
+    if (field.type === 'multiselect') {
+      const values = safeArray(rawValue)
+        .map(item => normalizeString(item))
+        .filter(Boolean)
+      if (values.length) result[field.name] = values
+      return
+    }
+
+    const cleanValue = normalizeString(rawValue)
+    if (cleanValue) result[field.name] = cleanValue
+  })
+
+  return result
+}
+
+const buildSeoPayload = values => {
+  const title = normalizeString(values.titulo)
+  const description = normalizeString(values.descripcion)
+  const rawKeywords = Array.isArray(values.seoKeywords)
+    ? values.seoKeywords
+    : normalizeString(values.seoKeywords)
+        .split(/[,;|\n]+/g)
+        .map(item => normalizeString(item))
+
+  const slug =
+    slugifyKeyPart(values.slug || title)
+      .replace(/_/g, '-')
+      .replace(/-+/g, '-') || undefined
+
+  return {
+    slug,
+    shortDescription: normalizeString(values.shortDescription) || description.slice(0, 220),
+    metaTitle: normalizeString(values.metaTitle) || title.slice(0, 70),
+    metaDescription:
+      normalizeString(values.metaDescription) || description.slice(0, 160),
+    keywords: [...new Set(rawKeywords.filter(Boolean).map(item => item.toLowerCase()))],
+  }
+}
+
+const buildLogisticsPayload = values => {
+  const dimensions = {
+    length: normalizeNumberValue(values.packageLengthCm),
+    width: normalizeNumberValue(values.packageWidthCm),
+    height: normalizeNumberValue(values.packageHeightCm),
+    unit: 'cm',
+  }
+
+  return {
+    weightKg: normalizeNumberValue(values.weightKg),
+    dimensions,
+    package: dimensions,
+    shipping: {
+      type: normalizeString(values.shippingType || 'standard'),
+      requiresShipping: values.shippingType !== 'digital',
+    },
+    warranty: normalizeString(values.warranty),
+    countryOfOrigin: normalizeString(values.countryOfOrigin),
+  }
 }
 
 const formatDate = value => {
@@ -685,6 +1081,123 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
   )
 }
 
+
+const DynamicProductField = ({ field }) => {
+  const rules = field.required
+    ? [{ required: true, message: `${field.label || field.name} es obligatorio` }]
+    : []
+
+  const commonProps = {
+    size: 'large',
+    placeholder: field.placeholder || `Completar ${field.label || field.name}`,
+  }
+
+  if (field.type === 'textarea') {
+    return (
+      <Form.Item
+        name={['dynamicFields', field.name]}
+        label={field.label || field.name}
+        rules={rules}
+      >
+        <Input.TextArea rows={3} showCount maxLength={800} {...commonProps} />
+      </Form.Item>
+    )
+  }
+
+  if (field.type === 'number') {
+    return (
+      <Form.Item
+        name={['dynamicFields', field.name]}
+        label={field.label || field.name}
+        rules={rules}
+      >
+        <InputNumber
+          {...commonProps}
+          style={{ width: '100%' }}
+          min={0}
+          addonAfter={field.unit || undefined}
+        />
+      </Form.Item>
+    )
+  }
+
+  if (field.type === 'select') {
+    return (
+      <Form.Item
+        name={['dynamicFields', field.name]}
+        label={field.label || field.name}
+        rules={rules}
+      >
+        <Select
+          {...commonProps}
+          allowClear
+          showSearch
+          options={safeArray(field.values).map(value => ({ value, label: value }))}
+        />
+      </Form.Item>
+    )
+  }
+
+  if (field.type === 'multiselect') {
+    return (
+      <Form.Item
+        name={['dynamicFields', field.name]}
+        label={field.label || field.name}
+        rules={rules}
+      >
+        <Select
+          {...commonProps}
+          mode="tags"
+          allowClear
+          tokenSeparators={[',']}
+          options={safeArray(field.values).map(value => ({ value, label: value }))}
+        />
+      </Form.Item>
+    )
+  }
+
+  if (field.type === 'boolean') {
+    return (
+      <Form.Item
+        name={['dynamicFields', field.name]}
+        label={field.label || field.name}
+        valuePropName="checked"
+        rules={rules}
+      >
+        <Switch checkedChildren="Sí" unCheckedChildren="No" />
+      </Form.Item>
+    )
+  }
+
+  if (field.type === 'color') {
+    return (
+      <Form.Item
+        name={['dynamicFields', field.name]}
+        label={field.label || field.name}
+        rules={rules}
+      >
+        <Select
+          {...commonProps}
+          mode="tags"
+          allowClear
+          tokenSeparators={[',']}
+          options={safeArray(field.values).map(value => ({ value, label: value }))}
+        />
+      </Form.Item>
+    )
+  }
+
+  return (
+    <Form.Item
+      name={['dynamicFields', field.name]}
+      label={field.label || field.name}
+      rules={rules}
+    >
+      <Input {...commonProps} />
+    </Form.Item>
+  )
+}
+
 const VariantImageSelector = ({ variant, localImages, onAssign }) => {
   return (
     <Select
@@ -740,6 +1253,10 @@ export default function AddProduct() {
   const [selectedAttributes, setSelectedAttributes] = useState({})
   const [newAttributeName, setNewAttributeName] = useState('')
   const [newAttributeType, setNewAttributeType] = useState('select')
+  const [dynamicProductFields, setDynamicProductFields] = useState([])
+  const [customFieldName, setCustomFieldName] = useState('')
+  const [customFieldType, setCustomFieldType] = useState('text')
+  const [customFieldRequired, setCustomFieldRequired] = useState(false)
   const [catalogCategories, setCatalogCategories] = useState([])
   const [catalogTemplate, setCatalogTemplate] = useState(null)
   const [loadingCatalogTemplate, setLoadingCatalogTemplate] = useState(false)
@@ -754,10 +1271,13 @@ export default function AddProduct() {
   )
   const [autoAgentRunning, setAutoAgentRunning] = useState(false)
   const [currentAgentJob, setCurrentAgentJob] = useState(null)
+  const [publishProduct, setPublishProduct] = useState(true)
+  const [savingProduct, setSavingProduct] = useState(false)
 
   const inputRef = useRef(null)
   const autoAgentRef = useRef(false)
   const autoAgentFailedJobsRef = useRef(new Set())
+  const imagePreviewsRef = useRef([])
 
   const user = useSelector(state => state.user.user)
   const tenantId = user?.tenantId?._id || user?.tenantId || null
@@ -839,11 +1359,15 @@ export default function AddProduct() {
   )
 
   useEffect(() => {
+    imagePreviewsRef.current = imagePreviews
+  }, [imagePreviews])
+
+  useEffect(() => {
     return () => {
       dispatch(resetState())
-      revokeBlobUrls(imagePreviews)
+      revokeBlobUrls(imagePreviewsRef.current)
     }
-  }, [dispatch, imagePreviews])
+  }, [dispatch])
 
   useEffect(() => {
     if (inputVisible) {
@@ -909,6 +1433,28 @@ export default function AddProduct() {
 
         setCatalogTemplate(template)
 
+        const templateProductFields = extractTemplateDynamicFields(response?.data)
+        setDynamicProductFields(current => {
+          const merged = new Map(current.map(field => [field.name, field]))
+
+          templateProductFields.forEach(field => {
+            const previous = merged.get(field.name)
+            merged.set(field.name, {
+              ...previous,
+              ...field,
+              values: [
+                ...new Set([
+                  ...safeArray(previous?.values),
+                  ...safeArray(field.values),
+                ]),
+              ],
+              required: previous?.required === true || field.required === true,
+            })
+          })
+
+          return [...merged.values()]
+        })
+
         if (templateAttributes.length === 0) return
 
         setDynamicAttributes(current => {
@@ -966,7 +1512,6 @@ export default function AddProduct() {
   const fetchAgentQueue = useCallback(async () => {
     setLoadingAgentQueue(true)
     try {
-      await api.post('/product-analysis/process-due')
       const { data } = await api.get('/product-analysis', {
         params: {
           limit: 25,
@@ -1155,6 +1700,70 @@ export default function AddProduct() {
     )
   }, [iaResult, form])
 
+  useEffect(() => {
+    if (!iaResult || typeof iaResult !== 'object') return
+
+    const detectedAttrs = iaResult.atributos_detectados || iaResult.atributos || {}
+    if (!detectedAttrs || typeof detectedAttrs !== 'object') return
+
+    const ignoredKeys = new Set([
+      'color',
+      'material',
+      'descripcion',
+      'description',
+      'titulo',
+      'title',
+      'categoria',
+      'category',
+      'subcategoria',
+      'subcategory',
+      'marca',
+      'brand',
+    ])
+
+    const fieldsFromIa = Object.entries(detectedAttrs)
+      .map(([key, value], index) => {
+        const name = slugifyKeyPart(key).replace(/-/g, '_')
+        if (!name || ignoredKeys.has(name)) return null
+
+        return {
+          name,
+          label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+          type: Array.isArray(value) ? 'multiselect' : typeof value === 'number' ? 'number' : 'text',
+          values: Array.isArray(value) ? value.map(item => normalizeString(item)).filter(Boolean) : [],
+          required: false,
+          sortOrder: index,
+          source: 'ia',
+        }
+      })
+      .filter(Boolean)
+
+    if (fieldsFromIa.length) {
+      setDynamicProductFields(prev => {
+        const merged = new Map(prev.map(field => [field.name, field]))
+
+        fieldsFromIa.forEach(field => {
+          if (!merged.has(field.name)) merged.set(field.name, field)
+        })
+
+        return [...merged.values()]
+      })
+    }
+
+    const currentValues = form.getFieldValue('dynamicFields') || {}
+    const nextValues = { ...currentValues }
+
+    fieldsFromIa.forEach(field => {
+      if (nextValues[field.name] !== undefined) return
+      const rawValue = detectedAttrs[field.name] ?? detectedAttrs[field.label]
+      if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+        nextValues[field.name] = rawValue
+      }
+    })
+
+    form.setFieldsValue({ dynamicFields: nextValues })
+  }, [form, iaResult])
+
   const handleAddCustomAttribute = useCallback(() => {
     const label = normalizeString(newAttributeName)
     const normalizedName = slugifyKeyPart(label).replace(/-/g, '_')
@@ -1183,6 +1792,48 @@ export default function AddProduct() {
     setNewAttributeName('')
     setNewAttributeType('select')
   }, [newAttributeName, newAttributeType])
+
+  const handleAddDynamicProductField = useCallback(() => {
+    const label = normalizeString(customFieldName)
+    const name = slugifyKeyPart(label).replace(/-/g, '_')
+
+    if (!name) {
+      message.warning('Escribí el nombre del campo')
+      return
+    }
+
+    setDynamicProductFields(prev => {
+      if (prev.some(field => field.name === name)) {
+        message.warning('Ese campo dinámico ya existe')
+        return prev
+      }
+
+      return [
+        ...prev,
+        {
+          name,
+          label,
+          type: customFieldType,
+          values: [],
+          required: customFieldRequired,
+          sortOrder: prev.length,
+          source: 'custom',
+        },
+      ]
+    })
+
+    setCustomFieldName('')
+    setCustomFieldType('text')
+    setCustomFieldRequired(false)
+  }, [customFieldName, customFieldRequired, customFieldType])
+
+  const handleRemoveDynamicProductField = useCallback(fieldName => {
+    setDynamicProductFields(prev => prev.filter(field => field.name !== fieldName))
+    const currentValues = form.getFieldValue('dynamicFields') || {}
+    const nextValues = { ...currentValues }
+    delete nextValues[fieldName]
+    form.setFieldsValue({ dynamicFields: nextValues })
+  }, [form])
 
   const handleAttributeValuesChange = useCallback((attrName, values) => {
     const normalizedValues = [
@@ -1327,6 +1978,7 @@ export default function AddProduct() {
     const newVariants = combinations.map((combination, idx) => {
       const key = buildVariantKey(combination) || `v-${idx}-${Date.now()}`
       const previous = previousByKey.get(key)
+      const generatedSku = buildGeneratedVariantSku(productTitle, combination, idx)
 
       return {
         key,
@@ -1334,16 +1986,20 @@ export default function AddProduct() {
         combinacion: combination,
         price: previous?.price ?? basePrice,
         stock: previous?.stock ?? 0,
-        sku:
-          previous?.sku ||
-          buildGeneratedVariantSku(productTitle, combination, idx),
+        sku: previous?.sku || generatedSku,
         isActive: previous?.isActive ?? true,
         imageSourceUid: previous?.imageSourceUid ?? null,
+        uiStatus: previous ? 'existing' : 'new',
       }
     })
 
     setVariants(newVariants)
-    message.success(`${newVariants.length} variantes generadas`)
+    const createdCount = newVariants.filter(variant => variant.uiStatus === 'new').length
+    message.success(
+      createdCount
+        ? `${newVariants.length} variantes listas · ${createdCount} nuevas`
+        : `${newVariants.length} variantes actualizadas`,
+    )
   }, [
     configuredVariantAttributes,
     form,
@@ -1354,11 +2010,21 @@ export default function AddProduct() {
 
   const handleUploadChange = useCallback(
     ({ fileList: newFileList }) => {
-      const uniqueFiles = dedupeByUid(newFileList)
+      const validationError = validateSelectedFiles(newFileList)
+      if (validationError) {
+        message.error(validationError)
+        return
+      }
+
+      const uniqueFiles = sanitizeUploadFiles(newFileList)
 
       revokeBlobUrls(imagePreviews)
       setFileList(uniqueFiles)
       setImagePreviews(rebuildPreviews(uniqueFiles))
+
+      if (safeArray(newFileList).length > MAX_PRODUCT_IMAGES) {
+        message.warning(`Solo se conservaron las primeras ${MAX_PRODUCT_IMAGES} imágenes.`)
+      }
 
       if (uniqueFiles.length > 0 && !iaResult && !loadingIa) {
         const fileToAnalyze = uniqueFiles[0]?.originFileObj
@@ -1367,6 +2033,25 @@ export default function AddProduct() {
     },
     [analyzeImage, iaResult, imagePreviews, loadingIa],
   )
+
+  const resetProductWorkspace = useCallback(() => {
+    form.resetFields()
+    revokeBlobUrls(imagePreviews)
+    setFileList([])
+    setImagePreviews([])
+    setEditableTags([])
+    setVariants([])
+    setHasVariants(false)
+    setDynamicAttributes([])
+    setDynamicProductFields([])
+    setSelectedAttributes({})
+    setInputTagValue('')
+    setInputVisible(false)
+    setCurrentAgentJob(null)
+    setPublishProduct(true)
+    resetIa()
+    dispatch(resetState())
+  }, [dispatch, form, imagePreviews, resetIa])
 
   const handleImportAgentImage = useCallback(async () => {
     if (!selectedAgentJobId) {
@@ -1385,6 +2070,13 @@ export default function AddProduct() {
 
     setImportingAgentImage(true)
     try {
+      await api.post(
+        `/product-analysis/${selectedAgentJobId}/import-to-add-product`,
+      )
+
+      resetProductWorkspace()
+      await waitForUiReset()
+
       const response = await api.get(
         `/product-analysis/${selectedAgentJobId}/image-file`,
         {
@@ -1407,14 +2099,10 @@ export default function AddProduct() {
         size: imageFile.size,
       }
 
-      const merged = dedupeByUid([...fileList, uploadFile])
-      revokeBlobUrls(imagePreviews)
+      const merged = dedupeByUid([uploadFile])
       setFileList(merged)
       setImagePreviews(rebuildPreviews(merged))
 
-      await api.post(
-        `/product-analysis/${selectedAgentJobId}/import-to-add-product`,
-      )
       setCurrentAgentJob(selectedJob)
 
       setAgentQueue(current =>
@@ -1422,9 +2110,7 @@ export default function AddProduct() {
       )
       setSelectedAgentJobId(null)
 
-      if (!iaResult && !loadingIa) {
-        await analyzeImage(imageFile)
-      }
+      await analyzeImage(imageFile)
 
       message.success('Imagen del agente cargada en AddProduct')
     } catch (error) {
@@ -1438,10 +2124,7 @@ export default function AddProduct() {
   }, [
     agentQueue,
     analyzeImage,
-    fileList,
-    iaResult,
-    imagePreviews,
-    loadingIa,
+    resetProductWorkspace,
     selectedAgentJobId,
     selectedAgentJob,
   ])
@@ -1470,25 +2153,10 @@ export default function AddProduct() {
     }
   }, [agentQueue, selectedAgentJobId])
 
-  const resetProductWorkspace = useCallback(() => {
-    form.resetFields()
-    revokeBlobUrls(imagePreviews)
-    setFileList([])
-    setImagePreviews([])
-    setEditableTags([])
-    setVariants([])
-    setHasVariants(false)
-    setDynamicAttributes([])
-    setSelectedAttributes({})
-    setInputTagValue('')
-    setInputVisible(false)
-    setCurrentAgentJob(null)
-    resetIa()
-    dispatch(resetState())
-  }, [dispatch, form, imagePreviews, resetIa])
-
   const processAgentJobAutomatically = useCallback(
     async job => {
+      await api.post(`/product-analysis/${job._id}/import-to-add-product`)
+
       resetProductWorkspace()
       await waitForUiReset()
 
@@ -1513,7 +2181,7 @@ export default function AddProduct() {
         analysis,
         job,
         user,
-        publish: Boolean(job.autoPublishProduct),
+        publish: getJobFlag(job, 'autoPublishProduct'),
         automationMode: 'agent-autosave',
       })
 
@@ -1532,7 +2200,6 @@ export default function AddProduct() {
         }),
       ).unwrap()
 
-      await api.post(`/product-analysis/${job._id}/import-to-add-product`)
       await api.post(`/product-analysis/${job._id}/complete-add-product`, {
         productId,
       })
@@ -1597,10 +2264,21 @@ export default function AddProduct() {
 
   const handleAddMoreImages = useCallback(
     ({ fileList: incomingFiles }) => {
+      const validationError = validateSelectedFiles(incomingFiles)
+      if (validationError) {
+        message.error(validationError)
+        return
+      }
+
       setFileList(prevList => {
-        const merged = dedupeByUid([...prevList, ...incomingFiles])
+        const merged = sanitizeUploadFiles([...prevList, ...incomingFiles])
         revokeBlobUrls(imagePreviews)
         setImagePreviews(rebuildPreviews(merged))
+
+        if (prevList.length + safeArray(incomingFiles).length > MAX_PRODUCT_IMAGES) {
+          message.warning(`Máximo ${MAX_PRODUCT_IMAGES} imágenes por producto.`)
+        }
+
         return merged
       })
     },
@@ -1672,27 +2350,27 @@ export default function AddProduct() {
       return
     }
 
+    const fileValidationError = validateSelectedFiles(fileList)
+    if (fileValidationError) {
+      message.error(fileValidationError)
+      return
+    }
+
     if (!tenantId) {
       message.error('Tenant no disponible')
       return
     }
 
     if (hasVariants) {
-      const invalidVariants = variants.filter(
-        variant =>
-          variant.isActive !== false &&
-          (!normalizeString(variant.sku) ||
-            Number(variant.stock) < 0 ||
-            Number(variant.price) < 0),
-      )
+      const variantError = validateVariantsForSubmit(variants)
 
-      if (invalidVariants.length > 0) {
-        message.error(
-          `Hay ${invalidVariants.length} variantes con datos incompletos`,
-        )
+      if (variantError) {
+        message.error(variantError)
         return
       }
     }
+
+    setSavingProduct(true)
 
     try {
       const colorArray = normalizeString(values.color)
@@ -1703,28 +2381,34 @@ export default function AddProduct() {
         : []
 
       const variantAttributesConfig = hasVariants
-        ? dynamicAttributes
-            .filter(
-              attr =>
-                Array.isArray(selectedAttributes[attr.name]) &&
-                selectedAttributes[attr.name].length > 0,
-            )
-            .map(attr => ({
-              name: attr.name,
-              label: attr.label,
-              type: attr.type || 'select',
-            }))
+        ? getVariantAttributesConfig(dynamicAttributes, selectedAttributes)
         : []
+      const dynamicFieldValues = normalizeDynamicFieldValues(
+        dynamicProductFields,
+        values.dynamicFields || {},
+      )
+      const seoPayload = buildSeoPayload(values)
+      const logisticsPayload = buildLogisticsPayload(values)
 
       const payloadVariants = hasVariants
-        ? variants.map((variant, idx) => ({
-            key: buildVariantKey(variant.combinacion) || `variant-${idx + 1}`,
-            sku: normalizeString(variant.sku) || `SKU-${idx + 1}`,
-            attributes: variant.combinacion,
-            price: Number(variant.price || 0),
-            stock: Number(variant.stock || 0),
-            isActive: variant.isActive !== false,
-          }))
+        ? variants.map((variant, idx) => {
+            const combination = variant.combinacion || {}
+            const key = buildVariantKey(combination) || `variant-${idx + 1}`
+            const sku =
+              normalizeSku(variant.sku) ||
+              buildGeneratedVariantSku(values.titulo, combination, idx)
+
+            return {
+              key,
+              nombre: buildVariantName(combination) || `Variante ${idx + 1}`,
+              sku,
+              attributes: combination,
+              combinacion: combination,
+              price: normalizeNumberValue(variant.price),
+              stock: normalizeNumberValue(variant.stock),
+              isActive: variant.isActive !== false,
+            }
+          })
         : []
 
       const normalizedIaResult =
@@ -1744,21 +2428,43 @@ export default function AddProduct() {
         subcategoria: normalizeString(values.subcategoria),
         marca: normalizeString(values.marca),
         price: Number(values.precio || 0),
-        stock: hasVariants ? 0 : Number(values.cantidad || 0),
+        stock: hasVariants
+          ? getVariantStockTotal(variants)
+          : normalizeNumberValue(values.cantidad || 0),
         condicion: values.condicion,
 
         color: colorArray,
         material: normalizeString(values.material),
 
         atributos: {
+          ...dynamicFieldValues,
           color: colorArray.length === 1 ? colorArray[0] : colorArray,
           material: normalizeString(values.material),
         },
+        productAttributes: dynamicFieldValues,
+        categoryAttributes: dynamicFieldValues,
+        specifications: dynamicFieldValues,
+        dynamicFields: dynamicFieldValues,
 
         hasVariants,
         variantAttributes: variantAttributesConfig,
         variants: payloadVariants,
         tags: editableTags.map(tag => tag.toLowerCase().trim()),
+
+        slug: seoPayload.slug,
+        shortDescription: seoPayload.shortDescription,
+        metaTitle: seoPayload.metaTitle,
+        metaDescription: seoPayload.metaDescription,
+        keywords: seoPayload.keywords,
+        seo: seoPayload,
+
+        weightKg: logisticsPayload.weightKg,
+        dimensions: logisticsPayload.dimensions,
+        package: logisticsPayload.package,
+        shipping: logisticsPayload.shipping,
+        warranty: logisticsPayload.warranty,
+        countryOfOrigin: logisticsPayload.countryOfOrigin,
+        logistics: logisticsPayload,
 
         iaGenerated: Boolean(normalizedIaResult),
         aiOriginalOutput: normalizedIaResult
@@ -1778,8 +2484,8 @@ export default function AddProduct() {
           null,
         aiAutomationMode: currentAgentJob ? 'agent-assisted' : 'manual',
 
-        status: 'active',
-        visibility: 'visible',
+        status: publishProduct ? 'active' : 'draft',
+        visibility: publishProduct ? 'visible' : 'hidden',
       }
 
       const created = await dispatch(createProducts(productPayload)).unwrap()
@@ -1866,8 +2572,12 @@ export default function AddProduct() {
       await waitForUiReset()
       await fetchAgentQueue()
     } catch (error) {
-      console.error('Error al crear producto:', error)
+      if (process.env.REACT_APP_DEBUG_API === 'true') {
+        console.error('Error al crear producto:', error)
+      }
       message.error(error?.message || 'Error al crear producto')
+    } finally {
+      setSavingProduct(false)
     }
   }
 
@@ -2275,7 +2985,7 @@ export default function AddProduct() {
                             marginTop: 10,
                           }}
                         >
-                          JPG, PNG y WEBP recomendados · Alta calidad mejora la
+                          JPG, PNG, WEBP, HEIC/HEIF · máximo {MAX_PRODUCT_IMAGES} imágenes · alta calidad mejora la
                           precisión
                         </Text>
                       </div>
@@ -2455,6 +3165,117 @@ export default function AddProduct() {
                           }
                         />
                       </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                <Card
+                  title={
+                    <Space size={10}>
+                      <AppstoreOutlined style={{ color: token.colorPrimary }} />
+                      <span>Campos dinámicos por rubro</span>
+                      {dynamicProductFields.length > 0 && (
+                        <Tag color="processing" style={{ borderRadius: 999 }}>
+                          {dynamicProductFields.length} campos
+                        </Tag>
+                      )}
+                    </Space>
+                  }
+                  style={{
+                    marginBottom: 24,
+                    borderRadius: 20,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                  }}
+                  bodyStyle={{ padding: 24 }}
+                >
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 20, borderRadius: 14 }}
+                    message={
+                      catalogTemplate
+                        ? `Campos aplicados desde la plantilla de ${catalogTemplate.name || 'la subcategoría'}`
+                        : 'Estos campos permiten adaptar el producto a cualquier rubro.'
+                    }
+                    description="Ejemplos: cilindrada para motos, volumen para perfumes, memoria para celulares, vencimiento para alimentos o composición para indumentaria."
+                  />
+
+                  <Row gutter={[16, 16]}>
+                    {dynamicProductFields.length ? (
+                      dynamicProductFields.map(field => (
+                        <Col xs={24} md={field.type === 'textarea' ? 24 : 12} key={field.name}>
+                          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                            <DynamicProductField field={field} />
+                            <Space size={6} wrap>
+                              {field.required && <Tag color="red">Obligatorio</Tag>}
+                              {field.source && <Tag>{field.source}</Tag>}
+                              <Button
+                                size="small"
+                                type="link"
+                                danger
+                                onClick={() => handleRemoveDynamicProductField(field.name)}
+                              >
+                                Quitar
+                              </Button>
+                            </Space>
+                          </Space>
+                        </Col>
+                      ))
+                    ) : (
+                      <Col span={24}>
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="No hay campos dinámicos cargados para esta categoría. Podés agregarlos manualmente."
+                        />
+                      </Col>
+                    )}
+                  </Row>
+
+                  <Divider orientation="left" plain>
+                    Agregar campo propio
+                  </Divider>
+
+                  <Row gutter={[12, 12]} align="bottom">
+                    <Col xs={24} md={9}>
+                      <Text strong>Nombre del campo</Text>
+                      <Input
+                        value={customFieldName}
+                        onChange={event => setCustomFieldName(event.target.value)}
+                        onPressEnter={handleAddDynamicProductField}
+                        placeholder="Ej: Cilindrada, Volumen, Memoria"
+                        style={{ marginTop: 8 }}
+                      />
+                    </Col>
+                    <Col xs={24} md={6}>
+                      <Text strong>Tipo</Text>
+                      <Select
+                        value={customFieldType}
+                        onChange={setCustomFieldType}
+                        options={DYNAMIC_FIELD_TYPES}
+                        style={{ width: '100%', marginTop: 8 }}
+                      />
+                    </Col>
+                    <Col xs={12} md={5}>
+                      <Text strong>Obligatorio</Text>
+                      <div style={{ marginTop: 8 }}>
+                        <Switch
+                          checked={customFieldRequired}
+                          onChange={setCustomFieldRequired}
+                          checkedChildren="Sí"
+                          unCheckedChildren="No"
+                        />
+                      </div>
+                    </Col>
+                    <Col xs={12} md={4}>
+                      <Button
+                        block
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={handleAddDynamicProductField}
+                      >
+                        Agregar
+                      </Button>
                     </Col>
                   </Row>
                 </Card>
@@ -2725,21 +3546,35 @@ export default function AddProduct() {
                                 width: 260,
                                 fixed: 'left',
                                 render: (_, record) => (
-                                  <Space wrap size={[4, 6]}>
-                                    {Object.entries(record.combinacion).map(
-                                      ([attribute, value]) => (
-                                        <Tag
-                                          key={`${record.key}-${attribute}`}
-                                          color="blue"
-                                          style={{ margin: 0, borderRadius: 4 }}
-                                        >
-                                          {dynamicAttributes.find(
-                                            item => item.name === attribute,
-                                          )?.label || attribute}
-                                          : {value}
+                                  <Space direction="vertical" size={6}>
+                                    <Space wrap size={[4, 6]}>
+                                      {Object.entries(record.combinacion).map(
+                                        ([attribute, value]) => (
+                                          <Tag
+                                            key={`${record.key}-${attribute}`}
+                                            color="blue"
+                                            style={{ margin: 0, borderRadius: 4 }}
+                                          >
+                                            {dynamicAttributes.find(
+                                              item => item.name === attribute,
+                                            )?.label || attribute}
+                                            : {value}
+                                          </Tag>
+                                        ),
+                                      )}
+                                    </Space>
+                                    <Space size={6} wrap>
+                                      {record.uiStatus === 'new' && (
+                                        <Tag color="success" style={{ borderRadius: 999 }}>
+                                          Nueva
                                         </Tag>
-                                      ),
-                                    )}
+                                      )}
+                                      {record.isActive === false && (
+                                        <Tag color="default" style={{ borderRadius: 999 }}>
+                                          Inactiva
+                                        </Tag>
+                                      )}
+                                    </Space>
                                   </Space>
                                 ),
                               },
@@ -3056,6 +3891,123 @@ export default function AddProduct() {
                   <Card
                     title={
                       <Space size={10}>
+                        <FileTextOutlined style={{ color: token.colorPrimary }} />
+                        <span>SEO y contenido comercial</span>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    bodyStyle={{ padding: 24 }}
+                  >
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <Button
+                        block
+                        icon={<ThunderboltOutlined />}
+                        onClick={() => {
+                          const title = normalizeString(form.getFieldValue('titulo'))
+                          const description = normalizeString(form.getFieldValue('descripcion'))
+                          const marca = normalizeString(form.getFieldValue('marca'))
+                          const categoria = normalizeString(form.getFieldValue('categoria'))
+                          const subcategoria = normalizeString(form.getFieldValue('subcategoria'))
+                          const keywords = [marca, categoria, subcategoria]
+                            .filter(Boolean)
+                            .map(item => item.toLowerCase())
+
+                          form.setFieldsValue({
+                            slug: slugifyKeyPart(title).replace(/_/g, '-'),
+                            shortDescription: description.slice(0, 220),
+                            metaTitle: title.slice(0, 70),
+                            metaDescription: description.slice(0, 160),
+                            seoKeywords: keywords,
+                          })
+                        }}
+                      >
+                        Generar SEO desde el producto
+                      </Button>
+
+                      <Form.Item name="slug" label="Slug URL">
+                        <Input placeholder="zapatillas-nike-air-max-90" />
+                      </Form.Item>
+
+                      <Form.Item name="shortDescription" label="Descripción corta">
+                        <Input.TextArea rows={2} maxLength={260} showCount placeholder="Resumen comercial breve para cards, SEO y vistas rápidas." />
+                      </Form.Item>
+
+                      <Form.Item name="metaTitle" label="Meta title">
+                        <Input maxLength={70} showCount placeholder="Título SEO" />
+                      </Form.Item>
+
+                      <Form.Item name="metaDescription" label="Meta description">
+                        <Input.TextArea rows={2} maxLength={160} showCount placeholder="Descripción SEO para buscadores." />
+                      </Form.Item>
+
+                      <Form.Item name="seoKeywords" label="Keywords">
+                        <Select mode="tags" tokenSeparators={[',']} placeholder="nike, zapatillas, running" />
+                      </Form.Item>
+                    </Space>
+                  </Card>
+
+                  <Card
+                    title={
+                      <Space size={10}>
+                        <ShoppingOutlined style={{ color: token.colorPrimary }} />
+                        <span>Logística, garantía y origen</span>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    bodyStyle={{ padding: 24 }}
+                  >
+                    <Row gutter={[12, 12]}>
+                      <Col xs={24} sm={12}>
+                        <Form.Item name="weightKg" label="Peso kg">
+                          <InputNumber min={0} precision={3} style={{ width: '100%' }} placeholder="0.500" />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Form.Item name="shippingType" label="Tipo de envío" initialValue="standard">
+                          <Select options={SHIPPING_TYPE_OPTIONS} />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={8}>
+                        <Form.Item name="packageLengthCm" label="Largo cm">
+                          <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={8}>
+                        <Form.Item name="packageWidthCm" label="Ancho cm">
+                          <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={8}>
+                        <Form.Item name="packageHeightCm" label="Alto cm">
+                          <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24}>
+                        <Form.Item name="warranty" label="Garantía">
+                          <Input placeholder="Ej: 6 meses por defecto de fabricación" />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24}>
+                        <Form.Item name="countryOfOrigin" label="País de origen">
+                          <Input placeholder="Ej: Argentina, Brasil, China" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </Card>
+
+                  <Card
+                    title={
+                      <Space size={10}>
                         <TagOutlined style={{ color: token.colorPrimary }} />
                         <span>Tags y etiquetas</span>
                       </Space>
@@ -3141,12 +4093,44 @@ export default function AddProduct() {
                         />
                       )}
 
+                      <div
+                        style={{
+                          padding: 14,
+                          borderRadius: 14,
+                          background: token.colorFillAlter,
+                          border: `1px solid ${token.colorBorderSecondary}`,
+                        }}
+                      >
+                        <Space
+                          align="center"
+                          style={{ width: '100%', justifyContent: 'space-between' }}
+                        >
+                          <div>
+                            <Text strong>
+                              {publishProduct ? 'Publicar visible' : 'Guardar borrador'}
+                            </Text>
+                            <br />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {publishProduct
+                                ? 'El producto queda activo en el comercio al finalizar.'
+                                : 'El producto queda oculto para revisión interna.'}
+                            </Text>
+                          </div>
+                          <Switch
+                            checked={publishProduct}
+                            onChange={setPublishProduct}
+                            checkedChildren="ON"
+                            unCheckedChildren="OFF"
+                          />
+                        </Space>
+                      </div>
+
                       <Button
                         htmlType="submit"
                         type="primary"
                         size="large"
                         block
-                        loading={isLoading}
+                        loading={isLoading || savingProduct}
                         icon={<CheckCircleOutlined />}
                         style={{
                           height: 52,
@@ -3156,11 +4140,15 @@ export default function AddProduct() {
                           boxShadow: `0 14px 28px ${token.colorPrimary}30`,
                         }}
                       >
-                        {isLoading
+                        {isLoading || savingProduct
                           ? 'Guardando...'
-                          : hasVariants
-                            ? `Guardar con ${variants.length} variantes`
-                            : 'Guardar producto'}
+                          : publishProduct
+                            ? hasVariants
+                              ? `Publicar con ${variants.length} variantes`
+                              : 'Publicar producto'
+                            : hasVariants
+                              ? `Guardar borrador con ${variants.length} variantes`
+                              : 'Guardar como borrador'}
                       </Button>
 
                       <Text

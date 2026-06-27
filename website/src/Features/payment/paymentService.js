@@ -1,5 +1,7 @@
 // 📁 src/features/payment/paymentService.js
-import api from '@utils/axiosConfig'
+import api, { fetchCsrfToken } from '@utils/axiosConfig'
+
+let cachedCsrfToken = null
 
 const normalizeApiError = error => {
   const status = error?.response?.status || null
@@ -35,9 +37,18 @@ const normalizeApiError = error => {
   }
 }
 
+const ensureCsrf = async ({ force = false } = {}) => {
+  if (!force && cachedCsrfToken) return cachedCsrfToken
+
+  cachedCsrfToken = await fetchCsrfToken()
+  return cachedCsrfToken
+}
+
 const apiRequest = async (method, endpoint, data, options = {}) => {
   try {
     const normalizedMethod = String(method || 'get').toLowerCase()
+    const isWrite = !['get', 'head', 'options'].includes(normalizedMethod)
+    const csrfToken = isWrite ? await ensureCsrf() : null
 
     const cleanEndpoint = endpoint === '/' ? '' : endpoint
     const url = `/payments${cleanEndpoint}`
@@ -50,8 +61,9 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
       ...options,
       headers: {
         Accept: 'application/json',
-        ...(!['get', 'head', 'options'].includes(normalizedMethod) && {
+        ...(isWrite && {
           'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
         }),
         ...options.headers,
       },
@@ -59,11 +71,33 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
 
     return response.data
   } catch (error) {
-    throw normalizeApiError(error)
+    const normalizedError = normalizeApiError(error)
+
+    // Si falló por CSRF, limpiamos cache para el próximo intento.
+    if (
+      normalizedError.status === 403 ||
+      normalizedError.code === 'EBADCSRFTOKEN' ||
+      String(normalizedError.message || '')
+        .toLowerCase()
+        .includes('csrf')
+    ) {
+      cachedCsrfToken = null
+    }
+
+    throw normalizedError
   }
 }
 
 const processPayment = async payload => {
+  console.log('Enviando datos de pago al backend:', {
+    orderId: payload?.orderId,
+    payment_method_id: payload?.payment_method_id,
+    installments: payload?.installments,
+    issuer_id: payload?.issuer_id,
+    payerEmail: payload?.payer?.email,
+    hasToken: Boolean(payload?.token),
+  })
+
   return apiRequest('post', '/process', payload)
 }
 

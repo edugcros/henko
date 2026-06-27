@@ -95,8 +95,6 @@ const getSafeErrorMessage = error => {
 export const checkPaymentRateLimit = async (resourceKey, userId, tenantId) => {
   try {
     const normalizedResourceKey = sanitizeString(resourceKey, 'unknown')
-    const now = new Date()
-    const windowStart = new Date(now.getTime() - 5 * 60 * 1000)
     const attempt = await PaymentAttempt.findOneAndUpdate(
       {
         tenantId: toObjectId(tenantId),
@@ -106,7 +104,7 @@ export const checkPaymentRateLimit = async (resourceKey, userId, tenantId) => {
       {
         $inc: { attempts: 1 },
         $set: {
-          lastAttemptAt: now,
+          lastAttemptAt: new Date(),
           tenantId: toObjectId(tenantId),
           userId: toObjectId(userId),
           resourceKey: normalizedResourceKey,
@@ -118,19 +116,9 @@ export const checkPaymentRateLimit = async (resourceKey, userId, tenantId) => {
       },
     )
 
-    if (attempt.createdAt < windowStart) {
-      attempt.attempts = 1
-      attempt.createdAt = now
-      attempt.lastAttemptAt = now
-      await attempt.save()
-      return 1
-    }
-
     if (attempt.attempts > 5) {
-      const waitTime = Math.max(
-        0,
-        attempt.createdAt.getTime() + 300000 - now.getTime(),
-      )
+      const timeSinceLastAttempt = Date.now() - attempt.lastAttemptAt.getTime()
+      const waitTime = Math.max(0, 300000 - timeSinceLastAttempt)
 
       if (waitTime > 0) {
         const error = new Error(
@@ -140,6 +128,15 @@ export const checkPaymentRateLimit = async (resourceKey, userId, tenantId) => {
         throw error
       }
 
+      await PaymentAttempt.updateOne(
+        { _id: attempt._id },
+        {
+          $set: {
+            attempts: 1,
+            lastAttemptAt: new Date(),
+          },
+        },
+      )
     }
 
     return attempt.attempts
@@ -159,21 +156,13 @@ export const checkPaymentRateLimit = async (resourceKey, userId, tenantId) => {
 }
 
 export const acquirePaymentLock = async (resourceId, tenantId, ttlSeconds = 60) => {
-  const normalizedTenantId = toObjectId(tenantId)
-  const resource = `payment:${String(normalizedTenantId)}:${String(resourceId)}`
+  const resource = `payment:${String(resourceId)}`
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000)
 
   try {
-    // Los índices TTL no eliminan documentos de forma inmediata.
-    // Liberamos explícitamente locks vencidos antes de intentar adquirir uno nuevo.
-    await DistributedLock.deleteOne({
-      resource,
-      expiresAt: { $lte: new Date() },
-    })
-
     await DistributedLock.create({
       resource,
-      tenantId: normalizedTenantId,
+      tenantId: toObjectId(tenantId),
       expiresAt,
     })
 
@@ -192,15 +181,11 @@ export const acquirePaymentLock = async (resourceId, tenantId, ttlSeconds = 60) 
   }
 }
 
-export const releasePaymentLock = async (resourceId, tenantId) => {
-  const normalizedTenantId = toObjectId(tenantId)
-  const resource = `payment:${String(normalizedTenantId)}:${String(resourceId)}`
+export const releasePaymentLock = async resourceId => {
+  const resource = `payment:${String(resourceId)}`
 
   try {
-    await DistributedLock.deleteOne({
-      resource,
-      tenantId: normalizedTenantId,
-    })
+    await DistributedLock.deleteOne({ resource })
   } catch (error) {
     logger.error('❌ Error liberando lock de pago', {
       resource,

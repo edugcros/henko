@@ -12,6 +12,22 @@ dotenv.config({ path: envFile })
 // Helpers
 // =====================================================
 
+const optionalNumber = (key, fallback) => {
+  const value = process.env[key]
+
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return fallback
+  }
+
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+
+  return parsed
+}
+
 const parseBoolean = (value, fallback = false) => {
   if (value === undefined || value === null || value === '') return fallback
   return String(value).trim().toLowerCase() === 'true'
@@ -43,7 +59,9 @@ const normalizeHostname = value => {
 }
 
 const normalizeSameSite = value => {
-  const normalized = String(value || '').trim().toLowerCase()
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
 
   if (normalized === 'none') return 'None'
   if (normalized === 'lax') return 'Lax'
@@ -53,7 +71,9 @@ const normalizeSameSite = value => {
 }
 
 const getFirstValue = (...values) => {
-  return values.find(value => value !== undefined && value !== null && value !== '')
+  return values.find(
+    value => value !== undefined && value !== null && value !== '',
+  )
 }
 
 const requiredNumber = key => {
@@ -72,12 +92,7 @@ const requiredNumber = key => {
   return parsed
 }
 
-const requiredBase = [
-  'NODE_ENV',
-  'PORT',
-  'JWT_SECRET',
-  'REFRESH_TOKEN_SECRET',
-]
+const requiredBase = ['NODE_ENV', 'PORT', 'JWT_SECRET', 'REFRESH_TOKEN_SECRET']
 
 const missingBase = requiredBase.filter(key => !process.env[key])
 
@@ -99,7 +114,10 @@ export const env = {
 
   // DB
   mongoUri: getFirstValue(process.env.MONGODB_URL, process.env.MONGO_URI),
-  mongoEnableTransactions: parseBoolean(process.env.MONGO_ENABLE_TRANSACTIONS, process.env.NODE_ENV === 'production'),
+  mongoEnableTransactions: parseBoolean(
+    process.env.MONGO_ENABLE_TRANSACTIONS,
+    process.env.NODE_ENV === 'production',
+  ),
 
   // Auth
   jwtSecret: process.env.JWT_SECRET,
@@ -110,6 +128,14 @@ export const env = {
   ),
 
   refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET,
+  jwtIssuer: getFirstValue(
+    process.env.JWT_ISSUER,
+    'commerce-platform-api',
+  ),
+  jwtAudience: getFirstValue(
+    process.env.JWT_AUDIENCE,
+    'commerce-platform-client',
+  ),
   jwtRefreshExpires: getFirstValue(
     process.env.JWT_REFRESH_EXPIRES,
     process.env.REFRESH_TOKEN_EXPIRES_IN,
@@ -117,28 +143,42 @@ export const env = {
   ),
 
   resetKey: process.env.RESET_KEY,
-  cookieSecret: getFirstValue(process.env.COOKIE_SECRET, process.env.JWT_SECRET),
+  cookieSecret: getFirstValue(
+    process.env.COOKIE_SECRET,
+    process.env.JWT_SECRET,
+  ),
 
   // Domains SaaS
   rootDomain: normalizeHostname(
     getFirstValue(process.env.ROOT_DOMAIN, process.env.PRODUCTION_DOMAIN),
   ),
   publicBaseDomain: normalizeHostname(
-    getFirstValue(process.env.PUBLIC_BASE_DOMAIN, process.env.PRODUCTION_DOMAIN),
+    getFirstValue(
+      process.env.PUBLIC_BASE_DOMAIN,
+      process.env.PRODUCTION_DOMAIN,
+    ),
   ),
   adminBaseDomain: normalizeHostname(process.env.ADMIN_BASE_DOMAIN),
   apiDomain: normalizeHostname(process.env.API_DOMAIN),
 
-  clientUrl: normalizeUrl(getFirstValue(process.env.CLIENT_URL, process.env.SHOP_FRONTEND_URL)),
+  clientUrl: normalizeUrl(
+    getFirstValue(process.env.CLIENT_URL, process.env.SHOP_FRONTEND_URL),
+  ),
   shopFrontendUrl: normalizeUrl(
     getFirstValue(process.env.SHOP_FRONTEND_URL, process.env.CLIENT_URL),
   ),
-  adminUrl: normalizeUrl(getFirstValue(process.env.ADMIN_URL, process.env.ADMIN_FRONTEND_URL)),
+  adminUrl: normalizeUrl(
+    getFirstValue(process.env.ADMIN_URL, process.env.ADMIN_FRONTEND_URL),
+  ),
   adminFrontendUrl: normalizeUrl(
     getFirstValue(process.env.ADMIN_FRONTEND_URL, process.env.ADMIN_URL),
   ),
-  apiUrl: normalizeUrl(getFirstValue(process.env.API_URL, process.env.BACKEND_URL)),
-  backendUrl: normalizeUrl(getFirstValue(process.env.BACKEND_URL, process.env.API_URL)),
+  apiUrl: normalizeUrl(
+    getFirstValue(process.env.API_URL, process.env.BACKEND_URL),
+  ),
+  backendUrl: normalizeUrl(
+    getFirstValue(process.env.BACKEND_URL, process.env.API_URL),
+  ),
 
   // CORS
   corsAllowAll: parseBoolean(process.env.CORS_ALLOW_ALL, false),
@@ -148,12 +188,21 @@ export const env = {
 
   allowLocalhost: parseBoolean(process.env.ALLOW_LOCALHOST, false),
   allowCustomDomains: parseBoolean(process.env.ALLOW_CUSTOM_DOMAINS, true),
-  allowDynamicTenantOrigins: parseBoolean(process.env.ALLOW_DYNAMIC_TENANT_ORIGINS, true),
+  allowDynamicTenantOrigins: parseBoolean(
+    process.env.ALLOW_DYNAMIC_TENANT_ORIGINS,
+    true,
+  ),
 
   // Tenant
   tenantHeader: process.env.TENANT_HEADER || 'x-tenant-domain',
-  tenantAllowSubdomains: parseBoolean(process.env.TENANT_ALLOW_SUBDOMAINS, true),
-  tenantAllowCustomDomains: parseBoolean(process.env.TENANT_ALLOW_CUSTOM_DOMAINS, true),
+  tenantAllowSubdomains: parseBoolean(
+    process.env.TENANT_ALLOW_SUBDOMAINS,
+    true,
+  ),
+  tenantAllowCustomDomains: parseBoolean(
+    process.env.TENANT_ALLOW_CUSTOM_DOMAINS,
+    true,
+  ),
   tenantPublicBaseDomain: normalizeHostname(
     getFirstValue(
       process.env.TENANT_PUBLIC_BASE_DOMAIN,
@@ -162,25 +211,40 @@ export const env = {
     ),
   ),
   tenantAdminBaseDomain: normalizeHostname(
-    getFirstValue(process.env.TENANT_ADMIN_BASE_DOMAIN, process.env.ADMIN_BASE_DOMAIN),
+    getFirstValue(
+      process.env.TENANT_ADMIN_BASE_DOMAIN,
+      process.env.ADMIN_BASE_DOMAIN,
+    ),
   ),
 
   // Cookies
-  cookieSecure: parseBoolean(process.env.COOKIE_SECURE, process.env.NODE_ENV === 'production'),
+  cookieSecure: parseBoolean(
+    process.env.COOKIE_SECURE,
+    process.env.NODE_ENV === 'production',
+  ),
   cookieHttpOnly: parseBoolean(process.env.COOKIE_HTTP_ONLY, true),
   cookieSameSite: normalizeSameSite(process.env.COOKIE_SAME_SITE),
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
-  allowDynamicCookieDomain: parseBoolean(process.env.ALLOW_DYNAMIC_COOKIE_DOMAIN, true),
+  allowDynamicCookieDomain: parseBoolean(
+    process.env.ALLOW_DYNAMIC_COOKIE_DOMAIN,
+    true,
+  ),
 
   // CSRF
   csrfEnabled: parseBoolean(process.env.CSRF_ENABLED, true),
   csrfCookieName: process.env.CSRF_COOKIE_NAME || 'XSRF-TOKEN',
   csrfHeaderName: process.env.CSRF_HEADER_NAME || 'x-csrf-token',
-  csrfCookieSecure: parseBoolean(process.env.CSRF_COOKIE_SECURE, process.env.NODE_ENV === 'production'),
+  csrfCookieSecure: parseBoolean(
+    process.env.CSRF_COOKIE_SECURE,
+    process.env.NODE_ENV === 'production',
+  ),
   csrfCookieSameSite: normalizeSameSite(process.env.CSRF_COOKIE_SAME_SITE),
 
   // Security
-  trustProxy: parseBoolean(process.env.TRUST_PROXY, process.env.NODE_ENV === 'production'),
+  trustProxy: parseBoolean(
+    process.env.TRUST_PROXY,
+    process.env.NODE_ENV === 'production',
+  ),
   disableSslVerify: parseBoolean(process.env.DISABLE_SSL_VERIFY, false),
 
   rateLimit: {
@@ -194,7 +258,7 @@ export const env = {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
-    folder: process.env.CLOUDINARY_FOLDER || 'henko-commerce',
+    folder: process.env.CLOUDINARY_FOLDER || 'commerce-platform',
   },
 
   // Mercado Pago
@@ -211,6 +275,10 @@ export const env = {
       process.env.MP_WEBHOOK_SECRET,
       process.env.MERCADOPAGO_WEBHOOK_SECRET,
     ),
+    testPayerEmail: getFirstValue(
+      process.env.MP_TEST_PAYER_EMAIL,
+      process.env.MERCADOPAGO_TEST_PAYER_EMAIL,
+    ),
   },
 
   // Email
@@ -224,8 +292,8 @@ export const env = {
   },
 
   app: {
-    name: process.env.APP_NAME || 'Henko Commerce API',
-    storeName: process.env.STORE_NAME || 'Henko Store',
+    name: process.env.APP_NAME || 'Commerce Platform API',
+    storeName: process.env.STORE_NAME || 'Commerce Store',
     url: process.env.APP_URL,
   },
 
@@ -253,6 +321,43 @@ export const env = {
     minConfidence: Number(process.env.AI_MIN_CONFIDENCE || 0.65),
   },
 
+  aiAgent: {
+    provider: process.env.AI_AGENT_PROVIDER || 'gemini',
+    debug: parseBoolean(process.env.AI_AGENT_DEBUG, false),
+    maxHistoryMessages: Number(process.env.AI_AGENT_MAX_HISTORY_MESSAGES || 12),
+    maxStoredMessages: Number(process.env.AI_AGENT_MAX_STORED_MESSAGES || 200),
+    maxOutputTokens: Number(process.env.AI_AGENT_MAX_OUTPUT_TOKENS || 1200),
+    maxSystemPromptChars: Number(
+      process.env.AI_AGENT_MAX_SYSTEM_PROMPT_CHARS || 50000,
+    ),
+    topP: Number(process.env.AI_AGENT_TOP_P || 0.9),
+    topK: Number(process.env.AI_AGENT_TOP_K || 40),
+    llmTimeoutMs: Number(process.env.AI_AGENT_LLM_TIMEOUT_MS || 15000),
+    llmMaxAttempts: Number(process.env.AI_AGENT_LLM_MAX_ATTEMPTS || 3),
+    catalogSnapshotTtlMs: Number(
+      process.env.AI_CATALOG_SNAPSHOT_TTL_MS || 60000,
+    ),
+    cartRecoveryLeaseMs: Number(
+      process.env.AI_CART_RECOVERY_LEASE_MS || 120000,
+    ),
+    allowGlobalStorefrontUrl: parseBoolean(
+      process.env.AI_ALLOW_GLOBAL_STOREFRONT_URL,
+      false,
+    ),
+    allowLegacyPlaintextSecrets: parseBoolean(
+      process.env.AI_AGENT_ALLOW_LEGACY_PLAINTEXT_SECRETS,
+      process.env.NODE_ENV !== 'production',
+    ),
+    secretEncryptionKey: process.env.AI_AGENT_SECRET_ENCRYPTION_KEY,
+  },
+
+  whatsapp: {
+    graphVersion: process.env.WHATSAPP_GRAPH_VERSION || 'v20.0',
+    apiTimeoutMs: Number(process.env.WHATSAPP_API_TIMEOUT_MS || 15000),
+    apiMaxAttempts: Number(process.env.WHATSAPP_API_MAX_ATTEMPTS || 3),
+    verifyToken: process.env.WHATSAPP_VERIFY_TOKEN,
+  },
+
   productAnalysis: {
     agentKeysJson: process.env.PRODUCT_ANALYSIS_AGENT_KEYS_JSON,
     rateLimitWindowMs: Number(
@@ -275,18 +380,27 @@ export const env = {
   },
 
   metrics: {
-    abandonedCartMinutes: requiredNumber('METRICS_ABANDONED_CART_MINUTES'),
-    lowStockThreshold: requiredNumber('METRICS_LOW_STOCK_THRESHOLD'),
-    latestAbandonedCartsLimit: requiredNumber('METRICS_LATEST_ABANDONED_CARTS_LIMIT'),
-    abandonedCartProductPreviewLimit: requiredNumber('METRICS_ABANDONED_CART_PRODUCT_PREVIEW_LIMIT'),
-    topProductsLimit: requiredNumber('METRICS_TOP_PRODUCTS_LIMIT'),
-    topPagesLimit: requiredNumber('METRICS_TOP_PAGES_LIMIT'),
-    topSearchesLimit: requiredNumber('METRICS_TOP_SEARCHES_LIMIT'),
-    trafficSourcesLimit: requiredNumber('METRICS_TRAFFIC_SOURCES_LIMIT'),
-    eventBatchMax: requiredNumber('METRICS_EVENT_BATCH_MAX'),
-    internalPeriodDays: requiredNumber('METRICS_INTERNAL_PERIOD_DAYS'),
-    ga4ProductPerformanceLimit: requiredNumber('METRICS_GA4_PRODUCT_PERFORMANCE_LIMIT'),
-    realtimeWindowMinutes: requiredNumber('METRICS_REALTIME_WINDOW_MINUTES'),
+    abandonedCartMinutes: optionalNumber('METRICS_ABANDONED_CART_MINUTES', 60),
+    lowStockThreshold: optionalNumber('METRICS_LOW_STOCK_THRESHOLD', 5),
+    latestAbandonedCartsLimit: optionalNumber(
+      'METRICS_LATEST_ABANDONED_CARTS_LIMIT',
+      10,
+    ),
+    abandonedCartProductPreviewLimit: optionalNumber(
+      'METRICS_ABANDONED_CART_PRODUCT_PREVIEW_LIMIT',
+      3,
+    ),
+    topProductsLimit: optionalNumber('METRICS_TOP_PRODUCTS_LIMIT', 10),
+    topPagesLimit: optionalNumber('METRICS_TOP_PAGES_LIMIT', 10),
+    topSearchesLimit: optionalNumber('METRICS_TOP_SEARCHES_LIMIT', 10),
+    trafficSourcesLimit: optionalNumber('METRICS_TRAFFIC_SOURCES_LIMIT', 10),
+    eventBatchMax: optionalNumber('METRICS_EVENT_BATCH_MAX', 50),
+    internalPeriodDays: optionalNumber('METRICS_INTERNAL_PERIOD_DAYS', 30),
+    ga4ProductPerformanceLimit: optionalNumber(
+      'METRICS_GA4_PRODUCT_PERFORMANCE_LIMIT',
+      10,
+    ),
+    realtimeWindowMinutes: optionalNumber('METRICS_REALTIME_WINDOW_MINUTES', 5),
   },
 
   logLevel: process.env.LOG_LEVEL || 'info',
@@ -338,6 +452,8 @@ if (env.isProduction) {
     ['ADMIN_URL / ADMIN_FRONTEND_URL', env.adminUrl],
     ['API_URL / BACKEND_URL', env.apiUrl],
     ['PRODUCT_ANALYSIS_AGENT_KEYS_JSON', env.productAnalysis.agentKeysJson],
+    ['AI_AGENT_SECRET_ENCRYPTION_KEY', env.aiAgent.secretEncryptionKey],
+    ['WHATSAPP_VERIFY_TOKEN', env.whatsapp.verifyToken],
   ]
 
   const missingProduction = requiredProduction
@@ -350,11 +466,22 @@ if (env.isProduction) {
     )
   }
 
-  ensureUrlMatchesHostname('CLIENT_URL / SHOP_FRONTEND_URL', env.clientUrl, env.publicBaseDomain)
-  ensureUrlMatchesHostname('ADMIN_URL / ADMIN_FRONTEND_URL', env.adminUrl, env.adminBaseDomain)
+  ensureUrlMatchesHostname(
+    'CLIENT_URL / SHOP_FRONTEND_URL',
+    env.clientUrl,
+    env.publicBaseDomain,
+  )
+  ensureUrlMatchesHostname(
+    'ADMIN_URL / ADMIN_FRONTEND_URL',
+    env.adminUrl,
+    env.adminBaseDomain,
+  )
   ensureUrlMatchesHostname('BACKEND_URL', env.backendUrl, env.apiDomain)
 
-  if (env.apiUrl && !env.apiUrl.startsWith(`${env.backendUrl}${env.apiPrefix}`)) {
+  if (
+    env.apiUrl &&
+    !env.apiUrl.startsWith(`${env.backendUrl}${env.apiPrefix}`)
+  ) {
     throw new Error(
       `API_URL debe derivar de BACKEND_URL + API_PREFIX. Recibido: ${env.apiUrl}`,
     )
@@ -405,11 +532,15 @@ if (env.isProduction) {
   const mpAccessToken = String(env.mercadoPago.accessToken || '').trim()
 
   if (mpAccessToken.startsWith('TEST-')) {
-    throw new Error('MP_ACCESS_TOKEN de prueba no está permitido en producción')
+    throw new Error(
+      'MP_ACCESS_TOKEN de prueba no está permitido en producción',
+    )
   }
 
   if (mpAccessToken && !mpAccessToken.startsWith('APP_USR-')) {
-    throw new Error('MP_ACCESS_TOKEN debe ser una credencial productiva APP_USR- en producción')
+    throw new Error(
+      'MP_ACCESS_TOKEN debe ser una credencial productiva APP_USR- en producción',
+    )
   }
 
   if (!env.cookieSecure) {
@@ -417,7 +548,9 @@ if (env.isProduction) {
   }
 
   if (env.cookieSameSite !== 'None') {
-    throw new Error('COOKIE_SAME_SITE debe ser None en producción si usás dominios cruzados')
+    throw new Error(
+      'COOKIE_SAME_SITE debe ser None en producción si usás dominios cruzados',
+    )
   }
 
   if (!env.csrfCookieSecure) {
@@ -438,14 +571,17 @@ if (env.isProduction) {
   try {
     productAnalysisAgentKeys = JSON.parse(env.productAnalysis.agentKeysJson)
   } catch {
-    throw new Error('PRODUCT_ANALYSIS_AGENT_KEYS_JSON debe contener JSON válido')
+    throw new Error(
+      'PRODUCT_ANALYSIS_AGENT_KEYS_JSON debe contener JSON válido',
+    )
   }
 
-  const invalidAgentKeys = Object.entries(productAnalysisAgentKeys || {}).filter(
-    ([domain, keyHash]) => (
+  const invalidAgentKeys = Object.entries(
+    productAnalysisAgentKeys || {},
+  ).filter(
+    ([domain, keyHash]) =>
       !normalizeHostname(domain) ||
-      !/^[a-f0-9]{64}$/i.test(String(keyHash || '').trim())
-    ),
+      !/^[a-f0-9]{64}$/i.test(String(keyHash || '').trim()),
   )
 
   if (

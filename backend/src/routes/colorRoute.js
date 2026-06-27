@@ -10,6 +10,7 @@ import {
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 import {
   requireAdminDomain,
+  requireShopDomain,
   requireTenant,
   resolveTenantByDomain,
 } from '../middlewares/tenantMiddleware.js'
@@ -22,11 +23,16 @@ const adminContext = [
   authMiddleware,
   isAdmin,
 ]
+const publicContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireShopDomain,
+]
 
 router.post('/', adminContext, createColor)
 router.put('/:id', adminContext, updateColor)
 router.delete('/:id', adminContext, deleteColor)
-router.get('/:id', getColorById)
-router.get('/', getAllColors)
+router.get('/:id', publicContext, getColorById)
+router.get('/', publicContext, getAllColors)
 
 export default router

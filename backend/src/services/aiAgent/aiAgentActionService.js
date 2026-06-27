@@ -13,7 +13,7 @@ const tokenize = value => {
   return normalize(value)
     .split(/[^a-z0-9]+/i)
     .map(token => token.trim())
-    .filter(token => token.length >= 3)
+    .filter(token => /^\d+$/.test(token) || token.length >= 3)
 }
 
 const wantsProductDetails = text => {
@@ -43,7 +43,8 @@ const isGenericPurchaseHelp = text => {
 }
 
 const getProductId = product => {
-  return product?.id || product?._id || product?.productId || null
+  const id = product?.id || product?._id || product?.productId || null
+  return id ? String(id) : null
 }
 
 const getProductTitle = product => {
@@ -62,8 +63,8 @@ const getProductUrl = product => {
   const slug = getProductSlug(product)
   const id = getProductId(product)
 
-  if (slug) return `/product/${slug}`
-  if (id) return `/product/${id}`
+  if (slug) return `/product/${encodeURIComponent(slug)}`
+  if (id) return `/product/${encodeURIComponent(id)}`
 
   return ''
 }
@@ -170,23 +171,99 @@ const findBestActionProduct = ({ text, responseText, products }) => {
   return best.product
 }
 
-const getBestAvailableVariant = product => {
-  if (!Array.isArray(product?.variants)) return null
+const getVariantSearchText = variant => {
+  const attributes =
+    variant?.attributes ||
+    variant?.selectedAttributes ||
+    variant?.options ||
+    {}
 
-  return (
-    product.variants.find(variant => variant?.available) ||
-    product.variants.find(variant => Number(variant?.stock || 0) > 0) ||
-    product.variants[0] ||
-    null
+  return normalize(
+    [
+      variant?.sku,
+      variant?.key,
+      variant?.name,
+      variant?.title,
+      ...Object.entries(attributes).flatMap(([key, value]) => [key, value]),
+    ]
+      .filter(Boolean)
+      .join(' '),
   )
+}
+
+const getBestAvailableVariant = ({ product, text, responseText }) => {
+  const availableVariants = (
+    Array.isArray(product?.variants) ? product.variants : []
+  ).filter(variant => {
+    return variant?.available || Number(variant?.stock || 0) > 0
+  })
+
+  if (availableVariants.length === 0) return null
+  if (availableVariants.length === 1) return availableVariants[0]
+
+  const queryTokens = tokenize(`${text} ${responseText}`)
+  const ranked = availableVariants
+    .map(variant => {
+      const variantText = getVariantSearchText(variant)
+      const score = queryTokens.reduce((total, token) => {
+        return total + (variantText.includes(token) ? 20 : 0)
+      }, 0)
+
+      return { variant, score }
+    })
+    .sort((a, b) => b.score - a.score)
+
+  if (!ranked[0]?.score || ranked[0].score === ranked[1]?.score) {
+    return null
+  }
+
+  return ranked[0].variant
 }
 
 const getProductPrice = product => {
   return Number(product?.price || product?.precio || product?.salePrice || 0)
 }
 
+const getVariantStock = variant => {
+  return Number(
+    variant?.stock ||
+      variant?.quantity ||
+      variant?.qty ||
+      variant?.inventory ||
+      0,
+  )
+}
+
 const getProductStock = product => {
-  return Number(product?.stock || product?.quantity || 0)
+  if (Array.isArray(product?.variants) && product.variants.length > 0) {
+    return product.variants
+      .filter(variant => variant?.isActive !== false && variant?.active !== false)
+      .reduce((total, variant) => total + getVariantStock(variant), 0)
+  }
+
+  return Number(
+    product?.stock ||
+      product?.quantity ||
+      product?.qty ||
+      product?.inventory ||
+      0,
+  )
+}
+
+const isProductAvailableForCart = product => {
+  if (!product) return false
+
+  if (Array.isArray(product?.variants) && product.variants.length > 0) {
+    return product.variants.some(variant => {
+      return (
+        variant?.isActive !== false &&
+        variant?.active !== false &&
+        (variant?.available || getVariantStock(variant) > 0)
+      )
+    })
+  }
+
+  return product?.available !== false && getProductStock(product) > 0
 }
 
 const hasProductSpecificAnswer = ({ product, responseText }) => {
@@ -198,8 +275,8 @@ const hasProductSpecificAnswer = ({ product, responseText }) => {
 
   return Boolean(
     (title && response.includes(title)) ||
-      (slug && response.includes(slug)) ||
-      clean(responseText).includes(getProductUrl(product)),
+    (slug && response.includes(slug)) ||
+    clean(responseText).includes(getProductUrl(product)),
   )
 }
 
@@ -208,7 +285,7 @@ export const buildAgentActions = ({
   responseText = '',
   products = [],
   promotions = [],
-  conversationId,
+  behavior = {},
 } = {}) => {
   const actions = []
   const cleanText = clean(text)
@@ -230,13 +307,16 @@ export const buildAgentActions = ({
     selectedProduct && (!genericHelp || productWasActuallyMentioned)
 
   const shouldCreateViewAction =
+    behavior.canRecommendProducts !== false &&
     allowProductAction &&
     (wantsProductDetails(cleanText) ||
       wantsAddToCart(cleanText) ||
       productWasActuallyMentioned)
 
   const shouldCreateCartAction =
+    behavior.canCreateCartLinks !== false &&
     allowProductAction &&
+    isProductAvailableForCart(selectedProduct) &&
     wantsAddToCart(`${cleanText} ${cleanResponse}`)
 
   if (shouldCreateViewAction) {
@@ -251,63 +331,92 @@ export const buildAgentActions = ({
   }
 
   if (shouldCreateCartAction) {
-    const variant = getBestAvailableVariant(selectedProduct)
-
-    actions.push({
-      type: 'add_to_cart',
-      label: `Agregar ${getProductTitle(selectedProduct) || 'producto'} al carrito`,
-      productId: getProductId(selectedProduct),
-      variantId: variant?.id || variant?._id || null,
-      sku: variant?.sku || getProductSku(selectedProduct),
-      variantSku: variant?.sku || '',
-      selectedAttributes:
-        variant?.attributes ||
-        variant?.selectedAttributes ||
-        {},
-      quantity: 1,
-      title: getProductTitle(selectedProduct),
-      price: Number(variant?.price || getProductPrice(selectedProduct)),
-      stock: Number(variant?.stock ?? getProductStock(selectedProduct)),
-      slug: getProductSlug(selectedProduct),
-      url: getProductUrl(selectedProduct),
+    const variant = getBestAvailableVariant({
+      product: selectedProduct,
+      text: cleanText,
+      responseText: cleanResponse,
     })
+    const hasVariantCatalog =
+      selectedProduct?.hasVariants ||
+      (Array.isArray(selectedProduct?.variants) && selectedProduct.variants.length > 0)
+
+    const requiresVariantSelection =
+      hasVariantCatalog &&
+      (!variant ||
+        (Array.isArray(selectedProduct?.variants) &&
+          selectedProduct.variants.length > 1 &&
+          !variant))
+
+    if (!requiresVariantSelection) {
+      actions.push({
+        type: 'add_to_cart',
+        label: `Agregar ${getProductTitle(selectedProduct) || 'producto'} al carrito`,
+        productId: getProductId(selectedProduct),
+        variantId: variant?.id || variant?._id || null,
+        sku: variant?.sku || getProductSku(selectedProduct),
+        variantSku: variant?.sku || '',
+        selectedAttributes:
+          variant?.attributes || variant?.selectedAttributes || {},
+        quantity: 1,
+        title: getProductTitle(selectedProduct),
+        price: Number(variant?.price || getProductPrice(selectedProduct)),
+        stock: Number(variant ? getVariantStock(variant) : getProductStock(selectedProduct)),
+        slug: getProductSlug(selectedProduct),
+        url: getProductUrl(selectedProduct),
+      })
+    }
   }
 
-  const wantsPromotion = /promo|promocion|promoción|descuento|cupon|cupón|oferta/.test(
-    normalize(`${cleanText} ${cleanResponse}`),
-  )
+  const wantsPromotion =
+    /promo|promocion|promoción|descuento|cupon|cupón|oferta/.test(
+      normalize(`${cleanText} ${cleanResponse}`),
+    )
 
-  if (wantsPromotion && Array.isArray(promotions) && promotions.length > 0) {
-    const selectedProductId = selectedProduct ? String(getProductId(selectedProduct)) : ''
+  if (
+    behavior.canOfferDiscounts !== false &&
+    wantsPromotion &&
+    Array.isArray(promotions) &&
+    promotions.length > 0
+  ) {
+    const selectedProductId = selectedProduct
+      ? String(getProductId(selectedProduct))
+      : ''
 
     const applicablePromotion =
-    promotions.find(promo => {
-      if (promo.usageScope !== 'specific_products') return true
+      promotions.find(promo => {
+        if (promo.usageScope !== 'specific_products') return true
 
-      const applicableIds = Array.isArray(promo.applicableProductIds)
-        ? promo.applicableProductIds.map(id => String(id))
-        : []
+        const applicableIds = Array.isArray(promo.applicableProductIds)
+          ? promo.applicableProductIds.map(id => String(id))
+          : []
 
-      return selectedProductId && applicableIds.includes(selectedProductId)
-    }) || null
+        return selectedProductId && applicableIds.includes(selectedProductId)
+      }) || null
 
     if (applicablePromotion) {
       actions.push({
         type: 'apply_coupon_hint',
         label:
-        applicablePromotion.usageScope === 'specific_products'
-          ? `Usar cupón ${applicablePromotion.code} en producto válido`
-          : `Usar cupón ${applicablePromotion.code}`,
+          applicablePromotion.usageScope === 'specific_products'
+            ? `Usar cupón ${applicablePromotion.code} en producto válido`
+            : `Usar cupón ${applicablePromotion.code}`,
         couponCode: applicablePromotion.code,
         description:
-        applicablePromotion.usageText ||
-        applicablePromotion.description ||
-        '',
+          applicablePromotion.usageText ||
+          applicablePromotion.description ||
+          '',
         usageScope: applicablePromotion.usageScope,
         applicableProductIds: applicablePromotion.applicableProductIds || [],
         applicableProducts: applicablePromotion.applicableProducts || [],
       })
     }
+  }
+
+  if (wantsHuman(cleanText)) {
+    actions.push({
+      type: 'request_human',
+      label: 'Hablar con un asesor',
+    })
   }
 
   // Evita duplicados por tipo + producto.
@@ -330,8 +439,12 @@ export const buildActionAwareReplySuffix = actions => {
   if (!Array.isArray(actions) || actions.length === 0) return ''
 
   const hasCartAction = actions.some(action => action.type === 'add_to_cart')
-  const hasViewAction = actions.some(action => action.type === 'view_product')
-  const hasHumanAction = actions.some(action => action.type === 'request_human')
+  const hasViewAction = actions.some(
+    action => action.type === 'view_product',
+  )
+  const hasHumanAction = actions.some(
+    action => action.type === 'request_human',
+  )
 
   if (hasCartAction) {
     return '\n\nTe dejé una acción lista para agregar ese producto al carrito.'

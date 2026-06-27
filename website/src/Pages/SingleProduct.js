@@ -60,7 +60,7 @@ import {
 } from '@utils/themeRuntime'
 import { Newprimary } from '../theme/colors'
 
-const IMG_BOX_SIZE = 520
+const IMG_BOX_SIZE = 560
 
 const MainImageWindow = styled(Paper)(({ theme }) => ({
   position: 'relative',
@@ -71,7 +71,7 @@ const MainImageWindow = styled(Paper)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: theme.palette.background.paper,
+  backgroundColor: 'white',
   cursor: 'zoom-in',
   border: `1px solid ${theme.palette.divider}`,
   flexShrink: 0,
@@ -363,7 +363,8 @@ const ProductVariantSelector = ({
         mt: 2,
         p: 2,
         bgcolor: theme.palette.background.paper,
-        border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+        border: `1px solid`,
+        borderColor: 'info.main',
         borderRadius: 2,
       }}
     >
@@ -384,7 +385,7 @@ const ProductVariantSelector = ({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            color: Newprimary.darkBlueGray,
+            color: Newprimary.black,
           }}
         >
           Limpiar selección
@@ -412,7 +413,8 @@ const ProductVariantSelector = ({
             >
               <Typography
                 variant="caption"
-                color={Newprimary.DodgerBlue}
+                color={Newprimary.black}
+                fontWeight={600}
                 display="block"
               >
                 {attrLabel} {currentValue ? '✓' : ''}
@@ -429,7 +431,7 @@ const ProductVariantSelector = ({
                     textTransform: 'none',
                     fontSize: 12,
                     fontWeight: 700,
-                    color: Newprimary.darkBlueGray,
+                    color: Newprimary.black,
                   }}
                 >
                   Quitar
@@ -513,7 +515,7 @@ const ProductVariantSelector = ({
             <Typography
               variant="caption"
               fontWeight={500}
-              color={Newprimary.darkBlueGray}
+              color={Newprimary.black}
             >
               Disponible: {Number(selectedVariant.stock || 0)} unidades
             </Typography>
@@ -599,6 +601,105 @@ const getReviewerName = review => {
 const getReviewerInitial = review => {
   const name = getReviewerName(review)
   return name.charAt(0).toUpperCase()
+}
+
+
+const formatSpecificationValue = value => {
+  if (Array.isArray(value)) return value.filter(Boolean).join(', ')
+  if (typeof value === 'boolean') return value ? 'Sí' : 'No'
+  if (value === undefined || value === null || value === '') return ''
+  return String(value)
+}
+
+const normalizeSpecificationRows = product => {
+  const explicitSpecifications = Array.isArray(product?.specifications)
+    ? product.specifications
+    : []
+
+  if (explicitSpecifications.length) {
+    return explicitSpecifications
+      .filter(spec => spec?.visible !== false)
+      .map((spec, index) => ({
+        key: spec.key || spec.name || `spec-${index}`,
+        label: spec.label || spec.name || spec.key || `Dato ${index + 1}`,
+        value: formatSpecificationValue(spec.value),
+        unit: spec.unit || '',
+        group: spec.group || 'Ficha técnica',
+        sortOrder: Number(spec.sortOrder || index),
+      }))
+      .filter(spec => spec.value)
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+  }
+
+  const attrs = product?.productAttributes || product?.categoryAttributes || product?.atributos || {}
+  const normalizedAttrs = attrs instanceof Map ? Object.fromEntries(attrs) : attrs
+
+  if (!normalizedAttrs || typeof normalizedAttrs !== 'object' || Array.isArray(normalizedAttrs)) {
+    return []
+  }
+
+  return Object.entries(normalizedAttrs)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value], index) => ({
+      key,
+      label: String(key).replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+      value: formatSpecificationValue(value),
+      unit: '',
+      group: 'Ficha técnica',
+      sortOrder: index,
+    }))
+    .filter(spec => spec.value)
+}
+
+const groupSpecifications = specifications => {
+  return specifications.reduce((acc, spec) => {
+    const group = spec.group || 'Ficha técnica'
+    if (!acc[group]) acc[group] = []
+    acc[group].push(spec)
+    return acc
+  }, {})
+}
+
+const normalizeLogisticsRows = product => {
+  const logistics = product?.logistics || {}
+  const rows = []
+
+  const weight = Number(logistics.weightKg || product?.weightKg || 0)
+  if (weight > 0) rows.push({ label: 'Peso', value: `${weight} kg` })
+
+  const dimensions = logistics.dimensionsCm || logistics.dimensions || product?.dimensions || {}
+  const length = Number(dimensions.length || dimensions.largo || 0)
+  const width = Number(dimensions.width || dimensions.ancho || 0)
+  const height = Number(dimensions.height || dimensions.alto || 0)
+
+  if (length || width || height) {
+    rows.push({
+      label: 'Dimensiones',
+      value: `${length || '-'} × ${width || '-'} × ${height || '-'} cm`,
+    })
+  }
+
+  const shippingLabels = {
+    standard: 'Envío estándar',
+    fragile: 'Producto frágil',
+    refrigerated: 'Requiere refrigeración',
+    digital: 'Entrega digital',
+    pickup_only: 'Solo retiro',
+    custom: 'Envío personalizado',
+  }
+
+  const shippingType = logistics.shippingType || logistics.shipping?.type || product?.shippingType
+  if (shippingType) {
+    rows.push({ label: 'Tipo de envío', value: shippingLabels[shippingType] || shippingType })
+  }
+
+  const warranty = logistics.warranty || product?.warranty
+  if (warranty) rows.push({ label: 'Garantía', value: warranty })
+
+  const originCountry = logistics.originCountry || logistics.countryOfOrigin || product?.originCountry || product?.countryOfOrigin
+  if (originCountry) rows.push({ label: 'Origen', value: originCountry })
+
+  return rows
 }
 
 const hasClientAuthToken = () => {
@@ -1097,6 +1198,34 @@ const SingleProduct = () => {
     }
   }
 
+  const descriptionText = String(product?.description || '').trim()
+
+  const descriptionParagraphs = descriptionText
+    .split(/\n+/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+
+  const shortDescription = useMemo(() => {
+    return String(
+      product?.seo?.shortDescription ||
+        product?.shortDescription ||
+        product?.summary ||
+        '',
+    ).trim()
+  }, [product])
+
+  const productSpecifications = useMemo(() => {
+    return normalizeSpecificationRows(product)
+  }, [product])
+
+  const specificationGroups = useMemo(() => {
+    return groupSpecifications(productSpecifications)
+  }, [productSpecifications])
+
+  const logisticsRows = useMemo(() => {
+    return normalizeLogisticsRows(product)
+  }, [product])
+
   const handleSendQuestion = () => {
     if (!question.trim()) return toast.error('Escribe tu pregunta')
 
@@ -1165,9 +1294,9 @@ const SingleProduct = () => {
         <Grid item xs={12} md={6}>
           <Stack spacing={3} alignItems="flex-end">
             <Typography
-              variant="h5"
+              variant="h4"
               fontWeight={700}
-              sx={{ color: themeColors.text, width: IMG_BOX_SIZE }}
+              sx={{ color: themeColors.actionPrimaryText, width: IMG_BOX_SIZE }}
             >
               {product.title}
             </Typography>
@@ -1314,11 +1443,13 @@ const SingleProduct = () => {
                   )}
 
                   <Typography
-                    variant="h4"
+                    variant="h5"
                     fontWeight={800}
-                    sx={{ color: themeColors.cardPrice }}
+                    sx={{ color: themeColors.actionPrimaryText }}
                   >
+                    Desde {' '}
                     {formatPrice(displayPrice.finalMin)} -{' '}
+                    Hasta {' '}
                     {formatPrice(displayPrice.finalMax)}
                   </Typography>
 
@@ -1349,7 +1480,7 @@ const SingleProduct = () => {
                   <Typography
                     variant="h4"
                     fontWeight={800}
-                    sx={{ color: themeColors.cardPrice }}
+                    sx={{ color: themeColors.actionPrimaryText }}
                   >
                     {formatPrice(displayPrice.final)}
                   </Typography>
@@ -1442,7 +1573,7 @@ const SingleProduct = () => {
               />
             )}
 
-            <Divider />
+            <Divider sx={{ color: Newprimary.darkBlueGray}} />
 
             <Box>
               <Stack
@@ -1454,7 +1585,7 @@ const SingleProduct = () => {
                 <Typography
                   variant="h6"
                   fontWeight={800}
-                  color={Newprimary.darkBlueGray}
+                  color={Newprimary.black}
                 >
                   Calificación general
                 </Typography>
@@ -1465,7 +1596,7 @@ const SingleProduct = () => {
                   sx={{
                     textTransform: 'none',
                     fontWeight: 700,
-                    color: themeColors.text,
+                    color: Newprimary.black,
                   }}
                 >
                   {showRatingForm ? 'Cerrar' : 'Opinar'}
@@ -1490,7 +1621,7 @@ const SingleProduct = () => {
                     color1={themeColors.border}
                     color2={themeColors.warning}
                   />
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" color={Newprimary.black}>
                     {iaAnalysis.count} opiniones
                   </Typography>
                 </Box>
@@ -1584,7 +1715,7 @@ const SingleProduct = () => {
                         >
                           {getReviewerInitial(rev)}
                         </Avatar>
-                        <Typography variant="caption" fontWeight={800}>
+                        <Typography variant="caption" fontWeight={800} color={Newprimary.black}>
                           {getReviewerName(rev)}
                         </Typography>
                         {rev.variantId && (
@@ -1608,7 +1739,8 @@ const SingleProduct = () => {
                       </Stack>
                       <Typography
                         variant="body2"
-                        color="text.primary"
+                        color={Newprimary.black}
+                        fontWeight={600}
                         sx={{ mt: 0.5, pl: 4 }}
                       >
                         {rev.comment || 'Calificó sin comentar.'}
@@ -1630,39 +1762,221 @@ const SingleProduct = () => {
           </Stack>
         </Grid>
 
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            mt: 4,
-          }}
+      <Box
+        component="section"
+        sx={{
+          mt: { xs: 3, md: 4 },
+          mx: 'auto',
+          maxWidth: 920,
+          width: '100%',
+        }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={2}
+          sx={{ mb: 2.5 }}
         >
-          <Typography
-            variant="subtitle1"
-            fontWeight={800}
-            display="flex"
-            alignItems="center"
-            gap={1}
-            color="text.primary"
-            sx={{ fontSize: 24 }}
-          >
-            <VerifiedIcon color="success" fontSize="small" /> Especificaciones
-          </Typography>
-          <Typography
+          <Divider sx={{ flex: 1, opacity: 0.8 }} />
+
+          <Box
             sx={{
-              mt: 2,
-              fontSize: 18,
-              whiteSpace: 'pre-line',
-              justifyContent: 'start',
-              color: 'text.primary',
-              fontWeight: 600,
+              px: 2.5,
+              py: 0.75,
+              borderRadius: 999,
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
             }}
           >
-            {product.description}
-          </Typography>
+            <Typography
+              variant="overline"
+              sx={{
+                display: 'block',
+                color: themeColors.actionPrimaryText,
+                fontWeight: 900,
+                letterSpacing: 1.4,
+                lineHeight: 1,
+                textAlign: 'center',
+              }}
+            >
+              Descripción
+            </Typography>
+          </Box>
+
+          <Divider sx={{ flex: 1, opacity: 0.8 }} />
+        </Stack>
+
+        <Box
+          sx={{
+            p: { xs: 2.25, md: 3 },
+            borderRadius: 4,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            boxShadow: '0 18px 45px rgba(15, 23, 42, 0.07)',
+          }}
+        >
+          {shortDescription && (
+            <Typography
+              variant="subtitle1"
+              sx={{
+                color: themeColors.actionPrimaryText,
+                fontWeight: 800,
+                lineHeight: 1.7,
+                mb: descriptionParagraphs.length ? 2 : 0,
+              }}
+            >
+              {shortDescription}
+            </Typography>
+          )}
+
+          {descriptionParagraphs.length > 0 ? (
+            <Stack spacing={1.6}>
+              {descriptionParagraphs.map((paragraph, index) => (
+                <Typography
+                  key={`product-description-${index}`}
+                  variant="body1"
+                  sx={{
+                    color: themeColors.actionPrimaryText,
+                    fontSize: { xs: 15.5, md: 16.5 },
+                    lineHeight: 1.9,
+                    fontWeight: 400,
+                    letterSpacing: 0.12,
+                    textAlign: 'left',
+                    overflowWrap: 'break-word',
+                    wordBreak: 'break-word',
+                    opacity: 0.92,
+                  }}
+                >
+                  {paragraph}
+                </Typography>
+              ))}
+            </Stack>
+          ) : (
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic',
+                textAlign: 'center',
+                py: 1,
+              }}
+            >
+              Este producto todavía no tiene una descripción disponible.
+            </Typography>
+          )}
         </Box>
+      </Box>
       </Grid>
+
+      {(productSpecifications.length > 0 || logisticsRows.length > 0) && (
+        <Box
+          component="section"
+          sx={{
+            mt: { xs: 4, md: 6 },
+            mx: 'auto',
+            maxWidth: 1040,
+            width: '100%',
+          }}
+        >
+          <Grid container spacing={3}>
+            {productSpecifications.length > 0 && (
+              <Grid item xs={12} md={logisticsRows.length ? 7 : 12}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: { xs: 2.25, md: 3 },
+                    borderRadius: 4,
+                    bgcolor: 'background.paper',
+                    boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
+                  }}
+                >
+                  <Typography variant="h6" fontWeight={900} sx={{ mb: 2, color: themeColors.actionPrimaryText }}>
+                    Ficha técnica
+                  </Typography>
+
+                  <Stack spacing={2.5}>
+                    {Object.entries(specificationGroups).map(([group, specs]) => (
+                      <Box key={group}>
+                        <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1, color: themeColors.cardMutedText }}>
+                          {group}
+                        </Typography>
+                        <Grid container spacing={1.5}>
+                          {specs.map(spec => (
+                            <Grid item xs={12} sm={6} key={`${group}-${spec.key}`}>
+                              <Box
+                                sx={{
+                                  p: 1.5,
+                                  borderRadius: 2,
+                                  bgcolor: alpha(theme.palette.primary.main, 0.035),
+                                  border: '1px solid',
+                                  borderColor: 'divider',
+                                }}
+                              >
+                                <Typography variant="caption" color="text.secondary" fontWeight={800}>
+                                  {spec.label}
+                                </Typography>
+                                <Typography variant="body2" fontWeight={700} sx={{ color: themeColors.actionPrimaryText }}>
+                                  {spec.value}{spec.unit ? ` ${spec.unit}` : ''}
+                                </Typography>
+                              </Box>
+                            </Grid>
+                          ))}
+                        </Grid>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Paper>
+              </Grid>
+            )}
+
+            {logisticsRows.length > 0 && (
+              <Grid item xs={12} md={productSpecifications.length ? 5 : 12}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: { xs: 2.25, md: 3 },
+                    borderRadius: 4,
+                    bgcolor: 'background.paper',
+                    boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
+                  }}
+                >
+                  <Typography variant="h6" fontWeight={900} sx={{ mb: 2, color: themeColors.actionPrimaryText }}>
+                    Envío, garantía y origen
+                  </Typography>
+
+                  <Stack spacing={1.5}>
+                    {logisticsRows.map(row => (
+                      <Stack
+                        key={row.label}
+                        direction="row"
+                        justifyContent="space-between"
+                        spacing={2}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 2,
+                          bgcolor: alpha(theme.palette.success.main, 0.045),
+                          border: '1px solid',
+                          borderColor: 'divider',
+                        }}
+                      >
+                        <Typography variant="body2" color="text.secondary" fontWeight={800}>
+                          {row.label}
+                        </Typography>
+                        <Typography variant="body2" fontWeight={800} textAlign="right" sx={{ color: themeColors.actionPrimaryText }}>
+                          {row.value}
+                        </Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+        </Box>
+      )}
 
       <Box sx={{ mt: 10, maxWidth: 800, mx: 'auto' }}>
         <Typography
@@ -1736,6 +2050,8 @@ const SingleProduct = () => {
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 2,
                     backgroundColor: theme.palette.background.paper,
+                    color: Newprimary.black,
+                    fontWeight: 600
                   },
                 }}
               />

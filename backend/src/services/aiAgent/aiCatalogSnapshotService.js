@@ -2,6 +2,38 @@
 import Product from '../../models/productModel.js'
 
 const clean = value => String(value || '').trim()
+const snapshotCache = new Map()
+const MAX_CACHE_ENTRIES = Math.min(
+  Math.max(Number(process.env.AI_CATALOG_SNAPSHOT_MAX_CACHE_ENTRIES || 500), 50),
+  5000,
+)
+const CACHE_TTL_MS = Math.min(
+  Math.max(Number(process.env.AI_CATALOG_SNAPSHOT_TTL_MS || 60000), 5000),
+  300000,
+)
+
+export const invalidateCatalogSnapshot = tenantId => {
+  const cacheKey = clean(tenantId)
+
+  if (!cacheKey) {
+    snapshotCache.clear()
+    return true
+  }
+
+  return snapshotCache.delete(cacheKey)
+}
+
+const setCatalogSnapshotCache = (cacheKey, value) => {
+  if (snapshotCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = snapshotCache.keys().next().value
+    if (oldestKey) snapshotCache.delete(oldestKey)
+  }
+
+  snapshotCache.set(cacheKey, {
+    value,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  })
+}
 
 const uniq = values => {
   return [...new Set(values.map(clean).filter(Boolean))]
@@ -15,7 +47,9 @@ const normalizeNumber = value => {
 const getProductStock = product => {
   if (Array.isArray(product?.variants) && product.variants.length > 0) {
     const variantStock = product.variants
-      .filter(variant => variant?.isActive !== false && variant?.active !== false)
+      .filter(
+        variant => variant?.isActive !== false && variant?.active !== false,
+      )
       .reduce((total, variant) => {
         return (
           total +
@@ -32,10 +66,7 @@ const getProductStock = product => {
   }
 
   return normalizeNumber(
-    product?.stock ||
-      product?.quantity ||
-      product?.qty ||
-      product?.inventory,
+    product?.stock || product?.quantity || product?.qty || product?.inventory,
   )
 }
 
@@ -60,6 +91,7 @@ const buildProductMatch = tenantId => ({
         { status: 'available' },
         { status: { $exists: false } },
         { status: null },
+        { status: '' },
       ],
     },
     {
@@ -69,33 +101,11 @@ const buildProductMatch = tenantId => ({
         { visibility: 'storefront' },
         { visibility: { $exists: false } },
         { visibility: null },
+        { visibility: '' },
       ],
     },
   ],
 })
-
-const extractCategories = products => {
-  return uniq(
-    products.flatMap(product => [
-      product.categoria,
-      product.category,
-      product.categoryName,
-      product.subcategoria,
-      product.subcategory,
-      product.subcategoryName,
-    ]),
-  ).slice(0, 80)
-}
-
-const extractBrands = products => {
-  return uniq(
-    products.flatMap(product => [
-      product.marca,
-      product.brand,
-      product.fabricante,
-    ]),
-  ).slice(0, 80)
-}
 
 const extractTopProducts = products => {
   return products
@@ -103,7 +113,11 @@ const extractTopProducts = products => {
     .slice(0, 10)
     .map(product => ({
       id: String(product._id),
-      title: product.title || product.name || product.nombre || 'Producto sin nombre',
+      title:
+        product.title ||
+        product.name ||
+        product.nombre ||
+        'Producto sin nombre',
       slug: product.slug || '',
       brand: product.marca || product.brand || '',
       category: product.categoria || product.category || '',
@@ -128,59 +142,137 @@ export const buildCatalogSnapshotForTenant = async ({ tenantId } = {}) => {
     }
   }
 
-  const products = await Product.find(buildProductMatch(tenantId))
-    .setOptions({ tenantId })
-    .select(
-      [
-        '_id',
-        'title',
-        'name',
-        'nombre',
-        'slug',
-        'marca',
-        'brand',
-        'fabricante',
-        'categoria',
-        'category',
-        'categoryName',
-        'subcategoria',
-        'subcategory',
-        'subcategoryName',
-        'stock',
-        'quantity',
-        'qty',
-        'inventory',
-        'variants',
-        'status',
-        'visibility',
-        'updatedAt',
-        'createdAt',
-      ].join(' '),
-    )
-    .sort({ updatedAt: -1, createdAt: -1 })
-    .limit(1000)
-    .lean()
+  const cacheKey = String(tenantId)
+  const cached = snapshotCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) return cached.value
 
-  const withStockProducts = products.filter(product => getProductStock(product) > 0)
+  const match = buildProductMatch(tenantId)
+  const [products, summaries] = await Promise.all([
+    Product.find(match)
+      .setOptions({ tenantId })
+      .select(
+        '_id title name nombre slug marca brand fabricante categoria category categoryName subcategoria subcategory subcategoryName stock quantity qty inventory variants updatedAt createdAt',
+      )
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .limit(50)
+      .lean(),
+    Product.aggregate([
+      { $match: match },
+      {
+        $set: {
+          computedVariantStock: {
+            $sum: {
+              $map: {
+                input: { $ifNull: ['$variants', []] },
+                as: 'variant',
+                in: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $ne: ['$$variant.isActive', false] },
+                        { $ne: ['$$variant.active', false] },
+                      ],
+                    },
+                    {
+                      $ifNull: [
+                        '$$variant.stock',
+                        {
+                          $ifNull: [
+                            '$$variant.quantity',
+                            {
+                              $ifNull: [
+                                '$$variant.qty',
+                                { $ifNull: ['$$variant.inventory', 0] },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        $set: {
+          computedStock: {
+            $cond: [
+              { $gt: ['$computedVariantStock', 0] },
+              '$computedVariantStock',
+              {
+                $ifNull: [
+                  '$stock',
+                  {
+                    $ifNull: [
+                      '$quantity',
+                      { $ifNull: ['$qty', { $ifNull: ['$inventory', 0] }] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalProducts: { $sum: 1 },
+          withStock: {
+            $sum: { $cond: [{ $gt: ['$computedStock', 0] }, 1, 0] },
+          },
+          categories: {
+            $addToSet: {
+              $ifNull: [
+                '$categoria',
+                { $ifNull: ['$category', '$categoryName'] },
+              ],
+            },
+          },
+          subcategories: {
+            $addToSet: {
+              $ifNull: [
+                '$subcategoria',
+                { $ifNull: ['$subcategory', '$subcategoryName'] },
+              ],
+            },
+          },
+          brands: {
+            $addToSet: {
+              $ifNull: ['$marca', { $ifNull: ['$brand', '$fabricante'] }],
+            },
+          },
+          lastUpdatedAt: {
+            $max: { $ifNull: ['$updatedAt', '$createdAt'] },
+          },
+        },
+      },
+    ]).option({ tenantId }),
+  ])
+  const summary = summaries[0] || {}
+  const totalProducts = Number(summary.totalProducts || 0)
+  const withStock = Number(summary.withStock || 0)
 
-  const lastUpdatedProduct = products
-    .filter(product => product.updatedAt || product.createdAt)
-    .sort((a, b) => {
-      return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
-    })[0]
-
-  return {
-    totalProducts: products.length,
-    activeProducts: products.length,
-    visibleProducts: products.length,
-    withStock: withStockProducts.length,
-    withoutStock: Math.max(0, products.length - withStockProducts.length),
-    categories: extractCategories(products),
-    brands: extractBrands(products),
+  const snapshot = {
+    totalProducts,
+    activeProducts: totalProducts,
+    visibleProducts: totalProducts,
+    withStock,
+    withoutStock: Math.max(0, totalProducts - withStock),
+    categories: uniq([
+      ...(summary.categories || []),
+      ...(summary.subcategories || []),
+    ]).slice(0, 80),
+    brands: uniq(summary.brands || []).slice(0, 80),
     topAvailableProducts: extractTopProducts(products),
-    lastUpdatedAt:
-      lastUpdatedProduct?.updatedAt ||
-      lastUpdatedProduct?.createdAt ||
-      null,
+    lastUpdatedAt: summary.lastUpdatedAt || null,
   }
+
+  setCatalogSnapshotCache(cacheKey, snapshot)
+
+  return snapshot
 }

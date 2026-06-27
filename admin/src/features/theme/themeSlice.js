@@ -16,6 +16,7 @@ import {
   validateTheme,
   normalizeImageAsset as normalizeUploadedImageAsset,
 } from './themeApi.js'
+import { sanitizeThemeValue as sanitizeTheme } from './utils/themeSanitizer.js'
 
 // ==========================================
 // ESTADO INICIAL
@@ -60,50 +61,8 @@ const initialState = {
 const deepClone = obj => JSON.parse(JSON.stringify(obj))
 const isEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
-const isImageField = key => ['backgroundImage', 'logo', 'favicon'].includes(key)
-
-const normalizeImageAsset = value => {
-  const image =
-    value?.image ||
-    value?.data?.image ||
-    value?.data ||
-    value?.payload?.image ||
-    value?.payload?.data ||
-    value?.payload ||
-    value
-
-  if (!image) return null
-  if (typeof image === 'string')
-    return image.trim() ? { url: image.trim(), public_id: '' } : null
-  if (typeof image !== 'object') return null
-
-  const url = typeof image.url === 'string' ? image.url.trim() : ''
-  if (!url) return null
-
-  return {
-    url,
-    public_id: image.public_id || image.publicId || '',
-  }
-}
-
 const sanitizeThemeValue = (value, key = '') => {
-  if (isImageField(key)) return normalizeImageAsset(value)
-
-  if (!value || typeof value !== 'object') return value
-  if (typeof File !== 'undefined' && value instanceof File) return undefined
-  if (typeof Blob !== 'undefined' && value instanceof Blob) return undefined
-  if (Array.isArray(value)) {
-    return value
-      .map(item => sanitizeThemeValue(item))
-      .filter(item => item !== undefined)
-  }
-
-  return Object.entries(value).reduce((acc, [childKey, childValue]) => {
-    if (['meta', 'error'].includes(childKey)) return acc
-    const sanitized = sanitizeThemeValue(childValue, childKey)
-    if (sanitized !== undefined) acc[childKey] = sanitized
-    return acc
-  }, {})
+  return sanitizeTheme(value, key)
 }
 
 const unwrapApiData = value => {
@@ -185,25 +144,13 @@ export const uploadThemeImage = createAsyncThunk(
 
       if (!imageData?.url) throw new Error('Respuesta de upload inválida')
 
-      // Construir update nested por fieldPath
-      const keys = fieldPath.split('.')
-      const updateData = {}
-      let current = updateData
-
-      keys.forEach((key, index) => {
-        if (index === keys.length - 1) {
-          current[key] = {
-            url: imageData.url,
-            public_id: imageData.public_id || null,
-          }
-        } else {
-          current[key] = {}
-          current = current[key]
-        }
-      })
-
-      const themeResponse = await apiPatchTheme(updateData)
-      return { image: imageData, theme: themeResponse }
+      return {
+        image: {
+          url: imageData.url,
+          public_id: imageData.public_id || '',
+        },
+        fieldPath,
+      }
     } catch (error) {
       return rejectWithValue(error.message)
     }
@@ -459,9 +406,11 @@ const themeSlice = createSlice({
       })
       .addCase(uploadThemeImage.fulfilled, (state, action) => {
         state.isSaving = false
-        state.config = sanitizeThemeValue(unwrapApiData(action.payload.theme))
-        state.originalConfig = deepClone(state.config)
-        state.hasUnsavedChanges = false
+        if (action.payload?.theme) {
+          state.config = sanitizeThemeValue(unwrapApiData(action.payload.theme))
+          state.originalConfig = deepClone(state.config)
+          state.hasUnsavedChanges = false
+        }
       })
       .addCase(uploadThemeImage.rejected, (state, action) => {
         state.isSaving = false
@@ -544,6 +493,7 @@ export const selectPreviewStatus = state => ({
 })
 
 export const selectThemeHistory = state => state.theme.history
+export const selectIsHistoryLoading = state => state.theme.isHistoryLoading
 
 export const selectActiveSection = state => state.theme.activeSection
 

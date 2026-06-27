@@ -48,6 +48,7 @@ const MAX_CART_QUANTITY = Number(process.env.MAX_CART_QUANTITY || 99)
 const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 const DEFAULT_REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const shouldSendTransactionalEmail = () => env.nodeEnv !== 'test'
 
 const SAFE_USER_SELECT =
   '-password -refreshToken -passwordResetToken -passwordResetExpires -emailVerificationToken -emailVerificationExpires -__v'
@@ -205,6 +206,7 @@ const recordAuthMetric = ({ req, user, tenant, eventType, source }) => {
 
   UserMetricEvent.create({
     tenantId: tenant._id,
+    tenantDomain: normalizeDomain(getTenantDomainFromRequest(req)),
     userId: user._id,
     sessionId: getMetricSessionIdFromRequest(req),
     eventType,
@@ -353,25 +355,6 @@ const getTenantScopedUserQuery = (req, userId) => {
   }
 }
 
-// =====================================================
-// CSRF
-// =====================================================
-
-export const getCsrfToken = expressAsyncHandler(async (req, res) => {
-  const csrfToken = req.csrfToken()
-  const cookieDomain = getCookieDomain(req)
-
-  res.cookie(env.csrfCookieName || 'XSRF-TOKEN', csrfToken, {
-    httpOnly: false,
-    secure: env.csrfCookieSecure,
-    sameSite: env.csrfCookieSameSite,
-    domain: cookieDomain,
-    path: '/',
-    maxAge: 15 * 60 * 1000,
-  })
-
-  return res.status(200).json({ success: true, csrfToken })
-})
 
 // =====================================================
 // EMAIL VERIFICATION
@@ -463,10 +446,14 @@ export const createUser = [
     const rawToken = newUser.createEmailVerificationToken()
     await newUser.save()
 
-    try {
-      await sendVerificationEmail(newUser, tenant, rawToken)
-    } catch (error) {
-      logger.error(`Error enviando email de verificación: ${error.message}`)
+    if (shouldSendTransactionalEmail()) {
+      try {
+        await sendVerificationEmail(newUser, tenant, rawToken)
+      } catch (error) {
+        logger.error(`Error enviando email de verificación: ${error.message}`)
+      }
+    } else {
+      logger.info(`Email de verificación omitido en test para: ${email}`)
     }
 
     logger.info(`Cliente registrado | email=${email} | tenant=${tenant.name}`)
@@ -665,11 +652,15 @@ export const createUserAdmin = [
       throw error
     }
 
-    try {
-      await sendVerificationEmail(result.admin, result.tenant, rawEmailToken)
-      logger.info(`Email de verificación enviado a: ${email}`)
-    } catch (emailErr) {
-      logger.error(`Fallo envío email verificación: ${emailErr.message}`)
+    if (shouldSendTransactionalEmail()) {
+      try {
+        await sendVerificationEmail(result.admin, result.tenant, rawEmailToken)
+        logger.info(`Email de verificación enviado a: ${email}`)
+      } catch (emailErr) {
+        logger.error(`Fallo envío email verificación: ${emailErr.message}`)
+      }
+    } else {
+      logger.info(`Email de verificación admin omitido en test para: ${email}`)
     }
 
     return sendResponse(
@@ -714,17 +705,42 @@ export const createUserAdmin = [
 const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
   const email = normalizeEmail(req.body?.email)
   const password = req.body?.password
-  const currentContextTenantId = req.tenantId
 
   if (!email || !password) {
     return sendResponse(res, 400, false, 'Correo y contraseña son obligatorios')
   }
 
-  if (!currentContextTenantId) {
-    return sendResponse(res, 400, false, 'No se pudo identificar el comercio.')
+  let tenant = null
+  let loginTenantId = null
+
+  if (isAdmin) {
+    tenant = await resolveAdminTenantFromRequest(req)
+
+    if (!tenant) {
+      return sendResponse(res, 404, false, 'Tienda no encontrada')
+    }
+
+    loginTenantId = tenant._id
+  } else {
+    loginTenantId = req.tenantId
+
+    if (!loginTenantId) {
+      return sendResponse(res, 400, false, 'No se pudo identificar el comercio.')
+    }
+
+    tenant = await Tenant.findById(loginTenantId).select(
+      '_id name domains adminDomains slug status plan',
+    )
+
+    if (!tenant || tenant.status !== 'active') {
+      return sendResponse(res, 400, false, 'Tenant inválido o inactivo')
+    }
   }
 
-  const user = await User.findOne({ email, tenantId: currentContextTenantId }).select(
+  const user = await User.findOne({
+    email,
+    tenantId: loginTenantId,
+  }).select(
     '+password +refreshToken +failedLoginAttempts +isBlocked +blockedUntil',
   )
 
@@ -747,34 +763,17 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
     return sendResponse(res, 403, false, 'Acceso restringido')
   }
 
-  let tenant = null
-
-  if (isAdmin) {
-    tenant = await resolveAdminTenantFromRequest(req)
-
-    if (!tenant) {
-      return sendResponse(res, 404, false, 'Tienda no encontrada')
-    }
-
-    if (!user.tenantId.equals(tenant._id)) {
-      logger.warn(
-        `Admin fuera de tenant | user=${email} | userTenant=${user.tenantId} | resolvedTenant=${tenant._id}`,
-      )
-      return sendResponse(res, 403, false, 'Admin fuera de su tenant')
-    }
-  } else {
-    tenant = await Tenant.findById(user.tenantId).select(
-      '_id name domains adminDomains slug status plan',
+  if (isAdmin && !user.tenantId.equals(tenant._id)) {
+    logger.warn(
+      `Admin fuera de tenant | user=${email} | userTenant=${user.tenantId} | resolvedTenant=${tenant._id}`,
     )
-
-    if (!tenant || tenant.status !== 'active') {
-      return sendResponse(res, 400, false, 'Tenant inválido o inactivo')
-    }
+    return sendResponse(res, 403, false, 'Admin fuera de su tenant')
   }
 
   if (user.isBlocked) {
     if (user.blockedUntil && user.blockedUntil > new Date()) {
       const minutesLeft = Math.ceil((user.blockedUntil - Date.now()) / 60000)
+
       return sendResponse(
         res,
         403,
@@ -785,9 +784,17 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
 
     await User.findByIdAndUpdate(
       user._id,
-      { isBlocked: false, failedLoginAttempts: 0, blockedUntil: null },
+      {
+        isBlocked: false,
+        failedLoginAttempts: 0,
+        blockedUntil: null,
+      },
       { validateBeforeSave: false },
     ).setOptions({ ignoreTenant: true })
+
+    user.isBlocked = false
+    user.failedLoginAttempts = 0
+    user.blockedUntil = null
   }
 
   const isPasswordValid = await user.isPasswordMatched(password)
@@ -796,7 +803,10 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
     const attempts = (user.failedLoginAttempts || 0) + 1
     const maxAttempts = Number(process.env.MAX_LOGIN_ATTEMPTS) || 5
     const blockMinutes = Number(process.env.BLOCK_MINUTES) || 15
-    const update = { failedLoginAttempts: attempts }
+
+    const update = {
+      failedLoginAttempts: attempts,
+    }
 
     if (attempts >= maxAttempts) {
       update.isBlocked = true
@@ -837,11 +847,16 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
       blockedUntil: null,
       refreshToken: hashedJti,
     },
-    { validateBeforeSave: false, new: true },
+    {
+      validateBeforeSave: false,
+      new: true,
+    },
   ).setOptions({ ignoreTenant: true })
 
   sendAuthCookies(res, req, refreshToken)
+
   logger.info(`Login exitoso: ${email} (${user.role}) | tenant=${tenant._id}`)
+
   recordAuthMetric({
     req,
     user,
@@ -1005,9 +1020,15 @@ export const updatePassword = expressAsyncHandler(async (req, res) => {
   user.passwordChangedAt = Date.now()
   user.refreshToken = null
   await user.save()
+  clearAuthCookies(res, req)
 
   logger.info(`Contraseña actualizada correctamente para usuario ${user.email}`)
-  return sendResponse(res, 200, true, 'Contraseña actualizada correctamente')
+  return sendResponse(
+    res,
+    200,
+    true,
+    'Contraseña actualizada correctamente. Volvé a iniciar sesión.',
+  )
 })
 
 export const forgotPasswordLimiter = rateLimit({
@@ -1042,6 +1063,11 @@ export const forgotPassword = expressAsyncHandler(async (req, res) => {
   await user.save({ validateBeforeSave: false })
 
   const resetUrl = buildFrontendUrl(`/reset-password/${resetToken}`, req)
+
+  if (!shouldSendTransactionalEmail()) {
+    logger.info(`Correo de recuperación omitido en test para ${user.email}`)
+    return sendResponse(res, 200, true, 'Si el correo existe, un enlace será enviado.')
+  }
 
   try {
     await sendResetPasswordEmail(user, resetUrl)
@@ -1208,8 +1234,13 @@ export const getWishlist = expressAsyncHandler(async (req, res) => {
 
   const user = await User.findOne({ _id: userId, tenantId }).populate({
     path: 'wishlist',
-    match: { tenantId },
-    select: 'title price images slug stock tenantId',
+    match: {
+      tenantId,
+      isDeleted: { $ne: true },
+      visibility: 'visible',
+      status: { $in: ['active', 'out-of-stock'] },
+    },
+    select: 'title price images slug stock tenantId status visibility',
   })
 
   if (!user) return sendResponse(res, 404, false, 'Usuario no encontrado')
@@ -1226,7 +1257,14 @@ export const toggleWishlist = expressAsyncHandler(async (req, res) => {
   requireValidId(productId, 'ID de producto inválido')
   requireValidId(tenantId, 'Tenant inválido')
 
-  const product = await Product.findOne({ _id: productId, tenantId })
+  const product = await Product.findOne({
+    _id: productId,
+    tenantId,
+    isDeleted: { $ne: true },
+    visibility: 'visible',
+    status: { $in: ['active', 'out-of-stock'] },
+  })
+  
   if (!product) {
     return sendResponse(res, 404, false, 'El producto no pertenece a este comercio o no existe.')
   }
@@ -1339,11 +1377,24 @@ export const userCart = expressAsyncHandler(async (req, res) => {
     return sendResponse(res, 400, false, 'Cantidad inválida')
   }
 
-  const product = await Product.findOne({ _id: productId, tenantId })
-    .select('price title images currency stock isDeleted hasVariants variants tenantId')
+  
+  const product = await Product.findOne({
+    _id: productId,
+    tenantId,
+    isDeleted: { $ne: true },
+    visibility: 'visible',
+    status: { $in: ['active', 'out-of-stock'] },
+  })
+    .select(
+      'price title images currency stock isDeleted status visibility hasVariants variants tenantId',
+    )
     .lean()
 
-  if (!product || product.isDeleted) {
+  if (!product || product.isDeleted || product.visibility !== 'visible') {
+    return sendResponse(res, 404, false, 'Producto no disponible')
+  }
+
+  if (!['active', 'out-of-stock'].includes(product.status)) {
     return sendResponse(res, 404, false, 'Producto no disponible')
   }
 

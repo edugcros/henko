@@ -1,90 +1,59 @@
-// src/test/productCtrl.test.js
 import request from 'supertest'
+
 import app from '../../app.js'
 import Product from '../models/productModel.js'
 import User from '../models/userModel.js'
-import Color from '../models/colorModel.js'
-import { getCSRFToken } from './testSetup.js'
+import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB } from './testDB.js'
+import {
+  authHeaders,
+  createTestTenant,
+  createTestUser,
+  getCSRFToken,
+} from './testSetup.js'
 
+describe('product controller', () => {
+  let tenantContext
+  let adminSession
+  let csrf
+  let productId
 
-let adminToken, productId
-const { csrfToken, cookies } = await getCSRFToken()
-beforeAll(async () => {
-  await connectTestDB()
+  beforeAll(async () => {
+    await connectTestDB()
+    await Product.deleteMany()
+    await User.deleteMany()
+    await Tenant.deleteMany()
 
-  // Crear admin y obtener token
-  const admin = await User.create({
-    firstname: 'Admin',
-    lastname: 'Test',
-    email: 'admin@test.com',
-    password: '12345678',
-    role: 'admin',
-    isBlocked: false,
+    tenantContext = await createTestTenant()
+    adminSession = await createTestUser({
+      tenantId: tenantContext.tenant._id,
+      email: 'product-admin@test.com',
+      role: 'admin',
+    })
+    csrf = await getCSRFToken(tenantContext.adminDomain)
   })
 
-  // Obtener token CSRF
-  const csrfRes = await request(app).get('/api/user/csrf-token')
-  let csrfToken = csrfRes.body.csrfToken
-  let csrfCookie = csrfRes.headers['set-cookie'] // ✅ declarada correctamente
-  
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
 
-  // Login como admin
-  const loginRes = await request(app)
-    .post('/api/user/login')
-    .set('Cookie', csrfCookie)
-    .set('X-CSRF-Token', csrfToken)
-    .send({
-      email: 'test@test.com',
-      password: 'Pass1234!',
-    })
-
-  const cookies = loginRes.headers['set-cookie']
-  expect(cookies).toBeDefined()
-
-  const accessToken = cookies.find(c => c.startsWith('accessToken'))
-  expect(accessToken).toBeDefined()
-
-  adminToken = res.body?.data?.token
-})
-
-afterAll(async () => {
-  await Product.deleteMany()
-  await User.deleteMany()
-  await disconnectTestDB()
-})
-
-// Crear el color primero
-const color = await Color.create({ title: 'Negro' })
-
-// Luego crear el producto usando el ObjectId del color
-const product = await Product.create({
-  title: 'Producto Admin Test',
-  description: 'Control de orden por admin',
-  price: 500,
-  quantity: 20,
-  category: 'Test',
-  brand: 'MarcaTest',
-  color: [color._id], // ✅ así debe ser
-})
-
-describe('🔍 PRODUCT CONTROLLER', () => {
-  test('📌 Crear un producto', async () => {
+  test('creates a product as tenant admin', async () => {
     const res = await request(app)
       .post('/api/product')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .set('X-CSRF-Token', csrfToken)
-      .set('Cookie', cookies)
+      .set(authHeaders({
+        token: adminSession.token,
+        domain: tenantContext.adminDomain,
+        csrfToken: csrf.csrfToken,
+        csrfCookie: csrf.csrfCookie,
+      }))
       .send({
         title: 'Producto de prueba',
-        slug: 'producto-de-prueba',
         description: 'Descripción de prueba',
-        brand: 'PruebaBrand',
+        marca: 'PruebaBrand',
+        categoria: 'TestCategory',
+        subcategoria: 'General',
         price: 1000,
-        category: 'TestCategory',
-        quantity: 10,
-        color: 'Azul',
-        images: [],
+        stock: 10,
       })
 
     expect(res.statusCode).toBe(201)
@@ -93,37 +62,49 @@ describe('🔍 PRODUCT CONTROLLER', () => {
     productId = res.body.data._id
   })
 
-  test('📦 Obtener todos los productos', async () => {
-    const res = await request(app).get('/api/product')
+  test('returns storefront products for the resolved tenant', async () => {
+    const res = await request(app)
+      .get('/api/product')
+      .set('x-tenant-domain', tenantContext.shopDomain)
+
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
     expect(Array.isArray(res.body.data)).toBe(true)
   })
 
-  test('🔍 Obtener un producto por ID', async () => {
-    const res = await request(app).get(`/api/product/${productId}`)
+  test('returns a storefront product by id', async () => {
+    const res = await request(app)
+      .get(`/api/product/${productId}`)
+      .set('x-tenant-domain', tenantContext.shopDomain)
+
     expect(res.statusCode).toBe(200)
-    expect(res.body.data._id).toBe(productId)
+    expect(String(res.body.data._id)).toBe(String(productId))
   })
 
-  test('✏️ Actualizar producto', async () => {
+  test('updates a product as tenant admin', async () => {
     const res = await request(app)
       .put(`/api/product/${productId}`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .set('X-CSRF-Token', csrfToken)
-      .set('Cookie', cookies)
+      .set(authHeaders({
+        token: adminSession.token,
+        domain: tenantContext.adminDomain,
+        csrfToken: csrf.csrfToken,
+        csrfCookie: csrf.csrfCookie,
+      }))
       .send({ price: 1500 })
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data.price).toBe(1500)
   })
 
-  test('🗑️ Eliminar producto', async () => {
+  test('deletes a product as tenant admin', async () => {
     const res = await request(app)
       .delete(`/api/product/${productId}`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .set('X-CSRF-Token', csrfToken)
-      .set('Cookie', cookies)
+      .set(authHeaders({
+        token: adminSession.token,
+        domain: tenantContext.adminDomain,
+        csrfToken: csrf.csrfToken,
+        csrfCookie: csrf.csrfCookie,
+      }))
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)

@@ -2,10 +2,16 @@ import mongoose from 'mongoose'
 
 const colorSchema = new mongoose.Schema(
   {
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: [true, 'El tenantId es obligatorio'],
+      index: true,
+    },
+
     title: {
       type: String,
       required: [true, 'El nombre del color es obligatorio'],
-      unique: true,
       index: true,
       lowercase: true,
       trim: true,
@@ -25,6 +31,8 @@ const colorSchema = new mongoose.Schema(
     timestamps: true,
   },
 )
+
+colorSchema.index({ tenantId: 1, title: 1 }, { unique: true })
 
 const Color = mongoose.model('Color', colorSchema)
 

@@ -28,6 +28,7 @@ import {
 } from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
+const ADMIN_ORDER_ROLES = ['admin', 'moderator', 'manager', 'owner', 'superadmin']
 
 // =========================================================
 // HELPERS
@@ -36,7 +37,7 @@ const router = express.Router()
 const isAdminOrManager = expressAsyncHandler(async (req, res, next) => {
   const role = req.user?.role
 
-  if (['admin', 'moderator'].includes(role)) {
+  if (ADMIN_ORDER_ROLES.includes(role)) {
     return next()
   }
 

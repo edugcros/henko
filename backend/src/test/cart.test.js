@@ -1,126 +1,116 @@
-// 📁 src/test/cart.test.js
-jest.setTimeout(30000)
 import request from 'supertest'
+
 import app from '../../app.js'
 import User from '../models/userModel.js'
 import Product from '../models/productModel.js'
 import Cart from '../models/cartModel.js'
+import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB } from './testDB.js'
+import {
+  authHeaders,
+  createTestProduct,
+  createTestTenant,
+  registerAndLoginUser,
+} from './testSetup.js'
 
-describe('🛒 USER CART', () => {
-  let csrfToken, csrfCookie, accessToken, userId, productId
+describe('user cart', () => {
+  let tenantContext
+  let session
+  let product
 
   beforeAll(async () => {
     await connectTestDB()
     await User.deleteMany()
     await Product.deleteMany()
     await Cart.deleteMany()
+    await Tenant.deleteMany()
 
-    const csrfRes = await request(app).get('/api/user/csrf-token')
-    csrfToken = csrfRes.body.csrfToken
-    csrfCookie = csrfRes.headers['set-cookie'][0]
-
-    const registerRes = await request(app)
-      .post('/api/user/register')
-      .set('Cookie', csrfCookie)
-      .set('X-CSRF-Token', csrfToken)
-      .send({
-        firstname: 'María',
-        lastname: 'Pérez',
-        email: 'cart@test.com',
-        password: 'Test1234!',
-        mobile: '1123456789',
-      })
-
-    userId = registerRes.body.data._id
-
-    const loginRes = await request(app)
-      .post('/api/user/login')
-      .set('Cookie', csrfCookie)
-      .set('X-CSRF-Token', csrfToken)
-      .send({
-        email: 'cart@test.com',
-        password: 'Test1234!',
-      })
-
-    const cookies = loginRes.headers['set-cookie']
-    accessToken = cookies.find(c => c.startsWith('accessToken'))?.split(';')[0]
-
-    const product = await Product.create({
-      title: 'Producto Carrito',
-      slug: 'producto-carrito',
-      price: 200,
-      quantity: 50,
-      description: 'Producto para testing de carrito',
+    tenantContext = await createTestTenant()
+    session = await registerAndLoginUser({
+      shopDomain: tenantContext.shopDomain,
+      email: 'cart@test.com',
     })
-
-    productId = product._id
-  }, 10000)
+    product = await createTestProduct({
+      tenantId: tenantContext.tenant._id,
+      title: 'Producto Carrito',
+      price: 200,
+      stock: 50,
+    })
+  })
 
   afterAll(async () => {
     await disconnectTestDB()
   })
 
-  it('➕ Debería añadir productos al carrito', async () => {
+  test('adds products to the cart', async () => {
     const res = await request(app)
       .post('/api/user/cart')
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
       .send({
-        cart: [
-          {
-            _id: productId,
-            count: 2,
-            color: 'red',
-          },
-        ],
+        productId: product._id,
+        quantity: 2,
       })
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
+    expect(res.body.data.products).toHaveLength(1)
   })
 
-  it('📦 Debería obtener el carrito del usuario', async () => {
+  test('returns the authenticated user cart', async () => {
     const res = await request(app)
-      .get('/api/user/cart')
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
+      .get('/api/user/user-cart')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+      }))
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data.products.length).toBeGreaterThan(0)
   })
 
-  it('❌ Debería eliminar un producto del carrito', async () => {
+  test('removes a product from the cart', async () => {
     const res = await request(app)
-      .delete(`/api/user/cart/${productId}`)
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
+      .delete(`/api/user/cart/${product._id}`)
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
   })
 
-  it('🧹 Debería vaciar completamente el carrito', async () => {
+  test('empties the cart', async () => {
     await request(app)
       .post('/api/user/cart')
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
       .send({
-        cart: [
-          {
-            _id: productId,
-            count: 1,
-            color: 'blue',
-          },
-        ],
+        productId: product._id,
+        quantity: 1,
       })
 
     const res = await request(app)
-      .delete('/api/user/empty-cart')
-      .set('Cookie', [...csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
+      .delete('/api/user/cart/empty')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
 
     expect(res.statusCode).toBe(200)
-    expect(res.body.message).toMatch(/vacío/i)
+    expect(res.body.message).toMatch(/vac/i)
   })
 })

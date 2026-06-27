@@ -16,12 +16,20 @@ const getKey = () => {
     throw new Error('AI_AGENT_SECRET_ENCRYPTION_KEY es obligatorio')
   }
 
-  // Permite clave base64 de 32 bytes o frase fuerte que se deriva con SHA-256.
+  // Permite clave base64/base64url de 32 bytes, hex de 32 bytes o frase fuerte.
   try {
-    const decoded = Buffer.from(secret, 'base64')
+    const decoded = Buffer.from(secret.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
     if (decoded.length === 32) return decoded
   } catch {
-    // fallback a hash
+    // fallback a hex / hash
+  }
+
+  if (/^[a-f0-9]{64}$/i.test(secret)) {
+    return Buffer.from(secret, 'hex')
+  }
+
+  if (process.env.NODE_ENV === 'production' && secret.length < 32) {
+    throw new Error('AI_AGENT_SECRET_ENCRYPTION_KEY debe tener al menos 32 caracteres en producción')
   }
 
   return crypto.createHash('sha256').update(secret).digest()
@@ -43,17 +51,32 @@ export const encryptSecret = value => {
   ])
   const tag = cipher.getAuthTag()
 
-  return ['v1', iv.toString(ENCODING), tag.toString(ENCODING), encrypted.toString(ENCODING)].join('.')
+  return [
+    'v1',
+    iv.toString(ENCODING),
+    tag.toString(ENCODING),
+    encrypted.toString(ENCODING),
+  ].join('.')
 }
 
 export const decryptSecret = value => {
   const encryptedValue = clean(value)
   if (!encryptedValue) return ''
 
-  const [version, ivEncoded, tagEncoded, payloadEncoded] = encryptedValue.split('.')
+  const [version, ivEncoded, tagEncoded, payloadEncoded] =
+    encryptedValue.split('.')
 
   if (version !== 'v1' || !ivEncoded || !tagEncoded || !payloadEncoded) {
-    // Compatibilidad: si todavía está plano en DB, lo devuelve como está.
+    const allowLegacyPlaintext =
+      process.env.NODE_ENV !== 'production' ||
+      process.env.AI_AGENT_ALLOW_LEGACY_PLAINTEXT_SECRETS === 'true'
+
+    if (!allowLegacyPlaintext) {
+      throw new Error(
+        'Se detectó un secreto legacy sin cifrar. Ejecute la migración antes de iniciar producción.',
+      )
+    }
+
     return encryptedValue
   }
 
@@ -62,12 +85,18 @@ export const decryptSecret = value => {
   const tag = Buffer.from(tagEncoded, ENCODING)
   const payload = Buffer.from(payloadEncoded, ENCODING)
 
+  if (iv.length !== IV_LENGTH || tag.length !== TAG_LENGTH || payload.length === 0) {
+    throw new Error('Formato de secreto cifrado inválido')
+  }
+
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, {
     authTagLength: TAG_LENGTH,
   })
   decipher.setAuthTag(tag)
 
-  return Buffer.concat([decipher.update(payload), decipher.final()]).toString('utf8')
+  return Buffer.concat([decipher.update(payload), decipher.final()]).toString(
+    'utf8',
+  )
 }
 
 export const maskSecret = value => {

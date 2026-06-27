@@ -1,7 +1,7 @@
 // 📁 src/pages/CheckoutPage.jsx
 // VERSIÓN GO PRODUCCIÓN - CHECKOUT / CUPONES / MERCADO PAGO / DATOS BÁSICOS DE ENTREGA / MULTI-TENANT
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Avatar,
@@ -64,6 +64,27 @@ import { Newprimary } from '../theme/colors'
 
 const STEPS = ['Revisión', 'Entrega', 'Pago', 'Confirmación']
 const METRIC_CURRENCY = 'ARS'
+const DEBUG_CHECKOUT = process.env.REACT_APP_DEBUG_API === 'true'
+
+const debugLog = (...args) => {
+  if (DEBUG_CHECKOUT) console.log(...args)
+}
+
+const debugError = (...args) => {
+  if (DEBUG_CHECKOUT) console.error(...args)
+}
+
+const scrollToTop = () => {
+  if (typeof window === 'undefined') return
+
+  window.requestAnimationFrame(() => {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: 'smooth',
+    })
+  })
+}
 
 // ======================================================
 // HELPERS GENERALES
@@ -172,7 +193,15 @@ const getItemId = item => {
 }
 
 const getItemTitle = item => {
-  return item?.title || item?.name || item?.product?.title || 'Producto'
+  return (
+    item?.title ||
+    item?.name ||
+    item?.titleSnapshot ||
+    item?.productTitle ||
+    item?.product?.title ||
+    item?.product?.name ||
+    'Producto'
+  )
 }
 
 const getItemImage = item => {
@@ -180,22 +209,31 @@ const getItemImage = item => {
 
   if (typeof item.image === 'string') return item.image
   if (item.image?.url) return item.image.url
+  if (item.imageSnapshot) return item.imageSnapshot
 
   if (Array.isArray(item.images) && item.images[0]) {
     if (typeof item.images[0] === 'string') return item.images[0]
-    return item.images[0]?.url || null
+    return item.images[0]?.url || item.images[0]?.secure_url || null
   }
 
   if (item.product?.images?.[0]) {
     if (typeof item.product.images[0] === 'string')
       return item.product.images[0]
-    return item.product.images[0]?.url || null
+    return item.product.images[0]?.url || item.product.images[0]?.secure_url || null
   }
 
   return null
 }
 
 const getItemUnitPrice = item => {
+  const quantity = Math.max(1, toNumber(item?.quantity || item?.count, 1))
+
+  if (item?.unitPriceCents !== undefined) return clampMoney(item.unitPriceCents / 100)
+  if (item?.priceCents !== undefined) return clampMoney(item.priceCents / 100)
+  if (item?.subtotalCents !== undefined) {
+    return clampMoney(item.subtotalCents / 100 / quantity)
+  }
+
   return clampMoney(
     item?.finalPrice ??
       item?.discountedPrice ??
@@ -215,6 +253,7 @@ const getItemOriginalPrice = item => {
     item?.originalPrice ??
       item?.regularPrice ??
       item?.compareAtPrice ??
+      (item?.originalPriceCents !== undefined ? item.originalPriceCents / 100 : undefined) ??
       item?.product?.originalPrice ??
       item?.product?.regularPrice ??
       item?.product?.compareAtPrice ??
@@ -261,7 +300,7 @@ const getPaymentErrorMessage = result => {
 
 const normalizeCouponPayload = raw => {
   if (!raw) return null
-
+  console.log(raw)
   const data = raw.data || raw.payload || raw
   const coupon = data.coupon || data.appliedCoupon || data
 
@@ -377,13 +416,156 @@ const calculateNominalCouponDiscount = ({ coupon, applicableSubtotal }) => {
 const normalizeOrderPayload = result => {
   const data = result?.data || result?.payload || result
 
-  return data?.order || data?.data || data
+  return data?.order || data?.data?.order || data?.payload?.order || data?.data || data
 }
 
 const normalizePaymentPayload = result => {
   const data = result?.data || result?.payload || result
 
-  return data?.payment || data?.data || data
+  return data?.payment || data?.data?.payment || data?.payload?.payment || data?.data || data
+}
+
+const getOrderDisplayId = order => {
+  return normalizeId(
+    order?.orderNumber ||
+      order?.number ||
+      order?.code ||
+      order?._id ||
+      order?.id ||
+      order?.orderId,
+  )
+}
+
+const getPaymentDisplayId = payment => {
+  return normalizeId(payment?.id || payment?.paymentId || payment?.transactionId)
+}
+
+const getPaymentStatusValue = payment => {
+  return String(
+    payment?.status || payment?.paymentStatus || payment?.state || '',
+  ).toLowerCase()
+}
+
+const getPaymentStatusDetailValue = payment => {
+  return String(
+    payment?.status_detail ||
+      payment?.statusDetail ||
+      payment?.detail ||
+      '',
+  ).toLowerCase()
+}
+
+const isApprovedPayment = payment => {
+  const status = getPaymentStatusValue(payment)
+  const statusDetail = getPaymentStatusDetailValue(payment)
+
+  return (
+    payment?.success === true ||
+    payment?.approved === true ||
+    status === 'approved' ||
+    status === 'accredited' ||
+    statusDetail === 'approved' ||
+    statusDetail === 'accredited'
+  )
+}
+
+const isPendingPayment = payment => {
+  const status = getPaymentStatusValue(payment)
+
+  return ['pending', 'in_process', 'in_process_payment'].includes(status)
+}
+
+const normalizeVariantLabel = item => {
+  const variant = item?.variant || item?.selectedVariant || item?.product?.variant
+
+  if (!variant) return ''
+  if (typeof variant === 'string') return variant
+
+  const attributes = variant.attributes || variant.combinacion || variant.options
+
+  if (attributes && typeof attributes === 'object' && !Array.isArray(attributes)) {
+    return Object.entries(attributes)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join(' · ')
+  }
+
+  return pickFirst(variant.name, variant.title, variant.sku, variant.key)
+}
+
+const buildConfirmationItems = items => {
+  return (Array.isArray(items) ? items : []).map(item => {
+    const quantity = getItemQuantity(item)
+    const unitPrice = getItemUnitPrice(item)
+
+    return {
+      productId: getItemId(item),
+      title: getItemTitle(item),
+      image: getItemImage(item),
+      quantity,
+      unitPrice,
+      originalPrice: getItemOriginalPrice(item),
+      subtotal: clampMoney(unitPrice * quantity),
+      sku: pickFirst(
+        item?.sku,
+        item?.variantSku,
+        item?.selectedVariant?.sku,
+        item?.product?.sku,
+      ),
+      variantLabel: normalizeVariantLabel(item),
+    }
+  })
+}
+
+const buildConfirmationSnapshot = ({
+  order,
+  payment,
+  cartItems,
+  shippingData,
+  subtotal,
+  discount,
+  total,
+  appliedCoupon,
+  user,
+}) => {
+  const normalizedOrder = normalizeOrderPayload(order) || {}
+  const normalizedPayment = normalizePaymentPayload(payment) || {}
+  const orderItems = Array.isArray(normalizedOrder.items)
+    ? normalizedOrder.items
+    : Array.isArray(normalizedOrder.products)
+      ? normalizedOrder.products
+      : []
+  const sourceItems =
+    Array.isArray(cartItems) && cartItems.length > 0 ? cartItems : orderItems
+  const items = buildConfirmationItems(sourceItems)
+
+  const customer = {
+    firstName: pickFirst(shippingData?.firstName, user?.firstName, user?.nombre),
+    lastName: pickFirst(shippingData?.lastName, user?.lastName, user?.apellido),
+    email: pickFirst(shippingData?.email, user?.email),
+    phone: pickFirst(shippingData?.phone, user?.phone, user?.telefono),
+  }
+
+  return {
+    order: normalizedOrder,
+    payment: normalizedPayment,
+    customer,
+    items,
+    totals: {
+      subtotal: clampMoney(subtotal ?? normalizedOrder.subtotal ?? 0),
+      discount: clampMoney(
+        discount ?? normalizedOrder.discount ?? normalizedOrder.discountAmount ?? 0,
+      ),
+      total: clampMoney(total ?? normalizedOrder.total ?? normalizedOrder.totalAmount ?? 0),
+    },
+    coupon: appliedCoupon
+      ? {
+          code: appliedCoupon.code,
+          discountType: appliedCoupon.discountType,
+          discountValue: appliedCoupon.discountValue,
+        }
+      : null,
+    createdAt: new Date().toISOString(),
+  }
 }
 
 const buildMetricItems = cartItems => {
@@ -409,6 +591,8 @@ const buildMetricItems = cartItems => {
 const CheckoutPage = () => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
+  const purchaseTrackedRef = useRef(false)
+  const gaPurchaseTrackedRef = useRef(false)
 
   const [activeStep, setActiveStep] = useState(0)
   const [availableCoupons, setAvailableCoupons] = useState([])
@@ -417,6 +601,7 @@ const CheckoutPage = () => {
   const [localCouponError, setLocalCouponError] = useState(null)
   const [showAllCoupons, setShowAllCoupons] = useState(false)
   const [checkoutOrder, setCheckoutOrder] = useState(null)
+  const [confirmationData, setConfirmationData] = useState(null)
 
   const [mpReady, setMpReady] = useState(false)
   const [mpInitError, setMpInitError] = useState(null)
@@ -530,12 +715,12 @@ const CheckoutPage = () => {
 
         setShippingAutoFilled(true)
 
-        console.log('✅ Datos básicos cargados desde perfil:', {
+        debugLog('✅ Datos básicos cargados desde perfil:', {
           resolvedUser,
           nextShippingData,
         })
       } catch (error) {
-        console.error('❌ No se pudo cargar el perfil del usuario:', error)
+        debugError('❌ No se pudo cargar el perfil del usuario:', error)
 
         if (!isMounted) return
 
@@ -756,7 +941,7 @@ const CheckoutPage = () => {
       setMpReady(true)
       setMpInitError(null)
     } catch (error) {
-      console.error('Error inicializando Mercado Pago:', error)
+      debugError('Error inicializando Mercado Pago:', error)
       setMpReady(false)
       setMpInitError('No se pudo inicializar Mercado Pago.')
     }
@@ -862,7 +1047,7 @@ const CheckoutPage = () => {
           setAvailableCoupons(allCoupons)
         }
       } catch (error) {
-        console.error('Error detectando cupones:', error)
+        debugError('Error detectando cupones:', error)
       }
     }
 
@@ -902,29 +1087,48 @@ const CheckoutPage = () => {
   }, [couponInput])
 
   useEffect(() => {
+    const normalizedReduxPayment = normalizePaymentPayload(reduxPaymentResult)
+
     if (
       paymentSuccess &&
-      reduxPaymentResult?.status === 'approved' &&
+      isApprovedPayment(normalizedReduxPayment) &&
       !paymentStatus.completed
     ) {
+      if (gaPurchaseTrackedRef.current) return
+      gaPurchaseTrackedRef.current = true
+
+      const confirmationSnapshot = buildConfirmationSnapshot({
+        order: activeOrder,
+        payment: normalizedReduxPayment,
+        cartItems,
+        shippingData,
+        subtotal,
+        discount: isCouponValid ? validDiscount : 0,
+        total,
+        appliedCoupon: isCouponValid ? appliedCoupon : null,
+        user,
+      })
+
+      setConfirmationData(confirmationSnapshot)
       setPaymentStatus({
         completed: true,
-        data: reduxPaymentResult,
+        data: normalizedReduxPayment,
         timestamp: Date.now(),
       })
 
       setActiveStep(3)
+      scrollToTop()
 
       ReactGA.event('purchase', {
-        transaction_id: reduxPaymentResult.id?.toString(),
-        value: toNumber(total, 0),
+        transaction_id: getPaymentDisplayId(normalizedReduxPayment),
+        value: toNumber(confirmationSnapshot.totals.total, 0),
         currency: 'ARS',
-        coupon: isCouponValid ? appliedCoupon?.code : null,
-        items: cartItems.map(item => ({
-          item_id: getItemId(item),
-          item_name: getItemTitle(item),
-          price: getItemUnitPrice(item),
-          quantity: getItemQuantity(item),
+        coupon: confirmationSnapshot.coupon?.code || null,
+        items: confirmationSnapshot.items.map(item => ({
+          item_id: item.productId,
+          item_name: item.title,
+          price: item.unitPrice,
+          quantity: item.quantity,
         })),
       })
     }
@@ -932,10 +1136,15 @@ const CheckoutPage = () => {
     paymentSuccess,
     reduxPaymentResult,
     paymentStatus.completed,
+    activeOrder,
     total,
+    subtotal,
+    validDiscount,
     isCouponValid,
     appliedCoupon,
     cartItems,
+    shippingData,
+    user,
   ])
 
   // ======================================================
@@ -989,7 +1198,7 @@ const CheckoutPage = () => {
         setCouponInput('')
         setAvailableCoupons([])
       } catch (error) {
-        console.error('❌ Error aplicando cupón:', error)
+        debugError('❌ Error aplicando cupón:', error)
 
         setLocalCouponError(
           typeof error === 'string'
@@ -1023,9 +1232,9 @@ const CheckoutPage = () => {
 
   const handleCopyCode = async code => {
     try {
-      await window.navigator.clipboard.writeText(code)
+      await navigator.clipboard.writeText(code)
     } catch {
-      console.error('Error copiando cupón')
+      debugError('Error copiando cupón')
     }
   }
 
@@ -1114,7 +1323,23 @@ const CheckoutPage = () => {
             originalPrice: getItemOriginalPrice(item),
             quantity: getItemQuantity(item),
             image: getItemImage(item),
-            variant: item.variant,
+            variantId:
+              item.variantId ||
+              item.selectedVariant?.id ||
+              item.selectedVariant?._id ||
+              null,
+            variantSku:
+              item.variantSku ||
+              item.variantSKU ||
+              item.selectedVariant?.sku ||
+              '',
+            selectedVariant: item.selectedVariant || null,
+            selectedAttributes:
+              item.selectedAttributes || item.variantAttributes || {},
+            variantAttributes:
+              item.variantAttributes || item.selectedAttributes || {},
+            cartKey: item.cartKey || null,
+            variant: item.variant || item.selectedVariant || null,
           })),
           subtotal: toNumber(subtotal, 0),
           discount: isCouponValid ? toNumber(validDiscount, 0) : 0,
@@ -1159,13 +1384,13 @@ const CheckoutPage = () => {
           },
         })
         setActiveStep(2)
-        window.scrollTo({ top: 0, behavior: 'smooth' })
+        scrollToTop()
       } else {
         throw new Error('La orden no devolvió un ID válido')
       }
     } catch (error) {
-      console.error('Error al crear orden:', error)
-      window.alert(
+      debugError('Error al crear orden:', error)
+      alert(
         `Error al crear la orden: ${
           error?.message ||
           error?.response?.data?.message ||
@@ -1180,7 +1405,7 @@ const CheckoutPage = () => {
       const order = activeOrder
 
       if (!order?._id && !order?.id) {
-        window.alert('Error: No se encontró la orden de compra')
+        alert('Error: No se encontró la orden de compra')
         return
       }
 
@@ -1226,46 +1451,62 @@ const CheckoutPage = () => {
         ).unwrap()
         const payment = normalizePaymentPayload(result)
 
-        if (payment?.success && payment?.status === 'approved') {
-          const paymentId =
-            payment.id?.toString?.() || payment.paymentId?.toString?.() || ''
-
-          trackUserMetric({
-            eventType: USER_METRIC_EVENTS.PAYMENT_APPROVED,
-            orderId,
-            paymentId,
-            value: toNumber(total, 0),
-            currency: METRIC_CURRENCY,
-            quantity: itemCount,
-            items: metricItems,
-            commerce: {
-              orderValue: toNumber(total, 0),
-              discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
-              itemsCount: itemCount,
-            },
-            metadata: {
-              paymentMethod: formData.payment_method_id || '',
-              status: payment.status,
-            },
+        if (isApprovedPayment(payment)) {
+          const paymentId = getPaymentDisplayId(payment)
+          const confirmationSnapshot = buildConfirmationSnapshot({
+            order,
+            payment,
+            cartItems,
+            shippingData,
+            subtotal,
+            discount: isCouponValid ? validDiscount : 0,
+            total,
+            appliedCoupon: isCouponValid ? appliedCoupon : null,
+            user,
           })
 
-          trackUserMetric({
-            eventType: USER_METRIC_EVENTS.PURCHASE,
-            orderId,
-            paymentId,
-            value: toNumber(total, 0),
-            currency: METRIC_CURRENCY,
-            quantity: itemCount,
-            items: metricItems,
-            commerce: {
-              orderValue: toNumber(total, 0),
-              discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
-              itemsCount: itemCount,
-            },
-            metadata: {
-              coupon: isCouponValid ? appliedCoupon?.code : '',
-            },
-          })
+          setConfirmationData(confirmationSnapshot)
+
+          if (!purchaseTrackedRef.current) {
+            purchaseTrackedRef.current = true
+
+            trackUserMetric({
+              eventType: USER_METRIC_EVENTS.PAYMENT_APPROVED,
+              orderId,
+              paymentId,
+              value: toNumber(total, 0),
+              currency: METRIC_CURRENCY,
+              quantity: itemCount,
+              items: metricItems,
+              commerce: {
+                orderValue: toNumber(total, 0),
+                discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+                itemsCount: itemCount,
+              },
+              metadata: {
+                paymentMethod: formData.payment_method_id || '',
+                status: payment.status,
+              },
+            })
+
+            trackUserMetric({
+              eventType: USER_METRIC_EVENTS.PURCHASE,
+              orderId,
+              paymentId,
+              value: toNumber(total, 0),
+              currency: METRIC_CURRENCY,
+              quantity: itemCount,
+              items: metricItems,
+              commerce: {
+                orderValue: toNumber(total, 0),
+                discountValue: isCouponValid ? toNumber(validDiscount, 0) : 0,
+                itemsCount: itemCount,
+              },
+              metadata: {
+                coupon: isCouponValid ? appliedCoupon?.code : '',
+              },
+            })
+          }
 
           setPaymentStatus({
             completed: true,
@@ -1274,13 +1515,11 @@ const CheckoutPage = () => {
           })
 
           setActiveStep(3)
+          scrollToTop()
           return
         }
 
-        if (
-          payment?.success &&
-          ['pending', 'in_process'].includes(payment?.status)
-        ) {
+        if (isPendingPayment(payment)) {
           trackUserMetric({
             eventType: USER_METRIC_EVENTS.CHECKOUT_STEP,
             orderId,
@@ -1298,7 +1537,7 @@ const CheckoutPage = () => {
               status: payment.status,
             },
           })
-          window.alert(payment?.message || 'Pago pendiente de confirmación.')
+          alert(payment?.message || 'Pago pendiente de confirmación.')
           return
         }
 
@@ -1320,9 +1559,9 @@ const CheckoutPage = () => {
           },
         })
 
-        window.alert(getPaymentErrorMessage(payment))
+        alert(getPaymentErrorMessage(payment))
       } catch (error) {
-        console.error('Error procesando pago:', error)
+        debugError('Error procesando pago:', error)
         trackUserMetric({
           eventType: USER_METRIC_EVENTS.PAYMENT_REJECTED,
           orderId,
@@ -1340,26 +1579,28 @@ const CheckoutPage = () => {
             status: 'error',
           },
         })
-        window.alert(getPaymentErrorMessage(error))
+        alert(getPaymentErrorMessage(error))
       }
     },
     [
       activeOrder,
       dispatch,
-      shippingData.email,
+      shippingData,
       cartItems,
+      subtotal,
       total,
       itemCount,
       isCouponValid,
       validDiscount,
       appliedCoupon,
+      user,
     ],
   )
 
   const handleNextStep = () => {
     if (activeStep === 0 && cartItems.length > 0) {
       setActiveStep(1)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      scrollToTop()
     }
   }
 
@@ -1368,7 +1609,7 @@ const CheckoutPage = () => {
       navigate('/cart')
     } else {
       setActiveStep(prev => prev - 1)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      scrollToTop()
     }
   }
 
@@ -1376,10 +1617,13 @@ const CheckoutPage = () => {
     dispatch(resetPayment())
     dispatch(resetOrderState())
     dispatch(resetCouponState())
+    purchaseTrackedRef.current = false
+    gaPurchaseTrackedRef.current = false
     setPaymentStatus({ completed: false, data: null, timestamp: null })
     setActiveStep(0)
     setAvailableCoupons([])
     setCheckoutOrder(null)
+    setConfirmationData(null)
     navigate('/')
   }, [dispatch, navigate])
 
@@ -1435,104 +1679,237 @@ const CheckoutPage = () => {
     )
   }
 
-  // ======================================================
-  // SUCCESS
+  // ======================================================  
+  // SUCCESS / CONFIRMACIÓN
   // ======================================================
 
   if (
     paymentStatus.completed ||
-    (paymentSuccess && reduxPaymentResult?.status === 'approved')
+    (paymentSuccess && isApprovedPayment(normalizePaymentPayload(reduxPaymentResult)))
   ) {
-    const successData = paymentStatus.data || reduxPaymentResult
+    const successData = paymentStatus.data || normalizePaymentPayload(reduxPaymentResult)
+    const confirmation =
+      confirmationData ||
+      buildConfirmationSnapshot({
+        order: activeOrder,
+        payment: successData,
+        cartItems,
+        shippingData,
+        subtotal,
+        discount: isCouponValid ? validDiscount : 0,
+        total,
+        appliedCoupon: isCouponValid ? appliedCoupon : null,
+        user,
+      })
+
+    const orderId = getOrderDisplayId(confirmation.order)
+    const paymentId = getPaymentDisplayId(confirmation.payment)
+    const paymentStatusLabel =
+      getPaymentStatusValue(confirmation.payment) || 'approved'
 
     return (
-      <Container maxWidth="sm" sx={{ py: 12, textAlign: 'center' }}>
+      <Container maxWidth="md" sx={{ py: { xs: 5, md: 8 } }}>
         <Fade in timeout={500}>
           <Paper
             elevation={0}
             sx={{
-              p: 5,
+              p: { xs: 2.5, md: 5 },
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 4,
             }}
           >
-            <CheckCircleOutline
-              sx={{ fontSize: 100, color: 'success.main', mb: 3 }}
-            />
+            <Stack alignItems="center" spacing={1.5} sx={{ textAlign: 'center', mb: 4 }}>
+              <CheckCircleOutline
+                sx={{ fontSize: { xs: 72, md: 96 }, color: 'success.main' }}
+              />
 
-            <Typography variant="h4" fontWeight={800} gutterBottom>
-              ¡Gracias por tu compra!
-            </Typography>
-
-            <Typography color="text.secondary" sx={{ mb: 3 }}>
-              Tu pago fue procesado exitosamente.
-            </Typography>
-
-            {successData?.id && (
-              <Paper sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 2, mb: 3 }}>
-                <Typography variant="body2" color="text.secondary">
-                  ID de Transacción
-                </Typography>
-                <Typography
-                  variant="h6"
-                  fontWeight={700}
-                  sx={{ color: 'commercePrice.main' }}
-                >
-                  #{successData.id}
-                </Typography>
-              </Paper>
-            )}
-
-            <Box
-              sx={{
-                bgcolor: 'success.light',
-                p: 3,
-                borderRadius: 2,
-                mb: 3,
-                textAlign: 'left',
-              }}
-            >
-              <Typography
-                variant="subtitle2"
-                fontWeight={700}
-                gutterBottom
-                color="success.dark"
-              >
-                Resumen de compra:
+              <Typography variant="h4" fontWeight={800} gutterBottom>
+                ¡Gracias por tu compra!
               </Typography>
 
-              <Stack spacing={1}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Total pagado:</Typography>
-                  <Typography variant="body2" fontWeight={700}>
-                    {formatMoney(total)}
-                  </Typography>
-                </Box>
+              <Typography color="text.secondary">
+                Tu pago fue procesado exitosamente. Abajo tenés el detalle de
+                la orden, los productos comprados y tus datos de contacto.
+              </Typography>
+            </Stack>
 
-                {isCouponValid && validDiscount > 0 && (
-                  <Box
-                    sx={{ display: 'flex', justifyContent: 'space-between' }}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Orden
+                  </Typography>
+                  <Typography variant="h6" fontWeight={800}>
+                    {orderId ? `#${orderId}` : 'Orden generada'}
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    ID de pago
+                  </Typography>
+                  <Typography variant="h6" fontWeight={800} sx={{ wordBreak: 'break-all' }}>
+                    {paymentId ? `#${paymentId}` : 'Pago aprobado'}
+                  </Typography>
+                  <Chip
+                    label={paymentStatusLabel}
+                    size="small"
+                    color="success"
+                    sx={{ mt: 1, textTransform: 'capitalize' }}
+                  />
+                </Paper>
+              </Grid>
+            </Grid>
+
+            <Paper sx={{ bgcolor: 'grey.50', p: 2.5, borderRadius: 3, mb: 3 }}>
+              <Typography variant="subtitle1" fontWeight={800} gutterBottom>
+                Productos comprados
+              </Typography>
+
+              <Stack spacing={1.5}>
+                {confirmation.items.map((item, index) => (
+                  <Paper
+                    key={`${item.productId || item.title}-${index}`}
+                    variant="outlined"
+                    sx={{ p: 1.5, borderRadius: 2, bgcolor: 'background.paper' }}
                   >
-                    <Typography variant="body2">Cupón aplicado:</Typography>
-                    <Typography
-                      variant="body2"
-                      color="success.main"
-                      fontWeight={600}
-                    >
-                      {appliedCoupon.code} (-{formatMoney(validDiscount)})
-                    </Typography>
-                  </Box>
-                )}
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <Avatar
+                        src={item.image}
+                        variant="rounded"
+                        sx={{
+                          width: 56,
+                          height: 56,
+                          border: '1px solid',
+                          borderColor: 'divider',
+                        }}
+                      />
+
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" fontWeight={800} noWrap>
+                          {item.title}
+                        </Typography>
+
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Cantidad: {item.quantity} · {formatMoney(item.unitPrice)} c/u
+                        </Typography>
+
+                        {item.variantLabel && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Variante: {item.variantLabel}
+                          </Typography>
+                        )}
+
+                        {item.sku && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            SKU: {item.sku}
+                          </Typography>
+                        )}
+                      </Box>
+
+                      <Typography variant="body2" fontWeight={800}>
+                        {formatMoney(item.subtotal)}
+                      </Typography>
+                    </Stack>
+                  </Paper>
+                ))}
               </Stack>
-            </Box>
+            </Paper>
+
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, height: '100%' }}>
+                  <Typography variant="subtitle1" fontWeight={800} gutterBottom>
+                    Datos del comprador
+                  </Typography>
+
+                  <Typography variant="body2" fontWeight={700}>
+                    {[confirmation.customer.firstName, confirmation.customer.lastName]
+                      .filter(Boolean)
+                      .join(' ') || 'Cliente'}
+                  </Typography>
+
+                  {confirmation.customer.email && (
+                    <Typography variant="body2" color="text.secondary">
+                      {confirmation.customer.email}
+                    </Typography>
+                  )}
+
+                  {confirmation.customer.phone && (
+                    <Typography variant="body2" color="text.secondary">
+                      {confirmation.customer.phone}
+                    </Typography>
+                  )}
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, height: '100%' }}>
+                  <Typography variant="subtitle1" fontWeight={800} gutterBottom>
+                    Resumen de pago
+                  </Typography>
+
+                  <Stack spacing={1}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Subtotal
+                      </Typography>
+                      <Typography variant="body2" fontWeight={700}>
+                        {formatMoney(confirmation.totals.subtotal)}
+                      </Typography>
+                    </Box>
+
+                    {confirmation.totals.discount > 0 && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="body2" color="success.main">
+                          Descuento
+                        </Typography>
+                        <Typography variant="body2" color="success.main" fontWeight={700}>
+                          -{formatMoney(confirmation.totals.discount)}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {confirmation.coupon?.code && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Cupón
+                        </Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                          {confirmation.coupon.code}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    <Divider sx={{ my: 0.5 }} />
+
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body1" fontWeight={800}>
+                        Total pagado
+                      </Typography>
+                      <Typography variant="body1" fontWeight={900}>
+                        {formatMoney(confirmation.totals.total)}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            <Alert severity="success" sx={{ borderRadius: 2, mb: 3 }}>
+              Guardamos tu orden. El comercio coordinará la entrega usando los
+              datos de contacto indicados.
+            </Alert>
 
             <Button
               fullWidth
               variant="contained"
               size="large"
               onClick={handleResetAndGoHome}
-              sx={{ bgcolor: '#FFD814', color: '#000', fontWeight: 700 }}
+              sx={{ bgcolor: '#FFD814', color: '#000', fontWeight: 800 }}
             >
               Volver al inicio
             </Button>
@@ -2171,10 +2548,10 @@ const CheckoutPage = () => {
                             amount: Number(total.toFixed(2)),
                           }}
                           onSubmit={onPaymentSubmit}
-                          onReady={() => console.log('✅ Mercado Pago listo')}
+                          onReady={() => debugLog('✅ Mercado Pago listo')}
                           onError={error => {
-                            console.error('❌ Error MP:', error)
-                            window.alert(
+                            debugError('❌ Error MP:', error)
+                            alert(
                               `Error en el formulario de pago: ${
                                 error?.message || 'Error desconocido'
                               }`,

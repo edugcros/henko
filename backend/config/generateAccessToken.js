@@ -2,8 +2,8 @@
 import jwt from 'jsonwebtoken'
 import { env } from './env.js'
 
-const ISSUER = 'henko-commerce-api'
-const AUDIENCE = 'henko-commerce-client'
+const getIssuer = () => env.jwtIssuer || 'commerce-platform-api'
+const getAudience = () => env.jwtAudience || 'commerce-platform-client'
 const TOKEN_VERSION = 1
 const RESERVED_CLAIMS = new Set([
   'sub',
@@ -54,8 +54,8 @@ export const generateAccessToken = (userId, extraPayload = {}) => {
     sub: String(userId),
     tenantId: String(extraPayload.tenantId),
     role: String(extraPayload.role),
-    iss: ISSUER,
-    aud: AUDIENCE,
+    iss: getIssuer(),
+    aud: getAudience(),
     ver: TOKEN_VERSION,
   }
 

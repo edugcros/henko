@@ -44,10 +44,12 @@ export const replyEnquiry = asyncHandler(async (req, res) => {
   }
 
   try {
+    const safeMessage = validator.escape(message.trim())
+
     await sendEmail({
       to: enquiry.email,
       subject: `Respuesta a tu consulta: ${enquiry._id.toString().slice(-6)}`,
-      text: message,
+      text: message.trim(),
       html: `<div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee;">
               <h2>Hola ${enquiry.name},</h2>
               <p>Hemos respondido a tu consulta:</p>
@@ -55,7 +57,7 @@ export const replyEnquiry = asyncHandler(async (req, res) => {
                 ${enquiry.comment}
               </blockquote>
               <h3>Nuestra respuesta:</h3>
-              <p>${message}</p>
+              <p>${safeMessage}</p>
               <br/>
               <p>Saludos,<br/>Equipo de Soporte</p>
             </div>`,
@@ -81,8 +83,8 @@ export const replyEnquiry = asyncHandler(async (req, res) => {
 export const createEnquiry = asyncHandler(async (req, res) => {
   const { name, email, mobile, comment } = req.body
   
-  // 🔴 OBTENER TENANT: De body (form público) o de usuario autenticado
-  const tenantId = getTenantIdFromRequest(req, { allowBodyTenantId: true })
+  // El tenant público debe venir del dominio resuelto por middleware, no del body.
+  const tenantId = getTenantIdFromRequest(req, { allowBodyTenantId: false })
 
   // Si viene de un form público sin auth, el tenantId debe venir en el body
   // Si viene del admin, lo tomamos del usuario

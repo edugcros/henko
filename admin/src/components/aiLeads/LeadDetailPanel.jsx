@@ -20,6 +20,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever'
 import ClearIcon from '@mui/icons-material/Clear'
 import LeadStatusBadge from './LeadStatusBadge.jsx'
 import LeadScoreBadge from './LeadScoreBadge.jsx'
@@ -75,7 +76,7 @@ const getProductRef = product => {
   )
 }
 
-const ConfirmDialog = ({
+const ConfirmDialogComponent = ({
   open,
   title,
   description,
@@ -83,13 +84,24 @@ const ConfirmDialog = ({
   confirmLabel = 'Confirmar',
   loading = false,
   requireReason = false,
+  confirmationText = '',
   defaultReason = '',
   onClose,
   onConfirm,
 }) => {
   const [reason, setReason] = useState(defaultReason)
+  const [confirmation, setConfirmation] = useState('')
 
-  const canConfirm = !requireReason || Boolean(clean(reason))
+  React.useEffect(() => {
+    if (open) {
+      setReason(defaultReason)
+      setConfirmation('')
+    }
+  }, [defaultReason, open])
+
+  const canConfirm =
+    (!requireReason || Boolean(clean(reason))) &&
+    (!confirmationText || clean(confirmation) === confirmationText)
 
   return (
     <Dialog
@@ -122,6 +134,16 @@ const ConfirmDialog = ({
               disabled={loading}
             />
           )}
+
+          {confirmationText && (
+            <TextField
+              label={`Escribí ${confirmationText}`}
+              value={confirmation}
+              onChange={event => setConfirmation(event.target.value)}
+              fullWidth
+              disabled={loading}
+            />
+          )}
         </Stack>
       </DialogContent>
 
@@ -139,7 +161,9 @@ const ConfirmDialog = ({
           variant="contained"
           disabled={loading || !canConfirm}
           onClick={() => onConfirm?.(clean(reason))}
-          startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
+          startIcon={
+            loading ? <CircularProgress size={16} color="inherit" /> : null
+          }
           sx={{ textTransform: 'none', fontWeight: 900 }}
         >
           {confirmLabel}
@@ -158,6 +182,7 @@ const LeadDetailPanel = ({
   onMarkLost,
   onDiscard,
   onDelete,
+  onPermanentDelete,
   onRemoveProductOfInterest,
   onUpdateProductsOfInterest,
   loading,
@@ -169,7 +194,9 @@ const LeadDetailPanel = ({
   const customer = lead?.customer || {}
 
   const products = useMemo(() => {
-    return Array.isArray(lead?.productsOfInterest) ? lead.productsOfInterest : []
+    return Array.isArray(lead?.productsOfInterest)
+      ? lead.productsOfInterest
+      : []
   }, [lead?.productsOfInterest])
 
   if (!lead) {
@@ -243,7 +270,11 @@ const LeadDetailPanel = ({
   }
 
   const displayName =
-    lead.displayName || customer.name || customer.email || customer.phone || 'Cliente web'
+    lead.displayName ||
+    customer.name ||
+    customer.email ||
+    customer.phone ||
+    'Cliente web'
 
   return (
     <>
@@ -271,7 +302,11 @@ const LeadDetailPanel = ({
             <Stack direction="row" gap={1} flexWrap="wrap">
               <LeadStatusBadge status={lead.status} />
               <LeadScoreBadge score={lead.leadScore || lead.score} />
-              <Chip size="small" label={lead.intent || 'unknown'} variant="outlined" />
+              <Chip
+                size="small"
+                label={lead.intent || 'unknown'}
+                variant="outlined"
+              />
             </Stack>
           </Stack>
         </Box>
@@ -295,7 +330,10 @@ const LeadDetailPanel = ({
 
                   {customer.email && (
                     <Tooltip title="Copiar email">
-                      <IconButton size="small" onClick={() => copy(customer.email)}>
+                      <IconButton
+                        size="small"
+                        onClick={() => copy(customer.email)}
+                      >
                         <ContentCopyIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -310,7 +348,10 @@ const LeadDetailPanel = ({
                   {customer.phone && (
                     <>
                       <Tooltip title="Copiar teléfono">
-                        <IconButton size="small" onClick={() => copy(customer.phone)}>
+                        <IconButton
+                          size="small"
+                          onClick={() => copy(customer.phone)}
+                        >
                           <ContentCopyIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -402,7 +443,8 @@ const LeadDetailPanel = ({
                         severity: 'warning',
                         confirmLabel: 'Marcar perdido',
                         requireReason: true,
-                        defaultReason: 'Marcado como perdido desde bandeja comercial',
+                        defaultReason:
+                          'Marcado como perdido desde bandeja comercial',
                         onConfirm: async reason => {
                           await onMarkLost?.(reason)
                           closeConfirm()
@@ -460,7 +502,31 @@ const LeadDetailPanel = ({
                     }
                     disabled={loading}
                   >
-                    Eliminar
+                    Eliminar lógico
+                  </Button>
+
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="contained"
+                    startIcon={<DeleteForeverIcon />}
+                    onClick={() =>
+                      openConfirm({
+                        title: 'Eliminar lead de la base de datos',
+                        description:
+                          'Esta acción borra físicamente el lead. No queda disponible en la bandeja ni en reportes.',
+                        severity: 'error',
+                        confirmLabel: 'Eliminar de BD',
+                        confirmationText: 'ELIMINAR',
+                        onConfirm: async () => {
+                          await onPermanentDelete?.()
+                          closeConfirm()
+                        },
+                      })
+                    }
+                    disabled={loading}
+                  >
+                    Eliminar de BD
                   </Button>
                 </Stack>
               </Stack>
@@ -509,15 +575,25 @@ const LeadDetailPanel = ({
                         variant="outlined"
                         sx={{ p: 1.2, borderRadius: 2 }}
                       >
-                        <Stack direction="row" spacing={1} alignItems="flex-start">
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          alignItems="flex-start"
+                        >
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography variant="body2" fontWeight={800} noWrap>
                               {product.title || 'Producto'}
                             </Typography>
 
-                            <Typography variant="caption" color="text.secondary">
-                              {product.slug || product.sku || 'Sin slug/SKU'} · $
-                              {Number(product.price || 0).toLocaleString('es-AR')}
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {product.slug || product.sku || 'Sin slug/SKU'} ·
+                              $
+                              {Number(product.price || 0).toLocaleString(
+                                'es-AR',
+                              )}
                             </Typography>
 
                             {product.lastMentionedAt && (
@@ -526,7 +602,8 @@ const LeadDetailPanel = ({
                                 color="text.secondary"
                                 sx={{ display: 'block' }}
                               >
-                                Mencionado: {formatDate(product.lastMentionedAt)}
+                                Mencionado:{' '}
+                                {formatDate(product.lastMentionedAt)}
                               </Typography>
                             )}
                           </Box>
@@ -592,7 +669,8 @@ const LeadDetailPanel = ({
                     >
                       <Typography variant="body2">{item.text}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {item.createdByName || 'Admin'} · {formatDate(item.createdAt)}
+                        {item.createdByName || 'Admin'} ·{' '}
+                        {formatDate(item.createdAt)}
                       </Typography>
                     </Paper>
                   ))}
@@ -613,13 +691,14 @@ const LeadDetailPanel = ({
         />
       </Paper>
 
-      <ConfirmDialog
+      <ConfirmDialogComponent
         open={Boolean(confirmState)}
         title={confirmState?.title || ''}
         description={confirmState?.description || ''}
         severity={confirmState?.severity || 'warning'}
         confirmLabel={confirmState?.confirmLabel || 'Confirmar'}
         requireReason={Boolean(confirmState?.requireReason)}
+        confirmationText={confirmState?.confirmationText || ''}
         defaultReason={confirmState?.defaultReason || ''}
         loading={loading}
         onClose={closeConfirm}

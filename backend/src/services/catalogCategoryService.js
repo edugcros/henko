@@ -1,6 +1,17 @@
+// 📁 src/services/catalogCategoryService.js
+// VERSIÓN PRODUCCIÓN - MULTI-TENANT / CATEGORY-DRIVEN PRODUCT BUILDER
+
 import CatalogCategory from '../models/catalogCategoryModel.js'
 
-const ALLOWED_ATTRIBUTE_TYPES = ['select', 'color', 'text']
+const ALLOWED_ATTRIBUTE_TYPES = [
+  'text',
+  'textarea',
+  'number',
+  'select',
+  'multiselect',
+  'boolean',
+  'color',
+]
 
 const normalizeText = value => String(value || '').trim()
 
@@ -11,6 +22,13 @@ export const normalizeCatalogKey = value => {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
+}
+
+const normalizeBoolean = value => value === true || value === 'true'
+
+const normalizeNumber = (value, fallback = 0) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 const normalizeValues = values => {
@@ -28,6 +46,8 @@ const normalizeValues = values => {
 const mergeValues = (current = [], incoming = []) => {
   return normalizeValues([...current, ...incoming])
 }
+
+const toArray = value => (Array.isArray(value) ? value : [])
 
 const collectValuesByAttribute = variants => {
   const valuesByAttribute = new Map()
@@ -52,26 +72,45 @@ const collectValuesByAttribute = variants => {
   return valuesByAttribute
 }
 
+export const normalizeCatalogAttributeTemplate = (attribute, index = 0) => {
+  const name = normalizeCatalogKey(attribute?.name || attribute?.key || attribute?.label)
+  if (!name) return null
+
+  const type = ALLOWED_ATTRIBUTE_TYPES.includes(attribute?.type)
+    ? attribute.type
+    : 'text'
+
+  return {
+    name,
+    label: normalizeText(attribute?.label || attribute?.name || attribute?.key || name),
+    type,
+    values: normalizeValues(attribute?.values || attribute?.options),
+    unit: normalizeText(attribute?.unit),
+    group: normalizeText(attribute?.group || attribute?.section || 'General'),
+    required: normalizeBoolean(attribute?.required),
+    visible: attribute?.visible === false || attribute?.showInStorefront === false ? false : true,
+    filterable: normalizeBoolean(attribute?.filterable),
+    searchable: normalizeBoolean(attribute?.searchable),
+    sortOrder: Number.isFinite(Number(attribute?.sortOrder))
+      ? Number(attribute.sortOrder)
+      : index,
+    description: normalizeText(attribute?.description || attribute?.helpText),
+  }
+}
+
 export const normalizeVariantTemplate = ({ variantAttributes, variants }) => {
   const valuesByAttribute = collectValuesByAttribute(variants)
   const attributes = Array.isArray(variantAttributes) ? variantAttributes : []
   const result = new Map()
 
   for (const [index, attribute] of attributes.entries()) {
-    const name = normalizeCatalogKey(attribute?.name || attribute?.label)
-    if (!name) continue
+    const normalized = normalizeCatalogAttributeTemplate(attribute, index)
+    if (!normalized) continue
 
-    result.set(name, {
-      name,
-      label: normalizeText(attribute?.label || attribute?.name || name),
-      type: ALLOWED_ATTRIBUTE_TYPES.includes(attribute?.type)
-        ? attribute.type
-        : 'select',
-      values: mergeValues(attribute?.values, valuesByAttribute.get(name)),
-      required: attribute?.required === true,
-      sortOrder: Number.isFinite(Number(attribute?.sortOrder))
-        ? Number(attribute.sortOrder)
-        : index,
+    result.set(normalized.name, {
+      ...normalized,
+      type: ['select', 'color', 'text'].includes(normalized.type) ? normalized.type : 'select',
+      values: mergeValues(normalized.values, valuesByAttribute.get(normalized.name)),
     })
   }
 
@@ -82,38 +121,52 @@ export const normalizeVariantTemplate = ({ variantAttributes, variants }) => {
       label: name.charAt(0).toUpperCase() + name.slice(1).replace(/_/g, ' '),
       type: name === 'color' ? 'color' : 'select',
       values: normalizeValues(values),
+      unit: '',
+      group: 'Variantes',
       required: false,
+      visible: true,
+      filterable: true,
+      searchable: false,
       sortOrder: result.size,
+      description: '',
     })
   }
 
-  return [...result.values()]
+  return [...result.values()].sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+  )
+}
+
+export const normalizeProductTemplate = attributes => {
+  return toArray(attributes)
+    .map(normalizeCatalogAttributeTemplate)
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
 }
 
 const mergeAttributeTemplates = (current = [], incoming = [], replace = false) => {
   if (replace) return incoming
 
   const merged = new Map(
-    current.map(attribute => [
-      normalizeCatalogKey(attribute.name),
-      {
-        name: attribute.name,
-        label: attribute.label,
-        type: attribute.type,
-        values: normalizeValues(attribute.values),
-        required: attribute.required === true,
-        sortOrder: attribute.sortOrder,
-      },
-    ]),
+    toArray(current).map(attribute => {
+      const normalized = normalizeCatalogAttributeTemplate(attribute)
+      return normalized ? [normalized.name, normalized] : null
+    }).filter(Boolean),
   )
 
-  for (const attribute of incoming) {
+  for (const rawAttribute of incoming) {
+    const attribute = normalizeCatalogAttributeTemplate(rawAttribute)
+    if (!attribute) continue
+
     const previous = merged.get(attribute.name)
     merged.set(attribute.name, {
       ...previous,
       ...attribute,
       values: mergeValues(previous?.values, attribute.values),
-      required: replace ? attribute.required === true : previous?.required === true,
+      required: previous?.required === true || attribute.required === true,
+      visible: previous?.visible === false ? false : attribute.visible !== false,
+      filterable: previous?.filterable === true || attribute.filterable === true,
+      searchable: previous?.searchable === true || attribute.searchable === true,
     })
   }
 
@@ -122,11 +175,41 @@ const mergeAttributeTemplates = (current = [], incoming = [], replace = false) =
   )
 }
 
-export const upsertSubcategoryVariantTemplate = async ({
+const getSubcategoryByKey = (categoryDocument, subcategoryKey) => {
+  return categoryDocument.subcategories.find(
+    item => item.normalizedName === subcategoryKey,
+  )
+}
+
+const buildSubcategoryPayload = ({
+  subcategoryName,
+  subcategoryKey,
+  variantAttributes,
+  productAttributes,
+  productFields,
+  specifications,
+  requiredAttributes,
+}) => ({
+  name: subcategoryName,
+  normalizedName: subcategoryKey,
+  slug: subcategoryKey.replace(/_/g, '-'),
+  isActive: true,
+  variantAttributes,
+  productAttributes,
+  productFields,
+  specifications,
+  requiredAttributes,
+})
+
+export const upsertSubcategoryTemplate = async ({
   tenantId,
   category,
   subcategory,
   variantAttributes = [],
+  productAttributes = [],
+  productFields = [],
+  specifications = [],
+  requiredAttributes = [],
   variants = [],
   userId = null,
   replace = false,
@@ -138,10 +221,14 @@ export const upsertSubcategoryVariantTemplate = async ({
 
   if (!tenantId || !categoryKey || !subcategoryKey) return null
 
-  const incomingAttributes = normalizeVariantTemplate({
+  const incomingVariantAttributes = normalizeVariantTemplate({
     variantAttributes,
     variants,
   })
+  const incomingProductAttributes = normalizeProductTemplate(productAttributes)
+  const incomingProductFields = normalizeProductTemplate(productFields)
+  const incomingSpecifications = normalizeProductTemplate(specifications)
+  const incomingRequiredAttributes = normalizeProductTemplate(requiredAttributes)
 
   let categoryDocument = await CatalogCategory.findOne({
     tenantId,
@@ -160,23 +247,44 @@ export const upsertSubcategoryVariantTemplate = async ({
     })
   }
 
-  let subcategoryDocument = categoryDocument.subcategories.find(
-    item => item.normalizedName === subcategoryKey,
-  )
+  let subcategoryDocument = getSubcategoryByKey(categoryDocument, subcategoryKey)
 
   if (!subcategoryDocument) {
-    categoryDocument.subcategories.push({
-      name: subcategoryName,
-      normalizedName: subcategoryKey,
-      slug: subcategoryKey.replace(/_/g, '-'),
-      variantAttributes: incomingAttributes,
-    })
+    categoryDocument.subcategories.push(buildSubcategoryPayload({
+      subcategoryName,
+      subcategoryKey,
+      variantAttributes: incomingVariantAttributes,
+      productAttributes: incomingProductAttributes,
+      productFields: incomingProductFields,
+      specifications: incomingSpecifications,
+      requiredAttributes: incomingRequiredAttributes,
+    }))
   } else {
     subcategoryDocument.name = subcategoryName
     subcategoryDocument.isActive = true
     subcategoryDocument.variantAttributes = mergeAttributeTemplates(
       subcategoryDocument.variantAttributes,
-      incomingAttributes,
+      incomingVariantAttributes,
+      replace,
+    )
+    subcategoryDocument.productAttributes = mergeAttributeTemplates(
+      subcategoryDocument.productAttributes,
+      incomingProductAttributes,
+      replace,
+    )
+    subcategoryDocument.productFields = mergeAttributeTemplates(
+      subcategoryDocument.productFields,
+      incomingProductFields,
+      replace,
+    )
+    subcategoryDocument.specifications = mergeAttributeTemplates(
+      subcategoryDocument.specifications,
+      incomingSpecifications,
+      replace,
+    )
+    subcategoryDocument.requiredAttributes = mergeAttributeTemplates(
+      subcategoryDocument.requiredAttributes,
+      incomingRequiredAttributes,
       replace,
     )
   }
@@ -197,29 +305,53 @@ export const upsertSubcategoryVariantTemplate = async ({
 
     if (!concurrentDocument) throw error
 
-    const concurrentSubcategory = concurrentDocument.subcategories.find(
-      item => item.normalizedName === subcategoryKey,
-    )
+    const concurrentSubcategory = getSubcategoryByKey(concurrentDocument, subcategoryKey)
 
     if (concurrentSubcategory) {
       concurrentSubcategory.variantAttributes = mergeAttributeTemplates(
         concurrentSubcategory.variantAttributes,
-        incomingAttributes,
+        incomingVariantAttributes,
+        replace,
+      )
+      concurrentSubcategory.productAttributes = mergeAttributeTemplates(
+        concurrentSubcategory.productAttributes,
+        incomingProductAttributes,
+        replace,
+      )
+      concurrentSubcategory.productFields = mergeAttributeTemplates(
+        concurrentSubcategory.productFields,
+        incomingProductFields,
+        replace,
+      )
+      concurrentSubcategory.specifications = mergeAttributeTemplates(
+        concurrentSubcategory.specifications,
+        incomingSpecifications,
+        replace,
+      )
+      concurrentSubcategory.requiredAttributes = mergeAttributeTemplates(
+        concurrentSubcategory.requiredAttributes,
+        incomingRequiredAttributes,
         replace,
       )
     } else {
-      concurrentDocument.subcategories.push({
-        name: subcategoryName,
-        normalizedName: subcategoryKey,
-        slug: subcategoryKey.replace(/_/g, '-'),
-        variantAttributes: incomingAttributes,
-      })
+      concurrentDocument.subcategories.push(buildSubcategoryPayload({
+        subcategoryName,
+        subcategoryKey,
+        variantAttributes: incomingVariantAttributes,
+        productAttributes: incomingProductAttributes,
+        productFields: incomingProductFields,
+        specifications: incomingSpecifications,
+        requiredAttributes: incomingRequiredAttributes,
+      }))
     }
 
     concurrentDocument.updatedBy = userId
     return concurrentDocument.save()
   }
 }
+
+// Compatibilidad con controllers existentes.
+export const upsertSubcategoryVariantTemplate = upsertSubcategoryTemplate
 
 export const findCatalogCategory = async ({ tenantId, category }) => {
   const normalizedName = normalizeCatalogKey(category)

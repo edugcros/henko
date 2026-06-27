@@ -1,19 +1,20 @@
-// 📄 src/App.js y7jqS7.Q._UmUw*
+// 📄 src/App.js
 import React from 'react'
 import { ToastContainer } from 'react-toastify'
 import RouteRenderer from './routes/RouteRenderer'
-import { useAuth } from '@hooks/useAuth' // Hook personalizado para autenticación
-import SpinnerCentered from '@components/SpinnerCentered.jsx' // Opcional: o null
+import { useAuth } from '@hooks/useAuth'
+import SpinnerCentered from '@components/SpinnerCentered.jsx'
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth()
 
-  // 🌀 Esperar validación de token antes de continuar
-  if (isLoading) return <SpinnerCentered /> // o null
+  if (isLoading) {
+    return <SpinnerCentered />
+  }
 
   return (
     <>
-      <ToastContainer position="top-center" autoClose={3001} />
+      <ToastContainer position="top-center" autoClose={3000} />
       <RouteRenderer isLoggedIn={isAuthenticated} />
     </>
   )

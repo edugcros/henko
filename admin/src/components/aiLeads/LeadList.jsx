@@ -30,7 +30,7 @@ const getProductLabel = lead => {
   return product?.title || 'Sin producto detectado'
 }
 
-const LeadListSkeleton = () => (
+const LeadListSkeletonComponent = () => (
   <Box sx={{ p: 2 }}>
     {[1, 2, 3, 4].map(item => (
       <Box key={item} sx={{ mb: 2 }}>
@@ -43,7 +43,7 @@ const LeadListSkeleton = () => (
 )
 
 const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
-  if (loading) return <LeadListSkeleton />
+  if (loading) return <LeadListSkeletonComponent />
 
   if (!leads.length) {
     return (

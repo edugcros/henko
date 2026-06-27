@@ -20,7 +20,17 @@ export const notFound = (req, res) => {
 export const errorHandler = (err, req, res, next) => {
   if (res.headersSent) return next(err)
 
-  const statusCode = res.statusCode !== 200 ? res.statusCode : (err.status || 500)
+  const declaredStatus = Number(err.statusCode || err.status)
+  const safeDeclaredStatus =
+    Number.isInteger(declaredStatus) &&
+    declaredStatus >= 400 &&
+    declaredStatus <= 599
+      ? declaredStatus
+      : 500
+  const statusCode =
+    res.statusCode >= 400 && res.statusCode <= 599
+      ? res.statusCode
+      : safeDeclaredStatus
 
   // 1. Mongoose Validation
   if (err.name === 'ValidationError') {
@@ -41,7 +51,16 @@ export const errorHandler = (err, req, res, next) => {
     })
   }
 
-  // 3. CSRF (EBADCSRFTOKEN)
+  // 3. Conflicto por índice único
+  if (err.code === 11000) {
+    return res.status(409).json({
+      success: false,
+      error: 'Recurso duplicado',
+      message: 'Ya existe un recurso con esos datos únicos.',
+    })
+  }
+
+  // 4. CSRF (EBADCSRFTOKEN)
   if (err.code === 'EBADCSRFTOKEN') {
     return res.status(403).json({
       success: false,

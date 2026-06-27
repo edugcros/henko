@@ -237,9 +237,9 @@ export const createCouponUsageRecord = async ({
         discountAmountCents: discountCents,
         finalAmountCents: finalCents,
         currency,
-        ipAddress: req.clientContext?.ip || req.ip || null,
+        ipAddress: req?.clientContext?.ip || req?.ip || null,
         userAgent:
-          req.clientContext?.userAgent || req.headers['user-agent'] || null,
+          req?.clientContext?.userAgent || req?.headers?.['user-agent'] || null,
       },
     ],
     { session },

@@ -20,7 +20,20 @@ const ACTIVE_ORDER_STATUSES = [
   ORDER_STATUS.DELIVERED,
 ]
 
-const metricsConfig = env.metrics
+const metricsConfig = {
+  topProductsLimit: 10,
+  topPagesLimit: 10,
+  topSearchesLimit: 10,
+  trafficSourcesLimit: 10,
+  lowStockThreshold: 5,
+  internalPeriodDays: 30,
+  abandonedCartMinutes: 60,
+  latestAbandonedCartsLimit: 10,
+  abandonedCartProductPreviewLimit: 3,
+  realtimeWindowMinutes: 5,
+  ga4ProductPerformanceLimit: 10,
+  ...(env?.metrics || {}),
+}
 
 const loadGA4ReportingService = async () => {
   try {
@@ -54,7 +67,11 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     productStats,
     lowStockProducts,
     abandonedCartStats,
+    activeCartStats,
+    cartDailyStats,
     topProducts,
+    topVisitedProducts,
+    topClickedProducts,
     userBehaviorStats,
     realtimeStats,
     paymentStats,
@@ -65,17 +82,22 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     getProductStats(tenantId),
     getLowStockProducts(tenantId),
     getAbandonedCartStats(tenantId, dateRange),
+    getActiveCartStats(tenantId, dateRange),
+    getCartDailyStats(tenantId, dateRange),
     getTopSellingProducts(tenantId, dateRange, metricsConfig.topProductsLimit),
+    getTopVisitedProducts(tenantId, dateRange, metricsConfig.topProductsLimit),
+    getTopClickedProducts(tenantId, dateRange, metricsConfig.topProductsLimit),
     getUserBehaviorStats(tenantId, dateRange),
     getRealtimeStats(tenantId),
     getPaymentStats(tenantId, dateRange),
   ])
 
   const conversionRate = calculateRate(orderStats.paidOrders, userBehaviorStats.sessions)
-  const daily = mergeDailyMetrics(
+  const dailyWithCarts = mergeDailyMetrics(
     salesStats.dailyBreakdown,
     orderStats.dailyBreakdown,
     userBehaviorStats.dailyActivity,
+    cartDailyStats,
   )
   const funnel = buildInternalFunnel({
     userBehaviorStats,
@@ -114,6 +136,9 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
       conversions: orderStats.paidOrders,
       products: productStats.totalProducts,
       activeProducts: productStats.activeProducts,
+      activeCarts: activeCartStats.count,
+      activeCartValue: activeCartStats.value,
+      activeCartItems: activeCartStats.items,
       abandonedCarts: abandonedCartStats.count,
       abandonedCartValue: abandonedCartStats.value,
       abandonedCartItems: abandonedCartStats.items,
@@ -125,15 +150,19 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
       paymentApprovalRate: paymentStats.approvalRate,
     },
     lowStock: lowStockProducts,
+    activeCarts: activeCartStats,
     abandonedCarts: abandonedCartStats,
     topProducts,
+    topVisitedProducts,
+    topClickedProducts,
     userBehavior: userBehaviorStats,
     orderStatusBreakdown: orderStats.statusBreakdown,
     paymentStatusBreakdown: orderStats.paymentStatusBreakdown,
     trends: {
-      daily,
+      daily: dailyWithCarts,
       dailyRevenue: salesStats.dailyBreakdown,
       dailyOrders: orderStats.dailyBreakdown,
+      cartDaily: cartDailyStats,
     },
     traffic: {
       sources: userBehaviorStats.sources,
@@ -141,8 +170,16 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     ecommerce: {
       funnel,
       payment: paymentStats,
+      carts: {
+        active: activeCartStats,
+        abandoned: abandonedCartStats,
+      },
+      topVisitedProducts,
+      topClickedProducts,
+      topSellingProducts: topProducts,
     },
     definitions: {
+      activeCart: activeCartStats.definition,
       abandonedCart: abandonedCartStats.definition,
       conversionRate: {
         source: 'orders + storefront sessions',
@@ -245,6 +282,8 @@ const getOrderStats = async (tenantId, dateRange) => {
     createdAt: { $gte: dateRange.start, $lte: dateRange.end },
   }
 
+  const previousRangeMs = dateRange.end.getTime() - dateRange.start.getTime()
+
   const [stats, previousStats] = await Promise.all([
     Order.aggregate([
       { $match: matchStage },
@@ -259,22 +298,27 @@ const getOrderStats = async (tenantId, dateRange) => {
           },
           pendingOrders: {
             $sum: {
-              $cond: [{ $eq: ['$paymentStatus', 'pending'] }, 1, 0],
+              $cond: [{ $eq: ['$paymentStatus', PAYMENT_STATUS.PENDING] }, 1, 0],
             },
           },
-          totalAmount: { $sum: '$paymentIntent.amountCents' },
+          paidAmount: {
+            $sum: {
+              $cond: [
+                { $in: ['$paymentStatus', PAID_PAYMENT_STATUSES] },
+                { $ifNull: ['$paymentIntent.amountCents', 0] },
+                0,
+              ],
+            },
+          },
+          totalAmount: { $sum: { $ifNull: ['$paymentIntent.amountCents', 0] } },
           daily: {
             $push: {
               date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
               count: 1,
             },
           },
-          statusBreakdown: {
-            $push: '$orderStatus',
-          },
-          paymentStatusBreakdown: {
-            $push: '$paymentStatus',
-          },
+          statusBreakdown: { $push: '$orderStatus' },
+          paymentStatusBreakdown: { $push: '$paymentStatus' },
         },
       },
     ]),
@@ -284,8 +328,8 @@ const getOrderStats = async (tenantId, dateRange) => {
         $match: {
           ...matchStage,
           createdAt: {
-            $gte: new Date(dateRange.start.getTime() - (dateRange.end - dateRange.start)),
-            $lte: dateRange.start,
+            $gte: new Date(dateRange.start.getTime() - previousRangeMs),
+            $lt: dateRange.start,
           },
         },
       },
@@ -293,21 +337,30 @@ const getOrderStats = async (tenantId, dateRange) => {
     ]),
   ])
 
-  const current = stats[0] || { totalOrders: 0, totalAmount: 0, daily: [], statusBreakdown: [] }
+  const current = stats[0] || {
+    totalOrders: 0,
+    paidOrders: 0,
+    pendingOrders: 0,
+    paidAmount: 0,
+    totalAmount: 0,
+    daily: [],
+    statusBreakdown: [],
+    paymentStatusBreakdown: [],
+  }
   const previous = previousStats[0] || { totalOrders: 0 }
 
   const growth = previous.totalOrders > 0
     ? ((current.totalOrders - previous.totalOrders) / previous.totalOrders * 100).toFixed(2)
     : 0
 
-  // Calcular AOV (Average Order Value)
-  const aov = current.totalOrders > 0
-    ? Money.toDecimal(current.totalAmount) / current.totalOrders
+  // AOV real: revenue pagado / órdenes pagadas.
+  const paidOrders = current.paidOrders || 0
+  const aov = paidOrders > 0
+    ? Money.toDecimal(current.paidAmount || 0) / paidOrders
     : 0
 
-  // Breakdown por status
-  const statusCounts = current.statusBreakdown.reduce((acc, status) => {
-    acc[status] = (acc[status] || 0) + 1
+  const statusCounts = (current.statusBreakdown || []).reduce((acc, status) => {
+    acc[status || 'unknown'] = (acc[status || 'unknown'] || 0) + 1
     return acc
   }, {})
 
@@ -317,8 +370,8 @@ const getOrderStats = async (tenantId, dateRange) => {
   }, {})
 
   return {
-    totalOrders: current.totalOrders,
-    paidOrders: current.paidOrders || 0,
+    totalOrders: current.totalOrders || 0,
+    paidOrders,
     pendingOrders: current.pendingOrders || 0,
     averageOrderValue: parseFloat(aov.toFixed(2)),
     growth: parseFloat(growth),
@@ -362,12 +415,74 @@ const getUserStats = async (tenantId, dateRange) => {
 // 5. ANÁLISIS DE PRODUCTOS
 // ============================================================================
 
+const buildEffectiveStockExpression = () => ({
+  $cond: [
+    { $gt: [{ $size: { $ifNull: ['$variants', []] } }, 0] },
+    {
+      $sum: {
+        $map: {
+          input: {
+            $filter: {
+              input: { $ifNull: ['$variants', []] },
+              as: 'variant',
+              cond: { $ne: ['$$variant.isActive', false] },
+            },
+          },
+          as: 'variant',
+          in: { $ifNull: ['$$variant.stock', 0] },
+        },
+      },
+    },
+    { $ifNull: ['$stock', 0] },
+  ],
+})
+
+const buildInventoryValueExpression = () => ({
+  $cond: [
+    { $gt: [{ $size: { $ifNull: ['$variants', []] } }, 0] },
+    {
+      $sum: {
+        $map: {
+          input: {
+            $filter: {
+              input: { $ifNull: ['$variants', []] },
+              as: 'variant',
+              cond: { $ne: ['$$variant.isActive', false] },
+            },
+          },
+          as: 'variant',
+          in: {
+            $multiply: [
+              { $ifNull: ['$$variant.price', { $ifNull: ['$price', 0] }] },
+              { $ifNull: ['$$variant.stock', 0] },
+            ],
+          },
+        },
+      },
+    },
+    {
+      $multiply: [
+        { $ifNull: ['$price', 0] },
+        { $ifNull: ['$stock', 0] },
+      ],
+    },
+  ],
+})
+
 const getProductStats = async tenantId => {
+  const threshold = Number(metricsConfig.lowStockThreshold || 5)
+
   const stats = await Product.aggregate([
     {
       $match: {
         tenantId: new mongoose.Types.ObjectId(tenantId),
         isDeleted: false,
+      },
+    },
+    {
+      $addFields: {
+        effectiveStock: buildEffectiveStockExpression(),
+        inventoryValue: buildInventoryValueExpression(),
       },
     },
     {
@@ -378,15 +493,15 @@ const getProductStats = async tenantId => {
           $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] },
         },
         outOfStock: {
-          $sum: { $cond: [{ $lte: ['$stock', 0] }, 1, 0] },
+          $sum: { $cond: [{ $lte: ['$effectiveStock', 0] }, 1, 0] },
         },
         lowStock: {
           $sum: {
             $cond: [
               {
                 $and: [
-                  { $gt: ['$stock', 0] },
-                  { $lte: ['$stock', { $ifNull: ['$minStockAlert', metricsConfig.lowStockThreshold] }] },
+                  { $gt: ['$effectiveStock', 0] },
+                  { $lte: ['$effectiveStock', { $ifNull: ['$minStockAlert', threshold] }] },
                 ],
               },
               1,
@@ -394,9 +509,7 @@ const getProductStats = async tenantId => {
             ],
           },
         },
-        totalInventoryValue: {
-          $sum: { $multiply: ['$price', '$stock'] },
-        },
+        totalInventoryValue: { $sum: '$inventoryValue' },
       },
     },
   ])
@@ -419,23 +532,48 @@ const getProductStats = async tenantId => {
 }
 
 const getLowStockProducts = async (tenantId, limit = metricsConfig.topProductsLimit) => {
-  const products = await Product.find({
-    tenantId: new mongoose.Types.ObjectId(tenantId),
-    isDeleted: false,
-    $expr: { $lte: ['$stock', { $ifNull: ['$minStockAlert', metricsConfig.lowStockThreshold] }] },
-    stock: { $gt: 0 },
-  })
-    .select('title name sku stock minStockAlert price images')
-    .sort({ stock: 1 })
-    .limit(limit)
-    .lean()
+  const threshold = Number(metricsConfig.lowStockThreshold || 5)
+
+  const products = await Product.aggregate([
+    {
+      $match: {
+        tenantId: new mongoose.Types.ObjectId(tenantId),
+        isDeleted: false,
+      },
+    },
+    {
+      $addFields: {
+        effectiveStock: buildEffectiveStockExpression(),
+        effectiveMinStock: { $ifNull: ['$minStockAlert', threshold] },
+      },
+    },
+    {
+      $match: {
+        effectiveStock: { $gt: 0 },
+        $expr: { $lte: ['$effectiveStock', '$effectiveMinStock'] },
+      },
+    },
+    { $sort: { effectiveStock: 1 } },
+    { $limit: Number(limit || 10) },
+    {
+      $project: {
+        title: 1,
+        name: 1,
+        sku: 1,
+        stock: '$effectiveStock',
+        minStockAlert: '$effectiveMinStock',
+        price: 1,
+        images: 1,
+      },
+    },
+  ])
 
   return products.map(p => ({
     id: p._id,
     name: p.title || p.name,
     sku: p.sku,
     currentStock: p.stock,
-    minStock: p.minStockAlert || metricsConfig.lowStockThreshold,
+    minStock: p.minStockAlert || threshold,
     stockStatus: p.stock === 0 ? 'out_of_stock' : 'low_stock',
     price: Money.toDecimal(p.price),
     image: p.images?.[0]?.url || null,
@@ -568,7 +706,10 @@ const getGA4ReportingStats = async (tenant, ga4) => {
       }
     }
 
-    const service = new GA4ReportingService(ga4.serviceAccountKey)
+    const service = new GA4ReportingService(
+      ga4.serviceAccountKey,
+      ga4.propertyId,
+    )
     
     // Período configurado para métricas internas.
     const endDate = new Date().toISOString().split('T')[0]
@@ -650,7 +791,7 @@ const getInternalMarketingStats = async tenantId => {
     end: new Date(),
   }
 
-  const [orders, abandonedCarts, topProducts] = await Promise.all([
+  const [orders, activeCarts, abandonedCarts, topProducts, topVisitedProducts] = await Promise.all([
     // Órdenes completadas
     Order.aggregate([
       {
@@ -671,6 +812,7 @@ const getInternalMarketingStats = async tenantId => {
       },
     ]),
 
+    getActiveCartStats(tenantId, dateRange),
     getAbandonedCartStats(tenantId, dateRange),
 
     // Top productos vendidos
@@ -695,6 +837,8 @@ const getInternalMarketingStats = async tenantId => {
       { $sort: { revenue: -1 } },
       { $limit: metricsConfig.topProductsLimit },
     ]),
+
+    getTopVisitedProducts(tenantId, dateRange, metricsConfig.topProductsLimit),
   ])
 
   const orderStats = orders[0] || { count: 0, revenue: 0, avgOrderValue: 0 }
@@ -703,8 +847,11 @@ const getInternalMarketingStats = async tenantId => {
     orders: orderStats.count,
     revenue: Money.toDecimal(orderStats.revenue),
     averageOrderValue: Money.toDecimal(orderStats.avgOrderValue || 0),
+    activeCarts: activeCarts.count,
+    activeCartValue: activeCarts.value,
     abandonedCarts: abandonedCarts.count,
     conversionRate: calculateRate(orderStats.count, abandonedCarts.count + orderStats.count),
+    topVisitedProducts,
     topProducts: topProducts.map(p => ({
       productId: p._id,
       name: p.name,
@@ -727,28 +874,33 @@ const getDateRange = timeframe => {
   end.setHours(23, 59, 59, 999)
 
   let start = new Date(now)
+  const normalized = String(timeframe || '30d').trim().toLowerCase()
+  const dynamicDaysMatch = normalized.match(/^(\d+)d$/)
 
-  switch (timeframe) {
-  case '7d':
-    start.setDate(start.getDate() - 7)
-    break
-  case '30d':
-    start.setDate(start.getDate() - 30)
-    break
-  case '90d':
-    start.setDate(start.getDate() - 90)
-    break
-  case '1y':
-    start.setFullYear(start.getFullYear() - 1)
-    break
-  case 'mtd':
-    start.setDate(1)
-    break
-  case 'ytd':
-    start.setMonth(0, 1)
-    break
-  default:
-    start.setDate(start.getDate() - 30)
+  if (dynamicDaysMatch) {
+    const days = Math.min(Math.max(Number(dynamicDaysMatch[1]), 1), 730)
+    start.setDate(start.getDate() - days)
+  } else {
+    switch (normalized) {
+    case 'mtd':
+      start.setDate(1)
+      break
+    case 'ytd':
+      start.setMonth(0, 1)
+      break
+    case '1y':
+      start.setFullYear(start.getFullYear() - 1)
+      break
+    case '90d':
+      start.setDate(start.getDate() - 90)
+      break
+    case '7d':
+      start.setDate(start.getDate() - 7)
+      break
+    case '30d':
+    default:
+      start.setDate(start.getDate() - 30)
+    }
   }
 
   start.setHours(0, 0, 0, 0)
@@ -856,6 +1008,326 @@ export const getExportableStats = async (tenantId, startDate, endDate) => {
   }))
 }
 
+
+const getCartValueExpression = () => ({
+  $cond: [
+    { $gt: [{ $ifNull: ['$totalAfterDiscount', 0] }, 0] },
+    { $ifNull: ['$totalAfterDiscount', 0] },
+    { $ifNull: ['$cartTotal', 0] },
+  ],
+})
+
+const buildCartProductPreviewExpression = productPreviewLimit => ({
+  $slice: [
+    {
+      $map: {
+        input: '$products',
+        as: 'product',
+        in: {
+          productId: '$$product.productId',
+          title: {
+            $ifNull: [
+              '$$product.title',
+              { $ifNull: ['$$product.name', 'Producto'] },
+            ],
+          },
+          quantity: { $ifNull: ['$$product.quantity', 1] },
+          subtotal: {
+            $ifNull: [
+              '$$product.subtotal',
+              {
+                $multiply: [
+                  { $ifNull: ['$$product.price', 0] },
+                  { $ifNull: ['$$product.quantity', 1] },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    },
+    productPreviewLimit,
+  ],
+})
+
+const getActiveCartStats = async (tenantId, dateRange) => {
+  const thresholdMinutes = Number(metricsConfig.abandonedCartMinutes || 60)
+  const thresholdMs = thresholdMinutes * 60 * 1000
+  const activeSince = new Date(Date.now() - thresholdMs)
+  const latestLimit = Number(metricsConfig.latestAbandonedCartsLimit || 10)
+  const productPreviewLimit = Number(metricsConfig.abandonedCartProductPreviewLimit || 3)
+  const tenantObjectId = new mongoose.Types.ObjectId(tenantId)
+
+  const carts = await Cart.aggregate([
+    {
+      $match: {
+        tenantId: tenantObjectId,
+        updatedAt: {
+          $gte: activeSince,
+          $lte: dateRange.end,
+        },
+        products: { $exists: true, $ne: [] },
+      },
+    },
+    {
+      $project: {
+        userId: 1,
+        updatedAt: 1,
+        itemCount: { $sum: '$products.quantity' },
+        value: getCartValueExpression(),
+        products: buildCartProductPreviewExpression(productPreviewLimit),
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        count: { $sum: 1 },
+        value: { $sum: '$value' },
+        items: { $sum: '$itemCount' },
+        latest: {
+          $push: {
+            cartId: '$_id',
+            userId: '$userId',
+            updatedAt: '$updatedAt',
+            itemCount: '$itemCount',
+            value: '$value',
+            products: '$products',
+          },
+        },
+      },
+    },
+  ])
+
+  const result = carts[0] || { count: 0, value: 0, items: 0, latest: [] }
+
+  return {
+    count: result.count || 0,
+    value: Number(result.value || 0),
+    items: result.items || 0,
+    definition: {
+      source: 'Cart',
+      countedWhen:
+        'El carrito pertenece al tenant, tiene productos y fue actualizado dentro del umbral configurado.',
+      dateField: 'updatedAt',
+      activeSince,
+      periodEnd: dateRange.end,
+      thresholdMinutes,
+      valueField: 'totalAfterDiscount si es mayor a 0; si no, cartTotal',
+      productPreviewLimit,
+      latestLimit,
+    },
+    latest: (result.latest || [])
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+      .slice(0, latestLimit),
+  }
+}
+
+const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.topProductsLimit) => {
+  const tenantObjectId = new mongoose.Types.ObjectId(tenantId)
+  const safeLimit = Math.max(1, Math.min(50, Number(limit || 10)))
+
+  const rows = await UserMetricEvent.aggregate([
+    {
+      $match: {
+        tenantId: tenantObjectId,
+        occurredAt: { $gte: dateRange.start, $lte: dateRange.end },
+        eventType: {
+          $in: [
+            USER_METRIC_EVENTS.PRODUCT_VIEW,
+            USER_METRIC_EVENTS.PRODUCT_CLICK,
+            USER_METRIC_EVENTS.ADD_TO_CART,
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        productKey: {
+          $cond: [
+            { $ne: ['$productId', null] },
+            { $toString: '$productId' },
+            {
+              $ifNull: [
+                '$productRef',
+                {
+                  $ifNull: [
+                    '$metadata.productId',
+                    { $ifNull: ['$metadata.productPath', 'unknown'] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        productObjectId: {
+          $cond: [
+            { $eq: [{ $type: '$productId' }, 'objectId'] },
+            '$productId',
+            null,
+          ],
+        },
+      },
+    },
+    {
+      $match: {
+        productKey: { $nin: ['', null, 'unknown'] },
+      },
+    },
+    {
+      $group: {
+        _id: '$productKey',
+        productObjectId: { $first: '$productObjectId' },
+        titleFromEvent: {
+          $first: {
+            $ifNull: [
+              '$metadata.title',
+              { $ifNull: ['$metadata.productTitle', 'Producto'] },
+            ],
+          },
+        },
+        views: {
+          $sum: {
+            $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.PRODUCT_VIEW] }, 1, 0],
+          },
+        },
+        clicks: {
+          $sum: {
+            $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.PRODUCT_CLICK] }, 1, 0],
+          },
+        },
+        addToCart: {
+          $sum: {
+            $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.ADD_TO_CART] }, 1, 0],
+          },
+        },
+        sessions: { $addToSet: '$sessionId' },
+        value: { $sum: '$value' },
+      },
+    },
+    {
+      $lookup: {
+        from: Product.collection.name,
+        localField: 'productObjectId',
+        foreignField: '_id',
+        as: 'product',
+      },
+    },
+    {
+      $addFields: {
+        product: { $arrayElemAt: ['$product', 0] },
+      },
+    },
+    { $sort: { views: -1, addToCart: -1, clicks: -1 } },
+    { $limit: safeLimit },
+    {
+      $project: {
+        _id: 0,
+        productId: '$_id',
+        title: {
+          $ifNull: [
+            '$product.title',
+            { $ifNull: ['$titleFromEvent', 'Producto'] },
+          ],
+        },
+        sku: '$product.sku',
+        slug: '$product.slug',
+        image: { $arrayElemAt: ['$product.images.url', 0] },
+        views: 1,
+        clicks: 1,
+        addToCart: 1,
+        sessions: { $size: '$sessions' },
+        value: 1,
+      },
+    },
+  ])
+
+  return rows.map(row => ({
+    ...row,
+    conversionRate: calculateRate(row.addToCart, row.views),
+    clickThroughRate: calculateRate(row.clicks, row.views),
+  }))
+}
+
+const getCartDailyStats = async (tenantId, dateRange) => {
+  const thresholdMinutes = Number(metricsConfig.abandonedCartMinutes || 60)
+  const thresholdMs = thresholdMinutes * 60 * 1000
+  const abandonedBefore = new Date(Date.now() - thresholdMs)
+  const tenantObjectId = new mongoose.Types.ObjectId(tenantId)
+
+  const rows = await Cart.aggregate([
+    {
+      $match: {
+        tenantId: tenantObjectId,
+        updatedAt: { $gte: dateRange.start, $lte: dateRange.end },
+        products: { $exists: true, $ne: [] },
+      },
+    },
+    {
+      $project: {
+        date: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$updatedAt',
+          },
+        },
+        itemCount: { $sum: '$products.quantity' },
+        value: {
+          $cond: [
+            { $gt: ['$totalAfterDiscount', 0] },
+            '$totalAfterDiscount',
+            '$cartTotal',
+          ],
+        },
+        isAbandoned: { $lte: ['$updatedAt', abandonedBefore] },
+      },
+    },
+    {
+      $group: {
+        _id: '$date',
+        carts: { $sum: 1 },
+        activeCarts: {
+          $sum: {
+            $cond: ['$isAbandoned', 0, 1],
+          },
+        },
+        abandonedCarts: {
+          $sum: {
+            $cond: ['$isAbandoned', 1, 0],
+          },
+        },
+        cartItems: { $sum: '$itemCount' },
+        cartValue: { $sum: '$value' },
+        activeCartValue: {
+          $sum: {
+            $cond: ['$isAbandoned', 0, '$value'],
+          },
+        },
+        abandonedCartValue: {
+          $sum: {
+            $cond: ['$isAbandoned', '$value', 0],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        date: '$_id',
+        carts: 1,
+        activeCarts: 1,
+        abandonedCarts: 1,
+        cartItems: 1,
+        cartValue: 1,
+        activeCartValue: 1,
+        abandonedCartValue: 1,
+      },
+    },
+    { $sort: { date: 1 } },
+  ])
+
+  return fillMissingDays(rows, dateRange.start, dateRange.end)
+}
+
 const getAbandonedCartStats = async (tenantId, dateRange) => {
   const thresholdMinutes = metricsConfig.abandonedCartMinutes
   const thresholdMs = thresholdMinutes * 60 * 1000
@@ -879,30 +1351,8 @@ const getAbandonedCartStats = async (tenantId, dateRange) => {
         userId: 1,
         updatedAt: 1,
         itemCount: { $sum: '$products.quantity' },
-        value: {
-          $cond: [
-            { $gt: ['$totalAfterDiscount', 0] },
-            '$totalAfterDiscount',
-            '$cartTotal',
-          ],
-        },
-        products: {
-          $slice: [
-            {
-              $map: {
-                input: '$products',
-                as: 'product',
-                in: {
-                  productId: '$$product.productId',
-                  title: '$$product.title',
-                  quantity: '$$product.quantity',
-                  subtotal: '$$product.subtotal',
-                },
-              },
-            },
-            productPreviewLimit,
-          ],
-        },
+        value: getCartValueExpression(),
+        products: buildCartProductPreviewExpression(productPreviewLimit),
       },
     },
     {
@@ -962,16 +1412,64 @@ const getTopSellingProducts = async (tenantId, dateRange, limit = metricsConfig.
     },
     { $unwind: '$products' },
     {
+      $addFields: {
+        normalizedProductId: {
+          $ifNull: ['$products.product', '$products.productId'],
+        },
+        normalizedTitle: {
+          $ifNull: [
+            '$products.titleSnapshot',
+            { $ifNull: ['$products.title', { $ifNull: ['$products.name', 'Producto'] }] },
+          ],
+        },
+        normalizedSku: {
+          $ifNull: [
+            '$products.skuSnapshot',
+            { $ifNull: ['$products.sku', { $ifNull: ['$products.variantSku', null] }] },
+          ],
+        },
+        normalizedQuantity: {
+          $ifNull: ['$products.count', { $ifNull: ['$products.quantity', 1] }],
+        },
+        normalizedRevenueCents: {
+          $ifNull: [
+            '$products.subtotalCents',
+            {
+              $round: [
+                {
+                  $multiply: [
+                    {
+                      $ifNull: [
+                        '$products.subtotal',
+                        {
+                          $multiply: [
+                            { $ifNull: ['$products.price', 0] },
+                            { $ifNull: ['$products.quantity', 1] },
+                          ],
+                        },
+                      ],
+                    },
+                    100,
+                  ],
+                },
+                0,
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
       $group: {
-        _id: '$products.product',
-        title: { $first: '$products.titleSnapshot' },
-        sku: { $first: '$products.skuSnapshot' },
-        quantity: { $sum: '$products.count' },
-        revenueCents: { $sum: '$products.subtotalCents' },
+        _id: '$normalizedProductId',
+        title: { $first: '$normalizedTitle' },
+        sku: { $first: '$normalizedSku' },
+        quantity: { $sum: '$normalizedQuantity' },
+        revenueCents: { $sum: '$normalizedRevenueCents' },
       },
     },
     { $sort: { revenueCents: -1 } },
-    { $limit: limit },
+    { $limit: Number(limit || 10) },
   ])
 
   return rows.map(row => ({
@@ -981,6 +1479,98 @@ const getTopSellingProducts = async (tenantId, dateRange, limit = metricsConfig.
     quantity: row.quantity || 0,
     revenue: Money.toDecimal(row.revenueCents || 0),
   }))
+}
+
+const getTopClickedProducts = async (
+  tenantId,
+  dateRange,
+  limit = metricsConfig.topProductsLimit,
+) => {
+  const tenantObjectId = new mongoose.Types.ObjectId(tenantId)
+
+  const rows = await UserMetricEvent.aggregate([
+    {
+      $match: {
+        tenantId: tenantObjectId,
+        occurredAt: { $gte: dateRange.start, $lte: dateRange.end },
+        eventType: USER_METRIC_EVENTS.PRODUCT_CLICK,
+      },
+    },
+    {
+      $addFields: {
+        normalizedProductId: {
+          $ifNull: [
+            '$productId',
+            {
+              $ifNull: ['$productRef', '$metadata.productId'],
+            },
+          ],
+        },
+      },
+    },
+    {
+      $match: {
+        normalizedProductId: { $nin: [null, ''] },
+      },
+    },
+    {
+      $group: {
+        _id: '$normalizedProductId',
+        clicks: { $sum: 1 },
+        sessions: { $addToSet: '$sessionId' },
+        users: { $addToSet: '$userId' },
+        lastClickedAt: { $max: '$occurredAt' },
+        value: { $sum: '$value' },
+      },
+    },
+    {
+      $sort: { clicks: -1 },
+    },
+    {
+      $limit: Number(limit || 10),
+    },
+  ])
+
+  const validProductObjectIds = rows
+    .map(row => String(row._id || ''))
+    .filter(id => mongoose.Types.ObjectId.isValid(id))
+    .map(id => new mongoose.Types.ObjectId(id))
+
+  const products = validProductObjectIds.length
+    ? await Product.find({
+      _id: { $in: validProductObjectIds },
+      tenantId: tenantObjectId,
+    })
+      .select('title name slug sku images price categoria category marca brand')
+      .lean()
+    : []
+
+  const productMap = new Map(
+    products.map(product => [String(product._id), product]),
+  )
+
+  return rows.map(row => {
+    const productId = String(row._id || '')
+    const product = productMap.get(productId)
+
+    const users = (row.users || []).filter(Boolean)
+
+    return {
+      productId,
+      title: product?.title || product?.name || 'Producto',
+      slug: product?.slug || null,
+      sku: product?.sku || null,
+      category: product?.categoria || product?.category || null,
+      brand: product?.marca || product?.brand || null,
+      image: product?.images?.[0]?.url || null,
+      price: Money.toDecimal(product?.price || 0),
+      clicks: row.clicks || 0,
+      sessions: row.sessions?.length || 0,
+      users: users.length,
+      value: Number(row.value || 0),
+      lastClickedAt: row.lastClickedAt || null,
+    }
+  })
 }
 
 const getRealtimeStats = async tenantId => {
@@ -1412,13 +2002,20 @@ const calculateRate = (numerator, denominator) => {
   return Number(((Number(numerator || 0) / base) * 100).toFixed(2))
 }
 
-const mergeDailyMetrics = (revenueRows = [], orderRows = [], activityRows = []) => {
+const mergeDailyMetrics = (
+  revenueRows = [],
+  orderRows = [],
+  activityRows = [],
+  cartRows = [],
+) => {
   const orderMap = new Map(orderRows.map(row => [row.date, row]))
   const activityMap = new Map(activityRows.map(row => [row.date, row]))
+  const cartMap = new Map(cartRows.map(row => [row.date, row]))
 
   return revenueRows.map(row => {
     const orders = orderMap.get(row.date)?.orders || 0
     const activity = activityMap.get(row.date) || {}
+    const carts = cartMap.get(row.date) || {}
 
     return {
       date: row.date,
@@ -1430,6 +2027,14 @@ const mergeDailyMetrics = (revenueRows = [], orderRows = [], activityRows = []) 
       addToCart: activity.addToCart || 0,
       checkoutStarts: activity.checkoutStarts || 0,
       conversions: orders,
+
+      carts: carts.carts || 0,
+      activeCarts: carts.activeCarts || 0,
+      abandonedCarts: carts.abandonedCarts || 0,
+      cartItems: carts.cartItems || 0,
+      cartValue: carts.cartValue || 0,
+      activeCartValue: carts.activeCartValue || 0,
+      abandonedCartValue: carts.abandonedCartValue || 0,
     }
   })
 }

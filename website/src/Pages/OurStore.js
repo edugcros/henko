@@ -81,14 +81,29 @@ const getDiscountedPrice = (price, discountPercentage) => {
   return Math.max(0, basePrice - basePrice * (discount / 100))
 }
 
+const PUBLIC_PROMOTION_VISIBILITIES = new Set([
+  'public',
+  'visible',
+  'published',
+])
+
+const isPublicPromotionBlock = block => {
+  if (!block || block.isActive === false) return false
+
+  const visibility = String(block.visibility || 'public')
+    .trim()
+    .toLowerCase()
+
+  return PUBLIC_PROMOTION_VISIBILITIES.has(visibility)
+}
+
 const findPromotionForProduct = (product, promotionalBlocks = []) => {
   if (!product?._id || !Array.isArray(promotionalBlocks)) return null
 
   const productId = getEntityId(product._id)
 
   for (const block of promotionalBlocks) {
-    if (!block?.isActive) continue
-    if (block?.visibility && block.visibility !== 'public') continue
+    if (!isPublicPromotionBlock(block)) continue
 
     const items = Array.isArray(block.products) ? block.products : []
 
@@ -103,7 +118,7 @@ const findPromotionForProduct = (product, promotionalBlocks = []) => {
 
     if (match) {
       const discountPercentage = Number(match.discountPercentage || 0)
-      const originalPrice = Number(product.price || 0)
+      const originalPrice = Number(product.finalPrice ?? product.price ?? 0)
       const finalPrice = getDiscountedPrice(originalPrice, discountPercentage)
 
       return {
@@ -208,15 +223,32 @@ const removeVariantFilterParams = params => {
 const OurStore = () => {
   const dispatch = useDispatch()
   const {
-    products = [],
-    categories = [],
-    facets = [],
-    isLoading,
-    isCategoriesLoading,
-    meta,
-  } = useSelector(state => state.product)
+    products: rawProducts = [],
+    categories: rawCategories = [],
+    facets: rawFacets = [],
+    isLoading = false,
+    isCategoriesLoading = false,
+    meta = {},
+  } = useSelector(state => state.product || {})
 
-  const promotionalBlocks = useSelector(selectPublicPromotionalBlocks)
+  const products = useMemo(
+    () => (Array.isArray(rawProducts) ? rawProducts : []),
+    [rawProducts],
+  )
+  const categories = useMemo(
+    () => (Array.isArray(rawCategories) ? rawCategories : []),
+    [rawCategories],
+  )
+  const facets = useMemo(
+    () => (Array.isArray(rawFacets) ? rawFacets : []),
+    [rawFacets],
+  )
+
+  const rawPromotionalBlocks = useSelector(selectPublicPromotionalBlocks)
+  const promotionalBlocks = useMemo(
+    () => (Array.isArray(rawPromotionalBlocks) ? rawPromotionalBlocks : []),
+    [rawPromotionalBlocks],
+  )
   const themeState = useSelector(state => state.theme) || {}
   const activeThemeConfig = useMemo(
     () => getActiveThemeConfig(themeState),
@@ -269,7 +301,7 @@ const OurStore = () => {
         : undefined,
     [selectedVariantFilters],
   )
-  const { track, events } = useUserMetrics({ trackPageViews: false })
+  const { track, events } = useUserMetrics({ trackPageViews: true })
 
   useEffect(() => {
     setSearchInput(searchQuery)
@@ -456,7 +488,9 @@ const OurStore = () => {
   const handlePageChange = useCallback(
     (_, value) => {
       updateFilters({ page: value })
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
     },
     [updateFilters],
   )
@@ -627,7 +661,7 @@ const OurStore = () => {
               elevation={3}
               sx={{
                 p: `${spacingTheme.cardPadding}px`,
-                mr: 5,
+                mr: { xs: 0, md: 5 },
                 borderRadius: 4,
                 border: '1px solid',
                 borderColor: themeColors.cardBorder,
@@ -928,14 +962,14 @@ const OurStore = () => {
           </Box>
 
           {/* Contenido */}
-          <Box flex="1" width="100%" ml={4}>
+          <Box flex="1" width="100%" sx={{ ml: { xs: 0, md: 4 } }}>
             <Paper
               component="form"
               onSubmit={handleSearchSubmit}
               sx={{
                 p: `${spacingTheme.cardPadding}px`,
                 mb: 3,
-                borderRadius1: 4,
+                borderRadius: 4,
                 border: '1px solid',
                 borderColor: Newprimary.WhiteSmoke,
                 color: themeColors.cardMutedText,

@@ -7,7 +7,6 @@ import mongoSanitize from 'express-mongo-sanitize'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import cors from 'cors'
-import aiLeadAdminRoutes from './src/routes/aiLeadAdminRoutes.js'
 
 import {
   csrfProtectionDynamic,
@@ -206,8 +205,8 @@ const csrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/user/forgot-password` },
   { method: 'PUT', path: `${env.apiPrefix}/user/reset-password` },
 
-  { method: 'POST', path: `${env.apiPrefix}/whatsapp/webhook` },
   { method: 'POST', path: `${env.apiPrefix}/ai-webchat/message` },
+  { method: 'POST', path: `${env.apiPrefix}/ai-webchat/event` },
   // Webhook externo real de Mercado Pago.
   { method: 'POST', path: `${env.apiPrefix}/payments/webhook/mercadopago` },
 
@@ -270,8 +269,6 @@ const tunnelCsrfExemptRoutes = [
   { method: 'PUT', path: `${env.apiPrefix}/product/rating/:productId` },
   { method: 'PUT', path: `${env.apiPrefix}/product/:productId/rating/:ratingId/helpful` },
 
-  // Leads
-  app.use(`${env.apiPrefix}/ai-agent`, aiLeadAdminRoutes),
 ]
 
 const isCsrfExempt = req => {

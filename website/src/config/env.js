@@ -60,6 +60,9 @@ const apiBaseUrl = getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL')
 const mercadoPagoPublicKey = sanitizeMercadoPagoPublicKey(
   getValue('REACT_APP_MP_PUBLIC_KEY'),
 )
+const mpTestPayerEmail = sanitizeEnvValue(
+  getValue('REACT_APP_MP_TEST_PAYER_EMAIL'),
+)
 
 const adminPreviewOrigins = getValue('REACT_APP_ADMIN_PREVIEW_ORIGINS')
 
@@ -102,6 +105,7 @@ export const env = {
 
   // Alias compatible con CheckoutPage.jsx y otros componentes.
   mpPublicKey: mercadoPagoPublicKey,
+  mpTestPayerEmail,
 
   gaMeasurementId: getValue('REACT_APP_GA_MEASUREMENT_ID'),
 

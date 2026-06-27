@@ -4,16 +4,23 @@
   "description": "Worker local multitenant para ingesta y análisis IA de imágenes de productos",
   "private": true,
   "type": "module",
-  "main": "agent.js",
+  "main": "productImageFolderAgent.js",
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "start": "node agent.js",
-    "check": "node --check agent.js",
-    "test": "node --test test/*.test.js"
+    "start": "node productImageFolderAgent.js",
+    "dev": "node --watch productImageFolderAgent.js",
+    "check": "node --check productImageFolderAgent.js",
+    "test": "node --test"
   },
-  "keywords": [],
+  "keywords": [
+    "henko",
+    "ecommerce",
+    "ai",
+    "image-watcher",
+    "product-analysis"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {

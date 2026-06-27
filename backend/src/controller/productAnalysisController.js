@@ -16,6 +16,7 @@ import {
 } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
 import * as aiVisionService from '../services/aiVisionService.js'
+import { registerVisualFeedback } from '../services/aiLearningService.js'
 
 // =====================================================
 // CONSTANTES
@@ -47,6 +48,9 @@ const AUTO_PUBLISH_MIN_CONFIDENCE = Math.min(
   1,
 )
 
+const AUTO_PUBLISH_ENABLED =
+  String(process.env.AI_AUTO_PUBLISH_ENABLED || 'false').toLowerCase() === 'true'
+
 const SAFE_SORT_FIELDS = new Set([
   'createdAt',
   'updatedAt',
@@ -62,6 +66,39 @@ const rootDir = path.resolve(__dirname, '../../')
 // =====================================================
 // HELPERS
 // =====================================================
+
+const isAnalysisJobReusableAfterProductDeletion = async ({ job, tenantId }) => {
+  if (!job) return false
+
+  if (job.deletedAt) return true
+
+  if (
+    job.status === JOB_STATUS.REJECTED &&
+    !job.createdProductId
+  ) {
+    return true
+  }
+
+  if (!job.createdProductId) {
+    return false
+  }
+
+  const product = await Product.findOne({
+    _id: job.createdProductId,
+    tenantId,
+    $or: [
+      { isDeleted: false },
+      { isDeleted: null },
+      { isDeleted: { $exists: false } },
+    ],
+    deletedAt: { $exists: false },
+  })
+    .setOptions({ tenantId })
+    .select('_id')
+    .lean()
+
+  return !product
+}
 
 const markJobAsHidden = ({ job, userId = null, reason = '' }) => {
   job.isHidden = true
@@ -105,6 +142,34 @@ const parseBoolean = value => {
   if (typeof value === 'boolean') return value
   if (typeof value !== 'string') return false
   return ['true', '1', 'yes', 'si', 'sí'].includes(value.toLowerCase())
+}
+
+const toNonNegativeNumberOrNull = value => {
+  if (value === undefined || value === null || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 0 ? number : null
+}
+
+const pickFirstNonNegativeNumber = (...values) => {
+  for (const value of values) {
+    const parsed = toNonNegativeNumberOrNull(value)
+    if (parsed !== null) return parsed
+  }
+
+  return null
+}
+
+const sanitizeStringArray = (value, { lower = false, maxItems = 30 } = {}) => {
+  if (!Array.isArray(value)) return []
+
+  return [
+    ...new Set(
+      value
+        .map(item => normalizeString(String(item ?? '')))
+        .filter(Boolean)
+        .map(item => (lower ? item.toLowerCase() : item)),
+    ),
+  ].slice(0, maxItems)
 }
 
 const parseFutureDate = value => {
@@ -257,17 +322,29 @@ const sanitizeAnalysis = analysis => {
 }
 
 const canAutoPublishAnalysis = analysis => {
+  const price = pickFirstNonNegativeNumber(
+    analysis?.suggestedPrice,
+    analysis?.precio_sugerido,
+    analysis?.suggestedPriceRange?.min,
+  )
+
+  const material = normalizeString(
+    analysis?.material ||
+      analysis?.attributes?.material ||
+      analysis?.atributos?.material,
+  )
+
   return Boolean(
-    analysis &&
-    analysis.confidence >= AUTO_PUBLISH_MIN_CONFIDENCE &&
-    normalizeString(analysis.titulo || analysis.title) &&
-    normalizeString(analysis.categoria || analysis.category) &&
-    (
-      typeof analysis.suggestedPrice === 'number' ||
-      typeof analysis.precio_sugerido === 'number'
-    ) &&
-    !analysis.needsReview &&
-    analysis.aiProcessed !== false,
+    AUTO_PUBLISH_ENABLED &&
+      analysis &&
+      analysis.confidence >= AUTO_PUBLISH_MIN_CONFIDENCE &&
+      normalizeString(analysis.titulo || analysis.title) &&
+      normalizeString(analysis.categoria || analysis.category) &&
+      price !== null &&
+      material &&
+      !analysis.needsReview &&
+      !analysis.requiresHumanReview &&
+      analysis.aiProcessed !== false,
   )
 }
 
@@ -567,7 +644,8 @@ const scheduleAnalysisJob = payload => {
   }
 
   if (delayMs > 0 && delayMs <= 2147483647) {
-    setTimeout(run, delayMs)
+    const timer = setTimeout(run, delayMs)
+    if (typeof timer.unref === 'function') timer.unref()
     return
   }
 
@@ -717,18 +795,32 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     normalizeString(analysis.descripcion) ||
     'Descripción pendiente de revisión.'
 
-  const price =
-    Number(overrides.price) ||
-    Number(analysis.suggestedPrice) ||
-    Number(analysis.suggestedPriceRange?.min) ||
-    0
+  const price = pickFirstNonNegativeNumber(
+    overrides.price,
+    overrides.precio,
+    analysis.suggestedPrice,
+    analysis.precio_sugerido,
+    analysis.suggestedPriceRange?.min,
+  ) || 0
 
   const category = normalizeString(overrides.categoria) || normalizeString(analysis.categoria)
   const subcategory =
     normalizeString(overrides.subcategoria) || normalizeString(analysis.subcategoria)
   const brand = normalizeString(overrides.marca) || normalizeString(analysis.marca) || 'Sin marca'
-  const material = normalizeString(overrides.material) || normalizeString(analysis.material)
-  const color = normalizeString(overrides.color) || normalizeString(analysis.color)
+  const material =
+    normalizeString(overrides.material) ||
+    normalizeString(overrides.attributes?.material) ||
+    normalizeString(overrides.atributos?.material) ||
+    normalizeString(analysis.material) ||
+    normalizeString(analysis.attributes?.material) ||
+    normalizeString(analysis.atributos?.material)
+  const color =
+    normalizeString(overrides.color) ||
+    normalizeString(overrides.attributes?.color) ||
+    normalizeString(overrides.atributos?.color) ||
+    normalizeString(analysis.color) ||
+    normalizeString(analysis.attributes?.color) ||
+    normalizeString(analysis.atributos?.color) || normalizeString(analysis.color)
   const safeJobSuffix = String(job._id || Date.now()).slice(-8)
 
   /**
@@ -773,11 +865,10 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     marca: brand,
     sku: normalizeString(overrides.sku) || normalizeString(job.metadata?.sku) || undefined,
 
-    tags: Array.isArray(overrides.tags)
-      ? overrides.tags
-      : Array.isArray(analysis.tags)
-        ? analysis.tags
-        : [],
+    tags: sanitizeStringArray(
+      Array.isArray(overrides.tags) ? overrides.tags : analysis.tags,
+      { lower: true, maxItems: 30 },
+    ),
 
     atributos: {
       ...(analysis.attributes || {}),
@@ -791,7 +882,7 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     status: 'draft',
     visibility: 'hidden',
 
-    stock: Number(overrides.stock) || 0,
+    stock: pickFirstNonNegativeNumber(overrides.stock, analysis.stock, 0) || 0,
 
     iaGenerated: true,
     aiOriginalOutput: analysis,
@@ -857,6 +948,74 @@ const ensureJobBelongsToTenant = async ({ jobId, tenantId }) => {
   }
 
   return job
+}
+
+
+const hasHumanCorrectionPayload = body => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false
+
+  return [
+    'titulo',
+    'descripcion',
+    'price',
+    'precio',
+    'categoria',
+    'subcategoria',
+    'marca',
+    'material',
+    'color',
+    'tags',
+    'attributes',
+    'atributos',
+  ].some(key => body[key] !== undefined)
+}
+
+const buildHumanCorrectionFromBody = body => ({
+  titulo: normalizeString(body?.titulo || body?.title),
+  descripcion: normalizeString(body?.descripcion || body?.description),
+  categoria: normalizeString(body?.categoria || body?.category),
+  subcategoria: normalizeString(body?.subcategoria || body?.subcategory),
+  marca: normalizeString(body?.marca || body?.brand),
+  precio_sugerido: pickFirstNonNegativeNumber(body?.price, body?.precio),
+  atributos: {
+    ...(body?.attributes && typeof body.attributes === 'object' && !Array.isArray(body.attributes)
+      ? body.attributes
+      : {}),
+    ...(body?.atributos && typeof body.atributos === 'object' && !Array.isArray(body.atributos)
+      ? body.atributos
+      : {}),
+    ...(normalizeString(body?.material) ? { material: normalizeString(body.material) } : {}),
+    ...(normalizeString(body?.color) ? { color: normalizeString(body.color) } : {}),
+  },
+  tags: sanitizeStringArray(body?.tags, { lower: true, maxItems: 30 }),
+})
+
+const registerVisualFeedbackSafely = async ({ tenantId, job, body, userId, productId }) => {
+  if (!hasHumanCorrectionPayload(body)) return null
+
+  try {
+    return await registerVisualFeedback({
+      tenantId: String(tenantId),
+      originalIAOutput: job.analysis || {},
+      humanCorrection: buildHumanCorrectionFromBody(body),
+      metadata: {
+        imageHash: job.imageHash,
+        sourceModel: job.analysis?.source || job.analysis?.aiSource || job.aiSource,
+        jobId: String(job._id),
+        productId: productId ? String(productId) : '',
+        userId: userId ? String(userId) : '',
+        source: 'product_analysis_approval',
+      },
+    })
+  } catch (error) {
+    logger.warn('[ProductAnalysis] No se pudo registrar feedback visual', {
+      tenantId: String(tenantId),
+      jobId: String(job?._id || ''),
+      error: error.message,
+    })
+
+    return null
+  }
 }
 
 // =====================================================
@@ -1052,11 +1211,10 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
     }
 
     const isDiscardedLegacyJob =
-      Boolean(existing.deletedAt) ||
-      (
-        existing.status === JOB_STATUS.REJECTED &&
-        !existing.createdProductId
-      )
+      await isAnalysisJobReusableAfterProductDeletion({
+        job: existing,
+        tenantId,
+      })
 
     if (isDiscardedLegacyJob) {
       await ProductAnalysisJob.deleteOne({
@@ -1674,8 +1832,6 @@ export const approveAnalysisJob = asyncHandler(async (req, res) => {
       })
 
       await job.save({ session })
-
-      await job.save({ session })
     })
   } catch (error) {
     logger.error('[ProductAnalysis] Error aprobando análisis', {
@@ -1692,6 +1848,14 @@ export const approveAnalysisJob = asyncHandler(async (req, res) => {
   } finally {
     await session.endSession()
   }
+
+  await registerVisualFeedbackSafely({
+    tenantId,
+    job,
+    body: req.body || {},
+    userId,
+    productId: product?._id,
+  })
 
   return res.status(201).json({
     success: true,

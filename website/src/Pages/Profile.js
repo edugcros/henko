@@ -43,6 +43,7 @@ import {
   Compare as CompareIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material'
+import { Newprimary } from '../theme/colors'
 
 const Profile = () => {
   const dispatch = useDispatch()
@@ -352,7 +353,13 @@ const Profile = () => {
               alignItems="center"
               mb={3}
             >
-              <Typography variant="h6" fontWeight={700}>
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                sx={{
+                  cursor: 'pointer',
+                }}
+              >
                 Información Personal
               </Typography>
 
@@ -431,8 +438,11 @@ const Profile = () => {
                   fullWidth
                   label="Email"
                   value={formData.email}
-                  disabled
-                  InputProps={{ readOnly: true }}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, email: e.target.value }))
+                  }
+                  disabled={!isEditing}
+                  InputProps={{ readOnly: !isEditing }}
                 />
               </Grid>
 

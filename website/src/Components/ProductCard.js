@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect } from 'react'
+import React, { useMemo, useCallback, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
@@ -59,6 +59,20 @@ const getToastBaseStyle = colors => ({
   border: `1px solid ${colors.border}`,
   backdropFilter: 'blur(8px)',
 })
+
+const FALLBACK_IMAGE = '/assets/images/placeholder.png'
+
+const getProductId = item => {
+  return item?._id || item?.id || item?.productId || item?.slug || ''
+}
+
+const getProductCategory = item => {
+  return item?.category || item?.categoryName || item?.categoria || ''
+}
+
+const getProductBrand = item => {
+  return item?.marca || item?.brand || 'Marca'
+}
 
 const createNotify = colors => ({
   success: (message, options = {}) =>
@@ -216,6 +230,10 @@ const ProductCard = ({ item }) => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
 
+  const impressionTrackedRef = useRef('')
+  const productId = getProductId(item)
+  const productCategory = getProductCategory(item)
+
   const wishlistIds = useSelector(selectWishlistIds) || EMPTY_ARRAY
   const compareItems = useSelector(state => state.compare?.items) || EMPTY_ARRAY
   const user = useSelector(state => state.user?.user)
@@ -317,44 +335,62 @@ const ProductCard = ({ item }) => {
   )
 
   useEffect(() => {
-    if (!item?._id) return
+    if (!productId) return
+
+    const impressionKey = `${productId}:${productRouteId || ''}:product_card`
+
+    if (impressionTrackedRef.current === impressionKey) return
+
+    impressionTrackedRef.current = impressionKey
 
     trackUserMetric({
       eventType: USER_METRIC_EVENTS.PRODUCT_IMPRESSION,
-      productId: item._id,
+      productId,
       value: productPrice,
       currency: commerceSettings.currency,
-      category: item.category || item.categoryName || '',
+      category: productCategory,
       metadata: {
         title: item.title,
         brand: productBrand,
         placement: 'product_card',
+        routeId: productRouteId || '',
       },
     })
   }, [
-    item?._id,
+    productId,
+    productRouteId,
     item?.title,
-    item?.category,
-    item?.categoryName,
     productBrand,
     productPrice,
+    productCategory,
     commerceSettings.currency,
   ])
 
   const handleProductClick = useCallback(() => {
+    if (!productId) return
+
     trackUserMetric({
       eventType: USER_METRIC_EVENTS.PRODUCT_CLICK,
-      productId: item._id,
+      productId,
       value: productPrice,
       currency: commerceSettings.currency,
-      category: item.category || item.categoryName || '',
+      category: productCategory,
       metadata: {
         title: item.title,
         brand: productBrand,
         placement: 'product_card',
+        routeId: productRouteId || '',
       },
     })
-  }, [commerceSettings.currency, item, productBrand, productPrice])
+  }, [
+    commerceSettings.currency,
+    item?.title,
+    productBrand,
+    productId,
+    productPrice,
+    productCategory,
+    productRouteId,
+  ])
 
   const handleWishlist = useCallback(
     async e => {

@@ -127,6 +127,17 @@ const sanitizeString = (value, fallback = '') => {
   return clean || fallback
 }
 
+const toBooleanInput = value => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    return ['true', '1', 'yes', 'si', 'sí'].includes(
+      value.trim().toLowerCase(),
+    )
+  }
+  return false
+}
+
 const normalizeEmail = value => String(value || '').trim().toLowerCase()
 
 const sanitizePhone = value => {
@@ -477,7 +488,13 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
         })
       }
 
-      if (couponDoc) {
+      /**
+       * Cupón:
+       * - COD: se consume al crear la orden porque nace aprobada.
+       * - Mercado Pago: NO se consume acá. Se consume al confirmar pago approved.
+       *   Esto evita agotar cupones por pagos rechazados/abandonados.
+       */
+      if (couponDoc && isCOD) {
         couponDoc = await consumeCouponAtomic({
           coupon: couponDoc,
           tenantId,
@@ -546,7 +563,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
 
       await order.save({ session, tenantId })
 
-      if (couponDoc) {
+      if (couponDoc && isCOD) {
         await createCouponUsageRecord({
           coupon: couponDoc,
           order,
@@ -1086,9 +1103,9 @@ export const deleteOrder = expressAsyncHandler(async (req, res) => {
     const performedBy = normalizeObjectId(getUserIdFromRequest(req))
 
     const orderId = req.params.id
-    const force = Boolean(req.body?.force)
+    const force = toBooleanInput(req.body?.force ?? req.query?.force)
     const reason = sanitizeString(
-      req.body?.reason,
+      req.body?.reason || req.query?.reason,
       'Eliminación definitiva desde panel admin',
     )
 
@@ -1173,8 +1190,10 @@ export const deleteOrder = expressAsyncHandler(async (req, res) => {
       message: 'Orden eliminada del panel y preservada para auditoría',
       data: {
         id: String(order._id),
+        orderId: String(order._id),
         hardDeleted: false,
         softDeleted: true,
+        deletedAt: order.deletedAt,
       },
     })
   } catch (error) {

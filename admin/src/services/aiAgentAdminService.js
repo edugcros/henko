@@ -26,3 +26,8 @@ export const deleteAiConversation = async id => {
   const { data } = await api.delete(`/ai-agent/conversations/${id}`)
   return data
 }
+
+export const permanentlyDeleteAiConversation = async id => {
+  const { data } = await api.delete(`/ai-agent/conversations/${id}/permanent`)
+  return data
+}

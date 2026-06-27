@@ -93,6 +93,14 @@ const aiConversationSchema = new Schema(
 
     source: { type: String, enum: ['organic', 'cart_recovery', 'campaign', 'post_purchase'], default: 'organic' },
     metadata: { type: Schema.Types.Mixed, default: {} },
+    deletedAt: { type: Date, default: undefined, index: true },
+    deletedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    deletedReason: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 500,
+    },
   },
   { timestamps: true },
 )
@@ -103,6 +111,7 @@ aiConversationSchema.index({ tenantId: 1, customerPhone: 1 })
 aiConversationSchema.index({ tenantId: 1, channel: 1, externalUserId: 1, status: 1 })
 aiConversationSchema.index({ tenantId: 1, status: 1, leadScore: -1, lastMessageAt: -1 })
 aiConversationSchema.index({ tenantId: 1, handoffRequired: 1, lastMessageAt: -1 })
+aiConversationSchema.index({ tenantId: 1, deletedAt: 1, lastMessageAt: -1 })
 
 const AiConversation = mongoose.models.AiConversation || mongoose.model('AiConversation', aiConversationSchema)
 export default AiConversation

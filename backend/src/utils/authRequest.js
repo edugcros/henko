@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken'
+import { env } from '../../config/env.js'
 
 import { isValidObjectId } from './requestContext.js'
 
@@ -29,8 +30,8 @@ export const decodeAccessToken = (
 ) => {
   return jwt.verify(token, secret, { 
     algorithms,
-    issuer: 'henko-commerce-api',
-    audience: 'henko-commerce-client', 
+    issuer: env.jwtIssuer || 'commerce-platform-api',
+    audience: env.jwtAudience || 'commerce-platform-client', 
   })
 }
 

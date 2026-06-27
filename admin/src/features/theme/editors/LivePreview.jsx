@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Box, Button, Paper, Typography } from '@mui/material'
 import { OpenInNew, Refresh } from '@mui/icons-material'
-import { env } from '../config/env.js'
+import { env } from '../../../config/env'
 
 const VIEWPORT_WIDTH = {
   desktop: '100%',
   tablet: 820,
   mobile: 390,
 }
+
+const PREVIEW_READY_TIMEOUT_MS = 12000
 
 const withProtocol = value => {
   if (!value) return ''
@@ -142,7 +144,7 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
       setLoadWarning(
         'La tienda no confirmó la conexión de preview. Revisá que el website esté levantado y que esta URL abra correctamente.',
       )
-    }, 5000)
+    }, PREVIEW_READY_TIMEOUT_MS)
 
     postPreview()
     return () => {
@@ -155,26 +157,30 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
 
   return (
     <Paper
-      elevation={3}
+      elevation={0}
       sx={{
         height: '100%',
+        minHeight: 0,
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
+        borderRadius: 0,
       }}
     >
       <Box
         sx={{
-          p: 2,
+          px: 1.25,
+          py: 0.75,
           borderBottom: 1,
           borderColor: 'divider',
           display: 'flex',
           alignItems: 'center',
-          gap: 2,
+          gap: 1,
+          minHeight: 44,
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="h6" fontWeight={600}>
+          <Typography variant="subtitle2" fontWeight={800} lineHeight={1.15}>
             Vista Previa Real
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -188,6 +194,7 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
           size="small"
           startIcon={<Refresh />}
           onClick={() => setIframeKey(key => key + 1)}
+          sx={{ flexShrink: 0 }}
         >
           Recargar
         </Button>
@@ -197,14 +204,23 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
           href={previewUrl}
           target="_blank"
           rel="noopener noreferrer"
+          sx={{ flexShrink: 0 }}
         >
           Abrir
         </Button>
       </Box>
 
-      <Box sx={{ flex: 1, overflow: 'auto', bgcolor: 'action.hover', p: 2 }}>
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          bgcolor: 'action.hover',
+          p: viewport === 'desktop' ? 0 : 1,
+        }}
+      >
         {loadWarning && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
+          <Alert severity="warning" sx={{ m: 1 }}>
             {loadWarning}
             <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
               URL: {previewUrl}
@@ -217,9 +233,10 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
             width: previewWidth,
             maxWidth: '100%',
             height: '100%',
+            minHeight: 0,
             mx: 'auto',
             bgcolor: 'background.paper',
-            boxShadow: viewport === 'desktop' ? 'none' : 4,
+            boxShadow: viewport === 'desktop' ? 'none' : 3,
           }}
         >
           <Box

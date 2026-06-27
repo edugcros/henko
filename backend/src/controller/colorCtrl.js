@@ -1,10 +1,26 @@
 import Color from '../models/colorModel.js'
 import asyncHandler from 'express-async-handler'
-import { isValidObjectId } from '../utils/requestContext.js'
+import {
+  getTenantIdFromRequest,
+  isValidObjectId,
+  toObjectId,
+} from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
+
+const resolveTenantId = req => {
+  const tenantId = getTenantIdFromRequest(req)
+  if (!tenantId) {
+    const error = new Error('Tenant no identificado')
+    error.statusCode = 401
+    throw error
+  }
+
+  return tenantId
+}
 
 // Crear un nuevo color
 export const createColor = asyncHandler(async (req, res) => {
+  const tenantId = resolveTenantId(req)
   let { title } = req.body
   if (!title || title.trim().length < 2) {
     return res.status(400).json({ success: false, message: 'El título es obligatorio y debe tener al menos 2 caracteres' })
@@ -12,25 +28,27 @@ export const createColor = asyncHandler(async (req, res) => {
 
   title = title.trim().toLowerCase()
 
-  const existingColor = await Color.findOne({ title })
+  const existingColor = await Color.findOne({ title, tenantId: toObjectId(tenantId) })
   if (existingColor) {
     return res.status(409).json({ success: false, message: 'El color ya existe' })
   }
 
-  const newColor = await Color.create({ title })
-  logger.info(`Color creado: ${title} (ID: ${newColor._id})`)
+  const newColor = await Color.create({ title, tenantId })
+  logger.info(`Color creado: ${title} (ID: ${newColor._id}, tenant: ${tenantId})`)
   res.status(201).json({ success: true, data: newColor })
 })
 
 // Obtener todos los colores con paginación
 export const getAllColors = asyncHandler(async (req, res) => {
+  const tenantId = resolveTenantId(req)
   const page = parseInt(req.query.page) || 1
-  const limit = parseInt(req.query.limit) || 20
+  const limit = Math.min(parseInt(req.query.limit) || 20, 100)
   const skip = (page - 1) * limit
+  const filter = { tenantId: toObjectId(tenantId) }
 
   const [colors, total] = await Promise.all([
-    Color.find().skip(skip).limit(limit).sort({ title: 1 }),
-    Color.countDocuments(),
+    Color.find(filter).skip(skip).limit(limit).sort({ title: 1 }),
+    Color.countDocuments(filter),
   ])
 
   res.status(200).json({
@@ -46,12 +64,13 @@ export const getAllColors = asyncHandler(async (req, res) => {
 
 // Obtener un color por ID
 export const getColorById = asyncHandler(async (req, res) => {
+  const tenantId = resolveTenantId(req)
   const { id } = req.params
   if (!isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'ID inválido' })
   }
 
-  const color = await Color.findById(id)
+  const color = await Color.findOne({ _id: id, tenantId: toObjectId(tenantId) })
   if (!color) {
     return res.status(404).json({ success: false, message: 'Color no encontrado' })
   }
@@ -61,6 +80,7 @@ export const getColorById = asyncHandler(async (req, res) => {
 
 // Actualizar un color
 export const updateColor = asyncHandler(async (req, res) => {
+  const tenantId = resolveTenantId(req)
   const { id } = req.params
   let { title } = req.body
 
@@ -74,13 +94,13 @@ export const updateColor = asyncHandler(async (req, res) => {
 
   title = title.trim().toLowerCase()
 
-  const duplicate = await Color.findOne({ title })
+  const duplicate = await Color.findOne({ title, tenantId: toObjectId(tenantId) })
   if (duplicate && duplicate._id.toString() !== id) {
     return res.status(409).json({ success: false, message: 'Ya existe un color con ese nombre' })
   }
 
-  const updatedColor = await Color.findByIdAndUpdate(
-    id,
+  const updatedColor = await Color.findOneAndUpdate(
+    { _id: id, tenantId: toObjectId(tenantId) },
     { title },
     { new: true, runValidators: true },
   )
@@ -89,22 +109,23 @@ export const updateColor = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Color no encontrado' })
   }
 
-  logger.info(`Color actualizado: ${title} (ID: ${updatedColor._id})`)
+  logger.info(`Color actualizado: ${title} (ID: ${updatedColor._id}, tenant: ${tenantId})`)
   res.status(200).json({ success: true, data: updatedColor })
 })
 
 // Eliminar un color
 export const deleteColor = asyncHandler(async (req, res) => {
+  const tenantId = resolveTenantId(req)
   const { id } = req.params
   if (!isValidObjectId(id)) {
     return res.status(400).json({ success: false, message: 'ID inválido' })
   }
 
-  const deletedColor = await Color.findByIdAndDelete(id)
+  const deletedColor = await Color.findOneAndDelete({ _id: id, tenantId: toObjectId(tenantId) })
   if (!deletedColor) {
     return res.status(404).json({ success: false, message: 'Color no encontrado' })
   }
 
-  logger.warn(`Color eliminado: ${deletedColor.title} (ID: ${deletedColor._id})`)
+  logger.warn(`Color eliminado: ${deletedColor.title} (ID: ${deletedColor._id}, tenant: ${tenantId})`)
   res.status(200).json({ success: true, message: 'Color eliminado correctamente' })
 })

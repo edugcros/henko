@@ -1,47 +1,86 @@
+// 📁 src/services/aiLearningPromotionService.js
 import AIPreference from '../models/aIPreference.js'
 import CorrectionLog from '../models/correctionLog.js'
 
-const PROMOTION_MIN_OCCURRENCES = Number(process.env.AI_PROMOTION_MIN_OCCURRENCES || 3)
-const PROMOTION_MIN_CONFIDENCE = Number(process.env.AI_PROMOTION_MIN_CONFIDENCE || 0.8)
-const MAX_RECENT_LOGS = Number(process.env.AI_PROMOTION_LOOKBACK || 200)
+const PROMOTION_MIN_OCCURRENCES = Math.min(
+  Math.max(Number(process.env.AI_PROMOTION_MIN_OCCURRENCES || 3), 1),
+  50,
+)
+const PROMOTION_MIN_CONFIDENCE = Math.min(
+  Math.max(Number(process.env.AI_PROMOTION_MIN_CONFIDENCE || 0.8), 0),
+  1,
+)
+const MAX_RECENT_LOGS = Math.min(
+  Math.max(Number(process.env.AI_PROMOTION_LOOKBACK || 200), 20),
+  2000,
+)
 
-function safeString(value, { lower = false } = {}) {
-  if (typeof value !== 'string') return null
-  const clean = value.trim()
+const FINAL_LOG_STATUSES = new Set(['approved', 'rejected'])
+
+function safeString(value, { lower = false, maxLength = 500 } = {}) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null
+
+  const clean = String(value).trim()
   if (!clean) return null
-  return lower ? clean.toLowerCase() : clean
+
+  const truncated = clean.slice(0, maxLength)
+  return lower ? truncated.toLowerCase() : truncated
 }
 
 function normalizeType(field) {
-  const clean = safeString(field, { lower: true })
+  const clean = safeString(field, { lower: true, maxLength: 120 })
 
   if (!clean) return 'general'
-  if (clean === 'category') return 'category'
-  if (clean === 'subcategory') return 'subcategory'
-  if (clean === 'brand') return 'brand'
+  if (clean === 'category' || clean === 'categoria') return 'category'
+  if (clean === 'subcategory' || clean === 'subcategoria') return 'subcategory'
+  if (clean === 'brand' || clean === 'marca') return 'brand'
+  if (clean === 'title' || clean === 'titulo') return 'title'
+  if (clean === 'description' || clean === 'descripcion') return 'description'
+  if (clean === 'price' || clean === 'precio' || clean === 'precio_sugerido') return 'price'
+  if (clean === 'tag' || clean === 'tags') return 'tag'
   if (clean.startsWith('attribute.material')) return 'material'
+  if (clean.startsWith('attribute.color')) return 'color'
   if (clean.startsWith('attribute.')) return 'attribute'
-  if (clean === 'tag') return 'tag'
+
   return 'general'
 }
 
 function extractFromRuleText(ruleText) {
-  const text = safeString(ruleText)
+  const text = safeString(ruleText, { maxLength: 2000 })
   if (!text) return null
 
   const matches = [...text.matchAll(/"([^"]+)"/g)].map(match => match[1])
   if (matches.length < 2) return null
 
   return {
-    rawInput: safeString(matches[0], { lower: true }),
-    correctedValue: safeString(matches[1]),
+    rawInput: safeString(matches[0], { lower: true, maxLength: 160 }),
+    correctedValue: safeString(matches[1], { maxLength: 240 }),
   }
 }
 
+function extractFromLearnedRule(learned) {
+  const rawInput = safeString(learned?.rawInput, {
+    lower: true,
+    maxLength: 160,
+  })
+  const correctedValue = safeString(learned?.correctedValue, {
+    maxLength: 240,
+  })
+
+  if (rawInput && correctedValue) {
+    return { rawInput, correctedValue }
+  }
+
+  return extractFromRuleText(learned?.rule)
+}
+
 function confidenceScore(logRule, occurrences, contradictions) {
-  const base = typeof logRule?.confidence === 'number' ? logRule.confidence : 0.5
-  const repetitionBoost = Math.min(0.25, occurrences * 0.05)
-  const contradictionPenalty = Math.min(0.35, contradictions * 0.1)
+  const base =
+    typeof logRule?.confidence === 'number' && Number.isFinite(logRule.confidence)
+      ? logRule.confidence
+      : 0.5
+  const repetitionBoost = Math.min(0.25, Math.max(occurrences, 0) * 0.05)
+  const contradictionPenalty = Math.min(0.35, Math.max(contradictions, 0) * 0.1)
 
   const finalScore = base + repetitionBoost - contradictionPenalty
   return Math.max(0, Math.min(1, finalScore))
@@ -52,42 +91,55 @@ async function upsertPreference({
   rawInput,
   correctedValue,
   type,
+  field,
   confidence,
 }) {
-  const existing = await AIPreference.findOne({
-    tenantId,
-    rawInput,
-    type,
-  })
-
-  if (existing) {
-    existing.correctedValue = correctedValue
-    existing.usageCount += 1
-    existing.lastUsedAt = new Date()
-    existing.confidence = Math.max(existing.confidence || 0, confidence)
-    existing.source = 'auto-learning'
-    await existing.save()
-    return existing
-  }
-
-  return AIPreference.create({
-    tenantId,
-    rawInput,
-    correctedValue,
-    type,
-    usageCount: 1,
-    confidence,
-    lastUsedAt: new Date(),
-    source: 'auto-learning',
-  })
+  return AIPreference.findOneAndUpdate(
+    {
+      tenantId,
+      rawInput,
+      type,
+    },
+    {
+      $setOnInsert: {
+        tenantId,
+        rawInput,
+        type,
+        usageCount: 0,
+        createdAt: new Date(),
+      },
+      $set: {
+        correctedValue,
+        field,
+        source: 'auto-learning',
+        lastUsedAt: new Date(),
+      },
+      $inc: {
+        usageCount: 1,
+      },
+      $max: {
+        confidence,
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+      setDefaultsOnInsert: true,
+    },
+  )
+    .setOptions({ tenantId })
+    .lean()
 }
 
 export async function promoteLearnedRulesForTenant(tenantId) {
-  if (!tenantId) {
+  const normalizedTenantId = safeString(tenantId, { maxLength: 80 })
+
+  if (!normalizedTenantId) {
     throw new Error('tenantId es requerido')
   }
 
-  const logs = await CorrectionLog.find({ tenantId })
+  const logs = await CorrectionLog.find({ tenantId: normalizedTenantId })
+    .setOptions({ tenantId: normalizedTenantId })
     .sort({ createdAt: -1 })
     .limit(MAX_RECENT_LOGS)
     .lean()
@@ -95,26 +147,40 @@ export async function promoteLearnedRulesForTenant(tenantId) {
   const candidates = new Map()
 
   for (const log of logs) {
-    const learnedRules = Array.isArray(log.learnedRules) ? log.learnedRules : []
+    if (FINAL_LOG_STATUSES.has(log?.status)) continue
+
+    const learnedRules = Array.isArray(log?.learnedRules) ? log.learnedRules : []
 
     for (const learned of learnedRules) {
-      const field = safeString(learned?.field, { lower: true }) || 'general'
-      const extracted = extractFromRuleText(learned?.rule)
+      const field = safeString(learned?.field, {
+        lower: true,
+        maxLength: 120,
+      }) || 'general'
+      const type = normalizeType(learned?.type || field)
+      const extracted = extractFromLearnedRule(learned)
 
       if (!extracted?.rawInput || !extracted?.correctedValue) continue
 
-      const key = `${field}::${extracted.rawInput}`
+      const key = `${type}::${field}::${extracted.rawInput}`
 
       if (!candidates.has(key)) {
         candidates.set(key, {
           field,
+          type,
           rawInput: extracted.rawInput,
           outcomes: new Map(),
         })
       }
 
       const candidate = candidates.get(key)
-      const existingOutcome = candidate.outcomes.get(extracted.correctedValue) || {
+      const outcomeKey = safeString(extracted.correctedValue, {
+        lower: true,
+        maxLength: 240,
+      })
+
+      if (!outcomeKey) continue
+
+      const existingOutcome = candidate.outcomes.get(outcomeKey) || {
         correctedValue: extracted.correctedValue,
         occurrences: 0,
         exampleRule: learned,
@@ -122,7 +188,7 @@ export async function promoteLearnedRulesForTenant(tenantId) {
 
       existingOutcome.occurrences += 1
       existingOutcome.exampleRule = learned
-      candidate.outcomes.set(extracted.correctedValue, existingOutcome)
+      candidate.outcomes.set(outcomeKey, existingOutcome)
     }
   }
 
@@ -152,41 +218,44 @@ export async function promoteLearnedRulesForTenant(tenantId) {
       score >= PROMOTION_MIN_CONFIDENCE &&
       contradictions < winner.occurrences
 
-    if (!shouldPromote) {
-      skipped.push({
-        field: candidate.field,
-        rawInput: candidate.rawInput,
-        correctedValue: winner.correctedValue,
-        occurrences: winner.occurrences,
-        contradictions,
-        score,
-      })
-      continue
-    }
-
-    const type = normalizeType(candidate.field)
-
-    const pref = await upsertPreference({
-      tenantId,
-      rawInput: candidate.rawInput,
-      correctedValue: winner.correctedValue,
-      type,
-      confidence: score,
-    })
-
-    promoted.push({
+    const resultBase = {
       field: candidate.field,
+      type: candidate.type,
       rawInput: candidate.rawInput,
       correctedValue: winner.correctedValue,
       occurrences: winner.occurrences,
       contradictions,
       score,
-      preferenceId: pref._id,
+    }
+
+    if (!shouldPromote) {
+      skipped.push(resultBase)
+      continue
+    }
+
+    const pref = await upsertPreference({
+      tenantId: normalizedTenantId,
+      rawInput: candidate.rawInput,
+      correctedValue: winner.correctedValue,
+      type: candidate.type,
+      field: candidate.field,
+      confidence: score,
+    })
+
+    promoted.push({
+      ...resultBase,
+      preferenceId: pref?._id || null,
     })
   }
 
   return {
     promoted,
     skipped,
+    stats: {
+      scannedLogs: logs.length,
+      candidates: candidates.size,
+      promoted: promoted.length,
+      skipped: skipped.length,
+    },
   }
 }

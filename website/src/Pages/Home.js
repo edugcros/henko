@@ -108,7 +108,9 @@ const SafeImage = memo(
 
     const handleError = () => {
       if (!hasError && imgSrc !== fallbackSrc) {
-        console.warn(`Image failed to load: ${src}, using fallback`)
+        if (process.env.REACT_APP_DEBUG_API === 'true') {
+          console.warn(`Image failed to load: ${src}, using fallback`)
+        }
         setImgSrc(fallbackSrc)
         setHasError(true)
       }
@@ -136,6 +138,7 @@ const SafeImage = memo(
         component="img"
         src={imgSrc}
         alt={alt || 'Imagen'}
+        loading={props.loading || 'lazy'}
         onError={handleError}
         sx={{ objectFit: 'cover', ...sx }}
         {...props}
@@ -151,11 +154,16 @@ const PromotionalSpecialProduct = ({
   formatPrice,
   themeColors,
   isDark = false,
+  onProductClick,
 }) => {
   const theme = useTheme()
   const product = getProductFromPromotionalItem(item)
 
   if (!product) return null
+
+  const productRouteId = getProductRouteId(product)
+
+  if (!productRouteId) return null
 
   const discountPercentage = Number(item.discountPercentage || 0)
   const price = Number(product.price || 0)
@@ -184,7 +192,8 @@ const PromotionalSpecialProduct = ({
   return (
     <Paper
       component={Link}
-      to={`/product/${product.productId || product._id}`}
+      to={`/product/${productRouteId}`}
+      onClick={() => onProductClick?.(product, 'weekly_offer_card')}
       elevation={0}
       sx={{
         display: 'flex',
@@ -297,7 +306,6 @@ const PromotionalSpecialProduct = ({
 const Home = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const theme = useTheme()
 
   const tenantContext = useTenant()
   const themeState = useSelector(state => state.theme)
@@ -405,17 +413,6 @@ const Home = () => {
       .sort((a, b) => Number(a.priority || 1) - Number(b.priority || 1))
   }, [promotionalBlocks])
 
-  const weeklyOfferItems = useMemo(() => {
-    if (!weeklyOffersBlock?.products) return []
-
-    return weeklyOffersBlock.products
-      .filter(
-        item => item?.isActive !== false && getProductFromPromotionalItem(item),
-      )
-      .sort((a, b) => Number(a.priority || 1) - Number(b.priority || 1))
-      .slice(0, weeklyOffersBlock.maxItems || 5)
-  }, [weeklyOffersBlock])
-
   const getVisiblePromotionalItems = useCallback(block => {
     if (!Array.isArray(block?.products)) return []
 
@@ -443,16 +440,15 @@ const Home = () => {
       return
     }
 
-    const query = searchValue.toLowerCase()
+    const query = searchValue.trim().toLowerCase()
 
     const results = allProducts.filter(product => {
       const title = product.title || ''
       const category = product.category || product.categoria || ''
+      const brand = product.brand || product.marca || ''
 
-      return (
-        title.toLowerCase().includes(query) ||
-        category.toLowerCase().includes(query)
-      )
+      return [title, category, brand]
+        .some(value => String(value || '').toLowerCase().includes(query))
     })
 
     setSearchResults(results.slice(0, 10))
@@ -460,21 +456,45 @@ const Home = () => {
 
   const featuredProducts = allProducts?.slice(0, 4) || []
 
-  const handleSearchSubmit = event => {
-    event.preventDefault()
+  const handleSearchSubmit = useCallback(
+    event => {
+      event.preventDefault()
 
-    if (searchValue.trim()) {
-      const query = searchValue.trim()
-      track(events.SEARCH, {
-        searchQuery: query,
+      if (searchValue.trim()) {
+        const query = searchValue.trim()
+
+        track(events.SEARCH, {
+          searchQuery: query,
+          metadata: {
+            resultCount: searchResults.length,
+            source: 'home',
+          },
+        })
+
+        navigate(`/product?q=${encodeURIComponent(query)}`)
+      }
+    },
+    [events.SEARCH, navigate, searchResults.length, searchValue, track],
+  )
+
+  const handlePromotionalProductClick = useCallback(
+    (product, placement = 'home_promotional_product') => {
+      if (!product) return
+
+      track(events.PRODUCT_CLICK, {
+        productId: product._id || product.id || product.productId || product.slug || '',
+        value: Number(product.finalPrice ?? product.price ?? 0) || 0,
+        category: product.category || product.categoria || product.categoryName || '',
         metadata: {
-          resultCount: searchResults.length,
-          source: 'home',
+          title: product.title || product.name || '',
+          brand: product.brand || product.marca || '',
+          routeId: getProductRouteId(product) || '',
+          placement,
         },
       })
-      navigate(`/product?q=${encodeURIComponent(query)}`)
-    }
-  }
+    },
+    [events.PRODUCT_CLICK, track],
+  )
 
   const services = [
     { title: 'Envío Veloz', desc: 'Gratis desde $50', icon: <BsTruck /> },
@@ -677,7 +697,8 @@ const Home = () => {
                         textTransform: 'none',
                         boxShadow: 'none',
                         '&:hover': {
-                          bgcolor: primaryAction,
+                          bgcolor: Newprimary.darkBlueGray,
+                          color: Newprimary.white,
                           filter: 'brightness(0.94)',
                           boxShadow: '0 10px 22px rgba(15, 23, 42, 0.13)',
                         },
@@ -707,68 +728,81 @@ const Home = () => {
                     backdropFilter: 'blur(10px)',
                   }}
                 >
-                  {searchResults.map(product => (
-                    <Box
-                      key={product._id}
-                      component={Link}
-                      to={`/product/${getProductRouteId(product)}`}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1.4,
-                        p: 1.1,
-                        borderRadius: 2.5,
-                        textDecoration: 'none',
-                        color: 'inherit',
-                        transition: 'background-color .18s ease',
-                        '&:hover': {
-                          bgcolor: interactiveHover,
-                        },
-                      }}
-                    >
-                      <SafeImage
-                        src={getProductImage(product)}
-                        fallbackSrc={DEFAULT_IMAGES.product}
-                        alt={product.title}
-                        sx={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 2,
-                          flexShrink: 0,
-                          objectFit: 'cover',
+                  {searchResults.map(product => {
+                    const productRouteId = getProductRouteId(product)
+
+                    if (!productRouteId) return null
+
+                    return (
+                      <Box
+                        key={product._id || product.id || productRouteId}
+                        component={Link}
+                        to={`/product/${productRouteId}`}
+                        onClick={() => {
+                          handlePromotionalProductClick(
+                            product,
+                            'home_search_result',
+                          )
+                          setSearchResults([])
                         }}
-                      />
-
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography
-                          variant="body2"
-                          sx={{ fontWeight: 750 }}
-                          noWrap
-                        >
-                          {product.title}
-                        </Typography>
-
-                        <Typography
-                          variant="caption"
-                          sx={{ color: textSecondary }}
-                          noWrap
-                        >
-                          {product.category || product.categoria}
-                        </Typography>
-                      </Box>
-
-                      <Typography
-                        variant="body2"
                         sx={{
-                          fontWeight: 850,
-                          whiteSpace: 'nowrap',
-                          color: textPrimary,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1.4,
+                          p: 1.1,
+                          borderRadius: 2.5,
+                          textDecoration: 'none',
+                          color: 'inherit',
+                          transition: 'background-color .18s ease',
+                          '&:hover': {
+                            bgcolor: interactiveHover,
+                          },
                         }}
                       >
-                        {formatPrice(product.price)}
-                      </Typography>
-                    </Box>
-                  ))}
+                        <SafeImage
+                          src={getProductImage(product)}
+                          fallbackSrc={DEFAULT_IMAGES.product}
+                          alt={product.title}
+                          sx={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 2,
+                            flexShrink: 0,
+                            objectFit: 'cover',
+                          }}
+                        />
+
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{ fontWeight: 750 }}
+                            noWrap
+                          >
+                            {product.title}
+                          </Typography>
+
+                          <Typography
+                            variant="caption"
+                            sx={{ color: textSecondary }}
+                            noWrap
+                          >
+                            {product.category || product.categoria}
+                          </Typography>
+                        </Box>
+
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 850,
+                            whiteSpace: 'nowrap',
+                            color: textPrimary,
+                          }}
+                        >
+                          {formatPrice(product.finalPrice ?? product.price)}
+                        </Typography>
+                      </Box>
+                    )
+                  })}
                 </Paper>
               )}
             </Box>
@@ -896,7 +930,8 @@ const Home = () => {
               px: 1.5,
               minWidth: 'auto',
               '&:hover': {
-                bgcolor: interactiveHover,
+                bgcolor: Newprimary.darkBlueGray,
+                color: Newprimary.white,
               },
             }}
           >
@@ -935,7 +970,7 @@ const Home = () => {
                   md={12 / Math.min(productConfig.columns ?? 4, 6)}
                   key={product._id}
                 >
-                  <HomeProductCard data={product} />
+                  <HomeProductCard data={product} placement="home_featured" />
                 </Grid>
               ))}
         </Grid>
@@ -1093,6 +1128,7 @@ const Home = () => {
                                       formatPrice={formatPrice}
                                       themeColors={themeColors}
                                       isDark={false}
+                                      onProductClick={handlePromotionalProductClick}
                                     />
                                   </Suspense>
                                 )
@@ -1263,7 +1299,16 @@ const Home = () => {
                             data={{
                               ...product,
                               title: item.customTitle || product.title,
+                              finalPrice: item.discountPercentage
+                                ? getFinalPrice(product.price, item.discountPercentage)
+                                : product.finalPrice || product.price,
+                              discountPercentage: item.discountPercentage,
+                              hasPromotion: Number(item.discountPercentage || 0) > 0,
+                              promotionId: item.promotionId || block._id,
+                              promotionTitle: block.title,
+                              promotionType: block.type,
                             }}
+                            placement={`home_promotional_${block.type || 'block'}`}
                           />
                         </Grid>
                       )

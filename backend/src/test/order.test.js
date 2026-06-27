@@ -1,104 +1,113 @@
-// 📁 src/test/order.test.js
 import request from 'supertest'
+
 import app from '../../app.js'
 import User from '../models/userModel.js'
 import Product from '../models/productModel.js'
-import Order from '../models/orderModel.js'
+import Order, { PAYMENT_STATUS } from '../models/orderModel.js'
+import Cart from '../models/cartModel.js'
+import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB } from './testDB.js'
+import {
+  authHeaders,
+  createTestProduct,
+  createTestTenant,
+  registerAndLoginUser,
+} from './testSetup.js'
 
-describe('🧾 ORDENES - Usuario', () => {
-  let csrfToken, csrfCookie, accessToken, userId, productId
+describe('orders - storefront user', () => {
+  let tenantContext
+  let session
+  let product
+  let createdOrderId
 
   beforeAll(async () => {
     await connectTestDB()
     await User.deleteMany()
     await Product.deleteMany()
     await Order.deleteMany()
+    await Cart.deleteMany()
+    await Tenant.deleteMany()
 
-    const csrfRes = await request(app).get('/api/user/csrf-token')
-    csrfToken = csrfRes.body.csrfToken
-    csrfCookie = csrfRes.headers['set-cookie'][0]
-
-    const registerRes = await request(app)
-      .post('/api/user/register')
-      .set('Cookie', csrfCookie)
-      .set('X-CSRF-Token', csrfToken)
-      .send({
-        firstname: 'Pedro',
-        lastname: 'Ordenado',
-        email: 'order@test.com',
-        password: 'Test1234!',
-        mobile: '1123456789',
-      })
-
-    userId = registerRes.body.data._id
-
-    const loginRes = await request(app)
-      .post('/api/user/login')
-      .set('Cookie', csrfCookie)
-      .set('X-CSRF-Token', csrfToken)
-      .send({
-        email: 'order@test.com',
-        password: 'Test1234!',
-      })
-
-    const cookies = loginRes.headers['set-cookie']
-    accessToken = cookies.find(c => c.startsWith('accessToken'))?.split(';')[0]
-
-    const product = await Product.create({
-      title: 'Producto de Prueba',
-      slug: 'producto-prueba',
-      price: 500,
-      quantity: 30,
-      description: 'Para test de órdenes',
+    tenantContext = await createTestTenant()
+    session = await registerAndLoginUser({
+      shopDomain: tenantContext.shopDomain,
+      email: 'order@test.com',
     })
-
-    productId = product._id
-  }, 10000)
+    product = await createTestProduct({
+      tenantId: tenantContext.tenant._id,
+      title: 'Producto Orden',
+      price: 500,
+      stock: 30,
+    })
+  })
 
   afterAll(async () => {
     await disconnectTestDB()
   })
 
-  it('📦 Debería crear una orden con método COD', async () => {
-    const res = await request(app)
+  test('creates a cash-on-delivery order from the cart', async () => {
+    const cartRes = await request(app)
       .post('/api/user/cart')
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
       .send({
-        cart: [
-          {
-            _id: productId,
-            count: 1,
-            color: 'black',
-          },
-        ],
+        productId: product._id,
+        quantity: 1,
       })
 
-    expect(res.statusCode).toBe(200)
+    expect(cartRes.statusCode).toBe(200)
 
     const orderRes = await request(app)
-      .post('/api/user/order')
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
-      .send({ paymentMethod: 'COD' })
+      .post('/api/order/create')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
+      .send({
+        COD: true,
+        shippingAddress: {
+          firstName: 'Pedro',
+          lastName: 'Ordenado',
+          email: 'order@test.com',
+          phone: '+541123456789',
+          address: 'Calle Test 123',
+          city: 'Buenos Aires',
+          zipCode: '1000',
+          country: 'AR',
+        },
+      })
 
     expect(orderRes.statusCode).toBe(201)
-    expect(orderRes.body.data).toHaveProperty('orderStatus', 'Pending')
+    expect(orderRes.body.success).toBe(true)
+    expect(orderRes.body.data.paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
+    createdOrderId = orderRes.body.data._id
   })
 
-  it('📋 Debería obtener las órdenes del usuario', async () => {
+  test('returns authenticated user orders', async () => {
     const res = await request(app)
-      .get('/api/user/get-orders')
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
+      .get('/api/order/my-orders')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+      }))
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data.length).toBeGreaterThan(0)
+    expect(String(res.body.data[0]._id)).toBe(String(createdOrderId))
   })
 
-  it('🧮 Debería haber actualizado el stock del producto', async () => {
-    const productoActualizado = await Product.findById(productId)
-    expect(productoActualizado.quantity).toBeLessThan(30)
+  test('decrements product stock for cash-on-delivery orders', async () => {
+    const updatedProduct = await Product.findOne({
+      _id: product._id,
+      tenantId: tenantContext.tenant._id,
+    }).setOptions({ tenantId: tenantContext.tenant._id })
+
+    expect(updatedProduct.stock).toBeLessThan(30)
   })
 })

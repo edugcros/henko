@@ -36,10 +36,7 @@ const normalizeAppEnv = value => {
  * - .env.production
  */
 const APP_ENV = normalizeAppEnv(
-  process.env.APP_ENV ||
-    process.env.REACT_APP_NODE_ENV ||
-    process.env.NODE_ENV ||
-    'development',
+  process.env.APP_ENV || process.env.REACT_APP_NODE_ENV || process.env.NODE_ENV || 'development',
 )
 
 const WEBPACK_MODE = clean(process.env.NODE_ENV) || 'production'
@@ -106,24 +103,19 @@ const isValidUrl = value => {
 }
 
 const hasForbiddenDeployValue = value => {
-  return /localhost|127\.0\.0\.1|0\.0\.0\.0|henko\.local|\.local|\.test/i.test(
-    String(value || ''),
-  )
+  return /localhost|127\.0\.0\.1|0\.0\.0\.0|henko\.local|\.local|\.test/i.test(String(value || ''))
 }
 
 const hasPlaceholder = value => {
-  const normalized = String(value || '').trim().toUpperCase()
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
 
   if (!normalized) return false
 
-  return [
-    'CHANGE_ME',
-    'REPLACE_ME',
-    'REEMPLAZAR',
-    'PEGAR_ACA',
-    'YOUR_',
-    'TU_',
-  ].some(token => normalized.includes(token))
+  return ['CHANGE_ME', 'REPLACE_ME', 'REEMPLAZAR', 'PEGAR_ACA', 'YOUR_', 'TU_'].some(token =>
+    normalized.includes(token),
+  )
 }
 
 const assertDeployEnv = () => {
@@ -149,9 +141,7 @@ const assertDeployEnv = () => {
   }
 
   if (!apiBaseUrl.endsWith('/api')) {
-    throw new Error(
-      `REACT_APP_API_BASE_URL debe terminar en /api. Recibido: ${apiBaseUrl}`,
-    )
+    throw new Error(`REACT_APP_API_BASE_URL debe terminar en /api. Recibido: ${apiBaseUrl}`)
   }
 
   if (apiUrl && !isValidUrl(apiUrl)) {
@@ -163,9 +153,7 @@ const assertDeployEnv = () => {
   }
 
   if (storefrontPreviewUrl && !isValidUrl(storefrontPreviewUrl)) {
-    throw new Error(
-      `REACT_APP_STOREFRONT_PREVIEW_URL inválido: ${storefrontPreviewUrl}`,
-    )
+    throw new Error(`REACT_APP_STOREFRONT_PREVIEW_URL inválido: ${storefrontPreviewUrl}`)
   }
 
   ;[
@@ -177,30 +165,21 @@ const assertDeployEnv = () => {
     storefrontPreviewUrl,
   ].forEach(value => {
     if (value && hasForbiddenDeployValue(value)) {
-      throw new Error(
-        `Configuración inválida para ${APP_ENV} en admin: ${value}`,
-      )
+      throw new Error(`Configuración inválida para ${APP_ENV} en admin: ${value}`)
     }
   })
-
-  ;[apiBaseUrl, apiUrl, assetsBaseUrl, storefrontPreviewUrl]
-    .filter(Boolean)
-    .forEach(value => {
-      if (!isHttpsUrl(value)) {
-        throw new Error(
-          `Las URLs públicas deben usar HTTPS en ${APP_ENV}: ${value}`,
-        )
-      }
-    })
+  ;[apiBaseUrl, apiUrl, assetsBaseUrl, storefrontPreviewUrl].filter(Boolean).forEach(value => {
+    if (!isHttpsUrl(value)) {
+      throw new Error(`Las URLs públicas deben usar HTTPS en ${APP_ENV}: ${value}`)
+    }
+  })
 
   if (debugApi === 'true') {
     throw new Error(`REACT_APP_DEBUG_API=true no está permitido en ${APP_ENV}`)
   }
 
   if (mpPublicKey && mpPublicKey.startsWith('TEST-')) {
-    throw new Error(
-      `REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en ${APP_ENV}`,
-    )
+    throw new Error(`REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en ${APP_ENV}`)
   }
 
   if (hasPlaceholder(mpPublicKey)) {

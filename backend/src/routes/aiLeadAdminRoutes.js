@@ -1,4 +1,4 @@
-// 📁 backend/src/routes/aiLeadAdminRoutes.js
+// 📁 src/routes/aiLeadAdminRoutes.js
 import express from 'express'
 import {
   deleteAiLead,
@@ -8,6 +8,7 @@ import {
   listAiLeads,
   markAiLeadLost,
   markAiLeadWon,
+  permanentlyDeleteAiLead,
   patchAiLeadAssign,
   patchAiLeadFollowUp,
   patchAiLeadStatus,
@@ -19,6 +20,7 @@ import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 
 const router = express.Router()
 
+// Admin autenticado: tenant desde token; controllers validan req.user.tenantId.
 router.use(authMiddleware)
 router.use(isAdmin)
 
@@ -36,6 +38,8 @@ router.post('/leads/:leadId/notes', postAiLeadNote)
 router.post('/leads/:leadId/mark-won', markAiLeadWon)
 router.post('/leads/:leadId/mark-lost', markAiLeadLost)
 router.post('/leads/:leadId/discard', discardAiLead)
+
+router.delete('/leads/:leadId/permanent', permanentlyDeleteAiLead)
 
 router.delete(
   '/leads/:leadId/products-of-interest/:productRef',

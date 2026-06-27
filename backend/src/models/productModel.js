@@ -14,6 +14,23 @@ const { Schema } = mongoose
 const DEFAULT_CURRENCY = 'ARS'
 const DEFAULT_IMAGE_ALT = ''
 const ALLOWED_VARIANT_ATTRIBUTE_TYPES = ['select', 'color', 'text']
+const ALLOWED_PRODUCT_ATTRIBUTE_TYPES = [
+  'text',
+  'textarea',
+  'number',
+  'select',
+  'multiselect',
+  'boolean',
+  'color',
+]
+const ALLOWED_SHIPPING_TYPES = [
+  'standard',
+  'fragile',
+  'refrigerated',
+  'digital',
+  'pickup_only',
+  'custom',
+]
 const ALLOWED_PRODUCT_CONDITIONS = ['nuevo', 'usado', 'reacondicionado']
 const ALLOWED_PRODUCT_STATUSES = ['active', 'draft', 'archived', 'out-of-stock']
 const ALLOWED_PRODUCT_VISIBILITIES = ['visible', 'hidden']
@@ -41,7 +58,41 @@ const normalizeText = value => {
 const normalizeKeyPart = value => {
   return String(value || '')
     .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+const normalizeBoolean = value => value === true || value === 'true'
+
+const normalizeMapLikeObject = value => {
+  if (!value) return {}
+
+  const rawObject = value instanceof Map
+    ? Object.fromEntries(value.entries())
+    : value
+
+  if (typeof rawObject !== 'object' || Array.isArray(rawObject)) return {}
+
+  return Object.entries(rawObject).reduce((acc, [key, entryValue]) => {
+    const normalizedKey = normalizeKeyPart(key)
+    if (!normalizedKey || entryValue === undefined || entryValue === null || entryValue === '') {
+      return acc
+    }
+
+    acc[normalizedKey] = entryValue
+    return acc
+  }, {})
+}
+
+const normalizeStringArray = value => {
+  return [...new Set(
+    (Array.isArray(value) ? value : String(value || '').split(','))
+      .map(item => String(item || '').trim())
+      .filter(Boolean),
+  )]
 }
 
 const normalizeTags = tags => {
@@ -218,6 +269,111 @@ const normalizeVariantAttributes = variantAttributes => {
   }
 }
 
+
+const normalizeSeoFields = product => {
+  if (!product.seo || typeof product.seo !== 'object') {
+    product.seo = {}
+  }
+
+  product.seo.slug = normalizeText(product.seo.slug) || product.slug
+  product.seo.metaTitle = normalizeText(product.seo.metaTitle) || product.title
+  product.seo.metaDescription = normalizeText(product.seo.metaDescription) || String(product.description || '').slice(0, 320)
+  product.seo.shortDescription = normalizeText(product.seo.shortDescription) || String(product.description || '').slice(0, 500)
+  product.seo.keywords = normalizeTags(product.seo.keywords)
+}
+
+const normalizeLogisticsFields = product => {
+  if (!product.logistics || typeof product.logistics !== 'object') {
+    product.logistics = {}
+  }
+
+  product.logistics.weightKg = toMoney(product.logistics.weightKg)
+
+  if (!product.logistics.dimensionsCm || typeof product.logistics.dimensionsCm !== 'object') {
+    product.logistics.dimensionsCm = {}
+  }
+
+  product.logistics.dimensionsCm.length = toMoney(product.logistics.dimensionsCm.length)
+  product.logistics.dimensionsCm.width = toMoney(product.logistics.dimensionsCm.width)
+  product.logistics.dimensionsCm.height = toMoney(product.logistics.dimensionsCm.height)
+
+  if (!ALLOWED_SHIPPING_TYPES.includes(product.logistics.shippingType)) {
+    product.logistics.shippingType = 'standard'
+  }
+
+  product.logistics.warranty = normalizeText(product.logistics.warranty) || ''
+  product.logistics.originCountry = normalizeText(product.logistics.originCountry) || ''
+}
+
+const normalizeSpecifications = specifications => {
+  return (Array.isArray(specifications) ? specifications : [])
+    .map((specification, index) => {
+      const key = normalizeKeyPart(specification?.key || specification?.name || specification?.label)
+      if (!key) return null
+
+      const type = ALLOWED_PRODUCT_ATTRIBUTE_TYPES.includes(specification?.type)
+        ? specification.type
+        : 'text'
+
+      const rawValue = specification?.value
+      const value = type === 'multiselect'
+        ? normalizeStringArray(rawValue)
+        : rawValue
+
+      if (
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0)
+      ) {
+        return null
+      }
+
+      return {
+        key,
+        label: normalizeText(specification?.label || specification?.name || key) || key,
+        value,
+        unit: normalizeText(specification?.unit) || '',
+        type,
+        group: normalizeText(specification?.group) || 'General',
+        visible: specification?.visible === false ? false : true,
+        filterable: normalizeBoolean(specification?.filterable),
+        searchable: normalizeBoolean(specification?.searchable),
+        sortOrder: Number.isFinite(Number(specification?.sortOrder))
+          ? Number(specification.sortOrder)
+          : index,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+}
+
+const buildFilterAttributesFromSpecifications = specifications => {
+  return (Array.isArray(specifications) ? specifications : [])
+    .filter(specification => specification?.filterable && specification.value !== undefined && specification.value !== null)
+    .flatMap(specification => {
+      const values = Array.isArray(specification.value) ? specification.value : [specification.value]
+
+      return values
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .map(value => ({
+          key: specification.key,
+          label: specification.label,
+          value: value.toLocaleLowerCase('es'),
+        }))
+    })
+}
+
+const normalizeMarketFields = product => {
+  product.productAttributes = normalizeMapLikeObject(product.productAttributes)
+  product.categoryAttributes = normalizeMapLikeObject(product.categoryAttributes)
+  product.specifications = normalizeSpecifications(product.specifications)
+  product.filterAttributes = buildFilterAttributesFromSpecifications(product.specifications)
+  normalizeSeoFields(product)
+  normalizeLogisticsFields(product)
+}
+
 const normalizeDerivedProductFields = product => {
   syncChildTenantIds(product)
 
@@ -233,6 +389,8 @@ const normalizeDerivedProductFields = product => {
   product.price = toMoney(product.price)
   product.compareAtPrice = toMoney(product.compareAtPrice)
   product.stock = toNonNegativeInteger(product.stock)
+
+  normalizeMarketFields(product)
 
   normalizeVariantAttributes(product.variantAttributes)
   normalizeVariants(product.variants)
@@ -341,6 +499,66 @@ const ratingSchema = new Schema(
     _id: true,
     timestamps: true,
   },
+)
+
+
+const seoSchema = new Schema(
+  {
+    slug: { type: String, trim: true, lowercase: true, default: '' },
+    metaTitle: { type: String, trim: true, maxlength: 160, default: '' },
+    metaDescription: { type: String, trim: true, maxlength: 320, default: '' },
+    shortDescription: { type: String, trim: true, maxlength: 500, default: '' },
+    keywords: { type: [String], default: [] },
+  },
+  { _id: false },
+)
+
+const logisticsSchema = new Schema(
+  {
+    weightKg: { type: Number, min: 0, default: 0 },
+    dimensionsCm: {
+      length: { type: Number, min: 0, default: 0 },
+      width: { type: Number, min: 0, default: 0 },
+      height: { type: Number, min: 0, default: 0 },
+    },
+    shippingType: {
+      type: String,
+      enum: ALLOWED_SHIPPING_TYPES,
+      default: 'standard',
+    },
+    warranty: { type: String, trim: true, maxlength: 300, default: '' },
+    originCountry: { type: String, trim: true, maxlength: 80, default: '' },
+  },
+  { _id: false },
+)
+
+const specificationSchema = new Schema(
+  {
+    key: { type: String, required: true, trim: true, lowercase: true },
+    label: { type: String, required: true, trim: true },
+    value: { type: Schema.Types.Mixed, default: null },
+    unit: { type: String, trim: true, default: '' },
+    type: {
+      type: String,
+      enum: ALLOWED_PRODUCT_ATTRIBUTE_TYPES,
+      default: 'text',
+    },
+    group: { type: String, trim: true, default: 'General' },
+    visible: { type: Boolean, default: true },
+    filterable: { type: Boolean, default: false, index: true },
+    searchable: { type: Boolean, default: false },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { _id: false },
+)
+
+const filterAttributeSchema = new Schema(
+  {
+    key: { type: String, trim: true, lowercase: true, index: true },
+    label: { type: String, trim: true, default: '' },
+    value: { type: String, trim: true, lowercase: true, index: true },
+  },
+  { _id: false },
 )
 
 const variantSchema = new Schema(
@@ -483,6 +701,34 @@ const productSchema = new Schema(
     atributos: {
       type: Schema.Types.Mixed,
       default: {},
+    },
+
+    // Campos dinámicos category-driven
+    seo: {
+      type: seoSchema,
+      default: () => ({}),
+    },
+    logistics: {
+      type: logisticsSchema,
+      default: () => ({}),
+    },
+    productAttributes: {
+      type: Map,
+      of: Schema.Types.Mixed,
+      default: {},
+    },
+    categoryAttributes: {
+      type: Map,
+      of: Schema.Types.Mixed,
+      default: {},
+    },
+    specifications: {
+      type: [specificationSchema],
+      default: [],
+    },
+    filterAttributes: {
+      type: [filterAttributeSchema],
+      default: [],
     },
 
     // Variantes
@@ -648,6 +894,18 @@ const productSchema = new Schema(
       ref: 'User',
       default: null,
     },
+    audit: {
+      createdSource: {
+        type: String,
+        enum: ['manual', 'ai', 'agent', 'import', 'system'],
+        default: 'manual',
+      },
+      lastSource: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+    },
     publishedAt: {
       type: Date,
       default: null,
@@ -670,6 +928,8 @@ productSchema.index({ tenantId: 1, 'variants.sku': 1 }, { sparse: true })
 productSchema.index({ tenantId: 1, status: 1, visibility: 1, isDeleted: 1, createdAt: -1 })
 productSchema.index({ tenantId: 1, categoria: 1, subcategoria: 1, status: 1, visibility: 1, isDeleted: 1 })
 productSchema.index({ tenantId: 1, isDeleted: 1, updatedAt: -1 })
+productSchema.index({ tenantId: 1, 'filterAttributes.key': 1, 'filterAttributes.value': 1 })
+productSchema.index({ tenantId: 1, 'logistics.shippingType': 1 })
 
 productSchema.index({
   tenantId: 1,
@@ -679,6 +939,10 @@ productSchema.index({
   categoria: 'text',
   subcategoria: 'text',
   tags: 'text',
+  'seo.metaTitle': 'text',
+  'seo.metaDescription': 'text',
+  'seo.keywords': 'text',
+  'specifications.value': 'text',
 })
 
 // =====================================================

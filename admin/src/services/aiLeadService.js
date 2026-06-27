@@ -37,14 +37,18 @@ const normalizeProductsOfInterest = products => {
 
   return products
     .map(product => ({
-      productId: clean(product?.productId || product?._id || product?.id) || null,
+      productId:
+        clean(product?.productId || product?._id || product?.id) || null,
       title: clean(product?.title || product?.name || product?.nombre),
       slug: clean(product?.slug),
       sku: clean(product?.sku || product?.variantSku || product?.variantSKU),
       price: Number(product?.price || 0),
       lastMentionedAt: product?.lastMentionedAt || new Date().toISOString(),
     }))
-    .filter(product => product.productId || product.title || product.slug || product.sku)
+    .filter(
+      product =>
+        product.productId || product.title || product.slug || product.sku,
+    )
 }
 
 export const getAiLeadSummary = async () => {
@@ -174,11 +178,6 @@ export const discardAiLead = async (leadId, reason = '') => {
   return unwrap(response)
 }
 
-/**
- * Eliminación lógica.
- * En producción no se recomienda borrar físicamente un lead comercial.
- * El backend debe marcar deletedAt/deletedReason/status=discarded.
- */
 export const deleteAiLead = async (leadId, reason = '') => {
   const id = requireLeadId(leadId)
 
@@ -189,6 +188,17 @@ export const deleteAiLead = async (leadId, reason = '') => {
         reason: normalizeReason(reason),
       },
     }),
+  )
+
+  return unwrap(response)
+}
+
+export const permanentlyDeleteAiLead = async leadId => {
+  const id = requireLeadId(leadId)
+
+  const response = await api.delete(
+    `${BASE_URL}/${id}/permanent`,
+    buildRequestConfig(),
   )
 
   return unwrap(response)
@@ -255,6 +265,7 @@ export default {
   markAiLeadLost,
   discardAiLead,
   deleteAiLead,
+  permanentlyDeleteAiLead,
   removeAiLeadProductOfInterest,
   updateAiLeadProductsOfInterest,
 }

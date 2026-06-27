@@ -31,8 +31,10 @@ import {
 } from '../middlewares/tenantMiddleware.js'
 import { uploadPhoto, productImgResize } from '../middlewares/uploadImage.js'
 import { analyzeImage } from '../services/aiVisionService.js'
+import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 
 const router = express.Router()
+
 const adminContext = [
   resolveTenantByDomain,
   requireTenant,
@@ -40,25 +42,19 @@ const adminContext = [
   authMiddleware,
   isAdmin,
 ]
+
 const shopContext = [
   resolveTenantByDomain,
   requireTenant,
   requireShopDomain,
 ]
+
 const tenantReadContext = [
   resolveTenantByDomain,
   requireTenant,
 ]
 
-// =========================================================
-// RATE LIMITERS ESPECÍFICOS
-// =========================================================
-
 const aiVisualLimiter = rateLimiter
-
-// =========================================================
-// IA VISUAL - ADMIN
-// =========================================================
 
 router.post(
   '/analyze-visual',
@@ -67,12 +63,19 @@ router.post(
   productImgResize,
   aiVisualLimiter,
   expressAsyncHandler(async (req, res) => {
-    const tenantId = req.user?.tenantId
+    let tenantId
 
-    if (!tenantId) {
-      return res.status(400).json({
+    try {
+      ;({ tenantId } = resolveAuthorizedTenantFromRequest(req, {
+        requireUserTenant: true,
+        missingTenantMessage: 'No se pudo identificar el comercio por dominio.',
+        missingUserTenantMessage: 'El usuario autenticado no tiene tenantId válido.',
+        mismatchMessage: 'Tenant inconsistente entre usuario autenticado y dominio.',
+      }))
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
         success: false,
-        message: 'No se pudo identificar tu comercio. Reintentá el login.',
+        message: error.message || 'No se pudo identificar tu comercio. Reintentá el login.',
       })
     }
 
@@ -105,15 +108,6 @@ router.post(
       )
 
       const message = rawMessage.toLowerCase()
-
-      console.error('[PRODUCT_ANALYZE_VISUAL_ERROR]', {
-        status,
-        retryable: Boolean(error?.retryable),
-        code: error?.code,
-        name: error?.name,
-        message: rawMessage,
-        tenantId,
-      })
 
       const isGeminiRateLimit =
         status === 429 ||
@@ -176,21 +170,9 @@ router.post(
   }),
 )
 
-const conditionalCsrfProtection = (req, res, next) => {
-  // La protección CSRF ya se aplica de forma global en app.js antes de montar rutas.
-  // Este middleware queda solo como compatibilidad para las rutas de ratings.
-  return next()
-}
+const conditionalCsrfProtection = (req, res, next) => next()
 
-// =========================================================
-// CRUD PRODUCTO - ADMIN
-// =========================================================
-
-router.put(
-  '/categories/config',
-  adminContext,
-  upsertCategoryConfig,
-)
+router.put('/categories/config', adminContext, upsertCategoryConfig)
 
 router.post(
   '/',
@@ -203,21 +185,8 @@ router.post(
   createProduct,
 )
 
-router.put(
-  '/:id',
-  adminContext,
-  updateProduct,
-)
-
-router.delete(
-  '/:productId',
-  adminContext,
-  deleteProduct,
-)
-
-// =========================================================
-// IMÁGENES DEL PRODUCTO - ADMIN
-// =========================================================
+router.put('/:id', adminContext, updateProduct)
+router.delete('/:productId', adminContext, deleteProduct)
 
 router.post(
   '/:productId/upload-image',
@@ -227,25 +196,8 @@ router.post(
   uploadProductImage,
 )
 
-router.delete(
-  '/:productId/image',
-  adminContext,
-  deleteProductImage,
-)
-
-// =========================================================
-// IMAGEN DE VARIANTE - ADMIN
-// =========================================================
-
-router.put(
-  '/:productId/variant-image',
-  adminContext,
-  assignVariantImage,
-)
-
-// =========================================================
-// RATINGS - USUARIO AUTENTICADO
-// =========================================================
+router.delete('/:productId/image', adminContext, deleteProductImage)
+router.put('/:productId/variant-image', adminContext, assignVariantImage)
 
 router.put(
   '/:productId/rating/:ratingId/helpful',
@@ -255,43 +207,11 @@ router.put(
   toggleHelpfulVote,
 )
 
-router.put(
-  '/rating/:productId',
-  shopContext,
-  authMiddleware,
-  rating,
-)
+router.put('/rating/:productId', shopContext, authMiddleware, rating)
 
-// =========================================================
-// CATEGORÍAS Y CATÁLOGO PÚBLICO
-// =========================================================
-
-router.get(
-  '/categories',
-  tenantReadContext,
-  productPublicReadLimiter,
-  getProductCategories,
-)
-
-router.get(
-  '/categories/:category/config',
-  tenantReadContext,
-  productPublicReadLimiter,
-  getCategoryConfig,
-)
-
-router.get(
-  '/',
-  tenantReadContext,
-  productPublicReadLimiter,
-  getAllProduct,
-)
-
-router.get(
-  '/:productId',
-  tenantReadContext,
-  productPublicReadLimiter,
-  getaProduct,
-)
+router.get('/categories', tenantReadContext, productPublicReadLimiter, getProductCategories)
+router.get('/categories/:category/config', tenantReadContext, productPublicReadLimiter, getCategoryConfig)
+router.get('/', tenantReadContext, productPublicReadLimiter, getAllProduct)
+router.get('/:productId', tenantReadContext, productPublicReadLimiter, getaProduct)
 
 export default router

@@ -1,26 +1,27 @@
 // 📁 src/services/aiLearningService.js
+import crypto from 'node:crypto'
 import CorrectionLog from '../models/correctionLog.js'
 import { promoteLearnedRulesForTenant } from './aiLearningPromotionService.js'
 import logger from '../../config/logger.js'
 
-function safeString(value, { lower = false } = {}) {
-  if (typeof value !== 'string') return null
+function safeString(value, { lower = false, maxLength = 500 } = {}) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null
 
-  const clean = value.trim()
-
+  const clean = String(value).trim()
   if (!clean) return null
 
-  return lower ? clean.toLowerCase() : clean
+  const truncated = clean.slice(0, maxLength)
+  return lower ? truncated.toLowerCase() : truncated
 }
 
-function uniqueStringArray(value, { lower = false } = {}) {
+function uniqueStringArray(value, { lower = false, maxItems = 30 } = {}) {
   if (!Array.isArray(value)) return []
 
   const normalized = value
-    .map(v => safeString(String(v ?? ''), { lower }))
+    .map(v => safeString(v, { lower, maxLength: 120 }))
     .filter(Boolean)
 
-  return [...new Set(normalized)]
+  return [...new Set(normalized)].slice(0, maxItems)
 }
 
 function normalizeAttributes(value) {
@@ -29,30 +30,61 @@ function normalizeAttributes(value) {
   const out = {}
 
   for (const [key, val] of Object.entries(value)) {
-    const cleanKey = safeString(String(key ?? ''), { lower: true })
-    const cleanVal = safeString(String(val ?? ''))
+    const cleanKey = safeString(key, { lower: true, maxLength: 80 })
+    const cleanVal = safeString(val, { maxLength: 240 })
 
-    if (cleanKey && cleanVal) {
-      out[cleanKey] = cleanVal
-    }
+    if (cleanKey && cleanVal) out[cleanKey] = cleanVal
   }
 
   return out
 }
 
+function normalizeNumber(value) {
+  if (value === null || value === undefined || value === '') return null
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value >= 0 ? value : null
+  }
+
+  const normalized = String(value)
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\.(?=\d{3})/g, '')
+    .replace(',', '.')
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
 function normalizeMetadata(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return value
+
+  return {
+    imageHash: safeString(value.imageHash, { lower: true, maxLength: 128 }),
+    sourceModel: safeString(value.sourceModel, { maxLength: 120 }),
+    source: safeString(value.source, { maxLength: 120 }),
+    productId: safeString(value.productId, { maxLength: 80 }),
+    jobId: safeString(value.jobId, { maxLength: 80 }),
+    userId: safeString(value.userId, { maxLength: 80 }),
+    businessRuleHint: safeString(value.businessRuleHint, { maxLength: 300 }),
+  }
 }
 
 function mapFieldToPreferenceType(field) {
   if (field === 'category') return 'category'
   if (field === 'subcategory') return 'subcategory'
   if (field === 'brand') return 'brand'
+  if (field === 'title') return 'title'
+  if (field === 'description') return 'description'
+  if (field === 'price' || field === 'precio_sugerido') return 'price'
   if (field === 'tag') return 'tag'
   if (field?.startsWith('attribute.material')) return 'material'
+  if (field?.startsWith('attribute.color')) return 'color'
   if (field?.startsWith('attribute.')) return 'attribute'
   return 'general'
+}
+
+function hash(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex')
 }
 
 function buildStructuredRule({
@@ -62,15 +94,17 @@ function buildStructuredRule({
   confidence = 0.72,
   reason = null,
 }) {
-  const normalizedField = safeString(String(field || ''), { lower: true })
-  const normalizedRawInput = safeString(String(rawInput ?? ''))
-  const normalizedCorrectedValue = safeString(String(correctedValue ?? ''))
+  const normalizedField = safeString(field, { lower: true, maxLength: 120 })
+  const normalizedRawInput = safeString(rawInput, { lower: true, maxLength: 240 })
+  const normalizedCorrectedValue = safeString(correctedValue, { maxLength: 240 })
 
-  if (!normalizedField || !normalizedCorrectedValue) {
-    return null
-  }
+  if (!normalizedField || !normalizedCorrectedValue) return null
 
   const type = mapFieldToPreferenceType(normalizedField)
+  const effectiveRawInput = normalizedRawInput || `__missing__:${normalizedField}`
+  const fingerprint = hash(
+    `${type}:${normalizedField}:${effectiveRawInput}:${normalizedCorrectedValue}`,
+  ).slice(0, 40)
 
   const rule = normalizedRawInput
     ? `Para este tenant, cuando la IA produzca "${normalizedRawInput}", preferir "${normalizedCorrectedValue}" en el campo "${normalizedField}" si el contexto visual coincide.`
@@ -79,10 +113,11 @@ function buildStructuredRule({
   return {
     field: normalizedField,
     type,
-    rawInput: normalizedRawInput || `__missing__:${normalizedField}`,
+    rawInput: effectiveRawInput,
     correctedValue: normalizedCorrectedValue,
-    rule: reason || rule,
-    confidence,
+    rule: safeString(reason, { maxLength: 500 }) || rule,
+    confidence: Math.max(0, Math.min(1, Number(confidence) || 0.5)),
+    fingerprint,
   }
 }
 
@@ -90,7 +125,7 @@ function dedupeRules(rules) {
   const map = new Map()
 
   for (const rule of rules.filter(Boolean)) {
-    const key = `${rule.type || 'general'}::${rule.field || 'general'}::${rule.rawInput || ''}::${rule.correctedValue || ''}`.toLowerCase()
+    const key = rule.fingerprint || `${rule.type}:${rule.field}:${rule.rawInput}:${rule.correctedValue}`.toLowerCase()
     const existing = map.get(key)
 
     if (!existing || Number(existing.confidence || 0) < Number(rule.confidence || 0)) {
@@ -101,153 +136,164 @@ function dedupeRules(rules) {
   return [...map.values()]
 }
 
+function addDiff(diff, field, originalValue, correctedValue) {
+  const originalString = originalValue === undefined || originalValue === null
+    ? null
+    : String(originalValue)
+  const correctedString = correctedValue === undefined || correctedValue === null
+    ? null
+    : String(correctedValue)
+
+  if (originalString !== correctedString) {
+    diff.push({
+      field,
+      originalValue: originalValue ?? null,
+      correctedValue: correctedValue ?? null,
+    })
+  }
+}
+
+function getNormalizedVisualFields(value = {}) {
+  const atributos = normalizeAttributes(value.atributos || value.attributes)
+
+  return {
+    title: safeString(value.titulo || value.title, { maxLength: 180 }),
+    description: safeString(value.descripcion || value.description, { maxLength: 1500 }),
+    category: safeString(value.categoria || value.category, { maxLength: 160 }),
+    subcategory: safeString(value.subcategoria || value.subcategory, { maxLength: 160 }),
+    brand: safeString(value.marca || value.brand, { maxLength: 160 }),
+    price: normalizeNumber(value.precio_sugerido ?? value.suggestedPrice ?? value.price),
+    tags: uniqueStringArray(value.tags, { lower: true, maxItems: 40 }),
+    atributos,
+  }
+}
+
 function buildDiffSummary(originalIAOutput, humanCorrection) {
   const diff = []
+  const original = getNormalizedVisualFields(originalIAOutput)
+  const corrected = getNormalizedVisualFields(humanCorrection)
 
-  const addDiff = (field, originalValue, correctedValue) => {
-    const originalString = originalValue === undefined || originalValue === null
-      ? null
-      : String(originalValue)
-
-    const correctedString = correctedValue === undefined || correctedValue === null
-      ? null
-      : String(correctedValue)
-
-    if (originalString !== correctedString) {
-      diff.push({
-        field,
-        originalValue: originalValue ?? null,
-        correctedValue: correctedValue ?? null,
-      })
-    }
-  }
-
-  addDiff('category', originalIAOutput?.categoria, humanCorrection?.categoria)
-  addDiff('subcategory', originalIAOutput?.subcategoria, humanCorrection?.subcategoria)
-  addDiff('brand', originalIAOutput?.marca, humanCorrection?.marca)
-
-  const originalAttributes = normalizeAttributes(originalIAOutput?.atributos)
-  const correctedAttributes = normalizeAttributes(humanCorrection?.atributos)
+  addDiff(diff, 'title', original.title, corrected.title)
+  addDiff(diff, 'description', original.description, corrected.description)
+  addDiff(diff, 'category', original.category, corrected.category)
+  addDiff(diff, 'subcategory', original.subcategory, corrected.subcategory)
+  addDiff(diff, 'brand', original.brand, corrected.brand)
+  addDiff(diff, 'price', original.price, corrected.price)
 
   for (const key of new Set([
-    ...Object.keys(originalAttributes),
-    ...Object.keys(correctedAttributes),
+    ...Object.keys(original.atributos),
+    ...Object.keys(corrected.atributos),
   ])) {
-    addDiff(`attribute.${key}`, originalAttributes[key], correctedAttributes[key])
+    addDiff(diff, `attribute.${key}`, original.atributos[key], corrected.atributos[key])
+  }
+
+  const originalTags = original.tags
+  const correctedTags = corrected.tags
+  const addedTags = correctedTags.filter(tag => !originalTags.includes(tag))
+  const removedTags = originalTags.filter(tag => !correctedTags.includes(tag))
+
+  if (addedTags.length || removedTags.length) {
+    diff.push({
+      field: 'tags',
+      originalValue: originalTags,
+      correctedValue: correctedTags,
+      added: addedTags,
+      removed: removedTags,
+    })
   }
 
   return diff
 }
 
+function pushRuleIfChanged(rules, { field, originalValue, correctedValue, confidence }) {
+  const original = safeString(originalValue, { maxLength: 240 })
+  const corrected = safeString(correctedValue, { maxLength: 240 })
+
+  if (!corrected) return
+
+  rules.push(
+    buildStructuredRule({
+      field,
+      rawInput: original || null,
+      correctedValue: corrected,
+      confidence: original ? confidence : Math.max(0.55, confidence - 0.1),
+    }),
+  )
+}
+
 function computeLearnedRules(originalIAOutput, humanCorrection) {
   const rules = []
+  const original = getNormalizedVisualFields(originalIAOutput)
+  const corrected = getNormalizedVisualFields(humanCorrection)
 
-  const originalCategory = safeString(originalIAOutput?.categoria)
-  const correctedCategory = safeString(humanCorrection?.categoria)
+  pushRuleIfChanged(rules, {
+    field: 'title',
+    originalValue: original.title,
+    correctedValue: corrected.title,
+    confidence: 0.55,
+  })
+  pushRuleIfChanged(rules, {
+    field: 'description',
+    originalValue: original.description,
+    correctedValue: corrected.description,
+    confidence: 0.5,
+  })
+  pushRuleIfChanged(rules, {
+    field: 'category',
+    originalValue: original.category,
+    correctedValue: corrected.category,
+    confidence: 0.72,
+  })
+  pushRuleIfChanged(rules, {
+    field: 'subcategory',
+    originalValue: original.subcategory,
+    correctedValue: corrected.subcategory,
+    confidence: 0.72,
+  })
+  pushRuleIfChanged(rules, {
+    field: 'brand',
+    originalValue: original.brand,
+    correctedValue: corrected.brand,
+    confidence: 0.67,
+  })
 
-  if (!originalCategory && correctedCategory) {
-    rules.push(buildStructuredRule({
-      field: 'category',
-      correctedValue: correctedCategory,
-      confidence: 0.62,
-    }))
-  } else if (
-    originalCategory &&
-    correctedCategory &&
-    originalCategory !== correctedCategory
-  ) {
-    rules.push(buildStructuredRule({
-      field: 'category',
-      rawInput: originalCategory,
-      correctedValue: correctedCategory,
-      confidence: 0.72,
-    }))
+  if (corrected.price !== null && original.price !== corrected.price) {
+    rules.push(
+      buildStructuredRule({
+        field: 'price',
+        rawInput: original.price === null ? null : String(original.price),
+        correctedValue: String(corrected.price),
+        confidence: original.price === null ? 0.45 : 0.55,
+      }),
+    )
   }
 
-  const originalSubcategory = safeString(originalIAOutput?.subcategoria)
-  const correctedSubcategory = safeString(humanCorrection?.subcategoria)
+  for (const [key, correctedValue] of Object.entries(corrected.atributos)) {
+    const originalValue = original.atributos[key]
+    if (originalValue === correctedValue) continue
 
-  if (!originalSubcategory && correctedSubcategory) {
-    rules.push(buildStructuredRule({
-      field: 'subcategory',
-      correctedValue: correctedSubcategory,
-      confidence: 0.62,
-    }))
-  } else if (
-    originalSubcategory &&
-    correctedSubcategory &&
-    originalSubcategory !== correctedSubcategory
-  ) {
-    rules.push(buildStructuredRule({
-      field: 'subcategory',
-      rawInput: originalSubcategory,
-      correctedValue: correctedSubcategory,
-      confidence: 0.72,
-    }))
-  }
-
-  const originalBrand = safeString(originalIAOutput?.marca)
-  const correctedBrand = safeString(humanCorrection?.marca)
-
-  if (!originalBrand && correctedBrand) {
-    rules.push(buildStructuredRule({
-      field: 'brand',
-      correctedValue: correctedBrand,
-      confidence: 0.58,
-    }))
-  } else if (
-    originalBrand &&
-    correctedBrand &&
-    originalBrand !== correctedBrand
-  ) {
-    rules.push(buildStructuredRule({
-      field: 'brand',
-      rawInput: originalBrand,
-      correctedValue: correctedBrand,
-      confidence: 0.67,
-    }))
-  }
-
-  const originalAttributes = normalizeAttributes(originalIAOutput?.atributos)
-  const correctedAttributes = normalizeAttributes(humanCorrection?.atributos)
-
-  for (const [key, correctedValue] of Object.entries(correctedAttributes)) {
-    const originalValue = safeString(originalAttributes[key])
-    const field = `attribute.${key}`
-
-    if (!originalValue && correctedValue) {
-      rules.push(buildStructuredRule({
-        field,
+    rules.push(
+      buildStructuredRule({
+        field: `attribute.${key}`,
+        rawInput: originalValue || null,
         correctedValue,
-        confidence: 0.6,
-      }))
-
-      continue
-    }
-
-    if (originalValue && originalValue !== correctedValue) {
-      rules.push(buildStructuredRule({
-        field,
-        rawInput: originalValue,
-        correctedValue,
-        confidence: 0.72,
-      }))
-    }
+        confidence: key === 'material' || key === 'color' ? 0.72 : 0.65,
+      }),
+    )
   }
 
-  const originalTags = uniqueStringArray(originalIAOutput?.tags, { lower: true })
-  const correctedTags = uniqueStringArray(humanCorrection?.tags, { lower: true })
-
-  const addedTags = correctedTags.filter(tag => !originalTags.includes(tag))
+  const addedTags = corrected.tags.filter(tag => !original.tags.includes(tag))
 
   for (const tag of addedTags) {
-    rules.push(buildStructuredRule({
-      field: 'tag',
-      rawInput: '__missing__:tag',
-      correctedValue: tag,
-      confidence: 0.6,
-      reason: `Para este tenant, considerar el tag "${tag}" cuando el contexto del producto sea similar.`,
-    }))
+    rules.push(
+      buildStructuredRule({
+        field: 'tag',
+        rawInput: '__missing__:tag',
+        correctedValue: tag,
+        confidence: 0.6,
+        reason: `Para este tenant, considerar el tag "${tag}" cuando el contexto visual del producto sea similar.`,
+      }),
+    )
   }
 
   return dedupeRules(rules)
@@ -259,11 +305,9 @@ export async function registerVisualFeedback({
   humanCorrection,
   metadata = {},
 }) {
-  const normalizedTenantId = String(tenantId || '').trim()
+  const normalizedTenantId = safeString(tenantId, { maxLength: 80 })
 
-  if (!normalizedTenantId) {
-    throw new Error('tenantId es requerido')
-  }
+  if (!normalizedTenantId) throw new Error('tenantId es requerido')
 
   if (!originalIAOutput || typeof originalIAOutput !== 'object' || Array.isArray(originalIAOutput)) {
     throw new Error('originalIAOutput es requerido')
@@ -279,8 +323,8 @@ export async function registerVisualFeedback({
 
   const logEntry = await CorrectionLog.create({
     tenantId: normalizedTenantId,
-    imageHash: safeMetadata?.imageHash || originalIAOutput?.hash || null,
-    sourceModel: safeMetadata?.sourceModel || originalIAOutput?.source || null,
+    imageHash: safeMetadata.imageHash || originalIAOutput.hash || null,
+    sourceModel: safeMetadata.sourceModel || originalIAOutput.source || null,
     originalIAOutput,
     humanCorrection,
     diffSummary,
@@ -302,7 +346,8 @@ export async function registerVisualFeedback({
 
     logger.info('🧠 Resultado promoción IA', {
       tenantId: normalizedTenantId,
-      promotionResult,
+      promoted: promotionResult?.promoted?.length || 0,
+      skipped: promotionResult?.skipped?.length || 0,
     })
   } catch (promotionError) {
     logger.error('❌ Error promoviendo reglas IA', {
@@ -314,6 +359,7 @@ export async function registerVisualFeedback({
   return {
     logEntry,
     learnedRules,
+    diffSummary,
     promotionResult,
   }
 }

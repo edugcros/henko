@@ -1,87 +1,71 @@
-// 📁 src/test/wishlist.test.js
 import request from 'supertest'
+
 import app from '../../app.js'
 import User from '../models/userModel.js'
 import Product from '../models/productModel.js'
-import Wishlist from '../models/wishlistModel.js'
+import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB } from './testDB.js'
+import {
+  authHeaders,
+  createTestProduct,
+  createTestTenant,
+  registerAndLoginUser,
+} from './testSetup.js'
 
-let csrfToken, csrfCookie, accessToken, userId, productId
-
-describe('💖 WISHLIST', () => {
- 
+describe('wishlist', () => {
+  let tenantContext
+  let session
+  let product
 
   beforeAll(async () => {
     await connectTestDB()
     await User.deleteMany()
     await Product.deleteMany()
-    await Wishlist.deleteMany()
+    await Tenant.deleteMany()
 
-    const csrfRes = await request(app).get('/api/user/csrf-token')
-    csrfToken = csrfRes.body.csrfToken
-    csrfCookie = csrfRes.headers['set-cookie'][0]
-
-    const registerRes = await request(app)
-      .post('/api/user/register')
-      .set('Cookie', csrfCookie)
-      .set('X-CSRF-Token', csrfToken)
-      .send({
-        firstname: 'Test',
-        lastname: 'User',
-        email: 'wishlist@test.com',
-        password: 'Test1234!',
-        mobile: '1234567890',
-      })
-
-    userId = registerRes.body.data._id
-
-    const loginRes = await request(app)
-      .post('/api/user/login')
-      .set('Cookie', csrfCookie)
-      .set('X-CSRF-Token', csrfToken)
-      .send({
-        email: 'wishlist@test.com',
-        password: 'Test1234!',
-      })
-
-    const cookies = loginRes.headers['set-cookie']
-    accessToken = cookies.find(c => c.startsWith('accessToken'))?.split(';')[0]
-
-    const product = await Product.create({
-      title: 'Producto Test',
-      slug: 'producto-test',
-      price: 100,
-      quantity: 10,
-      description: 'Producto de prueba para wishlist',
+    tenantContext = await createTestTenant()
+    session = await registerAndLoginUser({
+      shopDomain: tenantContext.shopDomain,
+      email: 'wishlist@test.com',
     })
-
-    productId = product._id
-  }, 10000)
+    product = await createTestProduct({
+      tenantId: tenantContext.tenant._id,
+      title: 'Producto Wishlist',
+      price: 100,
+      stock: 10,
+    })
+  })
 
   afterAll(async () => {
     await disconnectTestDB()
   })
 
-  it('💾 Debería añadir un producto a la wishlist', async () => {
+  test('adds a product to the wishlist', async () => {
     const res = await request(app)
-      .put('/api/user/wishlist')
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
-      .send({ prodId: productId })
+      .put(`/api/user/wishlist/${product._id}`)
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
-    expect(res.body.message).toMatch(/wishlist/i)
+    expect(res.body.message).toMatch(/deseos/i)
   })
 
-  it('📋 Debería obtener la wishlist del usuario', async () => {
+  test('returns the authenticated user wishlist', async () => {
     const res = await request(app)
       .get('/api/user/wishlist')
-      .set('Cookie', [csrfCookie, accessToken])
-      .set('X-CSRF-Token', csrfToken)
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+      }))
 
     expect(res.statusCode).toBe(200)
-    expect(res.body.data).toBeDefined()
-    expect(Array.isArray(res.body.data)).toBe(true)
+    expect(res.body.success).toBe(true)
+    expect(res.body.data).toHaveLength(1)
+    expect(String(res.body.data[0]._id)).toBe(String(product._id))
   })
 })

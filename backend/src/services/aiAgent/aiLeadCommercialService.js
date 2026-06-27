@@ -38,6 +38,35 @@ const FINAL_STATUSES = new Set([
 const clean = value => String(value || '').trim()
 const lower = value => clean(value).toLowerCase()
 
+const uniqueCleanValues = (values, maxItems = 20) => {
+  return [
+    ...new Set(
+      (Array.isArray(values) ? values : [])
+        .map(value => clean(value))
+        .filter(Boolean),
+    ),
+  ].slice(0, maxItems)
+}
+
+const sanitizeMetadata = metadata => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return {}
+  }
+
+  return Object.entries(metadata).reduce((acc, [key, value]) => {
+    const cleanKey = clean(key).slice(0, 80)
+    if (!cleanKey) return acc
+
+    if (value == null) return acc
+
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      acc[cleanKey] = typeof value === 'string' ? clean(value).slice(0, 1000) : value
+    }
+
+    return acc
+  }, {})
+}
+
 const clampScore = value => {
   const score = Number(value || 0)
   if (!Number.isFinite(score)) return 0
@@ -49,18 +78,6 @@ const isValidObjectId = value => Types.ObjectId.isValid(String(value || ''))
 const toObjectIdOrNull = value => {
   if (!value) return null
   return isValidObjectId(value) ? new Types.ObjectId(String(value)) : null
-}
-
-const escapeRegex = value => clean(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-const compactObject = object => {
-  return Object.entries(object || {}).reduce((acc, [key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      acc[key] = value
-    }
-
-    return acc
-  }, {})
 }
 
 const normalizeTextForMatch = value => {
@@ -103,7 +120,9 @@ const getProductIdentityKey = product => {
   const productId = clean(product?.productId || product?._id || product?.id)
   const slug = lower(product?.slug)
   const sku = lower(product?.sku || product?.variantSku || product?.variantSKU)
-  const title = normalizeTextForMatch(product?.title || product?.name || product?.nombre)
+  const title = normalizeTextForMatch(
+    product?.title || product?.name || product?.nombre,
+  )
 
   return productId || slug || sku || title
 }
@@ -122,7 +141,12 @@ const uniqueProductsByIdentity = products => {
   })
 }
 
-const normalizeCustomer = ({ conversation, customerName, customerEmail, customerPhone } = {}) => {
+const normalizeCustomer = ({
+  conversation,
+  customerName,
+  customerEmail,
+  customerPhone,
+} = {}) => {
   return {
     name: clean(
       customerName ||
@@ -176,7 +200,11 @@ export const detectLeadIntentFromText = value => {
     }
   }
 
-  if (/comprar|lo quiero|quiero pagar|pagar|checkout|finalizar compra|reservar|seña|señar/.test(text)) {
+  if (
+    /comprar|lo quiero|quiero pagar|pagar|checkout|finalizar compra|reservar|seña|señar/.test(
+      text,
+    )
+  ) {
     add(35, AI_LEAD_INTENT.CHECKOUT_INTENT)
   }
 
@@ -184,7 +212,11 @@ export const detectLeadIntentFromText = value => {
     add(18, AI_LEAD_INTENT.PRICE_CHECK)
   }
 
-  if (/cuotas|financiaci[oó]n|financiar|tarjeta|mercado pago|mercadopago|transferencia/.test(text)) {
+  if (
+    /cuotas|financiaci[oó]n|financiar|tarjeta|mercado pago|mercadopago|transferencia/.test(
+      text,
+    )
+  ) {
     add(22, AI_LEAD_INTENT.PURCHASE_INTENT)
   }
 
@@ -204,7 +236,11 @@ export const detectLeadIntentFromText = value => {
     add(8, AI_LEAD_INTENT.POLICY_QUESTION)
   }
 
-  if (/asesor|vendedor|humano|llamar|whatsapp|contacto|hablar con alguien/.test(text)) {
+  if (
+    /asesor|vendedor|humano|llamar|whatsapp|contacto|hablar con alguien/.test(
+      text,
+    )
+  ) {
     add(22, AI_LEAD_INTENT.PURCHASE_INTENT)
   }
 
@@ -252,10 +288,17 @@ const normalizeIntent = value => {
 const normalizeProductOfInterest = product => {
   if (!product) return null
 
-  const productId = toObjectIdOrNull(product.productId || product._id || product.id)
-  const title = clean(product.title || product.name || product.nombre).slice(0, 180)
+  const productId = toObjectIdOrNull(
+    product.productId || product._id || product.id,
+  )
+  const title = clean(product.title || product.name || product.nombre).slice(
+    0,
+    180,
+  )
   const slug = clean(product.slug).slice(0, 180)
-  const sku = clean(product.sku || product.variantSku || product.variantSKU).slice(0, 120)
+  const sku = clean(
+    product.sku || product.variantSku || product.variantSKU,
+  ).slice(0, 120)
 
   if (!productId && !title && !slug && !sku) return null
 
@@ -264,7 +307,11 @@ const normalizeProductOfInterest = product => {
     title,
     slug,
     sku,
-    price: Math.max(Number(product.price || product.finalPrice || product.salePrice || 0) || 0, 0),
+    price: Math.max(
+      Number(product.price || product.finalPrice || product.salePrice || 0) ||
+        0,
+      0,
+    ),
     currency: clean(product.currency) || 'ARS',
     lastMentionedAt: product.lastMentionedAt
       ? new Date(product.lastMentionedAt)
@@ -373,7 +420,10 @@ const buildExistingProductRefs = products => {
   )
 }
 
-const filterNewProductsOnly = ({ existingProducts = [], nextProducts = [] } = {}) => {
+const filterNewProductsOnly = ({
+  existingProducts = [],
+  nextProducts = [],
+} = {}) => {
   const existingRefs = buildExistingProductRefs(existingProducts)
 
   return nextProducts.filter(product => {
@@ -411,7 +461,9 @@ export const upsertLeadFromConversation = async ({
 } = {}) => {
   if (!tenantId) return null
 
-  const conversationId = toObjectIdOrNull(conversation?._id || conversation?.id)
+  const conversationId = toObjectIdOrNull(
+    conversation?._id || conversation?.id,
+  )
 
   const baseCustomer = normalizeCustomer({
     conversation,
@@ -428,7 +480,9 @@ export const upsertLeadFromConversation = async ({
 
   const existingLead = await AiLead.findOne(lookup)
     .setOptions({ tenantId })
-    .select('_id status leadScore customer productsOfInterest metadata')
+    .select(
+      '_id status leadScore customer productsOfInterest preferences metadata',
+    )
     .lean()
 
   const customer = mergeCustomerForUpdate({
@@ -467,16 +521,39 @@ export const upsertLeadFromConversation = async ({
   })
 
   const safeMetadata = {
-    ...(existingLead?.metadata || {}),
-    ...(metadata || {}),
+    ...sanitizeMetadata(existingLead?.metadata),
+    ...sanitizeMetadata(metadata),
     lastAutoUpdateAt: new Date().toISOString(),
     lastAutoUpdateSource: clean(metadata?.source) || 'ai_agent',
   }
 
   const normalizedPreferences =
-    preferences && typeof preferences === 'object' && !Array.isArray(preferences)
+    preferences &&
+    typeof preferences === 'object' &&
+    !Array.isArray(preferences)
       ? preferences
       : {}
+  const mergedPreferences = {
+    colors: uniqueCleanValues([
+      ...(existingLead?.preferences?.colors || []),
+      ...(normalizedPreferences.colors || []),
+    ]),
+    sizes: uniqueCleanValues([
+      ...(existingLead?.preferences?.sizes || []),
+      ...(normalizedPreferences.sizes || []),
+    ]),
+    categories: uniqueCleanValues([
+      ...(existingLead?.preferences?.categories || []),
+      ...(normalizedPreferences.categories || []),
+    ]),
+    intents: uniqueCleanValues([
+      ...(existingLead?.preferences?.intents || []),
+      ...(normalizedPreferences.intents || []),
+    ]),
+    budgetMax: Number.isFinite(Number(normalizedPreferences.budgetMax))
+      ? Math.max(0, Number(normalizedPreferences.budgetMax))
+      : existingLead?.preferences?.budgetMax ?? null,
+  }
 
   const resolvedChannel = clean(channel || conversation?.channel) || 'webchat'
 
@@ -495,7 +572,7 @@ export const upsertLeadFromConversation = async ({
       leadScore: nextLeadScore,
       score: nextLeadScore,
       status: nextStatus,
-      preferences: normalizedPreferences,
+      preferences: mergedPreferences,
       lastMessage: clean(message).slice(0, 2000),
       lastInteractionAt: new Date(),
       metadata: safeMetadata,
@@ -633,7 +710,10 @@ export const assignLead = async ({ tenantId, leadId, assignedTo } = {}) => {
     },
     {
       $set: {
-        assignedTo: assignedTo && isValidObjectId(assignedTo) ? assignedTo : null,
+        assignedTo:
+          assignedTo && isValidObjectId(assignedTo)
+            ? new Types.ObjectId(String(assignedTo))
+            : null,
         lastInteractionAt: new Date(),
       },
     },

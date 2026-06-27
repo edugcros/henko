@@ -6,7 +6,7 @@ import AdminOrdersPage from './AdminOrdersPage'
 import AdminRegister from './AdminRegister'
 import Customers from './Customers'
 import Enquiries from './Enquiries'
-import Addproduct from './Addproduct'
+import AddProduct from './AddProduct'
 import Productlist from './Productlist'
 import SubscriptionPage from './SubscriptionPage'
 import NotFound from './NotFound' // Asegurate de tener esta también
@@ -27,12 +27,12 @@ const pages = {
   AiCommercialInboxPage,
   AdminOrdersPage,
   AdminRegister,
+  AddProduct,
   Customers,
   ThemeCustomizer,
   PromotionalBlocksPage,
   ProductAnalysisPage,
   Enquiries,
-  Addproduct,
   Productlist,
   CouponsPage,
   NotFound,

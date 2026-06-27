@@ -2,6 +2,7 @@
 import React from 'react'
 import { Box, Typography, Container, Button } from '@mui/material'
 import useThemeConfig from '@hooks/useThemeConfig'
+import { Newprimary } from '../../../admin/src/theme/colors'
 
 const getAssetUrl = asset => {
   if (!asset) return null
@@ -74,6 +75,7 @@ const CustomHero = () => {
           sx={{
             mb: 4,
             opacity: 0.9,
+            color:Newprimary.darkRed
           }}
         >
           {hero?.subtitle}

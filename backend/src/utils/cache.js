@@ -8,7 +8,7 @@
 const memoryCache = new Map()
 
 // Limpieza automática para evitar acumulación
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
   const now = Date.now()
   for (const [key, entry] of memoryCache.entries()) {
     if (entry.expiresAt <= now) {
@@ -16,6 +16,8 @@ setInterval(() => {
     }
   }
 }, 60 * 1000) // limpia cada 1 minuto
+
+cleanupInterval.unref?.()
 
 // -----------------------------------------------------
 // SET

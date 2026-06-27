@@ -47,6 +47,7 @@ export const sendVerificationEmail = async (user, tenantOrName, rawToken) => {
     null,
     tenant,
   )
+  const safeVerifyUrl = escapeHtml(verifyUrl)
 
   return sendEmail({
     to: user.email,
@@ -60,7 +61,7 @@ export const sendVerificationEmail = async (user, tenantOrName, rawToken) => {
         <p>Para completar tu registro y activar tu cuenta, hacé click en el botón de abajo:</p>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${verifyUrl}"
+          <a href="${safeVerifyUrl}"
              style="background-color: #000; color: #fff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
             VERIFICAR MI CUENTA
           </a>
@@ -69,7 +70,7 @@ export const sendVerificationEmail = async (user, tenantOrName, rawToken) => {
         <p>Si el botón no funciona, copiá y pegá este enlace en tu navegador:</p>
 
         <p style="word-break: break-all; font-size: 0.9rem;">
-          ${verifyUrl}
+          ${safeVerifyUrl}
         </p>
 
         <p style="font-size: 0.8rem; color: #666;">
@@ -95,6 +96,7 @@ export const sendResetPasswordEmail = async (user, resetUrl) => {
   }
 
   const safeUserName = escapeHtml(user.firstname || user.email)
+  const safeResetUrl = escapeHtml(resetUrl)
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; line-height: 1.5;">
@@ -105,7 +107,7 @@ export const sendResetPasswordEmail = async (user, resetUrl) => {
       <p>Recibimos una solicitud para restablecer tu contraseña.</p>
 
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${resetUrl}"
+        <a href="${safeResetUrl}"
           style="background: #000; color: #fff; padding: 12px 25px;
           text-decoration: none; border-radius: 6px; font-weight: bold;">
           RESTABLECER CONTRASEÑA
@@ -115,7 +117,7 @@ export const sendResetPasswordEmail = async (user, resetUrl) => {
       <p>Si el botón no funciona, copiá y pegá este enlace en tu navegador:</p>
 
       <p style="word-break: break-all; font-size: 0.9rem;">
-        ${resetUrl}
+        ${safeResetUrl}
       </p>
 
       <p style="font-size: 0.8rem; color: #666;">

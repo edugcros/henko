@@ -85,8 +85,8 @@ const ImageUploader = ({
       }
 
       onChange(normalizeUploadedImage(result))
-    } catch {
-      setError('Error subiendo imagen')
+    } catch (uploadError) {
+      setError(uploadError?.message || 'Error subiendo imagen')
     } finally {
       setUploading(false)
     }

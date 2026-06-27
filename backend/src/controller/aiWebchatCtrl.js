@@ -3,28 +3,19 @@ import asyncHandler from 'express-async-handler'
 import { processAgentMessage } from '../services/aiAgent/aiAgentBrainService.js'
 import { getUserIdFromRequest } from '../utils/requestContext.js'
 import User from '../models/userModel.js'
-import Tenant from '../models/tenantModel.js'
 
 const clean = value => String(value || '').trim()
-
-const normalizeDomain = value => {
-  return clean(value)
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/\/.*$/, '')
-    .replace(/:\d+$/, '')
-}
 
 const createSessionId = () => {
   return `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 const getSessionId = req => {
-  return clean(req.body?.sessionId)
+  return clean(req.body?.sessionId || req.headers['x-ai-session-id']).slice(0, 160)
 }
 
 const getVisitorId = req => {
-  return clean(req.body?.visitorId)
+  return clean(req.body?.visitorId || req.headers['x-ai-visitor-id']).slice(0, 160)
 }
 
 const buildExternalUserId = ({
@@ -34,11 +25,13 @@ const buildExternalUserId = ({
   customerPhone,
   user,
 }) => {
+  // Para webchat comercial, la conversación debe poder separarse por sesión.
+  // Email/teléfono se usan para fusionar/actualizar Lead, no necesariamente para agrupar chat.
+  if (sessionId) return `session:${clean(sessionId)}`
+  if (visitorId) return `visitor:${clean(visitorId)}`
   if (customerEmail) return `email:${clean(customerEmail).toLowerCase()}`
   if (customerPhone) return `phone:${clean(customerPhone)}`
   if (user?._id) return `user:${String(user._id)}`
-  if (visitorId) return `visitor:${clean(visitorId)}`
-  if (sessionId) return `session:${clean(sessionId)}`
 
   return `anonymous:${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
@@ -50,98 +43,29 @@ const getRequestUser = async req => {
 
   try {
     return await User.findById(userId)
-      .select('_id name firstname lastname email phone tenantId')
+      .select('_id name firstname lastname email phone mobile tenantId')
       .lean()
   } catch {
     return null
   }
 }
 
-const buildTenantQuery = tenantDomain => {
-  const domain = normalizeDomain(tenantDomain)
-
-  if (!domain) return null
-
-  return {
-    $or: [
-      { domain },
-      { customDomain: domain },
-      { subdomain: domain },
-      { publicDomain: domain },
-      { storefrontDomain: domain },
-      { websiteDomain: domain },
-
-      // Para estructuras tipo:
-      // domains: [{ host: 'henko.local' }]
-      { 'domains.host': domain },
-      { 'domains.hostname': domain },
-      { 'domains.domain': domain },
-      { 'domains.value': domain },
-      { 'domains.name': domain },
-
-      // Para estructuras tipo:
-      // settings.domain / storefront.domain
-      { 'settings.domain': domain },
-      { 'storefront.domain': domain },
-      { 'storefront.host': domain },
-    ],
-  }
-}
-
-const resolveTenantForWebchat = async ({ req, user }) => {
-  const existingTenant = req.tenant || req.resolvedTenant || null
-  const existingTenantId =
-    req.tenant?._id ||
-    req.resolvedTenant?._id ||
-    req.tenantId ||
-    user?.tenantId ||
-    null
-
-  if (existingTenantId) {
-    return {
-      tenant: existingTenant && typeof existingTenant === 'object' ? existingTenant : null,
-      tenantId: existingTenantId,
-    }
-  }
-
-  const rawTenantDomain =
-    req.body?.tenantDomain ||
-    req.headers['x-tenant-domain'] ||
-    req.headers.origin ||
-    req.headers.referer ||
-    ''
-
-  const tenantQuery = buildTenantQuery(rawTenantDomain)
-
-  if (!tenantQuery) {
-    return {
-      tenant: null,
-      tenantId: null,
-    }
-  }
-
-  const tenant = await Tenant.findOne(tenantQuery).lean()
-
-  return {
-    tenant,
-    tenantId: tenant?._id || null,
-  }
-}
-
 const buildCustomerData = ({ req, user }) => {
-  const bodyName = clean(req.body?.customerName)
-  const bodyEmail = clean(req.body?.customerEmail).toLowerCase()
-  const bodyPhone = clean(req.body?.customerPhone)
+  const bodyName = clean(req.body?.customerName).slice(0, 160)
+  const bodyEmail = clean(req.body?.customerEmail)
+    .toLowerCase()
+    .slice(0, 320)
+  const bodyPhone = clean(req.body?.customerPhone).slice(0, 40)
 
   const userName = clean(
     user?.name ||
       [user?.firstname, user?.lastname].filter(Boolean).join(' '),
-  )
+  ).slice(0, 160)
 
   return {
     customerName: bodyName || userName,
-    customerEmail: bodyEmail || clean(user?.email).toLowerCase(),
-    customerPhone: bodyPhone || clean(user?.phone),
+    customerEmail: bodyEmail || clean(user?.email).toLowerCase().slice(0, 320),
+    customerPhone: bodyPhone || clean(user?.phone || user?.mobile).slice(0, 40),
   }
 }
 
@@ -152,11 +76,8 @@ export const sendWebchatMessage = asyncHandler(async (req, res) => {
   const visitorId = getVisitorId(req)
 
   const user = await getRequestUser(req)
-
-  const { tenant, tenantId } = await resolveTenantForWebchat({
-    req,
-    user,
-  })
+  const tenant = req.tenant || null
+  const tenantId = req.tenantId || req.tenant?._id || null
 
   const { customerName, customerEmail, customerPhone } = buildCustomerData({
     req,
@@ -167,20 +88,6 @@ export const sendWebchatMessage = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: 'Tenant no resuelto',
-      debug:
-        process.env.NODE_ENV === 'production'
-          ? undefined
-          : {
-            bodyTenantDomain: req.body?.tenantDomain,
-            normalizedTenantDomain: normalizeDomain(req.body?.tenantDomain),
-            headerTenantDomain: req.headers['x-tenant-domain'],
-            origin: req.headers.origin,
-            referer: req.headers.referer,
-            reqTenantId: req.tenantId,
-            hasReqTenant: Boolean(req.tenant),
-            hasResolvedTenant: Boolean(req.resolvedTenant),
-            userTenantId: user?.tenantId || null,
-          },
     })
   }
 
@@ -199,7 +106,7 @@ export const sendWebchatMessage = asyncHandler(async (req, res) => {
   }
 
   const externalUserId = buildExternalUserId({
-    sessionId: requestSessionId || sessionId,
+    sessionId,
     visitorId,
     customerEmail,
     customerPhone,
@@ -215,6 +122,10 @@ export const sendWebchatMessage = asyncHandler(async (req, res) => {
     customerEmail,
     customerPhone,
     text: message,
+    externalMessageId: clean(req.body?.messageId || req.body?.eventId).slice(
+      0,
+      200,
+    ),
   })
 
   return res.status(200).json({
@@ -227,4 +138,3 @@ export const sendWebchatMessage = asyncHandler(async (req, res) => {
     },
   })
 })
-

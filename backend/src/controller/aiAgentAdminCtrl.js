@@ -2,23 +2,30 @@
 import asyncHandler from 'express-async-handler'
 import AiConversation from '../models/aiConversationModel.js'
 import AiLead from '../models/aiLeadModel.js'
-import mongoose from 'mongoose'
+import {
+  getUserIdFromRequest,
+  isValidObjectId,
+  resolveAuthorizedTenantFromRequest,
+} from '../utils/requestContext.js'
 
 const clean = value => String(value || '').trim()
-
-const getTenantId = req => {
-  return req.tenant?._id || req.tenantId || req.user?.tenantId || null
-}
+const allowedStatuses = new Set([
+  'open',
+  'waiting_customer',
+  'waiting_human',
+  'human_active',
+  'closed',
+  'converted',
+  'lost',
+])
+const allowedChannels = new Set(['whatsapp', 'webchat'])
+const requireTenantId = req =>
+  resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  }).tenantId
 
 export const listAiConversation = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
-
-  if (!tenantId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Tenant no resuelto',
-    })
-  }
+  const tenantId = requireTenantId(req)
 
   const page = Math.max(Number(req.query.page || 1), 1)
   const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100)
@@ -28,13 +35,19 @@ export const listAiConversation = asyncHandler(async (req, res) => {
 
   const query = {
     tenantId,
+    deletedAt: { $exists: false },
   }
 
-  if (status) query.status = status
-  if (channel) query.channel = channel
+  if (status && allowedStatuses.has(status)) query.status = status
+  if (channel && allowedChannels.has(channel)) query.channel = channel
 
   if (search) {
-    const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    const regex = new RegExp(
+      search
+        .slice(0, 120)
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      'i',
+    )
 
     query.$or = [
       { externalUserId: regex },
@@ -92,12 +105,20 @@ export const listAiConversation = asyncHandler(async (req, res) => {
 })
 
 export const getAiConversationById = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
+  const tenantId = requireTenantId(req)
   const { id } = req.params
+
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({
+      success: false,
+      message: 'ID de conversación inválido',
+    })
+  }
 
   const conversation = await AiConversation.findOne({
     _id: id,
     tenantId,
+    deletedAt: { $exists: false },
   })
     .setOptions({ tenantId })
     .lean()
@@ -126,14 +147,8 @@ export const getAiConversationById = asyncHandler(async (req, res) => {
 })
 
 export const getAiAgentMetrics = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
-
-  if (!tenantId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Tenant no resuelto',
-    })
-  }
+  const tenantId = requireTenantId(req)
+  const activeFilter = { tenantId, deletedAt: { $exists: false } }
 
   const [
     totalConversations,
@@ -142,11 +157,24 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
     closedConversations,
     hotLeads,
   ] = await Promise.all([
-    AiConversation.countDocuments({ tenantId }).setOptions({ tenantId }),
-    AiConversation.countDocuments({ tenantId, status: 'open' }).setOptions({ tenantId }),
-    AiConversation.countDocuments({ tenantId, status: 'waiting_human' }).setOptions({ tenantId }),
-    AiConversation.countDocuments({ tenantId, status: 'closed' }).setOptions({ tenantId }),
-    AiLead.countDocuments({ tenantId, score: { $gte: 75 } }).setOptions({ tenantId }),
+    AiConversation.countDocuments(activeFilter).setOptions({ tenantId }),
+    AiConversation.countDocuments({
+      ...activeFilter,
+      status: 'open',
+    }).setOptions({ tenantId }),
+    AiConversation.countDocuments({
+      ...activeFilter,
+      status: 'waiting_human',
+    }).setOptions({ tenantId }),
+    AiConversation.countDocuments({
+      ...activeFilter,
+      status: 'closed',
+    }).setOptions({ tenantId }),
+    AiLead.countDocuments({
+      tenantId,
+      deletedAt: { $exists: false },
+      score: { $gte: 75 },
+    }).setOptions({ tenantId }),
   ])
 
   return res.status(200).json({
@@ -162,13 +190,18 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
 })
 
 export const updateAiConversationStatus = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
+  const tenantId = requireTenantId(req)
   const { id } = req.params
   const status = clean(req.body?.status)
 
-  const allowed = ['open', 'waiting_customer', 'waiting_human', 'closed']
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({
+      success: false,
+      message: 'ID de conversación inválido',
+    })
+  }
 
-  if (!allowed.includes(status)) {
+  if (!allowedStatuses.has(status)) {
     return res.status(400).json({
       success: false,
       message: 'Estado inválido',
@@ -179,12 +212,16 @@ export const updateAiConversationStatus = asyncHandler(async (req, res) => {
     {
       _id: id,
       tenantId,
+      deletedAt: { $exists: false },
     },
     {
       $set: {
         status,
         handoffRequired: status === 'waiting_human',
-        updatedAt: new Date(),
+        handoffReason:
+          status === 'waiting_human'
+            ? clean(req.body?.reason).slice(0, 500) || 'admin_requested'
+            : '',
       },
     },
     {
@@ -206,17 +243,76 @@ export const updateAiConversationStatus = asyncHandler(async (req, res) => {
 })
 
 export const deleteAiConversation = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
+  const tenantId = requireTenantId(req)
   const { id } = req.params
 
-  if (!tenantId) {
+  if (!isValidObjectId(id)) {
     return res.status(400).json({
       success: false,
-      message: 'Tenant no resuelto',
+      message: 'ID de conversación inválido',
     })
   }
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  const deletedAt = new Date()
+  const deletedBy = getUserIdFromRequest(req)
+  const deletedReason = clean(req.body?.reason).slice(0, 500)
+  const conversation = await AiConversation.findOneAndUpdate(
+    {
+      _id: id,
+      tenantId,
+      deletedAt: { $exists: false },
+    },
+    {
+      $set: {
+        status: 'closed',
+        handoffRequired: false,
+        deletedAt,
+        deletedBy,
+        deletedReason,
+      },
+    },
+    { new: true },
+  ).setOptions({ tenantId })
+
+  if (!conversation) {
+    return res.status(404).json({
+      success: false,
+      message: 'Conversación no encontrada',
+    })
+  }
+
+  await AiLead.updateMany(
+    {
+      tenantId,
+      conversationId: id,
+      deletedAt: { $exists: false },
+    },
+    {
+      $set: {
+        status: 'discarded',
+        deletedAt,
+        deletedBy,
+        deletedReason:
+          deletedReason || 'Conversación eliminada desde administración',
+        discardedAt: deletedAt,
+      },
+    },
+  ).setOptions({ tenantId })
+
+  return res.status(200).json({
+    success: true,
+    message: 'Conversación eliminada correctamente',
+    data: {
+      deletedConversationId: id,
+    },
+  })
+})
+
+export const permanentlyDeleteAiConversation = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const { id } = req.params
+
+  if (!isValidObjectId(id)) {
     return res.status(400).json({
       success: false,
       message: 'ID de conversación inválido',
@@ -226,7 +322,10 @@ export const deleteAiConversation = asyncHandler(async (req, res) => {
   const conversation = await AiConversation.findOne({
     _id: id,
     tenantId,
-  }).setOptions({ tenantId })
+  })
+    .setOptions({ tenantId })
+    .select('_id')
+    .lean()
 
   if (!conversation) {
     return res.status(404).json({
@@ -235,21 +334,30 @@ export const deleteAiConversation = asyncHandler(async (req, res) => {
     })
   }
 
-  await Promise.all([
-    AiConversation.deleteOne({
-      _id: id,
-      tenantId,
-    }).setOptions({ tenantId }),
+  await AiConversation.deleteOne({
+    _id: id,
+    tenantId,
+  }).setOptions({ tenantId })
 
-    AiLead.deleteMany({
+  await AiLead.updateMany(
+    {
       tenantId,
-      conversationId: id,
-    }).setOptions({ tenantId }),
-  ])
+      $or: [{ conversationId: id }, { lastConversationId: id }],
+    },
+    {
+      $unset: {
+        conversationId: '',
+        lastConversationId: '',
+      },
+      $set: {
+        'metadata.lastConversationDeletedAt': new Date(),
+      },
+    },
+  ).setOptions({ tenantId })
 
   return res.status(200).json({
     success: true,
-    message: 'Conversación eliminada correctamente',
+    message: 'Conversación eliminada permanentemente',
     data: {
       deletedConversationId: id,
     },

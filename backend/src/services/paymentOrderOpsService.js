@@ -1,9 +1,6 @@
+import Product from '../models/productModel.js'
 import Cart from '../models/cartModel.js'
 import { toObjectId } from '../utils/requestContext.js'
-import {
-  decrementStockForLines,
-  restoreStockForLines,
-} from './orderInventoryService.js'
 import logger from '../../config/logger.js'
 
 const getSafeErrorMessage = error => {
@@ -16,12 +13,7 @@ export const validateCartBelongsToTenant = async (cartId, userId, tenantId) => {
     userId: toObjectId(userId),
     tenantId: toObjectId(tenantId),
     isDeleted: false,
-  })
-    .setOptions({ tenantId })
-    .populate(
-      'products.productId',
-      'tenantId title slug sku price images currency stock status visibility isDeleted hasVariants variants',
-    )
+  }).populate('products.productId', 'tenantId title price images currency quantity stock')
 
   if (!cart) {
     throw new Error('CARRITO_NO_ENCONTRADO')
@@ -55,26 +47,54 @@ export const validateCartBelongsToTenant = async (cartId, userId, tenantId) => {
 }
 
 export const reserveStockAtomic = async (products, tenantId) => {
-  const reservedLines = []
+  const reservedProducts = []
 
   try {
-    for (const line of products || []) {
-      await decrementStockForLines({
-        lines: [line],
-        tenantId: toObjectId(tenantId),
+    for (const item of products || []) {
+      const result = await Product.findOneAndUpdate(
+        {
+          _id: item.product,
+          tenantId: toObjectId(tenantId),
+          isDeleted: false,
+          quantity: { $gte: item.count },
+        },
+        {
+          $inc: {
+            quantity: -item.count,
+            reserved: item.count,
+          },
+        },
+        { new: true },
+      )
+
+      if (!result) {
+        for (const reserved of reservedProducts) {
+          await Product.findOneAndUpdate(
+            {
+              _id: reserved.productId,
+              tenantId: toObjectId(tenantId),
+              reserved: { $gte: reserved.count },
+            },
+            {
+              $inc: {
+                quantity: reserved.count,
+                reserved: -reserved.count,
+              },
+            },
+          )
+        }
+
+        throw new Error(`STOCK_INSUFFICIENT: ${item.titleSnapshot || item.product}`)
+      }
+
+      reservedProducts.push({
+        productId: item.product,
+        count: item.count,
       })
-      reservedLines.push(line)
     }
 
     return true
   } catch (error) {
-    if (reservedLines.length) {
-      await restoreStockForLines({
-        lines: reservedLines,
-        tenantId: toObjectId(tenantId),
-      })
-    }
-
     logger.error('❌ Error reservando stock', {
       tenantId: String(tenantId),
       message: getSafeErrorMessage(error),
@@ -84,17 +104,32 @@ export const reserveStockAtomic = async (products, tenantId) => {
   }
 }
 
-export const releaseReservedStock = async (
-  products,
-  tenantId,
-  { session = null } = {},
-) => {
+export const releaseReservedStock = async (products, tenantId) => {
   try {
-    await restoreStockForLines({
-      lines: products || [],
-      tenantId: toObjectId(tenantId),
-      session,
-    })
+    for (const item of products || []) {
+      const result = await Product.findOneAndUpdate(
+        {
+          _id: item.product,
+          tenantId: toObjectId(tenantId),
+          reserved: { $gte: item.count },
+        },
+        {
+          $inc: {
+            quantity: item.count,
+            reserved: -item.count,
+          },
+        },
+        { new: true },
+      )
+
+      if (!result) {
+        logger.warn('⚠️ No se pudo liberar stock reservado', {
+          tenantId: String(tenantId),
+          productId: item.product?.toString?.() || String(item.product),
+          count: item.count,
+        })
+      }
+    }
 
     logger.info('✅ Stock liberado', {
       tenantId: String(tenantId),
@@ -104,24 +139,47 @@ export const releaseReservedStock = async (
       tenantId: String(tenantId),
       message: getSafeErrorMessage(error),
     })
-
-    throw error
   }
 }
 
-export const confirmSoldStock = async (
-  products,
-  tenantId,
-  { session = null } = {},
-) => {
-  void products
-  void session
+export const confirmSoldStock = async (products, tenantId) => {
+  try {
+    for (const item of products || []) {
+      const result = await Product.findOneAndUpdate(
+        {
+          _id: item.product,
+          tenantId: toObjectId(tenantId),
+          reserved: { $gte: item.count },
+        },
+        {
+          $inc: {
+            reserved: -item.count,
+            sold: item.count,
+          },
+        },
+        { new: true },
+      )
 
-  // La reserva ya descuenta el stock canónico. Confirmar la venta sólo
-  // consolida el estado de la orden y no debe volver a mutar inventario.
-  logger.info('✅ Reserva de stock confirmada como venta', {
-    tenantId: String(tenantId),
-  })
+      if (!result) {
+        logger.warn('⚠️ No se pudo confirmar stock vendido', {
+          tenantId: String(tenantId),
+          productId: item.product?.toString?.() || String(item.product),
+          count: item.count,
+        })
+      }
+    }
+
+    logger.info('✅ Stock confirmado como vendido', {
+      tenantId: String(tenantId),
+    })
+  } catch (error) {
+    logger.error('❌ Error confirmando venta', {
+      tenantId: String(tenantId),
+      message: getSafeErrorMessage(error),
+    })
+
+    throw error
+  }
 }
 
 export const clearUserCartAfterApprovedPayment = async ({ userId, tenantId }) => {
@@ -129,7 +187,7 @@ export const clearUserCartAfterApprovedPayment = async ({ userId, tenantId }) =>
     await Cart.deleteOne({
       userId: toObjectId(userId),
       tenantId: toObjectId(tenantId),
-    }).setOptions({ tenantId })
+    })
 
     logger.info('🧹 Carrito limpiado tras pago aprobado', {
       userId: String(userId),

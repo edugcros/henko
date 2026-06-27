@@ -29,7 +29,7 @@ const aiLearningSuggestionSchema = new Schema(
 
     status: {
       type: String,
-      enum: ['pending_review', 'approved', 'rejected', 'archived'],
+      enum: ['pending_review', 'approving', 'approved', 'rejected', 'archived'],
       default: 'pending_review',
       index: true,
     },
@@ -77,6 +77,21 @@ const aiLearningSuggestionSchema = new Schema(
       index: true,
     },
 
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
+
     priority: {
       type: String,
       enum: ['low', 'medium', 'high', 'critical'],
@@ -87,7 +102,7 @@ const aiLearningSuggestionSchema = new Schema(
     signals: {
       occurrences: {
         type: Number,
-        default: 1,
+        default: 0,
       },
       handoffs: {
         type: Number,

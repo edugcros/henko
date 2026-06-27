@@ -8,6 +8,7 @@ import { getTenantConfig } from './paymentTenantConfigService.js'
 import logger from '../../config/logger.js'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const isTestEnv = process.env.NODE_ENV === 'test'
 
 const normalizeEmail = value => String(value || '').trim().toLowerCase()
 const isValidEmail = value => EMAIL_REGEX.test(normalizeEmail(value))
@@ -96,6 +97,20 @@ export const dispatchApprovedOrderEmails = async ({
       adminEmailSent: false,
       skipped: true,
       reason: 'PAYMENT_NOT_APPROVED',
+    }
+  }
+
+  if (isTestEnv) {
+    logger.info('Emails de orden omitidos en test', {
+      orderId: order._id.toString(),
+      tenantId: order.tenantId.toString(),
+    })
+
+    return {
+      customerEmailSent: false,
+      adminEmailSent: false,
+      skipped: true,
+      reason: 'TEST_ENV',
     }
   }
 
@@ -223,6 +238,14 @@ export const resendOrderConfirmationEmail = async ({
   buyerEmail = null,
   tenantConfig = null,
 }) => {
+  if (isTestEnv) {
+    return {
+      success: true,
+      skipped: true,
+      reason: 'TEST_ENV',
+    }
+  }
+
   const resolvedTenantConfig =
     tenantConfig || await getTenantConfig(tenantId)
   const resolvedBuyerEmail = getBuyerEmail({

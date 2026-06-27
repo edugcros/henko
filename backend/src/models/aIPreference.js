@@ -1,7 +1,7 @@
 // 📁 src/models/aIPreference.js
 import mongoose from 'mongoose'
 
-const AI_PREFERENCE_TYPES = [
+export const AI_PREFERENCE_TYPES = Object.freeze([
   'category',
   'subcategory',
   'brand',
@@ -9,12 +9,51 @@ const AI_PREFERENCE_TYPES = [
   'attribute',
   'tag',
   'general',
-]
+])
 
-const AI_PREFERENCE_SOURCES = [
+export const AI_PREFERENCE_SOURCES = Object.freeze([
   'manual',
   'auto-learning',
-]
+])
+
+const clean = value => String(value || '').trim()
+const normalizeLower = value => clean(value).toLowerCase()
+const clampConfidence = value => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return 0.7
+  return Math.max(0, Math.min(1, number))
+}
+
+const normalizePreferenceType = value => {
+  const type = normalizeLower(value || 'general')
+  return AI_PREFERENCE_TYPES.includes(type) ? type : 'general'
+}
+
+const normalizePreferenceSource = value => {
+  const source = normalizeLower(value || 'manual')
+  return AI_PREFERENCE_SOURCES.includes(source) ? source : 'manual'
+}
+
+const sanitizeMetadata = value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+
+  const safe = {
+    source: clean(value.source).slice(0, 120),
+    field: clean(value.field).slice(0, 120),
+    correctionLogId: clean(value.correctionLogId).slice(0, 80),
+    promotedAt: value.promotedAt || undefined,
+    occurrences: Number.isFinite(Number(value.occurrences))
+      ? Math.max(0, Number(value.occurrences))
+      : undefined,
+    contradictions: Number.isFinite(Number(value.contradictions))
+      ? Math.max(0, Number(value.contradictions))
+      : undefined,
+  }
+
+  return Object.fromEntries(
+    Object.entries(safe).filter(([, item]) => item !== undefined && item !== ''),
+  )
+}
 
 const aIPreferenceSchema = new mongoose.Schema(
   {
@@ -45,6 +84,7 @@ const aIPreferenceSchema = new mongoose.Schema(
       enum: AI_PREFERENCE_TYPES,
       default: 'general',
       index: true,
+      set: normalizePreferenceType,
     },
 
     usageCount: {
@@ -58,6 +98,7 @@ const aIPreferenceSchema = new mongoose.Schema(
       default: 0.7,
       min: 0,
       max: 1,
+      set: clampConfidence,
     },
 
     lastUsedAt: {
@@ -71,6 +112,7 @@ const aIPreferenceSchema = new mongoose.Schema(
       enum: AI_PREFERENCE_SOURCES,
       default: 'manual',
       index: true,
+      set: normalizePreferenceSource,
     },
 
     metadata: {
@@ -90,31 +132,30 @@ aIPreferenceSchema.index(
 )
 
 aIPreferenceSchema.index({ tenantId: 1, type: 1, usageCount: -1 })
+aIPreferenceSchema.index({ tenantId: 1, type: 1, confidence: -1, usageCount: -1 })
 aIPreferenceSchema.index({ tenantId: 1, updatedAt: -1 })
 aIPreferenceSchema.index({ tenantId: 1, source: 1, lastUsedAt: -1 })
 
 aIPreferenceSchema.pre('validate', function normalize(next) {
   if (typeof this.rawInput === 'string') {
-    this.rawInput = this.rawInput.trim().toLowerCase()
+    this.rawInput = normalizeLower(this.rawInput).slice(0, 180)
   }
 
   if (typeof this.correctedValue === 'string') {
-    this.correctedValue = this.correctedValue.trim()
+    this.correctedValue = clean(this.correctedValue).slice(0, 180)
   }
 
-  if (typeof this.type === 'string') {
-    this.type = this.type.trim().toLowerCase()
-  }
-
-  if (typeof this.source === 'string') {
-    this.source = this.source.trim().toLowerCase()
-  }
+  this.type = normalizePreferenceType(this.type)
+  this.source = normalizePreferenceSource(this.source)
+  this.confidence = clampConfidence(this.confidence)
 
   next()
 })
 
 aIPreferenceSchema.pre('save', function touchLastUsed(next) {
-  this.lastUsedAt = new Date()
+  if (this.isNew || this.isModified('correctedValue') || this.isModified('usageCount')) {
+    this.lastUsedAt = new Date()
+  }
   next()
 })
 
@@ -126,15 +167,16 @@ aIPreferenceSchema.statics.registerPreference = async function registerPreferenc
   confidence = 0.7,
   source = 'manual',
   metadata = {},
-}) {
+} = {}) {
   if (!tenantId) {
     throw new Error('tenantId requerido para registrar preferencia IA')
   }
 
-  const normalizedRawInput = String(rawInput || '').trim().toLowerCase()
-  const normalizedCorrectedValue = String(correctedValue || '').trim()
-  const normalizedType = String(type || 'general').trim().toLowerCase()
-  const normalizedSource = String(source || 'manual').trim().toLowerCase()
+  const normalizedRawInput = normalizeLower(rawInput).slice(0, 180)
+  const normalizedCorrectedValue = clean(correctedValue).slice(0, 180)
+  const normalizedType = normalizePreferenceType(type)
+  const normalizedSource = normalizePreferenceSource(source)
+  const normalizedConfidence = clampConfidence(confidence)
 
   if (!normalizedRawInput) {
     throw new Error('rawInput requerido para registrar preferencia IA')
@@ -153,10 +195,12 @@ aIPreferenceSchema.statics.registerPreference = async function registerPreferenc
     {
       $set: {
         correctedValue: normalizedCorrectedValue,
-        confidence,
         source: normalizedSource,
-        metadata,
+        metadata: sanitizeMetadata(metadata),
         lastUsedAt: new Date(),
+      },
+      $max: {
+        confidence: normalizedConfidence,
       },
       $inc: {
         usageCount: 1,
@@ -168,11 +212,10 @@ aIPreferenceSchema.statics.registerPreference = async function registerPreferenc
       runValidators: true,
       setDefaultsOnInsert: true,
     },
-  )
+  ).setOptions({ tenantId })
 }
 
 const AIPreference =
-  mongoose.models.AIPreference ||
-  mongoose.model('AIPreference', aIPreferenceSchema)
+  mongoose.models.AIPreference || mongoose.model('AIPreference', aIPreferenceSchema)
 
 export default AIPreference

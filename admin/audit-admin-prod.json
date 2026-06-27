@@ -1,0 +1,839 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@jest/core": {
+      "name": "@jest/core",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "jest-config",
+        "jest-runner"
+      ],
+      "effects": [
+        "jest"
+      ],
+      "range": "27.0.1 - 27.5.1",
+      "nodes": [
+        "node_modules/@jest/core"
+      ],
+      "fixAvailable": {
+        "name": "jest",
+        "version": "30.4.2",
+        "isSemVerMajor": true
+      }
+    },
+    "@pmmmwh/react-refresh-webpack-plugin": {
+      "name": "@pmmmwh/react-refresh-webpack-plugin",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "webpack-dev-server"
+      ],
+      "effects": [],
+      "range": ">=0.3.1",
+      "nodes": [
+        "node_modules/@pmmmwh/react-refresh-webpack-plugin"
+      ],
+      "fixAvailable": true
+    },
+    "@svgr/plugin-svgo": {
+      "name": "@svgr/plugin-svgo",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "svgo"
+      ],
+      "effects": [
+        "@svgr/webpack"
+      ],
+      "range": "<=5.5.0",
+      "nodes": [
+        "node_modules/@svgr/plugin-svgo"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@svgr/webpack": {
+      "name": "@svgr/webpack",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@svgr/plugin-svgo"
+      ],
+      "effects": [
+        "react-scripts"
+      ],
+      "range": "4.0.0 - 5.5.0",
+      "nodes": [
+        "node_modules/@svgr/webpack"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "@tootallnate/once": {
+      "name": "@tootallnate/once",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1119438,
+          "name": "@tootallnate/once",
+          "dependency": "@tootallnate/once",
+          "title": "@tootallnate/once vulnerable to Incorrect Control Flow Scoping",
+          "url": "https://github.com/advisories/GHSA-vpq2-c234-7xj6",
+          "severity": "low",
+          "cwe": [
+            "CWE-705"
+          ],
+          "cvss": {
+            "score": 3.3,
+            "vectorString": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L"
+          },
+          "range": "<2.0.1"
+        }
+      ],
+      "effects": [
+        "http-proxy-agent"
+      ],
+      "range": "<2.0.1",
+      "nodes": [
+        "node_modules/jest-config/node_modules/@tootallnate/once",
+        "node_modules/jest-runner/node_modules/@tootallnate/once"
+      ],
+      "fixAvailable": {
+        "name": "jest",
+        "version": "30.4.2",
+        "isSemVerMajor": true
+      }
+    },
+    "bfj": {
+      "name": "bfj",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "jsonpath"
+      ],
+      "effects": [],
+      "range": "7.1.0 - 9.1.2",
+      "nodes": [
+        "node_modules/bfj"
+      ],
+      "fixAvailable": true
+    },
+    "css-minimizer-webpack-plugin": {
+      "name": "css-minimizer-webpack-plugin",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "serialize-javascript"
+      ],
+      "effects": [
+        "react-scripts"
+      ],
+      "range": "1.1.4 - 7.0.4",
+      "nodes": [
+        "node_modules/css-minimizer-webpack-plugin"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "css-select": {
+      "name": "css-select",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "nth-check"
+      ],
+      "effects": [
+        "svgo"
+      ],
+      "range": "<=3.1.0",
+      "nodes": [
+        "node_modules/@svgr/plugin-svgo/node_modules/css-select"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "http-proxy-agent": {
+      "name": "http-proxy-agent",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "@tootallnate/once"
+      ],
+      "effects": [
+        "jsdom"
+      ],
+      "range": "4.0.1",
+      "nodes": [
+        "node_modules/jest-config/node_modules/http-proxy-agent",
+        "node_modules/jest-runner/node_modules/http-proxy-agent"
+      ],
+      "fixAvailable": {
+        "name": "jest",
+        "version": "30.4.2",
+        "isSemVerMajor": true
+      }
+    },
+    "jest": {
+      "name": "jest",
+      "severity": "low",
+      "isDirect": true,
+      "via": [
+        "@jest/core",
+        "jest-cli"
+      ],
+      "effects": [],
+      "range": "27.0.1 - 27.5.1",
+      "nodes": [
+        "node_modules/jest"
+      ],
+      "fixAvailable": {
+        "name": "jest",
+        "version": "30.4.2",
+        "isSemVerMajor": true
+      }
+    },
+    "jest-cli": {
+      "name": "jest-cli",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "@jest/core",
+        "jest-config"
+      ],
+      "effects": [],
+      "range": "27.0.1 - 27.5.1",
+      "nodes": [
+        "node_modules/jest-cli"
+      ],
+      "fixAvailable": true
+    },
+    "jest-config": {
+      "name": "jest-config",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "jest-environment-jsdom",
+        "jest-runner"
+      ],
+      "effects": [
+        "@jest/core",
+        "jest-cli"
+      ],
+      "range": "27.0.1 - 27.5.1",
+      "nodes": [
+        "node_modules/jest-config"
+      ],
+      "fixAvailable": {
+        "name": "jest",
+        "version": "30.4.2",
+        "isSemVerMajor": true
+      }
+    },
+    "jest-environment-jsdom": {
+      "name": "jest-environment-jsdom",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "jsdom"
+      ],
+      "effects": [
+        "jest-config",
+        "jest-runner"
+      ],
+      "range": "27.0.1 - 27.5.1",
+      "nodes": [
+        "node_modules/jest-config/node_modules/jest-environment-jsdom",
+        "node_modules/jest-runner/node_modules/jest-environment-jsdom"
+      ],
+      "fixAvailable": {
+        "name": "jest",
+        "version": "30.4.2",
+        "isSemVerMajor": true
+      }
+    },
+    "jest-runner": {
+      "name": "jest-runner",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "jest-environment-jsdom"
+      ],
+      "effects": [
+        "@jest/core",
+        "jest-config"
+      ],
+      "range": "27.0.4 - 27.5.1",
+      "nodes": [
+        "node_modules/jest-runner"
+      ],
+      "fixAvailable": {
+        "name": "jest",
+        "version": "30.4.2",
+        "isSemVerMajor": true
+      }
+    },
+    "jsdom": {
+      "name": "jsdom",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "http-proxy-agent"
+      ],
+      "effects": [
+        "jest-environment-jsdom"
+      ],
+      "range": "16.6.0 - 17.0.0",
+      "nodes": [
+        "node_modules/jest-config/node_modules/jsdom",
+        "node_modules/jest-runner/node_modules/jsdom"
+      ],
+      "fixAvailable": {
+        "name": "jest",
+        "version": "30.4.2",
+        "isSemVerMajor": true
+      }
+    },
+    "jsonpath": {
+      "name": "jsonpath",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "underscore"
+      ],
+      "effects": [
+        "bfj"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/jsonpath"
+      ],
+      "fixAvailable": true
+    },
+    "nth-check": {
+      "name": "nth-check",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1095141,
+          "name": "nth-check",
+          "dependency": "nth-check",
+          "title": "Inefficient Regular Expression Complexity in nth-check",
+          "url": "https://github.com/advisories/GHSA-rp65-9cf3-cjxr",
+          "severity": "high",
+          "cwe": [
+            "CWE-1333"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<2.0.1"
+        }
+      ],
+      "effects": [
+        "css-select"
+      ],
+      "range": "<2.0.1",
+      "nodes": [
+        "node_modules/@svgr/plugin-svgo/node_modules/nth-check"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "postcss": {
+      "name": "postcss",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1109574,
+          "name": "postcss",
+          "dependency": "postcss",
+          "title": "PostCSS line return parsing error",
+          "url": "https://github.com/advisories/GHSA-7fh5-64p2-3v2j",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-74",
+            "CWE-144"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+          },
+          "range": "<8.4.31"
+        },
+        {
+          "source": 1117015,
+          "name": "postcss",
+          "dependency": "postcss",
+          "title": "PostCSS has XSS via Unescaped </style> in its CSS Stringify Output",
+          "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-79"
+          ],
+          "cvss": {
+            "score": 6.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+          },
+          "range": "<8.5.10"
+        }
+      ],
+      "effects": [
+        "resolve-url-loader"
+      ],
+      "range": "<=8.5.9",
+      "nodes": [
+        "node_modules/resolve-url-loader/node_modules/postcss"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "quill": {
+      "name": "quill",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1098574,
+          "name": "quill",
+          "dependency": "quill",
+          "title": "Cross-site Scripting in quill",
+          "url": "https://github.com/advisories/GHSA-4943-9vgg-gr5r",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-79"
+          ],
+          "cvss": {
+            "score": 4.2,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:L/A:N"
+          },
+          "range": "<=1.3.7"
+        },
+        {
+          "source": 1116451,
+          "name": "quill",
+          "dependency": "quill",
+          "title": "Quill is vulnerable to XSS via HTML export feature",
+          "url": "https://github.com/advisories/GHSA-v3m3-f69x-jf25",
+          "severity": "low",
+          "cwe": [
+            "CWE-74",
+            "CWE-79"
+          ],
+          "cvss": {
+            "score": 6.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+          },
+          "range": "=2.0.3"
+        }
+      ],
+      "effects": [
+        "react-quill"
+      ],
+      "range": "=2.0.3 || <=1.3.7",
+      "nodes": [
+        "node_modules/quill",
+        "node_modules/react-quill/node_modules/quill"
+      ],
+      "fixAvailable": {
+        "name": "quill",
+        "version": "2.0.2",
+        "isSemVerMajor": true
+      }
+    },
+    "react-quill": {
+      "name": "react-quill",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "quill"
+      ],
+      "effects": [],
+      "range": ">=0.0.3",
+      "nodes": [
+        "node_modules/react-quill"
+      ],
+      "fixAvailable": {
+        "name": "react-quill",
+        "version": "0.0.2",
+        "isSemVerMajor": true
+      }
+    },
+    "react-scripts": {
+      "name": "react-scripts",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@pmmmwh/react-refresh-webpack-plugin",
+        "@svgr/webpack",
+        "css-minimizer-webpack-plugin",
+        "jest",
+        "resolve-url-loader",
+        "webpack-dev-server",
+        "workbox-webpack-plugin"
+      ],
+      "effects": [],
+      "range": ">=0.1.0",
+      "nodes": [
+        "node_modules/react-scripts"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "resolve-url-loader": {
+      "name": "resolve-url-loader",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "postcss"
+      ],
+      "effects": [
+        "react-scripts"
+      ],
+      "range": "0.0.1-experiment-postcss || 3.0.0-alpha.1 - 4.0.0",
+      "nodes": [
+        "node_modules/resolve-url-loader"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "rollup-plugin-terser": {
+      "name": "rollup-plugin-terser",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "serialize-javascript"
+      ],
+      "effects": [
+        "workbox-build"
+      ],
+      "range": "3.0.0 || >=4.0.4",
+      "nodes": [
+        "node_modules/rollup-plugin-terser"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "serialize-javascript": {
+      "name": "serialize-javascript",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1113686,
+          "name": "serialize-javascript",
+          "dependency": "serialize-javascript",
+          "title": "Serialize JavaScript is Vulnerable to RCE via RegExp.flags and Date.prototype.toISOString()",
+          "url": "https://github.com/advisories/GHSA-5c6j-r48x-rmvq",
+          "severity": "high",
+          "cwe": [
+            "CWE-96"
+          ],
+          "cvss": {
+            "score": 8.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+          },
+          "range": "<=7.0.2"
+        },
+        {
+          "source": 1119440,
+          "name": "serialize-javascript",
+          "dependency": "serialize-javascript",
+          "title": "Serialize JavaScript has CPU Exhaustion Denial of Service via crafted array-like objects",
+          "url": "https://github.com/advisories/GHSA-qj8w-gfj5-8c6v",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-400",
+            "CWE-834"
+          ],
+          "cvss": {
+            "score": 5.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": ">=5.0.0 <7.0.5"
+        }
+      ],
+      "effects": [
+        "css-minimizer-webpack-plugin",
+        "rollup-plugin-terser"
+      ],
+      "range": "<=7.0.4",
+      "nodes": [
+        "node_modules/rollup-plugin-terser/node_modules/serialize-javascript",
+        "node_modules/serialize-javascript"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "sockjs": {
+      "name": "sockjs",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "uuid"
+      ],
+      "effects": [
+        "webpack-dev-server"
+      ],
+      "range": ">=0.3.17",
+      "nodes": [
+        "node_modules/sockjs"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "svgo": {
+      "name": "svgo",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "css-select"
+      ],
+      "effects": [
+        "@svgr/plugin-svgo"
+      ],
+      "range": "1.0.0 - 1.3.2",
+      "nodes": [
+        "node_modules/@svgr/plugin-svgo/node_modules/svgo"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "underscore": {
+      "name": "underscore",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1117689,
+          "name": "underscore",
+          "dependency": "underscore",
+          "title": "Underscore has unlimited recursion in _.flatten and _.isEqual, potential for DoS attack",
+          "url": "https://github.com/advisories/GHSA-qpx9-hpmf-5gmw",
+          "severity": "high",
+          "cwe": [
+            "CWE-674",
+            "CWE-770"
+          ],
+          "cvss": {
+            "score": 5.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<=1.13.7"
+        }
+      ],
+      "effects": [
+        "jsonpath"
+      ],
+      "range": "<=1.13.7",
+      "nodes": [
+        "node_modules/underscore"
+      ],
+      "fixAvailable": true
+    },
+    "uuid": {
+      "name": "uuid",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1119441,
+          "name": "uuid",
+          "dependency": "uuid",
+          "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-787",
+            "CWE-1285"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+          },
+          "range": "<11.1.1"
+        }
+      ],
+      "effects": [
+        "sockjs"
+      ],
+      "range": "<11.1.1",
+      "nodes": [
+        "node_modules/sockjs/node_modules/uuid"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "webpack-dev-server": {
+      "name": "webpack-dev-server",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1108429,
+          "name": "webpack-dev-server",
+          "dependency": "webpack-dev-server",
+          "title": "webpack-dev-server users' source code may be stolen when they access a malicious web site with non-Chromium based browser",
+          "url": "https://github.com/advisories/GHSA-9jgg-88mc-972h",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-346"
+          ],
+          "cvss": {
+            "score": 6.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N"
+          },
+          "range": "<=5.2.0"
+        },
+        {
+          "source": 1108430,
+          "name": "webpack-dev-server",
+          "dependency": "webpack-dev-server",
+          "title": "webpack-dev-server users' source code may be stolen when they access a malicious web site",
+          "url": "https://github.com/advisories/GHSA-4v9v-hfq4-rm2v",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-749"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N"
+          },
+          "range": "<=5.2.0"
+        },
+        {
+          "source": 1119074,
+          "name": "webpack-dev-server",
+          "dependency": "webpack-dev-server",
+          "title": "webpack-dev-server vulnerable to cross-origin source code exposure on non-HTTPS origins",
+          "url": "https://github.com/advisories/GHSA-79cf-xcqc-c78w",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-749"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N"
+          },
+          "range": "<=5.2.3"
+        },
+        "sockjs"
+      ],
+      "effects": [
+        "@pmmmwh/react-refresh-webpack-plugin",
+        "react-scripts"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/react-scripts/node_modules/webpack-dev-server",
+        "node_modules/webpack-dev-server"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "workbox-build": {
+      "name": "workbox-build",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "rollup-plugin-terser"
+      ],
+      "effects": [
+        "workbox-webpack-plugin"
+      ],
+      "range": "5.0.0-alpha.0 - 7.0.0",
+      "nodes": [
+        "node_modules/workbox-build"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "workbox-webpack-plugin": {
+      "name": "workbox-webpack-plugin",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "workbox-build"
+      ],
+      "effects": [
+        "react-scripts"
+      ],
+      "range": "5.0.0-alpha.0 - 7.0.0",
+      "nodes": [
+        "node_modules/workbox-webpack-plugin"
+      ],
+      "fixAvailable": {
+        "name": "react-scripts",
+        "version": "0.0.0",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 9,
+      "moderate": 9,
+      "high": 13,
+      "critical": 0,
+      "total": 31
+    },
+    "dependencies": {
+      "prod": 1896,
+      "dev": 442,
+      "optional": 21,
+      "peer": 6,
+      "peerOptional": 0,
+      "total": 2345
+    }
+  }
+}
