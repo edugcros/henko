@@ -59,9 +59,9 @@ const aiVisualLimiter = rateLimiter
 router.post(
   '/analyze-visual',
   adminContext,
+  aiVisualLimiter,
   uploadPhoto.single('images'),
   productImgResize,
-  aiVisualLimiter,
   expressAsyncHandler(async (req, res) => {
     let tenantId
 
