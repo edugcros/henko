@@ -16,6 +16,9 @@
     "migrate:ai-agent-secrets": "cross-env NODE_ENV=development node src/scripts/migrateAiAgentSecrets.js",
     "migrate:ai-agent-secrets:apply": "cross-env NODE_ENV=development node src/scripts/migrateAiAgentSecrets.js --apply",
     "migrate:ai-agent-secrets:prod": "cross-env NODE_ENV=production node src/scripts/migrateAiAgentSecrets.js --apply",
+    "migrate:tenant-secrets": "cross-env NODE_ENV=development node src/scripts/migrateTenantSecrets.js",
+    "migrate:tenant-secrets:apply": "cross-env NODE_ENV=development node src/scripts/migrateTenantSecrets.js --apply",
+    "migrate:tenant-secrets:prod": "cross-env NODE_ENV=production node src/scripts/migrateTenantSecrets.js --apply",
     "lint": "eslint . --ext .js",
     "fix": "eslint . --ext .js --fix",
     "test": "cross-env NODE_ENV=test node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand"
