@@ -29,6 +29,7 @@ import {
   processPendingEmails,
   queuePaymentEmails,
 } from '../services/paymentEmailService.js'
+import { consumeOrderCouponIfNeeded } from '../services/orderCouponService.js'
 import {
   buildMercadoPagoPaymentData,
   getStatusMessage,
@@ -199,6 +200,13 @@ const commitApprovedPaymentIfNeeded = async ({
     await confirmSoldStock(order.products, tenantId)
     order.stockCommittedAt = new Date()
   }
+
+  await consumeOrderCouponIfNeeded({
+    order,
+    tenantId,
+    userId: userId || order.orderby,
+    req,
+  })
 
   order.stockReservedAt = null
   await order.save({ tenantId })

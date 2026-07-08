@@ -532,6 +532,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
 
         coupon: couponDoc
           ? {
+            couponId: couponDoc._id,
             code: couponDoc.code,
             discountPercent:
                 couponDoc.discountType === 'percentage'
@@ -544,6 +545,11 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
                 ) || [],
           }
           : undefined,
+
+        // COD consume el cupón al crear la orden (más abajo); Mercado Pago lo
+        // consume recién al confirmar el pago (ver commitApprovedPaymentIfNeeded
+        // en paymentController.js), así que acá solo se marca para COD.
+        couponConsumedAt: couponDoc && isCOD ? new Date() : null,
       })
 
       order.addAuditEntry({
