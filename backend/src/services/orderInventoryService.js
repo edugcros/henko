@@ -8,7 +8,7 @@ const buildStockFieldMode = product => {
   return 'stock'
 }
 
-const decrementLineStock = async ({ line, tenantId, session = null }) => {
+export const decrementLineStock = async ({ line, tenantId, session = null }) => {
   const baseFilter = {
     _id: line.product,
     tenantId,
@@ -89,7 +89,7 @@ const decrementLineStock = async ({ line, tenantId, session = null }) => {
   return product
 }
 
-const incrementLineStock = async ({ line, tenantId, session = null }) => {
+export const incrementLineStock = async ({ line, tenantId, session = null }) => {
   const baseFilter = {
     _id: line.product,
     tenantId,

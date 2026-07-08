@@ -1,6 +1,7 @@
-import Product from '../models/productModel.js'
 import Cart from '../models/cartModel.js'
 import { toObjectId } from '../utils/requestContext.js'
+import { withOptionalTransaction } from '../utils/withOptionalTransaction.js'
+import { decrementLineStock, incrementLineStock } from './orderInventoryService.js'
 import logger from '../../config/logger.js'
 
 const getSafeErrorMessage = error => {
@@ -46,52 +47,20 @@ export const validateCartBelongsToTenant = async (cartId, userId, tenantId) => {
   return cart
 }
 
+// Reserva stock descontando `stock`/`variants[].stock` (el modelo canónico de
+// inventario, el mismo que usa orderInventoryService.js para el flujo COD).
+// El producto no distingue "disponible" de "reservado": reservar significa
+// descontar ya mismo, y liberar significa devolver esa cantidad si el pago
+// termina rechazado/cancelado. Se ejecuta dentro de una transacción (cuando
+// Mongo la soporta) para que, si una línea falla por falta de stock, las
+// líneas ya descontadas de ese mismo intento se reviertan automáticamente.
 export const reserveStockAtomic = async (products, tenantId) => {
-  const reservedProducts = []
-
   try {
-    for (const item of products || []) {
-      const result = await Product.findOneAndUpdate(
-        {
-          _id: item.product,
-          tenantId: toObjectId(tenantId),
-          isDeleted: false,
-          quantity: { $gte: item.count },
-        },
-        {
-          $inc: {
-            quantity: -item.count,
-            reserved: item.count,
-          },
-        },
-        { new: true },
-      )
-
-      if (!result) {
-        for (const reserved of reservedProducts) {
-          await Product.findOneAndUpdate(
-            {
-              _id: reserved.productId,
-              tenantId: toObjectId(tenantId),
-              reserved: { $gte: reserved.count },
-            },
-            {
-              $inc: {
-                quantity: reserved.count,
-                reserved: -reserved.count,
-              },
-            },
-          )
-        }
-
-        throw new Error(`STOCK_INSUFFICIENT: ${item.titleSnapshot || item.product}`)
+    await withOptionalTransaction(async session => {
+      for (const item of products || []) {
+        await decrementLineStock({ line: item, tenantId, session })
       }
-
-      reservedProducts.push({
-        productId: item.product,
-        count: item.count,
-      })
-    }
+    })
 
     return true
   } catch (error) {
@@ -107,20 +76,7 @@ export const reserveStockAtomic = async (products, tenantId) => {
 export const releaseReservedStock = async (products, tenantId) => {
   try {
     for (const item of products || []) {
-      const result = await Product.findOneAndUpdate(
-        {
-          _id: item.product,
-          tenantId: toObjectId(tenantId),
-          reserved: { $gte: item.count },
-        },
-        {
-          $inc: {
-            quantity: item.count,
-            reserved: -item.count,
-          },
-        },
-        { new: true },
-      )
+      const result = await incrementLineStock({ line: item, tenantId })
 
       if (!result) {
         logger.warn('⚠️ No se pudo liberar stock reservado', {
@@ -142,44 +98,14 @@ export const releaseReservedStock = async (products, tenantId) => {
   }
 }
 
+// El stock ya se descontó de forma definitiva en reserveStockAtomic: el
+// schema de Product no tiene un contador de "vendido" separado de `stock`,
+// así que confirmar la venta no requiere ningún ajuste adicional acá.
 export const confirmSoldStock = async (products, tenantId) => {
-  try {
-    for (const item of products || []) {
-      const result = await Product.findOneAndUpdate(
-        {
-          _id: item.product,
-          tenantId: toObjectId(tenantId),
-          reserved: { $gte: item.count },
-        },
-        {
-          $inc: {
-            reserved: -item.count,
-            sold: item.count,
-          },
-        },
-        { new: true },
-      )
-
-      if (!result) {
-        logger.warn('⚠️ No se pudo confirmar stock vendido', {
-          tenantId: String(tenantId),
-          productId: item.product?.toString?.() || String(item.product),
-          count: item.count,
-        })
-      }
-    }
-
-    logger.info('✅ Stock confirmado como vendido', {
-      tenantId: String(tenantId),
-    })
-  } catch (error) {
-    logger.error('❌ Error confirmando venta', {
-      tenantId: String(tenantId),
-      message: getSafeErrorMessage(error),
-    })
-
-    throw error
-  }
+  logger.info('✅ Stock confirmado como vendido', {
+    tenantId: String(tenantId),
+    productsCount: products?.length || 0,
+  })
 }
 
 export const clearUserCartAfterApprovedPayment = async ({ userId, tenantId }) => {

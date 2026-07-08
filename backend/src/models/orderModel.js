@@ -1317,31 +1317,35 @@ orderSchema.methods.restoreStock = async function restoreStock(
   }
 
   const Product = mongoose.model('Product')
-  const wasPaid = this.paymentStatus === PAYMENT_STATUS.APPROVED
 
   for (const item of this.products) {
-    const update = wasPaid
-      ? {
-        $inc: {
-          quantity: item.count,
-          sold: -item.count,
+    if (item.variantId) {
+      await Product.findOneAndUpdate(
+        {
+          _id: item.product,
+          tenantId: this.tenantId,
+          'variants._id': item.variantId,
         },
-      }
-      : {
-        $inc: {
-          quantity: item.count,
-          reserved: -item.count,
+        {
+          $inc: {
+            'variants.$.stock': item.count,
+            stock: item.count,
+          },
         },
-      }
-
-    await Product.findOneAndUpdate(
-      {
-        _id: item.product,
-        tenantId: this.tenantId,
-      },
-      update,
-      { session },
-    )
+        { session },
+      )
+    } else {
+      await Product.findOneAndUpdate(
+        {
+          _id: item.product,
+          tenantId: this.tenantId,
+        },
+        {
+          $inc: { stock: item.count },
+        },
+        { session },
+      )
+    }
   }
 
   this.stockRestoredAt = new Date()
