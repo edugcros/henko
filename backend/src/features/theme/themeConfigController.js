@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url'
 import ThemeConfig, {
   DEFAULT_THEME_CONFIG,
 } from './themeConfigModel.js'
+import Tenant from '../../models/tenantModel.js'
 import {
   getUserIdFromRequest,
   isValidObjectId,
@@ -526,6 +527,15 @@ export const getPublicThemeById = async (req, res, next) => {
 
     if (!isValidObjectId(paramTenantId)) {
       return errorResponse(res, 'tenantId inválido', 400)
+    }
+
+    const tenantExists = await Tenant.exists({
+      _id: paramTenantId,
+      status: 'active',
+    })
+
+    if (!tenantExists) {
+      return errorResponse(res, 'Tenant no encontrado', 404)
     }
 
     let theme = await getThemeByPublicTenantId(paramTenantId)
