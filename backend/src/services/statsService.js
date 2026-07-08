@@ -637,6 +637,9 @@ export const getSalesChartDataInternal = async (tenantId, days = metricsConfig.i
  * Obtiene estadísticas unificadas de marketing (GA4 + datos propios)
  * Usado en adminController.getDashboardData
  */
+// `ga4.serviceAccountKey` está cifrado en reposo y solo se desencripta vía el
+// getter del schema (backend/src/models/tenantModel.js) — el `tenant` recibido
+// acá debe ser un documento de Mongoose obtenido sin `.lean()`.
 export const getUnifiedMarketingStats = async tenant => {
   const ga4 = tenant.integrations?.ga4
 

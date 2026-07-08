@@ -9,6 +9,10 @@ import {
   normalizeHostname,
   normalizeSlug,
 } from '../utils/domainUtils.js'
+import {
+  encryptSecret,
+  decryptSecret,
+} from '../services/aiAgent/aiCryptoService.js'
 
 const { Schema } = mongoose
 
@@ -254,12 +258,16 @@ const tenantSchema = new Schema(
           type: String,
           default: null,
           select: false,
+          set: value => (value ? encryptSecret(value) : value),
+          get: value => (value ? decryptSecret(value) : value),
         },
 
         serviceAccountKey: {
           type: String,
           default: null,
           select: false,
+          set: value => (value ? encryptSecret(value) : value),
+          get: value => (value ? decryptSecret(value) : value),
         },
 
         isEnabled: {
@@ -289,6 +297,8 @@ const tenantSchema = new Schema(
           type: String,
           default: null,
           select: false,
+          set: value => (value ? encryptSecret(value) : value),
+          get: value => (value ? decryptSecret(value) : value),
         },
 
         isEnabled: {
@@ -322,6 +332,8 @@ const tenantSchema = new Schema(
         accessToken: {
           type: String,
           select: false,
+          set: value => (value ? encryptSecret(value) : value),
+          get: value => (value ? decryptSecret(value) : value),
         },
 
         isEnabled: {

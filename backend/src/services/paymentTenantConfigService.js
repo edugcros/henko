@@ -195,11 +195,12 @@ export const getTenantToken = async tenantId => {
 }
 
 export const getTenantMercadoPagoContext = async tenantId => {
-  const tenant = await Tenant.findById(tenantId)
-    .select(
-      '+integrations.mercadopago.accessToken integrations.mercadopago.publicKey integrations.mercadopago.isEnabled integrations.mercadopago.mode',
-    )
-    .lean()
+  // No se usa .lean() a propósito: el campo accessToken está cifrado en
+  // reposo (AES-256-GCM) y solo se desencripta vía el getter del schema
+  // (backend/src/models/tenantModel.js), que .lean() no aplica.
+  const tenant = await Tenant.findById(tenantId).select(
+    '+integrations.mercadopago.accessToken integrations.mercadopago.publicKey integrations.mercadopago.isEnabled integrations.mercadopago.mode',
+  )
 
   if (!tenant) {
     const error = new Error('Comercio no encontrado')
