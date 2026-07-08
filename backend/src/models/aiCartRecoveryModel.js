@@ -1,5 +1,6 @@
 // 📁 src/models/aiCartRecoveryModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -113,6 +114,10 @@ aiCartRecoverySchema.index({
   processingLeaseExpiresAt: 1,
 })
 aiCartRecoverySchema.index({ tenantId: 1, status: 1, expiresAt: 1 })
+
+aiCartRecoverySchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AiCartRecovery =
   mongoose.models.AiCartRecovery ||

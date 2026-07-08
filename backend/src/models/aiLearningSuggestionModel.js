@@ -1,5 +1,6 @@
 // 📁 src/models/aiLearningSuggestionModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -198,6 +199,10 @@ aiLearningSuggestionSchema.index({
   type: 1,
   priority: 1,
   updatedAt: -1,
+})
+
+aiLearningSuggestionSchema.plugin(tenantPlugin, {
+  addTenantField: false,
 })
 
 export default mongoose.model(

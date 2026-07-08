@@ -1,5 +1,6 @@
 // 📁 src/models/aiConversationModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -112,6 +113,10 @@ aiConversationSchema.index({ tenantId: 1, channel: 1, externalUserId: 1, status:
 aiConversationSchema.index({ tenantId: 1, status: 1, leadScore: -1, lastMessageAt: -1 })
 aiConversationSchema.index({ tenantId: 1, handoffRequired: 1, lastMessageAt: -1 })
 aiConversationSchema.index({ tenantId: 1, deletedAt: 1, lastMessageAt: -1 })
+
+aiConversationSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AiConversation = mongoose.models.AiConversation || mongoose.model('AiConversation', aiConversationSchema)
 export default AiConversation

@@ -1,5 +1,6 @@
 // 📁 src/models/aIPreference.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 export const AI_PREFERENCE_TYPES = Object.freeze([
   'category',
@@ -214,6 +215,10 @@ aIPreferenceSchema.statics.registerPreference = async function registerPreferenc
     },
   ).setOptions({ tenantId })
 }
+
+aIPreferenceSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AIPreference =
   mongoose.models.AIPreference || mongoose.model('AIPreference', aIPreferenceSchema)

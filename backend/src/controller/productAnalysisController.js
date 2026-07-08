@@ -689,6 +689,7 @@ const processDueScheduledJobs = async ({ tenantId = null, limit = 10 } = {}) => 
   const jobs = await ProductAnalysisJob.find(filter)
     .sort({ scheduledAt: 1 })
     .limit(limit)
+    .setOptions(tenantId ? {} : { ignoreTenant: true })
 
   jobs.forEach(job => {
     scheduleAnalysisJob({

@@ -5,6 +5,7 @@ import mongoose from 'mongoose'
 import bcrypt from 'bcrypt'
 import crypto from 'crypto'
 import sanitizeHtml from 'sanitize-html'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -378,6 +379,10 @@ userSchema.post('save', function (error, doc, next) {
 // =====================================================
 // MODEL
 // =====================================================
+
+userSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const User = mongoose.models.User || mongoose.model('User', userSchema)
 

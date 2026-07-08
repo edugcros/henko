@@ -5,6 +5,7 @@ import {
   encryptSecret,
   decryptSecret,
 } from '../services/aiAgent/aiCryptoService.js'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -173,6 +174,10 @@ aiAgentSchema.index(
   },
 )
 aiAgentSchema.index({ tenantId: 1 }, { unique: true })
+
+aiAgentSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AiAgent =
   mongoose.models.AiAgent || mongoose.model('AiAgent', aiAgentSchema)

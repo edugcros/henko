@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const colorSchema = new mongoose.Schema(
   {
@@ -33,6 +34,10 @@ const colorSchema = new mongoose.Schema(
 )
 
 colorSchema.index({ tenantId: 1, title: 1 }, { unique: true })
+
+colorSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const Color = mongoose.model('Color', colorSchema)
 
