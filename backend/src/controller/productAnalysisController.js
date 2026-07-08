@@ -10,8 +10,10 @@ import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import Product from '../models/productModel.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import {
+  getActorIdFromRequest,
   getUserIdFromRequest,
   isValidObjectId,
+  resolveAuthorizedTenantFromRequest,
   toObjectId,
 } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
@@ -203,14 +205,25 @@ const parseSort = query => {
   return { [field]: direction }
 }
 
+// Cruza el tenant resuelto por dominio (req.tenantId, que un header
+// x-tenant-domain puede sobreescribir) contra el tenant real del usuario
+// autenticado, igual que orderCtrl.js/paymentController.js/couponCtrl.js.
+// Para agentes, authenticateAgent ya fija req.user.tenantId = req.tenantId,
+// por lo que el cruce es un no-op y no afecta ese flujo.
 const getTenantId = req => {
-  const tenantId = req.tenantId || req.tenant?._id
+  const { tenantObjectId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+    missingTenantMessage: 'Tenant no resuelto.',
+    missingUserTenantMessage: 'El usuario autenticado no tiene tenantId válido.',
+    mismatchMessage: 'El usuario no pertenece al tenant resuelto por el dominio.',
+    onMismatch: ({ domainTenantId, userTenantId }) => {
+      logger.warn(
+        `🚨 Tenant mismatch en análisis de imágenes | user=${getActorIdFromRequest(req, 'anonymous')} | userTenant=${userTenantId} | domainTenant=${domainTenantId} | ip=${req.ip} | endpoint=${req.method} ${req.originalUrl}`,
+      )
+    },
+  })
 
-  if (!tenantId || !isObjectId(tenantId)) {
-    return null
-  }
-
-  return toObjectId(tenantId)
+  return tenantObjectId
 }
 
 const getUserId = req => {
@@ -1992,7 +2005,7 @@ export const deleteAnalysisJob = asyncHandler(async (req, res) => {
 })
 
 export const runWishlistPromotionNotifications = asyncHandler(async (req, res) => {
-  const tenantId = req.tenantId || req.user?.tenantId
+  const tenantId = getTenantId(req)
   const dryRun =
     req.body?.dryRun === true ||
     String(req.body?.dryRun || req.query?.dryRun || '').toLowerCase() === 'true'
