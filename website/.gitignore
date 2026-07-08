@@ -1,1 +1,75 @@
+# ============================================
+# GLOBAL IGNORE — E-COMMERCE MONOREPO
+# ============================================
+
+# Build outputs
+dist/
+build/
 .vercel
+.env*
+
+admin/dist/
+admin/build/
+website/dist/
+website/build/
+
+# --- Node.js ---
+**/node_modules/
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+
+# --- Builds Frontend/Backend ---
+**/dist/
+**/build/
+**/.next/
+**/.vite/
+**/.turbo/
+
+
+# --- IA / ML ---
+**/.cache/
+**/.cache/huggingface/
+**/checkpoints/
+**/runs/
+**/wandb/
+**/logs/
+*.ckpt
+*.pth
+*.pt
+*.h5
+*.tflite
+*.joblib
+*.onnx
+
+# --- Environment ---
+**/.env
+**/.env.*
+**/*.env.local
+**/*.env.development
+**/*.env.production
+
+# --- Secrets / local operational artifacts ---
+**/*service-account*.json
+**/ga-service.json
+**/cookies.txt
+**/*.pem
+**/*.key
+**/*.p12
+**/*.zip
+
+# --- VSCode / OS ---
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.swp
+
+# --- Scripts ---
+run_dev.sh
+run_prod.sh
+.vercel
+.env*

@@ -65,6 +65,23 @@ const { useToken } = theme
 
 const normalizeString = (value = '') => String(value || '').trim()
 
+const toTitleCase = value => {
+  const clean = normalizeString(value).replace(/\s+/g, ' ')
+
+  if (!clean) return ''
+
+  return clean
+    .toLocaleLowerCase('es-AR')
+    .replace(/(^|[\s\-/([{"'¿¡])([a-záéíóúüñ])/giu, (_, prefix, char) => {
+      return `${prefix}${char.toLocaleUpperCase('es-AR')}`
+    })
+}
+
+const buildTitleCaseOption = value => {
+  const label = toTitleCase(value)
+  return label ? { value: label, label } : null
+}
+
 const slugifyKeyPart = (value = '') =>
   normalizeString(value)
     .toLowerCase()
@@ -99,7 +116,6 @@ const ALLOWED_IMAGE_TYPES = new Set([
   'image/heif',
 ])
 
-
 const DYNAMIC_FIELD_TYPES = [
   { value: 'text', label: 'Texto corto' },
   { value: 'textarea', label: 'Texto largo' },
@@ -118,8 +134,115 @@ const SHIPPING_TYPE_OPTIONS = [
   { value: 'pickup_only', label: 'Solo retiro' },
 ]
 
-const DEFAULT_DYNAMIC_FIELD_TYPES = new Set(DYNAMIC_FIELD_TYPES.map(item => item.value))
+const QUICK_VARIANT_PRESETS = [
+  {
+    key: 'color-basic',
+    label: 'Color',
+    helper: 'Negro / Blanco',
+    attributes: [
+      {
+        name: 'color',
+        label: 'Color',
+        type: 'color',
+        values: ['Negro', 'Blanco'],
+        source: 'preset',
+      },
+    ],
+  },
+  {
+    key: 'size-basic',
+    label: 'Tamaño',
+    helper: 'Chico / Mediano / Grande',
+    attributes: [
+      {
+        name: 'tamano',
+        label: 'Tamaño',
+        type: 'select',
+        values: ['Chico', 'Mediano', 'Grande'],
+        source: 'preset',
+      },
+    ],
+  },
+  {
+    key: 'presentation-basic',
+    label: 'Presentación',
+    helper: 'Unidad / Pack',
+    attributes: [
+      {
+        name: 'presentacion',
+        label: 'Presentación',
+        type: 'select',
+        values: ['Unidad', 'Pack'],
+        source: 'preset',
+      },
+    ],
+  },
+]
 
+const TECHNICAL_FIELD_PRESETS = [
+  {
+    key: 'dimensions',
+    label: 'Medidas',
+    helper: 'Alto / Ancho / Profundidad',
+    fields: [
+      { name: 'alto', label: 'Alto', type: 'number', unit: 'cm', group: 'medidas', source: 'preset' },
+      { name: 'ancho', label: 'Ancho', type: 'number', unit: 'cm', group: 'medidas', source: 'preset' },
+      { name: 'profundidad', label: 'Profundidad', type: 'number', unit: 'cm', group: 'medidas', source: 'preset' },
+    ],
+  },
+  {
+    key: 'motor',
+    label: 'Motorización',
+    helper: 'Cilindrada / Potencia / Transmisión',
+    fields: [
+      { name: 'cilindrada', label: 'Cilindrada', type: 'text', unit: 'cc', group: 'motorización', source: 'preset' },
+      { name: 'potencia', label: 'Potencia', type: 'text', group: 'motorización', source: 'preset' },
+      { name: 'transmision', label: 'Transmisión', type: 'text', group: 'motorización', source: 'preset' },
+    ],
+  },
+  {
+    key: 'materials',
+    label: 'Materiales',
+    helper: 'Material / Terminación / Uso',
+    fields: [
+      { name: 'material_principal', label: 'Material principal', type: 'text', group: 'materiales', source: 'preset' },
+      { name: 'terminacion', label: 'Terminación', type: 'text', group: 'materiales', source: 'preset' },
+      { name: 'uso_recomendado', label: 'Uso recomendado', type: 'text', group: 'uso', source: 'preset' },
+    ],
+  },
+  {
+    key: 'compatibility',
+    label: 'Compatibilidad',
+    helper: 'Modelo / Año / Compatibilidad',
+    fields: [
+      { name: 'modelo_compatible', label: 'Modelo compatible', type: 'text', group: 'compatibilidad', source: 'preset' },
+      { name: 'anio_compatible', label: 'Año compatible', type: 'text', group: 'compatibilidad', source: 'preset' },
+      { name: 'observaciones_tecnicas', label: 'Observaciones técnicas', type: 'textarea', group: 'compatibilidad', source: 'preset' },
+    ],
+  },
+]
+
+const SEO_POSITIONING_INTENT_OPTIONS = [
+  { value: 'commercial', label: 'Comercial / compra' },
+  { value: 'informational', label: 'Informativa' },
+  { value: 'comparative', label: 'Comparativa' },
+  { value: 'local', label: 'Local / cercanía' },
+  { value: 'brand', label: 'Marca' },
+]
+
+const QUICK_MODE_FIELD_KEYS = [
+  'imagenes',
+  'titulo',
+  'descripcion',
+  'categoria',
+  'subcategoria',
+  'precio',
+  'stock',
+]
+
+const DEFAULT_DYNAMIC_FIELD_TYPES = new Set(
+  DYNAMIC_FIELD_TYPES.map(item => item.value),
+)
 
 const buildGeneratedVariantSku = (productTitle, attributes, index) => {
   const titlePart = slugifyKeyPart(productTitle || 'producto')
@@ -142,7 +265,6 @@ const buildGeneratedVariantSku = (productTitle, attributes, index) => {
     .join('-')
     .slice(0, 64)
 }
-
 
 const normalizeNumberValue = value => {
   const parsed = Number(value ?? 0)
@@ -198,7 +320,14 @@ const isAllowedImageFile = file => {
   const mimeType = fileObject?.type || file?.type || ''
   const filename = fileObject?.name || file?.name || ''
   const extension = filename.split('.').pop()?.toLowerCase()
-  const extensionAllowed = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].includes(extension)
+  const extensionAllowed = [
+    'jpg',
+    'jpeg',
+    'png',
+    'webp',
+    'heic',
+    'heif',
+  ].includes(extension)
 
   return ALLOWED_IMAGE_TYPES.has(mimeType) || extensionAllowed
 }
@@ -242,7 +371,9 @@ const validateVariantsForSubmit = variants => {
     return 'Activaste variantes, pero todavía no generaste ninguna combinación.'
   }
 
-  const activeVariants = safeArray(variants).filter(variant => variant.isActive !== false)
+  const activeVariants = safeArray(variants).filter(
+    variant => variant.isActive !== false,
+  )
   if (!activeVariants.length) {
     return 'El producto necesita al menos una variante activa.'
   }
@@ -286,16 +417,248 @@ const validateVariantsForSubmit = variants => {
   return null
 }
 
+const parseQuickVariantText = value => {
+  const clean = normalizeString(value)
+
+  if (!clean) return []
+
+  return clean
+    .split(/[|\n]+/g)
+    .map(part => normalizeString(part))
+    .filter(Boolean)
+    .map((part, index) => {
+      const separatorIndex = part.search(/[:=]/)
+
+      if (separatorIndex === -1) {
+        return null
+      }
+
+      const rawLabel = normalizeString(part.slice(0, separatorIndex))
+      const rawValues = normalizeString(part.slice(separatorIndex + 1))
+      const name = slugifyKeyPart(rawLabel).replace(/-/g, '_')
+      const values = [
+        ...new Set(
+          rawValues
+            .split(/[,;]+/g)
+            .map(item => normalizeString(item).replace(/\s+/g, ' '))
+            .filter(Boolean),
+        ),
+      ]
+
+      if (!name || !values.length) return null
+
+      return {
+        name,
+        label: toTitleCase(rawLabel),
+        type: name.includes('color') ? 'color' : 'select',
+        values,
+        required: false,
+        sortOrder: index,
+        source: 'quick',
+      }
+    })
+    .filter(Boolean)
+}
+
+const inferTechnicalFieldType = value => {
+  const clean = normalizeString(value)
+  if (!clean) return 'text'
+  if (/^(si|sí|no|true|false)$/i.test(clean)) return 'boolean'
+  if (/^-?\d+(?:[.,]\d+)?(?:\s*(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv))?$/i.test(clean)) return 'number'
+  if (clean.includes(',') || clean.includes(';')) return 'multiselect'
+  return clean.length > 90 ? 'textarea' : 'text'
+}
+
+const parseTechnicalFieldText = value => {
+  const clean = normalizeString(value)
+
+  if (!clean) return { fields: [], values: {} }
+
+  const fields = []
+  const values = {}
+
+  clean
+    .split(/[|\n]+/g)
+    .map(part => normalizeString(part))
+    .filter(Boolean)
+    .forEach((part, index) => {
+      const separatorIndex = part.search(/[:=]/)
+      if (separatorIndex === -1) return
+
+      const rawLabel = normalizeString(part.slice(0, separatorIndex))
+      const rawValue = normalizeString(part.slice(separatorIndex + 1))
+      const name = slugifyKeyPart(rawLabel).replace(/-/g, '_')
+
+      if (!name || !rawValue) return
+
+      const type = inferTechnicalFieldType(rawValue)
+      const normalizedValue = ['multiselect', 'color'].includes(type)
+        ? rawValue
+            .split(/[,;]+/g)
+            .map(item => normalizeString(item))
+            .filter(Boolean)
+        : type === 'number'
+          ? normalizeNumberValue(rawValue.replace(/[^0-9.,-]/g, '').replace(',', '.'))
+          : /^(si|sí|true)$/i.test(rawValue)
+            ? true
+            : /^(no|false)$/i.test(rawValue)
+              ? false
+              : rawValue
+
+      fields.push({
+        name,
+        label: toTitleCase(rawLabel),
+        type,
+        values: Array.isArray(normalizedValue) ? normalizedValue : [],
+        unit: normalizeString(rawValue.match(/\b(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv)\b/i)?.[1] || ''),
+        required: false,
+        visible: true,
+        filterable: ['select', 'multiselect', 'color', 'boolean'].includes(type),
+        searchable: true,
+        group: 'ficha técnica',
+        source: 'quick',
+        sortOrder: index,
+      })
+      values[name] = normalizedValue
+    })
+
+  return { fields, values }
+}
+
+const mergeVariantAttributeDefinitions = (current = [], incoming = []) => {
+  const merged = new Map()
+
+  safeArray(current).forEach((attribute, index) => {
+    if (!attribute?.name) return
+    merged.set(attribute.name, {
+      ...attribute,
+      sortOrder: Number.isFinite(Number(attribute.sortOrder))
+        ? Number(attribute.sortOrder)
+        : index,
+    })
+  })
+
+  safeArray(incoming).forEach((attribute, index) => {
+    if (!attribute?.name) return
+    const previous = merged.get(attribute.name)
+    merged.set(attribute.name, {
+      ...previous,
+      ...attribute,
+      label: attribute.label || previous?.label || normalizeAiFieldLabel(attribute.name),
+      values: [
+        ...new Set([
+          ...safeArray(previous?.values),
+          ...safeArray(attribute.values),
+        ]),
+      ],
+      required: previous?.required === true || attribute.required === true,
+      sortOrder: Number.isFinite(Number(previous?.sortOrder))
+        ? Number(previous.sortOrder)
+        : index,
+    })
+  })
+
+  return [...merged.values()].sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+  )
+}
+
+const mergeSelectedVariantValues = (current = {}, incoming = {}) => {
+  const next = { ...(current || {}) }
+
+  Object.entries(incoming || {}).forEach(([key, values]) => {
+    const cleanValues = safeArray(values)
+      .map(value => normalizeString(value))
+      .filter(Boolean)
+
+    if (!key || !cleanValues.length) return
+
+    next[key] = [...new Set([...safeArray(next[key]), ...cleanValues])]
+  })
+
+  return next
+}
+
+const generateVariantRowsFromSelection = ({
+  attributes = [],
+  selectedAttributes = {},
+  previousVariants = [],
+  basePrice = 0,
+  productTitle = '',
+}) => {
+  const activeAttrs = safeArray(attributes).filter(
+    attribute => safeArray(selectedAttributes?.[attribute.name]).length > 0,
+  )
+
+  if (!activeAttrs.length) {
+    return {
+      error: 'Agregá valores a por lo menos una opción vendible.',
+      variants: [],
+    }
+  }
+
+  const total = activeAttrs.reduce(
+    (acc, attribute) => acc * safeArray(selectedAttributes[attribute.name]).length,
+    1,
+  )
+
+  if (total > MAX_GENERATED_VARIANTS) {
+    return {
+      error: `La selección produciría ${total} variantes. El máximo permitido es ${MAX_GENERATED_VARIANTS}.`,
+      variants: [],
+      total,
+    }
+  }
+
+  const buildCombinations = (index = 0, current = {}) => {
+    if (index === activeAttrs.length) return [current]
+
+    const attr = activeAttrs[index]
+    const values = selectedAttributes[attr.name] || []
+
+    return values.flatMap(value =>
+      buildCombinations(index + 1, {
+        ...current,
+        [attr.name]: value,
+      }),
+    )
+  }
+
+  const previousByKey = new Map(safeArray(previousVariants).map(variant => [variant.key, variant]))
+
+  const variants = buildCombinations().map((combination, index) => {
+    const key = buildVariantKey(combination) || `variant-${index + 1}-${Date.now()}`
+    const previous = previousByKey.get(key)
+    const generatedSku = buildGeneratedVariantSku(productTitle, combination, index)
+
+    return {
+      key,
+      nombre: buildVariantName(combination) || `Variante ${index + 1}`,
+      combinacion: combination,
+      price: previous?.price ?? Number(basePrice || 0),
+      stock: previous?.stock ?? 0,
+      sku: previous?.sku || generatedSku,
+      isActive: previous?.isActive ?? true,
+      imageSourceUid: previous?.imageSourceUid ?? null,
+      uiStatus: previous ? 'existing' : 'new',
+    }
+  })
+
+  return { variants, total }
+}
 
 const normalizeDynamicFieldType = value => {
   const clean = normalizeString(value).toLowerCase()
 
-  if (['textarea', 'longtext', 'long_text', 'multiline'].includes(clean)) return 'textarea'
+  if (['textarea', 'longtext', 'long_text', 'multiline'].includes(clean))
+    return 'textarea'
   if (['number', 'numeric', 'integer', 'float'].includes(clean)) return 'number'
   if (['select', 'dropdown', 'enum', 'list'].includes(clean)) return 'select'
-  if (['multiselect', 'multi_select', 'tags', 'array'].includes(clean)) return 'multiselect'
+  if (['multiselect', 'multi_select', 'tags', 'array'].includes(clean))
+    return 'multiselect'
   if (['color', 'colour'].includes(clean)) return 'color'
-  if (['boolean', 'bool', 'switch', 'checkbox'].includes(clean)) return 'boolean'
+  if (['boolean', 'bool', 'switch', 'checkbox'].includes(clean))
+    return 'boolean'
   if (['text', 'string', 'input'].includes(clean)) return 'text'
 
   return DEFAULT_DYNAMIC_FIELD_TYPES.has(clean) ? clean : 'text'
@@ -303,7 +666,9 @@ const normalizeDynamicFieldType = value => {
 
 const parseDynamicFieldOptions = value => {
   if (Array.isArray(value)) {
-    return [...new Set(value.map(item => normalizeString(item)).filter(Boolean))]
+    return [
+      ...new Set(value.map(item => normalizeString(item)).filter(Boolean)),
+    ]
   }
 
   if (typeof value === 'string') {
@@ -353,7 +718,9 @@ const normalizeDynamicFieldDefinition = (field, index = 0) => {
   return {
     name,
     label: normalizeString(field.label || field.title || field.name || name),
-    type: normalizeDynamicFieldType(field.type || field.inputType || field.kind),
+    type: normalizeDynamicFieldType(
+      field.type || field.inputType || field.kind,
+    ),
     values: parseDynamicFieldOptions(
       field.values || field.options || field.enum || field.allowedValues,
     ),
@@ -363,7 +730,9 @@ const normalizeDynamicFieldDefinition = (field, index = 0) => {
       field.required === true ||
       field.isRequired === true ||
       field.mandatory === true,
-    sortOrder: Number.isFinite(Number(field.sortOrder)) ? Number(field.sortOrder) : index,
+    sortOrder: Number.isFinite(Number(field.sortOrder))
+      ? Number(field.sortOrder)
+      : index,
     source: field.source || 'template',
   }
 }
@@ -398,11 +767,14 @@ const extractTemplateDynamicFields = templatePayload => {
     const entries = Array.isArray(candidate)
       ? candidate
       : typeof candidate === 'object'
-        ? Object.entries(candidate).map(([key, value]) => (
+        ? Object.entries(candidate).map(([key, value]) =>
             typeof value === 'object' && value !== null
               ? { name: key, ...value }
-              : { name: key, type: typeof value === 'number' ? 'number' : 'text' }
-          ))
+              : {
+                  name: key,
+                  type: typeof value === 'number' ? 'number' : 'text',
+                },
+          )
         : []
 
     entries.forEach((item, index) => {
@@ -463,26 +835,93 @@ const normalizeDynamicFieldValues = (fields = [], rawValues = {}) => {
 }
 
 const buildSeoPayload = values => {
-  const title = normalizeString(values.titulo)
-  const description = normalizeString(values.descripcion)
+  const title = normalizeString(values.titulo || values.title)
+  const description = normalizeString(values.descripcion || values.description)
+  const technicalDescription = normalizeString(
+    values.descripcionTecnica || values.technicalDescription,
+  )
+  const sourceDescription = description || technicalDescription
+  const keywordCandidates = [
+    values.marca,
+    values.categoria,
+    values.subcategoria,
+    values.material,
+    values.color,
+    ...(Array.isArray(values.tags) ? values.tags : []),
+  ]
   const rawKeywords = Array.isArray(values.seoKeywords)
-    ? values.seoKeywords
-    : normalizeString(values.seoKeywords)
-        .split(/[,;|\n]+/g)
-        .map(item => normalizeString(item))
+    ? [...values.seoKeywords, ...keywordCandidates]
+    : [
+        ...normalizeString(values.seoKeywords)
+          .split(/[,;|\n]+/g)
+          .map(item => normalizeString(item)),
+        ...keywordCandidates,
+      ]
 
   const slug =
     slugifyKeyPart(values.slug || title)
       .replace(/_/g, '-')
       .replace(/-+/g, '-') || undefined
 
+  const seoFaq = Array.isArray(values.seoFaq)
+    ? values.seoFaq
+    : normalizeString(values.seoFaq)
+        .split(/[\n|]+/g)
+        .map(item => normalizeString(item))
+        .filter(Boolean)
+
+  const seoContentPillars = Array.isArray(values.seoContentPillars)
+    ? values.seoContentPillars
+    : normalizeString(values.seoContentPillars)
+        .split(/[,;|\n]+/g)
+        .map(item => normalizeString(item))
+        .filter(Boolean)
+
   return {
     slug,
-    shortDescription: normalizeString(values.shortDescription) || description.slice(0, 220),
+    shortDescription:
+      normalizeString(values.shortDescription) ||
+      sourceDescription.slice(0, 240),
     metaTitle: normalizeString(values.metaTitle) || title.slice(0, 70),
     metaDescription:
-      normalizeString(values.metaDescription) || description.slice(0, 160),
-    keywords: [...new Set(rawKeywords.filter(Boolean).map(item => item.toLowerCase()))],
+      normalizeString(values.metaDescription) ||
+      sourceDescription.slice(0, 160),
+    keywords: [
+      ...new Set(
+        rawKeywords
+          .flatMap(item =>
+            Array.isArray(item) ? item : String(item || '').split(/[,;|]/g),
+          )
+          .map(item => normalizeString(item).toLowerCase())
+          .filter(Boolean),
+      ),
+    ].slice(0, 18),
+    focusKeyword: normalizeString(values.seoFocusKeyword),
+    searchIntent: normalizeString(values.seoSearchIntent || 'commercial'),
+    positioning: normalizeString(values.seoPositioning),
+    targetAudience: normalizeString(values.seoTargetAudience),
+    contentAngle: normalizeString(values.seoContentAngle),
+    faq: seoFaq,
+    contentPillars: seoContentPillars,
+  }
+}
+
+const buildSeoFormValues = values => {
+  const seoPayload = buildSeoPayload(values)
+
+  return {
+    slug: seoPayload.slug,
+    shortDescription: seoPayload.shortDescription,
+    metaTitle: seoPayload.metaTitle,
+    metaDescription: seoPayload.metaDescription,
+    seoKeywords: seoPayload.keywords,
+    seoFocusKeyword: seoPayload.focusKeyword,
+    seoSearchIntent: seoPayload.searchIntent,
+    seoPositioning: seoPayload.positioning,
+    seoTargetAudience: seoPayload.targetAudience,
+    seoContentAngle: seoPayload.contentAngle,
+    seoFaq: seoPayload.faq,
+    seoContentPillars: seoPayload.contentPillars,
   }
 }
 
@@ -560,26 +999,624 @@ const waitForUiReset = () =>
     setTimeout(resolve, 0)
   })
 
+const getFirstFilled = (...values) => {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length) return value
+    if (value && typeof value === 'object' && Object.keys(value).length)
+      return value
+    const cleanValue = normalizeString(value)
+    if (cleanValue) return value
+  }
+
+  return null
+}
+
+const normalizeAiFieldLabel = value => {
+  const cleanValue = normalizeString(value).replace(/[_-]+/g, ' ')
+  return toTitleCase(cleanValue)
+}
+
+const AI_FIELD_BLOCKLIST = new Set([
+  'titulo',
+  'title',
+  'descripcion',
+  'description',
+  'descripcion_tecnica',
+  'technical_description',
+  'technicaldescription',
+  'categoria',
+  'category',
+  'subcategoria',
+  'subcategory',
+  'marca',
+  'brand',
+  'precio',
+  'price',
+  'precio_sugerido',
+  'suggestedprice',
+  'color',
+  'material',
+  'tags',
+  'confidence',
+  'hash',
+  'source',
+  'reasoningflags',
+])
+
+const normalizeAiSpecificationRows = analysis => {
+  const candidates = [
+    analysis?.specifications,
+    analysis?.specs,
+    analysis?.fichaTecnica,
+    analysis?.ficha_tecnica,
+    analysis?.technicalSpecifications,
+    analysis?.technical_specifications,
+  ]
+
+  const rows = []
+
+  candidates.forEach(candidate => {
+    if (!candidate) return
+
+    const entries = Array.isArray(candidate)
+      ? candidate
+      : typeof candidate === 'object'
+        ? Object.entries(candidate).map(([key, value]) => ({ key, value }))
+        : []
+
+    entries.forEach((item, index) => {
+      if (!item) return
+
+      if (typeof item === 'string') {
+        const key = slugifyKeyPart(item).replace(/-/g, '_')
+        if (!key) return
+        rows.push({
+          key,
+          label: normalizeAiFieldLabel(item),
+          value: item,
+          type: 'text',
+          source: 'ia',
+          sortOrder: index,
+        })
+        return
+      }
+
+      const rawKey =
+        item.key || item.name || item.field || item.label || item.title
+      const key = slugifyKeyPart(rawKey).replace(/-/g, '_')
+      const value =
+        item.value ?? item.valor ?? item.answer ?? item.text ?? item.content
+
+      if (!key || value === undefined || value === null || value === '') return
+
+      rows.push({
+        key,
+        label:
+          normalizeString(item.label || item.title || rawKey) ||
+          normalizeAiFieldLabel(key),
+        value,
+        type: normalizeDynamicFieldType(
+          item.type ||
+            item.inputType ||
+            (Array.isArray(value)
+              ? 'multiselect'
+              : typeof value === 'number'
+                ? 'number'
+                : 'text'),
+        ),
+        unit: normalizeString(item.unit || item.suffix || ''),
+        group: normalizeString(item.group || item.section || 'ficha técnica'),
+        visible: item.visible !== false,
+        filterable: item.filterable === true,
+        searchable: item.searchable !== false,
+        source: item.source || 'ia',
+        sortOrder: Number.isFinite(Number(item.sortOrder))
+          ? Number(item.sortOrder)
+          : index,
+        confidence: Number.isFinite(Number(item.confidence))
+          ? Number(item.confidence)
+          : undefined,
+      })
+    })
+  })
+
+  return rows
+}
+
+const flattenAiAttributes = analysis => {
+  const sources = [
+    analysis?.atributos_detectados,
+    analysis?.atributos,
+    analysis?.attributes,
+    analysis?.productAttributes,
+    analysis?.categoryAttributes,
+    analysis?.dynamicFields,
+    analysis?.detectedAttributes,
+  ]
+
+  return sources.reduce((acc, source) => {
+    if (!source || typeof source !== 'object' || Array.isArray(source))
+      return acc
+
+    Object.entries(source).forEach(([key, value]) => {
+      const normalizedKey = slugifyKeyPart(key).replace(/-/g, '_')
+      if (!normalizedKey || AI_FIELD_BLOCKLIST.has(normalizedKey)) return
+      if (value === undefined || value === null || value === '') return
+      acc[normalizedKey] = value
+    })
+
+    return acc
+  }, {})
+}
+
+const buildDynamicFieldsFromAi = analysis => {
+  const specs = normalizeAiSpecificationRows(analysis)
+  const attributes = flattenAiAttributes(analysis)
+  const map = new Map()
+
+  specs.forEach((spec, index) => {
+    const key = slugifyKeyPart(spec.key || spec.name || spec.label).replace(
+      /-/g,
+      '_',
+    )
+    if (!key || AI_FIELD_BLOCKLIST.has(key)) return
+
+    map.set(key, {
+      name: key,
+      label: normalizeString(spec.label) || normalizeAiFieldLabel(key),
+      type: normalizeDynamicFieldType(
+        spec.type ||
+          (Array.isArray(spec.value)
+            ? 'multiselect'
+            : typeof spec.value === 'number'
+              ? 'number'
+              : 'text'),
+      ),
+      values: parseDynamicFieldOptions(
+        spec.values ||
+          spec.options ||
+          (Array.isArray(spec.value) ? spec.value : []),
+      ),
+      unit: normalizeString(spec.unit || ''),
+      placeholder: normalizeString(spec.placeholder || 'Dato detectado por IA'),
+      required: spec.required === true,
+      visible: spec.visible !== false,
+      filterable:
+        spec.filterable === true ||
+        ['select', 'multiselect', 'color', 'boolean'].includes(
+          normalizeDynamicFieldType(spec.type),
+        ),
+      searchable: spec.searchable !== false,
+      group: normalizeString(spec.group || 'ficha técnica'),
+      source: spec.source || 'ia',
+      confidence: spec.confidence,
+      sortOrder: Number.isFinite(Number(spec.sortOrder))
+        ? Number(spec.sortOrder)
+        : index,
+    })
+  })
+
+  Object.entries(attributes).forEach(([key, value], index) => {
+    if (map.has(key)) return
+
+    map.set(key, {
+      name: key,
+      label: normalizeAiFieldLabel(key),
+      type: Array.isArray(value)
+        ? 'multiselect'
+        : typeof value === 'number'
+          ? 'number'
+          : 'text',
+      values: Array.isArray(value)
+        ? value.map(item => normalizeString(item)).filter(Boolean)
+        : [],
+      unit: '',
+      placeholder: 'Dato complementario detectado por IA',
+      required: false,
+      visible: true,
+      filterable: Array.isArray(value),
+      searchable: true,
+      group: 'atributos detectados',
+      source: 'ia',
+      sortOrder: specs.length + index,
+    })
+  })
+
+  return [...map.values()].sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+  )
+}
+
+const buildDynamicValuesFromAi = (analysis, fields = []) => {
+  const specs = normalizeAiSpecificationRows(analysis)
+  const attributes = flattenAiAttributes(analysis)
+  const values = {}
+
+  specs.forEach(spec => {
+    const key = slugifyKeyPart(spec.key || spec.name || spec.label).replace(
+      /-/g,
+      '_',
+    )
+    if (!key || AI_FIELD_BLOCKLIST.has(key)) return
+    if (spec.value !== undefined && spec.value !== null && spec.value !== '') {
+      values[key] = spec.value
+    }
+  })
+
+  Object.entries(attributes).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '')
+      values[key] = value
+  })
+
+  const allowed = new Set(fields.map(field => field.name))
+  return Object.fromEntries(
+    Object.entries(values).filter(([key]) => allowed.has(key)),
+  )
+}
+
+const buildSpecificationRows = (fields = [], values = {}) => {
+  return safeArray(fields)
+    .map((field, index) => {
+      const value = values?.[field.name]
+      const isEmpty =
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0)
+
+      if (isEmpty) return null
+
+      return {
+        key: field.name,
+        label: field.label || normalizeAiFieldLabel(field.name),
+        value,
+        unit: field.unit || '',
+        type: field.type || 'text',
+        group: field.group || 'ficha técnica',
+        visible: field.visible !== false,
+        filterable: field.filterable === true,
+        searchable: field.searchable !== false,
+        source: field.source || 'manual',
+        sortOrder: Number.isFinite(Number(field.sortOrder))
+          ? Number(field.sortOrder)
+          : index,
+      }
+    })
+    .filter(Boolean)
+}
+
+const buildFilterAttributesFromSpecifications = specifications => {
+  return safeArray(specifications)
+    .filter(
+      item =>
+        item.filterable && item.value !== undefined && item.value !== null,
+    )
+    .flatMap(item => {
+      const values = Array.isArray(item.value) ? item.value : [item.value]
+      return values
+        .map(value => normalizeString(value).toLowerCase())
+        .filter(Boolean)
+        .map(value => ({
+          key: item.key,
+          label: item.label,
+          value,
+        }))
+    })
+}
+
+const TECHNICAL_STORAGE_KEYS = new Set([
+  'technicalDescription',
+  'descripcionTecnica',
+  'descripcion_tecnica',
+  'technical_description',
+  'technicalSpecifications',
+  'technical_specifications',
+  'fichaTecnica',
+  'ficha_tecnica',
+  'specifications',
+  'specs',
+  'productAttributes',
+  'categoryAttributes',
+  'dynamicFields',
+  'filterAttributes',
+])
+
+const shouldIncludeTechnicalSheetFromJob = job => {
+  return Boolean(
+    job?.useTechnicalSheet ||
+      job?.useTechnicalData ||
+      job?.includeTechnicalSheet ||
+      job?.includeTechnicalData ||
+      job?.metadata?.useTechnicalSheet ||
+      job?.metadata?.useTechnicalData ||
+      job?.metadata?.includeTechnicalSheet ||
+      job?.metadata?.includeTechnicalData,
+  )
+}
+
+const sanitizeAiOutputForStorage = (value, includeTechnicalSheet) => {
+  if (includeTechnicalSheet || !value || typeof value !== 'object') return value
+
+  if (Array.isArray(value)) {
+    return value.map(item => sanitizeAiOutputForStorage(item, includeTechnicalSheet))
+  }
+
+  return Object.entries(value).reduce((acc, [key, entryValue]) => {
+    if (TECHNICAL_STORAGE_KEYS.has(key)) return acc
+    acc[key] = sanitizeAiOutputForStorage(entryValue, includeTechnicalSheet)
+    return acc
+  }, {})
+}
+
+const removeEmptyObjectKey = (target, key) => {
+  if (!target || typeof target !== 'object') return
+  const value = target[key]
+  if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+    delete target[key]
+  }
+}
+
+const enforceTechnicalSheetPersistence = (payload, includeTechnicalSheet) => {
+  const cleanPayload = { ...(payload || {}) }
+
+  if (cleanPayload.aiOriginalOutput) {
+    try {
+      const parsedAiOutput =
+        typeof cleanPayload.aiOriginalOutput === 'string'
+          ? JSON.parse(cleanPayload.aiOriginalOutput)
+          : cleanPayload.aiOriginalOutput
+
+      cleanPayload.aiOriginalOutput = JSON.stringify(
+        sanitizeAiOutputForStorage(parsedAiOutput, includeTechnicalSheet),
+      )
+    } catch {
+      if (!includeTechnicalSheet) cleanPayload.aiOriginalOutput = null
+    }
+  }
+
+  if (!includeTechnicalSheet) {
+    delete cleanPayload.technicalDescription
+    delete cleanPayload.descripcionTecnica
+    delete cleanPayload.productAttributes
+    delete cleanPayload.categoryAttributes
+    delete cleanPayload.specifications
+    delete cleanPayload.filterAttributes
+    delete cleanPayload.dynamicFields
+
+    cleanPayload.hasTechnicalSheet = false
+    cleanPayload.technicalSheetEnabled = false
+    cleanPayload.showTechnicalSheet = false
+
+    if (cleanPayload.atributos && typeof cleanPayload.atributos === 'object') {
+      const safeAtributos = {}
+      ;['color', 'material'].forEach(key => {
+        if (
+          cleanPayload.atributos[key] !== undefined &&
+          cleanPayload.atributos[key] !== null &&
+          cleanPayload.atributos[key] !== ''
+        ) {
+          safeAtributos[key] = cleanPayload.atributos[key]
+        }
+      })
+      cleanPayload.atributos = safeAtributos
+      removeEmptyObjectKey(cleanPayload, 'atributos')
+    }
+
+    return cleanPayload
+  }
+
+  cleanPayload.hasTechnicalSheet = true
+  cleanPayload.technicalSheetEnabled = true
+  cleanPayload.showTechnicalSheet = true
+
+  if (!normalizeString(cleanPayload.technicalDescription)) delete cleanPayload.technicalDescription
+  if (!normalizeString(cleanPayload.descripcionTecnica)) delete cleanPayload.descripcionTecnica
+  if (!safeArray(cleanPayload.specifications).length) delete cleanPayload.specifications
+  if (!safeArray(cleanPayload.filterAttributes).length) delete cleanPayload.filterAttributes
+  removeEmptyObjectKey(cleanPayload, 'productAttributes')
+  removeEmptyObjectKey(cleanPayload, 'categoryAttributes')
+  removeEmptyObjectKey(cleanPayload, 'dynamicFields')
+
+  return cleanPayload
+}
+
+const getAiReviewReasons = analysis => {
+  return [
+    ...safeArray(analysis?.reviewReasons),
+    ...safeArray(analysis?.reasoningFlags),
+  ]
+    .map(item => normalizeString(item))
+    .filter(Boolean)
+}
+
+const getAiVariantSuggestions = analysis => {
+  return safeArray(
+    analysis?.variantSuggestions ||
+      analysis?.variant_suggestions ||
+      analysis?.variantes_sugeridas ||
+      analysis?.variantes,
+  )
+}
+
+const normalizeAiAnalysisForForm = analysis => {
+  const attrs =
+    analysis?.atributos_detectados ||
+    analysis?.atributos ||
+    analysis?.attributes ||
+    {}
+  const dynamicFields = buildDynamicFieldsFromAi(analysis)
+  const dynamicValues = buildDynamicValuesFromAi(analysis, dynamicFields)
+  const variantSuggestions = getAiVariantSuggestions(analysis)
+  const hasExplicitVariants = variantSuggestions.length > 0
+
+  const colorValue = getFirstFilled(attrs?.color, analysis?.color)
+  const materialValue = getFirstFilled(attrs?.material, analysis?.material)
+  const seo = analysis?.seo || {}
+  const logistics = analysis?.logistics || {}
+
+  const fields = {
+    titulo: normalizeString(analysis?.titulo || analysis?.title || ''),
+    descripcion: normalizeString(
+      analysis?.descripcion || analysis?.description || '',
+    ),
+    descripcionTecnica: normalizeString(
+      analysis?.descripcion_tecnica ||
+        analysis?.technicalDescription ||
+        analysis?.technical_description ||
+        analysis?.descripcionTecnica ||
+        '',
+    ),
+    categoria: toTitleCase(analysis?.categoria || analysis?.category || ''),
+    subcategoria: toTitleCase(
+      analysis?.subcategoria || analysis?.subcategory || '',
+    ),
+    marca: normalizeString(analysis?.marca || analysis?.brand || ''),
+    precio:
+      analysis?.precio_sugerido || analysis?.precio || analysis?.price || null,
+    cantidad: analysis?.cantidad || analysis?.stock || 1,
+    condicion: analysis?.condicion || 'nuevo',
+    color: Array.isArray(colorValue)
+      ? colorValue.join(', ')
+      : normalizeString(colorValue),
+    material: normalizeString(materialValue),
+    shortDescription: normalizeString(
+      seo.shortDescription || analysis?.shortDescription || '',
+    ),
+    metaTitle: normalizeString(seo.metaTitle || analysis?.metaTitle || ''),
+    metaDescription: normalizeString(
+      seo.metaDescription || analysis?.metaDescription || '',
+    ),
+    seoKeywords: safeArray(
+      seo.keywords || analysis?.keywords || analysis?.tags,
+    ),
+    weightKg: logistics.weightKg || analysis?.weightKg || null,
+    shippingType:
+      logistics?.shipping?.type || logistics.shippingType || 'standard',
+    warranty: logistics.warranty || analysis?.warranty || '',
+    countryOfOrigin:
+      logistics.countryOfOrigin ||
+      logistics.originCountry ||
+      analysis?.countryOfOrigin ||
+      '',
+    packageLengthCm:
+      logistics?.dimensions?.length || logistics?.package?.length || null,
+    packageWidthCm:
+      logistics?.dimensions?.width || logistics?.package?.width || null,
+    packageHeightCm:
+      logistics?.dimensions?.height || logistics?.package?.height || null,
+    dynamicFields: dynamicValues,
+  }
+
+  const variantAttributes = []
+  const selectedAttributes = {}
+  const variants = hasExplicitVariants
+    ? variantSuggestions.map((variant, idx) => {
+        const combination =
+          typeof variant === 'string'
+            ? { opcion: variant }
+            : Object.fromEntries(
+                Object.entries(variant || {}).filter(
+                  ([key]) =>
+                    ![
+                      'precio',
+                      'stock',
+                      'sku',
+                      'price',
+                      'imagen',
+                      'image',
+                    ].includes(key),
+                ),
+              )
+
+        Object.entries(combination).forEach(([key, value]) => {
+          const name = slugifyKeyPart(key).replace(/-/g, '_')
+          const cleanValue = normalizeString(value)
+          if (!name || !cleanValue) return
+          if (!selectedAttributes[name]) selectedAttributes[name] = []
+          selectedAttributes[name] = [
+            ...new Set([...selectedAttributes[name], cleanValue]),
+          ]
+        })
+
+        return {
+          key:
+            buildVariantKey(combination) || `ai-variant-${idx}-${Date.now()}`,
+          nombre: buildVariantName(combination) || `Variante ${idx + 1}`,
+          combinacion: combination,
+          price: Number(
+            variant?.precio || variant?.price || analysis?.precio_sugerido || 0,
+          ),
+          stock: Number(variant?.stock || 0),
+          sku: variant?.sku || '',
+          isActive: true,
+          imageSourceUid: null,
+          uiStatus: 'ai',
+        }
+      })
+    : []
+
+  Object.entries(selectedAttributes).forEach(([name, values], index) => {
+    variantAttributes.push({
+      name,
+      label: normalizeAiFieldLabel(name),
+      type: name.includes('color') ? 'color' : 'select',
+      values,
+      required: false,
+      sortOrder: index,
+      source: 'ia',
+    })
+  })
+
+  return {
+    fields,
+    dynamicFields,
+    dynamicValues,
+    hasExplicitVariants,
+    variantAttributes,
+    selectedAttributes,
+    variants,
+    tags: [
+      ...new Set(
+        safeArray(analysis?.tags)
+          .map(tag => normalizeString(tag).toLowerCase())
+          .filter(Boolean),
+      ),
+    ],
+    review: {
+      confidence: Number(analysis?.confidence || 0),
+      materialConfidence: Number(analysis?.material_confidence || 0),
+      priceConfidence: Number(analysis?.price_confidence || 0),
+      requiresHumanReview: Boolean(
+        analysis?.requiresHumanReview ||
+        analysis?.needsReview ||
+        analysis?.aiNeedsReview,
+      ),
+      reasons: getAiReviewReasons(analysis),
+    },
+  }
+}
+
 const buildProductPayloadFromAnalysis = ({
   analysis,
   job,
   user,
   publish = false,
   automationMode = 'agent-assisted',
+  includeTechnicalSheet = false,
 }) => {
-  const detectedAttrs =
-    analysis?.atributos_detectados || analysis?.atributos || {}
-  const colorValue = Array.isArray(detectedAttrs.color)
-    ? detectedAttrs.color.join(', ')
-    : detectedAttrs.color || analysis?.color || ''
-  const colorArray = normalizeString(colorValue)
-    ? String(colorValue)
+  const normalizedAnalysisForForm = normalizeAiAnalysisForForm(analysis || {})
+  const { fields, dynamicFields, dynamicValues } = normalizedAnalysisForForm
+  const specifications = buildSpecificationRows(dynamicFields, dynamicValues)
+  const filterAttributes =
+    buildFilterAttributesFromSpecifications(specifications)
+  const colorArray = normalizeString(fields.color)
+    ? fields.color
         .split(',')
         .map(color => color.trim().toLowerCase())
         .filter(Boolean)
     : []
   const title =
-    normalizeString(analysis?.titulo || analysis?.title) ||
+    fields.titulo ||
     normalizeString(job?.originalFilename).replace(/\.[^/.]+$/, '') ||
     'Producto sin título'
   const normalizedAnalysis = {
@@ -591,43 +1628,69 @@ const buildProductPayloadFromAnalysis = ({
     agentScheduledAt: job?.scheduledAt || job?.metadata?.addProductAt || null,
     automationMode,
   }
+  const seoPayload = buildSeoPayload({
+    titulo: title,
+    descripcion: fields.descripcion,
+    shortDescription: fields.shortDescription,
+    metaTitle: fields.metaTitle,
+    metaDescription: fields.metaDescription,
+    seoKeywords: fields.seoKeywords,
+  })
+  const logisticsPayload = buildLogisticsPayload(fields)
 
-  return {
+  const payload = {
     title,
     description:
-      normalizeString(analysis?.descripcion || analysis?.description) ||
+      fields.descripcion ||
       'Descripción generada automáticamente pendiente de revisión.',
-    categoria: normalizeString(
-      analysis?.categoria || analysis?.category || 'sin categoria',
-    ).toLowerCase(),
-    subcategoria: normalizeString(
-      analysis?.subcategoria || analysis?.subcategory || 'general',
-    ),
-    marca: normalizeString(analysis?.marca || analysis?.brand || 'sin marca'),
-    price: Number(
-      analysis?.precio_sugerido ||
-        analysis?.suggestedPrice ||
-        analysis?.precio ||
-        analysis?.price ||
-        0,
-    ),
-    stock: Number(analysis?.cantidad || analysis?.stock || 1),
-    condicion: analysis?.condicion || 'nuevo',
+    technicalDescription: fields.descripcionTecnica,
+    descripcionTecnica: fields.descripcionTecnica,
+    categoria: toTitleCase(fields.categoria || 'Sin Categoría'),
+    subcategoria: toTitleCase(fields.subcategoria || 'General'),
+    marca: normalizeString(fields.marca || 'sin marca'),
+    price: Number(fields.precio || 0),
+    stock: Number(fields.cantidad || 1),
+    condicion: fields.condicion || 'nuevo',
     color: colorArray,
-    material: normalizeString(detectedAttrs.material || analysis?.material),
+    material: fields.material,
     atributos: {
-      ...(detectedAttrs && typeof detectedAttrs === 'object'
-        ? detectedAttrs
-        : {}),
+      ...dynamicValues,
       color: colorArray.length === 1 ? colorArray[0] : colorArray,
-      material: normalizeString(detectedAttrs.material || analysis?.material),
+      material: fields.material,
     },
-    hasVariants: false,
-    variantAttributes: [],
-    variants: [],
-    tags: safeArray(analysis?.tags)
-      .map(tag => String(tag).toLowerCase().trim())
-      .filter(Boolean),
+    productAttributes: dynamicValues,
+    categoryAttributes: dynamicValues,
+    specifications,
+    filterAttributes,
+    dynamicFields: dynamicValues,
+    hasVariants: normalizedAnalysisForForm.hasExplicitVariants,
+    variantAttributes: normalizedAnalysisForForm.variantAttributes,
+    variants: normalizedAnalysisForForm.variants.map((variant, idx) => ({
+      key: variant.key,
+      nombre: variant.nombre,
+      sku:
+        normalizeSku(variant.sku) ||
+        buildGeneratedVariantSku(title, variant.combinacion, idx),
+      attributes: variant.combinacion,
+      combinacion: variant.combinacion,
+      price: normalizeNumberValue(variant.price || fields.precio),
+      stock: normalizeNumberValue(variant.stock),
+      isActive: variant.isActive !== false,
+    })),
+    tags: normalizedAnalysisForForm.tags,
+    slug: seoPayload.slug,
+    shortDescription: seoPayload.shortDescription,
+    metaTitle: seoPayload.metaTitle,
+    metaDescription: seoPayload.metaDescription,
+    keywords: seoPayload.keywords,
+    seo: seoPayload,
+    weightKg: logisticsPayload.weightKg,
+    dimensions: logisticsPayload.dimensions,
+    package: logisticsPayload.package,
+    shipping: logisticsPayload.shipping,
+    warranty: logisticsPayload.warranty,
+    countryOfOrigin: logisticsPayload.countryOfOrigin,
+    logistics: logisticsPayload,
     iaGenerated: true,
     aiOriginalOutput: JSON.stringify(normalizedAnalysis),
     aiConfidence: normalizedAnalysis?.confidence ?? null,
@@ -640,13 +1703,16 @@ const buildProductPayloadFromAnalysis = ({
       null,
     aiNeedsReview:
       normalizedAnalysis?.needsReview === true ||
-      normalizedAnalysis?.requiresHumanReview === true,
+      normalizedAnalysis?.requiresHumanReview === true ||
+      normalizedAnalysisForForm.review.requiresHumanReview,
     aiAgentJobId: job?._id || null,
     aiAgentScheduledAt: job?.scheduledAt || job?.metadata?.addProductAt || null,
     aiAutomationMode: automationMode,
     status: publish ? 'active' : 'draft',
     visibility: publish ? 'visible' : 'hidden',
   }
+
+  return enforceTechnicalSheetPersistence(payload, includeTechnicalSheet)
 }
 
 const AIAnalysisPanel = ({
@@ -654,6 +1720,14 @@ const AIAnalysisPanel = ({
   loading,
   error,
   onReset,
+  onApplyAll,
+  onApplySafeFields,
+  onApplyField,
+  onApplySeo,
+  onApplyTechnicalFields,
+  onApplyDynamicField,
+  onApplyTags,
+  onApplyVariants,
   confidence = 85,
 }) => {
   const { token } = useToken()
@@ -661,46 +1735,30 @@ const AIAnalysisPanel = ({
   if (loading) {
     return (
       <Card
+        className="ai-analysis-card"
         style={{
           marginBottom: 24,
-          borderRadius: 12,
+          borderRadius: 20,
           border: `1px solid ${token.colorPrimary}30`,
-          background: `linear-gradient(135deg, ${token.colorPrimary}08 0%, transparent 100%)`,
+          background: `linear-gradient(135deg, ${token.colorPrimary}10 0%, ${token.colorBgContainer} 50%, ${token.colorInfoBg || token.colorPrimaryBg} 100%)`,
+          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)',
         }}
       >
-        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+        <div style={{ textAlign: 'center', padding: '26px 0' }}>
           <div className="ai-pulse-animation">
             <RobotOutlined
-              style={{ fontSize: 48, color: token.colorPrimary }}
+              style={{ fontSize: 52, color: token.colorPrimary }}
             />
           </div>
           <Text
             strong
-            style={{ fontSize: 16, display: 'block', margin: '16px 0 8px' }}
+            style={{ fontSize: 17, display: 'block', margin: '16px 0 8px' }}
           >
             Analizando imagen con IA
           </Text>
-          <div style={{ width: 200, margin: '0 auto' }}>
-            <div
-              style={{
-                height: 8,
-                background: token.colorPrimaryBorder,
-                borderRadius: 4,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  background: token.colorPrimary,
-                  width: '60%',
-                  animation: 'loading 1.5s infinite ease-in-out',
-                }}
-              />
-            </div>
-          </div>
-          <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
-            Detectando producto, categoría y atributos...
+          <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+            Identificando producto, atributos, ficha técnica, SEO y señales de
+            revisión.
           </Text>
         </div>
       </Card>
@@ -715,7 +1773,7 @@ const AIAnalysisPanel = ({
         message="Error en el análisis de IA"
         description={error}
         action={
-          <Button
+          <Button htmlType="button"
             size="small"
             danger
             onClick={onReset}
@@ -724,225 +1782,679 @@ const AIAnalysisPanel = ({
             Reintentar
           </Button>
         }
-        style={{ marginBottom: 24, borderRadius: 8 }}
+        style={{ marginBottom: 24, borderRadius: 16 }}
       />
     )
   }
 
   if (!iaResult) return null
 
-  const suggestedVariants =
-    iaResult.variantes_sugeridas || iaResult.variantes || []
-  const detectedAttributes =
-    iaResult.atributos_detectados || iaResult.atributos || {}
+  const normalized = normalizeAiAnalysisForForm(iaResult)
+  const {
+    fields,
+    dynamicFields,
+    dynamicValues,
+    hasExplicitVariants,
+    variants,
+    review,
+    tags,
+  } = normalized
+  const safeConfidence = Number(
+    review.confidence || iaResult.confidence || confidence / 100 || 0,
+  )
+  const confidencePercent = Math.round(
+    Math.max(0, Math.min(1, safeConfidence)) * 100,
+  )
+  const materialPercent = Math.round(
+    Math.max(0, Math.min(1, Number(review.materialConfidence || 0))) * 100,
+  )
+  const pricePercent = Math.round(
+    Math.max(0, Math.min(1, Number(review.priceConfidence || 0))) * 100,
+  )
+  const technicalDescription = fields.descripcionTecnica
+  const commercialDescription = fields.descripcion
+  const shouldReview = review.requiresHumanReview || confidencePercent < 65
 
-  const detectedFields = [
+  const formatSuggestedValue = value => {
+    if (Array.isArray(value))
+      return value
+        .map(item => normalizeString(item))
+        .filter(Boolean)
+        .join(', ')
+    if (value === true) return 'Sí'
+    if (value === false) return 'No'
+    if (value === undefined || value === null || value === '') return ''
+    if (typeof value === 'number')
+      return Number.isFinite(value) ? String(value) : ''
+    return normalizeString(value)
+  }
+
+  const hasSuggestedValue = value => {
+    if (Array.isArray(value)) return value.some(item => normalizeString(item))
+    if (typeof value === 'number') return Number.isFinite(value) && value > 0
+    if (typeof value === 'boolean') return true
+    return Boolean(normalizeString(value))
+  }
+
+  const mainSuggestions = [
     {
       key: 'titulo',
-      label: 'Título',
+      fieldName: 'titulo',
+      label: 'Título del producto',
+      value: fields.titulo,
       icon: <FileTextOutlined />,
-      value: iaResult.titulo,
+      help: 'Nombre comercial que se usará como título principal.',
+    },
+    {
+      key: 'descripcion',
+      fieldName: 'descripcion',
+      label: 'Descripción comercial',
+      value: fields.descripcion,
+      icon: <FileTextOutlined />,
+      long: true,
+      help: 'Texto principal visible en la página del producto.',
+    },
+    {
+      key: 'descripcionTecnica',
+      fieldName: 'descripcionTecnica',
+      label: 'Descripción técnica',
+      value: fields.descripcionTecnica,
+      icon: <InfoCircleOutlined />,
+      long: true,
+      help: 'Detalle objetivo para ficha ampliada o especificaciones.',
     },
     {
       key: 'categoria',
+      fieldName: 'categoria',
       label: 'Categoría',
+      value: fields.categoria,
       icon: <AppstoreOutlined />,
-      value: iaResult.categoria,
+      help: 'Categoría principal detectada por la IA.',
     },
     {
       key: 'subcategoria',
+      fieldName: 'subcategoria',
       label: 'Subcategoría',
+      value: fields.subcategoria,
       icon: <BranchesOutlined />,
-      value: iaResult.subcategoria,
+      help: 'Clasificación más específica del producto.',
     },
     {
       key: 'marca',
+      fieldName: 'marca',
       label: 'Marca',
+      value: fields.marca,
       icon: <ShoppingOutlined />,
-      value: iaResult.marca,
+      help: 'Solo debería aplicarse si la IA la detectó con evidencia suficiente.',
     },
     {
       key: 'precio',
-      label: 'Precio Sugerido',
+      fieldName: 'precio',
+      label: 'Precio sugerido',
+      value: fields.precio
+        ? `$${Number(fields.precio).toLocaleString('es-AR')}`
+        : '',
       icon: <DollarOutlined />,
-      value: iaResult.precio_sugerido,
-    },
-    {
-      key: 'color',
-      label: 'Color',
-      icon: <FormatPainterOutlined />,
-      value: detectedAttributes.color,
+      help: `${pricePercent || 0}% de confianza estimada para precio.`,
     },
     {
       key: 'material',
+      fieldName: 'material',
       label: 'Material',
+      value: fields.material,
       icon: <InfoCircleOutlined />,
-      value: detectedAttributes.material,
+      help: `${materialPercent || 0}% de confianza estimada para material.`,
     },
     {
-      key: 'talla',
-      label: 'Talla/Talle',
-      icon: <CheckOutlined />,
-      value: detectedAttributes.talla || detectedAttributes.talle,
+      key: 'color',
+      fieldName: 'color',
+      label: 'Color principal',
+      value: fields.color,
+      icon: <FormatPainterOutlined />,
+      help: 'Color dominante detectado en la imagen.',
     },
     {
-      key: 'sexo',
-      label: 'Sexo/Género',
-      icon: <CheckOutlined />,
-      value: detectedAttributes.sexo || detectedAttributes.genero,
+      key: 'cantidad',
+      fieldName: 'cantidad',
+      label: 'Stock inicial',
+      value: fields.cantidad,
+      icon: <NumberOutlined />,
+      help: 'Cantidad sugerida o valor por defecto para iniciar la publicación.',
     },
-  ].filter(field => field.value)
+    {
+      key: 'condicion',
+      fieldName: 'condicion',
+      label: 'Condición',
+      value: fields.condicion,
+      icon: <CheckOutlined />,
+      help: 'Condición sugerida para el producto.',
+    },
+  ]
 
-  const hasTags = safeArray(iaResult.tags).length > 0
-  const hasSuggestedVariants = safeArray(suggestedVariants).length > 0
+  const seoSuggestions = [
+    {
+      key: 'slug',
+      fieldName: 'slug',
+      label: 'Slug URL',
+      value: buildSeoPayload({ ...fields, tags }).slug,
+      icon: <FileTextOutlined />,
+      help: 'URL amigable generada desde el título.',
+    },
+    {
+      key: 'shortDescription',
+      fieldName: 'shortDescription',
+      label: 'Descripción corta',
+      value:
+        fields.shortDescription ||
+        buildSeoPayload({ ...fields, tags }).shortDescription,
+      icon: <FileTextOutlined />,
+      long: true,
+      help: 'Resumen breve para cards, buscadores y vista rápida.',
+    },
+    {
+      key: 'metaTitle',
+      fieldName: 'metaTitle',
+      label: 'Meta title',
+      value: fields.metaTitle || buildSeoPayload({ ...fields, tags }).metaTitle,
+      icon: <FileTextOutlined />,
+      help: 'Título SEO sugerido.',
+    },
+    {
+      key: 'metaDescription',
+      fieldName: 'metaDescription',
+      label: 'Meta description',
+      value:
+        fields.metaDescription ||
+        buildSeoPayload({ ...fields, tags }).metaDescription,
+      icon: <FileTextOutlined />,
+      long: true,
+      help: 'Descripción para buscadores.',
+    },
+    {
+      key: 'seoKeywords',
+      fieldName: 'seoKeywords',
+      label: 'Keywords SEO',
+      value: fields.seoKeywords?.length ? fields.seoKeywords : tags,
+      icon: <TagOutlined />,
+      help: 'Palabras clave sugeridas por IA o derivadas del producto.',
+    },
+  ]
+
+  const logisticsSuggestions = [
+    {
+      key: 'weightKg',
+      fieldName: 'weightKg',
+      label: 'Peso kg',
+      value: fields.weightKg,
+      icon: <ShoppingOutlined />,
+      help: 'Peso estimado o informado para logística.',
+    },
+    {
+      key: 'shippingType',
+      fieldName: 'shippingType',
+      label: 'Tipo de envío',
+      value: fields.shippingType,
+      icon: <ShoppingOutlined />,
+      help: 'Tipo de logística sugerida.',
+    },
+    {
+      key: 'packageLengthCm',
+      fieldName: 'packageLengthCm',
+      label: 'Largo cm',
+      value: fields.packageLengthCm,
+      icon: <NumberOutlined />,
+      help: 'Medida del paquete si la IA o el contexto la sugieren.',
+    },
+    {
+      key: 'packageWidthCm',
+      fieldName: 'packageWidthCm',
+      label: 'Ancho cm',
+      value: fields.packageWidthCm,
+      icon: <NumberOutlined />,
+      help: 'Medida del paquete si la IA o el contexto la sugieren.',
+    },
+    {
+      key: 'packageHeightCm',
+      fieldName: 'packageHeightCm',
+      label: 'Alto cm',
+      value: fields.packageHeightCm,
+      icon: <NumberOutlined />,
+      help: 'Medida del paquete si la IA o el contexto la sugieren.',
+    },
+    {
+      key: 'warranty',
+      fieldName: 'warranty',
+      label: 'Garantía',
+      value: fields.warranty,
+      icon: <InfoCircleOutlined />,
+      help: 'Garantía sugerida o detectada. Revisar si no está explícita.',
+    },
+    {
+      key: 'countryOfOrigin',
+      fieldName: 'countryOfOrigin',
+      label: 'País de origen',
+      value: fields.countryOfOrigin,
+      icon: <InfoCircleOutlined />,
+      help: 'Origen sugerido o detectado. No aplicar si no está confirmado.',
+    },
+  ]
+
+  const suggestionSections = [
+    {
+      key: 'main',
+      title: 'Campos principales detectados',
+      description:
+        'Aplicá cada dato solo si coincide con lo que ves en la imagen y con tu catálogo.',
+      items: mainSuggestions,
+    },
+    {
+      key: 'seo',
+      title: 'SEO y contenido comercial sugerido',
+      description:
+        'Podés aplicar campo por campo o usar el botón “Generar SEO con IA”.',
+      items: seoSuggestions,
+    },
+    {
+      key: 'logistics',
+      title: 'Logística, garantía y origen sugeridos',
+      description:
+        'Estos datos conviene confirmarlos antes de publicar si no vienen de una fuente confiable.',
+      items: logisticsSuggestions,
+    },
+  ]
+
+  const SuggestionCard = ({ item }) => {
+    const displayValue = formatSuggestedValue(item.value)
+    const available = hasSuggestedValue(item.value)
+
+    return (
+      <Card
+        size="small"
+        style={{
+          borderRadius: 16,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          background: token.colorBgContainer,
+          height: '100%',
+        }}
+        styles={{ body: { padding: 14 } }}
+      >
+        <Space direction="vertical" size={7} style={{ width: '100%' }}>
+          <Space size={7} align="center">
+            <span style={{ color: token.colorPrimary }}>{item.icon}</span>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {item.label}
+            </Text>
+          </Space>
+
+          {item.long ? (
+            <Paragraph
+              ellipsis={
+                available
+                  ? { rows: 3, expandable: true, symbol: 'Ver más' }
+                  : false
+              }
+              style={{ margin: 0, fontWeight: 700, whiteSpace: 'pre-line' }}
+            >
+              {available ? displayValue : 'Sin sugerencia disponible'}
+            </Paragraph>
+          ) : (
+            <Text
+              strong
+              ellipsis={{ tooltip: available ? displayValue : undefined }}
+              style={{ fontSize: 14 }}
+            >
+              {available ? displayValue : 'Sin sugerencia disponible'}
+            </Text>
+          )}
+
+          {item.help && (
+            <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.35 }}>
+              {item.help}
+            </Text>
+          )}
+
+          <Button htmlType="button"
+            size="small"
+            type={available ? 'primary' : 'default'}
+            ghost={available}
+            icon={<CheckCircleOutlined />}
+            disabled={!available}
+            onClick={() => onApplyField?.(item.fieldName)}
+            style={{ alignSelf: 'flex-start', borderRadius: 999 }}
+          >
+            Completar este campo
+          </Button>
+        </Space>
+      </Card>
+    )
+  }
 
   return (
     <Card
+      className="ai-analysis-card"
       style={{
         marginBottom: 24,
-        borderRadius: 12,
-        border: `1px solid ${token.colorPrimary}40`,
-        background: `linear-gradient(135deg, ${token.colorPrimary}10 0%, ${token.colorSuccess}05 100%)`,
-        boxShadow: `0 4px 20px ${token.colorPrimary}20`,
+        borderRadius: 22,
+        border: `1px solid ${shouldReview ? token.colorWarningBorder : token.colorSuccessBorder}`,
+        background: `linear-gradient(135deg, ${shouldReview ? token.colorWarningBg : token.colorSuccessBg} 0%, ${token.colorBgContainer} 48%, ${token.colorBgContainer} 100%)`,
+        boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
       }}
       title={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <RobotOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
-          <span>Análisis de IA Completado</span>
-          <Tag color="success" style={{ marginLeft: 8 }}>
-            {confidence}% confianza
-          </Tag>
-          {hasSuggestedVariants && (
-            <Badge
-              count={suggestedVariants.length}
-              style={{ backgroundColor: token.colorSuccess }}
-            >
-              <Tag color="processing">Variantes detectadas</Tag>
-            </Badge>
-          )}
-        </div>
+        <Row gutter={[12, 12]} align="middle" justify="space-between">
+          <Col>
+            <Space size={10} wrap>
+              <RobotOutlined
+                style={{ fontSize: 20, color: token.colorPrimary }}
+              />
+              <span>Revisión inteligente de la IA</span>
+              <Tag
+                color={shouldReview ? 'warning' : 'success'}
+                style={{ borderRadius: 999 }}
+              >
+                {confidencePercent}% confianza
+              </Tag>
+              {shouldReview && (
+                <Tag color="orange">Revisar antes de publicar</Tag>
+              )}
+            </Space>
+          </Col>
+          <Col>
+            <Button htmlType="button" size="small" icon={<ReloadOutlined />} onClick={onReset}>
+              Reanalizar
+            </Button>
+          </Col>
+        </Row>
       }
     >
-      <Row gutter={[16, 16]}>
-        {detectedFields.map(field => (
-          <Col xs={24} sm={12} md={8} key={field.key}>
-            <Card
-              size="small"
-              styles={{ body: { padding: 12 } }}
-              style={{
-                background: token.colorBgContainer,
-                border: `1px solid ${token.colorBorder}`,
-                borderRadius: 8,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  marginBottom: 4,
-                }}
-              >
-                <span style={{ color: token.colorPrimary }}>{field.icon}</span>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {field.label}
-                </Text>
-              </div>
-              <Text
-                strong
-                style={{ fontSize: 14 }}
-                ellipsis={{ tooltip: true }}
-              >
-                {Array.isArray(field.value)
-                  ? field.value.join(', ')
-                  : field.value}
-              </Text>
-            </Card>
-          </Col>
-        ))}
-      </Row>
+      <Alert
+        type={shouldReview ? 'warning' : 'success'}
+        showIcon
+        style={{ marginBottom: 18, borderRadius: 14 }}
+        message={
+          shouldReview
+            ? 'La IA completó el producto, pero algunos datos conviene revisarlos.'
+            : 'La IA detectó una propuesta consistente para completar el producto.'
+        }
+        description="Usá esta revisión como guía: cada dato sugerido tiene botón para aplicarlo al campo correcto. Podés aplicar todo, solo lo seguro o elegir campo por campo."
+      />
 
-      {hasSuggestedVariants && (
-        <div style={{ marginTop: 16 }}>
+      <Space wrap style={{ marginBottom: 18 }}>
+        <Button htmlType="button"
+          type="primary"
+          icon={<CheckCircleOutlined />}
+          onClick={onApplyAll}
+        >
+          Aplicar todo al formulario
+        </Button>
+        <Button htmlType="button" icon={<CheckOutlined />} onClick={onApplySafeFields}>
+          Aplicar solo campos seguros
+        </Button>
+        <Button htmlType="button" icon={<ThunderboltOutlined />} onClick={onApplySeo}>
+          Generar SEO con IA
+        </Button>
+        <Button htmlType="button"
+          icon={<AppstoreOutlined />}
+          onClick={onApplyTechnicalFields}
+          disabled={!dynamicFields.length}
+        >
+          Aplicar ficha técnica
+        </Button>
+        <Button htmlType="button"
+          icon={<TagOutlined />}
+          onClick={onApplyTags}
+          disabled={!tags.length}
+        >
+          Aplicar tags
+        </Button>
+        {hasExplicitVariants && (
+          <Button htmlType="button"
+            icon={<ClusterOutlined />}
+            onClick={onApplyVariants}
+            disabled={!variants.length}
+          >
+            Aplicar variantes
+          </Button>
+        )}
+      </Space>
+
+      {suggestionSections.map(section => (
+        <div
+          key={section.key}
+          style={{ marginTop: section.key === 'main' ? 0 : 20 }}
+        >
+          <Divider orientation="left" plain>
+            {section.title}
+          </Divider>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+            {section.description}
+          </Text>
+          <Row gutter={[14, 14]}>
+            {section.items.map(item => (
+              <Col xs={24} sm={12} lg={8} key={item.key}>
+                <SuggestionCard item={item} />
+              </Col>
+            ))}
+          </Row>
+        </div>
+      ))}
+
+      <Row gutter={[14, 14]} style={{ marginTop: 16 }}>
+        <Col xs={24} md={8}>
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              marginBottom: 8,
+              padding: 14,
+              borderRadius: 16,
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
             }}
           >
-            <ClusterOutlined style={{ color: token.colorPrimary }} />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Variantes sugeridas por IA
-            </Text>
+            <Text type="secondary">Confianza material</Text>
+            <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4 }}>
+              {materialPercent || '—'}%
+            </div>
           </div>
+        </Col>
+        <Col xs={24} md={8}>
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 16,
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          >
+            <Text type="secondary">Confianza precio</Text>
+            <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4 }}>
+              {pricePercent || '—'}%
+            </div>
+          </div>
+        </Col>
+        <Col xs={24} md={8}>
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 16,
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          >
+            <Text type="secondary">Ficha técnica</Text>
+            <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4 }}>
+              {dynamicFields.length}
+            </div>
+          </div>
+        </Col>
+      </Row>
+
+      {(commercialDescription || technicalDescription) && (
+        <div style={{ marginTop: 18 }}>
+          <Divider orientation="left" plain>
+            Contenido generado
+          </Divider>
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            {commercialDescription && (
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 16,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                }}
+              >
+                <Space
+                  style={{ width: '100%', justifyContent: 'space-between' }}
+                  align="center"
+                >
+                  <Text strong>Descripción comercial</Text>
+                  <Button htmlType="button"
+                    size="small"
+                    type="link"
+                    onClick={() => onApplyField?.('descripcion')}
+                  >
+                    Usar descripción
+                  </Button>
+                </Space>
+                <Paragraph
+                  style={{
+                    marginTop: 8,
+                    marginBottom: 0,
+                    whiteSpace: 'pre-line',
+                  }}
+                >
+                  {commercialDescription}
+                </Paragraph>
+              </div>
+            )}
+            {technicalDescription && (
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 16,
+                  background: token.colorBgContainer,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                }}
+              >
+                <Space
+                  style={{ width: '100%', justifyContent: 'space-between' }}
+                  align="center"
+                >
+                  <Text strong>Descripción técnica precisa</Text>
+                  <Button htmlType="button"
+                    size="small"
+                    type="link"
+                    onClick={() => onApplyField?.('descripcionTecnica')}
+                  >
+                    Usar técnica
+                  </Button>
+                </Space>
+                <Paragraph
+                  style={{
+                    marginTop: 8,
+                    marginBottom: 0,
+                    whiteSpace: 'pre-line',
+                  }}
+                >
+                  {technicalDescription}
+                </Paragraph>
+              </div>
+            )}
+          </Space>
+        </div>
+      )}
+
+      {dynamicFields.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <Divider orientation="left" plain>
+            Ficha técnica sugerida
+          </Divider>
+          <Row gutter={[8, 8]}>
+            {dynamicFields.slice(0, 16).map(field => {
+              const value = dynamicValues[field.name]
+              return (
+                <Col xs={24} sm={12} key={field.name}>
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      background: token.colorFillAlter,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                    }}
+                  >
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {field.label}
+                    </Text>
+                    <br />
+                    <Text strong>
+                      {Array.isArray(value)
+                        ? value.join(', ')
+                        : normalizeString(value) || 'Pendiente'}
+                    </Text>
+                    <Space size={4} wrap style={{ marginTop: 6 }}>
+                      {field.source && <Tag>{field.source}</Tag>}
+                      {field.filterable && <Tag color="blue">Filtro</Tag>}
+                      <Button htmlType="button"
+                        type="link"
+                        size="small"
+                        style={{ padding: 0 }}
+                        onClick={() => onApplyDynamicField?.(field)}
+                      >
+                        Usar campo
+                      </Button>
+                    </Space>
+                  </div>
+                </Col>
+              )
+            })}
+          </Row>
+        </div>
+      )}
+
+      {hasExplicitVariants && variants.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <Divider orientation="left" plain>
+            Variantes sugeridas
+          </Divider>
           <Space wrap>
-            {suggestedVariants.map((variant, idx) => (
-              <Tag key={idx} color="purple" style={{ padding: '4px 12px' }}>
-                {typeof variant === 'string'
-                  ? variant
-                  : Object.entries(variant)
-                      .map(([k, v]) => `${k}:${v}`)
-                      .join(' / ')}
+            {variants.map((variant, idx) => (
+              <Tag
+                key={variant.key || idx}
+                color="purple"
+                style={{ padding: '5px 12px', borderRadius: 999 }}
+              >
+                {variant.nombre}
               </Tag>
             ))}
           </Space>
         </div>
       )}
 
-      {hasTags && (
-        <div style={{ marginTop: 16 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              marginBottom: 8,
-            }}
-          >
-            <TagOutlined style={{ color: token.colorPrimary }} />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Tags detectados
-            </Text>
-          </div>
-          <div>
-            {iaResult.tags.map((tag, idx) => (
-              <Tag key={idx} color="blue" style={{ margin: '0 4px 4px 0' }}>
+      {tags.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <Divider orientation="left" plain>
+            Tags sugeridos
+          </Divider>
+          <Space wrap>
+            {tags.map(tag => (
+              <Tag key={tag} color="blue" style={{ borderRadius: 999 }}>
                 {tag}
               </Tag>
             ))}
-          </div>
+          </Space>
         </div>
       )}
 
-      {iaResult.descripcion && (
-        <div style={{ marginTop: 16 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              marginBottom: 8,
-            }}
-          >
-            <FileTextOutlined style={{ color: token.colorPrimary }} />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Descripción generada
-            </Text>
-          </div>
-          <Paragraph
-            ellipsis={{ rows: 2, expandable: true, symbol: 'Ver más' }}
-            style={{
-              background: token.colorBgContainer,
-              padding: 12,
-              borderRadius: 8,
-              margin: 0,
-              border: `1px solid ${token.colorBorder}`,
-            }}
-          >
-            {iaResult.descripcion}
-          </Paragraph>
+      {review.reasons.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <Divider orientation="left" plain>
+            Señales de revisión
+          </Divider>
+          <Space wrap>
+            {review.reasons.map(reason => (
+              <Tag key={reason} color="orange" style={{ borderRadius: 999 }}>
+                {reason}
+              </Tag>
+            ))}
+          </Space>
         </div>
       )}
     </Card>
@@ -1007,7 +2519,7 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
                 }}
                 className="image-preview-overlay"
               >
-                <Button
+                <Button htmlType="button"
                   type="primary"
                   shape="circle"
                   icon={<EyeOutlined />}
@@ -1015,7 +2527,7 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
                   onClick={() => window.open(src, '_blank')}
                   style={{ marginRight: 8 }}
                 />
-                <Button
+                <Button htmlType="button"
                   danger
                   shape="circle"
                   icon={<DeleteOutlined />}
@@ -1081,10 +2593,14 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
   )
 }
 
-
 const DynamicProductField = ({ field }) => {
   const rules = field.required
-    ? [{ required: true, message: `${field.label || field.name} es obligatorio` }]
+    ? [
+        {
+          required: true,
+          message: `${field.label || field.name} es obligatorio`,
+        },
+      ]
     : []
 
   const commonProps = {
@@ -1132,7 +2648,10 @@ const DynamicProductField = ({ field }) => {
           {...commonProps}
           allowClear
           showSearch
-          options={safeArray(field.values).map(value => ({ value, label: value }))}
+          options={safeArray(field.values).map(value => ({
+            value,
+            label: value,
+          }))}
         />
       </Form.Item>
     )
@@ -1150,7 +2669,10 @@ const DynamicProductField = ({ field }) => {
           mode="tags"
           allowClear
           tokenSeparators={[',']}
-          options={safeArray(field.values).map(value => ({ value, label: value }))}
+          options={safeArray(field.values).map(value => ({
+            value,
+            label: value,
+          }))}
         />
       </Form.Item>
     )
@@ -1181,7 +2703,10 @@ const DynamicProductField = ({ field }) => {
           mode="tags"
           allowClear
           tokenSeparators={[',']}
-          options={safeArray(field.values).map(value => ({ value, label: value }))}
+          options={safeArray(field.values).map(value => ({
+            value,
+            label: value,
+          }))}
         />
       </Form.Item>
     )
@@ -1253,7 +2778,12 @@ export default function AddProduct() {
   const [selectedAttributes, setSelectedAttributes] = useState({})
   const [newAttributeName, setNewAttributeName] = useState('')
   const [newAttributeType, setNewAttributeType] = useState('select')
+  const [quickVariantText, setQuickVariantText] = useState('')
+  const [technicalQuickText, setTechnicalQuickText] = useState('')
+  const [bulkVariantPrice, setBulkVariantPrice] = useState(null)
+  const [bulkVariantStock, setBulkVariantStock] = useState(null)
   const [dynamicProductFields, setDynamicProductFields] = useState([])
+  const [useTechnicalSheet, setUseTechnicalSheet] = useState(false)
   const [customFieldName, setCustomFieldName] = useState('')
   const [customFieldType, setCustomFieldType] = useState('text')
   const [customFieldRequired, setCustomFieldRequired] = useState(false)
@@ -1273,11 +2803,97 @@ export default function AddProduct() {
   const [currentAgentJob, setCurrentAgentJob] = useState(null)
   const [publishProduct, setPublishProduct] = useState(true)
   const [savingProduct, setSavingProduct] = useState(false)
+  const [formHasChanges, setFormHasChanges] = useState(false)
+  const [committedClassification, setCommittedClassification] = useState({
+    categoria: '',
+    subcategoria: '',
+  })
 
   const inputRef = useRef(null)
   const autoAgentRef = useRef(false)
   const autoAgentFailedJobsRef = useRef(new Set())
   const imagePreviewsRef = useRef([])
+  const lastAnalyzedImageSignatureRef = useRef('')
+  const pageRef = useRef(null)
+  const scrollPositionRef = useRef({ top: 0, left: 0, useContainer: false })
+  const categoryConfigDebounceRef = useRef(null)
+  const categoryConfigRequestIdRef = useRef(0)
+  const categoryConfigCacheRef = useRef(new Map())
+
+  const captureScrollPosition = useCallback(() => {
+    const container = pageRef.current
+    const windowTop =
+      window.scrollY || document.documentElement?.scrollTop || document.body.scrollTop || 0
+    const windowLeft =
+      window.scrollX || document.documentElement?.scrollLeft || document.body.scrollLeft || 0
+
+    if (container) {
+      scrollPositionRef.current = {
+        useContainer: true,
+        top: container.scrollTop,
+        left: container.scrollLeft,
+        windowTop,
+        windowLeft,
+      }
+    } else {
+      scrollPositionRef.current = {
+        useContainer: false,
+        top: windowTop,
+        left: windowLeft,
+      }
+    }
+  }, [])
+
+  const restoreScrollPosition = useCallback(() => {
+    const saved = scrollPositionRef.current
+    if (!saved) return
+
+    if (saved.useContainer && pageRef.current) {
+      if (Number.isFinite(saved.top)) pageRef.current.scrollTop = saved.top
+      if (Number.isFinite(saved.left)) pageRef.current.scrollLeft = saved.left
+      return
+    }
+
+    const top = Number.isFinite(saved.top) ? saved.top : 0
+    const left = Number.isFinite(saved.left) ? saved.left : 0
+
+    window.scrollTo({
+      top,
+      left,
+      behavior: 'auto',
+    })
+
+    if (document.documentElement) {
+      document.documentElement.scrollTop = top
+      document.documentElement.scrollLeft = left
+    }
+    if (document.body) {
+      document.body.scrollTop = top
+      document.body.scrollLeft = left
+    }
+  }, [])
+
+  const scheduleRestoreScroll = useCallback(
+    () => requestAnimationFrame(restoreScrollPosition),
+    [restoreScrollPosition],
+  )
+
+  const handleFormValuesChange = useCallback(() => {
+    setFormHasChanges(true)
+    captureScrollPosition()
+    scheduleRestoreScroll()
+  }, [captureScrollPosition, scheduleRestoreScroll])
+
+  const buildImageSignature = useCallback(file => {
+    if (!file) return ''
+
+    return [
+      file.name || file.uid || '',
+      Number(file.size || 0),
+      Number(file.lastModified || 0),
+      file.type || file.mimeType || '',
+    ].join('|')
+  }, [])
 
   const user = useSelector(state => state.user.user)
   const tenantId = user?.tenantId?._id || user?.tenantId || null
@@ -1288,13 +2904,109 @@ export default function AddProduct() {
   } = useSelector(state => state.product)
   const selectedCategory = Form.useWatch('categoria', form)
   const selectedSubcategory = Form.useWatch('subcategoria', form)
+  const watchedTitle = Form.useWatch('titulo', form)
+  const watchedDescription = Form.useWatch('descripcion', form)
+  const watchedPrice = Form.useWatch('precio', form)
+  const watchedStock = Form.useWatch('cantidad', form)
+  const watchedBrand = Form.useWatch('marca', form)
+
+  const productReadiness = useMemo(() => {
+    const checks = [
+      {
+        key: 'imagenes',
+        label: 'Imagen',
+        done: fileList.length > 0,
+        required: true,
+      },
+      {
+        key: 'titulo',
+        label: 'Título',
+        done: Boolean(normalizeString(watchedTitle)),
+        required: true,
+      },
+      {
+        key: 'descripcion',
+        label: 'Descripción',
+        done: Boolean(normalizeString(watchedDescription)),
+        required: true,
+      },
+      {
+        key: 'categoria',
+        label: 'Categoría',
+        done: Boolean(normalizeString(selectedCategory)),
+        required: true,
+      },
+      {
+        key: 'subcategoria',
+        label: 'Subcategoría',
+        done: Boolean(normalizeString(selectedSubcategory)),
+        required: true,
+      },
+      {
+        key: 'precio',
+        label: 'Precio',
+        done: Number(watchedPrice || 0) > 0,
+        required: true,
+      },
+      {
+        key: 'stock',
+        label: hasVariants ? 'Stock por variantes' : 'Stock',
+        done: hasVariants
+          ? variants.some(variant => Number(variant.stock || 0) > 0)
+          : Number(watchedStock || 0) > 0,
+        required: true,
+      },
+      {
+        key: 'marca',
+        label: 'Marca',
+        done: Boolean(normalizeString(watchedBrand)),
+        required: false,
+      },
+      {
+        key: 'ficha',
+        label: 'Ficha técnica',
+        done: !useTechnicalSheet || dynamicProductFields.length > 0,
+        required: false,
+      },
+      {
+        key: 'variantes',
+        label: 'Variantes',
+        done: !hasVariants || variants.length > 0,
+        required: false,
+      },
+    ]
+
+    const requiredChecks = checks.filter(check => check.required)
+    const doneRequired = requiredChecks.filter(check => check.done).length
+    const percent = Math.round((doneRequired / requiredChecks.length) * 100)
+
+    return {
+      checks,
+      requiredChecks,
+      doneRequired,
+      percent,
+      isReady: doneRequired === requiredChecks.length,
+    }
+  }, [
+    dynamicProductFields.length,
+    fileList.length,
+    hasVariants,
+    selectedCategory,
+    selectedSubcategory,
+    useTechnicalSheet,
+    variants,
+    watchedBrand,
+    watchedDescription,
+    watchedPrice,
+    watchedStock,
+    watchedTitle,
+  ])
 
   const categoryOptions = useMemo(
     () =>
-      catalogCategories.map(category => ({
-        value: category.name,
-        label: category.name,
-      })),
+      catalogCategories
+        .map(category => buildTitleCaseOption(category?.name))
+        .filter(Boolean),
     [catalogCategories],
   )
 
@@ -1305,10 +3017,9 @@ export default function AddProduct() {
         normalizeString(selectedCategory).toLowerCase(),
     )
 
-    return safeArray(category?.subcategories).map(subcategory => ({
-      value: subcategory.name,
-      label: subcategory.name,
-    }))
+    return safeArray(category?.subcategories)
+      .map(subcategory => buildTitleCaseOption(subcategory?.name))
+      .filter(Boolean)
   }, [catalogCategories, selectedCategory])
 
   const localImages = useMemo(() => {
@@ -1356,6 +3067,55 @@ export default function AddProduct() {
   const selectedAgentJob = useMemo(
     () => agentQueue.find(job => job._id === selectedAgentJobId) || null,
     [agentQueue, selectedAgentJobId],
+  )
+
+  const hasUserWorkspace = useMemo(() => {
+    return (
+      fileList.length > 0 ||
+      variants.length > 0 ||
+      editableTags.length > 0 ||
+      Boolean(currentAgentJob) ||
+      formHasChanges
+    )
+  }, [currentAgentJob, editableTags.length, fileList.length, formHasChanges, variants.length])
+
+  const normalizeTitleCaseFormField = useCallback(
+    fieldName => {
+      const currentValue = form.getFieldValue(fieldName)
+      const normalizedValue = toTitleCase(currentValue)
+
+      if (normalizedValue && normalizedValue !== currentValue) {
+        form.setFieldsValue({ [fieldName]: normalizedValue })
+      }
+    },
+    [form],
+  )
+
+  const commitClassificationFromForm = useCallback(
+    (patch = {}) => {
+      const currentCategory =
+        patch.categoria !== undefined ? patch.categoria : form.getFieldValue('categoria')
+      const currentSubcategory =
+        patch.subcategoria !== undefined
+          ? patch.subcategoria
+          : form.getFieldValue('subcategoria')
+
+      const categoria = toTitleCase(currentCategory)
+      const subcategoria = toTitleCase(currentSubcategory)
+
+      const valuesToPatch = {}
+      if (categoria && categoria !== currentCategory) valuesToPatch.categoria = categoria
+      if (subcategoria && subcategoria !== currentSubcategory) {
+        valuesToPatch.subcategoria = subcategoria
+      }
+      if (Object.keys(valuesToPatch).length) form.setFieldsValue(valuesToPatch)
+
+      setCommittedClassification(prev => {
+        if (prev.categoria === categoria && prev.subcategoria === subcategoria) return prev
+        return { categoria, subcategoria }
+      })
+    },
+    [form],
   )
 
   useEffect(() => {
@@ -1407,33 +3167,32 @@ export default function AddProduct() {
   }, [])
 
   useEffect(() => {
-    const category = normalizeString(selectedCategory)
-    const subcategory = normalizeString(selectedSubcategory)
+    const category = normalizeString(committedClassification.categoria)
+    const subcategory = normalizeString(committedClassification.subcategoria)
+
+    if (categoryConfigDebounceRef.current) {
+      clearTimeout(categoryConfigDebounceRef.current)
+      categoryConfigDebounceRef.current = null
+    }
 
     if (!category || !subcategory) {
       setCatalogTemplate(null)
-      return undefined
+      setLoadingCatalogTemplate(false)
+      return
     }
 
-    let cancelled = false
-    const timeout = setTimeout(async () => {
-      setLoadingCatalogTemplate(true)
+    const requestKey = `${slugifyKeyPart(category)}|${slugifyKeyPart(subcategory)}`
+    const requestId = ++categoryConfigRequestIdRef.current
+    const applyTemplateResponse = response => {
+      const template = response?.data?.selectedSubcategory || null
+      const templateAttributes = safeArray(
+        template?.variantAttributes || response?.data?.variantAttributes,
+      )
+      const templateProductFields = extractTemplateDynamicFields(response?.data)
 
-      try {
-        const response = await productService.getCategoryConfig(
-          category,
-          subcategory,
-        )
-        if (cancelled) return
+      setCatalogTemplate(template)
 
-        const template = response?.data?.selectedSubcategory || null
-        const templateAttributes = safeArray(
-          template?.variantAttributes || response?.data?.variantAttributes,
-        )
-
-        setCatalogTemplate(template)
-
-        const templateProductFields = extractTemplateDynamicFields(response?.data)
+      if (useTechnicalSheet && templateProductFields.length > 0) {
         setDynamicProductFields(current => {
           const merged = new Map(current.map(field => [field.name, field]))
 
@@ -1454,63 +3213,90 @@ export default function AddProduct() {
 
           return [...merged.values()]
         })
+      }
 
-        if (templateAttributes.length === 0) return
+      if (templateAttributes.length === 0) {
+        return
+      }
 
-        setDynamicAttributes(current => {
-          const merged = new Map(
-            current.map(attribute => [attribute.name, attribute]),
-          )
+      setDynamicAttributes(current => {
+        const merged = new Map(current.map(attribute => [attribute.name, attribute]))
 
-          templateAttributes.forEach(attribute => {
-            const name = normalizeString(attribute.name)
-              .toLowerCase()
-              .replace(/\s+/g, '_')
+        templateAttributes.forEach(attribute => {
+          const name = normalizeString(attribute.name)
+            .toLowerCase()
+            .replace(/\s+/g, '_')
 
-            if (!name) return
+          if (!name) return
 
-            const previous = merged.get(name)
-            const values = [
-              ...new Set([
-                ...safeArray(previous?.values),
-                ...safeArray(attribute.values),
-              ]),
-            ]
+          const previous = merged.get(name)
+          const values = [
+            ...new Set([
+              ...safeArray(previous?.values),
+              ...safeArray(attribute.values),
+            ]),
+          ]
 
-            merged.set(name, {
-              ...previous,
-              name,
-              label: attribute.label || previous?.label || name,
-              type: attribute.type || previous?.type || 'select',
-              values,
-              required: attribute.required === true,
-            })
+          merged.set(name, {
+            ...previous,
+            name,
+            label: attribute.label || previous?.label || name,
+            type: attribute.type || previous?.type || 'select',
+            values,
+            required: attribute.required === true,
           })
-
-          return [...merged.values()]
         })
-        setHasVariants(true)
+
+        return [...merged.values()]
+      })
+    }
+
+    const cachedResponse = categoryConfigCacheRef.current.get(requestKey)
+    if (cachedResponse) {
+      setLoadingCatalogTemplate(false)
+      applyTemplateResponse(cachedResponse)
+      return
+    }
+
+    const doLoad = async () => {
+      setLoadingCatalogTemplate(true)
+
+      try {
+        const response = await productService.getCategoryConfig(category, subcategory)
+
+        if (requestId !== categoryConfigRequestIdRef.current) return
+
+        categoryConfigCacheRef.current.set(requestKey, response)
+        applyTemplateResponse(response)
       } catch (error) {
-        if (!cancelled) {
+        if (requestId === categoryConfigRequestIdRef.current) {
           setCatalogTemplate(null)
           message.warning(
-            error?.message ||
-              'No se pudo cargar la plantilla de la subcategoría',
+            error?.message || 'No se pudo cargar la plantilla de la subcategoría',
           )
         }
       } finally {
-        if (!cancelled) setLoadingCatalogTemplate(false)
+        if (requestId === categoryConfigRequestIdRef.current) {
+          setLoadingCatalogTemplate(false)
+        }
       }
-    }, 350)
+    }
+
+    categoryConfigDebounceRef.current = setTimeout(() => {
+      doLoad()
+    }, 250)
 
     return () => {
-      cancelled = true
-      clearTimeout(timeout)
+      if (categoryConfigDebounceRef.current) {
+        clearTimeout(categoryConfigDebounceRef.current)
+        categoryConfigDebounceRef.current = null
+      }
+      categoryConfigRequestIdRef.current = requestId
     }
-  }, [selectedCategory, selectedSubcategory])
+  }, [committedClassification, useTechnicalSheet])
 
-  const fetchAgentQueue = useCallback(async () => {
-    setLoadingAgentQueue(true)
+  const fetchAgentQueue = useCallback(async ({ silent = false, preserveSelection = false } = {}) => {
+    if (!silent) setLoadingAgentQueue(true)
     try {
       const { data } = await api.get('/product-analysis', {
         params: {
@@ -1525,18 +3311,22 @@ export default function AddProduct() {
           item.metadata?.autoAnalyze === false,
       )
       setAgentQueue(items)
-      setSelectedAgentJobId(current =>
-        current && items.some(item => item._id === current)
-          ? current
-          : items[0]?._id || null,
-      )
+      if (!preserveSelection) {
+        setSelectedAgentJobId(current =>
+          current && items.some(item => item._id === current)
+            ? current
+            : items[0]?._id || null,
+        )
+      }
     } catch (error) {
-      message.error(
-        error?.response?.data?.message ||
-          'No se pudo cargar la cola del agente',
-      )
+      if (!silent) {
+        message.error(
+          error?.response?.data?.message ||
+            'No se pudo cargar la cola del agente',
+        )
+      }
     } finally {
-      setLoadingAgentQueue(false)
+      if (!silent) setLoadingAgentQueue(false)
     }
   }, [])
 
@@ -1544,225 +3334,582 @@ export default function AddProduct() {
     fetchAgentQueue()
   }, [fetchAgentQueue])
 
-  useEffect(() => {
-    const interval = setInterval(fetchAgentQueue, 30000)
-    return () => clearInterval(interval)
-  }, [fetchAgentQueue])
+  const normalizedAiDraft = useMemo(() => {
+    return iaResult && typeof iaResult === 'object'
+      ? normalizeAiAnalysisForForm(iaResult)
+      : null
+  }, [iaResult])
 
-  useEffect(() => {
-    if (!iaResult) return
+  const mergeDynamicProductFields = useCallback(fields => {
+    const incomingFields = safeArray(fields)
+    if (!incomingFields.length) return
 
-    const detectedAttrs =
-      iaResult.atributos_detectados || iaResult.atributos || {}
-    const suggestedVariants =
-      iaResult.variantes_sugeridas || iaResult.variantes || []
+    setDynamicProductFields(prev => {
+      const merged = new Map(prev.map(field => [field.name, field]))
 
-    const attrsFromIA = []
-
-    if (
-      suggestedVariants.length > 0 &&
-      typeof suggestedVariants[0] === 'object'
-    ) {
-      const firstVariant = suggestedVariants[0]
-      Object.keys(firstVariant).forEach(key => {
-        if (!['precio', 'stock', 'sku', 'price'].includes(key)) {
-          attrsFromIA.push({
-            name: key,
-            label: key.charAt(0).toUpperCase() + key.slice(1),
-            type: 'select',
-            values: [
-              ...new Set(suggestedVariants.map(v => v[key]).filter(Boolean)),
-            ],
-          })
-        }
+      incomingFields.forEach(field => {
+        if (!field?.name) return
+        const previous = merged.get(field.name)
+        merged.set(field.name, {
+          ...previous,
+          ...field,
+          values: [
+            ...new Set([
+              ...safeArray(previous?.values),
+              ...safeArray(field.values),
+            ]),
+          ],
+          required: previous?.required === true || field.required === true,
+        })
       })
+
+      return [...merged.values()].sort(
+        (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+      )
+    })
+  }, [])
+
+  const mergeDynamicFieldValues = useCallback(
+    values => {
+      const currentValues = form.getFieldValue('dynamicFields') || {}
+      form.setFieldsValue({
+        dynamicFields: {
+          ...currentValues,
+          ...(values || {}),
+        },
+      })
+    },
+    [form],
+  )
+
+  const applyTechnicalPreset = useCallback(
+    preset => {
+      const fields = safeArray(preset?.fields)
+      if (!fields.length) return
+
+      setUseTechnicalSheet(true)
+      mergeDynamicProductFields(fields)
+      message.success(`${preset.label} aplicado a la ficha técnica`)
+    },
+    [mergeDynamicProductFields],
+  )
+
+  const applyTechnicalQuickFields = useCallback(() => {
+    const parsed = parseTechnicalFieldText(technicalQuickText)
+
+    if (!parsed.fields.length) {
+      message.warning('Usá el formato: Campo: valor | Campo 2: valor')
+      return
     }
 
-    Object.entries(detectedAttrs).forEach(([key, value]) => {
-      if (
-        !attrsFromIA.find(attr => attr.name === key) &&
-        !['material', 'color', 'descripcion'].includes(key)
-      ) {
-        attrsFromIA.push({
-          name: key,
-          label: key.charAt(0).toUpperCase() + key.slice(1),
-          type: 'select',
-          values: Array.isArray(value) ? value : [value],
-        })
-      }
+    setUseTechnicalSheet(true)
+    mergeDynamicProductFields(parsed.fields)
+    mergeDynamicFieldValues(parsed.values)
+    setTechnicalQuickText('')
+    message.success(`${parsed.fields.length} campo${parsed.fields.length === 1 ? '' : 's'} técnico${parsed.fields.length === 1 ? '' : 's'} creado${parsed.fields.length === 1 ? '' : 's'}`)
+  }, [mergeDynamicFieldValues, mergeDynamicProductFields, technicalQuickText])
+
+  const generateTechnicalDescriptionFromCurrentValues = useCallback(() => {
+    const values = form.getFieldsValue(true) || {}
+    const title = normalizeString(values.titulo || normalizedAiDraft?.fields?.titulo)
+    const category = toTitleCase(values.categoria || normalizedAiDraft?.fields?.categoria)
+    const subcategory = toTitleCase(values.subcategoria || normalizedAiDraft?.fields?.subcategoria)
+    const brand = normalizeString(values.marca || normalizedAiDraft?.fields?.marca)
+    const material = normalizeString(values.material || normalizedAiDraft?.fields?.material)
+    const color = normalizeString(values.color || normalizedAiDraft?.fields?.color)
+    const currentDynamicValues = values.dynamicFields || {}
+    const specificationRows = buildSpecificationRows(dynamicProductFields, currentDynamicValues)
+
+    if (!title && !specificationRows.length && !normalizedAiDraft?.fields?.descripcionTecnica) {
+      message.warning('Completá datos del producto o agregá campos técnicos antes de crear la descripción técnica')
+      return
+    }
+
+    const specsText = specificationRows
+      .slice(0, 10)
+      .map(item => `${item.label}: ${Array.isArray(item.value) ? item.value.join(', ') : item.value}${item.unit ? ` ${item.unit}` : ''}`)
+      .join('; ')
+
+    const description = normalizeString(values.descripcionTecnica) ||
+      normalizeString(normalizedAiDraft?.fields?.descripcionTecnica) ||
+      [
+        title ? `${title}${brand ? ` de ${brand}` : ''}` : 'Producto',
+        category || subcategory ? `clasificado en ${[category, subcategory].filter(Boolean).join(' / ')}` : '',
+        material ? `material principal: ${material}` : '',
+        color ? `color o terminación visible: ${color}` : '',
+        specsText ? `datos técnicos relevantes: ${specsText}` : '',
+        'La información técnica debe considerarse verificable únicamente cuando esté confirmada por la imagen, la marca o la ficha del fabricante.',
+      ]
+        .filter(Boolean)
+        .join('. ')
+
+    setUseTechnicalSheet(true)
+    form.setFieldsValue({ descripcionTecnica: description })
+    message.success('Descripción técnica creada para la ficha')
+  }, [dynamicProductFields, form, normalizedAiDraft])
+
+  const applyAiDynamicField = useCallback(
+    field => {
+      if (!normalizedAiDraft || !field?.name) return
+
+      setUseTechnicalSheet(true)
+      mergeDynamicProductFields([field])
+      mergeDynamicFieldValues({
+        [field.name]: normalizedAiDraft.dynamicValues?.[field.name],
+      })
+      message.success(`Campo aplicado: ${field.label || field.name}`)
+    },
+    [mergeDynamicFieldValues, mergeDynamicProductFields, normalizedAiDraft],
+  )
+
+  const applyAiTechnicalFields = useCallback(() => {
+    if (!normalizedAiDraft) return
+
+    if (!normalizedAiDraft.dynamicFields.length) {
+      message.info('La IA no devolvió campos de ficha técnica para este producto')
+      return
+    }
+
+    setUseTechnicalSheet(true)
+    mergeDynamicProductFields(normalizedAiDraft.dynamicFields)
+    mergeDynamicFieldValues(normalizedAiDraft.dynamicValues)
+    message.success('Ficha técnica aplicada al formulario')
+  }, [mergeDynamicFieldValues, mergeDynamicProductFields, normalizedAiDraft])
+
+  const applyAiTags = useCallback(() => {
+    if (!normalizedAiDraft) return
+
+    setEditableTags(prev => [
+      ...new Set(
+        [...safeArray(prev), ...safeArray(normalizedAiDraft.tags)]
+          .map(tag => normalizeString(tag).toLowerCase())
+          .filter(Boolean),
+      ),
+    ])
+    message.success('Tags aplicados')
+  }, [normalizedAiDraft])
+
+  const applyAiVariants = useCallback(() => {
+    if (!normalizedAiDraft?.hasExplicitVariants) {
+      message.info('La IA no detectó variantes vendibles explícitas')
+      return
+    }
+
+    setHasVariants(true)
+    setDynamicAttributes(current =>
+      mergeVariantAttributeDefinitions(current, normalizedAiDraft.variantAttributes),
+    )
+    setSelectedAttributes(current =>
+      mergeSelectedVariantValues(current, normalizedAiDraft.selectedAttributes),
+    )
+    setVariants(current => {
+      const mergedAttributes = mergeVariantAttributeDefinitions(
+        dynamicAttributes,
+        normalizedAiDraft.variantAttributes,
+      )
+      const mergedSelected = mergeSelectedVariantValues(
+        selectedAttributes,
+        normalizedAiDraft.selectedAttributes,
+      )
+
+      const generated = generateVariantRowsFromSelection({
+        attributes: mergedAttributes,
+        selectedAttributes: mergedSelected,
+        previousVariants: current.length ? current : normalizedAiDraft.variants,
+        basePrice: form.getFieldValue('precio') || normalizedAiDraft.fields.precio,
+        productTitle: form.getFieldValue('titulo') || normalizedAiDraft.fields.titulo,
+      })
+
+      return generated.variants.length ? generated.variants : normalizedAiDraft.variants
+    })
+    message.success(`${normalizedAiDraft.variants.length} variantes aplicadas`)
+  }, [dynamicAttributes, form, normalizedAiDraft, selectedAttributes])
+
+  const applyQuickVariantsFromText = useCallback(() => {
+    const parsedAttributes = parseQuickVariantText(quickVariantText)
+
+    if (!parsedAttributes.length) {
+      message.warning(
+        'Usá el formato: Color: Negro, Blanco | Medida: 1L, 2L',
+      )
+      return
+    }
+
+    const incomingSelected = parsedAttributes.reduce((acc, attribute) => {
+      acc[attribute.name] = attribute.values
+      return acc
+    }, {})
+
+    const mergedAttributes = mergeVariantAttributeDefinitions(
+      dynamicAttributes,
+      parsedAttributes,
+    )
+    const mergedSelected = mergeSelectedVariantValues(
+      selectedAttributes,
+      incomingSelected,
+    )
+
+    const generated = generateVariantRowsFromSelection({
+      attributes: mergedAttributes,
+      selectedAttributes: mergedSelected,
+      previousVariants: variants,
+      basePrice: form.getFieldValue('precio') || 0,
+      productTitle: form.getFieldValue('titulo') || '',
     })
 
-    if (attrsFromIA.length === 0) {
-      if (
-        detectedAttrs.talla ||
-        detectedAttrs.talle ||
-        iaResult.categoria?.toLowerCase().includes('ropa')
-      ) {
-        attrsFromIA.push({
-          name: 'talla',
-          label: 'Talla/Talle',
-          type: 'select',
-          values: [],
-        })
-      }
-      if (
-        detectedAttrs.color ||
-        iaResult.categoria?.toLowerCase().includes('moda')
-      ) {
-        attrsFromIA.push({
-          name: 'color',
-          label: 'Color',
-          type: 'color',
-          values: [],
-        })
-      }
-      if (detectedAttrs.sexo || detectedAttrs.genero) {
-        attrsFromIA.push({
-          name: 'sexo',
-          label: 'Sexo/Género',
-          type: 'select',
-          values: ['Hombre', 'Mujer', 'Unisex'],
-        })
-      }
+    if (generated.error) {
+      message.error(generated.error)
+      return
     }
 
-    setDynamicAttributes(attrsFromIA)
+    setHasVariants(true)
+    setDynamicAttributes(mergedAttributes)
+    setSelectedAttributes(mergedSelected)
+    setVariants(generated.variants)
+    setQuickVariantText('')
+
+    message.success(`${generated.variants.length} variantes generadas rápidamente`)
+  }, [dynamicAttributes, form, quickVariantText, selectedAttributes, variants])
+
+  const applyVariantPreset = useCallback(preset => {
+    const presetAttributes = safeArray(preset?.attributes)
+
+    if (!presetAttributes.length) return
+
+    const incomingSelected = presetAttributes.reduce((acc, attribute) => {
+      acc[attribute.name] = safeArray(attribute.values)
+      return acc
+    }, {})
+
+    const mergedAttributes = mergeVariantAttributeDefinitions(
+      dynamicAttributes,
+      presetAttributes,
+    )
+    const mergedSelected = mergeSelectedVariantValues(
+      selectedAttributes,
+      incomingSelected,
+    )
+
+    const generated = generateVariantRowsFromSelection({
+      attributes: mergedAttributes,
+      selectedAttributes: mergedSelected,
+      previousVariants: variants,
+      basePrice: form.getFieldValue('precio') || 0,
+      productTitle: form.getFieldValue('titulo') || '',
+    })
+
+    if (generated.error) {
+      message.error(generated.error)
+      return
+    }
+
+    setHasVariants(true)
+    setDynamicAttributes(mergedAttributes)
+    setSelectedAttributes(mergedSelected)
+    setVariants(generated.variants)
+    message.success(`${preset.label} aplicado · ${generated.variants.length} variantes listas`)
+  }, [dynamicAttributes, form, selectedAttributes, variants])
+
+  const applyBulkVariantValues = useCallback(() => {
+    const shouldUpdatePrice = Number.isFinite(Number(bulkVariantPrice)) && Number(bulkVariantPrice) > 0
+    const shouldUpdateStock = Number.isFinite(Number(bulkVariantStock)) && Number(bulkVariantStock) >= 0
+
+    if (!shouldUpdatePrice && !shouldUpdateStock) {
+      message.info('Ingresá precio o stock para aplicar a las variantes')
+      return
+    }
+
+    setVariants(prev =>
+      prev.map(variant => ({
+        ...variant,
+        price: shouldUpdatePrice ? Number(bulkVariantPrice) : variant.price,
+        stock: shouldUpdateStock ? Number(bulkVariantStock) : variant.stock,
+      })),
+    )
+
+    message.success('Valores aplicados a todas las variantes')
+  }, [bulkVariantPrice, bulkVariantStock])
+
+  const generateSeoFromCurrentValues = useCallback(() => {
+    const values = form.getFieldsValue(true) || {}
+    const aiFields = normalizedAiDraft?.fields || {}
+    const baseValues = {
+      ...aiFields,
+      ...values,
+      titulo:
+        normalizeString(values.titulo) || normalizeString(aiFields.titulo),
+      descripcion:
+        normalizeString(values.descripcion) ||
+        normalizeString(aiFields.descripcion) ||
+        normalizeString(values.descripcionTecnica) ||
+        normalizeString(aiFields.descripcionTecnica),
+      descripcionTecnica:
+        normalizeString(values.descripcionTecnica) ||
+        normalizeString(aiFields.descripcionTecnica),
+      marca: normalizeString(values.marca) || normalizeString(aiFields.marca),
+      categoria: toTitleCase(values.categoria || aiFields.categoria),
+      subcategoria: toTitleCase(values.subcategoria || aiFields.subcategoria),
+      material:
+        normalizeString(values.material) || normalizeString(aiFields.material),
+      color: normalizeString(values.color) || normalizeString(aiFields.color),
+      tags: editableTags,
+    }
+
+    if (!baseValues.titulo && !baseValues.descripcion) {
+      message.warning(
+        'Completá o aplicá primero el título y la descripción para generar SEO',
+      )
+      return
+    }
+
+    form.setFieldsValue(buildSeoFormValues(baseValues))
+    message.success('SEO generado desde los datos actuales del producto')
+  }, [editableTags, form, normalizedAiDraft])
+
+  const generateSeoPositioningFromCurrentValues = useCallback(() => {
+    const values = form.getFieldsValue(true) || {}
+    const title = normalizeString(values.titulo || normalizedAiDraft?.fields?.titulo)
+    const category = toTitleCase(values.categoria || normalizedAiDraft?.fields?.categoria)
+    const subcategory = toTitleCase(values.subcategoria || normalizedAiDraft?.fields?.subcategoria)
+    const brand = normalizeString(values.marca || normalizedAiDraft?.fields?.marca)
+    const material = normalizeString(values.material || normalizedAiDraft?.fields?.material)
+    const color = normalizeString(values.color || normalizedAiDraft?.fields?.color)
+
+    if (!title && !subcategory && !category) {
+      message.warning('Completá título, categoría o subcategoría para crear posicionamiento SEO')
+      return
+    }
+
+    const focusKeyword = normalizeString(values.seoFocusKeyword) ||
+      [brand, title || subcategory || category]
+        .filter(Boolean)
+        .join(' ')
+        .slice(0, 90)
+
+    const audience = normalizeString(values.seoTargetAudience) ||
+      `Personas que buscan ${subcategory || category || title} con información clara antes de comprar.`
+
+    const contentAngle = normalizeString(values.seoContentAngle) ||
+      `Destacar características visibles, uso recomendado, calidad percibida y datos verificables sin prometer información no confirmada.`
+
+    const positioning = normalizeString(values.seoPositioning) ||
+      `${title || subcategory || category} se posiciona para búsquedas de intención comercial relacionadas con ${focusKeyword}. El contenido debe resolver dudas de compra, diferenciar el producto por sus atributos visibles y reforzar confianza con descripción clara, ficha técnica opcional, imágenes y datos de disponibilidad.`
+
+    const faq = safeArray(values.seoFaq).length
+      ? values.seoFaq
+      : [
+          `¿Qué características tiene ${title || 'este producto'}?`,
+          `¿Para qué tipo de uso se recomienda ${title || 'este producto'}?`,
+          `¿Qué debo revisar antes de comprar ${title || 'este producto'}?`,
+        ]
+
+    const contentPillars = [
+      focusKeyword,
+      subcategory,
+      category,
+      brand,
+      material,
+      color,
+    ]
+      .map(item => normalizeString(item).toLowerCase())
+      .filter(Boolean)
 
     form.setFieldsValue({
-      titulo: iaResult.titulo || iaResult.title || '',
-      descripcion: iaResult.descripcion || iaResult.description || '',
-      categoria: iaResult.categoria || '',
-      subcategoria: iaResult.subcategoria || '',
-      marca: iaResult.marca || iaResult.brand || '',
-      precio: iaResult.precio_sugerido || iaResult.precio || iaResult.price,
-      cantidad: iaResult.cantidad || iaResult.stock || 1,
-      condicion: iaResult.condicion || 'nuevo',
-      color: Array.isArray(detectedAttrs.color)
-        ? detectedAttrs.color.join(', ')
-        : detectedAttrs.color || '',
-      material: detectedAttrs.material || '',
+      ...buildSeoFormValues({
+        ...values,
+        titulo: title,
+        categoria: category,
+        subcategoria: subcategory,
+        marca: brand,
+        material,
+        color,
+        tags: editableTags,
+        seoFocusKeyword: focusKeyword,
+        seoSearchIntent: values.seoSearchIntent || 'commercial',
+        seoPositioning: positioning,
+        seoTargetAudience: audience,
+        seoContentAngle: contentAngle,
+        seoFaq: faq,
+        seoContentPillars: contentPillars,
+      }),
     })
 
-    if (suggestedVariants.length > 0 || attrsFromIA.length > 0) {
-      setHasVariants(true)
+    message.success('Posicionamiento SEO creado')
+  }, [editableTags, form, normalizedAiDraft])
 
-      if (suggestedVariants.length > 0) {
-        const preloadedVariants = suggestedVariants.map((variant, idx) => {
-          const combination =
-            typeof variant === 'string'
-              ? { variante: variant }
-              : Object.fromEntries(
-                  Object.entries(variant).filter(
-                    ([key]) =>
-                      !['precio', 'stock', 'sku', 'price'].includes(key),
-                  ),
-                )
+  const applyAiSeo = useCallback(() => {
+    generateSeoFromCurrentValues()
+  }, [generateSeoFromCurrentValues])
 
-          return {
-            key: buildVariantKey(combination) || `v-${idx}-${Date.now()}`,
-            nombre: buildVariantName(combination) || `Variante ${idx + 1}`,
-            combinacion: combination,
-            price: Number(
-              variant.precio || variant.price || iaResult.precio_sugerido || 0,
-            ),
-            stock: Number(variant.stock || 0),
-            sku: variant.sku || '',
-            isActive: true,
-            imageSourceUid: null,
-          }
-        })
+  const applyAiField = useCallback(
+    fieldName => {
+      if (!normalizedAiDraft) return
 
-        setVariants(preloadedVariants)
+      const { fields } = normalizedAiDraft
 
-        const usedAttrs = {}
-        if (typeof suggestedVariants[0] === 'object') {
-          Object.keys(suggestedVariants[0]).forEach(key => {
-            if (!['precio', 'stock', 'sku', 'price'].includes(key)) {
-              usedAttrs[key] = [
-                ...new Set(
-                  suggestedVariants.map(item => item[key]).filter(Boolean),
-                ),
-              ]
-            }
-          })
-        }
-        setSelectedAttributes(usedAttrs)
+      const seoFromAi = buildSeoFormValues({
+        ...fields,
+        tags: normalizedAiDraft.tags,
+      })
+
+      const patches = {
+        titulo: { titulo: fields.titulo },
+        descripcion: { descripcion: fields.descripcion },
+        descripcionTecnica: { descripcionTecnica: fields.descripcionTecnica },
+        categoria: { categoria: toTitleCase(fields.categoria) },
+        subcategoria: { subcategoria: toTitleCase(fields.subcategoria) },
+        classification: {
+          categoria: toTitleCase(fields.categoria),
+          subcategoria: toTitleCase(fields.subcategoria),
+        },
+        marca: { marca: fields.marca },
+        precio: { precio: fields.precio },
+        cantidad: { cantidad: fields.cantidad },
+        condicion: { condicion: fields.condicion },
+        material: { material: fields.material },
+        color: { color: fields.color },
+        slug: { slug: fields.slug || seoFromAi.slug },
+        shortDescription: {
+          shortDescription:
+            fields.shortDescription || seoFromAi.shortDescription,
+        },
+        metaTitle: { metaTitle: fields.metaTitle || seoFromAi.metaTitle },
+        metaDescription: {
+          metaDescription: fields.metaDescription || seoFromAi.metaDescription,
+        },
+        seoKeywords: {
+          seoKeywords: fields.seoKeywords?.length
+            ? fields.seoKeywords
+            : seoFromAi.seoKeywords,
+        },
+        weightKg: { weightKg: fields.weightKg },
+        shippingType: { shippingType: fields.shippingType },
+        warranty: { warranty: fields.warranty },
+        countryOfOrigin: { countryOfOrigin: fields.countryOfOrigin },
+        packageLengthCm: { packageLengthCm: fields.packageLengthCm },
+        packageWidthCm: { packageWidthCm: fields.packageWidthCm },
+        packageHeightCm: { packageHeightCm: fields.packageHeightCm },
+        logistics: {
+          weightKg: fields.weightKg,
+          shippingType: fields.shippingType,
+          warranty: fields.warranty,
+          countryOfOrigin: fields.countryOfOrigin,
+          packageLengthCm: fields.packageLengthCm,
+          packageWidthCm: fields.packageWidthCm,
+          packageHeightCm: fields.packageHeightCm,
+        },
       }
+
+      const patch = patches[fieldName] || {}
+      const cleanPatch = Object.fromEntries(
+        Object.entries(patch).filter(([, value]) => {
+          return value !== undefined && value !== null && value !== ''
+        }),
+      )
+
+      if (!Object.keys(cleanPatch).length) {
+        message.info('Ese dato no está disponible en el análisis IA')
+        return
+      }
+
+      form.setFieldsValue(cleanPatch)
+      message.success('Campo aplicado al formulario')
+    },
+    [form, normalizedAiDraft],
+  )
+
+  const applyAiSafeFields = useCallback(() => {
+    if (!normalizedAiDraft) return
+
+    const { fields, review } = normalizedAiDraft
+    const patch = {
+      titulo: fields.titulo,
+      descripcion: fields.descripcion,
+      descripcionTecnica: useTechnicalSheet ? fields.descripcionTecnica : undefined,
+      categoria: fields.categoria,
+      subcategoria: fields.subcategoria,
+      marca: fields.marca,
+      color: fields.color,
+      material:
+        Number(review.materialConfidence || 0) >= 0.45
+          ? fields.material
+          : undefined,
+      precio:
+        Number(review.priceConfidence || 0) >= 0.55 ? fields.precio : undefined,
+      cantidad: fields.cantidad,
+      condicion: fields.condicion,
     }
 
-    const cleanTags = safeArray(iaResult.tags)
-      .map(tag => String(tag).trim())
-      .filter(Boolean)
-
-    setEditableTags([...new Set(cleanTags)])
-    message.success(
-      `Campos autocompletados por IA${attrsFromIA.length > 0 ? ` • ${attrsFromIA.length} atributos detectados` : ''}`,
+    form.setFieldsValue(
+      Object.fromEntries(
+        Object.entries(patch).filter(
+          ([, value]) => value !== undefined && value !== null && value !== '',
+        ),
+      ),
     )
-  }, [iaResult, form])
 
-  useEffect(() => {
-    if (!iaResult || typeof iaResult !== 'object') return
-
-    const detectedAttrs = iaResult.atributos_detectados || iaResult.atributos || {}
-    if (!detectedAttrs || typeof detectedAttrs !== 'object') return
-
-    const ignoredKeys = new Set([
-      'color',
-      'material',
-      'descripcion',
-      'description',
-      'titulo',
-      'title',
-      'categoria',
-      'category',
-      'subcategoria',
-      'subcategory',
-      'marca',
-      'brand',
-    ])
-
-    const fieldsFromIa = Object.entries(detectedAttrs)
-      .map(([key, value], index) => {
-        const name = slugifyKeyPart(key).replace(/-/g, '_')
-        if (!name || ignoredKeys.has(name)) return null
-
-        return {
-          name,
-          label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
-          type: Array.isArray(value) ? 'multiselect' : typeof value === 'number' ? 'number' : 'text',
-          values: Array.isArray(value) ? value.map(item => normalizeString(item)).filter(Boolean) : [],
-          required: false,
-          sortOrder: index,
-          source: 'ia',
-        }
-      })
-      .filter(Boolean)
-
-    if (fieldsFromIa.length) {
-      setDynamicProductFields(prev => {
-        const merged = new Map(prev.map(field => [field.name, field]))
-
-        fieldsFromIa.forEach(field => {
-          if (!merged.has(field.name)) merged.set(field.name, field)
-        })
-
-        return [...merged.values()]
-      })
+    if (useTechnicalSheet) {
+      applyAiTechnicalFields()
     }
 
-    const currentValues = form.getFieldValue('dynamicFields') || {}
-    const nextValues = { ...currentValues }
+    applyAiTags()
+    generateSeoFromCurrentValues()
+    message.success('Campos seguros aplicados')
+  }, [
+    applyAiTags,
+    applyAiTechnicalFields,
+    form,
+    generateSeoFromCurrentValues,
+    normalizedAiDraft,
+    useTechnicalSheet,
+  ])
 
-    fieldsFromIa.forEach(field => {
-      if (nextValues[field.name] !== undefined) return
-      const rawValue = detectedAttrs[field.name] ?? detectedAttrs[field.label]
-      if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
-        nextValues[field.name] = rawValue
-      }
+  const applyAiAll = useCallback(() => {
+    if (!normalizedAiDraft) return
+
+    const { fields } = normalizedAiDraft
+    form.setFieldsValue({
+      titulo: fields.titulo,
+      descripcion: fields.descripcion,
+      descripcionTecnica: useTechnicalSheet ? fields.descripcionTecnica : undefined,
+      categoria: fields.categoria,
+      subcategoria: fields.subcategoria,
+      marca: fields.marca,
+      precio: fields.precio,
+      cantidad: fields.cantidad,
+      condicion: fields.condicion,
+      color: fields.color,
+      material: fields.material,
+      weightKg: fields.weightKg,
+      shippingType: fields.shippingType,
+      warranty: fields.warranty,
+      countryOfOrigin: fields.countryOfOrigin,
+      packageLengthCm: fields.packageLengthCm,
+      packageWidthCm: fields.packageWidthCm,
+      packageHeightCm: fields.packageHeightCm,
     })
 
-    form.setFieldsValue({ dynamicFields: nextValues })
-  }, [form, iaResult])
+    if (useTechnicalSheet) {
+      applyAiTechnicalFields()
+    }
+
+    applyAiTags()
+    if (normalizedAiDraft.hasExplicitVariants) applyAiVariants()
+    window.setTimeout(generateSeoFromCurrentValues, 0)
+    message.success(
+      useTechnicalSheet
+        ? 'Análisis IA aplicado al producto'
+        : 'Análisis IA aplicado sin generar ficha técnica',
+    )
+  }, [
+    applyAiTags,
+    applyAiTechnicalFields,
+    applyAiVariants,
+    form,
+    generateSeoFromCurrentValues,
+    normalizedAiDraft,
+    useTechnicalSheet,
+  ])
 
   const handleAddCustomAttribute = useCallback(() => {
     const label = normalizeString(newAttributeName)
@@ -1802,6 +3949,8 @@ export default function AddProduct() {
       return
     }
 
+    setUseTechnicalSheet(true)
+
     setDynamicProductFields(prev => {
       if (prev.some(field => field.name === name)) {
         message.warning('Ese campo dinámico ya existe')
@@ -1827,13 +3976,18 @@ export default function AddProduct() {
     setCustomFieldRequired(false)
   }, [customFieldName, customFieldRequired, customFieldType])
 
-  const handleRemoveDynamicProductField = useCallback(fieldName => {
-    setDynamicProductFields(prev => prev.filter(field => field.name !== fieldName))
-    const currentValues = form.getFieldValue('dynamicFields') || {}
-    const nextValues = { ...currentValues }
-    delete nextValues[fieldName]
-    form.setFieldsValue({ dynamicFields: nextValues })
-  }, [form])
+  const handleRemoveDynamicProductField = useCallback(
+    fieldName => {
+      setDynamicProductFields(prev =>
+        prev.filter(field => field.name !== fieldName),
+      )
+      const currentValues = form.getFieldValue('dynamicFields') || {}
+      const nextValues = { ...currentValues }
+      delete nextValues[fieldName]
+      form.setFieldsValue({ dynamicFields: nextValues })
+    },
+    [form],
+  )
 
   const handleAttributeValuesChange = useCallback((attrName, values) => {
     const normalizedValues = [
@@ -1879,8 +4033,8 @@ export default function AddProduct() {
   }, [])
 
   const handleSaveCatalogTemplate = useCallback(async () => {
-    const category = normalizeString(form.getFieldValue('categoria'))
-    const subcategory = normalizeString(form.getFieldValue('subcategoria'))
+    const category = toTitleCase(form.getFieldValue('categoria'))
+    const subcategory = toTitleCase(form.getFieldValue('subcategoria'))
 
     if (!category || !subcategory) {
       message.warning(
@@ -1935,81 +4089,34 @@ export default function AddProduct() {
   }, [dynamicAttributes, form, selectedAttributes])
 
   const generateVariantsFromAttributes = useCallback(() => {
-    const activeAttrs = configuredVariantAttributes
-
-    if (activeAttrs.length === 0) {
-      message.warning('Agregá valores a por lo menos un atributo')
-      return
-    }
-
-    if (variantCombinationCount > MAX_GENERATED_VARIANTS) {
-      message.error(
-        `La selección produciría ${variantCombinationCount} variantes. El máximo permitido es ${MAX_GENERATED_VARIANTS}.`,
-      )
-      return
-    }
-
-    const generateCombinations = (attrs, index = 0, current = {}) => {
-      if (index === attrs.length) return [current]
-
-      const attr = attrs[index]
-      const values = selectedAttributes[attr.name] || []
-      const result = []
-
-      values.forEach(value => {
-        result.push(
-          ...generateCombinations(attrs, index + 1, {
-            ...current,
-            [attr.name]: value,
-          }),
-        )
-      })
-
-      return result
-    }
-
-    const combinations = generateCombinations(activeAttrs)
-    const basePrice = Number(form.getFieldValue('precio') || 0)
-    const productTitle = form.getFieldValue('titulo')
-    const previousByKey = new Map(
-      variants.map(variant => [variant.key, variant]),
-    )
-
-    const newVariants = combinations.map((combination, idx) => {
-      const key = buildVariantKey(combination) || `v-${idx}-${Date.now()}`
-      const previous = previousByKey.get(key)
-      const generatedSku = buildGeneratedVariantSku(productTitle, combination, idx)
-
-      return {
-        key,
-        nombre: buildVariantName(combination),
-        combinacion: combination,
-        price: previous?.price ?? basePrice,
-        stock: previous?.stock ?? 0,
-        sku: previous?.sku || generatedSku,
-        isActive: previous?.isActive ?? true,
-        imageSourceUid: previous?.imageSourceUid ?? null,
-        uiStatus: previous ? 'existing' : 'new',
-      }
+    const generated = generateVariantRowsFromSelection({
+      attributes: dynamicAttributes,
+      selectedAttributes,
+      previousVariants: variants,
+      basePrice: form.getFieldValue('precio') || 0,
+      productTitle: form.getFieldValue('titulo') || '',
     })
 
-    setVariants(newVariants)
-    const createdCount = newVariants.filter(variant => variant.uiStatus === 'new').length
+    if (generated.error) {
+      message.error(generated.error)
+      return
+    }
+
+    setVariants(generated.variants)
+
+    const createdCount = generated.variants.filter(
+      variant => variant.uiStatus === 'new',
+    ).length
+
     message.success(
       createdCount
-        ? `${newVariants.length} variantes listas · ${createdCount} nuevas`
-        : `${newVariants.length} variantes actualizadas`,
+        ? `${generated.variants.length} variantes listas · ${createdCount} nuevas`
+        : `${generated.variants.length} variantes actualizadas`,
     )
-  }, [
-    configuredVariantAttributes,
-    form,
-    selectedAttributes,
-    variantCombinationCount,
-    variants,
-  ])
+  }, [dynamicAttributes, form, selectedAttributes, variants])
 
   const handleUploadChange = useCallback(
-    ({ fileList: newFileList }) => {
+    async ({ fileList: newFileList }) => {
       const validationError = validateSelectedFiles(newFileList)
       if (validationError) {
         message.error(validationError)
@@ -2023,16 +4130,56 @@ export default function AddProduct() {
       setImagePreviews(rebuildPreviews(uniqueFiles))
 
       if (safeArray(newFileList).length > MAX_PRODUCT_IMAGES) {
-        message.warning(`Solo se conservaron las primeras ${MAX_PRODUCT_IMAGES} imágenes.`)
+        message.warning(
+          `Solo se conservaron las primeras ${MAX_PRODUCT_IMAGES} imágenes.`,
+        )
       }
 
       if (uniqueFiles.length > 0 && !iaResult && !loadingIa) {
-        const fileToAnalyze = uniqueFiles[0]?.originFileObj
-        if (fileToAnalyze) analyzeImage(fileToAnalyze)
+        const fileToAnalyze = uniqueFiles[0]?.originFileObj || uniqueFiles[0]
+
+        if (fileToAnalyze) {
+          const signature = buildImageSignature(fileToAnalyze)
+          const shouldAnalyze =
+            signature && signature !== lastAnalyzedImageSignatureRef.current
+
+          if (shouldAnalyze) {
+            lastAnalyzedImageSignatureRef.current = signature
+
+            const analysis = await analyzeImage(fileToAnalyze)
+
+            if (!analysis) {
+              lastAnalyzedImageSignatureRef.current = ''
+            }
+          }
+        }
       }
     },
-    [analyzeImage, iaResult, imagePreviews, loadingIa],
+    [analyzeImage, buildImageSignature, iaResult, imagePreviews, loadingIa],
   )
+
+  const handleReanalyzeImage = useCallback(async () => {
+    const uploadFile = safeArray(fileList).find(file =>
+      Boolean(file?.originFileObj),
+    )
+    const imageFile = uploadFile?.originFileObj
+
+    if (!imageFile) {
+      message.warning(
+        'Para reanalizar necesitás tener una imagen cargada localmente en el formulario.',
+      )
+      return
+    }
+
+    try {
+      resetIa()
+      lastAnalyzedImageSignatureRef.current = ''
+      await analyzeImage(imageFile)
+      message.success('Imagen reanalizada con IA')
+    } catch (error) {
+      message.error(error?.message || 'No se pudo reanalizar la imagen')
+    }
+  }, [analyzeImage, fileList, resetIa])
 
   const resetProductWorkspace = useCallback(() => {
     form.resetFields()
@@ -2044,11 +4191,16 @@ export default function AddProduct() {
     setHasVariants(false)
     setDynamicAttributes([])
     setDynamicProductFields([])
+    setUseTechnicalSheet(false)
+    setQuickVariantText('')
+    setTechnicalQuickText('')
     setSelectedAttributes({})
     setInputTagValue('')
     setInputVisible(false)
     setCurrentAgentJob(null)
     setPublishProduct(true)
+    setFormHasChanges(false)
+    lastAnalyzedImageSignatureRef.current = ''
     resetIa()
     dispatch(resetState())
   }, [dispatch, form, imagePreviews, resetIa])
@@ -2064,6 +4216,13 @@ export default function AddProduct() {
     if (selectedJob?.status === 'scheduled') {
       message.warning(
         'La imagen todavía está programada. Va a estar disponible en el horario indicado.',
+      )
+      return
+    }
+
+    if (hasUserWorkspace) {
+      message.warning(
+        'Hay un producto en edición. Guardalo, descartalo o limpiá el formulario antes de cargar otra imagen.',
       )
       return
     }
@@ -2124,6 +4283,7 @@ export default function AddProduct() {
   }, [
     agentQueue,
     analyzeImage,
+    hasUserWorkspace,
     resetProductWorkspace,
     selectedAgentJobId,
     selectedAgentJob,
@@ -2183,6 +4343,7 @@ export default function AddProduct() {
         user,
         publish: getJobFlag(job, 'autoPublishProduct'),
         automationMode: 'agent-autosave',
+        includeTechnicalSheet: shouldIncludeTechnicalSheetFromJob(job),
       })
 
       const created = await dispatch(createProducts(productPayload)).unwrap()
@@ -2210,7 +4371,7 @@ export default function AddProduct() {
   )
 
   const processAutoAgentQueue = useCallback(async () => {
-    if (!autoAgentEnabled || autoAgentRef.current) return
+    if (!autoAgentEnabled || autoAgentRef.current || hasUserWorkspace) return
 
     const jobsToProcess = agentQueue.filter(
       job =>
@@ -2254,6 +4415,7 @@ export default function AddProduct() {
     agentQueue,
     autoAgentEnabled,
     fetchAgentQueue,
+    hasUserWorkspace,
     processAgentJobAutomatically,
     resetProductWorkspace,
   ])
@@ -2275,7 +4437,10 @@ export default function AddProduct() {
         revokeBlobUrls(imagePreviews)
         setImagePreviews(rebuildPreviews(merged))
 
-        if (prevList.length + safeArray(incomingFiles).length > MAX_PRODUCT_IMAGES) {
+        if (
+          prevList.length + safeArray(incomingFiles).length >
+          MAX_PRODUCT_IMAGES
+        ) {
           message.warning(`Máximo ${MAX_PRODUCT_IMAGES} imágenes por producto.`)
         }
 
@@ -2334,16 +4499,6 @@ export default function AddProduct() {
     )
   }, [])
 
-  const normalizedIaResult =
-    iaResult && typeof iaResult === 'object'
-      ? {
-          ...iaResult,
-          appliedAt: new Date().toISOString(),
-          appliedBy: user?._id || user?.id || null,
-          sourceContext: 'admin-add-product',
-        }
-      : null
-
   const handleFinish = async values => {
     if (!fileList.length) {
       message.error('Debes subir al menos una imagen')
@@ -2383,10 +4538,20 @@ export default function AddProduct() {
       const variantAttributesConfig = hasVariants
         ? getVariantAttributesConfig(dynamicAttributes, selectedAttributes)
         : []
-      const dynamicFieldValues = normalizeDynamicFieldValues(
-        dynamicProductFields,
-        values.dynamicFields || {},
-      )
+      const dynamicFieldValues = useTechnicalSheet
+        ? normalizeDynamicFieldValues(
+            dynamicProductFields,
+            values.dynamicFields || {},
+          )
+        : {}
+
+      const specificationRows = useTechnicalSheet
+        ? buildSpecificationRows(dynamicProductFields, dynamicFieldValues)
+        : []
+
+      const filterAttributes = useTechnicalSheet
+        ? buildFilterAttributesFromSpecifications(specificationRows)
+        : []
       const seoPayload = buildSeoPayload(values)
       const logisticsPayload = buildLogisticsPayload(values)
 
@@ -2424,8 +4589,14 @@ export default function AddProduct() {
       const productPayload = {
         title: normalizeString(values.titulo),
         description: normalizeString(values.descripcion),
-        categoria: normalizeString(values.categoria).toLowerCase(),
-        subcategoria: normalizeString(values.subcategoria),
+        technicalDescription: useTechnicalSheet
+          ? normalizeString(values.descripcionTecnica)
+          : undefined,
+        descripcionTecnica: useTechnicalSheet
+          ? normalizeString(values.descripcionTecnica)
+          : undefined,
+        categoria: toTitleCase(values.categoria),
+        subcategoria: toTitleCase(values.subcategoria),
         marca: normalizeString(values.marca),
         price: Number(values.precio || 0),
         stock: hasVariants
@@ -2443,7 +4614,8 @@ export default function AddProduct() {
         },
         productAttributes: dynamicFieldValues,
         categoryAttributes: dynamicFieldValues,
-        specifications: dynamicFieldValues,
+        specifications: specificationRows,
+        filterAttributes,
         dynamicFields: dynamicFieldValues,
 
         hasVariants,
@@ -2456,6 +4628,13 @@ export default function AddProduct() {
         metaTitle: seoPayload.metaTitle,
         metaDescription: seoPayload.metaDescription,
         keywords: seoPayload.keywords,
+        seoFocusKeyword: seoPayload.focusKeyword,
+        seoSearchIntent: seoPayload.searchIntent,
+        seoPositioning: seoPayload.positioning,
+        seoTargetAudience: seoPayload.targetAudience,
+        seoContentAngle: seoPayload.contentAngle,
+        seoFaq: seoPayload.faq,
+        seoContentPillars: seoPayload.contentPillars,
         seo: seoPayload,
 
         weightKg: logisticsPayload.weightKg,
@@ -2488,7 +4667,8 @@ export default function AddProduct() {
         visibility: publishProduct ? 'visible' : 'hidden',
       }
 
-      const created = await dispatch(createProducts(productPayload)).unwrap()
+      const payloadForCreate = enforceTechnicalSheetPersistence(productPayload, useTechnicalSheet)
+      const created = await dispatch(createProducts(payloadForCreate)).unwrap()
       const createdPayload = created?.data || created
       const productId = createdPayload?._id
 
@@ -2572,9 +4752,6 @@ export default function AddProduct() {
       await waitForUiReset()
       await fetchAgentQueue()
     } catch (error) {
-      if (process.env.REACT_APP_DEBUG_API === 'true') {
-        console.error('Error al crear producto:', error)
-      }
       message.error(error?.message || 'Error al crear producto')
     } finally {
       setSavingProduct(false)
@@ -2582,15 +4759,32 @@ export default function AddProduct() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: token.colorBgLayout,
-        padding: '24px',
-      }}
+      <div
+        ref={pageRef}
+        className="add-product-stable-page"
+        style={{
+          minHeight: '10vh',
+          overflowAnchor: 'none',
+          overflowX: 'hidden',
+          background: token.colorBgLayout,
+          padding: '24px',
+        }}
+      onPointerDownCapture={captureScrollPosition}
+      onPointerUpCapture={scheduleRestoreScroll}
+      onTouchStartCapture={captureScrollPosition}
+      onTouchEndCapture={scheduleRestoreScroll}
+      onFocusCapture={captureScrollPosition}
+      onBlurCapture={scheduleRestoreScroll}
     >
       <Row justify="center">
-        <Col xs={24} xl={22} xxl={18}>
+        <Col
+          xs={24}
+          md={22}
+          lg={20}
+          xl={18}
+          xxl={14}
+          style={{ width: '100%', maxWidth: 1180, margin: '0 auto' }}
+        >
           <div
             style={{
               marginBottom: 28,
@@ -2634,13 +4828,12 @@ export default function AddProduct() {
                     <ThunderboltOutlined
                       style={{ color: token.colorPrimary, marginRight: 12 }}
                     />
-                    Crear producto inteligente
+                    Crear producto con IA guiada
                   </Title>
 
                   <Text type="secondary" style={{ fontSize: 15 }}>
-                    Subí imágenes, analizá el producto con IA, configurá
-                    variantes y publicá con una experiencia lista para
-                    producción.
+                    Subí imágenes, revisá la propuesta de IA, completá ficha
+                    técnica, variantes, logística y publicá con control total.
                   </Text>
                 </Space>
               </Col>
@@ -2708,7 +4901,18 @@ export default function AddProduct() {
             </Row>
           </div>
 
-          <Form form={form} layout="vertical" onFinish={handleFinish}>
+          <Form
+            form={form}
+            layout="vertical"
+            scrollToFirstError={false}
+            onValuesChange={handleFormValuesChange}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
+                event.preventDefault()
+              }
+            }}
+            onFinish={handleFinish}
+          >
             <Row gutter={[24, 24]} align="top">
               <Col xs={24} xl={15}>
                 <Card
@@ -2727,7 +4931,7 @@ export default function AddProduct() {
                     border: `1px solid ${token.colorBorderSecondary}`,
                     boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                   }}
-                  bodyStyle={{ padding: 24 }}
+                  styles={{ body: { padding: 24 } }}
                 >
                   <div
                     style={{
@@ -2838,7 +5042,7 @@ export default function AddProduct() {
                               loading={autoAgentRunning}
                             />
 
-                            <Button
+                            <Button htmlType="button"
                               icon={<ReloadOutlined />}
                               onClick={fetchAgentQueue}
                               loading={loadingAgentQueue || autoAgentRunning}
@@ -2869,7 +5073,7 @@ export default function AddProduct() {
                               width: '100%',
                             }}
                           >
-                            <Button
+                            <Button htmlType="button"
                               type="primary"
                               icon={<CloudDownloadOutlined />}
                               onClick={handleImportAgentImage}
@@ -2891,7 +5095,7 @@ export default function AddProduct() {
                               onConfirm={handleDeleteAgentImage}
                               disabled={!selectedAgentJobId}
                             >
-                              <Button
+                              <Button htmlType="button"
                                 danger
                                 icon={<DeleteOutlined />}
                                 loading={deletingAgentImage}
@@ -2985,7 +5189,8 @@ export default function AddProduct() {
                             marginTop: 10,
                           }}
                         >
-                          JPG, PNG, WEBP, HEIC/HEIF · máximo {MAX_PRODUCT_IMAGES} imágenes · alta calidad mejora la
+                          JPG, PNG, WEBP, HEIC/HEIF · máximo{' '}
+                          {MAX_PRODUCT_IMAGES} imágenes · alta calidad mejora la
                           precisión
                         </Text>
                       </div>
@@ -3004,7 +5209,15 @@ export default function AddProduct() {
                   iaResult={iaResult}
                   loading={loadingIa}
                   error={errorIa}
-                  onReset={resetIa}
+                  onReset={handleReanalyzeImage}
+                  onApplyAll={applyAiAll}
+                  onApplySafeFields={applyAiSafeFields}
+                  onApplyField={applyAiField}
+                  onApplySeo={applyAiSeo}
+                  onApplyTechnicalFields={applyAiTechnicalFields}
+                  onApplyDynamicField={applyAiDynamicField}
+                  onApplyTags={applyAiTags}
+                  onApplyVariants={applyAiVariants}
                 />
 
                 <Card
@@ -3020,7 +5233,7 @@ export default function AddProduct() {
                     border: `1px solid ${token.colorBorderSecondary}`,
                     boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                   }}
-                  bodyStyle={{ padding: 24 }}
+                  styles={{ body: { padding: 24 } }}
                 >
                   <Row gutter={[18, 18]}>
                     <Col xs={24}>
@@ -3036,7 +5249,7 @@ export default function AddProduct() {
                       >
                         <Input
                           size="large"
-                          placeholder="Ej: Zapatillas Nike Air Max 90"
+                          placeholder="Nombre comercial claro del producto"
                           prefix={
                             <FileTextOutlined
                               style={{ color: token.colorTextSecondary }}
@@ -3051,19 +5264,40 @@ export default function AddProduct() {
                     <Col xs={24}>
                       <Form.Item
                         name="descripcion"
-                        label="Descripción"
+                        label="Descripción comercial"
                         rules={[
                           {
                             required: true,
-                            message: 'La descripción es obligatoria',
+                            message: 'La descripción comercial es obligatoria',
                           },
                         ]}
+                        extra="Texto visible para el cliente: claro, vendedor y útil, sin prometer datos no confirmados."
                       >
                         <Input.TextArea
-                          rows={5}
-                          placeholder="Describí beneficios, materiales, uso recomendado y detalles relevantes..."
+                          rows={6}
+                          placeholder="Explicá qué es el producto, qué se observa, para qué puede servir y qué detalles ayudan a decidir la compra."
                           showCount
-                          maxLength={2000}
+                          maxLength={3600}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24}>
+                      <Form.Item
+                        name="descripcionTecnica"
+                        label="Descripción técnica precisa"
+                        extra="Detalle objetivo para ficha ampliada: estructura, partes visibles, terminación, textura, presentación, materialidad y límites de lo que se puede confirmar."
+                      >
+                        <Input.TextArea
+                          rows={7}
+                          disabled={!useTechnicalSheet}
+                          placeholder={
+                            useTechnicalSheet
+                              ? 'Detallá características observables y técnicas del producto sin inventar medidas, compatibilidades, garantía u origen si no están confirmados.'
+                              : 'Activá la ficha técnica para guardar una descripción técnica.'
+                          }
+                          showCount
+                          maxLength={4200}
                         />
                       </Form.Item>
                     </Col>
@@ -3080,15 +5314,32 @@ export default function AddProduct() {
                         ]}
                       >
                         <AutoComplete
-                          size="large"
-                          placeholder="Ej: calzado deportivo"
+                          allowClear
                           options={categoryOptions}
                           filterOption={(inputValue, option) =>
                             String(option?.value || '')
                               .toLowerCase()
                               .includes(inputValue.toLowerCase())
                           }
-                        />
+                          getPopupContainer={() => document.body}
+                          onSelect={value => {
+                            commitClassificationFromForm({ categoria: value })
+                          }}
+                          onBlur={() => {
+                            normalizeTitleCaseFormField('categoria')
+                            commitClassificationFromForm()
+                          }}
+                        >
+                          <Input
+                            size="large"
+                            placeholder="Escribí o elegí una categoría"
+                            prefix={
+                              <AppstoreOutlined
+                                style={{ color: token.colorTextSecondary }}
+                              />
+                            }
+                          />
+                        </AutoComplete>
                       </Form.Item>
                     </Col>
 
@@ -3104,15 +5355,32 @@ export default function AddProduct() {
                         ]}
                       >
                         <AutoComplete
-                          size="large"
-                          placeholder="Ej: running"
+                          allowClear
                           options={subcategoryOptions}
                           filterOption={(inputValue, option) =>
                             String(option?.value || '')
                               .toLowerCase()
                               .includes(inputValue.toLowerCase())
                           }
-                        />
+                          getPopupContainer={() => document.body}
+                          onSelect={value => {
+                            commitClassificationFromForm({ subcategoria: value })
+                          }}
+                          onBlur={() => {
+                            normalizeTitleCaseFormField('subcategoria')
+                            commitClassificationFromForm()
+                          }}
+                        >
+                          <Input
+                            size="large"
+                            placeholder="Escribí o elegí una subcategoría"
+                            prefix={
+                              <BranchesOutlined
+                                style={{ color: token.colorTextSecondary }}
+                              />
+                            }
+                          />
+                        </AutoComplete>
                       </Form.Item>
                     </Col>
 
@@ -3129,7 +5397,7 @@ export default function AddProduct() {
                       >
                         <Input
                           size="large"
-                          placeholder="Ej: Nike"
+                          placeholder="Marca visible o declarada"
                           prefix={
                             <ShoppingOutlined
                               style={{ color: token.colorTextSecondary }}
@@ -3143,7 +5411,7 @@ export default function AddProduct() {
                       <Form.Item name="material" label="Material">
                         <Input
                           size="large"
-                          placeholder="Ej: cuero, malla, aluminio"
+                          placeholder="Material principal visible o declarado"
                           prefix={
                             <InfoCircleOutlined
                               style={{ color: token.colorTextSecondary }}
@@ -3157,7 +5425,7 @@ export default function AddProduct() {
                       <Form.Item name="color" label="Color general">
                         <Input
                           size="large"
-                          placeholder="Ej: Negro, Rojo, Azul"
+                          placeholder="Color dominante o combinación principal"
                           prefix={
                             <FormatPainterOutlined
                               style={{ color: token.colorTextSecondary }}
@@ -3173,13 +5441,35 @@ export default function AddProduct() {
                   title={
                     <Space size={10}>
                       <AppstoreOutlined style={{ color: token.colorPrimary }} />
-                      <span>Campos dinámicos por rubro</span>
+                      <span>Ficha técnica inteligente</span>
                       {dynamicProductFields.length > 0 && (
                         <Tag color="processing" style={{ borderRadius: 999 }}>
                           {dynamicProductFields.length} campos
                         </Tag>
                       )}
+                      {!useTechnicalSheet && (
+                        <Tag color="default" style={{ borderRadius: 999 }}>
+                          Opcional
+                        </Tag>
+                      )}
                     </Space>
+                  }
+                  extra={
+                    <Switch
+                      checked={useTechnicalSheet}
+                      onChange={checked => {
+                        setUseTechnicalSheet(checked)
+                        if (!checked) {
+                          form.setFieldsValue({
+                            descripcionTecnica: undefined,
+                            dynamicFields: {},
+                          })
+                          message.info('Ficha técnica desactivada para este producto')
+                        }
+                      }}
+                      checkedChildren="Usar"
+                      unCheckedChildren="Omitir"
+                    />
                   }
                   style={{
                     marginBottom: 24,
@@ -3187,104 +5477,217 @@ export default function AddProduct() {
                     border: `1px solid ${token.colorBorderSecondary}`,
                     boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                   }}
-                  bodyStyle={{ padding: 24 }}
+                  styles={{ body: { padding: 24 } }}
                 >
-                  <Alert
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 20, borderRadius: 14 }}
-                    message={
-                      catalogTemplate
-                        ? `Campos aplicados desde la plantilla de ${catalogTemplate.name || 'la subcategoría'}`
-                        : 'Estos campos permiten adaptar el producto a cualquier rubro.'
-                    }
-                    description="Ejemplos: cilindrada para motos, volumen para perfumes, memoria para celulares, vencimiento para alimentos o composición para indumentaria."
-                  />
-
-                  <Row gutter={[16, 16]}>
-                    {dynamicProductFields.length ? (
-                      dynamicProductFields.map(field => (
-                        <Col xs={24} md={field.type === 'textarea' ? 24 : 12} key={field.name}>
-                          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                            <DynamicProductField field={field} />
-                            <Space size={6} wrap>
-                              {field.required && <Tag color="red">Obligatorio</Tag>}
-                              {field.source && <Tag>{field.source}</Tag>}
-                              <Button
-                                size="small"
-                                type="link"
-                                danger
-                                onClick={() => handleRemoveDynamicProductField(field.name)}
-                              >
-                                Quitar
-                              </Button>
-                            </Space>
-                          </Space>
-                        </Col>
-                      ))
-                    ) : (
-                      <Col span={24}>
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="No hay campos dinámicos cargados para esta categoría. Podés agregarlos manualmente."
+                  {!useTechnicalSheet ? (
+                    <div
+                      style={{
+                        padding: 20,
+                        borderRadius: 16,
+                        background: token.colorFillAlter,
+                        border: `1px dashed ${token.colorBorder}`,
+                      }}
+                    >
+                      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                        <Alert
+                          type="info"
+                          showIcon
+                          style={{ borderRadius: 14 }}
+                          message="La ficha técnica es opcional"
+                          description="Para productos simples podés omitirla y avanzar más rápido. Activala solo cuando ayude al cliente a comparar, filtrar o entender detalles técnicos."
                         />
-                      </Col>
-                    )}
-                  </Row>
 
-                  <Divider orientation="left" plain>
-                    Agregar campo propio
-                  </Divider>
+                        <Space wrap>
+                          <Button htmlType="button"
+                            type="primary"
+                            icon={<ThunderboltOutlined />}
+                            disabled={!normalizedAiDraft?.dynamicFields?.length}
+                            onClick={applyAiTechnicalFields}
+                          >
+                            Generar ficha con IA
+                          </Button>
+                          <Button htmlType="button"
+                            icon={<PlusOutlined />}
+                            onClick={() => setUseTechnicalSheet(true)}
+                          >
+                            Crear ficha manual
+                          </Button>
+                        </Space>
 
-                  <Row gutter={[12, 12]} align="bottom">
-                    <Col xs={24} md={9}>
-                      <Text strong>Nombre del campo</Text>
-                      <Input
-                        value={customFieldName}
-                        onChange={event => setCustomFieldName(event.target.value)}
-                        onPressEnter={handleAddDynamicProductField}
-                        placeholder="Ej: Cilindrada, Volumen, Memoria"
-                        style={{ marginTop: 8 }}
+                        {normalizedAiDraft?.dynamicFields?.length > 0 && (
+                          <Text type="secondary">
+                            La IA encontró {normalizedAiDraft.dynamicFields.length} datos posibles. Podés aplicarlos y luego quitar los que no correspondan.
+                          </Text>
+                        )}
+                      </Space>
+                    </div>
+                  ) : (
+                    <>
+                      <Alert
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 20, borderRadius: 14 }}
+                        message={
+                          catalogTemplate
+                            ? `Campos aplicados desde la plantilla de ${catalogTemplate.name || 'la subcategoría'}`
+                            : 'Estos campos alimentan la ficha técnica, los filtros del catálogo y la información que verá el cliente.'
+                        }
+                        description="Agregá solo datos que ayuden a entender, comparar o filtrar este producto. La IA puede sugerir campos y vos podés corregirlos."
                       />
-                    </Col>
-                    <Col xs={24} md={6}>
-                      <Text strong>Tipo</Text>
-                      <Select
-                        value={customFieldType}
-                        onChange={setCustomFieldType}
-                        options={DYNAMIC_FIELD_TYPES}
-                        style={{ width: '100%', marginTop: 8 }}
-                      />
-                    </Col>
-                    <Col xs={12} md={5}>
-                      <Text strong>Obligatorio</Text>
-                      <div style={{ marginTop: 8 }}>
-                        <Switch
-                          checked={customFieldRequired}
-                          onChange={setCustomFieldRequired}
-                          checkedChildren="Sí"
-                          unCheckedChildren="No"
-                        />
-                      </div>
-                    </Col>
-                    <Col xs={12} md={4}>
-                      <Button
-                        block
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        onClick={handleAddDynamicProductField}
+
+                      <Card
+                        size="small"
+                        title="Constructor técnico rápido"
+                        style={{ marginBottom: 20, borderRadius: 16 }}
+                        styles={{ body: { padding: 16 } }}
                       >
-                        Agregar
-                      </Button>
-                    </Col>
-                  </Row>
+                        <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                          <Alert
+                            type="success"
+                            showIcon
+                            style={{ borderRadius: 12 }}
+                            message="La ficha técnica incluye descripción técnica"
+                            description="Si desactivás esta sección, no se guardan estos campos ni la descripción técnica en la DB."
+                          />
+
+                          <Space wrap size={[8, 8]}>
+                            {TECHNICAL_FIELD_PRESETS.map(preset => (
+                              <Button htmlType="button"
+                                key={preset.key}
+                                size="small"
+                                onClick={() => applyTechnicalPreset(preset)}
+                                style={{ borderRadius: 999 }}
+                              >
+                                {preset.label} · {preset.helper}
+                              </Button>
+                            ))}
+                          </Space>
+
+                          <Input.TextArea
+                            value={technicalQuickText}
+                            onChange={event => setTechnicalQuickText(event.target.value)}
+                            rows={2}
+                            placeholder="Ej: Cilindrada: 700 cc | Transmisión: 6 velocidades | Peso: 220 kg | Uso recomendado: adventure touring"
+                          />
+
+                          <Space wrap>
+                            <Button htmlType="button"
+                              type="primary"
+                              icon={<ThunderboltOutlined />}
+                              onClick={applyTechnicalQuickFields}
+                            >
+                              Crear campos técnicos rápidos
+                            </Button>
+                            <Button htmlType="button"
+                              icon={<FileTextOutlined />}
+                              onClick={generateTechnicalDescriptionFromCurrentValues}
+                            >
+                              Crear descripción técnica
+                            </Button>
+                          </Space>
+                        </Space>
+                      </Card>
+
+                      <Row gutter={[16, 16]}>
+                        {dynamicProductFields.length ? (
+                          dynamicProductFields.map(field => (
+                            <Col
+                              xs={24}
+                              md={field.type === 'textarea' ? 24 : 12}
+                              key={field.name}
+                            >
+                              <Space
+                                direction="vertical"
+                                size={4}
+                                style={{ width: '100%' }}
+                              >
+                                <DynamicProductField field={field} />
+                                <Space size={6} wrap>
+                                  {field.required && (
+                                    <Tag color="red">Obligatorio</Tag>
+                                  )}
+                                  {field.source && <Tag>{field.source}</Tag>}
+                                  <Button htmlType="button"
+                                    size="small"
+                                    type="link"
+                                    danger
+                                    onClick={() =>
+                                      handleRemoveDynamicProductField(field.name)
+                                    }
+                                  >
+                                    Quitar
+                                  </Button>
+                                </Space>
+                              </Space>
+                            </Col>
+                          ))
+                        ) : (
+                          <Col span={24}>
+                            <Empty
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description="No hay campos en la ficha técnica. Podés generarla con IA o agregar campos manualmente."
+                            />
+                          </Col>
+                        )}
+                      </Row>
+
+                      <Divider orientation="left" plain>
+                        Agregar campo propio
+                      </Divider>
+
+                      <Row gutter={[12, 12]} align="bottom">
+                        <Col xs={24} md={9}>
+                          <Text strong>Nombre del campo</Text>
+                          <Input
+                            value={customFieldName}
+                            onChange={event =>
+                              setCustomFieldName(event.target.value)
+                            }
+                            onPressEnter={handleAddDynamicProductField}
+                            placeholder="Nombre de atributo técnico, medida o característica"
+                            style={{ marginTop: 8 }}
+                          />
+                        </Col>
+                        <Col xs={24} md={6}>
+                          <Text strong>Tipo</Text>
+                          <Select
+                            value={customFieldType}
+                            onChange={setCustomFieldType}
+                            options={DYNAMIC_FIELD_TYPES}
+                            style={{ width: '100%', marginTop: 8 }}
+                          />
+                        </Col>
+                        <Col xs={12} md={5}>
+                          <Text strong>Obligatorio</Text>
+                          <div style={{ marginTop: 8 }}>
+                            <Switch
+                              checked={customFieldRequired}
+                              onChange={setCustomFieldRequired}
+                              checkedChildren="Sí"
+                              unCheckedChildren="No"
+                            />
+                          </div>
+                        </Col>
+                        <Col xs={12} md={4}>
+                          <Button htmlType="button"
+                            block
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={handleAddDynamicProductField}
+                          >
+                            Agregar
+                          </Button>
+                        </Col>
+                      </Row>
+                    </>
+                  )}
                 </Card>
 
                 <Card
                   title={
                     <Space size={10}>
                       <ClusterOutlined style={{ color: token.colorPrimary }} />
-                      <span>Variantes del producto</span>
+                      <span>Opciones vendibles del producto</span>
                       {dynamicAttributes.length > 0 && (
                         <Tag color="success" style={{ borderRadius: 999 }}>
                           {dynamicAttributes.length} atributos detectados
@@ -3312,7 +5715,7 @@ export default function AddProduct() {
                     border: `1px solid ${token.colorBorderSecondary}`,
                     boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                   }}
-                  bodyStyle={{ padding: 24 }}
+                  styles={{ body: { padding: 24 } }}
                 >
                   {hasVariants ? (
                     <>
@@ -3320,7 +5723,7 @@ export default function AddProduct() {
                         message={
                           catalogTemplate
                             ? `Plantilla de "${catalogTemplate.name}" aplicada. Elegí los valores disponibles para este producto.`
-                            : 'Configurá atributos, generá combinaciones y asigná una imagen específica por variante.'
+                            : 'Usá variantes solo cuando el cliente pueda elegir opciones vendibles como color, medida, presentación, capacidad o modelo.'
                         }
                         description={
                           loadingCatalogTemplate
@@ -3334,6 +5737,78 @@ export default function AddProduct() {
                         style={{ marginBottom: 20, borderRadius: 14 }}
                       />
 
+                      <div
+                        style={{
+                          marginBottom: 20,
+                          padding: 16,
+                          borderRadius: 16,
+                          background: token.colorFillAlter,
+                          border: `1px solid ${token.colorBorderSecondary}`,
+                        }}
+                      >
+                        <Row gutter={[12, 12]} align="middle">
+                          <Col xs={24} lg={15}>
+                            <Text strong>Creación rápida de variantes</Text>
+                            <Text
+                              type="secondary"
+                              style={{ display: 'block', marginTop: 4 }}
+                            >
+                              Pegá opciones en una línea y generá combinaciones sin cargar campo por campo.
+                            </Text>
+                            <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
+                              {QUICK_VARIANT_PRESETS.map(preset => (
+                                <Button htmlType="button"
+                                  key={preset.key}
+                                  size="small"
+                                  onClick={() => applyVariantPreset(preset)}
+                                  style={{ borderRadius: 999 }}
+                                >
+                                  {preset.label} · {preset.helper}
+                                </Button>
+                              ))}
+                            </Space>
+
+                            <Input.TextArea
+                              value={quickVariantText}
+                              onChange={event => setQuickVariantText(event.target.value)}
+                              rows={2}
+                              placeholder="Ej: Color: Negro, Blanco | Medida: 500ml, 1L | Presentación: Unidad, Pack"
+                              style={{ marginTop: 10 }}
+                            />
+                          </Col>
+                          <Col xs={24} lg={9}>
+                            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                              <Button htmlType="button"
+                                block
+                                type="primary"
+                                icon={<ThunderboltOutlined />}
+                                onClick={applyQuickVariantsFromText}
+                              >
+                                Crear variantes rápidas
+                              </Button>
+                              <Button htmlType="button"
+                                block
+                                icon={<ReloadOutlined />}
+                                onClick={generateVariantsFromAttributes}
+                                disabled={!canGenerateVariants}
+                              >
+                                Regenerar combinaciones actuales
+                              </Button>
+                              {normalizedAiDraft?.hasExplicitVariants && (
+                                <Button htmlType="button"
+                                  block
+                                  icon={<RobotOutlined />}
+                                  onClick={applyAiVariants}
+                                >
+                                  Usar variantes detectadas por IA
+                                </Button>
+                              )}
+                            </Space>
+                          </Col>
+                        </Row>
+                      </div>
+
+
                       <div style={{ marginBottom: 20 }}>
                         <Row gutter={[12, 12]} align="bottom">
                           <Col xs={24} md={12}>
@@ -3344,7 +5819,7 @@ export default function AddProduct() {
                                 setNewAttributeName(event.target.value)
                               }
                               onPressEnter={handleAddCustomAttribute}
-                              placeholder="Ej: Talle, Color, Capacidad"
+                              placeholder="Nombre de la opción vendible"
                               style={{ marginTop: 8 }}
                             />
                           </Col>
@@ -3362,7 +5837,7 @@ export default function AddProduct() {
                             />
                           </Col>
                           <Col xs={24} md={4}>
-                            <Button
+                            <Button htmlType="button"
                               block
                               type="primary"
                               onClick={handleAddCustomAttribute}
@@ -3417,7 +5892,7 @@ export default function AddProduct() {
                                 <Col xs={20} md={15}>
                                   <Select
                                     mode="tags"
-                                    placeholder={`Escribí valores: ${attr.label} 39, 40, 41`}
+                                    placeholder={`Valores para ${attr.label}, separados por coma`}
                                     value={selectedAttributes[attr.name] || []}
                                     onChange={values =>
                                       handleAttributeValuesChange(
@@ -3441,7 +5916,7 @@ export default function AddProduct() {
                                   md={2}
                                   style={{ textAlign: 'right' }}
                                 >
-                                  <Button
+                                  <Button htmlType="button"
                                     type="text"
                                     danger
                                     icon={<DeleteOutlined />}
@@ -3458,7 +5933,7 @@ export default function AddProduct() {
                       ) : (
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="Todavía no hay atributos. Creá Talle, Color u otra característica."
+                          description="Todavía no hay opciones vendibles. Creá una opción solo si el cliente debe elegir entre alternativas."
                         />
                       )}
 
@@ -3487,7 +5962,7 @@ export default function AddProduct() {
                           </Col>
                           <Col>
                             <Space wrap>
-                              <Button
+                              <Button htmlType="button"
                                 onClick={handleSaveCatalogTemplate}
                                 icon={<SaveOutlined />}
                                 loading={savingCatalogTemplate}
@@ -3495,7 +5970,7 @@ export default function AddProduct() {
                               >
                                 Guardar plantilla
                               </Button>
-                              <Button
+                              <Button htmlType="button"
                                 type="primary"
                                 onClick={generateVariantsFromAttributes}
                                 icon={<ReloadOutlined />}
@@ -3527,6 +6002,52 @@ export default function AddProduct() {
                             </Space>
                           </Divider>
 
+                          <div
+                            style={{
+                              marginBottom: 16,
+                              padding: 14,
+                              borderRadius: 16,
+                              background: token.colorFillAlter,
+                              border: `1px solid ${token.colorBorderSecondary}`,
+                            }}
+                          >
+                            <Row gutter={[12, 12]} align="middle">
+                              <Col xs={24} md={8}>
+                                <Text strong>Aplicar precio a todas</Text>
+                                <InputNumber
+                                  value={bulkVariantPrice}
+                                  onChange={setBulkVariantPrice}
+                                  min={0}
+                                  precision={2}
+                                  prefix="$"
+                                  placeholder="Precio común"
+                                  style={{ width: '100%', marginTop: 8 }}
+                                />
+                              </Col>
+                              <Col xs={24} md={8}>
+                                <Text strong>Aplicar stock a todas</Text>
+                                <InputNumber
+                                  value={bulkVariantStock}
+                                  onChange={setBulkVariantStock}
+                                  min={0}
+                                  precision={0}
+                                  placeholder="Stock común"
+                                  style={{ width: '100%', marginTop: 8 }}
+                                />
+                              </Col>
+                              <Col xs={24} md={8}>
+                                <Button htmlType="button"
+                                  block
+                                  icon={<CheckOutlined />}
+                                  onClick={applyBulkVariantValues}
+                                  style={{ marginTop: 28 }}
+                                >
+                                  Aplicar a variantes
+                                </Button>
+                              </Col>
+                            </Row>
+                          </div>
+
                           <Table
                             dataSource={variants}
                             pagination={false}
@@ -3553,7 +6074,10 @@ export default function AddProduct() {
                                           <Tag
                                             key={`${record.key}-${attribute}`}
                                             color="blue"
-                                            style={{ margin: 0, borderRadius: 4 }}
+                                            style={{
+                                              margin: 0,
+                                              borderRadius: 4,
+                                            }}
                                           >
                                             {dynamicAttributes.find(
                                               item => item.name === attribute,
@@ -3565,12 +6089,18 @@ export default function AddProduct() {
                                     </Space>
                                     <Space size={6} wrap>
                                       {record.uiStatus === 'new' && (
-                                        <Tag color="success" style={{ borderRadius: 999 }}>
+                                        <Tag
+                                          color="success"
+                                          style={{ borderRadius: 999 }}
+                                        >
                                           Nueva
                                         </Tag>
                                       )}
                                       {record.isActive === false && (
-                                        <Tag color="default" style={{ borderRadius: 999 }}>
+                                        <Tag
+                                          color="default"
+                                          style={{ borderRadius: 999 }}
+                                        >
                                           Inactiva
                                         </Tag>
                                       )}
@@ -3721,7 +6251,7 @@ export default function AddProduct() {
                                 key: 'delete',
                                 width: 60,
                                 render: (_, record) => (
-                                  <Button
+                                  <Button htmlType="button"
                                     type="text"
                                     danger
                                     icon={<DeleteOutlined />}
@@ -3758,10 +6288,38 @@ export default function AddProduct() {
                         border: `1px dashed ${token.colorBorder}`,
                       }}
                     >
-                      <Text type="secondary">
-                        Este producto no tiene variaciones. Activá el switch si
-                        necesitás talles, colores o modelos.
-                      </Text>
+                      <Space direction="vertical" size={12} align="center">
+                        <Text type="secondary">
+                          Este producto no tiene opciones vendibles. Activá
+                          variantes solo si el cliente debe elegir una alternativa
+                          específica antes de comprar.
+                        </Text>
+                        <Space wrap>
+                          <Button htmlType="button"
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={() => setHasVariants(true)}
+                          >
+                            Crear variantes
+                          </Button>
+                          {dynamicAttributes.length > 0 && (
+                            <Button htmlType="button"
+                              icon={<ReloadOutlined />}
+                              onClick={() => setHasVariants(true)}
+                            >
+                              Usar plantilla detectada
+                            </Button>
+                          )}
+                          {normalizedAiDraft?.hasExplicitVariants && (
+                            <Button htmlType="button"
+                              icon={<RobotOutlined />}
+                              onClick={applyAiVariants}
+                            >
+                              Usar variantes de IA
+                            </Button>
+                          )}
+                        </Space>
+                      </Space>
                     </div>
                   )}
                 </Card>
@@ -3769,6 +6327,97 @@ export default function AddProduct() {
 
               <Col xs={24} xl={9}>
                 <div style={{ position: 'sticky', top: 24 }}>
+                  <Card
+                    title={
+                      <Space size={10}>
+                        <CheckCircleOutlined style={{ color: token.colorPrimary }} />
+                        <span>Estado de carga</span>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    styles={{ body: { padding: 20 } }}
+                  >
+                    <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                      <div
+                        style={{
+                          padding: 16,
+                          borderRadius: 16,
+                          background: productReadiness.isReady
+                            ? token.colorSuccessBg
+                            : token.colorFillAlter,
+                          border: `1px solid ${
+                            productReadiness.isReady
+                              ? token.colorSuccessBorder
+                              : token.colorBorderSecondary
+                          }`,
+                        }}
+                      >
+                        <Space
+                          align="center"
+                          style={{ width: '100%', justifyContent: 'space-between' }}
+                        >
+                          <div>
+                            <Text strong>
+                              {productReadiness.isReady
+                                ? 'Listo para publicar'
+                                : 'Completá lo esencial'}
+                            </Text>
+                            <br />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {productReadiness.doneRequired}/
+                              {productReadiness.requiredChecks.length} datos obligatorios
+                            </Text>
+                          </div>
+                          <div
+                            style={{
+                              minWidth: 54,
+                              height: 54,
+                              borderRadius: 18,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 900,
+                              color: productReadiness.isReady
+                                ? token.colorSuccess
+                                : token.colorPrimary,
+                              background: token.colorBgContainer,
+                              border: `1px solid ${token.colorBorderSecondary}`,
+                            }}
+                          >
+                            {productReadiness.percent}%
+                          </div>
+                        </Space>
+                      </div>
+
+                      <Space wrap size={[6, 6]}>
+                        {productReadiness.checks.map(check => (
+                          <Tag
+                            key={check.key}
+                            color={check.done ? 'success' : check.required ? 'warning' : 'default'}
+                            style={{ borderRadius: 999, marginInlineEnd: 0 }}
+                          >
+                            {check.done ? '✓' : '•'} {check.label}
+                          </Tag>
+                        ))}
+                      </Space>
+
+                      <Alert
+                        type={productReadiness.isReady ? 'success' : 'info'}
+                        showIcon
+                        style={{ borderRadius: 14 }}
+                        message={
+                          productReadiness.isReady
+                            ? 'Ya podés publicar o guardar como borrador.'
+                            : 'El flujo rápido solo exige imagen, título, descripción, categoría, precio y stock.'
+                        }
+                      />
+                    </Space>
+                  </Card>
                   <Card
                     title={
                       <Space size={10}>
@@ -3782,7 +6431,7 @@ export default function AddProduct() {
                       border: `1px solid ${token.colorBorderSecondary}`,
                       boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                     }}
-                    bodyStyle={{ padding: 24 }}
+                    styles={{ body: { padding: 24 } }}
                   >
                     <Row gutter={[16, 16]}>
                       <Col xs={24}>
@@ -3891,7 +6540,9 @@ export default function AddProduct() {
                   <Card
                     title={
                       <Space size={10}>
-                        <FileTextOutlined style={{ color: token.colorPrimary }} />
+                        <FileTextOutlined
+                          style={{ color: token.colorPrimary }}
+                        />
                         <span>SEO y contenido comercial</span>
                       </Space>
                     }
@@ -3901,52 +6552,127 @@ export default function AddProduct() {
                       border: `1px solid ${token.colorBorderSecondary}`,
                       boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                     }}
-                    bodyStyle={{ padding: 24 }}
+                    styles={{ body: { padding: 24 } }}
                   >
-                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                      <Button
+                    <Space
+                      direction="vertical"
+                      size={12}
+                      style={{ width: '100%' }}
+                    >
+                      <Button htmlType="button"
                         block
                         icon={<ThunderboltOutlined />}
-                        onClick={() => {
-                          const title = normalizeString(form.getFieldValue('titulo'))
-                          const description = normalizeString(form.getFieldValue('descripcion'))
-                          const marca = normalizeString(form.getFieldValue('marca'))
-                          const categoria = normalizeString(form.getFieldValue('categoria'))
-                          const subcategoria = normalizeString(form.getFieldValue('subcategoria'))
-                          const keywords = [marca, categoria, subcategoria]
-                            .filter(Boolean)
-                            .map(item => item.toLowerCase())
-
-                          form.setFieldsValue({
-                            slug: slugifyKeyPart(title).replace(/_/g, '-'),
-                            shortDescription: description.slice(0, 220),
-                            metaTitle: title.slice(0, 70),
-                            metaDescription: description.slice(0, 160),
-                            seoKeywords: keywords,
-                          })
-                        }}
+                        onClick={generateSeoFromCurrentValues}
                       >
                         Generar SEO desde el producto
                       </Button>
 
-                      <Form.Item name="slug" label="Slug URL">
-                        <Input placeholder="zapatillas-nike-air-max-90" />
+                      <Button htmlType="button"
+                        block
+                        type="primary"
+                        ghost
+                        icon={<AppstoreOutlined />}
+                        onClick={generateSeoPositioningFromCurrentValues}
+                      >
+                        Crear posicionamiento SEO
+                      </Button>
+
+                      <Divider orientation="left" plain>
+                        Posicionamiento SEO
+                      </Divider>
+
+                      <Form.Item name="seoFocusKeyword" label="Keyword principal">
+                        <Input placeholder="Ej: Moto Morini X-Cape 700" />
                       </Form.Item>
 
-                      <Form.Item name="shortDescription" label="Descripción corta">
-                        <Input.TextArea rows={2} maxLength={260} showCount placeholder="Resumen comercial breve para cards, SEO y vistas rápidas." />
+                      <Form.Item name="seoSearchIntent" label="Intención de búsqueda" initialValue="commercial">
+                        <Select options={SEO_POSITIONING_INTENT_OPTIONS} />
+                      </Form.Item>
+
+                      <Form.Item name="seoPositioning" label="Posicionamiento SEO">
+                        <Input.TextArea
+                          rows={4}
+                          maxLength={900}
+                          showCount
+                          placeholder="Definí cómo debe posicionarse este producto en buscadores, qué intención resuelve y qué lo diferencia."
+                        />
+                      </Form.Item>
+
+                      <Form.Item name="seoTargetAudience" label="Audiencia objetivo">
+                        <Input placeholder="Ej: usuarios que buscan una motocicleta adventure para ruta y uso mixto" />
+                      </Form.Item>
+
+                      <Form.Item name="seoContentAngle" label="Enfoque de contenido">
+                        <Input.TextArea
+                          rows={2}
+                          maxLength={420}
+                          showCount
+                          placeholder="Qué destacar en la descripción, fichas, contenido y FAQs."
+                        />
+                      </Form.Item>
+
+                      <Form.Item name="seoFaq" label="Preguntas frecuentes SEO">
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[',']}
+                          placeholder="Ej: ¿Qué motor tiene?, ¿Para qué uso sirve?, ¿Qué revisar antes de comprar?"
+                        />
+                      </Form.Item>
+
+                      <Form.Item name="seoContentPillars" label="Pilares de contenido">
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[',']}
+                          placeholder="marca, modelo, categoría, material, uso, beneficio"
+                        />
+                      </Form.Item>
+
+                      <Divider orientation="left" plain>
+                        SEO básico
+                      </Divider>
+
+                      <Form.Item name="slug" label="Slug URL">
+                        <Input placeholder="nombre-producto-claro" />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="shortDescription"
+                        label="Descripción corta"
+                      >
+                        <Input.TextArea
+                          rows={2}
+                          maxLength={260}
+                          showCount
+                          placeholder="Resumen comercial breve para cards, SEO y vistas rápidas."
+                        />
                       </Form.Item>
 
                       <Form.Item name="metaTitle" label="Meta title">
-                        <Input maxLength={70} showCount placeholder="Título SEO" />
+                        <Input
+                          maxLength={70}
+                          showCount
+                          placeholder="Título SEO"
+                        />
                       </Form.Item>
 
-                      <Form.Item name="metaDescription" label="Meta description">
-                        <Input.TextArea rows={2} maxLength={160} showCount placeholder="Descripción SEO para buscadores." />
+                      <Form.Item
+                        name="metaDescription"
+                        label="Meta description"
+                      >
+                        <Input.TextArea
+                          rows={2}
+                          maxLength={160}
+                          showCount
+                          placeholder="Descripción SEO para buscadores."
+                        />
                       </Form.Item>
 
                       <Form.Item name="seoKeywords" label="Keywords">
-                        <Select mode="tags" tokenSeparators={[',']} placeholder="nike, zapatillas, running" />
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[',']}
+                          placeholder="marca, categoría, material, uso"
+                        />
                       </Form.Item>
                     </Space>
                   </Card>
@@ -3954,7 +6680,9 @@ export default function AddProduct() {
                   <Card
                     title={
                       <Space size={10}>
-                        <ShoppingOutlined style={{ color: token.colorPrimary }} />
+                        <ShoppingOutlined
+                          style={{ color: token.colorPrimary }}
+                        />
                         <span>Logística, garantía y origen</span>
                       </Space>
                     }
@@ -3964,32 +6692,53 @@ export default function AddProduct() {
                       border: `1px solid ${token.colorBorderSecondary}`,
                       boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                     }}
-                    bodyStyle={{ padding: 24 }}
+                    styles={{ body: { padding: 24 } }}
                   >
                     <Row gutter={[12, 12]}>
                       <Col xs={24} sm={12}>
                         <Form.Item name="weightKg" label="Peso kg">
-                          <InputNumber min={0} precision={3} style={{ width: '100%' }} placeholder="0.500" />
+                          <InputNumber
+                            min={0}
+                            precision={3}
+                            style={{ width: '100%' }}
+                            placeholder="0.500"
+                          />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12}>
-                        <Form.Item name="shippingType" label="Tipo de envío" initialValue="standard">
+                        <Form.Item
+                          name="shippingType"
+                          label="Tipo de envío"
+                          initialValue="standard"
+                        >
                           <Select options={SHIPPING_TYPE_OPTIONS} />
                         </Form.Item>
                       </Col>
                       <Col xs={8}>
                         <Form.Item name="packageLengthCm" label="Largo cm">
-                          <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                          <InputNumber
+                            min={0}
+                            precision={1}
+                            style={{ width: '100%' }}
+                          />
                         </Form.Item>
                       </Col>
                       <Col xs={8}>
                         <Form.Item name="packageWidthCm" label="Ancho cm">
-                          <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                          <InputNumber
+                            min={0}
+                            precision={1}
+                            style={{ width: '100%' }}
+                          />
                         </Form.Item>
                       </Col>
                       <Col xs={8}>
                         <Form.Item name="packageHeightCm" label="Alto cm">
-                          <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                          <InputNumber
+                            min={0}
+                            precision={1}
+                            style={{ width: '100%' }}
+                          />
                         </Form.Item>
                       </Col>
                       <Col xs={24}>
@@ -3998,7 +6747,10 @@ export default function AddProduct() {
                         </Form.Item>
                       </Col>
                       <Col xs={24}>
-                        <Form.Item name="countryOfOrigin" label="País de origen">
+                        <Form.Item
+                          name="countryOfOrigin"
+                          label="País de origen"
+                        >
                           <Input placeholder="Ej: Argentina, Brasil, China" />
                         </Form.Item>
                       </Col>
@@ -4018,7 +6770,7 @@ export default function AddProduct() {
                       border: `1px solid ${token.colorBorderSecondary}`,
                       boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                     }}
-                    bodyStyle={{ padding: 24 }}
+                    styles={{ body: { padding: 24 } }}
                   >
                     <div style={{ marginBottom: 16 }}>
                       {editableTags.map(tag => (
@@ -4077,7 +6829,7 @@ export default function AddProduct() {
                       border: `1px solid ${token.colorBorderSecondary}`,
                       boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
                     }}
-                    bodyStyle={{ padding: 20 }}
+                    styles={{ body: { padding: 20 } }}
                   >
                     <Space
                       direction="vertical"
@@ -4103,11 +6855,16 @@ export default function AddProduct() {
                       >
                         <Space
                           align="center"
-                          style={{ width: '100%', justifyContent: 'space-between' }}
+                          style={{
+                            width: '100%',
+                            justifyContent: 'space-between',
+                          }}
                         >
                           <div>
                             <Text strong>
-                              {publishProduct ? 'Publicar visible' : 'Guardar borrador'}
+                              {publishProduct
+                                ? 'Publicar visible'
+                                : 'Guardar borrador'}
                             </Text>
                             <br />
                             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -4125,8 +6882,7 @@ export default function AddProduct() {
                         </Space>
                       </div>
 
-                      <Button
-                        htmlType="submit"
+                      <Button htmlType="submit"
                         type="primary"
                         size="large"
                         block
@@ -4172,6 +6928,20 @@ export default function AddProduct() {
       </Row>
 
       <style>{`
+        html,
+        body,
+        #root,
+        main,
+        .add-product-stable-page {
+          overflow-anchor: none !important;
+          scroll-behavior: auto !important;
+        }
+
+        .add-product-stable-page,
+        .add-product-stable-page * {
+          overflow-anchor: none;
+        }
+
         @keyframes pulse {
           0%, 100% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.1); opacity: 0.7; }
@@ -4212,6 +6982,13 @@ export default function AddProduct() {
           flex-direction: column;
           justify-content: center;
           gap: 2px;
+        }
+
+        .ant-form-item,
+        .ant-card,
+        .ant-row,
+        .ai-analysis-card {
+          overflow-anchor: none;
         }
 
         .ai-analysis-card {

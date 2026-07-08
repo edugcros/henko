@@ -13,7 +13,8 @@ export const adminBaseTheme = createTheme({
     },
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Garamond", "Helvetica", "Arial", sans-serif',
+    fontFamily:
+      '"Inter", "Roboto", "Garamond", "Helvetica", "Arial", sans-serif',
   },
 })
 

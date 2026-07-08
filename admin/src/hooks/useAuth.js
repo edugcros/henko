@@ -241,20 +241,15 @@ export const useAuth = () => {
 
   const isBlocked = Boolean(
     decodedToken?.isBlocked ||
-      user?.isBlocked ||
-      user?.blocked ||
-      user?.status === 'blocked',
+    user?.isBlocked ||
+    user?.blocked ||
+    user?.status === 'blocked',
   )
 
   const isAuthenticated = useMemo(() => {
     const token = getRuntimeToken(tokenRedux)
 
-    return Boolean(
-      decodedToken &&
-        token &&
-        user &&
-        !isBlocked,
-    )
+    return Boolean(decodedToken && token && user && !isBlocked)
   }, [decodedToken, tokenRedux, user, isBlocked])
 
   const doLogoutUser = useCallback(async () => {

@@ -73,7 +73,9 @@ const getProductPrice = (product, payload = {}) => {
 }
 
 const getProductCurrency = (product, payload = {}) => {
-  return String(payload.currency || product?.currency || 'ARS').trim().toUpperCase()
+  return String(payload.currency || product?.currency || 'ARS')
+    .trim()
+    .toUpperCase()
 }
 
 export const useUserMetrics = ({

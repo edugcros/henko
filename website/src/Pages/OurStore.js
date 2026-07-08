@@ -853,7 +853,7 @@ const OurStore = () => {
                   onClick={() => setShowAllCategories(prev => !prev)}
                   sx={{
                     mt: 1.5,
-                    color: Newprimary.darkBlueGray,
+                    color: themeColors.textOnActionPrimary,
                     textTransform: 'none',
                     fontWeight: 700,
                     fontSize: 16,
@@ -971,9 +971,9 @@ const OurStore = () => {
                 mb: 3,
                 borderRadius: 4,
                 border: '1px solid',
-                borderColor: Newprimary.WhiteSmoke,
+                borderColor: themeColors.cardBorder,
                 color: themeColors.cardMutedText,
-                bgcolor: Newprimary.gainsGray,
+                bgcolor: themeColors.cardBackground,
                 display: 'flex',
                 gap: 2,
                 flexDirection: { xs: 'column', md: 'row' },
@@ -986,6 +986,23 @@ const OurStore = () => {
                 placeholder="Buscar productos..."
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                    bgcolor: themeColors.background,
+                    color: themeColors.text,
+                    '& fieldset': {
+                      borderColor: themeColors.border,
+                    },
+                    '&:hover fieldset': {
+                      borderColor: themeColors.link,
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: themeColors.link,
+                      boxShadow: `0 0 0 2px ${themeColors.link}33`,
+                    },
+                  },
+                }}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">

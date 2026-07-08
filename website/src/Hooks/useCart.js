@@ -63,7 +63,9 @@ const getOriginalPrice = product => {
 }
 
 const getProductCurrency = product => {
-  return String(product?.currency || 'ARS').trim().toUpperCase()
+  return String(product?.currency || 'ARS')
+    .trim()
+    .toUpperCase()
 }
 
 const getProductCategory = product => {
@@ -148,15 +150,18 @@ export const useCart = () => {
           0,
         ),
         promotionId: options.promotionId || product?.promotionId || null,
-        promotionTitle: options.promotionTitle || product?.promotionTitle || null,
+        promotionTitle:
+          options.promotionTitle || product?.promotionTitle || null,
         promotionType: options.promotionType || product?.promotionType || null,
         hasPromotion,
         quantity,
         image: options.image || getProductImage(product),
 
         variantId: options.variantId || product?.variantId || null,
-        variantSku: options.variantSku || product?.variantSku || product?.sku || '',
-        variantSKU: options.variantSku || product?.variantSku || product?.sku || '',
+        variantSku:
+          options.variantSku || product?.variantSku || product?.sku || '',
+        variantSKU:
+          options.variantSku || product?.variantSku || product?.sku || '',
         selectedAttributes:
           options.selectedAttributes ||
           options.variantAttributes ||
@@ -309,7 +314,8 @@ export const useCart = () => {
   }, [dispatch])
 
   const totalAmount = useMemo(() => {
-    if (toNumber(totalAfterDiscount, 0) > 0) return toNumber(totalAfterDiscount, 0)
+    if (toNumber(totalAfterDiscount, 0) > 0)
+      return toNumber(totalAfterDiscount, 0)
     if (toNumber(cartTotal, 0) > 0) return toNumber(cartTotal, 0)
 
     return normalizedCartItems.reduce((acc, item) => {

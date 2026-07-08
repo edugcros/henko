@@ -1392,9 +1392,16 @@ const PromotionalBlocksPage = () => {
                 required
                 type="datetime-local"
                 label="Fecha inicio"
-                InputLabelProps={{ shrink: true }}
                 value={form.startDate}
                 onChange={event => setField('startDate', event.target.value)}
+                InputLabelProps={{
+                  shrink: true,
+                  sx: {
+                    backgroundColor: 'background.paper',
+                    px: 0.75,
+                    zIndex: 1,
+                  },
+                }}
               />
             </Grid>
 
@@ -1404,7 +1411,14 @@ const PromotionalBlocksPage = () => {
                 required
                 type="datetime-local"
                 label="Fecha fin"
-                InputLabelProps={{ shrink: true }}
+                InputLabelProps={{
+                  shrink: true,
+                  sx: {
+                    backgroundColor: 'background.paper',
+                    px: 0.75,
+                    zIndex: 1,
+                  },
+                }}
                 value={form.endDate}
                 onChange={event => setField('endDate', event.target.value)}
               />
@@ -1421,6 +1435,14 @@ const PromotionalBlocksPage = () => {
                   max: CONFIG.MAX_PRODUCTS_PER_BLOCK,
                 }}
                 onChange={event => setField('maxItems', event.target.value)}
+                InputLabelProps={{
+                  shrink: true,
+                  sx: {
+                    backgroundColor: 'background.paper',
+                    px: 0.75,
+                    zIndex: 1,
+                  },
+                }}
               />
             </Grid>
 

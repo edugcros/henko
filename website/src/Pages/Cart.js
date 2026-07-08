@@ -468,13 +468,13 @@ const CartItem = memo(
                   startIcon={<DeleteOutlineIcon fontSize="small" />}
                   sx={{
                     textTransform: 'none',
-                    color: '#007185',
+                    color: themeColors.textOnActionPrimary,
                     fontWeight: 500,
                     fontSize: '12px',
                     minWidth: 'auto',
                     p: '4px 8px',
                     '&:hover': {
-                      color: themeColors.actionSecondary,
+                      color: themeColors.textOnActionPrimary,
                       bgcolor: 'transparent',
                       textDecoration: 'underline',
                     },
@@ -1065,6 +1065,7 @@ const Cart = () => {
                 </Typography>
 
                 <Typography
+                  variant="h4"
                   sx={{
                     fontWeight: 800,
                     mb: 3,
@@ -1080,7 +1081,7 @@ const Cart = () => {
                     component="span"
                     sx={{ fontSize: '1.5rem', color: themeColors.cardPrice }}
                   >
-                    ${totalAmount.toLocaleString('es-AR')}
+                    $ {totalAmount.toLocaleString('es-AR')}
                   </Box>
                 </Typography>
 
@@ -1095,7 +1096,7 @@ const Cart = () => {
                     py: 1.5,
                     borderRadius: 2,
                     bgcolor: themeColors.actionPrimary,
-                    color: themeColors.actionPrimaryText,
+                    color: themeColors.textOnActionPrimary,
                     fontWeight: 700,
                     textTransform: 'none',
                     fontSize: '15px',
@@ -1104,7 +1105,10 @@ const Cart = () => {
                       bgcolor: themeColors.actionSecondary,
                       boxShadow: 'none',
                     },
-                    '&:disabled': { bgcolor: '#ddd', color: '#666' },
+                    '&:disabled': {
+                      bgcolor: '#ddd',
+                      color: 'Newprimary.darkBlueGray',
+                    },
                     mb: 2,
                   }}
                 >

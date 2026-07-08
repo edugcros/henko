@@ -75,7 +75,7 @@ const CustomHero = () => {
           sx={{
             mb: 4,
             opacity: 0.9,
-            color:Newprimary.darkRed
+            color: Newprimary.darkRed,
           }}
         >
           {hero?.subtitle}

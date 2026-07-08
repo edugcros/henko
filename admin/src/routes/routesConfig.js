@@ -26,36 +26,36 @@ export const protectedRoutes = [
 
 // 🔐 Rutas privadas del Admin (requieren autenticación y rol `admin`)
 export const privateRoutes = [
-  { path: '', Component: pages.Dashboard, allowedRoles: ['admin'] }, // Es la raíz relativa dentro de "/admin"
+  { path: '/admin/', Component: pages.Dashboard, allowedRoles: ['admin'] }, // Es la raíz relativa dentro de "/admin"
   {
-    path: '/admin/orders',
+    path: '/admin/ordenes',
     Component: pages.AdminOrdersPage,
     allowedRoles: ['admin'],
   },
 
   {
-    path: '/admin/store-design',
+    path: '/admin/diseñoweb',
     Component: pages.ThemeCustomizer,
     allowedRoles: ['admin'],
   },
   {
-    path: '/admin/promotional-blocks',
+    path: '/admin/promociones',
     Component: pages.PromotionalBlocksPage,
     allowedRoles: ['admin'],
   },
   {
-    path: '/admin/customers',
+    path: '/admin/clientes',
     Component: pages.Customers,
     allowedRoles: ['admin'],
   },
   {
-    path: '/admin/enquiries',
+    path: '/admin/consultas',
     Component: pages.Enquiries,
     allowedRoles: ['admin'],
   },
 
   {
-    path: '/admin/ai-commercial-inbox',
+    path: '/admin/bandeja-entrada-ia-comercial',
     Component: pages.AiCommercialInboxPage,
     allowedRoles: ['admin'],
   },
@@ -80,7 +80,7 @@ export const privateRoutes = [
 
   // 💸 Cupones / Marketing
   {
-    path: '/admin/addcoupon',
+    path: '/admin/crear-cupon',
     Component: pages.CouponsPage,
     allowedRoles: ['admin'],
   },

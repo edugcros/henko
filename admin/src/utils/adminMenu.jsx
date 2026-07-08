@@ -2,72 +2,87 @@
 import React from 'react'
 import { privateRoutes } from '../routes/routesConfig'
 import {
-  Dashboard as DashboardIcon,
-  ShoppingCart as ShoppingCartIcon,
-  Person as PersonIcon,
-  Assignment as AssignmentIcon,
-  AutoAwesome as AutoAwesomeIcon,
-  Storefront as StorefrontIcon,
-  LocalOffer as LocalOfferIcon,
-  ColorLens as ColorLensIcon,
-  AddShoppingCart as AddShoppingCartIcon,
+  Dashboard,
+  AutoAwesome,
+  Storefront,
+  LocalOffer,
+  AddShoppingCart,
 } from '@mui/icons-material'
+import ArchitectureIcon from '@mui/icons-material/Architecture'
+import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
+import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
+import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer'
+import LocalOfferIcon from '@mui/icons-material/LocalOffer'
+import QuizIcon from '@mui/icons-material/Quiz'
+import PersonIcon from '@mui/icons-material/Person'
 import OutboxIcon from '@mui/icons-material/Outbox'
 import { Badge, ListItemIcon } from '@mui/material'
 
 // 🔹 Traducciones y etiquetas
 const translations = {
-  dashboard: 'Dashboard', // 🔹 agregada
-  customers: 'Clientes',
-  enquiries: 'Consultas',
-  orders: 'Órdenes',
+  '': 'Dashboard', // 🔹 agregada
+  clientes: 'Clientes',
+  consultas: 'Consultas',
+  promociones: 'Promociones',
+  ordenes: 'Órdenes',
   EditProduct: 'Editar Producto',
   addproduct: 'Análisis IA',
-  ThemeCustomizer: 'Diseño Visual',
+  diseñoweb: 'Crear Diseño Web',
   productlist: 'Lista de Productos',
   'product-analysis': 'Agente IA',
-  addcoupon: 'Crear Cupón',
+  'crear-cupon': 'Crear Cupón',
   couponlist: 'Lista de Cupones',
-  addblog: 'Agregar Blog',
-  bloglist: 'Lista de Blogs',
-  addblogcategory: 'Agregar Categoría de Blog',
+  'bandeja-entrada-ia-comercial': 'Bandeja Entrada Comercial',
 }
 
 // 🔹 Colores por grupo
 const groupColors = {
-  dashboard: '#4caf50',
-  customers: '#2196f3',
-  enquiries: '#ff9800',
-  orders: '#9c27b0',
+  '': '#4caf50',
+  clientes: '#2196f3',
+  consultas: '#ff9800',
+  ordener: '#9c27b0',
+  promociones: '#ff5722',
   catalog: '#3f51b5',
   marketing: '#f44336',
-  blogs: '#795548',
-  storedesign: '#009688',
   themeBuilder: '#607d8b',
+  'bandeja-entrada-ia-comercial': '#00bcd4',
 }
 
 // 🔹 Grupos y subitems con iconos diferenciados
 const groups = {
-  dashboard: { label: 'Dashboard', icon: DashboardIcon },
-  customers: { label: 'Clientes', icon: PersonIcon },
-  enquiries: { label: 'Consultas', icon: AssignmentIcon },
-  orders: { label: 'Órdenes', icon: ShoppingCartIcon },
-  EditProduct: { label: 'Editar Producto', icon: AddShoppingCartIcon },
+  '': { label: 'Dashboard', icon: SpaceDashboardIcon },
+  clientes: { label: 'Clientes', icon: PersonIcon },
+  consultas: { label: 'Consultas', icon: QuizIcon },
+  ordener: {
+    label: 'Órdenes',
+    icon: RequestQuoteIcon,
+    items: [{ key: 'ordenes', icon: RequestQuoteIcon }],
+  },
+  'bandeja-entrada-ia-comercial': {
+    label: 'Bandeja Entrada Comercial',
+    icon: QuestionAnswerIcon,
+  },
+  EditProduct: { label: 'Editar Producto', icon: AddShoppingCart },
+  promociones: { label: 'Promociones', icon: LocalOfferIcon },
   catalog: {
     label: 'Productos',
-    icon: StorefrontIcon,
+    icon: Storefront,
     items: [
-      { key: 'addproduct', icon: AutoAwesomeIcon },
-      { key: 'productlist', icon: StorefrontIcon },
+      { key: 'addproduct', icon: AutoAwesome },
+      { key: 'productlist', icon: Storefront },
       { key: 'product-analysis', icon: OutboxIcon },
     ],
   },
   marketing: {
-    label: 'Marketing',
-    icon: LocalOfferIcon,
-    items: [{ key: 'addcoupon', icon: LocalOfferIcon }],
+    label: 'Cupones',
+    icon: LocalOffer,
+    items: [{ key: 'crear-cupon', icon: LocalOffer }],
   },
-  ThemeCustomizer: { label: 'Diseño Visual', icon: ColorLensIcon },
+  themeBuilder: {
+    label: 'Diseño Web',
+    icon: ArchitectureIcon,
+    items: [{ key: 'diseñoweb', icon: ArchitectureIcon }],
+  },
 }
 
 // 🔹 Función helper para renderizar iconos con MUI
@@ -110,7 +125,7 @@ privateRoutes.forEach(({ path, meta }) => {
   )
 
   const color = groupColors[groupEntry?.[0]] || '#616161'
-  let IconComp = groups[key]?.icon || DashboardIcon // fallback
+  let IconComp = groups[key]?.icon || Dashboard // fallback
 
   if (groupEntry) {
     const [groupKey, group] = groupEntry

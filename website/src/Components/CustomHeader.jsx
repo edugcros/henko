@@ -463,6 +463,9 @@ const CustomHeader = () => {
                     '&.active': {
                       color: colors.text,
                     },
+                    '&:hover': {
+                      color: colors.text,
+                    },
                   }}
                 >
                   {link.label}

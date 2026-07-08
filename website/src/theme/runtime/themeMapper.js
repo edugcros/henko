@@ -79,13 +79,7 @@ const quoteFont = font => {
 const buildFontStack = font => {
   const base = sanitizeFontName(font) || 'Inter'
 
-  const stack = [
-    base,
-    'Roboto',
-    'Helvetica',
-    'Arial',
-    'sans-serif',
-  ]
+  const stack = [base, 'Roboto', 'Helvetica', 'Arial', 'sans-serif']
 
   const uniqueStack = [...new Set(stack.filter(Boolean))]
 

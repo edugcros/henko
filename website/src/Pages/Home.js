@@ -447,8 +447,11 @@ const Home = () => {
       const category = product.category || product.categoria || ''
       const brand = product.brand || product.marca || ''
 
-      return [title, category, brand]
-        .some(value => String(value || '').toLowerCase().includes(query))
+      return [title, category, brand].some(value =>
+        String(value || '')
+          .toLowerCase()
+          .includes(query),
+      )
     })
 
     setSearchResults(results.slice(0, 10))
@@ -482,9 +485,11 @@ const Home = () => {
       if (!product) return
 
       track(events.PRODUCT_CLICK, {
-        productId: product._id || product.id || product.productId || product.slug || '',
+        productId:
+          product._id || product.id || product.productId || product.slug || '',
         value: Number(product.finalPrice ?? product.price ?? 0) || 0,
-        category: product.category || product.categoria || product.categoryName || '',
+        category:
+          product.category || product.categoria || product.categoryName || '',
         metadata: {
           title: product.title || product.name || '',
           brand: product.brand || product.marca || '',
@@ -925,7 +930,7 @@ const Home = () => {
             sx={{
               fontWeight: 850,
               textTransform: 'none',
-              color: Newprimary.black,
+              color: themeColors.textOnActionPrimary,
               borderRadius: 999,
               px: 1.5,
               minWidth: 'auto',
@@ -1128,7 +1133,9 @@ const Home = () => {
                                       formatPrice={formatPrice}
                                       themeColors={themeColors}
                                       isDark={false}
-                                      onProductClick={handlePromotionalProductClick}
+                                      onProductClick={
+                                        handlePromotionalProductClick
+                                      }
                                     />
                                   </Suspense>
                                 )
@@ -1300,10 +1307,14 @@ const Home = () => {
                               ...product,
                               title: item.customTitle || product.title,
                               finalPrice: item.discountPercentage
-                                ? getFinalPrice(product.price, item.discountPercentage)
+                                ? getFinalPrice(
+                                    product.price,
+                                    item.discountPercentage,
+                                  )
                                 : product.finalPrice || product.price,
                               discountPercentage: item.discountPercentage,
-                              hasPromotion: Number(item.discountPercentage || 0) > 0,
+                              hasPromotion:
+                                Number(item.discountPercentage || 0) > 0,
                               promotionId: item.promotionId || block._id,
                               promotionTitle: block.title,
                               promotionType: block.type,

@@ -33,11 +33,9 @@ import {
   AutoAwesome as AIIcon,
   VerifiedUserOutlined as VerifiedIcon,
   RateReviewOutlined as ReviewIcon,
-  Person as PersonIcon,
   Inventory2Outlined as StockIcon,
 } from '@mui/icons-material'
 import { fetchPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSlice'
-
 import { selectPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSelectors'
 import ReactStars from 'react-stars'
 import toast, { Toaster } from 'react-hot-toast'
@@ -60,21 +58,22 @@ import {
 } from '@utils/themeRuntime'
 import { Newprimary } from '../theme/colors'
 
-const IMG_BOX_SIZE = 560
+const MAX_VISIBLE_THUMBS = 7
 
 const MainImageWindow = styled(Paper)(({ theme }) => ({
   position: 'relative',
-  borderRadius: 16,
-  height: IMG_BOX_SIZE,
-  width: IMG_BOX_SIZE,
+  borderRadius: 20,
+  width: '100%',
+  maxWidth: 580,
+  aspectRatio: '1 / 1',
   overflow: 'hidden',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: 'white',
+  backgroundColor: theme.palette.background.paper,
   cursor: 'zoom-in',
   border: `1px solid ${theme.palette.divider}`,
-  flexShrink: 0,
+  boxShadow: '0 22px 55px rgba(15, 23, 42, 0.09)',
   '& img': {
     width: '100%',
     height: '100%',
@@ -86,17 +85,19 @@ const MainImageWindow = styled(Paper)(({ theme }) => ({
 const ThumbButton = styled(Box, {
   shouldForwardProp: prop => prop !== 'active',
 })(({ active, theme }) => ({
-  width: 70,
-  height: 70,
-  borderRadius: 10,
+  width: 74,
+  height: 74,
+  borderRadius: 14,
   cursor: 'pointer',
-  padding: 4,
+  padding: 5,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  border: `2px solid ${active ? theme.palette.ctaPrimary.main : theme.palette.divider}`,
-  transition: '0.2s',
-  '&:hover': { transform: 'scale(1.05)' },
+  backgroundColor: theme.palette.background.paper,
+  border: `2px solid ${active ? theme.palette.primary.main : theme.palette.divider}`,
+  transition: '0.2s ease',
+  boxShadow: active ? '0 10px 24px rgba(15, 23, 42, 0.12)' : 'none',
+  '&:hover': { transform: 'translateY(-2px)' },
   '& img': {
     maxWidth: '100%',
     maxHeight: '100%',
@@ -104,9 +105,66 @@ const ThumbButton = styled(Box, {
   },
 }))
 
+const clean = value => String(value || '').trim()
+
+const normalizeImageUrl = img => {
+  if (!img) return null
+  if (typeof img === 'string' && img.trim()) return img.trim()
+
+  if (typeof img === 'object') {
+    const candidates = [
+      img.url,
+      img.secure_url,
+      img.src,
+      img.imageUrl,
+      img.imageURL,
+    ]
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim())
+        return candidate.trim()
+    }
+  }
+
+  return null
+}
+
+const toObject = value => {
+  if (!value) return {}
+  if (value instanceof Map) return Object.fromEntries(value)
+  if (typeof value === 'object' && !Array.isArray(value)) return value
+  return {}
+}
+
+const safeArray = value => (Array.isArray(value) ? value : [])
+
+const safeJsonParse = value => {
+  if (!value) return null
+  if (typeof value === 'object') return value
+  if (typeof value !== 'string') return null
+
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
+const humanizeKey = value => {
+  const cleanValue = clean(value)
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+
+  if (!cleanValue) return ''
+
+  return cleanValue.replace(/\b\w/g, char => char.toUpperCase())
+}
+
 const normalizeAttributes = variant => {
   if (!variant) return {}
-  return variant.attributes || variant.combinacion || {}
+  return toObject(
+    variant.attributes || variant.combinacion || variant.attributeValues,
+  )
 }
 
 const buildVariantIdentifier = variant => {
@@ -126,30 +184,6 @@ const buildVariantCartKey = (productId, variant, attributes = {}) => {
   return `${productId}::${attrsKey || 'base'}`
 }
 
-const normalizeImageUrl = img => {
-  if (!img) return null
-
-  if (typeof img === 'string' && img.trim()) {
-    return img.trim()
-  }
-
-  if (typeof img === 'object') {
-    if (typeof img.url === 'string' && img.url.trim()) {
-      return img.url.trim()
-    }
-
-    if (typeof img.secure_url === 'string' && img.secure_url.trim()) {
-      return img.secure_url.trim()
-    }
-
-    if (typeof img.src === 'string' && img.src.trim()) {
-      return img.src.trim()
-    }
-  }
-
-  return null
-}
-
 const getVariantImageUrl = variant => {
   if (!variant) return null
 
@@ -160,6 +194,7 @@ const getVariantImageUrl = variant => {
     variant.secure_url,
     variant.src,
     variant.previewUrl,
+    variant.selectedImage,
   ]
 
   for (const candidate of directCandidates) {
@@ -167,21 +202,16 @@ const getVariantImageUrl = variant => {
     if (normalized) return normalized
   }
 
-  if (variant.selectedImage && typeof variant.selectedImage === 'object') {
-    const normalized = normalizeImageUrl(variant.selectedImage)
-    if (normalized) return normalized
-  }
-
   if (variant.images) {
-    if (Array.isArray(variant.images) && variant.images.length > 0) {
+    if (Array.isArray(variant.images)) {
       for (const imageCandidate of variant.images) {
         const normalized = normalizeImageUrl(imageCandidate)
         if (normalized) return normalized
       }
-    } else {
-      const normalized = normalizeImageUrl(variant.images)
-      if (normalized) return normalized
     }
+
+    const normalized = normalizeImageUrl(variant.images)
+    if (normalized) return normalized
   }
 
   return null
@@ -207,6 +237,33 @@ const normalizeVariantForCart = (variant, selectedAttrs = {}) => {
   }
 }
 
+const inferVariantAttributesFromVariants = variants => {
+  const map = new Map()
+
+  safeArray(variants).forEach(variant => {
+    const attrs = normalizeAttributes(variant)
+
+    Object.entries(attrs).forEach(([key, value]) => {
+      if (!key || value === undefined || value === null || value === '') return
+
+      const normalizedKey = clean(key)
+      if (!map.has(normalizedKey)) {
+        map.set(normalizedKey, {
+          name: normalizedKey,
+          label: humanizeKey(normalizedKey),
+          type: /color|colour/i.test(normalizedKey) ? 'color' : 'select',
+          values: [],
+        })
+      }
+
+      const row = map.get(normalizedKey)
+      row.values = [...new Set([...safeArray(row.values), String(value)])]
+    })
+  })
+
+  return Array.from(map.values())
+}
+
 const ProductVariantSelector = ({
   product,
   onVariantSelect,
@@ -214,25 +271,23 @@ const ProductVariantSelector = ({
 }) => {
   const theme = useTheme()
 
-  const variantAttributes = useMemo(
-    () =>
-      Array.isArray(product?.variantAttributes)
-        ? product.variantAttributes
-        : [],
-    [product?.variantAttributes],
-  )
-
   const variants = useMemo(
-    () => (Array.isArray(product?.variants) ? product.variants : []),
+    () =>
+      safeArray(product?.variants).filter(
+        variant => variant?.isActive !== false,
+      ),
     [product?.variants],
   )
 
+  const variantAttributes = useMemo(() => {
+    const configured = safeArray(product?.variantAttributes).filter(
+      attr => attr?.name,
+    )
+    if (configured.length) return configured
+    return inferVariantAttributesFromVariants(variants)
+  }, [product?.variantAttributes, variants])
+
   const [selections, setSelections] = useState({})
-
-  const ctaMain = theme.palette.ctaPrimary?.main || theme.palette.primary.main
-
-  const ctaContrast =
-    theme.palette.ctaPrimary?.contrastText || theme.palette.primary.contrastText
 
   useEffect(() => {
     setSelections({})
@@ -242,7 +297,6 @@ const ProductVariantSelector = ({
     const requiredKeys = variantAttributes
       .map(attr => attr?.name)
       .filter(Boolean)
-
     const hasAllSelections =
       requiredKeys.length > 0 &&
       requiredKeys.every(key => Boolean(selections[key]))
@@ -254,7 +308,6 @@ const ProductVariantSelector = ({
 
     const matchedVariant = variants.find(variant => {
       const variantAttrs = normalizeAttributes(variant)
-
       return requiredKeys.every(key => {
         return String(variantAttrs[key] || '') === String(selections[key] || '')
       })
@@ -269,8 +322,6 @@ const ProductVariantSelector = ({
       delete otherSelections[attrName]
 
       const compatibleVariants = variants.filter(variant => {
-        if (variant?.isActive === false) return false
-
         const attrs = normalizeAttributes(variant)
 
         return Object.entries(otherSelections).every(([key, value]) => {
@@ -280,19 +331,21 @@ const ProductVariantSelector = ({
       })
 
       const values = new Set()
-
       compatibleVariants.forEach(variant => {
         const attrs = normalizeAttributes(variant)
         const value = attrs[attrName]
-
-        if (value) {
-          values.add(String(value))
-        }
+        if (value) values.add(String(value))
       })
 
-      return Array.from(values).sort((a, b) => a.localeCompare(b))
+      const declaredValues = safeArray(
+        variantAttributes.find(attr => attr.name === attrName)?.values,
+      )
+
+      return [...new Set([...declaredValues, ...values])].sort((a, b) =>
+        String(a).localeCompare(String(b)),
+      )
     },
-    [variants],
+    [variants, variantAttributes],
   )
 
   const handleSelectionChange = useCallback(
@@ -309,11 +362,8 @@ const ProductVariantSelector = ({
         const changedIndex = variantAttributes.findIndex(
           attr => attr.name === attrName,
         )
-
         variantAttributes.forEach((attr, index) => {
-          if (index > changedIndex) {
-            delete updated[attr.name]
-          }
+          if (index > changedIndex) delete updated[attr.name]
         })
 
         return updated
@@ -333,9 +383,7 @@ const ProductVariantSelector = ({
         delete updated[attrName]
 
         variantAttributes.forEach((attr, index) => {
-          if (index > changedIndex) {
-            delete updated[attr.name]
-          }
+          if (index > changedIndex) delete updated[attr.name]
         })
 
         return updated
@@ -358,14 +406,14 @@ const ProductVariantSelector = ({
   }
 
   return (
-    <Box
+    <Paper
+      variant="outlined"
       sx={{
         mt: 2,
         p: 2,
         bgcolor: theme.palette.background.paper,
-        border: `1px solid`,
-        borderColor: 'info.main',
-        borderRadius: 2,
+        borderColor: alpha(theme.palette.primary.main, 0.28),
+        borderRadius: 3,
       }}
     >
       <Stack
@@ -374,28 +422,28 @@ const ProductVariantSelector = ({
         alignItems="center"
         sx={{ mb: 1.5 }}
       >
-        <Typography variant="subtitle2" fontWeight={800}>
-          Seleccioná tus opciones
-        </Typography>
+        <Box>
+          <Typography variant="subtitle2" fontWeight={900} color="text.primary">
+            Elegí las opciones disponibles
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            El precio, stock e imagen pueden cambiar según la combinación.
+          </Typography>
+        </Box>
 
         <Button
           size="small"
           variant="text"
           onClick={handleClearAll}
-          sx={{
-            textTransform: 'none',
-            fontWeight: 700,
-            color: Newprimary.black,
-          }}
+          sx={{ textTransform: 'none', fontWeight: 800 }}
         >
-          Limpiar selección
+          Limpiar
         </Button>
       </Stack>
 
       {variantAttributes.map((attr, index) => {
         const attrName = attr?.name
-        const attrLabel = attr?.label || attrName
-
+        const attrLabel = attr?.label || humanizeKey(attrName)
         if (!attrName) return null
 
         const availableValues = getAvailableValues(attrName, selections)
@@ -413,8 +461,8 @@ const ProductVariantSelector = ({
             >
               <Typography
                 variant="caption"
-                color={Newprimary.black}
-                fontWeight={600}
+                color="text.primary"
+                fontWeight={800}
                 display="block"
               >
                 {attrLabel} {currentValue ? '✓' : ''}
@@ -430,8 +478,7 @@ const ProductVariantSelector = ({
                     p: 0,
                     textTransform: 'none',
                     fontSize: 12,
-                    fontWeight: 700,
-                    color: Newprimary.black,
+                    fontWeight: 800,
                   }}
                 >
                   Quitar
@@ -452,16 +499,25 @@ const ProductVariantSelector = ({
                 }}
                 size="small"
                 disabled={isDisabled}
+                sx={{ flexWrap: 'wrap', gap: 0.75 }}
               >
                 {availableValues.map(value => (
                   <ToggleButton
                     key={value}
                     value={value}
                     sx={{
-                      minWidth: 40,
+                      minWidth: 44,
+                      borderRadius: '999px !important',
+                      px: 1.2,
                       bgcolor:
                         currentValue === value ? 'primary.main' : 'transparent',
-                      color: currentValue === value ? 'white' : 'inherit',
+                      color:
+                        currentValue === value
+                          ? 'primary.contrastText'
+                          : 'inherit',
+                      border: '1px solid !important',
+                      borderColor:
+                        currentValue === value ? 'primary.main' : 'divider',
                     }}
                   >
                     {value}
@@ -503,7 +559,7 @@ const ProductVariantSelector = ({
             p: 1.5,
             bgcolor: alpha(theme.palette.success.main, 0.12),
             border: `1px solid ${alpha(theme.palette.success.main, 0.24)}`,
-            borderRadius: 1.5,
+            borderRadius: 2,
           }}
         >
           <Stack
@@ -512,11 +568,7 @@ const ProductVariantSelector = ({
             alignItems="center"
             gap={1}
           >
-            <Typography
-              variant="caption"
-              fontWeight={500}
-              color={Newprimary.black}
-            >
+            <Typography variant="caption" fontWeight={800} color="text.primary">
               Disponible: {Number(selectedVariant.stock || 0)} unidades
             </Typography>
 
@@ -530,11 +582,11 @@ const ProductVariantSelector = ({
         </Box>
       ) : (
         <Alert severity="warning" sx={{ mt: 2 }} icon={<StockIcon />}>
-          Seleccioná todas las opciones para ver precio y disponibilidad
-          exactos.
+          Seleccioná todas las opciones para ver precio, imagen y disponibilidad
+          exactas.
         </Alert>
       )}
-    </Box>
+    </Paper>
   )
 }
 
@@ -547,24 +599,16 @@ const getEntityId = value => {
 
 const getProductFromPromotionalItem = item => {
   if (!item) return null
-
-  if (item.productId && typeof item.productId === 'object') {
+  if (item.productId && typeof item.productId === 'object')
     return item.productId
-  }
-
-  if (item.product && typeof item.product === 'object') {
-    return item.product
-  }
-
+  if (item.product && typeof item.product === 'object') return item.product
   return null
 }
 
 const getDiscountedPrice = (price, discountPercentage) => {
   const basePrice = Number(price || 0)
   const discount = Number(discountPercentage || 0)
-
   if (discount <= 0) return basePrice
-
   return Math.max(0, basePrice - basePrice * (discount / 100))
 }
 
@@ -573,13 +617,9 @@ const getReviewerName = review => {
 
   const directName =
     review.postedByName || review.userName || review.name || review.reviewerName
-
-  if (directName && String(directName).trim()) {
-    return String(directName).trim()
-  }
+  if (directName && String(directName).trim()) return String(directName).trim()
 
   const postedBy = review.postedBy
-
   if (postedBy && typeof postedBy === 'object') {
     const fullName = [
       postedBy.firstname || postedBy.firstName || postedBy.nombre,
@@ -590,7 +630,6 @@ const getReviewerName = review => {
       .trim()
 
     if (fullName) return fullName
-
     if (postedBy.name) return postedBy.name
     if (postedBy.email) return postedBy.email
   }
@@ -598,55 +637,91 @@ const getReviewerName = review => {
   return 'Cliente'
 }
 
-const getReviewerInitial = review => {
-  const name = getReviewerName(review)
-  return name.charAt(0).toUpperCase()
-}
-
+const getReviewerInitial = review =>
+  getReviewerName(review).charAt(0).toUpperCase()
 
 const formatSpecificationValue = value => {
   if (Array.isArray(value)) return value.filter(Boolean).join(', ')
   if (typeof value === 'boolean') return value ? 'Sí' : 'No'
   if (value === undefined || value === null || value === '') return ''
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .filter(
+        ([, itemValue]) =>
+          itemValue !== undefined && itemValue !== null && itemValue !== '',
+      )
+      .map(
+        ([key, itemValue]) =>
+          `${humanizeKey(key)}: ${formatSpecificationValue(itemValue)}`,
+      )
+      .join(' · ')
+  }
   return String(value)
 }
 
+const normalizeSpecificationArray = explicitSpecifications => {
+  return explicitSpecifications
+    .filter(spec => spec?.visible !== false)
+    .map((spec, index) => {
+      const key = spec.key || spec.name || spec.code || `spec-${index}`
+      const rawValue = spec.value ?? spec.valor ?? spec.content ?? spec.text
+
+      return {
+        key,
+        label:
+          spec.label ||
+          spec.title ||
+          spec.name ||
+          humanizeKey(key) ||
+          `Dato ${index + 1}`,
+        value: formatSpecificationValue(rawValue),
+        unit: spec.unit || spec.suffix || '',
+        group: spec.group || spec.section || 'Ficha técnica',
+        sortOrder: Number(spec.sortOrder ?? spec.order ?? index),
+        filterable: spec.filterable === true,
+        searchable: spec.searchable !== false,
+        source: spec.source || 'specification',
+      }
+    })
+    .filter(spec => spec.value)
+}
+
 const normalizeSpecificationRows = product => {
-  const explicitSpecifications = Array.isArray(product?.specifications)
-    ? product.specifications
-    : []
+  const explicitSpecifications = product?.specifications
 
-  if (explicitSpecifications.length) {
-    return explicitSpecifications
-      .filter(spec => spec?.visible !== false)
-      .map((spec, index) => ({
-        key: spec.key || spec.name || `spec-${index}`,
-        label: spec.label || spec.name || spec.key || `Dato ${index + 1}`,
-        value: formatSpecificationValue(spec.value),
-        unit: spec.unit || '',
-        group: spec.group || 'Ficha técnica',
-        sortOrder: Number(spec.sortOrder || index),
-      }))
-      .filter(spec => spec.value)
-      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+  if (Array.isArray(explicitSpecifications) && explicitSpecifications.length) {
+    return normalizeSpecificationArray(explicitSpecifications).sort(
+      (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+    )
   }
 
-  const attrs = product?.productAttributes || product?.categoryAttributes || product?.atributos || {}
-  const normalizedAttrs = attrs instanceof Map ? Object.fromEntries(attrs) : attrs
+  const baseObjects = [
+    toObject(product?.productAttributes),
+    toObject(product?.categoryAttributes),
+    toObject(product?.dynamicFields),
+    toObject(product?.atributos),
+    !Array.isArray(product?.specifications)
+      ? toObject(product?.specifications)
+      : {},
+  ]
 
-  if (!normalizedAttrs || typeof normalizedAttrs !== 'object' || Array.isArray(normalizedAttrs)) {
-    return []
-  }
+  const merged = Object.assign({}, ...baseObjects)
 
-  return Object.entries(normalizedAttrs)
-    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+  if (product?.material && !merged.material) merged.material = product.material
+  if (product?.color && !merged.color) merged.color = product.color
+
+  return Object.entries(merged)
+    .filter(
+      ([, value]) => value !== undefined && value !== null && value !== '',
+    )
     .map(([key, value], index) => ({
       key,
-      label: String(key).replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+      label: humanizeKey(key),
       value: formatSpecificationValue(value),
       unit: '',
       group: 'Ficha técnica',
       sortOrder: index,
+      source: 'attributes',
     }))
     .filter(spec => spec.value)
 }
@@ -664,13 +739,22 @@ const normalizeLogisticsRows = product => {
   const logistics = product?.logistics || {}
   const rows = []
 
-  const weight = Number(logistics.weightKg || product?.weightKg || 0)
+  const weight = Number(
+    logistics.weightKg ?? logistics.weight ?? product?.weightKg ?? 0,
+  )
   if (weight > 0) rows.push({ label: 'Peso', value: `${weight} kg` })
 
-  const dimensions = logistics.dimensionsCm || logistics.dimensions || product?.dimensions || {}
-  const length = Number(dimensions.length || dimensions.largo || 0)
-  const width = Number(dimensions.width || dimensions.ancho || 0)
-  const height = Number(dimensions.height || dimensions.alto || 0)
+  const dimensions =
+    logistics.dimensionsCm ||
+    logistics.dimensions ||
+    logistics.package ||
+    product?.dimensions ||
+    product?.package ||
+    {}
+
+  const length = Number(dimensions.length ?? dimensions.largo ?? 0)
+  const width = Number(dimensions.width ?? dimensions.ancho ?? 0)
+  const height = Number(dimensions.height ?? dimensions.alto ?? 0)
 
   if (length || width || height) {
     rows.push({
@@ -688,35 +772,175 @@ const normalizeLogisticsRows = product => {
     custom: 'Envío personalizado',
   }
 
-  const shippingType = logistics.shippingType || logistics.shipping?.type || product?.shippingType
-  if (shippingType) {
-    rows.push({ label: 'Tipo de envío', value: shippingLabels[shippingType] || shippingType })
-  }
+  const shippingType =
+    logistics.shippingType ||
+    logistics.shipping?.type ||
+    product?.shippingType ||
+    product?.shipping?.type
+
+  if (shippingType)
+    rows.push({
+      label: 'Tipo de envío',
+      value: shippingLabels[shippingType] || shippingType,
+    })
 
   const warranty = logistics.warranty || product?.warranty
   if (warranty) rows.push({ label: 'Garantía', value: warranty })
 
-  const originCountry = logistics.originCountry || logistics.countryOfOrigin || product?.originCountry || product?.countryOfOrigin
+  const originCountry =
+    logistics.originCountry ||
+    logistics.countryOfOrigin ||
+    product?.originCountry ||
+    product?.countryOfOrigin
   if (originCountry) rows.push({ label: 'Origen', value: originCountry })
 
   return rows
 }
 
+const getTechnicalDescription = product => {
+  const direct =
+    product?.technicalDescription ||
+    product?.descripcionTecnica ||
+    product?.descripcion_tecnica ||
+    product?.technical_description ||
+    product?.seo?.technicalDescription
+
+  if (clean(direct)) return clean(direct)
+
+  const aiOriginal = safeJsonParse(product?.aiOriginalOutput)
+  return clean(
+    aiOriginal?.descripcion_tecnica ||
+      aiOriginal?.technicalDescription ||
+      aiOriginal?.technical_description ||
+      aiOriginal?.analysis?.descripcion_tecnica,
+  )
+}
+
+const getCommercialDescription = product =>
+  clean(product?.description || product?.descripcion || '')
+
+const getShortDescription = product => {
+  return clean(
+    product?.seo?.shortDescription ||
+      product?.shortDescription ||
+      product?.summary ||
+      product?.resumen ||
+      '',
+  )
+}
+
+const getCatalogTags = product => {
+  const tagValues = [
+    ...safeArray(product?.tags),
+    ...safeArray(product?.seo?.keywords),
+    ...safeArray(product?.filterAttributes).map(
+      item => item?.value || item?.label,
+    ),
+  ]
+
+  return [
+    ...new Set(
+      tagValues
+        .map(clean)
+        .filter(Boolean)
+        .map(item => item.toLowerCase()),
+    ),
+  ].slice(0, 14)
+}
+
 const hasClientAuthToken = () => {
   if (typeof window === 'undefined') return false
-
   const token = window.localStorage.getItem('token')
   return Boolean(token && token !== 'null' && token !== 'undefined')
 }
+
+const SectionTitle = ({ label, eyebrow }) => (
+  <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2.5 }}>
+    <Divider sx={{ flex: 1, opacity: 0.8 }} />
+    <Box
+      sx={{
+        px: 2.5,
+        py: 0.75,
+        borderRadius: 999,
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider',
+        boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+      }}
+    >
+      {eyebrow && (
+        <Typography
+          variant="caption"
+          display="block"
+          color="text.secondary"
+          fontWeight={800}
+          textAlign="center"
+        >
+          {eyebrow}
+        </Typography>
+      )}
+      <Typography
+        variant="overline"
+        sx={{
+          display: 'block',
+          color: 'text.primary',
+          fontWeight: 900,
+          letterSpacing: 1.4,
+          lineHeight: 1,
+          textAlign: 'center',
+        }}
+      >
+        {label}
+      </Typography>
+    </Box>
+    <Divider sx={{ flex: 1, opacity: 0.8 }} />
+  </Stack>
+)
+
+const SpecCard = ({ spec, themeColors }) => (
+  <Box
+    sx={{
+      p: 1.5,
+      borderRadius: 2,
+      bgcolor: 'background.paper',
+      border: '1px solid',
+      borderColor: 'divider',
+      height: '100%',
+      boxShadow: '0 10px 28px rgba(15, 23, 42, 0.035)',
+    }}
+  >
+    <Typography variant="caption" color="text.secondary" fontWeight={900}>
+      {spec.label}
+    </Typography>
+    <Typography
+      variant="body2"
+      fontWeight={800}
+      sx={{ color: themeColors.text, mt: 0.35 }}
+    >
+      {spec.value}
+      {spec.unit ? ` ${spec.unit}` : ''}
+    </Typography>
+  </Box>
+)
 
 const SingleProduct = () => {
   const { id } = useParams()
   const dispatch = useDispatch()
 
-  const { singleProduct: product, isLoading } = useSelector(s => s.product)
+  const rawProduct = useSelector(s => s.product.singleProduct)
+  const product = useMemo(() => {
+    if (!rawProduct || typeof rawProduct !== 'object') return rawProduct
+    return rawProduct?.data && typeof rawProduct.data === 'object'
+      ? rawProduct.data
+      : rawProduct
+  }, [rawProduct])
+
+  const { isLoading } = useSelector(s => s.product)
   const { wishlist, user } = useSelector(s => s.user)
   const isAuthenticated = useSelector(selectIsAuthenticated)
   const themeState = useSelector(state => state.theme) || {}
+  const promotionalBlocks = useSelector(selectPublicPromotionalBlocks)
+
   const activeThemeConfig = useMemo(
     () => getActiveThemeConfig(themeState),
     [themeState],
@@ -733,22 +957,21 @@ const SingleProduct = () => {
     () => getThemeColors(activeThemeConfig),
     [activeThemeConfig],
   )
+
   const formatPrice = useCallback(
     value => formatCurrency(value, activeThemeConfig),
     [activeThemeConfig],
   )
+
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
-  const promotionalBlocks = useSelector(selectPublicPromotionalBlocks)
 
   const [question, setQuestion] = useState('')
   const [activeImg, setActiveImg] = useState(0)
   const [zoomPos, setZoomPos] = useState({ x: 50, y: 50 })
   const [isZooming, setIsZooming] = useState(false)
-
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [selectedAttributes, setSelectedAttributes] = useState({})
-
   const [showRatingForm, setShowRatingForm] = useState(false)
   const [userStar, setUserStar] = useState(0)
   const [userComment, setUserComment] = useState('')
@@ -776,13 +999,15 @@ const SingleProduct = () => {
     setActiveImg(0)
   }, [product?._id])
 
-  const hasVariants = useMemo(() => {
-    return Boolean(product?.hasVariants || product?.variants?.length > 0)
-  }, [product])
+  const hasVariants = useMemo(
+    () => Boolean(product?.hasVariants || product?.variants?.length > 0),
+    [product],
+  )
 
-  const normalizedSelectedVariant = useMemo(() => {
-    return normalizeVariantForCart(selectedVariant, selectedAttributes)
-  }, [selectedVariant, selectedAttributes])
+  const normalizedSelectedVariant = useMemo(
+    () => normalizeVariantForCart(selectedVariant, selectedAttributes),
+    [selectedVariant, selectedAttributes],
+  )
 
   const activePromotionItem = useMemo(() => {
     if (!product?._id || !Array.isArray(promotionalBlocks)) return null
@@ -794,13 +1019,10 @@ const SingleProduct = () => {
       if (block?.visibility && block.visibility !== 'public') continue
 
       const products = Array.isArray(block.products) ? block.products : []
-
       const match = products.find(item => {
         if (item?.isActive === false) return false
-
         const promotedProduct = getProductFromPromotionalItem(item)
         const promotedProductId = promotedProduct?._id || item?.productId
-
         return getEntityId(promotedProductId) === productId
       })
 
@@ -817,28 +1039,25 @@ const SingleProduct = () => {
     return null
   }, [product?._id, promotionalBlocks])
 
-  const promotionDiscount = useMemo(() => {
-    return Number(activePromotionItem?.discountPercentage || 0)
-  }, [activePromotionItem])
-
+  const promotionDiscount = useMemo(
+    () => Number(activePromotionItem?.discountPercentage || 0),
+    [activePromotionItem],
+  )
   const hasActivePromotion = promotionDiscount > 0
 
   const productImages = useMemo(() => {
-    if (Array.isArray(product?.images) && product.images.length > 0) {
+    if (Array.isArray(product?.images) && product.images.length > 0)
       return product.images
-    }
     return [{ url: placeholder }]
   }, [product])
 
-  const variantImageUrl = useMemo(() => {
-    return normalizedSelectedVariant?.image || null
-  }, [normalizedSelectedVariant])
+  const variantImageUrl = useMemo(
+    () => normalizedSelectedVariant?.image || null,
+    [normalizedSelectedVariant],
+  )
 
   const activeImageUrl = useMemo(() => {
-    if (variantImageUrl) {
-      return variantImageUrl
-    }
-
+    if (variantImageUrl) return variantImageUrl
     return (
       productImages?.[activeImg]?.url || productImages?.[0]?.url || placeholder
     )
@@ -849,7 +1068,14 @@ const SingleProduct = () => {
   }, [normalizedSelectedVariant?.id])
 
   const iaAnalysis = useMemo(() => {
-    if (!product) return { score: 'N/A', count: 0, avg: 0 }
+    if (!product)
+      return {
+        score: 'N/A',
+        count: 0,
+        avg: 0,
+        summary: 'Sin datos',
+        reason: '',
+      }
 
     const ratingsArray = Array.isArray(product.ratings)
       ? product.ratings.filter(review => {
@@ -857,6 +1083,7 @@ const SingleProduct = () => {
           return star >= 1 && star <= 5
         })
       : []
+
     const count = ratingsArray.length
     const persistedAverage = Number(product.totalrating) || 0
     const avg =
@@ -871,13 +1098,18 @@ const SingleProduct = () => {
       score: avg > 0 ? avg.toFixed(1) : 'N/A',
       count,
       avg,
-      summary: avg >= 4.2 ? 'Alta Confianza' : 'Calidad Estándar',
+      summary:
+        avg >= 4.2
+          ? 'Alta confianza'
+          : avg > 0
+            ? 'Calidad evaluada'
+            : 'Sin reseñas',
       reason:
         count > 0
           ? `Basado en ${count} opiniones.`
           : avg > 0
             ? 'Basado en la calificación guardada.'
-            : 'Sin suficientes datos.',
+            : 'Todavía no hay suficientes opiniones.',
     }
   }, [product])
 
@@ -890,7 +1122,6 @@ const SingleProduct = () => {
 
     if (normalizedSelectedVariant?.price > 0) {
       const original = Number(normalizedSelectedVariant.price || 0)
-
       return {
         original,
         final: applyDiscount(original),
@@ -948,6 +1179,7 @@ const SingleProduct = () => {
     hasActivePromotion,
     promotionDiscount,
   ])
+
   const displayStock = useMemo(() => {
     if (normalizedSelectedVariant) return normalizedSelectedVariant.stock
 
@@ -972,49 +1204,91 @@ const SingleProduct = () => {
   }, [hasVariants, normalizedSelectedVariant, product])
 
   const isFavorite = useMemo(
-    () => wishlist?.some(item => item._id === product?._id),
+    () =>
+      wishlist?.some(
+        item =>
+          String(item._id || item.id) === String(product?._id || product?.id),
+      ),
     [wishlist, product],
+  )
+
+  const commercialDescription = useMemo(
+    () => getCommercialDescription(product),
+    [product],
+  )
+  const technicalDescription = useMemo(
+    () => getTechnicalDescription(product),
+    [product],
+  )
+  const shortDescription = useMemo(
+    () => getShortDescription(product),
+    [product],
+  )
+  const catalogTags = useMemo(() => getCatalogTags(product), [product])
+
+  const descriptionParagraphs = useMemo(
+    () =>
+      commercialDescription
+        .split(/\n+/)
+        .map(paragraph => paragraph.trim())
+        .filter(Boolean),
+    [commercialDescription],
+  )
+
+  const technicalParagraphs = useMemo(
+    () =>
+      technicalDescription
+        .split(/\n+/)
+        .map(paragraph => paragraph.trim())
+        .filter(Boolean),
+    [technicalDescription],
+  )
+
+  const productSpecifications = useMemo(
+    () => normalizeSpecificationRows(product),
+    [product],
+  )
+  const specificationGroups = useMemo(
+    () => groupSpecifications(productSpecifications),
+    [productSpecifications],
+  )
+  const logisticsRows = useMemo(
+    () => normalizeLogisticsRows(product),
+    [product],
   )
 
   const handleVariantSelect = useCallback((variant, attributes) => {
     setSelectedVariant(variant || null)
     setSelectedAttributes(attributes || {})
-
-    if (!variant) {
-      setActiveImg(0)
-    }
+    if (!variant) setActiveImg(0)
   }, [])
 
-  const resolveCartPricing = ({
-    displayPrice,
-    hasVariants,
-    normalizedSelectedVariant,
-    product,
-    hasActivePromotion,
-    promotionDiscount,
-  }) => {
-    const basePrice = hasVariants
-      ? Number(normalizedSelectedVariant?.price || 0)
-      : Number(product?.price || 0)
+  const resolveCartPricing = useCallback(
+    ({ priceInfo, variantsEnabled, normalizedVariant, productData }) => {
+      const basePrice = variantsEnabled
+        ? Number(normalizedVariant?.price || 0)
+        : Number(productData?.price || 0)
 
-    if (displayPrice?.isRange) {
+      if (priceInfo?.isRange) {
+        return {
+          originalPrice: basePrice,
+          finalPrice: hasActivePromotion
+            ? getDiscountedPrice(basePrice, promotionDiscount)
+            : basePrice,
+          discountPercentage: hasActivePromotion ? promotionDiscount : 0,
+          hasPromotion: hasActivePromotion,
+        }
+      }
+
       return {
-        originalPrice: basePrice,
-        finalPrice: hasActivePromotion
-          ? getDiscountedPrice(basePrice, promotionDiscount)
-          : basePrice,
+        originalPrice: Number(priceInfo?.original ?? basePrice),
+        finalPrice: Number(priceInfo?.final ?? basePrice),
         discountPercentage: hasActivePromotion ? promotionDiscount : 0,
         hasPromotion: hasActivePromotion,
       }
-    }
-
-    return {
-      originalPrice: Number(displayPrice?.original ?? basePrice),
-      finalPrice: Number(displayPrice?.final ?? basePrice),
-      discountPercentage: hasActivePromotion ? promotionDiscount : 0,
-      hasPromotion: hasActivePromotion,
-    }
-  }
+    },
+    [hasActivePromotion, promotionDiscount],
+  )
 
   const handleAddToCart = useCallback(async () => {
     if (!product?._id) {
@@ -1024,7 +1298,7 @@ const SingleProduct = () => {
 
     if (hasVariants) {
       if (!normalizedSelectedVariant) {
-        toast.error('Selecciona todas las opciones disponibles')
+        toast.error('Seleccioná todas las opciones disponibles')
         return
       }
 
@@ -1045,12 +1319,10 @@ const SingleProduct = () => {
     try {
       const { originalPrice, finalPrice, discountPercentage, hasPromotion } =
         resolveCartPricing({
-          displayPrice,
-          hasVariants,
-          normalizedSelectedVariant,
-          product,
-          hasActivePromotion,
-          promotionDiscount,
+          priceInfo: displayPrice,
+          variantsEnabled: hasVariants,
+          normalizedVariant: normalizedSelectedVariant,
+          productData: product,
         })
 
       const resolvedImage = hasVariants
@@ -1070,37 +1342,25 @@ const SingleProduct = () => {
         productId: product._id,
         tenantId: product.tenantId,
         quantity: 1,
-
         title: product.title,
         image: resolvedImage,
-
-        // Precio final que debe usar el carrito
         price: finalPrice,
-
-        // Metadata de promoción
         ...promotionPayload,
-
         hasVariants,
-
         ...(hasVariants && normalizedSelectedVariant
           ? {
               variantId: normalizedSelectedVariant.id,
               variantSku: normalizedSelectedVariant.sku,
               variantSKU: normalizedSelectedVariant.sku,
-
               selectedAttributes: normalizedSelectedVariant.attributes,
               variantAttributes: normalizedSelectedVariant.attributes,
-
               selectedVariant: {
                 id: normalizedSelectedVariant.id,
                 sku: normalizedSelectedVariant.sku,
-
-                // También dentro de la variante
                 price: finalPrice,
                 originalPrice,
                 discountPercentage,
                 hasPromotion,
-
                 stock: normalizedSelectedVariant.stock,
                 image: normalizedSelectedVariant.image || resolvedImage,
                 attributes: normalizedSelectedVariant.attributes,
@@ -1108,7 +1368,6 @@ const SingleProduct = () => {
                 promotionTitle: activePromotionItem?.blockTitle || null,
                 promotionType: activePromotionItem?.blockType || null,
               },
-
               cartKey: buildVariantCartKey(
                 product._id,
                 normalizedSelectedVariant.raw,
@@ -1120,18 +1379,21 @@ const SingleProduct = () => {
             }),
       }
 
-      console.log('[SingleProduct] Cart item enviado:', cartItem)
+      if (process.env.REACT_APP_DEBUG_API === 'true') {
+        console.log('[SingleProduct] Cart item enviado:', cartItem)
+      }
 
       await dispatch(addOrUpdateCartItem(cartItem)).unwrap()
-
       toast.success(
         hasPromotion
           ? '¡Producto en oferta añadido al carrito!'
           : '¡Añadido al carrito!',
       )
     } catch (err) {
-      console.error('INICIE SESION PARA COMPRAR:', err)
-      toast.error(err?.message || 'INICIE SESION PARA COMPRAR')
+      if (process.env.REACT_APP_DEBUG_API === 'true') {
+        console.error('[SingleProduct] Error agregando al carrito:', err)
+      }
+      toast.error(err?.message || 'Iniciá sesión para comprar')
     }
   }, [
     product,
@@ -1140,16 +1402,15 @@ const SingleProduct = () => {
     normalizedSelectedVariant,
     activeImageUrl,
     displayPrice,
-    hasActivePromotion,
-    promotionDiscount,
     activePromotionItem,
+    resolveCartPricing,
   ])
 
   const handleRateSubmit = async () => {
     const canRate = Boolean(user && (isAuthenticated || hasClientAuthToken()))
 
     if (!canRate) {
-      toast.error('Inicia sesión para calificar')
+      toast.error('Iniciá sesión para calificar')
       return
     }
 
@@ -1172,7 +1433,6 @@ const SingleProduct = () => {
 
     try {
       setIsSubmittingRating(true)
-
       await dispatch(
         rateProduct({
           productId,
@@ -1198,50 +1458,23 @@ const SingleProduct = () => {
     }
   }
 
-  const descriptionText = String(product?.description || '').trim()
-
-  const descriptionParagraphs = descriptionText
-    .split(/\n+/)
-    .map(paragraph => paragraph.trim())
-    .filter(Boolean)
-
-  const shortDescription = useMemo(() => {
-    return String(
-      product?.seo?.shortDescription ||
-        product?.shortDescription ||
-        product?.summary ||
-        '',
-    ).trim()
-  }, [product])
-
-  const productSpecifications = useMemo(() => {
-    return normalizeSpecificationRows(product)
-  }, [product])
-
-  const specificationGroups = useMemo(() => {
-    return groupSpecifications(productSpecifications)
-  }, [productSpecifications])
-
-  const logisticsRows = useMemo(() => {
-    return normalizeLogisticsRows(product)
-  }, [product])
-
   const handleSendQuestion = () => {
-    if (!question.trim()) return toast.error('Escribe tu pregunta')
+    if (!question.trim()) return toast.error('Escribí tu pregunta')
 
     if (!user) {
       if (!guestData.name || !guestData.email || !guestData.mobile) {
-        return toast.error('Completa tus datos de contacto')
+        return toast.error('Completá tus datos de contacto')
       }
 
       const emailRegex = /\S+@\S+\.\S+/
-      if (!emailRegex.test(guestData.email)) {
+      if (!emailRegex.test(guestData.email))
         return toast.error('Email no válido')
-      }
     }
 
     const payload = {
-      name: user ? `${user.firstname} ${user.lastname || ''}` : guestData.name,
+      name: user
+        ? `${user.firstname || user.firstName || ''} ${user.lastname || user.lastName || ''}`.trim()
+        : guestData.name,
       email: user ? user.email : guestData.email,
       mobile: user ? user.mobile : guestData.mobile,
       comment: `Consulta sobre: ${product.title}${
@@ -1273,7 +1506,7 @@ const SingleProduct = () => {
           px: `${layoutConfig.containerPadding}px`,
         }}
       >
-        <Skeleton variant="rectangular" height={500} />
+        <Skeleton variant="rectangular" height={500} sx={{ borderRadius: 4 }} />
       </Container>
     )
   }
@@ -1290,19 +1523,70 @@ const SingleProduct = () => {
     >
       <Toaster position="bottom-right" />
 
-      <Grid container spacing={8} justifyContent="center">
+      <Grid
+        container
+        spacing={{ xs: 4, md: 7 }}
+        justifyContent="center"
+        alignItems="flex-start"
+      >
         <Grid item xs={12} md={6}>
-          <Stack spacing={3} alignItems="flex-end">
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              sx={{ color: themeColors.actionPrimaryText, width: IMG_BOX_SIZE }}
-            >
-              {product.title}
-            </Typography>
+          <Stack spacing={2.5} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
+            <Box sx={{ width: '100%', maxWidth: 580 }}>
+              <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 1.5 }}>
+                {product?.categoria && (
+                  <Chip
+                    size="small"
+                    label={product.categoria}
+                    variant="outlined"
+                  />
+                )}
+                {product?.subcategoria && (
+                  <Chip
+                    size="small"
+                    label={product.subcategoria}
+                    variant="outlined"
+                  />
+                )}
+                {product?.marca && (
+                  <Chip size="small" label={product.marca} variant="outlined" />
+                )}
+              </Stack>
 
-            <Stack direction="row" spacing={2}>
-              <Stack spacing={1.5} sx={{ display: { xs: 'none', md: 'flex' } }}>
+              <Typography
+                variant="h4"
+                fontWeight={900}
+                sx={{ color: themeColors.text, lineHeight: 1.12 }}
+              >
+                {product.title}
+              </Typography>
+
+              {shortDescription && (
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    mt: 1,
+                    color: themeColors.cardMutedText,
+                    lineHeight: 1.65,
+                  }}
+                >
+                  {shortDescription}
+                </Typography>
+              )}
+            </Box>
+
+            <Stack
+              direction={{ xs: 'column-reverse', md: 'row' }}
+              spacing={2}
+              sx={{ width: '100%', maxWidth: 680 }}
+            >
+              <Stack
+                direction={{ xs: 'row', md: 'column' }}
+                spacing={1.25}
+                sx={{
+                  overflowX: { xs: 'auto', md: 'visible' },
+                  pb: { xs: 1, md: 0 },
+                }}
+              >
                 {variantImageUrl ? (
                   <ThumbButton active>
                     <img
@@ -1314,11 +1598,12 @@ const SingleProduct = () => {
                     />
                   </ThumbButton>
                 ) : (
-                  productImages.slice(0, 6).map((img, i) => (
+                  productImages.slice(0, MAX_VISIBLE_THUMBS).map((img, i) => (
                     <ThumbButton
                       key={img?._id || img?.url || i}
                       active={activeImg === i}
                       onMouseEnter={() => setActiveImg(i)}
+                      onClick={() => setActiveImg(i)}
                     >
                       <img
                         src={img?.url || placeholder}
@@ -1362,69 +1647,20 @@ const SingleProduct = () => {
                     size="small"
                     sx={{
                       position: 'absolute',
-                      top: 10,
-                      right: 10,
-                      bgcolor: 'rgba(255,255,255,0.9)',
+                      top: 12,
+                      right: 12,
+                      bgcolor: 'rgba(255,255,255,0.92)',
+                      fontWeight: 800,
                     }}
                   />
                 )}
               </MainImageWindow>
             </Stack>
-
-            <Stack direction="row" spacing={2} sx={{ width: IMG_BOX_SIZE }}>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={handleAddToCart}
-                disabled={!isAvailable}
-                startIcon={<CartIcon />}
-                sx={{
-                  height: 60,
-                  borderRadius: 3,
-                  bgcolor: isAvailable
-                    ? themeColors.actionPrimary
-                    : 'action.disabledBackground',
-                  color: isAvailable
-                    ? themeColors.actionPrimaryText
-                    : 'text.disabled',
-                  fontWeight: 800,
-                  '&:hover': {
-                    bgcolor: isAvailable
-                      ? themeColors.actionPrimary
-                      : 'action.disabledBackground',
-                  },
-                }}
-              >
-                {!isAvailable
-                  ? hasVariants && !normalizedSelectedVariant
-                    ? 'Selecciona opciones'
-                    : 'Agotado'
-                  : 'Añadir al carrito'}
-              </Button>
-
-              <IconButton
-                onClick={() =>
-                  user
-                    ? dispatch(toggleWishlist(product._id))
-                    : toast.error('Inicia sesión')
-                }
-                sx={{
-                  borderRadius: 3,
-                  width: 60,
-                  height: 60,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  color: isFavorite ? 'error.main' : 'text.secondary',
-                }}
-              >
-                {isFavorite ? <FavIcon /> : <FavBorderIcon />}
-              </IconButton>
-            </Stack>
           </Stack>
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Stack spacing={4} sx={{ maxWidth: 450 }}>
+          <Stack spacing={3.25} sx={{ maxWidth: 480 }}>
             <Box>
               {displayPrice?.isRange ? (
                 <Box>
@@ -1434,7 +1670,7 @@ const SingleProduct = () => {
                       sx={{
                         color: themeColors.cardMutedText,
                         textDecoration: 'line-through',
-                        fontWeight: 600,
+                        fontWeight: 700,
                       }}
                     >
                       {formatPrice(displayPrice.min)} -{' '}
@@ -1444,23 +1680,12 @@ const SingleProduct = () => {
 
                   <Typography
                     variant="h5"
-                    fontWeight={800}
-                    sx={{ color: themeColors.actionPrimaryText }}
+                    fontWeight={900}
+                    sx={{ color: themeColors.cardPrice }}
                   >
-                    Desde {' '}
-                    {formatPrice(displayPrice.finalMin)} -{' '}
-                    Hasta {' '}
+                    Desde {formatPrice(displayPrice.finalMin)} hasta{' '}
                     {formatPrice(displayPrice.finalMax)}
                   </Typography>
-
-                  {displayPrice.hasDiscount && (
-                    <Chip
-                      label={`${displayPrice.discountPercentage}% OFF`}
-                      color="secondary"
-                      size="small"
-                      sx={{ mt: 1, fontWeight: 800 }}
-                    />
-                  )}
                 </Box>
               ) : (
                 <Box>
@@ -1470,7 +1695,7 @@ const SingleProduct = () => {
                       sx={{
                         color: themeColors.cardMutedText,
                         textDecoration: 'line-through',
-                        fontWeight: 600,
+                        fontWeight: 700,
                       }}
                     >
                       {formatPrice(displayPrice.original)}
@@ -1479,51 +1704,66 @@ const SingleProduct = () => {
 
                   <Typography
                     variant="h4"
-                    fontWeight={800}
-                    sx={{ color: themeColors.actionPrimaryText }}
+                    fontWeight={950}
+                    sx={{ color: themeColors.cardPrice }}
                   >
                     {formatPrice(displayPrice.final)}
                   </Typography>
-
-                  {displayPrice?.hasDiscount && (
-                    <Stack direction="row" spacing={1} mt={1} flexWrap="wrap">
-                      <Chip
-                        label={`${displayPrice.discountPercentage}% OFF`}
-                        size="small"
-                        sx={{
-                          fontWeight: 800,
-                          bgcolor: themeColors.badgeBackground,
-                          color: themeColors.badgeText,
-                        }}
-                      />
-
-                      {activePromotionItem?.blockTitle && (
-                        <Chip
-                          label={activePromotionItem.blockTitle}
-                          variant="outlined"
-                          size="small"
-                          sx={{
-                            fontWeight: 700,
-                            borderColor: themeColors.cardBorder,
-                            color: themeColors.cardText,
-                            bgcolor: themeColors.cardBackground,
-                          }}
-                        />
-                      )}
-                    </Stack>
-                  )}
                 </Box>
+              )}
+
+              {displayPrice?.hasDiscount && (
+                <Stack direction="row" spacing={1} mt={1} flexWrap="wrap">
+                  <Chip
+                    label={`${displayPrice.discountPercentage}% OFF`}
+                    size="small"
+                    sx={{
+                      fontWeight: 900,
+                      bgcolor: themeColors.badgeBackground,
+                      color: themeColors.badgeText,
+                    }}
+                  />
+                  {activePromotionItem?.blockTitle && (
+                    <Chip
+                      label={activePromotionItem.blockTitle}
+                      variant="outlined"
+                      size="small"
+                      sx={{ fontWeight: 800 }}
+                    />
+                  )}
+                </Stack>
               )}
 
               {hasVariants && !normalizedSelectedVariant && (
                 <Typography
                   variant="body2"
-                  sx={{ color: themeColors.cardMutedText }}
+                  sx={{ color: themeColors.cardMutedText, mt: 0.75 }}
                 >
-                  Selecciona opciones para ver precio exacto
+                  Seleccioná opciones para ver precio exacto.
                 </Typography>
               )}
             </Box>
+
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Chip
+                icon={<StockIcon />}
+                label={
+                  hasVariants && !normalizedSelectedVariant
+                    ? 'Stock según variante'
+                    : `${displayStock} disponibles`
+                }
+                color={displayStock > 0 ? 'success' : 'error'}
+                variant="outlined"
+              />
+              {logisticsRows.slice(0, 2).map(row => (
+                <Chip
+                  key={row.label}
+                  icon={<VerifiedIcon />}
+                  label={`${row.label}: ${row.value}`}
+                  variant="outlined"
+                />
+              ))}
+            </Stack>
 
             <Paper
               variant="outlined"
@@ -1531,25 +1771,24 @@ const SingleProduct = () => {
                 p: 2.5,
                 borderRadius: 4,
                 bgcolor: 'background.paper',
-                borderColor: 'info.main',
+                borderColor: alpha(theme.palette.primary.main, 0.24),
               }}
             >
               <Stack direction="row" spacing={2} alignItems="center">
                 <Typography
                   variant="h3"
                   sx={{ color: themeColors.cardPrice }}
-                  fontWeight={900}
+                  fontWeight={950}
                 >
                   {iaAnalysis.score}
                 </Typography>
                 <Box>
                   <Typography
                     variant="subtitle2"
-                    fontWeight={800}
+                    fontWeight={900}
                     sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                   >
-                    <AIIcon fontSize="small" /> IA ANALYTICS:{' '}
-                    {iaAnalysis.summary}
+                    <AIIcon fontSize="small" /> {iaAnalysis.summary}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     {iaAnalysis.reason}
@@ -1564,16 +1803,59 @@ const SingleProduct = () => {
                 onVariantSelect={handleVariantSelect}
                 selectedVariant={normalizedSelectedVariant}
               />
-            ) : (
-              <Chip
-                icon={<StockIcon />}
-                label={`${displayStock} unidades disponibles`}
-                color={displayStock > 0 ? 'success' : 'error'}
-                variant="outlined"
-              />
-            )}
+            ) : null}
 
-            <Divider sx={{ color: Newprimary.darkBlueGray}} />
+            <Stack direction="row" spacing={2}>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={handleAddToCart}
+                disabled={!isAvailable}
+                startIcon={<CartIcon />}
+                sx={{
+                  height: 58,
+                  borderRadius: 3,
+                  bgcolor: isAvailable
+                    ? themeColors.actionPrimary
+                    : 'action.disabledBackground',
+                  color: isAvailable
+                    ? themeColors.actionPrimaryText
+                    : 'text.disabled',
+                  fontWeight: 900,
+                  '&:hover': {
+                    bgcolor: isAvailable
+                      ? themeColors.actionPrimary
+                      : 'action.disabledBackground',
+                  },
+                }}
+              >
+                {!isAvailable
+                  ? hasVariants && !normalizedSelectedVariant
+                    ? 'Seleccioná opciones'
+                    : 'Agotado'
+                  : 'Añadir al carrito'}
+              </Button>
+
+              <IconButton
+                onClick={() =>
+                  user
+                    ? dispatch(toggleWishlist(product._id))
+                    : toast.error('Iniciá sesión')
+                }
+                sx={{
+                  borderRadius: 3,
+                  width: 58,
+                  height: 58,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  color: isFavorite ? 'error.main' : 'text.secondary',
+                }}
+              >
+                {isFavorite ? <FavIcon /> : <FavBorderIcon />}
+              </IconButton>
+            </Stack>
+
+            <Divider />
 
             <Box>
               <Stack
@@ -1582,46 +1864,33 @@ const SingleProduct = () => {
                 alignItems="center"
                 mb={1}
               >
-                <Typography
-                  variant="h6"
-                  fontWeight={800}
-                  color={Newprimary.black}
-                >
+                <Typography variant="h6" fontWeight={900} color="text.primary">
                   Calificación general
                 </Typography>
                 <Button
                   size="small"
                   startIcon={<ReviewIcon />}
                   onClick={() => setShowRatingForm(!showRatingForm)}
-                  sx={{
-                    textTransform: 'none',
-                    fontWeight: 700,
-                    color: Newprimary.black,
-                  }}
+                  sx={{ textTransform: 'none', fontWeight: 800 }}
                 >
                   {showRatingForm ? 'Cerrar' : 'Opinar'}
                 </Button>
               </Stack>
 
               <Stack direction="row" alignItems="center" spacing={2}>
-                <Typography
-                  variant="h3"
-                  fontWeight={900}
-                  color={themeColors.text}
-                >
+                <Typography variant="h3" fontWeight={950} color="text.primary">
                   {iaAnalysis.avg > 0 ? iaAnalysis.avg.toFixed(1) : '0.0'}
                 </Typography>
                 <Box>
                   <ReactStars
                     count={5}
-                    size={28}
+                    size={22}
                     value={Number(iaAnalysis.avg) || 0}
                     edit={false}
                     half
-                    color1={themeColors.border}
                     color2={themeColors.warning}
                   />
-                  <Typography variant="caption" color={Newprimary.black}>
+                  <Typography variant="caption" color="text.secondary">
                     {iaAnalysis.count} opiniones
                   </Typography>
                 </Box>
@@ -1642,7 +1911,7 @@ const SingleProduct = () => {
                       variant="caption"
                       display="block"
                       mb={1}
-                      sx={{ color: theme.palette.ctaPrimary.main }}
+                      sx={{ color: theme.palette.primary.main }}
                     >
                       Opinando sobre:{' '}
                       {Object.values(normalizedSelectedVariant.attributes).join(
@@ -1675,145 +1944,29 @@ const SingleProduct = () => {
                     size="small"
                     fullWidth
                     disabled={isSubmittingRating}
-                    onClick={event => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      handleRateSubmit()
-                    }}
+                    onClick={handleRateSubmit}
                   >
                     {isSubmittingRating ? 'Enviando...' : 'Enviar'}
                   </Button>
                 </Paper>
               </Collapse>
             </Box>
-
-            <Divider />
-
-            <Box>
-              <Typography
-                variant="h6"
-                fontWeight={900}
-                mb={2}
-                color="text.primary"
-              >
-                Reseñas recientes
-              </Typography>
-              <Stack spacing={2.5}>
-                {product.ratings?.length > 0 ? (
-                  product.ratings.map((rev, i) => (
-                    <Box key={rev._id || i}>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar
-                          sx={{
-                            width: 28,
-                            height: 28,
-                            fontSize: 13,
-                            bgcolor: theme.palette.brand.main,
-                            color: theme.palette.brand.contrastText,
-                            fontWeight: 800,
-                          }}
-                        >
-                          {getReviewerInitial(rev)}
-                        </Avatar>
-                        <Typography variant="caption" fontWeight={800} color={Newprimary.black}>
-                          {getReviewerName(rev)}
-                        </Typography>
-                        {rev.variantId && (
-                          <Chip
-                            label="Variante"
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                              color: theme.palette.brand.main,
-                              borderColor: theme.palette.brand.main,
-                            }}
-                          />
-                        )}
-                        <ReactStars
-                          count={5}
-                          size={15}
-                          value={Number(rev.star) || 0}
-                          edit={false}
-                          color2={themeColors.warning}
-                        />
-                      </Stack>
-                      <Typography
-                        variant="body2"
-                        color={Newprimary.black}
-                        fontWeight={600}
-                        sx={{ mt: 0.5, pl: 4 }}
-                      >
-                        {rev.comment || 'Calificó sin comentar.'}
-                      </Typography>
-                    </Box>
-                  ))
-                ) : (
-                  <Typography
-                    variant="body2"
-                    sx={{ fontStyle: 'italic', color: 'text.secondary' }}
-                  >
-                    Sé el primero en opinar.
-                  </Typography>
-                )}
-              </Stack>
-            </Box>
-
-            <Divider />
           </Stack>
         </Grid>
+      </Grid>
 
       <Box
         component="section"
-        sx={{
-          mt: { xs: 3, md: 4 },
-          mx: 'auto',
-          maxWidth: 920,
-          width: '100%',
-        }}
+        sx={{ mt: { xs: 5, md: 7 }, mx: 'auto', maxWidth: 1060, width: '100%' }}
       >
-        <Stack
-          direction="row"
-          alignItems="center"
-          spacing={2}
-          sx={{ mb: 2.5 }}
-        >
-          <Divider sx={{ flex: 1, opacity: 0.8 }} />
+        <SectionTitle label="Descripción" eyebrow="Información del producto" />
 
-          <Box
-            sx={{
-              px: 2.5,
-              py: 0.75,
-              borderRadius: 999,
-              bgcolor: 'background.paper',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
-            }}
-          >
-            <Typography
-              variant="overline"
-              sx={{
-                display: 'block',
-                color: themeColors.actionPrimaryText,
-                fontWeight: 900,
-                letterSpacing: 1.4,
-                lineHeight: 1,
-                textAlign: 'center',
-              }}
-            >
-              Descripción
-            </Typography>
-          </Box>
-
-          <Divider sx={{ flex: 1, opacity: 0.8 }} />
-        </Stack>
-
-        <Box
+        <Paper
+          variant="outlined"
           sx={{
-            p: { xs: 2.25, md: 3 },
+            p: { xs: 2.25, md: 3.5 },
             borderRadius: 4,
             bgcolor: 'background.paper',
-            border: '1px solid',
             borderColor: 'divider',
             boxShadow: '0 18px 45px rgba(15, 23, 42, 0.07)',
           }}
@@ -1822,10 +1975,10 @@ const SingleProduct = () => {
             <Typography
               variant="subtitle1"
               sx={{
-                color: themeColors.actionPrimaryText,
-                fontWeight: 800,
+                color: themeColors.text,
+                fontWeight: 900,
                 lineHeight: 1.7,
-                mb: descriptionParagraphs.length ? 2 : 0,
+                mb: 2,
               }}
             >
               {shortDescription}
@@ -1839,15 +1992,14 @@ const SingleProduct = () => {
                   key={`product-description-${index}`}
                   variant="body1"
                   sx={{
-                    color: themeColors.actionPrimaryText,
+                    color: themeColors.text,
                     fontSize: { xs: 15.5, md: 16.5 },
-                    lineHeight: 1.9,
+                    lineHeight: 1.95,
                     fontWeight: 400,
                     letterSpacing: 0.12,
-                    textAlign: 'left',
                     overflowWrap: 'break-word',
                     wordBreak: 'break-word',
-                    opacity: 0.92,
+                    opacity: 0.93,
                   }}
                 >
                   {paragraph}
@@ -1867,110 +2019,163 @@ const SingleProduct = () => {
               Este producto todavía no tiene una descripción disponible.
             </Typography>
           )}
-        </Box>
+        </Paper>
       </Box>
-      </Grid>
 
-      {(productSpecifications.length > 0 || logisticsRows.length > 0) && (
+      {(technicalParagraphs.length > 0 ||
+        productSpecifications.length > 0 ||
+        logisticsRows.length > 0) && (
         <Box
           component="section"
           sx={{
             mt: { xs: 4, md: 6 },
             mx: 'auto',
-            maxWidth: 1040,
+            maxWidth: 1120,
             width: '100%',
           }}
         >
+          <SectionTitle
+            label="Ficha técnica"
+            eyebrow="Detalle y especificaciones"
+          />
+
           <Grid container spacing={3}>
-            {productSpecifications.length > 0 && (
-              <Grid item xs={12} md={logisticsRows.length ? 7 : 12}>
+            {technicalParagraphs.length > 0 && (
+              <Grid
+                item
+                xs={12}
+                md={
+                  productSpecifications.length || logisticsRows.length ? 5 : 12
+                }
+              >
                 <Paper
                   variant="outlined"
                   sx={{
                     p: { xs: 2.25, md: 3 },
                     borderRadius: 4,
                     bgcolor: 'background.paper',
-                    boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
+                    height: '100%',
                   }}
                 >
-                  <Typography variant="h6" fontWeight={900} sx={{ mb: 2, color: themeColors.actionPrimaryText }}>
-                    Ficha técnica
+                  <Typography
+                    variant="h6"
+                    fontWeight={950}
+                    sx={{ mb: 1.5, color: themeColors.text }}
+                  >
+                    Descripción técnica
                   </Typography>
-
-                  <Stack spacing={2.5}>
-                    {Object.entries(specificationGroups).map(([group, specs]) => (
-                      <Box key={group}>
-                        <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1, color: themeColors.cardMutedText }}>
-                          {group}
-                        </Typography>
-                        <Grid container spacing={1.5}>
-                          {specs.map(spec => (
-                            <Grid item xs={12} sm={6} key={`${group}-${spec.key}`}>
-                              <Box
-                                sx={{
-                                  p: 1.5,
-                                  borderRadius: 2,
-                                  bgcolor: alpha(theme.palette.primary.main, 0.035),
-                                  border: '1px solid',
-                                  borderColor: 'divider',
-                                }}
-                              >
-                                <Typography variant="caption" color="text.secondary" fontWeight={800}>
-                                  {spec.label}
-                                </Typography>
-                                <Typography variant="body2" fontWeight={700} sx={{ color: themeColors.actionPrimaryText }}>
-                                  {spec.value}{spec.unit ? ` ${spec.unit}` : ''}
-                                </Typography>
-                              </Box>
-                            </Grid>
-                          ))}
-                        </Grid>
-                      </Box>
+                  <Stack spacing={1.4}>
+                    {technicalParagraphs.map((paragraph, index) => (
+                      <Typography
+                        key={`technical-description-${index}`}
+                        variant="body2"
+                        sx={{ color: themeColors.text, lineHeight: 1.9 }}
+                      >
+                        {paragraph}
+                      </Typography>
                     ))}
                   </Stack>
                 </Paper>
               </Grid>
             )}
 
-            {logisticsRows.length > 0 && (
-              <Grid item xs={12} md={productSpecifications.length ? 5 : 12}>
+            {productSpecifications.length > 0 && (
+              <Grid
+                item
+                xs={12}
+                md={technicalParagraphs.length || logisticsRows.length ? 7 : 12}
+              >
                 <Paper
                   variant="outlined"
                   sx={{
                     p: { xs: 2.25, md: 3 },
                     borderRadius: 4,
                     bgcolor: 'background.paper',
-                    boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
+                    height: '100%',
                   }}
                 >
-                  <Typography variant="h6" fontWeight={900} sx={{ mb: 2, color: themeColors.actionPrimaryText }}>
+                  <Stack spacing={2.5}>
+                    {Object.entries(specificationGroups).map(
+                      ([group, specs]) => (
+                        <Box key={group}>
+                          <Typography
+                            variant="subtitle2"
+                            fontWeight={950}
+                            sx={{ mb: 1, color: themeColors.cardMutedText }}
+                          >
+                            {group}
+                          </Typography>
+                          <Grid container spacing={1.5}>
+                            {specs.map(spec => (
+                              <Grid
+                                item
+                                xs={12}
+                                sm={6}
+                                key={`${group}-${spec.key}`}
+                              >
+                                <SpecCard
+                                  spec={spec}
+                                  themeColors={themeColors}
+                                />
+                              </Grid>
+                            ))}
+                          </Grid>
+                        </Box>
+                      ),
+                    )}
+                  </Stack>
+                </Paper>
+              </Grid>
+            )}
+
+            {logisticsRows.length > 0 && (
+              <Grid item xs={12}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: { xs: 2.25, md: 3 },
+                    borderRadius: 4,
+                    bgcolor: 'background.paper',
+                  }}
+                >
+                  <Typography
+                    variant="h6"
+                    fontWeight={950}
+                    sx={{ mb: 2, color: themeColors.text }}
+                  >
                     Envío, garantía y origen
                   </Typography>
-
-                  <Stack spacing={1.5}>
+                  <Grid container spacing={1.5}>
                     {logisticsRows.map(row => (
-                      <Stack
-                        key={row.label}
-                        direction="row"
-                        justifyContent="space-between"
-                        spacing={2}
-                        sx={{
-                          p: 1.5,
-                          borderRadius: 2,
-                          bgcolor: alpha(theme.palette.success.main, 0.045),
-                          border: '1px solid',
-                          borderColor: 'divider',
-                        }}
-                      >
-                        <Typography variant="body2" color="text.secondary" fontWeight={800}>
-                          {row.label}
-                        </Typography>
-                        <Typography variant="body2" fontWeight={800} textAlign="right" sx={{ color: themeColors.actionPrimaryText }}>
-                          {row.value}
-                        </Typography>
-                      </Stack>
+                      <Grid item xs={12} sm={6} md={3} key={row.label}>
+                        <Box
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 2,
+                            bgcolor: alpha(theme.palette.success.main, 0.045),
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            height: '100%',
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            fontWeight={900}
+                          >
+                            {row.label}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            fontWeight={900}
+                            sx={{ color: themeColors.text, mt: 0.35 }}
+                          >
+                            {row.value}
+                          </Typography>
+                        </Box>
+                      </Grid>
                     ))}
-                  </Stack>
+                  </Grid>
                 </Paper>
               </Grid>
             )}
@@ -1978,9 +2183,9 @@ const SingleProduct = () => {
         </Box>
       )}
 
-      <Box sx={{ mt: 10, maxWidth: 800, mx: 'auto' }}>
+      <Box sx={{ mt: 8, maxWidth: 900, mx: 'auto' }}>
         <Typography
-          fontWeight={900}
+          fontWeight={950}
           sx={{
             display: 'flex',
             alignItems: 'center',
@@ -2050,8 +2255,7 @@ const SingleProduct = () => {
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 2,
                     backgroundColor: theme.palette.background.paper,
-                    color: Newprimary.black,
-                    fontWeight: 600
+                    fontWeight: 600,
                   },
                 }}
               />
@@ -2062,7 +2266,7 @@ const SingleProduct = () => {
                   px: 5,
                   borderRadius: 2,
                   textTransform: 'none',
-                  fontWeight: 600,
+                  fontWeight: 800,
                   height: 56,
                 }}
               >

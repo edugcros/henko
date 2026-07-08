@@ -219,7 +219,9 @@ const getItemImage = item => {
   if (item.product?.images?.[0]) {
     if (typeof item.product.images[0] === 'string')
       return item.product.images[0]
-    return item.product.images[0]?.url || item.product.images[0]?.secure_url || null
+    return (
+      item.product.images[0]?.url || item.product.images[0]?.secure_url || null
+    )
   }
 
   return null
@@ -228,7 +230,8 @@ const getItemImage = item => {
 const getItemUnitPrice = item => {
   const quantity = Math.max(1, toNumber(item?.quantity || item?.count, 1))
 
-  if (item?.unitPriceCents !== undefined) return clampMoney(item.unitPriceCents / 100)
+  if (item?.unitPriceCents !== undefined)
+    return clampMoney(item.unitPriceCents / 100)
   if (item?.priceCents !== undefined) return clampMoney(item.priceCents / 100)
   if (item?.subtotalCents !== undefined) {
     return clampMoney(item.subtotalCents / 100 / quantity)
@@ -253,7 +256,9 @@ const getItemOriginalPrice = item => {
     item?.originalPrice ??
       item?.regularPrice ??
       item?.compareAtPrice ??
-      (item?.originalPriceCents !== undefined ? item.originalPriceCents / 100 : undefined) ??
+      (item?.originalPriceCents !== undefined
+        ? item.originalPriceCents / 100
+        : undefined) ??
       item?.product?.originalPrice ??
       item?.product?.regularPrice ??
       item?.product?.compareAtPrice ??
@@ -416,13 +421,25 @@ const calculateNominalCouponDiscount = ({ coupon, applicableSubtotal }) => {
 const normalizeOrderPayload = result => {
   const data = result?.data || result?.payload || result
 
-  return data?.order || data?.data?.order || data?.payload?.order || data?.data || data
+  return (
+    data?.order ||
+    data?.data?.order ||
+    data?.payload?.order ||
+    data?.data ||
+    data
+  )
 }
 
 const normalizePaymentPayload = result => {
   const data = result?.data || result?.payload || result
 
-  return data?.payment || data?.data?.payment || data?.payload?.payment || data?.data || data
+  return (
+    data?.payment ||
+    data?.data?.payment ||
+    data?.payload?.payment ||
+    data?.data ||
+    data
+  )
 }
 
 const getOrderDisplayId = order => {
@@ -437,7 +454,9 @@ const getOrderDisplayId = order => {
 }
 
 const getPaymentDisplayId = payment => {
-  return normalizeId(payment?.id || payment?.paymentId || payment?.transactionId)
+  return normalizeId(
+    payment?.id || payment?.paymentId || payment?.transactionId,
+  )
 }
 
 const getPaymentStatusValue = payment => {
@@ -448,10 +467,7 @@ const getPaymentStatusValue = payment => {
 
 const getPaymentStatusDetailValue = payment => {
   return String(
-    payment?.status_detail ||
-      payment?.statusDetail ||
-      payment?.detail ||
-      '',
+    payment?.status_detail || payment?.statusDetail || payment?.detail || '',
   ).toLowerCase()
 }
 
@@ -476,14 +492,20 @@ const isPendingPayment = payment => {
 }
 
 const normalizeVariantLabel = item => {
-  const variant = item?.variant || item?.selectedVariant || item?.product?.variant
+  const variant =
+    item?.variant || item?.selectedVariant || item?.product?.variant
 
   if (!variant) return ''
   if (typeof variant === 'string') return variant
 
-  const attributes = variant.attributes || variant.combinacion || variant.options
+  const attributes =
+    variant.attributes || variant.combinacion || variant.options
 
-  if (attributes && typeof attributes === 'object' && !Array.isArray(attributes)) {
+  if (
+    attributes &&
+    typeof attributes === 'object' &&
+    !Array.isArray(attributes)
+  ) {
     return Object.entries(attributes)
       .map(([key, value]) => `${key}: ${value}`)
       .join(' · ')
@@ -539,7 +561,11 @@ const buildConfirmationSnapshot = ({
   const items = buildConfirmationItems(sourceItems)
 
   const customer = {
-    firstName: pickFirst(shippingData?.firstName, user?.firstName, user?.nombre),
+    firstName: pickFirst(
+      shippingData?.firstName,
+      user?.firstName,
+      user?.nombre,
+    ),
     lastName: pickFirst(shippingData?.lastName, user?.lastName, user?.apellido),
     email: pickFirst(shippingData?.email, user?.email),
     phone: pickFirst(shippingData?.phone, user?.phone, user?.telefono),
@@ -553,9 +579,14 @@ const buildConfirmationSnapshot = ({
     totals: {
       subtotal: clampMoney(subtotal ?? normalizedOrder.subtotal ?? 0),
       discount: clampMoney(
-        discount ?? normalizedOrder.discount ?? normalizedOrder.discountAmount ?? 0,
+        discount ??
+          normalizedOrder.discount ??
+          normalizedOrder.discountAmount ??
+          0,
       ),
-      total: clampMoney(total ?? normalizedOrder.total ?? normalizedOrder.totalAmount ?? 0),
+      total: clampMoney(
+        total ?? normalizedOrder.total ?? normalizedOrder.totalAmount ?? 0,
+      ),
     },
     coupon: appliedCoupon
       ? {
@@ -1679,15 +1710,17 @@ const CheckoutPage = () => {
     )
   }
 
-  // ======================================================  
+  // ======================================================
   // SUCCESS / CONFIRMACIÓN
   // ======================================================
 
   if (
     paymentStatus.completed ||
-    (paymentSuccess && isApprovedPayment(normalizePaymentPayload(reduxPaymentResult)))
+    (paymentSuccess &&
+      isApprovedPayment(normalizePaymentPayload(reduxPaymentResult)))
   ) {
-    const successData = paymentStatus.data || normalizePaymentPayload(reduxPaymentResult)
+    const successData =
+      paymentStatus.data || normalizePaymentPayload(reduxPaymentResult)
     const confirmation =
       confirmationData ||
       buildConfirmationSnapshot({
@@ -1719,7 +1752,11 @@ const CheckoutPage = () => {
               borderRadius: 4,
             }}
           >
-            <Stack alignItems="center" spacing={1.5} sx={{ textAlign: 'center', mb: 4 }}>
+            <Stack
+              alignItems="center"
+              spacing={1.5}
+              sx={{ textAlign: 'center', mb: 4 }}
+            >
               <CheckCircleOutline
                 sx={{ fontSize: { xs: 72, md: 96 }, color: 'success.main' }}
               />
@@ -1729,14 +1766,17 @@ const CheckoutPage = () => {
               </Typography>
 
               <Typography color="text.secondary">
-                Tu pago fue procesado exitosamente. Abajo tenés el detalle de
-                la orden, los productos comprados y tus datos de contacto.
+                Tu pago fue procesado exitosamente. Abajo tenés el detalle de la
+                orden, los productos comprados y tus datos de contacto.
               </Typography>
             </Stack>
 
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} md={6}>
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 2, borderRadius: 2, height: '100%' }}
+                >
                   <Typography variant="body2" color="text.secondary">
                     Orden
                   </Typography>
@@ -1747,11 +1787,18 @@ const CheckoutPage = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 2, borderRadius: 2, height: '100%' }}
+                >
                   <Typography variant="body2" color="text.secondary">
                     ID de pago
                   </Typography>
-                  <Typography variant="h6" fontWeight={800} sx={{ wordBreak: 'break-all' }}>
+                  <Typography
+                    variant="h6"
+                    fontWeight={800}
+                    sx={{ wordBreak: 'break-all' }}
+                  >
                     {paymentId ? `#${paymentId}` : 'Pago aprobado'}
                   </Typography>
                   <Chip
@@ -1774,7 +1821,11 @@ const CheckoutPage = () => {
                   <Paper
                     key={`${item.productId || item.title}-${index}`}
                     variant="outlined"
-                    sx={{ p: 1.5, borderRadius: 2, bgcolor: 'background.paper' }}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      bgcolor: 'background.paper',
+                    }}
                   >
                     <Stack direction="row" spacing={1.5} alignItems="center">
                       <Avatar
@@ -1793,18 +1844,31 @@ const CheckoutPage = () => {
                           {item.title}
                         </Typography>
 
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          Cantidad: {item.quantity} · {formatMoney(item.unitPrice)} c/u
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          display="block"
+                        >
+                          Cantidad: {item.quantity} ·{' '}
+                          {formatMoney(item.unitPrice)} c/u
                         </Typography>
 
                         {item.variantLabel && (
-                          <Typography variant="caption" color="text.secondary" display="block">
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="block"
+                          >
                             Variante: {item.variantLabel}
                           </Typography>
                         )}
 
                         {item.sku && (
-                          <Typography variant="caption" color="text.secondary" display="block">
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="block"
+                          >
                             SKU: {item.sku}
                           </Typography>
                         )}
@@ -1821,13 +1885,19 @@ const CheckoutPage = () => {
 
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} md={6}>
-                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, height: '100%' }}>
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 2.5, borderRadius: 3, height: '100%' }}
+                >
                   <Typography variant="subtitle1" fontWeight={800} gutterBottom>
                     Datos del comprador
                   </Typography>
 
                   <Typography variant="body2" fontWeight={700}>
-                    {[confirmation.customer.firstName, confirmation.customer.lastName]
+                    {[
+                      confirmation.customer.firstName,
+                      confirmation.customer.lastName,
+                    ]
                       .filter(Boolean)
                       .join(' ') || 'Cliente'}
                   </Typography>
@@ -1847,13 +1917,18 @@ const CheckoutPage = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, height: '100%' }}>
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 2.5, borderRadius: 3, height: '100%' }}
+                >
                   <Typography variant="subtitle1" fontWeight={800} gutterBottom>
                     Resumen de pago
                   </Typography>
 
                   <Stack spacing={1}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Box
+                      sx={{ display: 'flex', justifyContent: 'space-between' }}
+                    >
                       <Typography variant="body2" color="text.secondary">
                         Subtotal
                       </Typography>
@@ -1863,18 +1938,32 @@ const CheckoutPage = () => {
                     </Box>
 
                     {confirmation.totals.discount > 0 && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                        }}
+                      >
                         <Typography variant="body2" color="success.main">
                           Descuento
                         </Typography>
-                        <Typography variant="body2" color="success.main" fontWeight={700}>
+                        <Typography
+                          variant="body2"
+                          color="success.main"
+                          fontWeight={700}
+                        >
                           -{formatMoney(confirmation.totals.discount)}
                         </Typography>
                       </Box>
                     )}
 
                     {confirmation.coupon?.code && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                        }}
+                      >
                         <Typography variant="body2" color="text.secondary">
                           Cupón
                         </Typography>
@@ -1886,7 +1975,9 @@ const CheckoutPage = () => {
 
                     <Divider sx={{ my: 0.5 }} />
 
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Box
+                      sx={{ display: 'flex', justifyContent: 'space-between' }}
+                    >
                       <Typography variant="body1" fontWeight={800}>
                         Total pagado
                       </Typography>
@@ -2014,7 +2105,7 @@ const CheckoutPage = () => {
             sx={{
               alignSelf: 'flex-start',
               textTransform: 'none',
-              color: 'text.secondary',
+              color: 'themeColors.textOnActionPrimary',
             }}
           >
             {activeStep === 0 ? 'Volver al carrito' : 'Paso anterior'}
