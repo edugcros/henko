@@ -1,5 +1,6 @@
 import mongoose from 'mongoose'
 import sanitizeHtml from 'sanitize-html'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const enqSchema = new mongoose.Schema(
   {
@@ -75,6 +76,10 @@ enqSchema.pre('save', function (next) {
     this.name = sanitizeHtml(this.name, sanitizeOptions).trim()
   }
   next()
+})
+
+enqSchema.plugin(tenantPlugin, {
+  addTenantField: false,
 })
 
 const Consultas = mongoose.model('Consultas', enqSchema)

@@ -35,9 +35,11 @@ export const receiveWhatsappWebhook = async (req, res) => {
         'channels.whatsapp.phoneNumberId': message.phoneNumberId,
         enabled: true,
         'channels.whatsapp.enabled': true,
-      }).select(
-        '+channels.whatsapp.accessToken +channels.whatsapp.verifyToken +channels.whatsapp.appSecret',
-      )
+      })
+        .select(
+          '+channels.whatsapp.accessToken +channels.whatsapp.verifyToken +channels.whatsapp.appSecret',
+        )
+        .setOptions({ ignoreTenant: true })
 
       if (!agent) continue
 

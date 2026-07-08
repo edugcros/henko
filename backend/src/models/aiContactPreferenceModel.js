@@ -1,5 +1,6 @@
 // 📁 src/models/aiContactPreferenceModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -95,6 +96,10 @@ aiContactPreferenceSchema.index(
 )
 aiContactPreferenceSchema.index({ tenantId: 1, channel: 1, optedOut: 1 })
 aiContactPreferenceSchema.index({ tenantId: 1, channel: 1, marketingConsent: 1 })
+
+aiContactPreferenceSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AiContactPreference =
   mongoose.models.AiContactPreference ||

@@ -1,5 +1,6 @@
 // 📁 src/models/aiLeadModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -321,6 +322,10 @@ aiLeadSchema.index(
     },
   },
 )
+
+aiLeadSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AiLead = mongoose.models.AiLead || mongoose.model('AiLead', aiLeadSchema)
 

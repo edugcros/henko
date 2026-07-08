@@ -1,5 +1,6 @@
 // 📁 src/models/aiCampaignRuleModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -71,6 +72,10 @@ const aiCampaignRuleSchema = new Schema(
 
 aiCampaignRuleSchema.index({ tenantId: 1, type: 1, enabled: 1 })
 aiCampaignRuleSchema.index({ tenantId: 1, channel: 1, enabled: 1 })
+
+aiCampaignRuleSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AiCampaignRule =
   mongoose.models.AiCampaignRule ||

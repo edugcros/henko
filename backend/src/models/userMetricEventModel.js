@@ -1,5 +1,6 @@
 // 📁 src/models/userMetricEventModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -458,6 +459,10 @@ userMetricEventSchema.index(
     },
   },
 )
+
+userMetricEventSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const UserMetricEvent =
   mongoose.models.UserMetricEvent ||

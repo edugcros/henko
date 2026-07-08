@@ -1,5 +1,6 @@
 // 📁 src/models/correctionLog.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 export const AI_LEARNING_RULE_TYPES = Object.freeze([
   'category',
@@ -215,6 +216,10 @@ correctionLogSchema.index({ tenantId: 1, imageHash: 1, createdAt: -1 })
 correctionLogSchema.index({ tenantId: 1, promotedToPreference: 1, createdAt: -1 })
 correctionLogSchema.index({ tenantId: 1, 'learnedRules.type': 1, createdAt: -1 })
 correctionLogSchema.index({ tenantId: 1, 'learnedRules.field': 1, createdAt: -1 })
+
+correctionLogSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const CorrectionLog =
   mongoose.models.CorrectionLog || mongoose.model('CorrectionLog', correctionLogSchema)

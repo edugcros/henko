@@ -2,6 +2,7 @@
 // VERSIÓN PRODUCCIÓN - MULTI-TENANT / VARIANTES / SNAPSHOTS DE PRECIO
 
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -635,6 +636,10 @@ cartSchema.index({ tenantId: 1, updatedAt: -1 })
 cartSchema.index({ 'products.productId': 1, 'products.variantId': 1 })
 cartSchema.index({ 'products.cartKey': 1 })
 cartSchema.index({ 'products.promotionId': 1 })
+
+cartSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const Cart = mongoose.model('Cart', cartSchema)
 export default Cart

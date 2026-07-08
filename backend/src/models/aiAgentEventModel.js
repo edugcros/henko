@@ -1,5 +1,6 @@
 // 📁 src/models/aiAgentEventModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -463,6 +464,10 @@ aiAgentEventSchema.index(
     },
   },
 )
+
+aiAgentEventSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AiAgentEvent =
   mongoose.models.AiAgentEvent ||

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -71,6 +72,10 @@ wishlistPromotionNotificationSchema.index(
   { tenantId: 1, userId: 1, productId: 1, promotionId: 1 },
   { unique: true },
 )
+
+wishlistPromotionNotificationSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 export default mongoose.model(
   'WishlistPromotionNotification',

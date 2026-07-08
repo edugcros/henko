@@ -1,5 +1,6 @@
 // 📁 src/models/aiKnowledgeModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
@@ -45,6 +46,10 @@ const aiKnowledgeSchema = new Schema(
 
 aiKnowledgeSchema.index({ tenantId: 1, type: 1, status: 1 })
 aiKnowledgeSchema.index({ tenantId: 1, title: 'text', content: 'text', tags: 'text' })
+
+aiKnowledgeSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const AiKnowledge = mongoose.models.AiKnowledge || mongoose.model('AiKnowledge', aiKnowledgeSchema)
 export default AiKnowledge

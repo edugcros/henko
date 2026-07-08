@@ -1,5 +1,6 @@
 // 📁 src/models/productAnalysisJobModel.js
 import mongoose from 'mongoose'
+import { tenantPlugin } from './tenantPlugin.js'
 
 export const PRODUCT_ANALYSIS_JOB_STATUS = Object.freeze({
   PENDING: 'pending',
@@ -229,6 +230,10 @@ productAnalysisJobSchema.index({ tenantId: 1, status: 1, scheduledAt: 1 })
 productAnalysisJobSchema.index({ tenantId: 1, isHidden: 1, createdAt: -1 })
 productAnalysisJobSchema.index({ tenantId: 1, createdProductId: 1 })
 productAnalysisJobSchema.index({ status: 1, processingLeaseExpiresAt: 1 })
+
+productAnalysisJobSchema.plugin(tenantPlugin, {
+  addTenantField: false,
+})
 
 const ProductAnalysisJob =
   mongoose.models.ProductAnalysisJob ||
