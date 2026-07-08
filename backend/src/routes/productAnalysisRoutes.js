@@ -28,6 +28,11 @@ import {
   requireTenant,
   resolveTenantByDomain,
 } from '../middlewares/tenantMiddleware.js'
+import {
+  ALLOWED_IMAGE_MIME_TYPES,
+  ALLOWED_IMAGE_SHARP_FORMATS,
+  MAX_IMAGE_UPLOAD_BYTES,
+} from '../../config/imageUploadPolicy.js'
 
 const router = express.Router()
 
@@ -162,18 +167,10 @@ const analysisWriteLimiter = rateLimit({
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024,
+    fileSize: MAX_IMAGE_UPLOAD_BYTES,
   },
   fileFilter: (req, file, cb) => {
-    const allowedMimeTypes = [
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-      'image/heic',
-      'image/heif',
-    ]
-
-    if (!allowedMimeTypes.includes(file.mimetype)) {
+    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.mimetype)) {
       return cb(new Error('Formato de imagen no permitido'))
     }
 
@@ -189,7 +186,7 @@ const validateUploadedImage = async (req, res, next) => {
       failOn: 'error',
       limitInputPixels: 40_000_000,
     }).metadata()
-    const allowedFormats = new Set(['jpeg', 'png', 'webp', 'heif'])
+    const allowedFormats = new Set(ALLOWED_IMAGE_SHARP_FORMATS)
 
     if (!allowedFormats.has(metadata.format)) {
       return res.status(400).json({
