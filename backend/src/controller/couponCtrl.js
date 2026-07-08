@@ -8,6 +8,7 @@ import Product from '../models/productModel.js'
 import Cart from '../models/cartModel.js'
 import CouponUsage from '../models/CouponUsageModel.js'
 import { resolveCartPricing } from '../services/cartPricingService.js'
+import { escapeRegex } from '../utils/escapeRegex.js'
 import {
   getUserIdFromRequest,
   isValidObjectId,
@@ -43,8 +44,6 @@ const sanitizeString = (value, fallback = '') => {
   const clean = value.trim()
   return clean || fallback
 }
-
-const escapeRegex = value => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const toSafePage = value => {
   const parsed = Number(value)
