@@ -3,10 +3,13 @@
 import multer from 'multer'
 import sharp from 'sharp'
 import logger from '../../config/logger.js'
+import {
+  ALLOWED_IMAGE_MIME_TYPES,
+  MAX_IMAGE_UPLOAD_BYTES,
+} from '../../config/imageUploadPolicy.js'
 
-const MAX_SIZE_MB = Number(process.env.MAX_IMAGE_MB || 5)
-const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
+const MAX_SIZE_BYTES = MAX_IMAGE_UPLOAD_BYTES
+const ALLOWED_MIME = new Set(ALLOWED_IMAGE_MIME_TYPES)
 
 const sanitizeName = name => {
   const base = String(name || 'image').toLowerCase()
@@ -21,7 +24,7 @@ const storage = multer.memoryStorage()
 
 const fileFilter = (_req, file, cb) => {
   if (!ALLOWED_MIME.has(file.mimetype)) {
-    return cb(new Error('Formato no permitido (jpg, png, webp, avif)'))
+    return cb(new Error('Formato no permitido (jpg, png, webp, avif, heic, heif)'))
   }
   cb(null, true)
 }

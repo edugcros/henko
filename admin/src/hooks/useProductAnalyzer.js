@@ -1,16 +1,10 @@
 // 📁 src/hooks/useProductAnalyzer.js
 import { useState, useCallback } from 'react'
 import api from '@utils/axiosConfig'
-
-const MAX_IMAGE_SIZE_MB = 8
-
-const SUPPORTED_IMAGE_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-]
+import {
+  MAX_IMAGE_SIZE_MB,
+  SUPPORTED_IMAGE_TYPES,
+} from '../constants/imageUpload'
 
 const detectType = value => {
   if (typeof value === 'number') return 'number'
