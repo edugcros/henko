@@ -4,9 +4,10 @@ import Order, {
   PAYMENT_STATUS,
   REFUND_STATUS,
 } from '../models/orderModel.js'
+import Cart from '../models/cartModel.js'
 import { Money } from '../utils/money.js'
 import { toObjectId } from '../utils/requestContext.js'
-import { validateCartBelongsToTenant } from './paymentOrderOpsService.js'
+import { calculateCartLines, validateCartOwnership } from './orderCartService.js'
 import { normalizeMpStatus } from './paymentMercadoPagoService.js'
 
 const sanitizeString = (value, fallback = '') => {
@@ -16,13 +17,6 @@ const sanitizeString = (value, fallback = '') => {
 }
 
 const normalizeEmail = value => sanitizeString(value).toLowerCase()
-
-const extractImageUrl = image => {
-  if (!image) return null
-  if (typeof image === 'string') return image
-  if (typeof image === 'object') return image.url || image.secure_url || null
-  return null
-}
 
 const canApplyPaymentTransition = (currentStatus, nextStatus) => {
   if (!currentStatus || currentStatus === nextStatus) return true
@@ -49,45 +43,32 @@ export const createOrderFromCart = async ({
   tenantId,
   shippingAddress = {},
 }) => {
-  const cart = await validateCartBelongsToTenant(cartId, userId, tenantId)
+  const cart = await Cart.findOne({
+    _id: toObjectId(cartId),
+    userId: toObjectId(userId),
+    tenantId: toObjectId(tenantId),
+  })
 
-  let subtotalCents = 0
-  const orderProducts = []
+  validateCartOwnership({ cart, userId, tenantId })
 
-  for (const item of cart.products) {
-    const product = item.productId
-    const priceCents = Money.fromDecimal(product.price)
-    const itemSubtotal = Money.multiply(priceCents, item.quantity)
-
-    subtotalCents += itemSubtotal
-
-    orderProducts.push({
-      product: product._id,
-      count: item.quantity,
-      priceCents,
-      subtotalCents: itemSubtotal,
-      titleSnapshot: product.title,
-      imageSnapshot: extractImageUrl(product.images?.[0]),
-      tenantId: toObjectId(tenantId),
-      originalPriceCents: priceCents,
-      originalSubtotalCents: itemSubtotal,
-      discountPercentage: 0,
-      currency: cart.currency || product.currency || 'ARS',
-    })
-  }
+  const { lines, subtotalCents, currency } = await calculateCartLines({
+    cart,
+    tenantId,
+    money: Money,
+  })
 
   const order = new Order({
     tenantId: toObjectId(tenantId),
     idempotencyKey: crypto.randomUUID(),
     orderby: toObjectId(userId),
 
-    products: orderProducts,
+    products: lines,
 
     paymentIntent: {
       id: crypto.randomUUID(),
       provider: 'mercadopago',
       status: PAYMENT_STATUS.PENDING,
-      currency: cart.currency || 'ARS',
+      currency,
       amountCents: subtotalCents,
       originalAmountCents: subtotalCents,
       discountAmountCents: 0,
