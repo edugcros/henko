@@ -1,5 +1,6 @@
 import Coupon from '../models/couponModel.js'
 import CouponUsage from '../models/CouponUsageModel.js'
+import logger from '../../config/logger.js'
 
 const sanitizeString = (value, fallback = '') => {
   if (typeof value !== 'string') return fallback
@@ -246,4 +247,95 @@ export const createCouponUsageRecord = async ({
   )
 
   return usage
+}
+
+/**
+ * Consume el cupón de una orden pagada con Mercado Pago recién al momento en
+ * que el pago queda aprobado (no al crear la orden, a diferencia de COD),
+ * para no agotar cupones con pagos rechazados/abandonados.
+ *
+ * Idempotente ante reintentos/webhooks duplicados: primero intenta crear el
+ * `CouponUsage` (protegido por el índice único `{tenantId, order}`) y solo si
+ * eso tiene éxito incrementa `usageCount` — así una segunda ejecución para la
+ * misma orden nunca incrementa el contador dos veces, aunque corra en
+ * paralelo bajo un lock distinto (processPayment/webhook/reconciliación usan
+ * llaves de lock independientes entre sí).
+ *
+ * Si el cupón ya no es válido al momento de la aprobación (por ejemplo, se
+ * agotó/expiró mientras el pago estaba pending), no revierte ni rechaza el
+ * pago: el cobro ya fue aprobado por Mercado Pago y el monto cobrado ya
+ * refleja el descuento acordado al crear la orden. Solo se loguea como error
+ * para seguimiento manual — el peor caso es un cupón sub-contado, no una
+ * reutilización indebida.
+ */
+export const consumeOrderCouponIfNeeded = async ({
+  order,
+  tenantId,
+  userId,
+  req,
+}) => {
+  const couponId = order.coupon?.couponId
+
+  if (!couponId || order.couponConsumedAt) return null
+
+  const couponDoc = await Coupon.findOne({ _id: couponId, tenantId }).setOptions({
+    tenantId,
+  })
+
+  if (!couponDoc) {
+    logger.warn('⚠️ Cupón de la orden ya no existe al confirmar el pago de Mercado Pago', {
+      orderId: order._id?.toString?.(),
+      couponId: String(couponId),
+      tenantId: String(tenantId),
+    })
+
+    order.couponConsumedAt = new Date()
+    return null
+  }
+
+  try {
+    await createCouponUsageRecord({
+      coupon: couponDoc,
+      order,
+      lines: order.products,
+      userId,
+      tenantId,
+      subtotalCents: order.paymentIntent?.originalAmountCents || 0,
+      discountCents: order.paymentIntent?.discountAmountCents || 0,
+      finalCents: order.paymentIntent?.amountCents || 0,
+      currency: order.paymentIntent?.currency,
+      req,
+    })
+  } catch (usageError) {
+    if (usageError?.code === 11000) {
+      logger.info(
+        'Cupón ya registrado como usado para esta orden, se omite doble consumo',
+        {
+          orderId: order._id?.toString?.(),
+          couponId: String(couponId),
+        },
+      )
+
+      order.couponConsumedAt = new Date()
+      return null
+    }
+
+    throw usageError
+  }
+
+  try {
+    await consumeCouponAtomic({ coupon: couponDoc, tenantId })
+  } catch (limitError) {
+    logger.error(
+      '❌ No se pudo incrementar el contador de uso del cupón al aprobar el pago (el pago ya fue cobrado, no se revierte)',
+      {
+        orderId: order._id?.toString?.(),
+        couponId: String(couponId),
+        message: limitError?.message,
+      },
+    )
+  }
+
+  order.couponConsumedAt = new Date()
+  return couponDoc
 }

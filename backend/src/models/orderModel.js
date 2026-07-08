@@ -680,6 +680,12 @@ const orderSchema = new Schema(
     },
 
     coupon: {
+      couponId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Coupon',
+        default: null,
+      },
+
       code: {
         type: String,
         trim: true,
@@ -797,6 +803,11 @@ const orderSchema = new Schema(
     },
 
     stockReservedAt: {
+      type: Date,
+      default: null,
+    },
+
+    couponConsumedAt: {
       type: Date,
       default: null,
     },
