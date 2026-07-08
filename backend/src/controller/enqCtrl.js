@@ -7,6 +7,7 @@ import {
   getTenantIdFromRequest,
   isValidObjectId,
 } from '../utils/requestContext.js'
+import { escapeRegex } from '../utils/escapeRegex.js'
 import logger from '../../config/logger.js'
 
 // 🔴 HELPER: Verificar si el usuario tiene acceso al tenant
@@ -154,10 +155,11 @@ export const getAllEnquiries = asyncHandler(async (req, res) => {
   // Filtros opcionales adicionales
   if (req.query.status) filter.status = req.query.status
   if (req.query.q) {
+    const safeRegex = escapeRegex(req.query.q)
     filter.$or = [
-      { name: { $regex: req.query.q, $options: 'i' } },
-      { email: { $regex: req.query.q, $options: 'i' } },
-      { comment: { $regex: req.query.q, $options: 'i' } },
+      { name: { $regex: safeRegex, $options: 'i' } },
+      { email: { $regex: safeRegex, $options: 'i' } },
+      { comment: { $regex: safeRegex, $options: 'i' } },
     ]
   }
 

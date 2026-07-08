@@ -2,6 +2,7 @@
 // VERSIÓN PRODUCCIÓN - MULTI-TENANT / MARKET READY / VARIANTES / IMÁGENES / RATINGS
 
 import Product from '../models/productModel.js'
+import { escapeRegex } from '../utils/escapeRegex.js'
 import User from '../models/userModel.js'
 import Cart from '../models/cartModel.js'
 import Coupon from '../models/couponModel.js'
@@ -601,8 +602,6 @@ const buildMarketFilterMatch = filters => {
     })),
   }
 }
-
-const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const normalizeVariantFilterKey = value => {
   return String(value || '')

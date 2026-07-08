@@ -16,6 +16,7 @@ import {
   resolveAuthorizedTenantFromRequest,
   toObjectId,
 } from '../utils/requestContext.js'
+import { escapeRegex } from '../utils/escapeRegex.js'
 import logger from '../../config/logger.js'
 import * as aiVisionService from '../services/aiVisionService.js'
 import { registerVisualFeedback } from '../services/aiLearningService.js'
@@ -1421,12 +1422,13 @@ export const listAnalysisJobs = asyncHandler(async (req, res) => {
   }
 
   if (search) {
+    const safeRegex = escapeRegex(search)
     filter.$and.push({
       $or: [
-        { originalFilename: { $regex: search, $options: 'i' } },
-        { 'analysis.titulo': { $regex: search, $options: 'i' } },
-        { 'analysis.categoria': { $regex: search, $options: 'i' } },
-        { 'analysis.marca': { $regex: search, $options: 'i' } },
+        { originalFilename: { $regex: safeRegex, $options: 'i' } },
+        { 'analysis.titulo': { $regex: safeRegex, $options: 'i' } },
+        { 'analysis.categoria': { $regex: safeRegex, $options: 'i' } },
+        { 'analysis.marca': { $regex: safeRegex, $options: 'i' } },
       ],
     })
   }
