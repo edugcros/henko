@@ -125,7 +125,7 @@
     "imagemin-mozjpeg": "^10.0.0",
     "imagemin-optipng": "^8.0.0",
     "imagemin-pngquant": "^10.0.0",
-    "imagemin-svgo": "^11.0.1",
+    "imagemin-svgo": "^12.0.0",
     "imagemin-webp": "^8.0.0",
     "jest": "^27.5.1",
     "jest-environment-jsdom": "^29.7.0",
@@ -139,6 +139,6 @@
     "terser-webpack-plugin": "^5.3.14",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1",
-    "webpack-dev-server": "^5.2.0"
+    "webpack-dev-server": "^5.2.6"
   }
 }
