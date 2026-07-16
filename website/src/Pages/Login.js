@@ -1,5 +1,5 @@
 // 📁 src/pages/Login.js
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useFormik } from 'formik'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link, useNavigate } from 'react-router-dom'
@@ -20,7 +20,8 @@ import {
   setCsrfToken,
 } from '@features/user/userSlice.js'
 import { fetchCsrfToken } from '@utils/axiosConfig'
-import { Newprimary } from '../theme/colors'
+import { useTenant } from '../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 import { useState } from 'react'
 
 // Esquema de validación
@@ -36,6 +37,11 @@ const Login = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const { themeConfig } = useTenant()
+  const themeColors = useMemo(
+    () => getThemeColors(themeConfig || {}),
+    [themeConfig],
+  )
 
   // Extraemos el estado global de Redux
   const { user, token, isError, isSuccess, message } = useSelector(
@@ -83,7 +89,7 @@ const Login = () => {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        background: 'linear-gradient(to bottom, #f5f5f5, #b0b0b0)',
+        background: themeColors.background,
       }}
     >
       <Card
@@ -91,6 +97,7 @@ const Login = () => {
           width: 380,
           borderRadius: 4,
           boxShadow: '0 6px 20px rgba(0,0,0,0.15)',
+          bgcolor: themeColors.surface,
         }}
       >
         <CardContent sx={{ p: 4 }}>
@@ -134,7 +141,7 @@ const Login = () => {
                 to="/forgot-password"
                 style={{
                   textDecoration: 'none',
-                  color: Newprimary.darkCyan,
+                  color: themeColors.actionPrimary,
                   fontSize: 14,
                 }}
               >
@@ -147,14 +154,15 @@ const Login = () => {
               fullWidth
               variant="contained"
               sx={{
-                backgroundColor: Newprimary.darkCyan,
-                color: '#fff',
+                backgroundColor: themeColors.actionPrimary,
+                color: themeColors.actionPrimaryText,
                 fontWeight: 600,
                 py: 1.2,
                 borderRadius: 2,
                 mt: 1,
                 '&:hover': {
-                  backgroundColor: '#056178',
+                  backgroundColor: themeColors.actionPrimary,
+                  filter: 'brightness(0.92)',
                 },
               }}
               disabled={isSubmitting}
@@ -184,7 +192,7 @@ const Login = () => {
                 to="/signup"
                 style={{
                   textDecoration: 'none',
-                  color: Newprimary.darkCyan,
+                  color: themeColors.actionPrimary,
                   fontWeight: 600,
                 }}
               >

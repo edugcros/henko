@@ -1,15 +1,30 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  CircularProgress,
+} from '@mui/material'
 import { requestPasswordReset, clearState } from '@features/user/userSlice'
 import Container from '@components/Container'
-import CustomInput from '@components/CustomInput'
+import { useTenant } from '../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const ForgotPassword = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
+  const { themeConfig } = useTenant()
+  const themeColors = useMemo(
+    () => getThemeColors(themeConfig || {}),
+    [themeConfig],
+  )
 
   const { isLoading, isError, isSuccess, message } = useSelector(
     state => state.user,
@@ -65,43 +80,104 @@ const ForgotPassword = () => {
   }
 
   return (
-    <Container class1="login-wrapper py-5 home-wrapper-2">
-      <div className="row">
-        <div className="col-12">
-          <div className="auth-card">
-            <h3 className="text-center mb-3">Restablecer Contraseña</h3>
+    <Container>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          bgcolor: themeColors.background,
+          py: 5,
+        }}
+      >
+        <Card
+          sx={{
+            width: '100%',
+            maxWidth: 500,
+            borderRadius: 3,
+            bgcolor: themeColors.surface,
+          }}
+        >
+          <CardContent sx={{ p: 4 }}>
+            <Typography
+              variant="h6"
+              align="center"
+              sx={{ mb: 1, color: themeColors.text }}
+            >
+              Restablecer Contraseña
+            </Typography>
 
-            <p className="text-center mt-2 mb-3">
+            <Typography
+              variant="body2"
+              align="center"
+              sx={{ mb: 3, color: themeColors.mutedText }}
+            >
               Ingresa tu correo electrónico para enviarte un enlace de
               recuperación.
-            </p>
+            </Typography>
 
-            <form onSubmit={handleSubmit} className="d-flex flex-column gap-15">
-              <CustomInput
+            <form onSubmit={handleSubmit} noValidate>
+              <TextField
+                fullWidth
                 type="email"
                 name="email"
-                placeholder="Correo electrónico"
+                label="Correo electrónico"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 autoComplete="email"
                 disabled={isLoading}
+                variant="outlined"
+                sx={{ mb: 3 }}
               />
 
-              <div className="mt-3 d-flex justify-content-center flex-column gap-15 align-items-center">
-                <button
-                  className="button border-0"
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                }}
+              >
+                <Button
                   type="submit"
+                  fullWidth
+                  variant="contained"
                   disabled={isLoading}
+                  sx={{
+                    backgroundColor: themeColors.actionPrimary,
+                    color: themeColors.actionPrimaryText,
+                    fontWeight: 600,
+                    py: 1.2,
+                    '&:hover': {
+                      backgroundColor: themeColors.actionPrimary,
+                      filter: 'brightness(0.92)',
+                    },
+                  }}
                 >
-                  {isLoading ? 'Enviando...' : 'Enviar'}
-                </button>
+                  {isLoading ? (
+                    <CircularProgress
+                      size={24}
+                      sx={{ color: themeColors.actionPrimaryText }}
+                    />
+                  ) : (
+                    'Enviar'
+                  )}
+                </Button>
 
-                <Link to="/login">Cancelar</Link>
-              </div>
+                <Link
+                  to="/login"
+                  style={{
+                    textDecoration: 'none',
+                    color: themeColors.actionPrimary,
+                    fontSize: 14,
+                  }}
+                >
+                  Cancelar
+                </Link>
+              </Box>
             </form>
-          </div>
-        </div>
-      </div>
+          </CardContent>
+        </Card>
+      </Box>
     </Container>
   )
 }

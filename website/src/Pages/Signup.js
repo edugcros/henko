@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useFormik } from 'formik'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, Link } from 'react-router-dom'
@@ -18,6 +18,8 @@ import {
 import Meta from '@components/Meta'
 import BreadCrumb from '@components/BreadCrumb'
 import { registerUser, clearState } from '@features/user/userSlice'
+import { useTenant } from '../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const validationSchema = yup.object({
   firstname: yup.string().required('El nombre es obligatorio'),
@@ -34,6 +36,11 @@ const Signup = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { isSuccess, isError, message } = useSelector(state => state.user || {})
+  const { themeConfig } = useTenant()
+  const themeColors = useMemo(
+    () => getThemeColors(themeConfig || {}),
+    [themeConfig],
+  )
 
   useEffect(() => {
     dispatch(clearState())
@@ -77,7 +84,7 @@ const Signup = () => {
       <Box
         sx={{
           minHeight: '100vh',
-          background: 'linear-gradient(to bottom, #f5f5f5, #1a1a1a)',
+          background: themeColors.background,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -90,7 +97,7 @@ const Signup = () => {
             sx={{
               p: 4,
               borderRadius: 3,
-              backgroundColor: '#fff',
+              backgroundColor: themeColors.surface,
             }}
           >
             <Typography
@@ -231,16 +238,22 @@ const Signup = () => {
                   fullWidth
                   variant="contained"
                   sx={{
-                    backgroundColor: '#ffd333',
-                    color: '#000',
+                    backgroundColor: themeColors.actionPrimary,
+                    color: themeColors.actionPrimaryText,
                     fontWeight: 600,
-                    '&:hover': { backgroundColor: '#ffcc00' },
+                    '&:hover': {
+                      backgroundColor: themeColors.actionPrimary,
+                      filter: 'brightness(0.92)',
+                    },
                     py: 1.2,
                     borderRadius: 2,
                   }}
                 >
                   {formik.isSubmitting ? (
-                    <CircularProgress size={24} sx={{ color: '#000' }} />
+                    <CircularProgress
+                      size={24}
+                      sx={{ color: themeColors.actionPrimaryText }}
+                    />
                   ) : (
                     'Registrarse'
                   )}
@@ -255,7 +268,10 @@ const Signup = () => {
                   ¿Ya tenés cuenta?{' '}
                   <Link
                     to="/login"
-                    style={{ textDecoration: 'none', color: '#1976d2' }}
+                    style={{
+                      textDecoration: 'none',
+                      color: themeColors.actionPrimary,
+                    }}
                   >
                     Iniciar sesión
                   </Link>
