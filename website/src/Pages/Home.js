@@ -930,7 +930,7 @@ const Home = () => {
             sx={{
               fontWeight: 850,
               textTransform: 'none',
-              color: themeColors.textOnActionPrimary,
+              color: themeColors.actionPrimaryText,
               borderRadius: 999,
               px: 1.5,
               minWidth: 'auto',

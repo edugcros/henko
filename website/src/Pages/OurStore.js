@@ -853,7 +853,7 @@ const OurStore = () => {
                   onClick={() => setShowAllCategories(prev => !prev)}
                   sx={{
                     mt: 1.5,
-                    color: themeColors.textOnActionPrimary,
+                    color: themeColors.actionPrimaryText,
                     textTransform: 'none',
                     fontWeight: 700,
                     fontSize: 16,
