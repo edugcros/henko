@@ -56,7 +56,7 @@ import {
   trackUserMetric,
   USER_METRIC_EVENTS,
 } from '../services/userMetricsService'
-import { Newprimary } from '../theme/colors'
+import { getActiveThemeConfig, getThemeColors } from '@utils/themeRuntime'
 
 // ======================================================
 // CONSTANTES
@@ -664,6 +664,16 @@ const CheckoutPage = () => {
   const userState = useSelector(state => state.user || {})
   const orderState = useSelector(state => state.order || {})
   const paymentState = useSelector(state => state.payment || {})
+  const themeState = useSelector(state => state.theme) || {}
+
+  const activeThemeConfig = useMemo(
+    () => getActiveThemeConfig(themeState),
+    [themeState],
+  )
+  const themeColors = useMemo(
+    () => getThemeColors(activeThemeConfig),
+    [activeThemeConfig],
+  )
 
   const { currentOrder, isLoading: orderLoading } = orderState
 
@@ -1687,7 +1697,7 @@ const CheckoutPage = () => {
         <>
           {nominalLabel}
           {validDiscount > 0 && (
-            <span style={{ color: '#2e7d32', fontWeight: 600 }}>
+            <span style={{ color: themeColors.success, fontWeight: 600 }}>
               {' '}
               → Ahorro: {formatMoney(validDiscount)}
             </span>
@@ -1699,11 +1709,17 @@ const CheckoutPage = () => {
     return (
       <>
         {nominalLabel}
-        <span style={{ color: '#2e7d32', fontWeight: 600 }}>
+        <span style={{ color: themeColors.success, fontWeight: 600 }}>
           {' '}
           → Aplicado: {formatMoney(validDiscount)}
         </span>
-        <span style={{ display: 'block', color: '#6b7280', marginTop: 2 }}>
+        <span
+          style={{
+            display: 'block',
+            color: themeColors.mutedText,
+            marginTop: 2,
+          }}
+        >
           Se aplicó hasta cubrir el subtotal del producto.
         </span>
       </>
@@ -2000,7 +2016,15 @@ const CheckoutPage = () => {
               variant="contained"
               size="large"
               onClick={handleResetAndGoHome}
-              sx={{ bgcolor: '#FFD814', color: '#000', fontWeight: 800 }}
+              sx={{
+                bgcolor: themeColors.actionPrimary,
+                color: themeColors.actionPrimaryText,
+                fontWeight: 800,
+                '&:hover': {
+                  bgcolor: themeColors.actionPrimary,
+                  filter: 'brightness(0.92)',
+                },
+              }}
             >
               Volver al inicio
             </Button>
@@ -2030,7 +2054,15 @@ const CheckoutPage = () => {
           component={Link}
           to="/product"
           size="large"
-          sx={{ bgcolor: '#FFD814', color: '#000', fontWeight: 700 }}
+          sx={{
+            bgcolor: themeColors.actionPrimary,
+            color: themeColors.actionPrimaryText,
+            fontWeight: 700,
+            '&:hover': {
+              bgcolor: themeColors.actionPrimary,
+              filter: 'brightness(0.92)',
+            },
+          }}
         >
           Explorar productos
         </Button>
@@ -2043,7 +2075,7 @@ const CheckoutPage = () => {
   // ======================================================
 
   return (
-    <Box sx={{ bgcolor: '#fff', minHeight: '100vh' }}>
+    <Box sx={{ bgcolor: themeColors.background, minHeight: '100vh' }}>
       <Backdrop
         open={orderLoading || paymentLoading || isLoading}
         sx={{ color: '#fff', zIndex: theme => theme.zIndex.drawer + 1 }}
@@ -2104,8 +2136,7 @@ const CheckoutPage = () => {
             startIcon={<ArrowBackIos fontSize="small" />}
             sx={{
               alignSelf: 'flex-start',
-              textTransform: 'none',
-              color: 'themeColors.textOnActionPrimary',
+              color: themeColors.actionPrimaryText,
             }}
           >
             {activeStep === 0 ? 'Volver al carrito' : 'Paso anterior'}
@@ -2443,10 +2474,13 @@ const CheckoutPage = () => {
                       sx={{
                         py: 1.5,
                         px: 4,
-                        bgcolor: '#FFD814',
-                        color: '#000',
+                        bgcolor: themeColors.actionPrimary,
+                        color: themeColors.actionPrimaryText,
                         fontWeight: 700,
-                        '&:hover': { bgcolor: '#F7CA00' },
+                        '&:hover': {
+                          bgcolor: themeColors.actionPrimary,
+                          filter: 'brightness(0.92)',
+                        },
                       }}
                     >
                       Continuar a Entrega
@@ -2574,10 +2608,13 @@ const CheckoutPage = () => {
                     sx={{
                       mt: 4,
                       py: 2,
-                      bgcolor: '#FFD814',
-                      color: '#000',
+                      bgcolor: themeColors.actionPrimary,
+                      color: themeColors.actionPrimaryText,
                       fontWeight: 700,
-                      '&:hover': { bgcolor: '#F7CA00' },
+                      '&:hover': {
+                        bgcolor: themeColors.actionPrimary,
+                        filter: 'brightness(0.92)',
+                      },
                       '&.Mui-disabled': {
                         bgcolor: 'grey.300',
                         color: 'grey.600',
@@ -2600,7 +2637,6 @@ const CheckoutPage = () => {
                     sx={{
                       mb: 3,
                       color: 'text.secondary',
-                      textTransform: 'none',
                     }}
                   >
                     Volver a datos de entrega
@@ -2622,7 +2658,7 @@ const CheckoutPage = () => {
                       sx={{
                         p: { xs: 2, md: 4 },
                         borderRadius: 3,
-                        bgcolor: '#f8f9fa',
+                        bgcolor: themeColors.surface,
                       }}
                     >
                       {mpInitError ? (
@@ -2875,7 +2911,7 @@ const CheckoutPage = () => {
                     <Typography
                       variant="h5"
                       fontWeight={800}
-                      color={Newprimary.darkBlueGray}
+                      color={themeColors.price}
                     >
                       {formatMoney(total)}
                     </Typography>
@@ -3026,14 +3062,21 @@ const CheckoutPage = () => {
                         onClick={handleApplyCoupon}
                         disabled={!couponInput.trim() || couponState.isLoading}
                         sx={{
-                          bgcolor: '#FFD814',
-                          color: '#000',
+                          bgcolor: themeColors.actionPrimary,
+                          color: themeColors.actionPrimaryText,
                           fontWeight: 700,
                           py: 1,
+                          '&:hover': {
+                            bgcolor: themeColors.actionPrimary,
+                            filter: 'brightness(0.92)',
+                          },
                         }}
                       >
                         {couponState.isLoading ? (
-                          <CircularProgress size={20} sx={{ color: '#000' }} />
+                          <CircularProgress
+                            size={20}
+                            sx={{ color: themeColors.actionPrimaryText }}
+                          />
                         ) : (
                           'Aplicar Cupón'
                         )}
