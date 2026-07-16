@@ -2136,7 +2136,7 @@ const CheckoutPage = () => {
             startIcon={<ArrowBackIos fontSize="small" />}
             sx={{
               alignSelf: 'flex-start',
-              color: themeColors.actionPrimaryText,
+              color: themeColors.actionPrimary,
             }}
           >
             {activeStep === 0 ? 'Volver al carrito' : 'Paso anterior'}
