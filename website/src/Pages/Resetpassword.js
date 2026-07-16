@@ -1,10 +1,20 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  CircularProgress,
+} from '@mui/material'
 import { resetPassword, clearState } from '@features/user/userSlice'
 import Container from '@components/Container'
-import CustomInput from '@components/CustomInput'
+import { useTenant } from '../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const ResetPassword = () => {
   const dispatch = useDispatch()
@@ -13,6 +23,11 @@ const ResetPassword = () => {
   console.log(token)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const { themeConfig } = useTenant()
+  const themeColors = useMemo(
+    () => getThemeColors(themeConfig || {}),
+    [themeConfig],
+  )
 
   const { isLoading, isError, isSuccess, message } = useSelector(
     state => state.user,
@@ -48,39 +63,85 @@ const ResetPassword = () => {
   }, [isError, isSuccess, message, dispatch, navigate])
 
   return (
-    <Container class1="login-wrapper py-5 home-wrapper-2">
-      <div className="row">
-        <div className="col-12">
-          <div className="auth-card">
-            <h3 className="text-center mb-3">Restablecer Contraseña</h3>
-            <form onSubmit={handleSubmit} className="d-flex flex-column gap-15">
-              <CustomInput
+    <Container>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          bgcolor: themeColors.background,
+          py: 5,
+        }}
+      >
+        <Card
+          sx={{
+            width: '100%',
+            maxWidth: 500,
+            borderRadius: 3,
+            bgcolor: themeColors.surface,
+          }}
+        >
+          <CardContent sx={{ p: 4 }}>
+            <Typography
+              variant="h6"
+              align="center"
+              sx={{ mb: 3, color: themeColors.text }}
+            >
+              Restablecer Contraseña
+            </Typography>
+
+            <form onSubmit={handleSubmit} noValidate>
+              <TextField
+                fullWidth
                 type="password"
                 name="password"
-                placeholder="Nueva Contraseña"
+                label="Nueva Contraseña"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                variant="outlined"
+                sx={{ mb: 2 }}
               />
-              <CustomInput
+              <TextField
+                fullWidth
                 type="password"
                 name="confirmPassword"
-                placeholder="Confirmar Contraseña"
+                label="Confirmar Contraseña"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
+                variant="outlined"
+                sx={{ mb: 3 }}
               />
-              <div className="mt-3 d-flex justify-content-center flex-column gap-15 align-items-center">
-                <button
-                  className="button border-0"
+
+              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                <Button
                   type="submit"
+                  fullWidth
+                  variant="contained"
                   disabled={isLoading}
+                  sx={{
+                    backgroundColor: themeColors.actionPrimary,
+                    color: themeColors.actionPrimaryText,
+                    fontWeight: 600,
+                    py: 1.2,
+                    '&:hover': {
+                      backgroundColor: themeColors.actionPrimary,
+                      filter: 'brightness(0.92)',
+                    },
+                  }}
                 >
-                  {isLoading ? 'Restableciendo...' : 'Restablecer'}
-                </button>
-              </div>
+                  {isLoading ? (
+                    <CircularProgress
+                      size={24}
+                      sx={{ color: themeColors.actionPrimaryText }}
+                    />
+                  ) : (
+                    'Restablecer'
+                  )}
+                </Button>
+              </Box>
             </form>
-          </div>
-        </div>
-      </div>
+          </CardContent>
+        </Card>
+      </Box>
     </Container>
   )
 }
