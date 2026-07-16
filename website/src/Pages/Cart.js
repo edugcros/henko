@@ -468,13 +468,13 @@ const CartItem = memo(
                   startIcon={<DeleteOutlineIcon fontSize="small" />}
                   sx={{
                     textTransform: 'none',
-                    color: themeColors.textOnActionPrimary,
+                    color: themeColors.actionPrimaryText,
                     fontWeight: 500,
                     fontSize: '12px',
                     minWidth: 'auto',
                     p: '4px 8px',
                     '&:hover': {
-                      color: themeColors.textOnActionPrimary,
+                      color: themeColors.actionPrimaryText,
                       bgcolor: 'transparent',
                       textDecoration: 'underline',
                     },
@@ -1096,7 +1096,7 @@ const Cart = () => {
                     py: 1.5,
                     borderRadius: 2,
                     bgcolor: themeColors.actionPrimary,
-                    color: themeColors.textOnActionPrimary,
+                    color: themeColors.actionPrimaryText,
                     fontWeight: 700,
                     textTransform: 'none',
                     fontSize: '15px',
