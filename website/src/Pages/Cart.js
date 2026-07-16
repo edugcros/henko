@@ -294,7 +294,7 @@ const CartItem = memo(
                 >
                   <Typography
                     variant="caption"
-                    sx={{ fontWeight: 700, color: '#b12704' }}
+                    sx={{ fontWeight: 700, color: themeColors.error }}
                   >
                     Agotado
                   </Typography>
@@ -388,7 +388,7 @@ const CartItem = memo(
               <Typography
                 variant="caption"
                 sx={{
-                  color: isOutOfStock ? '#b12704' : '#007600',
+                  color: isOutOfStock ? themeColors.error : themeColors.success,
                   fontWeight: 600,
                   mb: 1,
                   display: 'flex',
@@ -402,7 +402,7 @@ const CartItem = memo(
                     width: 8,
                     height: 8,
                     borderRadius: '50%',
-                    bgcolor: isOutOfStock ? '#b12704' : '#007600',
+                    bgcolor: isOutOfStock ? themeColors.error : themeColors.success,
                     display: 'inline-block',
                   }}
                 />
@@ -436,19 +436,21 @@ const CartItem = memo(
                     onClick={handleUpdate}
                     disabled={isUpdating}
                     sx={{
-                      textTransform: 'none',
-                      bgcolor: '#FFD814',
-                      color: '#0F1111',
+                      bgcolor: themeColors.actionPrimary,
+                      color: themeColors.actionPrimaryText,
                       borderRadius: 2,
                       fontWeight: 600,
                       px: 2,
                       boxShadow: '0 2px 5px rgba(213,217,217,0.5)',
-                      '&:hover': { bgcolor: '#F7CA00', boxShadow: 'none' },
+                      '&:hover': { filter: 'brightness(0.92)', boxShadow: 'none' },
                       '&:disabled': { bgcolor: '#ddd', color: '#666' },
                     }}
                   >
                     {isUpdating ? (
-                      <CircularProgress size={16} sx={{ color: '#0F1111' }} />
+                      <CircularProgress
+                        size={16}
+                        sx={{ color: themeColors.actionPrimaryText }}
+                      />
                     ) : (
                       <span>Actualizar</span>
                     )}
@@ -467,7 +469,6 @@ const CartItem = memo(
                   disabled={isUpdating}
                   startIcon={<DeleteOutlineIcon fontSize="small" />}
                   sx={{
-                    textTransform: 'none',
                     color: themeColors.actionPrimaryText,
                     fontWeight: 500,
                     fontSize: '12px',
@@ -905,7 +906,6 @@ const Cart = () => {
           sx={{
             bgcolor: themeColors.actionPrimary,
             color: themeColors.actionPrimaryText,
-            textTransform: 'none',
             borderRadius: 2,
             px: 4,
             py: 1.5,
@@ -1098,7 +1098,6 @@ const Cart = () => {
                     bgcolor: themeColors.actionPrimary,
                     color: themeColors.actionPrimaryText,
                     fontWeight: 700,
-                    textTransform: 'none',
                     fontSize: '15px',
                     boxShadow: '0 2px 5px rgba(213,217,217,0.5)',
                     '&:hover': {
@@ -1137,7 +1136,6 @@ const Cart = () => {
                 onClick={handleEmptyCart}
                 startIcon={<DeleteOutlineIcon />}
                 sx={{
-                  textTransform: 'none',
                   borderColor: themeColors.cardBorder,
                   color: themeColors.cardText,
                   bgcolor: themeColors.cardBackground,
