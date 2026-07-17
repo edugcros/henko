@@ -1,6 +1,7 @@
 // 📁 src/pages/AddProduct.jsx
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
+  ConfigProvider,
   Form,
   Input,
   InputNumber,
@@ -2289,7 +2290,9 @@ const AIAnalysisPanel = ({
                 {confidencePercent}% confianza
               </Tag>
               {shouldReview && (
-                <Tag color="orange">Revisar antes de publicar</Tag>
+                <Tag color="orange" style={{ borderRadius: 999 }}>
+                  Revisar antes de publicar
+                </Tag>
               )}
             </Space>
           </Col>
@@ -2544,8 +2547,14 @@ const AIAnalysisPanel = ({
                         : normalizeString(value) || 'Pendiente'}
                     </Text>
                     <Space size={4} wrap style={{ marginTop: 6 }}>
-                      {field.source && <Tag>{field.source}</Tag>}
-                      {field.filterable && <Tag color="blue">Filtro</Tag>}
+                      {field.source && (
+                        <Tag style={{ borderRadius: 999 }}>{field.source}</Tag>
+                      )}
+                      {field.filterable && (
+                        <Tag color="blue" style={{ borderRadius: 999 }}>
+                          Filtro
+                        </Tag>
+                      )}
                       <Button
                         htmlType="button"
                         type="link"
@@ -5165,6 +5174,16 @@ export default function AddProduct() {
   }
 
   return (
+    <ConfigProvider
+      theme={{
+        token: {
+          fontSize: 15,
+          controlHeight: 40,
+          controlHeightLG: 48,
+          borderRadius: 12,
+        },
+      }}
+    >
     <div
       className="add-product-stable-page"
       style={{
@@ -5239,7 +5258,7 @@ export default function AddProduct() {
 
               <Col xs={24} lg={9}>
                 <Row gutter={[12, 12]}>
-                  <Col span={8}>
+                  <Col xs={24} sm={8}>
                     <div
                       style={{
                         padding: 14,
@@ -5249,7 +5268,7 @@ export default function AddProduct() {
                         textAlign: 'center',
                       }}
                     >
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 13 }}>
                         Imágenes
                       </Text>
                       <div style={{ fontSize: 22, fontWeight: 800 }}>
@@ -5258,7 +5277,7 @@ export default function AddProduct() {
                     </div>
                   </Col>
 
-                  <Col span={8}>
+                  <Col xs={24} sm={8}>
                     <div
                       style={{
                         padding: 14,
@@ -5268,7 +5287,7 @@ export default function AddProduct() {
                         textAlign: 'center',
                       }}
                     >
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 13 }}>
                         Variantes
                       </Text>
                       <div style={{ fontSize: 22, fontWeight: 800 }}>
@@ -5277,7 +5296,7 @@ export default function AddProduct() {
                     </div>
                   </Col>
 
-                  <Col span={8}>
+                  <Col xs={24} sm={8}>
                     <div
                       style={{
                         padding: 14,
@@ -5287,7 +5306,7 @@ export default function AddProduct() {
                         textAlign: 'center',
                       }}
                     >
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 13 }}>
                         IA
                       </Text>
                       <div style={{ fontSize: 22, fontWeight: 800 }}>
@@ -5319,6 +5338,19 @@ export default function AddProduct() {
             onFinish={() => handleFinish(form.getFieldsValue(true))}
           >
             <Row gutter={[24, 24]} align="top">
+              <Col xs={24} xl={0}>
+                <Alert
+                  type={productReadiness.isReady ? 'success' : 'info'}
+                  showIcon
+                  style={{ marginBottom: 20, borderRadius: 14 }}
+                  message={
+                    productReadiness.isReady
+                      ? 'Listo para publicar'
+                      : `Completá lo esencial: ${productReadiness.doneRequired}/${productReadiness.requiredChecks.length} datos obligatorios (${productReadiness.percent}%)`
+                  }
+                />
+              </Col>
+
               <Col xs={24} xl={15}>
                 <Card
                   title={
@@ -5401,7 +5433,7 @@ export default function AddProduct() {
                               value: agentQueueStats.autoSave,
                             },
                           ].map(metric => (
-                            <Col span={8} key={metric.label}>
+                            <Col xs={24} sm={8} key={metric.label}>
                               <div
                                 style={{
                                   padding: '12px 8px',
@@ -5413,7 +5445,7 @@ export default function AddProduct() {
                               >
                                 <Text
                                   type="secondary"
-                                  style={{ fontSize: 11, display: 'block' }}
+                                  style={{ fontSize: 13, display: 'block' }}
                                 >
                                   {metric.label}
                                 </Text>
@@ -5434,6 +5466,7 @@ export default function AddProduct() {
                         >
                           <Space
                             wrap
+                            className="add-product-agent-actions"
                             style={{
                               justifyContent: 'flex-end',
                               width: '100%',
@@ -5474,6 +5507,7 @@ export default function AddProduct() {
 
                           <Space
                             wrap
+                            className="add-product-agent-actions"
                             style={{
                               justifyContent: 'flex-end',
                               width: '100%',
@@ -6036,9 +6070,15 @@ export default function AddProduct() {
                                 <DynamicProductField field={field} />
                                 <Space size={6} wrap>
                                   {field.required && (
-                                    <Tag color="red">Obligatorio</Tag>
+                                    <Tag color="red" style={{ borderRadius: 999 }}>
+                                      Obligatorio
+                                    </Tag>
                                   )}
-                                  {field.source && <Tag>{field.source}</Tag>}
+                                  {field.source && (
+                                    <Tag style={{ borderRadius: 999 }}>
+                                      {field.source}
+                                    </Tag>
+                                  )}
                                   <Button
                                     htmlType="button"
                                     size="small"
@@ -6079,7 +6119,7 @@ export default function AddProduct() {
                               setCustomFieldName(event.target.value)
                             }
                             onPressEnter={handleAddDynamicProductField}
-                            placeholder="Nombre de atributo técnico, medida o característica"
+                            placeholder="Ej: Potencia, Material, Capacidad"
                             style={{ marginTop: 8 }}
                           />
                         </Col>
@@ -6265,7 +6305,7 @@ export default function AddProduct() {
                                 setNewAttributeName(event.target.value)
                               }
                               onPressEnter={handleAddCustomAttribute}
-                              placeholder="Nombre de la opción vendible"
+                              placeholder="Ej: Color, Talle, Presentación"
                               style={{ marginTop: 8 }}
                             />
                           </Col>
@@ -6515,7 +6555,7 @@ export default function AddProduct() {
                                 title: 'Variante',
                                 dataIndex: 'nombre',
                                 key: 'nombre',
-                                width: 260,
+                                width: 220,
                                 fixed: 'left',
                                 render: (_, record) => (
                                   <Space direction="vertical" size={6}>
@@ -6637,7 +6677,7 @@ export default function AddProduct() {
                               {
                                 title: 'Imagen de variante',
                                 key: 'image',
-                                width: 330,
+                                width: 260,
                                 render: (_, record) => (
                                   <VariantImageSelector
                                     variant={record}
@@ -6985,13 +7025,22 @@ export default function AddProduct() {
                             placeholder="Seleccioná la condición"
                           >
                             <Select.Option value="nuevo">
-                              <Tag color="success">Nuevo</Tag>
+                              <Tag color="success" style={{ borderRadius: 999 }}>
+                                Nuevo
+                              </Tag>
                             </Select.Option>
                             <Select.Option value="usado">
-                              <Tag color="warning">Usado</Tag>
+                              <Tag color="warning" style={{ borderRadius: 999 }}>
+                                Usado
+                              </Tag>
                             </Select.Option>
                             <Select.Option value="reacondicionado">
-                              <Tag color="processing">Reacondicionado</Tag>
+                              <Tag
+                                color="processing"
+                                style={{ borderRadius: 999 }}
+                              >
+                                Reacondicionado
+                              </Tag>
                             </Select.Option>
                           </Select>
                         </ProductField>
@@ -7316,6 +7365,7 @@ export default function AddProduct() {
                   </Card>
 
                   <Card
+                    className="add-product-publish-card"
                     style={{
                       borderRadius: 20,
                       border: `1px solid ${token.colorBorderSecondary}`,
@@ -7525,7 +7575,35 @@ export default function AddProduct() {
         .ai-analysis-card:hover {
           box-shadow: 0 8px 32px ${token.colorPrimary}25 !important;
         }
+
+        @media (max-width: 575.98px) {
+          .add-product-stable-page {
+            padding: 12px !important;
+          }
+
+          .add-product-agent-actions {
+            justify-content: flex-start !important;
+          }
+
+          .add-product-agent-actions .ant-btn {
+            flex: 1 1 auto;
+          }
+        }
+
+        @media (min-width: 576px) and (max-width: 1199.98px) {
+          .add-product-stable-page {
+            padding: 16px !important;
+          }
+        }
+
+        @media (min-width: 1200px) {
+          .add-product-publish-card {
+            position: sticky;
+            top: 24px;
+          }
+        }
       `}</style>
     </div>
+    </ConfigProvider>
   )
 }
