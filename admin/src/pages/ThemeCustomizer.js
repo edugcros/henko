@@ -316,7 +316,6 @@ const ThemeCustomizer = () => {
     'Error al procesar la solicitud'
 
   const storeName = theme?.general?.storeName || 'Mi Tienda'
-  console.log(theme?.general?.tagline)
   const tagline = theme?.general?.tagline || ''
   const faviconUrl = theme?.general?.favicon?.url
 

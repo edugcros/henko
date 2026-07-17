@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo } from 'react'
+import React, { createContext, useMemo } from 'react'
 
 import CssBaseline from '@mui/material/CssBaseline'
 import { ThemeProvider as MUIThemeProvider } from '@mui/material/styles'
@@ -130,16 +130,6 @@ export const StoreThemeProvider = ({ children }) => {
       </MUIThemeProvider>
     </StoreThemeContext.Provider>
   )
-}
-
-export const useStoreTheme = () => {
-  const context = useContext(StoreThemeContext)
-
-  if (context === null) {
-    throw new Error('useStoreTheme debe usarse dentro de StoreThemeProvider')
-  }
-
-  return context
 }
 
 export default StoreThemeProvider

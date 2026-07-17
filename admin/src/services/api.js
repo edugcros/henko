@@ -101,26 +101,6 @@ export const tenantAPI = {
 }
 
 // ============================================================================
-// Theme API
-// ============================================================================
-
-export const themeAPI = {
-  getPublicTheme: tenantId =>
-    api.get(`/theme/public/${tenantId}`, {
-      skipAuthRefresh: true,
-      skipCsrfRetry: true,
-    }),
-
-  getAdminTheme: () => api.get('/theme/admin'),
-
-  updateAdminTheme: data => api.put('/theme/admin', data),
-
-  patchAdminTheme: data => api.patch('/theme/admin', data),
-
-  resetTheme: () => api.post('/theme/admin/reset'),
-}
-
-// ============================================================================
 // Products API
 // ============================================================================
 
@@ -158,7 +138,6 @@ const apiService = {
   user: userAPI,
   analytics: analyticsAPI,
   tenant: tenantAPI,
-  theme: themeAPI,
   product: productAPI,
   order: orderAPI,
 
