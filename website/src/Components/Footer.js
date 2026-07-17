@@ -1,5 +1,5 @@
 import React from 'react'
-import { Link } from 'react-router-dom'
+import { Link as RouterLink } from 'react-router-dom'
 import {
   Box,
   Grid,
@@ -10,12 +10,14 @@ import {
   Container,
   Stack,
   Divider,
-  useTheme,
+  Link as MuiLink,
+  alpha,
 } from '@mui/material'
 import { LinkedIn, Instagram, GitHub, YouTube } from '@mui/icons-material'
 import newsletter from '@assets/images/newsletter.png'
 import { useTenant } from '../contexts/TenantContext'
 import { useSelector } from 'react-redux'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const getAssetUrl = asset => {
   if (!asset) return null
@@ -24,13 +26,18 @@ const getAssetUrl = asset => {
 }
 
 const Footer = () => {
-  const theme = useTheme()
   const { themeConfig } = useTenant()
   const themeState = useSelector(state => state.theme) || {}
   const activeConfig =
     themeState.previewMode && themeState.previewConfig
       ? themeState.previewConfig
       : themeState.config || themeConfig || {}
+  const themeColors = getThemeColors(activeConfig)
+  const footerLinkSx = {
+    color: alpha(themeColors.background, 0.75),
+    display: 'block',
+    '&:hover': { color: themeColors.actionPrimary },
+  }
   const footer = activeConfig?.footer || {}
   const general = activeConfig?.general || {}
   const footerLogo = getAssetUrl(footer.logo)
@@ -42,8 +49,8 @@ const Footer = () => {
     <Box
       component="footer"
       sx={{
-        bgcolor: theme.palette.grey[900],
-        color: '#fff',
+        bgcolor: themeColors.text,
+        color: themeColors.background,
         mt: 6,
         fontSize: 14,
         lineHeight: 1.6,
@@ -53,7 +60,7 @@ const Footer = () => {
       <Box
         sx={{
           py: 2,
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: `1px solid ${alpha(themeColors.background, 0.08)}`,
         }}
       >
         <Container maxWidth="lg">
@@ -85,19 +92,22 @@ const Footer = () => {
                     placeholder="Tu correo electrónico"
                     size="small"
                     sx={{
-                      bgcolor: '#fff',
+                      bgcolor: themeColors.background,
                       borderRadius: 1,
-                      input: { color: '#000' },
+                      input: { color: themeColors.text },
                     }}
                   />
                   <Button
                     variant="contained"
                     sx={{
-                      bgcolor: theme.palette.warning.main,
-                      color: '#000',
+                      bgcolor: themeColors.actionPrimary,
+                      color: themeColors.actionPrimaryText,
                       fontWeight: 600,
                       px: 2,
-                      '&:hover': { bgcolor: theme.palette.warning.dark },
+                      '&:hover': {
+                        bgcolor: themeColors.actionPrimary,
+                        filter: 'brightness(0.92)',
+                      },
                     }}
                   >
                     Enviar
@@ -131,23 +141,38 @@ const Footer = () => {
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
                 {general.storeName || 'Contacto'}
               </Typography>
-              <Typography variant="body2" color="grey.400">
+              <Typography
+                variant="body2"
+                sx={{ color: alpha(themeColors.background, 0.7) }}
+              >
                 {footer.description ||
                   general.tagline ||
                   'Tu tienda de confianza.'}
               </Typography>
               {footer.phone && (
-                <Typography variant="body2" sx={{ mt: 1, color: 'grey.300' }}>
+                <Typography
+                  variant="body2"
+                  sx={{ mt: 1, color: alpha(themeColors.background, 0.8) }}
+                >
                   Tel:{' '}
-                  <a href={`tel:${footer.phone}`} style={{ color: '#fff' }}>
+                  <a
+                    href={`tel:${footer.phone}`}
+                    style={{ color: themeColors.background }}
+                  >
                     {footer.phone}
                   </a>
                 </Typography>
               )}
               {footer.email && (
-                <Typography variant="body2" sx={{ mt: 0.5, color: 'grey.300' }}>
+                <Typography
+                  variant="body2"
+                  sx={{ mt: 0.5, color: alpha(themeColors.background, 0.8) }}
+                >
                   Email:{' '}
-                  <a href={`mailto:${footer.email}`} style={{ color: '#fff' }}>
+                  <a
+                    href={`mailto:${footer.email}`}
+                    style={{ color: themeColors.background }}
+                  >
                     {footer.email}
                   </a>
                 </Typography>
@@ -171,8 +196,11 @@ const Footer = () => {
                       color="inherit"
                       size="small"
                       sx={{
-                        bgcolor: 'rgba(255,255,255,0.08)',
-                        '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
+                        bgcolor: alpha(themeColors.background, 0.08),
+                        '&:hover': {
+                          bgcolor: alpha(themeColors.background, 0.15),
+                          color: themeColors.actionPrimary,
+                        },
                       }}
                     >
                       <Icon fontSize="small" />
@@ -187,18 +215,38 @@ const Footer = () => {
                 Información
               </Typography>
               <Stack spacing={0.5}>
-                <Link to="/privacy-policy" style={{ color: '#ccc' }}>
+                <MuiLink
+                  component={RouterLink}
+                  to="/privacy-policy"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Política de Privacidad
-                </Link>
-                <Link to="/refund-policy" style={{ color: '#ccc' }}>
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/refund-policy"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Política de Reembolso
-                </Link>
-                <Link to="/shipping-policy" style={{ color: '#ccc' }}>
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/shipping-policy"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Política de Envío
-                </Link>
-                <Link to="/term-conditions" style={{ color: '#ccc' }}>
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/term-conditions"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Términos y Condiciones
-                </Link>
+                </MuiLink>
               </Stack>
             </Grid>
 
@@ -208,15 +256,30 @@ const Footer = () => {
                 Cuenta
               </Typography>
               <Stack spacing={0.5}>
-                <Link to="/about" style={{ color: '#ccc' }}>
+                <MuiLink
+                  component={RouterLink}
+                  to="/about"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Sobre Nosotros
-                </Link>
-                <Link to="/faq" style={{ color: '#ccc' }}>
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/faq"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Preguntas Frecuentes
-                </Link>
-                <Link to="/contact" style={{ color: '#ccc' }}>
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/contact"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Contacto
-                </Link>
+                </MuiLink>
               </Stack>
             </Grid>
 
@@ -226,18 +289,38 @@ const Footer = () => {
                 Enlaces Rápidos
               </Typography>
               <Stack spacing={0.5}>
-                <Link to="/category/laptops" style={{ color: '#ccc' }}>
+                <MuiLink
+                  component={RouterLink}
+                  to="/category/laptops"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Laptops
-                </Link>
-                <Link to="/category/headphones" style={{ color: '#ccc' }}>
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/category/headphones"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Auriculares
-                </Link>
-                <Link to="/category/tablets" style={{ color: '#ccc' }}>
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/category/tablets"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Tablets
-                </Link>
-                <Link to="/category/watch" style={{ color: '#ccc' }}>
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/category/watch"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
                   Relojes
-                </Link>
+                </MuiLink>
               </Stack>
             </Grid>
           </Grid>
@@ -245,9 +328,12 @@ const Footer = () => {
       </Box>
 
       {/* Línea inferior */}
-      <Divider sx={{ bgcolor: 'rgba(255,255,255,0.08)' }} />
-      <Box sx={{ py: 1.5, textAlign: 'center', bgcolor: '#0a0a0a' }}>
-        <Typography variant="caption" color="grey.500">
+      <Divider sx={{ bgcolor: alpha(themeColors.background, 0.08) }} />
+      <Box sx={{ py: 1.5, textAlign: 'center', bgcolor: themeColors.text }}>
+        <Typography
+          variant="caption"
+          sx={{ color: alpha(themeColors.background, 0.6) }}
+        >
           © {new Date().getFullYear()} — Powered by henko
         </Typography>
       </Box>
