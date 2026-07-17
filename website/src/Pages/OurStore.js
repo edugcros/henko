@@ -38,7 +38,6 @@ import {
 } from '@utils/themeRuntime'
 
 import { selectPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSelectors'
-import { Newprimary } from '../theme/colors'
 
 const CATEGORY_PREVIEW_LIMIT = 6
 const DEFAULT_LIMIT = 10
@@ -761,7 +760,7 @@ const OurStore = () => {
                               px: 0,
                               borderRadius: 2,
                               color: themeColors.cardMutedText,
-                              bgcolor: Newprimary.gainsGray,
+                              bgcolor: themeColors.surface,
                               '&:hover': {
                                 bgcolor: themeColors.cardBackground,
                               },
@@ -806,8 +805,11 @@ const OurStore = () => {
                                       : 'transparent',
                                     '&:hover': {
                                       bgcolor: isSelectedSubcategory
-                                        ? Newprimary.gainsGray
+                                        ? themeColors.actionPrimary
                                         : themeColors.background,
+                                      filter: isSelectedSubcategory
+                                        ? 'brightness(0.92)'
+                                        : 'none',
                                       color: isSelectedSubcategory
                                         ? themeColors.actionPrimaryText
                                         : themeColors.link,

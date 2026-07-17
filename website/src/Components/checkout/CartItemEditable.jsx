@@ -1,5 +1,5 @@
 // src/components/checkout/CartItemEditable.jsx
-import React from 'react'
+import React, { useMemo } from 'react'
 import {
   Box,
   Typography,
@@ -11,6 +11,9 @@ import {
 } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { Link } from 'react-router-dom'
+import { useSelector } from 'react-redux'
+import { useTenant } from '../../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const CartItemEditable = ({
   item,
@@ -20,6 +23,23 @@ const CartItemEditable = ({
   onRemove,
   isUpdating,
 }) => {
+  const tenantContext = useTenant()
+  const themeState = useSelector(state => state.theme)
+
+  const tenantConfig = tenantContext?.themeConfig
+  const reduxConfig = themeState?.config
+  const previewConfig = themeState?.previewConfig
+  const previewMode = themeState?.previewMode
+
+  const activeConfig = useMemo(() => {
+    if (previewMode && previewConfig) return previewConfig
+    if (reduxConfig) return reduxConfig
+    if (tenantConfig) return tenantConfig
+    return {}
+  }, [reduxConfig, tenantConfig, previewConfig, previewMode])
+
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+
   const productId = item.productId?._id || item.productId
   const needsUpdate = quantity !== item.quantity
 
@@ -30,7 +50,7 @@ const CartItemEditable = ({
         p: 2,
         mb: 2,
         borderRadius: '12px',
-        border: '1px solid #e0e0e0',
+        border: `1px solid ${themeColors.cardBorder}`,
         transition: 'all 0.2s ease',
         '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
       }}
@@ -45,9 +65,9 @@ const CartItemEditable = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            bgcolor: '#fff',
+            bgcolor: themeColors.cardBackground,
             borderRadius: '8px',
-            border: '1px solid #eee',
+            border: `1px solid ${themeColors.cardBorder}`,
             overflow: 'hidden',
           }}
         >
@@ -73,7 +93,7 @@ const CartItemEditable = ({
               variant="subtitle1"
               sx={{
                 fontWeight: 600,
-                color: '#111',
+                color: themeColors.cardText,
                 textDecoration: 'none',
                 lineHeight: 1.3,
                 display: '-webkit-box',
@@ -81,14 +101,21 @@ const CartItemEditable = ({
                 WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
                 mr: 2,
-                '&:hover': { color: '#007185', textDecoration: 'underline' },
+                '&:hover': {
+                  color: themeColors.actionPrimary,
+                  textDecoration: 'underline',
+                },
               }}
             >
               {item.title}
             </Typography>
             <Typography
               variant="h6"
-              sx={{ fontWeight: 700, color: '#000', whiteSpace: 'nowrap' }}
+              sx={{
+                fontWeight: 700,
+                color: themeColors.price,
+                whiteSpace: 'nowrap',
+              }}
             >
               ${(item.price * item.quantity).toLocaleString()}
             </Typography>
@@ -97,7 +124,7 @@ const CartItemEditable = ({
           <Typography
             variant="caption"
             sx={{
-              color: item.stock > 0 ? '#007600' : '#b12704',
+              color: item.stock > 0 ? themeColors.success : themeColors.error,
               fontWeight: 600,
               display: 'block',
               mb: 1,
@@ -119,16 +146,16 @@ const CartItemEditable = ({
               sx={{
                 display: 'flex',
                 alignItems: 'center',
-                bgcolor: '#F0F2F2',
+                bgcolor: themeColors.surface,
                 borderRadius: '8px',
                 px: 1.5,
                 py: 0.5,
-                border: '1px solid #D5D9D9',
+                border: `1px solid ${themeColors.cardBorder}`,
               }}
             >
               <Typography
                 variant="caption"
-                sx={{ mr: 1, color: '#565959', fontWeight: 700 }}
+                sx={{ mr: 1, color: themeColors.mutedText, fontWeight: 700 }}
               >
                 Cant:
               </Typography>
@@ -161,12 +188,14 @@ const CartItemEditable = ({
                 onClick={() => onUpdate(item, quantity)}
                 disabled={isUpdating}
                 sx={{
-                  textTransform: 'none',
-                  bgcolor: '#FFD814',
-                  color: '#0F1111',
+                  bgcolor: themeColors.actionPrimary,
+                  color: themeColors.actionPrimaryText,
                   borderRadius: '8px',
                   fontWeight: 600,
-                  '&:hover': { bgcolor: '#F7CA00' },
+                  '&:hover': {
+                    bgcolor: themeColors.actionPrimary,
+                    filter: 'brightness(0.92)',
+                  },
                 }}
               >
                 {isUpdating ? 'Actualizando...' : 'Actualizar'}
@@ -177,7 +206,10 @@ const CartItemEditable = ({
               <IconButton
                 onClick={() => onRemove(productId)}
                 size="small"
-                sx={{ color: '#007185', '&:hover': { color: '#C7511F' } }}
+                sx={{
+                  color: themeColors.actionPrimary,
+                  '&:hover': { color: themeColors.error },
+                }}
               >
                 <DeleteOutlineIcon />
               </IconButton>

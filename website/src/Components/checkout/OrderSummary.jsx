@@ -1,5 +1,5 @@
 // src/components/checkout/OrderSummary.jsx
-import React from 'react'
+import React, { useMemo } from 'react'
 import {
   Paper,
   Typography,
@@ -11,6 +11,9 @@ import {
   ListItemText,
 } from '@mui/material'
 import ShoppingCartCheckoutIcon from '@mui/icons-material/ShoppingCartCheckout'
+import { useSelector } from 'react-redux'
+import { useTenant } from '../../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const OrderSummary = ({
   cart,
@@ -19,6 +22,23 @@ const OrderSummary = ({
   onCheckout,
   loading,
 }) => {
+  const tenantContext = useTenant()
+  const themeState = useSelector(state => state.theme)
+
+  const tenantConfig = tenantContext?.themeConfig
+  const reduxConfig = themeState?.config
+  const previewConfig = themeState?.previewConfig
+  const previewMode = themeState?.previewMode
+
+  const activeConfig = useMemo(() => {
+    if (previewMode && previewConfig) return previewConfig
+    if (reduxConfig) return reduxConfig
+    if (tenantConfig) return tenantConfig
+    return {}
+  }, [reduxConfig, tenantConfig, previewConfig, previewMode])
+
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+
   const subtotal =
     cart.items?.reduce(
       (sum, item) => sum + item.price * (item.quantity || 1),
@@ -32,13 +52,13 @@ const OrderSummary = ({
     {
       label: 'Descuento',
       value: -discount,
-      color: '#007600',
+      color: themeColors.success,
       showIfZero: false,
     },
     {
       label: 'Envío',
       value: shipping,
-      color: shipping === 0 ? '#007600' : 'inherit',
+      color: shipping === 0 ? themeColors.success : 'inherit',
     },
   ]
 
@@ -84,7 +104,7 @@ const OrderSummary = ({
         <Typography variant="h6" fontWeight={700}>
           Total
         </Typography>
-        <Typography variant="h5" fontWeight={700} color="#B12704">
+        <Typography variant="h5" fontWeight={700} color={themeColors.price}>
           ${total.toLocaleString()}
         </Typography>
       </Box>
@@ -99,12 +119,14 @@ const OrderSummary = ({
         sx={{
           py: 1.5,
           borderRadius: '10px',
-          bgcolor: '#FFD814',
-          color: '#0F1111',
+          bgcolor: themeColors.actionPrimary,
+          color: themeColors.actionPrimaryText,
           fontWeight: 700,
-          textTransform: 'none',
           fontSize: '1rem',
-          '&:hover': { bgcolor: '#F7CA00' },
+          '&:hover': {
+            bgcolor: themeColors.actionPrimary,
+            filter: 'brightness(0.92)',
+          },
           '&:disabled': { bgcolor: '#ddd', color: '#999' },
         }}
       >
