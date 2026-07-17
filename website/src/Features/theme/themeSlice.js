@@ -25,7 +25,8 @@ const themeSlice = createSlice({
     },
     updatePreviewConfig: (state, action) => {
       state.previewConfig = { ...state.previewConfig, ...action.payload }
-      state.previewMode = true // Forzamos el modo preview al actualizar
+      // previewMode ya no se fuerza acá: cada dispatcher decide explícitamente
+      // vía setPreviewMode si el origen es un preview real o un tema normal.
     },
     clearThemeStatus: state => {
       state.isError = false
