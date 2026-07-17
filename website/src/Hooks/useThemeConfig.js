@@ -287,6 +287,7 @@ export const useThemeConfig = () => {
           })
 
           dispatch(updatePreviewConfig(cached))
+          dispatch(setPreviewMode(false))
           return
         }
 
