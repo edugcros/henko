@@ -43,7 +43,6 @@ import {
   Compare as CompareIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material'
-import { Newprimary } from '../theme/colors'
 
 const Profile = () => {
   const dispatch = useDispatch()

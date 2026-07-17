@@ -63,7 +63,6 @@ import {
   getSpacingThemeConfig,
   getThemeColors,
 } from '@utils/themeRuntime'
-import { Newprimary } from '../theme/colors'
 
 const DEFAULT_IMAGES = {
   hero: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=1200&h=800&fit=crop',
@@ -761,8 +760,7 @@ const Home = () => {
                         textTransform: 'none',
                         boxShadow: 'none',
                         '&:hover': {
-                          bgcolor: Newprimary.darkBlueGray,
-                          color: Newprimary.white,
+                          bgcolor: primaryAction,
                           filter: 'brightness(0.94)',
                           boxShadow: '0 10px 22px rgba(15, 23, 42, 0.13)',
                         },
@@ -971,7 +969,7 @@ const Home = () => {
               sx={{
                 display: 'block',
                 mb: 0.25,
-                color: Newprimary.black,
+                color: themeColors.text,
                 fontWeight: 900,
                 fontSize: 21,
                 letterSpacing: 1.6,
@@ -989,13 +987,13 @@ const Home = () => {
             sx={{
               fontWeight: 850,
               textTransform: 'none',
-              color: themeColors.actionPrimaryText,
+              color: themeColors.actionPrimary,
               borderRadius: 999,
               px: 1.5,
               minWidth: 'auto',
               '&:hover': {
-                bgcolor: Newprimary.darkBlueGray,
-                color: Newprimary.white,
+                bgcolor: themeColors.actionPrimary,
+                color: themeColors.actionPrimaryText,
               },
             }}
           >

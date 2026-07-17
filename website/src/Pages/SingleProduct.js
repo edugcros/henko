@@ -56,7 +56,6 @@ import {
   getSpacingThemeConfig,
   getThemeColors,
 } from '@utils/themeRuntime'
-import { Newprimary } from '../theme/colors'
 
 const MAX_VISIBLE_THUMBS = 7
 

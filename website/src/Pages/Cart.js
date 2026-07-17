@@ -23,7 +23,6 @@ import {
   IconButton,
   useTheme,
 } from '@mui/material'
-import { Newprimary } from '../theme/colors'
 import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import AddIcon from '@mui/icons-material/Add'
@@ -97,7 +96,7 @@ const buildCartPayloadFromItem = (item, quantity) => ({
 })
 
 const QuantityInput = memo(
-  ({ value, onChange, onIncrement, onDecrement, disabled, max }) => {
+  ({ value, onChange, onIncrement, onDecrement, disabled, max, themeColors }) => {
     const displayValue =
       value === '' || value === undefined || value === null ? '' : String(value)
 
@@ -149,7 +148,7 @@ const QuantityInput = memo(
             textAlign: 'center',
             fontSize: '14px',
             fontWeight: 700,
-            color: disabled ? '#999' : Newprimary.darkBlueGray,
+            color: disabled ? '#999' : themeColors.cardText,
             border: 'none',
             backgroundColor: 'transparent',
             outline: 'none',
@@ -427,6 +426,7 @@ const CartItem = memo(
                   onDecrement={handleDecrement}
                   disabled={isUpdating || isOutOfStock}
                   max={maxStock}
+                  themeColors={themeColors}
                 />
 
                 {needsUpdate && !isOutOfStock && (
@@ -1106,7 +1106,7 @@ const Cart = () => {
                     },
                     '&:disabled': {
                       bgcolor: '#ddd',
-                      color: 'Newprimary.darkBlueGray',
+                      color: 'text.disabled',
                     },
                     mb: 2,
                   }}

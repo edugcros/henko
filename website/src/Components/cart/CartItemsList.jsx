@@ -59,11 +59,11 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
         sx={{
           p: 6,
           textAlign: 'center',
-          bgcolor: 'grey.50',
+          bgcolor: 'background.paper',
           borderRadius: 3,
         }}
       >
-        <EmptyCartIcon sx={{ fontSize: 80, color: 'grey.400', mb: 2 }} />
+        <EmptyCartIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
         <Typography variant="h6" color="text.secondary" gutterBottom>
           Tu carrito está vacío
         </Typography>
@@ -105,7 +105,7 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
               height: isMobile ? 200 : 80,
               borderRadius: 2,
               overflow: 'hidden',
-              bgcolor: 'grey.100',
+              bgcolor: 'card.background',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -128,7 +128,7 @@ const CartItemsList = ({ items, onUpdateQuantity, onRemove }) => {
                 }}
               />
             ) : (
-              <ImageIcon sx={{ fontSize: 40, color: 'grey.400' }} />
+              <ImageIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
             )}
           </Box>
 

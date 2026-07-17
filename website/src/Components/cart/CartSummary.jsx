@@ -239,7 +239,6 @@ const CartSummary = ({ cart, onCheckout }) => {
             py: 1.5,
             borderRadius: 2,
             fontWeight: 'bold',
-            textTransform: 'none',
             fontSize: '1.1rem',
             boxShadow: 4,
           }}

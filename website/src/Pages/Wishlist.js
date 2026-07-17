@@ -24,6 +24,7 @@ import {
   Stack,
   Skeleton,
   useTheme,
+  alpha,
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -33,6 +34,8 @@ import FavoriteIcon from '@mui/icons-material/Favorite'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import placeholder from '@assets/images/placeholder.png'
+import { useTenant } from '../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const ITEMS_PER_PAGE = 12
 const DEBOUNCE_MS = 300
@@ -41,6 +44,22 @@ const Wishlist = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const theme = useTheme()
+  const tenantContext = useTenant()
+  const themeState = useSelector(state => state.theme)
+
+  const tenantConfig = tenantContext?.themeConfig
+  const reduxConfig = themeState?.config
+  const previewConfig = themeState?.previewConfig
+  const previewMode = themeState?.previewMode
+
+  const activeConfig = useMemo(() => {
+    if (previewMode && previewConfig) return previewConfig
+    if (reduxConfig) return reduxConfig
+    if (tenantConfig) return tenantConfig
+    return {}
+  }, [reduxConfig, tenantConfig, previewConfig, previewMode])
+
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
 
   // compatible: wishlist puede estar en varios lugares del state según tu slice
   const wishlistFromState = useSelector(state => state.user?.wishlist)
@@ -276,8 +295,8 @@ const Wishlist = () => {
                           onClick={() => handleRemoveWishlist(item._id)}
                           disabled={removingId === item._id}
                           sx={{
-                            bgcolor: 'rgba(255,255,255,0.9)',
-                            '&:hover': { bgcolor: 'rgba(255,255,255,1)' },
+                            bgcolor: alpha(themeColors.background, 0.9),
+                            '&:hover': { bgcolor: themeColors.background },
                             boxShadow: 1,
                           }}
                         >
@@ -303,8 +322,8 @@ const Wishlist = () => {
                           aria-label="ver producto"
                           onClick={() => handleViewProduct(item._id)}
                           sx={{
-                            bgcolor: 'rgba(255,255,255,0.9)',
-                            '&:hover': { bgcolor: 'rgba(255,255,255,1)' },
+                            bgcolor: alpha(themeColors.background, 0.9),
+                            '&:hover': { bgcolor: themeColors.background },
                             boxShadow: 1,
                           }}
                         >
