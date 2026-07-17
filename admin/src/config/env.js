@@ -136,8 +136,6 @@ export const env = {
     true,
   ),
 
-  enableThemeBuilder: bool(process.env.REACT_APP_ENABLE_THEME_BUILDER, true),
-
   enablePromotionalBlocks: bool(
     process.env.REACT_APP_ENABLE_PROMOTIONAL_BLOCKS,
     true,
