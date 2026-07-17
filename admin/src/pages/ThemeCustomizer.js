@@ -1,6 +1,5 @@
 // src/pages/ThemeCustomizer.jsx - Store Design admin
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import {
   Alert,
   AppBar,
@@ -39,7 +38,6 @@ import {
   ArrowBack as ArrowBackIcon,
   ChevronRight as ChevronRightIcon,
   CloudUpload as CloudUploadIcon,
-  History as HistoryIcon,
   Image as ImageIcon,
   Menu as MenuIcon,
   OpenInFull as FocusPreviewIcon,
@@ -71,7 +69,6 @@ import {
   ProductsEditor,
   SpacingEditor,
   TypographyEditor,
-  VersionHistory,
 } from '@features/theme/editors'
 
 const APP_BAR_HEIGHT = 72
@@ -173,10 +170,8 @@ const findActiveSection = id =>
 const ThemeCustomizer = () => {
   const muiTheme = useMuiTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
-  const { tenantId } = useParams()
 
   const [activeSectionId, setActiveSectionId] = useState('colors')
-  const [showHistory, setShowHistory] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [showError, setShowError] = useState(false)
   const [previewViewport, setPreviewViewport] = useState('desktop')
@@ -185,24 +180,19 @@ const ThemeCustomizer = () => {
   const [settingsOpen, setSettingsOpen] = useState(true)
 
   const {
-    activatePreview,
     activeTheme,
     autoSaveEnabled,
     autoSaveError,
     clearError,
     clearPreview,
-    createPreview,
     discard,
     error,
     hasChanges,
     isLoading,
     isSaving,
     lastSaved,
-    loadHistory,
-    previewId,
     previewMode,
     reset,
-    rollback,
     save,
     setSection,
     theme,
@@ -232,10 +222,6 @@ const ThemeCustomizer = () => {
   useEffect(() => {
     if (error || autoSaveError) setShowError(true)
   }, [error, autoSaveError])
-
-  useEffect(() => {
-    if (previewMode && !previewId && !isSaving) createPreview()
-  }, [createPreview, isSaving, previewId, previewMode])
 
   useEffect(() => {
     if (!isMobile) setMobileDrawerOpen(false)
@@ -280,33 +266,6 @@ const ThemeCustomizer = () => {
     if (!hasChanges) return
     if (window.confirm('¿Descartar cambios no guardados?')) discard()
   }, [discard, hasChanges])
-
-  const handlePublishPreview = useCallback(async () => {
-    if (isSaving) return
-
-    if (previewId) {
-      const activateResult = await activatePreview(previewId)
-      if (activateResult?.meta?.requestStatus === 'fulfilled') {
-        setShowSuccess(true)
-        clearPreview()
-        setShowHistory(false)
-        return
-      }
-    }
-
-    const result = await save()
-    if (result?.meta?.requestStatus === 'fulfilled') {
-      setShowSuccess(true)
-      clearPreview()
-      setShowHistory(false)
-    } else {
-      setShowError(true)
-    }
-  }, [activatePreview, clearPreview, isSaving, previewId, save])
-
-  const handleGeneratePreview = useCallback(() => {
-    if (!isSaving) createPreview()
-  }, [createPreview, isSaving])
 
   const resolvedErrorMessage =
     error?.message ||
@@ -542,12 +501,6 @@ const ThemeCustomizer = () => {
               </Typography>
             </Box>
 
-            <Chip
-              size="small"
-              label={`Tenant: ${tenantId || 'default'}`}
-              variant="outlined"
-            />
-
             {hasChanges && (
               <Badge color="warning" variant="dot">
                 <Chip
@@ -614,19 +567,6 @@ const ThemeCustomizer = () => {
               >
                 {previewMode ? 'Salir preview' : 'Preview'}
               </Button>
-            </Tooltip>
-
-            <Tooltip title="Historial de versiones">
-              <IconButton
-                size="small"
-                aria-label="Abrir historial"
-                onClick={() => {
-                  loadHistory?.(20)
-                  setShowHistory(true)
-                }}
-              >
-                <HistoryIcon />
-              </IconButton>
             </Tooltip>
 
             <Tooltip title="Resetear tema">
@@ -919,31 +859,6 @@ const ThemeCustomizer = () => {
                     {VIEWPORT_CONFIG[viewport].label}
                   </Button>
                 ))}
-                <Box sx={{ flex: 1 }} />
-                <Typography variant="caption" color="text.secondary">
-                  {previewId ? 'Snapshot generado' : 'Sin snapshot'}
-                </Typography>
-                {previewId ? (
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="success"
-                    onClick={handlePublishPreview}
-                    disabled={isSaving || (!hasChanges && !previewId)}
-                  >
-                    Publicar preview
-                  </Button>
-                ) : (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="info"
-                    onClick={handleGeneratePreview}
-                    disabled={isSaving}
-                  >
-                    Generar preview
-                  </Button>
-                )}
               </Paper>
             )}
 
@@ -1029,12 +944,6 @@ const ThemeCustomizer = () => {
             </Box>
           </Box>
         </Box>
-
-        <VersionHistory
-          open={showHistory}
-          onClose={() => setShowHistory(false)}
-          onRollback={rollback}
-        />
 
         <Snackbar
           open={showSuccess}

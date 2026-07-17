@@ -10,7 +10,6 @@ const { Schema } = mongoose
 // CONSTANTES Y UTILIDADES
 
 const CSS_VAR_PREFIX = '--'
-const PREVIEW_TTL_HOURS = 24
 
 const VALIDATION = {
   color: /^#([0-9A-F]{3}|[0-9A-F]{4}|[0-9A-F]{6}|[0-9A-F]{8})$/i,
@@ -25,8 +24,6 @@ export const THEME_CHANGE_TYPES = [
   'patch',
   'reset',
   'import',
-  'rollback',
-  'preview_activation',
 ]
 
 export const DEFAULT_THEME_CONFIG = {
@@ -76,30 +73,6 @@ export const DEFAULT_THEME_CONFIG = {
 
 const isValidObjectId = value => mongoose.Types.ObjectId.isValid(String(value || ''))
 
-const isPlainObject = value => {
-  return Boolean(
-    value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      !(value instanceof Date) &&
-      !(value instanceof mongoose.Types.ObjectId),
-  )
-}
-
-const deepMerge = (base, patch) => {
-  const output = { ...(base || {}) }
-
-  for (const [key, value] of Object.entries(patch || {})) {
-    if (isPlainObject(value) && isPlainObject(output[key])) {
-      output[key] = deepMerge(output[key], value)
-    } else {
-      output[key] = value
-    }
-  }
-
-  return output
-}
-
 function isValidColor(value) {
   if (!value || typeof value !== 'string') return false
   const v = value.trim()
@@ -134,11 +107,9 @@ const omitThemeSystemFields = value => {
     'isActive',
     'isPreview',
     'isDefault',
-    'parentVersion',
     'lastModifiedBy',
     'changeType',
     'changeNote',
-    'previewExpiresAt',
   ]) {
     delete clean[field]
   }
@@ -612,11 +583,6 @@ const themeConfigSchema = new Schema(
     isDefault: { type: Boolean, default: false },
     isPreview: { type: Boolean, default: false, index: true },
     version: { type: Number, required: true, min: 1, index: true },
-    parentVersion: {
-      type: Schema.Types.ObjectId,
-      ref: 'ThemeConfig',
-      default: null,
-    },
     lastModifiedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -633,11 +599,6 @@ const themeConfigSchema = new Schema(
       trim: true,
       maxlength: 300,
       default: '',
-    },
-    previewExpiresAt: {
-      type: Date,
-      default: null,
-      index: true,
     },
   },
   {
@@ -685,7 +646,6 @@ themeConfigSchema.index(
 
 themeConfigSchema.index({ tenantId: 1, isPreview: 1, createdAt: -1 })
 themeConfigSchema.index({ tenantId: 1, updatedAt: -1 })
-themeConfigSchema.index({ previewExpiresAt: 1 }, { expireAfterSeconds: 0 })
 
 // =====================================================
 // METHODS
@@ -1018,213 +978,6 @@ themeConfigSchema.statics.findActiveByTenant = function findActiveByTenant(tenan
     isActive: true,
     isPreview: false,
   }).setOptions({ tenantId })
-}
-
-themeConfigSchema.statics.getNextVersion = async function getNextVersion(tenantId, session = null) {
-  if (!isValidObjectId(tenantId)) throw new Error('tenantId inválido')
-
-  const latest = await this.findOne({
-    tenantId,
-    isPreview: false,
-  })
-    .setOptions({ tenantId })
-    .sort({ version: -1 })
-    .select('version')
-    .session(session)
-    .lean()
-
-  return Number(latest?.version || 0) + 1
-}
-
-themeConfigSchema.statics.getOrCreateActive = async function getOrCreateActive(
-  tenantId,
-  defaults = {},
-  session = null,
-) {
-  if (!isValidObjectId(tenantId)) throw new Error('tenantId inválido')
-
-  const active = await this.findActiveByTenant(tenantId).session(session)
-  if (active) return active
-
-  const payload = deepMerge(DEFAULT_THEME_CONFIG, defaults)
-
-  const [created] = await this.create(
-    [
-      {
-        tenantId,
-        ...payload,
-        version: 1,
-        isActive: true,
-        isPreview: false,
-        isDefault: true,
-        changeType: 'initial',
-      },
-    ],
-    { session },
-  )
-
-  return created
-}
-
-themeConfigSchema.statics.createVersionFromActive = async function createVersionFromActive({
-  tenantId,
-  payload = {},
-  userId = null,
-  changeType = 'update',
-  changeNote = '',
-  session = null,
-}) {
-  if (!isValidObjectId(tenantId)) throw new Error('tenantId inválido')
-
-  const active = await this.getOrCreateActive(tenantId, {}, session)
-  const nextVersion = await this.getNextVersion(tenantId, session)
-  const mergedPayload = deepMerge(active.toSnapshotPayload(), payload)
-
-  active.isActive = false
-  await active.save({ session, tenantId })
-
-  const [created] = await this.create(
-    [
-      {
-        tenantId,
-        ...mergedPayload,
-        version: nextVersion,
-        isActive: true,
-        isPreview: false,
-        isDefault: false,
-        parentVersion: active._id,
-        lastModifiedBy: userId,
-        changeType,
-        changeNote,
-      },
-    ],
-    { session },
-  )
-
-  return created
-}
-
-themeConfigSchema.statics.createPreview = async function createPreview({
-  tenantId,
-  payload = {},
-  userId = null,
-}) {
-  if (!isValidObjectId(tenantId)) throw new Error('tenantId inválido')
-
-  const active = await this.getOrCreateActive(tenantId)
-  const previewVersion = await this.getNextVersion(tenantId)
-  const mergedPayload = deepMerge(active.toSnapshotPayload(), payload)
-
-  await this.deleteMany({
-    tenantId,
-    isPreview: true,
-  }).setOptions({ tenantId })
-
-  return this.create({
-    tenantId,
-    ...mergedPayload,
-    version: previewVersion,
-    isActive: false,
-    isPreview: true,
-    isDefault: false,
-    parentVersion: active._id,
-    lastModifiedBy: userId,
-    previewExpiresAt: new Date(Date.now() + PREVIEW_TTL_HOURS * 60 * 60 * 1000),
-  })
-}
-
-themeConfigSchema.statics.activatePreview = async function activatePreview({
-  tenantId,
-  previewId,
-  userId = null,
-  session = null,
-}) {
-  if (!isValidObjectId(tenantId)) throw new Error('tenantId inválido')
-  if (!isValidObjectId(previewId)) throw new Error('previewId inválido')
-
-  const preview = await this.findOne({
-    _id: previewId,
-    tenantId,
-    isPreview: true,
-    isActive: false,
-  })
-    .setOptions({ tenantId })
-    .session(session)
-
-  if (!preview) throw new Error('Preview no encontrado')
-
-  const active = await this.getOrCreateActive(tenantId, {}, session)
-  const nextVersion = await this.getNextVersion(tenantId, session)
-
-  active.isActive = false
-  await active.save({ session, tenantId })
-
-  const [created] = await this.create(
-    [
-      {
-        tenantId,
-        ...preview.toSnapshotPayload(),
-        version: nextVersion,
-        isActive: true,
-        isPreview: false,
-        isDefault: false,
-        parentVersion: active._id,
-        lastModifiedBy: userId,
-        changeType: 'preview_activation',
-      },
-    ],
-    { session },
-  )
-
-  await this.deleteOne({
-    _id: preview._id,
-    tenantId,
-    isPreview: true,
-  }).setOptions({ tenantId })
-
-  return created
-}
-
-themeConfigSchema.statics.getHistory = function getHistory(tenantId, limit = 10) {
-  if (!isValidObjectId(tenantId)) throw new Error('tenantId inválido')
-
-  return this.find({
-    tenantId,
-    isPreview: false,
-  })
-    .setOptions({ tenantId })
-    .sort({ version: -1 })
-    .limit(limit)
-    .select('version updatedAt lastModifiedBy isActive isDefault changeType changeNote parentVersion')
-    .lean()
-}
-
-themeConfigSchema.statics.rollback = async function rollback({
-  tenantId,
-  targetVersion,
-  userId = null,
-  session = null,
-}) {
-  if (!isValidObjectId(tenantId)) throw new Error('tenantId inválido')
-
-  const target = await this.findOne({
-    tenantId,
-    version: targetVersion,
-    isPreview: false,
-  })
-    .setOptions({ tenantId })
-    .session(session)
-
-  if (!target) throw new Error('Versión objetivo no encontrada')
-
-  return this.createVersionFromActive({
-    tenantId,
-    payload: target.toSnapshotPayload(),
-    userId,
-    changeType: 'rollback',
-    changeNote: `Rollback a versión ${targetVersion}`,
-    session,
-  })
 }
 
 // =====================================================

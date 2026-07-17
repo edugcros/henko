@@ -44,11 +44,9 @@ const PROTECTED_FIELDS = new Set([
   'isActive',
   'isDefault',
   'isPreview',
-  'parentVersion',
   'lastModifiedBy',
   'changeType',
   'changeNote',
-  'previewExpiresAt',
 ])
 
 const DESIGN_ROOT_KEYS = new Set([
@@ -69,8 +67,6 @@ const DESIGN_ROOT_KEYS = new Set([
 
 const IMAGE_FIELDS = new Set(['backgroundImage', 'logo', 'favicon'])
 const ALLOWED_UPLOAD_TYPES = new Set(['background', 'backgroundImage', 'logo', 'favicon', 'hero', 'generic'])
-
-const DEFAULT_PREVIEW_TTL_MINUTES = 30
 
 // =====================================================
 // RESPUESTAS
@@ -235,7 +231,6 @@ const buildAdminResponse = theme => {
     isDefault: theme.isDefault,
     isPreview: theme.isPreview,
     version: theme.version,
-    parentVersion: theme.parentVersion,
     lastModifiedBy: theme.lastModifiedBy,
     maintenanceMode: theme.maintenanceMode,
     advanced: theme.advanced,
@@ -397,15 +392,9 @@ const updateActiveThemeInPlace = async ({
     isDefault: false,
     isPreview: false,
     version: nextVersion,
-
-    // Con índice único tenantId, no hay historial documental real.
-    // Evita CastError porque parentVersion en el model es ObjectId.
-    parentVersion: null,
-
     lastModifiedBy: userId || null,
     changeType,
     changeNote,
-    previewExpiresAt: null,
     updatedAt: new Date(),
   }
 
@@ -682,89 +671,6 @@ export const patchTheme = async (req, res, next) => {
   }
 }
 
-/**
- * Preview efímero:
- * Con índice único { tenantId: 1 }, no se puede persistir un documento preview
- * en la misma colección. Se devuelve el payload calculado para que el frontend
- * pueda previsualizar sin insertar y sin romper tenantId_1.
- */
-const buildEphemeralPreview = ({ active, updates, userId }) => {
-  const payload = buildFullPayloadFromActive({
-    active,
-    updates,
-  })
-
-  const now = new Date()
-  const expiresAt = new Date(
-    now.getTime() + DEFAULT_PREVIEW_TTL_MINUTES * 60 * 1000,
-  )
-
-  return {
-    ...payload,
-    _id: `preview-${active.tenantId}-${Date.now()}`,
-    tenantId: String(active.tenantId),
-
-    isActive: false,
-    isDefault: false,
-    isPreview: true,
-
-    version: Number(active.version || 1) + 1,
-
-    // Tu schema espera ObjectId, pero el preview es efímero.
-    // No hay documento padre real porque no estamos versionando documentos.
-    parentVersion: null,
-
-    lastModifiedBy: userId || null,
-    changeType: 'preview',
-    changeNote: 'Preview efímero no persistido por índice único tenantId',
-    previewExpiresAt: expiresAt,
-
-    createdAt: now,
-    updatedAt: now,
-  }
-}
-
-export const createPreview = async (req, res, next) => {
-  try {
-    const { tenantId } = resolveTenantContext(req)
-    const updates = sanitizeUpdates(req.body)
-
-    const active = await ensureActiveTheme({ tenantId, req })
-
-    const preview = buildEphemeralPreview({
-      active,
-      updates,
-      userId: getUserId(req),
-    })
-
-    return successResponse(
-      res,
-      {
-        previewId: preview._id,
-        expiresAt: preview.previewExpiresAt,
-        version: preview.version,
-        data: preview,
-      },
-      201,
-    )
-  } catch (error) {
-    return next(error)
-  }
-}
-
-/**
- * Activación de preview:
- * No aplica con preview efímero. Para activarlo, el frontend debe enviar el payload
- * a PATCH /api/theme/admin.
- */
-export const activatePreview = async (req, res) => {
-  return errorResponse(
-    res,
-    'Preview persistente no disponible con índice único por tenant. Aplicá el preview usando PATCH /api/theme/admin.',
-    409,
-  )
-}
-
 export const resetTheme = async (req, res, next) => {
   try {
     const { tenantId } = resolveTenantContext(req)
@@ -907,65 +813,6 @@ export const importTheme = async (req, res, next) => {
       }
     }
 
-    return next(error)
-  }
-}
-
-/**
- * Historial lógico:
- * Con índice único tenantId_1 no hay documentos históricos reales.
- * Se devuelve el theme actual como snapshot único.
- */
-export const getThemeHistory = async (req, res, next) => {
-  try {
-    const { tenantId } = resolveTenantContext(req)
-    const theme = await ensureActiveTheme({ tenantId, req })
-
-    return successResponse(res, [
-      {
-        _id: theme._id,
-        tenantId: theme.tenantId,
-        version: theme.version,
-        changeType: theme.changeType || 'current',
-        changeNote: theme.changeNote || 'Versión actual',
-        lastModifiedBy: theme.lastModifiedBy || null,
-        isActive: theme.isActive,
-        isPreview: theme.isPreview,
-        createdAt: theme.createdAt,
-        updatedAt: theme.updatedAt,
-      },
-    ])
-  } catch (error) {
-    return next(error)
-  }
-}
-
-/**
- * Rollback:
- * No hay historial persistente con índice único tenantId.
- * Si se solicita la versión actual, se responde OK. Otra versión devuelve 409.
- */
-export const rollbackTheme = async (req, res, next) => {
-  try {
-    const { tenantId } = resolveTenantContext(req)
-    const targetVersion = Number(req.body?.version)
-
-    if (!Number.isInteger(targetVersion) || targetVersion < 1) {
-      return errorResponse(res, 'Versión numérica válida requerida', 400)
-    }
-
-    const theme = await ensureActiveTheme({ tenantId, req })
-
-    if (Number(theme.version) !== targetVersion) {
-      return errorResponse(
-        res,
-        'Rollback histórico no disponible con índice único por tenant',
-        409,
-      )
-    }
-
-    return successResponse(res, buildAdminResponse(theme))
-  } catch (error) {
     return next(error)
   }
 }
