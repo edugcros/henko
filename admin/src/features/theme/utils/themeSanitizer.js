@@ -52,7 +52,12 @@ const sanitize = (value, key = '') => {
   }
 
   return Object.entries(value).reduce((acc, [childKey, childValue]) => {
-    if (['meta', 'error'].includes(childKey)) return acc
+    // Strips stray 'meta'/'error' props that leak in from unwrapped API/Redux
+    // response shapes (e.g. { success, data, error, meta }) at the object's
+    // OWN level — but 'error' is a legitimate schema field under colors
+    // (theme.colors.error), so it must survive when we're already inside colors.
+    if (childKey === 'meta') return acc
+    if (childKey === 'error' && key !== 'colors') return acc
     const sanitized = sanitize(childValue, childKey)
 
     if (sanitized !== undefined) {

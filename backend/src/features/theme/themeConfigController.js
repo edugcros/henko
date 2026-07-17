@@ -166,7 +166,12 @@ const sanitizeThemePatchValue = (value, key = '') => {
   if (!isPlainObject(value)) return value
 
   return Object.entries(value).reduce((acc, [childKey, childValue]) => {
-    if (['meta', 'error'].includes(childKey)) return acc
+    // Strips stray 'meta'/'error' props that leak in from unwrapped API
+    // response shapes at the object's OWN level — but 'error' is a legitimate
+    // schema field under colors (theme.colors.error), so it must survive
+    // when we're already inside colors. Mirror of admin themeSanitizer.js.
+    if (childKey === 'meta') return acc
+    if (childKey === 'error' && key !== 'colors') return acc
     acc[childKey] = sanitizeThemePatchValue(childValue, childKey)
     return acc
   }, {})
