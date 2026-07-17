@@ -46,63 +46,31 @@ import {
   USER_METRIC_EVENTS,
 } from '../services/userMetricsService'
 
+// ==========================================
+// CONSTANTES
+// ==========================================
 const EMPTY_ARRAY = []
 const FALLBACK_IMAGE = '/assets/images/placeholder.png'
 const TOAST_POSITION = 'bottom-center'
+const DEFAULT_MAX_WIDTH = 260
+const DEFAULT_PLACEMENT = 'home_product_card'
+const IMPRESSION_TRACKING_DEBOUNCE = 500
+
+// ==========================================
+// UTILIDADES PRIVADAS
+// ==========================================
 
 const safeString = value => String(value || '').trim()
 
-const getProductId = item => {
-  return item?._id || item?.id || item?.productId || item?.slug || ''
-}
-
-const getProductTitle = item => {
-  return item?.title || item?.name || item?.nombre || 'Producto'
-}
-
-const getProductBrand = item => {
-  return item?.marca || item?.brand || item?.manufacturer || 'Marca'
-}
-
-const getProductCategory = item => {
-  return item?.category || item?.categoryName || item?.categoria || ''
-}
-
-const getProductPrice = item => {
-  return Number(item?.finalPrice ?? item?.price ?? item?.precio ?? 0) || 0
-}
-
-const getOriginalPrice = item => {
-  return Number(item?.originalPrice ?? item?.price ?? item?.precio ?? 0) || 0
-}
-
-const getDiscountPercentage = item => {
-  return Number(item?.discountPercentage || item?.discount || 0) || 0
-}
-
-const getAvailableStock = item => {
-  if (!item) return 0
-
-  if (Array.isArray(item.variants) && item.variants.length > 0) {
-    return item.variants
-      .filter(variant => variant?.isActive !== false)
-      .reduce((total, variant) => total + Number(variant?.stock || 0), 0)
-  }
-
-  return Number(item.stock ?? item.cantidad ?? 0) || 0
-}
-
-const hasProductVariants = item => {
-  return Boolean(
-    item?.hasVariants ||
-    (Array.isArray(item?.variants) && item.variants.length > 0),
-  )
+const resolveItem = ({ data, item }) => {
+  if (item) return item
+  if (Array.isArray(data)) return data[0] || null
+  return data || null
 }
 
 const normalizeAspectRatio = value => {
   const clean = safeString(value)
-  if (!clean) return '1 / 1'
-  return clean.replace(':', ' / ')
+  return !clean ? '1 / 1' : clean.replace(':', ' / ')
 }
 
 const getHoverTransform = effect => {
@@ -113,14 +81,7 @@ const getHoverTransform = effect => {
     border: 'none',
     scale: 'scale(1.02)',
   }
-
   return effects[effect] || effects.lift
-}
-
-const resolveItem = ({ data, item }) => {
-  if (item) return item
-  if (Array.isArray(data)) return data[0] || null
-  return data || null
 }
 
 const getToastBaseStyle = colors => ({
@@ -199,7 +160,7 @@ const safeTrackMetric = payload => {
   try {
     trackUserMetric(payload)
   } catch {
-    // Las métricas no deben romper la experiencia de compra.
+    // Las métricas no deben romper la experiencia de compra
   }
 }
 
@@ -208,39 +169,73 @@ const stopCardEvent = event => {
   event.stopPropagation()
 }
 
+// ==========================================
+// EXTRACTORES DE PRODUCTO (optimizados)
+// ==========================================
+
+const getProductId = item => item?._id || item?.id || item?.productId || item?.slug || ''
+const getProductTitle = item => item?.title || item?.name || item?.nombre || 'Producto'
+const getProductBrand = item => item?.marca || item?.brand || item?.manufacturer || 'Marca'
+const getProductCategory = item => item?.category || item?.categoryName || item?.categoria || ''
+const getProductPrice = item => Number(item?.finalPrice ?? item?.price ?? item?.precio ?? 0) || 0
+const getOriginalPrice = item => Number(item?.originalPrice ?? item?.price ?? item?.precio ?? 0) || 0
+const getDiscountPercentage = item => Number(item?.discountPercentage || item?.discount || 0) || 0
+
+const getAvailableStock = item => {
+  if (!item) return 0
+  if (Array.isArray(item.variants) && item.variants.length > 0) {
+    return item.variants
+      .filter(v => v?.isActive !== false)
+      .reduce((total, v) => total + Number(v?.stock || 0), 0)
+  }
+  return Number(item.stock ?? item.cantidad ?? 0) || 0
+}
+
+const hasProductVariants = item => 
+  Boolean(item?.hasVariants || (Array.isArray(item?.variants) && item.variants.length > 0))
+
+// ==========================================
+// COMPONENTE PRINCIPAL
+// ==========================================
+
 /**
- * HomeProductCard unificada para producción.
+ * HomeProductCard: Tarjeta de producto unificada para producción
  *
- * Une la estética simple de HomeProductCard con las funciones comerciales de ProductCard:
- * - theme runtime multitenant
- * - impresiones y clicks
- * - favoritos
- * - comparar
- * - vista rápida
- * - carrito rápido opcional
- * - promociones
- * - ReactGA add_to_cart
- * - accesibilidad por teclado
+ * Características:
+ * - Tema multitenant con theme runtime
+ * - Tracking de impresiones y clicks
+ * - Favoritos, comparación, vista rápida
+ * - Carrito rápido con descuentos y promociones
+ * - Analytics con ReactGA
+ * - Accesibilidad completa (teclado, ARIA)
+ * - Compatible con props antiguas: data={product} o item={product}
  *
- * Compatible con props antiguas:
- * - <HomeProductCard data={product} />
- * - <ProductCard item={product} /> si copiás este archivo como ProductCard.jsx
+ * @param {Object} data - Producto o array de productos (compatibilidad legacy)
+ * @param {Object} item - Producto (alternativa a data)
+ * @param {string} placement - Ubicación para analytics
+ * @param {number|string} maxWidth - Ancho máximo de la tarjeta
+ * @param {boolean} showActions - Mostrar acciones (compara, vista rápida, carrito)
+ * @param {boolean} showAddToCart - Mostrar botón "Añadir al carrito"
  */
 const HomeProductCard = React.memo(
   ({
-    data,
-    item: itemProp,
-    placement = 'home_product_card',
-    maxWidth = 260,
+    data = null,
+    item: itemProp = null,
+    placement = DEFAULT_PLACEMENT,
+    maxWidth = DEFAULT_MAX_WIDTH,
     showActions = true,
-    showAddToCart,
+    showAddToCart = undefined,
   }) => {
     const navigate = useNavigate()
     const dispatch = useDispatch()
     const impressionTrackedRef = useRef('')
 
+    // ==========================================
+    // SELECTS Y STATE
+    // ==========================================
+
     const item = useMemo(
-      () => resolveItem({ data, item: itemProp }),
+      () => resolveItem({ data, itemProp }),
       [data, itemProp],
     )
 
@@ -248,8 +243,11 @@ const HomeProductCard = React.memo(
     const user = useSelector(state => state.user?.user)
     const isAuthenticated = useSelector(selectIsAuthenticated)
     const wishlistIds = useSelector(selectWishlistIds) || EMPTY_ARRAY
-    const compareItems =
-      useSelector(state => state.compare?.items) || EMPTY_ARRAY
+    const compareItems = useSelector(state => state.compare?.items) || EMPTY_ARRAY
+
+    // ==========================================
+    // THEME Y COLORES
+    // ==========================================
 
     const activeConfig = useMemo(
       () => getActiveThemeConfig(themeState),
@@ -273,23 +271,26 @@ const HomeProductCard = React.memo(
 
     const notify = useMemo(() => createNotify(themeColors), [themeColors])
 
+    // ==========================================
+    // DATOS DEL PRODUCTO
+    // ==========================================
+
     const productId = useMemo(() => getProductId(item), [item])
     const routeId = useMemo(() => (item ? getProductRouteId(item) : ''), [item])
-    const title = useMemo(() => getProductTitle(item), [item])
-    const brand = useMemo(() => getProductBrand(item), [item])
-    const category = useMemo(() => getProductCategory(item), [item])
-    const productPrice = useMemo(() => getProductPrice(item), [item])
-    const originalPrice = useMemo(() => getOriginalPrice(item), [item])
-    const discountPercentage = useMemo(
-      () => getDiscountPercentage(item),
+    const productImage = useMemo(
+      () => (item ? getProductImage(item) || FALLBACK_IMAGE : FALLBACK_IMAGE),
       [item],
     )
-    const stock = useMemo(() => getAvailableStock(item), [item])
-    const hasVariants = useMemo(() => hasProductVariants(item), [item])
 
-    const productImage = useMemo(() => {
-      return item ? getProductImage(item) || FALLBACK_IMAGE : FALLBACK_IMAGE
-    }, [item])
+    // NO memoizar estos: son strings simples
+    const title = getProductTitle(item)
+    const brand = getProductBrand(item)
+    const category = getProductCategory(item)
+    const productPrice = getProductPrice(item)
+    const originalPrice = getOriginalPrice(item)
+    const discountPercentage = getDiscountPercentage(item)
+    const stock = getAvailableStock(item)
+    const hasVariants = hasProductVariants(item)
 
     const hasPromotion = Boolean(
       productTheme.showBadge !== false &&
@@ -298,6 +299,10 @@ const HomeProductCard = React.memo(
       productPrice < originalPrice,
     )
 
+    // ==========================================
+    // ESTILOS
+    // ==========================================
+
     const aspectRatio = normalizeAspectRatio(productTheme.imageAspectRatio)
     const hoverTransform = getHoverTransform(productTheme.hoverEffect)
 
@@ -305,15 +310,16 @@ const HomeProductCard = React.memo(
     const cardBorder = themeColors.cardBorder || '#e5e7eb'
     const cardText = themeColors.cardText || '#111827'
     const cardMutedText = themeColors.cardMutedText || '#6b7280'
-    const cardPrice =
-      themeColors.cardPrice || themeColors.salePrice || '#111827'
-    const actionPrimary =
-      themeColors.actionPrimary || themeColors.primary || '#111827'
+    const cardPrice = themeColors.cardPrice || themeColors.salePrice || '#111827'
+    const actionPrimary = themeColors.actionPrimary || themeColors.primary || '#111827'
     const actionPrimaryText = themeColors.actionPrimaryText || '#fff'
+
+    // ==========================================
+    // ESTADO WISHLIST
+    // ==========================================
 
     const isFavorite = useMemo(() => {
       if (!Array.isArray(wishlistIds) || !productId) return false
-
       return wishlistIds.some(entry => {
         if (typeof entry === 'string') return entry === productId
         if (entry && typeof entry === 'object') {
@@ -324,6 +330,10 @@ const HomeProductCard = React.memo(
         return false
       })
     }, [wishlistIds, productId])
+
+    // ==========================================
+    // PAYLOAD DE ANALYTICS
+    // ==========================================
 
     const metricPayload = useMemo(
       () => ({
@@ -357,6 +367,10 @@ const HomeProductCard = React.memo(
         placement,
       ],
     )
+
+    // ==========================================
+    // HANDLERS
+    // ==========================================
 
     const handleNavigate = useCallback(() => {
       if (!item || !routeId) return
@@ -399,7 +413,7 @@ const HomeProductCard = React.memo(
             ],
           })
         } catch {
-          // Analytics no debe romper la UX.
+          // Analytics no debe romper la UX
         }
       },
       [commerceSettings.currency],
@@ -595,6 +609,10 @@ const HomeProductCard = React.memo(
       ],
     )
 
+    // ==========================================
+    // EFECTOS
+    // ==========================================
+
     useEffect(() => {
       if (!item || !productId) return
 
@@ -609,11 +627,14 @@ const HomeProductCard = React.memo(
       })
     }, [item, productId, routeId, placement, metricPayload])
 
+    // ==========================================
+    // RENDER
+    // ==========================================
+
     if (!item || !productId) return null
 
     const shouldShowActions = showActions !== false
-    const shouldShowAddToCart =
-      showAddToCart ?? productTheme.showAddToCart === true
+    const shouldShowAddToCart = showAddToCart ?? productTheme.showAddToCart === true
 
     return (
       <Card
@@ -666,6 +687,7 @@ const HomeProductCard = React.memo(
           },
         }}
       >
+        {/* Botón Favoritos */}
         {productTheme.showWishlist !== false && (
           <Box
             sx={{
@@ -702,6 +724,7 @@ const HomeProductCard = React.memo(
           </Box>
         )}
 
+        {/* Badge de Promoción */}
         {hasPromotion && (
           <Chip
             label={`${discountPercentage}% OFF`}
@@ -719,6 +742,7 @@ const HomeProductCard = React.memo(
           />
         )}
 
+        {/* Imagen y Acciones */}
         <Box
           sx={{
             position: 'relative',
@@ -838,6 +862,7 @@ const HomeProductCard = React.memo(
           )}
         </Box>
 
+        {/* Contenido: Título, Precio, etc */}
         <CardContent
           sx={{
             p:
@@ -970,6 +995,10 @@ const HomeProductCard = React.memo(
   },
 )
 
+// ==========================================
+// DISPLAYNAME Y PROPTYPES
+// ==========================================
+
 HomeProductCard.displayName = 'HomeProductCard'
 
 HomeProductCard.propTypes = {
@@ -981,14 +1010,9 @@ HomeProductCard.propTypes = {
   showAddToCart: PropTypes.bool,
 }
 
-HomeProductCard.defaultProps = {
-  data: null,
-  item: null,
-  placement: 'home_product_card',
-  maxWidth: 260,
-  showActions: true,
-  showAddToCart: undefined,
-}
+// ==========================================
+// EXPORTS
+// ==========================================
 
 export const ProductCard = HomeProductCard
 export default HomeProductCard

@@ -185,9 +185,30 @@ const TECHNICAL_FIELD_PRESETS = [
     label: 'Medidas',
     helper: 'Alto / Ancho / Profundidad',
     fields: [
-      { name: 'alto', label: 'Alto', type: 'number', unit: 'cm', group: 'medidas', source: 'preset' },
-      { name: 'ancho', label: 'Ancho', type: 'number', unit: 'cm', group: 'medidas', source: 'preset' },
-      { name: 'profundidad', label: 'Profundidad', type: 'number', unit: 'cm', group: 'medidas', source: 'preset' },
+      {
+        name: 'alto',
+        label: 'Alto',
+        type: 'number',
+        unit: 'cm',
+        group: 'medidas',
+        source: 'preset',
+      },
+      {
+        name: 'ancho',
+        label: 'Ancho',
+        type: 'number',
+        unit: 'cm',
+        group: 'medidas',
+        source: 'preset',
+      },
+      {
+        name: 'profundidad',
+        label: 'Profundidad',
+        type: 'number',
+        unit: 'cm',
+        group: 'medidas',
+        source: 'preset',
+      },
     ],
   },
   {
@@ -195,9 +216,28 @@ const TECHNICAL_FIELD_PRESETS = [
     label: 'Motorización',
     helper: 'Cilindrada / Potencia / Transmisión',
     fields: [
-      { name: 'cilindrada', label: 'Cilindrada', type: 'text', unit: 'cc', group: 'motorización', source: 'preset' },
-      { name: 'potencia', label: 'Potencia', type: 'text', group: 'motorización', source: 'preset' },
-      { name: 'transmision', label: 'Transmisión', type: 'text', group: 'motorización', source: 'preset' },
+      {
+        name: 'cilindrada',
+        label: 'Cilindrada',
+        type: 'text',
+        unit: 'cc',
+        group: 'motorización',
+        source: 'preset',
+      },
+      {
+        name: 'potencia',
+        label: 'Potencia',
+        type: 'text',
+        group: 'motorización',
+        source: 'preset',
+      },
+      {
+        name: 'transmision',
+        label: 'Transmisión',
+        type: 'text',
+        group: 'motorización',
+        source: 'preset',
+      },
     ],
   },
   {
@@ -205,9 +245,27 @@ const TECHNICAL_FIELD_PRESETS = [
     label: 'Materiales',
     helper: 'Material / Terminación / Uso',
     fields: [
-      { name: 'material_principal', label: 'Material principal', type: 'text', group: 'materiales', source: 'preset' },
-      { name: 'terminacion', label: 'Terminación', type: 'text', group: 'materiales', source: 'preset' },
-      { name: 'uso_recomendado', label: 'Uso recomendado', type: 'text', group: 'uso', source: 'preset' },
+      {
+        name: 'material_principal',
+        label: 'Material principal',
+        type: 'text',
+        group: 'materiales',
+        source: 'preset',
+      },
+      {
+        name: 'terminacion',
+        label: 'Terminación',
+        type: 'text',
+        group: 'materiales',
+        source: 'preset',
+      },
+      {
+        name: 'uso_recomendado',
+        label: 'Uso recomendado',
+        type: 'text',
+        group: 'uso',
+        source: 'preset',
+      },
     ],
   },
   {
@@ -215,9 +273,27 @@ const TECHNICAL_FIELD_PRESETS = [
     label: 'Compatibilidad',
     helper: 'Modelo / Año / Compatibilidad',
     fields: [
-      { name: 'modelo_compatible', label: 'Modelo compatible', type: 'text', group: 'compatibilidad', source: 'preset' },
-      { name: 'anio_compatible', label: 'Año compatible', type: 'text', group: 'compatibilidad', source: 'preset' },
-      { name: 'observaciones_tecnicas', label: 'Observaciones técnicas', type: 'textarea', group: 'compatibilidad', source: 'preset' },
+      {
+        name: 'modelo_compatible',
+        label: 'Modelo compatible',
+        type: 'text',
+        group: 'compatibilidad',
+        source: 'preset',
+      },
+      {
+        name: 'anio_compatible',
+        label: 'Año compatible',
+        type: 'text',
+        group: 'compatibilidad',
+        source: 'preset',
+      },
+      {
+        name: 'observaciones_tecnicas',
+        label: 'Observaciones técnicas',
+        type: 'textarea',
+        group: 'compatibilidad',
+        source: 'preset',
+      },
     ],
   },
 ]
@@ -417,6 +493,32 @@ const validateVariantsForSubmit = variants => {
   return null
 }
 
+
+const validateProductBasicsForSubmit = ({ values = {}, hasVariants = false }) => {
+  const requiredFields = [
+    ['titulo', 'El título es obligatorio'],
+    ['descripcion', 'La descripción comercial es obligatoria'],
+    ['categoria', 'La categoría es obligatoria'],
+    ['subcategoria', 'La subcategoría es obligatoria'],
+    ['marca', 'La marca es obligatoria'],
+    ['condicion', 'La condición es obligatoria'],
+  ]
+
+  for (const [fieldName, errorMessage] of requiredFields) {
+    if (!normalizeString(values[fieldName])) return errorMessage
+  }
+
+  if (normalizeNumberValue(values.precio) <= 0) {
+    return 'El precio debe ser mayor a 0.'
+  }
+
+  if (!hasVariants && normalizeNumberValue(values.cantidad) <= 0) {
+    return 'La cantidad en stock debe ser mayor a 0.'
+  }
+
+  return null
+}
+
 const parseQuickVariantText = value => {
   const clean = normalizeString(value)
 
@@ -464,7 +566,10 @@ const inferTechnicalFieldType = value => {
   const clean = normalizeString(value)
   if (!clean) return 'text'
   if (/^(si|sí|no|true|false)$/i.test(clean)) return 'boolean'
-  if (/^-?\d+(?:[.,]\d+)?(?:\s*(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv))?$/i.test(clean)) return 'number'
+  if (
+    /^-?\d+(?:[.,]\d+)?(?:\s*(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv))?$/i.test(clean)
+  )
+    return 'number'
   if (clean.includes(',') || clean.includes(';')) return 'multiselect'
   return clean.length > 90 ? 'textarea' : 'text'
 }
@@ -498,7 +603,9 @@ const parseTechnicalFieldText = value => {
             .map(item => normalizeString(item))
             .filter(Boolean)
         : type === 'number'
-          ? normalizeNumberValue(rawValue.replace(/[^0-9.,-]/g, '').replace(',', '.'))
+          ? normalizeNumberValue(
+              rawValue.replace(/[^0-9.,-]/g, '').replace(',', '.'),
+            )
           : /^(si|sí|true)$/i.test(rawValue)
             ? true
             : /^(no|false)$/i.test(rawValue)
@@ -510,10 +617,14 @@ const parseTechnicalFieldText = value => {
         label: toTitleCase(rawLabel),
         type,
         values: Array.isArray(normalizedValue) ? normalizedValue : [],
-        unit: normalizeString(rawValue.match(/\b(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv)\b/i)?.[1] || ''),
+        unit: normalizeString(
+          rawValue.match(/\b(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv)\b/i)?.[1] || '',
+        ),
         required: false,
         visible: true,
-        filterable: ['select', 'multiselect', 'color', 'boolean'].includes(type),
+        filterable: ['select', 'multiselect', 'color', 'boolean'].includes(
+          type,
+        ),
         searchable: true,
         group: 'ficha técnica',
         source: 'quick',
@@ -544,7 +655,10 @@ const mergeVariantAttributeDefinitions = (current = [], incoming = []) => {
     merged.set(attribute.name, {
       ...previous,
       ...attribute,
-      label: attribute.label || previous?.label || normalizeAiFieldLabel(attribute.name),
+      label:
+        attribute.label ||
+        previous?.label ||
+        normalizeAiFieldLabel(attribute.name),
       values: [
         ...new Set([
           ...safeArray(previous?.values),
@@ -598,7 +712,8 @@ const generateVariantRowsFromSelection = ({
   }
 
   const total = activeAttrs.reduce(
-    (acc, attribute) => acc * safeArray(selectedAttributes[attribute.name]).length,
+    (acc, attribute) =>
+      acc * safeArray(selectedAttributes[attribute.name]).length,
     1,
   )
 
@@ -624,12 +739,19 @@ const generateVariantRowsFromSelection = ({
     )
   }
 
-  const previousByKey = new Map(safeArray(previousVariants).map(variant => [variant.key, variant]))
+  const previousByKey = new Map(
+    safeArray(previousVariants).map(variant => [variant.key, variant]),
+  )
 
   const variants = buildCombinations().map((combination, index) => {
-    const key = buildVariantKey(combination) || `variant-${index + 1}-${Date.now()}`
+    const key =
+      buildVariantKey(combination) || `variant-${index + 1}-${Date.now()}`
     const previous = previousByKey.get(key)
-    const generatedSku = buildGeneratedVariantSku(productTitle, combination, index)
+    const generatedSku = buildGeneratedVariantSku(
+      productTitle,
+      combination,
+      index,
+    )
 
     return {
       key,
@@ -1324,13 +1446,13 @@ const TECHNICAL_STORAGE_KEYS = new Set([
 const shouldIncludeTechnicalSheetFromJob = job => {
   return Boolean(
     job?.useTechnicalSheet ||
-      job?.useTechnicalData ||
-      job?.includeTechnicalSheet ||
-      job?.includeTechnicalData ||
-      job?.metadata?.useTechnicalSheet ||
-      job?.metadata?.useTechnicalData ||
-      job?.metadata?.includeTechnicalSheet ||
-      job?.metadata?.includeTechnicalData,
+    job?.useTechnicalData ||
+    job?.includeTechnicalSheet ||
+    job?.includeTechnicalData ||
+    job?.metadata?.useTechnicalSheet ||
+    job?.metadata?.useTechnicalData ||
+    job?.metadata?.includeTechnicalSheet ||
+    job?.metadata?.includeTechnicalData,
   )
 }
 
@@ -1338,7 +1460,9 @@ const sanitizeAiOutputForStorage = (value, includeTechnicalSheet) => {
   if (includeTechnicalSheet || !value || typeof value !== 'object') return value
 
   if (Array.isArray(value)) {
-    return value.map(item => sanitizeAiOutputForStorage(item, includeTechnicalSheet))
+    return value.map(item =>
+      sanitizeAiOutputForStorage(item, includeTechnicalSheet),
+    )
   }
 
   return Object.entries(value).reduce((acc, [key, entryValue]) => {
@@ -1351,7 +1475,12 @@ const sanitizeAiOutputForStorage = (value, includeTechnicalSheet) => {
 const removeEmptyObjectKey = (target, key) => {
   if (!target || typeof target !== 'object') return
   const value = target[key]
-  if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  ) {
     delete target[key]
   }
 }
@@ -1409,10 +1538,14 @@ const enforceTechnicalSheetPersistence = (payload, includeTechnicalSheet) => {
   cleanPayload.technicalSheetEnabled = true
   cleanPayload.showTechnicalSheet = true
 
-  if (!normalizeString(cleanPayload.technicalDescription)) delete cleanPayload.technicalDescription
-  if (!normalizeString(cleanPayload.descripcionTecnica)) delete cleanPayload.descripcionTecnica
-  if (!safeArray(cleanPayload.specifications).length) delete cleanPayload.specifications
-  if (!safeArray(cleanPayload.filterAttributes).length) delete cleanPayload.filterAttributes
+  if (!normalizeString(cleanPayload.technicalDescription))
+    delete cleanPayload.technicalDescription
+  if (!normalizeString(cleanPayload.descripcionTecnica))
+    delete cleanPayload.descripcionTecnica
+  if (!safeArray(cleanPayload.specifications).length)
+    delete cleanPayload.specifications
+  if (!safeArray(cleanPayload.filterAttributes).length)
+    delete cleanPayload.filterAttributes
   removeEmptyObjectKey(cleanPayload, 'productAttributes')
   removeEmptyObjectKey(cleanPayload, 'categoryAttributes')
   removeEmptyObjectKey(cleanPayload, 'dynamicFields')
@@ -1773,7 +1906,8 @@ const AIAnalysisPanel = ({
         message="Error en el análisis de IA"
         description={error}
         action={
-          <Button htmlType="button"
+          <Button
+            htmlType="button"
             size="small"
             danger
             onClick={onReset}
@@ -2113,7 +2247,8 @@ const AIAnalysisPanel = ({
             </Text>
           )}
 
-          <Button htmlType="button"
+          <Button
+            htmlType="button"
             size="small"
             type={available ? 'primary' : 'default'}
             ghost={available}
@@ -2159,7 +2294,12 @@ const AIAnalysisPanel = ({
             </Space>
           </Col>
           <Col>
-            <Button htmlType="button" size="small" icon={<ReloadOutlined />} onClick={onReset}>
+            <Button
+              htmlType="button"
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={onReset}
+            >
               Reanalizar
             </Button>
           </Col>
@@ -2179,27 +2319,38 @@ const AIAnalysisPanel = ({
       />
 
       <Space wrap style={{ marginBottom: 18 }}>
-        <Button htmlType="button"
+        <Button
+          htmlType="button"
           type="primary"
           icon={<CheckCircleOutlined />}
           onClick={onApplyAll}
         >
           Aplicar todo al formulario
         </Button>
-        <Button htmlType="button" icon={<CheckOutlined />} onClick={onApplySafeFields}>
+        <Button
+          htmlType="button"
+          icon={<CheckOutlined />}
+          onClick={onApplySafeFields}
+        >
           Aplicar solo campos seguros
         </Button>
-        <Button htmlType="button" icon={<ThunderboltOutlined />} onClick={onApplySeo}>
+        <Button
+          htmlType="button"
+          icon={<ThunderboltOutlined />}
+          onClick={onApplySeo}
+        >
           Generar SEO con IA
         </Button>
-        <Button htmlType="button"
+        <Button
+          htmlType="button"
           icon={<AppstoreOutlined />}
           onClick={onApplyTechnicalFields}
           disabled={!dynamicFields.length}
         >
           Aplicar ficha técnica
         </Button>
-        <Button htmlType="button"
+        <Button
+          htmlType="button"
           icon={<TagOutlined />}
           onClick={onApplyTags}
           disabled={!tags.length}
@@ -2207,7 +2358,8 @@ const AIAnalysisPanel = ({
           Aplicar tags
         </Button>
         {hasExplicitVariants && (
-          <Button htmlType="button"
+          <Button
+            htmlType="button"
             icon={<ClusterOutlined />}
             onClick={onApplyVariants}
             disabled={!variants.length}
@@ -2306,7 +2458,8 @@ const AIAnalysisPanel = ({
                   align="center"
                 >
                   <Text strong>Descripción comercial</Text>
-                  <Button htmlType="button"
+                  <Button
+                    htmlType="button"
                     size="small"
                     type="link"
                     onClick={() => onApplyField?.('descripcion')}
@@ -2339,7 +2492,8 @@ const AIAnalysisPanel = ({
                   align="center"
                 >
                   <Text strong>Descripción técnica precisa</Text>
-                  <Button htmlType="button"
+                  <Button
+                    htmlType="button"
                     size="small"
                     type="link"
                     onClick={() => onApplyField?.('descripcionTecnica')}
@@ -2392,7 +2546,8 @@ const AIAnalysisPanel = ({
                     <Space size={4} wrap style={{ marginTop: 6 }}>
                       {field.source && <Tag>{field.source}</Tag>}
                       {field.filterable && <Tag color="blue">Filtro</Tag>}
-                      <Button htmlType="button"
+                      <Button
+                        htmlType="button"
                         type="link"
                         size="small"
                         style={{ padding: 0 }}
@@ -2519,7 +2674,8 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
                 }}
                 className="image-preview-overlay"
               >
-                <Button htmlType="button"
+                <Button
+                  htmlType="button"
                   type="primary"
                   shape="circle"
                   icon={<EyeOutlined />}
@@ -2527,7 +2683,8 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
                   onClick={() => window.open(src, '_blank')}
                   style={{ marginRight: 8 }}
                 />
-                <Button htmlType="button"
+                <Button
+                  htmlType="button"
                   danger
                   shape="circle"
                   icon={<DeleteOutlined />}
@@ -2610,19 +2767,19 @@ const DynamicProductField = ({ field }) => {
 
   if (field.type === 'textarea') {
     return (
-      <Form.Item
+      <ProductField
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
       >
         <Input.TextArea rows={3} showCount maxLength={800} {...commonProps} />
-      </Form.Item>
+      </ProductField>
     )
   }
 
   if (field.type === 'number') {
     return (
-      <Form.Item
+      <ProductField
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
@@ -2633,13 +2790,13 @@ const DynamicProductField = ({ field }) => {
           min={0}
           addonAfter={field.unit || undefined}
         />
-      </Form.Item>
+      </ProductField>
     )
   }
 
   if (field.type === 'select') {
     return (
-      <Form.Item
+      <ProductField
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
@@ -2653,13 +2810,13 @@ const DynamicProductField = ({ field }) => {
             label: value,
           }))}
         />
-      </Form.Item>
+      </ProductField>
     )
   }
 
   if (field.type === 'multiselect') {
     return (
-      <Form.Item
+      <ProductField
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
@@ -2674,26 +2831,26 @@ const DynamicProductField = ({ field }) => {
             label: value,
           }))}
         />
-      </Form.Item>
+      </ProductField>
     )
   }
 
   if (field.type === 'boolean') {
     return (
-      <Form.Item
+      <ProductField
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         valuePropName="checked"
         rules={rules}
       >
         <Switch checkedChildren="Sí" unCheckedChildren="No" />
-      </Form.Item>
+      </ProductField>
     )
   }
 
   if (field.type === 'color') {
     return (
-      <Form.Item
+      <ProductField
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
@@ -2708,18 +2865,18 @@ const DynamicProductField = ({ field }) => {
             label: value,
           }))}
         />
-      </Form.Item>
+      </ProductField>
     )
   }
 
   return (
-    <Form.Item
+    <ProductField
       name={['dynamicFields', field.name]}
       label={field.label || field.name}
       rules={rules}
     >
       <Input {...commonProps} />
-    </Form.Item>
+    </ProductField>
   )
 }
 
@@ -2753,6 +2910,174 @@ const VariantImageSelector = ({ variant, localImages, onAssign }) => {
     />
   )
 }
+
+const normalizeNamePath = name => (Array.isArray(name) ? name : [name]).filter(Boolean)
+
+const buildNestedFieldPatch = (name, value) => {
+  const path = normalizeNamePath(name)
+
+  if (!path.length) return {}
+
+  return path.reduceRight((acc, key, index) => {
+    return index === path.length - 1 ? { [key]: value } : { [key]: acc }
+  }, value)
+}
+
+const setFormFieldValue = (form, name, value) => {
+  if (!name || !form) return
+
+  if (typeof form.setFieldValue === 'function') {
+    form.setFieldValue(name, value)
+    return
+  }
+
+  form.setFieldsValue(buildNestedFieldPatch(name, value))
+}
+
+const extractInputValue = (eventOrValue, valuePropName = 'value') => {
+  if (valuePropName === 'checked') {
+    return typeof eventOrValue === 'boolean'
+      ? eventOrValue
+      : Boolean(eventOrValue?.target?.checked)
+  }
+
+  if (eventOrValue?.target) return eventOrValue.target.value
+
+  return eventOrValue
+}
+
+const getRequiredMessage = (rules = [], label = 'Este campo') => {
+  const requiredRule = safeArray(rules).find(rule => rule?.required)
+
+  return requiredRule?.message || `${label} es obligatorio`
+}
+
+const isEmptyFieldValue = value => {
+  if (Array.isArray(value)) return value.length === 0
+  if (value === undefined || value === null) return true
+  if (typeof value === 'string') return normalizeString(value) === ''
+  return false
+}
+
+const ProductFormDirtyContext = React.createContext(() => {})
+const ProductFormMutationContext = React.createContext({
+  version: 0,
+  notifyMutation: () => {},
+})
+
+const ProductField = React.memo(function ProductField({
+  children,
+  className = '',
+  style,
+  name,
+  label,
+  rules = [],
+  extra,
+  help,
+  required,
+  initialValue,
+  valuePropName = 'value',
+}) {
+  const form = Form.useFormInstance()
+  const markFormDirty = React.useContext(ProductFormDirtyContext)
+  const { version: formMutationVersion, notifyMutation } = React.useContext(
+    ProductFormMutationContext,
+  )
+  const [fieldValue, setFieldValue] = useState(() => {
+    const currentValue = form.getFieldValue(name)
+    return currentValue === undefined ? initialValue : currentValue
+  })
+  const [fieldError, setFieldError] = useState('')
+  const requiredByRule = required || safeArray(rules).some(rule => rule?.required)
+  const namePath = normalizeNamePath(name)
+  const nameKey = namePath.join('__')
+  const fieldId = namePath.join('_')
+  const stableClassName = ['stable-form-field', className].filter(Boolean).join(' ')
+
+  useEffect(() => {
+    if (initialValue === undefined) return
+
+    const currentValue = form.getFieldValue(name)
+    if (currentValue === undefined) {
+      setFormFieldValue(form, name, initialValue)
+      setFieldValue(initialValue)
+      notifyMutation()
+    }
+  }, [form, initialValue, nameKey, notifyMutation])
+
+  useEffect(() => {
+    const currentValue = form.getFieldValue(name)
+    setFieldValue(currentValue === undefined ? initialValue : currentValue)
+  }, [formMutationVersion, nameKey])
+
+  const validateField = useCallback(
+    nextValue => {
+      const currentValue = nextValue !== undefined ? nextValue : form.getFieldValue(name)
+
+      if (requiredByRule && isEmptyFieldValue(currentValue)) {
+        const messageText = getRequiredMessage(rules, label)
+        setFieldError(messageText)
+        return false
+      }
+
+      setFieldError('')
+      return true
+    },
+    [form, label, name, requiredByRule, rules],
+  )
+
+  const child = React.Children.only(children)
+  const originalOnChange = child.props.onChange
+  const originalOnBlur = child.props.onBlur
+  const originalOnFocus = child.props.onFocus
+  const controlledProps = {
+    id: child.props.id || fieldId,
+    [valuePropName]: valuePropName === 'checked' ? Boolean(fieldValue) : fieldValue,
+    onChange: (...args) => {
+      const nextValue = extractInputValue(args[0], valuePropName)
+      setFieldValue(nextValue)
+      setFormFieldValue(form, name, nextValue)
+      markFormDirty()
+      if (fieldError) validateField(nextValue)
+      originalOnChange?.(...args)
+    },
+    onBlur: (...args) => {
+      validateField()
+      originalOnBlur?.(...args)
+    },
+    onFocus: (...args) => {
+      originalOnFocus?.(...args)
+    },
+    status: fieldError ? 'error' : child.props.status,
+  }
+
+  return (
+    <div
+      className={stableClassName}
+      style={{
+        marginBottom: 18,
+        minHeight: 86,
+        overflowAnchor: 'none',
+        ...style,
+      }}
+      data-field-name={fieldId}
+    >
+      {label && (
+        <label htmlFor={fieldId} className="stable-form-field-label">
+          {label}
+          {requiredByRule && <span className="stable-form-field-required">*</span>}
+        </label>
+      )}
+
+      {React.cloneElement(child, controlledProps)}
+
+      <div className="stable-form-field-message" aria-live="polite">
+        {fieldError || help || extra || ' '}
+      </div>
+    </div>
+  )
+})
+
 
 export default function AddProduct() {
   const [form] = Form.useForm()
@@ -2814,75 +3139,13 @@ export default function AddProduct() {
   const autoAgentFailedJobsRef = useRef(new Set())
   const imagePreviewsRef = useRef([])
   const lastAnalyzedImageSignatureRef = useRef('')
-  const pageRef = useRef(null)
-  const scrollPositionRef = useRef({ top: 0, left: 0, useContainer: false })
   const categoryConfigDebounceRef = useRef(null)
   const categoryConfigRequestIdRef = useRef(0)
   const categoryConfigCacheRef = useRef(new Map())
 
-  const captureScrollPosition = useCallback(() => {
-    const container = pageRef.current
-    const windowTop =
-      window.scrollY || document.documentElement?.scrollTop || document.body.scrollTop || 0
-    const windowLeft =
-      window.scrollX || document.documentElement?.scrollLeft || document.body.scrollLeft || 0
-
-    if (container) {
-      scrollPositionRef.current = {
-        useContainer: true,
-        top: container.scrollTop,
-        left: container.scrollLeft,
-        windowTop,
-        windowLeft,
-      }
-    } else {
-      scrollPositionRef.current = {
-        useContainer: false,
-        top: windowTop,
-        left: windowLeft,
-      }
-    }
+  const markFormAsChanged = useCallback(() => {
+    setFormHasChanges(current => (current ? current : true))
   }, [])
-
-  const restoreScrollPosition = useCallback(() => {
-    const saved = scrollPositionRef.current
-    if (!saved) return
-
-    if (saved.useContainer && pageRef.current) {
-      if (Number.isFinite(saved.top)) pageRef.current.scrollTop = saved.top
-      if (Number.isFinite(saved.left)) pageRef.current.scrollLeft = saved.left
-      return
-    }
-
-    const top = Number.isFinite(saved.top) ? saved.top : 0
-    const left = Number.isFinite(saved.left) ? saved.left : 0
-
-    window.scrollTo({
-      top,
-      left,
-      behavior: 'auto',
-    })
-
-    if (document.documentElement) {
-      document.documentElement.scrollTop = top
-      document.documentElement.scrollLeft = left
-    }
-    if (document.body) {
-      document.body.scrollTop = top
-      document.body.scrollLeft = left
-    }
-  }, [])
-
-  const scheduleRestoreScroll = useCallback(
-    () => requestAnimationFrame(restoreScrollPosition),
-    [restoreScrollPosition],
-  )
-
-  const handleFormValuesChange = useCallback(() => {
-    setFormHasChanges(true)
-    captureScrollPosition()
-    scheduleRestoreScroll()
-  }, [captureScrollPosition, scheduleRestoreScroll])
 
   const buildImageSignature = useCallback(file => {
     if (!file) return ''
@@ -2894,6 +3157,30 @@ export default function AddProduct() {
       file.type || file.mimeType || '',
     ].join('|')
   }, [])
+
+  const [formMutationVersion, setFormMutationVersion] = useState(0)
+
+  const notifyFormMutation = useCallback(() => {
+    setFormMutationVersion(version => version + 1)
+  }, [])
+
+  const setProductFormValues = useCallback(
+    values => {
+      form.setFieldsValue(values)
+      setFormHasChanges(true)
+      notifyFormMutation()
+    },
+    [form, notifyFormMutation],
+  )
+
+  const setProductFormFieldValue = useCallback(
+    (name, value) => {
+      setFormFieldValue(form, name, value)
+      setFormHasChanges(true)
+      notifyFormMutation()
+    },
+    [form, notifyFormMutation],
+  )
 
   const user = useSelector(state => state.user.user)
   const tenantId = user?.tenantId?._id || user?.tenantId || null
@@ -3077,7 +3364,13 @@ export default function AddProduct() {
       Boolean(currentAgentJob) ||
       formHasChanges
     )
-  }, [currentAgentJob, editableTags.length, fileList.length, formHasChanges, variants.length])
+  }, [
+    currentAgentJob,
+    editableTags.length,
+    fileList.length,
+    formHasChanges,
+    variants.length,
+  ])
 
   const normalizeTitleCaseFormField = useCallback(
     fieldName => {
@@ -3085,7 +3378,7 @@ export default function AddProduct() {
       const normalizedValue = toTitleCase(currentValue)
 
       if (normalizedValue && normalizedValue !== currentValue) {
-        form.setFieldsValue({ [fieldName]: normalizedValue })
+        setProductFormValues({ [fieldName]: normalizedValue })
       }
     },
     [form],
@@ -3094,7 +3387,9 @@ export default function AddProduct() {
   const commitClassificationFromForm = useCallback(
     (patch = {}) => {
       const currentCategory =
-        patch.categoria !== undefined ? patch.categoria : form.getFieldValue('categoria')
+        patch.categoria !== undefined
+          ? patch.categoria
+          : form.getFieldValue('categoria')
       const currentSubcategory =
         patch.subcategoria !== undefined
           ? patch.subcategoria
@@ -3104,18 +3399,20 @@ export default function AddProduct() {
       const subcategoria = toTitleCase(currentSubcategory)
 
       const valuesToPatch = {}
-      if (categoria && categoria !== currentCategory) valuesToPatch.categoria = categoria
+      if (categoria && categoria !== currentCategory)
+        valuesToPatch.categoria = categoria
       if (subcategoria && subcategoria !== currentSubcategory) {
         valuesToPatch.subcategoria = subcategoria
       }
-      if (Object.keys(valuesToPatch).length) form.setFieldsValue(valuesToPatch)
+      if (Object.keys(valuesToPatch).length) setProductFormValues(valuesToPatch)
 
       setCommittedClassification(prev => {
-        if (prev.categoria === categoria && prev.subcategoria === subcategoria) return prev
+        if (prev.categoria === categoria && prev.subcategoria === subcategoria)
+          return prev
         return { categoria, subcategoria }
       })
     },
-    [form],
+    [form, setProductFormValues],
   )
 
   useEffect(() => {
@@ -3220,7 +3517,9 @@ export default function AddProduct() {
       }
 
       setDynamicAttributes(current => {
-        const merged = new Map(current.map(attribute => [attribute.name, attribute]))
+        const merged = new Map(
+          current.map(attribute => [attribute.name, attribute]),
+        )
 
         templateAttributes.forEach(attribute => {
           const name = normalizeString(attribute.name)
@@ -3262,7 +3561,10 @@ export default function AddProduct() {
       setLoadingCatalogTemplate(true)
 
       try {
-        const response = await productService.getCategoryConfig(category, subcategory)
+        const response = await productService.getCategoryConfig(
+          category,
+          subcategory,
+        )
 
         if (requestId !== categoryConfigRequestIdRef.current) return
 
@@ -3272,7 +3574,8 @@ export default function AddProduct() {
         if (requestId === categoryConfigRequestIdRef.current) {
           setCatalogTemplate(null)
           message.warning(
-            error?.message || 'No se pudo cargar la plantilla de la subcategoría',
+            error?.message ||
+              'No se pudo cargar la plantilla de la subcategoría',
           )
         }
       } finally {
@@ -3295,40 +3598,43 @@ export default function AddProduct() {
     }
   }, [committedClassification, useTechnicalSheet])
 
-  const fetchAgentQueue = useCallback(async ({ silent = false, preserveSelection = false } = {}) => {
-    if (!silent) setLoadingAgentQueue(true)
-    try {
-      const { data } = await api.get('/product-analysis', {
-        params: {
-          limit: 25,
-          sort: 'createdAt',
-        },
-      })
+  const fetchAgentQueue = useCallback(
+    async ({ silent = false, preserveSelection = false } = {}) => {
+      if (!silent) setLoadingAgentQueue(true)
+      try {
+        const { data } = await api.get('/product-analysis', {
+          params: {
+            limit: 25,
+            sort: 'createdAt',
+          },
+        })
 
-      const items = (Array.isArray(data?.items) ? data.items : []).filter(
-        item =>
-          ['pending', 'scheduled'].includes(item.status) &&
-          item.metadata?.autoAnalyze === false,
-      )
-      setAgentQueue(items)
-      if (!preserveSelection) {
-        setSelectedAgentJobId(current =>
-          current && items.some(item => item._id === current)
-            ? current
-            : items[0]?._id || null,
+        const items = (Array.isArray(data?.items) ? data.items : []).filter(
+          item =>
+            ['pending', 'scheduled'].includes(item.status) &&
+            item.metadata?.autoAnalyze === false,
         )
+        setAgentQueue(items)
+        if (!preserveSelection) {
+          setSelectedAgentJobId(current =>
+            current && items.some(item => item._id === current)
+              ? current
+              : items[0]?._id || null,
+          )
+        }
+      } catch (error) {
+        if (!silent) {
+          message.error(
+            error?.response?.data?.message ||
+              'No se pudo cargar la cola del agente',
+          )
+        }
+      } finally {
+        if (!silent) setLoadingAgentQueue(false)
       }
-    } catch (error) {
-      if (!silent) {
-        message.error(
-          error?.response?.data?.message ||
-            'No se pudo cargar la cola del agente',
-        )
-      }
-    } finally {
-      if (!silent) setLoadingAgentQueue(false)
-    }
-  }, [])
+    },
+    [],
+  )
 
   useEffect(() => {
     fetchAgentQueue()
@@ -3372,14 +3678,14 @@ export default function AddProduct() {
   const mergeDynamicFieldValues = useCallback(
     values => {
       const currentValues = form.getFieldValue('dynamicFields') || {}
-      form.setFieldsValue({
+      setProductFormValues({
         dynamicFields: {
           ...currentValues,
           ...(values || {}),
         },
       })
     },
-    [form],
+    [form, setProductFormValues],
   )
 
   const applyTechnicalPreset = useCallback(
@@ -3406,35 +3712,64 @@ export default function AddProduct() {
     mergeDynamicProductFields(parsed.fields)
     mergeDynamicFieldValues(parsed.values)
     setTechnicalQuickText('')
-    message.success(`${parsed.fields.length} campo${parsed.fields.length === 1 ? '' : 's'} técnico${parsed.fields.length === 1 ? '' : 's'} creado${parsed.fields.length === 1 ? '' : 's'}`)
+    message.success(
+      `${parsed.fields.length} campo${parsed.fields.length === 1 ? '' : 's'} técnico${parsed.fields.length === 1 ? '' : 's'} creado${parsed.fields.length === 1 ? '' : 's'}`,
+    )
   }, [mergeDynamicFieldValues, mergeDynamicProductFields, technicalQuickText])
 
   const generateTechnicalDescriptionFromCurrentValues = useCallback(() => {
     const values = form.getFieldsValue(true) || {}
-    const title = normalizeString(values.titulo || normalizedAiDraft?.fields?.titulo)
-    const category = toTitleCase(values.categoria || normalizedAiDraft?.fields?.categoria)
-    const subcategory = toTitleCase(values.subcategoria || normalizedAiDraft?.fields?.subcategoria)
-    const brand = normalizeString(values.marca || normalizedAiDraft?.fields?.marca)
-    const material = normalizeString(values.material || normalizedAiDraft?.fields?.material)
-    const color = normalizeString(values.color || normalizedAiDraft?.fields?.color)
+    const title = normalizeString(
+      values.titulo || normalizedAiDraft?.fields?.titulo,
+    )
+    const category = toTitleCase(
+      values.categoria || normalizedAiDraft?.fields?.categoria,
+    )
+    const subcategory = toTitleCase(
+      values.subcategoria || normalizedAiDraft?.fields?.subcategoria,
+    )
+    const brand = normalizeString(
+      values.marca || normalizedAiDraft?.fields?.marca,
+    )
+    const material = normalizeString(
+      values.material || normalizedAiDraft?.fields?.material,
+    )
+    const color = normalizeString(
+      values.color || normalizedAiDraft?.fields?.color,
+    )
     const currentDynamicValues = values.dynamicFields || {}
-    const specificationRows = buildSpecificationRows(dynamicProductFields, currentDynamicValues)
+    const specificationRows = buildSpecificationRows(
+      dynamicProductFields,
+      currentDynamicValues,
+    )
 
-    if (!title && !specificationRows.length && !normalizedAiDraft?.fields?.descripcionTecnica) {
-      message.warning('Completá datos del producto o agregá campos técnicos antes de crear la descripción técnica')
+    if (
+      !title &&
+      !specificationRows.length &&
+      !normalizedAiDraft?.fields?.descripcionTecnica
+    ) {
+      message.warning(
+        'Completá datos del producto o agregá campos técnicos antes de crear la descripción técnica',
+      )
       return
     }
 
     const specsText = specificationRows
       .slice(0, 10)
-      .map(item => `${item.label}: ${Array.isArray(item.value) ? item.value.join(', ') : item.value}${item.unit ? ` ${item.unit}` : ''}`)
+      .map(
+        item =>
+          `${item.label}: ${Array.isArray(item.value) ? item.value.join(', ') : item.value}${item.unit ? ` ${item.unit}` : ''}`,
+      )
       .join('; ')
 
-    const description = normalizeString(values.descripcionTecnica) ||
+    const description =
+      normalizeString(values.descripcionTecnica) ||
       normalizeString(normalizedAiDraft?.fields?.descripcionTecnica) ||
       [
         title ? `${title}${brand ? ` de ${brand}` : ''}` : 'Producto',
-        category || subcategory ? `clasificado en ${[category, subcategory].filter(Boolean).join(' / ')}` : '',
+        category || subcategory
+          ? `clasificado en ${[category, subcategory].filter(Boolean).join(' / ')}`
+          : '',
         material ? `material principal: ${material}` : '',
         color ? `color o terminación visible: ${color}` : '',
         specsText ? `datos técnicos relevantes: ${specsText}` : '',
@@ -3444,9 +3779,9 @@ export default function AddProduct() {
         .join('. ')
 
     setUseTechnicalSheet(true)
-    form.setFieldsValue({ descripcionTecnica: description })
+    setProductFormValues({ descripcionTecnica: description })
     message.success('Descripción técnica creada para la ficha')
-  }, [dynamicProductFields, form, normalizedAiDraft])
+  }, [dynamicProductFields, form, normalizedAiDraft, setProductFormValues])
 
   const applyAiDynamicField = useCallback(
     field => {
@@ -3466,7 +3801,9 @@ export default function AddProduct() {
     if (!normalizedAiDraft) return
 
     if (!normalizedAiDraft.dynamicFields.length) {
-      message.info('La IA no devolvió campos de ficha técnica para este producto')
+      message.info(
+        'La IA no devolvió campos de ficha técnica para este producto',
+      )
       return
     }
 
@@ -3497,7 +3834,10 @@ export default function AddProduct() {
 
     setHasVariants(true)
     setDynamicAttributes(current =>
-      mergeVariantAttributeDefinitions(current, normalizedAiDraft.variantAttributes),
+      mergeVariantAttributeDefinitions(
+        current,
+        normalizedAiDraft.variantAttributes,
+      ),
     )
     setSelectedAttributes(current =>
       mergeSelectedVariantValues(current, normalizedAiDraft.selectedAttributes),
@@ -3516,11 +3856,15 @@ export default function AddProduct() {
         attributes: mergedAttributes,
         selectedAttributes: mergedSelected,
         previousVariants: current.length ? current : normalizedAiDraft.variants,
-        basePrice: form.getFieldValue('precio') || normalizedAiDraft.fields.precio,
-        productTitle: form.getFieldValue('titulo') || normalizedAiDraft.fields.titulo,
+        basePrice:
+          form.getFieldValue('precio') || normalizedAiDraft.fields.precio,
+        productTitle:
+          form.getFieldValue('titulo') || normalizedAiDraft.fields.titulo,
       })
 
-      return generated.variants.length ? generated.variants : normalizedAiDraft.variants
+      return generated.variants.length
+        ? generated.variants
+        : normalizedAiDraft.variants
     })
     message.success(`${normalizedAiDraft.variants.length} variantes aplicadas`)
   }, [dynamicAttributes, form, normalizedAiDraft, selectedAttributes])
@@ -3529,9 +3873,7 @@ export default function AddProduct() {
     const parsedAttributes = parseQuickVariantText(quickVariantText)
 
     if (!parsedAttributes.length) {
-      message.warning(
-        'Usá el formato: Color: Negro, Blanco | Medida: 1L, 2L',
-      )
+      message.warning('Usá el formato: Color: Negro, Blanco | Medida: 1L, 2L')
       return
     }
 
@@ -3568,51 +3910,60 @@ export default function AddProduct() {
     setVariants(generated.variants)
     setQuickVariantText('')
 
-    message.success(`${generated.variants.length} variantes generadas rápidamente`)
+    message.success(
+      `${generated.variants.length} variantes generadas rápidamente`,
+    )
   }, [dynamicAttributes, form, quickVariantText, selectedAttributes, variants])
 
-  const applyVariantPreset = useCallback(preset => {
-    const presetAttributes = safeArray(preset?.attributes)
+  const applyVariantPreset = useCallback(
+    preset => {
+      const presetAttributes = safeArray(preset?.attributes)
 
-    if (!presetAttributes.length) return
+      if (!presetAttributes.length) return
 
-    const incomingSelected = presetAttributes.reduce((acc, attribute) => {
-      acc[attribute.name] = safeArray(attribute.values)
-      return acc
-    }, {})
+      const incomingSelected = presetAttributes.reduce((acc, attribute) => {
+        acc[attribute.name] = safeArray(attribute.values)
+        return acc
+      }, {})
 
-    const mergedAttributes = mergeVariantAttributeDefinitions(
-      dynamicAttributes,
-      presetAttributes,
-    )
-    const mergedSelected = mergeSelectedVariantValues(
-      selectedAttributes,
-      incomingSelected,
-    )
+      const mergedAttributes = mergeVariantAttributeDefinitions(
+        dynamicAttributes,
+        presetAttributes,
+      )
+      const mergedSelected = mergeSelectedVariantValues(
+        selectedAttributes,
+        incomingSelected,
+      )
 
-    const generated = generateVariantRowsFromSelection({
-      attributes: mergedAttributes,
-      selectedAttributes: mergedSelected,
-      previousVariants: variants,
-      basePrice: form.getFieldValue('precio') || 0,
-      productTitle: form.getFieldValue('titulo') || '',
-    })
+      const generated = generateVariantRowsFromSelection({
+        attributes: mergedAttributes,
+        selectedAttributes: mergedSelected,
+        previousVariants: variants,
+        basePrice: form.getFieldValue('precio') || 0,
+        productTitle: form.getFieldValue('titulo') || '',
+      })
 
-    if (generated.error) {
-      message.error(generated.error)
-      return
-    }
+      if (generated.error) {
+        message.error(generated.error)
+        return
+      }
 
-    setHasVariants(true)
-    setDynamicAttributes(mergedAttributes)
-    setSelectedAttributes(mergedSelected)
-    setVariants(generated.variants)
-    message.success(`${preset.label} aplicado · ${generated.variants.length} variantes listas`)
-  }, [dynamicAttributes, form, selectedAttributes, variants])
+      setHasVariants(true)
+      setDynamicAttributes(mergedAttributes)
+      setSelectedAttributes(mergedSelected)
+      setVariants(generated.variants)
+      message.success(
+        `${preset.label} aplicado · ${generated.variants.length} variantes listas`,
+      )
+    },
+    [dynamicAttributes, form, selectedAttributes, variants],
+  )
 
   const applyBulkVariantValues = useCallback(() => {
-    const shouldUpdatePrice = Number.isFinite(Number(bulkVariantPrice)) && Number(bulkVariantPrice) > 0
-    const shouldUpdateStock = Number.isFinite(Number(bulkVariantStock)) && Number(bulkVariantStock) >= 0
+    const shouldUpdatePrice =
+      Number.isFinite(Number(bulkVariantPrice)) && Number(bulkVariantPrice) > 0
+    const shouldUpdateStock =
+      Number.isFinite(Number(bulkVariantStock)) && Number(bulkVariantStock) >= 0
 
     if (!shouldUpdatePrice && !shouldUpdateStock) {
       message.info('Ingresá precio o stock para aplicar a las variantes')
@@ -3641,11 +3992,14 @@ export default function AddProduct() {
       descripcion:
         normalizeString(values.descripcion) ||
         normalizeString(aiFields.descripcion) ||
-        normalizeString(values.descripcionTecnica) ||
-        normalizeString(aiFields.descripcionTecnica),
-      descripcionTecnica:
-        normalizeString(values.descripcionTecnica) ||
-        normalizeString(aiFields.descripcionTecnica),
+        (useTechnicalSheet
+          ? normalizeString(values.descripcionTecnica) ||
+            normalizeString(aiFields.descripcionTecnica)
+          : ''),
+      descripcionTecnica: useTechnicalSheet
+        ? normalizeString(values.descripcionTecnica) ||
+          normalizeString(aiFields.descripcionTecnica)
+        : '',
       marca: normalizeString(values.marca) || normalizeString(aiFields.marca),
       categoria: toTitleCase(values.categoria || aiFields.categoria),
       subcategoria: toTitleCase(values.subcategoria || aiFields.subcategoria),
@@ -3662,37 +4016,55 @@ export default function AddProduct() {
       return
     }
 
-    form.setFieldsValue(buildSeoFormValues(baseValues))
+    setProductFormValues(buildSeoFormValues(baseValues))
     message.success('SEO generado desde los datos actuales del producto')
-  }, [editableTags, form, normalizedAiDraft])
+  }, [editableTags, form, normalizedAiDraft, setProductFormValues, useTechnicalSheet])
 
   const generateSeoPositioningFromCurrentValues = useCallback(() => {
     const values = form.getFieldsValue(true) || {}
-    const title = normalizeString(values.titulo || normalizedAiDraft?.fields?.titulo)
-    const category = toTitleCase(values.categoria || normalizedAiDraft?.fields?.categoria)
-    const subcategory = toTitleCase(values.subcategoria || normalizedAiDraft?.fields?.subcategoria)
-    const brand = normalizeString(values.marca || normalizedAiDraft?.fields?.marca)
-    const material = normalizeString(values.material || normalizedAiDraft?.fields?.material)
-    const color = normalizeString(values.color || normalizedAiDraft?.fields?.color)
+    const title = normalizeString(
+      values.titulo || normalizedAiDraft?.fields?.titulo,
+    )
+    const category = toTitleCase(
+      values.categoria || normalizedAiDraft?.fields?.categoria,
+    )
+    const subcategory = toTitleCase(
+      values.subcategoria || normalizedAiDraft?.fields?.subcategoria,
+    )
+    const brand = normalizeString(
+      values.marca || normalizedAiDraft?.fields?.marca,
+    )
+    const material = normalizeString(
+      values.material || normalizedAiDraft?.fields?.material,
+    )
+    const color = normalizeString(
+      values.color || normalizedAiDraft?.fields?.color,
+    )
 
     if (!title && !subcategory && !category) {
-      message.warning('Completá título, categoría o subcategoría para crear posicionamiento SEO')
+      message.warning(
+        'Completá título, categoría o subcategoría para crear posicionamiento SEO',
+      )
       return
     }
 
-    const focusKeyword = normalizeString(values.seoFocusKeyword) ||
+    const focusKeyword =
+      normalizeString(values.seoFocusKeyword) ||
       [brand, title || subcategory || category]
         .filter(Boolean)
         .join(' ')
         .slice(0, 90)
 
-    const audience = normalizeString(values.seoTargetAudience) ||
+    const audience =
+      normalizeString(values.seoTargetAudience) ||
       `Personas que buscan ${subcategory || category || title} con información clara antes de comprar.`
 
-    const contentAngle = normalizeString(values.seoContentAngle) ||
+    const contentAngle =
+      normalizeString(values.seoContentAngle) ||
       `Destacar características visibles, uso recomendado, calidad percibida y datos verificables sin prometer información no confirmada.`
 
-    const positioning = normalizeString(values.seoPositioning) ||
+    const positioning =
+      normalizeString(values.seoPositioning) ||
       `${title || subcategory || category} se posiciona para búsquedas de intención comercial relacionadas con ${focusKeyword}. El contenido debe resolver dudas de compra, diferenciar el producto por sus atributos visibles y reforzar confianza con descripción clara, ficha técnica opcional, imágenes y datos de disponibilidad.`
 
     const faq = safeArray(values.seoFaq).length
@@ -3714,7 +4086,7 @@ export default function AddProduct() {
       .map(item => normalizeString(item).toLowerCase())
       .filter(Boolean)
 
-    form.setFieldsValue({
+    setProductFormValues({
       ...buildSeoFormValues({
         ...values,
         titulo: title,
@@ -3735,7 +4107,7 @@ export default function AddProduct() {
     })
 
     message.success('Posicionamiento SEO creado')
-  }, [editableTags, form, normalizedAiDraft])
+  }, [editableTags, form, normalizedAiDraft, setProductFormValues])
 
   const applyAiSeo = useCallback(() => {
     generateSeoFromCurrentValues()
@@ -3812,10 +4184,24 @@ export default function AddProduct() {
         return
       }
 
-      form.setFieldsValue(cleanPatch)
+      if (fieldName === 'descripcionTecnica') {
+        setUseTechnicalSheet(true)
+      }
+
+      setProductFormValues(cleanPatch)
+
+      if (cleanPatch.categoria || cleanPatch.subcategoria) {
+        commitClassificationFromForm(cleanPatch)
+      }
+
       message.success('Campo aplicado al formulario')
     },
-    [form, normalizedAiDraft],
+    [
+      commitClassificationFromForm,
+      form,
+      normalizedAiDraft,
+      setProductFormValues,
+    ],
   )
 
   const applyAiSafeFields = useCallback(() => {
@@ -3825,7 +4211,9 @@ export default function AddProduct() {
     const patch = {
       titulo: fields.titulo,
       descripcion: fields.descripcion,
-      descripcionTecnica: useTechnicalSheet ? fields.descripcionTecnica : undefined,
+      descripcionTecnica: useTechnicalSheet
+        ? fields.descripcionTecnica
+        : undefined,
       categoria: fields.categoria,
       subcategoria: fields.subcategoria,
       marca: fields.marca,
@@ -3840,7 +4228,7 @@ export default function AddProduct() {
       condicion: fields.condicion,
     }
 
-    form.setFieldsValue(
+    setProductFormValues(
       Object.fromEntries(
         Object.entries(patch).filter(
           ([, value]) => value !== undefined && value !== null && value !== '',
@@ -3860,6 +4248,7 @@ export default function AddProduct() {
     applyAiTechnicalFields,
     form,
     generateSeoFromCurrentValues,
+    setProductFormValues,
     normalizedAiDraft,
     useTechnicalSheet,
   ])
@@ -3868,10 +4257,12 @@ export default function AddProduct() {
     if (!normalizedAiDraft) return
 
     const { fields } = normalizedAiDraft
-    form.setFieldsValue({
+    setProductFormValues({
       titulo: fields.titulo,
       descripcion: fields.descripcion,
-      descripcionTecnica: useTechnicalSheet ? fields.descripcionTecnica : undefined,
+      descripcionTecnica: useTechnicalSheet
+        ? fields.descripcionTecnica
+        : undefined,
       categoria: fields.categoria,
       subcategoria: fields.subcategoria,
       marca: fields.marca,
@@ -3907,6 +4298,7 @@ export default function AddProduct() {
     applyAiVariants,
     form,
     generateSeoFromCurrentValues,
+    setProductFormValues,
     normalizedAiDraft,
     useTechnicalSheet,
   ])
@@ -3984,9 +4376,9 @@ export default function AddProduct() {
       const currentValues = form.getFieldValue('dynamicFields') || {}
       const nextValues = { ...currentValues }
       delete nextValues[fieldName]
-      form.setFieldsValue({ dynamicFields: nextValues })
+      setProductFormValues({ dynamicFields: nextValues })
     },
-    [form],
+    [form, setProductFormValues],
   )
 
   const handleAttributeValuesChange = useCallback((attrName, values) => {
@@ -4183,6 +4575,7 @@ export default function AddProduct() {
 
   const resetProductWorkspace = useCallback(() => {
     form.resetFields()
+    notifyFormMutation()
     revokeBlobUrls(imagePreviews)
     setFileList([])
     setImagePreviews([])
@@ -4203,7 +4596,7 @@ export default function AddProduct() {
     lastAnalyzedImageSignatureRef.current = ''
     resetIa()
     dispatch(resetState())
-  }, [dispatch, form, imagePreviews, resetIa])
+  }, [dispatch, form, imagePreviews, notifyFormMutation, resetIa])
 
   const handleImportAgentImage = useCallback(async () => {
     if (!selectedAgentJobId) {
@@ -4499,7 +4892,11 @@ export default function AddProduct() {
     )
   }, [])
 
-  const handleFinish = async values => {
+  const handleFinish = async submittedValues => {
+    const values = {
+      ...(form.getFieldsValue(true) || {}),
+      ...(submittedValues || {}),
+    }
     if (!fileList.length) {
       message.error('Debes subir al menos una imagen')
       return
@@ -4513,6 +4910,12 @@ export default function AddProduct() {
 
     if (!tenantId) {
       message.error('Tenant no disponible')
+      return
+    }
+
+    const basicsError = validateProductBasicsForSubmit({ values, hasVariants })
+    if (basicsError) {
+      message.error(basicsError)
       return
     }
 
@@ -4667,7 +5070,10 @@ export default function AddProduct() {
         visibility: publishProduct ? 'visible' : 'hidden',
       }
 
-      const payloadForCreate = enforceTechnicalSheetPersistence(productPayload, useTechnicalSheet)
+      const payloadForCreate = enforceTechnicalSheetPersistence(
+        productPayload,
+        useTechnicalSheet,
+      )
       const created = await dispatch(createProducts(payloadForCreate)).unwrap()
       const createdPayload = created?.data || created
       const productId = createdPayload?._id
@@ -4759,22 +5165,15 @@ export default function AddProduct() {
   }
 
   return (
-      <div
-        ref={pageRef}
-        className="add-product-stable-page"
-        style={{
-          minHeight: '10vh',
-          overflowAnchor: 'none',
-          overflowX: 'hidden',
-          background: token.colorBgLayout,
-          padding: '24px',
-        }}
-      onPointerDownCapture={captureScrollPosition}
-      onPointerUpCapture={scheduleRestoreScroll}
-      onTouchStartCapture={captureScrollPosition}
-      onTouchEndCapture={scheduleRestoreScroll}
-      onFocusCapture={captureScrollPosition}
-      onBlurCapture={scheduleRestoreScroll}
+    <div
+      className="add-product-stable-page"
+      style={{
+        minHeight: '100vh',
+        overflowAnchor: 'none',
+        overflowX: 'hidden',
+        background: token.colorBgLayout,
+        padding: '24px',
+      }}
     >
       <Row justify="center">
         <Col
@@ -4901,17 +5300,23 @@ export default function AddProduct() {
             </Row>
           </div>
 
-          <Form
-            form={form}
-            layout="vertical"
-            scrollToFirstError={false}
-            onValuesChange={handleFormValuesChange}
-            onKeyDown={event => {
-              if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
+          <ProductFormDirtyContext.Provider value={markFormAsChanged}>
+            <ProductFormMutationContext.Provider
+              value={{ version: formMutationVersion, notifyMutation: notifyFormMutation }}
+            >
+              <Form
+                form={form}
+                layout="vertical"
+                scrollToFirstError={false}
+                onKeyDown={event => {
+              if (
+                event.key === 'Enter' &&
+                event.target instanceof HTMLInputElement
+              ) {
                 event.preventDefault()
               }
             }}
-            onFinish={handleFinish}
+            onFinish={() => handleFinish(form.getFieldsValue(true))}
           >
             <Row gutter={[24, 24]} align="top">
               <Col xs={24} xl={15}>
@@ -5042,7 +5447,8 @@ export default function AddProduct() {
                               loading={autoAgentRunning}
                             />
 
-                            <Button htmlType="button"
+                            <Button
+                              htmlType="button"
                               icon={<ReloadOutlined />}
                               onClick={fetchAgentQueue}
                               loading={loadingAgentQueue || autoAgentRunning}
@@ -5073,7 +5479,8 @@ export default function AddProduct() {
                               width: '100%',
                             }}
                           >
-                            <Button htmlType="button"
+                            <Button
+                              htmlType="button"
                               type="primary"
                               icon={<CloudDownloadOutlined />}
                               onClick={handleImportAgentImage}
@@ -5095,7 +5502,8 @@ export default function AddProduct() {
                               onConfirm={handleDeleteAgentImage}
                               disabled={!selectedAgentJobId}
                             >
-                              <Button htmlType="button"
+                              <Button
+                                htmlType="button"
                                 danger
                                 icon={<DeleteOutlined />}
                                 loading={deletingAgentImage}
@@ -5237,7 +5645,7 @@ export default function AddProduct() {
                 >
                   <Row gutter={[18, 18]}>
                     <Col xs={24}>
-                      <Form.Item
+                      <ProductField
                         name="titulo"
                         label="Título del producto"
                         rules={[
@@ -5258,11 +5666,11 @@ export default function AddProduct() {
                           showCount
                           maxLength={120}
                         />
-                      </Form.Item>
+                      </ProductField>
                     </Col>
 
                     <Col xs={24}>
-                      <Form.Item
+                      <ProductField
                         name="descripcion"
                         label="Descripción comercial"
                         rules={[
@@ -5279,11 +5687,11 @@ export default function AddProduct() {
                           showCount
                           maxLength={3600}
                         />
-                      </Form.Item>
+                      </ProductField>
                     </Col>
 
                     <Col xs={24}>
-                      <Form.Item
+                      <ProductField
                         name="descripcionTecnica"
                         label="Descripción técnica precisa"
                         extra="Detalle objetivo para ficha ampliada: estructura, partes visibles, terminación, textura, presentación, materialidad y límites de lo que se puede confirmar."
@@ -5299,11 +5707,11 @@ export default function AddProduct() {
                           showCount
                           maxLength={4200}
                         />
-                      </Form.Item>
+                      </ProductField>
                     </Col>
 
                     <Col xs={24} md={12}>
-                      <Form.Item
+                      <ProductField
                         name="categoria"
                         label="Categoría"
                         rules={[
@@ -5340,11 +5748,11 @@ export default function AddProduct() {
                             }
                           />
                         </AutoComplete>
-                      </Form.Item>
+                      </ProductField>
                     </Col>
 
                     <Col xs={24} md={12}>
-                      <Form.Item
+                      <ProductField
                         name="subcategoria"
                         label="Subcategoría"
                         rules={[
@@ -5364,7 +5772,9 @@ export default function AddProduct() {
                           }
                           getPopupContainer={() => document.body}
                           onSelect={value => {
-                            commitClassificationFromForm({ subcategoria: value })
+                            commitClassificationFromForm({
+                              subcategoria: value,
+                            })
                           }}
                           onBlur={() => {
                             normalizeTitleCaseFormField('subcategoria')
@@ -5381,11 +5791,11 @@ export default function AddProduct() {
                             }
                           />
                         </AutoComplete>
-                      </Form.Item>
+                      </ProductField>
                     </Col>
 
                     <Col xs={24} md={12}>
-                      <Form.Item
+                      <ProductField
                         name="marca"
                         label="Marca"
                         rules={[
@@ -5404,11 +5814,11 @@ export default function AddProduct() {
                             />
                           }
                         />
-                      </Form.Item>
+                      </ProductField>
                     </Col>
 
                     <Col xs={24} md={12}>
-                      <Form.Item name="material" label="Material">
+                      <ProductField name="material" label="Material">
                         <Input
                           size="large"
                           placeholder="Material principal visible o declarado"
@@ -5418,11 +5828,11 @@ export default function AddProduct() {
                             />
                           }
                         />
-                      </Form.Item>
+                      </ProductField>
                     </Col>
 
                     <Col xs={24}>
-                      <Form.Item name="color" label="Color general">
+                      <ProductField name="color" label="Color general">
                         <Input
                           size="large"
                           placeholder="Color dominante o combinación principal"
@@ -5432,7 +5842,7 @@ export default function AddProduct() {
                             />
                           }
                         />
-                      </Form.Item>
+                      </ProductField>
                     </Col>
                   </Row>
                 </Card>
@@ -5460,11 +5870,13 @@ export default function AddProduct() {
                       onChange={checked => {
                         setUseTechnicalSheet(checked)
                         if (!checked) {
-                          form.setFieldsValue({
+                          setProductFormValues({
                             descripcionTecnica: undefined,
                             dynamicFields: {},
                           })
-                          message.info('Ficha técnica desactivada para este producto')
+                          message.info(
+                            'Ficha técnica desactivada para este producto',
+                          )
                         }
                       }}
                       checkedChildren="Usar"
@@ -5488,7 +5900,11 @@ export default function AddProduct() {
                         border: `1px dashed ${token.colorBorder}`,
                       }}
                     >
-                      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <Space
+                        direction="vertical"
+                        size={12}
+                        style={{ width: '100%' }}
+                      >
                         <Alert
                           type="info"
                           showIcon
@@ -5498,7 +5914,8 @@ export default function AddProduct() {
                         />
 
                         <Space wrap>
-                          <Button htmlType="button"
+                          <Button
+                            htmlType="button"
                             type="primary"
                             icon={<ThunderboltOutlined />}
                             disabled={!normalizedAiDraft?.dynamicFields?.length}
@@ -5506,7 +5923,8 @@ export default function AddProduct() {
                           >
                             Generar ficha con IA
                           </Button>
-                          <Button htmlType="button"
+                          <Button
+                            htmlType="button"
                             icon={<PlusOutlined />}
                             onClick={() => setUseTechnicalSheet(true)}
                           >
@@ -5516,7 +5934,10 @@ export default function AddProduct() {
 
                         {normalizedAiDraft?.dynamicFields?.length > 0 && (
                           <Text type="secondary">
-                            La IA encontró {normalizedAiDraft.dynamicFields.length} datos posibles. Podés aplicarlos y luego quitar los que no correspondan.
+                            La IA encontró{' '}
+                            {normalizedAiDraft.dynamicFields.length} datos
+                            posibles. Podés aplicarlos y luego quitar los que no
+                            correspondan.
                           </Text>
                         )}
                       </Space>
@@ -5541,7 +5962,11 @@ export default function AddProduct() {
                         style={{ marginBottom: 20, borderRadius: 16 }}
                         styles={{ body: { padding: 16 } }}
                       >
-                        <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                        <Space
+                          direction="vertical"
+                          size={14}
+                          style={{ width: '100%' }}
+                        >
                           <Alert
                             type="success"
                             showIcon
@@ -5552,7 +5977,8 @@ export default function AddProduct() {
 
                           <Space wrap size={[8, 8]}>
                             {TECHNICAL_FIELD_PRESETS.map(preset => (
-                              <Button htmlType="button"
+                              <Button
+                                htmlType="button"
                                 key={preset.key}
                                 size="small"
                                 onClick={() => applyTechnicalPreset(preset)}
@@ -5565,22 +5991,28 @@ export default function AddProduct() {
 
                           <Input.TextArea
                             value={technicalQuickText}
-                            onChange={event => setTechnicalQuickText(event.target.value)}
+                            onChange={event =>
+                              setTechnicalQuickText(event.target.value)
+                            }
                             rows={2}
                             placeholder="Ej: Cilindrada: 700 cc | Transmisión: 6 velocidades | Peso: 220 kg | Uso recomendado: adventure touring"
                           />
 
                           <Space wrap>
-                            <Button htmlType="button"
+                            <Button
+                              htmlType="button"
                               type="primary"
                               icon={<ThunderboltOutlined />}
                               onClick={applyTechnicalQuickFields}
                             >
                               Crear campos técnicos rápidos
                             </Button>
-                            <Button htmlType="button"
+                            <Button
+                              htmlType="button"
                               icon={<FileTextOutlined />}
-                              onClick={generateTechnicalDescriptionFromCurrentValues}
+                              onClick={
+                                generateTechnicalDescriptionFromCurrentValues
+                              }
                             >
                               Crear descripción técnica
                             </Button>
@@ -5607,12 +6039,15 @@ export default function AddProduct() {
                                     <Tag color="red">Obligatorio</Tag>
                                   )}
                                   {field.source && <Tag>{field.source}</Tag>}
-                                  <Button htmlType="button"
+                                  <Button
+                                    htmlType="button"
                                     size="small"
                                     type="link"
                                     danger
                                     onClick={() =>
-                                      handleRemoveDynamicProductField(field.name)
+                                      handleRemoveDynamicProductField(
+                                        field.name,
+                                      )
                                     }
                                   >
                                     Quitar
@@ -5669,7 +6104,8 @@ export default function AddProduct() {
                           </div>
                         </Col>
                         <Col xs={12} md={4}>
-                          <Button htmlType="button"
+                          <Button
+                            htmlType="button"
                             block
                             type="primary"
                             icon={<PlusOutlined />}
@@ -5753,11 +6189,13 @@ export default function AddProduct() {
                               type="secondary"
                               style={{ display: 'block', marginTop: 4 }}
                             >
-                              Pegá opciones en una línea y generá combinaciones sin cargar campo por campo.
+                              Pegá opciones en una línea y generá combinaciones
+                              sin cargar campo por campo.
                             </Text>
                             <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
                               {QUICK_VARIANT_PRESETS.map(preset => (
-                                <Button htmlType="button"
+                                <Button
+                                  htmlType="button"
                                   key={preset.key}
                                   size="small"
                                   onClick={() => applyVariantPreset(preset)}
@@ -5770,15 +6208,22 @@ export default function AddProduct() {
 
                             <Input.TextArea
                               value={quickVariantText}
-                              onChange={event => setQuickVariantText(event.target.value)}
+                              onChange={event =>
+                                setQuickVariantText(event.target.value)
+                              }
                               rows={2}
                               placeholder="Ej: Color: Negro, Blanco | Medida: 500ml, 1L | Presentación: Unidad, Pack"
                               style={{ marginTop: 10 }}
                             />
                           </Col>
                           <Col xs={24} lg={9}>
-                            <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                              <Button htmlType="button"
+                            <Space
+                              direction="vertical"
+                              size={10}
+                              style={{ width: '100%' }}
+                            >
+                              <Button
+                                htmlType="button"
                                 block
                                 type="primary"
                                 icon={<ThunderboltOutlined />}
@@ -5786,7 +6231,8 @@ export default function AddProduct() {
                               >
                                 Crear variantes rápidas
                               </Button>
-                              <Button htmlType="button"
+                              <Button
+                                htmlType="button"
                                 block
                                 icon={<ReloadOutlined />}
                                 onClick={generateVariantsFromAttributes}
@@ -5795,7 +6241,8 @@ export default function AddProduct() {
                                 Regenerar combinaciones actuales
                               </Button>
                               {normalizedAiDraft?.hasExplicitVariants && (
-                                <Button htmlType="button"
+                                <Button
+                                  htmlType="button"
                                   block
                                   icon={<RobotOutlined />}
                                   onClick={applyAiVariants}
@@ -5807,7 +6254,6 @@ export default function AddProduct() {
                           </Col>
                         </Row>
                       </div>
-
 
                       <div style={{ marginBottom: 20 }}>
                         <Row gutter={[12, 12]} align="bottom">
@@ -5837,7 +6283,8 @@ export default function AddProduct() {
                             />
                           </Col>
                           <Col xs={24} md={4}>
-                            <Button htmlType="button"
+                            <Button
+                              htmlType="button"
                               block
                               type="primary"
                               onClick={handleAddCustomAttribute}
@@ -5916,7 +6363,8 @@ export default function AddProduct() {
                                   md={2}
                                   style={{ textAlign: 'right' }}
                                 >
-                                  <Button htmlType="button"
+                                  <Button
+                                    htmlType="button"
                                     type="text"
                                     danger
                                     icon={<DeleteOutlined />}
@@ -5962,7 +6410,8 @@ export default function AddProduct() {
                           </Col>
                           <Col>
                             <Space wrap>
-                              <Button htmlType="button"
+                              <Button
+                                htmlType="button"
                                 onClick={handleSaveCatalogTemplate}
                                 icon={<SaveOutlined />}
                                 loading={savingCatalogTemplate}
@@ -5970,7 +6419,8 @@ export default function AddProduct() {
                               >
                                 Guardar plantilla
                               </Button>
-                              <Button htmlType="button"
+                              <Button
+                                htmlType="button"
                                 type="primary"
                                 onClick={generateVariantsFromAttributes}
                                 icon={<ReloadOutlined />}
@@ -6036,7 +6486,8 @@ export default function AddProduct() {
                                 />
                               </Col>
                               <Col xs={24} md={8}>
-                                <Button htmlType="button"
+                                <Button
+                                  htmlType="button"
                                   block
                                   icon={<CheckOutlined />}
                                   onClick={applyBulkVariantValues}
@@ -6251,7 +6702,8 @@ export default function AddProduct() {
                                 key: 'delete',
                                 width: 60,
                                 render: (_, record) => (
-                                  <Button htmlType="button"
+                                  <Button
+                                    htmlType="button"
                                     type="text"
                                     danger
                                     icon={<DeleteOutlined />}
@@ -6291,11 +6743,12 @@ export default function AddProduct() {
                       <Space direction="vertical" size={12} align="center">
                         <Text type="secondary">
                           Este producto no tiene opciones vendibles. Activá
-                          variantes solo si el cliente debe elegir una alternativa
-                          específica antes de comprar.
+                          variantes solo si el cliente debe elegir una
+                          alternativa específica antes de comprar.
                         </Text>
                         <Space wrap>
-                          <Button htmlType="button"
+                          <Button
+                            htmlType="button"
                             type="primary"
                             icon={<PlusOutlined />}
                             onClick={() => setHasVariants(true)}
@@ -6303,7 +6756,8 @@ export default function AddProduct() {
                             Crear variantes
                           </Button>
                           {dynamicAttributes.length > 0 && (
-                            <Button htmlType="button"
+                            <Button
+                              htmlType="button"
                               icon={<ReloadOutlined />}
                               onClick={() => setHasVariants(true)}
                             >
@@ -6311,7 +6765,8 @@ export default function AddProduct() {
                             </Button>
                           )}
                           {normalizedAiDraft?.hasExplicitVariants && (
-                            <Button htmlType="button"
+                            <Button
+                              htmlType="button"
                               icon={<RobotOutlined />}
                               onClick={applyAiVariants}
                             >
@@ -6326,11 +6781,13 @@ export default function AddProduct() {
               </Col>
 
               <Col xs={24} xl={9}>
-                <div style={{ position: 'sticky', top: 24 }}>
+                <div className="add-product-side-panel">
                   <Card
                     title={
                       <Space size={10}>
-                        <CheckCircleOutlined style={{ color: token.colorPrimary }} />
+                        <CheckCircleOutlined
+                          style={{ color: token.colorPrimary }}
+                        />
                         <span>Estado de carga</span>
                       </Space>
                     }
@@ -6342,7 +6799,11 @@ export default function AddProduct() {
                     }}
                     styles={{ body: { padding: 20 } }}
                   >
-                    <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                    <Space
+                      direction="vertical"
+                      size={14}
+                      style={{ width: '100%' }}
+                    >
                       <div
                         style={{
                           padding: 16,
@@ -6359,7 +6820,10 @@ export default function AddProduct() {
                       >
                         <Space
                           align="center"
-                          style={{ width: '100%', justifyContent: 'space-between' }}
+                          style={{
+                            width: '100%',
+                            justifyContent: 'space-between',
+                          }}
                         >
                           <div>
                             <Text strong>
@@ -6370,7 +6834,8 @@ export default function AddProduct() {
                             <br />
                             <Text type="secondary" style={{ fontSize: 12 }}>
                               {productReadiness.doneRequired}/
-                              {productReadiness.requiredChecks.length} datos obligatorios
+                              {productReadiness.requiredChecks.length} datos
+                              obligatorios
                             </Text>
                           </div>
                           <div
@@ -6398,7 +6863,13 @@ export default function AddProduct() {
                         {productReadiness.checks.map(check => (
                           <Tag
                             key={check.key}
-                            color={check.done ? 'success' : check.required ? 'warning' : 'default'}
+                            color={
+                              check.done
+                                ? 'success'
+                                : check.required
+                                  ? 'warning'
+                                  : 'default'
+                            }
                             style={{ borderRadius: 999, marginInlineEnd: 0 }}
                           >
                             {check.done ? '✓' : '•'} {check.label}
@@ -6435,7 +6906,7 @@ export default function AddProduct() {
                   >
                     <Row gutter={[16, 16]}>
                       <Col xs={24}>
-                        <Form.Item
+                        <ProductField
                           name="precio"
                           label={
                             hasVariants ? 'Precio base de referencia' : 'Precio'
@@ -6468,12 +6939,12 @@ export default function AddProduct() {
                               }
                             }}
                           />
-                        </Form.Item>
+                        </ProductField>
                       </Col>
 
                       {!hasVariants && (
                         <Col xs={24}>
-                          <Form.Item
+                          <ProductField
                             name="cantidad"
                             label="Cantidad en stock"
                             rules={[
@@ -6494,12 +6965,12 @@ export default function AddProduct() {
                                 />
                               }
                             />
-                          </Form.Item>
+                          </ProductField>
                         </Col>
                       )}
 
                       <Col xs={24}>
-                        <Form.Item
+                        <ProductField
                           name="condicion"
                           label="Condición"
                           rules={[
@@ -6523,7 +6994,7 @@ export default function AddProduct() {
                               <Tag color="processing">Reacondicionado</Tag>
                             </Select.Option>
                           </Select>
-                        </Form.Item>
+                        </ProductField>
                       </Col>
                     </Row>
 
@@ -6559,7 +7030,8 @@ export default function AddProduct() {
                       size={12}
                       style={{ width: '100%' }}
                     >
-                      <Button htmlType="button"
+                      <Button
+                        htmlType="button"
                         block
                         icon={<ThunderboltOutlined />}
                         onClick={generateSeoFromCurrentValues}
@@ -6567,7 +7039,8 @@ export default function AddProduct() {
                         Generar SEO desde el producto
                       </Button>
 
-                      <Button htmlType="button"
+                      <Button
+                        htmlType="button"
                         block
                         type="primary"
                         ghost
@@ -6581,61 +7054,80 @@ export default function AddProduct() {
                         Posicionamiento SEO
                       </Divider>
 
-                      <Form.Item name="seoFocusKeyword" label="Keyword principal">
+                      <ProductField
+                        name="seoFocusKeyword"
+                        label="Keyword principal"
+                      >
                         <Input placeholder="Ej: Moto Morini X-Cape 700" />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item name="seoSearchIntent" label="Intención de búsqueda" initialValue="commercial">
+                      <ProductField
+                        name="seoSearchIntent"
+                        label="Intención de búsqueda"
+                        initialValue="commercial"
+                      >
                         <Select options={SEO_POSITIONING_INTENT_OPTIONS} />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item name="seoPositioning" label="Posicionamiento SEO">
+                      <ProductField
+                        name="seoPositioning"
+                        label="Posicionamiento SEO"
+                      >
                         <Input.TextArea
                           rows={4}
                           maxLength={900}
                           showCount
                           placeholder="Definí cómo debe posicionarse este producto en buscadores, qué intención resuelve y qué lo diferencia."
                         />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item name="seoTargetAudience" label="Audiencia objetivo">
+                      <ProductField
+                        name="seoTargetAudience"
+                        label="Audiencia objetivo"
+                      >
                         <Input placeholder="Ej: usuarios que buscan una motocicleta adventure para ruta y uso mixto" />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item name="seoContentAngle" label="Enfoque de contenido">
+                      <ProductField
+                        name="seoContentAngle"
+                        label="Enfoque de contenido"
+                      >
                         <Input.TextArea
                           rows={2}
                           maxLength={420}
                           showCount
                           placeholder="Qué destacar en la descripción, fichas, contenido y FAQs."
                         />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item name="seoFaq" label="Preguntas frecuentes SEO">
+                      <ProductField name="seoFaq" label="Preguntas frecuentes SEO">
                         <Select
                           mode="tags"
                           tokenSeparators={[',']}
                           placeholder="Ej: ¿Qué motor tiene?, ¿Para qué uso sirve?, ¿Qué revisar antes de comprar?"
                         />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item name="seoContentPillars" label="Pilares de contenido">
+                      <ProductField
+                        name="seoContentPillars"
+                        label="Pilares de contenido"
+                      >
                         <Select
                           mode="tags"
                           tokenSeparators={[',']}
                           placeholder="marca, modelo, categoría, material, uso, beneficio"
                         />
-                      </Form.Item>
+                      </ProductField>
 
                       <Divider orientation="left" plain>
                         SEO básico
                       </Divider>
 
-                      <Form.Item name="slug" label="Slug URL">
+                      <ProductField name="slug" label="Slug URL">
                         <Input placeholder="nombre-producto-claro" />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item
+                      <ProductField
                         name="shortDescription"
                         label="Descripción corta"
                       >
@@ -6645,17 +7137,17 @@ export default function AddProduct() {
                           showCount
                           placeholder="Resumen comercial breve para cards, SEO y vistas rápidas."
                         />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item name="metaTitle" label="Meta title">
+                      <ProductField name="metaTitle" label="Meta title">
                         <Input
                           maxLength={70}
                           showCount
                           placeholder="Título SEO"
                         />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item
+                      <ProductField
                         name="metaDescription"
                         label="Meta description"
                       >
@@ -6665,15 +7157,15 @@ export default function AddProduct() {
                           showCount
                           placeholder="Descripción SEO para buscadores."
                         />
-                      </Form.Item>
+                      </ProductField>
 
-                      <Form.Item name="seoKeywords" label="Keywords">
+                      <ProductField name="seoKeywords" label="Keywords">
                         <Select
                           mode="tags"
                           tokenSeparators={[',']}
                           placeholder="marca, categoría, material, uso"
                         />
-                      </Form.Item>
+                      </ProductField>
                     </Space>
                   </Card>
 
@@ -6696,63 +7188,63 @@ export default function AddProduct() {
                   >
                     <Row gutter={[12, 12]}>
                       <Col xs={24} sm={12}>
-                        <Form.Item name="weightKg" label="Peso kg">
+                        <ProductField name="weightKg" label="Peso kg">
                           <InputNumber
                             min={0}
                             precision={3}
                             style={{ width: '100%' }}
                             placeholder="0.500"
                           />
-                        </Form.Item>
+                        </ProductField>
                       </Col>
                       <Col xs={24} sm={12}>
-                        <Form.Item
+                        <ProductField
                           name="shippingType"
                           label="Tipo de envío"
                           initialValue="standard"
                         >
                           <Select options={SHIPPING_TYPE_OPTIONS} />
-                        </Form.Item>
+                        </ProductField>
                       </Col>
                       <Col xs={8}>
-                        <Form.Item name="packageLengthCm" label="Largo cm">
+                        <ProductField name="packageLengthCm" label="Largo cm">
                           <InputNumber
                             min={0}
                             precision={1}
                             style={{ width: '100%' }}
                           />
-                        </Form.Item>
+                        </ProductField>
                       </Col>
                       <Col xs={8}>
-                        <Form.Item name="packageWidthCm" label="Ancho cm">
+                        <ProductField name="packageWidthCm" label="Ancho cm">
                           <InputNumber
                             min={0}
                             precision={1}
                             style={{ width: '100%' }}
                           />
-                        </Form.Item>
+                        </ProductField>
                       </Col>
                       <Col xs={8}>
-                        <Form.Item name="packageHeightCm" label="Alto cm">
+                        <ProductField name="packageHeightCm" label="Alto cm">
                           <InputNumber
                             min={0}
                             precision={1}
                             style={{ width: '100%' }}
                           />
-                        </Form.Item>
+                        </ProductField>
                       </Col>
                       <Col xs={24}>
-                        <Form.Item name="warranty" label="Garantía">
+                        <ProductField name="warranty" label="Garantía">
                           <Input placeholder="Ej: 6 meses por defecto de fabricación" />
-                        </Form.Item>
+                        </ProductField>
                       </Col>
                       <Col xs={24}>
-                        <Form.Item
+                        <ProductField
                           name="countryOfOrigin"
                           label="País de origen"
                         >
                           <Input placeholder="Ej: Argentina, Brasil, China" />
-                        </Form.Item>
+                        </ProductField>
                       </Col>
                     </Row>
                   </Card>
@@ -6882,7 +7374,8 @@ export default function AddProduct() {
                         </Space>
                       </div>
 
-                      <Button htmlType="submit"
+                      <Button
+                        htmlType="submit"
                         type="primary"
                         size="large"
                         block
@@ -6923,7 +7416,9 @@ export default function AddProduct() {
                 </div>
               </Col>
             </Row>
-          </Form>
+              </Form>
+            </ProductFormMutationContext.Provider>
+          </ProductFormDirtyContext.Provider>
         </Col>
       </Row>
 
@@ -6984,11 +7479,43 @@ export default function AddProduct() {
           gap: 2px;
         }
 
-        .ant-form-item,
+        .stable-form-field,
         .ant-card,
         .ant-row,
         .ai-analysis-card {
           overflow-anchor: none;
+        }
+
+
+        .stable-form-field {
+          overflow-anchor: none !important;
+        }
+
+        .stable-form-field-label {
+          display: block;
+          margin-bottom: 6px;
+          color: ${token.colorText};
+          font-size: 14px;
+          font-weight: 600;
+          line-height: 1.35;
+        }
+
+        .stable-form-field-required {
+          margin-left: 4px;
+          color: ${token.colorError};
+        }
+
+        .stable-form-field-message {
+          min-height: 20px;
+          margin-top: 6px;
+          color: ${token.colorError};
+          font-size: 12px;
+          line-height: 1.35;
+          transition: none !important;
+        }
+
+        .add-product-side-panel {
+          position: relative;
         }
 
         .ai-analysis-card {

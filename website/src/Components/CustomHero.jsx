@@ -1,8 +1,9 @@
 // 📁 web/src/components/CustomHero.jsx
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Box, Typography, Container, Button } from '@mui/material'
-import useThemeConfig from '@hooks/useThemeConfig'
-import { Newprimary } from '../../../admin/src/theme/colors'
+import { useSelector } from 'react-redux'
+import { useTenant } from '../contexts/TenantContext'
+import { getThemeColors } from '@utils/themeRuntime'
 
 const getAssetUrl = asset => {
   if (!asset) return null
@@ -18,9 +19,28 @@ const HEIGHTS = {
 }
 
 const CustomHero = () => {
-  const { themeConfig } = useThemeConfig()
-  const hero = themeConfig?.hero
-  const colors = themeConfig?.colors
+  const tenantContext = useTenant()
+  const themeState = useSelector(state => state.theme)
+
+  const tenantConfig = tenantContext?.themeConfig
+  const reduxConfig = themeState?.config
+  const previewConfig = themeState?.previewConfig
+  const previewMode = themeState?.previewMode
+
+  const activeConfig = useMemo(() => {
+    if (previewMode && previewConfig) return previewConfig
+    if (reduxConfig) return reduxConfig
+    if (tenantConfig) return tenantConfig
+    return {}
+  }, [reduxConfig, tenantConfig, previewConfig, previewMode])
+
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
+
+  const hero = activeConfig?.hero
+  const colors = themeColors
   const backgroundImage = getAssetUrl(hero?.backgroundImage)
 
   if (!hero?.enabled) return null
@@ -75,7 +95,6 @@ const CustomHero = () => {
           sx={{
             mb: 4,
             opacity: 0.9,
-            color: Newprimary.darkRed,
           }}
         >
           {hero?.subtitle}
