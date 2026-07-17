@@ -45,6 +45,15 @@ const MAX_RETRIES = Math.min(
   Math.max(Number(process.env.GEMINI_MAX_RETRIES || 3), 1),
   5,
 )
+const GEMINI_RETRY_BASE_DELAY_MS = Math.min(
+  Math.max(Number(process.env.GEMINI_RETRY_BASE_DELAY_MS || 1000), 100),
+  10000,
+)
+const GEMINI_RETRY_MAX_DELAY_MS = 15000
+const GEMINI_TIMEOUT_MS = Math.min(
+  Math.max(Number(process.env.GEMINI_TIMEOUT_MS || 60000), 5000),
+  180000,
+)
 const MAX_IMAGE_BYTES = Math.min(
   Math.max(Number(process.env.AI_IMAGE_MAX_BYTES || 10 * 1024 * 1024), 512 * 1024),
   15 * 1024 * 1024,
@@ -260,9 +269,40 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+/**
+ * Ejecuta fn(signal) con un timeout duro. Pasa el AbortSignal al llamado
+ * (el SDK de Gemini lo reenvía al fetch interno si la versión instalada lo soporta)
+ * y además corre una carrera contra un timer propio, por si el SDK lo ignora.
+ */
+async function runWithTimeout(fn, timeoutMs) {
+  const controller = new AbortController()
+  let timeoutHandle = null
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      controller.abort()
+      const timeoutError = new Error(`Gemini generateContent excedió el timeout de ${timeoutMs}ms`)
+      timeoutError.code = 'GEMINI_TIMEOUT'
+      timeoutError.retryable = true
+      reject(timeoutError)
+    }, timeoutMs)
+  })
+
+  try {
+    return await Promise.race([fn(controller.signal), timeoutPromise])
+  } finally {
+    clearTimeout(timeoutHandle)
+  }
+}
+
 function isRetryableGeminiError(error) {
   const message = String(error?.message || '').toLowerCase()
   const status = Number(error?.status || error?.statusCode || error?.response?.status || 0)
+  const networkCode = error?.code || error?.cause?.code || error?.errno
+
+  // Errores no transitorios: payload inválido, credenciales, cuota o contenido
+  // bloqueado por seguridad. Reintentarlos falla igual y solo suma latencia.
+  const nonRetryableStatus = status === 400 || status === 401 || status === 403
 
   const quotaExceeded =
     message.includes('quota exceeded') ||
@@ -270,7 +310,23 @@ function isRetryableGeminiError(error) {
     message.includes('free_tier') ||
     message.includes('generate_content_free_tier')
 
-  if (quotaExceeded) return false
+  const safetyBlocked =
+    message.includes('safety') ||
+    message.includes('blocked') ||
+    message.includes('block_reason') ||
+    message.includes('blockreason')
+
+  if (nonRetryableStatus || quotaExceeded || safetyBlocked) return false
+
+  const retryableNetworkCodes = [
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+  ]
 
   return (
     status === 429 ||
@@ -278,19 +334,26 @@ function isRetryableGeminiError(error) {
     status === 502 ||
     status === 503 ||
     status === 504 ||
+    error?.code === 'GEMINI_TIMEOUT' ||
+    retryableNetworkCodes.includes(networkCode) ||
     message.includes('429') ||
     message.includes('rate limit') ||
     message.includes('timeout') ||
     message.includes('503') ||
     message.includes('500') ||
     message.includes('temporarily unavailable') ||
+    message.includes('high demand') ||
+    message.includes('overloaded') ||
     message.includes('deadline exceeded') ||
     message.includes('socket') ||
-    message.includes('network')
+    message.includes('network') ||
+    message.includes('fetch failed') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout')
   )
 }
 
-async function withRetry(fn, maxRetries = MAX_RETRIES) {
+async function withRetry(fn, { maxRetries = MAX_RETRIES, baseDelayMs = GEMINI_RETRY_BASE_DELAY_MS, context = {} } = {}) {
   let lastError = null
 
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
@@ -301,18 +364,30 @@ async function withRetry(fn, maxRetries = MAX_RETRIES) {
       const retryable = isRetryableGeminiError(error)
 
       if (!retryable || attempt === maxRetries) {
+        if (retryable) {
+          logError('Reintentos de Gemini agotados', {
+            attempt,
+            maxRetries,
+            error: error?.message,
+            code: error?.code,
+            status: error?.status || error?.statusCode || error?.response?.status || null,
+            ...context,
+          })
+        }
         throw error
       }
 
-      const jitterMs = Math.floor(Math.random() * 220)
-      const backoffMs = Math.min(500 * attempt * attempt + jitterMs, 5000)
+      // Backoff exponencial con jitter: ~1s/2s/4s con baseDelayMs=1000 (default)
+      const jitterMs = Math.floor(Math.random() * 300)
+      const backoffMs = Math.min(baseDelayMs * Math.pow(2, attempt - 1) + jitterMs, GEMINI_RETRY_MAX_DELAY_MS)
 
       logWarn('Retry transitorio contra Gemini', {
-        attempt,
-        maxRetries,
+        attempt: `${attempt}/${maxRetries}`,
         backoffMs,
         error: error?.message,
         code: error?.code,
+        status: error?.status || error?.statusCode || error?.response?.status || null,
+        ...context,
       })
 
       await sleep(backoffMs)
@@ -1538,31 +1613,42 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
     const model = client.getGenerativeModel({ model: MODEL_NAME })
 
-    const result = await withRetry(async () => {
-      return model.generateContent({
-        contents: [
-          {
-            role: 'user',
-            parts: [
+    const result = await withRetry(
+      () =>
+        runWithTimeout(
+          signal =>
+            model.generateContent(
               {
-                inlineData: {
-                  data: imageBuffer.toString('base64'),
-                  mimeType: finalMime,
+                contents: [
+                  {
+                    role: 'user',
+                    parts: [
+                      {
+                        inlineData: {
+                          data: imageBuffer.toString('base64'),
+                          mimeType: finalMime,
+                        },
+                      },
+                      { text: prompt },
+                    ],
+                  },
+                ],
+                generationConfig: {
+                  temperature: clampNumber(process.env.AI_VISION_TEMPERATURE, 0.15, 0, 0.7),
+                  topP: clampNumber(process.env.AI_VISION_TOP_P, 0.95, 0.1, 1),
+                  topK: Math.round(clampNumber(process.env.AI_VISION_TOP_K, 40, 1, 100)),
+                  maxOutputTokens: MAX_OUTPUT_TOKENS,
+                  responseMimeType: 'application/json',
                 },
               },
-              { text: prompt },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: clampNumber(process.env.AI_VISION_TEMPERATURE, 0.15, 0, 0.7),
-          topP: clampNumber(process.env.AI_VISION_TOP_P, 0.95, 0.1, 1),
-          topK: Math.round(clampNumber(process.env.AI_VISION_TOP_K, 40, 1, 100)),
-          maxOutputTokens: MAX_OUTPUT_TOKENS,
-          responseMimeType: 'application/json',
-        },
-      })
-    })
+              { signal, timeout: GEMINI_TIMEOUT_MS },
+            ),
+          GEMINI_TIMEOUT_MS,
+        ),
+      {
+        context: { hash, model: MODEL_NAME, tenantId: normalizedTenantId },
+      },
+    )
 
     const response = await result.response
     const rawText = response.text()
@@ -1597,6 +1683,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
       model: MODEL_NAME,
       error: error?.message,
       code: error?.code,
+      retryable: isRetryableGeminiError(error),
     })
 
     throw buildProviderError(error)

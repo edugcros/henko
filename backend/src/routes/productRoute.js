@@ -133,6 +133,28 @@ router.post(
           message.includes('invalid argument')
         )
 
+      // Errores upstream transitorios (503/502/504/500, timeout, red) que ya
+      // agotaron los reintentos de aiVisionService — el propio servicio marca
+      // esto en error.retryable, evitamos duplicar la heurística acá.
+      const isTransientUpstreamError =
+        !isGeminiRateLimit &&
+        !isAuthError &&
+        !isModelError &&
+        (
+          error?.retryable === true ||
+          status === 500 ||
+          status === 503 ||
+          status === 502 ||
+          status === 504 ||
+          message.includes('503') ||
+          message.includes('service unavailable') ||
+          message.includes('overloaded') ||
+          message.includes('high demand') ||
+          message.includes('bad gateway') ||
+          message.includes('deadline exceeded') ||
+          error?.code === 'GEMINI_TIMEOUT'
+        )
+
       if (isGeminiRateLimit) {
         return res.status(429).json({
           success: false,
@@ -158,6 +180,16 @@ router.post(
           code: 'AI_MODEL_ERROR',
           message:
             'El modelo de IA configurado no es válido. Revisá GEMINI_MODEL / GOOGLE_IMAGE_MODEL.',
+        })
+      }
+
+      if (isTransientUpstreamError) {
+        return res.status(503).json({
+          success: false,
+          code: 'AI_SERVICE_UNAVAILABLE',
+          message:
+            'El servicio de análisis IA está temporalmente saturado, intentá de nuevo en unos minutos.',
+          retryAfter: 60,
         })
       }
 
