@@ -16,8 +16,6 @@ import {
   selectPreviewStatus,
   selectActiveSection,
   selectThemeStatus,
-  selectThemeHistory,
-  selectIsHistoryLoading,
 
   // Actions
   updateField as updateFieldAction,
@@ -37,10 +35,6 @@ import {
   autoSaveTheme,
   resetThemeToDefault,
   uploadThemeImage,
-  createThemePreview,
-  activateThemePreview,
-  fetchThemeHistory,
-  rollbackToVersion,
   exportThemeToFile,
   importThemeFromFile,
   toggleMaintenanceMode,
@@ -73,8 +67,6 @@ export const useTheme = () => {
   const autoSave = useSelector(selectAutoSaveStatus)
   const preview = useSelector(selectPreviewStatus)
   const activeSection = useSelector(selectActiveSection)
-  const history = useSelector(selectThemeHistory)
-  const isHistoryLoading = useSelector(selectIsHistoryLoading)
   const status = useSelector(selectThemeStatus)
 
   // Refs para auto-save
@@ -205,17 +197,6 @@ export const useTheme = () => {
   // PREVIEW SYSTEM
   // ==========================================
 
-  const createPreview = useCallback(() => {
-    return dispatch(createThemePreview(theme))
-  }, [dispatch, theme])
-
-  const activatePreview = useCallback(
-    previewId => {
-      return dispatch(activateThemePreview(previewId))
-    },
-    [dispatch],
-  )
-
   const togglePreview = useCallback(() => {
     if (!preview.active) {
       // Activar: guardar config actual como preview
@@ -233,24 +214,6 @@ export const useTheme = () => {
       return dispatch(uploadThemeImage({ file, type, fieldPath }))
         .unwrap()
         .then(result => result?.image || result)
-    },
-    [dispatch],
-  )
-
-  // ==========================================
-  // VERSIONADO
-  // ==========================================
-
-  const loadHistory = useCallback(
-    limit => {
-      return dispatch(fetchThemeHistory(limit))
-    },
-    [dispatch],
-  )
-
-  const rollback = useCallback(
-    version => {
-      return dispatch(rollbackToVersion(version))
     },
     [dispatch],
   )
@@ -336,7 +299,6 @@ export const useTheme = () => {
 
     // Preview
     previewMode: preview.active,
-    previewId: preview.previewId,
     togglePreview,
     clearPreview: () => dispatch(clearPreview()),
 
@@ -354,19 +316,11 @@ export const useTheme = () => {
     // Images
     uploadImage,
 
-    // Versioning
-    loadHistory,
-    rollback,
-    history,
-    isHistoryLoading,
-
     // Import/Export
     exportTheme,
     importTheme,
 
     // Advanced
-    createPreview,
-    activatePreview,
     toggleMaintenance,
     validate,
 

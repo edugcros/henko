@@ -8,10 +8,6 @@ import {
   uploadImage,
   exportTheme as apiExportTheme,
   importTheme as apiImportTheme,
-  createPreview as apiCreatePreview,
-  activatePreview as apiActivatePreview,
-  getThemeHistory,
-  rollbackTheme,
   toggleMaintenance,
   validateTheme,
   normalizeImageAsset as normalizeUploadedImageAsset,
@@ -43,12 +39,7 @@ const initialState = {
 
   // Preview system
   previewMode: false,
-  previewId: null,
   activeSection: 'general',
-
-  // Versionado
-  history: [],
-  isHistoryLoading: false,
 
   // Cache
   lastFetched: null,
@@ -157,50 +148,6 @@ export const uploadThemeImage = createAsyncThunk(
   },
 )
 
-export const createThemePreview = createAsyncThunk(
-  'theme/createPreview',
-  async (previewData, { rejectWithValue }) => {
-    try {
-      return await apiCreatePreview(previewData)
-    } catch (error) {
-      return rejectWithValue(error.message)
-    }
-  },
-)
-
-export const activateThemePreview = createAsyncThunk(
-  'theme/activatePreview',
-  async (previewId, { rejectWithValue }) => {
-    try {
-      return await apiActivatePreview(previewId)
-    } catch (error) {
-      return rejectWithValue(error.message)
-    }
-  },
-)
-
-export const fetchThemeHistory = createAsyncThunk(
-  'theme/fetchHistory',
-  async (limit = 10, { rejectWithValue }) => {
-    try {
-      return await getThemeHistory(limit)
-    } catch (error) {
-      return rejectWithValue(error.message)
-    }
-  },
-)
-
-export const rollbackToVersion = createAsyncThunk(
-  'theme/rollback',
-  async (version, { rejectWithValue }) => {
-    try {
-      return await rollbackTheme(version)
-    } catch (error) {
-      return rejectWithValue(error.message)
-    }
-  },
-)
-
 export const exportThemeToFile = createAsyncThunk(
   'theme/export',
   async (filename, { rejectWithValue }) => {
@@ -297,7 +244,6 @@ const themeSlice = createSlice({
 
     clearPreview: state => {
       state.previewConfig = null
-      state.previewId = null
     },
 
     setActiveSection: (state, action) => {
@@ -418,42 +364,6 @@ const themeSlice = createSlice({
         state.error = action.payload
       })
 
-      // Preview system
-      .addCase(createThemePreview.fulfilled, (state, action) => {
-        const previewPayload = unwrapApiData(action.payload)
-        state.previewId = previewPayload?.previewId
-        state.previewConfig = sanitizeThemeValue(
-          previewPayload?.data || state.previewConfig,
-        )
-      })
-      .addCase(activateThemePreview.fulfilled, (state, action) => {
-        state.config = sanitizeThemeValue(unwrapApiData(action.payload))
-        state.originalConfig = deepClone(state.config)
-        state.previewId = null
-        state.previewConfig = null
-        state.previewMode = false
-        state.hasUnsavedChanges = false
-      })
-
-      // History
-      .addCase(fetchThemeHistory.pending, state => {
-        state.isHistoryLoading = true
-      })
-      .addCase(fetchThemeHistory.fulfilled, (state, action) => {
-        state.isHistoryLoading = false
-        state.history = action.payload
-      })
-      .addCase(fetchThemeHistory.rejected, state => {
-        state.isHistoryLoading = false
-      })
-
-      // Rollback
-      .addCase(rollbackToVersion.fulfilled, (state, action) => {
-        state.config = sanitizeThemeValue(unwrapApiData(action.payload))
-        state.originalConfig = deepClone(state.config)
-        state.hasUnsavedChanges = false
-      })
-
       // Import
       .addCase(importThemeFromFile.fulfilled, (state, action) => {
         state.config = sanitizeThemeValue(unwrapApiData(action.payload))
@@ -489,11 +399,7 @@ export const selectAutoSaveStatus = state => ({
 
 export const selectPreviewStatus = state => ({
   active: state.theme.previewMode,
-  previewId: state.theme.previewId,
 })
-
-export const selectThemeHistory = state => state.theme.history
-export const selectIsHistoryLoading = state => state.theme.isHistoryLoading
 
 export const selectActiveSection = state => state.theme.activeSection
 

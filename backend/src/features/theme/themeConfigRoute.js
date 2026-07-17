@@ -12,15 +12,11 @@ import {
   getThemeForAdmin,
   updateTheme,
   patchTheme,
-  createPreview,
-  activatePreview,
   resetTheme,
   toggleMaintenance,
   uploadImage,
   exportTheme,
   importTheme,
-  getThemeHistory,
-  rollbackTheme,
   validateTheme,
 } from './themeConfigController.js'
 
@@ -149,15 +145,6 @@ const patchLimiter = rateLimit({
   ),
 })
 
-const previewLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: getAdminRateLimitKey,
-  handler: createRateLimitHandler('Demasiadas acciones de preview, espere un momento'),
-})
-
 const publicLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 200,
@@ -258,16 +245,6 @@ router.get(
 )
 
 /**
- * Historial del theme.
- * GET /api/theme-config/admin/history
- */
-router.get(
-  '/admin/history',
-  adminContext,
-  getThemeHistory,
-)
-
-/**
  * Exportar configuración del theme.
  * GET /api/theme-config/admin/export
  */
@@ -300,28 +277,6 @@ router.patch(
 )
 
 /**
- * Crear preview.
- * POST /api/theme-config/admin/preview
- */
-router.post(
-  '/admin/preview',
-  adminContext,
-  previewLimiter,
-  createPreview,
-)
-
-/**
- * Activar preview.
- * POST /api/theme-config/admin/preview/:previewId/activate
- */
-router.post(
-  '/admin/preview/:previewId/activate',
-  adminContext,
-  strictLimiter,
-  activatePreview,
-)
-
-/**
  * Resetear theme.
  * POST /api/theme-config/admin/reset
  */
@@ -341,17 +296,6 @@ router.post(
   adminContext,
   strictLimiter,
   toggleMaintenance,
-)
-
-/**
- * Rollback del theme.
- * POST /api/theme-config/admin/rollback
- */
-router.post(
-  '/admin/rollback',
-  adminContext,
-  strictLimiter,
-  rollbackTheme,
 )
 
 /**

@@ -177,17 +177,6 @@ export const updateTheme = data => request('PUT', '', { data })
 export const patchTheme = data => request('PATCH', '', { data })
 
 /**
- * Crear preview sin activar
- */
-export const createPreview = data => request('POST', '/preview', { data })
-
-/**
- * Activar preview como tema principal
- */
-export const activatePreview = previewId =>
-  request('POST', `/preview/${previewId}/activate`)
-
-/**
  * Resetear a defaults
  */
 export const resetTheme = () => request('POST', '/reset')
@@ -235,22 +224,6 @@ export const downloadExport = async filename => {
   }
 }
 
-// ==========================================
-// VERSIONADO
-// ==========================================
-
-/**
- * Obtener historial de versiones
- */
-export const getThemeHistory = (limit = 10) =>
-  request('GET', `/history?limit=${limit}`)
-
-/**
- * Rollback a versión específica
- */
-export const rollbackTheme = version =>
-  request('POST', '/rollback', { data: { version } })
-
 /**
  * Validar configuración sin guardar
  */
@@ -293,8 +266,6 @@ const themeApi = {
   getTheme,
   updateTheme,
   patchTheme,
-  createPreview,
-  activatePreview,
   resetTheme,
   toggleMaintenance,
 
@@ -303,9 +274,6 @@ const themeApi = {
   importTheme,
   downloadExport,
 
-  // Versionado
-  getThemeHistory,
-  rollbackTheme,
   validateTheme,
 
   // Uploads
