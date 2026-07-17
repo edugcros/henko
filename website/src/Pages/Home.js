@@ -546,6 +546,8 @@ const Home = () => {
     px: `${layoutConfig.containerPadding}px`,
   }
 
+  const documentTitle = `Inicio | ${activeConfig?.general?.storeName || 'Tu Tienda'}`
+
   const compactSectionSx = {
     py: {
       xs: 2.5,
@@ -561,7 +563,7 @@ const Home = () => {
         minHeight: '100vh',
       }}
     >
-      <Meta title="Inicio | Tu Tienda" />
+      <Meta title={documentTitle} />
 
       {/* --- SECCIÓN 1: HERO + BÚSQUEDA --- */}
       {heroConfig.enabled && (
@@ -587,6 +589,7 @@ const Home = () => {
             >
               <Box
                 sx={{
+                  position: 'relative',
                   width: '100%',
                   height: {
                     xs: 250,
@@ -617,6 +620,62 @@ const Home = () => {
                     display: 'block',
                   }}
                 />
+
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    bgcolor: `rgba(0, 0, 0, ${heroConfig.overlayOpacity})`,
+                    pointerEvents: 'none',
+                  }}
+                />
+
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems:
+                      heroConfig.alignment === 'center'
+                        ? 'center'
+                        : heroConfig.alignment === 'right'
+                          ? 'flex-end'
+                          : 'flex-start',
+                    textAlign: heroConfig.alignment,
+                    px: { xs: 2.5, md: 5 },
+                    gap: { xs: 0.5, md: 1 },
+                  }}
+                >
+                  <Typography
+                    component="h1"
+                    sx={{
+                      color: heroConfig.textColor,
+                      fontWeight: 800,
+                      fontSize: { xs: '1.5rem', sm: '2rem', md: '2.75rem' },
+                      lineHeight: 1.15,
+                      textShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',
+                    }}
+                  >
+                    {heroConfig.title}
+                  </Typography>
+
+                  {heroConfig.subtitle && (
+                    <Typography
+                      component="h2"
+                      sx={{
+                        color: heroConfig.textColor,
+                        fontWeight: 500,
+                        fontSize: { xs: '0.9rem', sm: '1.05rem', md: '1.25rem' },
+                        opacity: 0.92,
+                        textShadow: '0 2px 10px rgba(0, 0, 0, 0.35)',
+                      }}
+                    >
+                      {heroConfig.subtitle}
+                    </Typography>
+                  )}
+                </Box>
               </Box>
             </Paper>
 
