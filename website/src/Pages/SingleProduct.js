@@ -972,6 +972,7 @@ const SingleProduct = () => {
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [selectedAttributes, setSelectedAttributes] = useState({})
   const [showRatingForm, setShowRatingForm] = useState(false)
+  const [showAllReviews, setShowAllReviews] = useState(false)
   const [userStar, setUserStar] = useState(0)
   const [userComment, setUserComment] = useState('')
   const [isSubmittingRating, setIsSubmittingRating] = useState(false)
@@ -1111,6 +1112,52 @@ const SingleProduct = () => {
             : 'Todavía no hay suficientes opiniones.',
     }
   }, [product])
+
+  const sortedReviews = useMemo(() => {
+    const valid = Array.isArray(product?.ratings)
+      ? product.ratings.filter(review => {
+          const star = Number(review?.star)
+          return star >= 1 && star <= 5
+        })
+      : []
+
+    return [...valid].sort((a, b) => {
+      const dateA = new Date(a?.createdAt || a?.fecha || 0).getTime()
+      const dateB = new Date(b?.createdAt || b?.fecha || 0).getTime()
+      return dateB - dateA
+    })
+  }, [product?.ratings])
+
+  const ratingDistribution = useMemo(() => {
+    const dist = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+    sortedReviews.forEach(review => {
+      const star = Math.trunc(Number(review.star))
+      if (dist[star] !== undefined) dist[star] += 1
+    })
+    return dist
+  }, [sortedReviews])
+
+  const visibleReviews = useMemo(
+    () => (showAllReviews ? sortedReviews : sortedReviews.slice(0, 4)),
+    [sortedReviews, showAllReviews],
+  )
+
+  const formatReviewDate = useCallback(dateValue => {
+    if (!dateValue) return ''
+    const date = new Date(dateValue)
+    if (Number.isNaN(date.getTime())) return ''
+    return date.toLocaleDateString('es-AR', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    })
+  }, [])
+
+  const scrollToReviews = useCallback(() => {
+    document
+      .getElementById('opiniones')
+      ?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
 
   const displayPrice = useMemo(() => {
     const applyDiscount = price => {
@@ -1743,6 +1790,32 @@ const SingleProduct = () => {
               )}
             </Box>
 
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={1.5}
+              sx={{ cursor: 'pointer' }}
+              onClick={scrollToReviews}
+            >
+              <ReactStars
+                count={5}
+                size={20}
+                value={Number(iaAnalysis.avg) || 0}
+                edit={false}
+                half
+                color2={themeColors.warning}
+              />
+              <Typography
+                variant="body2"
+                fontWeight={800}
+                sx={{ color: themeColors.actionPrimary }}
+              >
+                {iaAnalysis.avg > 0 ? iaAnalysis.avg.toFixed(1) : '0.0'} ·{' '}
+                {iaAnalysis.count}{' '}
+                {iaAnalysis.count === 1 ? 'opinión' : 'opiniones'}
+              </Typography>
+            </Stack>
+
             <Stack direction="row" spacing={1} flexWrap="wrap">
               <Chip
                 icon={<StockIcon />}
@@ -1853,103 +1926,6 @@ const SingleProduct = () => {
                 {isFavorite ? <FavIcon /> : <FavBorderIcon />}
               </IconButton>
             </Stack>
-
-            <Divider />
-
-            <Box>
-              <Stack
-                direction="row"
-                justifyContent="space-between"
-                alignItems="center"
-                mb={1}
-              >
-                <Typography variant="h6" fontWeight={900} color="text.primary">
-                  Calificación general
-                </Typography>
-                <Button
-                  size="small"
-                  startIcon={<ReviewIcon />}
-                  onClick={() => setShowRatingForm(!showRatingForm)}
-                  sx={{ textTransform: 'none', fontWeight: 800 }}
-                >
-                  {showRatingForm ? 'Cerrar' : 'Opinar'}
-                </Button>
-              </Stack>
-
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Typography variant="h3" fontWeight={950} color="text.primary">
-                  {iaAnalysis.avg > 0 ? iaAnalysis.avg.toFixed(1) : '0.0'}
-                </Typography>
-                <Box>
-                  <ReactStars
-                    count={5}
-                    size={22}
-                    value={Number(iaAnalysis.avg) || 0}
-                    edit={false}
-                    half
-                    color2={themeColors.warning}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {iaAnalysis.count} opiniones
-                  </Typography>
-                </Box>
-              </Stack>
-
-              <Collapse in={showRatingForm} sx={{ mt: 2 }}>
-                <Paper
-                  sx={{
-                    p: 2,
-                    bgcolor: 'background.paper',
-                    borderRadius: 2,
-                    border: '1px dashed',
-                    borderColor: 'divider',
-                  }}
-                >
-                  {normalizedSelectedVariant?.attributes && (
-                    <Typography
-                      variant="caption"
-                      display="block"
-                      mb={1}
-                      sx={{ color: theme.palette.primary.main }}
-                    >
-                      Opinando sobre:{' '}
-                      {Object.values(normalizedSelectedVariant.attributes).join(
-                        ' / ',
-                      )}
-                    </Typography>
-                  )}
-                  <ReactStars
-                    count={5}
-                    size={28}
-                    value={userStar}
-                    onChange={value =>
-                      setUserStar(Math.trunc(Number(value)) || 0)
-                    }
-                    color2={themeColors.warning}
-                  />
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={2}
-                    size="small"
-                    placeholder="Tu opinión..."
-                    value={userComment}
-                    onChange={e => setUserComment(e.target.value)}
-                    sx={{ my: 1.5, bgcolor: 'background.paper' }}
-                  />
-                  <Button
-                    type="button"
-                    variant="contained"
-                    size="small"
-                    fullWidth
-                    disabled={isSubmittingRating}
-                    onClick={handleRateSubmit}
-                  >
-                    {isSubmittingRating ? 'Enviando...' : 'Enviar'}
-                  </Button>
-                </Paper>
-              </Collapse>
-            </Box>
           </Stack>
         </Grid>
       </Grid>
@@ -2182,6 +2158,328 @@ const SingleProduct = () => {
         </Box>
       )}
 
+      <Box
+        id="opiniones"
+        component="section"
+        sx={{
+          mt: { xs: 5, md: 7 },
+          mx: 'auto',
+          maxWidth: 1120,
+          width: '100%',
+        }}
+      >
+        <SectionTitle label="Opiniones" eyebrow="Lo que dicen los clientes" />
+
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={4}>
+            <Paper
+              variant="outlined"
+              sx={{
+                p: { xs: 2.25, md: 3 },
+                borderRadius: 4,
+                bgcolor: 'background.paper',
+                position: { md: 'sticky' },
+                top: { md: 24 },
+              }}
+            >
+              <Stack spacing={2}>
+                <Stack direction="row" alignItems="baseline" spacing={1}>
+                  <Typography
+                    variant="h2"
+                    fontWeight={950}
+                    sx={{ color: themeColors.text, lineHeight: 1 }}
+                  >
+                    {iaAnalysis.avg > 0 ? iaAnalysis.avg.toFixed(1) : '0.0'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    / 5
+                  </Typography>
+                </Stack>
+
+                <Box>
+                  <ReactStars
+                    count={5}
+                    size={24}
+                    value={Number(iaAnalysis.avg) || 0}
+                    edit={false}
+                    half
+                    color2={themeColors.warning}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Basado en {iaAnalysis.count}{' '}
+                    {iaAnalysis.count === 1 ? 'opinión' : 'opiniones'}
+                  </Typography>
+                </Box>
+
+                <Stack spacing={0.75}>
+                  {[5, 4, 3, 2, 1].map(star => {
+                    const count = ratingDistribution[star] || 0
+                    const pct = iaAnalysis.count
+                      ? (count / iaAnalysis.count) * 100
+                      : 0
+                    return (
+                      <Stack
+                        key={star}
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                      >
+                        <Typography
+                          variant="caption"
+                          fontWeight={800}
+                          sx={{ width: 14, color: themeColors.cardMutedText }}
+                        >
+                          {star}
+                        </Typography>
+                        <Box
+                          sx={{
+                            flex: 1,
+                            height: 8,
+                            borderRadius: 999,
+                            bgcolor: alpha(themeColors.warning, 0.15),
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: `${pct}%`,
+                              height: '100%',
+                              borderRadius: 999,
+                              bgcolor: themeColors.warning,
+                              transition: 'width 0.4s ease',
+                            }}
+                          />
+                        </Box>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            width: 24,
+                            textAlign: 'right',
+                            color: themeColors.cardMutedText,
+                          }}
+                        >
+                          {count}
+                        </Typography>
+                      </Stack>
+                    )
+                  })}
+                </Stack>
+
+                <Divider />
+
+                <Button
+                  variant={showRatingForm ? 'outlined' : 'contained'}
+                  startIcon={<ReviewIcon />}
+                  onClick={() => setShowRatingForm(!showRatingForm)}
+                  sx={{
+                    fontWeight: 800,
+                    ...(!showRatingForm && {
+                      bgcolor: themeColors.actionPrimary,
+                      color: themeColors.actionPrimaryText,
+                      '&:hover': {
+                        bgcolor: themeColors.actionPrimary,
+                        filter: 'brightness(0.92)',
+                      },
+                    }),
+                  }}
+                >
+                  {showRatingForm ? 'Cerrar' : 'Escribir opinión'}
+                </Button>
+
+                <Collapse in={showRatingForm}>
+                  <Stack spacing={1.5}>
+                    {normalizedSelectedVariant?.attributes && (
+                      <Typography
+                        variant="caption"
+                        sx={{ color: themeColors.actionPrimary }}
+                      >
+                        Opinando sobre:{' '}
+                        {Object.values(
+                          normalizedSelectedVariant.attributes,
+                        ).join(' / ')}
+                      </Typography>
+                    )}
+                    <ReactStars
+                      count={5}
+                      size={30}
+                      value={userStar}
+                      onChange={value =>
+                        setUserStar(Math.trunc(Number(value)) || 0)
+                      }
+                      color2={themeColors.warning}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      size="small"
+                      placeholder="Contanos tu experiencia con el producto..."
+                      value={userComment}
+                      onChange={e => setUserComment(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="contained"
+                      fullWidth
+                      disabled={isSubmittingRating}
+                      onClick={handleRateSubmit}
+                      sx={{
+                        fontWeight: 800,
+                        bgcolor: themeColors.actionPrimary,
+                        color: themeColors.actionPrimaryText,
+                        '&:hover': {
+                          bgcolor: themeColors.actionPrimary,
+                          filter: 'brightness(0.92)',
+                        },
+                      }}
+                    >
+                      {isSubmittingRating ? 'Enviando...' : 'Publicar opinión'}
+                    </Button>
+                  </Stack>
+                </Collapse>
+              </Stack>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} md={8}>
+            {visibleReviews.length > 0 ? (
+              <Stack spacing={2}>
+                {visibleReviews.map((review, index) => (
+                  <Paper
+                    key={review._id || `review-${index}`}
+                    variant="outlined"
+                    sx={{
+                      p: { xs: 2, md: 2.5 },
+                      borderRadius: 4,
+                      bgcolor: 'background.paper',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Stack direction="row" spacing={2} alignItems="flex-start">
+                      <Avatar
+                        sx={{
+                          width: 44,
+                          height: 44,
+                          bgcolor: alpha(themeColors.actionPrimary, 0.12),
+                          color: themeColors.actionPrimary,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {getReviewerInitial(review)}
+                      </Avatar>
+
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          flexWrap="wrap"
+                          gap={0.5}
+                        >
+                          <Typography
+                            variant="subtitle2"
+                            fontWeight={900}
+                            sx={{ color: themeColors.text }}
+                          >
+                            {getReviewerName(review)}
+                          </Typography>
+                          {formatReviewDate(
+                            review?.createdAt || review?.fecha,
+                          ) && (
+                            <Typography
+                              variant="caption"
+                              sx={{ color: themeColors.cardMutedText }}
+                            >
+                              {formatReviewDate(
+                                review?.createdAt || review?.fecha,
+                              )}
+                            </Typography>
+                          )}
+                        </Stack>
+
+                        <ReactStars
+                          count={5}
+                          size={15}
+                          value={Number(review.star) || 0}
+                          edit={false}
+                          color2={themeColors.warning}
+                        />
+
+                        {clean(review.comment) && (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              mt: 0.75,
+                              color: themeColors.text,
+                              lineHeight: 1.75,
+                              overflowWrap: 'break-word',
+                              opacity: 0.9,
+                            }}
+                          >
+                            {clean(review.comment)}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Stack>
+                  </Paper>
+                ))}
+
+                {sortedReviews.length > 4 && (
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowAllReviews(v => !v)}
+                    sx={{
+                      alignSelf: 'center',
+                      fontWeight: 800,
+                      borderColor: themeColors.actionPrimary,
+                      color: themeColors.actionPrimary,
+                    }}
+                  >
+                    {showAllReviews
+                      ? 'Ver menos'
+                      : `Ver todas las opiniones (${sortedReviews.length})`}
+                  </Button>
+                )}
+              </Stack>
+            ) : (
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 4,
+                  borderRadius: 4,
+                  bgcolor: 'background.paper',
+                  textAlign: 'center',
+                  border: '1px dashed',
+                  borderColor: 'divider',
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <ReviewIcon
+                  sx={{ fontSize: 40, color: themeColors.cardMutedText, mb: 1 }}
+                />
+                <Typography
+                  variant="subtitle1"
+                  fontWeight={800}
+                  sx={{ color: themeColors.text }}
+                >
+                  Todavía no hay opiniones
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ color: themeColors.cardMutedText, mt: 0.5 }}
+                >
+                  Sé el primero en compartir tu experiencia con este producto.
+                </Typography>
+              </Paper>
+            )}
+          </Grid>
+        </Grid>
+      </Box>
+
       <Box sx={{ mt: 8, maxWidth: 900, mx: 'auto' }}>
         <Typography
           fontWeight={950}
@@ -2264,7 +2562,6 @@ const SingleProduct = () => {
                 sx={{
                   px: 5,
                   borderRadius: 2,
-                  textTransform: 'none',
                   fontWeight: 800,
                   height: 56,
                 }}

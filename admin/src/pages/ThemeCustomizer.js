@@ -274,7 +274,7 @@ const ThemeCustomizer = () => {
     autoSaveError ||
     'Error al procesar la solicitud'
 
-  const storeName = theme?.general?.storeName || 'Mi Tienda'
+  const storeName = ''|| theme?.general?.storeName
   const tagline = theme?.general?.tagline || ''
   const faviconUrl = theme?.general?.favicon?.url
 

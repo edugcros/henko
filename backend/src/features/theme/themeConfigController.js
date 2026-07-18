@@ -192,7 +192,7 @@ const sanitizeUpdates = updates => {
 const getDefaultThemePayload = req => {
   return deepMerge(DEFAULT_THEME_CONFIG, {
     general: {
-      storeName: req.tenant?.name || 'Mi Tienda',
+      storeName: req.tenant?.name || '',
       tagline: 'Los mejores productos para ti',
     },
   })

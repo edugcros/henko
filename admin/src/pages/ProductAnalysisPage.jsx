@@ -134,8 +134,8 @@ const normalizeNumberOrZero = value => {
 }
 
 const uniqueList = values => {
-  return [...new Set(values.map(normalizeString).filter(Boolean))].sort(
-    (a, b) => a.localeCompare(b),
+  return [...new Set(values.map(normalizeString).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
   )
 }
 
@@ -158,9 +158,7 @@ const getAnalysisCategoryLine = job => {
     ]
       .map(normalizeString)
       .filter(Boolean)
-      .join(' / ') ||
-    normalizeString(job?.originalFilename) ||
-    '-'
+      .join(' / ') || normalizeString(job?.originalFilename) || '-'
   )
 }
 
@@ -201,8 +199,7 @@ const getSource = job => {
 
 const getSourceLabel = job => {
   const source = getSource(job)
-  if (job?.metadata?.tenantResolutionMode === 'folder-domain')
-    return 'Agente · folder-domain'
+  if (job?.metadata?.tenantResolutionMode === 'folder-domain') return 'Agente · folder-domain'
   return SOURCE_LABEL[source] || source || 'Origen no informado'
 }
 
@@ -217,8 +214,7 @@ const getSourcePath = job => {
 }
 
 const getAgentMode = job => {
-  if (job?.metadata?.tenantResolutionMode)
-    return job.metadata.tenantResolutionMode
+  if (job?.metadata?.tenantResolutionMode) return job.metadata.tenantResolutionMode
   if (getSource(job) === 'local-folder-agent') return 'agent'
   if (getSource(job) === 'manual-upload') return 'manual'
   return 'unknown'
@@ -242,26 +238,14 @@ const matchesClientFilters = ({ job, tenantFilter, sourceFilter }) => {
   const mode = getAgentMode(job)
 
   if (tenantFilter && tenant !== tenantFilter) return false
-  if (sourceFilter && source !== sourceFilter && mode !== sourceFilter)
-    return false
+  if (sourceFilter && source !== sourceFilter && mode !== sourceFilter) return false
 
   return true
 }
 
-const MetricCard = ({
-  label,
-  value,
-  color = 'default',
-  icon: Icon = HubIcon,
-  description,
-}) => (
+const MetricCard = ({ label, value, color = 'default', icon: Icon = HubIcon, description }) => (
   <Paper variant="outlined" sx={{ p: 1.75, height: '100%', borderRadius: 2.5 }}>
-    <Stack
-      direction="row"
-      spacing={1.25}
-      justifyContent="space-between"
-      alignItems="flex-start"
-    >
+    <Stack direction="row" spacing={1.25} justifyContent="space-between" alignItems="flex-start">
       <Box sx={{ minWidth: 0 }}>
         <Typography variant="caption" color="text.secondary" fontWeight={800}>
           {label}
@@ -270,12 +254,7 @@ const MetricCard = ({
           {formatNumber(value)}
         </Typography>
         {description && (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            display="block"
-            noWrap
-          >
+          <Typography variant="caption" color="text.secondary" display="block" noWrap>
             {description}
           </Typography>
         )}
@@ -303,24 +282,12 @@ const TenantSummaryCard = ({ tenant, jobs }) => {
   const failed = tenantJobs.filter(job => job.status === 'failed').length
   const imported = tenantJobs.filter(job => job.status === 'imported').length
   const completed = tenantJobs.filter(job => job.status === 'completed').length
-  const agentJobs = tenantJobs.filter(
-    job => getSource(job) === 'local-folder-agent',
-  ).length
+  const agentJobs = tenantJobs.filter(job => getSource(job) === 'local-folder-agent').length
 
   return (
     <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
-      <Stack
-        direction="row"
-        spacing={1.25}
-        alignItems="center"
-        justifyContent="space-between"
-      >
-        <Stack
-          direction="row"
-          spacing={1.25}
-          alignItems="center"
-          sx={{ minWidth: 0 }}
-        >
+      <Stack direction="row" spacing={1.25} alignItems="center" justifyContent="space-between">
+        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0 }}>
           <Avatar sx={{ bgcolor: 'primary.main', width: 34, height: 34 }}>
             <StorefrontIcon fontSize="small" />
           </Avatar>
@@ -329,32 +296,14 @@ const TenantSummaryCard = ({ tenant, jobs }) => {
               {tenant}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {formatNumber(tenantJobs.length)} imágenes ·{' '}
-              {formatNumber(agentJobs)} por agente
+              {formatNumber(tenantJobs.length)} imágenes · {formatNumber(agentJobs)} por agente
             </Typography>
           </Box>
         </Stack>
-        <Stack
-          direction="row"
-          spacing={0.5}
-          flexWrap="wrap"
-          justifyContent="flex-end"
-        >
-          <Chip
-            size="small"
-            label={`AddProduct ${imported}`}
-            color="primary"
-            variant="outlined"
-          />
-          <Chip
-            size="small"
-            label={`IA ${completed}`}
-            color="success"
-            variant="outlined"
-          />
-          {failed > 0 && (
-            <Chip size="small" label={`Fallos ${failed}`} color="error" />
-          )}
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" justifyContent="flex-end">
+          <Chip size="small" label={`AddProduct ${imported}`} color="primary" variant="outlined" />
+          <Chip size="small" label={`IA ${completed}`} color="success" variant="outlined" />
+          {failed > 0 && <Chip size="small" label={`Fallos ${failed}`} color="error" />}
         </Stack>
       </Stack>
     </Paper>
@@ -423,15 +372,10 @@ const ProductAnalysisPage = () => {
   }, [onlyHidden, search, showHidden, sourceFilter, status, tenantFilter])
 
   const visibleJobs = useMemo(() => {
-    return jobs.filter(job =>
-      matchesClientFilters({ job, tenantFilter, sourceFilter }),
-    )
+    return jobs.filter(job => matchesClientFilters({ job, tenantFilter, sourceFilter }))
   }, [jobs, tenantFilter, sourceFilter])
 
-  const tenantOptions = useMemo(
-    () => uniqueList(jobs.map(getTenantDomain)),
-    [jobs],
-  )
+  const tenantOptions = useMemo(() => uniqueList(jobs.map(getTenantDomain)), [jobs])
   const sourceOptions = useMemo(() => uniqueList(jobs.map(getSource)), [jobs])
 
   const counters = useMemo(() => {
@@ -469,8 +413,7 @@ const ProductAnalysisPage = () => {
       } catch (error) {
         if (!silent) {
           toast.error(
-            error?.response?.data?.message ||
-              'No se pudo cargar la cola de análisis',
+            error?.response?.data?.message || 'No se pudo cargar la cola de análisis',
           )
         }
       } finally {
@@ -506,9 +449,7 @@ const ProductAnalysisPage = () => {
       await fetchJobs()
       toast.success('Cola actualizada')
     } catch (error) {
-      toast.error(
-        error?.response?.data?.message || 'No se pudo actualizar la cola',
-      )
+      toast.error(error?.response?.data?.message || 'No se pudo actualizar la cola')
     } finally {
       setRefreshing(false)
     }
@@ -534,10 +475,7 @@ const ProductAnalysisPage = () => {
     form.append('originalFilename', file.name)
     form.append('autoAnalyze', String(!sendToAddProduct))
     form.append('autoCreateProduct', 'false')
-    form.append(
-      'autoSaveProduct',
-      String(sendToAddProduct && autoSaveInAddProduct),
-    )
+    form.append('autoSaveProduct', String(sendToAddProduct && autoSaveInAddProduct))
     form.append(
       'autoPublishProduct',
       String(sendToAddProduct && autoSaveInAddProduct && autoPublishProduct),
@@ -566,20 +504,14 @@ const ProductAnalysisPage = () => {
       const data = error?.response?.data
 
       if (isDuplicateUploadError(error)) {
-        toast.info(
-          'La imagen ya estaba importada. Se muestra el trabajo existente.',
-        )
+        toast.info('La imagen ya estaba importada. Se muestra el trabajo existente.')
         setShowHidden(true)
         setJobs(current => {
           const existingId = getJobId(data.job)
-          const alreadyExists = current.some(
-            item => getJobId(item) === existingId,
-          )
+          const alreadyExists = current.some(item => getJobId(item) === existingId)
 
           if (alreadyExists) {
-            return current.map(item =>
-              getJobId(item) === existingId ? data.job : item,
-            )
+            return current.map(item => (getJobId(item) === existingId ? data.job : item))
           }
 
           return [data.job, ...current]
@@ -604,9 +536,7 @@ const ProductAnalysisPage = () => {
       toast.success('Reintento iniciado')
       await fetchJobs()
     } catch (error) {
-      toast.error(
-        error?.response?.data?.message || 'No se pudo reintentar el análisis',
-      )
+      toast.error(error?.response?.data?.message || 'No se pudo reintentar el análisis')
     }
   }
 
@@ -622,9 +552,7 @@ const ProductAnalysisPage = () => {
       toast.success('Análisis rechazado')
       await fetchJobs()
     } catch (error) {
-      toast.error(
-        error?.response?.data?.message || 'No se pudo rechazar el análisis',
-      )
+      toast.error(error?.response?.data?.message || 'No se pudo rechazar el análisis')
     }
   }
 
@@ -637,24 +565,18 @@ const ProductAnalysisPage = () => {
 
     try {
       await api.patch(`/product-analysis/${jobId}/${endpoint}`, {
-        reason: shouldUnhide
-          ? 'Restaurado desde panel admin'
-          : 'Ocultado desde panel admin',
+        reason: shouldUnhide ? 'Restaurado desde panel admin' : 'Ocultado desde panel admin',
       })
 
       toast.success(
-        shouldUnhide
-          ? 'Análisis restaurado en la bandeja'
-          : 'Análisis ocultado de la bandeja principal',
+        shouldUnhide ? 'Análisis restaurado en la bandeja' : 'Análisis ocultado de la bandeja principal',
       )
 
       await fetchJobs()
     } catch (error) {
       toast.error(
         error?.response?.data?.message ||
-          (shouldUnhide
-            ? 'No se pudo restaurar el análisis'
-            : 'No se pudo ocultar el análisis'),
+          (shouldUnhide ? 'No se pudo restaurar el análisis' : 'No se pudo ocultar el análisis'),
       )
     }
   }
@@ -686,9 +608,7 @@ const ProductAnalysisPage = () => {
       await fetchJobs()
     } catch (error) {
       setJobs(previousJobs)
-      toast.error(
-        error?.response?.data?.message || 'No se pudo eliminar la imagen',
-      )
+      toast.error(error?.response?.data?.message || 'No se pudo eliminar la imagen')
     } finally {
       setDeleting(false)
     }
@@ -735,18 +655,12 @@ const ProductAnalysisPage = () => {
     try {
       await api.post(`/product-analysis/${jobId}/approve`, payload)
 
-      toast.success(
-        payload.publish
-          ? 'Producto creado y publicado'
-          : 'Producto creado como borrador',
-      )
+      toast.success(payload.publish ? 'Producto creado y publicado' : 'Producto creado como borrador')
       setApproveOpen(false)
       setSelectedJob(null)
       await fetchJobs()
     } catch (error) {
-      toast.error(
-        error?.response?.data?.message || 'No se pudo aprobar el análisis',
-      )
+      toast.error(error?.response?.data?.message || 'No se pudo aprobar el análisis')
     }
   }
 
@@ -770,19 +684,13 @@ const ProductAnalysisPage = () => {
           borderRadius: 3,
         }}
       >
-        <Stack
-          direction={{ xs: 'column', lg: 'row' }}
-          justifyContent="space-between"
-          gap={3}
-        >
+        <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" gap={3}>
           <Box>
             <Typography variant="h5" fontWeight={900}>
               Cola multitenant de imágenes IA
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Administrá imágenes importadas por agente local, folder-domain o
-              carga manual. El tenant se muestra por job para validar a qué
-              comercio pertenece cada imagen.
+              Administrá imágenes importadas por agente local, folder-domain o carga manual. El tenant se muestra por job para validar a qué comercio pertenece cada imagen.
             </Typography>
           </Box>
 
@@ -790,16 +698,10 @@ const ProductAnalysisPage = () => {
             <Button
               component="label"
               variant="contained"
-              startIcon={
-                uploading ? <CircularProgress size={18} /> : <CloudUploadIcon />
-              }
+              startIcon={uploading ? <CircularProgress size={18} /> : <CloudUploadIcon />}
               disabled={uploading}
             >
-              {uploading
-                ? 'Subiendo...'
-                : scheduledAt
-                  ? 'Programar imagen'
-                  : 'Subir imagen'}
+              {uploading ? 'Subiendo...' : scheduledAt ? 'Programar imagen' : 'Subir imagen'}
               <input
                 hidden
                 accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
@@ -810,9 +712,7 @@ const ProductAnalysisPage = () => {
 
             <Button
               variant="outlined"
-              startIcon={
-                refreshing ? <CircularProgress size={18} /> : <RefreshIcon />
-              }
+              startIcon={refreshing ? <CircularProgress size={18} /> : <RefreshIcon />}
               onClick={handleRefresh}
               disabled={refreshing}
             >
@@ -833,81 +733,34 @@ const ProductAnalysisPage = () => {
             mt: 3,
           }}
         >
-          <MetricCard
-            label="Total"
-            value={counters.total || 0}
-            icon={ImageIcon}
-          />
-          <MetricCard
-            label="Tenants"
-            value={tenantOptions.length || 0}
-            icon={StorefrontIcon}
-            color="primary"
-          />
-          <MetricCard
-            label="Agente"
-            value={counters.agent || 0}
-            icon={FolderIcon}
-            color="primary"
-            description="local-folder-agent"
-          />
-          <MetricCard
-            label="Folder-domain"
-            value={counters.folderDomain || 0}
-            icon={HubIcon}
-            color="secondary"
-            description="tenant por carpeta"
-          />
-          <MetricCard
-            label="Manual"
-            value={counters.manual || 0}
-            icon={CloudUploadIcon}
-            color="info"
-          />
-          <MetricCard
-            label="En AddProduct"
-            value={counters.imported || 0}
-            color="primary"
-          />
-          <MetricCard
-            label="Fallidos"
-            value={counters.failed || 0}
-            color="error"
-          />
-          <MetricCard
-            label="Ocultos"
-            value={counters.hidden || 0}
-            color="warning"
-          />
+          <MetricCard label="Total" value={counters.total || 0} icon={ImageIcon} />
+          <MetricCard label="Tenants" value={tenantOptions.length || 0} icon={StorefrontIcon} color="primary" />
+          <MetricCard label="Agente" value={counters.agent || 0} icon={FolderIcon} color="primary" description="local-folder-agent" />
+          <MetricCard label="Folder-domain" value={counters.folderDomain || 0} icon={HubIcon} color="secondary" description="tenant por carpeta" />
+          <MetricCard label="Manual" value={counters.manual || 0} icon={CloudUploadIcon} color="info" />
+          <MetricCard label="En AddProduct" value={counters.imported || 0} color="primary" />
+          <MetricCard label="Fallidos" value={counters.failed || 0} color="error" />
+          <MetricCard label="Ocultos" value={counters.hidden || 0} color="warning" />
         </Box>
 
         {tenantOptions.length > 0 && (
           <Card variant="outlined" sx={{ mt: 3, borderRadius: 3 }}>
             <CardContent>
-              <Stack
-                direction="row"
-                spacing={1}
-                alignItems="center"
-                sx={{ mb: 2 }}
-              >
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
                 <StorefrontIcon color="primary" />
                 <Box>
                   <Typography variant="subtitle1" fontWeight={900}>
                     Resumen por comercio
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    El dominio se toma del job generado por el backend o del
-                    agente folder-domain.
+                    El dominio se toma del job generado por el backend o del agente folder-domain.
                   </Typography>
                 </Box>
               </Stack>
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: {
-                    xs: '1fr',
-                    md: 'repeat(2, minmax(0, 1fr))',
-                  },
+                  gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
                   gap: 1.5,
                 }}
               >
@@ -947,11 +800,7 @@ const ProductAnalysisPage = () => {
 
           <FormControl fullWidth size="small">
             <InputLabel>Estado</InputLabel>
-            <Select
-              label="Estado"
-              value={status}
-              onChange={event => setStatus(event.target.value)}
-            >
+            <Select label="Estado" value={status} onChange={event => setStatus(event.target.value)}>
               {STATUS_OPTIONS.map(option => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
@@ -996,10 +845,7 @@ const ProductAnalysisPage = () => {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: {
-              xs: '1fr',
-              md: 'minmax(260px, 420px) minmax(260px, 1fr)',
-            },
+            gridTemplateColumns: { xs: '1fr', md: 'minmax(260px, 420px) minmax(260px, 1fr)' },
             gap: 2,
             mt: 2,
           }}
@@ -1052,9 +898,7 @@ const ProductAnalysisPage = () => {
             control={
               <Switch
                 checked={autoSaveInAddProduct}
-                onChange={event =>
-                  setAutoSaveInAddProduct(event.target.checked)
-                }
+                onChange={event => setAutoSaveInAddProduct(event.target.checked)}
                 disabled={!sendToAddProduct}
               />
             }
@@ -1102,11 +946,7 @@ const ProductAnalysisPage = () => {
           </Button>
 
           {lastUpdatedAt && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ ml: { md: 'auto' } }}
-            >
+            <Typography variant="caption" color="text.secondary" sx={{ ml: { md: 'auto' } }}>
               Última actualización: {formatDate(lastUpdatedAt)}
             </Typography>
           )}
@@ -1133,18 +973,10 @@ const ProductAnalysisPage = () => {
               const sourcePath = getSourcePath(job)
               const isFinal = ['approved', 'rejected'].includes(job.status)
               const canRetry =
-                ![
-                  'approved',
-                  'rejected',
-                  'processing',
-                  'scheduled',
-                  'imported',
-                ].includes(job.status) && job.metadata?.autoAnalyze !== false
-              const canApprove =
-                job.status === 'completed' && !job.createdProductId
-              const canReject = !['approved', 'rejected', 'imported'].includes(
-                job.status,
-              )
+                !['approved', 'rejected', 'processing', 'scheduled', 'imported'].includes(job.status) &&
+                job.metadata?.autoAnalyze !== false
+              const canApprove = job.status === 'completed' && !job.createdProductId
+              const canReject = !['approved', 'rejected', 'imported'].includes(job.status)
 
               return (
                 <TableRow key={jobId} hover>
@@ -1154,45 +986,23 @@ const ProductAnalysisPage = () => {
 
                   <TableCell sx={{ maxWidth: 290 }}>
                     <Stack spacing={0.75}>
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                        sx={{ minWidth: 0 }}
-                      >
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
                         <StorefrontIcon fontSize="small" color="primary" />
-                        <Typography
-                          variant="body2"
-                          fontWeight={900}
-                          noWrap
-                          title={getTenantDomain(job)}
-                        >
+                        <Typography variant="body2" fontWeight={900} noWrap title={getTenantDomain(job)}>
                           {getTenantDomain(job)}
                         </Typography>
                       </Stack>
 
                       <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                        <Chip
-                          size="small"
-                          label={getSourceLabel(job)}
-                          variant="outlined"
-                        />
+                        <Chip size="small" label={getSourceLabel(job)} variant="outlined" />
                         {getAgentMode(job) === 'folder-domain' && (
-                          <Chip
-                            size="small"
-                            color="secondary"
-                            label="Tenant por carpeta"
-                          />
+                          <Chip size="small" color="secondary" label="Tenant por carpeta" />
                         )}
                       </Stack>
 
                       {sourcePath && (
                         <Tooltip title={sourcePath}>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            noWrap
-                          >
+                          <Typography variant="caption" color="text.secondary" noWrap>
                             {sourcePath}
                           </Typography>
                         </Tooltip>
@@ -1202,44 +1012,23 @@ const ProductAnalysisPage = () => {
 
                   <TableCell>
                     <Stack spacing={0.75}>
-                      <Typography fontWeight={800}>
-                        {getAnalysisTitle(job)}
-                      </Typography>
+                      <Typography fontWeight={800}>{getAnalysisTitle(job)}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         {getAnalysisCategoryLine(job)}
                       </Typography>
 
                       <Stack direction="row" gap={0.5} flexWrap="wrap">
                         {job.createdProductId && (
-                          <Chip
-                            size="small"
-                            color="primary"
-                            variant="outlined"
-                            label="Producto vinculado"
-                          />
+                          <Chip size="small" color="primary" variant="outlined" label="Producto vinculado" />
                         )}
                         {job.isHidden && (
-                          <Chip
-                            size="small"
-                            color="warning"
-                            variant="outlined"
-                            label="Oculto"
-                          />
+                          <Chip size="small" color="warning" variant="outlined" label="Oculto" />
                         )}
                         {job.metadata?.autoAnalyze === false && (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label="AddProduct"
-                          />
+                          <Chip size="small" variant="outlined" label="AddProduct" />
                         )}
                         {job.metadata?.autoSaveProduct && (
-                          <Chip
-                            size="small"
-                            color="primary"
-                            variant="outlined"
-                            label="AutoSave"
-                          />
+                          <Chip size="small" color="primary" variant="outlined" label="AutoSave" />
                         )}
                       </Stack>
 
@@ -1252,29 +1041,20 @@ const ProductAnalysisPage = () => {
                   </TableCell>
 
                   <TableCell>
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      alignItems="center"
-                      flexWrap="wrap"
-                    >
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                       <Chip
                         label={STATUS_LABEL[job.status] || job.status || '-'}
                         color={STATUS_COLOR[job.status] || 'default'}
                         size="small"
                       />
-                      {isFinal && job.isHidden && (
-                        <Chip size="small" color="warning" label="Archivado" />
-                      )}
+                      {isFinal && job.isHidden && <Chip size="small" color="warning" label="Archivado" />}
                     </Stack>
                   </TableCell>
 
                   <TableCell>
                     {job.scheduledAt ? (
                       <Stack spacing={0.5}>
-                        <Typography variant="body2">
-                          {formatDate(job.scheduledAt)}
-                        </Typography>
+                        <Typography variant="body2">{formatDate(job.scheduledAt)}</Typography>
                         {job.metadata?.addProductAt && (
                           <Typography variant="caption" color="text.secondary">
                             AddProduct: {formatDate(job.metadata.addProductAt)}
@@ -1291,10 +1071,7 @@ const ProductAnalysisPage = () => {
                   <TableCell align="right">
                     <Tooltip title="Reintentar análisis">
                       <span>
-                        <IconButton
-                          onClick={() => retryJob(job)}
-                          disabled={!canRetry}
-                        >
+                        <IconButton onClick={() => retryJob(job)} disabled={!canRetry}>
                           <RefreshIcon />
                         </IconButton>
                       </span>
@@ -1302,11 +1079,7 @@ const ProductAnalysisPage = () => {
 
                     <Tooltip title="Aprobar y crear producto">
                       <span>
-                        <IconButton
-                          color="success"
-                          onClick={() => openApprove(job)}
-                          disabled={!canApprove}
-                        >
+                        <IconButton color="success" onClick={() => openApprove(job)} disabled={!canApprove}>
                           <CheckCircleIcon />
                         </IconButton>
                       </span>
@@ -1314,26 +1087,15 @@ const ProductAnalysisPage = () => {
 
                     <Tooltip title={job.isHidden ? 'Restaurar' : 'Ocultar'}>
                       <span>
-                        <IconButton
-                          color={job.isHidden ? 'primary' : 'default'}
-                          onClick={() => toggleHiddenJob(job)}
-                        >
-                          {job.isHidden ? (
-                            <VisibilityIcon />
-                          ) : (
-                            <VisibilityOffIcon />
-                          )}
+                        <IconButton color={job.isHidden ? 'primary' : 'default'} onClick={() => toggleHiddenJob(job)}>
+                          {job.isHidden ? <VisibilityIcon /> : <VisibilityOffIcon />}
                         </IconButton>
                       </span>
                     </Tooltip>
 
                     <Tooltip title="Rechazar">
                       <span>
-                        <IconButton
-                          color="warning"
-                          onClick={() => rejectJob(job)}
-                          disabled={!canReject}
-                        >
+                        <IconButton color="warning" onClick={() => rejectJob(job)} disabled={!canReject}>
                           <CancelIcon />
                         </IconButton>
                       </span>
@@ -1341,10 +1103,7 @@ const ProductAnalysisPage = () => {
 
                     <Tooltip title="Eliminar análisis e imagen">
                       <span>
-                        <IconButton
-                          color="error"
-                          onClick={() => openDelete(job)}
-                        >
+                        <IconButton color="error" onClick={() => openDelete(job)}>
                           <DeleteIcon />
                         </IconButton>
                       </span>
@@ -1498,34 +1257,21 @@ const ProductAnalysisPage = () => {
 
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Esta acción elimina el análisis y libera el hash de la imagen para
-            poder volver a cargarla. Si existe un producto vinculado, el backend
-            debe desvincular el job sin eliminar el producto.
+            Esta acción elimina el análisis y libera el hash de la imagen para poder volver a cargarla. Si existe un producto vinculado, el backend debe desvincular el job sin eliminar el producto.
           </Alert>
 
           <Typography variant="body2">
-            ¿Querés eliminar permanentemente el análisis{' '}
-            <strong>{getAnalysisTitle(selectedJob)}</strong>?
+            ¿Querés eliminar permanentemente el análisis <strong>{getAnalysisTitle(selectedJob)}</strong>?
           </Typography>
 
           {selectedJob && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              display="block"
-              sx={{ mt: 1 }}
-            >
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
               Comercio: {getTenantDomain(selectedJob)}
             </Typography>
           )}
 
           {selectedJob?.createdProductId && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              display="block"
-              sx={{ mt: 1 }}
-            >
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
               Producto vinculado: {String(selectedJob.createdProductId)}
             </Typography>
           )}

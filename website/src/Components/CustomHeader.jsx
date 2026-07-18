@@ -166,7 +166,7 @@ const CustomHeader = () => {
 
     return {
       ...config,
-      storeName: config.storeName || 'Mi Tienda',
+      storeName: config.storeName,
     }
   }, [activeConfig])
 

@@ -1,4 +1,4 @@
-// 📁 src/models/themeConfigModel.js
+// 📁 src\features\theme\themeConfigModel.js
 // VERSIÓN PRODUCCIÓN - MULTI-TENANT / SNAPSHOTS VERSIONADOS / PREVIEWS
 
 import mongoose from 'mongoose'
@@ -28,7 +28,7 @@ export const THEME_CHANGE_TYPES = [
 
 export const DEFAULT_THEME_CONFIG = {
   general: {
-    storeName: 'Mi Tienda',
+    storeName: '',
     tagline: 'Bienvenidos',
   },
   colors: {
@@ -533,8 +533,7 @@ const generalSchema = new Schema(
       type: String,
       trim: true,
       maxlength: 100,
-      required: [true, 'El nombre de la tienda es requerido'],
-    },
+      default: '',},
     tagline: {
       type: String,
       default: 'Los mejores productos para ti',
