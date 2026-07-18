@@ -26,6 +26,7 @@ import {
   Popconfirm,
   Steps,
   Collapse,
+  Modal,
 } from 'antd'
 import {
   InboxOutlined,
@@ -50,6 +51,9 @@ import {
   CheckOutlined,
   CloudDownloadOutlined,
   SaveOutlined,
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
+  StarOutlined,
 } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import useProductAnalyzer from '../hooks/useProductAnalyzer'
@@ -1922,7 +1926,7 @@ const AIAnalysisPanel = ({
             htmlType="button"
             size="small"
             danger
-            onClick={onReset}
+            onClick={() => onReset()}
             icon={<ReloadOutlined />}
           >
             Reintentar
@@ -2312,7 +2316,7 @@ const AIAnalysisPanel = ({
               htmlType="button"
               size="small"
               icon={<ReloadOutlined />}
-              onClick={onReset}
+              onClick={() => onReset()}
             >
               Reanalizar
             </Button>
@@ -2636,7 +2640,16 @@ const AIAnalysisPanel = ({
   )
 }
 
-const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
+const ImagePreviewGrid = ({
+  previews,
+  fileList,
+  onRemove,
+  onAddMore,
+  onReorder,
+  onSetPrincipal,
+  onAnalyze,
+  analyzing,
+}) => {
   const { token } = useToken()
 
   if (!previews.length) {
@@ -2655,8 +2668,15 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <Text strong style={{ display: 'block', marginBottom: 12 }}>
+      <Text strong style={{ display: 'block', marginBottom: 4 }}>
         Imágenes seleccionadas ({previews.length})
+      </Text>
+      <Text
+        type="secondary"
+        style={{ display: 'block', marginBottom: 12, fontSize: 13 }}
+      >
+        La primera imagen es la portada del producto. Usá las flechas para
+        reordenar o marcá otra como principal.
       </Text>
 
       <Row gutter={[12, 12]}>
@@ -2674,7 +2694,7 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
             >
               <img
                 src={src}
-                alt={`preview-${i}`}
+                alt={`Imagen ${i + 1} de ${previews.length} del producto${i === 0 ? ' (portada)' : ''}`}
                 style={{
                   width: '100%',
                   height: 120,
@@ -2687,30 +2707,78 @@ const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
                   inset: 0,
                   background: 'rgba(0,0,0,0.5)',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  gap: 6,
                   opacity: 0,
                   transition: 'opacity 0.3s ease',
                 }}
                 className="image-preview-overlay"
               >
-                <Button
-                  htmlType="button"
-                  type="primary"
-                  shape="circle"
-                  icon={<EyeOutlined />}
-                  size="small"
-                  onClick={() => window.open(src, '_blank')}
-                  style={{ marginRight: 8 }}
-                />
-                <Button
-                  htmlType="button"
-                  danger
-                  shape="circle"
-                  icon={<DeleteOutlined />}
-                  size="small"
-                  onClick={() => onRemove(fileList[i])}
-                />
+                <Space size={8}>
+                  <Button
+                    htmlType="button"
+                    type="primary"
+                    shape="circle"
+                    icon={<EyeOutlined />}
+                    size="small"
+                    onClick={() => window.open(src, '_blank')}
+                    aria-label={`Ver imagen ${i + 1} en tamaño completo`}
+                  />
+                  {onAnalyze && (
+                    <Button
+                      htmlType="button"
+                      shape="circle"
+                      icon={<ThunderboltOutlined />}
+                      size="small"
+                      loading={analyzing}
+                      disabled={analyzing}
+                      onClick={() => onAnalyze(i)}
+                      aria-label={`Analizar imagen ${i + 1} con IA`}
+                      title="Analizar esta imagen con IA"
+                    />
+                  )}
+                  <Button
+                    htmlType="button"
+                    danger
+                    shape="circle"
+                    icon={<DeleteOutlined />}
+                    size="small"
+                    onClick={() => onRemove(fileList[i])}
+                    aria-label={`Eliminar imagen ${i + 1}`}
+                  />
+                </Space>
+                <Space size={8}>
+                  <Button
+                    htmlType="button"
+                    shape="circle"
+                    icon={<ArrowLeftOutlined />}
+                    size="small"
+                    disabled={i === 0}
+                    onClick={() => onReorder(i, i - 1)}
+                    aria-label={`Mover imagen ${i + 1} hacia la izquierda`}
+                  />
+                  {i !== 0 && (
+                    <Button
+                      htmlType="button"
+                      shape="circle"
+                      icon={<StarOutlined />}
+                      size="small"
+                      onClick={() => onSetPrincipal(i)}
+                      aria-label={`Marcar imagen ${i + 1} como portada`}
+                    />
+                  )}
+                  <Button
+                    htmlType="button"
+                    shape="circle"
+                    icon={<ArrowRightOutlined />}
+                    size="small"
+                    disabled={i === previews.length - 1}
+                    onClick={() => onReorder(i, i + 1)}
+                    aria-label={`Mover imagen ${i + 1} hacia la derecha`}
+                  />
+                </Space>
               </div>
 
               {i === 0 && (
@@ -3145,10 +3213,14 @@ export default function AddProduct() {
     getStoredBoolean('addProduct.agentAutoMode', false),
   )
   const [autoAgentRunning, setAutoAgentRunning] = useState(false)
+  const [autoAgentReviewQueue, setAutoAgentReviewQueue] = useState([])
+  const [autoAgentReviewOpen, setAutoAgentReviewOpen] = useState(false)
+  const [reviewItemBusyId, setReviewItemBusyId] = useState(null)
   const [currentAgentJob, setCurrentAgentJob] = useState(null)
   const [publishProduct, setPublishProduct] = useState(true)
   const [savingProduct, setSavingProduct] = useState(false)
   const [formHasChanges, setFormHasChanges] = useState(false)
+  const [submitErrors, setSubmitErrors] = useState([])
   const [committedClassification, setCommittedClassification] = useState({
     categoria: '',
     subcategoria: '',
@@ -3162,6 +3234,8 @@ export default function AddProduct() {
   const categoryConfigDebounceRef = useRef(null)
   const categoryConfigRequestIdRef = useRef(0)
   const categoryConfigCacheRef = useRef(new Map())
+  const technicalSheetSnapshotRef = useRef(null)
+  const autoAgentReviewQueueRef = useRef([])
 
   const markFormAsChanged = useCallback(() => {
     setFormHasChanges(current => (current ? current : true))
@@ -3512,13 +3586,33 @@ export default function AddProduct() {
   )
 
   useEffect(() => {
+    if (!hasUserWorkspace) return undefined
+
+    const handleBeforeUnload = event => {
+      event.preventDefault()
+      event.returnValue = ''
+      return ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUserWorkspace])
+
+  useEffect(() => {
     imagePreviewsRef.current = imagePreviews
   }, [imagePreviews])
+
+  useEffect(() => {
+    autoAgentReviewQueueRef.current = autoAgentReviewQueue
+  }, [autoAgentReviewQueue])
 
   useEffect(() => {
     return () => {
       dispatch(resetState())
       revokeBlobUrls(imagePreviewsRef.current)
+      autoAgentReviewQueueRef.current.forEach(item => {
+        if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      })
     }
   }, [dispatch])
 
@@ -4646,28 +4740,36 @@ export default function AddProduct() {
     [analyzeImage, buildImageSignature, iaResult, imagePreviews, loadingIa],
   )
 
-  const handleReanalyzeImage = useCallback(async () => {
-    const uploadFile = safeArray(fileList).find(file =>
-      Boolean(file?.originFileObj),
-    )
-    const imageFile = uploadFile?.originFileObj
+  const handleReanalyzeImage = useCallback(
+    async (index = null) => {
+      const uploadFile =
+        index !== null && fileList[index]?.originFileObj
+          ? fileList[index]
+          : safeArray(fileList).find(file => Boolean(file?.originFileObj))
+      const imageFile = uploadFile?.originFileObj
 
-    if (!imageFile) {
-      message.warning(
-        'Para reanalizar necesitás tener una imagen cargada localmente en el formulario.',
-      )
-      return
-    }
+      if (!imageFile) {
+        message.warning(
+          'Para reanalizar necesitás tener una imagen cargada localmente en el formulario.',
+        )
+        return
+      }
 
-    try {
-      resetIa()
-      lastAnalyzedImageSignatureRef.current = ''
-      await analyzeImage(imageFile)
-      message.success('Imagen reanalizada con IA')
-    } catch (error) {
-      message.error(error?.message || 'No se pudo reanalizar la imagen')
-    }
-  }, [analyzeImage, fileList, resetIa])
+      try {
+        resetIa()
+        lastAnalyzedImageSignatureRef.current = buildImageSignature(imageFile) || ''
+        await analyzeImage(imageFile)
+        message.success(
+          index !== null
+            ? `Imagen ${index + 1} analizada con IA`
+            : 'Imagen reanalizada con IA',
+        )
+      } catch (error) {
+        message.error(error?.message || 'No se pudo reanalizar la imagen')
+      }
+    },
+    [analyzeImage, buildImageSignature, fileList, resetIa],
+  )
 
   const resetProductWorkspace = useCallback(() => {
     form.resetFields()
@@ -4689,7 +4791,9 @@ export default function AddProduct() {
     setCurrentAgentJob(null)
     setPublishProduct(true)
     setFormHasChanges(false)
+    setSubmitErrors([])
     lastAnalyzedImageSignatureRef.current = ''
+    technicalSheetSnapshotRef.current = null
     resetIa()
     dispatch(resetState())
   }, [dispatch, form, imagePreviews, notifyFormMutation, resetIa])
@@ -4802,7 +4906,7 @@ export default function AddProduct() {
     }
   }, [agentQueue, selectedAgentJobId])
 
-  const processAgentJobAutomatically = useCallback(
+  const prepareAgentJobForReview = useCallback(
     async job => {
       await api.post(`/product-analysis/${job._id}/import-to-add-product`)
 
@@ -4826,7 +4930,7 @@ export default function AddProduct() {
         throw new Error('La IA no devolvió análisis para la imagen')
       }
 
-      const productPayload = buildProductPayloadFromAnalysis({
+      const payload = buildProductPayloadFromAnalysis({
         analysis,
         job,
         user,
@@ -4835,7 +4939,16 @@ export default function AddProduct() {
         includeTechnicalSheet: shouldIncludeTechnicalSheetFromJob(job),
       })
 
-      const created = await dispatch(createProducts(productPayload)).unwrap()
+      return { job, imageFile, payload }
+    },
+    [analyzeImage, resetProductWorkspace, user],
+  )
+
+  // Publica (crea + sube imagen) un ítem de la cola de revisión.
+  // Requiere aprobación explícita del usuario: ver autoAgentReviewQueue.
+  const commitAgentReviewItem = useCallback(
+    async ({ job, imageFile, payload }) => {
+      const created = await dispatch(createProducts(payload)).unwrap()
       const createdPayload = created?.data || created
       const productId = createdPayload?._id
 
@@ -4856,8 +4969,76 @@ export default function AddProduct() {
 
       return productId
     },
-    [analyzeImage, dispatch, resetProductWorkspace, user],
+    [dispatch],
   )
+
+  const discardAgentReviewItem = useCallback(async job => {
+    await api.post(`/product-analysis/${job._id}/reject`, {
+      reason: 'Descartado en revisión de AutoSave.',
+    })
+  }, [])
+
+  const removeReviewItem = useCallback(id => {
+    setAutoAgentReviewQueue(current => {
+      const target = current.find(item => item.id === id)
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
+      return current.filter(item => item.id !== id)
+    })
+  }, [])
+
+  const handleApproveReviewItem = useCallback(
+    async item => {
+      setReviewItemBusyId(item.id)
+      try {
+        await commitAgentReviewItem(item)
+        message.success(
+          `Producto publicado: ${item.payload?.title || item.job.originalFilename || item.id}`,
+        )
+        removeReviewItem(item.id)
+      } catch (error) {
+        message.error(
+          error?.response?.data?.message ||
+            error?.message ||
+            'No se pudo publicar el producto',
+        )
+      } finally {
+        setReviewItemBusyId(null)
+      }
+    },
+    [commitAgentReviewItem, removeReviewItem],
+  )
+
+  const handleDiscardReviewItem = useCallback(
+    async item => {
+      setReviewItemBusyId(item.id)
+      try {
+        await discardAgentReviewItem(item.job)
+        message.info('Producto descartado, no se publicó')
+        removeReviewItem(item.id)
+      } catch (error) {
+        message.error(
+          error?.response?.data?.message ||
+            error?.message ||
+            'No se pudo descartar el producto',
+        )
+      } finally {
+        setReviewItemBusyId(null)
+      }
+    },
+    [discardAgentReviewItem, removeReviewItem],
+  )
+
+  const handleApproveAllReview = useCallback(async () => {
+    for (const item of autoAgentReviewQueue) {
+      await handleApproveReviewItem(item)
+    }
+  }, [autoAgentReviewQueue, handleApproveReviewItem])
+
+  const handleDiscardAllReview = useCallback(async () => {
+    for (const item of autoAgentReviewQueue) {
+      await handleDiscardReviewItem(item)
+    }
+  }, [autoAgentReviewQueue, handleDiscardReviewItem])
 
   const processAutoAgentQueue = useCallback(async () => {
     if (!autoAgentEnabled || autoAgentRef.current || hasUserWorkspace) return
@@ -4874,25 +5055,38 @@ export default function AddProduct() {
     autoAgentRef.current = true
     setAutoAgentRunning(true)
 
+    const prepared = []
+
     try {
       for (const job of jobsToProcess) {
         try {
-          await processAgentJobAutomatically(job)
-          setAgentQueue(current => current.filter(item => item._id !== job._id))
-          message.success(
-            `Producto creado automáticamente: ${job.originalFilename || job._id}`,
+          const item = await prepareAgentJobForReview(job)
+          prepared.push({
+            id: job._id,
+            ...item,
+            previewUrl: URL.createObjectURL(item.imageFile),
+          })
+          setAgentQueue(current =>
+            current.filter(entry => entry._id !== job._id),
           )
         } catch (error) {
           autoAgentFailedJobsRef.current.add(job._id)
           message.error(
             error?.response?.data?.message ||
               error?.message ||
-              `No se pudo guardar automáticamente ${job.originalFilename || job._id}`,
+              `No se pudo preparar ${job.originalFilename || job._id} para revisión`,
           )
-        } finally {
-          resetProductWorkspace()
-          await waitForUiReset()
         }
+      }
+
+      if (prepared.length) {
+        setAutoAgentReviewQueue(current => [...current, ...prepared])
+        setAutoAgentReviewOpen(true)
+        message.info(
+          prepared.length === 1
+            ? '1 producto de AutoSave está listo para revisar antes de publicar'
+            : `${prepared.length} productos de AutoSave están listos para revisar antes de publicar`,
+        )
       }
 
       await fetchAgentQueue()
@@ -4905,8 +5099,7 @@ export default function AddProduct() {
     autoAgentEnabled,
     fetchAgentQueue,
     hasUserWorkspace,
-    processAgentJobAutomatically,
-    resetProductWorkspace,
+    prepareAgentJobForReview,
   ])
 
   useEffect(() => {
@@ -4965,6 +5158,34 @@ export default function AddProduct() {
     [fileList, imagePreviews, resetIa],
   )
 
+  const handleReorderImage = useCallback(
+    (fromIndex, toIndex) => {
+      if (
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= fileList.length ||
+        toIndex >= fileList.length
+      ) {
+        return
+      }
+
+      const reordered = [...fileList]
+      const [moved] = reordered.splice(fromIndex, 1)
+      reordered.splice(toIndex, 0, moved)
+
+      revokeBlobUrls(imagePreviews)
+      setFileList(reordered)
+      setImagePreviews(rebuildPreviews(reordered))
+    },
+    [fileList, imagePreviews],
+  )
+
+  const handleSetPrincipalImage = useCallback(
+    index => handleReorderImage(index, 0),
+    [handleReorderImage],
+  )
+
   const handleCloseTag = useCallback(removedTag => {
     setEditableTags(prev => prev.filter(tag => tag !== removedTag))
   }, [])
@@ -4993,43 +5214,58 @@ export default function AddProduct() {
       ...(form.getFieldsValue(true) || {}),
       ...(submittedValues || {}),
     }
+    const collectedErrors = []
+
     if (!fileList.length) {
-      message.error('Debes subir al menos una imagen')
-      scrollToSection(SECTION_IDS.imagenes)
-      return
-    }
-
-    const fileValidationError = validateSelectedFiles(fileList)
-    if (fileValidationError) {
-      message.error(fileValidationError)
-      scrollToSection(SECTION_IDS.imagenes)
-      return
-    }
-
-    if (!tenantId) {
-      message.error('Tenant no disponible')
-      return
+      collectedErrors.push({
+        section: SECTION_IDS.imagenes,
+        message: 'Debes subir al menos una imagen',
+      })
+    } else {
+      const fileValidationError = validateSelectedFiles(fileList)
+      if (fileValidationError) {
+        collectedErrors.push({
+          section: SECTION_IDS.imagenes,
+          message: fileValidationError,
+        })
+      }
     }
 
     const basicsError = validateProductBasicsForSubmit({ values, hasVariants })
     if (basicsError) {
-      message.error(basicsError)
-      scrollToSection(
-        /precio|cantidad|stock/i.test(basicsError)
+      collectedErrors.push({
+        section: /precio|cantidad|stock/i.test(basicsError)
           ? SECTION_IDS.precio
           : SECTION_IDS.informacion,
-      )
-      return
+        message: basicsError,
+      })
     }
 
     if (hasVariants) {
       const variantError = validateVariantsForSubmit(variants)
 
       if (variantError) {
-        message.error(variantError)
-        scrollToSection(SECTION_IDS.variantes)
-        return
+        collectedErrors.push({
+          section: SECTION_IDS.variantes,
+          message: variantError,
+        })
       }
+    }
+
+    if (!tenantId) {
+      collectedErrors.push({ section: null, message: 'Tenant no disponible' })
+    }
+
+    setSubmitErrors(collectedErrors)
+
+    if (collectedErrors.length) {
+      message.error(
+        collectedErrors.length === 1
+          ? collectedErrors[0].message
+          : `Hay ${collectedErrors.length} problemas que resolver antes de publicar`,
+      )
+      scrollToSection(collectedErrors[0].section || SECTION_IDS.imagenes)
+      return
     }
 
     setSavingProduct(true)
@@ -5348,6 +5584,31 @@ export default function AddProduct() {
                     Subí imágenes, revisá la propuesta de IA, completá ficha
                     técnica, variantes, logística y publicá con control total.
                   </Text>
+
+                  {hasUserWorkspace && (
+                    <Popconfirm
+                      title="¿Vaciar el formulario?"
+                      description="Se van a perder las imágenes, variantes, ficha técnica y demás datos cargados. Esta acción no se puede deshacer."
+                      okText="Vaciar todo"
+                      cancelText="Cancelar"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => {
+                        resetProductWorkspace()
+                        message.success('Formulario vacío. Podés empezar de nuevo.')
+                      }}
+                    >
+                      <Button
+                        htmlType="button"
+                        danger
+                        type="text"
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        disabled={savingProduct || isLoading}
+                      >
+                        Vaciar formulario
+                      </Button>
+                    </Popconfirm>
+                  )}
                 </Space>
               </Col>
 
@@ -5464,7 +5725,7 @@ export default function AddProduct() {
                 <Alert
                   type={productReadiness.isReady ? 'success' : 'warning'}
                   showIcon
-                  style={{ marginBottom: 20, borderRadius: 14 }}
+                  style={{ marginBottom: submitErrors.length ? 12 : 20, borderRadius: 14 }}
                   message={
                     productReadiness.isReady
                       ? 'Listo para publicar'
@@ -5476,6 +5737,40 @@ export default function AddProduct() {
                       : `Faltan: ${missingRequiredLabels.join(', ')}`
                   }
                 />
+
+                {submitErrors.length > 0 && (
+                  <Alert
+                    type="error"
+                    showIcon
+                    style={{ marginBottom: 20, borderRadius: 14 }}
+                    message={
+                      submitErrors.length === 1
+                        ? 'No se pudo publicar: hay un problema para resolver'
+                        : `No se pudo publicar: hay ${submitErrors.length} problemas para resolver`
+                    }
+                    description={
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {submitErrors.map((err, idx) => (
+                          <li key={idx}>
+                            {err.section ? (
+                              <a
+                                href={`#${err.section}`}
+                                onClick={event => {
+                                  event.preventDefault()
+                                  scrollToSection(err.section)
+                                }}
+                              >
+                                {err.message}
+                              </a>
+                            ) : (
+                              err.message
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    }
+                  />
+                )}
               </Col>
 
               <Col xs={24} xl={15}>
@@ -5739,6 +6034,186 @@ export default function AddProduct() {
                     ]}
                   />
 
+                  {autoAgentReviewQueue.length > 0 && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      style={{ marginBottom: 20, borderRadius: 14 }}
+                      message={
+                        autoAgentReviewQueue.length === 1
+                          ? '1 producto de AutoSave está esperando tu aprobación'
+                          : `${autoAgentReviewQueue.length} productos de AutoSave están esperando tu aprobación`
+                      }
+                      description="La IA los preparó, pero ninguno se publica hasta que los revises."
+                      action={
+                        <Button
+                          htmlType="button"
+                          type="primary"
+                          size="small"
+                          onClick={() => setAutoAgentReviewOpen(true)}
+                        >
+                          Revisar ahora
+                        </Button>
+                      }
+                    />
+                  )}
+
+                  <Modal
+                    open={autoAgentReviewOpen}
+                    onCancel={() => setAutoAgentReviewOpen(false)}
+                    title={
+                      <Space size={8}>
+                        <RobotOutlined style={{ color: token.colorPrimary }} />
+                        <span>Revisar productos de AutoSave</span>
+                      </Space>
+                    }
+                    width={720}
+                    footer={
+                      autoAgentReviewQueue.length > 0 ? (
+                        <Space>
+                          <Popconfirm
+                            title="Descartar todos"
+                            description="Ningún producto de esta tanda se va a publicar."
+                            okText="Descartar todo"
+                            cancelText="Cancelar"
+                            okButtonProps={{ danger: true }}
+                            onConfirm={handleDiscardAllReview}
+                          >
+                            <Button
+                              htmlType="button"
+                              danger
+                              disabled={Boolean(reviewItemBusyId)}
+                            >
+                              Descartar todo
+                            </Button>
+                          </Popconfirm>
+                          <Popconfirm
+                            title="Publicar todos"
+                            description={`Se van a crear ${autoAgentReviewQueue.length} producto${autoAgentReviewQueue.length === 1 ? '' : 's'} tal como los preparó la IA.`}
+                            okText="Publicar todo"
+                            cancelText="Cancelar"
+                            onConfirm={handleApproveAllReview}
+                          >
+                            <Button
+                              htmlType="button"
+                              type="primary"
+                              loading={Boolean(reviewItemBusyId)}
+                            >
+                              Aprobar y publicar todo
+                            </Button>
+                          </Popconfirm>
+                        </Space>
+                      ) : (
+                        <Button
+                          htmlType="button"
+                          onClick={() => setAutoAgentReviewOpen(false)}
+                        >
+                          Cerrar
+                        </Button>
+                      )
+                    }
+                  >
+                    {autoAgentReviewQueue.length === 0 ? (
+                      <Empty description="No hay productos pendientes de revisión" />
+                    ) : (
+                      <Space
+                        direction="vertical"
+                        size={14}
+                        style={{ width: '100%' }}
+                      >
+                        <Alert
+                          type="info"
+                          showIcon
+                          message="Ningún producto se publica hasta que lo apruebes"
+                          style={{ borderRadius: 12 }}
+                        />
+                        {autoAgentReviewQueue.map(item => (
+                          <Card
+                            key={item.id}
+                            size="small"
+                            style={{ borderRadius: 14 }}
+                            styles={{ body: { padding: 14 } }}
+                          >
+                            <Row gutter={14} align="middle">
+                              <Col flex="72px">
+                                <img
+                                  src={item.previewUrl}
+                                  alt={`Vista previa de ${item.payload?.title || 'producto preparado por IA'}`}
+                                  style={{
+                                    width: 72,
+                                    height: 72,
+                                    objectFit: 'cover',
+                                    borderRadius: 10,
+                                    border: `1px solid ${token.colorBorderSecondary}`,
+                                  }}
+                                />
+                              </Col>
+                              <Col flex="auto">
+                                <Text strong>{item.payload?.title}</Text>
+                                <br />
+                                <Text type="secondary" style={{ fontSize: 13 }}>
+                                  {item.payload?.categoria}
+                                  {item.payload?.subcategoria
+                                    ? ` / ${item.payload.subcategoria}`
+                                    : ''}
+                                  {' · '}
+                                  {item.payload?.status === 'active'
+                                    ? 'Se publica visible'
+                                    : 'Se crea como borrador'}
+                                </Text>
+                                <br />
+                                <Text style={{ fontSize: 13 }}>
+                                  ${Number(item.payload?.price || 0).toLocaleString('es-AR')}
+                                  {' · Stock: '}
+                                  {item.payload?.stock ?? 0}
+                                </Text>
+                              </Col>
+                              <Col flex="none">
+                                <Space>
+                                  <Popconfirm
+                                    title="Descartar producto"
+                                    description="No se va a crear este producto."
+                                    okText="Descartar"
+                                    cancelText="Cancelar"
+                                    okButtonProps={{ danger: true }}
+                                    onConfirm={() => handleDiscardReviewItem(item)}
+                                  >
+                                    <Button
+                                      htmlType="button"
+                                      danger
+                                      size="small"
+                                      icon={<DeleteOutlined />}
+                                      loading={reviewItemBusyId === item.id}
+                                      disabled={
+                                        reviewItemBusyId !== null &&
+                                        reviewItemBusyId !== item.id
+                                      }
+                                      aria-label={`Descartar producto preparado ${item.payload?.title || ''}`}
+                                    />
+                                  </Popconfirm>
+                                  <Button
+                                    htmlType="button"
+                                    type="primary"
+                                    size="small"
+                                    icon={<CheckOutlined />}
+                                    onClick={() => handleApproveReviewItem(item)}
+                                    loading={reviewItemBusyId === item.id}
+                                    disabled={
+                                      reviewItemBusyId !== null &&
+                                      reviewItemBusyId !== item.id
+                                    }
+                                  >
+                                    Publicar
+                                  </Button>
+                                </Space>
+                              </Col>
+                            </Row>
+                          </Card>
+                        ))}
+                      </Space>
+                    )}
+                  </Modal>
+
                   {!fileList.length ? (
                     <Dragger
                       multiple
@@ -5811,6 +6286,10 @@ export default function AddProduct() {
                       fileList={fileList}
                       onRemove={handleRemove}
                       onAddMore={handleAddMoreImages}
+                      onReorder={handleReorderImage}
+                      onSetPrincipal={handleSetPrincipalImage}
+                      onAnalyze={handleReanalyzeImage}
+                      analyzing={loadingIa}
                     />
                   )}
                 </Card>
@@ -6089,8 +6568,59 @@ export default function AddProduct() {
                     <Switch
                       checked={useTechnicalSheet}
                       onChange={checked => {
-                        setUseTechnicalSheet(checked)
-                        if (!checked) {
+                        if (checked) {
+                          setUseTechnicalSheet(true)
+                          const snapshot = technicalSheetSnapshotRef.current
+                          if (snapshot) {
+                            const currentDynamicFields =
+                              form.getFieldValue('dynamicFields') || {}
+                            const hasCurrentValues = Object.values(
+                              currentDynamicFields,
+                            ).some(value =>
+                              Array.isArray(value)
+                                ? value.length > 0
+                                : value !== undefined &&
+                                  value !== null &&
+                                  value !== '',
+                            )
+                            if (
+                              !hasCurrentValues &&
+                              !normalizeString(form.getFieldValue('descripcionTecnica'))
+                            ) {
+                              setProductFormValues({
+                                descripcionTecnica: snapshot.descripcionTecnica,
+                                dynamicFields: snapshot.dynamicFields,
+                              })
+                              message.info(
+                                'Se restauraron los datos técnicos que habías cargado',
+                              )
+                            }
+                            technicalSheetSnapshotRef.current = null
+                          }
+                          return
+                        }
+
+                        const currentDescripcionTecnica = form.getFieldValue(
+                          'descripcionTecnica',
+                        )
+                        const currentDynamicFields =
+                          form.getFieldValue('dynamicFields') || {}
+                        const hasData =
+                          normalizeString(currentDescripcionTecnica) ||
+                          Object.values(currentDynamicFields).some(value =>
+                            Array.isArray(value)
+                              ? value.length > 0
+                              : value !== undefined &&
+                                value !== null &&
+                                value !== '',
+                          )
+
+                        const disableTechnicalSheet = () => {
+                          technicalSheetSnapshotRef.current = {
+                            descripcionTecnica: currentDescripcionTecnica,
+                            dynamicFields: currentDynamicFields,
+                          }
+                          setUseTechnicalSheet(false)
                           setProductFormValues({
                             descripcionTecnica: undefined,
                             dynamicFields: {},
@@ -6099,6 +6629,21 @@ export default function AddProduct() {
                             'Ficha técnica desactivada para este producto',
                           )
                         }
+
+                        if (!hasData) {
+                          setUseTechnicalSheet(false)
+                          return
+                        }
+
+                        Modal.confirm({
+                          title: '¿Desactivar la ficha técnica?',
+                          content:
+                            'Se van a quitar del formulario los datos técnicos cargados (descripción técnica y campos). Si la reactivás sin cargar un producto nuevo, se restauran automáticamente.',
+                          okText: 'Desactivar',
+                          okButtonProps: { danger: true },
+                          cancelText: 'Cancelar',
+                          onOk: disableTechnicalSheet,
+                        })
                       }}
                       checkedChildren="Usar"
                       unCheckedChildren="Omitir"
@@ -6735,227 +7280,366 @@ export default function AddProduct() {
                             </Row>
                           </div>
 
-                          <Table
-                            dataSource={variants}
-                            pagination={false}
-                            size="middle"
-                            scroll={{ x: 1280 }}
-                            rowKey="key"
-                            bordered={false}
-                            style={{
-                              borderRadius: 16,
-                              overflow: 'hidden',
-                            }}
-                            columns={[
-                              {
-                                title: 'Variante',
-                                dataIndex: 'nombre',
-                                key: 'nombre',
-                                width: 220,
-                                fixed: 'left',
-                                render: (_, record) => (
-                                  <Space direction="vertical" size={6}>
-                                    <Space wrap size={[4, 6]}>
-                                      {Object.entries(record.combinacion).map(
-                                        ([attribute, value]) => (
-                                          <Tag
-                                            key={`${record.key}-${attribute}`}
-                                            color="blue"
-                                            style={{
-                                              margin: 0,
-                                              borderRadius: 4,
-                                            }}
-                                          >
-                                            {dynamicAttributes.find(
-                                              item => item.name === attribute,
-                                            )?.label || attribute}
-                                            : {value}
-                                          </Tag>
-                                        ),
-                                      )}
-                                    </Space>
-                                    <Space size={6} wrap>
-                                      {record.uiStatus === 'new' && (
-                                        <Tag
-                                          color="success"
-                                          style={{ borderRadius: 999 }}
-                                        >
-                                          Nueva
-                                        </Tag>
-                                      )}
-                                      {record.isActive === false && (
-                                        <Tag
-                                          color="default"
-                                          style={{ borderRadius: 999 }}
-                                        >
-                                          Inactiva
-                                        </Tag>
-                                      )}
-                                    </Space>
-                                  </Space>
-                                ),
-                              },
-                              {
-                                title: 'Precio',
-                                dataIndex: 'price',
-                                key: 'price',
-                                width: 150,
-                                render: (_, record) => (
-                                  <InputNumber
-                                    prefix="$"
-                                    style={{ width: '100%' }}
-                                    min={0}
-                                    value={record.price}
-                                    onChange={val => {
-                                      setVariants(prev =>
-                                        prev.map(variant =>
-                                          variant.key === record.key
-                                            ? {
-                                                ...variant,
-                                                price: Number(val || 0),
-                                              }
-                                            : variant,
-                                        ),
-                                      )
-                                    }}
-                                  />
-                                ),
-                              },
-                              {
-                                title: 'Stock',
-                                dataIndex: 'stock',
-                                key: 'stock',
-                                width: 120,
-                                render: (_, record) => (
-                                  <InputNumber
-                                    min={0}
-                                    style={{ width: '100%' }}
-                                    value={record.stock}
-                                    onChange={val => {
-                                      setVariants(prev =>
-                                        prev.map(variant =>
-                                          variant.key === record.key
-                                            ? {
-                                                ...variant,
-                                                stock: Number(val || 0),
-                                              }
-                                            : variant,
-                                        ),
-                                      )
-                                    }}
-                                  />
-                                ),
-                              },
-                              {
-                                title: 'SKU opcional',
-                                dataIndex: 'sku',
-                                key: 'sku',
-                                width: 180,
-                                render: (_, record) => (
-                                  <Input
-                                    placeholder="Ej: FOX-BOTA-42"
-                                    value={record.sku}
-                                    onChange={e => {
-                                      setVariants(prev =>
-                                        prev.map(variant =>
-                                          variant.key === record.key
-                                            ? {
-                                                ...variant,
-                                                sku: e.target.value,
-                                              }
-                                            : variant,
-                                        ),
-                                      )
-                                    }}
-                                  />
-                                ),
-                              },
-                              {
-                                title: 'Imagen de variante',
-                                key: 'image',
-                                width: 260,
-                                render: (_, record) => (
-                                  <VariantImageSelector
-                                    variant={record}
-                                    localImages={localImages}
-                                    onAssign={handleAssignVariantImage}
-                                  />
-                                ),
-                              },
-                              {
-                                title: 'Preview',
-                                key: 'preview',
-                                width: 110,
-                                render: (_, record) => {
-                                  const selectedLocal = localImages.find(
-                                    img => img.uid === record.imageSourceUid,
-                                  )
-
-                                  return selectedLocal?.preview ? (
-                                    <img
-                                      src={selectedLocal.preview}
-                                      alt={record.nombre}
-                                      style={{
-                                        width: 64,
-                                        height: 64,
-                                        objectFit: 'cover',
-                                        borderRadius: 14,
-                                        border: `1px solid ${token.colorBorderSecondary}`,
-                                        boxShadow:
-                                          '0 8px 18px rgba(15,23,42,.08)',
-                                      }}
-                                    />
-                                  ) : (
-                                    <Tag style={{ borderRadius: 999 }}>
-                                      Sin imagen
+                          {(() => {
+                            const renderVariantLabel = record => (
+                              <Space direction="vertical" size={6}>
+                                <Space wrap size={[4, 6]}>
+                                  {Object.entries(record.combinacion).map(
+                                    ([attribute, value]) => (
+                                      <Tag
+                                        key={`${record.key}-${attribute}`}
+                                        color="blue"
+                                        style={{
+                                          margin: 0,
+                                          borderRadius: 4,
+                                        }}
+                                      >
+                                        {dynamicAttributes.find(
+                                          item => item.name === attribute,
+                                        )?.label || attribute}
+                                        : {value}
+                                      </Tag>
+                                    ),
+                                  )}
+                                </Space>
+                                <Space size={6} wrap>
+                                  {record.uiStatus === 'new' && (
+                                    <Tag
+                                      color="success"
+                                      style={{ borderRadius: 999 }}
+                                    >
+                                      Nueva
                                     </Tag>
+                                  )}
+                                  {record.isActive === false && (
+                                    <Tag
+                                      color="default"
+                                      style={{ borderRadius: 999 }}
+                                    >
+                                      Inactiva
+                                    </Tag>
+                                  )}
+                                </Space>
+                              </Space>
+                            )
+
+                            const renderVariantPrice = record => (
+                              <InputNumber
+                                prefix="$"
+                                style={{ width: '100%' }}
+                                min={0}
+                                value={record.price}
+                                aria-label={`Precio de ${record.nombre || 'la variante'}`}
+                                onChange={val => {
+                                  setVariants(prev =>
+                                    prev.map(variant =>
+                                      variant.key === record.key
+                                        ? {
+                                            ...variant,
+                                            price: Number(val || 0),
+                                          }
+                                        : variant,
+                                    ),
                                   )
-                                },
-                              },
-                              {
-                                title: 'Activo',
-                                key: 'active',
-                                width: 90,
-                                align: 'center',
-                                render: (_, record) => (
-                                  <Switch
-                                    checked={record.isActive !== false}
-                                    onChange={checked => {
-                                      setVariants(prev =>
-                                        prev.map(variant =>
-                                          variant.key === record.key
-                                            ? { ...variant, isActive: checked }
-                                            : variant,
-                                        ),
-                                      )
-                                    }}
-                                    size="small"
-                                  />
-                                ),
-                              },
-                              {
-                                title: '',
-                                key: 'delete',
-                                width: 60,
-                                render: (_, record) => (
-                                  <Button
-                                    htmlType="button"
-                                    type="text"
-                                    danger
-                                    icon={<DeleteOutlined />}
-                                    onClick={() => {
-                                      setVariants(prev =>
-                                        prev.filter(
-                                          variant => variant.key !== record.key,
-                                        ),
-                                      )
-                                    }}
-                                    size="small"
-                                  />
-                                ),
-                              },
-                            ]}
-                          />
+                                }}
+                              />
+                            )
+
+                            const renderVariantStock = record => (
+                              <InputNumber
+                                min={0}
+                                style={{ width: '100%' }}
+                                value={record.stock}
+                                aria-label={`Stock de ${record.nombre || 'la variante'}`}
+                                onChange={val => {
+                                  setVariants(prev =>
+                                    prev.map(variant =>
+                                      variant.key === record.key
+                                        ? {
+                                            ...variant,
+                                            stock: Number(val || 0),
+                                          }
+                                        : variant,
+                                    ),
+                                  )
+                                }}
+                              />
+                            )
+
+                            const renderVariantSku = record => (
+                              <Input
+                                placeholder="Ej: FOX-BOTA-42"
+                                value={record.sku}
+                                aria-label={`SKU de ${record.nombre || 'la variante'}`}
+                                onChange={e => {
+                                  setVariants(prev =>
+                                    prev.map(variant =>
+                                      variant.key === record.key
+                                        ? {
+                                            ...variant,
+                                            sku: e.target.value,
+                                          }
+                                        : variant,
+                                    ),
+                                  )
+                                }}
+                              />
+                            )
+
+                            const renderVariantImageSelector = record => (
+                              <VariantImageSelector
+                                variant={record}
+                                localImages={localImages}
+                                onAssign={handleAssignVariantImage}
+                              />
+                            )
+
+                            const renderVariantPreview = record => {
+                              const selectedLocal = localImages.find(
+                                img => img.uid === record.imageSourceUid,
+                              )
+
+                              return selectedLocal?.preview ? (
+                                <img
+                                  src={selectedLocal.preview}
+                                  alt={`Vista previa de ${record.nombre || 'la variante'}`}
+                                  style={{
+                                    width: 64,
+                                    height: 64,
+                                    objectFit: 'cover',
+                                    borderRadius: 14,
+                                    border: `1px solid ${token.colorBorderSecondary}`,
+                                    boxShadow: '0 8px 18px rgba(15,23,42,.08)',
+                                  }}
+                                />
+                              ) : (
+                                <Tag style={{ borderRadius: 999 }}>
+                                  Sin imagen
+                                </Tag>
+                              )
+                            }
+
+                            const renderVariantActive = record => (
+                              <Switch
+                                checked={record.isActive !== false}
+                                aria-label={`Activar o desactivar ${record.nombre || 'la variante'}`}
+                                onChange={checked => {
+                                  setVariants(prev =>
+                                    prev.map(variant =>
+                                      variant.key === record.key
+                                        ? { ...variant, isActive: checked }
+                                        : variant,
+                                    ),
+                                  )
+                                }}
+                                size="small"
+                              />
+                            )
+
+                            const renderVariantDelete = record => (
+                              <Button
+                                htmlType="button"
+                                type="text"
+                                danger
+                                icon={<DeleteOutlined />}
+                                onClick={() => {
+                                  setVariants(prev =>
+                                    prev.filter(
+                                      variant => variant.key !== record.key,
+                                    ),
+                                  )
+                                }}
+                                size="small"
+                                aria-label={`Eliminar variante ${record.nombre || record.key}`}
+                              />
+                            )
+
+                            return (
+                              <>
+                                <Table
+                                  className="variant-table-desktop"
+                                  dataSource={variants}
+                                  pagination={false}
+                                  size="middle"
+                                  scroll={{ x: 1280 }}
+                                  rowKey="key"
+                                  bordered={false}
+                                  style={{
+                                    borderRadius: 16,
+                                    overflow: 'hidden',
+                                  }}
+                                  columns={[
+                                    {
+                                      title: 'Variante',
+                                      dataIndex: 'nombre',
+                                      key: 'nombre',
+                                      width: 220,
+                                      fixed: 'left',
+                                      render: (_, record) =>
+                                        renderVariantLabel(record),
+                                    },
+                                    {
+                                      title: 'Precio',
+                                      dataIndex: 'price',
+                                      key: 'price',
+                                      width: 150,
+                                      render: (_, record) =>
+                                        renderVariantPrice(record),
+                                    },
+                                    {
+                                      title: 'Stock',
+                                      dataIndex: 'stock',
+                                      key: 'stock',
+                                      width: 120,
+                                      render: (_, record) =>
+                                        renderVariantStock(record),
+                                    },
+                                    {
+                                      title: 'SKU opcional',
+                                      dataIndex: 'sku',
+                                      key: 'sku',
+                                      width: 180,
+                                      render: (_, record) =>
+                                        renderVariantSku(record),
+                                    },
+                                    {
+                                      title: 'Imagen de variante',
+                                      key: 'image',
+                                      width: 260,
+                                      render: (_, record) =>
+                                        renderVariantImageSelector(record),
+                                    },
+                                    {
+                                      title: 'Preview',
+                                      key: 'preview',
+                                      width: 110,
+                                      render: (_, record) =>
+                                        renderVariantPreview(record),
+                                    },
+                                    {
+                                      title: 'Activo',
+                                      key: 'active',
+                                      width: 90,
+                                      align: 'center',
+                                      render: (_, record) =>
+                                        renderVariantActive(record),
+                                    },
+                                    {
+                                      title: '',
+                                      key: 'delete',
+                                      width: 60,
+                                      render: (_, record) =>
+                                        renderVariantDelete(record),
+                                    },
+                                  ]}
+                                />
+
+                                <Space
+                                  direction="vertical"
+                                  size={12}
+                                  className="variant-cards-mobile"
+                                  style={{ width: '100%' }}
+                                >
+                                  {variants.map(record => (
+                                    <Card
+                                      key={record.key}
+                                      size="small"
+                                      style={{ borderRadius: 14 }}
+                                      styles={{ body: { padding: 14 } }}
+                                    >
+                                      <Space
+                                        direction="vertical"
+                                        size={10}
+                                        style={{ width: '100%' }}
+                                      >
+                                        <Row
+                                          justify="space-between"
+                                          align="top"
+                                          wrap={false}
+                                        >
+                                          <Col flex="auto">
+                                            {renderVariantLabel(record)}
+                                          </Col>
+                                          <Col flex="none">
+                                            {renderVariantDelete(record)}
+                                          </Col>
+                                        </Row>
+
+                                        <Row gutter={[10, 10]}>
+                                          <Col xs={12}>
+                                            <Text
+                                              type="secondary"
+                                              style={{
+                                                fontSize: 12,
+                                                display: 'block',
+                                                marginBottom: 4,
+                                              }}
+                                            >
+                                              Precio
+                                            </Text>
+                                            {renderVariantPrice(record)}
+                                          </Col>
+                                          <Col xs={12}>
+                                            <Text
+                                              type="secondary"
+                                              style={{
+                                                fontSize: 12,
+                                                display: 'block',
+                                                marginBottom: 4,
+                                              }}
+                                            >
+                                              Stock
+                                            </Text>
+                                            {renderVariantStock(record)}
+                                          </Col>
+                                          <Col xs={24}>
+                                            <Text
+                                              type="secondary"
+                                              style={{
+                                                fontSize: 12,
+                                                display: 'block',
+                                                marginBottom: 4,
+                                              }}
+                                            >
+                                              SKU opcional
+                                            </Text>
+                                            {renderVariantSku(record)}
+                                          </Col>
+                                        </Row>
+
+                                        <Row
+                                          justify="space-between"
+                                          align="middle"
+                                          gutter={[10, 10]}
+                                        >
+                                          <Col flex="auto">
+                                            {renderVariantImageSelector(record)}
+                                          </Col>
+                                          <Col flex="none">
+                                            {renderVariantPreview(record)}
+                                          </Col>
+                                        </Row>
+
+                                        <Row
+                                          justify="space-between"
+                                          align="middle"
+                                        >
+                                          <Col>
+                                            <Text style={{ fontSize: 13 }}>
+                                              Variante activa
+                                            </Text>
+                                          </Col>
+                                          <Col>
+                                            {renderVariantActive(record)}
+                                          </Col>
+                                        </Row>
+                                      </Space>
+                                    </Card>
+                                  ))}
+                                </Space>
+                              </>
+                            )
+                          })()}
 
                           <Alert
                             type="warning"
@@ -7641,6 +8325,40 @@ export default function AddProduct() {
                         />
                       )}
 
+                      {submitErrors.length > 0 && (
+                        <Alert
+                          type="error"
+                          showIcon
+                          style={{ borderRadius: 14 }}
+                          message={
+                            submitErrors.length === 1
+                              ? 'No se pudo publicar: hay un problema para resolver'
+                              : `No se pudo publicar: hay ${submitErrors.length} problemas para resolver`
+                          }
+                          description={
+                            <ul style={{ margin: 0, paddingLeft: 18 }}>
+                              {submitErrors.map((err, idx) => (
+                                <li key={idx}>
+                                  {err.section ? (
+                                    <a
+                                      href={`#${err.section}`}
+                                      onClick={event => {
+                                        event.preventDefault()
+                                        scrollToSection(err.section)
+                                      }}
+                                    >
+                                      {err.message}
+                                    </a>
+                                  ) : (
+                                    err.message
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          }
+                        />
+                      )}
+
                       <div
                         style={{
                           padding: 14,
@@ -7856,6 +8574,20 @@ export default function AddProduct() {
 
         .add-product-agent-collapse .ant-collapse-content-box {
           padding: 4px 16px 16px !important;
+        }
+
+        .variant-cards-mobile {
+          display: none;
+        }
+
+        @media (max-width: 767.98px) {
+          .variant-table-desktop {
+            display: none;
+          }
+
+          .variant-cards-mobile {
+            display: flex;
+          }
         }
 
         @media (max-width: 575.98px) {
