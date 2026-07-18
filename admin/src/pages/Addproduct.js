@@ -24,6 +24,8 @@ import {
   Space,
   Badge,
   Popconfirm,
+  Steps,
+  Collapse,
 } from 'antd'
 import {
   InboxOutlined,
@@ -63,6 +65,15 @@ import productService from '@features/product/productService'
 const { Title, Text, Paragraph } = Typography
 const { Dragger } = Upload
 const { useToken } = theme
+
+const SECTION_IDS = {
+  imagenes: 'add-product-section-imagenes',
+  informacion: 'add-product-section-informacion',
+  ficha: 'add-product-section-ficha',
+  variantes: 'add-product-section-variantes',
+  precio: 'add-product-section-precio',
+  publicar: 'add-product-section-publicar',
+}
 
 const normalizeString = (value = '') => String(value || '').trim()
 
@@ -3298,6 +3309,82 @@ export default function AddProduct() {
     watchedTitle,
   ])
 
+  const missingRequiredLabels = useMemo(
+    () =>
+      productReadiness.requiredChecks
+        .filter(check => !check.done)
+        .map(check => check.label),
+    [productReadiness.requiredChecks],
+  )
+
+  const scrollToSection = useCallback(sectionId => {
+    if (typeof document === 'undefined') return
+    const target = document.getElementById(sectionId)
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  const wizardSteps = useMemo(() => {
+    const checkByKey = key => productReadiness.checks.find(c => c.key === key)
+    const statusFor = keys => {
+      const relevant = keys.map(checkByKey).filter(Boolean)
+      if (!relevant.length) return 'wait'
+      return relevant.every(check => check.done) ? 'finish' : 'process'
+    }
+
+    return [
+      {
+        key: 'imagenes',
+        title: 'Imágenes',
+        sectionId: SECTION_IDS.imagenes,
+        status: statusFor(['imagenes']),
+      },
+      {
+        key: 'informacion',
+        title: 'Información',
+        sectionId: SECTION_IDS.informacion,
+        status: statusFor([
+          'titulo',
+          'descripcion',
+          'categoria',
+          'subcategoria',
+        ]),
+      },
+      {
+        key: 'ficha',
+        title: 'Ficha técnica',
+        sectionId: SECTION_IDS.ficha,
+        optional: true,
+        status: useTechnicalSheet ? statusFor(['ficha']) : 'wait',
+      },
+      {
+        key: 'variantes',
+        title: 'Variantes',
+        sectionId: SECTION_IDS.variantes,
+        optional: true,
+        status: hasVariants ? statusFor(['variantes']) : 'wait',
+      },
+      {
+        key: 'precio',
+        title: 'Precio y SEO',
+        sectionId: SECTION_IDS.precio,
+        status: statusFor(['precio', 'stock']),
+      },
+      {
+        key: 'publicar',
+        title: 'Publicar',
+        sectionId: SECTION_IDS.publicar,
+        status: productReadiness.isReady ? 'finish' : 'wait',
+      },
+    ]
+  }, [productReadiness, useTechnicalSheet, hasVariants])
+
+  const wizardCurrentStep = useMemo(() => {
+    const idx = wizardSteps.findIndex(
+      step => !step.optional && step.status !== 'finish',
+    )
+    return idx === -1 ? wizardSteps.length - 1 : idx
+  }, [wizardSteps])
+
   const categoryOptions = useMemo(
     () =>
       catalogCategories
@@ -4908,12 +4995,14 @@ export default function AddProduct() {
     }
     if (!fileList.length) {
       message.error('Debes subir al menos una imagen')
+      scrollToSection(SECTION_IDS.imagenes)
       return
     }
 
     const fileValidationError = validateSelectedFiles(fileList)
     if (fileValidationError) {
       message.error(fileValidationError)
+      scrollToSection(SECTION_IDS.imagenes)
       return
     }
 
@@ -4925,6 +5014,11 @@ export default function AddProduct() {
     const basicsError = validateProductBasicsForSubmit({ values, hasVariants })
     if (basicsError) {
       message.error(basicsError)
+      scrollToSection(
+        /precio|cantidad|stock/i.test(basicsError)
+          ? SECTION_IDS.precio
+          : SECTION_IDS.informacion,
+      )
       return
     }
 
@@ -4933,6 +5027,7 @@ export default function AddProduct() {
 
       if (variantError) {
         message.error(variantError)
+        scrollToSection(SECTION_IDS.variantes)
         return
       }
     }
@@ -5319,6 +5414,32 @@ export default function AddProduct() {
             </Row>
           </div>
 
+          <div
+            className="add-product-steps-bar"
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
+              marginBottom: 24,
+              padding: '14px 20px',
+              borderRadius: 16,
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+            }}
+          >
+            <Steps
+              size="small"
+              responsive
+              current={wizardCurrentStep}
+              onChange={index => scrollToSection(wizardSteps[index]?.sectionId)}
+              items={wizardSteps.map(step => ({
+                title: step.optional ? `${step.title} (opcional)` : step.title,
+                status: step.status,
+              }))}
+            />
+          </div>
+
           <ProductFormDirtyContext.Provider value={markFormAsChanged}>
             <ProductFormMutationContext.Provider
               value={{ version: formMutationVersion, notifyMutation: notifyFormMutation }}
@@ -5327,6 +5448,7 @@ export default function AddProduct() {
                 form={form}
                 layout="vertical"
                 scrollToFirstError={false}
+                disabled={savingProduct || isLoading}
                 onKeyDown={event => {
               if (
                 event.key === 'Enter' &&
@@ -5340,23 +5462,32 @@ export default function AddProduct() {
             <Row gutter={[24, 24]} align="top">
               <Col xs={24} xl={0}>
                 <Alert
-                  type={productReadiness.isReady ? 'success' : 'info'}
+                  type={productReadiness.isReady ? 'success' : 'warning'}
                   showIcon
                   style={{ marginBottom: 20, borderRadius: 14 }}
                   message={
                     productReadiness.isReady
                       ? 'Listo para publicar'
-                      : `Completá lo esencial: ${productReadiness.doneRequired}/${productReadiness.requiredChecks.length} datos obligatorios (${productReadiness.percent}%)`
+                      : `Completá lo esencial (${productReadiness.doneRequired}/${productReadiness.requiredChecks.length} · ${productReadiness.percent}%)`
+                  }
+                  description={
+                    productReadiness.isReady
+                      ? undefined
+                      : `Faltan: ${missingRequiredLabels.join(', ')}`
                   }
                 />
               </Col>
 
               <Col xs={24} xl={15}>
                 <Card
+                  id={SECTION_IDS.imagenes}
                   title={
                     <Space size={10}>
+                      <span className="add-product-step-badge">1</span>
                       <PictureOutlined style={{ color: token.colorPrimary }} />
-                      <span>Imágenes del producto</span>
+                      <span className="add-product-card-title">
+                        Imágenes del producto
+                      </span>
                       <Tag color="red" style={{ borderRadius: 999 }}>
                         Requerido
                       </Tag>
@@ -5370,16 +5501,43 @@ export default function AddProduct() {
                   }}
                   styles={{ body: { padding: 24 } }}
                 >
-                  <div
+                  <Text
+                    type="secondary"
+                    style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                  >
+                    Subí al menos una imagen del producto — es el único dato
+                    obligatorio de esta sección.
+                  </Text>
+
+                  <Collapse
+                    ghost
+                    className="add-product-agent-collapse"
+                    defaultActiveKey={
+                      autoAgentEnabled || currentAgentJob ? ['agent'] : []
+                    }
                     style={{
                       marginBottom: 20,
-                      padding: 20,
                       borderRadius: 18,
                       border: `1px solid ${token.colorBorderSecondary}`,
                       background: `linear-gradient(135deg, ${token.colorFillAlter}, ${token.colorBgContainer})`,
                     }}
-                  >
-                    <Row gutter={[18, 18]} align="middle">
+                    items={[
+                      {
+                        key: 'agent',
+                        label: (
+                          <Space size={8}>
+                            <RobotOutlined
+                              style={{ color: token.colorPrimary }}
+                            />
+                            <Text strong style={{ fontSize: 14 }}>
+                              Importar desde el agente IA (
+                              {agentQueueStats.total} pendientes)
+                            </Text>
+                          </Space>
+                        ),
+                        children: (
+                          <>
+                            <Row gutter={[18, 18]} align="middle">
                       <Col xs={24} lg={8}>
                         <Space direction="vertical" size={6}>
                           <Space wrap>
@@ -5575,7 +5733,11 @@ export default function AddProduct() {
                         }
                       />
                     )}
-                  </div>
+                          </>
+                        ),
+                      },
+                    ]}
+                  />
 
                   {!fileList.length ? (
                     <Dragger
@@ -5588,6 +5750,9 @@ export default function AddProduct() {
                       style={{
                         borderRadius: 20,
                         padding: 44,
+                        minHeight: 280,
+                        display: 'flex',
+                        alignItems: 'center',
                         background: `linear-gradient(135deg, ${token.colorBgContainer}, ${token.colorFillAlter})`,
                         border: `2px dashed ${token.colorPrimaryBorder || token.colorBorder}`,
                       }}
@@ -5595,9 +5760,9 @@ export default function AddProduct() {
                       <div style={{ textAlign: 'center' }}>
                         <div
                           style={{
-                            width: 88,
-                            height: 88,
-                            borderRadius: 24,
+                            width: 104,
+                            height: 104,
+                            borderRadius: 28,
                             background: `${token.colorPrimary}14`,
                             display: 'flex',
                             alignItems: 'center',
@@ -5607,11 +5772,14 @@ export default function AddProduct() {
                           }}
                         >
                           <InboxOutlined
-                            style={{ fontSize: 40, color: token.colorPrimary }}
+                            style={{ fontSize: 48, color: token.colorPrimary }}
                           />
                         </div>
 
-                        <Text strong style={{ fontSize: 17, display: 'block' }}>
+                        <Text
+                          strong
+                          style={{ fontSize: 19, display: 'block' }}
+                        >
                           Arrastrá imágenes o importalas desde el agente
                         </Text>
 
@@ -5663,10 +5831,17 @@ export default function AddProduct() {
                 />
 
                 <Card
+                  id={SECTION_IDS.informacion}
                   title={
                     <Space size={10}>
+                      <span className="add-product-step-badge">2</span>
                       <ShoppingOutlined style={{ color: token.colorPrimary }} />
-                      <span>Información del producto</span>
+                      <span className="add-product-card-title">
+                        Información del producto
+                      </span>
+                      <Tag color="red" style={{ borderRadius: 999 }}>
+                        Requerido
+                      </Tag>
                     </Space>
                   }
                   style={{
@@ -5677,6 +5852,14 @@ export default function AddProduct() {
                   }}
                   styles={{ body: { padding: 24 } }}
                 >
+                  <Text
+                    type="secondary"
+                    style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                  >
+                    Lo que ve el cliente: título, descripción y clasificación —
+                    todo obligatorio.
+                  </Text>
+
                   <Row gutter={[18, 18]}>
                     <Col xs={24}>
                       <ProductField
@@ -5882,10 +6065,14 @@ export default function AddProduct() {
                 </Card>
 
                 <Card
+                  id={SECTION_IDS.ficha}
                   title={
                     <Space size={10}>
+                      <span className="add-product-step-badge">3</span>
                       <AppstoreOutlined style={{ color: token.colorPrimary }} />
-                      <span>Ficha técnica inteligente</span>
+                      <span className="add-product-card-title">
+                        Ficha técnica inteligente
+                      </span>
                       {dynamicProductFields.length > 0 && (
                         <Tag color="processing" style={{ borderRadius: 999 }}>
                           {dynamicProductFields.length} campos
@@ -6160,13 +6347,22 @@ export default function AddProduct() {
                 </Card>
 
                 <Card
+                  id={SECTION_IDS.variantes}
                   title={
                     <Space size={10}>
+                      <span className="add-product-step-badge">4</span>
                       <ClusterOutlined style={{ color: token.colorPrimary }} />
-                      <span>Opciones vendibles del producto</span>
+                      <span className="add-product-card-title">
+                        Opciones vendibles del producto
+                      </span>
                       {dynamicAttributes.length > 0 && (
                         <Tag color="success" style={{ borderRadius: 999 }}>
                           {dynamicAttributes.length} atributos detectados
+                        </Tag>
+                      )}
+                      {!hasVariants && (
+                        <Tag color="default" style={{ borderRadius: 999 }}>
+                          Opcional
                         </Tag>
                       )}
                     </Space>
@@ -6924,16 +7120,23 @@ export default function AddProduct() {
                         message={
                           productReadiness.isReady
                             ? 'Ya podés publicar o guardar como borrador.'
-                            : 'El flujo rápido solo exige imagen, título, descripción, categoría, precio y stock.'
+                            : `Faltan: ${missingRequiredLabels.join(', ')}`
                         }
                       />
                     </Space>
                   </Card>
                   <Card
+                    id={SECTION_IDS.precio}
                     title={
                       <Space size={10}>
+                        <span className="add-product-step-badge">5</span>
                         <DollarOutlined style={{ color: token.colorPrimary }} />
-                        <span>Precio y disponibilidad</span>
+                        <span className="add-product-card-title">
+                          Precio y disponibilidad
+                        </span>
+                        <Tag color="red" style={{ borderRadius: 999 }}>
+                          Requerido
+                        </Tag>
                       </Space>
                     }
                     style={{
@@ -6944,6 +7147,14 @@ export default function AddProduct() {
                     }}
                     styles={{ body: { padding: 24 } }}
                   >
+                    <Text
+                      type="secondary"
+                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                    >
+                      Precio, condición y stock visibles en el catálogo —
+                      obligatorios para publicar.
+                    </Text>
+
                     <Row gutter={[16, 16]}>
                       <Col xs={24}>
                         <ProductField
@@ -7063,7 +7274,12 @@ export default function AddProduct() {
                         <FileTextOutlined
                           style={{ color: token.colorPrimary }}
                         />
-                        <span>SEO y contenido comercial</span>
+                        <span className="add-product-card-title">
+                          SEO y contenido comercial
+                        </span>
+                        <Tag color="default" style={{ borderRadius: 999 }}>
+                          Opcional
+                        </Tag>
                       </Space>
                     }
                     style={{
@@ -7074,6 +7290,14 @@ export default function AddProduct() {
                     }}
                     styles={{ body: { padding: 24 } }}
                   >
+                    <Text
+                      type="secondary"
+                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                    >
+                      Mejora cómo se encuentra el producto en buscadores y
+                      recomendaciones internas.
+                    </Text>
+
                     <Space
                       direction="vertical"
                       size={12}
@@ -7224,7 +7448,12 @@ export default function AddProduct() {
                         <ShoppingOutlined
                           style={{ color: token.colorPrimary }}
                         />
-                        <span>Logística, garantía y origen</span>
+                        <span className="add-product-card-title">
+                          Logística, garantía y origen
+                        </span>
+                        <Tag color="default" style={{ borderRadius: 999 }}>
+                          Opcional
+                        </Tag>
                       </Space>
                     }
                     style={{
@@ -7235,6 +7464,14 @@ export default function AddProduct() {
                     }}
                     styles={{ body: { padding: 24 } }}
                   >
+                    <Text
+                      type="secondary"
+                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                    >
+                      Ayuda a calcular envío y a comunicar garantía y origen —
+                      podés completarlo después.
+                    </Text>
+
                     <Row gutter={[12, 12]}>
                       <Col xs={24} sm={12}>
                         <ProductField name="weightKg" label="Peso kg">
@@ -7365,6 +7602,7 @@ export default function AddProduct() {
                   </Card>
 
                   <Card
+                    id={SECTION_IDS.publicar}
                     className="add-product-publish-card"
                     style={{
                       borderRadius: 20,
@@ -7378,11 +7616,27 @@ export default function AddProduct() {
                       size={14}
                       style={{ width: '100%' }}
                     >
+                      <Space size={10}>
+                        <span className="add-product-step-badge">6</span>
+                        <Text strong className="add-product-card-title">
+                          Publicar
+                        </Text>
+                      </Space>
+
                       {isError && (
                         <Alert
                           type="error"
                           message={productMessage || 'Error guardando producto'}
                           showIcon
+                          style={{ borderRadius: 14 }}
+                        />
+                      )}
+
+                      {!productReadiness.isReady && (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={`Faltan: ${missingRequiredLabels.join(', ')}`}
                           style={{ borderRadius: 14 }}
                         />
                       )}
@@ -7576,6 +7830,34 @@ export default function AddProduct() {
           box-shadow: 0 8px 32px ${token.colorPrimary}25 !important;
         }
 
+        .add-product-card-title {
+          font-size: 17px;
+          font-weight: 700;
+        }
+
+        .add-product-step-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 22px;
+          height: 22px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: ${token.colorPrimary};
+          color: ${token.colorTextLightSolid || '#fff'};
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 22px;
+        }
+
+        .add-product-agent-collapse .ant-collapse-header {
+          padding: 12px 16px !important;
+        }
+
+        .add-product-agent-collapse .ant-collapse-content-box {
+          padding: 4px 16px 16px !important;
+        }
+
         @media (max-width: 575.98px) {
           .add-product-stable-page {
             padding: 12px !important;
@@ -7587,6 +7869,18 @@ export default function AddProduct() {
 
           .add-product-agent-actions .ant-btn {
             flex: 1 1 auto;
+          }
+
+          .add-product-steps-bar {
+            padding: 10px 12px !important;
+          }
+
+          .add-product-steps-bar .ant-steps-item-title {
+            font-size: 12px !important;
+          }
+
+          .add-product-card-title {
+            font-size: 15px;
           }
         }
 
