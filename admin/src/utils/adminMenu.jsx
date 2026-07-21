@@ -116,9 +116,7 @@ const adminMenuItems = []
 privateRoutes.forEach(({ path, meta }) => {
   const key = path.replace('/admin/', '') || ''
 
-  const label =
-    translations[key] ||
-    key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  const label = translations[key] || key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
   const groupEntry = Object.entries(groups).find(([_, group]) =>
     group.items?.some(item => typeof item === 'object' && item.key === key),
@@ -129,9 +127,7 @@ privateRoutes.forEach(({ path, meta }) => {
 
   if (groupEntry) {
     const [groupKey, group] = groupEntry
-    const itemDef = group.items?.find(
-      item => typeof item === 'object' && item.key === key,
-    )
+    const itemDef = group.items?.find(item => typeof item === 'object' && item.key === key)
     IconComp = itemDef?.icon || group.icon
 
     const item = {

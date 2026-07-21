@@ -37,15 +37,11 @@ export const fetchPublicPromotionalBlocks = createAsyncThunk(
   'promotionalBlocks/fetchPublic',
   async (params = { placement: 'home' }, { rejectWithValue }) => {
     try {
-      const response =
-        await promotionalBlocksService.getPublicPromotionalBlocks(params)
+      const response = await promotionalBlocksService.getPublicPromotionalBlocks(params)
       return normalizePublicListResponse(response)
     } catch (error) {
       return rejectWithValue(
-        getErrorMessage(
-          error,
-          'Error al cargar bloques promocionales públicos',
-        ),
+        getErrorMessage(error, 'Error al cargar bloques promocionales públicos'),
       )
     }
   },
@@ -59,13 +55,10 @@ export const fetchPublicPromotionalBlockBySlug = createAsyncThunk(
         return rejectWithValue('Slug del bloque promocional requerido')
       }
 
-      const response =
-        await promotionalBlocksService.getPublicPromotionalBlockBySlug(slug)
+      const response = await promotionalBlocksService.getPublicPromotionalBlockBySlug(slug)
       return normalizeEntityResponse(response)
     } catch (error) {
-      return rejectWithValue(
-        getErrorMessage(error, 'Error al cargar bloque promocional público'),
-      )
+      return rejectWithValue(getErrorMessage(error, 'Error al cargar bloque promocional público'))
     }
   },
 )

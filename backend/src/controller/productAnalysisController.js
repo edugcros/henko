@@ -20,6 +20,10 @@ import { escapeRegex } from '../utils/escapeRegex.js'
 import logger from '../../config/logger.js'
 import * as aiVisionService from '../services/aiVisionService.js'
 import { registerVisualFeedback } from '../services/aiLearningService.js'
+import {
+  buildAutonomousProductPayload,
+  buildNormalizedDraftFromAnalysis,
+} from '../services/autonomousProductBuilder.js'
 
 // =====================================================
 // CONSTANTES
@@ -46,7 +50,7 @@ const ALLOWED_SOURCES = new Set(Object.values(JOB_SOURCE))
 
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
-const AUTO_PUBLISH_MIN_CONFIDENCE = Math.min(
+export const AUTO_PUBLISH_MIN_CONFIDENCE = Math.min(
   Math.max(Number(process.env.AI_AUTO_PUBLISH_MIN_CONFIDENCE || 0.9), 0),
   1,
 )
@@ -103,7 +107,7 @@ const isAnalysisJobReusableAfterProductDeletion = async ({ job, tenantId }) => {
   return !product
 }
 
-const markJobAsHidden = ({ job, userId = null, reason = '' }) => {
+export const markJobAsHidden = ({ job, userId = null, reason = '' }) => {
   job.isHidden = true
   job.hiddenAt = new Date()
   job.hiddenBy = userId || null
@@ -247,7 +251,7 @@ const getRequestSource = req => {
   return source
 }
 
-const sanitizeAnalysis = analysis => {
+export const sanitizeAnalysis = analysis => {
   if (!analysis || typeof analysis !== 'object') {
     return {
       titulo: '',
@@ -332,10 +336,11 @@ const sanitizeAnalysis = analysis => {
     warnings: Array.isArray(analysis.warnings)
       ? analysis.warnings.map(warning => normalizeString(warning)).filter(Boolean)
       : [],
+    hasVariants: Boolean(analysis.hasVariants),
   }
 }
 
-const canAutoPublishAnalysis = analysis => {
+export const canAutoPublishAnalysis = analysis => {
   const price = pickFirstNonNegativeNumber(
     analysis?.suggestedPrice,
     analysis?.precio_sugerido,
@@ -431,7 +436,7 @@ const uploadImageToStorage = async ({ file, tenantId }) => {
   }
 }
 
-const runVisualAnalysis = async ({ tenantId, file, originalFilename }) => {
+export const runVisualAnalysis = async ({ tenantId, file, originalFilename }) => {
   /**
    * Compatibilidad con distintas firmas posibles de tu aiVisionService.
    * Recomendado final:
@@ -627,15 +632,19 @@ const releaseOrAnalyzeScheduledJob = async payload => {
   }
 
   if (job.metadata?.autoAnalyze === false) {
-    job.status = JOB_STATUS.PENDING
-    await job.save()
-
-    logger.info('[ProductAnalysis] Imagen programada liberada para AddProduct', {
-      tenantId: payload.tenantId?.toString(),
-      jobId: payload.jobId?.toString(),
-    })
-
-    return job
+    // Se cumplió el plazo programado: el agente no analiza nada acá, le
+    // envía el job al módulo AddProduct, que es quien dispara la IA y
+    // genera el producto de punta a punta.
+    //
+    // Esto corre siempre que el job tenía una hora programada, sin
+    // importar el checkbox "autoSaveProduct" — ese checkbox solo decide
+    // qué pasa con las imágenes SIN hora (quedan pendientes para que un
+    // humano las importe a mano desde AddProduct cuando quiera). Una vez
+    // que hay una hora establecida, llegar a esa hora sin que nadie esté
+    // mirando es exactamente el caso de uso del agente, así que el
+    // análisis tiene que arrancar solo.
+    const { runAddProductAutopilot } = await import('../services/addProductAutopilotService.js')
+    return runAddProductAutopilot(payload)
   }
 
   return analyzeAndPersistJob(payload)
@@ -703,7 +712,7 @@ const processDueScheduledJobs = async ({ tenantId = null, limit = 10 } = {}) => 
   return jobs.length
 }
 
-const readJobImageBuffer = async job => {
+export const readJobImageBuffer = async job => {
   if (job.imagePublicId) {
     const uploadsDir = path.join(rootDir, 'uploads')
     const localPath = path.resolve(uploadsDir, job.imagePublicId)
@@ -894,6 +903,12 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
       ...(color ? { color } : {}),
     },
 
+    seo: {
+      metaTitle: normalizeString(overrides.seoTitle) || normalizeString(analysis.seoTitle) || undefined,
+      metaDescription:
+        normalizeString(overrides.seoDescription) || normalizeString(analysis.seoDescription) || undefined,
+    },
+
     status: 'draft',
     visibility: 'hidden',
 
@@ -944,17 +959,21 @@ const createProductFromAnalysisJob = async ({ job, overrides = {}, userId = null
   return product
 }
 
-const ensureJobBelongsToTenant = async ({ jobId, tenantId }) => {
+const ensureJobBelongsToTenant = async ({ jobId, tenantId, select = null }) => {
   if (!isObjectId(jobId)) {
     const error = new Error('ID de análisis inválido')
     error.statusCode = 400
     throw error
   }
 
-  const job = await ProductAnalysisJob.findOne({
+  let query = ProductAnalysisJob.findOne({
     _id: jobId,
     tenantId,
   })
+
+  if (select) query = query.select(select)
+
+  const job = await query
 
   if (!job) {
     const error = new Error('Análisis no encontrado para este comercio')
@@ -1342,6 +1361,32 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
   }
 
   if (!autoAnalyze) {
+    if (autoSaveProduct) {
+      // Sin hora programada: el agente envía el job a AddProduct de
+      // inmediato en lugar de dejarlo pendiente a que alguien lo abra.
+      const { runAddProductAutopilot } = await import('../services/addProductAutopilotService.js')
+      const processedJob = await runAddProductAutopilot({
+        jobId: job._id,
+        tenantId,
+        file: {
+          buffer: Buffer.from(file.buffer),
+          mimetype: file.mimetype,
+        },
+        originalFilename,
+      })
+
+      const autonomousSucceeded = processedJob.status === JOB_STATUS.COMPLETED
+      const autonomousFailureStatus = processedJob.error?.retryable ? 503 : 422
+
+      return res.status(autonomousSucceeded ? 201 : autonomousFailureStatus).json({
+        success: autonomousSucceeded,
+        message: autonomousSucceeded
+          ? 'Imagen importada y analizada automáticamente por AddProduct. Esperando aprobación.'
+          : processedJob.error?.message || 'La IA no pudo completar el análisis.',
+        job: processedJob,
+      })
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Imagen importada. Análisis pendiente.',
@@ -1504,6 +1549,189 @@ export const processDueAnalysisJobs = asyncHandler(async (req, res) => {
 })
 
 /**
+ * GET /api/product-analysis/agent/status
+ *
+ * Estado operativo del agente de análisis: si el scheduler está activo,
+ * cada cuánto barre la cola, y un resumen en vivo de la cola de este tenant.
+ * Es la fuente de verdad que el panel admin usa para mostrar "Agente activo".
+ */
+export const getAnalysisAgentStatus = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+
+  if (!tenantId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Tenant no resuelto.',
+    })
+  }
+
+  const baseFilter = {
+    tenantId,
+    $or: [
+      { deletedAt: { $exists: false } },
+      { deletedAt: null },
+    ],
+  }
+
+  const [scheduled, processing, pendingReview, failed, pending, nextJob] = await Promise.all([
+    ProductAnalysisJob.countDocuments({ ...baseFilter, status: JOB_STATUS.SCHEDULED }),
+    ProductAnalysisJob.countDocuments({ ...baseFilter, status: JOB_STATUS.PROCESSING }),
+    ProductAnalysisJob.countDocuments({
+      ...baseFilter,
+      status: JOB_STATUS.COMPLETED,
+      createdProductId: null,
+    }),
+    ProductAnalysisJob.countDocuments({ ...baseFilter, status: JOB_STATUS.FAILED }),
+    ProductAnalysisJob.countDocuments({ ...baseFilter, status: JOB_STATUS.PENDING }),
+    ProductAnalysisJob.findOne({ ...baseFilter, status: JOB_STATUS.SCHEDULED })
+      .sort({ scheduledAt: 1 })
+      .select('scheduledAt originalFilename')
+      .lean(),
+  ])
+
+  return res.status(200).json({
+    success: true,
+    agent: {
+      enabled: schedulerEnabled,
+      pollIntervalMs: schedulerIntervalMs,
+      now: new Date(),
+    },
+    queue: {
+      scheduled,
+      processing,
+      pendingReview,
+      failed,
+      pending,
+    },
+    nextRun: nextJob
+      ? {
+        jobId: String(nextJob._id),
+        scheduledAt: nextJob.scheduledAt,
+        originalFilename: nextJob.originalFilename,
+      }
+      : null,
+  })
+})
+
+/**
+ * POST /api/product-analysis/:jobId/run-now
+ *
+ * Fuerza la ejecución inmediata de un trabajo en cola (pendiente o
+ * programado), sin esperar al scheduler periódico ni a la hora programada.
+ * Reutiliza el mismo camino que dispara el scheduler cuando se cumple la
+ * hora, así el resultado es idéntico a esperar.
+ */
+export const runAnalysisJobNow = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+
+  if (!tenantId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Tenant no resuelto.',
+    })
+  }
+
+  const job = await ensureJobBelongsToTenant({
+    jobId: req.params.jobId,
+    tenantId,
+  })
+
+  if (![JOB_STATUS.PENDING, JOB_STATUS.SCHEDULED, JOB_STATUS.FAILED].includes(job.status)) {
+    return res.status(409).json({
+      success: false,
+      message: 'Solo se pueden ejecutar ahora trabajos pendientes, programados o fallidos.',
+      currentStatus: job.status,
+    })
+  }
+
+  const processedJob = await releaseOrAnalyzeScheduledJob({
+    jobId: job._id,
+    tenantId,
+    originalFilename: job.originalFilename,
+  })
+
+  const succeeded = [JOB_STATUS.COMPLETED, JOB_STATUS.APPROVED, JOB_STATUS.PENDING].includes(
+    processedJob.status,
+  )
+
+  return res.status(succeeded ? 200 : processedJob.error?.retryable ? 503 : 422).json({
+    success: succeeded,
+    message: succeeded
+      ? 'Trabajo ejecutado ahora.'
+      : processedJob.error?.message || 'La IA no pudo completar el análisis.',
+    job: processedJob,
+  })
+})
+
+/**
+ * PATCH /api/product-analysis/:jobId/reschedule
+ *
+ * Cambia la hora programada de un trabajo que todavía está en cola
+ * (pendiente o programado). Rearma el timer en memoria igual que al
+ * importar la imagen, para no depender únicamente del barrido periódico.
+ */
+export const rescheduleAnalysisJob = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+
+  if (!tenantId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Tenant no resuelto.',
+    })
+  }
+
+  const job = await ensureJobBelongsToTenant({
+    jobId: req.params.jobId,
+    tenantId,
+  })
+
+  if (![JOB_STATUS.PENDING, JOB_STATUS.SCHEDULED].includes(job.status)) {
+    return res.status(409).json({
+      success: false,
+      message: 'Solo se pueden reprogramar trabajos pendientes o programados.',
+      currentStatus: job.status,
+    })
+  }
+
+  const scheduledAt = parseFutureDate(req.body?.scheduledAt)
+
+  if (!scheduledAt || scheduledAt.getTime() <= Date.now()) {
+    return res.status(400).json({
+      success: false,
+      message: 'scheduledAt debe ser una fecha futura válida.',
+    })
+  }
+
+  job.status = JOB_STATUS.SCHEDULED
+  job.scheduledAt = scheduledAt
+
+  if (job.metadata) {
+    job.metadata.addProductAt = job.metadata.autoAnalyze === false ? scheduledAt : job.metadata.addProductAt
+  }
+
+  await job.save()
+
+  scheduleAnalysisJob({
+    jobId: job._id,
+    tenantId,
+    scheduledAt,
+    originalFilename: job.originalFilename,
+  })
+
+  logger.info('[ProductAnalysis] Trabajo reprogramado', {
+    tenantId: tenantId.toString(),
+    jobId: job._id.toString(),
+    scheduledAt,
+  })
+
+  return res.status(200).json({
+    success: true,
+    message: 'Trabajo reprogramado correctamente.',
+    job,
+  })
+})
+
+/**
  * GET /api/product-analysis/:jobId/image-file
  *
  * Devuelve la imagen original para que AddProduct la cargue como File
@@ -1563,12 +1791,31 @@ export const markAnalysisJobImportedToAddProduct = asyncHandler(async (req, res)
   const job = await ensureJobBelongsToTenant({
     jobId: req.params.jobId,
     tenantId,
+    select: '+analysisRaw',
   })
 
   if (job.deletedAt) {
     return res.status(404).json({
       success: false,
       message: 'La imagen fue eliminada.',
+    })
+  }
+
+  // El módulo AddProduct ya la analizó solo (llegó su hora programada, o
+  // se subió con autosave). No hay que re-analizarla ni tocar su estado
+  // — sigue disponible para aprobar desde la cola — solo le devolvemos
+  // el análisis ya calculado para que el formulario se autocomplete sin
+  // gastar una llamada más a la IA.
+  if (job.status === JOB_STATUS.COMPLETED) {
+    const normalized = job.analysisRaw
+      ? buildNormalizedDraftFromAnalysis(job.analysisRaw)
+      : null
+
+    return res.status(200).json({
+      success: true,
+      message: 'La imagen ya fue analizada automáticamente. Cargando en AddProduct.',
+      job,
+      analysis: job.analysisRaw ? { ...job.analysisRaw, normalized } : null,
     })
   }
 
@@ -1593,6 +1840,7 @@ export const markAnalysisJobImportedToAddProduct = asyncHandler(async (req, res)
     success: true,
     message: 'Imagen enviada a AddProduct.',
     job,
+    analysis: null,
   })
 })
 
@@ -1779,6 +2027,55 @@ export const retryAnalysisJob = asyncHandler(async (req, res) => {
  *   "publish": false
  * }
  */
+const applyApproveOverrides = ({ payload, overrides = {} }) => {
+  if (normalizeString(overrides.titulo)) payload.title = normalizeString(overrides.titulo)
+  if (normalizeString(overrides.descripcion)) payload.description = normalizeString(overrides.descripcion)
+  if (normalizeString(overrides.categoria)) payload.categoria = normalizeString(overrides.categoria)
+  if (normalizeString(overrides.subcategoria)) payload.subcategoria = normalizeString(overrides.subcategoria)
+  if (normalizeString(overrides.marca)) payload.marca = normalizeString(overrides.marca)
+  if (normalizeString(overrides.currency)) payload.currency = normalizeString(overrides.currency).toUpperCase()
+
+  const overridePrice = pickFirstNonNegativeNumber(overrides.price, overrides.precio)
+  if (overridePrice !== null) payload.price = overridePrice
+
+  if (!payload.hasVariants) {
+    const overrideStock = pickFirstNonNegativeNumber(overrides.stock)
+    if (overrideStock !== null) payload.stock = overrideStock
+  }
+
+  if (normalizeString(overrides.seoTitle)) {
+    payload.seo = { ...(payload.seo || {}), metaTitle: normalizeString(overrides.seoTitle) }
+  }
+  if (normalizeString(overrides.seoDescription)) {
+    payload.seo = { ...(payload.seo || {}), metaDescription: normalizeString(overrides.seoDescription) }
+  }
+
+  return payload
+}
+
+/**
+ * Arma el payload final a aprobar. Si el job pasó por el módulo AddProduct
+ * (tiene analysisRaw guardado), usamos ese análisis completo para no
+ * perder variantes, ficha técnica, SEO y logística — igual que si un
+ * humano lo hubiera completado a mano en AddProduct. Si no, caemos al
+ * camino simple de siempre (un producto con una sola imagen).
+ */
+const buildApprovalPayload = ({ job, tenantId, overrides, userId }) => {
+  if (job.analysisRaw) {
+    const payload = buildAutonomousProductPayload({
+      analysis: job.analysisRaw,
+      job,
+      tenantId,
+    })
+
+    payload.createdBy = userId || job.createdBy || null
+
+    return applyApproveOverrides({ payload, overrides })
+  }
+
+  return buildProductDraftFromJob({ job, overrides, userId })
+}
+
 export const approveAnalysisJob = asyncHandler(async (req, res) => {
   const tenantId = getTenantId(req)
   const userId = getUserId(req)
@@ -1793,6 +2090,7 @@ export const approveAnalysisJob = asyncHandler(async (req, res) => {
   const job = await ensureJobBelongsToTenant({
     jobId: req.params.jobId,
     tenantId,
+    select: '+analysisRaw',
   })
 
   if (job.status !== JOB_STATUS.COMPLETED) {
@@ -1813,8 +2111,9 @@ export const approveAnalysisJob = asyncHandler(async (req, res) => {
 
   const publish = parseBoolean(req.body?.publish)
 
-  const productPayload = buildProductDraftFromJob({
+  const productPayload = buildApprovalPayload({
     job,
+    tenantId,
     overrides: req.body || {},
     userId,
   })

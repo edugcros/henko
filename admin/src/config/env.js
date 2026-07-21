@@ -46,9 +46,7 @@ const normalizeDomain = value => {
 }
 
 const isLocalValue = value => {
-  return /localhost|127\.0\.0\.1|0\.0\.0\.0|henko\.local|\.local|\.test/i.test(
-    clean(value),
-  )
+  return /localhost|127\.0\.0\.1|0\.0\.0\.0|henko\.local|\.local|\.test/i.test(clean(value))
 }
 
 const isHttpsUrl = value => {
@@ -73,14 +71,9 @@ const hasPlaceholder = value => {
 
   if (!normalized) return false
 
-  return [
-    'CHANGE_ME',
-    'REPLACE_ME',
-    'REEMPLAZAR',
-    'PEGAR_ACA',
-    'YOUR_',
-    'TU_',
-  ].some(token => normalized.includes(token))
+  return ['CHANGE_ME', 'REPLACE_ME', 'REEMPLAZAR', 'PEGAR_ACA', 'YOUR_', 'TU_'].some(token =>
+    normalized.includes(token),
+  )
 }
 
 const getFirst = (...values) => {
@@ -88,17 +81,13 @@ const getFirst = (...values) => {
 }
 
 const nodeEnv =
-  clean(process.env.REACT_APP_NODE_ENV) ||
-  clean(process.env.NODE_ENV) ||
-  'development'
+  clean(process.env.REACT_APP_NODE_ENV) || clean(process.env.NODE_ENV) || 'development'
 
 const apiBaseUrl = cleanUrl(
   getFirst(process.env.REACT_APP_API_BASE_URL, process.env.REACT_APP_API_URL),
 )
 
-const apiUrl = cleanUrl(
-  getFirst(process.env.REACT_APP_API_URL, process.env.REACT_APP_API_BASE_URL),
-)
+const apiUrl = cleanUrl(getFirst(process.env.REACT_APP_API_URL, process.env.REACT_APP_API_BASE_URL))
 
 const assetsBaseUrl = cleanUrl(process.env.REACT_APP_ASSETS_BASE_URL)
 
@@ -114,10 +103,7 @@ export const env = {
   storefrontPreviewUrl: cleanUrl(process.env.REACT_APP_STOREFRONT_PREVIEW_URL),
 
   publicBaseDomain: normalizeDomain(
-    getFirst(
-      process.env.REACT_APP_PUBLIC_BASE_DOMAIN,
-      process.env.REACT_APP_PRODUCTION_DOMAIN,
-    ),
+    getFirst(process.env.REACT_APP_PUBLIC_BASE_DOMAIN, process.env.REACT_APP_PRODUCTION_DOMAIN),
   ),
 
   adminBaseDomain: normalizeDomain(process.env.REACT_APP_ADMIN_BASE_DOMAIN),
@@ -128,23 +114,13 @@ export const env = {
 
   tenantHeader: clean(process.env.REACT_APP_TENANT_HEADER) || 'x-tenant-domain',
 
-  csrfHeaderName:
-    clean(process.env.REACT_APP_CSRF_HEADER_NAME) || 'x-csrf-token',
+  csrfHeaderName: clean(process.env.REACT_APP_CSRF_HEADER_NAME) || 'x-csrf-token',
 
-  enableTenantDomainResolution: bool(
-    process.env.REACT_APP_ENABLE_TENANT_DOMAIN_RESOLUTION,
-    true,
-  ),
+  enableTenantDomainResolution: bool(process.env.REACT_APP_ENABLE_TENANT_DOMAIN_RESOLUTION, true),
 
-  enablePromotionalBlocks: bool(
-    process.env.REACT_APP_ENABLE_PROMOTIONAL_BLOCKS,
-    true,
-  ),
+  enablePromotionalBlocks: bool(process.env.REACT_APP_ENABLE_PROMOTIONAL_BLOCKS, true),
 
-  enableAiProductAnalysis: bool(
-    process.env.REACT_APP_ENABLE_AI_PRODUCT_ANALYSIS,
-    true,
-  ),
+  enableAiProductAnalysis: bool(process.env.REACT_APP_ENABLE_AI_PRODUCT_ANALYSIS, true),
 
   enableAiFeatures: bool(process.env.REACT_APP_ENABLE_AI_FEATURES, true),
 
@@ -168,9 +144,7 @@ if (!isValidUrl(env.apiBaseUrl)) {
 }
 
 if (!env.apiBaseUrl.endsWith('/api')) {
-  throw new Error(
-    `REACT_APP_API_BASE_URL debe terminar en /api. Recibido: ${env.apiBaseUrl}`,
-  )
+  throw new Error(`REACT_APP_API_BASE_URL debe terminar en /api. Recibido: ${env.apiBaseUrl}`)
 }
 
 if (env.apiUrl && !isValidUrl(env.apiUrl)) {
@@ -203,21 +177,15 @@ if (env.isProduction) {
   }
 
   if (!env.storefrontPreviewUrl) {
-    throw new Error(
-      'REACT_APP_STOREFRONT_PREVIEW_URL es obligatorio en producción',
-    )
+    throw new Error('REACT_APP_STOREFRONT_PREVIEW_URL es obligatorio en producción')
   }
 
   if (!isValidUrl(env.storefrontPreviewUrl)) {
-    throw new Error(
-      `REACT_APP_STOREFRONT_PREVIEW_URL inválido: ${env.storefrontPreviewUrl}`,
-    )
+    throw new Error(`REACT_APP_STOREFRONT_PREVIEW_URL inválido: ${env.storefrontPreviewUrl}`)
   }
 
   if (!isHttpsUrl(env.apiBaseUrl)) {
-    throw new Error(
-      `REACT_APP_API_BASE_URL debe usar HTTPS en producción: ${env.apiBaseUrl}`,
-    )
+    throw new Error(`REACT_APP_API_BASE_URL debe usar HTTPS en producción: ${env.apiBaseUrl}`)
   }
 
   if (!isHttpsUrl(env.storefrontPreviewUrl)) {
@@ -227,15 +195,11 @@ if (env.isProduction) {
   }
 
   if (env.assetsBaseUrl && !isHttpsUrl(env.assetsBaseUrl)) {
-    throw new Error(
-      `REACT_APP_ASSETS_BASE_URL debe usar HTTPS en producción: ${env.assetsBaseUrl}`,
-    )
+    throw new Error(`REACT_APP_ASSETS_BASE_URL debe usar HTTPS en producción: ${env.assetsBaseUrl}`)
   }
 
   if (isLocalValue(env.apiBaseUrl)) {
-    throw new Error(
-      `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
-    )
+    throw new Error(`REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`)
   }
 
   if (isLocalValue(env.publicBaseDomain)) {
@@ -245,22 +209,15 @@ if (env.isProduction) {
   }
 
   if (isLocalValue(env.adminBaseDomain)) {
-    throw new Error(
-      `REACT_APP_ADMIN_BASE_DOMAIN inválido para producción: ${env.adminBaseDomain}`,
-    )
+    throw new Error(`REACT_APP_ADMIN_BASE_DOMAIN inválido para producción: ${env.adminBaseDomain}`)
   }
 
   if (env.debugApi) {
     throw new Error('REACT_APP_DEBUG_API=true no está permitido en producción')
   }
 
-  if (
-    env.mercadoPagoPublicKey &&
-    env.mercadoPagoPublicKey.startsWith('TEST-')
-  ) {
-    throw new Error(
-      'REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en producción',
-    )
+  if (env.mercadoPagoPublicKey && env.mercadoPagoPublicKey.startsWith('TEST-')) {
+    throw new Error('REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en producción')
   }
 
   if (hasPlaceholder(env.mercadoPagoPublicKey)) {

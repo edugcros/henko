@@ -8,6 +8,7 @@ import {
   createProduct,
   getaProduct,
   getAllProduct,
+  listDraftProducts,
   getProductCategories,
   getCategoryConfig,
   upsertCategoryConfig,
@@ -31,6 +32,7 @@ import {
 } from '../middlewares/tenantMiddleware.js'
 import { uploadPhoto, productImgResize } from '../middlewares/uploadImage.js'
 import { analyzeImage } from '../services/aiVisionService.js'
+import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 
 const router = express.Router()
@@ -89,9 +91,16 @@ router.post(
     try {
       const result = await analyzeImage(req.file.buffer, req.file.mimetype, tenantId)
 
+      // Un solo motor de normalización (autonomousProductBuilder.js) para
+      // todo el sistema: esta misma función es la que arma el producto
+      // cuando el agente lo hace solo de madrugada. Acá la exponemos como
+      // "normalized" para que AddProduct use el mismo resultado en lugar
+      // de recalcularlo con su propia copia de la lógica.
+      const normalized = buildNormalizedDraftFromAnalysis(result)
+
       return res.status(200).json({
         success: true,
-        data: result,
+        data: { ...result, normalized },
       })
     } catch (error) {
       const status =
@@ -216,6 +225,8 @@ router.post(
   productImgResize,
   createProduct,
 )
+
+router.get('/admin/drafts', adminContext, listDraftProducts)
 
 router.put('/:id', adminContext, updateProduct)
 router.delete('/:productId', adminContext, deleteProduct)

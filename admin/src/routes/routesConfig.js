@@ -88,12 +88,8 @@ export const privateRoutes = [
 
 // 🧠 Conjuntos de rutas para validaciones automáticas
 export const publicRoutesSet = new Set(publicRoutes.map(route => route.path))
-export const publicDynamicRoutesSet = new Set(
-  publicDynamicRoutes.map(route => route.path),
-)
-export const protectedRoutesSet = new Set(
-  protectedRoutes.map(route => route.path),
-)
+export const publicDynamicRoutesSet = new Set(publicDynamicRoutes.map(route => route.path))
+export const protectedRoutesSet = new Set(protectedRoutes.map(route => route.path))
 export const privateRoutesSet = new Set(privateRoutes.map(route => route.path))
 
 // 🔁 Set global para validaciones si se requiere

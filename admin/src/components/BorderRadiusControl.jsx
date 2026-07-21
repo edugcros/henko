@@ -23,10 +23,7 @@ const BorderRadiusControl = ({ value, onChange }) => {
   const getNumericValue = val => parseFloat(val?.replace('rem', '') || 0)
 
   return (
-    <Paper
-      elevation={0}
-      sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}
-    >
+    <Paper elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}>
       <Typography variant="h6" gutterBottom>
         Bordes Redondeados
       </Typography>
@@ -51,9 +48,7 @@ const BorderRadiusControl = ({ value, onChange }) => {
                   <TextField
                     size="small"
                     value={value?.[preset.key] || '0rem'}
-                    onChange={e =>
-                      onChange({ ...value, [preset.key]: e.target.value })
-                    }
+                    onChange={e => onChange({ ...value, [preset.key]: e.target.value })}
                     sx={{ width: 80 }}
                     inputProps={{ style: { textAlign: 'center' } }}
                   />

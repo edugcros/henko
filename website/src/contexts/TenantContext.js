@@ -1,12 +1,5 @@
 // 📁 src/contexts/TenantContext.js - VERSIÓN INTEGRADA Y OPTIMIZADA
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-} from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import tenantService from '../services/tenantService'
 import { setPreviewMode, updateLocalConfig } from '@features/theme/themeSlice'
@@ -130,10 +123,7 @@ export const TenantProvider = ({ children }) => {
 
   const loadTenantAndTheme = useCallback(
     async (attempt = 1) => {
-      if (
-        typeof window !== 'undefined' &&
-        window.location.pathname === '/theme-preview'
-      ) {
+      if (typeof window !== 'undefined' && window.location.pathname === '/theme-preview') {
         setLocalState(prev => ({
           ...prev,
           isLoading: false,
@@ -170,8 +160,7 @@ export const TenantProvider = ({ children }) => {
         const fullConfig = {
           ...themeRes.data,
           tenantId,
-          tenantName:
-            tenantName || themeRes.data?.general?.storeName || 'Mi Tienda',
+          tenantName: tenantName || themeRes.data?.general?.storeName || 'Mi Tienda',
           _meta: {
             loadedAt: Date.now(),
             source: 'api',
@@ -196,10 +185,7 @@ export const TenantProvider = ({ children }) => {
 
         return fullConfig
       } catch (error) {
-        console.error(
-          `[TenantContext] ❌ Error (intento ${attempt}):`,
-          error.message,
-        )
+        console.error(`[TenantContext] ❌ Error (intento ${attempt}):`, error.message)
 
         // RETRY LOGIC
         if (attempt < CONFIG.RETRY_ATTEMPTS) {
@@ -229,8 +215,7 @@ export const TenantProvider = ({ children }) => {
           error: {
             message: error.message,
             isOffline:
-              typeof window !== 'undefined' &&
-              typeof window.navigator !== 'undefined'
+              typeof window !== 'undefined' && typeof window.navigator !== 'undefined'
                 ? !window.navigator.onLine
                 : false,
             timestamp: Date.now(),
@@ -338,11 +323,7 @@ export const TenantProvider = ({ children }) => {
         }))
       }
     }
-  }, [
-    reduxTheme,
-    localState.initialized,
-    localState.themeConfig?._meta?.loadedAt,
-  ])
+  }, [reduxTheme, localState.initialized, localState.themeConfig?._meta?.loadedAt])
 
   // ==========================================
   // MEMOIZED VALUE
@@ -354,10 +335,7 @@ export const TenantProvider = ({ children }) => {
       isLoading: localState.isLoading || reduxLoading,
       error: localState.error,
       tenantId: localState.tenantId,
-      isReady:
-        localState.initialized &&
-        !!localState.themeConfig &&
-        !localState.isLoading,
+      isReady: localState.initialized && !!localState.themeConfig && !localState.isLoading,
       refresh,
       updateOptimistic,
       syncWithRedux,
@@ -369,9 +347,7 @@ export const TenantProvider = ({ children }) => {
   // RENDER
   // ==========================================
 
-  return (
-    <TenantContext.Provider value={value}>{children}</TenantContext.Provider>
-  )
+  return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>
 }
 
 // ==========================================

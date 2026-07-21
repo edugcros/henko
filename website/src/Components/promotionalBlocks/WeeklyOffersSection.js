@@ -16,8 +16,7 @@ import { Link } from 'react-router-dom'
 
 const getProduct = item => {
   if (!item) return null
-  if (item.productId && typeof item.productId === 'object')
-    return item.productId
+  if (item.productId && typeof item.productId === 'object') return item.productId
   if (item.product && typeof item.product === 'object') return item.product
   return null
 }
@@ -47,10 +46,7 @@ const WeeklyOffersSection = ({ block }) => {
   if (products.length === 0) return null
 
   return (
-    <Box
-      component="section"
-      sx={{ py: { xs: 5, md: 7 }, bgcolor: 'background.default' }}
-    >
+    <Box component="section" sx={{ py: { xs: 5, md: 7 }, bgcolor: 'background.default' }}>
       <Container maxWidth="lg">
         <Box textAlign="center" mb={4}>
           <Typography variant="h4" fontWeight={900}>
@@ -91,10 +87,7 @@ const WeeklyOffersSection = ({ block }) => {
                   <CardMedia
                     component="img"
                     height="230"
-                    image={
-                      product.images?.[0]?.url ||
-                      '/assets/images/placeholder.png'
-                    }
+                    image={product.images?.[0]?.url || '/assets/images/placeholder.png'}
                     alt={product.title || 'Producto'}
                     sx={{
                       objectFit: 'cover',
@@ -105,19 +98,11 @@ const WeeklyOffersSection = ({ block }) => {
                   <CardContent>
                     <Stack direction="row" spacing={1} mb={1} flexWrap="wrap">
                       {item.customLabel && (
-                        <Chip
-                          size="small"
-                          color="secondary"
-                          label={item.customLabel}
-                        />
+                        <Chip size="small" color="secondary" label={item.customLabel} />
                       )}
 
                       {discount > 0 && (
-                        <Chip
-                          size="small"
-                          color="error"
-                          label={`${discount}% OFF`}
-                        />
+                        <Chip size="small" color="error" label={`${discount}% OFF`} />
                       )}
                     </Stack>
 
@@ -129,12 +114,7 @@ const WeeklyOffersSection = ({ block }) => {
                       {product.categoria || product.category || ''}
                     </Typography>
 
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1}
-                      mt={1}
-                    >
+                    <Stack direction="row" alignItems="center" spacing={1} mt={1}>
                       {discount > 0 && (
                         <Typography
                           variant="body2"

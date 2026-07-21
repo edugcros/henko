@@ -89,25 +89,17 @@ const CouponsPage = () => {
   // SELECTORES
   // ======================================================
 
-  const {
-    coupons,
-    pagination,
-    isLoading,
-    isSuccess,
-    isError,
-    message,
-    error,
-    lastFilters,
-  } = useSelector(state => ({
-    coupons: state.coupon.coupons || [],
-    pagination: state.coupon.pagination || { total: 0, page: 1, pages: 1 },
-    isLoading: state.coupon.isLoading,
-    isSuccess: state.coupon.isSuccess,
-    isError: state.coupon.isError,
-    message: state.coupon.message,
-    error: selectCouponError(state),
-    lastFilters: state.coupon.lastFilters,
-  }))
+  const { coupons, pagination, isLoading, isSuccess, isError, message, error, lastFilters } =
+    useSelector(state => ({
+      coupons: state.coupon.coupons || [],
+      pagination: state.coupon.pagination || { total: 0, page: 1, pages: 1 },
+      isLoading: state.coupon.isLoading,
+      isSuccess: state.coupon.isSuccess,
+      isError: state.coupon.isError,
+      message: state.coupon.message,
+      error: selectCouponError(state),
+      lastFilters: state.coupon.lastFilters,
+    }))
 
   // ======================================================
   // ESTADOS LOCALES
@@ -142,13 +134,7 @@ const CouponsPage = () => {
   useEffect(() => {
     dispatch(getAllCoupons(filters))
     dispatch(setFilters(filters))
-  }, [
-    dispatch,
-    filters.status,
-    filters.page,
-    filters.limit,
-    filters.discountType,
-  ])
+  }, [dispatch, filters.status, filters.page, filters.limit, filters.discountType])
 
   // Búsqueda con debounce
   useEffect(() => {
@@ -300,9 +286,7 @@ const CouponsPage = () => {
   const handleClone = useCallback(
     async coupon => {
       try {
-        const result = await dispatch(
-          cloneCoupon(coupon?.id || coupon?._id),
-        ).unwrap()
+        const result = await dispatch(cloneCoupon(coupon?.id || coupon?._id)).unwrap()
         toast.success(`Clonado: ${result.code}`)
         dispatch(getAllCoupons(filters))
       } catch (err) {
@@ -333,17 +317,11 @@ const CouponsPage = () => {
         sx={{ mb: 4 }}
       >
         <Box>
-          <Typography
-            variant="h4"
-            fontWeight="800"
-            color="primary.main"
-            gutterBottom
-          >
+          <Typography variant="h4" fontWeight="800" color="primary.main" gutterBottom>
             Gestión de Cupones
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {pagination.total} cupones encontrados{' '}
-            {filters.search && `para "${filters.search}"`}
+            {pagination.total} cupones encontrados {filters.search && `para "${filters.search}"`}
           </Typography>
         </Box>
 
@@ -390,11 +368,7 @@ const CouponsPage = () => {
           backdropFilter: 'blur(8px)',
         }}
       >
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          spacing={3}
-          alignItems="center"
-        >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="center">
           <TextField
             fullWidth
             size="small"
@@ -408,10 +382,7 @@ const CouponsPage = () => {
                 </InputAdornment>
               ),
               endAdornment: filters.search && (
-                <IconButton
-                  size="small"
-                  onClick={() => handleFilterChange('search', '')}
-                >
+                <IconButton size="small" onClick={() => handleFilterChange('search', '')}>
                   <ClearIcon fontSize="small" />
                 </IconButton>
               ),
@@ -453,9 +424,7 @@ const CouponsPage = () => {
                 <RefreshIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            {(filters.search ||
-              filters.status !== 'all' ||
-              filters.discountType) && (
+            {(filters.search || filters.status !== 'all' || filters.discountType) && (
               <Button
                 size="small"
                 onClick={() => setLocalFilters(DEFAULT_FILTERS)}
@@ -497,11 +466,7 @@ const CouponsPage = () => {
       <Modal
         isOpen={showForm}
         onClose={() => !isSubmitting && setShowForm(false)}
-        title={
-          editingCoupon
-            ? `Editar Cupón: ${editingCoupon.code}`
-            : 'Crear Nuevo Cupón'
-        }
+        title={editingCoupon ? `Editar Cupón: ${editingCoupon.code}` : 'Crear Nuevo Cupón'}
         size="large"
       >
         <CouponForm

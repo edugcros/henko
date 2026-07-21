@@ -1,23 +1,7 @@
 import React, { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Button,
-  Card,
-  Col,
-  Divider,
-  Flex,
-  Row,
-  Space,
-  Tag,
-  Typography,
-  theme,
-} from 'antd'
-import {
-  CheckCircleFilled,
-  CrownOutlined,
-  LockOutlined,
-  RocketOutlined,
-} from '@ant-design/icons'
+import { Button, Card, Col, Divider, Flex, Row, Space, Tag, Typography, theme } from 'antd'
+import { CheckCircleFilled, CrownOutlined, LockOutlined, RocketOutlined } from '@ant-design/icons'
 
 const { Paragraph, Text, Title } = Typography
 const { useToken } = theme
@@ -41,8 +25,7 @@ const SUBSCRIPTION_PLANS = Object.freeze([
   {
     id: 'pro',
     name: 'Profesional',
-    description:
-      'Automatización y capacidad para una operación en crecimiento.',
+    description: 'Automatización y capacidad para una operación en crecimiento.',
     monthlyPrice: 99,
     icon: CrownOutlined,
     features: [
@@ -97,9 +80,7 @@ const PlanCard = ({ plan, onSelect }) => {
             flex: '0 0 52px',
             borderRadius: token.borderRadius,
             color: accentColor,
-            background: plan.featured
-              ? token.colorPrimaryBg
-              : token.colorInfoBg,
+            background: plan.featured ? token.colorPrimaryBg : token.colorInfoBg,
           }}
         >
           <PlanIcon aria-hidden style={{ fontSize: 25 }} />
@@ -115,10 +96,7 @@ const PlanCard = ({ plan, onSelect }) => {
       <Title level={2} style={{ margin: '22px 0 6px', fontSize: 25 }}>
         {plan.name}
       </Title>
-      <Paragraph
-        type="secondary"
-        style={{ minHeight: 44, marginBottom: 20, lineHeight: 1.55 }}
-      >
+      <Paragraph type="secondary" style={{ minHeight: 44, marginBottom: 20, lineHeight: 1.55 }}>
         {plan.description}
       </Paragraph>
 
@@ -138,11 +116,7 @@ const PlanCard = ({ plan, onSelect }) => {
 
       <Divider style={{ margin: '24px 0 18px' }} />
 
-      <Space
-        direction="vertical"
-        size={13}
-        style={{ width: '100%', flex: 1, marginBottom: 28 }}
-      >
+      <Space direction="vertical" size={13} style={{ width: '100%', flex: 1, marginBottom: 28 }}>
         {plan.features.map(feature => (
           <Flex key={feature} align="flex-start" gap={10}>
             <CheckCircleFilled
@@ -218,19 +192,12 @@ const SubscriptionPage = () => {
           >
             Planes de suscripción
           </Text>
-          <Title
-            id="subscription-title"
-            level={1}
-            style={{ margin: '10px 0 12px', fontSize: 38 }}
-          >
+          <Title id="subscription-title" level={1} style={{ margin: '10px 0 12px', fontSize: 38 }}>
             Elegí una base sólida para tu tienda
           </Title>
-          <Paragraph
-            type="secondary"
-            style={{ margin: 0, fontSize: 17, lineHeight: 1.65 }}
-          >
-            Seleccioná la capacidad que necesitás hoy. Podrás cambiar de plan
-            cuando evolucione tu operación.
+          <Paragraph type="secondary" style={{ margin: 0, fontSize: 17, lineHeight: 1.65 }}>
+            Seleccioná la capacidad que necesitás hoy. Podrás cambiar de plan cuando evolucione tu
+            operación.
           </Paragraph>
         </header>
 

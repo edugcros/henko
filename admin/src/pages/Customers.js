@@ -1,10 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import {
-  getUsers,
-  removeUser,
-  toggleBlockUser,
-} from '@features/customers/customerSlice'
+import { getUsers, removeUser, toggleBlockUser } from '@features/customers/customerSlice'
 
 import {
   Box,
@@ -57,13 +53,9 @@ const Customers = () => {
       if (actionType === 'delete') {
         await dispatch(removeUser(selectedUser._id)).unwrap()
       } else if (actionType === 'block') {
-        await dispatch(
-          toggleBlockUser({ id: selectedUser._id, block: true }),
-        ).unwrap()
+        await dispatch(toggleBlockUser({ id: selectedUser._id, block: true })).unwrap()
       } else if (actionType === 'unblock') {
-        await dispatch(
-          toggleBlockUser({ id: selectedUser._id, block: false }),
-        ).unwrap()
+        await dispatch(toggleBlockUser({ id: selectedUser._id, block: false })).unwrap()
       }
     } catch (err) {
       console.error('Error ejecutando acción:', err)
@@ -85,12 +77,7 @@ const Customers = () => {
 
   return (
     <Box p={{ xs: 2, md: 4 }}>
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={4}
-      >
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={4}>
         <Box>
           <Typography variant="h4" fontWeight={700} color="primary.main">
             Gestión de Clientes
@@ -110,21 +97,12 @@ const Customers = () => {
               color: 'primary.contrastText',
             }}
           />
-          <Chip
-            label={`Bloqueados: ${blockedUsers}`}
-            color="error"
-            sx={{ fontWeight: 'bold' }}
-          />
+          <Chip label={`Bloqueados: ${blockedUsers}`} color="error" sx={{ fontWeight: 'bold' }} />
         </Stack>
       </Stack>
 
       {isLoading && customers.length === 0 ? (
-        <Box
-          display="flex"
-          justifyContent="center"
-          alignItems="center"
-          minHeight="50vh"
-        >
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
           <CircularProgress size={60} thickness={4} />
         </Box>
       ) : (
@@ -142,17 +120,10 @@ const Customers = () => {
                   }}
                 >
                   <Box p={3}>
-                    <Stack
-                      direction="row"
-                      spacing={2}
-                      alignItems="center"
-                      mb={2}
-                    >
+                    <Stack direction="row" spacing={2} alignItems="center" mb={2}>
                       <Avatar
                         sx={{
-                          bgcolor: user.isBlocked
-                            ? 'error.light'
-                            : 'primary.main',
+                          bgcolor: user.isBlocked ? 'error.light' : 'primary.main',
                         }}
                       >
                         <PersonIcon />
@@ -161,11 +132,7 @@ const Customers = () => {
                         <Typography variant="h6" noWrap fontWeight={600}>
                           {user.firstname} {user.lastname}
                         </Typography>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          noWrap
-                        >
+                        <Typography variant="body2" color="text.secondary" noWrap>
                           {user.email}
                         </Typography>
                       </Box>
@@ -176,16 +143,10 @@ const Customers = () => {
                     <Stack spacing={1} mb={2}>
                       <Stack direction="row" alignItems="center" spacing={1}>
                         <PhoneIcon fontSize="small" color="action" />
-                        <Typography variant="body2">
-                          {user.mobile || 'No registrado'}
-                        </Typography>
+                        <Typography variant="body2">{user.mobile || 'No registrado'}</Typography>
                       </Stack>
                       <Stack direction="row" spacing={1}>
-                        <Chip
-                          label={user.role}
-                          size="small"
-                          variant="outlined"
-                        />
+                        <Chip label={user.role} size="small" variant="outlined" />
                         <Chip
                           label={user.isBlocked ? 'BLOQUEADO' : 'ACTIVO'}
                           color={user.isBlocked ? 'error' : 'success'}
@@ -194,26 +155,15 @@ const Customers = () => {
                       </Stack>
                     </Stack>
 
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      justifyContent="flex-end"
-                    >
-                      <Tooltip
-                        title={user.isBlocked ? 'Desbloquear' : 'Bloquear'}
-                      >
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Tooltip title={user.isBlocked ? 'Desbloquear' : 'Bloquear'}>
                         <IconButton
                           size="small"
                           onClick={() =>
-                            handleActionClick(
-                              user,
-                              user.isBlocked ? 'unblock' : 'block',
-                            )
+                            handleActionClick(user, user.isBlocked ? 'unblock' : 'block')
                           }
                           sx={{
-                            bgcolor: user.isBlocked
-                              ? 'success.light'
-                              : 'warning.light',
+                            bgcolor: user.isBlocked ? 'success.light' : 'warning.light',
                             '&:hover': { opacity: 0.8 },
                           }}
                         >
@@ -262,8 +212,7 @@ const Customers = () => {
           <Typography variant="body1">
             {actionType === 'delete' &&
               `¿Estás seguro de eliminar permanentemente a ${selectedUser?.firstname}?`}
-            {actionType === 'block' &&
-              `¿Deseas restringir el acceso a ${selectedUser?.firstname}?`}
+            {actionType === 'block' && `¿Deseas restringir el acceso a ${selectedUser?.firstname}?`}
             {actionType === 'unblock' &&
               `¿Deseas restaurar el acceso a ${selectedUser?.firstname}?`}
           </Typography>

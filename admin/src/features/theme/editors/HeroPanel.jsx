@@ -251,9 +251,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                   {hero.title || 'Título del Hero'}
                 </Typography>
 
-                <Typography variant="body1">
-                  {hero.subtitle || 'Subtítulo descriptivo'}
-                </Typography>
+                <Typography variant="body1">{hero.subtitle || 'Subtítulo descriptivo'}</Typography>
 
                 {hero.showCta !== false && (
                   <Button variant="contained" sx={{ mt: 2 }}>

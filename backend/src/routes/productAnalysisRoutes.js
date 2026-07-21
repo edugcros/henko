@@ -20,6 +20,9 @@ import {
   runWishlistPromotionNotifications,
   hideAnalysisJob,
   unhideAnalysisJob,
+  getAnalysisAgentStatus,
+  runAnalysisJobNow,
+  rescheduleAnalysisJob,
 } from '../controller/productAnalysisController.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
@@ -236,8 +239,11 @@ router.use(authenticateAdmin)
 
 router.post('/process-due', analysisWriteLimiter, processDueAnalysisJobs)
 
+router.get('/agent/status', getAnalysisAgentStatus)
+
 router.patch('/:jobId/hide', hideAnalysisJob)
 router.patch('/:jobId/unhide', unhideAnalysisJob)
+router.patch('/:jobId/reschedule', analysisWriteLimiter, rescheduleAnalysisJob)
 
 router.get('/', listAnalysisJobs)
 router.get('/:jobId/image-file', downloadAnalysisJobImage)
@@ -246,6 +252,7 @@ router.get('/:jobId', getAnalysisJobById)
 router.post('/:jobId/import-to-add-product', markAnalysisJobImportedToAddProduct)
 router.post('/:jobId/complete-add-product', completeAddProductJob)
 router.post('/:jobId/retry', retryAnalysisJob)
+router.post('/:jobId/run-now', analysisWriteLimiter, runAnalysisJobNow)
 router.post('/:jobId/approve', approveAnalysisJob)
 router.post('/:jobId/reject', rejectAnalysisJob)
 

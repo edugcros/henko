@@ -3,10 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
 import Container from '@components/Container'
 import ProductCard from '@components/ProductCard'
-import {
-  getAllProducts,
-  getProductCategories,
-} from '@features/products/productSlice'
+import { getAllProducts, getProductCategories } from '@features/products/productSlice'
 
 import {
   Box,
@@ -31,11 +28,7 @@ import {
 import { ExpandMore, ExpandLess, Search } from '@mui/icons-material'
 import { fetchPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSlice'
 import { useUserMetrics } from '../Hooks/useUserMetrics'
-import {
-  getActiveThemeConfig,
-  getSpacingThemeConfig,
-  getThemeColors,
-} from '@utils/themeRuntime'
+import { getActiveThemeConfig, getSpacingThemeConfig, getThemeColors } from '@utils/themeRuntime'
 
 import { selectPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSelectors'
 
@@ -80,11 +73,7 @@ const getDiscountedPrice = (price, discountPercentage) => {
   return Math.max(0, basePrice - basePrice * (discount / 100))
 }
 
-const PUBLIC_PROMOTION_VISIBILITIES = new Set([
-  'public',
-  'visible',
-  'published',
-])
+const PUBLIC_PROMOTION_VISIBILITIES = new Set(['public', 'visible', 'published'])
 
 const isPublicPromotionBlock = block => {
   if (!block || block.isActive === false) return false
@@ -140,9 +129,7 @@ const formatAttributeLabel = value => {
   const normalized = String(value || '')
     .replace(/[_-]+/g, ' ')
     .trim()
-  return normalized
-    ? normalized.charAt(0).toUpperCase() + normalized.slice(1)
-    : 'Característica'
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Característica'
 }
 
 const getMatchingVariantContext = (product, filters) => {
@@ -153,9 +140,7 @@ const getMatchingVariantContext = (product, filters) => {
   if (entries.length === 0 || !Array.isArray(product?.variants)) return null
 
   const availableVariants = product.variants
-    .filter(
-      variant => variant?.isActive !== false && Number(variant?.stock || 0) > 0,
-    )
+    .filter(variant => variant?.isActive !== false && Number(variant?.stock || 0) > 0)
     .map(variant => ({
       variant,
       attributes:
@@ -189,17 +174,12 @@ const getMatchingVariantContext = (product, filters) => {
       matchScore: entries.reduce(
         (score, [attributeKey, acceptedValues]) =>
           score +
-          (acceptedValues.includes(
-            String(candidate.attributes[attributeKey] ?? ''),
-          )
-            ? 1
-            : 0),
+          (acceptedValues.includes(String(candidate.attributes[attributeKey] ?? '')) ? 1 : 0),
         0,
       ),
     }))
     .filter(
-      ({ variant, matchScore }) =>
-        matchScore > 0 && Boolean(variant?.image?.url || variant?.image),
+      ({ variant, matchScore }) => matchScore > 0 && Boolean(variant?.image?.url || variant?.image),
     )
     .sort((left, right) => right.matchScore - left.matchScore)[0]?.variant
 
@@ -230,18 +210,12 @@ const OurStore = () => {
     meta = {},
   } = useSelector(state => state.product || {})
 
-  const products = useMemo(
-    () => (Array.isArray(rawProducts) ? rawProducts : []),
-    [rawProducts],
-  )
+  const products = useMemo(() => (Array.isArray(rawProducts) ? rawProducts : []), [rawProducts])
   const categories = useMemo(
     () => (Array.isArray(rawCategories) ? rawCategories : []),
     [rawCategories],
   )
-  const facets = useMemo(
-    () => (Array.isArray(rawFacets) ? rawFacets : []),
-    [rawFacets],
-  )
+  const facets = useMemo(() => (Array.isArray(rawFacets) ? rawFacets : []), [rawFacets])
 
   const rawPromotionalBlocks = useSelector(selectPublicPromotionalBlocks)
   const promotionalBlocks = useMemo(
@@ -249,18 +223,9 @@ const OurStore = () => {
     [rawPromotionalBlocks],
   )
   const themeState = useSelector(state => state.theme) || {}
-  const activeThemeConfig = useMemo(
-    () => getActiveThemeConfig(themeState),
-    [themeState],
-  )
-  const themeColors = useMemo(
-    () => getThemeColors(activeThemeConfig),
-    [activeThemeConfig],
-  )
-  const spacingTheme = useMemo(
-    () => getSpacingThemeConfig(activeThemeConfig),
-    [activeThemeConfig],
-  )
+  const activeThemeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const themeColors = useMemo(() => getThemeColors(activeThemeConfig), [activeThemeConfig])
+  const spacingTheme = useMemo(() => getSpacingThemeConfig(activeThemeConfig), [activeThemeConfig])
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [expandedCategories, setExpandedCategories] = useState({})
@@ -367,9 +332,7 @@ const OurStore = () => {
   ])
 
   const visibleCategories = useMemo(() => {
-    return showAllCategories
-      ? categories
-      : categories.slice(0, CATEGORY_PREVIEW_LIMIT)
+    return showAllCategories ? categories : categories.slice(0, CATEGORY_PREVIEW_LIMIT)
   }, [categories, showAllCategories])
 
   const totalPages = meta?.totalPages || 1
@@ -391,8 +354,7 @@ const OurStore = () => {
 
   const handleCategoryClick = useCallback(
     categoryName => {
-      const nextCategory =
-        selectedCategory === categoryName ? null : categoryName
+      const nextCategory = selectedCategory === categoryName ? null : categoryName
 
       updateFilters(
         {
@@ -416,8 +378,7 @@ const OurStore = () => {
   const handleSubcategoryClick = useCallback(
     (categoryName, subcategoryName) => {
       const shouldClear =
-        selectedCategory === categoryName &&
-        selectedSubcategory === subcategoryName
+        selectedCategory === categoryName && selectedSubcategory === subcategoryName
 
       updateFilters(
         {
@@ -515,14 +476,7 @@ const OurStore = () => {
         page: 1,
       })
     },
-    [
-      events.SEARCH,
-      searchInput,
-      selectedCategory,
-      selectedSubcategory,
-      track,
-      updateFilters,
-    ],
+    [events.SEARCH, searchInput, selectedCategory, selectedSubcategory, track, updateFilters],
   )
 
   const handleSearchClear = useCallback(() => {
@@ -548,16 +502,10 @@ const OurStore = () => {
     }
 
     return parts.join(' · ')
-  }, [
-    selectedCategory,
-    selectedSubcategory,
-    searchQuery,
-    selectedVariantFilters,
-  ])
+  }, [selectedCategory, selectedSubcategory, searchQuery, selectedVariantFilters])
 
   const selectedCategoryData = useMemo(
-    () =>
-      categories.find(category => category.name === selectedCategory) || null,
+    () => categories.find(category => category.name === selectedCategory) || null,
     [categories, selectedCategory],
   )
 
@@ -574,10 +522,7 @@ const OurStore = () => {
 
     for (const attribute of selectedSubcategoryData?.variantAttributes || []) {
       if (attribute?.name) {
-        labelMap.set(
-          attribute.name,
-          attribute.label || formatAttributeLabel(attribute.name),
-        )
+        labelMap.set(attribute.name, attribute.label || formatAttributeLabel(attribute.name))
       }
     }
 
@@ -591,9 +536,7 @@ const OurStore = () => {
       .filter(facet => Array.isArray(facet.options) && facet.options.length > 0)
       .map(facet => ({
         ...facet,
-        label:
-          variantAttributeLabels.get(facet.key) ||
-          formatAttributeLabel(facet.key),
+        label: variantAttributeLabels.get(facet.key) || formatAttributeLabel(facet.key),
       }))
       .sort((left, right) => left.label.localeCompare(right.label, 'es'))
   }, [facets, selectedCategory, selectedSubcategory, variantAttributeLabels])
@@ -603,9 +546,7 @@ const OurStore = () => {
       Object.entries(selectedVariantFilters).flatMap(([attributeKey, values]) =>
         values.map(value => ({
           attributeKey,
-          label:
-            variantAttributeLabels.get(attributeKey) ||
-            formatAttributeLabel(attributeKey),
+          label: variantAttributeLabels.get(attributeKey) || formatAttributeLabel(attributeKey),
           value,
         })),
       ),
@@ -615,10 +556,7 @@ const OurStore = () => {
   const productsWithPromotions = useMemo(() => {
     return products.map(product => {
       const promotion = findPromotionForProduct(product, promotionalBlocks)
-      const matchingVariantContext = getMatchingVariantContext(
-        product,
-        selectedVariantFilters,
-      )
+      const matchingVariantContext = getMatchingVariantContext(product, selectedVariantFilters)
       const productWithFilterContext = matchingVariantContext
         ? {
             ...product,
@@ -652,10 +590,7 @@ const OurStore = () => {
           flexDirection={{ xs: 'column', md: 'row' }}
         >
           {/* Sidebar */}
-          <Box
-            flex={{ xs: '1 1 100%', md: '0 0 25%' }}
-            minWidth={{ xs: '100%', md: 240 }}
-          >
+          <Box flex={{ xs: '1 1 100%', md: '0 0 25%' }} minWidth={{ xs: '100%', md: 240 }}>
             <Paper
               elevation={3}
               sx={{
@@ -687,21 +622,14 @@ const OurStore = () => {
               {isCategoriesLoading ? (
                 <Stack spacing={1}>
                   {[...Array(6)].map((_, i) => (
-                    <Skeleton
-                      key={i}
-                      variant="rectangular"
-                      height={38}
-                      sx={{ borderRadius: 2 }}
-                    />
+                    <Skeleton key={i} variant="rectangular" height={38} sx={{ borderRadius: 2 }} />
                   ))}
                 </Stack>
               ) : (
                 <Stack spacing={0.5}>
                   {visibleCategories.map(category => {
-                    const isSelectedCategory =
-                      selectedCategory === category.name
-                    const isExpanded =
-                      expandedCategories[category.name] || isSelectedCategory
+                    const isSelectedCategory = selectedCategory === category.name
+                    const isExpanded = expandedCategories[category.name] || isSelectedCategory
 
                     return (
                       <Box key={category.name}>
@@ -752,9 +680,7 @@ const OurStore = () => {
                           </Button>
 
                           <Button
-                            onClick={() =>
-                              toggleCategoryExpansion(category.name)
-                            }
+                            onClick={() => toggleCategoryExpansion(category.name)}
                             sx={{
                               minWidth: 42,
                               px: 0,
@@ -774,21 +700,15 @@ const OurStore = () => {
                           <Stack spacing={0.5} sx={{ mt: 0.75, ml: 1.5 }}>
                             {category.subcategories?.map(subcategory => {
                               const isSelectedSubcategory =
-                                isSelectedCategory &&
-                                selectedSubcategory === subcategory.name
+                                isSelectedCategory && selectedSubcategory === subcategory.name
 
                               return (
                                 <Button
                                   key={`${category.name}-${subcategory.name}`}
                                   fullWidth
-                                  variant={
-                                    isSelectedSubcategory ? 'contained' : 'text'
-                                  }
+                                  variant={isSelectedSubcategory ? 'contained' : 'text'}
                                   onClick={() =>
-                                    handleSubcategoryClick(
-                                      category.name,
-                                      subcategory.name,
-                                    )
+                                    handleSubcategoryClick(category.name, subcategory.name)
                                   }
                                   sx={{
                                     justifyContent: 'space-between',
@@ -807,9 +727,7 @@ const OurStore = () => {
                                       bgcolor: isSelectedSubcategory
                                         ? themeColors.actionPrimary
                                         : themeColors.background,
-                                      filter: isSelectedSubcategory
-                                        ? 'brightness(0.92)'
-                                        : 'none',
+                                      filter: isSelectedSubcategory ? 'brightness(0.92)' : 'none',
                                       color: isSelectedSubcategory
                                         ? themeColors.actionPrimaryText
                                         : themeColors.link,
@@ -895,10 +813,7 @@ const OurStore = () => {
                         <RadioGroup
                           value={selectedVariantFilters[facet.key]?.[0] || ''}
                           onChange={event =>
-                            handleVariantFilterChange(
-                              facet.key,
-                              event.target.value,
-                            )
+                            handleVariantFilterChange(facet.key, event.target.value)
                           }
                         >
                           {facet.options.map(option => {
@@ -1075,10 +990,7 @@ const OurStore = () => {
                 </Typography>}*/}
 
                 {activeFilterLabel && (
-                  <Typography
-                    variant="caption"
-                    sx={{ color: themeColors.cardMutedText }}
-                  >
+                  <Typography variant="caption" sx={{ color: themeColors.cardMutedText }}>
                     {activeFilterLabel}
                   </Typography>
                 )}
@@ -1090,12 +1002,7 @@ const OurStore = () => {
                         key={`${chip.attributeKey}-${chip.value}`}
                         size="small"
                         label={`${chip.label}: ${chip.value}`}
-                        onDelete={() =>
-                          handleRemoveVariantFilter(
-                            chip.attributeKey,
-                            chip.value,
-                          )
-                        }
+                        onDelete={() => handleRemoveVariantFilter(chip.attributeKey, chip.value)}
                         sx={{
                           bgcolor: themeColors.background,
                           color: themeColors.text,
@@ -1107,12 +1014,7 @@ const OurStore = () => {
                 )}
               </Box>
 
-              <Stack
-                direction="row"
-                alignItems="center"
-                spacing={2}
-                flexWrap="wrap"
-              >
+              <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
                 <Typography variant="caption" sx={{ fontWeight: 700 }}>
                   ORDENAR:
                 </Typography>
@@ -1154,11 +1056,7 @@ const OurStore = () => {
               <Grid container spacing={3}>
                 {[...Array(6)].map((_, i) => (
                   <Grid item xs={12} sm={6} lg={4} key={i}>
-                    <Skeleton
-                      variant="rectangular"
-                      height={280}
-                      sx={{ borderRadius: 4 }}
-                    />
+                    <Skeleton variant="rectangular" height={280} sx={{ borderRadius: 4 }} />
                     <Skeleton width="80%" sx={{ mt: 1 }} />
                     <Skeleton width="40%" />
                   </Grid>

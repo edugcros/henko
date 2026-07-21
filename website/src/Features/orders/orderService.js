@@ -45,10 +45,7 @@ const apiRequest = async ({ method, endpoint, data, params, signal }) => {
 
     return response.data
   } catch (error) {
-    return normalizeApiError(
-      error,
-      'No se pudo completar la operación de órdenes',
-    )
+    return normalizeApiError(error, 'No se pudo completar la operación de órdenes')
   }
 }
 

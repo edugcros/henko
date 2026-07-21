@@ -13,19 +13,9 @@ const normalizeAuthResponse = response => {
   const raw = response?.data || response
 
   return {
-    user:
-      raw?.user ||
-      raw?.data?.user ||
-      raw?.data?.profile ||
-      raw?.profile ||
-      null,
+    user: raw?.user || raw?.data?.user || raw?.data?.profile || raw?.profile || null,
 
-    token:
-      raw?.token ||
-      raw?.accessToken ||
-      raw?.data?.token ||
-      raw?.data?.accessToken ||
-      null,
+    token: raw?.token || raw?.accessToken || raw?.data?.token || raw?.data?.accessToken || null,
 
     refreshToken: raw?.refreshToken || raw?.data?.refreshToken || null,
   }
@@ -33,10 +23,7 @@ const normalizeAuthResponse = response => {
 
 const extractApiError = (error, fallback = 'Error inesperado') => {
   return (
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    fallback
+    error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback
   )
 }
 
@@ -99,12 +86,8 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
       ...options,
       headers: {
         Accept: 'application/json',
-        ...(data instanceof FormData
-          ? {}
-          : { 'Content-Type': 'application/json' }),
-        ...(csrfToken
-          ? { [env.csrfHeaderName || 'x-csrf-token']: csrfToken }
-          : {}),
+        ...(data instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(csrfToken ? { [env.csrfHeaderName || 'x-csrf-token']: csrfToken } : {}),
         ...(options.headers || {}),
       },
     }
@@ -118,11 +101,7 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     const status = error?.response?.status
     const message = extractApiError(error, 'Error en la petición')
 
-    if (
-      status === 403 &&
-      /csrf|token/i.test(message) &&
-      options.skipCsrf !== true
-    ) {
+    if (status === 403 && /csrf|token/i.test(message) && options.skipCsrf !== true) {
       try {
         resetCsrf()
 
@@ -136,12 +115,8 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
           ...options,
           headers: {
             Accept: 'application/json',
-            ...(data instanceof FormData
-              ? {}
-              : { 'Content-Type': 'application/json' }),
-            ...(retryCsrfToken
-              ? { [env.csrfHeaderName || 'x-csrf-token']: retryCsrfToken }
-              : {}),
+            ...(data instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+            ...(retryCsrfToken ? { [env.csrfHeaderName || 'x-csrf-token']: retryCsrfToken } : {}),
             ...(options.headers || {}),
           },
         }
@@ -314,8 +289,7 @@ const updatePassword = passwordData => {
 // ======================================================
 
 const requestPasswordReset = emailOrPayload => {
-  const email =
-    typeof emailOrPayload === 'string' ? emailOrPayload : emailOrPayload?.email
+  const email = typeof emailOrPayload === 'string' ? emailOrPayload : emailOrPayload?.email
 
   return apiRequest('post', '/forgot-password', {
     email: sanitizeText(email).toLowerCase(),
@@ -330,9 +304,7 @@ const resetPassword = payloadOrToken => {
           token: payloadOrToken,
         }
 
-  const token = sanitizeText(
-    payload.token || payload.resetToken || payload.passwordResetToken,
-  )
+  const token = sanitizeText(payload.token || payload.resetToken || payload.passwordResetToken)
 
   const finalPassword = sanitizeText(payload.newPassword || payload.password)
 
@@ -372,8 +344,7 @@ const refreshToken = async () => {
     }
 
     const normalized = normalizeAuthResponse(response.data)
-    const token =
-      normalized?.token || response.data?.token || response.data?.accessToken
+    const token = normalized?.token || response.data?.token || response.data?.accessToken
 
     if (!token) {
       throw new Error('Token ausente en refresh')

@@ -2,31 +2,23 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import uploadService from './uploadService'
 
-export const uploadProductImage = createAsyncThunk(
-  'upload/images',
-  async (files, thunkAPI) => {
-    try {
-      const response = await uploadService.uploadProductImage(files)
-      return response // array de imágenes { url, public_id }
-    } catch (error) {
-      return thunkAPI.rejectWithValue(error?.message || 'Error subiendo imagen')
-    }
-  },
-)
+export const uploadProductImage = createAsyncThunk('upload/images', async (files, thunkAPI) => {
+  try {
+    const response = await uploadService.uploadProductImage(files)
+    return response // array de imágenes { url, public_id }
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error?.message || 'Error subiendo imagen')
+  }
+})
 
-export const delImg = createAsyncThunk(
-  'upload/deleteImg',
-  async (public_id, thunkAPI) => {
-    try {
-      await uploadService.deleteImg(public_id)
-      return public_id
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error?.message || 'Error eliminando imagen',
-      )
-    }
-  },
-)
+export const delImg = createAsyncThunk('upload/deleteImg', async (public_id, thunkAPI) => {
+  try {
+    await uploadService.deleteImg(public_id)
+    return public_id
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error?.message || 'Error eliminando imagen')
+  }
+})
 
 const initialState = {
   images: [],
@@ -62,9 +54,7 @@ const uploadSlice = createSlice({
         state.isLoading = true
       })
       .addCase(delImg.fulfilled, (state, action) => {
-        state.images = state.images.filter(
-          img => img.public_id !== action.payload,
-        )
+        state.images = state.images.filter(img => img.public_id !== action.payload)
         state.isLoading = false
         state.isSuccess = true
       })

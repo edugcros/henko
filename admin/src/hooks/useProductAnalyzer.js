@@ -1,10 +1,7 @@
 // 📁 src/hooks/useProductAnalyzer.js
 import { useState, useCallback } from 'react'
 import api from '@utils/axiosConfig'
-import {
-  MAX_IMAGE_SIZE_MB,
-  SUPPORTED_IMAGE_TYPES,
-} from '../constants/imageUpload'
+import { MAX_IMAGE_SIZE_MB, SUPPORTED_IMAGE_TYPES } from '../constants/imageUpload'
 
 const detectType = value => {
   if (typeof value === 'number') return 'number'
@@ -107,9 +104,7 @@ export default function useProductAnalyzer() {
         const resData = response.data
 
         if (!resData?.success) {
-          throw new Error(
-            resData?.message || 'La IA no pudo clasificar el producto',
-          )
+          throw new Error(resData?.message || 'La IA no pudo clasificar el producto')
         }
 
         const data = resData?.data || null
@@ -141,10 +136,27 @@ export default function useProductAnalyzer() {
     setError(null)
   }, [])
 
+  // Carga un análisis que la IA ya calculó (por ejemplo, uno que el
+  // agente autónomo dejó guardado en el job) sin volver a llamar a la
+  // IA. Mismo resultado final que analyzeImage, sin gastar una consulta.
+  const hydrateAnalysis = useCallback(
+    result => {
+      if (!result || typeof result !== 'object') return null
+
+      setError(null)
+      setIaResult(result)
+      setDynamicFields(generateDynamicFields(result))
+
+      return result
+    },
+    [generateDynamicFields],
+  )
+
   return {
     iaResult,
     dynamicFields,
     analyzeImage,
+    hydrateAnalysis,
     resetIa,
     loading,
     error,

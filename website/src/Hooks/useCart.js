@@ -11,10 +11,7 @@ import {
   emptyCart,
 } from '@features/cart/cartSlice'
 
-import {
-  trackUserMetric,
-  USER_METRIC_EVENTS,
-} from '../services/userMetricsService'
+import { trackUserMetric, USER_METRIC_EVENTS } from '../services/userMetricsService'
 
 const FALLBACK_IMAGE = '/assets/images/placeholder.png'
 
@@ -54,10 +51,7 @@ const getProductPrice = product => {
 
 const getOriginalPrice = product => {
   return toNumber(
-    product?.originalPrice ??
-      product?.compareAtPrice ??
-      product?.price ??
-      product?.precio,
+    product?.originalPrice ?? product?.compareAtPrice ?? product?.price ?? product?.precio,
     getProductPrice(product),
   )
 }
@@ -130,10 +124,7 @@ export const useCart = () => {
 
       const quantity = toPositiveQuantity(options.quantity || 1)
       const price = toNumber(options.price ?? getProductPrice(product), 0)
-      const originalPrice = toNumber(
-        options.originalPrice ?? getOriginalPrice(product),
-        price,
-      )
+      const originalPrice = toNumber(options.originalPrice ?? getOriginalPrice(product), price)
       const currency = options.currency || getProductCurrency(product)
       const hasPromotion = Boolean(
         options.hasPromotion ?? product?.hasPromotion ?? price < originalPrice,
@@ -145,23 +136,17 @@ export const useCart = () => {
         title: getProductTitle(product),
         price,
         originalPrice,
-        discountPercentage: toNumber(
-          options.discountPercentage ?? product?.discountPercentage,
-          0,
-        ),
+        discountPercentage: toNumber(options.discountPercentage ?? product?.discountPercentage, 0),
         promotionId: options.promotionId || product?.promotionId || null,
-        promotionTitle:
-          options.promotionTitle || product?.promotionTitle || null,
+        promotionTitle: options.promotionTitle || product?.promotionTitle || null,
         promotionType: options.promotionType || product?.promotionType || null,
         hasPromotion,
         quantity,
         image: options.image || getProductImage(product),
 
         variantId: options.variantId || product?.variantId || null,
-        variantSku:
-          options.variantSku || product?.variantSku || product?.sku || '',
-        variantSKU:
-          options.variantSku || product?.variantSku || product?.sku || '',
+        variantSku: options.variantSku || product?.variantSku || product?.sku || '',
+        variantSKU: options.variantSku || product?.variantSku || product?.sku || '',
         selectedAttributes:
           options.selectedAttributes ||
           options.variantAttributes ||
@@ -210,9 +195,7 @@ export const useCart = () => {
         }
 
         toast.error(
-          error?.message ||
-            error?.response?.data?.message ||
-            'No se pudo agregar el producto.',
+          error?.message || error?.response?.data?.message || 'No se pudo agregar el producto.',
         )
 
         return null
@@ -240,9 +223,7 @@ export const useCart = () => {
         ).unwrap()
       } catch (error) {
         toast.error(
-          error?.message ||
-            error?.response?.data?.message ||
-            'No se pudo actualizar la cantidad.',
+          error?.message || error?.response?.data?.message || 'No se pudo actualizar la cantidad.',
         )
 
         return null
@@ -285,9 +266,7 @@ export const useCart = () => {
         return result
       } catch (error) {
         toast.error(
-          error?.message ||
-            error?.response?.data?.message ||
-            'No se pudo eliminar el producto.',
+          error?.message || error?.response?.data?.message || 'No se pudo eliminar el producto.',
         )
 
         return null
@@ -304,9 +283,7 @@ export const useCart = () => {
       return result
     } catch (error) {
       toast.error(
-        error?.message ||
-          error?.response?.data?.message ||
-          'No se pudo vaciar el carrito.',
+        error?.message || error?.response?.data?.message || 'No se pudo vaciar el carrito.',
       )
 
       return null
@@ -314,8 +291,7 @@ export const useCart = () => {
   }, [dispatch])
 
   const totalAmount = useMemo(() => {
-    if (toNumber(totalAfterDiscount, 0) > 0)
-      return toNumber(totalAfterDiscount, 0)
+    if (toNumber(totalAfterDiscount, 0) > 0) return toNumber(totalAfterDiscount, 0)
     if (toNumber(cartTotal, 0) > 0) return toNumber(cartTotal, 0)
 
     return normalizedCartItems.reduce((acc, item) => {

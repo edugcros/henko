@@ -88,10 +88,7 @@ const tenantService = {
 
       return {
         success: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          'Error resolviendo tenant',
+        error: error.response?.data?.message || error.message || 'Error resolviendo tenant',
       }
     }
   },
@@ -126,10 +123,7 @@ const tenantService = {
 
       return {
         success: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          'Error resolviendo tenant',
+        error: error.response?.data?.message || error.message || 'Error resolviendo tenant',
       }
     }
   },

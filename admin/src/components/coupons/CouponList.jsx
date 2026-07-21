@@ -63,8 +63,7 @@ const formatDate = dateString => {
 const PLACEHOLDER_IMAGE = '/placeholder-product.png'
 
 const getImageBaseUrl = () => {
-  const rawBaseUrl =
-    process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_URL || ''
+  const rawBaseUrl = process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_URL || ''
 
   return rawBaseUrl.replace(/\/api\/?$/, '').replace(/\/$/, '')
 }
@@ -84,9 +83,7 @@ const getProductImage = product => {
 
   const image = product.images?.[0] || product.image || null
   const url =
-    typeof image === 'string'
-      ? image
-      : image?.url || image?.secure_url || image?.src || ''
+    typeof image === 'string' ? image : image?.url || image?.secure_url || image?.src || ''
 
   if (!url) return PLACEHOLDER_IMAGE
   if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url
@@ -103,8 +100,7 @@ const getStatus = coupon => {
   if (!coupon.isActive) return 'inactive'
   if (start && now < start) return 'scheduled'
   if (end && now > end) return 'expired'
-  if (coupon.usageLimit && (coupon.usageCount || 0) >= coupon.usageLimit)
-    return 'exhausted'
+  if (coupon.usageLimit && (coupon.usageCount || 0) >= coupon.usageLimit) return 'exhausted'
   return 'active'
 }
 
@@ -113,10 +109,8 @@ const getStatus = coupon => {
 // ======================================================
 
 const UsageProgress = ({ count, limit }) => {
-  const percentage =
-    limit > 0 ? Math.min((count / limit) * 100, 100) : count > 0 ? 100 : 0
-  const color =
-    percentage >= 100 ? 'error' : percentage >= 80 ? 'warning' : 'primary'
+  const percentage = limit > 0 ? Math.min((count / limit) * 100, 100) : count > 0 ? 100 : 0
+  const color = percentage >= 100 ? 'error' : percentage >= 80 ? 'warning' : 'primary'
 
   return (
     <Box sx={{ minWidth: 120 }}>
@@ -141,31 +135,17 @@ const UsageProgress = ({ count, limit }) => {
 }
 
 const ProductSummary = ({ products = [] }) => {
-  const visibleProducts = Array.isArray(products)
-    ? products.filter(Boolean)
-    : []
+  const visibleProducts = Array.isArray(products) ? products.filter(Boolean) : []
 
   if (!visibleProducts.length) {
-    return (
-      <Chip
-        label="Todos los productos"
-        size="small"
-        variant="outlined"
-        color="primary"
-      />
-    )
+    return <Chip label="Todos los productos" size="small" variant="outlined" color="primary" />
   }
 
   const firstProduct = visibleProducts[0]
   const extraCount = visibleProducts.length - 1
 
   return (
-    <Stack
-      direction="row"
-      alignItems="center"
-      spacing={1.25}
-      sx={{ minWidth: 220 }}
-    >
+    <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 220 }}>
       <AvatarGroup
         max={3}
         sx={{
@@ -195,20 +175,10 @@ const ProductSummary = ({ products = [] }) => {
       </AvatarGroup>
 
       <Box sx={{ minWidth: 0 }}>
-        <Typography
-          variant="body2"
-          fontWeight={700}
-          noWrap
-          title={getProductTitle(firstProduct)}
-        >
+        <Typography variant="body2" fontWeight={700} noWrap title={getProductTitle(firstProduct)}>
           {getProductTitle(firstProduct)}
         </Typography>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          noWrap
-          display="block"
-        >
+        <Typography variant="caption" color="text.secondary" noWrap display="block">
           {extraCount > 0
             ? `+${extraCount} producto${extraCount === 1 ? '' : 's'} más`
             : firstProduct?.sku || 'Producto asignado'}
@@ -218,14 +188,7 @@ const ProductSummary = ({ products = [] }) => {
   )
 }
 
-const ActionMenu = ({
-  coupon,
-  onEdit,
-  onClone,
-  onSoftDelete,
-  onHardDelete,
-  onRestore,
-}) => {
+const ActionMenu = ({ coupon, onEdit, onClone, onSoftDelete, onHardDelete, onRestore }) => {
   const [anchorEl, setAnchorEl] = useState(null)
   const open = Boolean(anchorEl)
   const isDeleted = coupon.isDeleted === true
@@ -279,21 +242,14 @@ const ActionMenu = ({
               <ListItemIcon>
                 <RestoreIcon fontSize="small" color="success" />
               </ListItemIcon>
-              <ListItemText sx={{ color: 'success.main' }}>
-                Restaurar
-              </ListItemText>
+              <ListItemText sx={{ color: 'success.main' }}>Restaurar</ListItemText>
             </MenuItem>
             <Divider />
-            <MenuItem
-              onClick={() => handleAction(onHardDelete)}
-              disabled={hasUsage}
-            >
+            <MenuItem onClick={() => handleAction(onHardDelete)} disabled={hasUsage}>
               <ListItemIcon>
                 <HardDeleteIcon fontSize="small" color="error" />
               </ListItemIcon>
-              <ListItemText sx={{ color: 'error.main' }}>
-                Eliminar Permanente
-              </ListItemText>
+              <ListItemText sx={{ color: 'error.main' }}>Eliminar Permanente</ListItemText>
             </MenuItem>
           </>
         )}
@@ -404,9 +360,7 @@ const CouponList = ({
                     </Typography>
                     {coupon.stackable && (
                       <Tooltip title="Acumulable con otras promociones">
-                        <StackableIcon
-                          sx={{ fontSize: 16, color: 'info.main' }}
-                        />
+                        <StackableIcon sx={{ fontSize: 16, color: 'info.main' }} />
                       </Tooltip>
                     )}
                   </Stack>
@@ -444,10 +398,7 @@ const CouponList = ({
                 </TableCell>
 
                 <TableCell>
-                  <UsageProgress
-                    count={coupon.usageCount || 0}
-                    limit={coupon.usageLimit}
-                  />
+                  <UsageProgress count={coupon.usageCount || 0} limit={coupon.usageLimit} />
                 </TableCell>
 
                 <TableCell>

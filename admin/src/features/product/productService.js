@@ -63,25 +63,18 @@ const normalizeAiProductPayload = productData => {
     : null
 
   normalized.iaGenerated =
-    normalizeBoolean(normalized.iaGenerated) ||
-    Boolean(aiOriginalOutputAsString)
+    normalizeBoolean(normalized.iaGenerated) || Boolean(aiOriginalOutputAsString)
 
   if (aiOriginalOutputAsString) {
     normalized.aiOriginalOutput = aiOriginalOutputAsString
   }
 
-  if (
-    normalized.aiConfidence !== undefined &&
-    normalized.aiConfidence !== null
-  ) {
+  if (normalized.aiConfidence !== undefined && normalized.aiConfidence !== null) {
     const confidence = Number(normalized.aiConfidence)
     normalized.aiConfidence = Number.isFinite(confidence) ? confidence : null
   }
 
-  if (
-    normalized.aiNeedsReview !== undefined &&
-    normalized.aiNeedsReview !== null
-  ) {
+  if (normalized.aiNeedsReview !== undefined && normalized.aiNeedsReview !== null) {
     normalized.aiNeedsReview = normalizeBoolean(normalized.aiNeedsReview)
   }
 
@@ -106,12 +99,7 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     const csrfToken = await fetchCsrfToken()
     const token = getAuthToken()
 
-    const {
-      headers: customHeaders = {},
-      params,
-      withCredentials = true,
-      ...restOptions
-    } = options
+    const { headers: customHeaders = {}, params, withCredentials = true, ...restOptions } = options
 
     const headers = {
       Accept: 'application/json',
@@ -243,14 +231,9 @@ const getCategoryConfig = async (category, subcategory = null) => {
     throw new Error('Categoría requerida')
   }
 
-  return apiRequest(
-    'get',
-    `/categories/${encodeURIComponent(category)}/config`,
-    undefined,
-    {
-      params: subcategory ? { subcategory } : undefined,
-    },
-  )
+  return apiRequest('get', `/categories/${encodeURIComponent(category)}/config`, undefined, {
+    params: subcategory ? { subcategory } : undefined,
+  })
 }
 
 /**
@@ -276,9 +259,7 @@ const saveCategoryConfig = async ({
   return apiRequest('put', '/categories/config', {
     category,
     subcategory,
-    variantAttributes: Array.isArray(variantAttributes)
-      ? variantAttributes
-      : [],
+    variantAttributes: Array.isArray(variantAttributes) ? variantAttributes : [],
     replace,
   })
 }

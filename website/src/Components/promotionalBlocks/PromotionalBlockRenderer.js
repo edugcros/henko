@@ -20,8 +20,7 @@ const PromotionalBlockRenderer = ({ blocks = [] }) => {
   return (
     <>
       {blocks.map(block => {
-        const Component =
-          BLOCK_COMPONENTS[block.type] || GenericPromotionalSection
+        const Component = BLOCK_COMPONENTS[block.type] || GenericPromotionalSection
 
         return <Component key={block._id} block={block} />
       })}

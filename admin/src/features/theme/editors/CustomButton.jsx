@@ -53,15 +53,7 @@ const SettingGroupComponents = ({ title, caption, children }) => (
   </Paper>
 )
 
-const RangeControlComponents = ({
-  label,
-  value,
-  min,
-  max,
-  step,
-  suffix = '',
-  onChange,
-}) => (
+const RangeControlComponents = ({ label, value, min, max, step, suffix = '', onChange }) => (
   <Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between">
       <Typography variant="body2" fontWeight={700}>
@@ -203,24 +195,18 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
             control={
               <Switch
                 checked={Boolean(buttons.uppercase)}
-                onChange={event =>
-                  handleChange('uppercase', event.target.checked)
-                }
+                onChange={event => handleChange('uppercase', event.target.checked)}
               />
             }
           />
           <FormControlLabel
             sx={{ m: 0, justifyContent: 'space-between' }}
-            label={
-              <Typography variant="body2">Ancho completo en mobile</Typography>
-            }
+            label={<Typography variant="body2">Ancho completo en mobile</Typography>}
             labelPlacement="start"
             control={
               <Switch
                 checked={Boolean(buttons.fullWidthMobile)}
-                onChange={event =>
-                  handleChange('fullWidthMobile', event.target.checked)
-                }
+                onChange={event => handleChange('fullWidthMobile', event.target.checked)}
               />
             }
           />
@@ -250,24 +236,12 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
               size={buttons.size}
               sx={{
                 ...sharedButtonSx,
-                bgcolor:
-                  buttons.variant === 'contained'
-                    ? actionPrimary
-                    : 'transparent',
-                color:
-                  buttons.variant === 'contained'
-                    ? actionPrimaryText
-                    : actionPrimary,
+                bgcolor: buttons.variant === 'contained' ? actionPrimary : 'transparent',
+                color: buttons.variant === 'contained' ? actionPrimaryText : actionPrimary,
                 borderColor: actionPrimary,
                 '&:hover': {
-                  bgcolor:
-                    buttons.variant === 'contained'
-                      ? actionPrimary
-                      : 'transparent',
-                  color:
-                    buttons.variant === 'contained'
-                      ? actionPrimaryText
-                      : actionPrimary,
+                  bgcolor: buttons.variant === 'contained' ? actionPrimary : 'transparent',
+                  color: buttons.variant === 'contained' ? actionPrimaryText : actionPrimary,
                   borderColor: actionPrimary,
                   filter: 'brightness(0.94)',
                 },
@@ -277,30 +251,16 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
             </Button>
 
             <Button
-              variant={
-                buttons.variant === 'contained' ? 'outlined' : 'contained'
-              }
+              variant={buttons.variant === 'contained' ? 'outlined' : 'contained'}
               size={buttons.size}
               sx={{
                 ...sharedButtonSx,
-                bgcolor:
-                  buttons.variant === 'contained'
-                    ? 'transparent'
-                    : actionSecondary,
-                color:
-                  buttons.variant === 'contained'
-                    ? actionSecondary
-                    : actionSecondaryText,
+                bgcolor: buttons.variant === 'contained' ? 'transparent' : actionSecondary,
+                color: buttons.variant === 'contained' ? actionSecondary : actionSecondaryText,
                 borderColor: actionSecondary,
                 '&:hover': {
-                  bgcolor:
-                    buttons.variant === 'contained'
-                      ? 'transparent'
-                      : actionSecondary,
-                  color:
-                    buttons.variant === 'contained'
-                      ? actionSecondary
-                      : actionSecondaryText,
+                  bgcolor: buttons.variant === 'contained' ? 'transparent' : actionSecondary,
+                  color: buttons.variant === 'contained' ? actionSecondary : actionSecondaryText,
                   borderColor: actionSecondary,
                   filter: 'brightness(0.94)',
                 },

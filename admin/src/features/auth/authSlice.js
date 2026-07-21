@@ -63,17 +63,13 @@ export const createUserAdmin = createAsyncThunk(
       const response = await authService.registerAdmin(payload)
 
       if (!response?.success) {
-        return rejectWithValue(
-          response?.message || 'Error al crear el comercio',
-        )
+        return rejectWithValue(response?.message || 'Error al crear el comercio')
       }
 
       return response.data || response
     } catch (error) {
       return rejectWithValue(
-        error?.response?.data?.message ||
-          error?.message ||
-          'Error al crear el comercio',
+        error?.response?.data?.message || error?.message || 'Error al crear el comercio',
       )
     }
   },
@@ -87,29 +83,23 @@ export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
     if (data.user) safeStorage.setUser(data.user)
     return data
   } catch (error) {
-    return thunkAPI.rejectWithValue(
-      error.response?.data || 'Error al obtener perfil',
-    )
+    return thunkAPI.rejectWithValue(error.response?.data || 'Error al obtener perfil')
   }
 })
 
-export const refreshSession = createAsyncThunk(
-  'auth/refreshSession',
-  async (_, thunkAPI) => {
-    try {
-      const res = await authService.refreshToken()
-      if (!res?.success || !res.data)
-        return thunkAPI.rejectWithValue('Refresh inválido')
+export const refreshSession = createAsyncThunk('auth/refreshSession', async (_, thunkAPI) => {
+  try {
+    const res = await authService.refreshToken()
+    if (!res?.success || !res.data) return thunkAPI.rejectWithValue('Refresh inválido')
 
-      const { user, token } = res.data
-      safeStorage.setUser(user) // Sincronizamos storage
-      return { user, token }
-    } catch (error) {
-      safeStorage.removeAuth()
-      return thunkAPI.rejectWithValue(error?.response?.data || 'Refresh failed')
-    }
-  },
-)
+    const { user, token } = res.data
+    safeStorage.setUser(user) // Sincronizamos storage
+    return { user, token }
+  } catch (error) {
+    safeStorage.removeAuth()
+    return thunkAPI.rejectWithValue(error?.response?.data || 'Refresh failed')
+  }
+})
 
 export const loginUser = createAsyncThunk(
   'user/admin-login',
@@ -140,9 +130,7 @@ export const loginUser = createAsyncThunk(
       })
       return { user, token }
     } catch (err) {
-      return rejectWithValue(
-        err?.response?.data?.message || 'Error de autenticación',
-      )
+      return rejectWithValue(err?.response?.data?.message || 'Error de autenticación')
     }
   },
 )
@@ -165,8 +153,7 @@ export const getOrders = createAsyncThunk(
   async (params, { rejectWithValue }) => {
     try {
       const res = await authService.getOrders(params) // debe devolver { success, data, pagination }
-      if (!res?.success)
-        throw new Error(res?.message || 'Error al obtener órdenes')
+      if (!res?.success) throw new Error(res?.message || 'Error al obtener órdenes')
       return {
         data: res.data || [],
         pagination: res.pagination || null,
@@ -192,43 +179,37 @@ export const updateOrderStatus = createAsyncThunk(
   async ({ id, status }, { rejectWithValue }) => {
     try {
       const res = await authService.updateOrderStatus(id, status)
-      if (!res?.success)
-        throw new Error(res?.message || 'No se pudo actualizar el estado')
+      if (!res?.success) throw new Error(res?.message || 'No se pudo actualizar el estado')
       return res.data // orden actualizada
     } catch (error) {
-      return rejectWithValue(
-        error?.message || 'No se pudo actualizar el estado',
-      )
+      return rejectWithValue(error?.message || 'No se pudo actualizar el estado')
     }
   },
 )
 
-export const logoutUser = createAsyncThunk(
-  'user/logout',
-  async (_, { rejectWithValue }) => {
-    try {
-      // 1. Llamada al service (que a su vez llama al backend)
-      const res = await authService.logoutUser()
+export const logoutUser = createAsyncThunk('user/logout', async (_, { rejectWithValue }) => {
+  try {
+    // 1. Llamada al service (que a su vez llama al backend)
+    const res = await authService.logoutUser()
 
-      // 2. Limpieza de storage local (Lo que el JS SÍ controla)
-      safeStorage.removeAuth()
-      sessionStorage.clear() // Borra cualquier rastro de tenant o estado temporal
+    // 2. Limpieza de storage local (Lo que el JS SÍ controla)
+    safeStorage.removeAuth()
+    sessionStorage.clear() // Borra cualquier rastro de tenant o estado temporal
 
-      // 3. Feedback visual
-      toast.success('Sesión cerrada correctamente')
+    // 3. Feedback visual
+    toast.success('Sesión cerrada correctamente')
 
-      return res
-    } catch (err) {
-      // Aunque falle la petición (ej. el servidor está caído),
-      // forzamos la limpieza local para que el usuario no quede atrapado
-      safeStorage.removeAuth()
-      sessionStorage.clear()
+    return res
+  } catch (err) {
+    // Aunque falle la petición (ej. el servidor está caído),
+    // forzamos la limpieza local para que el usuario no quede atrapado
+    safeStorage.removeAuth()
+    sessionStorage.clear()
 
-      const message = err?.message || 'Error al cerrar sesión'
-      return rejectWithValue(message)
-    }
-  },
-)
+    const message = err?.message || 'Error al cerrar sesión'
+    return rejectWithValue(message)
+  }
+})
 
 // ---------------------------
 // Slice
@@ -405,8 +386,7 @@ const authSlice = createSlice({
         state.isLoading = false
         // Mantenemos el error para mostrar un toast de "El servidor no respondió, pero se cerró la sesión local"
         state.isError = true
-        state.message =
-          action.payload || 'Error al cerrar sesión en el servidor'
+        state.message = action.payload || 'Error al cerrar sesión en el servidor'
 
         // --- Limpieza de Estado ---
         state.user = null

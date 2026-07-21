@@ -77,8 +77,7 @@ const pageStyles = {
   page: {
     minHeight: '100vh',
     padding: 24,
-    background:
-      'linear-gradient(180deg, #f6f8fb 0%, #eef3f8 42%, #e9eef5 100%)',
+    background: 'linear-gradient(180deg, #f6f8fb 0%, #eef3f8 42%, #e9eef5 100%)',
   },
   shell: {
     maxWidth: 1540,
@@ -138,8 +137,7 @@ const pageStyles = {
   },
 }
 
-const createClientId = prefix =>
-  `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+const createClientId = prefix => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 const normalizeString = (value = '') => String(value || '').trim()
 
@@ -226,8 +224,7 @@ const parseAttributesInput = value => {
     const separatorMatch = token.match(/[:=]/)
 
     if (!separatorMatch) {
-      const fallbackKey =
-        index === 0 ? DEFAULT_VARIANT_ATTRIBUTE : `atributo_${index + 1}`
+      const fallbackKey = index === 0 ? DEFAULT_VARIANT_ATTRIBUTE : `atributo_${index + 1}`
       acc[fallbackKey] = token
       return acc
     }
@@ -255,9 +252,7 @@ const serializeAttributes = attributes => {
 }
 
 const ensureVariantAttributes = variant => {
-  const attributes = normalizeAttributes(
-    variant?.attributes || variant?.combinacion,
-  )
+  const attributes = normalizeAttributes(variant?.attributes || variant?.combinacion)
   if (Object.keys(attributes).length > 0) return attributes
 
   const fallbackName = normalizeString(variant?.nombre)
@@ -283,10 +278,7 @@ const buildVariantKey = attributes => {
   return Object.entries(normalized)
     .filter(([key, value]) => normalizeString(key) && normalizeString(value))
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(
-      ([key, value]) =>
-        `${normalizeString(key)}:${normalizeString(value).toLowerCase()}`,
-    )
+    .map(([key, value]) => `${normalizeString(key)}:${normalizeString(value).toLowerCase()}`)
     .join('|')
 }
 
@@ -321,9 +313,7 @@ const resolveVariantImage = (variantImage, productImages = []) => {
 
   return (
     productImages.find(
-      img =>
-        img.url === variantImage.url ||
-        img.public_id === variantImage.public_id,
+      img => img.url === variantImage.url || img.public_id === variantImage.public_id,
     ) || variantImage
   )
 }
@@ -334,8 +324,7 @@ const mapServerVariantToEditor = (variant, index, productImages = []) => {
   return {
     key: `server-${variant._id || variant.id || buildVariantKey(attributes) || index}`,
     variantId: variant._id || variant.id || null,
-    nombre:
-      variant.nombre || buildVariantName(attributes) || `Variante ${index + 1}`,
+    nombre: variant.nombre || buildVariantName(attributes) || `Variante ${index + 1}`,
     attributes,
     attributeText: serializeAttributes(attributes),
     price: normalizeNumber(variant.price),
@@ -409,9 +398,7 @@ const mergeVariantDefinitions = (serverDefinitions = [], variants = []) => {
     const name = slugifyKeyPart(definition?.name || definition?.label)
     if (!name) return
 
-    const values = uniqueStrings(
-      Array.isArray(definition?.values) ? definition.values : [],
-    )
+    const values = uniqueStrings(Array.isArray(definition?.values) ? definition.values : [])
 
     map.set(name, {
       id: createClientId('attr'),
@@ -446,15 +433,11 @@ const buildVariantDefinitionsForSave = (definitions = [], variants = []) => {
   return mergeVariantDefinitions(definitions, variants)
     .map(definition => {
       const valuesFromText = parseValueList(definition.valuesText)
-      const values = uniqueStrings([
-        ...(definition.values || []),
-        ...valuesFromText,
-      ])
+      const values = uniqueStrings([...(definition.values || []), ...valuesFromText])
 
       return {
         name: slugifyKeyPart(definition.name || definition.label),
-        label:
-          normalizeString(definition.label) || humanizeKey(definition.name),
+        label: normalizeString(definition.label) || humanizeKey(definition.name),
         type: definition.type || 'select',
         values,
       }
@@ -556,13 +539,9 @@ const buildVariantPayload = (variant, index) => {
   const attributes = ensureVariantAttributes(variant)
   const cleanSku = normalizeSkuForPayload(variant.sku)
   const variantKey =
-    buildVariantKey(attributes) ||
-    normalizeString(variant.key) ||
-    `variant-${index + 1}`
+    buildVariantKey(attributes) || normalizeString(variant.key) || `variant-${index + 1}`
   const nombre =
-    normalizeString(variant.nombre) ||
-    buildVariantName(attributes) ||
-    `Variante ${index + 1}`
+    normalizeString(variant.nombre) || buildVariantName(attributes) || `Variante ${index + 1}`
 
   const payload = {
     key: variantKey,
@@ -597,8 +576,7 @@ const getVariantStatus = variant => {
 
   if (variant.isNew) return { color: 'blue', label: 'Nueva' }
   if (!variant.isActive) return { color: 'default', label: 'Inactiva' }
-  if (!buildVariantKey(attributes))
-    return { color: 'warning', label: 'Incompleta' }
+  if (!buildVariantKey(attributes)) return { color: 'warning', label: 'Incompleta' }
   if (variant.touched) return { color: 'gold', label: 'Editada' }
   return { color: 'success', label: 'Existente' }
 }
@@ -625,8 +603,7 @@ const createSpecificationRow = (partial = {}, index = 0) => {
     id: partial.id || createClientId('spec'),
     key,
     label:
-      normalizeString(partial.label || partial.name || humanizeKey(key)) ||
-      `Atributo ${index + 1}`,
+      normalizeString(partial.label || partial.name || humanizeKey(key)) || `Atributo ${index + 1}`,
     value: normalizeSpecificationValueForEditor(partial.value),
     unit: normalizeString(partial.unit),
     type: SPEC_TYPES.some(item => item.value === type) ? type : 'text',
@@ -634,21 +611,14 @@ const createSpecificationRow = (partial = {}, index = 0) => {
     visible: partial.visible !== false,
     filterable: partial.filterable === true,
     searchable: partial.searchable === true,
-    sortOrder: Number.isFinite(Number(partial.sortOrder))
-      ? Number(partial.sortOrder)
-      : index,
+    sortOrder: Number.isFinite(Number(partial.sortOrder)) ? Number(partial.sortOrder) : index,
     isNew: partial.isNew === true,
   }
 }
 
 const normalizeSpecSourceRows = product => {
-  if (
-    Array.isArray(product?.specifications) &&
-    product.specifications.length > 0
-  ) {
-    return product.specifications.map((spec, index) =>
-      createSpecificationRow(spec, index),
-    )
+  if (Array.isArray(product?.specifications) && product.specifications.length > 0) {
+    return product.specifications.map((spec, index) => createSpecificationRow(spec, index))
   }
 
   const candidateObjects = [
@@ -661,19 +631,16 @@ const normalizeSpecSourceRows = product => {
   const seen = new Set()
 
   candidateObjects.forEach(source => {
-    Object.entries(
-      source instanceof Map ? Object.fromEntries(source) : source,
-    ).forEach(([rawKey, rawValue]) => {
-      const key = slugifyKeyPart(rawKey)
-      if (!key || seen.has(key)) return
-      seen.add(key)
-      rows.push(
-        createSpecificationRow(
-          { key, label: humanizeKey(key), value: rawValue },
-          rows.length,
-        ),
-      )
-    })
+    Object.entries(source instanceof Map ? Object.fromEntries(source) : source).forEach(
+      ([rawKey, rawValue]) => {
+        const key = slugifyKeyPart(rawKey)
+        if (!key || seen.has(key)) return
+        seen.add(key)
+        rows.push(
+          createSpecificationRow({ key, label: humanizeKey(key), value: rawValue }, rows.length),
+        )
+      },
+    )
   })
 
   return rows
@@ -683,8 +650,7 @@ const castSpecificationValue = row => {
   const raw = normalizeString(row.value)
 
   if (row.type === 'number') return normalizeNumber(raw)
-  if (row.type === 'boolean')
-    return ['true', 'si', 'sí', '1', 'yes'].includes(raw.toLowerCase())
+  if (row.type === 'boolean') return ['true', 'si', 'sí', '1', 'yes'].includes(raw.toLowerCase())
   if (row.type === 'multiselect') return parseValueList(raw)
 
   return raw
@@ -711,9 +677,7 @@ const buildSpecificationsPayload = rows => {
         visible: row.visible !== false,
         filterable: row.filterable === true,
         searchable: row.searchable === true,
-        sortOrder: Number.isFinite(Number(row.sortOrder))
-          ? Number(row.sortOrder)
-          : index,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index,
       }
     })
     .filter(Boolean)
@@ -728,10 +692,7 @@ const buildProductAttributesPayload = rows => {
 
 const buildFilterAttributesPayload = rows => {
   return buildSpecificationsPayload(rows)
-    .filter(
-      spec =>
-        spec.filterable && spec.value !== undefined && spec.value !== null,
-    )
+    .filter(spec => spec.filterable && spec.value !== undefined && spec.value !== null)
     .flatMap(spec => {
       const values = Array.isArray(spec.value) ? spec.value : [spec.value]
 
@@ -773,13 +734,9 @@ const validateSpecificationsBeforeSave = rows => {
 const normalizeSeoFromProduct = product => ({
   seoSlug: product?.seo?.slug || product?.slug || '',
   shortDescription:
-    product?.seo?.shortDescription ||
-    product?.shortDescription ||
-    product?.summary ||
-    '',
+    product?.seo?.shortDescription || product?.shortDescription || product?.summary || '',
   metaTitle: product?.seo?.metaTitle || product?.metaTitle || '',
-  metaDescription:
-    product?.seo?.metaDescription || product?.metaDescription || '',
+  metaDescription: product?.seo?.metaDescription || product?.metaDescription || '',
   seoKeywords: Array.isArray(product?.seo?.keywords)
     ? product.seo.keywords.join(', ')
     : Array.isArray(product?.keywords)
@@ -854,28 +811,20 @@ const VariantImageSelector = ({ value, images, onChange }) => {
   return (
     <Select
       value={value || undefined}
-      placeholder={
-        images.length ? 'Seleccionar imagen' : 'Sin imágenes disponibles'
-      }
+      placeholder={images.length ? 'Seleccionar imagen' : 'Sin imágenes disponibles'}
       style={{ width: '100%' }}
       allowClear
       disabled={!images.length}
       options={options}
       onChange={selectedUrl => {
-        const selectedImage =
-          images.find(img => img.url === selectedUrl) || null
+        const selectedImage = images.find(img => img.url === selectedUrl) || null
         onChange(selectedImage)
       }}
     />
   )
 }
 
-const AttributeDefinitionEditor = ({
-  definitions,
-  onChange,
-  onGenerate,
-  disabled,
-}) => {
+const AttributeDefinitionEditor = ({ definitions, onChange, onGenerate, disabled }) => {
   const addAttribute = () => {
     onChange([
       ...definitions,
@@ -1000,11 +949,7 @@ const AttributeDefinitionEditor = ({
       </Space>
 
       <Space wrap>
-        <Button
-          icon={<PlusOutlined />}
-          onClick={addAttribute}
-          disabled={disabled}
-        >
+        <Button icon={<PlusOutlined />} onClick={addAttribute} disabled={disabled}>
           Agregar atributo
         </Button>
         <Button
@@ -1064,11 +1009,7 @@ const EditProduct = () => {
   )
 
   const totalVariantStock = useMemo(
-    () =>
-      variants.reduce(
-        (total, variant) => total + normalizeNumber(variant.stock),
-        0,
-      ),
+    () => variants.reduce((total, variant) => total + normalizeNumber(variant.stock), 0),
     [variants],
   )
 
@@ -1111,9 +1052,7 @@ const EditProduct = () => {
     }
 
     try {
-      const images = Array.isArray(normalizedProduct.images)
-        ? normalizedProduct.images
-        : []
+      const images = Array.isArray(normalizedProduct.images) ? normalizedProduct.images : []
       const productVariants = Array.isArray(normalizedProduct.variants)
         ? normalizedProduct.variants
         : []
@@ -1139,27 +1078,19 @@ const EditProduct = () => {
         color: Array.isArray(normalizedProduct.color)
           ? normalizedProduct.color.join(', ')
           : normalizeString(
-              normalizedProduct.color ||
-                getValueFromMapLike(normalizedProduct.atributos, 'color'),
+              normalizedProduct.color || getValueFromMapLike(normalizedProduct.atributos, 'color'),
             ),
         ...seoValues,
         ...logisticsValues,
       })
 
-      setEditableTags(
-        Array.isArray(normalizedProduct.tags) ? normalizedProduct.tags : [],
-      )
+      setEditableTags(Array.isArray(normalizedProduct.tags) ? normalizedProduct.tags : [])
       setFileList(images.map((img, index) => toUploadFile(img, index)))
       setProductImages(images)
-      setHasVariants(
-        Boolean(normalizedProduct.hasVariants || mappedVariants.length > 0),
-      )
+      setHasVariants(Boolean(normalizedProduct.hasVariants || mappedVariants.length > 0))
       setVariants(mappedVariants)
       setVariantDefinitions(
-        mergeVariantDefinitions(
-          normalizedProduct.variantAttributes || [],
-          mappedVariants,
-        ),
+        mergeVariantDefinitions(normalizedProduct.variantAttributes || [], mappedVariants),
       )
       setSpecificationRows(normalizeSpecSourceRows(normalizedProduct))
       setIsInitializing(false)
@@ -1182,15 +1113,13 @@ const EditProduct = () => {
 
         if (Object.prototype.hasOwnProperty.call(patch, 'attributeText')) {
           next.attributes = parseAttributesInput(patch.attributeText)
-          next.nombre =
-            normalizeString(next.nombre) || buildVariantName(next.attributes)
+          next.nombre = normalizeString(next.nombre) || buildVariantName(next.attributes)
         }
 
         if (Object.prototype.hasOwnProperty.call(patch, 'attributes')) {
           next.attributes = normalizeAttributes(patch.attributes)
           next.attributeText = serializeAttributes(next.attributes)
-          next.nombre =
-            normalizeString(next.nombre) || buildVariantName(next.attributes)
+          next.nombre = normalizeString(next.nombre) || buildVariantName(next.attributes)
         }
 
         return next
@@ -1221,10 +1150,7 @@ const EditProduct = () => {
   const handleAddSpecificationRow = useCallback(() => {
     setSpecificationRows(prev => [
       ...prev,
-      createSpecificationRow(
-        { isNew: true, label: `Atributo ${prev.length + 1}` },
-        prev.length,
-      ),
+      createSpecificationRow({ isNew: true, label: `Atributo ${prev.length + 1}` }, prev.length),
     ])
   }, [])
 
@@ -1245,11 +1171,7 @@ const EditProduct = () => {
     const cleanTag = normalizeString(inputTag).toLowerCase()
     if (!cleanTag) return
 
-    if (
-      !editableTags
-        .map(tag => normalizeString(tag).toLowerCase())
-        .includes(cleanTag)
-    ) {
+    if (!editableTags.map(tag => normalizeString(tag).toLowerCase()).includes(cleanTag)) {
       setEditableTags(prev => [...prev, cleanTag])
     }
 
@@ -1301,9 +1223,8 @@ const EditProduct = () => {
   const handleAddVariant = useCallback(() => {
     const nextIndex = variants.length + 1
     const definitionName =
-      slugifyKeyPart(
-        variantDefinitions[0]?.name || variantDefinitions[0]?.label,
-      ) || DEFAULT_VARIANT_ATTRIBUTE
+      slugifyKeyPart(variantDefinitions[0]?.name || variantDefinitions[0]?.label) ||
+      DEFAULT_VARIANT_ATTRIBUTE
     const attributes = { [definitionName]: `opcion-${nextIndex}` }
     const newVariant = createVariantFromAttributes({
       attributes,
@@ -1333,9 +1254,7 @@ const EditProduct = () => {
     }
 
     const existingKeys = new Set(
-      variants
-        .map(variant => buildVariantKey(ensureVariantAttributes(variant)))
-        .filter(Boolean),
+      variants.map(variant => buildVariantKey(ensureVariantAttributes(variant))).filter(Boolean),
     )
     const basePrice = normalizeNumber(form.getFieldValue('price'))
     const missingCombinations = combinations.filter(
@@ -1377,54 +1296,46 @@ const EditProduct = () => {
   }, [])
 
   const handleSyncDefinitionsFromVariants = useCallback(() => {
-    const nextDefinitions = mergeVariantDefinitions(
-      variantDefinitions,
-      variants,
-    )
+    const nextDefinitions = mergeVariantDefinitions(variantDefinitions, variants)
     setVariantDefinitions(nextDefinitions)
     message.success('Atributos sincronizados con las variantes actuales')
   }, [variantDefinitions, variants])
 
-  const syncVariantsWithServerProduct = useCallback(
-    (serverProduct, localVariants) => {
-      const serverVariants = Array.isArray(serverProduct?.variants)
-        ? serverProduct.variants
-        : []
+  const syncVariantsWithServerProduct = useCallback((serverProduct, localVariants) => {
+    const serverVariants = Array.isArray(serverProduct?.variants) ? serverProduct.variants : []
 
-      return localVariants.map(localVariant => {
-        const localAttributes = ensureVariantAttributes(localVariant)
-        const localKey = buildVariantKey(localAttributes)
-        const localSku = normalizeSkuForPayload(localVariant.sku)
-        const localName = normalizeString(localVariant.nombre).toLowerCase()
+    return localVariants.map(localVariant => {
+      const localAttributes = ensureVariantAttributes(localVariant)
+      const localKey = buildVariantKey(localAttributes)
+      const localSku = normalizeSkuForPayload(localVariant.sku)
+      const localName = normalizeString(localVariant.nombre).toLowerCase()
 
-        const matched = serverVariants.find(serverVariant => {
-          const serverAttributes = normalizeAttributes(
-            serverVariant.attributes || serverVariant.combinacion || {},
-          )
-          const serverKey = buildVariantKey(serverAttributes)
-          const serverSku = normalizeSkuForPayload(serverVariant.sku)
-          const serverName = normalizeString(serverVariant.nombre).toLowerCase()
+      const matched = serverVariants.find(serverVariant => {
+        const serverAttributes = normalizeAttributes(
+          serverVariant.attributes || serverVariant.combinacion || {},
+        )
+        const serverKey = buildVariantKey(serverAttributes)
+        const serverSku = normalizeSkuForPayload(serverVariant.sku)
+        const serverName = normalizeString(serverVariant.nombre).toLowerCase()
 
-          return (
-            (localVariant.variantId &&
-              String(serverVariant._id) === String(localVariant.variantId)) ||
-            (serverVariant.key && serverVariant.key === localKey) ||
-            (serverKey && serverKey === localKey) ||
-            (localSku && serverSku && serverSku === localSku) ||
-            (localName && serverName && serverName === localName)
-          )
-        })
-
-        return {
-          ...localVariant,
-          variantId: matched?._id || localVariant.variantId || null,
-          isNew: false,
-          touched: false,
-        }
+        return (
+          (localVariant.variantId &&
+            String(serverVariant._id) === String(localVariant.variantId)) ||
+          (serverVariant.key && serverVariant.key === localKey) ||
+          (serverKey && serverKey === localKey) ||
+          (localSku && serverSku && serverSku === localSku) ||
+          (localName && serverName && serverName === localName)
+        )
       })
-    },
-    [],
-  )
+
+      return {
+        ...localVariant,
+        variantId: matched?._id || localVariant.variantId || null,
+        isNew: false,
+        touched: false,
+      }
+    })
+  }, [])
 
   const handleFinish = async values => {
     if (hasVariants) {
@@ -1437,8 +1348,7 @@ const EditProduct = () => {
       }
     }
 
-    const specificationError =
-      validateSpecificationsBeforeSave(specificationRows)
+    const specificationError = validateSpecificationsBeforeSave(specificationRows)
     if (specificationError) {
       message.error(specificationError)
       return
@@ -1467,9 +1377,7 @@ const EditProduct = () => {
         condicion: normalizeString(values.condicion || 'nuevo'),
         material: normalizeString(values.material),
         color: colorArray,
-        tags: editableTags
-          .map(tag => normalizeString(tag).toLowerCase())
-          .filter(Boolean),
+        tags: editableTags.map(tag => normalizeString(tag).toLowerCase()).filter(Boolean),
         price: normalizeNumber(values.price),
         stock: hasVariants ? totalVariantStock : normalizeNumber(values.stock),
         hasVariants,
@@ -1494,10 +1402,7 @@ const EditProduct = () => {
       }
 
       if (hasVariants) {
-        payload.variantAttributes = buildVariantDefinitionsForSave(
-          variantDefinitions,
-          variants,
-        )
+        payload.variantAttributes = buildVariantDefinitionsForSave(variantDefinitions, variants)
         payload.variants = variants.map(buildVariantPayload)
       } else {
         payload.variantAttributes = []
@@ -1511,11 +1416,8 @@ const EditProduct = () => {
         }),
       ).unwrap()
 
-      const updatedProduct =
-        updatedProductResponse?.data || updatedProductResponse
-      let mergedImages = Array.isArray(updatedProduct?.images)
-        ? [...updatedProduct.images]
-        : []
+      const updatedProduct = updatedProductResponse?.data || updatedProductResponse
+      let mergedImages = Array.isArray(updatedProduct?.images) ? [...updatedProduct.images] : []
       const newFiles = fileList.filter(file => Boolean(file.originFileObj))
 
       if (newFiles.length > 0) {
@@ -1538,11 +1440,8 @@ const EditProduct = () => {
       setFileList(mergedImages.map((img, index) => toUploadFile(img, index)))
 
       if (hasVariants && variants.length > 0) {
-        const latestProductResponse = await dispatch(
-          getAProduct(productId),
-        ).unwrap()
-        const latestProduct =
-          latestProductResponse?.data || latestProductResponse
+        const latestProductResponse = await dispatch(getAProduct(productId)).unwrap()
+        const latestProduct = latestProductResponse?.data || latestProductResponse
         const syncedVariants = syncVariantsWithServerProduct(
           latestProduct || updatedProduct,
           variants,
@@ -1572,35 +1471,22 @@ const EditProduct = () => {
         }
       }
 
-      const finalProductResponse = await dispatch(
-        getAProduct(productId),
-      ).unwrap()
+      const finalProductResponse = await dispatch(getAProduct(productId)).unwrap()
       const finalProduct = finalProductResponse?.data || finalProductResponse
-      const finalVariants = Array.isArray(finalProduct?.variants)
-        ? finalProduct.variants
-        : []
+      const finalVariants = Array.isArray(finalProduct?.variants) ? finalProduct.variants : []
       const mappedFinalVariants = finalVariants.map((variant, index) =>
-        mapServerVariantToEditor(
-          variant,
-          index,
-          finalProduct?.images || mergedImages,
-        ),
+        mapServerVariantToEditor(variant, index, finalProduct?.images || mergedImages),
       )
 
       setVariants(mappedFinalVariants)
       setVariantDefinitions(
-        mergeVariantDefinitions(
-          finalProduct?.variantAttributes || [],
-          mappedFinalVariants,
-        ),
+        mergeVariantDefinitions(finalProduct?.variantAttributes || [], mappedFinalVariants),
       )
       setSpecificationRows(normalizeSpecSourceRows(finalProduct))
       message.success('Producto actualizado con éxito')
       navigate('/admin/productlist')
     } catch (error) {
-      message.error(
-        error?.message || error || 'Error al actualizar el producto',
-      )
+      message.error(error?.message || error || 'Error al actualizar el producto')
     } finally {
       setIsSaving(false)
     }
@@ -1617,9 +1503,7 @@ const EditProduct = () => {
           <Input
             value={record.label}
             placeholder="Material, Pantalla, Cilindrada"
-            onChange={event =>
-              updateSpecificationRow(record.id, { label: event.target.value })
-            }
+            onChange={event => updateSpecificationRow(record.id, { label: event.target.value })}
           />
         ),
       },
@@ -1632,9 +1516,7 @@ const EditProduct = () => {
           <Input
             value={record.key}
             placeholder="material"
-            onChange={event =>
-              updateSpecificationRow(record.id, { key: event.target.value })
-            }
+            onChange={event => updateSpecificationRow(record.id, { key: event.target.value })}
           />
         ),
       },
@@ -1687,9 +1569,7 @@ const EditProduct = () => {
             <Input
               value={record.value}
               placeholder="Valor visible en la ficha técnica"
-              onChange={event =>
-                updateSpecificationRow(record.id, { value: event.target.value })
-              }
+              onChange={event => updateSpecificationRow(record.id, { value: event.target.value })}
             />
           )
         },
@@ -1704,9 +1584,7 @@ const EditProduct = () => {
             value={record.type}
             style={{ width: '100%' }}
             options={SPEC_TYPES}
-            onChange={value =>
-              updateSpecificationRow(record.id, { type: value })
-            }
+            onChange={value => updateSpecificationRow(record.id, { type: value })}
           />
         ),
       },
@@ -1719,9 +1597,7 @@ const EditProduct = () => {
           <Input
             value={record.group}
             placeholder="general"
-            onChange={event =>
-              updateSpecificationRow(record.id, { group: event.target.value })
-            }
+            onChange={event => updateSpecificationRow(record.id, { group: event.target.value })}
           />
         ),
       },
@@ -1734,9 +1610,7 @@ const EditProduct = () => {
           <Input
             value={record.unit}
             placeholder="cm, kg, GB"
-            onChange={event =>
-              updateSpecificationRow(record.id, { unit: event.target.value })
-            }
+            onChange={event => updateSpecificationRow(record.id, { unit: event.target.value })}
           />
         ),
       },
@@ -1748,9 +1622,7 @@ const EditProduct = () => {
         render: (_, record) => (
           <Switch
             checked={record.visible !== false}
-            onChange={checked =>
-              updateSpecificationRow(record.id, { visible: checked })
-            }
+            onChange={checked => updateSpecificationRow(record.id, { visible: checked })}
           />
         ),
       },
@@ -1762,9 +1634,7 @@ const EditProduct = () => {
         render: (_, record) => (
           <Switch
             checked={record.filterable === true}
-            onChange={checked =>
-              updateSpecificationRow(record.id, { filterable: checked })
-            }
+            onChange={checked => updateSpecificationRow(record.id, { filterable: checked })}
           />
         ),
       },
@@ -1809,9 +1679,7 @@ const EditProduct = () => {
             <Input
               value={record.nombre}
               placeholder="Ej: Rojo / Talle M"
-              onChange={event =>
-                updateVariant(record.key, { nombre: event.target.value })
-              }
+              onChange={event => updateVariant(record.key, { nombre: event.target.value })}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
               Es el nombre que verá el admin y puede mostrarse en el storefront.
@@ -1837,18 +1705,14 @@ const EditProduct = () => {
               value={record.attributeText}
               autoSize={{ minRows: 1, maxRows: 3 }}
               placeholder="color: rojo, talle: M"
-              onChange={event =>
-                updateVariant(record.key, { attributeText: event.target.value })
-              }
+              onChange={event => updateVariant(record.key, { attributeText: event.target.value })}
             />
             <Space wrap size={[4, 4]}>
-              {Object.entries(ensureVariantAttributes(record)).map(
-                ([key, value]) => (
-                  <Tag key={`${record.key}-${key}`} color="geekblue">
-                    {humanizeKey(key)}: {value}
-                  </Tag>
-                ),
-              )}
+              {Object.entries(ensureVariantAttributes(record)).map(([key, value]) => (
+                <Tag key={`${record.key}-${key}`} color="geekblue">
+                  {humanizeKey(key)}: {value}
+                </Tag>
+              ))}
             </Space>
           </Space>
         ),
@@ -1864,9 +1728,7 @@ const EditProduct = () => {
             value={record.price}
             style={{ width: '100%' }}
             prefix="$"
-            onChange={value =>
-              updateVariant(record.key, { price: normalizeNumber(value) })
-            }
+            onChange={value => updateVariant(record.key, { price: normalizeNumber(value) })}
           />
         ),
       },
@@ -1880,9 +1742,7 @@ const EditProduct = () => {
             min={0}
             value={record.stock}
             style={{ width: '100%' }}
-            onChange={value =>
-              updateVariant(record.key, { stock: normalizeNumber(value) })
-            }
+            onChange={value => updateVariant(record.key, { stock: normalizeNumber(value) })}
           />
         ),
       },
@@ -1895,9 +1755,7 @@ const EditProduct = () => {
           <Input
             value={record.sku}
             placeholder="Opcional"
-            onChange={event =>
-              updateVariant(record.key, { sku: event.target.value })
-            }
+            onChange={event => updateVariant(record.key, { sku: event.target.value })}
           />
         ),
       },
@@ -1940,9 +1798,7 @@ const EditProduct = () => {
         render: (_, record) => (
           <Switch
             checked={record.isActive !== false}
-            onChange={checked =>
-              updateVariant(record.key, { isActive: checked })
-            }
+            onChange={checked => updateVariant(record.key, { isActive: checked })}
           />
         ),
       },
@@ -1963,12 +1819,7 @@ const EditProduct = () => {
         ),
       },
     ],
-    [
-      handleAssignImageToVariant,
-      handleDeleteVariant,
-      productImages,
-      updateVariant,
-    ],
+    [handleAssignImageToVariant, handleDeleteVariant, productImages, updateVariant],
   )
 
   if (isInitializing || (isLoading && !normalizedProduct)) {
@@ -1979,9 +1830,7 @@ const EditProduct = () => {
           <Text style={{ display: 'block', marginTop: 16, color: '#64748b' }}>
             Cargando producto...
           </Text>
-          <Text style={{ display: 'block', marginTop: 8, color: '#94a3b8' }}>
-            ID: {productId}
-          </Text>
+          <Text style={{ display: 'block', marginTop: 8, color: '#94a3b8' }}>ID: {productId}</Text>
         </div>
       </div>
     )
@@ -1995,9 +1844,7 @@ const EditProduct = () => {
             message="Error al cargar el producto"
             description={
               <div>
-                <p>
-                  {loadError || errorMessage || 'No se pudo cargar el producto'}
-                </p>
+                <p>{loadError || errorMessage || 'No se pudo cargar el producto'}</p>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   ID solicitado: {productId}
                 </Text>
@@ -2021,10 +1868,7 @@ const EditProduct = () => {
         <div style={pageStyles.shell}>
           <Card style={pageStyles.card}>
             <Empty description="No se encontró el producto">
-              <Button
-                type="primary"
-                onClick={() => navigate('/admin/productlist')}
-              >
+              <Button type="primary" onClick={() => navigate('/admin/productlist')}>
                 Volver a la lista
               </Button>
             </Empty>
@@ -2051,9 +1895,8 @@ const EditProduct = () => {
                     : 'Editor de producto'}
                 </Title>
                 <Paragraph style={pageStyles.heroSubtitle}>
-                  Editor productivo para información comercial, SEO, ficha
-                  técnica, logística, galería y variantes sincronizadas con el
-                  storefront.
+                  Editor productivo para información comercial, SEO, ficha técnica, logística,
+                  galería y variantes sincronizadas con el storefront.
                 </Paragraph>
               </Space>
             </Col>
@@ -2061,10 +1904,7 @@ const EditProduct = () => {
             <Col xs={24} lg={9}>
               <Row gutter={[12, 12]} justify="end">
                 <Col>
-                  <Card
-                    size="small"
-                    style={{ minWidth: 128, borderRadius: 14 }}
-                  >
+                  <Card size="small" style={{ minWidth: 128, borderRadius: 14 }}>
                     <Text type="secondary">Variantes</Text>
                     <Title level={4} style={{ margin: 0 }}>
                       {variants.length}
@@ -2072,10 +1912,7 @@ const EditProduct = () => {
                   </Card>
                 </Col>
                 <Col>
-                  <Card
-                    size="small"
-                    style={{ minWidth: 128, borderRadius: 14 }}
-                  >
+                  <Card size="small" style={{ minWidth: 128, borderRadius: 14 }}>
                     <Text type="secondary">Ficha técnica</Text>
                     <Title level={4} style={{ margin: 0 }}>
                       {specificationCount}
@@ -2083,10 +1920,7 @@ const EditProduct = () => {
                   </Card>
                 </Col>
                 <Col>
-                  <Card
-                    size="small"
-                    style={{ minWidth: 128, borderRadius: 14 }}
-                  >
+                  <Card size="small" style={{ minWidth: 128, borderRadius: 14 }}>
                     <Text type="secondary">Stock</Text>
                     <Title level={4} style={{ margin: 0 }}>
                       {hasVariants
@@ -2100,12 +1934,7 @@ const EditProduct = () => {
           </Row>
         </div>
 
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleFinish}
-          scrollToFirstError
-        >
+        <Form form={form} layout="vertical" onFinish={handleFinish} scrollToFirstError>
           <Row gutter={[24, 24]} align="top">
             <Col xs={24} xl={16}>
               <Space direction="vertical" size={24} style={{ width: '100%' }}>
@@ -2117,10 +1946,7 @@ const EditProduct = () => {
                     </span>
                   }
                   extra={
-                    <Button
-                      icon={<ArrowLeftOutlined />}
-                      onClick={() => navigate(-1)}
-                    >
+                    <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
                       Cancelar
                     </Button>
                   }
@@ -2128,14 +1954,9 @@ const EditProduct = () => {
                   <Form.Item
                     name="title"
                     label="Título del producto"
-                    rules={[
-                      { required: true, message: 'El título es obligatorio' },
-                    ]}
+                    rules={[{ required: true, message: 'El título es obligatorio' }]}
                   >
-                    <Input
-                      placeholder="Ej: Camiseta de algodón premium"
-                      size="large"
-                    />
+                    <Input placeholder="Ej: Camiseta de algodón premium" size="large" />
                   </Form.Item>
 
                   <Form.Item
@@ -2194,9 +2015,7 @@ const EditProduct = () => {
                         <Select placeholder="Seleccionar">
                           <Select.Option value="nuevo">Nuevo</Select.Option>
                           <Select.Option value="usado">Usado</Select.Option>
-                          <Select.Option value="reacondicionado">
-                            Reacondicionado
-                          </Select.Option>
+                          <Select.Option value="reacondicionado">Reacondicionado</Select.Option>
                         </Select>
                       </Form.Item>
                     </Col>
@@ -2209,11 +2028,7 @@ const EditProduct = () => {
                   </Row>
 
                   <Form.Item label="Etiquetas">
-                    <Space
-                      direction="vertical"
-                      style={{ width: '100%' }}
-                      size="small"
-                    >
+                    <Space direction="vertical" style={{ width: '100%' }} size="small">
                       <Space wrap style={{ minHeight: 32 }}>
                         {editableTags.length ? (
                           editableTags.map((tag, index) => (
@@ -2242,11 +2057,7 @@ const EditProduct = () => {
                             handleTagAdd()
                           }}
                         />
-                        <Button
-                          type="primary"
-                          onClick={handleTagAdd}
-                          icon={<PlusOutlined />}
-                        >
+                        <Button type="primary" onClick={handleTagAdd} icon={<PlusOutlined />}>
                           Agregar
                         </Button>
                       </Space.Compact>
@@ -2278,18 +2089,11 @@ const EditProduct = () => {
                     </Col>
                     <Col xs={24} md={12}>
                       <Form.Item name="metaTitle" label="Meta title">
-                        <Input
-                          maxLength={160}
-                          showCount
-                          placeholder="Título SEO"
-                        />
+                        <Input maxLength={160} showCount placeholder="Título SEO" />
                       </Form.Item>
                     </Col>
                     <Col xs={24}>
-                      <Form.Item
-                        name="shortDescription"
-                        label="Descripción corta"
-                      >
+                      <Form.Item name="shortDescription" label="Descripción corta">
                         <TextArea
                           rows={3}
                           maxLength={500}
@@ -2299,10 +2103,7 @@ const EditProduct = () => {
                       </Form.Item>
                     </Col>
                     <Col xs={24}>
-                      <Form.Item
-                        name="metaDescription"
-                        label="Meta description"
-                      >
+                      <Form.Item name="metaDescription" label="Meta description">
                         <TextArea
                           rows={3}
                           maxLength={320}
@@ -2323,8 +2124,7 @@ const EditProduct = () => {
                   style={pageStyles.card}
                   title={
                     <span style={pageStyles.sectionTitle}>
-                      <ThunderboltOutlined /> Ficha técnica y campos dinámicos
-                      por rubro
+                      <ThunderboltOutlined /> Ficha técnica y campos dinámicos por rubro
                     </span>
                   }
                   extra={
@@ -2354,10 +2154,7 @@ const EditProduct = () => {
                     locale={{
                       emptyText: (
                         <Empty description="Sin campos dinámicos todavía">
-                          <Button
-                            type="primary"
-                            onClick={handleAddSpecificationRow}
-                          >
+                          <Button type="primary" onClick={handleAddSpecificationRow}>
                             Crear primer campo
                           </Button>
                         </Empty>
@@ -2376,10 +2173,7 @@ const EditProduct = () => {
                   extra={
                     <Space>
                       <Text type="secondary">Usar variantes</Text>
-                      <Switch
-                        checked={hasVariants}
-                        onChange={handleToggleVariants}
-                      />
+                      <Switch checked={hasVariants} onChange={handleToggleVariants} />
                     </Space>
                   }
                 >
@@ -2421,13 +2215,9 @@ const EditProduct = () => {
                       >
                         <Space wrap>
                           <Tag color="processing">Total: {variants.length}</Tag>
-                          <Tag color="success">
-                            Activas: {activeVariantsCount}
-                          </Tag>
+                          <Tag color="success">Activas: {activeVariantsCount}</Tag>
                           <Tag color="blue">Nuevas: {newVariantsCount}</Tag>
-                          <Tag color="geekblue">
-                            Stock variantes: {totalVariantStock}
-                          </Tag>
+                          <Tag color="geekblue">Stock variantes: {totalVariantStock}</Tag>
                         </Space>
 
                         <Space wrap>
@@ -2437,11 +2227,7 @@ const EditProduct = () => {
                           >
                             Sincronizar atributos
                           </Button>
-                          <Button
-                            type="primary"
-                            icon={<PlusOutlined />}
-                            onClick={handleAddVariant}
-                          >
+                          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddVariant}>
                             Agregar variante manual
                           </Button>
                         </Space>
@@ -2478,16 +2264,11 @@ const EditProduct = () => {
                             rowKey="key"
                             columns={variantColumns}
                             scroll={{ x: 1610 }}
-                            rowClassName={record =>
-                              record.isNew ? 'variant-row-new' : ''
-                            }
+                            rowClassName={record => (record.isNew ? 'variant-row-new' : '')}
                             locale={{
                               emptyText: (
                                 <Empty description="No hay variantes cargadas">
-                                  <Button
-                                    type="primary"
-                                    onClick={handleAddVariant}
-                                  >
+                                  <Button type="primary" onClick={handleAddVariant}>
                                     Crear primera variante
                                   </Button>
                                 </Empty>
@@ -2524,11 +2305,7 @@ const EditProduct = () => {
                           },
                         ]}
                       >
-                        <InputNumber
-                          style={{ width: '100%' }}
-                          prefix="$"
-                          min={0}
-                        />
+                        <InputNumber style={{ width: '100%' }} prefix="$" min={0} />
                       </Form.Item>
                     </Col>
 
@@ -2657,8 +2434,8 @@ const EditProduct = () => {
                   }
                 >
                   <Paragraph style={pageStyles.muted}>
-                    Máximo {MAX_PRODUCT_IMAGES} imágenes. Las variantes pueden
-                    usar una imagen específica desde esta galería.
+                    Máximo {MAX_PRODUCT_IMAGES} imágenes. Las variantes pueden usar una imagen
+                    específica desde esta galería.
                   </Paragraph>
 
                   <Upload

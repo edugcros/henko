@@ -184,9 +184,7 @@ const getEntityId = value => {
 }
 
 const getProductFromItem = item => {
-  return item?.productId && typeof item.productId === 'object'
-    ? item.productId
-    : null
+  return item?.productId && typeof item.productId === 'object' ? item.productId : null
 }
 
 const getProductImageUrl = product => {
@@ -196,12 +194,7 @@ const getProductImageUrl = product => {
 
   if (typeof image === 'string') return image
 
-  return (
-    image.url ||
-    image.secure_url ||
-    image.imageUrl ||
-    '/assets/images/placeholder.png'
-  )
+  return image.url || image.secure_url || image.imageUrl || '/assets/images/placeholder.png'
 }
 
 const getPromotionalBlockProducts = block => {
@@ -335,10 +328,7 @@ const buildPayload = form => {
       productId: getEntityId(item.productId),
       customTitle: String(item.customTitle || '').trim(),
       customLabel: String(item.customLabel || '').trim(),
-      discountPercentage: Math.min(
-        100,
-        Math.max(0, safeNumber(item.discountPercentage, 0)),
-      ),
+      discountPercentage: Math.min(100, Math.max(0, safeNumber(item.discountPercentage, 0))),
       priority: safeNumber(item.priority, index + 1),
       isActive: item.isActive !== false,
     })),
@@ -360,12 +350,7 @@ const ConfirmDialog = ({
   onCancel,
 }) => {
   return (
-    <Dialog
-      open={open}
-      onClose={loading ? undefined : onCancel}
-      maxWidth="xs"
-      fullWidth
-    >
+    <Dialog open={open} onClose={loading ? undefined : onCancel} maxWidth="xs" fullWidth>
       <DialogTitle>{title}</DialogTitle>
 
       <DialogContent>
@@ -377,12 +362,7 @@ const ConfirmDialog = ({
           Cancelar
         </Button>
 
-        <Button
-          variant="contained"
-          color={confirmColor}
-          onClick={onConfirm}
-          disabled={loading}
-        >
+        <Button variant="contained" color={confirmColor} onClick={onConfirm} disabled={loading}>
           {loading ? <CircularProgress size={20} /> : confirmText}
         </Button>
       </DialogActions>
@@ -431,36 +411,17 @@ const ProductPickerCard = ({ product, selected, disabled, onToggle }) => {
           ${product.price || 0}
         </Typography>
 
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          display="block"
-          noWrap
-        >
+        <Typography variant="caption" color="text.secondary" display="block" noWrap>
           {product.categoria || product.category || 'Sin categoría'}
         </Typography>
 
-        {selected && (
-          <Chip
-            size="small"
-            color="primary"
-            label="Seleccionado"
-            sx={{ mt: 1 }}
-          />
-        )}
+        {selected && <Chip size="small" color="primary" label="Seleccionado" sx={{ mt: 1 }} />}
       </CardContent>
     </Card>
   )
 }
 
-const PromotionalBlockRow = ({
-  block,
-  onEdit,
-  onToggleStatus,
-  onDelete,
-  toggling,
-  deleting,
-}) => {
+const PromotionalBlockRow = ({ block, onEdit, onToggleStatus, onDelete, toggling, deleting }) => {
   const status = getBlockStatus(block)
   const previewProducts = getPromotionalBlockProducts(block)
 
@@ -477,11 +438,7 @@ const PromotionalBlockRow = ({
       </TableCell>
 
       <TableCell>
-        <Chip
-          size="small"
-          label={getTypeLabel(block.type)}
-          variant="outlined"
-        />
+        <Chip size="small" label={getTypeLabel(block.type)} variant="outlined" />
       </TableCell>
 
       <TableCell sx={{ minWidth: 280 }}>
@@ -515,21 +472,14 @@ const PromotionalBlockRow = ({
               {block.description || 'Sin descripción'}
             </Typography>
 
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              noWrap
-              display="block"
-            >
+            <Typography variant="caption" color="text.secondary" noWrap display="block">
               {previewProducts.length > 0
                 ? previewProducts
                     .slice(0, 2)
                     .map(product => product.title || 'Producto')
                     .join(', ')
                 : 'Sin productos asociados'}
-              {previewProducts.length > 2
-                ? ` +${previewProducts.length - 2} más`
-                : ''}
+              {previewProducts.length > 2 ? ` +${previewProducts.length - 2} más` : ''}
             </Typography>
           </Box>
         </Stack>
@@ -577,11 +527,7 @@ const PromotionalBlockRow = ({
         </Tooltip>
 
         <Tooltip title="Eliminar">
-          <IconButton
-            color="error"
-            onClick={() => onDelete(block)}
-            disabled={deleting}
-          >
+          <IconButton color="error" onClick={() => onDelete(block)} disabled={deleting}>
             <BsTrash />
           </IconButton>
         </Tooltip>
@@ -684,18 +630,15 @@ const PromotionalBlocksPage = () => {
   // =====================================================
 
   const activeBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'active')
-      .length
+    return blocks.filter(block => getBlockStatus(block).value === 'active').length
   }, [blocks])
 
   const scheduledBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'scheduled')
-      .length
+    return blocks.filter(block => getBlockStatus(block).value === 'scheduled').length
   }, [blocks])
 
   const expiredBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'expired')
-      .length
+    return blocks.filter(block => getBlockStatus(block).value === 'expired').length
   }, [blocks])
 
   const normalizedProducts = useMemo(() => {
@@ -711,14 +654,10 @@ const PromotionalBlocksPage = () => {
 
     return normalizedProducts.filter(product => {
       const title = String(product.title || '').toLowerCase()
-      const category = String(
-        product.categoria || product.category || '',
-      ).toLowerCase()
+      const category = String(product.categoria || product.category || '').toLowerCase()
       const brand = String(product.marca || product.brand || '').toLowerCase()
 
-      return (
-        !q || title.includes(q) || category.includes(q) || brand.includes(q)
-      )
+      return !q || title.includes(q) || category.includes(q) || brand.includes(q)
     })
   }, [normalizedProducts, productSearch])
 
@@ -788,30 +727,22 @@ const PromotionalBlocksPage = () => {
     const productId = getEntityId(product)
 
     setForm(prev => {
-      const exists = prev.products.some(
-        item => getEntityId(item.productId) === productId,
-      )
+      const exists = prev.products.some(item => getEntityId(item.productId) === productId)
 
       if (exists) {
         return {
           ...prev,
-          products: prev.products.filter(
-            item => getEntityId(item.productId) !== productId,
-          ),
+          products: prev.products.filter(item => getEntityId(item.productId) !== productId),
         }
       }
 
       if (prev.products.length >= Number(prev.maxItems)) {
-        toast.warning(
-          `Máximo ${prev.maxItems} productos permitidos en este bloque`,
-        )
+        toast.warning(`Máximo ${prev.maxItems} productos permitidos en este bloque`)
         return prev
       }
 
       if (prev.products.length >= CONFIG.MAX_PRODUCTS_PER_BLOCK) {
-        toast.warning(
-          `Máximo técnico permitido: ${CONFIG.MAX_PRODUCTS_PER_BLOCK} productos`,
-        )
+        toast.warning(`Máximo técnico permitido: ${CONFIG.MAX_PRODUCTS_PER_BLOCK} productos`)
         return prev
       }
 
@@ -895,9 +826,7 @@ const PromotionalBlocksPage = () => {
     const maxItems = safeNumber(form.maxItems, CONFIG.DEFAULT_MAX_ITEMS)
 
     if (maxItems < 1 || maxItems > CONFIG.MAX_PRODUCTS_PER_BLOCK) {
-      toast.error(
-        `El máximo de productos debe estar entre 1 y ${CONFIG.MAX_PRODUCTS_PER_BLOCK}`,
-      )
+      toast.error(`El máximo de productos debe estar entre 1 y ${CONFIG.MAX_PRODUCTS_PER_BLOCK}`)
       return false
     }
 
@@ -931,11 +860,7 @@ const PromotionalBlocksPage = () => {
       closeModal()
       loadBlocks()
     } catch (err) {
-      toast.error(
-        typeof err === 'string'
-          ? err
-          : err?.message || 'Error al guardar el bloque',
-      )
+      toast.error(typeof err === 'string' ? err : err?.message || 'Error al guardar el bloque')
     }
   }
 
@@ -992,11 +917,7 @@ const PromotionalBlocksPage = () => {
       closeConfirmDialog()
       loadBlocks()
     } catch (err) {
-      toast.error(
-        typeof err === 'string'
-          ? err
-          : err?.message || 'Error al procesar la acción',
-      )
+      toast.error(typeof err === 'string' ? err : err?.message || 'Error al procesar la acción')
     }
   }
 
@@ -1008,11 +929,7 @@ const PromotionalBlocksPage = () => {
     <Box sx={{ bgcolor: '#F5F5F7', minHeight: '100vh', pb: 8 }}>
       <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #e0e0e0', py: 3 }}>
         <Container maxWidth="xl">
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            justifyContent="space-between"
-            spacing={2}
-          >
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
             <Box>
               <Stack direction="row" alignItems="center" spacing={2} mb={1}>
                 <Button
@@ -1029,8 +946,8 @@ const PromotionalBlocksPage = () => {
               </Stack>
 
               <Typography color="text.secondary">
-                Gestioná ofertas, destacados, novedades, liquidaciones y
-                campañas visibles por tenant.
+                Gestioná ofertas, destacados, novedades, liquidaciones y campañas visibles por
+                tenant.
               </Typography>
             </Box>
 
@@ -1272,18 +1189,15 @@ const PromotionalBlocksPage = () => {
 
         <Alert severity="info" sx={{ mt: 3 }}>
           <Typography variant="body2">
-            Los bloques públicos se muestran en el website solo si están
-            activos, visibles, dentro del rango de fechas y pertenecen al tenant
-            actual.
+            Los bloques públicos se muestran en el website solo si están activos, visibles, dentro
+            del rango de fechas y pertenecen al tenant actual.
           </Typography>
         </Alert>
       </Container>
 
       <Dialog open={modalOpen} onClose={closeModal} maxWidth="lg" fullWidth>
         <DialogTitle>
-          {editingBlock
-            ? 'Editar bloque promocional'
-            : 'Nuevo bloque promocional'}
+          {editingBlock ? 'Editar bloque promocional' : 'Nuevo bloque promocional'}
         </DialogTitle>
 
         <DialogContent dividers>
@@ -1465,9 +1379,7 @@ const PromotionalBlocksPage = () => {
                 control={
                   <Switch
                     checked={form.isActive}
-                    onChange={event =>
-                      setField('isActive', event.target.checked)
-                    }
+                    onChange={event => setField('isActive', event.target.checked)}
                   />
                 }
                 label="Activo"
@@ -1540,8 +1452,7 @@ const PromotionalBlocksPage = () => {
                   filteredProducts.map(product => {
                     const productId = getEntityId(product)
                     const selected = selectedProductIds.has(productId)
-                    const disabled =
-                      !selected && form.products.length >= Number(form.maxItems)
+                    const disabled = !selected && form.products.length >= Number(form.maxItems)
 
                     return (
                       <ProductPickerCard
@@ -1566,9 +1477,7 @@ const PromotionalBlocksPage = () => {
                 <Stack spacing={2}>
                   {form.products.map((item, index) => {
                     const productId = getEntityId(item.productId)
-                    const product = normalizedProducts.find(
-                      p => getEntityId(p) === productId,
-                    )
+                    const product = normalizedProducts.find(p => getEntityId(p) === productId)
 
                     return (
                       <Paper key={productId} sx={{ p: 2, borderRadius: 2 }}>
@@ -1578,10 +1487,7 @@ const PromotionalBlocksPage = () => {
                               {product?.title || `Producto ${index + 1}`}
                             </Typography>
 
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
+                            <Typography variant="caption" color="text.secondary">
                               {productId}
                             </Typography>
                           </Grid>
@@ -1696,11 +1602,7 @@ const PromotionalBlocksPage = () => {
             Cancelar
           </Button>
 
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={isSaving}
-          >
+          <Button variant="contained" onClick={handleSubmit} disabled={isSaving}>
             {isSaving ? (
               <CircularProgress size={22} />
             ) : editingBlock ? (
@@ -1726,11 +1628,7 @@ const PromotionalBlocksPage = () => {
             ? `¿Estás seguro de eliminar definitivamente "${confirmDialog.block?.title}" de la base de datos? Esta acción no se puede deshacer.`
             : `¿Querés ${confirmDialog.block?.isActive ? 'desactivar' : 'activar'} "${confirmDialog.block?.title}"?`
         }
-        confirmText={
-          confirmDialog.action === 'delete'
-            ? 'Eliminar definitivamente'
-            : 'Confirmar'
-        }
+        confirmText={confirmDialog.action === 'delete' ? 'Eliminar definitivamente' : 'Confirmar'}
         confirmColor={confirmDialog.action === 'delete' ? 'error' : 'primary'}
         loading={isDeleting || isToggling}
         onConfirm={confirmAction}

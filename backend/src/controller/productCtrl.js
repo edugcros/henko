@@ -1494,6 +1494,61 @@ export const getaProduct = expressAsyncHandler(async (req, res) => {
 })
 
 // =====================================================
+// GET DRAFT PRODUCTS (revisión de borradores creados por el agente IA)
+// =====================================================
+
+/**
+ * GET /api/product/admin/drafts
+ *
+ * Bandeja de control para borradores creados por el agente autónomo
+ * (o manualmente): a diferencia de getAllProduct, esto NO pasa por
+ * buildStorefrontMatch, así que trae productos con status:'draft' o
+ * visibility:'hidden' que de otro modo son invisibles en todo el panel
+ * admin. Requiere sesión de administrador (adminContext).
+ */
+export const listDraftProducts = expressAsyncHandler(async (req, res) => {
+  const tenantId = requireUserTenantId(req)
+  assertSameResolvedTenant(req, tenantId)
+
+  const page = toSafePositiveInt(req.query.page, 1, { min: 1, max: 100000 })
+  const limit = toSafePositiveInt(req.query.limit, 50, { min: 1, max: 200 })
+  const skip = (page - 1) * limit
+
+  const onlyAiGenerated = req.query.iaGenerated === undefined
+    ? true
+    : parseBoolean(req.query.iaGenerated, true)
+
+  const query = {
+    tenantId: new mongoose.Types.ObjectId(String(tenantId)),
+    isDeleted: { $ne: true },
+    status: 'draft',
+  }
+
+  if (onlyAiGenerated) query.iaGenerated = true
+
+  const [products, total] = await Promise.all([
+    Product.find(query)
+      .setOptions({ tenantId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Product.countDocuments(query).setOptions({ tenantId }),
+  ])
+
+  return res.status(200).json({
+    success: true,
+    data: products,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  })
+})
+
+// =====================================================
 // GET ALL PUBLIC PRODUCTS
 // =====================================================
 

@@ -5,9 +5,7 @@ import { getProducts } from '../features/product/productSlice'
 
 export const useProducts = (filters = {}) => {
   const dispatch = useDispatch()
-  const { products, isLoading, isError, message } = useSelector(
-    state => state.product,
-  )
+  const { products, isLoading, isError, message } = useSelector(state => state.product)
 
   const [localFilters, setLocalFilters] = useState(filters)
 
@@ -26,9 +24,7 @@ export const useProducts = (filters = {}) => {
     }
 
     // Remover undefined/null
-    const cleanParams = Object.fromEntries(
-      Object.entries(params).filter(([_, v]) => v != null),
-    )
+    const cleanParams = Object.fromEntries(Object.entries(params).filter(([_, v]) => v != null))
 
     dispatch(getProducts(cleanParams))
   }, [dispatch, localFilters])
@@ -58,9 +54,7 @@ export const useProducts = (filters = {}) => {
   }))
 
   // Extraer categorías únicas de los productos cargados
-  const categories = [
-    ...new Set(products.map(p => p.categoria).filter(Boolean)),
-  ]
+  const categories = [...new Set(products.map(p => p.categoria).filter(Boolean))]
 
   return {
     products: normalizedProducts,

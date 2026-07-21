@@ -29,9 +29,7 @@ const renderAdminRoutes = () =>
   privateRoutes
     .map(({ path, Component: _Component }) => {
       if (!_Component) {
-        console.error(
-          `🚨 ERROR: Ruta admin "${path}" tiene Component undefined`,
-        )
+        console.error(`🚨 ERROR: Ruta admin "${path}" tiene Component undefined`)
         return null
       }
 
@@ -55,10 +53,7 @@ const RouteRenderer = ({ isLoggedIn }) => {
 
   return (
     <Routes>
-      <Route
-        path="/"
-        element={<Navigate to={isLoggedIn ? '/admin' : '/login'} replace />}
-      />
+      <Route path="/" element={<Navigate to={isLoggedIn ? '/admin' : '/login'} replace />} />
 
       {renderPublicRoutes()}
 

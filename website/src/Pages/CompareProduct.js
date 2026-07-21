@@ -206,13 +206,7 @@ const getFirstValueFromPaths = (item, paths = []) => {
     const value = getNestedValue(item, path)
 
     if (Array.isArray(value) && value.length > 0) return value
-    if (
-      !Array.isArray(value) &&
-      value !== undefined &&
-      value !== null &&
-      value !== ''
-    )
-      return value
+    if (!Array.isArray(value) && value !== undefined && value !== null && value !== '') return value
   }
 
   return undefined
@@ -247,9 +241,7 @@ const getProductDescription = product => {
 const getShortTitle = (title, maxLength = 50) => {
   const clean = normalizeText(title)
   if (!clean) return 'Producto sin título'
-  return clean.length <= maxLength
-    ? clean
-    : `${clean.substring(0, maxLength).trim()}...`
+  return clean.length <= maxLength ? clean : `${clean.substring(0, maxLength).trim()}...`
 }
 
 const formatValue = (value, type) => {
@@ -335,11 +327,7 @@ const AttributeCell = ({ value, type, isBest, isDifferent, rowKey }) => {
 
   if (value === null || value === undefined || value === '') {
     return (
-      <Typography
-        variant="body2"
-        color="text.disabled"
-        sx={{ fontStyle: 'italic' }}
-      >
+      <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
         No especificado
       </Typography>
     )
@@ -349,13 +337,7 @@ const AttributeCell = ({ value, type, isBest, isDifferent, rowKey }) => {
     const colors = Array.isArray(value) ? value : [value]
 
     return (
-      <Stack
-        direction="row"
-        spacing={0.5}
-        flexWrap="wrap"
-        justifyContent="center"
-        gap={0.5}
-      >
+      <Stack direction="row" spacing={0.5} flexWrap="wrap" justifyContent="center" gap={0.5}>
         {colors.map((color, idx) => (
           <Tooltip key={`${color}-${idx}`} title={color} arrow>
             <Box
@@ -379,13 +361,7 @@ const AttributeCell = ({ value, type, isBest, isDifferent, rowKey }) => {
 
   if (Array.isArray(value)) {
     return (
-      <Stack
-        direction="row"
-        spacing={0.5}
-        flexWrap="wrap"
-        justifyContent="center"
-        gap={0.5}
-      >
+      <Stack direction="row" spacing={0.5} flexWrap="wrap" justifyContent="center" gap={0.5}>
         {value.slice(0, 3).map((item, idx) => (
           <Chip
             key={`${item}-${idx}`}
@@ -395,9 +371,7 @@ const AttributeCell = ({ value, type, isBest, isDifferent, rowKey }) => {
             sx={{
               fontSize: '0.75rem',
               height: 24,
-              bgcolor: isDifferent
-                ? alpha(theme.palette.brand.main, 0.08)
-                : 'transparent',
+              bgcolor: isDifferent ? alpha(theme.palette.brand.main, 0.08) : 'transparent',
             }}
           />
         ))}
@@ -438,11 +412,7 @@ const AttributeCell = ({ value, type, isBest, isDifferent, rowKey }) => {
         variant="body2"
         sx={{
           fontWeight: isBest ? 700 : isDifferent ? 600 : 400,
-          color: isBest
-            ? 'success.main'
-            : isDifferent
-              ? 'text.primary'
-              : 'text.secondary',
+          color: isBest ? 'success.main' : isDifferent ? 'text.primary' : 'text.secondary',
           fontSize: type === 'currency' ? '1.05rem' : '0.9rem',
         }}
       >
@@ -500,15 +470,12 @@ const CompareProduct = () => {
       if (validValues.length === 0) return null
 
       const isDifferent =
-        validValues.length > 1 &&
-        !validValues.every(v => isSameValue(v.raw, validValues[0].raw))
+        validValues.length > 1 && !validValues.every(v => isSameValue(v.raw, validValues[0].raw))
 
       let bestIndex = -1
 
       if (field.highlight === 'lower' && field.type === 'currency') {
-        const numericValues = values
-          .map(v => Number(v.raw))
-          .filter(Number.isFinite)
+        const numericValues = values.map(v => Number(v.raw)).filter(Number.isFinite)
 
         if (numericValues.length > 0) {
           const minVal = Math.min(...numericValues)
@@ -517,9 +484,7 @@ const CompareProduct = () => {
       }
 
       if (field.highlight === 'higher' && field.type === 'number') {
-        const numericValues = values
-          .map(v => Number(v.raw))
-          .filter(Number.isFinite)
+        const numericValues = values.map(v => Number(v.raw)).filter(Number.isFinite)
 
         if (numericValues.length > 0) {
           const maxVal = Math.max(...numericValues)
@@ -534,11 +499,7 @@ const CompareProduct = () => {
       const values = items.map(item => {
         let raw = getFirstValueFromPaths(item, field.paths)
 
-        if (
-          !hasRealValue(raw) &&
-          Array.isArray(item.variants) &&
-          item.variants.length > 0
-        ) {
+        if (!hasRealValue(raw) && Array.isArray(item.variants) && item.variants.length > 0) {
           const variantValues = item.variants
             .filter(variant => variant.isActive !== false)
             .flatMap(variant => Object.entries(variant.attributes || {}))
@@ -559,8 +520,7 @@ const CompareProduct = () => {
       if (validValues.length === 0) return null
 
       const isDifferent =
-        validValues.length > 1 &&
-        !validValues.every(v => isSameValue(v.raw, validValues[0].raw))
+        validValues.length > 1 && !validValues.every(v => isSameValue(v.raw, validValues[0].raw))
 
       return { ...field, values, isDifferent, bestIndex: -1 }
     }).filter(Boolean)
@@ -576,12 +536,8 @@ const CompareProduct = () => {
     const variantRows = Array.from(variantAttributeKeys)
       .map(attrName => {
         const values = items.map(item => {
-          const attrConfig = item.variantAttributes?.find(
-            attr => attr.name === attrName,
-          )
-          const availableValues = normalizeArray(
-            item.availableAttributes?.[attrName],
-          )
+          const attrConfig = item.variantAttributes?.find(attr => attr.name === attrName)
+          const availableValues = normalizeArray(item.availableAttributes?.[attrName])
 
           return {
             raw: availableValues,
@@ -613,16 +569,12 @@ const CompareProduct = () => {
       {
         title: 'Información General',
         icon: CategoryIcon,
-        rows: baseRows.filter(
-          row => row.category === 'general' || !row.category,
-        ),
+        rows: baseRows.filter(row => row.category === 'general' || !row.category),
       },
       {
         title: 'Precio y Disponibilidad',
         icon: PriceIcon,
-        rows: baseRows.filter(
-          row => row.category === 'pricing' || row.category === 'inventory',
-        ),
+        rows: baseRows.filter(row => row.category === 'pricing' || row.category === 'inventory'),
       },
       {
         title: 'Características Físicas',
@@ -666,16 +618,9 @@ const CompareProduct = () => {
             borderRadius: 4,
           }}
         >
-          <ShopIcon
-            sx={{ fontSize: 80, color: 'text.disabled', mb: 3, opacity: 0.5 }}
-          />
+          <ShopIcon sx={{ fontSize: 80, color: 'text.disabled', mb: 3, opacity: 0.5 }} />
 
-          <Typography
-            variant="h3"
-            fontWeight={800}
-            color="text.primary"
-            gutterBottom
-          >
+          <Typography variant="h3" fontWeight={800} color="text.primary" gutterBottom>
             Comparador Vacío
           </Typography>
 
@@ -684,8 +629,8 @@ const CompareProduct = () => {
             color="text.secondary"
             sx={{ mb: 4, maxWidth: 440, mx: 'auto' }}
           >
-            Seleccioná productos para comparar precios, stock, descripción breve
-            y atributos clave lado a lado.
+            Seleccioná productos para comparar precios, stock, descripción breve y atributos clave
+            lado a lado.
           </Typography>
 
           <Button
@@ -731,19 +676,13 @@ const CompareProduct = () => {
             gap={2}
           >
             <Box>
-              <Typography
-                variant="h4"
-                fontWeight={900}
-                letterSpacing="-0.5px"
-                sx={{ mb: 0.5 }}
-              >
+              <Typography variant="h4" fontWeight={900} letterSpacing="-0.5px" sx={{ mb: 0.5 }}>
                 Comparador Técnico
               </Typography>
 
               <Typography color="text.secondary" variant="body2">
                 Analizando <strong>{items.length}</strong> productos con{' '}
-                <strong>{comparisonData.allRows.length}</strong> atributos
-                comparables.
+                <strong>{comparisonData.allRows.length}</strong> atributos comparables.
               </Typography>
             </Box>
 
@@ -849,10 +788,7 @@ const CompareProduct = () => {
                               height: 40,
                             }}
                           >
-                            <Typography
-                              fontWeight={800}
-                              sx={{ color: theme.palette.brand.main }}
-                            >
+                            <Typography fontWeight={800} sx={{ color: theme.palette.brand.main }}>
                               {index + 1}
                             </Typography>
                           </Avatar>
@@ -901,17 +837,10 @@ const CompareProduct = () => {
                             overflow: 'hidden',
                           }}
                         >
-                          {truncateText(description, 100) ||
-                            'Sin descripción breve disponible.'}
+                          {truncateText(description, 100) || 'Sin descripción breve disponible.'}
                         </Typography>
 
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          mt={1.5}
-                          flexWrap="wrap"
-                          gap={1}
-                        >
+                        <Stack direction="row" spacing={1} mt={1.5} flexWrap="wrap" gap={1}>
                           {product.marca && (
                             <Chip
                               label={product.marca}
@@ -924,11 +853,7 @@ const CompareProduct = () => {
                             <Chip
                               label={product.condicion}
                               size="small"
-                              color={
-                                product.condicion === 'nuevo'
-                                  ? 'success'
-                                  : 'default'
-                              }
+                              color={product.condicion === 'nuevo' ? 'success' : 'default'}
                               variant="outlined"
                               sx={{ fontSize: '0.75rem' }}
                             />
@@ -939,10 +864,7 @@ const CompareProduct = () => {
                               size="small"
                               startIcon={<InfoIcon />}
                               onClick={() =>
-                                handleOpenDetails(
-                                  product.title,
-                                  stripHtml(description),
-                                )
+                                handleOpenDetails(product.title, stripHtml(description))
                               }
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
@@ -980,15 +902,9 @@ const CompareProduct = () => {
                   gap: 1.5,
                 }}
               >
-                <section.icon
-                  sx={{ color: theme.palette.brand.main, fontSize: 24 }}
-                />
+                <section.icon sx={{ color: theme.palette.brand.main, fontSize: 24 }} />
 
-                <Typography
-                  variant="h6"
-                  fontWeight={800}
-                  sx={{ color: theme.palette.brand.main }}
-                >
+                <Typography variant="h6" fontWeight={800} sx={{ color: theme.palette.brand.main }}>
                   {section.title}
                 </Typography>
 
@@ -1074,9 +990,7 @@ const CompareProduct = () => {
                           {row.values.map((val, idx) => (
                             <TableCell
                               key={`${row.key}-${idx}`}
-                              align={
-                                row.type === 'description' ? 'left' : 'center'
-                              }
+                              align={row.type === 'description' ? 'left' : 'center'}
                               sx={{
                                 py: 2,
                                 borderRight:
@@ -1084,8 +998,7 @@ const CompareProduct = () => {
                                     ? `1px solid ${theme.palette.divider}`
                                     : 'none',
                                 width: `${100 / items.length}%`,
-                                minWidth:
-                                  row.type === 'description' ? 220 : 150,
+                                minWidth: row.type === 'description' ? 220 : 150,
                               }}
                             >
                               <AttributeCell
@@ -1102,10 +1015,7 @@ const CompareProduct = () => {
                                   size="small"
                                   startIcon={<InfoIcon />}
                                   onClick={() =>
-                                    handleOpenDetails(
-                                      items[idx]?.title,
-                                      stripHtml(val.raw),
-                                    )
+                                    handleOpenDetails(items[idx]?.title, stripHtml(val.raw))
                                   }
                                   sx={{
                                     mt: 1,

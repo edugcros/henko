@@ -123,9 +123,7 @@ const ColorPicker = ({
                   width: 20,
                   height: 20,
                   borderRadius: 1,
-                  backgroundColor: isValidHex(draftValue)
-                    ? draftValue
-                    : '#000000',
+                  backgroundColor: isValidHex(draftValue) ? draftValue : '#000000',
                   border: '1px solid',
                   borderColor: 'divider',
                   cursor: 'pointer',

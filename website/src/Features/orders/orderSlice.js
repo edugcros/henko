@@ -8,70 +8,57 @@ import orderService from './orderService.js'
  */
 
 // Crear orden (PRE pago)
-export const createOrder = createAsyncThunk(
-  'order/create',
-  async (orderData, thunkAPI) => {
-    try {
-      const response = await orderService.createOrder(orderData)
+export const createOrder = createAsyncThunk('order/create', async (orderData, thunkAPI) => {
+  try {
+    const response = await orderService.createOrder(orderData)
 
-      if (!response?.success) {
-        return thunkAPI.rejectWithValue({
-          message: response?.message || 'Error creando la orden',
-          code: response?.code || null,
-        })
-      }
-
-      return response
-    } catch (error) {
+    if (!response?.success) {
       return thunkAPI.rejectWithValue({
-        message: error.message || 'Error creando la orden',
+        message: response?.message || 'Error creando la orden',
+        code: response?.code || null,
       })
     }
-  },
-)
+
+    return response
+  } catch (error) {
+    return thunkAPI.rejectWithValue({
+      message: error.message || 'Error creando la orden',
+    })
+  }
+})
 
 // Obtener órdenes del usuario autenticado
-export const getOrdersThunk = createAsyncThunk(
-  'order/getOrders',
-  async (params, thunkAPI) => {
-    try {
-      const response = await orderService.getOrders(params)
+export const getOrdersThunk = createAsyncThunk('order/getOrders', async (params, thunkAPI) => {
+  try {
+    const response = await orderService.getOrders(params)
 
-      if (!response?.success) {
-        return thunkAPI.rejectWithValue(
-          response?.message || 'Error cargando órdenes',
-        )
-      }
-
-      return response
-    } catch (error) {
-      return thunkAPI.rejectWithValue(error.message)
+    if (!response?.success) {
+      return thunkAPI.rejectWithValue(response?.message || 'Error cargando órdenes')
     }
-  },
-)
+
+    return response
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.message)
+  }
+})
 
 // Obtener una orden puntual (opcional)
-export const getOrderById = createAsyncThunk(
-  'order/get-by-id',
-  async (id, thunkAPI) => {
-    try {
-      const response = await orderService.getOrderById(id)
+export const getOrderById = createAsyncThunk('order/get-by-id', async (id, thunkAPI) => {
+  try {
+    const response = await orderService.getOrderById(id)
 
-      if (!response?.success) {
-        return thunkAPI.rejectWithValue({
-          message: response?.message || 'Error obteniendo la orden',
-          code: response?.code || null,
-        })
-      }
-
-      return response
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data || { message: error.message },
-      )
+    if (!response?.success) {
+      return thunkAPI.rejectWithValue({
+        message: response?.message || 'Error obteniendo la orden',
+        code: response?.code || null,
+      })
     }
-  },
-)
+
+    return response
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.response?.data || { message: error.message })
+  }
+})
 
 // Reset manual del estado
 export const resetOrderState = createAction('order/reset')

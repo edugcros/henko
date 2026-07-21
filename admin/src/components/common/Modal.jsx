@@ -40,11 +40,7 @@ const Modal = ({ isOpen, onClose, title, children, size = 'medium' }) => {
       <div className={`modal-container ${sizeClasses[size]}`}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label="Cerrar"
-          >
+          <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar">
             ×
           </button>
         </div>

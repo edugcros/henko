@@ -122,9 +122,7 @@ const ProductLine = ({ item }) => {
 
         {attributeEntries.length > 0 && (
           <Typography variant="caption" color="text.secondary" display="block">
-            {attributeEntries
-              .map(([key, value]) => `${key}: ${value}`)
-              .join(' · ')}
+            {attributeEntries.map(([key, value]) => `${key}: ${value}`).join(' · ')}
           </Typography>
         )}
       </Box>
@@ -137,19 +135,13 @@ const ProductLine = ({ item }) => {
 }
 
 const OrderCard = ({ order, expanded, onToggle }) => {
-  const total =
-    order?.totals?.total ?? Number(order?.paymentIntent?.amountCents || 0) / 100
-  const currency =
-    order?.paymentIntent?.currency || order?.products?.[0]?.currency || 'ARS'
+  const total = order?.totals?.total ?? Number(order?.paymentIntent?.amountCents || 0) / 100
+  const currency = order?.paymentIntent?.currency || order?.products?.[0]?.currency || 'ARS'
 
   return (
     <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
       <Box sx={{ p: { xs: 2, md: 2.5 } }}>
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          justifyContent="space-between"
-          spacing={2}
-        >
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
           <Box>
             <Stack direction="row" spacing={1} alignItems="center">
               <ReceiptLongOutlined color="action" />
@@ -172,22 +164,10 @@ const OrderCard = ({ order, expanded, onToggle }) => {
           </Box>
         </Stack>
 
-        <Stack
-          direction="row"
-          spacing={1}
-          useFlexGap
-          flexWrap="wrap"
-          sx={{ mt: 2 }}
-        >
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 2 }}>
           <OrderStatusChip value={order?.orderStatus} labels={ORDER_LABELS} />
-          <OrderStatusChip
-            value={order?.paymentStatus}
-            labels={PAYMENT_LABELS}
-          />
-          <OrderStatusChip
-            value={order?.fulfillmentStatus}
-            labels={FULFILLMENT_LABELS}
-          />
+          <OrderStatusChip value={order?.paymentStatus} labels={PAYMENT_LABELS} />
+          <OrderStatusChip value={order?.fulfillmentStatus} labels={FULFILLMENT_LABELS} />
         </Stack>
 
         <Button
@@ -215,11 +195,7 @@ const OrderCard = ({ order, expanded, onToggle }) => {
 
           <Divider sx={{ my: 2 }} />
 
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            spacing={3}
-            justifyContent="space-between"
-          >
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} justifyContent="space-between">
             <Box>
               <Stack direction="row" spacing={1} alignItems="center">
                 <LocalShippingOutlined fontSize="small" />
@@ -227,15 +203,9 @@ const OrderCard = ({ order, expanded, onToggle }) => {
                   Entrega
                 </Typography>
               </Stack>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ mt: 0.5 }}
-              >
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 {order?.shippingAddress?.address || 'Dirección no informada'}
-                {order?.shippingAddress?.city
-                  ? `, ${order.shippingAddress.city}`
-                  : ''}
+                {order?.shippingAddress?.city ? `, ${order.shippingAddress.city}` : ''}
               </Typography>
               {order?.shipment?.trackingNumber && (
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
@@ -282,10 +252,7 @@ const OrderHistory = () => {
     dispatch(getOrdersThunk({ page, limit: 10 }))
   }, [dispatch, page])
 
-  const pages = useMemo(
-    () => Math.max(Number(pagination?.pages || 1), 1),
-    [pagination?.pages],
-  )
+  const pages = useMemo(() => Math.max(Number(pagination?.pages || 1), 1), [pagination?.pages])
 
   return (
     <Box
@@ -314,13 +281,8 @@ const OrderHistory = () => {
             <CircularProgress />
           </Stack>
         ) : orders.length === 0 ? (
-          <Paper
-            variant="outlined"
-            sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}
-          >
-            <ReceiptLongOutlined
-              sx={{ fontSize: 48, color: 'text.disabled' }}
-            />
+          <Paper variant="outlined" sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
+            <ReceiptLongOutlined sx={{ fontSize: 48, color: 'text.disabled' }} />
             <Typography variant="h6" fontWeight={700} sx={{ mt: 1 }}>
               Todavía no tenés pedidos
             </Typography>
@@ -333,9 +295,7 @@ const OrderHistory = () => {
                 order={order}
                 expanded={expandedId === order._id}
                 onToggle={() =>
-                  setExpandedId(current =>
-                    current === order._id ? null : order._id,
-                  )
+                  setExpandedId(current => (current === order._id ? null : order._id))
                 }
               />
             ))}

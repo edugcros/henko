@@ -14,21 +14,10 @@ const removeBootstrapSpacingClasses = value =>
 
 const Container = props => {
   const themeState = useSelector(state => state.theme) || {}
-  const activeConfig = useMemo(
-    () => getActiveThemeConfig(themeState),
-    [themeState],
-  )
-  const layout = useMemo(
-    () => getLayoutThemeConfig(activeConfig),
-    [activeConfig],
-  )
-  const spacing = useMemo(
-    () => getSpacingThemeConfig(activeConfig),
-    [activeConfig],
-  )
-  const className = removeBootstrapSpacingClasses(
-    props.class1 || props.className,
-  )
+  const activeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const layout = useMemo(() => getLayoutThemeConfig(activeConfig), [activeConfig])
+  const spacing = useMemo(() => getSpacingThemeConfig(activeConfig), [activeConfig])
+  const className = removeBootstrapSpacingClasses(props.class1 || props.className)
 
   return (
     <section

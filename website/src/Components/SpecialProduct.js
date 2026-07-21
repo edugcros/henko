@@ -30,8 +30,7 @@ const SpecialProduct = props => {
                 activeColor="#ffd700"
               />
               <p className="price">
-                <span className="red-p">$ {item?.price}</span> &nbsp;{' '}
-                {/*<strike>$200</strike>*/}
+                <span className="red-p">$ {item?.price}</span> &nbsp; {/*<strike>$200</strike>*/}
               </p>
               <div className="discount-till d-flex align-items-center gap-10">
                 <p className="mb-0">

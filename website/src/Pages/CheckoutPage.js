@@ -44,18 +44,12 @@ import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 import ReactGA from 'react-ga4'
 
 import { applyCoupon, resetCouponState } from '@features/coupon/couponSlice'
-import {
-  processPaymentAction,
-  resetPayment,
-} from '@features/payment/paymentSlice'
+import { processPaymentAction, resetPayment } from '@features/payment/paymentSlice'
 import { createOrder, resetOrderState } from '@features/orders/orderSlice'
 import { getMe } from '@features/user/userSlice'
 import { useCoupon } from '@hooks/useCoupon'
 import env from '../config/env'
-import {
-  trackUserMetric,
-  USER_METRIC_EVENTS,
-} from '../services/userMetricsService'
+import { trackUserMetric, USER_METRIC_EVENTS } from '../services/userMetricsService'
 import { getActiveThemeConfig, getThemeColors } from '@utils/themeRuntime'
 
 // ======================================================
@@ -217,11 +211,8 @@ const getItemImage = item => {
   }
 
   if (item.product?.images?.[0]) {
-    if (typeof item.product.images[0] === 'string')
-      return item.product.images[0]
-    return (
-      item.product.images[0]?.url || item.product.images[0]?.secure_url || null
-    )
+    if (typeof item.product.images[0] === 'string') return item.product.images[0]
+    return item.product.images[0]?.url || item.product.images[0]?.secure_url || null
   }
 
   return null
@@ -230,8 +221,7 @@ const getItemImage = item => {
 const getItemUnitPrice = item => {
   const quantity = Math.max(1, toNumber(item?.quantity || item?.count, 1))
 
-  if (item?.unitPriceCents !== undefined)
-    return clampMoney(item.unitPriceCents / 100)
+  if (item?.unitPriceCents !== undefined) return clampMoney(item.unitPriceCents / 100)
   if (item?.priceCents !== undefined) return clampMoney(item.priceCents / 100)
   if (item?.subtotalCents !== undefined) {
     return clampMoney(item.subtotalCents / 100 / quantity)
@@ -256,9 +246,7 @@ const getItemOriginalPrice = item => {
     item?.originalPrice ??
       item?.regularPrice ??
       item?.compareAtPrice ??
-      (item?.originalPriceCents !== undefined
-        ? item.originalPriceCents / 100
-        : undefined) ??
+      (item?.originalPriceCents !== undefined ? item.originalPriceCents / 100 : undefined) ??
       item?.product?.originalPrice ??
       item?.product?.regularPrice ??
       item?.product?.compareAtPrice ??
@@ -310,11 +298,7 @@ const normalizeCouponPayload = raw => {
   const coupon = data.coupon || data.appliedCoupon || data
 
   const discountType = String(
-    coupon.discountType ||
-      coupon.type ||
-      data.discountType ||
-      data.type ||
-      'fixed',
+    coupon.discountType || coupon.type || data.discountType || data.type || 'fixed',
   ).toLowerCase()
 
   const discountValue =
@@ -335,8 +319,7 @@ const normalizeCouponPayload = raw => {
     coupon.discountAmount ??
     null
 
-  const applicableProducts =
-    coupon.applicableProducts || data.applicableProducts || []
+  const applicableProducts = coupon.applicableProducts || data.applicableProducts || []
 
   return {
     ...coupon,
@@ -347,12 +330,9 @@ const normalizeCouponPayload = raw => {
       backendAppliedDiscount !== null && backendAppliedDiscount !== undefined
         ? clampMoney(backendAppliedDiscount)
         : null,
-    minPurchaseAmount: clampMoney(
-      coupon.minPurchaseAmount ?? data.minPurchaseAmount ?? 0,
-    ),
+    minPurchaseAmount: clampMoney(coupon.minPurchaseAmount ?? data.minPurchaseAmount ?? 0),
     maxDiscountAmount:
-      coupon.maxDiscountAmount !== undefined ||
-      data.maxDiscountAmount !== undefined
+      coupon.maxDiscountAmount !== undefined || data.maxDiscountAmount !== undefined
         ? clampMoney(coupon.maxDiscountAmount ?? data.maxDiscountAmount ?? 0)
         : null,
     applicableProducts: Array.isArray(applicableProducts)
@@ -364,12 +344,9 @@ const normalizeCouponPayload = raw => {
       (Array.isArray(applicableProducts) && applicableProducts.length > 0),
     ),
     specificProductId: normalizeId(
-      coupon.specificProductId ||
-        data.specificProductId ||
-        applicableProducts?.[0],
+      coupon.specificProductId || data.specificProductId || applicableProducts?.[0],
     ),
-    specificProductName:
-      coupon.specificProductName || data.specificProductName || null,
+    specificProductName: coupon.specificProductName || data.specificProductName || null,
   }
 }
 
@@ -421,48 +398,27 @@ const calculateNominalCouponDiscount = ({ coupon, applicableSubtotal }) => {
 const normalizeOrderPayload = result => {
   const data = result?.data || result?.payload || result
 
-  return (
-    data?.order ||
-    data?.data?.order ||
-    data?.payload?.order ||
-    data?.data ||
-    data
-  )
+  return data?.order || data?.data?.order || data?.payload?.order || data?.data || data
 }
 
 const normalizePaymentPayload = result => {
   const data = result?.data || result?.payload || result
 
-  return (
-    data?.payment ||
-    data?.data?.payment ||
-    data?.payload?.payment ||
-    data?.data ||
-    data
-  )
+  return data?.payment || data?.data?.payment || data?.payload?.payment || data?.data || data
 }
 
 const getOrderDisplayId = order => {
   return normalizeId(
-    order?.orderNumber ||
-      order?.number ||
-      order?.code ||
-      order?._id ||
-      order?.id ||
-      order?.orderId,
+    order?.orderNumber || order?.number || order?.code || order?._id || order?.id || order?.orderId,
   )
 }
 
 const getPaymentDisplayId = payment => {
-  return normalizeId(
-    payment?.id || payment?.paymentId || payment?.transactionId,
-  )
+  return normalizeId(payment?.id || payment?.paymentId || payment?.transactionId)
 }
 
 const getPaymentStatusValue = payment => {
-  return String(
-    payment?.status || payment?.paymentStatus || payment?.state || '',
-  ).toLowerCase()
+  return String(payment?.status || payment?.paymentStatus || payment?.state || '').toLowerCase()
 }
 
 const getPaymentStatusDetailValue = payment => {
@@ -492,20 +448,14 @@ const isPendingPayment = payment => {
 }
 
 const normalizeVariantLabel = item => {
-  const variant =
-    item?.variant || item?.selectedVariant || item?.product?.variant
+  const variant = item?.variant || item?.selectedVariant || item?.product?.variant
 
   if (!variant) return ''
   if (typeof variant === 'string') return variant
 
-  const attributes =
-    variant.attributes || variant.combinacion || variant.options
+  const attributes = variant.attributes || variant.combinacion || variant.options
 
-  if (
-    attributes &&
-    typeof attributes === 'object' &&
-    !Array.isArray(attributes)
-  ) {
+  if (attributes && typeof attributes === 'object' && !Array.isArray(attributes)) {
     return Object.entries(attributes)
       .map(([key, value]) => `${key}: ${value}`)
       .join(' · ')
@@ -527,12 +477,7 @@ const buildConfirmationItems = items => {
       unitPrice,
       originalPrice: getItemOriginalPrice(item),
       subtotal: clampMoney(unitPrice * quantity),
-      sku: pickFirst(
-        item?.sku,
-        item?.variantSku,
-        item?.selectedVariant?.sku,
-        item?.product?.sku,
-      ),
+      sku: pickFirst(item?.sku, item?.variantSku, item?.selectedVariant?.sku, item?.product?.sku),
       variantLabel: normalizeVariantLabel(item),
     }
   })
@@ -556,16 +501,11 @@ const buildConfirmationSnapshot = ({
     : Array.isArray(normalizedOrder.products)
       ? normalizedOrder.products
       : []
-  const sourceItems =
-    Array.isArray(cartItems) && cartItems.length > 0 ? cartItems : orderItems
+  const sourceItems = Array.isArray(cartItems) && cartItems.length > 0 ? cartItems : orderItems
   const items = buildConfirmationItems(sourceItems)
 
   const customer = {
-    firstName: pickFirst(
-      shippingData?.firstName,
-      user?.firstName,
-      user?.nombre,
-    ),
+    firstName: pickFirst(shippingData?.firstName, user?.firstName, user?.nombre),
     lastName: pickFirst(shippingData?.lastName, user?.lastName, user?.apellido),
     email: pickFirst(shippingData?.email, user?.email),
     phone: pickFirst(shippingData?.phone, user?.phone, user?.telefono),
@@ -579,14 +519,9 @@ const buildConfirmationSnapshot = ({
     totals: {
       subtotal: clampMoney(subtotal ?? normalizedOrder.subtotal ?? 0),
       discount: clampMoney(
-        discount ??
-          normalizedOrder.discount ??
-          normalizedOrder.discountAmount ??
-          0,
+        discount ?? normalizedOrder.discount ?? normalizedOrder.discountAmount ?? 0,
       ),
-      total: clampMoney(
-        total ?? normalizedOrder.total ?? normalizedOrder.totalAmount ?? 0,
-      ),
+      total: clampMoney(total ?? normalizedOrder.total ?? normalizedOrder.totalAmount ?? 0),
     },
     coupon: appliedCoupon
       ? {
@@ -666,14 +601,8 @@ const CheckoutPage = () => {
   const paymentState = useSelector(state => state.payment || {})
   const themeState = useSelector(state => state.theme) || {}
 
-  const activeThemeConfig = useMemo(
-    () => getActiveThemeConfig(themeState),
-    [themeState],
-  )
-  const themeColors = useMemo(
-    () => getThemeColors(activeThemeConfig),
-    [activeThemeConfig],
-  )
+  const activeThemeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const themeColors = useMemo(() => getThemeColors(activeThemeConfig), [activeThemeConfig])
 
   const { currentOrder, isLoading: orderLoading } = orderState
 
@@ -723,11 +652,7 @@ const CheckoutPage = () => {
             const payload = await promise.unwrap()
 
             resolvedUser =
-              payload?.data?.user ||
-              payload?.data ||
-              payload?.user ||
-              payload ||
-              resolvedUser
+              payload?.data?.user || payload?.data || payload?.user || payload || resolvedUser
           } else {
             const action = await promise
 
@@ -785,28 +710,27 @@ const CheckoutPage = () => {
   // CARRITO NORMALIZADO
   // ======================================================
 
-  const { cartItems, isLoading, subtotal, productIds, itemCount } =
-    useMemo(() => {
-      const items = cartState?.items || cartState?.cartItems || []
+  const { cartItems, isLoading, subtotal, productIds, itemCount } = useMemo(() => {
+    const items = cartState?.items || cartState?.cartItems || []
 
-      const ids = items.map(getItemId).filter(Boolean)
+    const ids = items.map(getItemId).filter(Boolean)
 
-      const calculatedSubtotal = items.reduce((acc, item) => {
-        return acc + getItemUnitPrice(item) * getItemQuantity(item)
-      }, 0)
+    const calculatedSubtotal = items.reduce((acc, item) => {
+      return acc + getItemUnitPrice(item) * getItemQuantity(item)
+    }, 0)
 
-      const count = items.reduce((acc, item) => {
-        return acc + getItemQuantity(item)
-      }, 0)
+    const count = items.reduce((acc, item) => {
+      return acc + getItemQuantity(item)
+    }, 0)
 
-      return {
-        cartItems: items,
-        isLoading: cartState?.isLoading || false,
-        productIds: ids,
-        subtotal: clampMoney(calculatedSubtotal),
-        itemCount: count,
-      }
-    }, [cartState])
+    return {
+      cartItems: items,
+      isLoading: cartState?.isLoading || false,
+      productIds: ids,
+      subtotal: clampMoney(calculatedSubtotal),
+      itemCount: count,
+    }
+  }, [cartState])
 
   // ======================================================
   // CUPÓN NORMALIZADO
@@ -849,10 +773,7 @@ const CheckoutPage = () => {
       }
     }
 
-    if (
-      appliedCoupon.minPurchaseAmount > 0 &&
-      subtotal < appliedCoupon.minPurchaseAmount
-    ) {
+    if (appliedCoupon.minPurchaseAmount > 0 && subtotal < appliedCoupon.minPurchaseAmount) {
       return {
         valid: false,
         discount: 0,
@@ -927,8 +848,7 @@ const CheckoutPage = () => {
       reason: productValidation.reason,
       hasProductRestriction: productValidation.hasProductRestriction,
       applicableSubtotal,
-      savingsPercentage:
-        subtotal > 0 ? clampMoney((discount / subtotal) * 100) : 0,
+      savingsPercentage: subtotal > 0 ? clampMoney((discount / subtotal) * 100) : 0,
     }
   }, [appliedCoupon, cartItems, subtotal])
 
@@ -965,8 +885,7 @@ const CheckoutPage = () => {
       return
     }
 
-    const validFormat =
-      publicKey.startsWith('TEST-') || publicKey.startsWith('APP_USR-')
+    const validFormat = publicKey.startsWith('TEST-') || publicKey.startsWith('APP_USR-')
 
     if (!validFormat) {
       setMpReady(false)
@@ -1025,10 +944,7 @@ const CheckoutPage = () => {
 
         responses.filter(Boolean).forEach(({ result, productId, item }) => {
           const rawCoupons =
-            result?.coupons ||
-            result?.data?.coupons ||
-            result?.data?.data?.coupons ||
-            []
+            result?.coupons || result?.data?.coupons || result?.data?.data?.coupons || []
 
           if (!Array.isArray(rawCoupons) || rawCoupons.length === 0) return
 
@@ -1040,8 +956,7 @@ const CheckoutPage = () => {
             const restrictions = coupon.applicableProducts || []
             const hasProductRestrictions = restrictions.length > 0
 
-            const appliesToThisProduct =
-              !hasProductRestrictions || restrictions.includes(productId)
+            const appliesToThisProduct = !hasProductRestrictions || restrictions.includes(productId)
 
             if (!appliesToThisProduct) return
             if (coupon.userCanUse === false) return
@@ -1066,23 +981,22 @@ const CheckoutPage = () => {
           })
         })
 
-        const allCoupons = [
-          ...productSpecificCoupons.values(),
-          ...generalCoupons.values(),
-        ].sort((a, b) => {
-          const getValue = coupon => {
-            if (coupon.discountType === 'percentage') {
-              return subtotal * (coupon.discountValue / 100)
+        const allCoupons = [...productSpecificCoupons.values(), ...generalCoupons.values()].sort(
+          (a, b) => {
+            const getValue = coupon => {
+              if (coupon.discountType === 'percentage') {
+                return subtotal * (coupon.discountValue / 100)
+              }
+
+              return coupon.discountValue
             }
 
-            return coupon.discountValue
-          }
+            if (a.isSpecific && !b.isSpecific) return -1
+            if (!a.isSpecific && b.isSpecific) return 1
 
-          if (a.isSpecific && !b.isSpecific) return -1
-          if (!a.isSpecific && b.isSpecific) return 1
-
-          return getValue(b) - getValue(a)
-        })
+            return getValue(b) - getValue(a)
+          },
+        )
 
         if (isMounted) {
           setAvailableCoupons(allCoupons)
@@ -1099,29 +1013,14 @@ const CheckoutPage = () => {
     return () => {
       isMounted = false
     }
-  }, [
-    cartItems,
-    appliedCoupon,
-    user?._id,
-    activeStep,
-    subtotal,
-    fetchProductCoupons,
-  ])
+  }, [cartItems, appliedCoupon, user?._id, activeStep, subtotal, fetchProductCoupons])
 
   useEffect(() => {
     if (appliedCoupon && !isCouponValid && !couponState.isLoading) {
       dispatch(resetCouponState())
-      setLocalCouponError(
-        couponReason || 'Este cupón no es válido para tu carrito',
-      )
+      setLocalCouponError(couponReason || 'Este cupón no es válido para tu carrito')
     }
-  }, [
-    appliedCoupon,
-    isCouponValid,
-    couponState.isLoading,
-    dispatch,
-    couponReason,
-  ])
+  }, [appliedCoupon, isCouponValid, couponState.isLoading, dispatch, couponReason])
 
   useEffect(() => {
     if (couponInput) setLocalCouponError(null)
@@ -1130,11 +1029,7 @@ const CheckoutPage = () => {
   useEffect(() => {
     const normalizedReduxPayment = normalizePaymentPayload(reduxPaymentResult)
 
-    if (
-      paymentSuccess &&
-      isApprovedPayment(normalizedReduxPayment) &&
-      !paymentStatus.completed
-    ) {
+    if (paymentSuccess && isApprovedPayment(normalizedReduxPayment) && !paymentStatus.completed) {
       if (gaPurchaseTrackedRef.current) return
       gaPurchaseTrackedRef.current = true
 
@@ -1244,9 +1139,7 @@ const CheckoutPage = () => {
         setLocalCouponError(
           typeof error === 'string'
             ? error
-            : error?.message ||
-                error?.response?.data?.message ||
-                'Error al aplicar cupón',
+            : error?.message || error?.response?.data?.message || 'Error al aplicar cupón',
         )
       }
     },
@@ -1307,17 +1200,11 @@ const CheckoutPage = () => {
       }
     })
 
-    if (
-      shippingData.email &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shippingData.email)
-    ) {
+    if (shippingData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shippingData.email)) {
       errors.email = 'Email inválido'
     }
 
-    if (
-      shippingData.phone &&
-      shippingData.phone.replace(/\D/g, '').length < 8
-    ) {
+    if (shippingData.phone && shippingData.phone.replace(/\D/g, '').length < 8) {
       errors.phone = 'Teléfono inválido'
     }
 
@@ -1365,20 +1252,11 @@ const CheckoutPage = () => {
             quantity: getItemQuantity(item),
             image: getItemImage(item),
             variantId:
-              item.variantId ||
-              item.selectedVariant?.id ||
-              item.selectedVariant?._id ||
-              null,
-            variantSku:
-              item.variantSku ||
-              item.variantSKU ||
-              item.selectedVariant?.sku ||
-              '',
+              item.variantId || item.selectedVariant?.id || item.selectedVariant?._id || null,
+            variantSku: item.variantSku || item.variantSKU || item.selectedVariant?.sku || '',
             selectedVariant: item.selectedVariant || null,
-            selectedAttributes:
-              item.selectedAttributes || item.variantAttributes || {},
-            variantAttributes:
-              item.variantAttributes || item.selectedAttributes || {},
+            selectedAttributes: item.selectedAttributes || item.variantAttributes || {},
+            variantAttributes: item.variantAttributes || item.selectedAttributes || {},
             cartKey: item.cartKey || null,
             variant: item.variant || item.selectedVariant || null,
           })),
@@ -1433,9 +1311,7 @@ const CheckoutPage = () => {
       debugError('Error al crear orden:', error)
       alert(
         `Error al crear la orden: ${
-          error?.message ||
-          error?.response?.data?.message ||
-          'Intente nuevamente'
+          error?.message || error?.response?.data?.message || 'Intente nuevamente'
         }`,
       )
     }
@@ -1487,9 +1363,7 @@ const CheckoutPage = () => {
       })
 
       try {
-        const result = await dispatch(
-          processPaymentAction(paymentPayload),
-        ).unwrap()
+        const result = await dispatch(processPaymentAction(paymentPayload)).unwrap()
         const payment = normalizePaymentPayload(result)
 
         if (isApprovedPayment(payment)) {
@@ -1732,11 +1606,9 @@ const CheckoutPage = () => {
 
   if (
     paymentStatus.completed ||
-    (paymentSuccess &&
-      isApprovedPayment(normalizePaymentPayload(reduxPaymentResult)))
+    (paymentSuccess && isApprovedPayment(normalizePaymentPayload(reduxPaymentResult)))
   ) {
-    const successData =
-      paymentStatus.data || normalizePaymentPayload(reduxPaymentResult)
+    const successData = paymentStatus.data || normalizePaymentPayload(reduxPaymentResult)
     const confirmation =
       confirmationData ||
       buildConfirmationSnapshot({
@@ -1753,8 +1625,7 @@ const CheckoutPage = () => {
 
     const orderId = getOrderDisplayId(confirmation.order)
     const paymentId = getPaymentDisplayId(confirmation.payment)
-    const paymentStatusLabel =
-      getPaymentStatusValue(confirmation.payment) || 'approved'
+    const paymentStatusLabel = getPaymentStatusValue(confirmation.payment) || 'approved'
 
     return (
       <Container maxWidth="md" sx={{ py: { xs: 5, md: 8 } }}>
@@ -1768,31 +1639,22 @@ const CheckoutPage = () => {
               borderRadius: 4,
             }}
           >
-            <Stack
-              alignItems="center"
-              spacing={1.5}
-              sx={{ textAlign: 'center', mb: 4 }}
-            >
-              <CheckCircleOutline
-                sx={{ fontSize: { xs: 72, md: 96 }, color: 'success.main' }}
-              />
+            <Stack alignItems="center" spacing={1.5} sx={{ textAlign: 'center', mb: 4 }}>
+              <CheckCircleOutline sx={{ fontSize: { xs: 72, md: 96 }, color: 'success.main' }} />
 
               <Typography variant="h4" fontWeight={800} gutterBottom>
                 ¡Gracias por tu compra!
               </Typography>
 
               <Typography color="text.secondary">
-                Tu pago fue procesado exitosamente. Abajo tenés el detalle de la
-                orden, los productos comprados y tus datos de contacto.
+                Tu pago fue procesado exitosamente. Abajo tenés el detalle de la orden, los
+                productos comprados y tus datos de contacto.
               </Typography>
             </Stack>
 
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} md={6}>
-                <Paper
-                  variant="outlined"
-                  sx={{ p: 2, borderRadius: 2, height: '100%' }}
-                >
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
                   <Typography variant="body2" color="text.secondary">
                     Orden
                   </Typography>
@@ -1803,18 +1665,11 @@ const CheckoutPage = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Paper
-                  variant="outlined"
-                  sx={{ p: 2, borderRadius: 2, height: '100%' }}
-                >
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
                   <Typography variant="body2" color="text.secondary">
                     ID de pago
                   </Typography>
-                  <Typography
-                    variant="h6"
-                    fontWeight={800}
-                    sx={{ wordBreak: 'break-all' }}
-                  >
+                  <Typography variant="h6" fontWeight={800} sx={{ wordBreak: 'break-all' }}>
                     {paymentId ? `#${paymentId}` : 'Pago aprobado'}
                   </Typography>
                   <Chip
@@ -1860,31 +1715,18 @@ const CheckoutPage = () => {
                           {item.title}
                         </Typography>
 
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                        >
-                          Cantidad: {item.quantity} ·{' '}
-                          {formatMoney(item.unitPrice)} c/u
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Cantidad: {item.quantity} · {formatMoney(item.unitPrice)} c/u
                         </Typography>
 
                         {item.variantLabel && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            display="block"
-                          >
+                          <Typography variant="caption" color="text.secondary" display="block">
                             Variante: {item.variantLabel}
                           </Typography>
                         )}
 
                         {item.sku && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            display="block"
-                          >
+                          <Typography variant="caption" color="text.secondary" display="block">
                             SKU: {item.sku}
                           </Typography>
                         )}
@@ -1901,19 +1743,13 @@ const CheckoutPage = () => {
 
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} md={6}>
-                <Paper
-                  variant="outlined"
-                  sx={{ p: 2.5, borderRadius: 3, height: '100%' }}
-                >
+                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, height: '100%' }}>
                   <Typography variant="subtitle1" fontWeight={800} gutterBottom>
                     Datos del comprador
                   </Typography>
 
                   <Typography variant="body2" fontWeight={700}>
-                    {[
-                      confirmation.customer.firstName,
-                      confirmation.customer.lastName,
-                    ]
+                    {[confirmation.customer.firstName, confirmation.customer.lastName]
                       .filter(Boolean)
                       .join(' ') || 'Cliente'}
                   </Typography>
@@ -1933,18 +1769,13 @@ const CheckoutPage = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Paper
-                  variant="outlined"
-                  sx={{ p: 2.5, borderRadius: 3, height: '100%' }}
-                >
+                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, height: '100%' }}>
                   <Typography variant="subtitle1" fontWeight={800} gutterBottom>
                     Resumen de pago
                   </Typography>
 
                   <Stack spacing={1}>
-                    <Box
-                      sx={{ display: 'flex', justifyContent: 'space-between' }}
-                    >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
                         Subtotal
                       </Typography>
@@ -1963,11 +1794,7 @@ const CheckoutPage = () => {
                         <Typography variant="body2" color="success.main">
                           Descuento
                         </Typography>
-                        <Typography
-                          variant="body2"
-                          color="success.main"
-                          fontWeight={700}
-                        >
+                        <Typography variant="body2" color="success.main" fontWeight={700}>
                           -{formatMoney(confirmation.totals.discount)}
                         </Typography>
                       </Box>
@@ -1991,9 +1818,7 @@ const CheckoutPage = () => {
 
                     <Divider sx={{ my: 0.5 }} />
 
-                    <Box
-                      sx={{ display: 'flex', justifyContent: 'space-between' }}
-                    >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body1" fontWeight={800}>
                         Total pagado
                       </Typography>
@@ -2007,8 +1832,8 @@ const CheckoutPage = () => {
             </Grid>
 
             <Alert severity="success" sx={{ borderRadius: 2, mb: 3 }}>
-              Guardamos tu orden. El comercio coordinará la entrega usando los
-              datos de contacto indicados.
+              Guardamos tu orden. El comercio coordinará la entrega usando los datos de contacto
+              indicados.
             </Alert>
 
             <Button
@@ -2041,9 +1866,7 @@ const CheckoutPage = () => {
   if (!isLoading && cartItems.length === 0) {
     return (
       <Container maxWidth="md" sx={{ py: 10, textAlign: 'center' }}>
-        <ShoppingBagOutlined
-          sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }}
-        />
+        <ShoppingBagOutlined sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
 
         <Typography variant="h5" gutterBottom fontWeight={700}>
           Tu carrito está vacío
@@ -2091,12 +1914,7 @@ const CheckoutPage = () => {
       <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
         <Stack spacing={3} sx={{ mb: 4 }}>
           <Breadcrumbs separator={<NavigateNext fontSize="small" />}>
-            <MuiLink
-              component={Link}
-              to="/cart"
-              color="inherit"
-              underline="hover"
-            >
+            <MuiLink component={Link} to="/cart" color="inherit" underline="hover">
               Carrito
             </MuiLink>
             <Typography
@@ -2171,12 +1989,7 @@ const CheckoutPage = () => {
 
                   {!appliedCoupon && coupons.length > 0 && (
                     <Box sx={{ mb: 4 }}>
-                      <Stack
-                        direction="row"
-                        alignItems="center"
-                        spacing={1}
-                        mb={2}
-                      >
+                      <Stack direction="row" alignItems="center" spacing={1} mb={2}>
                         <AutoAwesome color="primary" />
                         <Typography
                           variant="subtitle1"
@@ -2188,117 +2001,107 @@ const CheckoutPage = () => {
                       </Stack>
 
                       <Stack spacing={2}>
-                        {(showAllCoupons
-                          ? availableCoupons
-                          : availableCoupons.slice(0, 3)
-                        ).map(rawCoupon => {
-                          const coupon = normalizeCouponPayload(rawCoupon)
-                          if (!coupon?.code) return null
+                        {(showAllCoupons ? availableCoupons : availableCoupons.slice(0, 3)).map(
+                          rawCoupon => {
+                            const coupon = normalizeCouponPayload(rawCoupon)
+                            if (!coupon?.code) return null
 
-                          return (
-                            <Paper
-                              key={coupon.code}
-                              elevation={0}
-                              sx={{
-                                p: 2.5,
-                                border: '2px dashed',
-                                borderColor: coupon.isSpecific
-                                  ? 'warning.main'
-                                  : 'brand.main',
-                                borderRadius: 3,
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease',
-                                bgcolor: coupon.isSpecific
-                                  ? 'warning.50'
-                                  : 'background.paper',
-                                '&:hover': {
-                                  bgcolor: coupon.isSpecific
-                                    ? 'warning.100'
-                                    : 'action.hover',
-                                  transform: 'translateY(-2px)',
-                                  boxShadow: 1,
-                                },
-                              }}
-                              onClick={() => handleApplySpecificCoupon(coupon)}
-                            >
-                              <Stack
-                                direction={{ xs: 'column', sm: 'row' }}
-                                spacing={2}
-                                alignItems={{ sm: 'center' }}
+                            return (
+                              <Paper
+                                key={coupon.code}
+                                elevation={0}
+                                sx={{
+                                  p: 2.5,
+                                  border: '2px dashed',
+                                  borderColor: coupon.isSpecific ? 'warning.main' : 'brand.main',
+                                  borderRadius: 3,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  bgcolor: coupon.isSpecific ? 'warning.50' : 'background.paper',
+                                  '&:hover': {
+                                    bgcolor: coupon.isSpecific ? 'warning.100' : 'action.hover',
+                                    transform: 'translateY(-2px)',
+                                    boxShadow: 1,
+                                  },
+                                }}
+                                onClick={() => handleApplySpecificCoupon(coupon)}
                               >
-                                <Box
-                                  sx={{
-                                    bgcolor: coupon.isSpecific
-                                      ? 'warning.main'
-                                      : 'brand.main',
-                                    color: 'white',
-                                    px: 2,
-                                    py: 1,
-                                    borderRadius: 2,
-                                    fontWeight: 800,
-                                    fontSize: '1rem',
-                                    letterSpacing: 1,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 1,
-                                  }}
+                                <Stack
+                                  direction={{ xs: 'column', sm: 'row' }}
+                                  spacing={2}
+                                  alignItems={{ sm: 'center' }}
                                 >
-                                  {coupon.code}
-                                  <IconButton
-                                    size="small"
-                                    sx={{ color: 'white', p: 0.3 }}
-                                    onClick={event => {
-                                      event.stopPropagation()
-                                      handleCopyCode(coupon.code)
+                                  <Box
+                                    sx={{
+                                      bgcolor: coupon.isSpecific ? 'warning.main' : 'brand.main',
+                                      color: 'white',
+                                      px: 2,
+                                      py: 1,
+                                      borderRadius: 2,
+                                      fontWeight: 800,
+                                      fontSize: '1rem',
+                                      letterSpacing: 1,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 1,
                                     }}
                                   >
-                                    <ContentCopy fontSize="small" />
-                                  </IconButton>
-                                </Box>
-
-                                <Box flex={1}>
-                                  <Typography variant="body1" fontWeight={700}>
-                                    {renderCouponValueLabel(coupon)}
-                                  </Typography>
-
-                                  {coupon.isSpecific ? (
-                                    <Typography
-                                      variant="caption"
-                                      color="warning.dark"
-                                      display="block"
-                                      fontWeight={600}
+                                    {coupon.code}
+                                    <IconButton
+                                      size="small"
+                                      sx={{ color: 'white', p: 0.3 }}
+                                      onClick={event => {
+                                        event.stopPropagation()
+                                        handleCopyCode(coupon.code)
+                                      }}
                                     >
-                                      🔒 Solo válido para:{' '}
-                                      <strong>
-                                        {coupon.specificProductName ||
-                                          'producto seleccionado'}
-                                      </strong>
-                                    </Typography>
-                                  ) : (
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                      display="block"
-                                    >
-                                      Válido para todos los productos
-                                    </Typography>
-                                  )}
-                                </Box>
+                                      <ContentCopy fontSize="small" />
+                                    </IconButton>
+                                  </Box>
 
-                                <Button
-                                  variant="contained"
-                                  size="small"
-                                  onClick={event => {
-                                    event.stopPropagation()
-                                    handleApplySpecificCoupon(coupon)
-                                  }}
-                                >
-                                  Aplicar
-                                </Button>
-                              </Stack>
-                            </Paper>
-                          )
-                        })}
+                                  <Box flex={1}>
+                                    <Typography variant="body1" fontWeight={700}>
+                                      {renderCouponValueLabel(coupon)}
+                                    </Typography>
+
+                                    {coupon.isSpecific ? (
+                                      <Typography
+                                        variant="caption"
+                                        color="warning.dark"
+                                        display="block"
+                                        fontWeight={600}
+                                      >
+                                        🔒 Solo válido para:{' '}
+                                        <strong>
+                                          {coupon.specificProductName || 'producto seleccionado'}
+                                        </strong>
+                                      </Typography>
+                                    ) : (
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        display="block"
+                                      >
+                                        Válido para todos los productos
+                                      </Typography>
+                                    )}
+                                  </Box>
+
+                                  <Button
+                                    variant="contained"
+                                    size="small"
+                                    onClick={event => {
+                                      event.stopPropagation()
+                                      handleApplySpecificCoupon(coupon)
+                                    }}
+                                  >
+                                    Aplicar
+                                  </Button>
+                                </Stack>
+                              </Paper>
+                            )
+                          },
+                        )}
 
                         {coupons.length > 3 && !showAllCoupons && (
                           <Button
@@ -2324,9 +2127,7 @@ const CheckoutPage = () => {
                       const isAffectedByCoupon =
                         appliedCoupon &&
                         Array.isArray(applicableItems) &&
-                        applicableItems.some(
-                          candidate => getItemId(candidate) === itemId,
-                        )
+                        applicableItems.some(candidate => getItemId(candidate) === itemId)
 
                       return (
                         <Paper
@@ -2336,19 +2137,11 @@ const CheckoutPage = () => {
                             p: 2,
                             borderRadius: 3,
                             position: 'relative',
-                            borderColor: isAffectedByCoupon
-                              ? 'success.main'
-                              : 'divider',
-                            bgcolor: isAffectedByCoupon
-                              ? 'success.50'
-                              : 'background.paper',
+                            borderColor: isAffectedByCoupon ? 'success.main' : 'divider',
+                            bgcolor: isAffectedByCoupon ? 'success.50' : 'background.paper',
                           }}
                         >
-                          <Stack
-                            direction="row"
-                            spacing={2}
-                            alignItems="center"
-                          >
+                          <Stack direction="row" spacing={2} alignItems="center">
                             <Badge badgeContent={quantity} color="primary">
                               <Avatar
                                 src={getItemImage(item)}
@@ -2363,11 +2156,7 @@ const CheckoutPage = () => {
                             </Badge>
 
                             <Box flex={1} minWidth={0}>
-                              <Typography
-                                variant="body1"
-                                fontWeight={600}
-                                noWrap
-                              >
+                              <Typography variant="body1" fontWeight={600} noWrap>
                                 {getItemTitle(item)}
                               </Typography>
 
@@ -2381,12 +2170,7 @@ const CheckoutPage = () => {
                                 </Typography>
                               )}
 
-                              <Stack
-                                direction="row"
-                                spacing={1}
-                                alignItems="center"
-                                mt={0.5}
-                              >
+                              <Stack direction="row" spacing={1} alignItems="center" mt={0.5}>
                                 {originalPrice && (
                                   <Typography
                                     variant="body2"
@@ -2396,10 +2180,7 @@ const CheckoutPage = () => {
                                     {formatMoney(originalPrice)}
                                   </Typography>
                                 )}
-                                <Typography
-                                  variant="body2"
-                                  color="text.secondary"
-                                >
+                                <Typography variant="body2" color="text.secondary">
                                   {formatMoney(unitPrice)} c/u
                                 </Typography>
                               </Stack>
@@ -2431,9 +2212,7 @@ const CheckoutPage = () => {
                                     fontWeight: 600,
                                     cursor: 'pointer',
                                   }}
-                                  onClick={() =>
-                                    handleApplySpecificCoupon(specificCoupon)
-                                  }
+                                  onClick={() => handleApplySpecificCoupon(specificCoupon)}
                                 />
                               )}
                             </Box>
@@ -2510,8 +2289,7 @@ const CheckoutPage = () => {
 
                   {!isUserProfileLoading && shippingAutoFilled && (
                     <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
-                      Cargamos tus datos desde tu cuenta. Podés corregirlos
-                      antes de continuar.
+                      Cargamos tus datos desde tu cuenta. Podés corregirlos antes de continuar.
                     </Alert>
                   )}
 
@@ -2523,10 +2301,7 @@ const CheckoutPage = () => {
                         required
                         value={shippingData.firstName}
                         onChange={event =>
-                          handleShippingFieldChange(
-                            'firstName',
-                            event.target.value,
-                          )
+                          handleShippingFieldChange('firstName', event.target.value)
                         }
                         error={Boolean(formErrors.firstName)}
                         helperText={formErrors.firstName || ''}
@@ -2543,10 +2318,7 @@ const CheckoutPage = () => {
                         required
                         value={shippingData.lastName}
                         onChange={event =>
-                          handleShippingFieldChange(
-                            'lastName',
-                            event.target.value,
-                          )
+                          handleShippingFieldChange('lastName', event.target.value)
                         }
                         error={Boolean(formErrors.lastName)}
                         helperText={formErrors.lastName || ''}
@@ -2563,9 +2335,7 @@ const CheckoutPage = () => {
                         type="email"
                         required
                         value={shippingData.email}
-                        onChange={event =>
-                          handleShippingFieldChange('email', event.target.value)
-                        }
+                        onChange={event => handleShippingFieldChange('email', event.target.value)}
                         error={Boolean(formErrors.email)}
                         helperText={formErrors.email || ''}
                         data-error={Boolean(formErrors.email)}
@@ -2583,9 +2353,7 @@ const CheckoutPage = () => {
                         label="Teléfono"
                         required
                         value={shippingData.phone}
-                        onChange={event =>
-                          handleShippingFieldChange('phone', event.target.value)
-                        }
+                        onChange={event => handleShippingFieldChange('phone', event.target.value)}
                         error={Boolean(formErrors.phone)}
                         helperText={formErrors.phone || ''}
                         data-error={Boolean(formErrors.phone)}
@@ -2621,9 +2389,7 @@ const CheckoutPage = () => {
                       },
                     }}
                   >
-                    {profileBootstrapLoading
-                      ? 'Cargando datos...'
-                      : 'Continuar al Pago'}
+                    {profileBootstrapLoading ? 'Cargando datos...' : 'Continuar al Pago'}
                   </Button>
                 </Box>
               )}
@@ -2698,15 +2464,14 @@ const CheckoutPage = () => {
                     </Paper>
                   ) : (
                     <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                      No se encontró la orden de compra. Por favor, vuelve al
-                      paso anterior.
+                      No se encontró la orden de compra. Por favor, vuelve al paso anterior.
                     </Alert>
                   )}
 
                   <Alert severity="info" sx={{ mt: 3, borderRadius: 2 }}>
                     <Typography variant="body2">
-                      🔒 Tu pago está protegido por Mercado Pago. No almacenamos
-                      los datos de tu tarjeta.
+                      🔒 Tu pago está protegido por Mercado Pago. No almacenamos los datos de tu
+                      tarjeta.
                     </Typography>
                   </Alert>
                 </Box>
@@ -2727,14 +2492,10 @@ const CheckoutPage = () => {
                 }}
               >
                 <Typography variant="subtitle1" fontWeight={700} mb={2}>
-                  Resumen ({itemCount}{' '}
-                  {itemCount === 1 ? 'producto' : 'productos'})
+                  Resumen ({itemCount} {itemCount === 1 ? 'producto' : 'productos'})
                 </Typography>
 
-                <Stack
-                  spacing={2}
-                  sx={{ maxHeight: 300, overflow: 'auto', mb: 2 }}
-                >
+                <Stack spacing={2} sx={{ maxHeight: 300, overflow: 'auto', mb: 2 }}>
                   {cartItems.map(item => {
                     const unitPrice = getItemUnitPrice(item)
                     const originalPrice = getItemOriginalPrice(item)
@@ -2782,11 +2543,7 @@ const CheckoutPage = () => {
                             {getItemTitle(item)}
                           </Typography>
 
-                          <Stack
-                            direction="row"
-                            spacing={1}
-                            alignItems="center"
-                          >
+                          <Stack direction="row" spacing={1} alignItems="center">
                             {originalPrice && (
                               <Typography
                                 variant="caption"
@@ -2796,10 +2553,7 @@ const CheckoutPage = () => {
                                 {formatMoney(originalPrice)}
                               </Typography>
                             )}
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
+                            <Typography variant="caption" color="text.secondary">
                               {formatMoney(unitPrice)} c/u
                             </Typography>
                           </Stack>
@@ -2816,9 +2570,7 @@ const CheckoutPage = () => {
                 <Divider sx={{ my: 2 }} />
 
                 <Stack spacing={1.5}>
-                  <Box
-                    sx={{ display: 'flex', justifyContent: 'space-between' }}
-                  >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography variant="body2" color="text.secondary">
                       Subtotal
                     </Typography>
@@ -2844,24 +2596,15 @@ const CheckoutPage = () => {
                           Descuento
                         </Typography>
 
-                        <Typography
-                          variant="caption"
-                          display="block"
-                          color="success.dark"
-                        >
+                        <Typography variant="caption" display="block" color="success.dark">
                           {hasProductRestriction && applicableItems.length > 0
                             ? `En ${applicableItems.length} producto(s)`
                             : 'En todos los productos'}
-                          {savingsPercentage > 0 &&
-                            ` (-${savingsPercentage.toFixed(0)}%)`}
+                          {savingsPercentage > 0 && ` (-${savingsPercentage.toFixed(0)}%)`}
                         </Typography>
 
                         {clampedDiscount && (
-                          <Typography
-                            variant="caption"
-                            display="block"
-                            color="text.secondary"
-                          >
+                          <Typography variant="caption" display="block" color="text.secondary">
                             Cupón nominal: {formatMoney(nominalDiscount)}
                           </Typography>
                         )}
@@ -2881,9 +2624,7 @@ const CheckoutPage = () => {
                     </Alert>
                   )}
 
-                  <Box
-                    sx={{ display: 'flex', justifyContent: 'space-between' }}
-                  >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography variant="body2" color="text.secondary">
                       Envío
                     </Typography>
@@ -2908,21 +2649,13 @@ const CheckoutPage = () => {
                     <Typography variant="h6" fontWeight={800}>
                       Total
                     </Typography>
-                    <Typography
-                      variant="h5"
-                      fontWeight={800}
-                      color={themeColors.price}
-                    >
+                    <Typography variant="h5" fontWeight={800} color={themeColors.price}>
                       {formatMoney(total)}
                     </Typography>
                   </Box>
 
                   {isCouponValid && validDiscount > 0 && (
-                    <Typography
-                      variant="caption"
-                      color="success.main"
-                      textAlign="right"
-                    >
+                    <Typography variant="caption" color="success.main" textAlign="right">
                       ¡Ahorrás {formatMoney(validDiscount)}!
                     </Typography>
                   )}
@@ -2976,16 +2709,15 @@ const CheckoutPage = () => {
                               {renderAppliedCouponDetail()}
                             </Typography>
 
-                            {hasProductRestriction &&
-                              applicableItems.length > 0 && (
-                                <Typography
-                                  variant="caption"
-                                  display="block"
-                                  sx={{ mt: 0.5, color: 'text.secondary' }}
-                                >
-                                  Solo en {applicableItems.length} producto(s)
-                                </Typography>
-                              )}
+                            {hasProductRestriction && applicableItems.length > 0 && (
+                              <Typography
+                                variant="caption"
+                                display="block"
+                                sx={{ mt: 0.5, color: 'text.secondary' }}
+                              >
+                                Solo en {applicableItems.length} producto(s)
+                              </Typography>
+                            )}
                           </Box>
 
                           <Button
@@ -3023,11 +2755,7 @@ const CheckoutPage = () => {
                           </Typography>
                         </Box>
 
-                        <Button
-                          size="small"
-                          onClick={handleRemoveCoupon}
-                          color="inherit"
-                        >
+                        <Button size="small" onClick={handleRemoveCoupon} color="inherit">
                           Quitar
                         </Button>
                       </Box>
@@ -3039,9 +2767,7 @@ const CheckoutPage = () => {
                         size="small"
                         placeholder="Ingresa tu código"
                         value={couponInput}
-                        onChange={event =>
-                          setCouponInput(event.target.value.toUpperCase())
-                        }
+                        onChange={event => setCouponInput(event.target.value.toUpperCase())}
                         onKeyDown={event => {
                           if (event.key === 'Enter') {
                             event.preventDefault()
@@ -3083,11 +2809,7 @@ const CheckoutPage = () => {
                       </Button>
 
                       {coupons.length > 0 && (
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          textAlign="center"
-                        >
+                        <Typography variant="caption" color="text.secondary" textAlign="center">
                           💡 Selecciona un cupón de la lista arriba
                         </Typography>
                       )}
@@ -3119,11 +2841,7 @@ const CheckoutPage = () => {
                   >
                     Pago 100% seguro por Mercado Pago
                   </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                  >
+                  <Typography variant="caption" color="text.secondary" display="block">
                     SSL 256-bit • Datos encriptados
                   </Typography>
                 </Box>

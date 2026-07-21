@@ -28,9 +28,7 @@ const normalizePreviewUrl = value => {
 
   const url = new URL(withProtocol(cleanValue))
   const isLocalStorefront =
-    url.hostname === 'henko.local' ||
-    url.hostname === 'localhost' ||
-    url.hostname === '127.0.0.1'
+    url.hostname === 'henko.local' || url.hostname === 'localhost' || url.hostname === '127.0.0.1'
 
   if (!env.isProduction && isLocalStorefront && !url.port) {
     url.port = '3002'
@@ -40,8 +38,7 @@ const normalizePreviewUrl = value => {
 }
 
 const getPreviewBaseUrl = () => {
-  const explicitUrl =
-    env.storefrontPreviewUrl || process.env.REACT_APP_STOREFRONT_PREVIEW_URL
+  const explicitUrl = env.storefrontPreviewUrl || process.env.REACT_APP_STOREFRONT_PREVIEW_URL
 
   if (explicitUrl) {
     return normalizePreviewUrl(explicitUrl)
@@ -90,10 +87,7 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
     return `${getPreviewBaseUrl()}/theme-preview?${params.toString()}`
   }, [iframeKey])
 
-  const previewTargetOrigin = useMemo(
-    () => getUrlOrigin(previewUrl),
-    [previewUrl],
-  )
+  const previewTargetOrigin = useMemo(() => getUrlOrigin(previewUrl), [previewUrl])
 
   const previewWidth = VIEWPORT_WIDTH[viewport] || VIEWPORT_WIDTH.desktop
 
@@ -184,9 +178,7 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
             Vista Previa Real
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {iframeReady
-              ? 'Conectada con el storefront'
-              : 'Esperando storefront'}
+            {iframeReady ? 'Conectada con el storefront' : 'Esperando storefront'}
           </Typography>
         </Box>
 

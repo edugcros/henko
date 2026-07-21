@@ -1,15 +1,7 @@
 // 📁 src/Components/SubscriptionCTA/index.jsx
 
 import React, { useCallback, useMemo } from 'react'
-import {
-  Box,
-  Button,
-  Chip,
-  Container,
-  Divider,
-  Stack,
-  Typography,
-} from '@mui/material'
+import { Box, Button, Chip, Container, Divider, Stack, Typography } from '@mui/material'
 
 import { env } from '../config/env'
 
@@ -120,11 +112,7 @@ const SubscriptionCTA = () => {
           }}
         >
           <Box>
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ mb: 3, flexWrap: 'wrap', rowGap: 1 }}
-            >
+            <Stack direction="row" spacing={1} sx={{ mb: 3, flexWrap: 'wrap', rowGap: 1 }}>
               <Chip
                 label="Henko Commerce"
                 sx={{
@@ -158,8 +146,7 @@ const SubscriptionCTA = () => {
                 mb: 3,
               }}
             >
-              Creá tu e-commerce profesional con una plataforma preparada para
-              crecer.
+              Creá tu e-commerce profesional con una plataforma preparada para crecer.
             </Typography>
 
             <Typography
@@ -171,16 +158,11 @@ const SubscriptionCTA = () => {
                 mb: 4,
               }}
             >
-              Lanzá una tienda online moderna, administrable y escalable desde
-              un ecosistema diseñado para negocios reales, múltiples tenants y
-              automatización inteligente.
+              Lanzá una tienda online moderna, administrable y escalable desde un ecosistema
+              diseñado para negocios reales, múltiples tenants y automatización inteligente.
             </Typography>
 
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={2}
-              sx={{ mb: 4 }}
-            >
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 4 }}>
               <Button
                 type="button"
                 onClick={handleGoToSubscription}
@@ -231,12 +213,7 @@ const SubscriptionCTA = () => {
 
             <Stack spacing={1.4}>
               {features.map(feature => (
-                <Stack
-                  key={feature}
-                  direction="row"
-                  spacing={1.4}
-                  alignItems="center"
-                >
+                <Stack key={feature} direction="row" spacing={1.4} alignItems="center">
                   <Box
                     aria-hidden="true"
                     sx={{
@@ -283,8 +260,7 @@ const SubscriptionCTA = () => {
                 width: 220,
                 height: 220,
                 borderRadius: '50%',
-                background:
-                  'radial-gradient(circle, rgba(15, 23, 42, 0.12), transparent 64%)',
+                background: 'radial-gradient(circle, rgba(15, 23, 42, 0.12), transparent 64%)',
               }}
             />
 
@@ -332,8 +308,8 @@ const SubscriptionCTA = () => {
                   mb: 3,
                 }}
               >
-                Diseñado para negocios que necesitan vender, administrar y
-                evolucionar sin reconstruir la plataforma cada vez que crecen.
+                Diseñado para negocios que necesitan vender, administrar y evolucionar sin
+                reconstruir la plataforma cada vez que crecen.
               </Typography>
 
               <Divider sx={{ borderColor: 'rgba(148,163,184,0.22)', mb: 3 }} />

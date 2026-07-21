@@ -12,19 +12,9 @@ const normalizeAuthResponse = response => {
   const raw = response?.data || response
 
   return {
-    user:
-      raw?.user ||
-      raw?.data?.user ||
-      raw?.data?.profile ||
-      raw?.profile ||
-      null,
+    user: raw?.user || raw?.data?.user || raw?.data?.profile || raw?.profile || null,
 
-    token:
-      raw?.token ||
-      raw?.accessToken ||
-      raw?.data?.token ||
-      raw?.data?.accessToken ||
-      null,
+    token: raw?.token || raw?.accessToken || raw?.data?.token || raw?.data?.accessToken || null,
 
     refreshToken: raw?.refreshToken || raw?.data?.refreshToken || null,
   }
@@ -38,10 +28,7 @@ const getApiErrorMessage = (error, fallback = 'Error inesperado') => {
   if (typeof error === 'string') return error
 
   return (
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    fallback
+    error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback
   )
 }
 
@@ -96,16 +83,10 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     const csrfToken = shouldUseCsrf ? await ensureCsrf() : null
 
     const isValidToken = token => {
-      return (
-        token &&
-        token !== 'null' &&
-        token !== 'undefined' &&
-        String(token).trim() !== ''
-      )
+      return token && token !== 'null' && token !== 'undefined' && String(token).trim() !== ''
     }
 
-    const rawToken =
-      localStorage.getItem('token') || Cookies.get('token') || null
+    const rawToken = localStorage.getItem('token') || Cookies.get('token') || null
 
     const token = isValidToken(rawToken) ? rawToken : null
 
@@ -187,10 +168,7 @@ const loginUser = async userData => {
     const normalized = normalizeAuthResponse(response)
 
     if (!normalized?.user) {
-      throw new Error(
-        response?.data?.message ||
-          'Respuesta inválida del servidor durante login',
-      )
+      throw new Error(response?.data?.message || 'Respuesta inválida del servidor durante login')
     }
 
     const { token } = normalized
@@ -338,9 +316,7 @@ const updateOrderStatus = async (id, status) => {
     )
 
     if (response.data?.success === false) {
-      throw new Error(
-        response.data?.message || 'No se pudo actualizar el estado',
-      )
+      throw new Error(response.data?.message || 'No se pudo actualizar el estado')
     }
 
     return response.data
@@ -370,8 +346,7 @@ const refreshToken = async () => {
     }
 
     const normalized = normalizeAuthResponse(response.data)
-    const token =
-      normalized?.token || response.data?.token || response.data?.accessToken
+    const token = normalized?.token || response.data?.token || response.data?.accessToken
 
     if (!token) {
       throw new Error('Token ausente en refresh')
@@ -388,8 +363,7 @@ const refreshToken = async () => {
       },
     })
 
-    const user =
-      me?.data?.data?.user || me?.data?.data || me?.data?.user || null
+    const user = me?.data?.data?.user || me?.data?.data || me?.data?.user || null
 
     return {
       success: true,
@@ -405,10 +379,7 @@ const refreshToken = async () => {
 
     return {
       success: false,
-      message: getApiErrorMessage(
-        error,
-        'Sesión expirada. Inicie sesión nuevamente.',
-      ),
+      message: getApiErrorMessage(error, 'Sesión expirada. Inicie sesión nuevamente.'),
     }
   }
 }

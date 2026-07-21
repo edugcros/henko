@@ -24,8 +24,8 @@ const getAllUsers = async (params = {}, { signal } = {}) => {
   const key = JSON.stringify(params)
   if (inflight.has(key)) return inflight.get(key)
 
-  const req = apiRequest('get', `/all-users`, null, params, signal).finally(
-    () => inflight.delete(key),
+  const req = apiRequest('get', `/all-users`, null, params, signal).finally(() =>
+    inflight.delete(key),
   )
 
   inflight.set(key, req)

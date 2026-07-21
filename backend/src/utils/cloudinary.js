@@ -35,7 +35,7 @@ if (isCloudinaryConfigured) {
 /**
  * Calcula delay exponencial con jitter para reintentos
  */
-const getRetryDelay = (attemptNumber) => {
+const getRetryDelay = ( attemptNumber ) => {
   const exponentialDelay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attemptNumber)
   const jitteredDelay = exponentialDelay + Math.random() * 1000 // jitter de hasta 1s
   return Math.min(jitteredDelay, MAX_RETRY_DELAY_MS)
@@ -113,7 +113,7 @@ const uploadToCloudinary = (buffer, folder, options = {}) => {
               // Error no reintentatble o agotamos reintentos
               logger.error(
                 `❌ Cloudinary upload falló (${attemptNumber} intentos):`,
-                error
+                error,
               )
               reject(error)
             }

@@ -12,11 +12,7 @@ const ensureCsrf = async () => {
   return cachedCsrfToken
 }
 
-const apiRequest = async (
-  method,
-  endpoint,
-  { data, params, isMultipart = false } = {},
-) => {
+const apiRequest = async (method, endpoint, { data, params, isMultipart = false } = {}) => {
   const normalizedMethod = method.toLowerCase()
   const isReadOnly = ['get', 'head', 'options'].includes(normalizedMethod)
 
@@ -56,8 +52,7 @@ const apiRequest = async (
 
 const createProduct = data => apiRequest('post', '/', { data })
 
-const updateProduct = ({ productId, data }) =>
-  apiRequest('put', `/${productId}`, { data })
+const updateProduct = ({ productId, data }) => apiRequest('put', `/${productId}`, { data })
 
 const deleteProduct = productId => apiRequest('delete', `/${productId}`)
 

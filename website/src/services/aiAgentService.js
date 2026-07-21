@@ -1,8 +1,7 @@
 // 📁 website/src/services/aiAgentService.js
 import api from '@utils/axiosConfig'
 
-const STORAGE_NAMESPACE =
-  process.env.REACT_APP_WEBCHAT_STORAGE_NAMESPACE || 'commerce_ai_webchat'
+const STORAGE_NAMESPACE = process.env.REACT_APP_WEBCHAT_STORAGE_NAMESPACE || 'commerce_ai_webchat'
 
 const AI_WEBCHAT_SESSION_PREFIX = `${STORAGE_NAMESPACE}_session`
 const AI_WEBCHAT_VISITOR_PREFIX = `${STORAGE_NAMESPACE}_visitor`
@@ -156,14 +155,9 @@ export const extractAiCustomerDataFromText = text => {
   })
 }
 
-export const mergeAiCustomerProfileFromMessage = ({
-  message,
-  profile,
-} = {}) => {
+export const mergeAiCustomerProfileFromMessage = ({ message, profile } = {}) => {
   const extracted = extractAiCustomerDataFromText(message)
-  const current = normalizeAiCustomerProfile(
-    profile || getAiWebchatCustomerProfile(),
-  )
+  const current = normalizeAiCustomerProfile(profile || getAiWebchatCustomerProfile())
 
   return saveAiWebchatCustomerProfile({
     name: current.name || extracted.name,
@@ -224,21 +218,14 @@ const getCurrentPath = () => {
 export const normalizeAiWebchatResponse = response => {
   const payload = response?.data?.data || response?.data || response || {}
 
-  const customer = normalizeAiCustomerProfile(
-    payload?.customer || payload?.lead?.customer || {},
-  )
+  const customer = normalizeAiCustomerProfile(payload?.customer || payload?.lead?.customer || {})
 
   if (customer.name || customer.email || customer.phone) {
     saveAiWebchatCustomerProfile(customer)
   }
 
   return {
-    reply:
-      payload?.reply ||
-      payload?.message ||
-      payload?.content ||
-      payload?.answer ||
-      '',
+    reply: payload?.reply || payload?.message || payload?.content || payload?.answer || '',
     intent: payload?.intent || '',
     leadScore: payload?.leadScore ?? payload?.score ?? null,
     actions: Array.isArray(payload?.actions) ? payload.actions : [],
@@ -319,9 +306,7 @@ export const sendAiWebchatMessage = async ({
     throw new Error('message requerido')
   }
 
-  const sessionId = newConversation
-    ? resetAiWebchatSession()
-    : getAiWebchatSessionId()
+  const sessionId = newConversation ? resetAiWebchatSession() : getAiWebchatSessionId()
 
   const visitorId = getAiWebchatVisitorId()
 

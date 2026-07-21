@@ -3,31 +3,25 @@ import contactService from './contactService'
 import { toast } from 'react-toastify'
 
 // Async Thunks
-export const createQuery = createAsyncThunk(
-  'contact/post',
-  async (contactData, thunkAPI) => {
-    try {
-      const response = await contactService.postQuery(contactData)
-      toast.success('Contact form submitted successfully')
-      return response
-    } catch (error) {
-      toast.error('Failed to submit contact form')
-      return thunkAPI.rejectWithValue(error.response?.data || error.message)
-    }
-  },
-)
+export const createQuery = createAsyncThunk('contact/post', async (contactData, thunkAPI) => {
+  try {
+    const response = await contactService.postQuery(contactData)
+    toast.success('Contact form submitted successfully')
+    return response
+  } catch (error) {
+    toast.error('Failed to submit contact form')
+    return thunkAPI.rejectWithValue(error.response?.data || error.message)
+  }
+})
 
-export const fetchQueries = createAsyncThunk(
-  'contact/fetchAll',
-  async (_, thunkAPI) => {
-    try {
-      return await contactService.getQueries()
-    } catch (error) {
-      toast.error('Failed to load contact queries')
-      return thunkAPI.rejectWithValue(error.response?.data || error.message)
-    }
-  },
-)
+export const fetchQueries = createAsyncThunk('contact/fetchAll', async (_, thunkAPI) => {
+  try {
+    return await contactService.getQueries()
+  } catch (error) {
+    toast.error('Failed to load contact queries')
+    return thunkAPI.rejectWithValue(error.response?.data || error.message)
+  }
+})
 
 export const updateQueryStatus = createAsyncThunk(
   'contact/updateStatus',
@@ -43,19 +37,16 @@ export const updateQueryStatus = createAsyncThunk(
   },
 )
 
-export const deleteQuery = createAsyncThunk(
-  'contact/delete',
-  async (id, thunkAPI) => {
-    try {
-      const response = await contactService.deleteQuery(id)
-      toast.success('Query deleted successfully')
-      return response
-    } catch (error) {
-      toast.error('Failed to delete query')
-      return thunkAPI.rejectWithValue(error.response?.data || error.message)
-    }
-  },
-)
+export const deleteQuery = createAsyncThunk('contact/delete', async (id, thunkAPI) => {
+  try {
+    const response = await contactService.deleteQuery(id)
+    toast.success('Query deleted successfully')
+    return response
+  } catch (error) {
+    toast.error('Failed to delete query')
+    return thunkAPI.rejectWithValue(error.response?.data || error.message)
+  }
+})
 
 // Initial State
 const initialState = {
@@ -117,9 +108,7 @@ export const contactSlice = createSlice({
 
       // Delete Query
       .addCase(deleteQuery.fulfilled, (state, action) => {
-        state.contacts = state.contacts.filter(
-          contact => contact._id !== action.payload._id,
-        )
+        state.contacts = state.contacts.filter(contact => contact._id !== action.payload._id)
       })
       .addCase(deleteQuery.rejected, (state, action) => {
         state.isError = true

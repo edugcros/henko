@@ -2,27 +2,21 @@ import { createSlice, createAsyncThunk, createAction } from '@reduxjs/toolkit'
 import prodCategoryService from './prodCategoryService'
 
 // Thunks
-export const getAllCategories = createAsyncThunk(
-  'prodCategory/get-all',
-  async (_, thunkAPI) => {
-    try {
-      return await prodCategoryService.getAllCategories()
-    } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data || error.message)
-    }
-  },
-)
+export const getAllCategories = createAsyncThunk('prodCategory/get-all', async (_, thunkAPI) => {
+  try {
+    return await prodCategoryService.getAllCategories()
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.response?.data || error.message)
+  }
+})
 
-export const getCategory = createAsyncThunk(
-  'prodCategory/get-single',
-  async (id, thunkAPI) => {
-    try {
-      return await prodCategoryService.getCategory(id)
-    } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data || error.message)
-    }
-  },
-)
+export const getCategory = createAsyncThunk('prodCategory/get-single', async (id, thunkAPI) => {
+  try {
+    return await prodCategoryService.getCategory(id)
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.response?.data || error.message)
+  }
+})
 
 export const createCategory = createAsyncThunk(
   'prodCategory/create',
@@ -46,16 +40,13 @@ export const updateCategory = createAsyncThunk(
   },
 )
 
-export const deleteCategory = createAsyncThunk(
-  'prodCategory/delete',
-  async (id, thunkAPI) => {
-    try {
-      return await prodCategoryService.deleteCategory(id)
-    } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data || error.message)
-    }
-  },
-)
+export const deleteCategory = createAsyncThunk('prodCategory/delete', async (id, thunkAPI) => {
+  try {
+    return await prodCategoryService.deleteCategory(id)
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.response?.data || error.message)
+  }
+})
 
 export const resetCategoryState = createAction('prodCategory/reset-state')
 

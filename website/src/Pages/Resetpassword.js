@@ -24,14 +24,9 @@ const ResetPassword = () => {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const { themeConfig } = useTenant()
-  const themeColors = useMemo(
-    () => getThemeColors(themeConfig || {}),
-    [themeConfig],
-  )
+  const themeColors = useMemo(() => getThemeColors(themeConfig || {}), [themeConfig])
 
-  const { isLoading, isError, isSuccess, message } = useSelector(
-    state => state.user,
-  )
+  const { isLoading, isError, isSuccess, message } = useSelector(state => state.user)
 
   const handleSubmit = e => {
     e.preventDefault()
@@ -81,11 +76,7 @@ const ResetPassword = () => {
           }}
         >
           <CardContent sx={{ p: 4 }}>
-            <Typography
-              variant="h6"
-              align="center"
-              sx={{ mb: 3, color: themeColors.text }}
-            >
+            <Typography variant="h6" align="center" sx={{ mb: 3, color: themeColors.text }}>
               Restablecer Contraseña
             </Typography>
 
@@ -129,10 +120,7 @@ const ResetPassword = () => {
                   }}
                 >
                   {isLoading ? (
-                    <CircularProgress
-                      size={24}
-                      sx={{ color: themeColors.actionPrimaryText }}
-                    />
+                    <CircularProgress size={24} sx={{ color: themeColors.actionPrimaryText }} />
                   ) : (
                     'Restablecer'
                   )}

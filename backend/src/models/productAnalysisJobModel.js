@@ -165,6 +165,12 @@ const productAnalysisJobSchema = new mongoose.Schema(
     autoPublishProduct: { type: Boolean, default: false },
 
     analysis: { type: analysisSchema, default: null },
+    // Salida cruda y completa de la IA (variantes, ficha técnica, SEO,
+    // logística) sin recortar por sanitizeAnalysis. Se guarda solo para
+    // los jobs que pasan por el módulo AddProduct, para que al aprobar
+    // se pueda armar el producto rico (con variantes) en vez de perder
+    // esa información. select:false para no inflar cada listado/detalle.
+    analysisRaw: { type: mongoose.Schema.Types.Mixed, default: null, select: false },
     error: { type: errorSchema, default: null },
 
     startedAt: Date,

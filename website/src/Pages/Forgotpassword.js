@@ -21,14 +21,9 @@ const ForgotPassword = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const { themeConfig } = useTenant()
-  const themeColors = useMemo(
-    () => getThemeColors(themeConfig || {}),
-    [themeConfig],
-  )
+  const themeColors = useMemo(() => getThemeColors(themeConfig || {}), [themeConfig])
 
-  const { isLoading, isError, isSuccess, message } = useSelector(
-    state => state.user,
-  )
+  const { isLoading, isError, isSuccess, message } = useSelector(state => state.user)
 
   useEffect(() => {
     if (isError) {
@@ -38,9 +33,7 @@ const ForgotPassword = () => {
     }
 
     if (isSuccess) {
-      toast.success(
-        message || 'Te enviamos un correo para restablecer tu contraseña.',
-      )
+      toast.success(message || 'Te enviamos un correo para restablecer tu contraseña.')
 
       setEmail('')
 
@@ -98,21 +91,12 @@ const ForgotPassword = () => {
           }}
         >
           <CardContent sx={{ p: 4 }}>
-            <Typography
-              variant="h6"
-              align="center"
-              sx={{ mb: 1, color: themeColors.text }}
-            >
+            <Typography variant="h6" align="center" sx={{ mb: 1, color: themeColors.text }}>
               Restablecer Contraseña
             </Typography>
 
-            <Typography
-              variant="body2"
-              align="center"
-              sx={{ mb: 3, color: themeColors.mutedText }}
-            >
-              Ingresa tu correo electrónico para enviarte un enlace de
-              recuperación.
+            <Typography variant="body2" align="center" sx={{ mb: 3, color: themeColors.mutedText }}>
+              Ingresa tu correo electrónico para enviarte un enlace de recuperación.
             </Typography>
 
             <form onSubmit={handleSubmit} noValidate>
@@ -154,10 +138,7 @@ const ForgotPassword = () => {
                   }}
                 >
                   {isLoading ? (
-                    <CircularProgress
-                      size={24}
-                      sx={{ color: themeColors.actionPrimaryText }}
-                    />
+                    <CircularProgress size={24} sx={{ color: themeColors.actionPrimaryText }} />
                   ) : (
                     'Enviar'
                   )}

@@ -41,18 +41,15 @@ const handleError = error => {
 // ======================================================
 
 // Listar cupones (con filtros opcionales)
-export const getAllCoupons = createAsyncThunk(
-  'coupon/getAll',
-  async (filters = {}, thunkAPI) => {
-    try {
-      const response = await couponService.getCoupons(filters)
-      return response
-    } catch (error) {
-      const processedError = handleError(error)
-      return thunkAPI.rejectWithValue(processedError)
-    }
-  },
-)
+export const getAllCoupons = createAsyncThunk('coupon/getAll', async (filters = {}, thunkAPI) => {
+  try {
+    const response = await couponService.getCoupons(filters)
+    return response
+  } catch (error) {
+    const processedError = handleError(error)
+    return thunkAPI.rejectWithValue(processedError)
+  }
+})
 
 // Permanent Delete
 export const permanentDeleteCoupon = createAsyncThunk(
@@ -69,18 +66,15 @@ export const permanentDeleteCoupon = createAsyncThunk(
 )
 
 // Restore Coupon
-export const restoreCoupon = createAsyncThunk(
-  'coupon/restore',
-  async (id, thunkAPI) => {
-    try {
-      const response = await couponService.restore(id)
-      return response
-    } catch (error) {
-      const processedError = handleError(error)
-      return thunkAPI.rejectWithValue(processedError)
-    }
-  },
-)
+export const restoreCoupon = createAsyncThunk('coupon/restore', async (id, thunkAPI) => {
+  try {
+    const response = await couponService.restore(id)
+    return response
+  } catch (error) {
+    const processedError = handleError(error)
+    return thunkAPI.rejectWithValue(processedError)
+  }
+})
 
 // Get Deleted Coupons
 export const getDeletedCoupons = createAsyncThunk(
@@ -97,74 +91,59 @@ export const getDeletedCoupons = createAsyncThunk(
 )
 
 // Crear cupón
-export const createCoupon = createAsyncThunk(
-  'coupon/create',
-  async (couponData, thunkAPI) => {
-    try {
-      const response = await couponService.create(couponData)
-      return response
-    } catch (error) {
-      const processedError = handleError(error)
-      return thunkAPI.rejectWithValue(processedError)
-    }
-  },
-)
+export const createCoupon = createAsyncThunk('coupon/create', async (couponData, thunkAPI) => {
+  try {
+    const response = await couponService.create(couponData)
+    return response
+  } catch (error) {
+    const processedError = handleError(error)
+    return thunkAPI.rejectWithValue(processedError)
+  }
+})
 
 // Eliminar cupón
-export const deleteCoupon = createAsyncThunk(
-  'coupon/delete',
-  async (id, thunkAPI) => {
-    try {
-      const response = await couponService.delete(id)
-      return response.id
-    } catch (error) {
-      const processedError = handleError(error)
-      return thunkAPI.rejectWithValue(processedError)
-    }
-  },
-)
+export const deleteCoupon = createAsyncThunk('coupon/delete', async (id, thunkAPI) => {
+  try {
+    const response = await couponService.delete(id)
+    return response.id
+  } catch (error) {
+    const processedError = handleError(error)
+    return thunkAPI.rejectWithValue(processedError)
+  }
+})
 
 // Obtener un cupón
-export const getCouponById = createAsyncThunk(
-  'coupon/getById',
-  async (id, thunkAPI) => {
-    try {
-      const response = await couponService.getById(id)
-      return response
-    } catch (error) {
-      const processedError = handleError(error)
-      return thunkAPI.rejectWithValue(processedError)
-    }
-  },
-)
+export const getCouponById = createAsyncThunk('coupon/getById', async (id, thunkAPI) => {
+  try {
+    const response = await couponService.getById(id)
+    return response
+  } catch (error) {
+    const processedError = handleError(error)
+    return thunkAPI.rejectWithValue(processedError)
+  }
+})
 
 // Actualizar cupón
-export const updateCoupon = createAsyncThunk(
-  'coupon/update',
-  async ({ id, data }, thunkAPI) => {
-    try {
-      const response = await couponService.update(id, data)
-      return response
-    } catch (error) {
-      const processedError = handleError(error)
-      return thunkAPI.rejectWithValue(processedError)
-    }
-  },
-)
+export const updateCoupon = createAsyncThunk('coupon/update', async ({ id, data }, thunkAPI) => {
+  try {
+    const response = await couponService.update(id, data)
+    return response
+  } catch (error) {
+    const processedError = handleError(error)
+    return thunkAPI.rejectWithValue(processedError)
+  }
+})
 
 // Clonar cupón
-export const cloneCoupon = createAsyncThunk(
-  'coupon/clone',
-  async (id, thunkAPI) => {
-    try {
-      const response = await couponService.clone(id)
-      return response
-    } catch (error) {
-      const processedError = handleError(error)
-      return thunkAPI.rejectWithValue(processedError)
-    }
-  },
-)
+export const cloneCoupon = createAsyncThunk('coupon/clone', async (id, thunkAPI) => {
+  try {
+    const response = await couponService.clone(id)
+    return response
+  } catch (error) {
+    const processedError = handleError(error)
+    return thunkAPI.rejectWithValue(processedError)
+  }
+})
 
 // Generar cupones masivos
 export const generateBulkCoupons = createAsyncThunk(
@@ -203,11 +182,7 @@ export const assignProductsToCoupon = createAsyncThunk(
   'coupon/assignProducts',
   async ({ couponId, productIds, mode = 'add' }, thunkAPI) => {
     try {
-      const response = await couponService.assignProducts(
-        couponId,
-        productIds,
-        mode,
-      )
+      const response = await couponService.assignProducts(couponId, productIds, mode)
       return response
     } catch (error) {
       const processedError = handleError(error)
@@ -217,18 +192,15 @@ export const assignProductsToCoupon = createAsyncThunk(
 )
 
 // Obtener estadísticas
-export const getCouponStats = createAsyncThunk(
-  'coupon/getStats',
-  async (id, thunkAPI) => {
-    try {
-      const response = await couponService.getStats(id)
-      return { id, stats: response }
-    } catch (error) {
-      const processedError = handleError(error)
-      return thunkAPI.rejectWithValue(processedError)
-    }
-  },
-)
+export const getCouponStats = createAsyncThunk('coupon/getStats', async (id, thunkAPI) => {
+  try {
+    const response = await couponService.getStats(id)
+    return { id, stats: response }
+  } catch (error) {
+    const processedError = handleError(error)
+    return thunkAPI.rejectWithValue(processedError)
+  }
+})
 
 // Reset state
 export const resetCouponState = createAction('coupon/reset')
@@ -391,8 +363,7 @@ export const couponSlice = createSlice({
         state.isLoading = false
         state.isError = true
         state.error = action.payload
-        state.message =
-          action.payload?.message || 'Error al eliminar permanentemente'
+        state.message = action.payload?.message || 'Error al eliminar permanentemente'
       })
 
       // ---------- RESTORE ----------
@@ -403,13 +374,9 @@ export const couponSlice = createSlice({
         state.isLoading = false
         state.isSuccess = true
         // Mover de eliminados a activos
-        state.deletedCoupons = state.deletedCoupons.filter(
-          c => c.id !== action.payload.data.id,
-        )
+        state.deletedCoupons = state.deletedCoupons.filter(c => c.id !== action.payload.data.id)
         // Lo añadimos o actualizamos en la lista principal
-        const index = state.coupons.findIndex(
-          c => c.id === action.payload.data.id,
-        )
+        const index = state.coupons.findIndex(c => c.id === action.payload.data.id)
         if (index !== -1) {
           state.coupons[index] = action.payload.data
         } else {
@@ -616,8 +583,7 @@ export const {
 
 // Exportar selectors útiles
 export const selectCouponError = state => state.coupon.error
-export const selectIsDuplicateError = state =>
-  state.coupon.error?.code === 'DUPLICATE_CODE'
+export const selectIsDuplicateError = state => state.coupon.error?.code === 'DUPLICATE_CODE'
 export const selectErrorField = state => state.coupon.error?.field
 
 export default couponSlice.reducer

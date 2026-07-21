@@ -24,9 +24,7 @@ export const useCoupons = (initialFilters = {}) => {
         page: filters.page || 1,
         limit: filters.limit || 20,
         // Solo enviar status si el usuario lo pidió explícitamente
-        ...(filters.status && filters.status !== 'all'
-          ? { status: filters.status }
-          : {}),
+        ...(filters.status && filters.status !== 'all' ? { status: filters.status } : {}),
         ...(filters.search ? { search: filters.search } : {}),
       }
 

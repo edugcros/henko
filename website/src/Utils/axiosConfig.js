@@ -41,9 +41,7 @@ const assertApiBaseUrl = () => {
 
     forbiddenValues.forEach(value => {
       if (String(env.apiBaseUrl).includes(value)) {
-        throw new Error(
-          `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
-        )
+        throw new Error(`REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`)
       }
     })
   }
@@ -63,18 +61,12 @@ const getTenantDomain = () => {
 }
 
 const isValidToken = token => {
-  return (
-    token &&
-    token !== 'null' &&
-    token !== 'undefined' &&
-    String(token).trim() !== ''
-  )
+  return token && token !== 'null' && token !== 'undefined' && String(token).trim() !== ''
 }
 
 const getAuthToken = () => {
   const cookieToken = Cookies.get('token')
-  const localToken =
-    typeof window !== 'undefined' ? localStorage.getItem('token') : null
+  const localToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null
 
   if (isValidToken(cookieToken)) return cookieToken
   if (isValidToken(localToken)) return localToken
@@ -112,9 +104,7 @@ const getMetricSessionId = () => {
 }
 
 const isSafeMethod = method => {
-  return ['get', 'head', 'options'].includes(
-    String(method || 'get').toLowerCase(),
-  )
+  return ['get', 'head', 'options'].includes(String(method || 'get').toLowerCase())
 }
 
 const shouldAttachCsrf = requestConfig => {
@@ -269,9 +259,7 @@ api.interceptors.request.use(
       }
     }
 
-    const metricSessionId = requestConfig.skipMetricSession
-      ? null
-      : getMetricSessionId()
+    const metricSessionId = requestConfig.skipMetricSession ? null : getMetricSessionId()
     if (metricSessionId) {
       requestConfig.headers['x-metric-session-id'] = metricSessionId
     }
@@ -366,14 +354,9 @@ api.interceptors.response.use(
     // =====================================================
 
     const isCsrfError =
-      status === 403 &&
-      (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
+      status === 403 && (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
 
-    if (
-      isCsrfError &&
-      !originalRequest._csrfRetry &&
-      !originalRequest.skipCsrfRetry
-    ) {
+    if (isCsrfError && !originalRequest._csrfRetry && !originalRequest.skipCsrfRetry) {
       originalRequest._csrfRetry = true
 
       clearCsrfToken()

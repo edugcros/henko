@@ -21,16 +21,15 @@ const InvalidRouteComponent = ({ path = 'ruta desconocida' }) => (
       padding: 24,
       textAlign: 'center',
       color: '#991b1b',
-      fontFamily:
-        'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     }}
   >
     <strong>Error cargando la vista</strong>
 
     {isDev && (
       <small style={{ marginTop: 8, maxWidth: 720 }}>
-        La ruta "{path}" tiene un componente inválido o undefined. Revisá el
-        export/import de esa página dentro del archivo de rutas.
+        La ruta "{path}" tiene un componente inválido o undefined. Revisá el export/import de esa
+        página dentro del archivo de rutas.
       </small>
     )}
   </div>
@@ -45,11 +44,7 @@ const isValidComponent = Component => {
   if (typeof Component === 'function') return true
   if (typeof Component === 'string') return true
 
-  if (
-    typeof Component === 'object' &&
-    Component !== null &&
-    Component.$$typeof
-  ) {
+  if (typeof Component === 'object' && Component !== null && Component.$$typeof) {
     return true
   }
 
@@ -80,11 +75,7 @@ LazyLoad.propTypes = {
   path: PropTypes.string,
 }
 
-export const RouteRenderer = ({
-  routes,
-  isPrivate = false,
-  isPublic = false,
-}) => {
+export const RouteRenderer = ({ routes, isPrivate = false, isPublic = false }) => {
   return routes.map(route => {
     const { path, Component, allowedRoles = [] } = route
     const lazyElement = <LazyLoad Component={Component} path={path} />
@@ -94,23 +85,13 @@ export const RouteRenderer = ({
         <Route
           key={path}
           path={path}
-          element={
-            <PrivateRoute allowedRoles={allowedRoles}>
-              {lazyElement}
-            </PrivateRoute>
-          }
+          element={<PrivateRoute allowedRoles={allowedRoles}>{lazyElement}</PrivateRoute>}
         />
       )
     }
 
     if (isPublic) {
-      return (
-        <Route
-          key={path}
-          path={path}
-          element={<PublicRoute>{lazyElement}</PublicRoute>}
-        />
-      )
+      return <Route key={path} path={path} element={<PublicRoute>{lazyElement}</PublicRoute>} />
     }
 
     return <Route key={path} path={path} element={lazyElement} />
