@@ -130,13 +130,13 @@ if (
 }
 
 if (env.isProduction) {
-  const forbiddenApiValues = [
-    'localhost',
-    '127.0.0.1',
-    'henko.local',
-    'http://',
-    'https://',
-  ]
+  const forbiddenApiValues = ['localhost', '127.0.0.1', 'henko.local']
+
+  if (!/^https:\/\//i.test(String(env.apiBaseUrl || ''))) {
+    throw new Error(
+      `REACT_APP_API_BASE_URL debe usar HTTPS en producción: ${env.apiBaseUrl}`,
+    )
+  }
 
   forbiddenApiValues.forEach(value => {
     if (String(env.apiBaseUrl || '').includes(value)) {

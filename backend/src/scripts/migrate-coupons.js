@@ -3,7 +3,7 @@ import mongoose from 'mongoose'
 
 const cleanCouponIndexes = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI)
+    await mongoose.connect(process.env.MONGODB_URL)
     console.log('🔗 Conectado a MongoDB')
 
     const db = mongoose.connection.db

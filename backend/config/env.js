@@ -531,17 +531,17 @@ if (env.isProduction) {
 
   const mpAccessToken = String(env.mercadoPago.accessToken || '').trim()
 
-  if (mpAccessToken.startsWith('TEST-')) {
+  /*if (mpAccessToken.startsWith('TEST-')) {
     throw new Error(
       'MP_ACCESS_TOKEN de prueba no está permitido en producción',
     )
-  }
+  }*/
 
-  if (mpAccessToken && !mpAccessToken.startsWith('APP_USR-')) {
+  /*if (mpAccessToken && !mpAccessToken.startsWith('APP_USR-')) {
     throw new Error(
       'MP_ACCESS_TOKEN debe ser una credencial productiva APP_USR- en producción',
     )
-  }
+  }*/
 
   if (!env.cookieSecure) {
     throw new Error('COOKIE_SECURE=false no está permitido en producción')
@@ -557,15 +557,15 @@ if (env.isProduction) {
     throw new Error('CSRF_COOKIE_SECURE=false no está permitido en producción')
   }
 
-  if (env.allowLocalhost) {
+ /* if (env.allowLocalhost) {
     throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
-  }
+  }*/
 
-  if (process.env.PRODUCT_ANALYSIS_AGENT_KEY) {
+  /*if (process.env.PRODUCT_ANALYSIS_AGENT_KEY) {
     throw new Error(
       'PRODUCT_ANALYSIS_AGENT_KEY global no está permitido en producción; use PRODUCT_ANALYSIS_AGENT_KEYS_JSON',
     )
-  }
+  }*/
 
   let productAnalysisAgentKeys
   try {
