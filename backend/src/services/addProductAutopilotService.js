@@ -1,4 +1,4 @@
-// 📁 src/services/addProductAutopilotService.js
+// 📁 src/services/AddProductAutopilotService.js
 //
 // Este es el módulo "AddProduct" del lado del servidor: acá, y solo acá,
 // es donde la IA analiza la imagen y arma la información completa del
@@ -11,30 +11,36 @@
 // que arranca el análisis IA de forma automática, sin esperar a que haya
 // un administrador con AddProduct abierto en el navegador.
 //
-// Importante: este módulo NO crea el producto en la base de datos. Deja
-// el job en estado "completed" con el análisis completo adjunto, listo
-// para que un humano lo apruebe desde el panel — recién ahí
-// (approveAnalysisJob en productAnalysisController.js) se crea el
-// producto, usando ese mismo análisis rico para no perder variantes ni
-// ficha técnica.
+// Autoguardado (opcional, se define en ProductAnalysisPage al programar
+// la imagen — metadata.autoSaveProduct):
+// - true  → además de analizar, crea el producto ya mismo (como borrador,
+//           o publicado si autoPublishProduct y la confianza alcanza el
+//           umbral configurado) — exactamente como si el dueño hubiera
+//           soltado la imagen en AddProduct y apretado guardar.
+// - false → analiza y deja el job en "completed" con el análisis
+//           adjunto, esperando que un humano lo apruebe desde el panel.
 
 import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import { PRODUCT_ANALYSIS_JOB_STATUS as JOB_STATUS } from '../models/productAnalysisJobModel.js'
+import Product from '../models/productModel.js'
 import logger from '../../config/logger.js'
+import { buildAutonomousProductPayload } from './autonomousProductBuilder.js'
 import {
   sanitizeAnalysis,
   readJobImageBuffer,
   runVisualAnalysis,
+  canAutoPublishAnalysis,
+  markJobAsHidden,
+  AUTO_PUBLISH_MIN_CONFIDENCE,
 } from '../controller/productAnalysisController.js'
 
 /**
  * Punto de entrada del módulo AddProduct autónomo.
  *
  * Reclama el job (mismo patrón de lease que el resto de la cola para
- * evitar procesarlo dos veces) y corre el análisis visual completo con
- * la IA. Guarda tanto la versión resumida (job.analysis) como la cruda y
- * completa (job.analysisRaw, con variantes/ficha técnica/SEO/logística)
- * y deja el job en "completed", a la espera de que un humano lo apruebe.
+ * evitar procesarlo dos veces), corre el análisis visual completo con la
+ * IA, y según metadata.autoSaveProduct, o bien crea el producto ya mismo
+ * o bien deja el análisis listo para aprobación humana.
  */
 export const runAddProductAutopilot = async ({
   jobId,
@@ -99,20 +105,76 @@ export const runAddProductAutopilot = async ({
 
     const analysis = sanitizeAnalysis(rawAnalysis)
 
-    job.status = JOB_STATUS.COMPLETED
     job.analysis = analysis
     job.analysisRaw = rawAnalysis
     job.processedAt = new Date()
     job.failedAt = undefined
     job.error = undefined
 
+    const shouldAutoSave = job.metadata?.autoSaveProduct === true
+
+    if (!shouldAutoSave) {
+      job.status = JOB_STATUS.COMPLETED
+      await job.save()
+
+      logger.info('[AddProductAutopilot] Análisis completado automáticamente, esperando aprobación', {
+        tenantId: tenantId.toString(),
+        jobId: job._id.toString(),
+        confidence: analysis.confidence,
+        hasVariants: Boolean(rawAnalysis?.hasVariants),
+      })
+
+      return job
+    }
+
+    const productPayload = buildAutonomousProductPayload({
+      analysis: rawAnalysis,
+      job,
+      tenantId,
+    })
+
+    const mergedAnalysis = { ...rawAnalysis, ...analysis }
+    const publish = job.autoPublishProduct && canAutoPublishAnalysis(mergedAnalysis)
+
+    if (job.autoPublishProduct && !publish) {
+      logger.warn('[AddProductAutopilot] Auto-publicación bloqueada por calidad insuficiente', {
+        tenantId: tenantId.toString(),
+        jobId: job._id.toString(),
+        confidence: analysis.confidence,
+        minimumConfidence: AUTO_PUBLISH_MIN_CONFIDENCE,
+      })
+    }
+
+    if (publish) {
+      productPayload.status = 'active'
+      productPayload.visibility = 'visible'
+      productPayload.aiNeedsReview = false
+    }
+
+    const product = await Product.create(productPayload)
+
+    job.status = JOB_STATUS.APPROVED
+    job.createdProductId = product._id
+    job.approvedAt = new Date()
+    job.approvedBy = null
+
+    markJobAsHidden({
+      job,
+      userId: null,
+      reason: publish
+        ? 'Producto auto-publicado por AddProduct (autoguardado, sin intervención humana).'
+        : 'Producto auto-creado como borrador por AddProduct (autoguardado, sin intervención humana).',
+    })
+
     await job.save()
 
-    logger.info('[AddProductAutopilot] Análisis completado automáticamente, esperando aprobación', {
+    logger.info('[AddProductAutopilot] Producto autoguardado de forma 100% autónoma', {
       tenantId: tenantId.toString(),
       jobId: job._id.toString(),
+      productId: product._id.toString(),
+      published: publish,
+      hasVariants: productPayload.hasVariants,
       confidence: analysis.confidence,
-      hasVariants: Boolean(rawAnalysis?.hasVariants),
     })
 
     return job
@@ -128,7 +190,7 @@ export const runAddProductAutopilot = async ({
 
     await job.save()
 
-    logger.error('[AddProductAutopilot] Error analizando la imagen', {
+    logger.error('[AddProductAutopilot] Error en el pipeline de AddProduct', {
       tenantId: tenantId.toString(),
       jobId: job._id.toString(),
       error: error.message,

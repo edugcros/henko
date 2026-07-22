@@ -46,7 +46,9 @@ const resetCsrf = () => {
 
 const apiRequest = async (method, endpoint, data, options = {}) => {
   const normalizedMethod = String(method || 'get').toLowerCase()
-  const isMutatingRequest = ['post', 'put', 'patch', 'delete'].includes(normalizedMethod)
+  const isMutatingRequest = ['post', 'put', 'patch', 'delete'].includes(
+    normalizedMethod,
+  )
 
   const headers = {
     Accept: 'application/json',
@@ -148,7 +150,9 @@ const removeCartItem = async payload => {
   if (cartKey) params.append('cartKey', cartKey)
 
   const queryString = params.toString()
-  const url = queryString ? `/user/cart/${productId}?${queryString}` : `/user/cart/${productId}`
+  const url = queryString
+    ? `/user/cart/${productId}?${queryString}`
+    : `/user/cart/${productId}`
 
   const res = await api.delete(url, {
     withCredentials: true,

@@ -1,7 +1,15 @@
 // 📁 src/Components/VerifyEmail.js
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Box, Button, CircularProgress, Container, Paper, Typography } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Container,
+  Paper,
+  Typography,
+} from '@mui/material'
 import api from '@utils/axiosConfig'
 
 // =====================================================
@@ -25,7 +33,10 @@ const readCachedVerificationResult = token => {
 
 const saveCachedVerificationResult = (token, payload) => {
   try {
-    sessionStorage.setItem(buildVerificationCacheKey(token), JSON.stringify(payload))
+    sessionStorage.setItem(
+      buildVerificationCacheKey(token),
+      JSON.stringify(payload),
+    )
   } catch {
     // sessionStorage puede fallar en modo privado o políticas del navegador.
     // No rompe el flujo principal.
@@ -156,7 +167,12 @@ const VerifyEmail = () => {
               Tu cuenta ya está activa. Ahora podés iniciar sesión.
             </Typography>
 
-            <Button component={Link} to="/login" variant="contained" size="large">
+            <Button
+              component={Link}
+              to="/login"
+              variant="contained"
+              size="large"
+            >
               Ir a iniciar sesión
             </Button>
           </Box>
@@ -169,7 +185,8 @@ const VerifyEmail = () => {
             </Alert>
 
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Solicitá un nuevo enlace o intentá registrarte nuevamente si el token expiró.
+              Solicitá un nuevo enlace o intentá registrarte nuevamente si el
+              token expiró.
             </Typography>
 
             <Button component={Link} to="/" variant="contained" size="large">

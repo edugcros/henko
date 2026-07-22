@@ -130,11 +130,13 @@ export const useCoupon = () => {
 
         // ✅ CRÍTICO: Productos a los que aplica
         applicableProducts, // ← Array de { productId, name, price, quantity }
-        applicableItemsCount: result.applicableItems?.count || applicableProducts.length,
+        applicableItemsCount:
+          result.applicableItems?.count || applicableProducts.length,
 
         // Totales
         originalTotal: result.originalTotal || subtotal,
-        newTotal: result.newTotal || Math.max(0, subtotal - result.discountAmount),
+        newTotal:
+          result.newTotal || Math.max(0, subtotal - result.discountAmount),
         savings: result.savings || result.discountAmount,
 
         // Metadata
@@ -159,87 +161,102 @@ export const useCoupon = () => {
 
   // ============ CUPONES POR PRODUCTO ============
 
-  const fetchProductCoupons = useCallback(async (productId, userId = null, options = {}) => {
-    const {
-      autoApplyBest = false,
-      cart = null,
-      cacheTime = CACHE_TTL,
-      onSuccess,
-      onError,
-    } = options
+  const fetchProductCoupons = useCallback(
+    async (productId, userId = null, options = {}) => {
+      const {
+        autoApplyBest = false,
+        cart = null,
+        cacheTime = CACHE_TTL,
+        onSuccess,
+        onError,
+      } = options
 
-    if (!productId) {
-      setProductCoupons([])
-      setBestDeal(null)
-      return { success: false, coupons: [], bestDeal: null }
-    }
-
-    const cacheKey = `${productId}-${userId || 'guest'}`
-    const now = Date.now()
-
-    // Verificar cache
-    const cached = couponsCache.current.get(cacheKey)
-    if (cached && now - cached.timestamp < cacheTime) {
-      const { coupons, bestDeal: cachedBest } = cached.data
-      setProductCoupons(coupons)
-      setBestDeal(cachedBest)
-
-      if (autoApplyBest && cachedBest?.userCanUse && cart) {
-        await applyBestDeal(cachedBest, cart)
+      if (!productId) {
+        setProductCoupons([])
+        setBestDeal(null)
+        return { success: false, coupons: [], bestDeal: null }
       }
 
-      onSuccess?.(cached.data)
-      return { success: true, ...cached.data, fromCache: true }
-    }
+      const cacheKey = `${productId}-${userId || 'guest'}`
+      const now = Date.now()
 
-    setLoadingProductCoupons(true)
-    setError(null)
+      // Verificar cache
+      const cached = couponsCache.current.get(cacheKey)
+      if (cached && now - cached.timestamp < cacheTime) {
+        const { coupons, bestDeal: cachedBest } = cached.data
+        setProductCoupons(coupons)
+        setBestDeal(cachedBest)
 
-    try {
-      const response = await couponPublicApi.getProductCoupons(productId, userId)
+        if (autoApplyBest && cachedBest?.userCanUse && cart) {
+          await applyBestDeal(cachedBest, cart)
+        }
 
-      // Normalizar respuesta
-      const coupons = Array.isArray(response) ? response : response.data || response.coupons || []
-
-      const bestDealData = response.bestDeal || (coupons.length > 0 ? coupons[0] : null)
-
-      // Enriquecer coupons con flag isSpecific
-      const enrichedCoupons = coupons.map(c => ({
-        ...c,
-        isSpecific: c.applicableProducts?.length > 0 || c.applicableCategories?.length > 0,
-      }))
-
-      setProductCoupons(enrichedCoupons)
-      setBestDeal(bestDealData)
-
-      // Guardar en cache
-      couponsCache.current.set(cacheKey, {
-        data: { coupons: enrichedCoupons, bestDeal: bestDealData },
-        timestamp: now,
-      })
-
-      if (autoApplyBest && bestDealData?.userCanUse && cart?.items?.length > 0) {
-        await applyBestDeal(bestDealData, cart)
+        onSuccess?.(cached.data)
+        return { success: true, ...cached.data, fromCache: true }
       }
 
-      const result = {
-        success: true,
-        coupons: enrichedCoupons,
-        bestDeal: bestDealData,
+      setLoadingProductCoupons(true)
+      setError(null)
+
+      try {
+        const response = await couponPublicApi.getProductCoupons(
+          productId,
+          userId,
+        )
+
+        // Normalizar respuesta
+        const coupons = Array.isArray(response)
+          ? response
+          : response.data || response.coupons || []
+
+        const bestDealData =
+          response.bestDeal || (coupons.length > 0 ? coupons[0] : null)
+
+        // Enriquecer coupons con flag isSpecific
+        const enrichedCoupons = coupons.map(c => ({
+          ...c,
+          isSpecific:
+            c.applicableProducts?.length > 0 ||
+            c.applicableCategories?.length > 0,
+        }))
+
+        setProductCoupons(enrichedCoupons)
+        setBestDeal(bestDealData)
+
+        // Guardar en cache
+        couponsCache.current.set(cacheKey, {
+          data: { coupons: enrichedCoupons, bestDeal: bestDealData },
+          timestamp: now,
+        })
+
+        if (
+          autoApplyBest &&
+          bestDealData?.userCanUse &&
+          cart?.items?.length > 0
+        ) {
+          await applyBestDeal(bestDealData, cart)
+        }
+
+        const result = {
+          success: true,
+          coupons: enrichedCoupons,
+          bestDeal: bestDealData,
+        }
+        onSuccess?.(result)
+        return result
+      } catch (err) {
+        const errorMsg = err.message || 'Error al cargar cupones'
+        setError(errorMsg)
+        setProductCoupons([])
+        setBestDeal(null)
+        onError?.(err)
+        return { success: false, error: errorMsg, coupons: [], bestDeal: null }
+      } finally {
+        setLoadingProductCoupons(false)
       }
-      onSuccess?.(result)
-      return result
-    } catch (err) {
-      const errorMsg = err.message || 'Error al cargar cupones'
-      setError(errorMsg)
-      setProductCoupons([])
-      setBestDeal(null)
-      onError?.(err)
-      return { success: false, error: errorMsg, coupons: [], bestDeal: null }
-    } finally {
-      setLoadingProductCoupons(false)
-    }
-  }, [])
+    },
+    [],
+  )
 
   const applyBestDeal = useCallback(
     async (bestDealData, cart) => {

@@ -93,7 +93,8 @@ const initialState = {
    --------------------------- */
 export const selectWishlistIds = createSelector(
   state => state.user.wishlist,
-  wishlist => (Array.isArray(wishlist) ? wishlist.map(item => item._id || item) : []),
+  wishlist =>
+    Array.isArray(wishlist) ? wishlist.map(item => item._id || item) : [],
 )
 
 export const selectIsAuthenticated = state => !!state.user?.isAuthenticated
@@ -130,7 +131,8 @@ export const loginUser = createAsyncThunk(
       return { user, token }
     } catch (err) {
       // Evitamos el "error is not defined" asegurando que usamos 'err'
-      const message = err.response?.data?.message || err.message || 'Error de conexión'
+      const message =
+        err.response?.data?.message || err.message || 'Error de conexión'
       return rejectWithValue(message)
     }
   },
@@ -159,18 +161,22 @@ export const refreshSession = createAsyncThunk(
 /**
  * logoutUser
  */
-export const logoutUser = createAsyncThunk('user/logout', async (_, { rejectWithValue }) => {
-  try {
-    const res = await userService.logoutUser()
-    safeStorage.removeUser()
-    Cookies.remove('token')
-    toast.success('Sesión cerrada correctamente')
-    return res
-  } catch (err) {
-    const message = err?.response?.data?.message || err?.message || 'Error al cerrar sesión'
-    return rejectWithValue(message)
-  }
-})
+export const logoutUser = createAsyncThunk(
+  'user/logout',
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await userService.logoutUser()
+      safeStorage.removeUser()
+      Cookies.remove('token')
+      toast.success('Sesión cerrada correctamente')
+      return res
+    } catch (err) {
+      const message =
+        err?.response?.data?.message || err?.message || 'Error al cerrar sesión'
+      return rejectWithValue(message)
+    }
+  },
+)
 
 /**
  * registerUser
@@ -182,13 +188,17 @@ export const registerUser = createAsyncThunk(
       const res = await userService.register(userData)
 
       if (!res || res.success !== true) {
-        return rejectWithValue(res?.message || 'Respuesta inválida del servidor en registro')
+        return rejectWithValue(
+          res?.message || 'Respuesta inválida del servidor en registro',
+        )
       }
 
       return res.data
     } catch (err) {
       return rejectWithValue(
-        err?.response?.data?.message || err?.message || 'Error al registrar usuario',
+        err?.response?.data?.message ||
+          err?.message ||
+          'Error al registrar usuario',
       )
     }
   },
@@ -218,7 +228,10 @@ export const getUserProductWishlist = createAsyncThunk(
       sessionStorage.setItem('wishlist', JSON.stringify(wishlistData || []))
       return wishlistData
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Error obteniendo wishlist'
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Error obteniendo wishlist'
       return rejectWithValue(message)
     }
   },
@@ -232,7 +245,8 @@ export const requestPasswordReset = createAsyncThunk(
       const response = await userService.requestPasswordReset(email)
       return response
     } catch (error) {
-      const msg = error?.response?.data?.message || 'Error enviando email de recuperación'
+      const msg =
+        error?.response?.data?.message || 'Error enviando email de recuperación'
       return thunkAPI.rejectWithValue(msg)
     }
   },
@@ -250,7 +264,8 @@ export const resetPassword = createAsyncThunk(
       })
       return response
     } catch (error) {
-      const msg = error?.response?.data?.message || 'Error restableciendo contraseña'
+      const msg =
+        error?.response?.data?.message || 'Error restableciendo contraseña'
       return thunkAPI.rejectWithValue(msg)
     }
   },
@@ -261,14 +276,18 @@ export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
     const response = await userService.getCurrentUser()
 
     if (!response?.success || !response?.data?.user) {
-      return thunkAPI.rejectWithValue(response?.message || 'Error al obtener perfil')
+      return thunkAPI.rejectWithValue(
+        response?.message || 'Error al obtener perfil',
+      )
     }
 
     const { user, token } = response.data
     safeStorage.setUser(user)
     return { user, token }
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response?.data || 'Error al obtener perfil')
+    return thunkAPI.rejectWithValue(
+      error.response?.data || 'Error al obtener perfil',
+    )
   }
 })
 
@@ -279,7 +298,9 @@ export const updateProfile = createAsyncThunk(
       const response = await userService.updateUser(profileData)
 
       if (!response?.success || !response?.data) {
-        return thunkAPI.rejectWithValue(response?.message || 'No se pudo actualizar el perfil')
+        return thunkAPI.rejectWithValue(
+          response?.message || 'No se pudo actualizar el perfil',
+        )
       }
 
       safeStorage.setUser(response.data)
@@ -290,7 +311,9 @@ export const updateProfile = createAsyncThunk(
       }
     } catch (error) {
       return thunkAPI.rejectWithValue(
-        error?.response?.data?.message || error?.message || 'No se pudo actualizar el perfil',
+        error?.response?.data?.message ||
+          error?.message ||
+          'No se pudo actualizar el perfil',
       )
     }
   },
@@ -344,7 +367,10 @@ export const toggleWishlist = createAsyncThunk(
         message: res?.message || 'Lista de deseos actualizada',
       }
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Error al actualizar wishlist'
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Error al actualizar wishlist'
       return rejectWithValue(message)
     }
   },
@@ -541,7 +567,8 @@ const userSlice = createSlice({
         state.isLoading = false
         // Mantenemos el error para mostrar un toast de "El servidor no respondió, pero se cerró la sesión local"
         state.isError = true
-        state.message = action.payload || 'Error al cerrar sesión en el servidor'
+        state.message =
+          action.payload || 'Error al cerrar sesión en el servidor'
 
         // --- Limpieza de Estado ---
         state.user = null
@@ -601,7 +628,9 @@ const userSlice = createSlice({
       .addCase(toggleWishlist.fulfilled, (state, action) => {
         state.isLoading = false
         state.isError = false
-        state.wishlist = Array.isArray(action.payload?.data) ? action.payload.data : []
+        state.wishlist = Array.isArray(action.payload?.data)
+          ? action.payload.data
+          : []
         state.message = action.payload?.message || ''
       })
       .addCase(toggleWishlist.rejected, (state, action) => {
@@ -615,7 +644,12 @@ const userSlice = createSlice({
 /* ---------------------------
    Exports
    --------------------------- */
-export const { clearState, setCsrfToken, resetAuthState, setTokenFromCookie, setWishlist } =
-  userSlice.actions
+export const {
+  clearState,
+  setCsrfToken,
+  resetAuthState,
+  setTokenFromCookie,
+  setWishlist,
+} = userSlice.actions
 
 export default userSlice.reducer

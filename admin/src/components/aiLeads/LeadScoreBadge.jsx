@@ -12,7 +12,14 @@ const getScoreConfig = score => {
 
 const LeadScoreBadge = ({ score = 0, size = 'small' }) => {
   const config = getScoreConfig(score)
-  return <Chip size={size} label={config.label} color={config.color} variant="outlined" />
+  return (
+    <Chip
+      size={size}
+      label={config.label}
+      color={config.color}
+      variant="outlined"
+    />
+  )
 }
 
 export default LeadScoreBadge

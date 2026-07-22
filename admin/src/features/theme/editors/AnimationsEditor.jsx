@@ -102,7 +102,10 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
         <FormControl fullWidth size="small">
           <InputLabel>Preset</InputLabel>
-          <Select value={animations.preset || 'smooth'} onChange={e => applyPreset(e.target.value)}>
+          <Select
+            value={animations.preset || 'smooth'}
+            onChange={e => applyPreset(e.target.value)}
+          >
             {SELECTS.preset.map(opt => (
               <MenuItem key={opt.value} value={opt.value}>
                 {opt.label}
@@ -160,7 +163,9 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
         </Typography>
 
         <Box mb={3}>
-          <Typography variant="caption">Duración ({animations.duration ?? 300}ms)</Typography>
+          <Typography variant="caption">
+            Duración ({animations.duration ?? 300}ms)
+          </Typography>
           <Slider
             value={animations.duration ?? 300}
             onChange={(_, v) => update('duration', v)}
@@ -172,7 +177,9 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
         </Box>
 
         <Box>
-          <Typography variant="caption">Stagger ({animations.stagger ?? 0.1}s)</Typography>
+          <Typography variant="caption">
+            Stagger ({animations.stagger ?? 0.1}s)
+          </Typography>
           <Slider
             value={animations.stagger ?? 0.1}
             onChange={(_, v) => update('stagger', v)}
@@ -208,7 +215,9 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <Typography variant="caption">Hover Scale ({animations.hoverScale ?? 1.02})</Typography>
+            <Typography variant="caption">
+              Hover Scale ({animations.hoverScale ?? 1.02})
+            </Typography>
             <Slider
               value={animations.hoverScale ?? 1.02}
               onChange={(_, v) => update('hoverScale', v)}
@@ -231,7 +240,9 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
           control={
             <Switch
               checked={animations.respectPrefersReducedMotion !== false}
-              onChange={e => update('respectPrefersReducedMotion', e.target.checked)}
+              onChange={e =>
+                update('respectPrefersReducedMotion', e.target.checked)
+              }
             />
           }
           label="Respetar prefers-reduced-motion"

@@ -61,12 +61,15 @@ const handleHttpError = (error, context) => {
     403: 'No tiene permisos para esta acción.',
     404: 'Recurso no encontrado.',
     413: 'Archivo demasiado grande. Máximo 5MB permitido.',
-    422: 'Validación fallida: ' + (data?.errors?.map(e => e.message).join(', ') || message),
+    422:
+      'Validación fallida: ' +
+      (data?.errors?.map(e => e.message).join(', ') || message),
     429: 'Demasiadas peticiones. Espere un momento.',
     500: 'Error interno del servidor. Intente más tarde.',
   }
 
-  const userMessage = errorMap[status] || message || `Error ${status || 'desconocido'}`
+  const userMessage =
+    errorMap[status] || message || `Error ${status || 'desconocido'}`
 
   if (process.env.NODE_ENV === 'development') {
     console.error(`[ThemeAPI Error] ${context}:`, {
@@ -181,7 +184,8 @@ export const resetTheme = () => request('POST', '/reset')
 /**
  * Toggle modo mantenimiento
  */
-export const toggleMaintenance = enabled => request('POST', '/maintenance', { data: { enabled } })
+export const toggleMaintenance = enabled =>
+  request('POST', '/maintenance', { data: { enabled } })
 
 // ==========================================
 // IMPORT/EXPORT
@@ -190,7 +194,8 @@ export const toggleMaintenance = enabled => request('POST', '/maintenance', { da
 /**
  * Exportar tema como JSON
  */
-export const exportTheme = () => request('GET', '/export', { responseType: 'blob' })
+export const exportTheme = () =>
+  request('GET', '/export', { responseType: 'blob' })
 
 /**
  * Importar tema desde JSON

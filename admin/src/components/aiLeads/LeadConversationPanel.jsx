@@ -29,7 +29,11 @@ const getRoleLabel = role => {
   return role || 'Sistema'
 }
 
-const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversation }) => {
+const LeadConversationPanel = ({
+  conversation,
+  loading = false,
+  onDeleteConversation,
+}) => {
   const messages = conversation?.messages || []
 
   if (!conversation) {
@@ -66,13 +70,19 @@ const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversa
           borderBottom: theme => `1px solid ${theme.palette.divider}`,
         }}
       >
-        <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          gap={2}
+        >
           <Box>
             <Typography variant="h6" fontWeight={900}>
               Conversación
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {conversation.channel || 'webchat'} · {conversation.status || 'open'}
+              {conversation.channel || 'webchat'} ·{' '}
+              {conversation.status || 'open'}
             </Typography>
           </Box>
           <Chip size="small" label={`${messages.length} mensajes`} />
@@ -93,9 +103,13 @@ const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversa
         )}
       </Box>
 
-      <Box sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: 'background.default' }}>
+      <Box
+        sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: 'background.default' }}
+      >
         {!messages.length ? (
-          <Typography color="text.secondary">No hay mensajes guardados.</Typography>
+          <Typography color="text.secondary">
+            No hay mensajes guardados.
+          </Typography>
         ) : (
           <Stack spacing={1.4}>
             {messages.map((message, index) => {
@@ -118,7 +132,12 @@ const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversa
                       color: isUser ? 'text.primary' : 'primary.contrastText',
                     }}
                   >
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.6 }}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      sx={{ mb: 0.6 }}
+                    >
                       <Typography variant="caption" fontWeight={800}>
                         {getRoleLabel(message.role)}
                       </Typography>

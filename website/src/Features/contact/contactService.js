@@ -38,7 +38,10 @@ const apiRequest = async ({
     )
     return {
       success: false,
-      message: error?.response?.data?.message || error.message || 'Error en el servidor',
+      message:
+        error?.response?.data?.message ||
+        error.message ||
+        'Error en el servidor',
     }
   }
 }
@@ -46,7 +49,8 @@ const apiRequest = async ({
 const postQuery = async contactData => {
   try {
     const response = await apiRequest('post', '/enquiry', contactData)
-    if (!response.success || !response.data) throw new Error('Respuesta inválida del servidor')
+    if (!response.success || !response.data)
+      throw new Error('Respuesta inválida del servidor')
 
     sessionStorage.setItem('user', JSON.stringify(response.data))
     return response.data
@@ -59,7 +63,8 @@ const postQuery = async contactData => {
 const getQueries = async () => {
   try {
     const response = await apiRequest('get', '/enquiry')
-    if (!response.success || !response.data) throw new Error('Respuesta inválida del servidor')
+    if (!response.success || !response.data)
+      throw new Error('Respuesta inválida del servidor')
 
     sessionStorage.setItem('user', JSON.stringify(response.data))
     return response.data
@@ -72,7 +77,8 @@ const getQueries = async () => {
 const getQueryById = async id => {
   try {
     const response = await apiRequest('get', `/enquiry/${id}`)
-    if (!response.success || !response.data) throw new Error('Respuesta inválida del servidor')
+    if (!response.success || !response.data)
+      throw new Error('Respuesta inválida del servidor')
 
     sessionStorage.setItem('user', JSON.stringify(response.data))
     return response.data
@@ -85,7 +91,8 @@ const getQueryById = async id => {
 const updateQueryStatus = async (id, status) => {
   try {
     const response = await apiRequest('put', `/enquiry/${id}`, { status })
-    if (!response.success || !response.data) throw new Error('Respuesta inválida del servidor')
+    if (!response.success || !response.data)
+      throw new Error('Respuesta inválida del servidor')
 
     sessionStorage.setItem('user', JSON.stringify(response.data))
     return response.data
@@ -98,7 +105,8 @@ const updateQueryStatus = async (id, status) => {
 const deleteQuery = async id => {
   try {
     const response = await apiRequest('delete', `/enquiry/${id}`)
-    if (!response.success || !response.data) throw new Error('Respuesta inválida del servidor')
+    if (!response.success || !response.data)
+      throw new Error('Respuesta inválida del servidor')
 
     sessionStorage.setItem('user', JSON.stringify(response.data))
     return response.data

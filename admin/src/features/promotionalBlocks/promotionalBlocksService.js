@@ -4,14 +4,18 @@ import Cookies from 'js-cookie'
 
 const BASE_URL = '/promotional-blocks'
 
-const getAuthToken = () => Cookies.get('token') || localStorage.getItem('token') || null
+const getAuthToken = () =>
+  Cookies.get('token') || localStorage.getItem('token') || null
 
 const getTenantDomain = () => {
   if (typeof window === 'undefined') return undefined
   return window.location.host
 }
 
-const extractErrorMessage = (error, fallback = 'Error en Promotional Blocks') => {
+const extractErrorMessage = (
+  error,
+  fallback = 'Error en Promotional Blocks',
+) => {
   const data = error?.response?.data
 
   if (typeof data === 'string') return data
@@ -39,7 +43,12 @@ const extractErrorMessage = (error, fallback = 'Error en Promotional Blocks') =>
  * - headers extra
  * - X-Tenant-Domain para resolución multi-tenant
  */
-const apiRequest = async (method, endpoint = '', data = undefined, options = {}) => {
+const apiRequest = async (
+  method,
+  endpoint = '',
+  data = undefined,
+  options = {},
+) => {
   try {
     const csrfToken = await fetchCsrfToken()
     const token = getAuthToken()
@@ -59,7 +68,9 @@ const apiRequest = async (method, endpoint = '', data = undefined, options = {})
       'Content-Type': 'application/json',
       ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(includeTenantDomain && tenantDomain ? { 'X-Tenant-Domain': tenantDomain } : {}),
+      ...(includeTenantDomain && tenantDomain
+        ? { 'X-Tenant-Domain': tenantDomain }
+        : {}),
       ...customHeaders,
     }
 
@@ -133,7 +144,8 @@ const updatePromotionalBlock = async (blockIdOrPayload, maybeData) => {
   let data = maybeData
 
   if (typeof blockIdOrPayload === 'object' && blockIdOrPayload !== null) {
-    blockId = blockIdOrPayload.blockId || blockIdOrPayload.id || blockIdOrPayload._id
+    blockId =
+      blockIdOrPayload.blockId || blockIdOrPayload.id || blockIdOrPayload._id
     data = blockIdOrPayload.data
   }
 
@@ -155,12 +167,16 @@ const updatePromotionalBlock = async (blockIdOrPayload, maybeData) => {
  * - togglePromotionalBlockStatus(blockId, isActive)
  * - togglePromotionalBlockStatus({ blockId, id, isActive })
  */
-const togglePromotionalBlockStatus = async (blockIdOrPayload, maybeIsActive) => {
+const togglePromotionalBlockStatus = async (
+  blockIdOrPayload,
+  maybeIsActive,
+) => {
   let blockId = blockIdOrPayload
   let isActive = maybeIsActive
 
   if (typeof blockIdOrPayload === 'object' && blockIdOrPayload !== null) {
-    blockId = blockIdOrPayload.blockId || blockIdOrPayload.id || blockIdOrPayload._id
+    blockId =
+      blockIdOrPayload.blockId || blockIdOrPayload.id || blockIdOrPayload._id
     isActive = blockIdOrPayload.isActive
   }
 
@@ -191,7 +207,9 @@ const deletePromotionalBlock = async (blockId, options = {}) => {
 
   const query = params.toString()
 
-  const url = query ? `/promotional-blocks/${blockId}?${query}` : `/promotional-blocks/${blockId}`
+  const url = query
+    ? `/promotional-blocks/${blockId}?${query}`
+    : `/promotional-blocks/${blockId}`
 
   const response = await api.delete(url)
 

@@ -2,7 +2,14 @@ import { configureStore } from '@reduxjs/toolkit'
 import { combineReducers } from 'redux'
 import { persistReducer } from 'redux-persist'
 import storage from 'redux-persist/lib/storage'
-import { PURGE, PAUSE, PERSIST, REGISTER, REHYDRATE, FLUSH } from 'redux-persist'
+import {
+  PURGE,
+  PAUSE,
+  PERSIST,
+  REGISTER,
+  REHYDRATE,
+  FLUSH,
+} from 'redux-persist'
 
 // Reducers
 import userReducer from '@features/user/userSlice'

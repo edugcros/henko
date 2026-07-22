@@ -195,7 +195,9 @@ const AiCommercialInboxPage = () => {
     } catch (err) {
       console.error('[AI_LEAD_DETAIL_ERROR]', err)
       setError(
-        err?.response?.data?.message || err?.message || 'No se pudo cargar el detalle del lead.',
+        err?.response?.data?.message ||
+          err?.message ||
+          'No se pudo cargar el detalle del lead.',
       )
     } finally {
       setDetailLoading(false)
@@ -223,7 +225,11 @@ const AiCommercialInboxPage = () => {
         await refreshAll()
       } catch (err) {
         console.error('[AI_LEAD_ACTION_ERROR]', err)
-        setError(err?.response?.data?.message || err?.message || 'No se pudo completar la acción.')
+        setError(
+          err?.response?.data?.message ||
+            err?.message ||
+            'No se pudo completar la acción.',
+        )
       } finally {
         setActionLoading(false)
       }
@@ -266,7 +272,8 @@ const AiCommercialInboxPage = () => {
             </Typography>
 
             <Typography color="text.secondary">
-              Conversaciones, leads e intención de compra detectada por el asistente web.
+              Conversaciones, leads e intención de compra detectada por el
+              asistente web.
             </Typography>
           </Box>
 
@@ -292,7 +299,11 @@ const AiCommercialInboxPage = () => {
         </Stack>
 
         {error && (
-          <Alert severity="error" onClose={() => setError('')} sx={{ borderRadius: 3 }}>
+          <Alert
+            severity="error"
+            onClose={() => setError('')}
+            sx={{ borderRadius: 3 }}
+          >
             {error}
           </Alert>
         )}
@@ -307,11 +318,18 @@ const AiCommercialInboxPage = () => {
           </Grid>
 
           <Grid item xs={6} md={2}>
-            <SummaryCardComponent label="Calientes" value={summary.hot} tone="hot" />
+            <SummaryCardComponent
+              label="Calientes"
+              value={summary.hot}
+              tone="hot"
+            />
           </Grid>
 
           <Grid item xs={6} md={2}>
-            <SummaryCardComponent label="Seguimientos" value={summary.pendingFollowUps} />
+            <SummaryCardComponent
+              label="Seguimientos"
+              value={summary.pendingFollowUps}
+            />
           </Grid>
 
           <Grid item xs={6} md={2}>
@@ -319,7 +337,10 @@ const AiCommercialInboxPage = () => {
           </Grid>
 
           <Grid item xs={6} md={2}>
-            <SummaryCardComponent label="Score prom." value={summary.averageLeadScore} />
+            <SummaryCardComponent
+              label="Score prom."
+              value={summary.averageLeadScore}
+            />
           </Grid>
         </Grid>
 
@@ -405,7 +426,11 @@ const AiCommercialInboxPage = () => {
                   borderBottom: theme => `1px solid ${theme.palette.divider}`,
                 }}
               >
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
                   <Typography fontWeight={900}>Leads</Typography>
                   <Chip size="small" label={leads.length} />
                 </Stack>
@@ -441,7 +466,9 @@ const AiCommercialInboxPage = () => {
                 loading={actionLoading}
                 onChangeStatus={nextStatus => {
                   if (!selectedId) return
-                  runAction(() => updateAiLeadStatus(selectedId, { status: nextStatus }))
+                  runAction(() =>
+                    updateAiLeadStatus(selectedId, { status: nextStatus }),
+                  )
                 }}
                 onAddNote={text => {
                   if (!selectedId) return
@@ -491,13 +518,16 @@ const AiCommercialInboxPage = () => {
                     removeAiLeadProductOfInterest(
                       selectedId,
                       productRef,
-                      reason || 'Producto removido manualmente desde bandeja comercial',
+                      reason ||
+                        'Producto removido manualmente desde bandeja comercial',
                     ),
                   )
                 }}
                 onUpdateProductsOfInterest={products => {
                   if (!selectedId) return
-                  runAction(() => updateAiLeadProductsOfInterest(selectedId, products))
+                  runAction(() =>
+                    updateAiLeadProductsOfInterest(selectedId, products),
+                  )
                 }}
               />
             )}
@@ -519,8 +549,9 @@ const AiCommercialInboxPage = () => {
         <Divider />
 
         <Typography variant="caption" color="text.secondary">
-          Los leads se actualizan automáticamente a partir de conversaciones del asistente IA.
-          Stock, precios y productos se consultan siempre en vivo desde el backend.
+          Los leads se actualizan automáticamente a partir de conversaciones del
+          asistente IA. Stock, precios y productos se consultan siempre en vivo
+          desde el backend.
         </Typography>
       </Stack>
 
@@ -532,13 +563,15 @@ const AiCommercialInboxPage = () => {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle fontWeight={900}>Eliminar conversación de la base</DialogTitle>
+        <DialogTitle fontWeight={900}>
+          Eliminar conversación de la base
+        </DialogTitle>
 
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="error">
-              Esta acción borra físicamente la conversación. El lead queda sin historial asociado a
-              esa conversación.
+              Esta acción borra físicamente la conversación. El lead queda sin
+              historial asociado a esa conversación.
             </Alert>
 
             <TextField

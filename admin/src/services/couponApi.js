@@ -88,7 +88,11 @@ const handleError = error => {
 
   // Error de red
   if (!response) {
-    throw new ApiError('Error de conexión. Verifica tu internet.', 'NETWORK_ERROR', 0)
+    throw new ApiError(
+      'Error de conexión. Verifica tu internet.',
+      'NETWORK_ERROR',
+      0,
+    )
   }
 
   const status = response.status
@@ -157,7 +161,15 @@ const request = (method, endpoint, data, options = {}) => {
 export const couponApi = {
   // Listar con filtros y paginación
   getCoupons: (filters = {}) => {
-    const { page = 1, limit = 20, status, search, discountType, sortBy, order } = filters
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      search,
+      discountType,
+      sortBy,
+      order,
+    } = filters
 
     const params = new URLSearchParams()
     if (page) params.append('page', page)
@@ -271,16 +283,25 @@ export const couponApi = {
 
   // Asignar productos
   assignProducts: (couponId, productIds, mode = 'add') => {
-    if (!couponId) throw new ApiError('ID de cupón requerido', 'MISSING_ID', 400)
+    if (!couponId)
+      throw new ApiError('ID de cupón requerido', 'MISSING_ID', 400)
 
     const ids = Array.isArray(productIds) ? productIds : [productIds]
     if (ids.length === 0) {
-      throw new ApiError('Debe seleccionar al menos un producto', 'NO_PRODUCTS', 400)
+      throw new ApiError(
+        'Debe seleccionar al menos un producto',
+        'NO_PRODUCTS',
+        400,
+      )
     }
 
     const validModes = ['add', 'remove', 'replace']
     if (!validModes.includes(mode)) {
-      throw new ApiError(`Modo inválido. Use: ${validModes.join(', ')}`, 'INVALID_MODE', 400)
+      throw new ApiError(
+        `Modo inválido. Use: ${validModes.join(', ')}`,
+        'INVALID_MODE',
+        400,
+      )
     }
 
     return request('put', `/${couponId}/products`, {

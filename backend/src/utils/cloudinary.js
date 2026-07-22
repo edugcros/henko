@@ -35,7 +35,7 @@ if (isCloudinaryConfigured) {
 /**
  * Calcula delay exponencial con jitter para reintentos
  */
-const getRetryDelay = ( attemptNumber ) => {
+const getRetryDelay = attemptNumber => {
   const exponentialDelay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attemptNumber)
   const jitteredDelay = exponentialDelay + Math.random() * 1000 // jitter de hasta 1s
   return Math.min(jitteredDelay, MAX_RETRY_DELAY_MS)
@@ -44,7 +44,7 @@ const getRetryDelay = ( attemptNumber ) => {
 /**
  * Determina si un error es reintentatble
  */
-const isRetryableError = (error) => {
+const isRetryableError = error => {
   if (!error) return false
   
   // Errores de conexión que conviene reintentar
@@ -123,7 +123,7 @@ const uploadToCloudinary = (buffer, folder, options = {}) => {
           // Success
           logger.info(`✅ Imagen subida exitosamente (intento ${attemptNumber}): ${result.public_id}`)
           resolve(result)
-        }
+        },
       )
 
       // Timeout: si no termina en UPLOAD_TIMEOUT_MS, abortar
@@ -140,15 +140,15 @@ const uploadToCloudinary = (buffer, folder, options = {}) => {
           } else {
             reject(
               new Error(
-                `Cloudinary upload timeout después de ${MAX_RETRIES} intentos`
-              )
+                `Cloudinary upload timeout después de ${MAX_RETRIES} intentos`,
+              ),
             )
           }
         }
       }, UPLOAD_TIMEOUT_MS)
 
       // Manejo de errores del stream
-      stream.on('error', (error) => {
+      stream.on('error', error => {
         clearTimeout(timeoutHandle)
         if (!streamEnded) {
           streamEnded = true
@@ -204,7 +204,7 @@ export const cloudinaryUploadImg = async (buffer, productId, tenantId) => {
       tenantId,
     })
     throw new Error(
-      `Error al subir imagen: ${error.message || 'Cloudinary no disponible'}`
+      `Error al subir imagen: ${error.message || 'Cloudinary no disponible'}`,
     )
   }
 }
@@ -282,7 +282,7 @@ export const cloudinaryDeleteMultiple = async publicIds => {
     }
 
     const results = await Promise.allSettled(
-      publicIds.map(id => cloudinaryDeleteImg(id))
+      publicIds.map(id => cloudinaryDeleteImg(id)),
     )
 
     const successful = results

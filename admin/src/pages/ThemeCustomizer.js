@@ -28,7 +28,11 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import { ThemeProvider, alpha, useTheme as useMuiTheme } from '@mui/material/styles'
+import {
+  ThemeProvider,
+  alpha,
+  useTheme as useMuiTheme,
+} from '@mui/material/styles'
 import {
   Animation as AnimationIcon,
   ArrowBack as ArrowBackIcon,
@@ -99,7 +103,8 @@ const SECTION_LIBRARY = [
     id: 'buttons',
     label: 'Botones',
     description: 'Jerarquía y apariencia de acciones.',
-    appliesTo: 'CTA primarios, secundarios, estados hover y botones reutilizables.',
+    appliesTo:
+      'CTA primarios, secundarios, estados hover y botones reutilizables.',
     icon: <SmartButtonIcon fontSize="small" />,
     help: 'Afecta los botones de compra, navegación, formularios y llamadas a la acción.',
   },
@@ -198,7 +203,10 @@ const ThemeCustomizer = () => {
     uploadImage,
   } = useTheme()
 
-  const activeSection = useMemo(() => findActiveSection(activeSectionId), [activeSectionId])
+  const activeSection = useMemo(
+    () => findActiveSection(activeSectionId),
+    [activeSectionId],
+  )
 
   const sectionData = useMemo(() => {
     if (!theme) return {}
@@ -356,7 +364,9 @@ const ThemeCustomizer = () => {
               {...common}
               value={sectionData.header}
               colors={theme.colors || {}}
-              onColorChange={(key, color) => updateField(`colors.${key}`, color)}
+              onColorChange={(key, color) =>
+                updateField(`colors.${key}`, color)
+              }
               onChange={value => updateSection('header', value)}
               onLogoUpload={file =>
                 uploadImage({
@@ -412,7 +422,15 @@ const ThemeCustomizer = () => {
       default:
         return null
     }
-  }, [activeSection, activeSectionId, sectionData, theme, updateField, updateSection, uploadImage])
+  }, [
+    activeSection,
+    activeSectionId,
+    sectionData,
+    theme,
+    updateField,
+    updateSection,
+    uploadImage,
+  ])
 
   if (isLoading || !theme) {
     return (
@@ -471,7 +489,10 @@ const ThemeCustomizer = () => {
             )}
 
             <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 260 } }}>
-              <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.15 }}>
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 800, lineHeight: 1.15 }}
+              >
                 Diseñador de tienda
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -481,16 +502,29 @@ const ThemeCustomizer = () => {
 
             {hasChanges && (
               <Badge color="warning" variant="dot">
-                <Chip size="small" label="Sin guardar" color="warning" variant="outlined" />
+                <Chip
+                  size="small"
+                  label="Sin guardar"
+                  color="warning"
+                  variant="outlined"
+                />
               </Badge>
             )}
 
             <Tooltip
-              title={autoSaveEnabled ? 'Auto-guardado activado' : 'Auto-guardado desactivado'}
+              title={
+                autoSaveEnabled
+                  ? 'Auto-guardado activado'
+                  : 'Auto-guardado desactivado'
+              }
             >
               <FormControlLabel
                 control={
-                  <Switch size="small" checked={autoSaveEnabled} onChange={toggleAutoSave} />
+                  <Switch
+                    size="small"
+                    checked={autoSaveEnabled}
+                    onChange={toggleAutoSave}
+                  />
                 }
                 label={
                   <Typography variant="caption">
@@ -502,7 +536,11 @@ const ThemeCustomizer = () => {
             </Tooltip>
 
             {!previewMode && !isMobile && (
-              <Tooltip title={focusPreview ? 'Volver al editor' : 'Ampliar vista previa'}>
+              <Tooltip
+                title={
+                  focusPreview ? 'Volver al editor' : 'Ampliar vista previa'
+                }
+              >
                 <Button
                   size="small"
                   variant={focusPreview ? 'contained' : 'outlined'}
@@ -514,7 +552,11 @@ const ThemeCustomizer = () => {
               </Tooltip>
             )}
 
-            <Tooltip title={previewMode ? 'Salir de vista previa' : 'Entrar en vista previa'}>
+            <Tooltip
+              title={
+                previewMode ? 'Salir de vista previa' : 'Entrar en vista previa'
+              }
+            >
               <Button
                 variant={previewMode ? 'contained' : 'outlined'}
                 color="info"
@@ -539,7 +581,12 @@ const ThemeCustomizer = () => {
             </Tooltip>
 
             {hasChanges && (
-              <Button size="small" variant="outlined" onClick={handleDiscard} disabled={isSaving}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleDiscard}
+                disabled={isSaving}
+              >
                 Descartar
               </Button>
             )}
@@ -550,14 +597,26 @@ const ThemeCustomizer = () => {
               onClick={handleSave}
               disabled={isSaving || !hasChanges}
               color={hasChanges ? 'primary' : 'success'}
-              startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+              startIcon={
+                isSaving ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : (
+                  <SaveIcon />
+                )
+              }
             >
-              {isSaving ? 'Guardando...' : hasChanges ? 'Guardar' : 'Actualizado'}
+              {isSaving
+                ? 'Guardando...'
+                : hasChanges
+                  ? 'Guardar'
+                  : 'Actualizado'}
             </Button>
           </Toolbar>
         </AppBar>
 
-        <Box sx={{ display: 'flex', height: '100%', pt: `${APP_BAR_HEIGHT}px` }}>
+        <Box
+          sx={{ display: 'flex', height: '100%', pt: `${APP_BAR_HEIGHT}px` }}
+        >
           {showDrawer && (
             <Drawer
               variant={isMobile ? 'temporary' : 'permanent'}
@@ -612,7 +671,11 @@ const ThemeCustomizer = () => {
                       </Tooltip>
 
                       <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography variant="subtitle1" fontWeight={850} sx={{ lineHeight: 1.2 }}>
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={850}
+                          sx={{ lineHeight: 1.2 }}
+                        >
                           {activeSection.label}
                         </Typography>
                         <Typography
@@ -654,7 +717,11 @@ const ThemeCustomizer = () => {
                     }}
                   >
                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5 }}>
-                      <Typography variant="subtitle2" fontWeight={800} gutterBottom>
+                      <Typography
+                        variant="subtitle2"
+                        fontWeight={800}
+                        gutterBottom
+                      >
                         Identidad general
                       </Typography>
                       <TextField
@@ -662,7 +729,9 @@ const ThemeCustomizer = () => {
                         fullWidth
                         label="Nombre de la tienda"
                         value={storeName}
-                        onChange={event => updateField('general.storeName', event.target.value)}
+                        onChange={event =>
+                          updateField('general.storeName', event.target.value)
+                        }
                         sx={{ mt: 1.5 }}
                       />
                       <TextField
@@ -670,11 +739,18 @@ const ThemeCustomizer = () => {
                         fullWidth
                         label="Slogan"
                         value={tagline}
-                        onChange={event => updateField('general.tagline', event.target.value)}
+                        onChange={event =>
+                          updateField('general.tagline', event.target.value)
+                        }
                         sx={{ mt: 1.5 }}
                       />
                       {faviconUrl && (
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.5 }}>
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          spacing={1}
+                          sx={{ mt: 1.5 }}
+                        >
                           <CloudUploadIcon color="action" fontSize="small" />
                           <Typography variant="caption" color="text.secondary">
                             Favicon cargado
@@ -685,13 +761,21 @@ const ThemeCustomizer = () => {
 
                     <List
                       disablePadding
-                      subheader={<ListSubheader sx={{ px: 0 }}>Secciones de diseño</ListSubheader>}
+                      subheader={
+                        <ListSubheader sx={{ px: 0 }}>
+                          Secciones de diseño
+                        </ListSubheader>
+                      }
                       sx={{ overflow: 'auto', pb: 1 }}
                     >
                       {SECTION_LIBRARY.map(section => {
                         const selected = activeSectionId === section.id
                         return (
-                          <ListItem key={section.id} disablePadding sx={{ mb: 0.5 }}>
+                          <ListItem
+                            key={section.id}
+                            disablePadding
+                            sx={{ mb: 0.5 }}
+                          >
                             <ListItemButton
                               selected={selected}
                               onClick={() => handleSectionSelect(section.id)}
@@ -717,7 +801,11 @@ const ThemeCustomizer = () => {
                                   variant: 'caption',
                                 }}
                               />
-                              <ChevronRightIcon fontSize="small" color="action" sx={{ mt: 0.5 }} />
+                              <ChevronRightIcon
+                                fontSize="small"
+                                color="action"
+                                sx={{ mt: 0.5 }}
+                              />
                             </ListItemButton>
                           </ListItem>
                         )
@@ -762,7 +850,9 @@ const ThemeCustomizer = () => {
                   <Button
                     key={viewport}
                     size="small"
-                    variant={previewViewport === viewport ? 'contained' : 'outlined'}
+                    variant={
+                      previewViewport === viewport ? 'contained' : 'outlined'
+                    }
                     onClick={() => setPreviewViewport(viewport)}
                   >
                     {VIEWPORT_CONFIG[viewport].label}
@@ -809,7 +899,11 @@ const ThemeCustomizer = () => {
                       <Button
                         key={viewport}
                         size="small"
-                        variant={previewViewport === viewport ? 'contained' : 'outlined'}
+                        variant={
+                          previewViewport === viewport
+                            ? 'contained'
+                            : 'outlined'
+                        }
                         onClick={() => setPreviewViewport(viewport)}
                       >
                         {VIEWPORT_CONFIG[viewport].label}
@@ -856,7 +950,11 @@ const ThemeCustomizer = () => {
           onClose={() => setShowSuccess(false)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         >
-          <Alert severity="success" onClose={() => setShowSuccess(false)} variant="filled">
+          <Alert
+            severity="success"
+            onClose={() => setShowSuccess(false)}
+            variant="filled"
+          >
             Tema guardado correctamente.
           </Alert>
         </Snackbar>
@@ -867,7 +965,11 @@ const ThemeCustomizer = () => {
           onClose={() => setShowError(false)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         >
-          <Alert severity="error" onClose={() => setShowError(false)} variant="filled">
+          <Alert
+            severity="error"
+            onClose={() => setShowError(false)}
+            variant="filled"
+          >
             {resolvedErrorMessage}
           </Alert>
         </Snackbar>

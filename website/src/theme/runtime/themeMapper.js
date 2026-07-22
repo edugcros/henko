@@ -193,7 +193,8 @@ const normalizeTheme = (dbTheme = {}) => {
     colors: {
       ...DEFAULTS.colors,
       ...colors,
-      headerBackground: colors.headerBackground || DEFAULTS.colors.headerBackground,
+      headerBackground:
+        colors.headerBackground || DEFAULTS.colors.headerBackground,
       headerText: colors.headerText || DEFAULTS.colors.headerText,
       headerLink: colors.headerLink || DEFAULTS.colors.headerLink,
       headerIcon: colors.headerIcon || DEFAULTS.colors.headerIcon,
@@ -203,15 +204,22 @@ const normalizeTheme = (dbTheme = {}) => {
       cardBorder: colors.cardBorder || DEFAULTS.colors.cardBorder,
       cardPrice: colors.cardPrice || DEFAULTS.colors.cardPrice,
       textMuted:
-        colors.mutedText || colors.textMuted || colors.textSecondary || DEFAULTS.colors.textMuted,
+        colors.mutedText ||
+        colors.textMuted ||
+        colors.textSecondary ||
+        DEFAULTS.colors.textMuted,
       actionPrimary: colors.actionPrimary || DEFAULTS.colors.actionPrimary,
-      actionPrimaryText: colors.actionPrimaryText || DEFAULTS.colors.actionPrimaryText,
-      actionSecondary: colors.actionSecondary || DEFAULTS.colors.actionSecondary,
-      actionSecondaryText: colors.actionSecondaryText || DEFAULTS.colors.actionSecondaryText,
+      actionPrimaryText:
+        colors.actionPrimaryText || DEFAULTS.colors.actionPrimaryText,
+      actionSecondary:
+        colors.actionSecondary || DEFAULTS.colors.actionSecondary,
+      actionSecondaryText:
+        colors.actionSecondaryText || DEFAULTS.colors.actionSecondaryText,
       link: colors.link || DEFAULTS.colors.link,
       price: colors.price || DEFAULTS.colors.price,
       salePrice: colors.salePrice || DEFAULTS.colors.salePrice,
-      badgeBackground: colors.badgeBackground || DEFAULTS.colors.badgeBackground,
+      badgeBackground:
+        colors.badgeBackground || DEFAULTS.colors.badgeBackground,
       badgeText: colors.badgeText || DEFAULTS.colors.badgeText,
     },
 
@@ -286,7 +294,10 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
 
   loadFonts(theme.typography)
 
-  const modularScale = createModularScale(theme.typography.baseSize, theme.typography.scale)
+  const modularScale = createModularScale(
+    theme.typography.baseSize,
+    theme.typography.scale,
+  )
 
   const getHeading = (key, fallbackStep) => {
     const h = theme.typography.headings?.[key]
@@ -324,13 +335,16 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
       ctaPrimary: {
         main: theme.colors.actionPrimary,
         dark: theme.colors.actionPrimary,
-        contrastText: theme.colors.actionPrimaryText || getContrastText(theme.colors.actionPrimary),
+        contrastText:
+          theme.colors.actionPrimaryText ||
+          getContrastText(theme.colors.actionPrimary),
       },
       ctaSecondary: {
         main: theme.colors.actionSecondary,
         dark: theme.colors.actionSecondary,
         contrastText:
-          theme.colors.actionSecondaryText || getContrastText(theme.colors.actionSecondary),
+          theme.colors.actionSecondaryText ||
+          getContrastText(theme.colors.actionSecondary),
       },
       commercePrice: {
         main: theme.colors.price,
@@ -402,7 +416,9 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
     },
 
     shape: {
-      borderRadius: parseBorderRadius(theme.spacing.radius ?? theme.borderRadius?.md),
+      borderRadius: parseBorderRadius(
+        theme.spacing.radius ?? theme.borderRadius?.md,
+      ),
     },
 
     spacing: factor => (theme.spacing.unit ?? theme.spacing.base ?? 8) * factor,
@@ -430,7 +446,8 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
         },
         styleOverrides: {
           root: ({ ownerState }) => {
-            const isPrimaryAction = !ownerState?.color || ownerState.color === 'primary'
+            const isPrimaryAction =
+              !ownerState?.color || ownerState.color === 'primary'
             const isSecondaryAction = ownerState?.color === 'secondary'
 
             return {
@@ -441,7 +458,8 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
                 ? {
                     backgroundColor: theme.colors.actionPrimary,
                     color:
-                      theme.colors.actionPrimaryText || getContrastText(theme.colors.actionPrimary),
+                      theme.colors.actionPrimaryText ||
+                      getContrastText(theme.colors.actionPrimary),
                     '&:hover': {
                       backgroundColor: theme.colors.actionPrimary,
                       filter: 'brightness(0.92)',

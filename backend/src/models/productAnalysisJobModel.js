@@ -50,7 +50,7 @@ const metadataSchema = new mongoose.Schema(
     autoAnalyze: { type: Boolean, default: true },
     autoSaveProduct: { type: Boolean, default: false },
     autoPublishProduct: { type: Boolean, default: false },
-    addProductAt: { type: Date, default: null },
+    AddProductAt: { type: Date, default: null },
     importBatchId: { type: String, trim: true, maxlength: 180 },
     originalUrl: { type: String, trim: true, maxlength: 2200 },
   },

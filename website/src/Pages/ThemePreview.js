@@ -29,7 +29,11 @@ const getAllowedAdminOrigins = () => {
   const configuredOrigins = parseOrigins(env.adminPreviewOrigins)
   const localOrigins = env.isProduction
     ? []
-    : ['http://admin.henko.local:3001', 'http://localhost:3001', 'http://127.0.0.1:3001']
+    : [
+        'http://admin.henko.local:3001',
+        'http://localhost:3001',
+        'http://127.0.0.1:3001',
+      ]
 
   return new Set([...configuredOrigins, ...localOrigins].filter(Boolean))
 }
@@ -52,7 +56,9 @@ const ThemePreview = () => {
     const allowedAdminOrigins = getAllowedAdminOrigins()
 
     const searchParams =
-      typeof window !== 'undefined' ? new window.URLSearchParams(window.location.search) : null
+      typeof window !== 'undefined'
+        ? new window.URLSearchParams(window.location.search)
+        : null
 
     const requestedParentOrigin =
       getOrigin(searchParams?.get('adminOrigin')) ||
@@ -86,7 +92,10 @@ const ThemePreview = () => {
       if (!message || message.type !== 'HENKO_THEME_PREVIEW_UPDATE') return
       if (!message.payload || typeof message.payload !== 'object') return
 
-      sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(message.payload))
+      sessionStorage.setItem(
+        PREVIEW_STORAGE_KEY,
+        JSON.stringify(message.payload),
+      )
 
       dispatch(updatePreviewConfig(message.payload))
       dispatch(setPreviewMode(true))
@@ -95,7 +104,10 @@ const ThemePreview = () => {
 
     window.addEventListener('message', handleMessage)
 
-    window.parent?.postMessage({ type: 'HENKO_THEME_PREVIEW_READY' }, previewHandshake.parentOrigin)
+    window.parent?.postMessage(
+      { type: 'HENKO_THEME_PREVIEW_READY' },
+      previewHandshake.parentOrigin,
+    )
     setIsConnected(true)
 
     return () => {

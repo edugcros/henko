@@ -1,8 +1,10 @@
 // 📁 src/features/promotionalBlocks/promotionalBlocksSelectors.js
 
-export const selectPromotionalBlocksState = state => state.promotionalBlocks || {}
+export const selectPromotionalBlocksState = state =>
+  state.promotionalBlocks || {}
 
-export const selectPromotionalBlocks = state => selectPromotionalBlocksState(state).blocks || []
+export const selectPromotionalBlocks = state =>
+  selectPromotionalBlocksState(state).blocks || []
 
 export const selectPublicPromotionalBlocks = state =>
   selectPromotionalBlocksState(state).publicBlocks || []
@@ -57,7 +59,12 @@ export const selectPromotionalBlocksIsSaving = state => {
 export const selectPromotionalBlocksIsMutating = state => {
   const slice = selectPromotionalBlocksState(state)
 
-  return Boolean(slice.isCreating || slice.isUpdating || slice.isDeleting || slice.isToggling)
+  return Boolean(
+    slice.isCreating ||
+    slice.isUpdating ||
+    slice.isDeleting ||
+    slice.isToggling,
+  )
 }
 
 export const selectPromotionalBlocksIsBusy = state => {

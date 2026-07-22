@@ -491,6 +491,56 @@ function normalizeBoolean(value, fallback = false) {
   return fallback
 }
 
+// Busca el primer objeto JSON *balanceado* dentro de un texto, ignorando
+// cualquier contenido que el modelo haya agregado después (explicaciones,
+// ejemplos repetidos, un segundo intento, etc.). Cuenta profundidad de
+// llaves respetando strings/escapes, así que no se confunde con '{' o '}'
+// que aparezcan dentro de un valor de texto.
+//
+// A diferencia de tomar "desde el primer '{' hasta el último '}' del
+// string entero", esto no se rompe cuando ese contenido extra también
+// tiene llaves — que es justo lo que producía
+// "Unexpected non-whitespace character after JSON": el string coincidía
+// en apariencia, pero el slice incluía basura después del objeto real.
+function extractFirstBalancedJsonObject(text) {
+  const firstBrace = text.indexOf('{')
+  if (firstBrace === -1) return null
+
+  let depth = 0
+  let inString = false
+  let escapeNext = false
+
+  for (let i = firstBrace; i < text.length; i += 1) {
+    const char = text[i]
+
+    if (escapeNext) {
+      escapeNext = false
+      continue
+    }
+
+    if (inString && char === '\\') {
+      escapeNext = true
+      continue
+    }
+
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+
+    if (inString) continue
+
+    if (char === '{') {
+      depth += 1
+    } else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(firstBrace, i + 1)
+    }
+  }
+
+  return null
+}
+
 function extractJsonObject(rawText) {
   if (!rawText || typeof rawText !== 'string') {
     throw new Error('Respuesta vacía o inválida del modelo')
@@ -506,14 +556,17 @@ function extractJsonObject(rawText) {
   try {
     return JSON.parse(trimmed)
   } catch {
-    const firstBrace = trimmed.indexOf('{')
-    const lastBrace = trimmed.lastIndexOf('}')
+    const balanced = extractFirstBalancedJsonObject(trimmed)
 
-    if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    if (!balanced) {
       throw new Error('El modelo no devolvió un JSON parseable')
     }
 
-    return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1))
+    try {
+      return JSON.parse(balanced)
+    } catch {
+      throw new Error('El modelo no devolvió un JSON parseable')
+    }
   }
 }
 

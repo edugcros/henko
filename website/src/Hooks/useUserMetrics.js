@@ -2,7 +2,10 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import { trackUserMetric, USER_METRIC_EVENTS } from '../services/userMetricsService'
+import {
+  trackUserMetric,
+  USER_METRIC_EVENTS,
+} from '../services/userMetricsService'
 
 const DEFAULT_EXCLUDED_PATHS = ['/theme-preview']
 
@@ -45,7 +48,12 @@ const shouldIgnorePath = (pathname, excludedPaths = []) => {
 
 const getProductId = (product, payload = {}) => {
   return String(
-    product?._id || product?.id || product?.productId || payload?.productId || product?.slug || '',
+    product?._id ||
+      product?.id ||
+      product?.productId ||
+      payload?.productId ||
+      product?.slug ||
+      '',
   ).trim()
 }
 

@@ -63,7 +63,9 @@ const ProductsEditor = ({ value, onChange }) => {
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <Typography variant="caption">Columnas: {products.columns ?? 4}</Typography>
+            <Typography variant="caption">
+              Columnas: {products.columns ?? 4}
+            </Typography>
             <Slider
               size="small"
               value={products.columns ?? 4}
@@ -76,7 +78,9 @@ const ProductsEditor = ({ value, onChange }) => {
           </Grid>
 
           <Grid item xs={12}>
-            <Typography variant="caption">Espaciado: {products.gap ?? 24}px</Typography>
+            <Typography variant="caption">
+              Espaciado: {products.gap ?? 24}px
+            </Typography>
             <Slider
               size="small"
               value={products.gap ?? 24}
@@ -91,7 +95,10 @@ const ProductsEditor = ({ value, onChange }) => {
       </Section>
 
       {/* ================= VISUAL ================= */}
-      <Section title="Estilo Visual" subtitle="Comportamiento e imagen de las cards">
+      <Section
+        title="Estilo Visual"
+        subtitle="Comportamiento e imagen de las cards"
+      >
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <FormControl fullWidth size="small">
@@ -157,7 +164,11 @@ const ProductsEditor = ({ value, onChange }) => {
               <FormControlLabel
                 control={
                   <Switch
-                    checked={defaultValue ? products[key] !== false : products[key] === true}
+                    checked={
+                      defaultValue
+                        ? products[key] !== false
+                        : products[key] === true
+                    }
                     onChange={e => handleChange(key, e.target.checked)}
                   />
                 }

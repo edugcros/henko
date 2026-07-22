@@ -1,7 +1,22 @@
 import React from 'react'
-import { Box, Typography, Paper, Grid, Switch, FormControlLabel, TextField } from '@mui/material'
+import {
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  Switch,
+  FormControlLabel,
+  TextField,
+} from '@mui/material'
 
-const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJSChange }) => {
+const AdvancedEditor = ({
+  value,
+  customCSS,
+  customJS,
+  onChange,
+  onCSSChange,
+  onJSChange,
+}) => {
   const advanced = value || {}
 
   const handleChange = (field, newValue) => {

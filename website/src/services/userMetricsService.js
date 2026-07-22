@@ -65,7 +65,11 @@ const isValidMetricEventType = eventType => {
 }
 
 const createRandomId = () => {
-  if (canUseBrowser() && window.crypto && typeof window.crypto.randomUUID === 'function') {
+  if (
+    canUseBrowser() &&
+    window.crypto &&
+    typeof window.crypto.randomUUID === 'function'
+  ) {
     return window.crypto.randomUUID()
   }
 
@@ -226,7 +230,10 @@ const getDevice = () => {
 const getCurrentPath = () => {
   if (!canUseBrowser()) return ''
 
-  return safeString(`${window.location.pathname}${window.location.search}`, 1000)
+  return safeString(
+    `${window.location.pathname}${window.location.search}`,
+    1000,
+  )
 }
 
 const getCurrentReferrer = () => {
@@ -244,7 +251,9 @@ const getTenantDomain = () => {
 const sanitizeArray = (value, depth = 0) => {
   if (!Array.isArray(value)) return []
 
-  return value.slice(0, MAX_ARRAY_LENGTH).map(item => sanitizeMetricValue(item, depth + 1))
+  return value
+    .slice(0, MAX_ARRAY_LENGTH)
+    .map(item => sanitizeMetricValue(item, depth + 1))
 }
 
 function sanitizeObject(value, depth = 0) {
@@ -279,7 +288,10 @@ const sanitizeItems = items => {
   if (!Array.isArray(items)) return []
 
   return items.slice(0, MAX_ARRAY_LENGTH).map(item => ({
-    productId: safeString(item?.productId || item?.id || item?.item_id || '', 120),
+    productId: safeString(
+      item?.productId || item?.id || item?.item_id || '',
+      120,
+    ),
     title: safeString(item?.title || item?.name || item?.item_name || '', 180),
     sku: safeString(item?.sku || '', 120),
     quantity: safePositiveNumber(item?.quantity),
@@ -330,11 +342,14 @@ const normalizeEvent = event => {
   if (event?.cartId) normalized.cartId = safeString(event.cartId, 120)
   if (event?.orderId) normalized.orderId = safeString(event.orderId, 180)
   if (event?.paymentId) normalized.paymentId = safeString(event.paymentId, 180)
-  if (event?.searchQuery) normalized.searchQuery = safeString(event.searchQuery, 160)
+  if (event?.searchQuery)
+    normalized.searchQuery = safeString(event.searchQuery, 160)
   if (event?.category) normalized.category = safeString(event.category, 160)
   if (event?.value !== undefined) normalized.value = safeNumber(event.value)
-  if (event?.currency) normalized.currency = safeString(event.currency, 12).toUpperCase()
-  if (event?.quantity !== undefined) normalized.quantity = safePositiveNumber(event.quantity)
+  if (event?.currency)
+    normalized.currency = safeString(event.currency, 12).toUpperCase()
+  if (event?.quantity !== undefined)
+    normalized.quantity = safePositiveNumber(event.quantity)
   if (event?.items) normalized.items = sanitizeItems(event.items)
   if (event?.commerce) normalized.commerce = normalizeCommerce(event.commerce)
   if (event?.metadata) normalized.metadata = sanitizeObject(event.metadata)
@@ -418,7 +433,12 @@ export const trackPageView = (metadata = {}) => {
   })
 }
 
-export const trackProductView = ({ productId, value, currency, metadata } = {}) => {
+export const trackProductView = ({
+  productId,
+  value,
+  currency,
+  metadata,
+} = {}) => {
   return trackUserMetric({
     eventType: USER_METRIC_EVENTS.PRODUCT_VIEW,
     productId,
@@ -428,7 +448,14 @@ export const trackProductView = ({ productId, value, currency, metadata } = {}) 
   })
 }
 
-export const trackAddToCart = ({ productId, quantity, value, currency, items, metadata } = {}) => {
+export const trackAddToCart = ({
+  productId,
+  quantity,
+  value,
+  currency,
+  items,
+  metadata,
+} = {}) => {
   return trackUserMetric({
     eventType: USER_METRIC_EVENTS.ADD_TO_CART,
     productId,

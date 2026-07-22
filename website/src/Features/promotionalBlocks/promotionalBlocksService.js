@@ -4,14 +4,18 @@ import Cookies from 'js-cookie'
 
 const BASE_URL = '/promotional-blocks'
 
-const getAuthToken = () => Cookies.get('token') || localStorage.getItem('token') || null
+const getAuthToken = () =>
+  Cookies.get('token') || localStorage.getItem('token') || null
 
 const getTenantDomain = () => {
   if (typeof window === 'undefined') return undefined
   return window.location.host
 }
 
-const extractErrorMessage = (error, fallback = 'Error en Promotional Blocks') => {
+const extractErrorMessage = (
+  error,
+  fallback = 'Error en Promotional Blocks',
+) => {
   const data = error?.response?.data
 
   if (typeof data === 'string') return data
@@ -28,7 +32,12 @@ const extractErrorMessage = (error, fallback = 'Error en Promotional Blocks') =>
   return error?.message || fallback
 }
 
-const apiRequest = async (method, endpoint = '', data = undefined, options = {}) => {
+const apiRequest = async (
+  method,
+  endpoint = '',
+  data = undefined,
+  options = {},
+) => {
   try {
     const csrfToken = await fetchCsrfToken()
     const token = getAuthToken()
@@ -49,7 +58,9 @@ const apiRequest = async (method, endpoint = '', data = undefined, options = {})
       Accept: 'application/json',
       ...(includeCsrf && csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
       ...(includeAuth && token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(includeTenantDomain && tenantDomain ? { 'X-Tenant-Domain': tenantDomain } : {}),
+      ...(includeTenantDomain && tenantDomain
+        ? { 'X-Tenant-Domain': tenantDomain }
+        : {}),
       ...customHeaders,
     }
 

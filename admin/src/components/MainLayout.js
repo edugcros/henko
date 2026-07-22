@@ -26,7 +26,12 @@ import {
   CssBaseline,
 } from '@mui/material'
 
-import { Menu as MenuIcon, ChevronLeft, ExpandLess, ExpandMore } from '@mui/icons-material'
+import {
+  Menu as MenuIcon,
+  ChevronLeft,
+  ExpandLess,
+  ExpandMore,
+} from '@mui/icons-material'
 
 import 'react-toastify/dist/ReactToastify.css'
 import './MainLayout.css'
@@ -54,7 +59,9 @@ const MainLayout = () => {
   // 🔹 Selección de ruta y grupo
   const { selectedKey, openKey } = useMemo(() => {
     const key = location.pathname.replace('/admin/', '') || 'dashboard'
-    const group = adminMenuItems.find(item => item.children?.some(child => child.key === key))
+    const group = adminMenuItems.find(item =>
+      item.children?.some(child => child.key === key),
+    )
     return { selectedKey: key, openKey: group?.key }
   }, [location.pathname])
 
@@ -130,7 +137,10 @@ const MainLayout = () => {
                       onClick={() => navigate(`/admin/${item.key}`)}
                     >
                       <ListItemIcon>
-                        <Badge color="error" variant={item.isNew ? 'dot' : 'standard'}>
+                        <Badge
+                          color="error"
+                          variant={item.isNew ? 'dot' : 'standard'}
+                        >
                           <ItemIcon sx={{ color: item.iconColor }} />
                         </Badge>
                       </ListItemIcon>
@@ -178,7 +188,10 @@ const MainLayout = () => {
           },
         }}
       >
-        <IconButton onClick={() => setCollapsed(prev => !prev)} sx={{ color: '#fff', m: 1 }}>
+        <IconButton
+          onClick={() => setCollapsed(prev => !prev)}
+          sx={{ color: '#fff', m: 1 }}
+        >
           {collapsed ? <MenuIcon /> : <ChevronLeft />}
         </IconButton>
 
@@ -201,7 +214,11 @@ const MainLayout = () => {
                   {user.firstname} {user.lastname}
                 </Typography>
 
-                <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleDropdownClose}>
+                <Menu
+                  anchorEl={anchorEl}
+                  open={Boolean(anchorEl)}
+                  onClose={handleDropdownClose}
+                >
                   <MenuItem
                     onClick={() => {
                       handleDropdownClose()
@@ -217,7 +234,12 @@ const MainLayout = () => {
         </AppBar>
 
         <Box sx={{ p: 3 }}>
-          <ToastContainer position="top-right" autoClose={250} newestOnTop theme="light" />
+          <ToastContainer
+            position="top-right"
+            autoClose={250}
+            newestOnTop
+            theme="light"
+          />
           <Outlet />
         </Box>
       </Box>

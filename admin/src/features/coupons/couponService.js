@@ -145,7 +145,10 @@ const validators = {
 
   code: code => {
     if (!code || code.length < 3) {
-      throw new ValidationError('El código debe tener al menos 3 caracteres', 'code')
+      throw new ValidationError(
+        'El código debe tener al menos 3 caracteres',
+        'code',
+      )
     }
   },
 }
@@ -189,15 +192,21 @@ const normalizeCoupon = data => {
     discountType: data.discountType,
     discountValue: parseFloat(data.discountValue) || 0,
     discountFormatted:
-      data.discountType === 'percentage' ? `${data.discountValue}%` : `$${data.discountValue}`,
+      data.discountType === 'percentage'
+        ? `${data.discountValue}%`
+        : `$${data.discountValue}`,
 
     minPurchaseAmount: Math.max(0, parseFloat(data.minPurchaseAmount) || 0),
-    maxDiscountAmount: data.maxDiscountAmount ? parseFloat(data.maxDiscountAmount) : null,
+    maxDiscountAmount: data.maxDiscountAmount
+      ? parseFloat(data.maxDiscountAmount)
+      : null,
 
     usageLimit: data.usageLimit ? parseInt(data.usageLimit) : null,
     usageCount: Math.max(0, parseInt(data.usageCount) || 0),
     usageLimitPerUser: Math.max(1, parseInt(data.usageLimitPerUser) || 1),
-    remainingUses: data.usageLimit ? Math.max(0, data.usageLimit - (data.usageCount || 0)) : null,
+    remainingUses: data.usageLimit
+      ? Math.max(0, data.usageLimit - (data.usageCount || 0))
+      : null,
 
     startDate,
     endDate,
@@ -209,12 +218,16 @@ const normalizeCoupon = data => {
     isActive: !isDeleted && !!data.isActive,
     isDeleted,
 
-    isExhausted: data.usageLimit ? (data.usageCount || 0) >= data.usageLimit : false,
+    isExhausted: data.usageLimit
+      ? (data.usageCount || 0) >= data.usageLimit
+      : false,
 
     stackable: !!data.stackable,
     priority: parseInt(data.priority) || 0,
 
-    applicableProducts: (data.applicableProducts || []).map(normalizeProductRef),
+    applicableProducts: (data.applicableProducts || []).map(
+      normalizeProductRef,
+    ),
     excludedProducts: (data.excludedProducts || []).map(p =>
       typeof p === 'object' ? p._id?.toString() || p.id?.toString() : p,
     ),
@@ -227,7 +240,9 @@ const normalizeCoupon = data => {
     metadata: data.metadata || {},
 
     badge:
-      data.discountType === 'percentage' ? `-${data.discountValue}%` : `-$${data.discountValue}`,
+      data.discountType === 'percentage'
+        ? `-${data.discountValue}%`
+        : `-$${data.discountValue}`,
 
     expiresIn: endDate && !isDeleted ? calculateExpiresIn(endDate) : null,
   }
@@ -260,7 +275,9 @@ const normalizeProductRef = product => {
 }
 
 const calculateExpiresIn = endDate => {
-  const days = Math.ceil((new Date(endDate) - new Date()) / (1000 * 60 * 60 * 24))
+  const days = Math.ceil(
+    (new Date(endDate) - new Date()) / (1000 * 60 * 60 * 24),
+  )
   if (days <= 0) return 'Expirado'
   if (days === 1) return '1 día'
   if (days <= 7) return `${days} días`
@@ -274,11 +291,14 @@ const normalizeList = response => {
   return {
     items: items.map(normalizeCoupon),
     pagination: {
-      total: parseInt(response?.pagination?.total || response?.total) || items.length,
+      total:
+        parseInt(response?.pagination?.total || response?.total) ||
+        items.length,
       page: parseInt(response?.pagination?.page || response?.page) || 1,
       pages: parseInt(response?.pagination?.pages || response?.pages) || 1,
       limit: parseInt(response?.pagination?.limit || response?.limit) || 20,
-      hasNext: (response?.pagination?.page || 1) < (response?.pagination?.pages || 1),
+      hasNext:
+        (response?.pagination?.page || 1) < (response?.pagination?.pages || 1),
       hasPrev: (response?.pagination?.page || 1) > 1,
     },
     meta: response?.meta || {},
@@ -423,7 +443,9 @@ export const couponService = {
       description: data.description?.trim(),
       discountValue: parseFloat(data.discountValue),
       minPurchaseAmount: parseFloat(data.minPurchaseAmount) || 0,
-      maxDiscountAmount: data.maxDiscountAmount ? parseFloat(data.maxDiscountAmount) : undefined,
+      maxDiscountAmount: data.maxDiscountAmount
+        ? parseFloat(data.maxDiscountAmount)
+        : undefined,
       usageLimit: data.usageLimit ? parseInt(data.usageLimit) : null,
       usageLimitPerUser: parseInt(data.usageLimitPerUser) || 1,
       priority: parseInt(data.priority) || 0,
@@ -452,7 +474,10 @@ export const couponService = {
         )
       }
       if (error.code === 'NO_TENANT') {
-        throw new ValidationError('Error de configuración: Tenant no identificado', 'tenant')
+        throw new ValidationError(
+          'Error de configuración: Tenant no identificado',
+          'tenant',
+        )
       }
       throw error
     }
@@ -468,7 +493,10 @@ export const couponService = {
       data.discountType === 'percentage' &&
       data.discountValue > 100
     ) {
-      throw new ValidationError('El porcentaje no puede superar 100%', 'discountValue')
+      throw new ValidationError(
+        'El porcentaje no puede superar 100%',
+        'discountValue',
+      )
     }
 
     const cleanData = {
@@ -514,7 +542,10 @@ export const couponService = {
       return normalized
     } catch (error) {
       if (error.isDuplicate) {
-        throw new DuplicateError('Conflicto al generar código. Intenta de nuevo.', 'code')
+        throw new DuplicateError(
+          'Conflicto al generar código. Intenta de nuevo.',
+          'code',
+        )
       }
       throw error
     }
@@ -549,14 +580,18 @@ export const couponService = {
       }
     } catch (error) {
       if (error.isDuplicate) {
-        throw new DuplicateError('Algunos códigos ya existen. Intenta con otro prefijo.', 'prefix')
+        throw new DuplicateError(
+          'Algunos códigos ya existen. Intenta con otro prefijo.',
+          'prefix',
+        )
       }
       throw error
     }
   },
 
   assignProducts: async (couponId, productIds, mode = 'add') => {
-    if (!couponId) throw new ValidationError('ID de cupón requerido', 'couponId')
+    if (!couponId)
+      throw new ValidationError('ID de cupón requerido', 'couponId')
 
     const ids = Array.isArray(productIds) ? productIds : [productIds]
     if (ids.length === 0) {
@@ -623,8 +658,10 @@ export const couponService = {
       totalRevenue: parseFloat(response?.totalRevenue) || 0,
       avgOrderValue: parseFloat(response?.avgOrderValue) || 0,
       conversionRate: parseFloat(response?.conversionRate) || 0,
-      revenuePerUse: (response?.totalRevenue || 0) / Math.max(1, response?.totalUses || 1),
-      discountPerUse: (response?.totalDiscount || 0) / Math.max(1, response?.totalUses || 1),
+      revenuePerUse:
+        (response?.totalRevenue || 0) / Math.max(1, response?.totalUses || 1),
+      discountPerUse:
+        (response?.totalDiscount || 0) / Math.max(1, response?.totalUses || 1),
     }
   },
 

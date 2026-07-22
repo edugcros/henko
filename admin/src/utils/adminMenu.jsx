@@ -26,7 +26,7 @@ const translations = {
   promociones: 'Promociones',
   ordenes: 'Órdenes',
   EditProduct: 'Editar Producto',
-  addproduct: 'Análisis IA',
+  AddProduct: 'Análisis IA',
   diseñoweb: 'Crear Diseño Web',
   productlist: 'Lista de Productos',
   'product-analysis': 'Agente IA',
@@ -68,7 +68,7 @@ const groups = {
     label: 'Productos',
     icon: Storefront,
     items: [
-      { key: 'addproduct', icon: AutoAwesome },
+      { key: 'AddProduct', icon: AutoAwesome },
       { key: 'productlist', icon: Storefront },
       { key: 'product-analysis', icon: OutboxIcon },
     ],
@@ -116,7 +116,9 @@ const adminMenuItems = []
 privateRoutes.forEach(({ path, meta }) => {
   const key = path.replace('/admin/', '') || ''
 
-  const label = translations[key] || key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  const label =
+    translations[key] ||
+    key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
   const groupEntry = Object.entries(groups).find(([_, group]) =>
     group.items?.some(item => typeof item === 'object' && item.key === key),
@@ -127,7 +129,9 @@ privateRoutes.forEach(({ path, meta }) => {
 
   if (groupEntry) {
     const [groupKey, group] = groupEntry
-    const itemDef = group.items?.find(item => typeof item === 'object' && item.key === key)
+    const itemDef = group.items?.find(
+      item => typeof item === 'object' && item.key === key,
+    )
     IconComp = itemDef?.icon || group.icon
 
     const item = {

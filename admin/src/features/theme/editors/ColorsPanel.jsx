@@ -1,12 +1,33 @@
 // 📁 src/components/ColorsPanel.jsx - VERSIÓN PRODUCCIÓN
 import React, { useCallback, useMemo } from 'react'
-import { Grid, Typography, Box, Tooltip, IconButton, Paper, Stack } from '@mui/material'
+import {
+  Grid,
+  Typography,
+  Box,
+  Tooltip,
+  IconButton,
+  Paper,
+  Stack,
+} from '@mui/material'
 import ColorPicker from '@components/ColorPicker'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import { COLOR_PRESETS, COLOR_ROLE_GROUPS, DEFAULT_THEME_COLORS } from '@features/theme/colorSystem'
+import {
+  COLOR_PRESETS,
+  COLOR_ROLE_GROUPS,
+  DEFAULT_THEME_COLORS,
+} from '@features/theme/colorSystem'
 
-const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange, sectionMeta }) => {
-  const effectiveColors = useMemo(() => ({ ...DEFAULT_THEME_COLORS, ...colors }), [colors])
+const ColorsPanel = ({
+  colors = {},
+  updateTheme,
+  updateField,
+  onChange,
+  sectionMeta,
+}) => {
+  const effectiveColors = useMemo(
+    () => ({ ...DEFAULT_THEME_COLORS, ...colors }),
+    [colors],
+  )
 
   // 🔥 Handler optimizado con validación
   const handleColorChange = useCallback(
@@ -72,7 +93,10 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange, sectionM
     }
   }, [updateTheme, onChange])
 
-  const renderColorPicker = ({ key, label, appliesTo }, size = { xs: 12, sm: 6 }) => (
+  const renderColorPicker = (
+    { key, label, appliesTo },
+    size = { xs: 12, sm: 6 },
+  ) => (
     <Grid item xs={size.xs} sm={size.sm} key={key}>
       <ColorPicker
         label={label}
@@ -127,18 +151,20 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange, sectionM
                   },
                 }}
               >
-                {[preset.primary, preset.secondary, preset.accent].map((color, i) => (
-                  <Box
-                    key={i}
-                    sx={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 1,
-                      bgcolor: color,
-                      border: '1px solid rgba(0,0,0,0.1)',
-                    }}
-                  />
-                ))}
+                {[preset.primary, preset.secondary, preset.accent].map(
+                  (color, i) => (
+                    <Box
+                      key={i}
+                      sx={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 1,
+                        bgcolor: color,
+                        border: '1px solid rgba(0,0,0,0.1)',
+                      }}
+                    />
+                  ),
+                )}
               </Box>
             </Tooltip>
           ))}
@@ -173,7 +199,9 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange, sectionM
               {group.fields.map(field =>
                 renderColorPicker(
                   field,
-                  group.id === 'feedback' ? { xs: 6, sm: 3 } : { xs: 12, sm: 6 },
+                  group.id === 'feedback'
+                    ? { xs: 6, sm: 3 }
+                    : { xs: 12, sm: 6 },
                 ),
               )}
             </Grid>

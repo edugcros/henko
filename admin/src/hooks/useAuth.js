@@ -112,7 +112,12 @@ const isStoredCsrfFresh = () => {
 }
 
 const clearLocalAuthSession = () => {
-  safeSessionRemove([TOKEN_STORAGE_KEY, USER_STORAGE_KEY, CSRF_STORAGE_KEY, CSRF_FETCHED_AT_KEY])
+  safeSessionRemove([
+    TOKEN_STORAGE_KEY,
+    USER_STORAGE_KEY,
+    CSRF_STORAGE_KEY,
+    CSRF_FETCHED_AT_KEY,
+  ])
 }
 
 export const useAuth = () => {
@@ -125,7 +130,12 @@ export const useAuth = () => {
    */
   const authState = useSelector(state => state.user || state.auth || {})
 
-  const { user: userRedux, token: tokenRedux, csrfToken: csrfTokenRedux, isLoading } = authState
+  const {
+    user: userRedux,
+    token: tokenRedux,
+    csrfToken: csrfTokenRedux,
+    isLoading,
+  } = authState
 
   const [csrfTokenState, setCsrfTokenState] = useState(
     () => csrfTokenRedux || safeSessionGet(CSRF_STORAGE_KEY) || '',
@@ -230,7 +240,10 @@ export const useAuth = () => {
   const userRole = decodedToken?.role || user?.role || 'user'
 
   const isBlocked = Boolean(
-    decodedToken?.isBlocked || user?.isBlocked || user?.blocked || user?.status === 'blocked',
+    decodedToken?.isBlocked ||
+    user?.isBlocked ||
+    user?.blocked ||
+    user?.status === 'blocked',
   )
 
   const isAuthenticated = useMemo(() => {

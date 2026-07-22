@@ -113,7 +113,8 @@ const HEADER_COLOR_FIELDS = [
   {
     key: 'headerBackground',
     label: 'Fondo del header',
-    description: 'Solo modifica el fondo de la cabecera. No afecta cards ni botones.',
+    description:
+      'Solo modifica el fondo de la cabecera. No afecta cards ni botones.',
   },
   {
     key: 'headerText',
@@ -158,15 +159,23 @@ const normalizeHeaderValue = value => {
   return {
     ...DEFAULT_HEADER,
     ...source,
-    showAccount: source.showAccount ?? source.showUserMenu ?? DEFAULT_HEADER.showAccount,
-    showUserMenu: source.showUserMenu ?? source.showAccount ?? DEFAULT_HEADER.showUserMenu,
+    showAccount:
+      source.showAccount ?? source.showUserMenu ?? DEFAULT_HEADER.showAccount,
+    showUserMenu:
+      source.showUserMenu ?? source.showAccount ?? DEFAULT_HEADER.showUserMenu,
   }
 }
 
 // ===============================
 // COMPONENT
 // ===============================
-const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogoUpload }) => {
+const HeaderEditor = ({
+  value = {},
+  colors = {},
+  onChange,
+  onColorChange,
+  onLogoUpload,
+}) => {
   const theme = useTheme()
 
   const header = useMemo(() => normalizeHeaderValue(value), [value])
@@ -267,9 +276,14 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
             </Box>
 
             <Box>
-              <Typography sx={sectionTitleSx}>Configuración del header</Typography>
+              <Typography sx={sectionTitleSx}>
+                Configuración del header
+              </Typography>
 
-              <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mt: 0.35 }}>
+              <Typography
+                variant="body2"
+                sx={{ color: theme.palette.text.secondary, mt: 0.35 }}
+              >
                 Estos cambios afectan únicamente la cabecera de la tienda.
               </Typography>
             </Box>
@@ -410,7 +424,10 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
               Visibilidad y comportamiento
             </Typography>
 
-            <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
+            <Typography
+              variant="body2"
+              sx={{ color: theme.palette.text.secondary }}
+            >
               Activá o desactivá elementos visibles en la cabecera del comercio.
             </Typography>
           </Box>
@@ -436,7 +453,8 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
                     bgcolor: checked
                       ? alpha(theme.palette.primary.main, 0.045)
                       : alpha(theme.palette.action.disabledBackground, 0.26),
-                    transition: 'background-color .18s ease, border-color .18s ease',
+                    transition:
+                      'background-color .18s ease, border-color .18s ease',
                   }}
                 >
                   <FormControlLabel
@@ -449,7 +467,10 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
                     }}
                     labelPlacement="start"
                     control={
-                      <Switch checked={checked} onChange={e => update(key, e.target.checked)} />
+                      <Switch
+                        checked={checked}
+                        onChange={e => update(key, e.target.checked)}
+                      />
                     }
                     label={
                       <Stack

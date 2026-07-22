@@ -73,21 +73,27 @@ const unwrapApiData = value => {
 // THUNKS
 // ==========================================
 
-export const fetchTheme = createAsyncThunk('theme/fetch', async (_, { rejectWithValue }) => {
-  try {
-    return await getTheme()
-  } catch (error) {
-    return rejectWithValue(error.message)
-  }
-})
+export const fetchTheme = createAsyncThunk(
+  'theme/fetch',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await getTheme()
+    } catch (error) {
+      return rejectWithValue(error.message)
+    }
+  },
+)
 
-export const saveTheme = createAsyncThunk('theme/save', async (themeData, { rejectWithValue }) => {
-  try {
-    return await apiUpdateTheme(themeData)
-  } catch (error) {
-    return rejectWithValue(error.message)
-  }
-})
+export const saveTheme = createAsyncThunk(
+  'theme/save',
+  async (themeData, { rejectWithValue }) => {
+    try {
+      return await apiUpdateTheme(themeData)
+    } catch (error) {
+      return rejectWithValue(error.message)
+    }
+  },
+)
 
 export const autoSaveTheme = createAsyncThunk(
   'theme/autoSave',
@@ -212,7 +218,10 @@ const themeSlice = createSlice({
         target = target[key]
       }
 
-      target[keys[keys.length - 1]] = sanitizeThemeValue(value, keys[keys.length - 1])
+      target[keys[keys.length - 1]] = sanitizeThemeValue(
+        value,
+        keys[keys.length - 1],
+      )
       state.config = newConfig
       state.hasUnsavedChanges = !isEqual(newConfig, state.originalConfig)
     },
@@ -374,7 +383,8 @@ export const selectPreviewTheme = state => state.theme.previewConfig
 export const selectActiveTheme = state =>
   state.theme.previewMode ? state.theme.previewConfig : state.theme.config
 
-export const selectThemeSection = section => state => state.theme.config?.[section]
+export const selectThemeSection = section => state =>
+  state.theme.config?.[section]
 
 export const selectHasUnsavedChanges = state => state.theme.hasUnsavedChanges
 export const selectIsLoading = state => state.theme.isLoading

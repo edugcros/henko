@@ -1,15 +1,18 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import dashboardService from './dashboardService'
 
-export const getDashboardStats = createAsyncThunk('dashboard/get-stats', async (_, thunkAPI) => {
-  try {
-    // Obtenemos el token del estado de usuario
-    const token = thunkAPI.getState().user.user.token
-    return await dashboardService.getStats(token)
-  } catch (error) {
-    return thunkAPI.rejectWithValue(error)
-  }
-})
+export const getDashboardStats = createAsyncThunk(
+  'dashboard/get-stats',
+  async (_, thunkAPI) => {
+    try {
+      // Obtenemos el token del estado de usuario
+      const token = thunkAPI.getState().user.user.token
+      return await dashboardService.getStats(token)
+    } catch (error) {
+      return thunkAPI.rejectWithValue(error)
+    }
+  },
+)
 
 const initialState = {
   stats: {

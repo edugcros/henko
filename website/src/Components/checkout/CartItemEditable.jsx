@@ -38,7 +38,10 @@ const CartItemEditable = ({
     return {}
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
 
   const productId = item.productId?._id || item.productId
   const needsUpdate = quantity !== item.quantity

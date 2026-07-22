@@ -37,7 +37,10 @@ const OrderSummary = ({
     return {}
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
 
   const subtotal =
     cart.items?.reduce(

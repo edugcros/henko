@@ -103,7 +103,9 @@ const CouponForm = ({
     isMounted.current = true
 
     if (initialData) {
-      const normalizedProducts = normalizeProducts(initialData.applicableProducts)
+      const normalizedProducts = normalizeProducts(
+        initialData.applicableProducts,
+      )
 
       setFormData(prev => ({
         ...prev,
@@ -372,7 +374,12 @@ const CouponForm = ({
   // ======================================================
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="coupon-form" noValidate>
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      className="coupon-form"
+      noValidate
+    >
       {/* Tabs */}
       <div className="form-tabs" role="tablist">
         {TABS.map(tab => (
@@ -401,7 +408,9 @@ const CouponForm = ({
         {/* Tab Básico */}
         {activeTab === 'basic' && (
           <div id="panel-basic" role="tabpanel" className="tab-panel">
-            <div className={`form-group checkbox-group ${autoGenerate ? 'checked' : ''}`}>
+            <div
+              className={`form-group checkbox-group ${autoGenerate ? 'checked' : ''}`}
+            >
               <label className="checkbox-label">
                 <input
                   type="checkbox"
@@ -410,13 +419,19 @@ const CouponForm = ({
                   disabled={isSubmitting}
                 />
                 <span className="checkmark"></span>
-                <span className="label-text">Generar código automáticamente</span>
+                <span className="label-text">
+                  Generar código automáticamente
+                </span>
               </label>
-              <small className="help-text">El sistema creará un código único aleatorio</small>
+              <small className="help-text">
+                El sistema creará un código único aleatorio
+              </small>
             </div>
 
             {!autoGenerate && (
-              <div className={`form-group ${errors.code && touched.code ? 'has-error' : ''}`}>
+              <div
+                className={`form-group ${errors.code && touched.code ? 'has-error' : ''}`}
+              >
                 <label htmlFor="code">
                   Código del Cupón <span className="required">*</span>
                 </label>
@@ -453,7 +468,11 @@ const CouponForm = ({
                 {...inputProps('description')}
               />
               {errors.description && touched.description && (
-                <span id="description-error" className="error-message" role="alert">
+                <span
+                  id="description-error"
+                  className="error-message"
+                  role="alert"
+                >
                   {errors.description}
                 </span>
               )}
@@ -464,7 +483,11 @@ const CouponForm = ({
                 className={`form-group ${errors.discountValue && touched.discountValue ? 'has-error' : ''}`}
               >
                 <label htmlFor="discountType">Tipo de Descuento</label>
-                <select id="discountType" disabled={isSubmitting} {...inputProps('discountType')}>
+                <select
+                  id="discountType"
+                  disabled={isSubmitting}
+                  {...inputProps('discountType')}
+                >
                   <option value="percentage">Porcentaje (%)</option>
                   <option value="fixed_amount">Monto Fijo ($)</option>
                 </select>
@@ -491,7 +514,11 @@ const CouponForm = ({
                   />
                 </div>
                 {errors.discountValue && touched.discountValue && (
-                  <span id="discountValue-error" className="error-message" role="alert">
+                  <span
+                    id="discountValue-error"
+                    className="error-message"
+                    role="alert"
+                  >
                     {errors.discountValue}
                   </span>
                 )}
@@ -500,7 +527,9 @@ const CouponForm = ({
 
             {formData.discountType === 'percentage' && (
               <div className="form-group">
-                <label htmlFor="maxDiscountAmount">Descuento Máximo (opcional)</label>
+                <label htmlFor="maxDiscountAmount">
+                  Descuento Máximo (opcional)
+                </label>
                 <div className="input-with-prefix">
                   <span className="prefix">$</span>
                   <input
@@ -513,7 +542,9 @@ const CouponForm = ({
                     {...inputProps('maxDiscountAmount')}
                   />
                 </div>
-                <small className="help-text">Límite máximo de descuento en pesos</small>
+                <small className="help-text">
+                  Límite máximo de descuento en pesos
+                </small>
               </div>
             )}
           </div>
@@ -551,10 +582,14 @@ const CouponForm = ({
                   disabled={isSubmitting}
                   {...inputProps('usageLimit')}
                 />
-                <small className="help-text">Dejar vacío para usos ilimitados</small>
+                <small className="help-text">
+                  Dejar vacío para usos ilimitados
+                </small>
               </div>
 
-              <div className={`form-group ${errors.usageLimitPerUser ? 'has-error' : ''}`}>
+              <div
+                className={`form-group ${errors.usageLimitPerUser ? 'has-error' : ''}`}
+              >
                 <label htmlFor="usageLimitPerUser">Límite por Usuario</label>
                 <input
                   id="usageLimitPerUser"
@@ -580,7 +615,9 @@ const CouponForm = ({
                 />
               </div>
 
-              <div className={`form-group ${errors.endDate && touched.endDate ? 'has-error' : ''}`}>
+              <div
+                className={`form-group ${errors.endDate && touched.endDate ? 'has-error' : ''}`}
+              >
                 <label htmlFor="endDate">
                   Fecha de Fin <span className="required">*</span>
                 </label>
@@ -592,7 +629,11 @@ const CouponForm = ({
                   {...inputProps('endDate')}
                 />
                 {errors.endDate && touched.endDate && (
-                  <span id="endDate-error" className="error-message" role="alert">
+                  <span
+                    id="endDate-error"
+                    className="error-message"
+                    role="alert"
+                  >
                     {errors.endDate}
                   </span>
                 )}
@@ -611,8 +652,12 @@ const CouponForm = ({
               maxSelection={100}
             />
 
-            <div className={`info-box ${productCount === 0 ? 'info' : 'success'}`}>
-              <span className="info-icon">{productCount === 0 ? '💡' : '✓'}</span>
+            <div
+              className={`info-box ${productCount === 0 ? 'info' : 'success'}`}
+            >
+              <span className="info-icon">
+                {productCount === 0 ? '💡' : '✓'}
+              </span>
               <div className="info-content">
                 <strong>
                   {productCount === 0
@@ -642,7 +687,9 @@ const CouponForm = ({
                   disabled={isSubmitting}
                 />
                 <span className="checkmark"></span>
-                <span className="label-text">Permitir combinación con otros cupones</span>
+                <span className="label-text">
+                  Permitir combinación con otros cupones
+                </span>
               </label>
               <small className="help-text">
                 Los clientes podrán usar este cupón junto con otros
@@ -683,7 +730,12 @@ const CouponForm = ({
 
       {/* Acciones */}
       <div className="form-actions">
-        <button type="button" onClick={onCancel} className="btn-secondary" disabled={isSubmitting}>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="btn-secondary"
+          disabled={isSubmitting}
+        >
           Cancelar
         </button>
         <button type="submit" className="btn-primary" disabled={isSubmitting}>

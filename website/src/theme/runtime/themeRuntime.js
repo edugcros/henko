@@ -98,14 +98,28 @@ export const getProductThemeConfig = config => {
     ...products,
 
     imageAspectRatio:
-      products.imageAspectRatio || cardImage.aspectRatio || productCard.imageAspectRatio || '1:1',
+      products.imageAspectRatio ||
+      cardImage.aspectRatio ||
+      productCard.imageAspectRatio ||
+      '1:1',
 
     showQuickView:
-      products.showQuickView ?? cardLayout.showQuickView ?? productCard.showQuickView ?? true,
+      products.showQuickView ??
+      cardLayout.showQuickView ??
+      productCard.showQuickView ??
+      true,
 
-    showRating: products.showRating ?? cardLayout.showRating ?? productCard.showRating ?? true,
+    showRating:
+      products.showRating ??
+      cardLayout.showRating ??
+      productCard.showRating ??
+      true,
 
-    cardPadding: cardLayout.padding ?? config?.spacing?.cardPadding ?? productCard.cardPadding ?? 0,
+    cardPadding:
+      cardLayout.padding ??
+      config?.spacing?.cardPadding ??
+      productCard.cardPadding ??
+      0,
   }
 }
 
@@ -181,7 +195,8 @@ export const getProductImage = product => {
 }
 
 export const getProductRouteId = product => {
-  const rawId = product?._id || product?.id || product?.productId || product?.slug
+  const rawId =
+    product?._id || product?.id || product?.productId || product?.slug
 
   if (!rawId) return ''
   if (typeof rawId === 'object') return rawId._id || rawId.id || ''

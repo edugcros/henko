@@ -25,7 +25,11 @@ import {
   Visibility as VisibilityIcon,
 } from '@mui/icons-material'
 
-import { selectIsAuthenticated, selectWishlistIds, toggleWishlist } from '@features/user/userSlice'
+import {
+  selectIsAuthenticated,
+  selectWishlistIds,
+  toggleWishlist,
+} from '@features/user/userSlice'
 import { addToCompare } from '@features/compare/compareSlice'
 import { addOrUpdateCartItem } from '@features/cart/cartSlice'
 import {
@@ -37,7 +41,10 @@ import {
   getProductRouteId,
   getThemeColors,
 } from '@utils/themeRuntime'
-import { trackUserMetric, USER_METRIC_EVENTS } from '../services/userMetricsService'
+import {
+  trackUserMetric,
+  USER_METRIC_EVENTS,
+} from '../services/userMetricsService'
 
 const EMPTY_ARRAY = []
 const FALLBACK_IMAGE = '/assets/images/placeholder.png'
@@ -86,7 +93,10 @@ const getAvailableStock = item => {
 }
 
 const hasProductVariants = item => {
-  return Boolean(item?.hasVariants || (Array.isArray(item?.variants) && item.variants.length > 0))
+  return Boolean(
+    item?.hasVariants ||
+    (Array.isArray(item?.variants) && item.variants.length > 0),
+  )
 }
 
 const normalizeAspectRatio = value => {
@@ -229,21 +239,37 @@ const HomeProductCard = React.memo(
     const dispatch = useDispatch()
     const impressionTrackedRef = useRef('')
 
-    const item = useMemo(() => resolveItem({ data, item: itemProp }), [data, itemProp])
+    const item = useMemo(
+      () => resolveItem({ data, item: itemProp }),
+      [data, itemProp],
+    )
 
     const themeState = useSelector(state => state.theme) || {}
     const user = useSelector(state => state.user?.user)
     const isAuthenticated = useSelector(selectIsAuthenticated)
     const wishlistIds = useSelector(selectWishlistIds) || EMPTY_ARRAY
-    const compareItems = useSelector(state => state.compare?.items) || EMPTY_ARRAY
+    const compareItems =
+      useSelector(state => state.compare?.items) || EMPTY_ARRAY
 
-    const activeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+    const activeConfig = useMemo(
+      () => getActiveThemeConfig(themeState),
+      [themeState],
+    )
 
-    const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+    const themeColors = useMemo(
+      () => getThemeColors(activeConfig),
+      [activeConfig],
+    )
 
-    const productTheme = useMemo(() => getProductThemeConfig(activeConfig), [activeConfig])
+    const productTheme = useMemo(
+      () => getProductThemeConfig(activeConfig),
+      [activeConfig],
+    )
 
-    const commerceSettings = useMemo(() => getCommerceSettings(activeConfig), [activeConfig])
+    const commerceSettings = useMemo(
+      () => getCommerceSettings(activeConfig),
+      [activeConfig],
+    )
 
     const notify = useMemo(() => createNotify(themeColors), [themeColors])
 
@@ -254,7 +280,10 @@ const HomeProductCard = React.memo(
     const category = useMemo(() => getProductCategory(item), [item])
     const productPrice = useMemo(() => getProductPrice(item), [item])
     const originalPrice = useMemo(() => getOriginalPrice(item), [item])
-    const discountPercentage = useMemo(() => getDiscountPercentage(item), [item])
+    const discountPercentage = useMemo(
+      () => getDiscountPercentage(item),
+      [item],
+    )
     const stock = useMemo(() => getAvailableStock(item), [item])
     const hasVariants = useMemo(() => hasProductVariants(item), [item])
 
@@ -276,8 +305,10 @@ const HomeProductCard = React.memo(
     const cardBorder = themeColors.cardBorder || '#e5e7eb'
     const cardText = themeColors.cardText || '#111827'
     const cardMutedText = themeColors.cardMutedText || '#6b7280'
-    const cardPrice = themeColors.cardPrice || themeColors.salePrice || '#111827'
-    const actionPrimary = themeColors.actionPrimary || themeColors.primary || '#111827'
+    const cardPrice =
+      themeColors.cardPrice || themeColors.salePrice || '#111827'
+    const actionPrimary =
+      themeColors.actionPrimary || themeColors.primary || '#111827'
     const actionPrimaryText = themeColors.actionPrimaryText || '#fff'
 
     const isFavorite = useMemo(() => {
@@ -286,7 +317,9 @@ const HomeProductCard = React.memo(
       return wishlistIds.some(entry => {
         if (typeof entry === 'string') return entry === productId
         if (entry && typeof entry === 'object') {
-          return [entry._id, entry.id, entry.productId].some(value => value === productId)
+          return [entry._id, entry.id, entry.productId].some(
+            value => value === productId,
+          )
         }
         return false
       })
@@ -297,7 +330,11 @@ const HomeProductCard = React.memo(
         productId,
         value: productPrice,
         category,
-        currency: item?.currency || commerceSettings?.currency || activeConfig?.currency || 'ARS',
+        currency:
+          item?.currency ||
+          commerceSettings?.currency ||
+          activeConfig?.currency ||
+          'ARS',
         metadata: {
           title,
           brand,
@@ -468,9 +505,12 @@ const HomeProductCard = React.memo(
         }
 
         if (hasVariants) {
-          notify.warning('Seleccioná las opciones del producto antes de comprar.', {
-            toastId: `cart-variants-required-${productId}`,
-          })
+          notify.warning(
+            'Seleccioná las opciones del producto antes de comprar.',
+            {
+              toastId: `cart-variants-required-${productId}`,
+            },
+          )
           handleNavigate()
           return
         }
@@ -572,7 +612,8 @@ const HomeProductCard = React.memo(
     if (!item || !productId) return null
 
     const shouldShowActions = showActions !== false
-    const shouldShowAddToCart = showAddToCart ?? productTheme.showAddToCart === true
+    const shouldShowAddToCart =
+      showAddToCart ?? productTheme.showAddToCart === true
 
     return (
       <Card
@@ -593,21 +634,30 @@ const HomeProductCard = React.memo(
           backgroundColor: cardBackground,
           border: `1px solid ${cardBorder}`,
           boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-          transition: 'transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease',
+          transition:
+            'transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease',
           cursor: routeId ? 'pointer' : 'default',
           outline: 'none',
           display: 'flex',
           flexDirection: 'column',
           '&:hover': {
             transform: routeId ? hoverTransform : 'none',
-            boxShadow: routeId ? '0 12px 28px rgba(15,23,42,0.14)' : '0 4px 12px rgba(0,0,0,0.08)',
-            borderColor: productTheme.hoverEffect === 'border' ? actionPrimary : cardBorder,
+            boxShadow: routeId
+              ? '0 12px 28px rgba(15,23,42,0.14)'
+              : '0 4px 12px rgba(0,0,0,0.08)',
+            borderColor:
+              productTheme.hoverEffect === 'border'
+                ? actionPrimary
+                : cardBorder,
             '& .product-card-actions': {
               opacity: 1,
               right: 12,
             },
             '& .product-card-image': {
-              transform: productTheme.hoverEffect === 'zoom' ? 'scale(1.035)' : 'scale(1.02)',
+              transform:
+                productTheme.hoverEffect === 'zoom'
+                  ? 'scale(1.035)'
+                  : 'scale(1.02)',
             },
           },
           '&:focus-visible': {
@@ -625,11 +675,15 @@ const HomeProductCard = React.memo(
               zIndex: 4,
             }}
           >
-            <Tooltip title={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}>
+            <Tooltip
+              title={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+            >
               <IconButton
                 onClick={handleWishlist}
                 color="error"
-                aria-label={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+                aria-label={
+                  isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'
+                }
                 sx={{
                   width: 38,
                   height: 38,
@@ -759,14 +813,19 @@ const HomeProductCard = React.memo(
                   <IconButton
                     onClick={handleAddToCart}
                     size="small"
-                    aria-label={hasVariants ? 'Elegir opciones del producto' : 'Añadir al carrito'}
+                    aria-label={
+                      hasVariants
+                        ? 'Elegir opciones del producto'
+                        : 'Añadir al carrito'
+                    }
                     sx={{
                       bgcolor: actionPrimary,
                       color: actionPrimaryText,
                       boxShadow: '0 10px 20px rgba(15, 23, 42, 0.18)',
                       '&:hover': {
                         bgcolor: themeColors.actionSecondary || actionPrimary,
-                        color: themeColors.actionSecondaryText || actionPrimaryText,
+                        color:
+                          themeColors.actionSecondaryText || actionPrimaryText,
                         transform: 'scale(1.04)',
                       },
                     }}
@@ -781,9 +840,15 @@ const HomeProductCard = React.memo(
 
         <CardContent
           sx={{
-            p: productTheme.cardPadding != null ? `${productTheme.cardPadding}px` : 2,
+            p:
+              productTheme.cardPadding != null
+                ? `${productTheme.cardPadding}px`
+                : 2,
             '&:last-child': {
-              pb: productTheme.cardPadding != null ? `${productTheme.cardPadding}px` : 2,
+              pb:
+                productTheme.cardPadding != null
+                  ? `${productTheme.cardPadding}px`
+                  : 2,
             },
             flexGrow: 1,
           }}
@@ -890,7 +955,9 @@ const HomeProductCard = React.memo(
                 display: 'block',
                 mt: 0.75,
                 color:
-                  stock > 0 ? themeColors.success || '#16a34a' : themeColors.error || '#dc2626',
+                  stock > 0
+                    ? themeColors.success || '#16a34a'
+                    : themeColors.error || '#dc2626',
                 fontWeight: 700,
               }}
             >

@@ -59,7 +59,9 @@ const ProductSelector = ({
   // Estados locales
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
-  const [localSelected, setLocalSelected] = useState(() => selected.map(normalizeId))
+  const [localSelected, setLocalSelected] = useState(() =>
+    selected.map(normalizeId),
+  )
   const [imageErrors, setImageErrors] = useState(new Set())
 
   // Debounce de búsqueda
@@ -114,7 +116,8 @@ const ProductSelector = ({
 
     const normalizedSelected = selected.map(normalizeId)
     const hasChanged =
-      JSON.stringify(localSelected.sort()) !== JSON.stringify(normalizedSelected.sort())
+      JSON.stringify(localSelected.sort()) !==
+      JSON.stringify(normalizedSelected.sort())
 
     if (hasChanged && previousOnChange.current === onChange) {
       onChange?.([...localSelected]) // Crear nueva referencia
@@ -224,7 +227,9 @@ const ProductSelector = ({
 
     // Manejar diferentes formatos de imagen
     if (typeof image === 'string') {
-      return image.startsWith('http') ? image : `${process.env.REACT_APP_API_URL || ''}${image}`
+      return image.startsWith('http')
+        ? image
+        : `${process.env.REACT_APP_API_URL || ''}${image}`
     }
 
     return image.url || image.secure_url || PLACEHOLDER_IMAGE
@@ -299,7 +304,9 @@ const ProductSelector = ({
         </div>
       )}
 
-      {productsError && <div className="state-message error">Error: {productsError}</div>}
+      {productsError && (
+        <div className="state-message error">Error: {productsError}</div>
+      )}
 
       {/* Grid de productos */}
       {!isLoading && !productsError && (
@@ -346,13 +353,17 @@ const ProductSelector = ({
 
                   <div className="product-info">
                     <h4 title={product.title}>{product.title}</h4>
-                    <p className="price">${parseFloat(product.price || 0).toFixed(2)}</p>
+                    <p className="price">
+                      ${parseFloat(product.price || 0).toFixed(2)}
+                    </p>
                     {product.stock !== undefined && (
                       <p className={`stock ${product.stock < 10 ? 'low' : ''}`}>
                         Stock: {product.stock}
                       </p>
                     )}
-                    {product.category && <span className="category-tag">{product.category}</span>}
+                    {product.category && (
+                      <span className="category-tag">{product.category}</span>
+                    )}
                   </div>
                 </div>
               )
@@ -364,7 +375,8 @@ const ProductSelector = ({
       {/* Footer con contador */}
       <div className="selector-footer">
         <span className="selection-count">
-          {localSelected.length} producto{localSelected.length !== 1 ? 's' : ''} seleccionado
+          {localSelected.length} producto{localSelected.length !== 1 ? 's' : ''}{' '}
+          seleccionado
           {maxSelection && ` / ${maxSelection} máximo`}
         </span>
 

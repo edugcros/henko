@@ -24,7 +24,12 @@ const LeadFollowUpModal = ({ open, lead, onClose, onSubmit, loading }) => {
   }, [open, lead?.nextFollowUpAt])
 
   return (
-    <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="xs" fullWidth>
+    <Dialog
+      open={open}
+      onClose={loading ? undefined : onClose}
+      maxWidth="xs"
+      fullWidth
+    >
       <DialogTitle>Programar seguimiento</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
@@ -43,7 +48,9 @@ const LeadFollowUpModal = ({ open, lead, onClose, onSubmit, loading }) => {
           Cancelar
         </Button>
         <Button
-          onClick={() => onSubmit?.(value ? new Date(value).toISOString() : null)}
+          onClick={() =>
+            onSubmit?.(value ? new Date(value).toISOString() : null)
+          }
           disabled={loading}
           variant="contained"
         >

@@ -14,7 +14,11 @@ const Resetpassword = () => {
         <p className="text-center">Please Enter your new password.</p>
         <form action="">
           <CustomInput type="password" label="New Password" id="pass" />
-          <CustomInput type="password" label="Confirm Password" id="confirmpass" />
+          <CustomInput
+            type="password"
+            label="Confirm Password"
+            id="confirmpass"
+          />
 
           <button
             className="border-0 px-3 py-2 text-white fw-bold w-100"

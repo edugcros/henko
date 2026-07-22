@@ -20,7 +20,10 @@ const MenuList = ({ anchorEl, setAnchorEl, ListMenu }) => {
     return {}
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
 
   const handleClose = handleOnClick => {
     setAnchorEl(null)

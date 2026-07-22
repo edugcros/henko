@@ -3,14 +3,19 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import enquiryService from './enquiryService'
 
 // 📌 Obtener todas las consultas
-export const getEnquiries = createAsyncThunk('enquiry/getAll', async (_, thunkAPI) => {
-  try {
-    const res = await enquiryService.getEnquiries()
-    return res.data
-  } catch (error) {
-    return thunkAPI.rejectWithValue(error.response?.data?.message || error.message)
-  }
-})
+export const getEnquiries = createAsyncThunk(
+  'enquiry/getAll',
+  async (_, thunkAPI) => {
+    try {
+      const res = await enquiryService.getEnquiries()
+      return res.data
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message,
+      )
+    }
+  },
+)
 
 // 📌 CORREGIDO: Nombre de función coincide con service
 export const updateEnquiryStatus = createAsyncThunk(
@@ -21,7 +26,9 @@ export const updateEnquiryStatus = createAsyncThunk(
       const res = await enquiryService.updateEnquiry(id, status)
       return res.data
     } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data?.message || error.message)
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message,
+      )
     }
   },
 )
@@ -34,20 +41,27 @@ export const sendReplyEnquiry = createAsyncThunk(
       const res = await enquiryService.sendReply(id, message)
       return res.data
     } catch (error) {
-      return thunkAPI.rejectWithValue(error.response?.data?.message || error.message)
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message,
+      )
     }
   },
 )
 
 // 📌 Eliminar consulta
-export const deleteEnquiry = createAsyncThunk('enquiry/delete', async (id, thunkAPI) => {
-  try {
-    const res = await enquiryService.deleteEnquiry(id)
-    return { id, message: res.message }
-  } catch (error) {
-    return thunkAPI.rejectWithValue(error.response?.data?.message || error.message)
-  }
-})
+export const deleteEnquiry = createAsyncThunk(
+  'enquiry/delete',
+  async (id, thunkAPI) => {
+    try {
+      const res = await enquiryService.deleteEnquiry(id)
+      return { id, message: res.message }
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message,
+      )
+    }
+  },
+)
 
 const initialState = {
   enquiries: [],
@@ -93,7 +107,9 @@ export const enquirySlice = createSlice({
         state.isLoading = false
         state.isSuccess = true
         const updated = action.payload
-        state.enquiries = state.enquiries.map(e => (e._id === updated._id ? updated : e))
+        state.enquiries = state.enquiries.map(e =>
+          e._id === updated._id ? updated : e,
+        )
       })
       .addCase(updateEnquiryStatus.rejected, (state, action) => {
         state.isLoading = false
@@ -129,7 +145,9 @@ export const enquirySlice = createSlice({
       .addCase(deleteEnquiry.fulfilled, (state, action) => {
         state.isLoading = false
         state.isSuccess = true
-        state.enquiries = state.enquiries.filter(e => e._id !== action.payload.id)
+        state.enquiries = state.enquiries.filter(
+          e => e._id !== action.payload.id,
+        )
         state.message = action.payload.message
       })
       .addCase(deleteEnquiry.rejected, (state, action) => {

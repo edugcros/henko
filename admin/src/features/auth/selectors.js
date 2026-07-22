@@ -11,7 +11,10 @@ export const selectIsLoading = createSelector([authState], a => a?.isLoading)
 export const selectMessage = createSelector([authState], a => a?.message)
 
 // Devuelven SIEMPRE la misma referencia si no cambia el slice
-export const selectOrdersData = createSelector([authState], a => a?.orders?.data ?? EMPTY_ARR)
+export const selectOrdersData = createSelector(
+  [authState],
+  a => a?.orders?.data ?? EMPTY_ARR,
+)
 
 export const selectOrdersPagination = createSelector(
   [authState],

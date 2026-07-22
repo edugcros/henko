@@ -14,7 +14,8 @@ import { Link } from 'react-router-dom'
 
 const getProduct = item => {
   if (!item) return null
-  if (item.productId && typeof item.productId === 'object') return item.productId
+  if (item.productId && typeof item.productId === 'object')
+    return item.productId
   if (item.product && typeof item.product === 'object') return item.product
   return null
 }
@@ -72,7 +73,10 @@ const GenericPromotionalSection = ({ block }) => {
                   <CardMedia
                     component="img"
                     height="220"
-                    image={product.images?.[0]?.url || '/assets/images/placeholder.png'}
+                    image={
+                      product.images?.[0]?.url ||
+                      '/assets/images/placeholder.png'
+                    }
                     alt={product.title || 'Producto'}
                     sx={{
                       objectFit: 'cover',

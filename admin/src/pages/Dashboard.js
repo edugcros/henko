@@ -143,7 +143,8 @@ const mergeDailyMetricRows = (...rowGroups) => {
 
       if (!row.date) return
 
-      const current = byDate.get(row.date) || normalizeDailyRow({ date: row.date })
+      const current =
+        byDate.get(row.date) || normalizeDailyRow({ date: row.date })
 
       byDate.set(row.date, {
         ...current,
@@ -165,12 +166,17 @@ const mergeDailyMetricRows = (...rowGroups) => {
         cartItems: Math.max(current.cartItems, row.cartItems),
         cartValue: Math.max(current.cartValue, row.cartValue),
         activeCartValue: Math.max(current.activeCartValue, row.activeCartValue),
-        abandonedCartValue: Math.max(current.abandonedCartValue, row.abandonedCartValue),
+        abandonedCartValue: Math.max(
+          current.abandonedCartValue,
+          row.abandonedCartValue,
+        ),
       })
     })
   })
 
-  return Array.from(byDate.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)))
+  return Array.from(byDate.values()).sort((a, b) =>
+    String(a.date).localeCompare(String(b.date)),
+  )
 }
 
 const buildDailyRows = data => {
@@ -304,7 +310,8 @@ const buildProductCatalog = (...groups) => {
         const merged = {
           ...existing,
           ...product,
-          title: getProductDisplayName(product) || getProductDisplayName(existing),
+          title:
+            getProductDisplayName(product) || getProductDisplayName(existing),
           image: getProductImage(product) || getProductImage(existing),
         }
 
@@ -369,14 +376,17 @@ const normalizeTopPageRows = (rows, productLookup) => {
       const productKey = normalizeLookupKey(getProductKeyFromPath(row.path))
       const product = productKey ? productLookup.get(productKey) : null
       const isProductPage = Boolean(product)
-      const title = isProductPage ? getProductDisplayName(product) : getPageLabel(row.path)
+      const title = isProductPage
+        ? getProductDisplayName(product)
+        : getPageLabel(row.path)
 
       return {
         ...row,
         isProductPage,
         title,
         image: isProductPage ? getProductImage(product) : '',
-        productId: product?.productId || product?._id || product?.id || productKey || '',
+        productId:
+          product?.productId || product?._id || product?.id || productKey || '',
         path: row.path || '/',
         views: toNumber(row.views),
         sessions: toNumber(row.sessions),
@@ -390,22 +400,32 @@ const normalizeSearchRows = (rows, productCatalog, productLookup) => {
     .map(row => {
       const query = String(row.query || row.term || row.search || '').trim()
       const queryKey = normalizeLookupKey(query)
-      const directProduct = productLookup.get(normalizeLookupKey(row.productId || row.productSlug))
+      const directProduct = productLookup.get(
+        normalizeLookupKey(row.productId || row.productSlug),
+      )
       const matchedProduct =
         directProduct ||
         safeArray(productCatalog).find(product => {
           const title = normalizeLookupKey(getProductDisplayName(product))
           const slug = normalizeLookupKey(product?.slug || product?.productSlug)
 
-          return Boolean(queryKey && (title.includes(queryKey) || slug.includes(queryKey)))
+          return Boolean(
+            queryKey && (title.includes(queryKey) || slug.includes(queryKey)),
+          )
         })
 
       return {
         ...row,
         query,
-        title: matchedProduct ? getProductDisplayName(matchedProduct) : query || 'Búsqueda',
+        title: matchedProduct
+          ? getProductDisplayName(matchedProduct)
+          : query || 'Búsqueda',
         image: matchedProduct ? getProductImage(matchedProduct) : '',
-        productId: matchedProduct?.productId || matchedProduct?._id || matchedProduct?.id || '',
+        productId:
+          matchedProduct?.productId ||
+          matchedProduct?._id ||
+          matchedProduct?.id ||
+          '',
         count: toNumber(row.count || row.searches || row.events),
         sessions: toNumber(row.sessions),
         hasProductMatch: Boolean(matchedProduct),
@@ -466,7 +486,12 @@ const PageInsightItem = ({ item }) => (
         <Typography variant="body2" fontWeight={800} noWrap title={item.title}>
           {item.title}
         </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap title={item.path}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          noWrap
+          title={item.path}
+        >
           {item.isProductPage ? 'Producto visitado' : item.path}
         </Typography>
       </Box>
@@ -490,16 +515,29 @@ const SearchInsightItem = ({ item }) => (
         <Typography variant="body2" fontWeight={800} noWrap title={item.title}>
           {item.title}
         </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap title={item.query}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          noWrap
+          title={item.query}
+        >
           {item.hasProductMatch ? `Búsqueda: ${item.query}` : item.query}
         </Typography>
       </Box>
-      <Chip size="small" label={formatNumber(item.count)} sx={{ flexShrink: 0 }} />
+      <Chip
+        size="small"
+        label={formatNumber(item.count)}
+        sx={{ flexShrink: 0 }}
+      />
     </Stack>
   </Paper>
 )
 
-const buildFunnelChartData = (userBehavior = {}, payment = {}, summary = {}) => {
+const buildFunnelChartData = (
+  userBehavior = {},
+  payment = {},
+  summary = {},
+) => {
   const sessions = getSummarySessions(summary, userBehavior)
 
   const rows = [
@@ -589,9 +627,18 @@ const DashboardSectionTitle = ({ title, description }) => (
 const KpiCard = ({ title, value, icon: Icon, color, description, trend }) => (
   <Card sx={{ height: '100%', borderRadius: 3 }}>
     <CardContent>
-      <Stack direction="row" spacing={2} alignItems="flex-start" justifyContent="space-between">
+      <Stack
+        direction="row"
+        spacing={2}
+        alignItems="flex-start"
+        justifyContent="space-between"
+      >
         <Box sx={{ minWidth: 0 }}>
-          <Typography color="text.secondary" variant="overline" fontWeight={800}>
+          <Typography
+            color="text.secondary"
+            variant="overline"
+            fontWeight={800}
+          >
             {title}
           </Typography>
           <Typography variant="h4" fontWeight={900} sx={{ mt: 0.5 }}>
@@ -651,7 +698,9 @@ const BarTooltip = ({ active, payload, label, formatter }) => {
       {payload.map(item => (
         <Typography key={item.dataKey} variant="body2" fontWeight={700}>
           {item.name || item.dataKey}:{' '}
-          {formatter ? formatter(item.value, item.dataKey) : formatNumber(item.value)}
+          {formatter
+            ? formatter(item.value, item.dataKey)
+            : formatNumber(item.value)}
         </Typography>
       ))}
     </Paper>
@@ -691,7 +740,8 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
 
         setData(payload)
       } catch (err) {
-        const message = err.response?.data?.message || 'Error cargando analytics'
+        const message =
+          err.response?.data?.message || 'Error cargando analytics'
         setError(message)
         enqueueSnackbar('Error cargando estadísticas', { variant: 'error' })
       } finally {
@@ -720,7 +770,8 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
   const userBehavior = data?.userBehavior || {}
   const ecommerce = data?.ecommerce || {}
   const activeCarts = data?.activeCarts || ecommerce?.carts?.active || {}
-  const abandonedCarts = data?.abandonedCarts || ecommerce?.carts?.abandoned || {}
+  const abandonedCarts =
+    data?.abandonedCarts || ecommerce?.carts?.abandoned || {}
   const paidOrders = getPaidOrders(summary)
   const productCatalog = useMemo(
     () =>
@@ -734,23 +785,34 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       ),
     [data, ecommerce],
   )
-  const productLookup = useMemo(() => buildProductLookup(productCatalog), [productCatalog])
+  const productLookup = useMemo(
+    () => buildProductLookup(productCatalog),
+    [productCatalog],
+  )
   const topSellingProducts = useMemo(
     () =>
-      normalizeTopProductRows(firstNonEmptyArray(data?.topProducts, ecommerce?.topSellingProducts)),
+      normalizeTopProductRows(
+        firstNonEmptyArray(data?.topProducts, ecommerce?.topSellingProducts),
+      ),
     [data, ecommerce],
   )
   const topVisitedProducts = useMemo(
     () =>
       normalizeTopProductRows(
-        firstNonEmptyArray(data?.topVisitedProducts, ecommerce?.topVisitedProducts),
+        firstNonEmptyArray(
+          data?.topVisitedProducts,
+          ecommerce?.topVisitedProducts,
+        ),
       ),
     [data, ecommerce],
   )
   const topClickedProducts = useMemo(
     () =>
       normalizeTopProductRows(
-        firstNonEmptyArray(data?.topClickedProducts, ecommerce?.topClickedProducts),
+        firstNonEmptyArray(
+          data?.topClickedProducts,
+          ecommerce?.topClickedProducts,
+        ),
       ),
     [data, ecommerce],
   )
@@ -765,7 +827,9 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       {
         name: 'Abandonados',
         cantidad: Number(abandonedCarts.count || summary.abandonedCarts || 0),
-        productos: Number(abandonedCarts.items || summary.abandonedCartItems || 0),
+        productos: Number(
+          abandonedCarts.items || summary.abandonedCartItems || 0,
+        ),
         valor: Number(abandonedCarts.value || summary.abandonedCartValue || 0),
       },
     ],
@@ -776,13 +840,22 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
     [userBehavior, ecommerce, summary],
   )
   const dailyRows = useMemo(() => buildDailyRows(data), [data])
-  const trafficRows = firstNonEmptyArray(data?.traffic?.sources, userBehavior?.sources).slice(0, 8)
+  const trafficRows = firstNonEmptyArray(
+    data?.traffic?.sources,
+    userBehavior?.sources,
+  ).slice(0, 8)
   const topPages = useMemo(
-    () => normalizeTopPageRows(userBehavior?.topPages, productLookup).slice(0, 6),
+    () =>
+      normalizeTopPageRows(userBehavior?.topPages, productLookup).slice(0, 6),
     [userBehavior?.topPages, productLookup],
   )
   const topSearches = useMemo(
-    () => normalizeSearchRows(userBehavior?.topSearches, productCatalog, productLookup).slice(0, 6),
+    () =>
+      normalizeSearchRows(
+        userBehavior?.topSearches,
+        productCatalog,
+        productLookup,
+      ).slice(0, 6),
     [userBehavior?.topSearches, productCatalog, productLookup],
   )
 
@@ -817,7 +890,8 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             Vista descriptiva del negocio
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Datos internos del tenant: ventas, tráfico, carritos, productos y conversión real.
+            Datos internos del tenant: ventas, tráfico, carritos, productos y
+            conversión real.
           </Typography>
         </Box>
 
@@ -836,13 +910,20 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
 
           <Tooltip title="Actualizar">
             <span>
-              <IconButton onClick={() => fetchData()} disabled={loading || refreshing}>
+              <IconButton
+                onClick={() => fetchData()}
+                disabled={loading || refreshing}
+              >
                 <RefreshIcon />
               </IconButton>
             </span>
           </Tooltip>
 
-          <Button variant="outlined" startIcon={<SettingsIcon />} onClick={onOpenConfig}>
+          <Button
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={onOpenConfig}
+          >
             GA4
           </Button>
         </Stack>
@@ -850,7 +931,8 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
 
       {data?.status === 'not_configured' && (
         <Alert severity="info" sx={{ mb: 3 }}>
-          GA4 no está configurado, pero las métricas internas de Henko se muestran igual.
+          GA4 no está configurado, pero las métricas internas de Henko se
+          muestran igual.
         </Alert>
       )}
 
@@ -858,7 +940,9 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Ventas aprobadas"
-            value={loading ? <Skeleton width={90} /> : formatMoney(summary.revenue)}
+            value={
+              loading ? <Skeleton width={90} /> : formatMoney(summary.revenue)
+            }
             icon={TrendIcon}
             trend={summary.revenueGrowth}
             color={CHART_COLORS.primary}
@@ -878,7 +962,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Ticket promedio"
-            value={loading ? <Skeleton width={90} /> : formatMoney(summary.averageOrderValue)}
+            value={
+              loading ? (
+                <Skeleton width={90} />
+              ) : (
+                formatMoney(summary.averageOrderValue)
+              )
+            }
             icon={PaymentsIcon}
             color={CHART_COLORS.warning}
             description="Revenue pagado dividido por órdenes pagadas."
@@ -887,7 +977,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Conversión real"
-            value={loading ? <Skeleton width={90} /> : formatPercent(summary.conversionRate)}
+            value={
+              loading ? (
+                <Skeleton width={90} />
+              ) : (
+                formatPercent(summary.conversionRate)
+              )
+            }
             icon={UsersIcon}
             color={CHART_COLORS.teal}
             description="Órdenes pagadas sobre sesiones del storefront."
@@ -904,7 +1000,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Carritos activos"
-            value={loading ? <Skeleton width={80} /> : formatNumber(summary.activeCarts)}
+            value={
+              loading ? (
+                <Skeleton width={80} />
+              ) : (
+                formatNumber(summary.activeCarts)
+              )
+            }
             icon={CartIcon}
             color={CHART_COLORS.success}
             description="Carritos con productos y actividad reciente."
@@ -913,7 +1015,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Valor activo"
-            value={loading ? <Skeleton width={80} /> : formatMoney(summary.activeCartValue)}
+            value={
+              loading ? (
+                <Skeleton width={80} />
+              ) : (
+                formatMoney(summary.activeCartValue)
+              )
+            }
             icon={CartIcon}
             color={CHART_COLORS.teal}
             description="Valor estimado en carritos activos."
@@ -922,7 +1030,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Carritos abandonados"
-            value={loading ? <Skeleton width={80} /> : formatNumber(summary.abandonedCarts)}
+            value={
+              loading ? (
+                <Skeleton width={80} />
+              ) : (
+                formatNumber(summary.abandonedCarts)
+              )
+            }
             icon={AbandonedCartIcon}
             color={CHART_COLORS.error}
             description="Carritos sin actividad después del umbral."
@@ -931,7 +1045,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Valor abandonado"
-            value={loading ? <Skeleton width={80} /> : formatMoney(summary.abandonedCartValue)}
+            value={
+              loading ? (
+                <Skeleton width={80} />
+              ) : (
+                formatMoney(summary.abandonedCartValue)
+              )
+            }
             icon={AbandonedCartIcon}
             color={CHART_COLORS.purple}
             description="Potencial recuperable en carritos abandonados."
@@ -952,20 +1072,35 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                   <Skeleton variant="rectangular" height={360} />
                 ) : dailyRows.length ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dailyRows} margin={{ top: 8, right: 18, bottom: 18, left: 8 }}>
+                    <BarChart
+                      data={dailyRows}
+                      margin={{ top: 8, right: 18, bottom: 18, left: 8 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tickFormatter={formatDateLabel} minTickGap={18} />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={formatDateLabel}
+                        minTickGap={18}
+                      />
                       <YAxis
                         yAxisId="money"
-                        tickFormatter={value => `$${Number(value || 0).toLocaleString('es-AR')}`}
+                        tickFormatter={value =>
+                          `$${Number(value || 0).toLocaleString('es-AR')}`
+                        }
                       />
-                      <YAxis yAxisId="count" orientation="right" allowDecimals={false} />
+                      <YAxis
+                        yAxisId="count"
+                        orientation="right"
+                        allowDecimals={false}
+                      />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
                         content={
                           <BarTooltip
                             formatter={(value, key) =>
-                              key === 'revenue' ? formatMoney(value) : formatNumber(value)
+                              key === 'revenue'
+                                ? formatMoney(value)
+                                : formatNumber(value)
                             }
                           />
                         }
@@ -1029,7 +1164,9 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                         content={
                           <BarTooltip
                             formatter={(value, key) =>
-                              key === 'valor' ? formatMoney(value) : formatNumber(value)
+                              key === 'valor'
+                                ? formatMoney(value)
+                                : formatNumber(value)
                             }
                           />
                         }
@@ -1068,7 +1205,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Productos más vendidos"
                 description="Ordenados por revenue aprobado."
               />
-              <Box height={loading ? 340 : getVerticalChartHeight(topSellingProducts, 360)}>
+              <Box
+                height={
+                  loading
+                    ? 340
+                    : getVerticalChartHeight(topSellingProducts, 360)
+                }
+              >
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topSellingProducts.length ? (
@@ -1090,7 +1233,9 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
-                        content={<BarTooltip formatter={value => formatMoney(value)} />}
+                        content={
+                          <BarTooltip formatter={value => formatMoney(value)} />
+                        }
                       />
                       <Bar
                         dataKey="revenue"
@@ -1115,7 +1260,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Productos más visitados"
                 description="Ordenados por vistas de producto y enriquecidos con clicks y add to cart."
               />
-              <Box height={loading ? 340 : getVerticalChartHeight(topVisitedProducts, 360)}>
+              <Box
+                height={
+                  loading
+                    ? 340
+                    : getVerticalChartHeight(topVisitedProducts, 360)
+                }
+              >
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topVisitedProducts.length ? (
@@ -1137,7 +1288,11 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
-                        content={<BarTooltip formatter={value => formatNumber(value)} />}
+                        content={
+                          <BarTooltip
+                            formatter={value => formatNumber(value)}
+                          />
+                        }
                       />
                       <Bar
                         dataKey="views"
@@ -1177,7 +1332,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Productos con más clicks"
                 description="Clicks por producto desde cards, listados, búsquedas o bloques promocionales."
               />
-              <Box height={loading ? 340 : getVerticalChartHeight(topClickedProducts, 360)}>
+              <Box
+                height={
+                  loading
+                    ? 340
+                    : getVerticalChartHeight(topClickedProducts, 360)
+                }
+              >
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topClickedProducts.length ? (
@@ -1199,7 +1360,11 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
-                        content={<BarTooltip formatter={value => formatNumber(value)} />}
+                        content={
+                          <BarTooltip
+                            formatter={value => formatNumber(value)}
+                          />
+                        }
                       />
                       <Bar
                         dataKey="clicks"
@@ -1232,7 +1397,11 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                   <Skeleton variant="rectangular" height={360} />
                 ) : funnelRows.length ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={funnelRows} layout="vertical" margin={{ left: 20, right: 24 }}>
+                    <BarChart
+                      data={funnelRows}
+                      layout="vertical"
+                      margin={{ left: 20, right: 24 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" allowDecimals={false} />
                       <YAxis dataKey="name" type="category" width={125} />
@@ -1240,7 +1409,9 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                         content={
                           <BarTooltip
                             formatter={(value, key) =>
-                              key === 'rate' ? formatPercent(value) : formatNumber(value)
+                              key === 'rate'
+                                ? formatPercent(value)
+                                : formatNumber(value)
                             }
                           />
                         }
@@ -1274,13 +1445,21 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                   <Skeleton variant="rectangular" height={360} />
                 ) : trafficRows.length ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={trafficRows} layout="vertical" margin={{ left: 15, right: 24 }}>
+                    <BarChart
+                      data={trafficRows}
+                      layout="vertical"
+                      margin={{ left: 15, right: 24 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" />
                       <YAxis dataKey="channel" type="category" width={110} />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
-                        content={<BarTooltip formatter={value => formatNumber(value)} />}
+                        content={
+                          <BarTooltip
+                            formatter={value => formatNumber(value)}
+                          />
+                        }
                       />
                       <Bar
                         dataKey="sessions"
@@ -1315,13 +1494,24 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                   safeArray(activeCarts.latest)
                     .slice(0, 6)
                     .map(cart => (
-                      <Paper key={cart.cartId} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                        <Stack direction="row" justifyContent="space-between" spacing={2}>
+                      <Paper
+                        key={cart.cartId}
+                        variant="outlined"
+                        sx={{ p: 1.5, borderRadius: 2 }}
+                      >
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          spacing={2}
+                        >
                           <Box sx={{ minWidth: 0 }}>
                             <Typography variant="body2" fontWeight={800} noWrap>
                               Carrito #{String(cart.cartId || '').slice(-6)}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
                               {formatNumber(cart.itemCount)} productos ·{' '}
                               {new Date(cart.updatedAt).toLocaleString('es-AR')}
                             </Typography>
@@ -1351,12 +1541,18 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
               />
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={800}
+                    sx={{ mb: 1 }}
+                  >
                     Productos o páginas más vistas
                   </Typography>
                   <Stack spacing={1}>
                     {topPages.length ? (
-                      topPages.map(page => <PageInsightItem key={page.path} item={page} />)
+                      topPages.map(page => (
+                        <PageInsightItem key={page.path} item={page} />
+                      ))
                     ) : (
                       <Typography variant="body2" color="text.secondary">
                         Sin visitas.
@@ -1365,7 +1561,11 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                   </Stack>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={800}
+                    sx={{ mb: 1 }}
+                  >
                     Búsquedas frecuentes
                   </Typography>
                   <Stack spacing={1}>
@@ -1489,9 +1689,12 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
       .toUpperCase()
 
     if (!/^G-[A-Z0-9]{6,}$/i.test(measurementId)) {
-      enqueueSnackbar('Measurement ID inválido. Usá el formato completo G-XXXXXXXXXX.', {
-        variant: 'warning',
-      })
+      enqueueSnackbar(
+        'Measurement ID inválido. Usá el formato completo G-XXXXXXXXXX.',
+        {
+          variant: 'warning',
+        },
+      )
       return
     }
 
@@ -1508,7 +1711,8 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
 
       if (formData.apiSecret) payload.apiSecret = formData.apiSecret
       if (formData.propertyId) payload.propertyId = formData.propertyId
-      if (formData.serviceAccountJson) payload.serviceAccountJson = formData.serviceAccountJson
+      if (formData.serviceAccountJson)
+        payload.serviceAccountJson = formData.serviceAccountJson
 
       await analyticsAPI.configure(payload)
       enqueueSnackbar('Configuración guardada correctamente', {
@@ -1520,9 +1724,12 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
       await fetchStatus()
       onConfigurationSuccess?.()
     } catch (error) {
-      enqueueSnackbar(error.response?.data?.message || 'Error guardando configuración', {
-        variant: 'error',
-      })
+      enqueueSnackbar(
+        error.response?.data?.message || 'Error guardando configuración',
+        {
+          variant: 'error',
+        },
+      )
     } finally {
       setSaving(false)
     }
@@ -1534,9 +1741,12 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
       await analyticsAPI.getDashboard({ days: 7 })
       enqueueSnackbar('Conexión probada correctamente', { variant: 'success' })
     } catch (error) {
-      enqueueSnackbar(`Error de conexión: ${error.response?.data?.message || error.message}`, {
-        variant: 'error',
-      })
+      enqueueSnackbar(
+        `Error de conexión: ${error.response?.data?.message || error.message}`,
+        {
+          variant: 'error',
+        },
+      )
     } finally {
       setTesting(false)
     }
@@ -1554,13 +1764,19 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
     <Box>
       <Card sx={{ mb: 3, borderRadius: 3 }}>
         <CardContent>
-          <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+          <Stack
+            direction="row"
+            spacing={2}
+            alignItems="center"
+            justifyContent="space-between"
+          >
             <Box>
               <Typography variant="h6" fontWeight={800}>
                 Estado de conexión
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                GA4 es opcional. Las métricas internas funcionan sin configurar Google Analytics.
+                GA4 es opcional. Las métricas internas funcionan sin configurar
+                Google Analytics.
               </Typography>
             </Box>
             {status?.configured ? (
@@ -1592,7 +1808,11 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
               />
               <Chip
                 size="small"
-                label={status.hasReportingAccess ? 'Reporting API ✓' : 'Reporting API ✗'}
+                label={
+                  status.hasReportingAccess
+                    ? 'Reporting API ✓'
+                    : 'Reporting API ✗'
+                }
                 color={status.hasReportingAccess ? 'success' : 'default'}
               />
             </Stack>
@@ -1614,7 +1834,8 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
                 Configuración GA4
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Usá Measurement ID para tracking y Service Account para Reporting API.
+                Usá Measurement ID para tracking y Service Account para
+                Reporting API.
               </Typography>
             </Box>
             <Button size="small" onClick={() => setShowHelpDialog(true)}>
@@ -1651,8 +1872,15 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton onClick={() => setShowApiSecret(prev => !prev)} edge="end">
-                      {showApiSecret ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    <IconButton
+                      onClick={() => setShowApiSecret(prev => !prev)}
+                      edge="end"
+                    >
+                      {showApiSecret ? (
+                        <VisibilityOffIcon />
+                      ) : (
+                        <VisibilityIcon />
+                      )}
                     </IconButton>
                   </InputAdornment>
                 ),
@@ -1666,11 +1894,20 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
                 borderRadius: 2,
                 bgcolor: 'grey.50',
                 cursor: 'pointer',
-                borderColor: isJsonValid ? 'success.main' : jsonError ? 'error.main' : 'divider',
+                borderColor: isJsonValid
+                  ? 'success.main'
+                  : jsonError
+                    ? 'error.main'
+                    : 'divider',
               }}
               onClick={() => setShowJsonDialog(true)}
             >
-              <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+                spacing={2}
+              >
                 <Stack direction="row" spacing={1} alignItems="center">
                   {formData.serviceAccountJson ? (
                     isJsonValid ? (
@@ -1707,7 +1944,9 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
                 variant="contained"
                 onClick={handleSave}
                 disabled={saving}
-                startIcon={saving ? <CircularProgress size={18} /> : <SaveIcon />}
+                startIcon={
+                  saving ? <CircularProgress size={18} /> : <SaveIcon />
+                }
               >
                 {saving ? 'Guardando...' : 'Guardar configuración'}
               </Button>
@@ -1717,7 +1956,9 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
                   variant="outlined"
                   onClick={handleTest}
                   disabled={testing}
-                  startIcon={testing ? <CircularProgress size={18} /> : <RefreshIcon />}
+                  startIcon={
+                    testing ? <CircularProgress size={18} /> : <RefreshIcon />
+                  }
                 >
                   {testing ? 'Probando...' : 'Probar conexión'}
                 </Button>
@@ -1743,7 +1984,8 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
             onChange={handleJsonChange}
             error={Boolean(jsonError)}
             helperText={
-              jsonError || 'Pegá el contenido completo del JSON descargado desde Google Cloud.'
+              jsonError ||
+              'Pegá el contenido completo del JSON descargado desde Google Cloud.'
             }
             sx={{
               '& .MuiInputBase-input': {
@@ -1753,7 +1995,8 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
             }}
           />
           <Alert severity="warning" sx={{ mt: 2 }}>
-            Este JSON contiene claves privadas. Guardalo solo en el backend y no lo compartas.
+            Este JSON contiene claves privadas. Guardalo solo en el backend y no
+            lo compartas.
           </Alert>
         </DialogContent>
         <DialogActions>
@@ -1778,7 +2021,10 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
         <DialogContent>
           <Stepper activeStep={activeStep} orientation="vertical">
             {[
-              ['Crear propiedad GA4', 'Entrá a Google Analytics → Admin → Create Property.'],
+              [
+                'Crear propiedad GA4',
+                'Entrá a Google Analytics → Admin → Create Property.',
+              ],
               [
                 'Obtener Measurement ID',
                 'Admin → Data Streams → copiá el ID con formato G-XXXXXXXXXX.',
@@ -1787,7 +2033,10 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
                 'Crear Service Account',
                 'Google Cloud Console → IAM & Admin → Service Accounts → Create.',
               ],
-              ['Descargar JSON', 'Service Account → Keys → Create new key → JSON.'],
+              [
+                'Descargar JSON',
+                'Service Account → Keys → Create new key → JSON.',
+              ],
               [
                 'Dar permisos en GA4',
                 'GA4 → Admin → Property Access Management → agregá el email del service account.',
@@ -1854,8 +2103,8 @@ const Dashboard = () => {
             Métricas
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Ventas, carritos activos, carritos abandonados, productos visitados y conversión del
-            tenant actual.
+            Ventas, carritos activos, carritos abandonados, productos visitados
+            y conversión del tenant actual.
           </Typography>
         </Box>
       </Stack>
@@ -1873,7 +2122,9 @@ const Dashboard = () => {
       </Paper>
 
       {tab === 0 && <AnalyticsDashboardView onOpenConfig={() => setTab(1)} />}
-      {tab === 1 && <AnalyticsConfigView onConfigurationSuccess={() => setTab(0)} />}
+      {tab === 1 && (
+        <AnalyticsConfigView onConfigurationSuccess={() => setTab(0)} />
+      )}
     </Box>
   )
 }

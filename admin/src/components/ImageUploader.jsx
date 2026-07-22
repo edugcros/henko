@@ -1,5 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Box, Typography, IconButton, CircularProgress, Button } from '@mui/material'
+import {
+  Box,
+  Typography,
+  IconButton,
+  CircularProgress,
+  Button,
+} from '@mui/material'
 import { CloudUpload, Delete, Image as ImageIcon } from '@mui/icons-material'
 
 const ImageUploader = ({
@@ -166,7 +172,9 @@ const ImageUploader = ({
         ) : (
           <Box>
             <ImageIcon sx={{ fontSize: 32, color: 'text.secondary', mb: 1 }} />
-            <Typography variant="body2">Arrastrá o hacé click para subir</Typography>
+            <Typography variant="body2">
+              Arrastrá o hacé click para subir
+            </Typography>
             <Typography variant="caption" color="text.secondary">
               PNG, JPG hasta {maxSizeMB}MB
             </Typography>
@@ -174,7 +182,13 @@ const ImageUploader = ({
         )}
       </Box>
 
-      <input ref={inputRef} type="file" hidden accept="image/*" onChange={handleFileSelect} />
+      <input
+        ref={inputRef}
+        type="file"
+        hidden
+        accept="image/*"
+        onChange={handleFileSelect}
+      />
 
       {error && (
         <Typography variant="caption" color="error" sx={{ mt: 1 }}>
@@ -183,7 +197,11 @@ const ImageUploader = ({
       )}
 
       {value?.url && !uploading && (
-        <Button size="small" onClick={() => inputRef.current.click()} sx={{ mt: 1 }}>
+        <Button
+          size="small"
+          onClick={() => inputRef.current.click()}
+          sx={{ mt: 1 }}
+        >
           Reemplazar
         </Button>
       )}

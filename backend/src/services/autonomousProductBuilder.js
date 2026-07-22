@@ -3,7 +3,7 @@
 // Convierte la salida completa (no recortada) de aiVisionService en un
 // documento de Product listo para Product.create(), sin intervención
 // humana. Es la contraparte de servidor de la lógica que hoy vive en
-// admin/src/pages/Addproduct.js (normalizeAiAnalysisForForm /
+// admin/src/pages/AddProduct.js (normalizeAiAnalysisForForm /
 // buildProductPayloadFromAnalysis), portada para que el agente pueda
 // producir el mismo resultado a las 4am sin que nadie tenga la pestaña
 // de AddProduct abierta.
@@ -512,7 +512,7 @@ const buildAiReviewReasons = analysis => {
 /**
  * Motor único de normalización: transforma la salida cruda de la IA en la
  * misma estructura "lista para formulario" que antes calculaba
- * admin/src/pages/Addproduct.js por su cuenta (normalizeAiAnalysisForForm).
+ * admin/src/pages/AddProduct.js por su cuenta (normalizeAiAnalysisForForm).
  *
  * Se calcula acá, una sola vez, para que tanto el camino 100% automático
  * (agente → AddProduct autopilot, sin humano) como el camino manual (un
@@ -680,7 +680,7 @@ export const buildAutonomousProductPayload = ({ analysis, job, tenantId }) => {
     aiImageHash: analysis?.hash || analysis?.imageHash || job?.imageHash || null,
     aiNeedsReview: Boolean(analysis?.needsReview || analysis?.requiresHumanReview),
     aiAgentJobId: job?._id || null,
-    aiAgentScheduledAt: job?.scheduledAt || job?.metadata?.addProductAt || null,
+    aiAgentScheduledAt: job?.scheduledAt || job?.metadata?.AddProductAt || null,
     aiAutomationMode: 'agent-autosave',
 
     status: 'draft',

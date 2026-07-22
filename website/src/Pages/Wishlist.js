@@ -1,7 +1,10 @@
 // src/pages/Wishlist.jsx
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getUserProductWishlist, toggleWishlist } from '@features/user/userSlice'
+import {
+  getUserProductWishlist,
+  toggleWishlist,
+} from '@features/user/userSlice'
 import Meta from '@components/Meta.js'
 import BreadCrumb from '@components/BreadCrumb.js'
 import Container from '@components/Container.js'
@@ -56,7 +59,10 @@ const Wishlist = () => {
     return {}
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
+  const themeColors = useMemo(
+    () => getThemeColors(activeConfig),
+    [activeConfig],
+  )
 
   // compatible: wishlist puede estar en varios lugares del state según tu slice
   const wishlistFromState = useSelector(state => state.user?.wishlist)
@@ -128,13 +134,17 @@ const Wishlist = () => {
       try {
         setRemovingId(productId)
         // Optimistic: quitar localmente primero
-        setLocalWishlist(prev => prev.filter(p => String(p._id) !== String(productId)))
+        setLocalWishlist(prev =>
+          prev.filter(p => String(p._id) !== String(productId)),
+        )
 
         const result = await dispatch(toggleWishlist(productId)).unwrap()
         // result is expected to be the updated wishlist array (server)
         if (result && (Array.isArray(result) || result.data)) {
           // si el thunk retorna data o array, sincronizamos
-          const serverWishlist = Array.isArray(result) ? result : result.data || result
+          const serverWishlist = Array.isArray(result)
+            ? result
+            : result.data || result
           setLocalWishlist(serverWishlist)
           setSnackbar({
             open: true,
@@ -168,7 +178,9 @@ const Wishlist = () => {
   const handleViewProduct = id => navigate(`/product/${id}`)
 
   // Skeleton view while loading initial data
-  const isLoading = loadingGlobal && (!Array.isArray(wishlistSource) || wishlistSource.length === 0)
+  const isLoading =
+    loadingGlobal &&
+    (!Array.isArray(wishlistSource) || wishlistSource.length === 0)
 
   return (
     <>
@@ -291,7 +303,9 @@ const Wishlist = () => {
                             boxShadow: 1,
                           }}
                         >
-                          <FavoriteIcon sx={{ color: theme.palette.error.main }} />
+                          <FavoriteIcon
+                            sx={{ color: theme.palette.error.main }}
+                          />
                         </IconButton>
                       </Box>
 

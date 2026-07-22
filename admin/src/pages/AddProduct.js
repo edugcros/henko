@@ -1,4 +1,4 @@
-// 📁 src/pages/AddProduct.jsx
+// 📁 src/pages/AddProduct.js
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   ConfigProvider,
@@ -332,7 +332,9 @@ const QUICK_MODE_FIELD_KEYS = [
   'stock',
 ]
 
-const DEFAULT_DYNAMIC_FIELD_TYPES = new Set(DYNAMIC_FIELD_TYPES.map(item => item.value))
+const DEFAULT_DYNAMIC_FIELD_TYPES = new Set(
+  DYNAMIC_FIELD_TYPES.map(item => item.value),
+)
 
 const buildGeneratedVariantSku = (productTitle, attributes, index) => {
   const titlePart = slugifyKeyPart(productTitle || 'producto')
@@ -340,11 +342,17 @@ const buildGeneratedVariantSku = (productTitle, attributes, index) => {
     .slice(0, 12)
     .toUpperCase()
   const attributePart = Object.values(attributes || {})
-    .map(value => slugifyKeyPart(value).replace(/-/g, '').slice(0, 8).toUpperCase())
+    .map(value =>
+      slugifyKeyPart(value).replace(/-/g, '').slice(0, 8).toUpperCase(),
+    )
     .filter(Boolean)
     .join('-')
 
-  return [titlePart || 'PRODUCTO', attributePart, String(index + 1).padStart(2, '0')]
+  return [
+    titlePart || 'PRODUCTO',
+    attributePart,
+    String(index + 1).padStart(2, '0'),
+  ]
     .filter(Boolean)
     .join('-')
     .slice(0, 64)
@@ -387,7 +395,10 @@ const getVariantAttributesConfig = (dynamicAttributes, selectedAttributes) => {
       label: attr.label || attr.name,
       type: attr.type || 'select',
       values: [
-        ...new Set([...safeArray(attr.values), ...safeArray(selectedAttributes?.[attr.name])]),
+        ...new Set([
+          ...safeArray(attr.values),
+          ...safeArray(selectedAttributes?.[attr.name]),
+        ]),
       ],
       required: attr.required === true,
       sortOrder: index,
@@ -401,7 +412,14 @@ const isAllowedImageFile = file => {
   const mimeType = fileObject?.type || file?.type || ''
   const filename = fileObject?.name || file?.name || ''
   const extension = filename.split('.').pop()?.toLowerCase()
-  const extensionAllowed = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].includes(extension)
+  const extensionAllowed = [
+    'jpg',
+    'jpeg',
+    'png',
+    'webp',
+    'heic',
+    'heif',
+  ].includes(extension)
 
   return ALLOWED_IMAGE_TYPES.has(mimeType) || extensionAllowed
 }
@@ -445,7 +463,9 @@ const validateVariantsForSubmit = variants => {
     return 'Activaste variantes, pero todavía no generaste ninguna combinación.'
   }
 
-  const activeVariants = safeArray(variants).filter(variant => variant.isActive !== false)
+  const activeVariants = safeArray(variants).filter(
+    variant => variant.isActive !== false,
+  )
   if (!activeVariants.length) {
     return 'El producto necesita al menos una variante activa.'
   }
@@ -489,7 +509,10 @@ const validateVariantsForSubmit = variants => {
   return null
 }
 
-const validateProductBasicsForSubmit = ({ values = {}, hasVariants = false }) => {
+const validateProductBasicsForSubmit = ({
+  values = {},
+  hasVariants = false,
+}) => {
   const requiredFields = [
     ['titulo', 'El título es obligatorio'],
     ['descripcion', 'La descripción comercial es obligatoria'],
@@ -561,7 +584,10 @@ const inferTechnicalFieldType = value => {
   const clean = normalizeString(value)
   if (!clean) return 'text'
   if (/^(si|sí|no|true|false)$/i.test(clean)) return 'boolean'
-  if (/^-?\d+(?:[.,]\d+)?(?:\s*(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv))?$/i.test(clean)) return 'number'
+  if (
+    /^-?\d+(?:[.,]\d+)?(?:\s*(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv))?$/i.test(clean)
+  )
+    return 'number'
   if (clean.includes(',') || clean.includes(';')) return 'multiselect'
   return clean.length > 90 ? 'textarea' : 'text'
 }
@@ -595,7 +621,9 @@ const parseTechnicalFieldText = value => {
             .map(item => normalizeString(item))
             .filter(Boolean)
         : type === 'number'
-          ? normalizeNumberValue(rawValue.replace(/[^0-9.,-]/g, '').replace(',', '.'))
+          ? normalizeNumberValue(
+              rawValue.replace(/[^0-9.,-]/g, '').replace(',', '.'),
+            )
           : /^(si|sí|true)$/i.test(rawValue)
             ? true
             : /^(no|false)$/i.test(rawValue)
@@ -607,10 +635,14 @@ const parseTechnicalFieldText = value => {
         label: toTitleCase(rawLabel),
         type,
         values: Array.isArray(normalizedValue) ? normalizedValue : [],
-        unit: normalizeString(rawValue.match(/\b(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv)\b/i)?.[1] || ''),
+        unit: normalizeString(
+          rawValue.match(/\b(cm|mm|m|kg|g|cc|l|ml|w|v|hp|cv)\b/i)?.[1] || '',
+        ),
         required: false,
         visible: true,
-        filterable: ['select', 'multiselect', 'color', 'boolean'].includes(type),
+        filterable: ['select', 'multiselect', 'color', 'boolean'].includes(
+          type,
+        ),
         searchable: true,
         group: 'ficha técnica',
         source: 'quick',
@@ -629,7 +661,9 @@ const mergeVariantAttributeDefinitions = (current = [], incoming = []) => {
     if (!attribute?.name) return
     merged.set(attribute.name, {
       ...attribute,
-      sortOrder: Number.isFinite(Number(attribute.sortOrder)) ? Number(attribute.sortOrder) : index,
+      sortOrder: Number.isFinite(Number(attribute.sortOrder))
+        ? Number(attribute.sortOrder)
+        : index,
     })
   })
 
@@ -639,14 +673,26 @@ const mergeVariantAttributeDefinitions = (current = [], incoming = []) => {
     merged.set(attribute.name, {
       ...previous,
       ...attribute,
-      label: attribute.label || previous?.label || normalizeAiFieldLabel(attribute.name),
-      values: [...new Set([...safeArray(previous?.values), ...safeArray(attribute.values)])],
+      label:
+        attribute.label ||
+        previous?.label ||
+        normalizeAiFieldLabel(attribute.name),
+      values: [
+        ...new Set([
+          ...safeArray(previous?.values),
+          ...safeArray(attribute.values),
+        ]),
+      ],
       required: previous?.required === true || attribute.required === true,
-      sortOrder: Number.isFinite(Number(previous?.sortOrder)) ? Number(previous.sortOrder) : index,
+      sortOrder: Number.isFinite(Number(previous?.sortOrder))
+        ? Number(previous.sortOrder)
+        : index,
     })
   })
 
-  return [...merged.values()].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+  return [...merged.values()].sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+  )
 }
 
 const mergeSelectedVariantValues = (current = {}, incoming = {}) => {
@@ -684,7 +730,8 @@ const generateVariantRowsFromSelection = ({
   }
 
   const total = activeAttrs.reduce(
-    (acc, attribute) => acc * safeArray(selectedAttributes[attribute.name]).length,
+    (acc, attribute) =>
+      acc * safeArray(selectedAttributes[attribute.name]).length,
     1,
   )
 
@@ -710,12 +757,19 @@ const generateVariantRowsFromSelection = ({
     )
   }
 
-  const previousByKey = new Map(safeArray(previousVariants).map(variant => [variant.key, variant]))
+  const previousByKey = new Map(
+    safeArray(previousVariants).map(variant => [variant.key, variant]),
+  )
 
   const variants = buildCombinations().map((combination, index) => {
-    const key = buildVariantKey(combination) || `variant-${index + 1}-${Date.now()}`
+    const key =
+      buildVariantKey(combination) || `variant-${index + 1}-${Date.now()}`
     const previous = previousByKey.get(key)
-    const generatedSku = buildGeneratedVariantSku(productTitle, combination, index)
+    const generatedSku = buildGeneratedVariantSku(
+      productTitle,
+      combination,
+      index,
+    )
 
     return {
       key,
@@ -736,12 +790,15 @@ const generateVariantRowsFromSelection = ({
 const normalizeDynamicFieldType = value => {
   const clean = normalizeString(value).toLowerCase()
 
-  if (['textarea', 'longtext', 'long_text', 'multiline'].includes(clean)) return 'textarea'
+  if (['textarea', 'longtext', 'long_text', 'multiline'].includes(clean))
+    return 'textarea'
   if (['number', 'numeric', 'integer', 'float'].includes(clean)) return 'number'
   if (['select', 'dropdown', 'enum', 'list'].includes(clean)) return 'select'
-  if (['multiselect', 'multi_select', 'tags', 'array'].includes(clean)) return 'multiselect'
+  if (['multiselect', 'multi_select', 'tags', 'array'].includes(clean))
+    return 'multiselect'
   if (['color', 'colour'].includes(clean)) return 'color'
-  if (['boolean', 'bool', 'switch', 'checkbox'].includes(clean)) return 'boolean'
+  if (['boolean', 'bool', 'switch', 'checkbox'].includes(clean))
+    return 'boolean'
   if (['text', 'string', 'input'].includes(clean)) return 'text'
 
   return DEFAULT_DYNAMIC_FIELD_TYPES.has(clean) ? clean : 'text'
@@ -749,7 +806,9 @@ const normalizeDynamicFieldType = value => {
 
 const parseDynamicFieldOptions = value => {
   if (Array.isArray(value)) {
-    return [...new Set(value.map(item => normalizeString(item)).filter(Boolean))]
+    return [
+      ...new Set(value.map(item => normalizeString(item)).filter(Boolean)),
+    ]
   }
 
   if (typeof value === 'string') {
@@ -785,7 +844,13 @@ const normalizeDynamicFieldDefinition = (field, index = 0) => {
   }
 
   const rawName =
-    field.name || field.key || field.field || field.code || field.id || field.label || field.title
+    field.name ||
+    field.key ||
+    field.field ||
+    field.code ||
+    field.id ||
+    field.label ||
+    field.title
   const name = slugifyKeyPart(rawName).replace(/-/g, '_')
 
   if (!name) return null
@@ -793,14 +858,21 @@ const normalizeDynamicFieldDefinition = (field, index = 0) => {
   return {
     name,
     label: normalizeString(field.label || field.title || field.name || name),
-    type: normalizeDynamicFieldType(field.type || field.inputType || field.kind),
+    type: normalizeDynamicFieldType(
+      field.type || field.inputType || field.kind,
+    ),
     values: parseDynamicFieldOptions(
       field.values || field.options || field.enum || field.allowedValues,
     ),
     unit: normalizeString(field.unit || field.suffix || ''),
     placeholder: normalizeString(field.placeholder || field.help || ''),
-    required: field.required === true || field.isRequired === true || field.mandatory === true,
-    sortOrder: Number.isFinite(Number(field.sortOrder)) ? Number(field.sortOrder) : index,
+    required:
+      field.required === true ||
+      field.isRequired === true ||
+      field.mandatory === true,
+    sortOrder: Number.isFinite(Number(field.sortOrder))
+      ? Number(field.sortOrder)
+      : index,
     source: field.source || 'template',
   }
 }
@@ -853,7 +925,12 @@ const extractTemplateDynamicFields = templatePayload => {
       map.set(normalized.name, {
         ...previous,
         ...normalized,
-        values: [...new Set([...safeArray(previous?.values), ...safeArray(normalized.values)])],
+        values: [
+          ...new Set([
+            ...safeArray(previous?.values),
+            ...safeArray(normalized.values),
+          ]),
+        ],
         required: previous?.required === true || normalized.required === true,
       })
     })
@@ -942,13 +1019,19 @@ const buildSeoPayload = values => {
 
   return {
     slug,
-    shortDescription: normalizeString(values.shortDescription) || sourceDescription.slice(0, 240),
+    shortDescription:
+      normalizeString(values.shortDescription) ||
+      sourceDescription.slice(0, 240),
     metaTitle: normalizeString(values.metaTitle) || title.slice(0, 70),
-    metaDescription: normalizeString(values.metaDescription) || sourceDescription.slice(0, 160),
+    metaDescription:
+      normalizeString(values.metaDescription) ||
+      sourceDescription.slice(0, 160),
     keywords: [
       ...new Set(
         rawKeywords
-          .flatMap(item => (Array.isArray(item) ? item : String(item || '').split(/[,;|]/g)))
+          .flatMap(item =>
+            Array.isArray(item) ? item : String(item || '').split(/[,;|]/g),
+          )
           .map(item => normalizeString(item).toLowerCase())
           .filter(Boolean),
       ),
@@ -1040,11 +1123,15 @@ const buildPreviewFromFile = file => {
   return null
 }
 
-const rebuildPreviews = files => files.map(file => buildPreviewFromFile(file)).filter(Boolean)
+const rebuildPreviews = files =>
+  files.map(file => buildPreviewFromFile(file)).filter(Boolean)
 
 const waitForUiReset = () =>
   new Promise(resolve => {
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.requestAnimationFrame === 'function'
+    ) {
       window.requestAnimationFrame(() => resolve())
       return
     }
@@ -1055,7 +1142,8 @@ const waitForUiReset = () =>
 const getFirstFilled = (...values) => {
   for (const value of values) {
     if (Array.isArray(value) && value.length) return value
-    if (value && typeof value === 'object' && Object.keys(value).length) return value
+    if (value && typeof value === 'object' && Object.keys(value).length)
+      return value
     const cleanValue = normalizeString(value)
     if (cleanValue) return value
   }
@@ -1133,20 +1221,28 @@ const normalizeAiSpecificationRows = analysis => {
         return
       }
 
-      const rawKey = item.key || item.name || item.field || item.label || item.title
+      const rawKey =
+        item.key || item.name || item.field || item.label || item.title
       const key = slugifyKeyPart(rawKey).replace(/-/g, '_')
-      const value = item.value ?? item.valor ?? item.answer ?? item.text ?? item.content
+      const value =
+        item.value ?? item.valor ?? item.answer ?? item.text ?? item.content
 
       if (!key || value === undefined || value === null || value === '') return
 
       rows.push({
         key,
-        label: normalizeString(item.label || item.title || rawKey) || normalizeAiFieldLabel(key),
+        label:
+          normalizeString(item.label || item.title || rawKey) ||
+          normalizeAiFieldLabel(key),
         value,
         type: normalizeDynamicFieldType(
           item.type ||
             item.inputType ||
-            (Array.isArray(value) ? 'multiselect' : typeof value === 'number' ? 'number' : 'text'),
+            (Array.isArray(value)
+              ? 'multiselect'
+              : typeof value === 'number'
+                ? 'number'
+                : 'text'),
         ),
         unit: normalizeString(item.unit || item.suffix || ''),
         group: normalizeString(item.group || item.section || 'ficha técnica'),
@@ -1154,8 +1250,12 @@ const normalizeAiSpecificationRows = analysis => {
         filterable: item.filterable === true,
         searchable: item.searchable !== false,
         source: item.source || 'ia',
-        sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : index,
-        confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : undefined,
+        sortOrder: Number.isFinite(Number(item.sortOrder))
+          ? Number(item.sortOrder)
+          : index,
+        confidence: Number.isFinite(Number(item.confidence))
+          ? Number(item.confidence)
+          : undefined,
       })
     })
   })
@@ -1175,7 +1275,8 @@ const flattenAiAttributes = analysis => {
   ]
 
   return sources.reduce((acc, source) => {
-    if (!source || typeof source !== 'object' || Array.isArray(source)) return acc
+    if (!source || typeof source !== 'object' || Array.isArray(source))
+      return acc
 
     Object.entries(source).forEach(([key, value]) => {
       const normalizedKey = slugifyKeyPart(key).replace(/-/g, '_')
@@ -1194,7 +1295,10 @@ const buildDynamicFieldsFromAi = analysis => {
   const map = new Map()
 
   specs.forEach((spec, index) => {
-    const key = slugifyKeyPart(spec.key || spec.name || spec.label).replace(/-/g, '_')
+    const key = slugifyKeyPart(spec.key || spec.name || spec.label).replace(
+      /-/g,
+      '_',
+    )
     if (!key || AI_FIELD_BLOCKLIST.has(key)) return
 
     map.set(key, {
@@ -1209,7 +1313,9 @@ const buildDynamicFieldsFromAi = analysis => {
               : 'text'),
       ),
       values: parseDynamicFieldOptions(
-        spec.values || spec.options || (Array.isArray(spec.value) ? spec.value : []),
+        spec.values ||
+          spec.options ||
+          (Array.isArray(spec.value) ? spec.value : []),
       ),
       unit: normalizeString(spec.unit || ''),
       placeholder: normalizeString(spec.placeholder || 'Dato detectado por IA'),
@@ -1224,7 +1330,9 @@ const buildDynamicFieldsFromAi = analysis => {
       group: normalizeString(spec.group || 'ficha técnica'),
       source: spec.source || 'ia',
       confidence: spec.confidence,
-      sortOrder: Number.isFinite(Number(spec.sortOrder)) ? Number(spec.sortOrder) : index,
+      sortOrder: Number.isFinite(Number(spec.sortOrder))
+        ? Number(spec.sortOrder)
+        : index,
     })
   })
 
@@ -1234,8 +1342,14 @@ const buildDynamicFieldsFromAi = analysis => {
     map.set(key, {
       name: key,
       label: normalizeAiFieldLabel(key),
-      type: Array.isArray(value) ? 'multiselect' : typeof value === 'number' ? 'number' : 'text',
-      values: Array.isArray(value) ? value.map(item => normalizeString(item)).filter(Boolean) : [],
+      type: Array.isArray(value)
+        ? 'multiselect'
+        : typeof value === 'number'
+          ? 'number'
+          : 'text',
+      values: Array.isArray(value)
+        ? value.map(item => normalizeString(item)).filter(Boolean)
+        : [],
       unit: '',
       placeholder: 'Dato complementario detectado por IA',
       required: false,
@@ -1248,7 +1362,9 @@ const buildDynamicFieldsFromAi = analysis => {
     })
   })
 
-  return [...map.values()].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+  return [...map.values()].sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+  )
 }
 
 const buildDynamicValuesFromAi = (analysis, fields = []) => {
@@ -1257,7 +1373,10 @@ const buildDynamicValuesFromAi = (analysis, fields = []) => {
   const values = {}
 
   specs.forEach(spec => {
-    const key = slugifyKeyPart(spec.key || spec.name || spec.label).replace(/-/g, '_')
+    const key = slugifyKeyPart(spec.key || spec.name || spec.label).replace(
+      /-/g,
+      '_',
+    )
     if (!key || AI_FIELD_BLOCKLIST.has(key)) return
     if (spec.value !== undefined && spec.value !== null && spec.value !== '') {
       values[key] = spec.value
@@ -1265,11 +1384,14 @@ const buildDynamicValuesFromAi = (analysis, fields = []) => {
   })
 
   Object.entries(attributes).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') values[key] = value
+    if (value !== undefined && value !== null && value !== '')
+      values[key] = value
   })
 
   const allowed = new Set(fields.map(field => field.name))
-  return Object.fromEntries(Object.entries(values).filter(([key]) => allowed.has(key)))
+  return Object.fromEntries(
+    Object.entries(values).filter(([key]) => allowed.has(key)),
+  )
 }
 
 const buildSpecificationRows = (fields = [], values = {}) => {
@@ -1295,7 +1417,9 @@ const buildSpecificationRows = (fields = [], values = {}) => {
         filterable: field.filterable === true,
         searchable: field.searchable !== false,
         source: field.source || 'manual',
-        sortOrder: Number.isFinite(Number(field.sortOrder)) ? Number(field.sortOrder) : index,
+        sortOrder: Number.isFinite(Number(field.sortOrder))
+          ? Number(field.sortOrder)
+          : index,
       }
     })
     .filter(Boolean)
@@ -1303,7 +1427,10 @@ const buildSpecificationRows = (fields = [], values = {}) => {
 
 const buildFilterAttributesFromSpecifications = specifications => {
   return safeArray(specifications)
-    .filter(item => item.filterable && item.value !== undefined && item.value !== null)
+    .filter(
+      item =>
+        item.filterable && item.value !== undefined && item.value !== null,
+    )
     .flatMap(item => {
       const values = Array.isArray(item.value) ? item.value : [item.value]
       return values
@@ -1351,7 +1478,9 @@ const sanitizeAiOutputForStorage = (value, includeTechnicalSheet) => {
   if (includeTechnicalSheet || !value || typeof value !== 'object') return value
 
   if (Array.isArray(value)) {
-    return value.map(item => sanitizeAiOutputForStorage(item, includeTechnicalSheet))
+    return value.map(item =>
+      sanitizeAiOutputForStorage(item, includeTechnicalSheet),
+    )
   }
 
   return Object.entries(value).reduce((acc, [key, entryValue]) => {
@@ -1427,10 +1556,14 @@ const enforceTechnicalSheetPersistence = (payload, includeTechnicalSheet) => {
   cleanPayload.technicalSheetEnabled = true
   cleanPayload.showTechnicalSheet = true
 
-  if (!normalizeString(cleanPayload.technicalDescription)) delete cleanPayload.technicalDescription
-  if (!normalizeString(cleanPayload.descripcionTecnica)) delete cleanPayload.descripcionTecnica
-  if (!safeArray(cleanPayload.specifications).length) delete cleanPayload.specifications
-  if (!safeArray(cleanPayload.filterAttributes).length) delete cleanPayload.filterAttributes
+  if (!normalizeString(cleanPayload.technicalDescription))
+    delete cleanPayload.technicalDescription
+  if (!normalizeString(cleanPayload.descripcionTecnica))
+    delete cleanPayload.descripcionTecnica
+  if (!safeArray(cleanPayload.specifications).length)
+    delete cleanPayload.specifications
+  if (!safeArray(cleanPayload.filterAttributes).length)
+    delete cleanPayload.filterAttributes
   removeEmptyObjectKey(cleanPayload, 'productAttributes')
   removeEmptyObjectKey(cleanPayload, 'categoryAttributes')
   removeEmptyObjectKey(cleanPayload, 'dynamicFields')
@@ -1439,7 +1572,10 @@ const enforceTechnicalSheetPersistence = (payload, includeTechnicalSheet) => {
 }
 
 const getAiReviewReasons = analysis => {
-  return [...safeArray(analysis?.reviewReasons), ...safeArray(analysis?.reasoningFlags)]
+  return [
+    ...safeArray(analysis?.reviewReasons),
+    ...safeArray(analysis?.reasoningFlags),
+  ]
     .map(item => normalizeString(item))
     .filter(Boolean)
 }
@@ -1469,7 +1605,11 @@ const normalizeAiAnalysisForForm = analysis => {
     return analysis.normalized
   }
 
-  const attrs = analysis?.atributos_detectados || analysis?.atributos || analysis?.attributes || {}
+  const attrs =
+    analysis?.atributos_detectados ||
+    analysis?.atributos ||
+    analysis?.attributes ||
+    {}
   const dynamicFields = buildDynamicFieldsFromAi(analysis)
   const dynamicValues = buildDynamicValuesFromAi(analysis, dynamicFields)
   const variantSuggestions = getAiVariantSuggestions(analysis)
@@ -1482,7 +1622,9 @@ const normalizeAiAnalysisForForm = analysis => {
 
   const fields = {
     titulo: normalizeString(analysis?.titulo || analysis?.title || ''),
-    descripcion: normalizeString(analysis?.descripcion || analysis?.description || ''),
+    descripcion: normalizeString(
+      analysis?.descripcion || analysis?.description || '',
+    ),
     descripcionTecnica: normalizeString(
       analysis?.descripcion_tecnica ||
         analysis?.technicalDescription ||
@@ -1491,25 +1633,43 @@ const normalizeAiAnalysisForForm = analysis => {
         '',
     ),
     categoria: toTitleCase(analysis?.categoria || analysis?.category || ''),
-    subcategoria: toTitleCase(analysis?.subcategoria || analysis?.subcategory || ''),
+    subcategoria: toTitleCase(
+      analysis?.subcategoria || analysis?.subcategory || '',
+    ),
     marca: normalizeString(analysis?.marca || analysis?.brand || ''),
-    precio: analysis?.precio_sugerido || analysis?.precio || analysis?.price || null,
+    precio:
+      analysis?.precio_sugerido || analysis?.precio || analysis?.price || null,
     cantidad: analysis?.cantidad || analysis?.stock || 1,
     condicion: analysis?.condicion || 'nuevo',
-    color: Array.isArray(colorValue) ? colorValue.join(', ') : normalizeString(colorValue),
+    color: Array.isArray(colorValue)
+      ? colorValue.join(', ')
+      : normalizeString(colorValue),
     material: normalizeString(materialValue),
-    shortDescription: normalizeString(seo.shortDescription || analysis?.shortDescription || ''),
+    shortDescription: normalizeString(
+      seo.shortDescription || analysis?.shortDescription || '',
+    ),
     metaTitle: normalizeString(seo.metaTitle || analysis?.metaTitle || ''),
-    metaDescription: normalizeString(seo.metaDescription || analysis?.metaDescription || ''),
-    seoKeywords: safeArray(seo.keywords || analysis?.keywords || analysis?.tags),
+    metaDescription: normalizeString(
+      seo.metaDescription || analysis?.metaDescription || '',
+    ),
+    seoKeywords: safeArray(
+      seo.keywords || analysis?.keywords || analysis?.tags,
+    ),
     weightKg: logistics.weightKg || analysis?.weightKg || null,
-    shippingType: logistics?.shipping?.type || logistics.shippingType || 'standard',
+    shippingType:
+      logistics?.shipping?.type || logistics.shippingType || 'standard',
     warranty: logistics.warranty || analysis?.warranty || '',
     countryOfOrigin:
-      logistics.countryOfOrigin || logistics.originCountry || analysis?.countryOfOrigin || '',
-    packageLengthCm: logistics?.dimensions?.length || logistics?.package?.length || null,
-    packageWidthCm: logistics?.dimensions?.width || logistics?.package?.width || null,
-    packageHeightCm: logistics?.dimensions?.height || logistics?.package?.height || null,
+      logistics.countryOfOrigin ||
+      logistics.originCountry ||
+      analysis?.countryOfOrigin ||
+      '',
+    packageLengthCm:
+      logistics?.dimensions?.length || logistics?.package?.length || null,
+    packageWidthCm:
+      logistics?.dimensions?.width || logistics?.package?.width || null,
+    packageHeightCm:
+      logistics?.dimensions?.height || logistics?.package?.height || null,
     dynamicFields: dynamicValues,
   }
 
@@ -1522,7 +1682,15 @@ const normalizeAiAnalysisForForm = analysis => {
             ? { opcion: variant }
             : Object.fromEntries(
                 Object.entries(variant || {}).filter(
-                  ([key]) => !['precio', 'stock', 'sku', 'price', 'imagen', 'image'].includes(key),
+                  ([key]) =>
+                    ![
+                      'precio',
+                      'stock',
+                      'sku',
+                      'price',
+                      'imagen',
+                      'image',
+                    ].includes(key),
                 ),
               )
 
@@ -1531,14 +1699,19 @@ const normalizeAiAnalysisForForm = analysis => {
           const cleanValue = normalizeString(value)
           if (!name || !cleanValue) return
           if (!selectedAttributes[name]) selectedAttributes[name] = []
-          selectedAttributes[name] = [...new Set([...selectedAttributes[name], cleanValue])]
+          selectedAttributes[name] = [
+            ...new Set([...selectedAttributes[name], cleanValue]),
+          ]
         })
 
         return {
-          key: buildVariantKey(combination) || `ai-variant-${idx}-${Date.now()}`,
+          key:
+            buildVariantKey(combination) || `ai-variant-${idx}-${Date.now()}`,
           nombre: buildVariantName(combination) || `Variante ${idx + 1}`,
           combinacion: combination,
-          price: Number(variant?.precio || variant?.price || analysis?.precio_sugerido || 0),
+          price: Number(
+            variant?.precio || variant?.price || analysis?.precio_sugerido || 0,
+          ),
           stock: Number(variant?.stock || 0),
           sku: variant?.sku || '',
           isActive: true,
@@ -1580,7 +1753,9 @@ const normalizeAiAnalysisForForm = analysis => {
       materialConfidence: Number(analysis?.material_confidence || 0),
       priceConfidence: Number(analysis?.price_confidence || 0),
       requiresHumanReview: Boolean(
-        analysis?.requiresHumanReview || analysis?.needsReview || analysis?.aiNeedsReview,
+        analysis?.requiresHumanReview ||
+        analysis?.needsReview ||
+        analysis?.aiNeedsReview,
       ),
       reasons: getAiReviewReasons(analysis),
     },
@@ -1598,7 +1773,8 @@ const buildProductPayloadFromAnalysis = ({
   const normalizedAnalysisForForm = normalizeAiAnalysisForForm(analysis || {})
   const { fields, dynamicFields, dynamicValues } = normalizedAnalysisForForm
   const specifications = buildSpecificationRows(dynamicFields, dynamicValues)
-  const filterAttributes = buildFilterAttributesFromSpecifications(specifications)
+  const filterAttributes =
+    buildFilterAttributesFromSpecifications(specifications)
   const colorArray = normalizeString(fields.color)
     ? fields.color
         .split(',')
@@ -1631,7 +1807,8 @@ const buildProductPayloadFromAnalysis = ({
   const payload = {
     title,
     description:
-      fields.descripcion || 'Descripción generada automáticamente pendiente de revisión.',
+      fields.descripcion ||
+      'Descripción generada automáticamente pendiente de revisión.',
     technicalDescription: fields.descripcionTecnica,
     descripcionTecnica: fields.descripcionTecnica,
     categoria: toTitleCase(fields.categoria || 'Sin Categoría'),
@@ -1657,7 +1834,9 @@ const buildProductPayloadFromAnalysis = ({
     variants: normalizedAnalysisForForm.variants.map((variant, idx) => ({
       key: variant.key,
       nombre: variant.nombre,
-      sku: normalizeSku(variant.sku) || buildGeneratedVariantSku(title, variant.combinacion, idx),
+      sku:
+        normalizeSku(variant.sku) ||
+        buildGeneratedVariantSku(title, variant.combinacion, idx),
       attributes: variant.combinacion,
       combinacion: variant.combinacion,
       price: normalizeNumberValue(variant.price || fields.precio),
@@ -1681,9 +1860,13 @@ const buildProductPayloadFromAnalysis = ({
     iaGenerated: true,
     aiOriginalOutput: JSON.stringify(normalizedAnalysis),
     aiConfidence: normalizedAnalysis?.confidence ?? null,
-    aiSource: normalizedAnalysis?.source || normalizedAnalysis?.model || 'gemini',
+    aiSource:
+      normalizedAnalysis?.source || normalizedAnalysis?.model || 'gemini',
     aiImageHash:
-      normalizedAnalysis?.hash || normalizedAnalysis?.imageHash || job?.imageHash || null,
+      normalizedAnalysis?.hash ||
+      normalizedAnalysis?.imageHash ||
+      job?.imageHash ||
+      null,
     aiNeedsReview:
       normalizedAnalysis?.needsReview === true ||
       normalizedAnalysis?.requiresHumanReview === true ||
@@ -1729,13 +1912,19 @@ const AIAnalysisPanel = ({
       >
         <div style={{ textAlign: 'center', padding: '26px 0' }}>
           <div className="ai-pulse-animation">
-            <RobotOutlined style={{ fontSize: 52, color: token.colorPrimary }} />
+            <RobotOutlined
+              style={{ fontSize: 52, color: token.colorPrimary }}
+            />
           </div>
-          <Text strong style={{ fontSize: 17, display: 'block', margin: '16px 0 8px' }}>
+          <Text
+            strong
+            style={{ fontSize: 17, display: 'block', margin: '16px 0 8px' }}
+          >
             Analizando imagen con IA
           </Text>
           <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-            Identificando producto, atributos, ficha técnica, SEO y señales de revisión.
+            Identificando producto, atributos, ficha técnica, SEO y señales de
+            revisión.
           </Text>
         </div>
       </Card>
@@ -1768,10 +1957,21 @@ const AIAnalysisPanel = ({
   if (!iaResult) return null
 
   const normalized = normalizeAiAnalysisForForm(iaResult)
-  const { fields, dynamicFields, dynamicValues, hasExplicitVariants, variants, review, tags } =
-    normalized
-  const safeConfidence = Number(review.confidence || iaResult.confidence || confidence / 100 || 0)
-  const confidencePercent = Math.round(Math.max(0, Math.min(1, safeConfidence)) * 100)
+  const {
+    fields,
+    dynamicFields,
+    dynamicValues,
+    hasExplicitVariants,
+    variants,
+    review,
+    tags,
+  } = normalized
+  const safeConfidence = Number(
+    review.confidence || iaResult.confidence || confidence / 100 || 0,
+  )
+  const confidencePercent = Math.round(
+    Math.max(0, Math.min(1, safeConfidence)) * 100,
+  )
   const materialPercent = Math.round(
     Math.max(0, Math.min(1, Number(review.materialConfidence || 0))) * 100,
   )
@@ -1791,7 +1991,8 @@ const AIAnalysisPanel = ({
     if (value === true) return 'Sí'
     if (value === false) return 'No'
     if (value === undefined || value === null || value === '') return ''
-    if (typeof value === 'number') return Number.isFinite(value) ? String(value) : ''
+    if (typeof value === 'number')
+      return Number.isFinite(value) ? String(value) : ''
     return normalizeString(value)
   }
 
@@ -1857,7 +2058,9 @@ const AIAnalysisPanel = ({
       key: 'precio',
       fieldName: 'precio',
       label: 'Precio sugerido',
-      value: fields.precio ? `$${Number(fields.precio).toLocaleString('es-AR')}` : '',
+      value: fields.precio
+        ? `$${Number(fields.precio).toLocaleString('es-AR')}`
+        : '',
       icon: <DollarOutlined />,
       help: `${pricePercent || 0}% de confianza estimada para precio.`,
     },
@@ -1908,7 +2111,9 @@ const AIAnalysisPanel = ({
       key: 'shortDescription',
       fieldName: 'shortDescription',
       label: 'Descripción corta',
-      value: fields.shortDescription || buildSeoPayload({ ...fields, tags }).shortDescription,
+      value:
+        fields.shortDescription ||
+        buildSeoPayload({ ...fields, tags }).shortDescription,
       icon: <FileTextOutlined />,
       long: true,
       help: 'Resumen breve para cards, buscadores y vista rápida.',
@@ -1925,7 +2130,9 @@ const AIAnalysisPanel = ({
       key: 'metaDescription',
       fieldName: 'metaDescription',
       label: 'Meta description',
-      value: fields.metaDescription || buildSeoPayload({ ...fields, tags }).metaDescription,
+      value:
+        fields.metaDescription ||
+        buildSeoPayload({ ...fields, tags }).metaDescription,
       icon: <FileTextOutlined />,
       long: true,
       help: 'Descripción para buscadores.',
@@ -2010,7 +2217,8 @@ const AIAnalysisPanel = ({
     {
       key: 'seo',
       title: 'SEO y contenido comercial sugerido',
-      description: 'Podés aplicar campo por campo o usar el botón “Generar SEO con IA”.',
+      description:
+        'Podés aplicar campo por campo o usar el botón “Generar SEO con IA”.',
       items: seoSuggestions,
     },
     {
@@ -2047,7 +2255,11 @@ const AIAnalysisPanel = ({
 
           {item.long ? (
             <Paragraph
-              ellipsis={available ? { rows: 3, expandable: true, symbol: 'Ver más' } : false}
+              ellipsis={
+                available
+                  ? { rows: 3, expandable: true, symbol: 'Ver más' }
+                  : false
+              }
               style={{ margin: 0, fontWeight: 700, whiteSpace: 'pre-line' }}
             >
               {available ? displayValue : 'Sin sugerencia disponible'}
@@ -2107,9 +2319,14 @@ const AIAnalysisPanel = ({
         <Row gutter={[12, 12]} align="middle" justify="space-between">
           <Col>
             <Space size={10} wrap>
-              <RobotOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
+              <RobotOutlined
+                style={{ fontSize: 20, color: token.colorPrimary }}
+              />
               <span>Revisión inteligente de la IA</span>
-              <Tag color={shouldReview ? 'warning' : 'success'} style={{ borderRadius: 999 }}>
+              <Tag
+                color={shouldReview ? 'warning' : 'success'}
+                style={{ borderRadius: 999 }}
+              >
                 {confidencePercent}% confianza
               </Tag>
               {shouldReview && (
@@ -2153,10 +2370,18 @@ const AIAnalysisPanel = ({
         >
           Aplicar todo al formulario
         </Button>
-        <Button htmlType="button" icon={<CheckOutlined />} onClick={onApplySafeFields}>
+        <Button
+          htmlType="button"
+          icon={<CheckOutlined />}
+          onClick={onApplySafeFields}
+        >
           Aplicar solo campos seguros
         </Button>
-        <Button htmlType="button" icon={<ThunderboltOutlined />} onClick={onApplySeo}>
+        <Button
+          htmlType="button"
+          icon={<ThunderboltOutlined />}
+          onClick={onApplySeo}
+        >
           Generar SEO con IA
         </Button>
         <Button
@@ -2188,7 +2413,10 @@ const AIAnalysisPanel = ({
       </Space>
 
       {suggestionSections.map(section => (
-        <div key={section.key} style={{ marginTop: section.key === 'main' ? 0 : 20 }}>
+        <div
+          key={section.key}
+          style={{ marginTop: section.key === 'main' ? 0 : 20 }}
+        >
           <Divider orientation="left" plain>
             {section.title}
           </Divider>
@@ -2268,7 +2496,10 @@ const AIAnalysisPanel = ({
                   border: `1px solid ${token.colorBorderSecondary}`,
                 }}
               >
-                <Space style={{ width: '100%', justifyContent: 'space-between' }} align="center">
+                <Space
+                  style={{ width: '100%', justifyContent: 'space-between' }}
+                  align="center"
+                >
                   <Text strong>Descripción comercial</Text>
                   <Button
                     htmlType="button"
@@ -2299,7 +2530,10 @@ const AIAnalysisPanel = ({
                   border: `1px solid ${token.colorBorderSecondary}`,
                 }}
               >
-                <Space style={{ width: '100%', justifyContent: 'space-between' }} align="center">
+                <Space
+                  style={{ width: '100%', justifyContent: 'space-between' }}
+                  align="center"
+                >
                   <Text strong>Descripción técnica precisa</Text>
                   <Button
                     htmlType="button"
@@ -2353,7 +2587,9 @@ const AIAnalysisPanel = ({
                         : normalizeString(value) || 'Pendiente'}
                     </Text>
                     <Space size={4} wrap style={{ marginTop: 6 }}>
-                      {field.source && <Tag style={{ borderRadius: 999 }}>{field.source}</Tag>}
+                      {field.source && (
+                        <Tag style={{ borderRadius: 999 }}>{field.source}</Tag>
+                      )}
                       {field.filterable && (
                         <Tag color="blue" style={{ borderRadius: 999 }}>
                           Filtro
@@ -2444,7 +2680,11 @@ const ImagePreviewGrid = ({
   if (!previews.length) {
     return (
       <Empty
-        image={<PictureOutlined style={{ fontSize: 64, color: token.colorTextDisabled }} />}
+        image={
+          <PictureOutlined
+            style={{ fontSize: 64, color: token.colorTextDisabled }}
+          />
+        }
         description="No hay imágenes seleccionadas"
         style={{ padding: 40 }}
       />
@@ -2456,9 +2696,12 @@ const ImagePreviewGrid = ({
       <Text strong style={{ display: 'block', marginBottom: 4 }}>
         Imágenes seleccionadas ({previews.length})
       </Text>
-      <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-        La primera imagen es la portada del producto. Usá las flechas para reordenar o marcá otra
-        como principal.
+      <Text
+        type="secondary"
+        style={{ display: 'block', marginBottom: 12, fontSize: 13 }}
+      >
+        La primera imagen es la portada del producto. Usá las flechas para
+        reordenar o marcá otra como principal.
       </Text>
 
       <Row gutter={[16, 16]}>
@@ -2623,8 +2866,13 @@ const ImagePreviewGrid = ({
               className="add-more-images"
             >
               <div style={{ textAlign: 'center' }}>
-                <PlusOutlined style={{ fontSize: 24, color: token.colorTextSecondary }} />
-                <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                <PlusOutlined
+                  style={{ fontSize: 24, color: token.colorTextSecondary }}
+                />
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, display: 'block' }}
+                >
                   Agregar más
                 </Text>
               </div>
@@ -2797,7 +3045,8 @@ const VariantImageSelector = ({ variant, localImages, onAssign }) => {
   )
 }
 
-const normalizeNamePath = name => (Array.isArray(name) ? name : [name]).filter(Boolean)
+const normalizeNamePath = name =>
+  (Array.isArray(name) ? name : [name]).filter(Boolean)
 
 const buildNestedFieldPatch = (name, value) => {
   const path = normalizeNamePath(name)
@@ -2822,7 +3071,9 @@ const setFormFieldValue = (form, name, value) => {
 
 const extractInputValue = (eventOrValue, valuePropName = 'value') => {
   if (valuePropName === 'checked') {
-    return typeof eventOrValue === 'boolean' ? eventOrValue : Boolean(eventOrValue?.target?.checked)
+    return typeof eventOrValue === 'boolean'
+      ? eventOrValue
+      : Boolean(eventOrValue?.target?.checked)
   }
 
   if (eventOrValue?.target) return eventOrValue.target.value
@@ -2872,11 +3123,14 @@ const ProductField = React.memo(function ProductField({
     return currentValue === undefined ? initialValue : currentValue
   })
   const [fieldError, setFieldError] = useState('')
-  const requiredByRule = required || safeArray(rules).some(rule => rule?.required)
+  const requiredByRule =
+    required || safeArray(rules).some(rule => rule?.required)
   const namePath = normalizeNamePath(name)
   const nameKey = namePath.join('__')
   const fieldId = namePath.join('_')
-  const stableClassName = ['stable-form-field', className].filter(Boolean).join(' ')
+  const stableClassName = ['stable-form-field', className]
+    .filter(Boolean)
+    .join(' ')
 
   useEffect(() => {
     if (initialValue === undefined) return
@@ -2896,7 +3150,8 @@ const ProductField = React.memo(function ProductField({
 
   const validateField = useCallback(
     nextValue => {
-      const currentValue = nextValue !== undefined ? nextValue : form.getFieldValue(name)
+      const currentValue =
+        nextValue !== undefined ? nextValue : form.getFieldValue(name)
 
       if (requiredByRule && isEmptyFieldValue(currentValue)) {
         const messageText = getRequiredMessage(rules, label)
@@ -2916,7 +3171,8 @@ const ProductField = React.memo(function ProductField({
   const originalOnFocus = child.props.onFocus
   const controlledProps = {
     id: child.props.id || fieldId,
-    [valuePropName]: valuePropName === 'checked' ? Boolean(fieldValue) : fieldValue,
+    [valuePropName]:
+      valuePropName === 'checked' ? Boolean(fieldValue) : fieldValue,
     onChange: (...args) => {
       const nextValue = extractInputValue(args[0], valuePropName)
       setFieldValue(nextValue)
@@ -2949,7 +3205,9 @@ const ProductField = React.memo(function ProductField({
       {label && (
         <label htmlFor={fieldId} className="stable-form-field-label">
           {label}
-          {requiredByRule && <span className="stable-form-field-required">*</span>}
+          {requiredByRule && (
+            <span className="stable-form-field-required">*</span>
+          )}
         </label>
       )}
 
@@ -3074,7 +3332,11 @@ export default function AddProduct() {
 
   const user = useSelector(state => state.user.user)
   const tenantId = user?.tenantId?._id || user?.tenantId || null
-  const { isLoading, isError, message: productMessage } = useSelector(state => state.product)
+  const {
+    isLoading,
+    isError,
+    message: productMessage,
+  } = useSelector(state => state.product)
   const selectedCategory = Form.useWatch('categoria', form)
   const selectedSubcategory = Form.useWatch('subcategoria', form)
   const watchedTitle = Form.useWatch('titulo', form)
@@ -3176,7 +3438,10 @@ export default function AddProduct() {
   ])
 
   const missingRequiredLabels = useMemo(
-    () => productReadiness.requiredChecks.filter(check => !check.done).map(check => check.label),
+    () =>
+      productReadiness.requiredChecks
+        .filter(check => !check.done)
+        .map(check => check.label),
     [productReadiness.requiredChecks],
   )
 
@@ -3205,7 +3470,12 @@ export default function AddProduct() {
         key: 'informacion',
         title: 'Información',
         sectionId: SECTION_IDS.informacion,
-        status: statusFor(['titulo', 'descripcion', 'categoria', 'subcategoria']),
+        status: statusFor([
+          'titulo',
+          'descripcion',
+          'categoria',
+          'subcategoria',
+        ]),
       },
       {
         key: 'ficha',
@@ -3237,12 +3507,17 @@ export default function AddProduct() {
   }, [productReadiness, useTechnicalSheet, hasVariants])
 
   const wizardCurrentStep = useMemo(() => {
-    const idx = wizardSteps.findIndex(step => !step.optional && step.status !== 'finish')
+    const idx = wizardSteps.findIndex(
+      step => !step.optional && step.status !== 'finish',
+    )
     return idx === -1 ? wizardSteps.length - 1 : idx
   }, [wizardSteps])
 
   const categoryOptions = useMemo(
-    () => catalogCategories.map(category => buildTitleCaseOption(category?.name)).filter(Boolean),
+    () =>
+      catalogCategories
+        .map(category => buildTitleCaseOption(category?.name))
+        .filter(Boolean),
     [catalogCategories],
   )
 
@@ -3278,13 +3553,15 @@ export default function AddProduct() {
     if (configuredVariantAttributes.length === 0) return 0
 
     return configuredVariantAttributes.reduce(
-      (total, attribute) => total * safeArray(selectedAttributes[attribute.name]).length,
+      (total, attribute) =>
+        total * safeArray(selectedAttributes[attribute.name]).length,
       1,
     )
   }, [configuredVariantAttributes, selectedAttributes])
 
   const canGenerateVariants =
-    variantCombinationCount > 0 && variantCombinationCount <= MAX_GENERATED_VARIANTS
+    variantCombinationCount > 0 &&
+    variantCombinationCount <= MAX_GENERATED_VARIANTS
 
   const agentQueueStats = useMemo(() => {
     return agentQueue.reduce(
@@ -3311,7 +3588,13 @@ export default function AddProduct() {
       Boolean(currentAgentJob) ||
       formHasChanges
     )
-  }, [currentAgentJob, editableTags.length, fileList.length, formHasChanges, variants.length])
+  }, [
+    currentAgentJob,
+    editableTags.length,
+    fileList.length,
+    formHasChanges,
+    variants.length,
+  ])
 
   const normalizeTitleCaseFormField = useCallback(
     fieldName => {
@@ -3328,22 +3611,28 @@ export default function AddProduct() {
   const commitClassificationFromForm = useCallback(
     (patch = {}) => {
       const currentCategory =
-        patch.categoria !== undefined ? patch.categoria : form.getFieldValue('categoria')
+        patch.categoria !== undefined
+          ? patch.categoria
+          : form.getFieldValue('categoria')
       const currentSubcategory =
-        patch.subcategoria !== undefined ? patch.subcategoria : form.getFieldValue('subcategoria')
+        patch.subcategoria !== undefined
+          ? patch.subcategoria
+          : form.getFieldValue('subcategoria')
 
       const categoria = toTitleCase(currentCategory)
       const subcategoria = toTitleCase(currentSubcategory)
 
       const valuesToPatch = {}
-      if (categoria && categoria !== currentCategory) valuesToPatch.categoria = categoria
+      if (categoria && categoria !== currentCategory)
+        valuesToPatch.categoria = categoria
       if (subcategoria && subcategoria !== currentSubcategory) {
         valuesToPatch.subcategoria = subcategoria
       }
       if (Object.keys(valuesToPatch).length) setProductFormValues(valuesToPatch)
 
       setCommittedClassification(prev => {
-        if (prev.categoria === categoria && prev.subcategoria === subcategoria) return prev
+        if (prev.categoria === categoria && prev.subcategoria === subcategoria)
+          return prev
         return { categoria, subcategoria }
       })
     },
@@ -3389,7 +3678,10 @@ export default function AddProduct() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem('addProduct.agentAutoMode', String(autoAgentEnabled))
+      window.localStorage.setItem(
+        'addProduct.agentAutoMode',
+        String(autoAgentEnabled),
+      )
     }
   }, [autoAgentEnabled])
 
@@ -3404,7 +3696,9 @@ export default function AddProduct() {
       })
       .catch(error => {
         if (mounted) {
-          message.warning(error?.message || 'No se pudo cargar el catálogo de categorías')
+          message.warning(
+            error?.message || 'No se pudo cargar el catálogo de categorías',
+          )
         }
       })
 
@@ -3448,7 +3742,12 @@ export default function AddProduct() {
             merged.set(field.name, {
               ...previous,
               ...field,
-              values: [...new Set([...safeArray(previous?.values), ...safeArray(field.values)])],
+              values: [
+                ...new Set([
+                  ...safeArray(previous?.values),
+                  ...safeArray(field.values),
+                ]),
+              ],
               required: previous?.required === true || field.required === true,
             })
           })
@@ -3462,16 +3761,23 @@ export default function AddProduct() {
       }
 
       setDynamicAttributes(current => {
-        const merged = new Map(current.map(attribute => [attribute.name, attribute]))
+        const merged = new Map(
+          current.map(attribute => [attribute.name, attribute]),
+        )
 
         templateAttributes.forEach(attribute => {
-          const name = normalizeString(attribute.name).toLowerCase().replace(/\s+/g, '_')
+          const name = normalizeString(attribute.name)
+            .toLowerCase()
+            .replace(/\s+/g, '_')
 
           if (!name) return
 
           const previous = merged.get(name)
           const values = [
-            ...new Set([...safeArray(previous?.values), ...safeArray(attribute.values)]),
+            ...new Set([
+              ...safeArray(previous?.values),
+              ...safeArray(attribute.values),
+            ]),
           ]
 
           merged.set(name, {
@@ -3499,7 +3805,10 @@ export default function AddProduct() {
       setLoadingCatalogTemplate(true)
 
       try {
-        const response = await productService.getCategoryConfig(category, subcategory)
+        const response = await productService.getCategoryConfig(
+          category,
+          subcategory,
+        )
 
         if (requestId !== categoryConfigRequestIdRef.current) return
 
@@ -3508,7 +3817,10 @@ export default function AddProduct() {
       } catch (error) {
         if (requestId === categoryConfigRequestIdRef.current) {
           setCatalogTemplate(null)
-          message.warning(error?.message || 'No se pudo cargar la plantilla de la subcategoría')
+          message.warning(
+            error?.message ||
+              'No se pudo cargar la plantilla de la subcategoría',
+          )
         }
       } finally {
         if (requestId === categoryConfigRequestIdRef.current) {
@@ -3541,7 +3853,7 @@ export default function AddProduct() {
           },
         })
 
-        // 'completed' incluye a los jobs que el agente ya analizó solo
+        // 'completed' incluye a los jobs que AddProduct ya analizó solo
         // (llegó su hora programada) y están esperando que alguien los
         // cargue acá para revisarlos o mandarlos directo a aprobar.
         const items = (Array.isArray(data?.items) ? data.items : []).filter(
@@ -3552,12 +3864,17 @@ export default function AddProduct() {
         setAgentQueue(items)
         if (!preserveSelection) {
           setSelectedAgentJobId(current =>
-            current && items.some(item => item._id === current) ? current : items[0]?._id || null,
+            current && items.some(item => item._id === current)
+              ? current
+              : items[0]?._id || null,
           )
         }
       } catch (error) {
         if (!silent) {
-          message.error(error?.response?.data?.message || 'No se pudo cargar la cola del agente')
+          message.error(
+            error?.response?.data?.message ||
+              'No se pudo cargar la cola del agente',
+          )
         }
       } finally {
         if (!silent) setLoadingAgentQueue(false)
@@ -3570,8 +3887,24 @@ export default function AddProduct() {
     fetchAgentQueue()
   }, [fetchAgentQueue])
 
+  // La cola del agente puede cambiar de estado sola (una imagen
+  // programada se analiza automáticamente apenas llega su hora, sin que
+  // nadie tenga esta pantalla abierta). Sin este refresco periódico, el
+  // selector se queda mostrando "Programada" con datos viejos aunque el
+  // backend ya la haya analizado, y el botón "Cargar ahora" rechaza la
+  // acción por el estado desactualizado que quedó en el navegador.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchAgentQueue({ silent: true, preserveSelection: true })
+    }, 15000)
+
+    return () => clearInterval(interval)
+  }, [fetchAgentQueue])
+
   const normalizedAiDraft = useMemo(() => {
-    return iaResult && typeof iaResult === 'object' ? normalizeAiAnalysisForForm(iaResult) : null
+    return iaResult && typeof iaResult === 'object'
+      ? normalizeAiAnalysisForForm(iaResult)
+      : null
   }, [iaResult])
 
   const mergeDynamicProductFields = useCallback(fields => {
@@ -3587,7 +3920,12 @@ export default function AddProduct() {
         merged.set(field.name, {
           ...previous,
           ...field,
-          values: [...new Set([...safeArray(previous?.values), ...safeArray(field.values)])],
+          values: [
+            ...new Set([
+              ...safeArray(previous?.values),
+              ...safeArray(field.values),
+            ]),
+          ],
           required: previous?.required === true || field.required === true,
         })
       })
@@ -3642,16 +3980,35 @@ export default function AddProduct() {
 
   const generateTechnicalDescriptionFromCurrentValues = useCallback(() => {
     const values = form.getFieldsValue(true) || {}
-    const title = normalizeString(values.titulo || normalizedAiDraft?.fields?.titulo)
-    const category = toTitleCase(values.categoria || normalizedAiDraft?.fields?.categoria)
-    const subcategory = toTitleCase(values.subcategoria || normalizedAiDraft?.fields?.subcategoria)
-    const brand = normalizeString(values.marca || normalizedAiDraft?.fields?.marca)
-    const material = normalizeString(values.material || normalizedAiDraft?.fields?.material)
-    const color = normalizeString(values.color || normalizedAiDraft?.fields?.color)
+    const title = normalizeString(
+      values.titulo || normalizedAiDraft?.fields?.titulo,
+    )
+    const category = toTitleCase(
+      values.categoria || normalizedAiDraft?.fields?.categoria,
+    )
+    const subcategory = toTitleCase(
+      values.subcategoria || normalizedAiDraft?.fields?.subcategoria,
+    )
+    const brand = normalizeString(
+      values.marca || normalizedAiDraft?.fields?.marca,
+    )
+    const material = normalizeString(
+      values.material || normalizedAiDraft?.fields?.material,
+    )
+    const color = normalizeString(
+      values.color || normalizedAiDraft?.fields?.color,
+    )
     const currentDynamicValues = values.dynamicFields || {}
-    const specificationRows = buildSpecificationRows(dynamicProductFields, currentDynamicValues)
+    const specificationRows = buildSpecificationRows(
+      dynamicProductFields,
+      currentDynamicValues,
+    )
 
-    if (!title && !specificationRows.length && !normalizedAiDraft?.fields?.descripcionTecnica) {
+    if (
+      !title &&
+      !specificationRows.length &&
+      !normalizedAiDraft?.fields?.descripcionTecnica
+    ) {
       message.warning(
         'Completá datos del producto o agregá campos técnicos antes de crear la descripción técnica',
       )
@@ -3705,7 +4062,9 @@ export default function AddProduct() {
     if (!normalizedAiDraft) return
 
     if (!normalizedAiDraft.dynamicFields.length) {
-      message.info('La IA no devolvió campos de ficha técnica para este producto')
+      message.info(
+        'La IA no devolvió campos de ficha técnica para este producto',
+      )
       return
     }
 
@@ -3736,7 +4095,10 @@ export default function AddProduct() {
 
     setHasVariants(true)
     setDynamicAttributes(current =>
-      mergeVariantAttributeDefinitions(current, normalizedAiDraft.variantAttributes),
+      mergeVariantAttributeDefinitions(
+        current,
+        normalizedAiDraft.variantAttributes,
+      ),
     )
     setSelectedAttributes(current =>
       mergeSelectedVariantValues(current, normalizedAiDraft.selectedAttributes),
@@ -3755,11 +4117,15 @@ export default function AddProduct() {
         attributes: mergedAttributes,
         selectedAttributes: mergedSelected,
         previousVariants: current.length ? current : normalizedAiDraft.variants,
-        basePrice: form.getFieldValue('precio') || normalizedAiDraft.fields.precio,
-        productTitle: form.getFieldValue('titulo') || normalizedAiDraft.fields.titulo,
+        basePrice:
+          form.getFieldValue('precio') || normalizedAiDraft.fields.precio,
+        productTitle:
+          form.getFieldValue('titulo') || normalizedAiDraft.fields.titulo,
       })
 
-      return generated.variants.length ? generated.variants : normalizedAiDraft.variants
+      return generated.variants.length
+        ? generated.variants
+        : normalizedAiDraft.variants
     })
     message.success(`${normalizedAiDraft.variants.length} variantes aplicadas`)
   }, [dynamicAttributes, form, normalizedAiDraft, selectedAttributes])
@@ -3777,8 +4143,14 @@ export default function AddProduct() {
       return acc
     }, {})
 
-    const mergedAttributes = mergeVariantAttributeDefinitions(dynamicAttributes, parsedAttributes)
-    const mergedSelected = mergeSelectedVariantValues(selectedAttributes, incomingSelected)
+    const mergedAttributes = mergeVariantAttributeDefinitions(
+      dynamicAttributes,
+      parsedAttributes,
+    )
+    const mergedSelected = mergeSelectedVariantValues(
+      selectedAttributes,
+      incomingSelected,
+    )
 
     const generated = generateVariantRowsFromSelection({
       attributes: mergedAttributes,
@@ -3799,7 +4171,9 @@ export default function AddProduct() {
     setVariants(generated.variants)
     setQuickVariantText('')
 
-    message.success(`${generated.variants.length} variantes generadas rápidamente`)
+    message.success(
+      `${generated.variants.length} variantes generadas rápidamente`,
+    )
   }, [dynamicAttributes, form, quickVariantText, selectedAttributes, variants])
 
   const applyVariantPreset = useCallback(
@@ -3813,8 +4187,14 @@ export default function AddProduct() {
         return acc
       }, {})
 
-      const mergedAttributes = mergeVariantAttributeDefinitions(dynamicAttributes, presetAttributes)
-      const mergedSelected = mergeSelectedVariantValues(selectedAttributes, incomingSelected)
+      const mergedAttributes = mergeVariantAttributeDefinitions(
+        dynamicAttributes,
+        presetAttributes,
+      )
+      const mergedSelected = mergeSelectedVariantValues(
+        selectedAttributes,
+        incomingSelected,
+      )
 
       const generated = generateVariantRowsFromSelection({
         attributes: mergedAttributes,
@@ -3833,7 +4213,9 @@ export default function AddProduct() {
       setDynamicAttributes(mergedAttributes)
       setSelectedAttributes(mergedSelected)
       setVariants(generated.variants)
-      message.success(`${preset.label} aplicado · ${generated.variants.length} variantes listas`)
+      message.success(
+        `${preset.label} aplicado · ${generated.variants.length} variantes listas`,
+      )
     },
     [dynamicAttributes, form, selectedAttributes, variants],
   )
@@ -3866,7 +4248,8 @@ export default function AddProduct() {
     const baseValues = {
       ...aiFields,
       ...values,
-      titulo: normalizeString(values.titulo) || normalizeString(aiFields.titulo),
+      titulo:
+        normalizeString(values.titulo) || normalizeString(aiFields.titulo),
       descripcion:
         normalizeString(values.descripcion) ||
         normalizeString(aiFields.descripcion) ||
@@ -3875,42 +4258,69 @@ export default function AddProduct() {
             normalizeString(aiFields.descripcionTecnica)
           : ''),
       descripcionTecnica: useTechnicalSheet
-        ? normalizeString(values.descripcionTecnica) || normalizeString(aiFields.descripcionTecnica)
+        ? normalizeString(values.descripcionTecnica) ||
+          normalizeString(aiFields.descripcionTecnica)
         : '',
       marca: normalizeString(values.marca) || normalizeString(aiFields.marca),
       categoria: toTitleCase(values.categoria || aiFields.categoria),
       subcategoria: toTitleCase(values.subcategoria || aiFields.subcategoria),
-      material: normalizeString(values.material) || normalizeString(aiFields.material),
+      material:
+        normalizeString(values.material) || normalizeString(aiFields.material),
       color: normalizeString(values.color) || normalizeString(aiFields.color),
       tags: editableTags,
     }
 
     if (!baseValues.titulo && !baseValues.descripcion) {
-      message.warning('Completá o aplicá primero el título y la descripción para generar SEO')
+      message.warning(
+        'Completá o aplicá primero el título y la descripción para generar SEO',
+      )
       return
     }
 
     setProductFormValues(buildSeoFormValues(baseValues))
     message.success('SEO generado desde los datos actuales del producto')
-  }, [editableTags, form, normalizedAiDraft, setProductFormValues, useTechnicalSheet])
+  }, [
+    editableTags,
+    form,
+    normalizedAiDraft,
+    setProductFormValues,
+    useTechnicalSheet,
+  ])
 
   const generateSeoPositioningFromCurrentValues = useCallback(() => {
     const values = form.getFieldsValue(true) || {}
-    const title = normalizeString(values.titulo || normalizedAiDraft?.fields?.titulo)
-    const category = toTitleCase(values.categoria || normalizedAiDraft?.fields?.categoria)
-    const subcategory = toTitleCase(values.subcategoria || normalizedAiDraft?.fields?.subcategoria)
-    const brand = normalizeString(values.marca || normalizedAiDraft?.fields?.marca)
-    const material = normalizeString(values.material || normalizedAiDraft?.fields?.material)
-    const color = normalizeString(values.color || normalizedAiDraft?.fields?.color)
+    const title = normalizeString(
+      values.titulo || normalizedAiDraft?.fields?.titulo,
+    )
+    const category = toTitleCase(
+      values.categoria || normalizedAiDraft?.fields?.categoria,
+    )
+    const subcategory = toTitleCase(
+      values.subcategoria || normalizedAiDraft?.fields?.subcategoria,
+    )
+    const brand = normalizeString(
+      values.marca || normalizedAiDraft?.fields?.marca,
+    )
+    const material = normalizeString(
+      values.material || normalizedAiDraft?.fields?.material,
+    )
+    const color = normalizeString(
+      values.color || normalizedAiDraft?.fields?.color,
+    )
 
     if (!title && !subcategory && !category) {
-      message.warning('Completá título, categoría o subcategoría para crear posicionamiento SEO')
+      message.warning(
+        'Completá título, categoría o subcategoría para crear posicionamiento SEO',
+      )
       return
     }
 
     const focusKeyword =
       normalizeString(values.seoFocusKeyword) ||
-      [brand, title || subcategory || category].filter(Boolean).join(' ').slice(0, 90)
+      [brand, title || subcategory || category]
+        .filter(Boolean)
+        .join(' ')
+        .slice(0, 90)
 
     const audience =
       normalizeString(values.seoTargetAudience) ||
@@ -3932,7 +4342,14 @@ export default function AddProduct() {
           `¿Qué debo revisar antes de comprar ${title || 'este producto'}?`,
         ]
 
-    const contentPillars = [focusKeyword, subcategory, category, brand, material, color]
+    const contentPillars = [
+      focusKeyword,
+      subcategory,
+      category,
+      brand,
+      material,
+      color,
+    ]
       .map(item => normalizeString(item).toLowerCase())
       .filter(Boolean)
 
@@ -3992,14 +4409,17 @@ export default function AddProduct() {
         color: { color: fields.color },
         slug: { slug: fields.slug || seoFromAi.slug },
         shortDescription: {
-          shortDescription: fields.shortDescription || seoFromAi.shortDescription,
+          shortDescription:
+            fields.shortDescription || seoFromAi.shortDescription,
         },
         metaTitle: { metaTitle: fields.metaTitle || seoFromAi.metaTitle },
         metaDescription: {
           metaDescription: fields.metaDescription || seoFromAi.metaDescription,
         },
         seoKeywords: {
-          seoKeywords: fields.seoKeywords?.length ? fields.seoKeywords : seoFromAi.seoKeywords,
+          seoKeywords: fields.seoKeywords?.length
+            ? fields.seoKeywords
+            : seoFromAi.seoKeywords,
         },
         weightKg: { weightKg: fields.weightKg },
         shippingType: { shippingType: fields.shippingType },
@@ -4043,7 +4463,12 @@ export default function AddProduct() {
 
       message.success('Campo aplicado al formulario')
     },
-    [commitClassificationFromForm, form, normalizedAiDraft, setProductFormValues],
+    [
+      commitClassificationFromForm,
+      form,
+      normalizedAiDraft,
+      setProductFormValues,
+    ],
   )
 
   const applyAiSafeFields = useCallback(() => {
@@ -4053,13 +4478,19 @@ export default function AddProduct() {
     const patch = {
       titulo: fields.titulo,
       descripcion: fields.descripcion,
-      descripcionTecnica: useTechnicalSheet ? fields.descripcionTecnica : undefined,
+      descripcionTecnica: useTechnicalSheet
+        ? fields.descripcionTecnica
+        : undefined,
       categoria: fields.categoria,
       subcategoria: fields.subcategoria,
       marca: fields.marca,
       color: fields.color,
-      material: Number(review.materialConfidence || 0) >= 0.45 ? fields.material : undefined,
-      precio: Number(review.priceConfidence || 0) >= 0.55 ? fields.precio : undefined,
+      material:
+        Number(review.materialConfidence || 0) >= 0.45
+          ? fields.material
+          : undefined,
+      precio:
+        Number(review.priceConfidence || 0) >= 0.55 ? fields.precio : undefined,
       cantidad: fields.cantidad,
       condicion: fields.condicion,
     }
@@ -4096,7 +4527,9 @@ export default function AddProduct() {
     setProductFormValues({
       titulo: fields.titulo,
       descripcion: fields.descripcion,
-      descripcionTecnica: useTechnicalSheet ? fields.descripcionTecnica : undefined,
+      descripcionTecnica: useTechnicalSheet
+        ? fields.descripcionTecnica
+        : undefined,
       categoria: fields.categoria,
       subcategoria: fields.subcategoria,
       marca: fields.marca,
@@ -4204,7 +4637,9 @@ export default function AddProduct() {
 
   const handleRemoveDynamicProductField = useCallback(
     fieldName => {
-      setDynamicProductFields(prev => prev.filter(field => field.name !== fieldName))
+      setDynamicProductFields(prev =>
+        prev.filter(field => field.name !== fieldName),
+      )
       const currentValues = form.getFieldValue('dynamicFields') || {}
       const nextValues = { ...currentValues }
       delete nextValues[fieldName]
@@ -4232,7 +4667,12 @@ export default function AddProduct() {
         attribute.name === attrName
           ? {
               ...attribute,
-              values: [...new Set([...safeArray(attribute.values), ...normalizedValues])],
+              values: [
+                ...new Set([
+                  ...safeArray(attribute.values),
+                  ...normalizedValues,
+                ]),
+              ],
             }
           : attribute,
       ),
@@ -4240,7 +4680,9 @@ export default function AddProduct() {
   }, [])
 
   const handleRemoveVariantAttribute = useCallback(attrName => {
-    setDynamicAttributes(prev => prev.filter(attribute => attribute.name !== attrName))
+    setDynamicAttributes(prev =>
+      prev.filter(attribute => attribute.name !== attrName),
+    )
     setSelectedAttributes(prev => {
       const next = { ...prev }
       delete next[attrName]
@@ -4254,7 +4696,9 @@ export default function AddProduct() {
     const subcategory = toTitleCase(form.getFieldValue('subcategoria'))
 
     if (!category || !subcategory) {
-      message.warning('Completá categoría y subcategoría antes de guardar la plantilla')
+      message.warning(
+        'Completá categoría y subcategoría antes de guardar la plantilla',
+      )
       return
     }
 
@@ -4286,7 +4730,9 @@ export default function AddProduct() {
 
       const savedCategory = response?.data
       const savedSubcategory = safeArray(savedCategory?.subcategories).find(
-        item => normalizeString(item.name).toLowerCase() === subcategory.toLowerCase(),
+        item =>
+          normalizeString(item.name).toLowerCase() ===
+          subcategory.toLowerCase(),
       )
 
       setCatalogTemplate(savedSubcategory || { name: subcategory })
@@ -4317,7 +4763,9 @@ export default function AddProduct() {
 
     setVariants(generated.variants)
 
-    const createdCount = generated.variants.filter(variant => variant.uiStatus === 'new').length
+    const createdCount = generated.variants.filter(
+      variant => variant.uiStatus === 'new',
+    ).length
 
     message.success(
       createdCount
@@ -4341,7 +4789,9 @@ export default function AddProduct() {
       setImagePreviews(rebuildPreviews(uniqueFiles))
 
       if (safeArray(newFileList).length > MAX_PRODUCT_IMAGES) {
-        message.warning(`Solo se conservaron las primeras ${MAX_PRODUCT_IMAGES} imágenes.`)
+        message.warning(
+          `Solo se conservaron las primeras ${MAX_PRODUCT_IMAGES} imágenes.`,
+        )
       }
 
       if (uniqueFiles.length > 0 && !iaResult && !loadingIa) {
@@ -4349,7 +4799,8 @@ export default function AddProduct() {
 
         if (fileToAnalyze) {
           const signature = buildImageSignature(fileToAnalyze)
-          const shouldAnalyze = signature && signature !== lastAnalyzedImageSignatureRef.current
+          const shouldAnalyze =
+            signature && signature !== lastAnalyzedImageSignatureRef.current
 
           if (shouldAnalyze) {
             lastAnalyzedImageSignatureRef.current = signature
@@ -4383,10 +4834,13 @@ export default function AddProduct() {
 
       try {
         resetIa()
-        lastAnalyzedImageSignatureRef.current = buildImageSignature(imageFile) || ''
+        lastAnalyzedImageSignatureRef.current =
+          buildImageSignature(imageFile) || ''
         await analyzeImage(imageFile)
         message.success(
-          index !== null ? `Imagen ${index + 1} analizada con IA` : 'Imagen reanalizada con IA',
+          index !== null
+            ? `Imagen ${index + 1} analizada con IA`
+            : 'Imagen reanalizada con IA',
         )
       } catch (error) {
         message.error(error?.message || 'No se pudo reanalizar la imagen')
@@ -4449,7 +4903,7 @@ export default function AddProduct() {
       const importResponse = await api.post(
         `/product-analysis/${selectedAgentJobId}/import-to-add-product`,
       )
-      // Si el agente ya la analizó sola (llegó su hora programada), el
+      // Si AddProduct ya la analizó sola (llegó su hora programada), el
       // backend nos manda el análisis ya calculado acá — no hace falta
       // gastar otra llamada a la IA, solo hidratamos el formulario.
       const alreadyAnalyzed = importResponse?.data?.analysis || null
@@ -4457,13 +4911,18 @@ export default function AddProduct() {
       resetProductWorkspace()
       await waitForUiReset()
 
-      const response = await api.get(`/product-analysis/${selectedAgentJobId}/image-file`, {
-        responseType: 'blob',
-      })
+      const response = await api.get(
+        `/product-analysis/${selectedAgentJobId}/image-file`,
+        {
+          responseType: 'blob',
+        },
+      )
 
       const blob = response.data
-      const filename = selectedJob?.originalFilename || `agent-image-${Date.now()}.jpg`
-      const mimeType = blob?.type || selectedJob?.metadata?.mimeType || 'image/jpeg'
+      const filename =
+        selectedJob?.originalFilename || `agent-image-${Date.now()}.jpg`
+      const mimeType =
+        blob?.type || selectedJob?.metadata?.mimeType || 'image/jpeg'
       const imageFile = new File([blob], filename, { type: mimeType })
       const uploadFile = {
         uid: `agent-${selectedAgentJobId}-${Date.now()}`,
@@ -4480,18 +4939,23 @@ export default function AddProduct() {
 
       setCurrentAgentJob(selectedJob)
 
-      setAgentQueue(current => current.filter(job => job._id !== selectedAgentJobId))
+      setAgentQueue(current =>
+        current.filter(job => job._id !== selectedAgentJobId),
+      )
       setSelectedAgentJobId(null)
 
       if (alreadyAnalyzed) {
         hydrateAnalysis(alreadyAnalyzed)
-        message.success('Imagen y análisis del agente cargados en AddProduct')
+        message.success('Imagen y análisis de AddProduct cargados')
       } else {
         await analyzeImage(imageFile)
         message.success('Imagen del agente cargada en AddProduct')
       }
     } catch (error) {
-      message.error(error?.response?.data?.message || 'No se pudo importar la imagen del agente')
+      message.error(
+        error?.response?.data?.message ||
+          'No se pudo importar la imagen del agente',
+      )
     } finally {
       setImportingAgentImage(false)
     }
@@ -4509,7 +4973,9 @@ export default function AddProduct() {
     if (!selectedAgentJobId) return
 
     const previousQueue = agentQueue
-    setAgentQueue(current => current.filter(job => job._id !== selectedAgentJobId))
+    setAgentQueue(current =>
+      current.filter(job => job._id !== selectedAgentJobId),
+    )
     setSelectedAgentJobId(null)
     setDeletingAgentImage(true)
 
@@ -4519,7 +4985,9 @@ export default function AddProduct() {
     } catch (error) {
       setAgentQueue(previousQueue)
       setSelectedAgentJobId(selectedAgentJobId)
-      message.error(error?.response?.data?.message || 'No se pudo eliminar la imagen')
+      message.error(
+        error?.response?.data?.message || 'No se pudo eliminar la imagen',
+      )
     } finally {
       setDeletingAgentImage(false)
     }
@@ -4532,9 +5000,12 @@ export default function AddProduct() {
       resetProductWorkspace()
       await waitForUiReset()
 
-      const response = await api.get(`/product-analysis/${job._id}/image-file`, {
-        responseType: 'blob',
-      })
+      const response = await api.get(
+        `/product-analysis/${job._id}/image-file`,
+        {
+          responseType: 'blob',
+        },
+      )
 
       const blob = response.data
       const filename = job.originalFilename || `agent-image-${Date.now()}.jpg`
@@ -4613,7 +5084,9 @@ export default function AddProduct() {
         removeReviewItem(item.id)
       } catch (error) {
         message.error(
-          error?.response?.data?.message || error?.message || 'No se pudo publicar el producto',
+          error?.response?.data?.message ||
+            error?.message ||
+            'No se pudo publicar el producto',
         )
       } finally {
         setReviewItemBusyId(null)
@@ -4631,7 +5104,9 @@ export default function AddProduct() {
         removeReviewItem(item.id)
       } catch (error) {
         message.error(
-          error?.response?.data?.message || error?.message || 'No se pudo descartar el producto',
+          error?.response?.data?.message ||
+            error?.message ||
+            'No se pudo descartar el producto',
         )
       } finally {
         setReviewItemBusyId(null)
@@ -4678,7 +5153,9 @@ export default function AddProduct() {
             ...item,
             previewUrl: URL.createObjectURL(item.imageFile),
           })
-          setAgentQueue(current => current.filter(entry => entry._id !== job._id))
+          setAgentQueue(current =>
+            current.filter(entry => entry._id !== job._id),
+          )
         } catch (error) {
           autoAgentFailedJobsRef.current.add(job._id)
           message.error(
@@ -4704,7 +5181,13 @@ export default function AddProduct() {
       autoAgentRef.current = false
       setAutoAgentRunning(false)
     }
-  }, [agentQueue, autoAgentEnabled, fetchAgentQueue, hasUserWorkspace, prepareAgentJobForReview])
+  }, [
+    agentQueue,
+    autoAgentEnabled,
+    fetchAgentQueue,
+    hasUserWorkspace,
+    prepareAgentJobForReview,
+  ])
 
   useEffect(() => {
     processAutoAgentQueue()
@@ -4723,7 +5206,10 @@ export default function AddProduct() {
         revokeBlobUrls(imagePreviews)
         setImagePreviews(rebuildPreviews(merged))
 
-        if (prevList.length + safeArray(incomingFiles).length > MAX_PRODUCT_IMAGES) {
+        if (
+          prevList.length + safeArray(incomingFiles).length >
+          MAX_PRODUCT_IMAGES
+        ) {
           message.warning(`Máximo ${MAX_PRODUCT_IMAGES} imágenes por producto.`)
         }
 
@@ -4743,7 +5229,9 @@ export default function AddProduct() {
 
       setVariants(prev =>
         prev.map(variant =>
-          variant.imageSourceUid === file.uid ? { ...variant, imageSourceUid: null } : variant,
+          variant.imageSourceUid === file.uid
+            ? { ...variant, imageSourceUid: null }
+            : variant,
         ),
       )
 
@@ -4881,7 +5369,10 @@ export default function AddProduct() {
         ? getVariantAttributesConfig(dynamicAttributes, selectedAttributes)
         : []
       const dynamicFieldValues = useTechnicalSheet
-        ? normalizeDynamicFieldValues(dynamicProductFields, values.dynamicFields || {})
+        ? normalizeDynamicFieldValues(
+            dynamicProductFields,
+            values.dynamicFields || {},
+          )
         : {}
 
       const specificationRows = useTechnicalSheet
@@ -4899,7 +5390,8 @@ export default function AddProduct() {
             const combination = variant.combinacion || {}
             const key = buildVariantKey(combination) || `variant-${idx + 1}`
             const sku =
-              normalizeSku(variant.sku) || buildGeneratedVariantSku(values.titulo, combination, idx)
+              normalizeSku(variant.sku) ||
+              buildGeneratedVariantSku(values.titulo, combination, idx)
 
             return {
               key,
@@ -4984,7 +5476,9 @@ export default function AddProduct() {
         logistics: logisticsPayload,
 
         iaGenerated: Boolean(normalizedIaResult),
-        aiOriginalOutput: normalizedIaResult ? JSON.stringify(normalizedIaResult) : null,
+        aiOriginalOutput: normalizedIaResult
+          ? JSON.stringify(normalizedIaResult)
+          : null,
         aiConfidence: normalizedIaResult?.confidence ?? null,
         aiSource: normalizedIaResult?.source || 'gemini',
         aiImageHash: normalizedIaResult?.hash || null,
@@ -4994,14 +5488,19 @@ export default function AddProduct() {
           false,
         aiAgentJobId: currentAgentJob?._id || null,
         aiAgentScheduledAt:
-          currentAgentJob?.scheduledAt || currentAgentJob?.metadata?.addProductAt || null,
+          currentAgentJob?.scheduledAt ||
+          currentAgentJob?.metadata?.addProductAt ||
+          null,
         aiAutomationMode: currentAgentJob ? 'agent-assisted' : 'manual',
 
         status: publishProduct ? 'active' : 'draft',
         visibility: publishProduct ? 'visible' : 'hidden',
       }
 
-      const payloadForCreate = enforceTechnicalSheetPersistence(productPayload, useTechnicalSheet)
+      const payloadForCreate = enforceTechnicalSheetPersistence(
+        productPayload,
+        useTechnicalSheet,
+      )
       const created = await dispatch(createProducts(payloadForCreate)).unwrap()
       const createdPayload = created?.data || created
       const productId = createdPayload?._id
@@ -5041,7 +5540,9 @@ export default function AddProduct() {
         for (const localVariant of variants) {
           if (!localVariant.imageSourceUid) continue
 
-          const selectedUploadedImage = uploadedByUid.get(localVariant.imageSourceUid)
+          const selectedUploadedImage = uploadedByUid.get(
+            localVariant.imageSourceUid,
+          )
           if (!selectedUploadedImage?.url) continue
 
           const createdVariant = createdVariants.find(
@@ -5066,9 +5567,12 @@ export default function AddProduct() {
       }
 
       if (currentAgentJob?._id) {
-        await api.post(`/product-analysis/${currentAgentJob._id}/complete-add-product`, {
-          productId,
-        })
+        await api.post(
+          `/product-analysis/${currentAgentJob._id}/complete-add-product`,
+          {
+            productId,
+          },
+        )
       }
 
       message.success(
@@ -5131,27 +5635,41 @@ export default function AddProduct() {
                 <Col xs={24} lg={15}>
                   <Space direction="vertical" size={8}>
                     <Space wrap size={10}>
-                      <Tag color="processing" style={{ borderRadius: 999, padding: '3px 12px' }}>
+                      <Tag
+                        color="processing"
+                        style={{ borderRadius: 999, padding: '3px 12px' }}
+                      >
                         AddProduct IA
                       </Tag>
-                      <Tag color="success" style={{ borderRadius: 999, padding: '3px 12px' }}>
+                      <Tag
+                        color="success"
+                        style={{ borderRadius: 999, padding: '3px 12px' }}
+                      >
                         Multi-tenant
                       </Tag>
                       {hasVariants && (
-                        <Tag color="blue" style={{ borderRadius: 999, padding: '3px 12px' }}>
+                        <Tag
+                          color="blue"
+                          style={{ borderRadius: 999, padding: '3px 12px' }}
+                        >
                           {variants.length} variantes
                         </Tag>
                       )}
                     </Space>
 
-                    <Title level={2} style={{ margin: 0, letterSpacing: '-0.04em' }}>
-                      <ThunderboltOutlined style={{ color: token.colorPrimary, marginRight: 12 }} />
+                    <Title
+                      level={2}
+                      style={{ margin: 0, letterSpacing: '-0.04em' }}
+                    >
+                      <ThunderboltOutlined
+                        style={{ color: token.colorPrimary, marginRight: 12 }}
+                      />
                       Crear producto con IA guiada
                     </Title>
 
                     <Text type="secondary" style={{ fontSize: 15 }}>
-                      Subí imágenes, revisá la propuesta de IA, completá ficha técnica, variantes,
-                      logística y publicá con control total.
+                      Subí imágenes, revisá la propuesta de IA, completá ficha
+                      técnica, variantes, logística y publicá con control total.
                     </Text>
 
                     {hasUserWorkspace && (
@@ -5163,7 +5681,9 @@ export default function AddProduct() {
                         okButtonProps={{ danger: true }}
                         onConfirm={() => {
                           resetProductWorkspace()
-                          message.success('Formulario vacío. Podés empezar de nuevo.')
+                          message.success(
+                            'Formulario vacío. Podés empezar de nuevo.',
+                          )
                         }}
                       >
                         <Button
@@ -5196,7 +5716,9 @@ export default function AddProduct() {
                         <Text type="secondary" style={{ fontSize: 13 }}>
                           Imágenes
                         </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>{fileList.length}</div>
+                        <div style={{ fontSize: 22, fontWeight: 800 }}>
+                          {fileList.length}
+                        </div>
                       </div>
                     </Col>
 
@@ -5213,7 +5735,9 @@ export default function AddProduct() {
                         <Text type="secondary" style={{ fontSize: 13 }}>
                           Variantes
                         </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>{variants.length}</div>
+                        <div style={{ fontSize: 22, fontWeight: 800 }}>
+                          {variants.length}
+                        </div>
                       </div>
                     </Col>
 
@@ -5230,7 +5754,9 @@ export default function AddProduct() {
                         <Text type="secondary" style={{ fontSize: 13 }}>
                           IA
                         </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>{iaResult ? 'OK' : '—'}</div>
+                        <div style={{ fontSize: 22, fontWeight: 800 }}>
+                          {iaResult ? 'OK' : '—'}
+                        </div>
                       </div>
                     </Col>
                   </Row>
@@ -5256,7 +5782,9 @@ export default function AddProduct() {
                 size="small"
                 responsive
                 current={wizardCurrentStep}
-                onChange={index => scrollToSection(wizardSteps[index]?.sectionId)}
+                onChange={index =>
+                  scrollToSection(wizardSteps[index]?.sectionId)
+                }
                 items={wizardSteps.map(step => ({
                   title: step.title,
                   description: step.optional ? 'Opcional' : undefined,
@@ -5267,7 +5795,10 @@ export default function AddProduct() {
 
             <ProductFormDirtyContext.Provider value={markFormAsChanged}>
               <ProductFormMutationContext.Provider
-                value={{ version: formMutationVersion, notifyMutation: notifyFormMutation }}
+                value={{
+                  version: formMutationVersion,
+                  notifyMutation: notifyFormMutation,
+                }}
               >
                 <Form
                   form={form}
@@ -5275,7 +5806,10 @@ export default function AddProduct() {
                   scrollToFirstError={false}
                   disabled={savingProduct || isLoading}
                   onKeyDown={event => {
-                    if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
+                    if (
+                      event.key === 'Enter' &&
+                      event.target instanceof HTMLInputElement
+                    ) {
                       event.preventDefault()
                     }
                   }}
@@ -5286,7 +5820,10 @@ export default function AddProduct() {
                       <Alert
                         type={productReadiness.isReady ? 'success' : 'warning'}
                         showIcon
-                        style={{ marginBottom: submitErrors.length ? 12 : 20, borderRadius: 14 }}
+                        style={{
+                          marginBottom: submitErrors.length ? 12 : 20,
+                          borderRadius: 14,
+                        }}
                         message={
                           productReadiness.isReady
                             ? 'Listo para publicar'
@@ -5340,8 +5877,12 @@ export default function AddProduct() {
                         title={
                           <Space size={10}>
                             <span className="add-product-step-badge">1</span>
-                            <PictureOutlined style={{ color: token.colorPrimary }} />
-                            <span className="add-product-card-title">Imágenes del producto</span>
+                            <PictureOutlined
+                              style={{ color: token.colorPrimary }}
+                            />
+                            <span className="add-product-card-title">
+                              Imágenes del producto
+                            </span>
                             <Tag color="red" style={{ borderRadius: 999 }}>
                               Requerido
                             </Tag>
@@ -5357,16 +5898,22 @@ export default function AddProduct() {
                       >
                         <Text
                           type="secondary"
-                          style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                          style={{
+                            display: 'block',
+                            marginBottom: 16,
+                            fontSize: 14,
+                          }}
                         >
-                          Subí al menos una imagen del producto — es el único dato obligatorio de
-                          esta sección.
+                          Subí al menos una imagen del producto — es el único
+                          dato obligatorio de esta sección.
                         </Text>
 
                         <Collapse
                           ghost
                           className="add-product-agent-collapse"
-                          defaultActiveKey={autoAgentEnabled || currentAgentJob ? ['agent'] : []}
+                          defaultActiveKey={
+                            autoAgentEnabled || currentAgentJob ? ['agent'] : []
+                          }
                           style={{
                             marginBottom: 20,
                             borderRadius: 18,
@@ -5378,9 +5925,12 @@ export default function AddProduct() {
                               key: 'agent',
                               label: (
                                 <Space size={8}>
-                                  <RobotOutlined style={{ color: token.colorPrimary }} />
+                                  <RobotOutlined
+                                    style={{ color: token.colorPrimary }}
+                                  />
                                   <Text strong style={{ fontSize: 14 }}>
-                                    Importar desde el agente IA ({agentQueueStats.total} en cola)
+                                    Importar desde el agente IA (
+                                    {agentQueueStats.total} en cola)
                                   </Text>
                                 </Space>
                               ),
@@ -5390,17 +5940,29 @@ export default function AddProduct() {
                                     <Col xs={24} lg={10}>
                                       <Space direction="vertical" size={6}>
                                         <Space wrap>
-                                          <Tag color="processing" style={{ borderRadius: 999 }}>
+                                          <Tag
+                                            color="processing"
+                                            style={{ borderRadius: 999 }}
+                                          >
                                             Agente
                                           </Tag>
                                           <Tag
-                                            color={autoAgentEnabled ? 'success' : 'default'}
+                                            color={
+                                              autoAgentEnabled
+                                                ? 'success'
+                                                : 'default'
+                                            }
                                             style={{ borderRadius: 999 }}
                                           >
-                                            {autoAgentEnabled ? 'Auto activo' : 'Manual'}
+                                            {autoAgentEnabled
+                                              ? 'Auto activo'
+                                              : 'Manual'}
                                           </Tag>
                                           {autoAgentRunning && (
-                                            <Tag color="blue" style={{ borderRadius: 999 }}>
+                                            <Tag
+                                              color="blue"
+                                              style={{ borderRadius: 999 }}
+                                            >
                                               Procesando
                                             </Tag>
                                           )}
@@ -5412,11 +5974,15 @@ export default function AddProduct() {
 
                                         <Text
                                           type="secondary"
-                                          style={{ fontSize: 13, lineHeight: 1.55 }}
+                                          style={{
+                                            fontSize: 13,
+                                            lineHeight: 1.55,
+                                          }}
                                         >
-                                          Importá imágenes del agente, programalas o dejá que
-                                          AutoSave cree productos con IA cuando el modo automático
-                                          esté activo.
+                                          Importá imágenes del agente,
+                                          programalas o dejá que AutoSave cree
+                                          productos con IA cuando el modo
+                                          automático esté activo.
                                         </Text>
                                       </Space>
                                     </Col>
@@ -5447,7 +6013,10 @@ export default function AddProduct() {
                                             htmlType="button"
                                             icon={<ReloadOutlined />}
                                             onClick={fetchAgentQueue}
-                                            loading={loadingAgentQueue || autoAgentRunning}
+                                            loading={
+                                              loadingAgentQueue ||
+                                              autoAgentRunning
+                                            }
                                           >
                                             Actualizar
                                           </Button>
@@ -5484,7 +6053,8 @@ export default function AddProduct() {
                                             loading={importingAgentImage}
                                             disabled={
                                               !selectedAgentJobId ||
-                                              selectedAgentJob?.status === 'scheduled'
+                                              selectedAgentJob?.status ===
+                                                'scheduled'
                                             }
                                           >
                                             Cargar ahora
@@ -5514,7 +6084,10 @@ export default function AddProduct() {
                                     </Col>
                                   </Row>
 
-                                  <Row gutter={[10, 10]} style={{ marginTop: 16 }}>
+                                  <Row
+                                    gutter={[10, 10]}
+                                    style={{ marginTop: 16 }}
+                                  >
                                     {[
                                       {
                                         label: 'Pendientes',
@@ -5569,7 +6142,8 @@ export default function AddProduct() {
                                       type={
                                         selectedAgentJob.status === 'scheduled'
                                           ? 'warning'
-                                          : selectedAgentJob.status === 'completed'
+                                          : selectedAgentJob.status ===
+                                              'completed'
                                             ? 'success'
                                             : 'info'
                                       }
@@ -5581,13 +6155,14 @@ export default function AddProduct() {
                                       message={
                                         selectedAgentJob.status === 'scheduled'
                                           ? `Programada para ${formatDate(selectedAgentJob.scheduledAt)}`
-                                          : selectedAgentJob.status === 'completed'
-                                            ? 'Ya analizada por el agente'
+                                          : selectedAgentJob.status ===
+                                              'completed'
+                                            ? 'AddProduct ya la analizó'
                                             : 'Disponible para AddProduct'
                                       }
                                       description={
                                         selectedAgentJob.status === 'completed'
-                                          ? 'El agente ya la analizó sola (título, variantes, ficha técnica, SEO). Al cargarla acá se autocompleta el formulario sin volver a llamar a la IA — revisá y guardá cuando quieras.'
+                                          ? 'AddProduct ya la analizó con IA sola, sin que nadie tuviera esta pantalla abierta (título, variantes, ficha técnica, SEO). Al cargarla acá se autocompleta el formulario sin volver a llamar a la IA — revisá y guardá cuando quieras.'
                                           : 'Esta imagen todavía no fue analizada: al cargarla acá se sube al formulario y se dispara la IA para que la revises antes de guardar.'
                                       }
                                     />
@@ -5627,7 +6202,9 @@ export default function AddProduct() {
                           onCancel={() => setAutoAgentReviewOpen(false)}
                           title={
                             <Space size={8}>
-                              <RobotOutlined style={{ color: token.colorPrimary }} />
+                              <RobotOutlined
+                                style={{ color: token.colorPrimary }}
+                              />
                               <span>Revisar productos de AutoSave</span>
                             </Space>
                           }
@@ -5680,7 +6257,11 @@ export default function AddProduct() {
                           {autoAgentReviewQueue.length === 0 ? (
                             <Empty description="No hay productos pendientes de revisión" />
                           ) : (
-                            <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                            <Space
+                              direction="vertical"
+                              size={14}
+                              style={{ width: '100%' }}
+                            >
                               <Alert
                                 type="info"
                                 showIcon
@@ -5711,7 +6292,10 @@ export default function AddProduct() {
                                     <Col flex="auto">
                                       <Text strong>{item.payload?.title}</Text>
                                       <br />
-                                      <Text type="secondary" style={{ fontSize: 13 }}>
+                                      <Text
+                                        type="secondary"
+                                        style={{ fontSize: 13 }}
+                                      >
                                         {item.payload?.categoria}
                                         {item.payload?.subcategoria
                                           ? ` / ${item.payload.subcategoria}`
@@ -5723,7 +6307,10 @@ export default function AddProduct() {
                                       </Text>
                                       <br />
                                       <Text style={{ fontSize: 13 }}>
-                                        ${Number(item.payload?.price || 0).toLocaleString('es-AR')}
+                                        $
+                                        {Number(
+                                          item.payload?.price || 0,
+                                        ).toLocaleString('es-AR')}
                                         {' · Stock: '}
                                         {item.payload?.stock ?? 0}
                                       </Text>
@@ -5736,14 +6323,18 @@ export default function AddProduct() {
                                           okText="Descartar"
                                           cancelText="Cancelar"
                                           okButtonProps={{ danger: true }}
-                                          onConfirm={() => handleDiscardReviewItem(item)}
+                                          onConfirm={() =>
+                                            handleDiscardReviewItem(item)
+                                          }
                                         >
                                           <Button
                                             htmlType="button"
                                             danger
                                             size="small"
                                             icon={<DeleteOutlined />}
-                                            loading={reviewItemBusyId === item.id}
+                                            loading={
+                                              reviewItemBusyId === item.id
+                                            }
                                             disabled={
                                               reviewItemBusyId !== null &&
                                               reviewItemBusyId !== item.id
@@ -5756,7 +6347,9 @@ export default function AddProduct() {
                                           type="primary"
                                           size="small"
                                           icon={<CheckOutlined />}
-                                          onClick={() => handleApproveReviewItem(item)}
+                                          onClick={() =>
+                                            handleApproveReviewItem(item)
+                                          }
                                           loading={reviewItemBusyId === item.id}
                                           disabled={
                                             reviewItemBusyId !== null &&
@@ -5807,16 +6400,26 @@ export default function AddProduct() {
                                 }}
                               >
                                 <InboxOutlined
-                                  style={{ fontSize: 48, color: token.colorPrimary }}
+                                  style={{
+                                    fontSize: 48,
+                                    color: token.colorPrimary,
+                                  }}
                                 />
                               </div>
 
-                              <Text strong style={{ fontSize: 19, display: 'block' }}>
+                              <Text
+                                strong
+                                style={{ fontSize: 19, display: 'block' }}
+                              >
                                 Arrastrá imágenes o importalas desde el agente
                               </Text>
 
-                              <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                                Las imágenes cargadas disparan el análisis visual con IA.
+                              <Text
+                                type="secondary"
+                                style={{ display: 'block', marginTop: 6 }}
+                              >
+                                Las imágenes cargadas disparan el análisis
+                                visual con IA.
                               </Text>
 
                               <Text
@@ -5827,8 +6430,9 @@ export default function AddProduct() {
                                   marginTop: 10,
                                 }}
                               >
-                                JPG, PNG, WEBP, HEIC/HEIF · máximo {MAX_PRODUCT_IMAGES} imágenes ·
-                                alta calidad mejora la precisión
+                                JPG, PNG, WEBP, HEIC/HEIF · máximo{' '}
+                                {MAX_PRODUCT_IMAGES} imágenes · alta calidad
+                                mejora la precisión
                               </Text>
                             </div>
                           </Dragger>
@@ -5866,8 +6470,12 @@ export default function AddProduct() {
                         title={
                           <Space size={10}>
                             <span className="add-product-step-badge">2</span>
-                            <ShoppingOutlined style={{ color: token.colorPrimary }} />
-                            <span className="add-product-card-title">Información del producto</span>
+                            <ShoppingOutlined
+                              style={{ color: token.colorPrimary }}
+                            />
+                            <span className="add-product-card-title">
+                              Información del producto
+                            </span>
                             <Tag color="red" style={{ borderRadius: 999 }}>
                               Requerido
                             </Tag>
@@ -5883,10 +6491,14 @@ export default function AddProduct() {
                       >
                         <Text
                           type="secondary"
-                          style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                          style={{
+                            display: 'block',
+                            marginBottom: 16,
+                            fontSize: 14,
+                          }}
                         >
-                          Lo que ve el cliente: título, descripción y clasificación — todo
-                          obligatorio.
+                          Lo que ve el cliente: título, descripción y
+                          clasificación — todo obligatorio.
                         </Text>
 
                         <Row gutter={[18, 18]}>
@@ -5905,7 +6517,9 @@ export default function AddProduct() {
                                 size="large"
                                 placeholder="Nombre comercial claro del producto"
                                 prefix={
-                                  <FileTextOutlined style={{ color: token.colorTextSecondary }} />
+                                  <FileTextOutlined
+                                    style={{ color: token.colorTextSecondary }}
+                                  />
                                 }
                                 showCount
                                 maxLength={120}
@@ -5920,7 +6534,8 @@ export default function AddProduct() {
                               rules={[
                                 {
                                   required: true,
-                                  message: 'La descripción comercial es obligatoria',
+                                  message:
+                                    'La descripción comercial es obligatoria',
                                 },
                               ]}
                               extra="Texto visible para el cliente: claro, vendedor y útil, sin prometer datos no confirmados."
@@ -5975,7 +6590,9 @@ export default function AddProduct() {
                                 }
                                 getPopupContainer={() => document.body}
                                 onSelect={value => {
-                                  commitClassificationFromForm({ categoria: value })
+                                  commitClassificationFromForm({
+                                    categoria: value,
+                                  })
                                 }}
                                 onBlur={() => {
                                   normalizeTitleCaseFormField('categoria')
@@ -5986,7 +6603,11 @@ export default function AddProduct() {
                                   size="large"
                                   placeholder="Escribí o elegí una categoría"
                                   prefix={
-                                    <AppstoreOutlined style={{ color: token.colorTextSecondary }} />
+                                    <AppstoreOutlined
+                                      style={{
+                                        color: token.colorTextSecondary,
+                                      }}
+                                    />
                                   }
                                 />
                               </AutoComplete>
@@ -6027,7 +6648,11 @@ export default function AddProduct() {
                                   size="large"
                                   placeholder="Escribí o elegí una subcategoría"
                                   prefix={
-                                    <BranchesOutlined style={{ color: token.colorTextSecondary }} />
+                                    <BranchesOutlined
+                                      style={{
+                                        color: token.colorTextSecondary,
+                                      }}
+                                    />
                                   }
                                 />
                               </AutoComplete>
@@ -6049,7 +6674,9 @@ export default function AddProduct() {
                                 size="large"
                                 placeholder="Marca visible o declarada"
                                 prefix={
-                                  <ShoppingOutlined style={{ color: token.colorTextSecondary }} />
+                                  <ShoppingOutlined
+                                    style={{ color: token.colorTextSecondary }}
+                                  />
                                 }
                               />
                             </ProductField>
@@ -6061,7 +6688,9 @@ export default function AddProduct() {
                                 size="large"
                                 placeholder="Material principal visible o declarado"
                                 prefix={
-                                  <InfoCircleOutlined style={{ color: token.colorTextSecondary }} />
+                                  <InfoCircleOutlined
+                                    style={{ color: token.colorTextSecondary }}
+                                  />
                                 }
                               />
                             </ProductField>
@@ -6088,17 +6717,25 @@ export default function AddProduct() {
                         title={
                           <Space size={10}>
                             <span className="add-product-step-badge">3</span>
-                            <AppstoreOutlined style={{ color: token.colorPrimary }} />
+                            <AppstoreOutlined
+                              style={{ color: token.colorPrimary }}
+                            />
                             <span className="add-product-card-title">
                               Ficha técnica inteligente
                             </span>
                             {dynamicProductFields.length > 0 && (
-                              <Tag color="processing" style={{ borderRadius: 999 }}>
+                              <Tag
+                                color="processing"
+                                style={{ borderRadius: 999 }}
+                              >
                                 {dynamicProductFields.length} campos
                               </Tag>
                             )}
                             {!useTechnicalSheet && (
-                              <Tag color="default" style={{ borderRadius: 999 }}>
+                              <Tag
+                                color="default"
+                                style={{ borderRadius: 999 }}
+                              >
                                 Opcional
                               </Tag>
                             )}
@@ -6110,22 +6747,29 @@ export default function AddProduct() {
                             onChange={checked => {
                               if (checked) {
                                 setUseTechnicalSheet(true)
-                                const snapshot = technicalSheetSnapshotRef.current
+                                const snapshot =
+                                  technicalSheetSnapshotRef.current
                                 if (snapshot) {
                                   const currentDynamicFields =
                                     form.getFieldValue('dynamicFields') || {}
-                                  const hasCurrentValues = Object.values(currentDynamicFields).some(
-                                    value =>
-                                      Array.isArray(value)
-                                        ? value.length > 0
-                                        : value !== undefined && value !== null && value !== '',
+                                  const hasCurrentValues = Object.values(
+                                    currentDynamicFields,
+                                  ).some(value =>
+                                    Array.isArray(value)
+                                      ? value.length > 0
+                                      : value !== undefined &&
+                                        value !== null &&
+                                        value !== '',
                                   )
                                   if (
                                     !hasCurrentValues &&
-                                    !normalizeString(form.getFieldValue('descripcionTecnica'))
+                                    !normalizeString(
+                                      form.getFieldValue('descripcionTecnica'),
+                                    )
                                   ) {
                                     setProductFormValues({
-                                      descripcionTecnica: snapshot.descripcionTecnica,
+                                      descripcionTecnica:
+                                        snapshot.descripcionTecnica,
                                       dynamicFields: snapshot.dynamicFields,
                                     })
                                     message.info(
@@ -6139,13 +6783,17 @@ export default function AddProduct() {
 
                               const currentDescripcionTecnica =
                                 form.getFieldValue('descripcionTecnica')
-                              const currentDynamicFields = form.getFieldValue('dynamicFields') || {}
+                              const currentDynamicFields =
+                                form.getFieldValue('dynamicFields') || {}
                               const hasData =
                                 normalizeString(currentDescripcionTecnica) ||
-                                Object.values(currentDynamicFields).some(value =>
-                                  Array.isArray(value)
-                                    ? value.length > 0
-                                    : value !== undefined && value !== null && value !== '',
+                                Object.values(currentDynamicFields).some(
+                                  value =>
+                                    Array.isArray(value)
+                                      ? value.length > 0
+                                      : value !== undefined &&
+                                        value !== null &&
+                                        value !== '',
                                 )
 
                               const disableTechnicalSheet = () => {
@@ -6158,7 +6806,9 @@ export default function AddProduct() {
                                   descripcionTecnica: undefined,
                                   dynamicFields: {},
                                 })
-                                message.info('Ficha técnica desactivada para este producto')
+                                message.info(
+                                  'Ficha técnica desactivada para este producto',
+                                )
                               }
 
                               if (!hasData) {
@@ -6197,7 +6847,11 @@ export default function AddProduct() {
                               border: `1px dashed ${token.colorBorder}`,
                             }}
                           >
-                            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                            <Space
+                              direction="vertical"
+                              size={12}
+                              style={{ width: '100%' }}
+                            >
                               <Alert
                                 type="info"
                                 showIcon
@@ -6211,7 +6865,9 @@ export default function AddProduct() {
                                   htmlType="button"
                                   type="primary"
                                   icon={<ThunderboltOutlined />}
-                                  disabled={!normalizedAiDraft?.dynamicFields?.length}
+                                  disabled={
+                                    !normalizedAiDraft?.dynamicFields?.length
+                                  }
                                   onClick={applyAiTechnicalFields}
                                 >
                                   Generar ficha con IA
@@ -6227,8 +6883,10 @@ export default function AddProduct() {
 
                               {normalizedAiDraft?.dynamicFields?.length > 0 && (
                                 <Text type="secondary">
-                                  La IA encontró {normalizedAiDraft.dynamicFields.length} datos
-                                  posibles. Podés aplicarlos y luego quitar los que no correspondan.
+                                  La IA encontró{' '}
+                                  {normalizedAiDraft.dynamicFields.length} datos
+                                  posibles. Podés aplicarlos y luego quitar los
+                                  que no correspondan.
                                 </Text>
                               )}
                             </Space>
@@ -6253,7 +6911,11 @@ export default function AddProduct() {
                               style={{ marginBottom: 20, borderRadius: 16 }}
                               styles={{ body: { padding: 16 } }}
                             >
-                              <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                              <Space
+                                direction="vertical"
+                                size={14}
+                                style={{ width: '100%' }}
+                              >
                                 <Alert
                                   type="success"
                                   showIcon
@@ -6268,7 +6930,9 @@ export default function AddProduct() {
                                       htmlType="button"
                                       key={preset.key}
                                       size="small"
-                                      onClick={() => applyTechnicalPreset(preset)}
+                                      onClick={() =>
+                                        applyTechnicalPreset(preset)
+                                      }
                                       style={{ borderRadius: 999 }}
                                     >
                                       {preset.label} · {preset.helper}
@@ -6278,7 +6942,9 @@ export default function AddProduct() {
 
                                 <Input.TextArea
                                   value={technicalQuickText}
-                                  onChange={event => setTechnicalQuickText(event.target.value)}
+                                  onChange={event =>
+                                    setTechnicalQuickText(event.target.value)
+                                  }
                                   rows={2}
                                   placeholder="Ej: Cilindrada: 700 cc | Transmisión: 6 velocidades | Peso: 220 kg | Uso recomendado: adventure touring"
                                 />
@@ -6295,7 +6961,9 @@ export default function AddProduct() {
                                   <Button
                                     htmlType="button"
                                     icon={<FileTextOutlined />}
-                                    onClick={generateTechnicalDescriptionFromCurrentValues}
+                                    onClick={
+                                      generateTechnicalDescriptionFromCurrentValues
+                                    }
                                   >
                                     Crear descripción técnica
                                   </Button>
@@ -6311,16 +6979,25 @@ export default function AddProduct() {
                                     md={field.type === 'textarea' ? 24 : 12}
                                     key={field.name}
                                   >
-                                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                                    <Space
+                                      direction="vertical"
+                                      size={4}
+                                      style={{ width: '100%' }}
+                                    >
                                       <DynamicProductField field={field} />
                                       <Space size={6} wrap>
                                         {field.required && (
-                                          <Tag color="red" style={{ borderRadius: 999 }}>
+                                          <Tag
+                                            color="red"
+                                            style={{ borderRadius: 999 }}
+                                          >
                                             Obligatorio
                                           </Tag>
                                         )}
                                         {field.source && (
-                                          <Tag style={{ borderRadius: 999 }}>{field.source}</Tag>
+                                          <Tag style={{ borderRadius: 999 }}>
+                                            {field.source}
+                                          </Tag>
                                         )}
                                         <Button
                                           htmlType="button"
@@ -6328,7 +7005,9 @@ export default function AddProduct() {
                                           type="link"
                                           danger
                                           onClick={() =>
-                                            handleRemoveDynamicProductField(field.name)
+                                            handleRemoveDynamicProductField(
+                                              field.name,
+                                            )
                                           }
                                         >
                                           Quitar
@@ -6356,7 +7035,9 @@ export default function AddProduct() {
                                 <Text strong>Nombre del campo</Text>
                                 <Input
                                   value={customFieldName}
-                                  onChange={event => setCustomFieldName(event.target.value)}
+                                  onChange={event =>
+                                    setCustomFieldName(event.target.value)
+                                  }
                                   onPressEnter={handleAddDynamicProductField}
                                   placeholder="Ej: Potencia, Material, Capacidad"
                                   style={{ marginTop: 8 }}
@@ -6403,17 +7084,25 @@ export default function AddProduct() {
                         title={
                           <Space size={10}>
                             <span className="add-product-step-badge">4</span>
-                            <ClusterOutlined style={{ color: token.colorPrimary }} />
+                            <ClusterOutlined
+                              style={{ color: token.colorPrimary }}
+                            />
                             <span className="add-product-card-title">
                               Opciones vendibles del producto
                             </span>
                             {dynamicAttributes.length > 0 && (
-                              <Tag color="success" style={{ borderRadius: 999 }}>
+                              <Tag
+                                color="success"
+                                style={{ borderRadius: 999 }}
+                              >
                                 {dynamicAttributes.length} atributos detectados
                               </Tag>
                             )}
                             {!hasVariants && (
-                              <Tag color="default" style={{ borderRadius: 999 }}>
+                              <Tag
+                                color="default"
+                                style={{ borderRadius: 999 }}
+                              >
                                 Opcional
                               </Tag>
                             )}
@@ -6472,18 +7161,29 @@ export default function AddProduct() {
                             >
                               <Row gutter={[12, 12]} align="middle">
                                 <Col xs={24} lg={15}>
-                                  <Text strong>Creación rápida de variantes</Text>
-                                  <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
-                                    Pegá opciones en una línea y generá combinaciones sin cargar
-                                    campo por campo.
+                                  <Text strong>
+                                    Creación rápida de variantes
                                   </Text>
-                                  <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
+                                  <Text
+                                    type="secondary"
+                                    style={{ display: 'block', marginTop: 4 }}
+                                  >
+                                    Pegá opciones en una línea y generá
+                                    combinaciones sin cargar campo por campo.
+                                  </Text>
+                                  <Space
+                                    wrap
+                                    size={[8, 8]}
+                                    style={{ marginTop: 10 }}
+                                  >
                                     {QUICK_VARIANT_PRESETS.map(preset => (
                                       <Button
                                         htmlType="button"
                                         key={preset.key}
                                         size="small"
-                                        onClick={() => applyVariantPreset(preset)}
+                                        onClick={() =>
+                                          applyVariantPreset(preset)
+                                        }
                                         style={{ borderRadius: 999 }}
                                       >
                                         {preset.label} · {preset.helper}
@@ -6493,14 +7193,20 @@ export default function AddProduct() {
 
                                   <Input.TextArea
                                     value={quickVariantText}
-                                    onChange={event => setQuickVariantText(event.target.value)}
+                                    onChange={event =>
+                                      setQuickVariantText(event.target.value)
+                                    }
                                     rows={2}
                                     placeholder="Ej: Color: Negro, Blanco | Medida: 500ml, 1L | Presentación: Unidad, Pack"
                                     style={{ marginTop: 10 }}
                                   />
                                 </Col>
                                 <Col xs={24} lg={9}>
-                                  <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                                  <Space
+                                    direction="vertical"
+                                    size={10}
+                                    style={{ width: '100%' }}
+                                  >
                                     <Button
                                       htmlType="button"
                                       block
@@ -6540,7 +7246,9 @@ export default function AddProduct() {
                                   <Text strong>1. Crear atributo</Text>
                                   <Input
                                     value={newAttributeName}
-                                    onChange={event => setNewAttributeName(event.target.value)}
+                                    onChange={event =>
+                                      setNewAttributeName(event.target.value)
+                                    }
                                     onPressEnter={handleAddCustomAttribute}
                                     placeholder="Ej: Color, Talle, Presentación"
                                     style={{ marginTop: 8 }}
@@ -6553,7 +7261,10 @@ export default function AddProduct() {
                                     onChange={setNewAttributeType}
                                     style={{ width: '100%', marginTop: 8 }}
                                     options={[
-                                      { value: 'select', label: 'Lista de opciones' },
+                                      {
+                                        value: 'select',
+                                        label: 'Lista de opciones',
+                                      },
                                       { value: 'color', label: 'Color' },
                                       { value: 'text', label: 'Texto' },
                                     ]}
@@ -6579,7 +7290,11 @@ export default function AddProduct() {
                             </Divider>
 
                             {dynamicAttributes.length > 0 ? (
-                              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                              <Space
+                                direction="vertical"
+                                size={12}
+                                style={{ width: '100%' }}
+                              >
                                 {dynamicAttributes.map((attr, index) => (
                                   <div
                                     key={attr.name}
@@ -6593,11 +7308,17 @@ export default function AddProduct() {
                                     <Row gutter={[12, 12]} align="middle">
                                       <Col xs={24} md={7}>
                                         <Space>
-                                          <Badge count={index + 1} color={token.colorPrimary} />
+                                          <Badge
+                                            count={index + 1}
+                                            color={token.colorPrimary}
+                                          />
                                           <div>
                                             <Text strong>{attr.label}</Text>
                                             <br />
-                                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                            <Text
+                                              type="secondary"
+                                              style={{ fontSize: 12 }}
+                                            >
                                               Atributo
                                             </Text>
                                           </div>
@@ -6607,26 +7328,41 @@ export default function AddProduct() {
                                         <Select
                                           mode="tags"
                                           placeholder={`Valores para ${attr.label}, separados por coma`}
-                                          value={selectedAttributes[attr.name] || []}
+                                          value={
+                                            selectedAttributes[attr.name] || []
+                                          }
                                           onChange={values =>
-                                            handleAttributeValuesChange(attr.name, values)
+                                            handleAttributeValuesChange(
+                                              attr.name,
+                                              values,
+                                            )
                                           }
                                           tokenSeparators={[',']}
                                           allowClear
                                           style={{ width: '100%' }}
-                                          options={safeArray(attr.values).map(value => ({
-                                            value,
-                                            label: value,
-                                          }))}
+                                          options={safeArray(attr.values).map(
+                                            value => ({
+                                              value,
+                                              label: value,
+                                            }),
+                                          )}
                                         />
                                       </Col>
-                                      <Col xs={4} md={2} style={{ textAlign: 'right' }}>
+                                      <Col
+                                        xs={4}
+                                        md={2}
+                                        style={{ textAlign: 'right' }}
+                                      >
                                         <Button
                                           htmlType="button"
                                           type="text"
                                           danger
                                           icon={<DeleteOutlined />}
-                                          onClick={() => handleRemoveVariantAttribute(attr.name)}
+                                          onClick={() =>
+                                            handleRemoveVariantAttribute(
+                                              attr.name,
+                                            )
+                                          }
                                           aria-label={`Eliminar atributo ${attr.label}`}
                                         />
                                       </Col>
@@ -6650,7 +7386,11 @@ export default function AddProduct() {
                                 border: `1px solid ${token.colorBorderSecondary}`,
                               }}
                             >
-                              <Row gutter={[12, 12]} align="middle" justify="space-between">
+                              <Row
+                                gutter={[12, 12]}
+                                align="middle"
+                                justify="space-between"
+                              >
                                 <Col flex="auto">
                                   <Text strong>3. Generar variantes</Text>
                                   <br />
@@ -6678,12 +7418,14 @@ export default function AddProduct() {
                                       icon={<ReloadOutlined />}
                                       disabled={!canGenerateVariants}
                                     >
-                                      Generar {variantCombinationCount || 0} variantes
+                                      Generar {variantCombinationCount || 0}{' '}
+                                      variantes
                                     </Button>
                                   </Space>
                                 </Col>
                               </Row>
-                              {variantCombinationCount > MAX_GENERATED_VARIANTS && (
+                              {variantCombinationCount >
+                                MAX_GENERATED_VARIANTS && (
                                 <Alert
                                   type="error"
                                   showIcon
@@ -6698,7 +7440,9 @@ export default function AddProduct() {
                                 <Divider orientation="left">
                                   <Space>
                                     <AppstoreOutlined />
-                                    <span>{variants.length} variantes configuradas</span>
+                                    <span>
+                                      {variants.length} variantes configuradas
+                                    </span>
                                   </Space>
                                 </Divider>
 
@@ -6773,12 +7517,18 @@ export default function AddProduct() {
                                       </Space>
                                       <Space size={6} wrap>
                                         {record.uiStatus === 'new' && (
-                                          <Tag color="success" style={{ borderRadius: 999 }}>
+                                          <Tag
+                                            color="success"
+                                            style={{ borderRadius: 999 }}
+                                          >
                                             Nueva
                                           </Tag>
                                         )}
                                         {record.isActive === false && (
-                                          <Tag color="default" style={{ borderRadius: 999 }}>
+                                          <Tag
+                                            color="default"
+                                            style={{ borderRadius: 999 }}
+                                          >
                                             Inactiva
                                           </Tag>
                                         )}
@@ -6872,11 +7622,14 @@ export default function AddProduct() {
                                           objectFit: 'cover',
                                           borderRadius: 14,
                                           border: `1px solid ${token.colorBorderSecondary}`,
-                                          boxShadow: '0 8px 18px rgba(15,23,42,.08)',
+                                          boxShadow:
+                                            '0 8px 18px rgba(15,23,42,.08)',
                                         }}
                                       />
                                     ) : (
-                                      <Tag style={{ borderRadius: 999 }}>Sin imagen</Tag>
+                                      <Tag style={{ borderRadius: 999 }}>
+                                        Sin imagen
+                                      </Tag>
                                     )
                                   }
 
@@ -6888,7 +7641,10 @@ export default function AddProduct() {
                                         setVariants(prev =>
                                           prev.map(variant =>
                                             variant.key === record.key
-                                              ? { ...variant, isActive: checked }
+                                              ? {
+                                                  ...variant,
+                                                  isActive: checked,
+                                                }
                                               : variant,
                                           ),
                                         )
@@ -6905,7 +7661,10 @@ export default function AddProduct() {
                                       icon={<DeleteOutlined />}
                                       onClick={() => {
                                         setVariants(prev =>
-                                          prev.filter(variant => variant.key !== record.key),
+                                          prev.filter(
+                                            variant =>
+                                              variant.key !== record.key,
+                                          ),
                                         )
                                       }}
                                       size="small"
@@ -6934,54 +7693,63 @@ export default function AddProduct() {
                                             key: 'nombre',
                                             width: 220,
                                             fixed: 'left',
-                                            render: (_, record) => renderVariantLabel(record),
+                                            render: (_, record) =>
+                                              renderVariantLabel(record),
                                           },
                                           {
                                             title: 'Precio',
                                             dataIndex: 'price',
                                             key: 'price',
                                             width: 150,
-                                            render: (_, record) => renderVariantPrice(record),
+                                            render: (_, record) =>
+                                              renderVariantPrice(record),
                                           },
                                           {
                                             title: 'Stock',
                                             dataIndex: 'stock',
                                             key: 'stock',
                                             width: 120,
-                                            render: (_, record) => renderVariantStock(record),
+                                            render: (_, record) =>
+                                              renderVariantStock(record),
                                           },
                                           {
                                             title: 'SKU opcional',
                                             dataIndex: 'sku',
                                             key: 'sku',
                                             width: 180,
-                                            render: (_, record) => renderVariantSku(record),
+                                            render: (_, record) =>
+                                              renderVariantSku(record),
                                           },
                                           {
                                             title: 'Imagen de variante',
                                             key: 'image',
                                             width: 260,
                                             render: (_, record) =>
-                                              renderVariantImageSelector(record),
+                                              renderVariantImageSelector(
+                                                record,
+                                              ),
                                           },
                                           {
                                             title: 'Preview',
                                             key: 'preview',
                                             width: 110,
-                                            render: (_, record) => renderVariantPreview(record),
+                                            render: (_, record) =>
+                                              renderVariantPreview(record),
                                           },
                                           {
                                             title: 'Activo',
                                             key: 'active',
                                             width: 90,
                                             align: 'center',
-                                            render: (_, record) => renderVariantActive(record),
+                                            render: (_, record) =>
+                                              renderVariantActive(record),
                                           },
                                           {
                                             title: '',
                                             key: 'delete',
                                             width: 60,
-                                            render: (_, record) => renderVariantDelete(record),
+                                            render: (_, record) =>
+                                              renderVariantDelete(record),
                                           },
                                         ]}
                                       />
@@ -7004,9 +7772,17 @@ export default function AddProduct() {
                                               size={10}
                                               style={{ width: '100%' }}
                                             >
-                                              <Row justify="space-between" align="top" wrap={false}>
-                                                <Col flex="auto">{renderVariantLabel(record)}</Col>
-                                                <Col flex="none">{renderVariantDelete(record)}</Col>
+                                              <Row
+                                                justify="space-between"
+                                                align="top"
+                                                wrap={false}
+                                              >
+                                                <Col flex="auto">
+                                                  {renderVariantLabel(record)}
+                                                </Col>
+                                                <Col flex="none">
+                                                  {renderVariantDelete(record)}
+                                                </Col>
                                               </Row>
 
                                               <Row gutter={[10, 10]}>
@@ -7057,20 +7833,29 @@ export default function AddProduct() {
                                                 gutter={[10, 10]}
                                               >
                                                 <Col flex="auto">
-                                                  {renderVariantImageSelector(record)}
+                                                  {renderVariantImageSelector(
+                                                    record,
+                                                  )}
                                                 </Col>
                                                 <Col flex="none">
                                                   {renderVariantPreview(record)}
                                                 </Col>
                                               </Row>
 
-                                              <Row justify="space-between" align="middle">
+                                              <Row
+                                                justify="space-between"
+                                                align="middle"
+                                              >
                                                 <Col>
-                                                  <Text style={{ fontSize: 13 }}>
+                                                  <Text
+                                                    style={{ fontSize: 13 }}
+                                                  >
                                                     Variante activa
                                                   </Text>
                                                 </Col>
-                                                <Col>{renderVariantActive(record)}</Col>
+                                                <Col>
+                                                  {renderVariantActive(record)}
+                                                </Col>
                                               </Row>
                                             </Space>
                                           </Card>
@@ -7099,10 +7884,15 @@ export default function AddProduct() {
                               border: `1px dashed ${token.colorBorder}`,
                             }}
                           >
-                            <Space direction="vertical" size={12} align="center">
+                            <Space
+                              direction="vertical"
+                              size={12}
+                              align="center"
+                            >
                               <Text type="secondary">
-                                Este producto no tiene opciones vendibles. Activá variantes solo si
-                                el cliente debe elegir una alternativa específica antes de comprar.
+                                Este producto no tiene opciones vendibles.
+                                Activá variantes solo si el cliente debe elegir
+                                una alternativa específica antes de comprar.
                               </Text>
                               <Space wrap>
                                 <Button
@@ -7143,7 +7933,9 @@ export default function AddProduct() {
                         <Card
                           title={
                             <Space size={10}>
-                              <CheckCircleOutlined style={{ color: token.colorPrimary }} />
+                              <CheckCircleOutlined
+                                style={{ color: token.colorPrimary }}
+                              />
                               <span>Estado de carga</span>
                             </Space>
                           }
@@ -7155,7 +7947,11 @@ export default function AddProduct() {
                           }}
                           styles={{ body: { padding: 20 } }}
                         >
-                          <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                          <Space
+                            direction="vertical"
+                            size={14}
+                            style={{ width: '100%' }}
+                          >
                             <div
                               style={{
                                 padding: 16,
@@ -7184,9 +7980,13 @@ export default function AddProduct() {
                                       : 'Completá lo esencial'}
                                   </Text>
                                   <br />
-                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                  <Text
+                                    type="secondary"
+                                    style={{ fontSize: 12 }}
+                                  >
                                     {productReadiness.doneRequired}/
-                                    {productReadiness.requiredChecks.length} datos obligatorios
+                                    {productReadiness.requiredChecks.length}{' '}
+                                    datos obligatorios
                                   </Text>
                                 </div>
                                 <div
@@ -7215,9 +8015,16 @@ export default function AddProduct() {
                                 <Tag
                                   key={check.key}
                                   color={
-                                    check.done ? 'success' : check.required ? 'warning' : 'default'
+                                    check.done
+                                      ? 'success'
+                                      : check.required
+                                        ? 'warning'
+                                        : 'default'
                                   }
-                                  style={{ borderRadius: 999, marginInlineEnd: 0 }}
+                                  style={{
+                                    borderRadius: 999,
+                                    marginInlineEnd: 0,
+                                  }}
                                 >
                                   {check.done ? '✓' : '•'} {check.label}
                                 </Tag>
@@ -7225,7 +8032,9 @@ export default function AddProduct() {
                             </Space>
 
                             <Alert
-                              type={productReadiness.isReady ? 'success' : 'info'}
+                              type={
+                                productReadiness.isReady ? 'success' : 'info'
+                              }
                               showIcon
                               style={{ borderRadius: 14 }}
                               message={
@@ -7241,7 +8050,9 @@ export default function AddProduct() {
                           title={
                             <Space size={10}>
                               <span className="add-product-step-badge">5</span>
-                              <DollarOutlined style={{ color: token.colorPrimary }} />
+                              <DollarOutlined
+                                style={{ color: token.colorPrimary }}
+                              />
                               <span className="add-product-card-title">
                                 Precio y disponibilidad
                               </span>
@@ -7260,17 +8071,25 @@ export default function AddProduct() {
                         >
                           <Text
                             type="secondary"
-                            style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                            style={{
+                              display: 'block',
+                              marginBottom: 16,
+                              fontSize: 14,
+                            }}
                           >
-                            Precio, condición y stock visibles en el catálogo — obligatorios para
-                            publicar.
+                            Precio, condición y stock visibles en el catálogo —
+                            obligatorios para publicar.
                           </Text>
 
                           <Row gutter={[16, 16]}>
                             <Col xs={24}>
                               <ProductField
                                 name="precio"
-                                label={hasVariants ? 'Precio base de referencia' : 'Precio'}
+                                label={
+                                  hasVariants
+                                    ? 'Precio base de referencia'
+                                    : 'Precio'
+                                }
                                 rules={[
                                   {
                                     required: true,
@@ -7320,7 +8139,11 @@ export default function AddProduct() {
                                     min={1}
                                     placeholder="1"
                                     prefix={
-                                      <NumberOutlined style={{ color: token.colorTextSecondary }} />
+                                      <NumberOutlined
+                                        style={{
+                                          color: token.colorTextSecondary,
+                                        }}
+                                      />
                                     }
                                   />
                                 </ProductField>
@@ -7338,19 +8161,31 @@ export default function AddProduct() {
                                   },
                                 ]}
                               >
-                                <Select size="large" placeholder="Seleccioná la condición">
+                                <Select
+                                  size="large"
+                                  placeholder="Seleccioná la condición"
+                                >
                                   <Select.Option value="nuevo">
-                                    <Tag color="success" style={{ borderRadius: 999 }}>
+                                    <Tag
+                                      color="success"
+                                      style={{ borderRadius: 999 }}
+                                    >
                                       Nuevo
                                     </Tag>
                                   </Select.Option>
                                   <Select.Option value="usado">
-                                    <Tag color="warning" style={{ borderRadius: 999 }}>
+                                    <Tag
+                                      color="warning"
+                                      style={{ borderRadius: 999 }}
+                                    >
                                       Usado
                                     </Tag>
                                   </Select.Option>
                                   <Select.Option value="reacondicionado">
-                                    <Tag color="processing" style={{ borderRadius: 999 }}>
+                                    <Tag
+                                      color="processing"
+                                      style={{ borderRadius: 999 }}
+                                    >
                                       Reacondicionado
                                     </Tag>
                                   </Select.Option>
@@ -7372,11 +8207,16 @@ export default function AddProduct() {
                         <Card
                           title={
                             <Space size={10}>
-                              <FileTextOutlined style={{ color: token.colorPrimary }} />
+                              <FileTextOutlined
+                                style={{ color: token.colorPrimary }}
+                              />
                               <span className="add-product-card-title">
                                 SEO y contenido comercial
                               </span>
-                              <Tag color="default" style={{ borderRadius: 999 }}>
+                              <Tag
+                                color="default"
+                                style={{ borderRadius: 999 }}
+                              >
                                 Opcional
                               </Tag>
                             </Space>
@@ -7391,13 +8231,21 @@ export default function AddProduct() {
                         >
                           <Text
                             type="secondary"
-                            style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                            style={{
+                              display: 'block',
+                              marginBottom: 16,
+                              fontSize: 14,
+                            }}
                           >
-                            Mejora cómo se encuentra el producto en buscadores y recomendaciones
-                            internas.
+                            Mejora cómo se encuentra el producto en buscadores y
+                            recomendaciones internas.
                           </Text>
 
-                          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                          <Space
+                            direction="vertical"
+                            size={12}
+                            style={{ width: '100%' }}
+                          >
                             <Button
                               htmlType="button"
                               block
@@ -7422,7 +8270,10 @@ export default function AddProduct() {
                               Posicionamiento SEO
                             </Divider>
 
-                            <ProductField name="seoFocusKeyword" label="Keyword principal">
+                            <ProductField
+                              name="seoFocusKeyword"
+                              label="Keyword principal"
+                            >
                               <Input placeholder="Ej: Moto Morini X-Cape 700" />
                             </ProductField>
 
@@ -7431,10 +8282,15 @@ export default function AddProduct() {
                               label="Intención de búsqueda"
                               initialValue="commercial"
                             >
-                              <Select options={SEO_POSITIONING_INTENT_OPTIONS} />
+                              <Select
+                                options={SEO_POSITIONING_INTENT_OPTIONS}
+                              />
                             </ProductField>
 
-                            <ProductField name="seoPositioning" label="Posicionamiento SEO">
+                            <ProductField
+                              name="seoPositioning"
+                              label="Posicionamiento SEO"
+                            >
                               <Input.TextArea
                                 rows={4}
                                 maxLength={900}
@@ -7443,11 +8299,17 @@ export default function AddProduct() {
                               />
                             </ProductField>
 
-                            <ProductField name="seoTargetAudience" label="Audiencia objetivo">
+                            <ProductField
+                              name="seoTargetAudience"
+                              label="Audiencia objetivo"
+                            >
                               <Input placeholder="Ej: usuarios que buscan una motocicleta adventure para ruta y uso mixto" />
                             </ProductField>
 
-                            <ProductField name="seoContentAngle" label="Enfoque de contenido">
+                            <ProductField
+                              name="seoContentAngle"
+                              label="Enfoque de contenido"
+                            >
                               <Input.TextArea
                                 rows={2}
                                 maxLength={420}
@@ -7456,7 +8318,10 @@ export default function AddProduct() {
                               />
                             </ProductField>
 
-                            <ProductField name="seoFaq" label="Preguntas frecuentes SEO">
+                            <ProductField
+                              name="seoFaq"
+                              label="Preguntas frecuentes SEO"
+                            >
                               <Select
                                 width="100%"
                                 mode="tags"
@@ -7465,7 +8330,10 @@ export default function AddProduct() {
                               />
                             </ProductField>
 
-                            <ProductField name="seoContentPillars" label="Pilares de contenido">
+                            <ProductField
+                              name="seoContentPillars"
+                              label="Pilares de contenido"
+                            >
                               <Select
                                 mode="tags"
                                 tokenSeparators={[',']}
@@ -7481,7 +8349,10 @@ export default function AddProduct() {
                               <Input placeholder="nombre-producto-claro" />
                             </ProductField>
 
-                            <ProductField name="shortDescription" label="Descripción corta">
+                            <ProductField
+                              name="shortDescription"
+                              label="Descripción corta"
+                            >
                               <Input.TextArea
                                 rows={2}
                                 maxLength={260}
@@ -7491,10 +8362,17 @@ export default function AddProduct() {
                             </ProductField>
 
                             <ProductField name="metaTitle" label="Meta title">
-                              <Input maxLength={70} showCount placeholder="Título SEO" />
+                              <Input
+                                maxLength={70}
+                                showCount
+                                placeholder="Título SEO"
+                              />
                             </ProductField>
 
-                            <ProductField name="metaDescription" label="Meta description">
+                            <ProductField
+                              name="metaDescription"
+                              label="Meta description"
+                            >
                               <Input.TextArea
                                 rows={2}
                                 maxLength={160}
@@ -7516,11 +8394,16 @@ export default function AddProduct() {
                         <Card
                           title={
                             <Space size={10}>
-                              <ShoppingOutlined style={{ color: token.colorPrimary }} />
+                              <ShoppingOutlined
+                                style={{ color: token.colorPrimary }}
+                              />
                               <span className="add-product-card-title">
                                 Logística, garantía y origen
                               </span>
-                              <Tag color="default" style={{ borderRadius: 999 }}>
+                              <Tag
+                                color="default"
+                                style={{ borderRadius: 999 }}
+                              >
                                 Opcional
                               </Tag>
                             </Space>
@@ -7535,10 +8418,14 @@ export default function AddProduct() {
                         >
                           <Text
                             type="secondary"
-                            style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                            style={{
+                              display: 'block',
+                              marginBottom: 16,
+                              fontSize: 14,
+                            }}
                           >
-                            Ayuda a calcular envío y a comunicar garantía y origen — podés
-                            completarlo después.
+                            Ayuda a calcular envío y a comunicar garantía y
+                            origen — podés completarlo después.
                           </Text>
 
                           <Row gutter={[12, 12]}>
@@ -7562,18 +8449,39 @@ export default function AddProduct() {
                               </ProductField>
                             </Col>
                             <Col xs={8}>
-                              <ProductField name="packageLengthCm" label="Largo cm">
-                                <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                              <ProductField
+                                name="packageLengthCm"
+                                label="Largo cm"
+                              >
+                                <InputNumber
+                                  min={0}
+                                  precision={1}
+                                  style={{ width: '100%' }}
+                                />
                               </ProductField>
                             </Col>
                             <Col xs={8}>
-                              <ProductField name="packageWidthCm" label="Ancho cm">
-                                <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                              <ProductField
+                                name="packageWidthCm"
+                                label="Ancho cm"
+                              >
+                                <InputNumber
+                                  min={0}
+                                  precision={1}
+                                  style={{ width: '100%' }}
+                                />
                               </ProductField>
                             </Col>
                             <Col xs={8}>
-                              <ProductField name="packageHeightCm" label="Alto cm">
-                                <InputNumber min={0} precision={1} style={{ width: '100%' }} />
+                              <ProductField
+                                name="packageHeightCm"
+                                label="Alto cm"
+                              >
+                                <InputNumber
+                                  min={0}
+                                  precision={1}
+                                  style={{ width: '100%' }}
+                                />
                               </ProductField>
                             </Col>
                             <Col xs={24}>
@@ -7582,7 +8490,10 @@ export default function AddProduct() {
                               </ProductField>
                             </Col>
                             <Col xs={24}>
-                              <ProductField name="countryOfOrigin" label="País de origen">
+                              <ProductField
+                                name="countryOfOrigin"
+                                label="País de origen"
+                              >
                                 <Input placeholder="Ej: Argentina, Brasil, China" />
                               </ProductField>
                             </Col>
@@ -7592,7 +8503,9 @@ export default function AddProduct() {
                         <Card
                           title={
                             <Space size={10}>
-                              <TagOutlined style={{ color: token.colorPrimary }} />
+                              <TagOutlined
+                                style={{ color: token.colorPrimary }}
+                              />
                               <span>Tags y etiquetas</span>
                             </Space>
                           }
@@ -7651,7 +8564,8 @@ export default function AddProduct() {
                           </div>
 
                           <Text type="secondary" style={{ fontSize: 12 }}>
-                            Los tags mejoran búsqueda, filtros y recomendaciones.
+                            Los tags mejoran búsqueda, filtros y
+                            recomendaciones.
                           </Text>
                         </Card>
 
@@ -7665,7 +8579,11 @@ export default function AddProduct() {
                           }}
                           styles={{ body: { padding: 20 } }}
                         >
-                          <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                          <Space
+                            direction="vertical"
+                            size={14}
+                            style={{ width: '100%' }}
+                          >
                             <Space size={10}>
                               <span className="add-product-step-badge">6</span>
                               <Text strong className="add-product-card-title">
@@ -7676,7 +8594,9 @@ export default function AddProduct() {
                             {isError && (
                               <Alert
                                 type="error"
-                                message={productMessage || 'Error guardando producto'}
+                                message={
+                                  productMessage || 'Error guardando producto'
+                                }
                                 showIcon
                                 style={{ borderRadius: 14 }}
                               />
@@ -7742,10 +8662,15 @@ export default function AddProduct() {
                               >
                                 <div>
                                   <Text strong>
-                                    {publishProduct ? 'Publicar visible' : 'Guardar borrador'}
+                                    {publishProduct
+                                      ? 'Publicar visible'
+                                      : 'Guardar borrador'}
                                   </Text>
                                   <br />
-                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                  <Text
+                                    type="secondary"
+                                    style={{ fontSize: 12 }}
+                                  >
                                     {publishProduct
                                       ? 'El producto queda activo en el comercio al finalizar.'
                                       : 'El producto queda oculto para revisión interna.'}
@@ -7794,8 +8719,8 @@ export default function AddProduct() {
                                 display: 'block',
                               }}
                             >
-                              Se validará tenant, imágenes, variantes y metadatos IA antes de
-                              publicar.
+                              Se validará tenant, imágenes, variantes y
+                              metadatos IA antes de publicar.
                             </Text>
                           </Space>
                         </Card>

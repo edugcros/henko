@@ -4,7 +4,8 @@ import orderService from './orderService'
 
 const getErrorMessage = (payload, fallback) => {
   if (typeof payload === 'string') return payload
-  if (payload?.message && typeof payload.message === 'string') return payload.message
+  if (payload?.message && typeof payload.message === 'string')
+    return payload.message
   return fallback
 }
 
@@ -21,7 +22,9 @@ const removeOrderFromList = (state, orderId) => {
 
   const beforeLength = state.list.data.data.length
 
-  state.list.data.data = state.list.data.data.filter(order => order._id !== orderId)
+  state.list.data.data = state.list.data.data.filter(
+    order => order._id !== orderId,
+  )
 
   const wasRemoved = beforeLength !== state.list.data.data.length
 
@@ -39,19 +42,26 @@ const removeOrderFromList = (state, orderId) => {
   }
 }
 
-export const getOrdersThunk = createAsyncThunk('order/getOrders', async (params, thunkAPI) => {
-  try {
-    const response = await orderService.getOrders(params)
+export const getOrdersThunk = createAsyncThunk(
+  'order/getOrders',
+  async (params, thunkAPI) => {
+    try {
+      const response = await orderService.getOrders(params)
 
-    if (!response?.success) {
-      return thunkAPI.rejectWithValue(response?.message || 'Error cargando órdenes')
+      if (!response?.success) {
+        return thunkAPI.rejectWithValue(
+          response?.message || 'Error cargando órdenes',
+        )
+      }
+
+      return response
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error?.message || 'Error inesperado cargando órdenes',
+      )
     }
-
-    return response
-  } catch (error) {
-    return thunkAPI.rejectWithValue(error?.message || 'Error inesperado cargando órdenes')
-  }
-})
+  },
+)
 
 export const createOrderThunk = createAsyncThunk(
   'order/createOrder',
@@ -60,13 +70,17 @@ export const createOrderThunk = createAsyncThunk(
       const response = await orderService.createOrder(orderData)
 
       if (!response?.success) {
-        return thunkAPI.rejectWithValue(response?.message || 'Error creando orden')
+        return thunkAPI.rejectWithValue(
+          response?.message || 'Error creando orden',
+        )
       }
 
       return response
     } catch (error) {
       return thunkAPI.rejectWithValue(
-        error?.response?.data?.message || error?.message || 'Error creando orden',
+        error?.response?.data?.message ||
+          error?.message ||
+          'Error creando orden',
       )
     }
   },
@@ -79,13 +93,17 @@ export const updateOrderStatusThunk = createAsyncThunk(
       const response = await orderService.updateOrderStatus(payload)
 
       if (!response?.success) {
-        return thunkAPI.rejectWithValue(response?.message || 'Error actualizando orden')
+        return thunkAPI.rejectWithValue(
+          response?.message || 'Error actualizando orden',
+        )
       }
 
       return response
     } catch (error) {
       return thunkAPI.rejectWithValue(
-        error?.response?.data?.message || error?.message || 'Error actualizando orden',
+        error?.response?.data?.message ||
+          error?.message ||
+          'Error actualizando orden',
       )
     }
   },
@@ -98,13 +116,17 @@ export const updateOrderPaymentStatusThunk = createAsyncThunk(
       const response = await orderService.updateOrderPaymentStatus(payload)
 
       if (!response?.success) {
-        return thunkAPI.rejectWithValue(response?.message || 'Error actualizando pago')
+        return thunkAPI.rejectWithValue(
+          response?.message || 'Error actualizando pago',
+        )
       }
 
       return response
     } catch (error) {
       return thunkAPI.rejectWithValue(
-        error?.response?.data?.message || error?.message || 'Error actualizando pago',
+        error?.response?.data?.message ||
+          error?.message ||
+          'Error actualizando pago',
       )
     }
   },
@@ -117,78 +139,102 @@ export const updateOrderFulfillmentStatusThunk = createAsyncThunk(
       const response = await orderService.updateOrderFulfillmentStatus(payload)
 
       if (!response?.success) {
-        return thunkAPI.rejectWithValue(response?.message || 'Error actualizando estado logístico')
+        return thunkAPI.rejectWithValue(
+          response?.message || 'Error actualizando estado logístico',
+        )
       }
 
       return response
     } catch (error) {
       return thunkAPI.rejectWithValue(
-        error?.response?.data?.message || error?.message || 'Error actualizando estado logístico',
+        error?.response?.data?.message ||
+          error?.message ||
+          'Error actualizando estado logístico',
       )
     }
   },
 )
 
-export const cancelOrderThunk = createAsyncThunk('order/cancelOrder', async (payload, thunkAPI) => {
-  try {
-    const response = await orderService.cancelOrder(payload)
+export const cancelOrderThunk = createAsyncThunk(
+  'order/cancelOrder',
+  async (payload, thunkAPI) => {
+    try {
+      const response = await orderService.cancelOrder(payload)
 
-    if (!response?.success) {
-      return thunkAPI.rejectWithValue(response?.message || 'Error cancelando orden')
+      if (!response?.success) {
+        return thunkAPI.rejectWithValue(
+          response?.message || 'Error cancelando orden',
+        )
+      }
+
+      return response
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Error cancelando orden',
+      )
     }
+  },
+)
 
-    return response
-  } catch (error) {
-    return thunkAPI.rejectWithValue(
-      error?.response?.data?.message || error?.message || 'Error cancelando orden',
-    )
-  }
-})
+export const refundOrderThunk = createAsyncThunk(
+  'order/refundOrder',
+  async (payload, thunkAPI) => {
+    try {
+      const response = await orderService.refundOrder(payload)
 
-export const refundOrderThunk = createAsyncThunk('order/refundOrder', async (payload, thunkAPI) => {
-  try {
-    const response = await orderService.refundOrder(payload)
+      if (!response?.success) {
+        return thunkAPI.rejectWithValue(
+          response?.message || 'Error reembolsando orden',
+        )
+      }
 
-    if (!response?.success) {
-      return thunkAPI.rejectWithValue(response?.message || 'Error reembolsando orden')
+      return response
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Error reembolsando orden',
+      )
     }
+  },
+)
 
-    return response
-  } catch (error) {
-    return thunkAPI.rejectWithValue(
-      error?.response?.data?.message || error?.message || 'Error reembolsando orden',
-    )
-  }
-})
+export const deleteOrderThunk = createAsyncThunk(
+  'order/deleteOrder',
+  async (payload, thunkAPI) => {
+    try {
+      const response = await orderService.deleteOrder(payload)
 
-export const deleteOrderThunk = createAsyncThunk('order/deleteOrder', async (payload, thunkAPI) => {
-  try {
-    const response = await orderService.deleteOrder(payload)
+      if (!response?.success) {
+        return thunkAPI.rejectWithValue({
+          message: response?.message || 'Error eliminando orden',
+          code: response?.code || null,
+          status: response?.status || null,
+          data: response?.data || null,
+          originalPayload: payload,
+        })
+      }
 
-    if (!response?.success) {
+      return {
+        ...response,
+        deletedId: payload?.id,
+      }
+    } catch (error) {
       return thunkAPI.rejectWithValue({
-        message: response?.message || 'Error eliminando orden',
-        code: response?.code || null,
-        status: response?.status || null,
-        data: response?.data || null,
+        message:
+          error?.response?.data?.message ||
+          error?.message ||
+          'Error eliminando orden',
+        code: error?.response?.data?.code || null,
+        status: error?.response?.status || null,
+        data: error?.response?.data?.data || null,
         originalPayload: payload,
       })
     }
-
-    return {
-      ...response,
-      deletedId: payload?.id,
-    }
-  } catch (error) {
-    return thunkAPI.rejectWithValue({
-      message: error?.response?.data?.message || error?.message || 'Error eliminando orden',
-      code: error?.response?.data?.code || null,
-      status: error?.response?.status || null,
-      data: error?.response?.data?.data || null,
-      originalPayload: payload,
-    })
-  }
-})
+  },
+)
 
 const initialState = {
   list: {
@@ -288,7 +334,9 @@ const setFulfilledDelete = (state, action) => {
   state.deleted.isLoading = false
   state.deleted.isError = false
   state.deleted.message =
-    action.payload?.message || action.payload?.data?.message || 'Orden eliminada correctamente'
+    action.payload?.message ||
+    action.payload?.data?.message ||
+    'Orden eliminada correctamente'
   state.deleted.data = action.payload?.data || null
   state.deleted.id = deletedId || null
 
@@ -379,7 +427,10 @@ const orderSlice = createSlice({
         }
       })
       .addCase(getOrdersThunk.rejected, (state, action) => {
-        const errorMessage = getErrorMessage(action.payload, 'Error cargando órdenes')
+        const errorMessage = getErrorMessage(
+          action.payload,
+          'Error cargando órdenes',
+        )
 
         state.list.isLoading = false
         state.list.isError = true
@@ -420,7 +471,10 @@ const orderSlice = createSlice({
         state.message = action.payload?.message || null
       })
       .addCase(createOrderThunk.rejected, (state, action) => {
-        const errorMessage = getErrorMessage(action.payload, 'Error creando orden')
+        const errorMessage = getErrorMessage(
+          action.payload,
+          'Error creando orden',
+        )
 
         state.created.isLoading = false
         state.created.isError = true
@@ -434,7 +488,11 @@ const orderSlice = createSlice({
       .addCase(updateOrderStatusThunk.pending, setPendingUpdate)
       .addCase(updateOrderStatusThunk.fulfilled, setFulfilledUpdate)
       .addCase(updateOrderStatusThunk.rejected, (state, action) =>
-        setRejectedUpdate(state, action, 'Error actualizando estado de la orden'),
+        setRejectedUpdate(
+          state,
+          action,
+          'Error actualizando estado de la orden',
+        ),
       )
 
       .addCase(updateOrderPaymentStatusThunk.pending, setPendingUpdate)
@@ -467,7 +525,11 @@ const orderSlice = createSlice({
   },
 })
 
-export const { clearOrders, resetOrderState, clearOrderMessages, clearDeletedOrderState } =
-  orderSlice.actions
+export const {
+  clearOrders,
+  resetOrderState,
+  clearOrderMessages,
+  clearDeletedOrderState,
+} = orderSlice.actions
 
 export default orderSlice.reducer

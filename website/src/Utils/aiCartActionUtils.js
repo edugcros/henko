@@ -1,6 +1,7 @@
 // 📁 website/src/utils/aiCartActionUtils.js
 
-const STORAGE_NAMESPACE = process.env.REACT_APP_AI_STORAGE_NAMESPACE || 'commerce_ai'
+const STORAGE_NAMESPACE =
+  process.env.REACT_APP_AI_STORAGE_NAMESPACE || 'commerce_ai'
 
 const clean = value => String(value || '').trim()
 
@@ -66,7 +67,10 @@ export const normalizeAiCartAction = action => {
     slug: clean(action.slug),
     url: clean(action.url),
     selectedAttributes:
-      action.selectedAttributes || action.variantAttributes || action.attributes || {},
+      action.selectedAttributes ||
+      action.variantAttributes ||
+      action.attributes ||
+      {},
   }
 }
 

@@ -189,8 +189,8 @@ const normalizeNumberOrZero = value => {
 }
 
 const uniqueList = values => {
-  return [...new Set(values.map(normalizeString).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b),
+  return [...new Set(values.map(normalizeString).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b),
   )
 }
 
@@ -256,7 +256,8 @@ const getSource = job => {
 
 const getSourceLabel = job => {
   const source = getSource(job)
-  if (job?.metadata?.tenantResolutionMode === 'folder-domain') return 'Agente · folder-domain'
+  if (job?.metadata?.tenantResolutionMode === 'folder-domain')
+    return 'Agente · folder-domain'
   return SOURCE_LABEL[source] || source || 'Origen no informado'
 }
 
@@ -271,7 +272,8 @@ const getSourcePath = job => {
 }
 
 const getAgentMode = job => {
-  if (job?.metadata?.tenantResolutionMode) return job.metadata.tenantResolutionMode
+  if (job?.metadata?.tenantResolutionMode)
+    return job.metadata.tenantResolutionMode
   if (getSource(job) === 'local-folder-agent') return 'agent'
   if (getSource(job) === 'manual-upload') return 'manual'
   return 'unknown'
@@ -311,7 +313,8 @@ const matchesClientFilters = ({ job, sourceFilter }) => {
   const source = getSource(job)
   const mode = getAgentMode(job)
 
-  if (sourceFilter && source !== sourceFilter && mode !== sourceFilter) return false
+  if (sourceFilter && source !== sourceFilter && mode !== sourceFilter)
+    return false
 
   return true
 }
@@ -326,7 +329,9 @@ const getDraftImageUrl = product => {
 
 const getDraftVariantCount = product => {
   if (!product?.hasVariants) return 0
-  return safeArray(product?.variants).filter(variant => variant?.isActive !== false).length
+  return safeArray(product?.variants).filter(
+    variant => variant?.isActive !== false,
+  ).length
 }
 
 // =====================================================
@@ -366,9 +371,20 @@ const AgentPulse = ({ active }) => (
   </Box>
 )
 
-const MetricCard = ({ label, value, color = 'default', icon: Icon = HubIcon, description }) => (
+const MetricCard = ({
+  label,
+  value,
+  color = 'default',
+  icon: Icon = HubIcon,
+  description,
+}) => (
   <Paper variant="outlined" sx={{ p: 1.75, height: '100%', borderRadius: 2.5 }}>
-    <Stack direction="row" spacing={1.25} justifyContent="space-between" alignItems="flex-start">
+    <Stack
+      direction="row"
+      spacing={1.25}
+      justifyContent="space-between"
+      alignItems="flex-start"
+    >
       <Box sx={{ minWidth: 0 }}>
         <Typography variant="caption" color="text.secondary" fontWeight={800}>
           {label}
@@ -377,7 +393,12 @@ const MetricCard = ({ label, value, color = 'default', icon: Icon = HubIcon, des
           {formatNumber(value)}
         </Typography>
         {description && (
-          <Typography variant="caption" color="text.secondary" display="block" noWrap>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            display="block"
+            noWrap
+          >
             {description}
           </Typography>
         )}
@@ -460,14 +481,23 @@ const CountdownChip = ({ scheduledAt, now }) => {
     <Chip
       size="small"
       icon={<AccessTimeIcon />}
-      label={overdue ? 'Vencido · esperando al agente' : `en ${formatDuration(diff)}`}
+      label={
+        overdue ? 'Vencido · esperando al agente' : `en ${formatDuration(diff)}`
+      }
       color={overdue ? 'warning' : 'secondary'}
       variant={overdue ? 'filled' : 'outlined'}
     />
   )
 }
 
-const DraftProductCard = ({ product, onPublish, onEdit, onDiscard, publishing, discarding }) => {
+const DraftProductCard = ({
+  product,
+  onPublish,
+  onEdit,
+  onDiscard,
+  publishing,
+  discarding,
+}) => {
   const variantCount = getDraftVariantCount(product)
 
   return (
@@ -520,13 +550,19 @@ const DraftProductCard = ({ product, onPublish, onEdit, onDiscard, publishing, d
             </Typography>
           </Stack>
 
-          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+          <Stack
+            direction="row"
+            spacing={0.75}
+            flexWrap="wrap"
+            useFlexGap
+            sx={{ mt: 1 }}
+          >
             <Chip
               size="small"
               variant="outlined"
               label={
                 product.aiAutomationMode === 'agent-autosave'
-                  ? 'Creado 100% por el agente'
+                  ? 'Analizado por AddProduct'
                   : 'Generado por IA'
               }
             />
@@ -539,7 +575,12 @@ const DraftProductCard = ({ product, onPublish, onEdit, onDiscard, publishing, d
               />
             )}
             {product.aiNeedsReview && (
-              <Chip size="small" color="warning" variant="outlined" label="Requiere revisión" />
+              <Chip
+                size="small"
+                color="warning"
+                variant="outlined"
+                label="Requiere revisión"
+              />
             )}
           </Stack>
 
@@ -549,7 +590,12 @@ const DraftProductCard = ({ product, onPublish, onEdit, onDiscard, publishing, d
             </Box>
           )}
 
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            display="block"
+            sx={{ mt: 1 }}
+          >
             Creado: {formatDate(product.createdAt)}
           </Typography>
         </Box>
@@ -567,7 +613,11 @@ const DraftProductCard = ({ product, onPublish, onEdit, onDiscard, publishing, d
             variant="contained"
             color="success"
             startIcon={
-              publishing ? <CircularProgress size={14} color="inherit" /> : <PublishIcon />
+              publishing ? (
+                <CircularProgress size={14} color="inherit" />
+              ) : (
+                <PublishIcon />
+              )
             }
             onClick={() => onPublish(product)}
             disabled={publishing || discarding}
@@ -586,7 +636,13 @@ const DraftProductCard = ({ product, onPublish, onEdit, onDiscard, publishing, d
           <Button
             size="small"
             color="error"
-            startIcon={discarding ? <CircularProgress size={14} color="inherit" /> : <DeleteIcon />}
+            startIcon={
+              discarding ? (
+                <CircularProgress size={14} color="inherit" />
+              ) : (
+                <DeleteIcon />
+              )
+            }
             onClick={() => onDiscard(product)}
             disabled={publishing || discarding}
           >
@@ -599,7 +655,13 @@ const DraftProductCard = ({ product, onPublish, onEdit, onDiscard, publishing, d
 }
 
 const SectionHeader = ({ icon: Icon, title, count, hint }) => (
-  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 1.5 }}>
+  <Stack
+    direction="row"
+    spacing={1}
+    alignItems="center"
+    flexWrap="wrap"
+    sx={{ mb: 1.5 }}
+  >
     <Icon fontSize="small" color="action" />
     <Typography variant="subtitle1" fontWeight={800}>
       {title}
@@ -628,8 +690,10 @@ const buildActivityFeed = jobs => {
   const events = []
 
   jobs.forEach(job => {
-    if (job.approvedAt) events.push({ type: 'approved', job, at: job.approvedAt })
-    if (job.rejectedAt) events.push({ type: 'rejected', job, at: job.rejectedAt })
+    if (job.approvedAt)
+      events.push({ type: 'approved', job, at: job.approvedAt })
+    if (job.rejectedAt)
+      events.push({ type: 'rejected', job, at: job.rejectedAt })
     if (job.failedAt) events.push({ type: 'failed', job, at: job.failedAt })
     if (job.processedAt && job.status === 'completed') {
       events.push({ type: 'completed', job, at: job.processedAt })
@@ -642,9 +706,17 @@ const buildActivityFeed = jobs => {
     .slice(0, 6)
 }
 
-const AgentStatusBar = ({ agentStatus, agentStatusLoading, activity, onSweep, sweeping }) => {
+const AgentStatusBar = ({
+  agentStatus,
+  agentStatusLoading,
+  activity,
+  onSweep,
+  sweeping,
+}) => {
   const enabled = agentStatus?.agent?.enabled !== false
-  const pollSeconds = Math.round((agentStatus?.agent?.pollIntervalMs || 0) / 1000)
+  const pollSeconds = Math.round(
+    (agentStatus?.agent?.pollIntervalMs || 0) / 1000,
+  )
   const nextRun = agentStatus?.nextRun
 
   return (
@@ -656,16 +728,30 @@ const AgentStatusBar = ({ agentStatus, agentStatusLoading, activity, onSweep, sw
         borderRadius: 3,
         borderColor: enabled ? 'success.main' : 'divider',
         bgcolor: theme =>
-          theme.palette.mode === 'dark' ? 'rgba(46,125,50,0.06)' : 'rgba(46,125,50,0.04)',
+          theme.palette.mode === 'dark'
+            ? 'rgba(46,125,50,0.06)'
+            : 'rgba(46,125,50,0.04)',
       }}
     >
       <AgentPulseStyles />
-      <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" gap={2}>
+      <Stack
+        direction={{ xs: 'column', lg: 'row' }}
+        justifyContent="space-between"
+        gap={2}
+      >
         <Stack direction="row" spacing={1.5} alignItems="center">
           <AgentPulse active={enabled} />
           <Box>
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-              <BoltIcon fontSize="small" color={enabled ? 'success' : 'disabled'} />
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              flexWrap="wrap"
+            >
+              <BoltIcon
+                fontSize="small"
+                color={enabled ? 'success' : 'disabled'}
+              />
               <Typography variant="subtitle1" fontWeight={900}>
                 {enabled ? 'Agente IA activo' : 'Agente IA pausado'}
               </Typography>
@@ -679,7 +765,11 @@ const AgentStatusBar = ({ agentStatus, agentStatusLoading, activity, onSweep, sw
           </Box>
         </Stack>
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          alignItems={{ sm: 'center' }}
+        >
           {nextRun && (
             <Tooltip title={nextRun.originalFilename || ''}>
               <Chip
@@ -695,7 +785,11 @@ const AgentStatusBar = ({ agentStatus, agentStatusLoading, activity, onSweep, sw
             size="small"
             variant="contained"
             startIcon={
-              sweeping ? <CircularProgress size={16} color="inherit" /> : <PlayArrowIcon />
+              sweeping ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <PlayArrowIcon />
+              )
             }
             onClick={onSweep}
             disabled={sweeping}
@@ -755,11 +849,24 @@ const AgentStatusBar = ({ agentStatus, agentStatusLoading, activity, onSweep, sw
                   spacing={1}
                   alignItems="center"
                 >
-                  <Icon fontSize="inherit" color={meta?.color || 'action'} sx={{ fontSize: 16 }} />
-                  <Typography variant="caption" noWrap sx={{ maxWidth: { xs: 180, sm: 320 } }}>
-                    <strong>{meta?.label || event.type}</strong> · {getAnalysisTitle(event.job)}
+                  <Icon
+                    fontSize="inherit"
+                    color={meta?.color || 'action'}
+                    sx={{ fontSize: 16 }}
+                  />
+                  <Typography
+                    variant="caption"
+                    noWrap
+                    sx={{ maxWidth: { xs: 180, sm: 320 } }}
+                  >
+                    <strong>{meta?.label || event.type}</strong> ·{' '}
+                    {getAnalysisTitle(event.job)}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ ml: 'auto' }}
+                  >
                     {formatRelativeTime(event.at)}
                   </Typography>
                 </Stack>
@@ -871,8 +978,12 @@ const ProductAnalysisPage = () => {
     return visibleJobs
       .filter(job => ['pending', 'scheduled'].includes(job.status))
       .sort((a, b) => {
-        const aTime = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Infinity
-        const bTime = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Infinity
+        const aTime = a.scheduledAt
+          ? new Date(a.scheduledAt).getTime()
+          : Infinity
+        const bTime = b.scheduledAt
+          ? new Date(b.scheduledAt).getTime()
+          : Infinity
         if (aTime !== bTime) return aTime - bTime
         return new Date(a.createdAt) - new Date(b.createdAt)
       })
@@ -886,17 +997,27 @@ const ProductAnalysisPage = () => {
   const reviewJobs = useMemo(() => {
     return visibleJobs
       .filter(job => job.status === 'completed' && !job.createdProductId)
-      .sort((a, b) => (a.analysis?.confidence ?? 0) - (b.analysis?.confidence ?? 0))
+      .sort(
+        (a, b) => (a.analysis?.confidence ?? 0) - (b.analysis?.confidence ?? 0),
+      )
   }, [visibleJobs])
 
   const historyJobs = useMemo(() => {
-    const grouped = new Set([...queueJobs, ...processingJobs, ...reviewJobs].map(getJobId))
+    const grouped = new Set(
+      [...queueJobs, ...processingJobs, ...reviewJobs].map(getJobId),
+    )
     return visibleJobs
       .filter(job => !grouped.has(getJobId(job)))
-      .sort((a, b) => new Date(getHistoryTimestamp(b)) - new Date(getHistoryTimestamp(a)))
+      .sort(
+        (a, b) =>
+          new Date(getHistoryTimestamp(b)) - new Date(getHistoryTimestamp(a)),
+      )
   }, [visibleJobs, queueJobs, processingJobs, reviewJobs])
 
-  const activityFeed = useMemo(() => buildActivityFeed(visibleJobs), [visibleJobs])
+  const activityFeed = useMemo(
+    () => buildActivityFeed(visibleJobs),
+    [visibleJobs],
+  )
 
   const hasCountdownTargets = useMemo(
     () => queueJobs.some(job => job.status === 'scheduled' && job.scheduledAt),
@@ -924,7 +1045,10 @@ const ProductAnalysisPage = () => {
         setLastUpdatedAt(new Date())
       } catch (error) {
         if (!silent) {
-          toast.error(error?.response?.data?.message || 'No se pudo cargar la cola de análisis')
+          toast.error(
+            error?.response?.data?.message ||
+              'No se pudo cargar la cola de análisis',
+          )
         }
       } finally {
         if (!silent) setLoading(false)
@@ -941,7 +1065,10 @@ const ProductAnalysisPage = () => {
       setAgentStatus(data)
     } catch (error) {
       if (!silent) {
-        toast.error(error?.response?.data?.message || 'No se pudo obtener el estado del agente')
+        toast.error(
+          error?.response?.data?.message ||
+            'No se pudo obtener el estado del agente',
+        )
       }
     } finally {
       if (!silent) setAgentStatusLoading(false)
@@ -961,7 +1088,8 @@ const ProductAnalysisPage = () => {
     } catch (error) {
       if (!silent) {
         toast.error(
-          error?.response?.data?.message || 'No se pudieron cargar los borradores del agente',
+          error?.response?.data?.message ||
+            'No se pudieron cargar los borradores del agente',
         )
       }
     } finally {
@@ -1006,7 +1134,9 @@ const ProductAnalysisPage = () => {
       await Promise.all([fetchJobs(), fetchAgentStatus({ silent: true })])
       toast.success('Barrido ejecutado')
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo ejecutar el barrido')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo ejecutar el barrido',
+      )
     } finally {
       setSweeping(false)
     }
@@ -1024,10 +1154,14 @@ const ProductAnalysisPage = () => {
         visibility: 'visible',
       })
       toast.success(`Publicado: ${product.title || 'producto'}`)
-      setDrafts(current => current.filter(item => getDraftId(item) !== productId))
+      setDrafts(current =>
+        current.filter(item => getDraftId(item) !== productId),
+      )
       setDraftsTotal(current => Math.max(0, current - 1))
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo publicar el producto')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo publicar el producto',
+      )
     } finally {
       setPublishingDraftId(null)
     }
@@ -1060,10 +1194,14 @@ const ProductAnalysisPage = () => {
     try {
       await api.delete(`/product/${productId}`)
       toast.success('Borrador descartado')
-      setDrafts(current => current.filter(item => getDraftId(item) !== productId))
+      setDrafts(current =>
+        current.filter(item => getDraftId(item) !== productId),
+      )
       setDraftsTotal(current => Math.max(0, current - 1))
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo descartar el borrador')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo descartar el borrador',
+      )
     } finally {
       setDiscardingDraftId(null)
     }
@@ -1083,11 +1221,11 @@ const ProductAnalysisPage = () => {
     const scheduledIso = toIsoOrNull(scheduledAt)
     const form = new FormData()
 
-    // Un job programado siempre dispara el análisis IA solo en cuanto se
-    // cumple la hora (ver releaseOrAnalyzeScheduledJob en el backend) —
-    // no depende de este checkbox. Lo reflejamos acá para que lo que
-    // queda guardado en el job coincida con lo que realmente va a pasar.
-    const effectiveAutoSave = sendToAddProduct && (autoSaveInAddProduct || Boolean(scheduledIso))
+    // El análisis con IA siempre arranca solo apenas se cumple la hora
+    // programada (eso no depende de ningún checkbox). Lo que SÍ controla
+    // este checkbox es si, además de analizar, AddProduct autoguarda el
+    // producto (lo crea) o lo deja esperando tu aprobación manual.
+    const effectiveAutoSave = sendToAddProduct && autoSaveInAddProduct
 
     form.append('image', file)
     form.append('source', 'manual-upload')
@@ -1095,7 +1233,10 @@ const ProductAnalysisPage = () => {
     form.append('autoAnalyze', String(!sendToAddProduct))
     form.append('autoCreateProduct', 'false')
     form.append('autoSaveProduct', String(effectiveAutoSave))
-    form.append('autoPublishProduct', String(effectiveAutoSave && autoPublishProduct))
+    form.append(
+      'autoPublishProduct',
+      String(effectiveAutoSave && autoPublishProduct),
+    )
 
     if (scheduledIso) form.append('scheduledAt', scheduledIso)
 
@@ -1119,14 +1260,20 @@ const ProductAnalysisPage = () => {
       const data = error?.response?.data
 
       if (isDuplicateUploadError(error)) {
-        toast.info('La imagen ya estaba importada. Se muestra el trabajo existente.')
+        toast.info(
+          'La imagen ya estaba importada. Se muestra el trabajo existente.',
+        )
         setShowHidden(true)
         setJobs(current => {
           const existingId = getJobId(data.job)
-          const alreadyExists = current.some(item => getJobId(item) === existingId)
+          const alreadyExists = current.some(
+            item => getJobId(item) === existingId,
+          )
 
           if (alreadyExists) {
-            return current.map(item => (getJobId(item) === existingId ? data.job : item))
+            return current.map(item =>
+              getJobId(item) === existingId ? data.job : item,
+            )
           }
 
           return [data.job, ...current]
@@ -1151,7 +1298,9 @@ const ProductAnalysisPage = () => {
       toast.success('Reintento iniciado')
       await fetchJobs()
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo reintentar el análisis')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo reintentar el análisis',
+      )
     }
   }
 
@@ -1163,10 +1312,13 @@ const ProductAnalysisPage = () => {
 
     try {
       await api.post(`/product-analysis/${jobId}/run-now`)
-      toast.success('El agente ejecutó el trabajo ahora')
+      toast.success('Trabajo enviado a AddProduct para analizarse ahora')
       await Promise.all([fetchJobs(), fetchAgentStatus({ silent: true })])
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo ejecutar el trabajo ahora')
+      toast.error(
+        error?.response?.data?.message ||
+          'No se pudo ejecutar el trabajo ahora',
+      )
     } finally {
       setRunningJobId(null)
     }
@@ -1176,7 +1328,9 @@ const ProductAnalysisPage = () => {
     const current = job.scheduledAt ? new Date(job.scheduledAt) : null
     setRescheduleJob(job)
     setRescheduleValue(
-      current && !Number.isNaN(current.getTime()) ? toDatetimeLocalValue(current) : '',
+      current && !Number.isNaN(current.getTime())
+        ? toDatetimeLocalValue(current)
+        : '',
     )
     setRescheduleOpen(true)
   }
@@ -1214,7 +1368,9 @@ const ProductAnalysisPage = () => {
       setRescheduleJob(null)
       await Promise.all([fetchJobs(), fetchAgentStatus({ silent: true })])
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo reprogramar el trabajo')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo reprogramar el trabajo',
+      )
     } finally {
       setRescheduling(false)
     }
@@ -1232,7 +1388,9 @@ const ProductAnalysisPage = () => {
       toast.success('Análisis rechazado')
       await fetchJobs()
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo rechazar el análisis')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo rechazar el análisis',
+      )
     }
   }
 
@@ -1245,7 +1403,9 @@ const ProductAnalysisPage = () => {
 
     try {
       await api.patch(`/product-analysis/${jobId}/${endpoint}`, {
-        reason: shouldUnhide ? 'Restaurado desde panel admin' : 'Ocultado desde panel admin',
+        reason: shouldUnhide
+          ? 'Restaurado desde panel admin'
+          : 'Ocultado desde panel admin',
       })
 
       toast.success(
@@ -1258,7 +1418,9 @@ const ProductAnalysisPage = () => {
     } catch (error) {
       toast.error(
         error?.response?.data?.message ||
-          (shouldUnhide ? 'No se pudo restaurar el análisis' : 'No se pudo ocultar el análisis'),
+          (shouldUnhide
+            ? 'No se pudo restaurar el análisis'
+            : 'No se pudo ocultar el análisis'),
       )
     }
   }
@@ -1290,7 +1452,9 @@ const ProductAnalysisPage = () => {
       await fetchJobs()
     } catch (error) {
       setJobs(previousJobs)
-      toast.error(error?.response?.data?.message || 'No se pudo eliminar la imagen')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo eliminar la imagen',
+      )
     } finally {
       setDeleting(false)
     }
@@ -1340,13 +1504,17 @@ const ProductAnalysisPage = () => {
       await api.post(`/product-analysis/${jobId}/approve`, payload)
 
       toast.success(
-        payload.publish ? 'Producto creado y publicado' : 'Producto creado como borrador',
+        payload.publish
+          ? 'Producto creado y publicado'
+          : 'Producto creado como borrador',
       )
       setApproveOpen(false)
       setSelectedJob(null)
       await fetchJobs()
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'No se pudo aprobar el análisis')
+      toast.error(
+        error?.response?.data?.message || 'No se pudo aprobar el análisis',
+      )
     }
   }
 
@@ -1364,8 +1532,9 @@ const ProductAnalysisPage = () => {
     const sourcePath = getSourcePath(job)
     const isFinal = ['approved', 'rejected'].includes(job.status)
     const canRetry =
-      !['approved', 'rejected', 'processing', 'scheduled', 'imported'].includes(job.status) &&
-      job.metadata?.autoAnalyze !== false
+      !['approved', 'rejected', 'processing', 'scheduled', 'imported'].includes(
+        job.status,
+      ) && job.metadata?.autoAnalyze !== false
     const canApprove = job.status === 'completed' && !job.createdProductId
     const canReject = !['approved', 'rejected', 'imported'].includes(job.status)
     const isAutonomousAddProduct = job.metadata?.autoSaveProduct === true
@@ -1417,26 +1586,52 @@ const ProductAnalysisPage = () => {
                   color={STATUS_COLOR[job.status] || 'default'}
                   size="small"
                 />
-                {isFinal && job.isHidden && <Chip size="small" color="warning" label="Archivado" />}
+                {isFinal && job.isHidden && (
+                  <Chip size="small" color="warning" label="Archivado" />
+                )}
               </Stack>
             </Stack>
 
-            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-              <Chip size="small" label={getSourceLabel(job)} variant="outlined" />
+            <Stack
+              direction="row"
+              spacing={0.75}
+              flexWrap="wrap"
+              useFlexGap
+              sx={{ mt: 1 }}
+            >
+              <Chip
+                size="small"
+                label={getSourceLabel(job)}
+                variant="outlined"
+              />
               {getAgentMode(job) === 'folder-domain' && (
-                <Chip size="small" color="secondary" label="Tenant por carpeta" />
+                <Chip
+                  size="small"
+                  color="secondary"
+                  label="Tenant por carpeta"
+                />
               )}
               {job.createdProductId && (
-                <Chip size="small" color="primary" variant="outlined" label="Producto vinculado" />
+                <Chip
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  label="Producto vinculado"
+                />
               )}
               {job.isHidden && (
-                <Chip size="small" color="warning" variant="outlined" label="Oculto" />
+                <Chip
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label="Oculto"
+                />
               )}
               {job.metadata?.autoAnalyze === false && (
                 <Chip size="small" variant="outlined" label="AddProduct" />
               )}
               {job.metadata?.autoSaveProduct && (
-                <Tooltip title="AddProduct analiza esta imagen solo (variantes, ficha técnica y SEO), sin depender de que alguien tenga la pestaña abierta. El producto se crea recién cuando lo apruebes.">
+                <Tooltip title="AddProduct analiza esta imagen sola y crea el producto automáticamente al terminar, sin depender de que alguien tenga ninguna pestaña abierta.">
                   <Chip
                     size="small"
                     color="primary"
@@ -1444,8 +1639,8 @@ const ProductAnalysisPage = () => {
                     variant="outlined"
                     label={
                       job.autoPublishProduct
-                        ? 'Análisis automático · autopublica al aprobar'
-                        : 'Análisis automático'
+                        ? 'Autoguardado · autopublica'
+                        : 'Autoguardado · borrador'
                     }
                   />
                 </Tooltip>
@@ -1457,7 +1652,12 @@ const ProductAnalysisPage = () => {
 
             {job.status === 'processing' && (
               <Box sx={{ mt: 1.5, maxWidth: 260 }}>
-                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.5 }}>
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  alignItems="center"
+                  sx={{ mb: 0.5 }}
+                >
                   <AutorenewIcon fontSize="inherit" sx={{ fontSize: 14 }} />
                   <Typography variant="caption" color="text.secondary">
                     La IA está analizando la imagen...
@@ -1467,11 +1667,12 @@ const ProductAnalysisPage = () => {
               </Box>
             )}
 
-            {job.status === 'completed' && Number.isFinite(job.analysis?.confidence) && (
-              <Box sx={{ mt: 1.5 }}>
-                <ConfidenceMeter value={job.analysis?.confidence} dense />
-              </Box>
-            )}
+            {job.status === 'completed' &&
+              Number.isFinite(job.analysis?.confidence) && (
+                <Box sx={{ mt: 1.5 }}>
+                  <ConfidenceMeter value={job.analysis?.confidence} dense />
+                </Box>
+              )}
 
             <Stack direction="row" spacing={2.5} flexWrap="wrap" sx={{ mt: 1 }}>
               <Typography variant="caption" color="text.secondary">
@@ -1482,9 +1683,9 @@ const ProductAnalysisPage = () => {
                   Programado: {formatDate(job.scheduledAt)}
                 </Typography>
               )}
-              {job.metadata?.addProductAt && (
+              {job.metadata?.AddProductAt && (
                 <Typography variant="caption" color="text.secondary">
-                  AddProduct: {formatDate(job.metadata.addProductAt)}
+                  AddProduct: {formatDate(job.metadata.AddProductAt)}
                 </Typography>
               )}
               {sourcePath && (
@@ -1524,14 +1725,21 @@ const ProductAnalysisPage = () => {
                   onClick={() => runJobNow(job)}
                   disabled={!canRunNow || isRunningNow}
                 >
-                  {isRunningNow ? <CircularProgress size={20} /> : <PlayArrowIcon />}
+                  {isRunningNow ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <PlayArrowIcon />
+                  )}
                 </IconButton>
               </span>
             </Tooltip>
 
             <Tooltip title="Reprogramar hora">
               <span>
-                <IconButton onClick={() => openReschedule(job)} disabled={!canReschedule}>
+                <IconButton
+                  onClick={() => openReschedule(job)}
+                  disabled={!canReschedule}
+                >
                   <EventIcon />
                 </IconButton>
               </span>
@@ -1547,7 +1755,11 @@ const ProductAnalysisPage = () => {
 
             <Tooltip title="Aprobar y crear producto">
               <span>
-                <IconButton color="success" onClick={() => openApprove(job)} disabled={!canApprove}>
+                <IconButton
+                  color="success"
+                  onClick={() => openApprove(job)}
+                  disabled={!canApprove}
+                >
                   <CheckCircleIcon />
                 </IconButton>
               </span>
@@ -1566,7 +1778,11 @@ const ProductAnalysisPage = () => {
 
             <Tooltip title="Rechazar">
               <span>
-                <IconButton color="warning" onClick={() => rejectJob(job)} disabled={!canReject}>
+                <IconButton
+                  color="warning"
+                  onClick={() => rejectJob(job)}
+                  disabled={!canReject}
+                >
                   <CancelIcon />
                 </IconButton>
               </span>
@@ -1596,9 +1812,18 @@ const ProductAnalysisPage = () => {
           borderRadius: 3,
         }}
       >
-        <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" gap={3}>
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          justifyContent="space-between"
+          gap={3}
+        >
           <Box>
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              flexWrap="wrap"
+            >
               <Typography variant="h5" fontWeight={900}>
                 Cola de imágenes IA
               </Typography>
@@ -1613,8 +1838,8 @@ const ProductAnalysisPage = () => {
               )}
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Revisá, aprobá o descartá las imágenes que subió el agente local, folder-domain o una
-              carga manual para tu comercio.
+              Revisá, aprobá o descartá las imágenes que subió el agente local,
+              folder-domain o una carga manual para tu comercio.
             </Typography>
           </Box>
 
@@ -1622,10 +1847,16 @@ const ProductAnalysisPage = () => {
             <Button
               component="label"
               variant="contained"
-              startIcon={uploading ? <CircularProgress size={18} /> : <CloudUploadIcon />}
+              startIcon={
+                uploading ? <CircularProgress size={18} /> : <CloudUploadIcon />
+              }
               disabled={uploading}
             >
-              {uploading ? 'Subiendo...' : scheduledAt ? 'Programar imagen' : 'Subir imagen'}
+              {uploading
+                ? 'Subiendo...'
+                : scheduledAt
+                  ? 'Programar imagen'
+                  : 'Subir imagen'}
               <input
                 hidden
                 accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
@@ -1636,7 +1867,9 @@ const ProductAnalysisPage = () => {
 
             <Button
               variant="outlined"
-              startIcon={loading ? <CircularProgress size={18} /> : <RefreshIcon />}
+              startIcon={
+                loading ? <CircularProgress size={18} /> : <RefreshIcon />
+              }
               onClick={() => fetchJobs()}
               disabled={loading}
             >
@@ -1657,7 +1890,11 @@ const ProductAnalysisPage = () => {
             mt: 3,
           }}
         >
-          <MetricCard label="Total" value={counters.total || 0} icon={ImageIcon} />
+          <MetricCard
+            label="Total"
+            value={counters.total || 0}
+            icon={ImageIcon}
+          />
           <MetricCard
             label="Agente"
             value={counters.agent || 0}
@@ -1678,9 +1915,21 @@ const ProductAnalysisPage = () => {
             icon={CloudUploadIcon}
             color="info"
           />
-          <MetricCard label="En AddProduct" value={counters.imported || 0} color="primary" />
-          <MetricCard label="Fallidos" value={counters.failed || 0} color="error" />
-          <MetricCard label="Ocultos" value={counters.hidden || 0} color="warning" />
+          <MetricCard
+            label="En AddProduct"
+            value={counters.imported || 0}
+            color="primary"
+          />
+          <MetricCard
+            label="Fallidos"
+            value={counters.failed || 0}
+            color="error"
+          />
+          <MetricCard
+            label="Ocultos"
+            value={counters.hidden || 0}
+            color="warning"
+          />
         </Box>
 
         <Box
@@ -1711,7 +1960,11 @@ const ProductAnalysisPage = () => {
 
           <FormControl fullWidth size="small">
             <InputLabel>Estado</InputLabel>
-            <Select label="Estado" value={status} onChange={event => setStatus(event.target.value)}>
+            <Select
+              label="Estado"
+              value={status}
+              onChange={event => setStatus(event.target.value)}
+            >
               {STATUS_OPTIONS.map(option => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
@@ -1770,19 +2023,15 @@ const ProductAnalysisPage = () => {
             label="Enviar a AddProduct"
           />
 
-          <Tooltip
-            title={
-              scheduledAt
-                ? 'Los productos programados siempre se analizan solos apenas se cumple su hora, sin importar este switch.'
-                : 'Sin hora programada, si está apagado la imagen queda esperando a que alguien la importe a mano en AddProduct.'
-            }
-          >
+          <Tooltip title="El análisis con IA siempre arranca solo al cumplirse la hora programada. Este switch decide si, además, AddProduct autoguarda el producto o lo deja esperando tu aprobación.">
             <FormControlLabel
               control={
                 <Switch
-                  checked={autoSaveInAddProduct || Boolean(scheduledAt)}
-                  onChange={event => setAutoSaveInAddProduct(event.target.checked)}
-                  disabled={!sendToAddProduct || Boolean(scheduledAt)}
+                  checked={autoSaveInAddProduct}
+                  onChange={event =>
+                    setAutoSaveInAddProduct(event.target.checked)
+                  }
+                  disabled={!sendToAddProduct}
                 />
               }
               label="Autoanalizar y guardar en AddProduct"
@@ -1794,7 +2043,7 @@ const ProductAnalysisPage = () => {
               <Switch
                 checked={autoPublishProduct}
                 onChange={event => setAutoPublishProduct(event.target.checked)}
-                disabled={!sendToAddProduct || (!autoSaveInAddProduct && !scheduledAt)}
+                disabled={!sendToAddProduct || !autoSaveInAddProduct}
               />
             }
             label="Publicar al autosave"
@@ -1830,7 +2079,11 @@ const ProductAnalysisPage = () => {
           </Button>
 
           {lastUpdatedAt && (
-            <Typography variant="caption" color="text.secondary" sx={{ ml: { md: 'auto' } }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ ml: { md: 'auto' } }}
+            >
               Última actualización: {formatDate(lastUpdatedAt)}
             </Typography>
           )}
@@ -1862,9 +2115,12 @@ const ProductAnalysisPage = () => {
           sx={{ mb: drafts.length > 0 ? 2 : 0 }}
         >
           <Stack direction="row" spacing={1} alignItems="center">
-            <DraftsIcon fontSize="small" color={drafts.length > 0 ? 'warning' : 'action'} />
+            <DraftsIcon
+              fontSize="small"
+              color={drafts.length > 0 ? 'warning' : 'action'}
+            />
             <Typography variant="subtitle1" fontWeight={800}>
-              Borradores del agente
+              Borradores pendientes de publicar
             </Typography>
             <Chip size="small" label={draftsTotal} />
             {draftsLoading && <CircularProgress size={14} />}
@@ -1886,7 +2142,11 @@ const ProductAnalysisPage = () => {
                 variant="contained"
                 color="success"
                 startIcon={
-                  publishingAll ? <CircularProgress size={16} color="inherit" /> : <PublishIcon />
+                  publishingAll ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : (
+                    <PublishIcon />
+                  )
                 }
                 onClick={publishAllDrafts}
                 disabled={publishingAll || Boolean(publishingDraftId)}
@@ -1902,9 +2162,9 @@ const ProductAnalysisPage = () => {
           color="text.secondary"
           sx={{ display: 'block', mb: drafts.length > 0 ? 2 : 0 }}
         >
-          Productos que aprobaste como borrador (o que se auto-publicaron porque la IA superó el
-          umbral de confianza al aprobar) y todavía no salieron a la tienda. Revisalos y publicalos
-          cuando quieras.
+          Productos que aprobaste como borrador (o que se auto-publicaron porque
+          la IA superó el umbral de confianza al aprobar) y todavía no salieron
+          a la tienda. Revisalos y publicalos cuando quieras.
         </Typography>
 
         {drafts.length > 0 ? (
@@ -1916,7 +2176,9 @@ const ProductAnalysisPage = () => {
                 onPublish={publishDraft}
                 onEdit={editDraft}
                 onDiscard={discardDraft}
-                publishing={publishingDraftId === getDraftId(product) || publishingAll}
+                publishing={
+                  publishingDraftId === getDraftId(product) || publishingAll
+                }
                 discarding={discardingDraftId === getDraftId(product)}
               />
             ))}
@@ -1984,7 +2246,7 @@ const ProductAnalysisPage = () => {
               <Stack spacing={1.5}>{processingJobs.map(renderJobCard)}</Stack>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                El agente no está procesando nada en este momento.
+                No hay ninguna imagen analizándose en este momento.
               </Typography>
             )}
           </Box>
@@ -2059,13 +2321,22 @@ const ProductAnalysisPage = () => {
 
         <DialogContent>
           {selectedJob && (
-            <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+            <Stack
+              direction="row"
+              spacing={2}
+              alignItems="center"
+              sx={{ mb: 2 }}
+            >
               <JobImage job={selectedJob} size={64} />
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography variant="body2">
                   Comercio: <strong>{getTenantDomain(selectedJob)}</strong>
                 </Typography>
-                <Typography variant="caption" color="text.secondary" display="block">
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                >
                   {selectedJob.originalFilename || 'Sin nombre de archivo'}
                 </Typography>
               </Box>
@@ -2078,14 +2349,16 @@ const ProductAnalysisPage = () => {
           {selectedJob?.analysis?.hasVariants &&
             (selectedJob?.metadata?.autoSaveProduct ? (
               <Alert severity="info" sx={{ mb: 2 }}>
-                La IA detectó variantes (talles, colores, etc.) en esta imagen. Al aprobar, se van a
-                crear como variantes del producto — no se pierden.
+                La IA detectó variantes (talles, colores, etc.) en esta imagen.
+                Al aprobar, se van a crear como variantes del producto — no se
+                pierden.
               </Alert>
             ) : (
               <Alert severity="warning" sx={{ mb: 2 }}>
-                La IA detectó que este producto podría tener variantes (talles, colores, etc.). Esta
-                cola solo crea un producto simple con una imagen — para conservar las variantes,
-                subí la imagen con "Enviar a AddProduct" activado, o usá "Importar desde el agente
+                La IA detectó que este producto podría tener variantes (talles,
+                colores, etc.). Esta cola solo crea un producto simple con una
+                imagen — para conservar las variantes, subí la imagen con
+                "Enviar a AddProduct" activado, o usá "Importar desde el agente
                 IA" dentro de AddProduct.
               </Alert>
             ))}
@@ -2097,7 +2370,8 @@ const ProductAnalysisPage = () => {
           )}
 
           {(safeArray(selectedJob?.analysis?.tags).length > 0 ||
-            Object.keys(selectedJob?.analysis?.attributes || {}).length > 0) && (
+            Object.keys(selectedJob?.analysis?.attributes || {}).length >
+              0) && (
             <Box sx={{ mb: 2 }}>
               <Typography
                 variant="caption"
@@ -2110,10 +2384,16 @@ const ProductAnalysisPage = () => {
                 {safeArray(selectedJob?.analysis?.tags).map(tag => (
                   <Chip key={tag} size="small" label={tag} variant="outlined" />
                 ))}
-                {Object.entries(selectedJob?.analysis?.attributes || {}).map(([key, value]) =>
-                  value ? (
-                    <Chip key={key} size="small" color="default" label={`${key}: ${value}`} />
-                  ) : null,
+                {Object.entries(selectedJob?.analysis?.attributes || {}).map(
+                  ([key, value]) =>
+                    value ? (
+                      <Chip
+                        key={key}
+                        size="small"
+                        color="default"
+                        label={`${key}: ${value}`}
+                      />
+                    ) : null,
                 )}
               </Stack>
             </Box>
@@ -2250,12 +2530,22 @@ const ProductAnalysisPage = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={rescheduleOpen} onClose={closeReschedule} maxWidth="xs" fullWidth>
+      <Dialog
+        open={rescheduleOpen}
+        onClose={closeReschedule}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>Reprogramar trabajo</DialogTitle>
 
         <DialogContent>
           {rescheduleJob && (
-            <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+            <Stack
+              direction="row"
+              spacing={2}
+              alignItems="center"
+              sx={{ mb: 2 }}
+            >
               <JobImage job={rescheduleJob} size={56} />
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2" noWrap>
@@ -2298,9 +2588,9 @@ const ProductAnalysisPage = () => {
 
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Esta acción elimina el análisis y libera el hash de la imagen para poder volver a
-            cargarla. Si existe un producto vinculado, el backend debe desvincular el job sin
-            eliminar el producto.
+            Esta acción elimina el análisis y libera el hash de la imagen para
+            poder volver a cargarla. Si existe un producto vinculado, el backend
+            debe desvincular el job sin eliminar el producto.
           </Alert>
 
           <Typography variant="body2">
@@ -2309,13 +2599,23 @@ const ProductAnalysisPage = () => {
           </Typography>
 
           {selectedJob && (
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              display="block"
+              sx={{ mt: 1 }}
+            >
               Comercio: {getTenantDomain(selectedJob)}
             </Typography>
           )}
 
           {selectedJob?.createdProductId && (
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              display="block"
+              sx={{ mt: 1 }}
+            >
               Producto vinculado: {String(selectedJob.createdProductId)}
             </Typography>
           )}
