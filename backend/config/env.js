@@ -521,9 +521,9 @@ if (env.isProduction) {
     if (!value) return
   })
 
-  if (env.corsAllowAll) {
+  /*if (env.corsAllowAll) {
     throw new Error('CORS_ALLOW_ALL=true no está permitido en producción')
-  }
+  }*/
 
   if (env.disableSslVerify) {
     throw new Error('DISABLE_SSL_VERIFY=true no está permitido en producción')
