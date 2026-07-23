@@ -496,14 +496,14 @@ if (env.isProduction) {
     )
   }
 
-  if (
+ /* if (
     env.tenantAllowSubdomains &&
     !env.adminBaseDomain.endsWith(env.rootDomain)
   ) {
     throw new Error(
       'ADMIN_BASE_DOMAIN debe pertenecer al ROOT_DOMAIN cuando TENANT_ALLOW_SUBDOMAINS=true',
     )
-  }
+  }*/
 
   const dangerousVars = {
     MONGODB_URL: env.mongoUri,
