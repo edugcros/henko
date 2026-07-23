@@ -28,7 +28,6 @@ const normalizePreviewUrl = value => {
 
   const url = new URL(withProtocol(cleanValue))
   const isLocalStorefront =
-    url.hostname === 'henko-admin.vercel.app' ||
     url.hostname === 'henko.local' ||
     url.hostname === 'localhost' ||
     url.hostname === '127.0.0.1'
