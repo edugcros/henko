@@ -204,7 +204,7 @@ export const TenantProvider = ({ children }) => {
         // RETRY LOGIC
         if (attempt < CONFIG.RETRY_ATTEMPTS) {
           await new Promise(resolve => {
-            window.setTimeout(resolve, CONFIG.RETRY_DELAY)
+            setTimeout(resolve, CONFIG.RETRY_DELAY)
           })
         }
         // FALLBACK A CACHE
@@ -310,7 +310,7 @@ export const TenantProvider = ({ children }) => {
         isLoading: true, // Seguir cargando en background
         error: null,
         tenantId: cached.tenantId,
-        initialized: false, // Marcar como no inicializado aún
+        initialized: true,
       })
       dispatch(updateLocalConfig(cached))
     }

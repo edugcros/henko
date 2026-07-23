@@ -31,7 +31,9 @@ const App = () => {
   const location = useLocation()
   const isThemePreviewRoute = location.pathname === '/theme-preview'
 
-  useUserMetrics()
+  if (!isThemePreviewRoute) {
+    useUserMetrics()
+  }
 
   useEffect(() => {
     ReactGA.send({
