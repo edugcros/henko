@@ -157,9 +157,9 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
 
         if (token) {
           api.defaults.headers.common['x-csrf-token'] = token
-          // Pequeño delay para asegurar que la cookie se propague
+          // Delay para asegurar que la cookie se propague correctamente en requests cross-site
           return new Promise(resolve => {
-            setTimeout(() => resolve(token), 50)
+            setTimeout(() => resolve(token), 200)
           })
         }
 
