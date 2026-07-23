@@ -191,7 +191,7 @@ export const initCsrf = async () => {
 // =====================================================
 
 api.interceptors.request.use(
-  async config => {
+  config => {
     config.headers = config.headers || {}
 
     if (!config.baseURL) {
@@ -217,21 +217,6 @@ api.interceptors.request.use(
 
     if (token && !config.url?.includes('/refresh')) {
       config.headers.Authorization = `Bearer ${token}`
-    }
-
-    // CSRF para requests unsafe - obtener token fresco
-    const unsafeMethods = ['post', 'put', 'patch', 'delete']
-    const isUnsafeMethod = unsafeMethods.includes(String(config.method || '').toLowerCase())
-
-    if (isUnsafeMethod && !config.skipCsrfRetry) {
-      try {
-        const csrfToken = await fetchCsrfToken({ force: true })
-        if (csrfToken) {
-          config.headers['x-csrf-token'] = csrfToken
-        }
-      } catch (err) {
-        console.warn('[ADMIN API] No se pudo obtener CSRF token:', err.message)
-      }
     }
 
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
