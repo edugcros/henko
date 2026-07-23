@@ -27,9 +27,9 @@ const getAuthToken = () => Cookies.get('token')
 const buildHeaders = async ({ isMultipart = false, customHeaders = {} }) => {
   const headers = { ...customHeaders }
 
-  // CSRF
+  // CSRF - obtener token fresco cada vez
   try {
-    const csrfToken = await fetchCsrfToken()
+    const csrfToken = await fetchCsrfToken({ force: true })
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken
   } catch {
     console.warn('[ThemeAPI] No se pudo obtener CSRF token')
