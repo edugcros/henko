@@ -487,14 +487,14 @@ if (env.isProduction) {
     )
   }
 
-  if (
+  /*if (
     env.tenantAllowSubdomains &&
     !env.publicBaseDomain.endsWith(env.rootDomain)
   ) {
     throw new Error(
       'PUBLIC_BASE_DOMAIN debe pertenecer al ROOT_DOMAIN cuando TENANT_ALLOW_SUBDOMAINS=true',
     )
-  }
+  }*/
 
  /* if (
     env.tenantAllowSubdomains &&
