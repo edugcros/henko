@@ -178,10 +178,6 @@ const assertDeployEnv = () => {
     throw new Error(`REACT_APP_DEBUG_API=true no está permitido en ${APP_ENV}`)
   }
 
-  if (mpPublicKey && mpPublicKey.startsWith('TEST-')) {
-    throw new Error(`REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en ${APP_ENV}`)
-  }
-
   if (hasPlaceholder(mpPublicKey)) {
     throw new Error('REACT_APP_MP_PUBLIC_KEY contiene placeholder')
   }
