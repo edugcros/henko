@@ -26,6 +26,12 @@ export const getCookieDomain = req => {
     return undefined
   }
 
+  // Para Vercel/Render (*.vercel.app, *.onrender.com, *.netlify.app):
+  // NO setear domain global; cookies asociadas al host exacto
+  if (host.endsWith('.vercel.app') || host.endsWith('.onrender.com') || host.endsWith('.netlify.app')) {
+    return undefined
+  }
+
   const rootDomain = String(
     env.rootDomain ||
       env.publicBaseDomain ||
