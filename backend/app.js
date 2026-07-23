@@ -10,10 +10,10 @@ import cors from 'cors'
 
 import {
   csrfProtectionDynamic,
-  getCookieDomain,
   handleCsrfError,
   logCsrfStatus,
 } from './src/middlewares/csrfMiddleware.js'
+import { initCsrfTokenStore } from './src/utils/csrfTokenStore.js'
 
 import { env } from './config/env.js'
 import { corsOptions } from './config/corsOptions.js'
@@ -288,43 +288,20 @@ const isCsrfExempt = req => {
 if (env.csrfEnabled) {
   app.use(logCsrfStatus)
 
-  app.use((req, res, next) => {
+  app.use(async (req, res, next) => {
     const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(req.method)
 
     if (isSafeMethod || isCsrfExempt(req)) {
       return next()
     }
 
-    return csrfProtectionDynamic(req, res, next)
+    // CSRF middleware es async - necesitamos manejar promises
+    try {
+      return await csrfProtectionDynamic(req, res, next)
+    } catch (error) {
+      return next(error)
+    }
   })
-
-  /**
-   * Endpoint centralizado para emitir token CSRF.
-   * El token legible viaja en XSRF-TOKEN;
-   * el secreto interno queda en _csrf.
-   */
-  app.get(
-    `${env.apiPrefix}/user/csrf-token`,
-    csrfProtectionDynamic,
-    (req, res) => {
-      const token = req.csrfToken()
-      const cookieDomain = getCookieDomain(req)
-
-      res.cookie(env.csrfCookieName || 'XSRF-TOKEN', token, {
-        httpOnly: false,
-        secure: env.csrfCookieSecure,
-        sameSite: env.csrfCookieSameSite,
-        domain: cookieDomain,
-        path: '/',
-        maxAge: 15 * 60 * 1000,
-      })
-
-      return res.status(200).json({
-        success: true,
-        csrfToken: token,
-      })
-    },
-  )
 }
 
 // =======================================================

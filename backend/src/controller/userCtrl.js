@@ -23,6 +23,7 @@ import { sendResetPasswordEmail, sendVerificationEmail } from '../services/email
 import { sendResponse } from '../utils/response.js'
 import { getCookieDomain } from '../utils/cookieHelper.js'
 import { buildPlatformTenantDomains } from '../utils/domainUtils.js'
+import { generateCsrfToken } from '../utils/csrfTokenStore.js'
 import {
   getUserIdFromRequest,
   isValidObjectId,
@@ -1597,4 +1598,23 @@ export const emptyCart = expressAsyncHandler(async (req, res) => {
 
   await Cart.deleteOne({ userId, tenantId })
   return sendResponse(res, 200, true, 'Carrito vacío correctamente')
+})
+
+// =====================================================
+// CSRF TOKEN
+// =====================================================
+
+export const getCsrfToken = expressAsyncHandler(async (req, res) => {
+  const userId = getUserIdFromRequest(req)
+
+  if (!userId) {
+    return sendResponse(res, 401, false, 'No autorizado')
+  }
+
+  const token = await generateCsrfToken(userId)
+
+  return res.status(200).json({
+    success: true,
+    csrfToken: token,
+  })
 })
