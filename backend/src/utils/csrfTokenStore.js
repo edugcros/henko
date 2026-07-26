@@ -54,13 +54,19 @@ export const generateCsrfToken = async userId => {
   const token = crypto.randomBytes(32).toString('base64url')
   const key = `${CSRF_TOKEN_PREFIX}${userId}`
 
+  logger.debug(`[CSRF] Generando token para usuario: ${userId}`)
+  logger.debug(`[CSRF] Redis client existe: ${!!redisClient}`)
+
   if (redisClient) {
     try {
       await redisClient.setEx(key, CSRF_TOKEN_TTL, token)
+      logger.debug(`[CSRF] ✅ Token guardado en Redis: ${key}`)
     } catch (error) {
-      logger.error('[CSRF] Error storing token in Redis:', error.message)
-      // Continuar sin Redis si falla
+      logger.error('[CSRF] ❌ Error storing token in Redis:', error.message)
+      logger.error('[CSRF] Redis status:', redisClient?.status || 'unknown')
     }
+  } else {
+    logger.warn('[CSRF] ⚠️ Redis client NO está inicializado - token no se guardará')
   }
 
   return token
@@ -68,22 +74,35 @@ export const generateCsrfToken = async userId => {
 
 export const verifyCsrfToken = async (userId, token) => {
   if (!userId || !token) {
+    logger.warn(`[CSRF] Validación fallida - userId: ${!!userId}, token: ${!!token}`)
     return false
   }
 
   const key = `${CSRF_TOKEN_PREFIX}${userId}`
 
+  logger.debug(`[CSRF] Validando token para usuario: ${userId}`)
+  logger.debug(`[CSRF] Redis client existe: ${!!redisClient}`)
+
   if (redisClient) {
     try {
       const storedToken = await redisClient.get(key)
-      return storedToken === token
+      const isValid = storedToken === token
+
+      logger.debug(`[CSRF] Token en Redis: ${!!storedToken}, Coincide: ${isValid}`)
+
+      if (!isValid) {
+        logger.warn(`[CSRF] ❌ Token inválido - esperado: ${storedToken?.substring(0, 10)}..., recibido: ${token?.substring(0, 10)}...`)
+      }
+
+      return isValid
     } catch (error) {
-      logger.error('[CSRF] Error verifying token:', error.message)
+      logger.error('[CSRF] ❌ Error verifying token:', error.message)
       return false
     }
+  } else {
+    logger.error('[CSRF] ❌ Redis client NO está inicializado - no se puede validar token')
+    return false
   }
-
-  return false
 }
 
 export const invalidateCsrfToken = async userId => {
