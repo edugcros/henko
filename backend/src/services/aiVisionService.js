@@ -1691,11 +1691,11 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     const model = client.getGenerativeModel({ model: MODEL_NAME })
 
     // Log detallado antes de convertir a base64
-    logDebug('Before base64 conversion', {
+    logger.debug('[AI VISION] Before base64 conversion', {
       bufferConstructor: imageBuffer.constructor.name,
       bufferIsBuffer: Buffer.isBuffer(imageBuffer),
       bufferLength: imageBuffer.length,
-      firstBytes: imageBuffer.slice(0, 10),
+      firstBytes: imageBuffer.slice(0, 10).toString('hex'),
       hasToString: typeof imageBuffer.toString === 'function',
       toStringTest: imageBuffer.toString('hex').substring(0, 20),
     })
