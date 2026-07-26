@@ -51,7 +51,7 @@ const getAuthToken = () => {
   }
 
   try {
-    return Cookies.get('token') || window.localStorage.getItem('token') || null
+    return Cookies.get('token') || window.localStorage.getItem('token') || localStorage.getItem('token') || null
   } catch {
     return Cookies.get('token') || null
   }
