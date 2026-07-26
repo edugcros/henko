@@ -220,6 +220,10 @@ const csrfExemptRoutes = [
 
   // Análisis visual de productos (mantiene autenticación JWT propia)
   { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
+
+  // Sesión - refresh y logout (requieren autenticación JWT, no CSRF)
+  { method: 'POST', path: `${env.apiPrefix}/user/refresh` },
+  { method: 'POST', path: `${env.apiPrefix}/user/logout` },
 ]
 
 // Solo para etapa Vercel + TryCloudflare.
