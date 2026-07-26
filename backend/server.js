@@ -27,10 +27,14 @@ let isServerListening = false
 
 const startServer = async () => {
   try {
-    await connectDB()
-    await initCsrfTokenStore()
+    logger.info('[SERVER] 🔄 Iniciando servidor...')
 
-    logger.info('🟢 Conexión a MongoDB establecida')
+    await connectDB()
+    logger.info('[SERVER] 🟢 MongoDB conectado')
+
+    logger.info('[SERVER] 🔄 Inicializando CSRF token store...')
+    await initCsrfTokenStore()
+    logger.info('[SERVER] ✅ CSRF token store inicializado')
 
     serverInstance = app.listen(PORT, '0.0.0.0', () => {
       isServerListening = true
