@@ -643,7 +643,7 @@ const releaseOrAnalyzeScheduledJob = async payload => {
     // que hay una hora establecida, llegar a esa hora sin que nadie esté
     // mirando es exactamente el caso de uso del agente, así que el
     // análisis tiene que arrancar solo.
-    const { runAddProductAutopilot } = await import('../services/AddProductAutopilotService.js')
+    const { runAddProductAutopilot } = await import('../services/addProductAutopilotService.js')
     return runAddProductAutopilot(payload)
   }
 
@@ -1364,7 +1364,7 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
     if (autoSaveProduct) {
       // Sin hora programada: el agente envía el job a AddProduct de
       // inmediato en lugar de dejarlo pendiente a que alguien lo abra.
-      const { runAddProductAutopilot } = await import('../services/AddProductAutopilotService.js')
+      const { runAddProductAutopilot } = await import('../services/addProductAutopilotService.js')
       const processedJob = await runAddProductAutopilot({
         jobId: job._id,
         tenantId,
