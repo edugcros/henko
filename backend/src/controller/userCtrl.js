@@ -1607,6 +1607,13 @@ export const emptyCart = expressAsyncHandler(async (req, res) => {
 export const getCsrfToken = expressAsyncHandler(async (req, res) => {
   const userId = getUserIdFromRequest(req)
 
+  logger.info('[CSRF] getCsrfToken called', {
+    userId,
+    userIdType: typeof userId,
+    userExists: !!req.user,
+    userKeys: req.user ? Object.keys(req.user) : null,
+  })
+
   if (!userId) {
     return sendResponse(res, 401, false, 'No autorizado')
   }
