@@ -7,13 +7,14 @@ import mongoSanitize from 'express-mongo-sanitize'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import cors from 'cors'
+import crypto from 'crypto'
 
 import {
   csrfProtectionDynamic,
+  getCookieDomain,
   handleCsrfError,
   logCsrfStatus,
 } from './src/middlewares/csrfMiddleware.js'
-import { initCsrfTokenStore } from './src/utils/csrfTokenStore.js'
 
 import { env } from './config/env.js'
 import { corsOptions } from './config/corsOptions.js'
@@ -27,6 +28,33 @@ import apiRoutes from './src/routes/index.js'
 // =======================================================
 
 const app = express()
+
+const SENSITIVE_QUERY_KEYS = new Set([
+  'token',
+  'access_token',
+  'refresh_token',
+  'code',
+  'resetToken',
+  'verificationToken',
+])
+
+const sanitizeRequestUrl = req => {
+  try {
+    const parsed = new URL(req.originalUrl || req.url || '/', 'http://localhost')
+
+    for (const key of SENSITIVE_QUERY_KEYS) {
+      if (parsed.searchParams.has(key)) {
+        parsed.searchParams.set(key, '[REDACTED]')
+      }
+    }
+
+    return `${parsed.pathname}${parsed.search}`
+  } catch {
+    return String(req.path || '/')
+  }
+}
+
+morgan.token('safe-url', sanitizeRequestUrl)
 
 // =======================================================
 // PATHS
@@ -55,11 +83,22 @@ app.options('*', cors(corsOptions))
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ['\'none\''],
+        imgSrc: ['\'self\'', 'data:', 'https:'],
+        styleSrc: ['\'self\'', '\'unsafe-inline\''],
+        sandbox: [],
+      },
+    },
   }),
 )
 
-app.use(morgan(env.isProduction ? 'combined' : 'dev'))
+const accessLogFormat = env.isProduction
+  ? ':remote-addr - :remote-user [:date[clf]] ":method :safe-url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'
+  : ':method :safe-url :status :response-time ms - :res[content-length]'
+
+app.use(morgan(accessLogFormat))
 
 // =======================================================
 // BODY PARSERS
@@ -68,10 +107,6 @@ app.use(morgan(env.isProduction ? 'combined' : 'dev'))
 app.use(
   express.json({
     limit: env.isProduction ? '1mb' : '5mb',
-    verify: (req, res, buf) => {
-      // Necesario para validar x-hub-signature-256 de Meta/WhatsApp.
-      req.rawBody = buf
-    },
   }),
 )
 
@@ -105,7 +140,6 @@ app.get('/health', (req, res) => {
   return res.status(200).json({
     success: true,
     service: env.app?.name || 'Henko Commerce API',
-    env: env.nodeEnv,
     uptime: process.uptime(),
   })
 })
@@ -114,7 +148,6 @@ app.get(`${env.apiPrefix}/health`, (req, res) => {
   return res.status(200).json({
     success: true,
     service: env.app?.name || 'Henko Commerce API',
-    env: env.nodeEnv,
     uptime: process.uptime(),
   })
 })
@@ -170,6 +203,26 @@ const matchesRoute = (req, route) => {
   return matched
 }
 
+const timingSafeEqualString = (left = '', right = '') => {
+  const leftBuffer = Buffer.from(String(left))
+  const rightBuffer = Buffer.from(String(right))
+
+  if (leftBuffer.length !== rightBuffer.length) return false
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer)
+}
+
+const hasValidProductAnalysisAgentKey = req => {
+  const configuredKey = String(process.env.PRODUCT_ANALYSIS_AGENT_KEY || '')
+  const requestKey = String(req.get('x-agent-api-key') || '')
+
+  return Boolean(
+    configuredKey &&
+    requestKey &&
+    timingSafeEqualString(requestKey, configuredKey),
+  )
+}
+
 const isTrustedPredeployTunnelRequest = req => {
   const origin = String(req.headers.origin || '').replace(/\/+$/, '').toLowerCase()
 
@@ -205,25 +258,17 @@ const csrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/user/forgot-password` },
   { method: 'PUT', path: `${env.apiPrefix}/user/reset-password` },
 
-  { method: 'POST', path: `${env.apiPrefix}/ai-webchat/message` },
-  { method: 'POST', path: `${env.apiPrefix}/ai-webchat/event` },
   // Webhook externo real de Mercado Pago.
   { method: 'POST', path: `${env.apiPrefix}/payments/webhook/mercadopago` },
+]
 
-  // Webhook externo real de WhatsApp/Meta. Valida firma propia x-hub-signature-256.
-  { method: 'POST', path: `${env.apiPrefix}/whatsapp/webhook` },
-
-  // Agente local de análisis por API key. El endpoint mantiene autenticación propia.
+const productAnalysisAgentCsrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/import` },
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/process-due` },
-  { method: 'POST', path: `${env.apiPrefix}/product-analysis/wishlist-promotions/run` },
-
-  // Análisis visual de productos (mantiene autenticación JWT propia)
-  { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
-
-  // Sesión - refresh y logout (requieren autenticación JWT, no CSRF)
-  { method: 'POST', path: `${env.apiPrefix}/user/refresh` },
-  { method: 'POST', path: `${env.apiPrefix}/user/logout` },
+  {
+    method: 'POST',
+    path: `${env.apiPrefix}/product-analysis/wishlist-promotions/run`,
+  },
 ]
 
 // Solo para etapa Vercel + TryCloudflare.
@@ -275,11 +320,18 @@ const tunnelCsrfExemptRoutes = [
   // Productos
   { method: 'PUT', path: `${env.apiPrefix}/product/rating/:productId` },
   { method: 'PUT', path: `${env.apiPrefix}/product/:productId/rating/:ratingId/helpful` },
-
 ]
 
 const isCsrfExempt = req => {
   if (csrfExemptRoutes.some(route => matchesRoute(req, route))) {
+    return true
+  }
+
+  const isAgentRoute = productAnalysisAgentCsrfExemptRoutes.some(route =>
+    matchesRoute(req, route),
+  )
+
+  if (isAgentRoute && hasValidProductAnalysisAgentKey(req)) {
     return true
   }
 
@@ -302,9 +354,36 @@ if (env.csrfEnabled) {
       return next()
     }
 
-    // csrfProtectionDynamic es async pero Express lo maneja
     return csrfProtectionDynamic(req, res, next)
   })
+
+  /**
+   * Endpoint centralizado para emitir token CSRF.
+   * El token legible viaja en XSRF-TOKEN;
+   * el secreto interno queda en _csrf.
+   */
+  app.get(
+    `${env.apiPrefix}/user/csrf-token`,
+    csrfProtectionDynamic,
+    (req, res) => {
+      const token = req.csrfToken()
+      const cookieDomain = getCookieDomain(req)
+
+      res.cookie(env.csrfCookieName || 'XSRF-TOKEN', token, {
+        httpOnly: false,
+        secure: env.csrfCookieSecure,
+        sameSite: env.csrfCookieSameSite,
+        domain: cookieDomain,
+        path: '/',
+        maxAge: 15 * 60 * 1000,
+      })
+
+      return res.status(200).json({
+        success: true,
+        csrfToken: token,
+      })
+    },
+  )
 }
 
 // =======================================================
