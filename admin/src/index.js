@@ -18,8 +18,8 @@ const AppInitializer = () => {
     const initializeApp = async () => {
       // Inyectar store en axiosConfig (para posibles futuros usos)
       setApiStore(store)
-      // Inicializar CSRF
-      await initCsrf()
+      // CSRF token se obtiene DESPUÉS de login (en authMiddleware)
+      // await initCsrf()
       setReady(true)
     }
     initializeApp()
