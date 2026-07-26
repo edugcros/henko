@@ -10,10 +10,16 @@ const CSRF_TOKEN_TTL = 15 * 60 // 15 minutes
 let redisClient = null
 
 export const initCsrfTokenStore = async () => {
+  logger.info('[CSRF] initCsrfTokenStore starting...')
+
   if (!env.redisUrl) {
-    logger.warn('[CSRF] Redis URL no configurado - usando fallback sin persistencia')
+    logger.error('[CSRF] ❌ REDIS_URL NO CONFIGURADO - CSRF token storage fallará')
+    logger.error('[CSRF] env.redisUrl:', env.redisUrl)
+    redisClient = null
     return
   }
+
+  logger.info('[CSRF] 🔄 Conectando a Redis:', env.redisUrl.substring(0, 50) + '...')
 
   try {
     redisClient = createClient({
@@ -24,13 +30,18 @@ export const initCsrfTokenStore = async () => {
     })
 
     redisClient.on('error', err => {
-      logger.error('[CSRF Redis] Error:', err.message)
+      logger.error('[CSRF Redis] ❌ Error:', err.message)
+    })
+
+    redisClient.on('connect', () => {
+      logger.info('[CSRF Redis] ✅ Conectado')
     })
 
     await redisClient.connect()
-    logger.info('[CSRF] Redis conectado')
+    logger.info('[CSRF] ✅ Redis inicializado correctamente')
   } catch (error) {
-    logger.error('[CSRF] Redis connection failed:', error.message)
+    logger.error('[CSRF] ❌ Redis connection failed:', error.message)
+    logger.error('[CSRF] Error stack:', error.stack)
     redisClient = null
   }
 }
