@@ -10,10 +10,10 @@ import cors from 'cors'
 
 import {
   csrfProtectionDynamic,
-  getCookieDomain,
   handleCsrfError,
   logCsrfStatus,
 } from './src/middlewares/csrfMiddleware.js'
+import { initCsrfTokenStore } from './src/utils/csrfTokenStore.js'
 
 import { env } from './config/env.js'
 import { corsOptions } from './config/corsOptions.js'
@@ -217,6 +217,13 @@ const csrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/import` },
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/process-due` },
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/wishlist-promotions/run` },
+
+  // Análisis visual de productos (mantiene autenticación JWT propia)
+  { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
+
+  // Sesión - refresh y logout (requieren autenticación JWT, no CSRF)
+  { method: 'POST', path: `${env.apiPrefix}/user/refresh` },
+  { method: 'POST', path: `${env.apiPrefix}/user/logout` },
 ]
 
 // Solo para etapa Vercel + TryCloudflare.
@@ -295,36 +302,9 @@ if (env.csrfEnabled) {
       return next()
     }
 
+    // csrfProtectionDynamic es async pero Express lo maneja
     return csrfProtectionDynamic(req, res, next)
   })
-
-  /**
-   * Endpoint centralizado para emitir token CSRF.
-   * El token legible viaja en XSRF-TOKEN;
-   * el secreto interno queda en _csrf.
-   */
-  app.get(
-    `${env.apiPrefix}/user/csrf-token`,
-    csrfProtectionDynamic,
-    (req, res) => {
-      const token = req.csrfToken()
-      const cookieDomain = getCookieDomain(req)
-
-      res.cookie(env.csrfCookieName || 'XSRF-TOKEN', token, {
-        httpOnly: false,
-        secure: env.csrfCookieSecure,
-        sameSite: env.csrfCookieSameSite,
-        domain: cookieDomain,
-        path: '/',
-        maxAge: 15 * 60 * 1000,
-      })
-
-      return res.status(200).json({
-        success: true,
-        csrfToken: token,
-      })
-    },
-  )
 }
 
 // =======================================================

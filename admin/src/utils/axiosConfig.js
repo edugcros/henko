@@ -22,7 +22,11 @@ const assertApiBaseUrl = () => {
   }
 
   if (env.isProduction) {
-    const forbiddenValues = ['localhost', '127.0.0.1', 'henko.local']
+    const forbiddenValues = [
+      'localhost',
+      '127.0.0.1',
+      'henko.local',
+    ]
 
     forbiddenValues.forEach(value => {
       if (String(env.apiBaseUrl).includes(value)) {
@@ -46,44 +50,26 @@ const getTenantDomain = () => {
 }
 
 const getAuthToken = () => {
-  if (typeof window === 'undefined') {
-    return Cookies.get('token') || null
-  }
-
-  try {
-    return Cookies.get('token') || window.localStorage.getItem('token') || null
-  } catch {
-    return Cookies.get('token') || null
-  }
-}
-
-const createMetricSessionId = () => {
-  if (
-    typeof window !== 'undefined' &&
-    window.crypto &&
-    typeof window.crypto.randomUUID === 'function'
-  ) {
-    return window.crypto.randomUUID()
-  }
-
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return (
+    Cookies.get('token') ||
+    localStorage.getItem('token') ||
+    null
+  )
 }
 
 const getMetricSessionId = () => {
   if (typeof window === 'undefined') return null
 
-  try {
-    let sessionId = window.localStorage.getItem(METRIC_SESSION_KEY)
+  let sessionId = localStorage.getItem(METRIC_SESSION_KEY)
 
-    if (!sessionId) {
-      sessionId = createMetricSessionId()
-      window.localStorage.setItem(METRIC_SESSION_KEY, sessionId)
-    }
-
-    return sessionId
-  } catch {
-    return createMetricSessionId()
+  if (!sessionId) {
+    sessionId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    localStorage.setItem(METRIC_SESSION_KEY, sessionId)
   }
+
+  return sessionId
 }
 
 // =====================================================
@@ -115,12 +101,12 @@ const api = axios.create({
 
 // Debug temporal de producción
 if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-  /*console.log('[ADMIN API BOOT]', {
+  console.log('[ADMIN API BOOT]', {
     apiBaseUrl: env.apiBaseUrl,
     nodeEnv: env.nodeEnv,
     adminBaseDomain: env.adminBaseDomain,
     publicBaseDomain: env.publicBaseDomain,
-  })*/
+  })
 }
 
 // =====================================================
@@ -157,10 +143,6 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
 
         if (token) {
           api.defaults.headers.common['x-csrf-token'] = token
-          // Delay para asegurar que la cookie se propague correctamente en requests cross-site
-          return new Promise(resolve => {
-            setTimeout(() => resolve(token), 1000)
-          })
         }
 
         return token
@@ -191,7 +173,7 @@ export const initCsrf = async () => {
 // =====================================================
 
 api.interceptors.request.use(
-  async config => {
+  config => {
     config.headers = config.headers || {}
 
     if (!config.baseURL) {
@@ -219,35 +201,17 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`
     }
 
-    // CSRF para requests unsafe - obtener token fresco
-    const unsafeMethods = ['post', 'put', 'patch', 'delete']
-    const isUnsafeMethod = unsafeMethods.includes(String(config.method || '').toLowerCase())
-
-    if (isUnsafeMethod && !config.skipCsrfRetry) {
-      try {
-        const csrfToken = await fetchCsrfToken({ force: true })
-        if (csrfToken) {
-          config.headers['x-csrf-token'] = csrfToken
-        }
-      } catch (err) {
-        console.warn('[ADMIN API] No se pudo obtener CSRF token:', err.message)
-      }
-    }
-
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
-      /*console.log('[ADMIN API REQUEST]', {
+      console.log('[ADMIN API REQUEST]', {
         method: config.method,
         baseURL: config.baseURL,
         url: config.url,
         fullURL: `${config.baseURL || ''}${config.url || ''}`,
         tenant: config.headers[env.tenantHeader || 'x-tenant-domain'],
-      })*/
+      })
     }
-
     const isFormData =
-      typeof window !== 'undefined' &&
-      typeof window.FormData !== 'undefined' &&
-      config.data instanceof window.FormData
+      typeof FormData !== 'undefined' && config.data instanceof FormData
 
     if (isFormData || config.isMultipart) {
       delete config.headers['Content-Type']
@@ -295,7 +259,10 @@ api.interceptors.response.use(
 
     const isCsrfError =
       status === 403 &&
-      (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
+      (
+        code === 'EBADCSRFTOKEN' ||
+        message.toLowerCase().includes('csrf')
+      )
 
     if (isCsrfError && !originalRequest.skipCsrfRetry) {
       originalRequest._retry = true
