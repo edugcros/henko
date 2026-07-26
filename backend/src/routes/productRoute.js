@@ -103,6 +103,14 @@ router.post(
         data: { ...result, normalized },
       })
     } catch (error) {
+      logger.error('[ANALYZE-VISUAL] Error en analyzeImage', {
+        message: error?.message,
+        status: error?.status || error?.statusCode,
+        code: error?.code,
+        retryable: error?.retryable,
+        stack: error?.stack?.split('\n').slice(0, 3).join(' | '),
+      })
+
       const status =
         error?.status ||
         error?.statusCode ||
