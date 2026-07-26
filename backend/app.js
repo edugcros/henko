@@ -217,6 +217,9 @@ const csrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/import` },
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/process-due` },
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/wishlist-promotions/run` },
+
+  // Análisis visual de productos (mantiene autenticación JWT propia)
+  { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
 ]
 
 // Solo para etapa Vercel + TryCloudflare.
@@ -288,19 +291,15 @@ const isCsrfExempt = req => {
 if (env.csrfEnabled) {
   app.use(logCsrfStatus)
 
-  app.use(async (req, res, next) => {
+  app.use((req, res, next) => {
     const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(req.method)
 
     if (isSafeMethod || isCsrfExempt(req)) {
       return next()
     }
 
-    // CSRF middleware es async - necesitamos manejar promises
-    try {
-      return await csrfProtectionDynamic(req, res, next)
-    } catch (error) {
-      return next(error)
-    }
+    // csrfProtectionDynamic es async pero Express lo maneja
+    return csrfProtectionDynamic(req, res, next)
   })
 }
 
