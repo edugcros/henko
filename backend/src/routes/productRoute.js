@@ -34,6 +34,7 @@ import { uploadPhoto, productImgResize } from '../middlewares/uploadImage.js'
 import { analyzeImage } from '../services/aiVisionService.js'
 import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
+import logger from '../../config/logger.js'
 
 const router = express.Router()
 
