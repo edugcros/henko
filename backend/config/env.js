@@ -119,6 +119,9 @@ export const env = {
     process.env.NODE_ENV === 'production',
   ),
 
+  // Redis
+  redisUrl: process.env.REDIS_URL || '',
+
   // Auth
   jwtSecret: process.env.JWT_SECRET,
   jwtAccessExpires: getFirstValue(
