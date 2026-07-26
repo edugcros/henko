@@ -1604,14 +1604,29 @@ async function assertSafeRemoteHost(url) {
 }
 
 export async function analyzeImage(imageBuffer, mimeType, tenantId) {
-  // Asegurar que imageBuffer es un Buffer
+  // Validación con logging detallado
+  logger.info('[AI VISION] analyzeImage called', {
+    isBuffer: Buffer.isBuffer(imageBuffer),
+    type: typeof imageBuffer,
+    length: imageBuffer?.length,
+  })
+
   if (!Buffer.isBuffer(imageBuffer)) {
     if (typeof imageBuffer === 'string') {
-      imageBuffer = Buffer.from(imageBuffer)
+      logger.warn('[AI VISION] imageBuffer es string, convirtiendo', {
+        stringLength: imageBuffer.length,
+        firstChars: imageBuffer.substring(0, 50),
+      })
+      imageBuffer = Buffer.from(imageBuffer, 'utf8')
     } else {
-      throw new Error('imageBuffer debe ser un Buffer o string')
+      throw new Error(`imageBuffer debe ser Buffer o string, recibido: ${typeof imageBuffer}`)
     }
   }
+
+  logger.info('[AI VISION] After conversion', {
+    isBuffer: Buffer.isBuffer(imageBuffer),
+    bufferLength: imageBuffer.length,
+  })
 
   const sniffedMime = validateImageBuffer(imageBuffer)
   const normalizedTenantId = String(tenantId || '').trim()
