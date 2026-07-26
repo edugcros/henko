@@ -496,7 +496,7 @@ if (env.isProduction) {
     )
   }*/
 
- /* if (
+  /* if (
     env.tenantAllowSubdomains &&
     !env.adminBaseDomain.endsWith(env.rootDomain)
   ) {
@@ -557,7 +557,7 @@ if (env.isProduction) {
     throw new Error('CSRF_COOKIE_SECURE=false no está permitido en producción')
   }
 
- /* if (env.allowLocalhost) {
+  /* if (env.allowLocalhost) {
     throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
   }*/
 
