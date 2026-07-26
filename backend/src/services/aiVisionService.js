@@ -1604,6 +1604,15 @@ async function assertSafeRemoteHost(url) {
 }
 
 export async function analyzeImage(imageBuffer, mimeType, tenantId) {
+  // Asegurar que imageBuffer es un Buffer
+  if (!Buffer.isBuffer(imageBuffer)) {
+    if (typeof imageBuffer === 'string') {
+      imageBuffer = Buffer.from(imageBuffer)
+    } else {
+      throw new Error('imageBuffer debe ser un Buffer o string')
+    }
+  }
+
   const sniffedMime = validateImageBuffer(imageBuffer)
   const normalizedTenantId = String(tenantId || '').trim()
 
