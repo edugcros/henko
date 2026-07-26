@@ -230,11 +230,11 @@ function sanitizeLogMeta(meta = {}) {
   return safe
 }
 
-function logInfo(message, meta = {}) {
+function logger.info(message, meta = {}) {
   logger.info('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
 }
 
-function logWarn(message, meta = {}) {
+function logger.warn(message, meta = {}) {
   logger.warn('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
 }
 
@@ -381,7 +381,7 @@ async function withRetry(fn, { maxRetries = MAX_RETRIES, baseDelayMs = GEMINI_RE
       const jitterMs = Math.floor(Math.random() * 300)
       const backoffMs = Math.min(baseDelayMs * Math.pow(2, attempt - 1) + jitterMs, GEMINI_RETRY_MAX_DELAY_MS)
 
-      logWarn('Retry transitorio contra Gemini', {
+      logger.warn('Retry transitorio contra Gemini', {
         attempt: `${attempt}/${maxRetries}`,
         backoffMs,
         error: error?.message,
@@ -1642,7 +1642,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
   const safeMime = mimeType ? normalizeMimeType(mimeType, { strict: true }) : sniffedMime
 
   if (safeMime !== sniffedMime && !(safeMime === 'image/heif' && sniffedMime === 'image/heic')) {
-    logWarn('MIME declarado distinto a firma detectada; se usa MIME detectado', {
+    logger.warn('MIME declarado distinto a firma detectada; se usa MIME detectado', {
       tenantId: normalizedTenantId,
       declaredMimeType: safeMime,
       sniffedMimeType: sniffedMime,
@@ -1655,7 +1655,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
   const cachedResult = getCachedEntry(resultCache, cacheKey)
 
   if (cachedResult) {
-    logInfo('Análisis IA devuelto desde cache local', {
+    logger.info('Análisis IA devuelto desde cache local', {
       tenantId: normalizedTenantId,
       hash,
       model: MODEL_NAME,
@@ -1667,7 +1667,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     const client = getGeminiClient()
     const learningContext = await loadTenantLearningContext(normalizedTenantId)
 
-    logInfo('Contexto de aprendizaje cargado', {
+    logger.info('Contexto de aprendizaje cargado', {
       tenantId: normalizedTenantId,
       hash,
       model: MODEL_NAME,
@@ -1747,7 +1747,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
     setCachedEntry(resultCache, cacheKey, normalized, RESULT_CACHE_TTL_MS)
 
-    logInfo('Análisis IA completado', {
+    logger.info('Análisis IA completado', {
       tenantId: normalizedTenantId,
       hash,
       model: MODEL_NAME,
