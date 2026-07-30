@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: henko-api
+    plan: starter
+    runtime: node
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: API_PREFIX
+        value: /api
+      - key: LOG_LEVEL
+        value: info
+      - key: TRUST_PROXY
+        value: true
+      - key: PREDEPLOY_TUNNEL_MODE
+        value: false
+      - key: AI_AGENT_MAX_OUTPUT_TOKENS
+        value: "1200"
+      - key: AUTO_ANALYZE
+        value: true
+      - key: AUTO_CREATE_PRODUCT
+        value: true
+      - key: AUTO_PUBLISH_PRODUCT
+        value: false
+      - key: MONGODB_URL
+        sync: false
+      - key: MONGO_ENABLE_TRANSACTIONS
+        value: true
+      - key: MONGO_FORCE_PUBLIC_DNS
+        value: true
+      - key: REDIS_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: STORAGE_DRIVER
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
