@@ -647,18 +647,7 @@ const Home = () => {
                     gap: { xs: 0.5, md: 1 },
                   }}
                 >
-                  <Typography
-                    component="h1"
-                    sx={{
-                      color: heroConfig.textColor,
-                      fontWeight: 800,
-                      fontSize: { xs: '1.5rem', sm: '2rem', md: '2.75rem' },
-                      lineHeight: 1.15,
-                      textShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',
-                    }}
-                  >
-                    {heroConfig.title}
-                  </Typography>
+
 
                   {heroConfig.subtitle && (
                     <Typography
@@ -991,7 +980,7 @@ const Home = () => {
             sx={{
               fontWeight: 850,
               textTransform: 'none',
-              color: themeColors.actionPrimary,
+              color: themeColors.actionPrimaryText,
               borderRadius: 999,
               px: 1.5,
               minWidth: 'auto',
