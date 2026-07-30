@@ -61,24 +61,19 @@ const aiVisualLimiter = rateLimiter
 
 router.post(
   '/analyze-visual',
-  adminContext,
-  aiVisualLimiter,
+  resolveTenantByDomain,
+  authMiddleware,
+  isAdmin,
   uploadPhoto.single('images'),
   productImgResize,
+  aiVisualLimiter,
   expressAsyncHandler(async (req, res) => {
-    let tenantId
+    const tenantId = req.user?.tenantId
 
-    try {
-      ;({ tenantId } = resolveAuthorizedTenantFromRequest(req, {
-        requireUserTenant: true,
-        missingTenantMessage: 'No se pudo identificar el comercio por dominio.',
-        missingUserTenantMessage: 'El usuario autenticado no tiene tenantId válido.',
-        mismatchMessage: 'Tenant inconsistente entre usuario autenticado y dominio.',
-      }))
-    } catch (error) {
-      return res.status(error.statusCode || 400).json({
+    if (!tenantId) {
+      return res.status(400).json({
         success: false,
-        message: error.message || 'No se pudo identificar tu comercio. Reintentá el login.',
+        message: 'No se pudo identificar tu comercio. Reintentá el login.',
       })
     }
 
@@ -92,128 +87,24 @@ router.post(
     try {
       const result = await analyzeImage(req.file.buffer, req.file.mimetype, tenantId)
 
-      // Un solo motor de normalización (autonomousProductBuilder.js) para
-      // todo el sistema: esta misma función es la que arma el producto
-      // cuando el agente lo hace solo de madrugada. Acá la exponemos como
-      // "normalized" para que AddProduct use el mismo resultado en lugar
-      // de recalcularlo con su propia copia de la lógica.
-      const normalized = buildNormalizedDraftFromAnalysis(result)
-
       return res.status(200).json({
         success: true,
-        data: { ...result, normalized },
+        data: result,
       })
     } catch (error) {
-      logger.error('[ANALYZE-VISUAL] Error en analyzeImage', {
-        message: error?.message,
-        status: error?.status || error?.statusCode,
-        code: error?.code,
-        retryable: error?.retryable,
-        stack: error?.stack?.split('\n').slice(0, 3).join(' | '),
-      })
-
-      const status =
-        error?.status ||
-        error?.statusCode ||
-        error?.response?.status ||
-        error?.cause?.status
-
-      const rawMessage = String(
-        error?.message ||
-          error?.response?.data?.error?.message ||
-          error?.response?.data?.message ||
-          '',
-      )
-
-      const message = rawMessage.toLowerCase()
-
-      const isGeminiRateLimit =
-        status === 429 ||
-        message.includes('429') ||
-        message.includes('quota') ||
-        message.includes('rate limit') ||
-        message.includes('too many requests') ||
-        message.includes('resource exhausted')
-
-      const isAuthError =
-        status === 401 ||
-        status === 403 ||
-        message.includes('api key') ||
-        message.includes('permission') ||
-        message.includes('unauthorized') ||
-        message.includes('forbidden')
-
-      const isModelError =
-        status === 400 &&
-        (
-          message.includes('model') ||
-          message.includes('not found') ||
-          message.includes('invalid argument')
-        )
-
-      // Errores upstream transitorios (503/502/504/500, timeout, red) que ya
-      // agotaron los reintentos de aiVisionService — el propio servicio marca
-      // esto en error.retryable, evitamos duplicar la heurística acá.
-      const isTransientUpstreamError =
-        !isGeminiRateLimit &&
-        !isAuthError &&
-        !isModelError &&
-        (
-          error?.retryable === true ||
-          status === 500 ||
-          status === 503 ||
-          status === 502 ||
-          status === 504 ||
-          message.includes('503') ||
-          message.includes('service unavailable') ||
-          message.includes('overloaded') ||
-          message.includes('high demand') ||
-          message.includes('bad gateway') ||
-          message.includes('deadline exceeded') ||
-          error?.code === 'GEMINI_TIMEOUT'
-        )
-
-      if (isGeminiRateLimit) {
+      if (
+        error?.message?.includes('429') ||
+        error?.message?.toLowerCase?.().includes('rate limit')
+      ) {
         return res.status(429).json({
           success: false,
-          code: 'AI_RATE_LIMIT',
           message:
-            'La IA está saturada o se alcanzó la cuota de Gemini. Intentá nuevamente en 60 segundos o completá los datos manualmente.',
-          retryAfter: 60,
-        })
-      }
-
-      if (isAuthError) {
-        return res.status(502).json({
-          success: false,
-          code: 'AI_AUTH_ERROR',
-          message:
-            'La IA no está configurada correctamente. Revisá la API Key de Gemini.',
-        })
-      }
-
-      if (isModelError) {
-        return res.status(502).json({
-          success: false,
-          code: 'AI_MODEL_ERROR',
-          message:
-            'El modelo de IA configurado no es válido. Revisá GEMINI_MODEL / GOOGLE_IMAGE_MODEL.',
-        })
-      }
-
-      if (isTransientUpstreamError) {
-        return res.status(503).json({
-          success: false,
-          code: 'AI_SERVICE_UNAVAILABLE',
-          message:
-            'El servicio de análisis IA está temporalmente saturado, intentá de nuevo en unos minutos.',
-          retryAfter: 60,
+            'La IA está saturada. Intentá nuevamente en 60 segundos o completá los datos manualmente.',
         })
       }
 
       return res.status(500).json({
         success: false,
-        code: 'AI_ANALYSIS_ERROR',
         message: 'Error al analizar la imagen con IA',
       })
     }

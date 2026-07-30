@@ -230,14 +230,6 @@ function sanitizeLogMeta(meta = {}) {
   return safe
 }
 
-function logger.info(message, meta = {}) {
-  logger.info('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
-}
-
-function logger.warn(message, meta = {}) {
-  logger.warn('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
-}
-
 function logError(message, meta = {}) {
   logger.error('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
 }
