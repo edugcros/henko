@@ -62,8 +62,13 @@ export const generateCsrfToken = async userId => {
       await redisClient.setEx(key, CSRF_TOKEN_TTL, token)
       logger.debug(`[CSRF] ✅ Token guardado en Redis: ${key}`)
     } catch (error) {
-      logger.error('[CSRF] ❌ Error storing token in Redis:', error.message)
-      logger.error('[CSRF] Redis status:', redisClient?.status || 'unknown')
+      logger.error('[CSRF] ❌ Error storing token in Redis:', {
+        message: error?.message,
+        code: error?.code,
+        name: error?.name,
+        stack: error?.stack,
+        redisStatus: redisClient?.status || 'unknown',
+      })
     }
   } else {
     logger.warn('[CSRF] ⚠️ Redis client NO está inicializado - token no se guardará')
@@ -96,7 +101,12 @@ export const verifyCsrfToken = async (userId, token) => {
 
       return isValid
     } catch (error) {
-      logger.error('[CSRF] ❌ Error verifying token:', error.message)
+      logger.error('[CSRF] ❌ Error verifying token:', {
+        message: error?.message,
+        code: error?.code,
+        name: error?.name,
+        redisStatus: redisClient?.status || 'unknown',
+      })
       return false
     }
   } else {
