@@ -1709,7 +1709,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
                     parts: [
                       {
                         inlineData: {
-                          data: imageBuffer.toString('base64'),
+                          data: imageBuffer,
                           mimeType: finalMime,
                         },
                       },
