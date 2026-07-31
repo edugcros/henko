@@ -12,12 +12,16 @@ import Tenant from '../models/tenantModel.js'
 // 🔐 AUTH MIDDLEWARE
 // =====================================================
 export const authMiddleware = asyncHandler(async (req, res, next) => {
+  const path = req.path || req.url
+  logger.debug(`[AUTH] Validando - Path: ${path}`)
+
   // ---------------------------------------------------
   // 🥇 PRIORIDAD REAL (alineado con axiosConfig)
   // ---------------------------------------------------
   const token = getAccessTokenFromRequest(req)
-  
+
   if (!token || token === 'undefined') {
+    logger.warn(`[AUTH] ❌ Token ausente - Path: ${path}`)
     return res.status(401).json({
       success: false,
       message: 'Token de acceso ausente',
@@ -29,6 +33,7 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
     // 🔐 Verificar JWT
     // -------------------------------------------------
     const decoded = decodeAccessToken(token)
+    logger.debug(`[AUTH] Token decodificado - userId: ${decoded.sub}, tenantId: ${decoded.tenantId}`)
 
     if (!isValidObjectId(decoded.sub)) {
       return res
