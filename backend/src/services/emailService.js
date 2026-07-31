@@ -1,7 +1,7 @@
 // 📁 src/services/emailService.js
 // VERSIÓN PRODUCCIÓN - SMTP / ORDEN CLIENTE / ORDEN ADMIN / MULTI-TENANT / SIN HARDCODE
 
-import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 
@@ -176,15 +176,14 @@ const getBuyerEmail = ({
 const getFromAddress = tenantConfig => {
   const storeName = getStoreName(tenantConfig)
 
-  const emailFrom =
-    validateEmail(process.env.EMAIL_FROM) ||
-    validateEmail(process.env.EMAIL_USER)
+  // Resend exige un dominio propio verificado para el remitente — no se
+  // puede mandar "como" una casilla de Gmail que no controla su DNS. Sin
+  // RESEND_FROM_EMAIL (dominio verificado) usamos su dirección sandbox,
+  // que solo sirve para pruebas hasta que se verifique un dominio real.
+  const verifiedFrom = validateEmail(process.env.RESEND_FROM_EMAIL)
+  const fromEmail = verifiedFrom || 'onboarding@resend.dev'
 
-  if (!emailFrom) {
-    throw new Error('EMAIL_FROM o EMAIL_USER no configurado para envío SMTP')
-  }
-
-  return `"${escapeHtml(storeName)}" <${emailFrom}>`
+  return `${escapeHtml(storeName)} <${fromEmail}>`
 }
 
 const getReplyTo = tenantConfig => {
@@ -457,94 +456,35 @@ const buildPlainTextSummary = ({
 }
 
 // =====================================================
-// SMTP TRANSPORTER
+// RESEND CLIENT
 // =====================================================
+// SMTP directo (nodemailer + Gmail) quedó descartado: Render no puede
+// alcanzar smtp.gmail.com:465 ni por IPv4 ni por IPv6 (ENETUNREACH /
+// ETIMEDOUT — mismo tipo de bloqueo de red saliente que vimos con
+// Redis/Upstash). Resend usa HTTPS (443), que no sufre ese bloqueo.
 
-const createTransporter = async () => {
-  const host = sanitizeString(process.env.EMAIL_HOST, 'smtp.gmail.com')
-  const port = Number(process.env.EMAIL_PORT || 465)
-  const secure = getEnvBoolean(process.env.EMAIL_SECURE, port === 465)
-  const user = validateEmail(process.env.EMAIL_USER)
-  const pass = sanitizeString(process.env.EMAIL_PASS)
+let resendClientInstance = null
 
-  if (!user) {
-    throw new Error('EMAIL_USER no configurado o inválido')
-  }
+const getResendClient = () => {
+  const apiKey = sanitizeString(process.env.RESEND_API_KEY)
 
-  if (!pass) {
-    throw new Error('EMAIL_PASS no configurado')
-  }
-
-  const config = {
-    host,
-    port,
-    secure,
-    auth: {
-      user,
-      pass,
-    },
-    tls: {
-      rejectUnauthorized: getEnvBoolean(
-        process.env.EMAIL_TLS_REJECT_UNAUTHORIZED,
-        process.env.NODE_ENV === 'production',
-      ),
-    },
-    // Los defaults de nodemailer (2min/30s/10min) dejan una conexión
-    // colgada mucho tiempo si el host bloquea el puerto saliente en vez de
-    // rechazarlo (ya vimos este mismo patrón con Redis/Upstash en Render).
-    // Con esto falla rápido y el error queda en logs en vez de acumular
-    // conexiones a medio abrir.
-    connectionTimeout: 8000,
-    greetingTimeout: 8000,
-    socketTimeout: 15000,
-    debug: process.env.NODE_ENV === 'development',
-    logger: process.env.NODE_ENV === 'development',
-  }
-
-  logger.info('📧 Configurando SMTP', {
-    host: config.host,
-    port: config.port,
-    user: config.auth.user,
-    secure: config.secure,
-    tlsRejectUnauthorized: config.tls.rejectUnauthorized,
-  })
-
-  const transporter = nodemailer.createTransport(config)
-
-  try {
-    await transporter.verify()
-
-    logger.info('✅ SMTP verificado correctamente', {
-      host,
-      port,
-      user,
-    })
-
-    return transporter
-  } catch (error) {
-    logger.error('❌ Error verificando SMTP', {
-      message: error.message,
-      code: error.code,
-      command: error.command,
-      response: error.response,
-    })
-
+  if (!apiKey) {
+    const error = new Error('RESEND_API_KEY no está configurada')
+    error.code = 'RESEND_NOT_CONFIGURED'
     throw error
   }
-}
 
-let transporterInstance = null
-
-const getTransporter = async () => {
-  if (!transporterInstance) {
-    transporterInstance = await createTransporter()
+  if (!resendClientInstance) {
+    resendClientInstance = new Resend(apiKey)
   }
 
-  return transporterInstance
+  return resendClientInstance
 }
 
+// Se mantiene exportada por compatibilidad: código existente puede llamarla
+// tras un error para forzar reconstrucción del cliente en el próximo envío.
 export const resetEmailTransporter = () => {
-  transporterInstance = null
+  resendClientInstance = null
 }
 
 // =====================================================
@@ -563,52 +503,35 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         subject: mailOptions.subject,
       })
 
-      const transporter = await getTransporter()
-      const info = await transporter.sendMail(mailOptions)
-      const normalizedRecipient = validateEmail(mailOptions.to)
-      const accepted = (info.accepted || [])
-        .map(value => validateEmail(String(value)))
-        .filter(Boolean)
-      const rejected = (info.rejected || [])
-        .map(value => validateEmail(String(value)))
-        .filter(Boolean)
-      const recipientAccepted =
-        Boolean(normalizedRecipient) &&
-        accepted.includes(normalizedRecipient) &&
-        !rejected.includes(normalizedRecipient)
+      const client = getResendClient()
+      const { data, error } = await client.emails.send({
+        from: mailOptions.from,
+        to: mailOptions.to,
+        subject: mailOptions.subject,
+        html: mailOptions.html || undefined,
+        text: mailOptions.text || undefined,
+        replyTo: mailOptions.replyTo || undefined,
+        attachments: mailOptions.attachments?.length
+          ? mailOptions.attachments
+          : undefined,
+      })
 
-      if (!recipientAccepted) {
-        logger.error('❌ SMTP no aceptó al destinatario', {
-          messageId: info.messageId || null,
-          acceptedCount: accepted.length,
-          rejectedCount: rejected.length,
-          response: info.response || null,
-        })
-
-        return {
-          success: false,
-          error: 'SMTP_RECIPIENT_NOT_ACCEPTED',
-          messageId: info.messageId || null,
-          accepted,
-          rejected,
-          response: info.response || null,
-          attempt,
-        }
+      if (error) {
+        const resendError = new Error(error.message || 'Error de Resend')
+        resendError.code = error.name
+        throw resendError
       }
 
       logger.info('✅ Email enviado correctamente', {
-        messageId: info.messageId,
-        acceptedCount: accepted.length,
-        rejectedCount: rejected.length,
-        response: info.response,
+        messageId: data?.id,
       })
 
       return {
         success: true,
-        messageId: info.messageId,
-        accepted,
-        rejected,
-        response: info.response,
+        messageId: data?.id || null,
+        accepted: [mailOptions.to],
+        rejected: [],
+        response: 'resend-accepted',
         attempt,
       }
     } catch (error) {
@@ -621,32 +544,26 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         subject: mailOptions.subject,
         message: error.message,
         code: error.code,
-        command: error.command,
-        response: error.response,
       })
 
       const authFailed =
-        String(error.message || '').toLowerCase().includes('authentication') ||
-        String(error.message || '').includes('5.7.0') ||
-        String(error.code || '').includes('EAUTH')
+        error.code === 'RESEND_NOT_CONFIGURED' ||
+        String(error.code || '').includes('validation_error') ||
+        String(error.message || '').toLowerCase().includes('api key')
 
       if (authFailed) {
-        logger.error('🔒 Error de autenticación SMTP', {
-          suggestion:
-            'Verificá EMAIL_USER y EMAIL_PASS. En Gmail usá App Password, no contraseña normal.',
+        logger.error('🔒 Error de configuración de Resend', {
+          suggestion: 'Verificá RESEND_API_KEY en las variables de entorno.',
         })
 
         return {
           success: false,
-          error: 'SMTP_AUTHENTICATION_FAILED',
+          error: 'RESEND_AUTHENTICATION_FAILED',
           details: error.message,
           code: error.code,
-          suggestion:
-            'Verificá que uses App Password de Gmail de 16 caracteres.',
+          suggestion: 'Verificá que RESEND_API_KEY esté configurada y sea válida.',
         }
       }
-
-      resetEmailTransporter()
 
       if (attempt < maxRetries) {
         const delay = Math.min(1000 * 2 ** attempt, 10000)
@@ -665,7 +582,6 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
     success: false,
     error: lastError?.message || 'UNKNOWN_EMAIL_ERROR',
     code: lastError?.code || null,
-    response: lastError?.response || null,
     attempts: maxRetries,
   }
 }
@@ -1266,25 +1182,27 @@ export const sendAdminNotificationEmail = async (
 
 export const testEmailConnection = async () => {
   try {
-    const transporter = await getTransporter()
-    await transporter.verify()
+    const client = getResendClient()
+    const { error } = await client.apiKeys.list()
+
+    if (error) {
+      throw new Error(error.message || 'Error de Resend')
+    }
 
     return {
       success: true,
-      message: 'SMTP verificado correctamente',
+      message: 'Resend verificado correctamente',
     }
   } catch (error) {
     logger.error('❌ testEmailConnection falló', {
       message: error.message,
       code: error.code,
-      response: error.response,
     })
 
     return {
       success: false,
       message: error.message,
       code: error.code || null,
-      response: error.response || null,
     }
   }
 }
