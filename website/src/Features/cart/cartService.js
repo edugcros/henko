@@ -25,12 +25,13 @@ const ensureCsrf = async () => {
   if (!csrfInFlight) {
     csrfInFlight = fetchCsrfToken()
       .then(token => {
-        if (!token) {
-          throw new Error('No se pudo obtener token CSRF')
-        }
-
-        cachedCsrfToken = token
-        return token
+        // El backend responde 200 con csrfToken:null cuando CSRF_ENABLED=false
+        // a nivel servidor — un estado válido, no un fallo. Antes esto se
+        // trataba como error y bloqueaba cualquier POST/PUT/DELETE del
+        // carrito (agregar, actualizar, vaciar) con "No se pudo obtener
+        // token CSRF" aunque el usuario estuviera logueado.
+        cachedCsrfToken = token || null
+        return cachedCsrfToken
       })
       .finally(() => {
         csrfInFlight = null
@@ -63,7 +64,9 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
 
   if (isMutatingRequest && !options.skipCsrf) {
     const csrfToken = await ensureCsrf()
-    headers[env.csrfHeaderName || 'x-csrf-token'] = csrfToken
+    if (csrfToken) {
+      headers[env.csrfHeaderName || 'x-csrf-token'] = csrfToken
+    }
   }
 
   const config = {
