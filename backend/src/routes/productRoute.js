@@ -67,6 +67,31 @@ router.post(
   uploadPhoto.single('images'),
   productImgResize,
   aiVisualLimiter,
+  expressAsyncHandler(async (req, res) => {
+    const { file } = req
+    const tenantId = req.user?.tenantId
+    
+    if (!file) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No se subió imagen' 
+      })
+    }
+    
+    try {
+      const analysis = await analyzeImage(file.buffer, file.mimetype, tenantId)
+      return res.json({ success: true, data: analysis })
+    } catch (error) {
+      logger.error('[ANALYZE VISUAL ERROR]', {
+        message: error.message,
+        tenantId,
+      })
+      return res.status(500).json({
+        success: false,
+        message: 'Error al analizar la imagen con IA'
+      })
+    }
+  })
 )
 
 const conditionalCsrfProtection = (req, res, next) => {
