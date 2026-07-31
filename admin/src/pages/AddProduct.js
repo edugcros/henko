@@ -1,4 +1,4 @@
-// 📁 src/pages/AddProduct.js
+// 📁 src/pages/AddProduct.jsx
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   ConfigProvider,
@@ -26,7 +26,6 @@ import {
   Popconfirm,
   Steps,
   Collapse,
-  Modal,
 } from 'antd'
 import {
   InboxOutlined,
@@ -51,9 +50,6 @@ import {
   CheckOutlined,
   CloudDownloadOutlined,
   SaveOutlined,
-  ArrowLeftOutlined,
-  ArrowRightOutlined,
-  StarOutlined,
 } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import useProductAnalyzer from '../hooks/useProductAnalyzer'
@@ -509,10 +505,8 @@ const validateVariantsForSubmit = variants => {
   return null
 }
 
-const validateProductBasicsForSubmit = ({
-  values = {},
-  hasVariants = false,
-}) => {
+
+const validateProductBasicsForSubmit = ({ values = {}, hasVariants = false }) => {
   const requiredFields = [
     ['titulo', 'El título es obligatorio'],
     ['descripcion', 'La descripción comercial es obligatoria'],
@@ -1590,21 +1584,6 @@ const getAiVariantSuggestions = analysis => {
 }
 
 const normalizeAiAnalysisForForm = analysis => {
-  // El backend (autonomousProductBuilder.js) ya calcula este mismo
-  // resultado con un único motor, compartido con el pipeline 100%
-  // autónomo del agente. Si vino en la respuesta, lo usamos tal cual en
-  // vez de recalcularlo acá — así no hay dos implementaciones de la
-  // misma lógica que se puedan desincronizar. El cálculo local de abajo
-  // queda solo como respaldo por si analiza algo que no pasó por ese
-  // endpoint (compatibilidad hacia atrás).
-  if (
-    analysis?.normalized &&
-    typeof analysis.normalized === 'object' &&
-    analysis.normalized.fields
-  ) {
-    return analysis.normalized
-  }
-
   const attrs =
     analysis?.atributos_detectados ||
     analysis?.atributos ||
@@ -1943,7 +1922,7 @@ const AIAnalysisPanel = ({
             htmlType="button"
             size="small"
             danger
-            onClick={() => onReset()}
+            onClick={onReset}
             icon={<ReloadOutlined />}
           >
             Reintentar
@@ -2283,20 +2262,12 @@ const AIAnalysisPanel = ({
           <Button
             htmlType="button"
             size="small"
-            block
             type={available ? 'primary' : 'default'}
             ghost={available}
             icon={<CheckCircleOutlined />}
             disabled={!available}
             onClick={() => onApplyField?.(item.fieldName)}
-            style={{
-              borderRadius: 999,
-              whiteSpace: 'normal',
-              height: 'auto',
-              minHeight: 28,
-              lineHeight: 1.3,
-              padding: '4px 12px',
-            }}
+            style={{ alignSelf: 'flex-start', borderRadius: 999 }}
           >
             Completar este campo
           </Button>
@@ -2341,7 +2312,7 @@ const AIAnalysisPanel = ({
               htmlType="button"
               size="small"
               icon={<ReloadOutlined />}
-              onClick={() => onReset()}
+              onClick={onReset}
             >
               Reanalizar
             </Button>
@@ -2425,7 +2396,7 @@ const AIAnalysisPanel = ({
           </Text>
           <Row gutter={[14, 14]}>
             {section.items.map(item => (
-              <Col xs={24} sm={12} xl={8} key={item.key}>
+              <Col xs={24} sm={12} lg={8} key={item.key}>
                 <SuggestionCard item={item} />
               </Col>
             ))}
@@ -2665,16 +2636,7 @@ const AIAnalysisPanel = ({
   )
 }
 
-const ImagePreviewGrid = ({
-  previews,
-  fileList,
-  onRemove,
-  onAddMore,
-  onReorder,
-  onSetPrincipal,
-  onAnalyze,
-  analyzing,
-}) => {
+const ImagePreviewGrid = ({ previews, fileList, onRemove, onAddMore }) => {
   const { token } = useToken()
 
   if (!previews.length) {
@@ -2693,158 +2655,82 @@ const ImagePreviewGrid = ({
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <Text strong style={{ display: 'block', marginBottom: 4 }}>
+      <Text strong style={{ display: 'block', marginBottom: 12 }}>
         Imágenes seleccionadas ({previews.length})
       </Text>
-      <Text
-        type="secondary"
-        style={{ display: 'block', marginBottom: 12, fontSize: 13 }}
-      >
-        La primera imagen es la portada del producto. Usá las flechas para
-        reordenar o marcá otra como principal.
-      </Text>
 
-      <Row gutter={[16, 16]}>
+      <Row gutter={[12, 12]}>
         {previews.map((src, i) => (
-          <Col key={`${src}-${i}`} xs={12} sm={8} md={8} lg={6} xl={4}>
+          <Col key={`${src}-${i}`} xs={12} sm={8} md={6} lg={4}>
             <div
               style={{
-                width: '100%',
                 position: 'relative',
                 borderRadius: 12,
                 overflow: 'hidden',
                 border: `2px solid ${token.colorBorder}`,
                 transition: 'all 0.3s ease',
-                background: token.colorBgContainer,
               }}
               className="image-preview-item"
             >
-              <div style={{ position: 'relative' }}>
-                <img
-                  src={src}
-                  alt={`Imagen ${i + 1} de ${previews.length} del producto${i === 0 ? ' (portada)' : ''}`}
-                  style={{
-                    width: '100%',
-                    height: 208,
-                    objectFit: 'cover',
-                    display: 'block',
-                  }}
-                />
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'rgba(0,0,0,0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    opacity: 0,
-                    transition: 'opacity 0.3s ease',
-                  }}
-                  className="image-preview-overlay"
-                >
-                  <Button
-                    htmlType="button"
-                    type="primary"
-                    shape="circle"
-                    icon={<EyeOutlined />}
-                    size="small"
-                    onClick={() => window.open(src, '_blank')}
-                    aria-label={`Ver imagen ${i + 1} en tamaño completo`}
-                  />
-                  {onAnalyze && (
-                    <Button
-                      htmlType="button"
-                      shape="circle"
-                      icon={<ThunderboltOutlined />}
-                      size="small"
-                      loading={analyzing}
-                      disabled={analyzing}
-                      onClick={() => onAnalyze(i)}
-                      aria-label={`Analizar imagen ${i + 1} con IA`}
-                      title="Analizar esta imagen con IA"
-                    />
-                  )}
-                  <Button
-                    htmlType="button"
-                    danger
-                    shape="circle"
-                    icon={<DeleteOutlined />}
-                    size="small"
-                    onClick={() => onRemove(fileList[i])}
-                    aria-label={`Eliminar imagen ${i + 1}`}
-                  />
-                </div>
-
-                {i === 0 && (
-                  <Tag
-                    color="gold"
-                    style={{
-                      position: 'absolute',
-                      top: 6,
-                      left: 6,
-                      margin: 0,
-                      fontSize: 11,
-                    }}
-                  >
-                    Portada
-                  </Tag>
-                )}
-              </div>
-
+              <img
+                src={src}
+                alt={`preview-${i}`}
+                style={{
+                  width: '100%',
+                  height: 120,
+                  objectFit: 'cover',
+                }}
+              />
               <div
                 style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.5)',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '4px 6px',
-                  borderTop: `1px solid ${token.colorBorderSecondary}`,
+                  justifyContent: 'center',
+                  opacity: 0,
+                  transition: 'opacity 0.3s ease',
                 }}
+                className="image-preview-overlay"
               >
                 <Button
                   htmlType="button"
-                  type="text"
+                  type="primary"
+                  shape="circle"
+                  icon={<EyeOutlined />}
                   size="small"
-                  icon={<ArrowLeftOutlined />}
-                  disabled={i === 0}
-                  onClick={() => onReorder(i, i - 1)}
-                  aria-label={`Mover imagen ${i + 1} hacia la izquierda`}
-                  style={{ minWidth: 26 }}
+                  onClick={() => window.open(src, '_blank')}
+                  style={{ marginRight: 8 }}
                 />
-                {i === 0 ? (
-                  <StarOutlined
-                    style={{ color: token.colorWarning, fontSize: 14 }}
-                    title="Portada actual"
-                  />
-                ) : (
-                  <Button
-                    htmlType="button"
-                    type="text"
-                    size="small"
-                    icon={<StarOutlined />}
-                    onClick={() => onSetPrincipal(i)}
-                    aria-label={`Marcar imagen ${i + 1} como portada`}
-                    title="Marcar como portada"
-                    style={{ minWidth: 26 }}
-                  />
-                )}
                 <Button
                   htmlType="button"
-                  type="text"
+                  danger
+                  shape="circle"
+                  icon={<DeleteOutlined />}
                   size="small"
-                  icon={<ArrowRightOutlined />}
-                  disabled={i === previews.length - 1}
-                  onClick={() => onReorder(i, i + 1)}
-                  aria-label={`Mover imagen ${i + 1} hacia la derecha`}
-                  style={{ minWidth: 26 }}
+                  onClick={() => onRemove(fileList[i])}
                 />
               </div>
+
+              {i === 0 && (
+                <Tag
+                  color="gold"
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    left: 8,
+                    margin: 0,
+                  }}
+                >
+                  Principal
+                </Tag>
+              )}
             </div>
           </Col>
         ))}
 
-        <Col xs={12} sm={8} md={8} lg={6} xl={4}>
+        <Col xs={12} sm={8} md={6} lg={4}>
           <Upload
             showUploadList={false}
             beforeUpload={() => false}
@@ -2854,7 +2740,7 @@ const ImagePreviewGrid = ({
           >
             <div
               style={{
-                height: 244,
+                height: 120,
                 border: `2px dashed ${token.colorBorder}`,
                 borderRadius: 12,
                 display: 'flex',
@@ -3045,8 +2931,7 @@ const VariantImageSelector = ({ variant, localImages, onAssign }) => {
   )
 }
 
-const normalizeNamePath = name =>
-  (Array.isArray(name) ? name : [name]).filter(Boolean)
+const normalizeNamePath = name => (Array.isArray(name) ? name : [name]).filter(Boolean)
 
 const buildNestedFieldPatch = (name, value) => {
   const path = normalizeNamePath(name)
@@ -3123,14 +3008,11 @@ const ProductField = React.memo(function ProductField({
     return currentValue === undefined ? initialValue : currentValue
   })
   const [fieldError, setFieldError] = useState('')
-  const requiredByRule =
-    required || safeArray(rules).some(rule => rule?.required)
+  const requiredByRule = required || safeArray(rules).some(rule => rule?.required)
   const namePath = normalizeNamePath(name)
   const nameKey = namePath.join('__')
   const fieldId = namePath.join('_')
-  const stableClassName = ['stable-form-field', className]
-    .filter(Boolean)
-    .join(' ')
+  const stableClassName = ['stable-form-field', className].filter(Boolean).join(' ')
 
   useEffect(() => {
     if (initialValue === undefined) return
@@ -3150,8 +3032,7 @@ const ProductField = React.memo(function ProductField({
 
   const validateField = useCallback(
     nextValue => {
-      const currentValue =
-        nextValue !== undefined ? nextValue : form.getFieldValue(name)
+      const currentValue = nextValue !== undefined ? nextValue : form.getFieldValue(name)
 
       if (requiredByRule && isEmptyFieldValue(currentValue)) {
         const messageText = getRequiredMessage(rules, label)
@@ -3171,8 +3052,7 @@ const ProductField = React.memo(function ProductField({
   const originalOnFocus = child.props.onFocus
   const controlledProps = {
     id: child.props.id || fieldId,
-    [valuePropName]:
-      valuePropName === 'checked' ? Boolean(fieldValue) : fieldValue,
+    [valuePropName]: valuePropName === 'checked' ? Boolean(fieldValue) : fieldValue,
     onChange: (...args) => {
       const nextValue = extractInputValue(args[0], valuePropName)
       setFieldValue(nextValue)
@@ -3205,9 +3085,7 @@ const ProductField = React.memo(function ProductField({
       {label && (
         <label htmlFor={fieldId} className="stable-form-field-label">
           {label}
-          {requiredByRule && (
-            <span className="stable-form-field-required">*</span>
-          )}
+          {requiredByRule && <span className="stable-form-field-required">*</span>}
         </label>
       )}
 
@@ -3220,6 +3098,7 @@ const ProductField = React.memo(function ProductField({
   )
 })
 
+
 export default function AddProduct() {
   const [form] = Form.useForm()
   const dispatch = useDispatch()
@@ -3228,7 +3107,6 @@ export default function AddProduct() {
   const {
     iaResult,
     analyzeImage,
-    hydrateAnalysis,
     resetIa,
     loading: loadingIa,
     error: errorIa,
@@ -3267,14 +3145,10 @@ export default function AddProduct() {
     getStoredBoolean('addProduct.agentAutoMode', false),
   )
   const [autoAgentRunning, setAutoAgentRunning] = useState(false)
-  const [autoAgentReviewQueue, setAutoAgentReviewQueue] = useState([])
-  const [autoAgentReviewOpen, setAutoAgentReviewOpen] = useState(false)
-  const [reviewItemBusyId, setReviewItemBusyId] = useState(null)
   const [currentAgentJob, setCurrentAgentJob] = useState(null)
   const [publishProduct, setPublishProduct] = useState(true)
   const [savingProduct, setSavingProduct] = useState(false)
   const [formHasChanges, setFormHasChanges] = useState(false)
-  const [submitErrors, setSubmitErrors] = useState([])
   const [committedClassification, setCommittedClassification] = useState({
     categoria: '',
     subcategoria: '',
@@ -3288,8 +3162,6 @@ export default function AddProduct() {
   const categoryConfigDebounceRef = useRef(null)
   const categoryConfigRequestIdRef = useRef(0)
   const categoryConfigCacheRef = useRef(new Map())
-  const technicalSheetSnapshotRef = useRef(null)
-  const autoAgentReviewQueueRef = useRef([])
 
   const markFormAsChanged = useCallback(() => {
     setFormHasChanges(current => (current ? current : true))
@@ -3571,7 +3443,7 @@ export default function AddProduct() {
         if (job.metadata?.autoSaveProduct) acc.autoSave += 1
         return acc
       },
-      { total: 0, pending: 0, scheduled: 0, completed: 0, autoSave: 0 },
+      { total: 0, pending: 0, scheduled: 0, autoSave: 0 },
     )
   }, [agentQueue])
 
@@ -3640,33 +3512,13 @@ export default function AddProduct() {
   )
 
   useEffect(() => {
-    if (!hasUserWorkspace) return undefined
-
-    const handleBeforeUnload = event => {
-      event.preventDefault()
-      event.returnValue = ''
-      return ''
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [hasUserWorkspace])
-
-  useEffect(() => {
     imagePreviewsRef.current = imagePreviews
   }, [imagePreviews])
-
-  useEffect(() => {
-    autoAgentReviewQueueRef.current = autoAgentReviewQueue
-  }, [autoAgentReviewQueue])
 
   useEffect(() => {
     return () => {
       dispatch(resetState())
       revokeBlobUrls(imagePreviewsRef.current)
-      autoAgentReviewQueueRef.current.forEach(item => {
-        if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl)
-      })
     }
   }, [dispatch])
 
@@ -3853,12 +3705,9 @@ export default function AddProduct() {
           },
         })
 
-        // 'completed' incluye a los jobs que AddProduct ya analizó solo
-        // (llegó su hora programada) y están esperando que alguien los
-        // cargue acá para revisarlos o mandarlos directo a aprobar.
         const items = (Array.isArray(data?.items) ? data.items : []).filter(
           item =>
-            ['pending', 'scheduled', 'completed'].includes(item.status) &&
+            ['pending', 'scheduled'].includes(item.status) &&
             item.metadata?.autoAnalyze === false,
         )
         setAgentQueue(items)
@@ -3885,20 +3734,6 @@ export default function AddProduct() {
 
   useEffect(() => {
     fetchAgentQueue()
-  }, [fetchAgentQueue])
-
-  // La cola del agente puede cambiar de estado sola (una imagen
-  // programada se analiza automáticamente apenas llega su hora, sin que
-  // nadie tenga esta pantalla abierta). Sin este refresco periódico, el
-  // selector se queda mostrando "Programada" con datos viejos aunque el
-  // backend ya la haya analizado, y el botón "Cargar ahora" rechaza la
-  // acción por el estado desactualizado que quedó en el navegador.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchAgentQueue({ silent: true, preserveSelection: true })
-    }, 15000)
-
-    return () => clearInterval(interval)
   }, [fetchAgentQueue])
 
   const normalizedAiDraft = useMemo(() => {
@@ -4279,13 +4114,7 @@ export default function AddProduct() {
 
     setProductFormValues(buildSeoFormValues(baseValues))
     message.success('SEO generado desde los datos actuales del producto')
-  }, [
-    editableTags,
-    form,
-    normalizedAiDraft,
-    setProductFormValues,
-    useTechnicalSheet,
-  ])
+  }, [editableTags, form, normalizedAiDraft, setProductFormValues, useTechnicalSheet])
 
   const generateSeoPositioningFromCurrentValues = useCallback(() => {
     const values = form.getFieldsValue(true) || {}
@@ -4817,37 +4646,28 @@ export default function AddProduct() {
     [analyzeImage, buildImageSignature, iaResult, imagePreviews, loadingIa],
   )
 
-  const handleReanalyzeImage = useCallback(
-    async (index = null) => {
-      const uploadFile =
-        index !== null && fileList[index]?.originFileObj
-          ? fileList[index]
-          : safeArray(fileList).find(file => Boolean(file?.originFileObj))
-      const imageFile = uploadFile?.originFileObj
+  const handleReanalyzeImage = useCallback(async () => {
+    const uploadFile = safeArray(fileList).find(file =>
+      Boolean(file?.originFileObj),
+    )
+    const imageFile = uploadFile?.originFileObj
 
-      if (!imageFile) {
-        message.warning(
-          'Para reanalizar necesitás tener una imagen cargada localmente en el formulario.',
-        )
-        return
-      }
+    if (!imageFile) {
+      message.warning(
+        'Para reanalizar necesitás tener una imagen cargada localmente en el formulario.',
+      )
+      return
+    }
 
-      try {
-        resetIa()
-        lastAnalyzedImageSignatureRef.current =
-          buildImageSignature(imageFile) || ''
-        await analyzeImage(imageFile)
-        message.success(
-          index !== null
-            ? `Imagen ${index + 1} analizada con IA`
-            : 'Imagen reanalizada con IA',
-        )
-      } catch (error) {
-        message.error(error?.message || 'No se pudo reanalizar la imagen')
-      }
-    },
-    [analyzeImage, buildImageSignature, fileList, resetIa],
-  )
+    try {
+      resetIa()
+      lastAnalyzedImageSignatureRef.current = ''
+      await analyzeImage(imageFile)
+      message.success('Imagen reanalizada con IA')
+    } catch (error) {
+      message.error(error?.message || 'No se pudo reanalizar la imagen')
+    }
+  }, [analyzeImage, fileList, resetIa])
 
   const resetProductWorkspace = useCallback(() => {
     form.resetFields()
@@ -4869,9 +4689,7 @@ export default function AddProduct() {
     setCurrentAgentJob(null)
     setPublishProduct(true)
     setFormHasChanges(false)
-    setSubmitErrors([])
     lastAnalyzedImageSignatureRef.current = ''
-    technicalSheetSnapshotRef.current = null
     resetIa()
     dispatch(resetState())
   }, [dispatch, form, imagePreviews, notifyFormMutation, resetIa])
@@ -4900,13 +4718,9 @@ export default function AddProduct() {
 
     setImportingAgentImage(true)
     try {
-      const importResponse = await api.post(
+      await api.post(
         `/product-analysis/${selectedAgentJobId}/import-to-add-product`,
       )
-      // Si AddProduct ya la analizó sola (llegó su hora programada), el
-      // backend nos manda el análisis ya calculado acá — no hace falta
-      // gastar otra llamada a la IA, solo hidratamos el formulario.
-      const alreadyAnalyzed = importResponse?.data?.analysis || null
 
       resetProductWorkspace()
       await waitForUiReset()
@@ -4944,13 +4758,9 @@ export default function AddProduct() {
       )
       setSelectedAgentJobId(null)
 
-      if (alreadyAnalyzed) {
-        hydrateAnalysis(alreadyAnalyzed)
-        message.success('Imagen y análisis de AddProduct cargados')
-      } else {
-        await analyzeImage(imageFile)
-        message.success('Imagen del agente cargada en AddProduct')
-      }
+      await analyzeImage(imageFile)
+
+      message.success('Imagen del agente cargada en AddProduct')
     } catch (error) {
       message.error(
         error?.response?.data?.message ||
@@ -4962,7 +4772,6 @@ export default function AddProduct() {
   }, [
     agentQueue,
     analyzeImage,
-    hydrateAnalysis,
     hasUserWorkspace,
     resetProductWorkspace,
     selectedAgentJobId,
@@ -4993,7 +4802,7 @@ export default function AddProduct() {
     }
   }, [agentQueue, selectedAgentJobId])
 
-  const prepareAgentJobForReview = useCallback(
+  const processAgentJobAutomatically = useCallback(
     async job => {
       await api.post(`/product-analysis/${job._id}/import-to-add-product`)
 
@@ -5017,7 +4826,7 @@ export default function AddProduct() {
         throw new Error('La IA no devolvió análisis para la imagen')
       }
 
-      const payload = buildProductPayloadFromAnalysis({
+      const productPayload = buildProductPayloadFromAnalysis({
         analysis,
         job,
         user,
@@ -5026,16 +4835,7 @@ export default function AddProduct() {
         includeTechnicalSheet: shouldIncludeTechnicalSheetFromJob(job),
       })
 
-      return { job, imageFile, payload }
-    },
-    [analyzeImage, resetProductWorkspace, user],
-  )
-
-  // Publica (crea + sube imagen) un ítem de la cola de revisión.
-  // Requiere aprobación explícita del usuario: ver autoAgentReviewQueue.
-  const commitAgentReviewItem = useCallback(
-    async ({ job, imageFile, payload }) => {
-      const created = await dispatch(createProducts(payload)).unwrap()
+      const created = await dispatch(createProducts(productPayload)).unwrap()
       const createdPayload = created?.data || created
       const productId = createdPayload?._id
 
@@ -5056,76 +4856,8 @@ export default function AddProduct() {
 
       return productId
     },
-    [dispatch],
+    [analyzeImage, dispatch, resetProductWorkspace, user],
   )
-
-  const discardAgentReviewItem = useCallback(async job => {
-    await api.post(`/product-analysis/${job._id}/reject`, {
-      reason: 'Descartado en revisión de AutoSave.',
-    })
-  }, [])
-
-  const removeReviewItem = useCallback(id => {
-    setAutoAgentReviewQueue(current => {
-      const target = current.find(item => item.id === id)
-      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
-      return current.filter(item => item.id !== id)
-    })
-  }, [])
-
-  const handleApproveReviewItem = useCallback(
-    async item => {
-      setReviewItemBusyId(item.id)
-      try {
-        await commitAgentReviewItem(item)
-        message.success(
-          `Producto publicado: ${item.payload?.title || item.job.originalFilename || item.id}`,
-        )
-        removeReviewItem(item.id)
-      } catch (error) {
-        message.error(
-          error?.response?.data?.message ||
-            error?.message ||
-            'No se pudo publicar el producto',
-        )
-      } finally {
-        setReviewItemBusyId(null)
-      }
-    },
-    [commitAgentReviewItem, removeReviewItem],
-  )
-
-  const handleDiscardReviewItem = useCallback(
-    async item => {
-      setReviewItemBusyId(item.id)
-      try {
-        await discardAgentReviewItem(item.job)
-        message.info('Producto descartado, no se publicó')
-        removeReviewItem(item.id)
-      } catch (error) {
-        message.error(
-          error?.response?.data?.message ||
-            error?.message ||
-            'No se pudo descartar el producto',
-        )
-      } finally {
-        setReviewItemBusyId(null)
-      }
-    },
-    [discardAgentReviewItem, removeReviewItem],
-  )
-
-  const handleApproveAllReview = useCallback(async () => {
-    for (const item of autoAgentReviewQueue) {
-      await handleApproveReviewItem(item)
-    }
-  }, [autoAgentReviewQueue, handleApproveReviewItem])
-
-  const handleDiscardAllReview = useCallback(async () => {
-    for (const item of autoAgentReviewQueue) {
-      await handleDiscardReviewItem(item)
-    }
-  }, [autoAgentReviewQueue, handleDiscardReviewItem])
 
   const processAutoAgentQueue = useCallback(async () => {
     if (!autoAgentEnabled || autoAgentRef.current || hasUserWorkspace) return
@@ -5142,38 +4874,25 @@ export default function AddProduct() {
     autoAgentRef.current = true
     setAutoAgentRunning(true)
 
-    const prepared = []
-
     try {
       for (const job of jobsToProcess) {
         try {
-          const item = await prepareAgentJobForReview(job)
-          prepared.push({
-            id: job._id,
-            ...item,
-            previewUrl: URL.createObjectURL(item.imageFile),
-          })
-          setAgentQueue(current =>
-            current.filter(entry => entry._id !== job._id),
+          await processAgentJobAutomatically(job)
+          setAgentQueue(current => current.filter(item => item._id !== job._id))
+          message.success(
+            `Producto creado automáticamente: ${job.originalFilename || job._id}`,
           )
         } catch (error) {
           autoAgentFailedJobsRef.current.add(job._id)
           message.error(
             error?.response?.data?.message ||
               error?.message ||
-              `No se pudo preparar ${job.originalFilename || job._id} para revisión`,
+              `No se pudo guardar automáticamente ${job.originalFilename || job._id}`,
           )
+        } finally {
+          resetProductWorkspace()
+          await waitForUiReset()
         }
-      }
-
-      if (prepared.length) {
-        setAutoAgentReviewQueue(current => [...current, ...prepared])
-        setAutoAgentReviewOpen(true)
-        message.info(
-          prepared.length === 1
-            ? '1 producto de AutoSave está listo para revisar antes de publicar'
-            : `${prepared.length} productos de AutoSave están listos para revisar antes de publicar`,
-        )
       }
 
       await fetchAgentQueue()
@@ -5186,7 +4905,8 @@ export default function AddProduct() {
     autoAgentEnabled,
     fetchAgentQueue,
     hasUserWorkspace,
-    prepareAgentJobForReview,
+    processAgentJobAutomatically,
+    resetProductWorkspace,
   ])
 
   useEffect(() => {
@@ -5245,34 +4965,6 @@ export default function AddProduct() {
     [fileList, imagePreviews, resetIa],
   )
 
-  const handleReorderImage = useCallback(
-    (fromIndex, toIndex) => {
-      if (
-        fromIndex === toIndex ||
-        fromIndex < 0 ||
-        toIndex < 0 ||
-        fromIndex >= fileList.length ||
-        toIndex >= fileList.length
-      ) {
-        return
-      }
-
-      const reordered = [...fileList]
-      const [moved] = reordered.splice(fromIndex, 1)
-      reordered.splice(toIndex, 0, moved)
-
-      revokeBlobUrls(imagePreviews)
-      setFileList(reordered)
-      setImagePreviews(rebuildPreviews(reordered))
-    },
-    [fileList, imagePreviews],
-  )
-
-  const handleSetPrincipalImage = useCallback(
-    index => handleReorderImage(index, 0),
-    [handleReorderImage],
-  )
-
   const handleCloseTag = useCallback(removedTag => {
     setEditableTags(prev => prev.filter(tag => tag !== removedTag))
   }, [])
@@ -5301,58 +4993,43 @@ export default function AddProduct() {
       ...(form.getFieldsValue(true) || {}),
       ...(submittedValues || {}),
     }
-    const collectedErrors = []
-
     if (!fileList.length) {
-      collectedErrors.push({
-        section: SECTION_IDS.imagenes,
-        message: 'Debes subir al menos una imagen',
-      })
-    } else {
-      const fileValidationError = validateSelectedFiles(fileList)
-      if (fileValidationError) {
-        collectedErrors.push({
-          section: SECTION_IDS.imagenes,
-          message: fileValidationError,
-        })
-      }
+      message.error('Debes subir al menos una imagen')
+      scrollToSection(SECTION_IDS.imagenes)
+      return
+    }
+
+    const fileValidationError = validateSelectedFiles(fileList)
+    if (fileValidationError) {
+      message.error(fileValidationError)
+      scrollToSection(SECTION_IDS.imagenes)
+      return
+    }
+
+    if (!tenantId) {
+      message.error('Tenant no disponible')
+      return
     }
 
     const basicsError = validateProductBasicsForSubmit({ values, hasVariants })
     if (basicsError) {
-      collectedErrors.push({
-        section: /precio|cantidad|stock/i.test(basicsError)
+      message.error(basicsError)
+      scrollToSection(
+        /precio|cantidad|stock/i.test(basicsError)
           ? SECTION_IDS.precio
           : SECTION_IDS.informacion,
-        message: basicsError,
-      })
+      )
+      return
     }
 
     if (hasVariants) {
       const variantError = validateVariantsForSubmit(variants)
 
       if (variantError) {
-        collectedErrors.push({
-          section: SECTION_IDS.variantes,
-          message: variantError,
-        })
+        message.error(variantError)
+        scrollToSection(SECTION_IDS.variantes)
+        return
       }
-    }
-
-    if (!tenantId) {
-      collectedErrors.push({ section: null, message: 'Tenant no disponible' })
-    }
-
-    setSubmitErrors(collectedErrors)
-
-    if (collectedErrors.length) {
-      message.error(
-        collectedErrors.length === 1
-          ? collectedErrors[0].message
-          : `Hay ${collectedErrors.length} problemas que resolver antes de publicar`,
-      )
-      scrollToSection(collectedErrors[0].section || SECTION_IDS.imagenes)
-      return
     }
 
     setSavingProduct(true)
@@ -5593,3147 +5270,2484 @@ export default function AddProduct() {
 
   return (
     <ConfigProvider
-      theme={{
-        token: {
-          fontSize: 15,
-          controlHeight: 40,
-          controlHeightLG: 48,
-          borderRadius: 12,
-        },
+  theme={{
+    token: {
+      fontSize: 16,
+      controlHeight: 44,
+      controlHeightSM: 36,   // clave: "small" ya no significa diminuto
+      controlHeightLG: 52,
+      borderRadius: 12,
+      fontSizeSM: 13,        // los "caption" suben de 12 a 13
+    },
+    components: {
+      Button: { fontWeight: 600, paddingInline: 20 },
+      Card: {
+        headerFontSize: 18,
+        headerHeight: 60,
+        paddingLG: 28,
+      },
+      Form: {
+        labelFontSize: 15,
+        verticalLabelPadding: '0 0 6px',
+        itemMarginBottom: 22,
+      },
+      Input: { paddingBlock: 8 },
+      Select: { optionFontSize: 15 },
+      Table: { cellFontSize: 14, cellPaddingBlock: 12 },
+      Steps: { titleLineHeight: 30, iconSize: 34 },
+      Tag: { fontSizeSM: 13 },
+      Collapse: { headerPadding: '14px 18px', fontSize: 15 },
+    },
+  }}
+>
+    <div
+      className="add-product-stable-page"
+      style={{
+        minHeight: '100vh',
+        overflowAnchor: 'none',
+        overflowX: 'hidden',
+        background: token.colorBgLayout,
+        padding: '24px',
       }}
     >
-      <div
-        className="add-product-stable-page"
-        style={{
-          minHeight: '100vh',
-          overflowAnchor: 'none',
-          overflowX: 'hidden',
-          background: token.colorBgLayout,
-          padding: '24px',
-        }}
-      >
-        <Row justify="center">
-          <Col
-            xs={24}
-            md={23}
-            lg={22}
-            xl={21}
-            xxl={19}
-            style={{ width: '100%', maxWidth: 1560, margin: '0 auto' }}
+      <Row justify="center">
+        <Col
+          xs={24}
+          md={22}
+          lg={20}
+          xl={18}
+          xxl={14}
+          style={{ width: '100%', maxWidth: 1180, margin: '0 auto' }}
+        >
+          <div
+            style={{
+              marginBottom: 28,
+              padding: '28px 28px 24px',
+              borderRadius: 24,
+              background: `linear-gradient(135deg, ${token.colorPrimary}14 0%, ${token.colorBgContainer} 52%, ${token.colorInfoBg || token.colorPrimaryBg} 100%)`,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
+            }}
           >
-            <div
-              style={{
-                marginBottom: 28,
-                padding: '28px 28px 24px',
-                borderRadius: 24,
-                background: `linear-gradient(135deg, ${token.colorPrimary}14 0%, ${token.colorBgContainer} 52%, ${token.colorInfoBg || token.colorPrimaryBg} 100%)`,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
-              }}
-            >
-              <Row gutter={[24, 20]} align="middle" justify="space-between">
-                <Col xs={24} lg={15}>
-                  <Space direction="vertical" size={8}>
-                    <Space wrap size={10}>
-                      <Tag
-                        color="processing"
-                        style={{ borderRadius: 999, padding: '3px 12px' }}
-                      >
-                        AddProduct IA
-                      </Tag>
-                      <Tag
-                        color="success"
-                        style={{ borderRadius: 999, padding: '3px 12px' }}
-                      >
-                        Multi-tenant
-                      </Tag>
-                      {hasVariants && (
-                        <Tag
-                          color="blue"
-                          style={{ borderRadius: 999, padding: '3px 12px' }}
-                        >
-                          {variants.length} variantes
-                        </Tag>
-                      )}
-                    </Space>
-
-                    <Title
-                      level={2}
-                      style={{ margin: 0, letterSpacing: '-0.04em' }}
+            <Row gutter={[24, 20]} align="middle" justify="space-between">
+              <Col xs={24} lg={15}>
+                <Space direction="vertical" size={8}>
+                  <Space wrap size={10}>
+                    <Tag
+                      color="processing"
+                      style={{ borderRadius: 999, padding: '3px 12px' }}
                     >
-                      <ThunderboltOutlined
-                        style={{ color: token.colorPrimary, marginRight: 12 }}
-                      />
-                      Crear producto con IA guiada
-                    </Title>
-
-                    <Text type="secondary" style={{ fontSize: 15 }}>
-                      Subí imágenes, revisá la propuesta de IA, completá ficha
-                      técnica, variantes, logística y publicá con control total.
-                    </Text>
-
-                    {hasUserWorkspace && (
-                      <Popconfirm
-                        title="¿Vaciar el formulario?"
-                        description="Se van a perder las imágenes, variantes, ficha técnica y demás datos cargados. Esta acción no se puede deshacer."
-                        okText="Vaciar todo"
-                        cancelText="Cancelar"
-                        okButtonProps={{ danger: true }}
-                        onConfirm={() => {
-                          resetProductWorkspace()
-                          message.success(
-                            'Formulario vacío. Podés empezar de nuevo.',
-                          )
-                        }}
+                      AddProduct IA
+                    </Tag>
+                    <Tag
+                      color="success"
+                      style={{ borderRadius: 999, padding: '3px 12px' }}
+                    >
+                      Multi-tenant
+                    </Tag>
+                    {hasVariants && (
+                      <Tag
+                        color="blue"
+                        style={{ borderRadius: 999, padding: '3px 12px' }}
                       >
-                        <Button
-                          htmlType="button"
-                          danger
-                          type="text"
-                          size="small"
-                          icon={<DeleteOutlined />}
-                          disabled={savingProduct || isLoading}
-                        >
-                          Vaciar formulario
-                        </Button>
-                      </Popconfirm>
+                        {variants.length} variantes
+                      </Tag>
                     )}
                   </Space>
-                </Col>
 
-                <Col xs={24} lg={9}>
-                  <Row gutter={[12, 12]}>
-                    <Col xs={24} sm={8}>
-                      <div
-                        style={{
-                          padding: 14,
-                          borderRadius: 16,
-                          background: token.colorBgContainer,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          textAlign: 'center',
-                        }}
-                      >
-                        <Text type="secondary" style={{ fontSize: 13 }}>
-                          Imágenes
-                        </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>
-                          {fileList.length}
-                        </div>
+                  <Title
+                    level={2}
+                    style={{ margin: 0, letterSpacing: '-0.04em' }}
+                  >
+                    <ThunderboltOutlined
+                      style={{ color: token.colorPrimary, marginRight: 12 }}
+                    />
+                    Crear producto con IA guiada
+                  </Title>
+
+                  <Text type="secondary" style={{ fontSize: 15 }}>
+                    Subí imágenes, revisá la propuesta de IA, completá ficha
+                    técnica, variantes, logística y publicá con control total.
+                  </Text>
+                </Space>
+              </Col>
+
+              <Col xs={24} lg={9}>
+                <Row gutter={[12, 12]}>
+                  <Col xs={24} sm={8}>
+                    <div
+                      style={{
+                        padding: 14,
+                        borderRadius: 16,
+                        background: token.colorBgContainer,
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        Imágenes
+                      </Text>
+                      <div style={{ fontSize: 22, fontWeight: 800 }}>
+                        {fileList.length}
                       </div>
-                    </Col>
+                    </div>
+                  </Col>
 
-                    <Col xs={24} sm={8}>
-                      <div
-                        style={{
-                          padding: 14,
-                          borderRadius: 16,
-                          background: token.colorBgContainer,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          textAlign: 'center',
-                        }}
-                      >
-                        <Text type="secondary" style={{ fontSize: 13 }}>
-                          Variantes
-                        </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>
-                          {variants.length}
-                        </div>
+                  <Col xs={24} sm={8}>
+                    <div
+                      style={{
+                        padding: 14,
+                        borderRadius: 16,
+                        background: token.colorBgContainer,
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        Variantes
+                      </Text>
+                      <div style={{ fontSize: 22, fontWeight: 800 }}>
+                        {variants.length}
                       </div>
-                    </Col>
+                    </div>
+                  </Col>
 
-                    <Col xs={24} sm={8}>
-                      <div
-                        style={{
-                          padding: 14,
-                          borderRadius: 16,
-                          background: token.colorBgContainer,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          textAlign: 'center',
-                        }}
-                      >
-                        <Text type="secondary" style={{ fontSize: 13 }}>
-                          IA
-                        </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>
-                          {iaResult ? 'OK' : '—'}
-                        </div>
+                  <Col xs={24} sm={8}>
+                    <div
+                      style={{
+                        padding: 14,
+                        borderRadius: 16,
+                        background: token.colorBgContainer,
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        IA
+                      </Text>
+                      <div style={{ fontSize: 22, fontWeight: 800 }}>
+                        {iaResult ? 'OK' : '—'}
                       </div>
-                    </Col>
-                  </Row>
-                </Col>
-              </Row>
-            </div>
+                    </div>
+                  </Col>
+                </Row>
+              </Col>
+            </Row>
+          </div>
 
-            <div
-              className="add-product-steps-bar"
-              style={{
-                position: 'sticky',
-                top: 0,
-                zIndex: 10,
-                marginBottom: 24,
-                padding: '14px 20px',
-                borderRadius: 16,
-                background: token.colorBgContainer,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
-              }}
+          <div
+            className="add-product-steps-bar"
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
+              marginBottom: 24,
+              padding: '14px 20px',
+              borderRadius: 16,
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+            }}
+          >
+            <Steps
+              size="small"
+              responsive
+              current={wizardCurrentStep}
+              onChange={index => scrollToSection(wizardSteps[index]?.sectionId)}
+              items={wizardSteps.map(step => ({
+                title: step.optional ? `${step.title} (opcional)` : step.title,
+                status: step.status,
+              }))}
+            />
+          </div>
+
+          <ProductFormDirtyContext.Provider value={markFormAsChanged}>
+            <ProductFormMutationContext.Provider
+              value={{ version: formMutationVersion, notifyMutation: notifyFormMutation }}
             >
-              <Steps
-                size="small"
-                responsive
-                current={wizardCurrentStep}
-                onChange={index =>
-                  scrollToSection(wizardSteps[index]?.sectionId)
-                }
-                items={wizardSteps.map(step => ({
-                  title: step.title,
-                  description: step.optional ? 'Opcional' : undefined,
-                  status: step.status,
-                }))}
-              />
-            </div>
+              <Form
+                form={form}
+                layout="vertical"
+                scrollToFirstError={false}
+                disabled={savingProduct || isLoading}
+                onKeyDown={event => {
+              if (
+                event.key === 'Enter' &&
+                event.target instanceof HTMLInputElement
+              ) {
+                event.preventDefault()
+              }
+            }}
+            onFinish={() => handleFinish(form.getFieldsValue(true))}
+          >
+            <Row gutter={[24, 24]} align="top">
+              <Col xs={24} xl={0}>
+                <Alert
+                  type={productReadiness.isReady ? 'success' : 'warning'}
+                  showIcon
+                  style={{ marginBottom: 20, borderRadius: 14 }}
+                  message={
+                    productReadiness.isReady
+                      ? 'Listo para publicar'
+                      : `Completá lo esencial (${productReadiness.doneRequired}/${productReadiness.requiredChecks.length} · ${productReadiness.percent}%)`
+                  }
+                  description={
+                    productReadiness.isReady
+                      ? undefined
+                      : `Faltan: ${missingRequiredLabels.join(', ')}`
+                  }
+                />
+              </Col>
 
-            <ProductFormDirtyContext.Provider value={markFormAsChanged}>
-              <ProductFormMutationContext.Provider
-                value={{
-                  version: formMutationVersion,
-                  notifyMutation: notifyFormMutation,
-                }}
-              >
-                <Form
-                  form={form}
-                  layout="vertical"
-                  scrollToFirstError={false}
-                  disabled={savingProduct || isLoading}
-                  onKeyDown={event => {
-                    if (
-                      event.key === 'Enter' &&
-                      event.target instanceof HTMLInputElement
-                    ) {
-                      event.preventDefault()
-                    }
+              <Col xs={24} xl={15}>
+                <Card
+                  id={SECTION_IDS.imagenes}
+                  title={
+                    <Space size={10}>
+                      <span className="add-product-step-badge">1</span>
+                      <PictureOutlined style={{ color: token.colorPrimary }} />
+                      <span className="add-product-card-title">
+                        Imágenes del producto
+                      </span>
+                      <Tag color="red" style={{ borderRadius: 999 }}>
+                        Requerido
+                      </Tag>
+                    </Space>
+                  }
+                  style={{
+                    marginBottom: 24,
+                    borderRadius: 20,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                   }}
-                  onFinish={() => handleFinish(form.getFieldsValue(true))}
+                  styles={{ body: { padding: 24 } }}
                 >
-                  <Row gutter={[24, 24]} align="top">
-                    <Col xs={24} xl={0}>
+                  <Text
+                    type="secondary"
+                    style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                  >
+                    Subí al menos una imagen del producto — es el único dato
+                    obligatorio de esta sección.
+                  </Text>
+
+                  <Collapse
+                    ghost
+                    className="add-product-agent-collapse"
+                    defaultActiveKey={
+                      autoAgentEnabled || currentAgentJob ? ['agent'] : []
+                    }
+                    style={{
+                      marginBottom: 20,
+                      borderRadius: 18,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      background: `linear-gradient(135deg, ${token.colorFillAlter}, ${token.colorBgContainer})`,
+                    }}
+                    items={[
+                      {
+                        key: 'agent',
+                        label: (
+                          <Space size={8}>
+                            <RobotOutlined
+                              style={{ color: token.colorPrimary }}
+                            />
+                            <Text strong style={{ fontSize: 14 }}>
+                              Importar desde el agente IA (
+                              {agentQueueStats.total} pendientes)
+                            </Text>
+                          </Space>
+                        ),
+                        children: (
+                          <>
+                            <Row gutter={[18, 18]} align="middle">
+                      <Col xs={24} lg={8}>
+                        <Space direction="vertical" size={6}>
+                          <Space wrap>
+                            <Tag
+                              color="processing"
+                              style={{ borderRadius: 999 }}
+                            >
+                              Agente
+                            </Tag>
+                            <Tag
+                              color={autoAgentEnabled ? 'success' : 'default'}
+                              style={{ borderRadius: 999 }}
+                            >
+                              {autoAgentEnabled ? 'Auto activo' : 'Manual'}
+                            </Tag>
+                            {autoAgentRunning && (
+                              <Tag color="blue" style={{ borderRadius: 999 }}>
+                                Procesando
+                              </Tag>
+                            )}
+                          </Space>
+
+                          <Text strong style={{ fontSize: 15 }}>
+                            Bandeja inteligente
+                          </Text>
+
+                          <Text
+                            type="secondary"
+                            style={{ fontSize: 13, lineHeight: 1.55 }}
+                          >
+                            Importá imágenes del agente, programalas o dejá que
+                            AutoSave cree productos con IA cuando el modo
+                            automático esté activo.
+                          </Text>
+                        </Space>
+                      </Col>
+
+                      <Col xs={24} lg={7}>
+                        <Row gutter={[10, 10]}>
+                          {[
+                            {
+                              label: 'Pendientes',
+                              value: agentQueueStats.pending,
+                            },
+                            {
+                              label: 'Programadas',
+                              value: agentQueueStats.scheduled,
+                            },
+                            {
+                              label: 'AutoSave',
+                              value: agentQueueStats.autoSave,
+                            },
+                          ].map(metric => (
+                            <Col xs={24} sm={8} key={metric.label}>
+                              <div
+                                style={{
+                                  padding: '12px 8px',
+                                  borderRadius: 14,
+                                  background: token.colorBgContainer,
+                                  border: `1px solid ${token.colorBorderSecondary}`,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                <Text
+                                  type="secondary"
+                                  style={{ fontSize: 13, display: 'block' }}
+                                >
+                                  {metric.label}
+                                </Text>
+                                <Text strong style={{ fontSize: 18 }}>
+                                  {metric.value}
+                                </Text>
+                              </div>
+                            </Col>
+                          ))}
+                        </Row>
+                      </Col>
+
+                      <Col xs={24} lg={9}>
+                        <Space
+                          direction="vertical"
+                          size={10}
+                          style={{ width: '100%' }}
+                        >
+                          <Space
+                            wrap
+                            className="add-product-agent-actions"
+                            style={{
+                              justifyContent: 'flex-end',
+                              width: '100%',
+                            }}
+                          >
+                            <Switch
+                              checked={autoAgentEnabled}
+                              onChange={setAutoAgentEnabled}
+                              checkedChildren="Auto"
+                              unCheckedChildren="Manual"
+                              loading={autoAgentRunning}
+                            />
+
+                            <Button
+                              htmlType="button"
+                              icon={<ReloadOutlined />}
+                              onClick={fetchAgentQueue}
+                              loading={loadingAgentQueue || autoAgentRunning}
+                            >
+                              Actualizar
+                            </Button>
+                          </Space>
+
+                          <Select
+                            loading={loadingAgentQueue}
+                            value={selectedAgentJobId}
+                            placeholder="Sin imágenes disponibles"
+                            style={{ width: '100%' }}
+                            onChange={setSelectedAgentJobId}
+                            options={agentQueue.map(job => ({
+                              value: job._id,
+                              label:
+                                job.status === 'scheduled'
+                                  ? `${job.originalFilename || job._id} - ${formatDate(job.scheduledAt)}`
+                                  : `${job.originalFilename || job._id}${job.metadata?.autoSaveProduct ? ' - AutoSave' : ''}`,
+                            }))}
+                          />
+
+                          <Space
+                            wrap
+                            className="add-product-agent-actions"
+                            style={{
+                              justifyContent: 'flex-end',
+                              width: '100%',
+                            }}
+                          >
+                            <Button
+                              htmlType="button"
+                              type="primary"
+                              icon={<CloudDownloadOutlined />}
+                              onClick={handleImportAgentImage}
+                              loading={importingAgentImage}
+                              disabled={
+                                !selectedAgentJobId ||
+                                selectedAgentJob?.status === 'scheduled'
+                              }
+                            >
+                              Cargar ahora
+                            </Button>
+
+                            <Popconfirm
+                              title="Eliminar imagen"
+                              description="La imagen se quitará de la bandeja del agente."
+                              okText="Eliminar"
+                              cancelText="Cancelar"
+                              okButtonProps={{ danger: true }}
+                              onConfirm={handleDeleteAgentImage}
+                              disabled={!selectedAgentJobId}
+                            >
+                              <Button
+                                htmlType="button"
+                                danger
+                                icon={<DeleteOutlined />}
+                                loading={deletingAgentImage}
+                                disabled={!selectedAgentJobId}
+                              >
+                                Eliminar
+                              </Button>
+                            </Popconfirm>
+                          </Space>
+                        </Space>
+                      </Col>
+                    </Row>
+
+                    {selectedAgentJob && (
                       <Alert
-                        type={productReadiness.isReady ? 'success' : 'warning'}
+                        type={
+                          selectedAgentJob.status === 'scheduled'
+                            ? 'warning'
+                            : 'success'
+                        }
                         showIcon
                         style={{
-                          marginBottom: submitErrors.length ? 12 : 20,
+                          marginTop: 16,
                           borderRadius: 14,
                         }}
                         message={
-                          productReadiness.isReady
-                            ? 'Listo para publicar'
-                            : `Completá lo esencial (${productReadiness.doneRequired}/${productReadiness.requiredChecks.length} · ${productReadiness.percent}%)`
+                          selectedAgentJob.status === 'scheduled'
+                            ? `Programada para ${formatDate(selectedAgentJob.scheduledAt)}`
+                            : 'Disponible para AddProduct'
                         }
                         description={
-                          productReadiness.isReady
-                            ? undefined
-                            : `Faltan: ${missingRequiredLabels.join(', ')}`
+                          selectedAgentJob.metadata?.autoSaveProduct
+                            ? 'Esta imagen está marcada para AutoSave: con Auto activo, AddProduct la analiza con IA y crea el producto sin tocar el formulario.'
+                            : 'Esta imagen requiere revisión manual: se carga al formulario, dispara la IA y queda lista para revisar antes de guardar.'
                         }
                       />
+                    )}
+                          </>
+                        ),
+                      },
+                    ]}
+                  />
 
-                      {submitErrors.length > 0 && (
-                        <Alert
-                          type="error"
-                          showIcon
-                          style={{ marginBottom: 20, borderRadius: 14 }}
-                          message={
-                            submitErrors.length === 1
-                              ? 'No se pudo publicar: hay un problema para resolver'
-                              : `No se pudo publicar: hay ${submitErrors.length} problemas para resolver`
-                          }
-                          description={
-                            <ul style={{ margin: 0, paddingLeft: 18 }}>
-                              {submitErrors.map((err, idx) => (
-                                <li key={idx}>
-                                  {err.section ? (
-                                    <a
-                                      href={`#${err.section}`}
-                                      onClick={event => {
-                                        event.preventDefault()
-                                        scrollToSection(err.section)
-                                      }}
-                                    >
-                                      {err.message}
-                                    </a>
-                                  ) : (
-                                    err.message
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          }
-                        />
-                      )}
-                    </Col>
+                  {!fileList.length ? (
+                    <Dragger
+                      multiple
+                      beforeUpload={() => false}
+                      fileList={fileList}
+                      onChange={handleUploadChange}
+                      onRemove={handleRemove}
+                      showUploadList={false}
+                      style={{
+                        borderRadius: 20,
+                        padding: 44,
+                        minHeight: 280,
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: `linear-gradient(135deg, ${token.colorBgContainer}, ${token.colorFillAlter})`,
+                        border: `2px dashed ${token.colorPrimaryBorder || token.colorBorder}`,
+                      }}
+                    >
+                      <div style={{ textAlign: 'center' }}>
+                        <div
+                          style={{
+                            width: 104,
+                            height: 104,
+                            borderRadius: 28,
+                            background: `${token.colorPrimary}14`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 18px',
+                            border: `1px solid ${token.colorPrimaryBorder || token.colorBorder}`,
+                          }}
+                        >
+                          <InboxOutlined
+                            style={{ fontSize: 48, color: token.colorPrimary }}
+                          />
+                        </div>
 
-                    <Col xs={24} xl={15}>
-                      <Card
-                        id={SECTION_IDS.imagenes}
-                        title={
-                          <Space size={10}>
-                            <span className="add-product-step-badge">1</span>
-                            <PictureOutlined
-                              style={{ color: token.colorPrimary }}
-                            />
-                            <span className="add-product-card-title">
-                              Imágenes del producto
-                            </span>
-                            <Tag color="red" style={{ borderRadius: 999 }}>
-                              Requerido
-                            </Tag>
-                          </Space>
-                        }
-                        style={{
-                          marginBottom: 24,
-                          borderRadius: 20,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-                        }}
-                        styles={{ body: { padding: 24 } }}
-                      >
+                        <Text
+                          strong
+                          style={{ fontSize: 19, display: 'block' }}
+                        >
+                          Arrastrá imágenes o importalas desde el agente
+                        </Text>
+
+                        <Text
+                          type="secondary"
+                          style={{ display: 'block', marginTop: 6 }}
+                        >
+                          Las imágenes cargadas disparan el análisis visual con
+                          IA.
+                        </Text>
+
                         <Text
                           type="secondary"
                           style={{
+                            fontSize: 12,
                             display: 'block',
-                            marginBottom: 16,
-                            fontSize: 14,
+                            marginTop: 10,
                           }}
                         >
-                          Subí al menos una imagen del producto — es el único
-                          dato obligatorio de esta sección.
+                          JPG, PNG, WEBP, HEIC/HEIF · máximo{' '}
+                          {MAX_PRODUCT_IMAGES} imágenes · alta calidad mejora la
+                          precisión
                         </Text>
+                      </div>
+                    </Dragger>
+                  ) : (
+                    <ImagePreviewGrid
+                      previews={imagePreviews}
+                      fileList={fileList}
+                      onRemove={handleRemove}
+                      onAddMore={handleAddMoreImages}
+                    />
+                  )}
+                </Card>
 
-                        <Collapse
-                          ghost
-                          className="add-product-agent-collapse"
-                          defaultActiveKey={
-                            autoAgentEnabled || currentAgentJob ? ['agent'] : []
+                <AIAnalysisPanel
+                  iaResult={iaResult}
+                  loading={loadingIa}
+                  error={errorIa}
+                  onReset={handleReanalyzeImage}
+                  onApplyAll={applyAiAll}
+                  onApplySafeFields={applyAiSafeFields}
+                  onApplyField={applyAiField}
+                  onApplySeo={applyAiSeo}
+                  onApplyTechnicalFields={applyAiTechnicalFields}
+                  onApplyDynamicField={applyAiDynamicField}
+                  onApplyTags={applyAiTags}
+                  onApplyVariants={applyAiVariants}
+                />
+
+                <Card
+                  id={SECTION_IDS.informacion}
+                  title={
+                    <Space size={10}>
+                      <span className="add-product-step-badge">2</span>
+                      <ShoppingOutlined style={{ color: token.colorPrimary }} />
+                      <span className="add-product-card-title">
+                        Información del producto
+                      </span>
+                      <Tag color="red" style={{ borderRadius: 999 }}>
+                        Requerido
+                      </Tag>
+                    </Space>
+                  }
+                  style={{
+                    marginBottom: 24,
+                    borderRadius: 20,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                  }}
+                  styles={{ body: { padding: 24 } }}
+                >
+                  <Text
+                    type="secondary"
+                    style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                  >
+                    Lo que ve el cliente: título, descripción y clasificación —
+                    todo obligatorio.
+                  </Text>
+
+                  <Row gutter={[18, 18]}>
+                    <Col xs={24}>
+                      <ProductField
+                        name="titulo"
+                        label="Título del producto"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'El título es obligatorio',
+                          },
+                        ]}
+                      >
+                        <Input
+                          size="large"
+                          placeholder="Nombre comercial claro del producto"
+                          prefix={
+                            <FileTextOutlined
+                              style={{ color: token.colorTextSecondary }}
+                            />
                           }
-                          style={{
-                            marginBottom: 20,
-                            borderRadius: 18,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                            background: `linear-gradient(135deg, ${token.colorFillAlter}, ${token.colorBgContainer})`,
-                          }}
-                          items={[
-                            {
-                              key: 'agent',
-                              label: (
-                                <Space size={8}>
-                                  <RobotOutlined
-                                    style={{ color: token.colorPrimary }}
-                                  />
-                                  <Text strong style={{ fontSize: 14 }}>
-                                    Importar desde el agente IA (
-                                    {agentQueueStats.total} en cola)
-                                  </Text>
-                                </Space>
-                              ),
-                              children: (
-                                <>
-                                  <Row gutter={[18, 18]} align="middle">
-                                    <Col xs={24} lg={10}>
-                                      <Space direction="vertical" size={6}>
-                                        <Space wrap>
-                                          <Tag
-                                            color="processing"
-                                            style={{ borderRadius: 999 }}
-                                          >
-                                            Agente
-                                          </Tag>
-                                          <Tag
-                                            color={
-                                              autoAgentEnabled
-                                                ? 'success'
-                                                : 'default'
-                                            }
-                                            style={{ borderRadius: 999 }}
-                                          >
-                                            {autoAgentEnabled
-                                              ? 'Auto activo'
-                                              : 'Manual'}
-                                          </Tag>
-                                          {autoAgentRunning && (
-                                            <Tag
-                                              color="blue"
-                                              style={{ borderRadius: 999 }}
-                                            >
-                                              Procesando
-                                            </Tag>
-                                          )}
-                                        </Space>
-
-                                        <Text strong style={{ fontSize: 15 }}>
-                                          Bandeja inteligente
-                                        </Text>
-
-                                        <Text
-                                          type="secondary"
-                                          style={{
-                                            fontSize: 13,
-                                            lineHeight: 1.55,
-                                          }}
-                                        >
-                                          Importá imágenes del agente,
-                                          programalas o dejá que AutoSave cree
-                                          productos con IA cuando el modo
-                                          automático esté activo.
-                                        </Text>
-                                      </Space>
-                                    </Col>
-
-                                    <Col xs={24} lg={14}>
-                                      <Space
-                                        direction="vertical"
-                                        size={10}
-                                        style={{ width: '100%' }}
-                                      >
-                                        <Space
-                                          wrap
-                                          className="add-product-agent-actions"
-                                          style={{
-                                            justifyContent: 'flex-end',
-                                            width: '100%',
-                                          }}
-                                        >
-                                          <Switch
-                                            checked={autoAgentEnabled}
-                                            onChange={setAutoAgentEnabled}
-                                            checkedChildren="Auto"
-                                            unCheckedChildren="Manual"
-                                            loading={autoAgentRunning}
-                                          />
-
-                                          <Button
-                                            htmlType="button"
-                                            icon={<ReloadOutlined />}
-                                            onClick={fetchAgentQueue}
-                                            loading={
-                                              loadingAgentQueue ||
-                                              autoAgentRunning
-                                            }
-                                          >
-                                            Actualizar
-                                          </Button>
-                                        </Space>
-
-                                        <Select
-                                          loading={loadingAgentQueue}
-                                          value={selectedAgentJobId}
-                                          placeholder="Sin imágenes disponibles"
-                                          style={{ width: '100%' }}
-                                          onChange={setSelectedAgentJobId}
-                                          options={agentQueue.map(job => ({
-                                            value: job._id,
-                                            label:
-                                              job.status === 'scheduled'
-                                                ? `${job.originalFilename || job._id} - ${formatDate(job.scheduledAt)}`
-                                                : `${job.originalFilename || job._id}${job.metadata?.autoSaveProduct ? ' - AutoSave' : ''}`,
-                                          }))}
-                                        />
-
-                                        <Space
-                                          wrap
-                                          className="add-product-agent-actions"
-                                          style={{
-                                            justifyContent: 'flex-end',
-                                            width: '100%',
-                                          }}
-                                        >
-                                          <Button
-                                            htmlType="button"
-                                            type="primary"
-                                            icon={<CloudDownloadOutlined />}
-                                            onClick={handleImportAgentImage}
-                                            loading={importingAgentImage}
-                                            disabled={
-                                              !selectedAgentJobId ||
-                                              selectedAgentJob?.status ===
-                                                'scheduled'
-                                            }
-                                          >
-                                            Cargar ahora
-                                          </Button>
-
-                                          <Popconfirm
-                                            title="Eliminar imagen"
-                                            description="La imagen se quitará de la bandeja del agente."
-                                            okText="Eliminar"
-                                            cancelText="Cancelar"
-                                            okButtonProps={{ danger: true }}
-                                            onConfirm={handleDeleteAgentImage}
-                                            disabled={!selectedAgentJobId}
-                                          >
-                                            <Button
-                                              htmlType="button"
-                                              danger
-                                              icon={<DeleteOutlined />}
-                                              loading={deletingAgentImage}
-                                              disabled={!selectedAgentJobId}
-                                            >
-                                              Eliminar
-                                            </Button>
-                                          </Popconfirm>
-                                        </Space>
-                                      </Space>
-                                    </Col>
-                                  </Row>
-
-                                  <Row
-                                    gutter={[10, 10]}
-                                    style={{ marginTop: 16 }}
-                                  >
-                                    {[
-                                      {
-                                        label: 'Pendientes',
-                                        value: agentQueueStats.pending,
-                                      },
-                                      {
-                                        label: 'Programadas',
-                                        value: agentQueueStats.scheduled,
-                                      },
-                                      {
-                                        label: 'Analizadas',
-                                        value: agentQueueStats.completed,
-                                      },
-                                      {
-                                        label: 'AutoSave',
-                                        value: agentQueueStats.autoSave,
-                                      },
-                                    ].map(metric => (
-                                      <Col xs={6} key={metric.label}>
-                                        <div
-                                          style={{
-                                            padding: '12px 8px',
-                                            borderRadius: 14,
-                                            background: token.colorBgContainer,
-                                            border: `1px solid ${token.colorBorderSecondary}`,
-                                            textAlign: 'center',
-                                          }}
-                                        >
-                                          <Text
-                                            type="secondary"
-                                            style={{
-                                              fontSize: 13,
-                                              display: 'block',
-                                              whiteSpace: 'nowrap',
-                                              overflow: 'hidden',
-                                              textOverflow: 'ellipsis',
-                                            }}
-                                            title={metric.label}
-                                          >
-                                            {metric.label}
-                                          </Text>
-                                          <Text strong style={{ fontSize: 18 }}>
-                                            {metric.value}
-                                          </Text>
-                                        </div>
-                                      </Col>
-                                    ))}
-                                  </Row>
-
-                                  {selectedAgentJob && (
-                                    <Alert
-                                      type={
-                                        selectedAgentJob.status === 'scheduled'
-                                          ? 'warning'
-                                          : selectedAgentJob.status ===
-                                              'completed'
-                                            ? 'success'
-                                            : 'info'
-                                      }
-                                      showIcon
-                                      style={{
-                                        marginTop: 16,
-                                        borderRadius: 14,
-                                      }}
-                                      message={
-                                        selectedAgentJob.status === 'scheduled'
-                                          ? `Programada para ${formatDate(selectedAgentJob.scheduledAt)}`
-                                          : selectedAgentJob.status ===
-                                              'completed'
-                                            ? 'AddProduct ya la analizó'
-                                            : 'Disponible para AddProduct'
-                                      }
-                                      description={
-                                        selectedAgentJob.status === 'completed'
-                                          ? 'AddProduct ya la analizó con IA sola, sin que nadie tuviera esta pantalla abierta (título, variantes, ficha técnica, SEO). Al cargarla acá se autocompleta el formulario sin volver a llamar a la IA — revisá y guardá cuando quieras.'
-                                          : 'Esta imagen todavía no fue analizada: al cargarla acá se sube al formulario y se dispara la IA para que la revises antes de guardar.'
-                                      }
-                                    />
-                                  )}
-                                </>
-                              ),
-                            },
-                          ]}
+                          showCount
+                          maxLength={120}
                         />
+                      </ProductField>
+                    </Col>
 
-                        {autoAgentReviewQueue.length > 0 && (
-                          <Alert
-                            type="warning"
-                            showIcon
-                            style={{ marginBottom: 20, borderRadius: 14 }}
-                            message={
-                              autoAgentReviewQueue.length === 1
-                                ? '1 producto de AutoSave está esperando tu aprobación'
-                                : `${autoAgentReviewQueue.length} productos de AutoSave están esperando tu aprobación`
-                            }
-                            description="La IA los preparó, pero ninguno se publica hasta que los revises."
-                            action={
-                              <Button
-                                htmlType="button"
-                                type="primary"
-                                size="small"
-                                onClick={() => setAutoAgentReviewOpen(true)}
-                              >
-                                Revisar ahora
-                              </Button>
+                    <Col xs={24}>
+                      <ProductField
+                        name="descripcion"
+                        label="Descripción comercial"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'La descripción comercial es obligatoria',
+                          },
+                        ]}
+                        extra="Texto visible para el cliente: claro, vendedor y útil, sin prometer datos no confirmados."
+                      >
+                        <Input.TextArea
+                          rows={6}
+                          placeholder="Explicá qué es el producto, qué se observa, para qué puede servir y qué detalles ayudan a decidir la compra."
+                          showCount
+                          maxLength={3600}
+                        />
+                      </ProductField>
+                    </Col>
+
+                    <Col xs={24}>
+                      <ProductField
+                        name="descripcionTecnica"
+                        label="Descripción técnica precisa"
+                        extra="Detalle objetivo para ficha ampliada: estructura, partes visibles, terminación, textura, presentación, materialidad y límites de lo que se puede confirmar."
+                      >
+                        <Input.TextArea
+                          rows={7}
+                          disabled={!useTechnicalSheet}
+                          placeholder={
+                            useTechnicalSheet
+                              ? 'Detallá características observables y técnicas del producto sin inventar medidas, compatibilidades, garantía u origen si no están confirmados.'
+                              : 'Activá la ficha técnica para guardar una descripción técnica.'
+                          }
+                          showCount
+                          maxLength={4200}
+                        />
+                      </ProductField>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <ProductField
+                        name="categoria"
+                        label="Categoría"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'La categoría es obligatoria',
+                          },
+                        ]}
+                      >
+                        <AutoComplete
+                          allowClear
+                          options={categoryOptions}
+                          filterOption={(inputValue, option) =>
+                            String(option?.value || '')
+                              .toLowerCase()
+                              .includes(inputValue.toLowerCase())
+                          }
+                          getPopupContainer={() => document.body}
+                          onSelect={value => {
+                            commitClassificationFromForm({ categoria: value })
+                          }}
+                          onBlur={() => {
+                            normalizeTitleCaseFormField('categoria')
+                            commitClassificationFromForm()
+                          }}
+                        >
+                          <Input
+                            size="large"
+                            placeholder="Escribí o elegí una categoría"
+                            prefix={
+                              <AppstoreOutlined
+                                style={{ color: token.colorTextSecondary }}
+                              />
                             }
                           />
-                        )}
+                        </AutoComplete>
+                      </ProductField>
+                    </Col>
 
-                        <Modal
-                          open={autoAgentReviewOpen}
-                          onCancel={() => setAutoAgentReviewOpen(false)}
-                          title={
-                            <Space size={8}>
-                              <RobotOutlined
-                                style={{ color: token.colorPrimary }}
-                              />
-                              <span>Revisar productos de AutoSave</span>
-                            </Space>
+                    <Col xs={24} md={12}>
+                      <ProductField
+                        name="subcategoria"
+                        label="Subcategoría"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'La subcategoría es obligatoria',
+                          },
+                        ]}
+                      >
+                        <AutoComplete
+                          allowClear
+                          options={subcategoryOptions}
+                          filterOption={(inputValue, option) =>
+                            String(option?.value || '')
+                              .toLowerCase()
+                              .includes(inputValue.toLowerCase())
                           }
-                          width={720}
-                          footer={
-                            autoAgentReviewQueue.length > 0 ? (
-                              <Space>
-                                <Popconfirm
-                                  title="Descartar todos"
-                                  description="Ningún producto de esta tanda se va a publicar."
-                                  okText="Descartar todo"
-                                  cancelText="Cancelar"
-                                  okButtonProps={{ danger: true }}
-                                  onConfirm={handleDiscardAllReview}
-                                >
-                                  <Button
-                                    htmlType="button"
-                                    danger
-                                    disabled={Boolean(reviewItemBusyId)}
-                                  >
-                                    Descartar todo
-                                  </Button>
-                                </Popconfirm>
-                                <Popconfirm
-                                  title="Publicar todos"
-                                  description={`Se van a crear ${autoAgentReviewQueue.length} producto${autoAgentReviewQueue.length === 1 ? '' : 's'} tal como los preparó la IA.`}
-                                  okText="Publicar todo"
-                                  cancelText="Cancelar"
-                                  onConfirm={handleApproveAllReview}
-                                >
-                                  <Button
-                                    htmlType="button"
-                                    type="primary"
-                                    loading={Boolean(reviewItemBusyId)}
-                                  >
-                                    Aprobar y publicar todo
-                                  </Button>
-                                </Popconfirm>
-                              </Space>
-                            ) : (
+                          getPopupContainer={() => document.body}
+                          onSelect={value => {
+                            commitClassificationFromForm({
+                              subcategoria: value,
+                            })
+                          }}
+                          onBlur={() => {
+                            normalizeTitleCaseFormField('subcategoria')
+                            commitClassificationFromForm()
+                          }}
+                        >
+                          <Input
+                            size="large"
+                            placeholder="Escribí o elegí una subcategoría"
+                            prefix={
+                              <BranchesOutlined
+                                style={{ color: token.colorTextSecondary }}
+                              />
+                            }
+                          />
+                        </AutoComplete>
+                      </ProductField>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <ProductField
+                        name="marca"
+                        label="Marca"
+                        rules={[
+                          {
+                            required: true,
+                            message: 'La marca es obligatoria',
+                          },
+                        ]}
+                      >
+                        <Input
+                          size="large"
+                          placeholder="Marca visible o declarada"
+                          prefix={
+                            <ShoppingOutlined
+                              style={{ color: token.colorTextSecondary }}
+                            />
+                          }
+                        />
+                      </ProductField>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <ProductField name="material" label="Material">
+                        <Input
+                          size="large"
+                          placeholder="Material principal visible o declarado"
+                          prefix={
+                            <InfoCircleOutlined
+                              style={{ color: token.colorTextSecondary }}
+                            />
+                          }
+                        />
+                      </ProductField>
+                    </Col>
+
+                    <Col xs={24}>
+                      <ProductField name="color" label="Color general">
+                        <Input
+                          size="large"
+                          placeholder="Color dominante o combinación principal"
+                          prefix={
+                            <FormatPainterOutlined
+                              style={{ color: token.colorTextSecondary }}
+                            />
+                          }
+                        />
+                      </ProductField>
+                    </Col>
+                  </Row>
+                </Card>
+
+                <Card
+                  id={SECTION_IDS.ficha}
+                  title={
+                    <Space size={10}>
+                      <span className="add-product-step-badge">3</span>
+                      <AppstoreOutlined style={{ color: token.colorPrimary }} />
+                      <span className="add-product-card-title">
+                        Ficha técnica inteligente
+                      </span>
+                      {dynamicProductFields.length > 0 && (
+                        <Tag color="processing" style={{ borderRadius: 999 }}>
+                          {dynamicProductFields.length} campos
+                        </Tag>
+                      )}
+                      {!useTechnicalSheet && (
+                        <Tag color="default" style={{ borderRadius: 999 }}>
+                          Opcional
+                        </Tag>
+                      )}
+                    </Space>
+                  }
+                  extra={
+                    <Switch
+                      checked={useTechnicalSheet}
+                      onChange={checked => {
+                        setUseTechnicalSheet(checked)
+                        if (!checked) {
+                          setProductFormValues({
+                            descripcionTecnica: undefined,
+                            dynamicFields: {},
+                          })
+                          message.info(
+                            'Ficha técnica desactivada para este producto',
+                          )
+                        }
+                      }}
+                      checkedChildren="Usar"
+                      unCheckedChildren="Omitir"
+                    />
+                  }
+                  style={{
+                    marginBottom: 24,
+                    borderRadius: 20,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                  }}
+                  styles={{ body: { padding: 24 } }}
+                >
+                  {!useTechnicalSheet ? (
+                    <div
+                      style={{
+                        padding: 20,
+                        borderRadius: 16,
+                        background: token.colorFillAlter,
+                        border: `1px dashed ${token.colorBorder}`,
+                      }}
+                    >
+                      <Space
+                        direction="vertical"
+                        size={12}
+                        style={{ width: '100%' }}
+                      >
+                        <Alert
+                          type="info"
+                          showIcon
+                          style={{ borderRadius: 14 }}
+                          message="La ficha técnica es opcional"
+                          description="Para productos simples podés omitirla y avanzar más rápido. Activala solo cuando ayude al cliente a comparar, filtrar o entender detalles técnicos."
+                        />
+
+                        <Space wrap>
+                          <Button
+                            htmlType="button"
+                            type="primary"
+                            icon={<ThunderboltOutlined />}
+                            disabled={!normalizedAiDraft?.dynamicFields?.length}
+                            onClick={applyAiTechnicalFields}
+                          >
+                            Generar ficha con IA
+                          </Button>
+                          <Button
+                            htmlType="button"
+                            icon={<PlusOutlined />}
+                            onClick={() => setUseTechnicalSheet(true)}
+                          >
+                            Crear ficha manual
+                          </Button>
+                        </Space>
+
+                        {normalizedAiDraft?.dynamicFields?.length > 0 && (
+                          <Text type="secondary">
+                            La IA encontró{' '}
+                            {normalizedAiDraft.dynamicFields.length} datos
+                            posibles. Podés aplicarlos y luego quitar los que no
+                            correspondan.
+                          </Text>
+                        )}
+                      </Space>
+                    </div>
+                  ) : (
+                    <>
+                      <Alert
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 20, borderRadius: 14 }}
+                        message={
+                          catalogTemplate
+                            ? `Campos aplicados desde la plantilla de ${catalogTemplate.name || 'la subcategoría'}`
+                            : 'Estos campos alimentan la ficha técnica, los filtros del catálogo y la información que verá el cliente.'
+                        }
+                        description="Agregá solo datos que ayuden a entender, comparar o filtrar este producto. La IA puede sugerir campos y vos podés corregirlos."
+                      />
+
+                      <Card
+                        size="small"
+                        title="Constructor técnico rápido"
+                        style={{ marginBottom: 20, borderRadius: 16 }}
+                        styles={{ body: { padding: 16 } }}
+                      >
+                        <Space
+                          direction="vertical"
+                          size={14}
+                          style={{ width: '100%' }}
+                        >
+                          <Alert
+                            type="success"
+                            showIcon
+                            style={{ borderRadius: 12 }}
+                            message="La ficha técnica incluye descripción técnica"
+                            description="Si desactivás esta sección, no se guardan estos campos ni la descripción técnica en la DB."
+                          />
+
+                          <Space wrap size={[8, 8]}>
+                            {TECHNICAL_FIELD_PRESETS.map(preset => (
                               <Button
                                 htmlType="button"
-                                onClick={() => setAutoAgentReviewOpen(false)}
+                                key={preset.key}
+                                size="small"
+                                onClick={() => applyTechnicalPreset(preset)}
+                                style={{ borderRadius: 999 }}
                               >
-                                Cerrar
+                                {preset.label} · {preset.helper}
                               </Button>
-                            )
-                          }
-                        >
-                          {autoAgentReviewQueue.length === 0 ? (
-                            <Empty description="No hay productos pendientes de revisión" />
-                          ) : (
+                            ))}
+                          </Space>
+
+                          <Input.TextArea
+                            value={technicalQuickText}
+                            onChange={event =>
+                              setTechnicalQuickText(event.target.value)
+                            }
+                            rows={2}
+                            placeholder="Ej: Cilindrada: 700 cc | Transmisión: 6 velocidades | Peso: 220 kg | Uso recomendado: adventure touring"
+                          />
+
+                          <Space wrap>
+                            <Button
+                              htmlType="button"
+                              type="primary"
+                              icon={<ThunderboltOutlined />}
+                              onClick={applyTechnicalQuickFields}
+                            >
+                              Crear campos técnicos rápidos
+                            </Button>
+                            <Button
+                              htmlType="button"
+                              icon={<FileTextOutlined />}
+                              onClick={
+                                generateTechnicalDescriptionFromCurrentValues
+                              }
+                            >
+                              Crear descripción técnica
+                            </Button>
+                          </Space>
+                        </Space>
+                      </Card>
+
+                      <Row gutter={[16, 16]}>
+                        {dynamicProductFields.length ? (
+                          dynamicProductFields.map(field => (
+                            <Col
+                              xs={24}
+                              md={field.type === 'textarea' ? 24 : 12}
+                              key={field.name}
+                            >
+                              <Space
+                                direction="vertical"
+                                size={4}
+                                style={{ width: '100%' }}
+                              >
+                                <DynamicProductField field={field} />
+                                <Space size={6} wrap>
+                                  {field.required && (
+                                    <Tag color="red" style={{ borderRadius: 999 }}>
+                                      Obligatorio
+                                    </Tag>
+                                  )}
+                                  {field.source && (
+                                    <Tag style={{ borderRadius: 999 }}>
+                                      {field.source}
+                                    </Tag>
+                                  )}
+                                  <Button
+                                    htmlType="button"
+                                    size="small"
+                                    type="link"
+                                    danger
+                                    onClick={() =>
+                                      handleRemoveDynamicProductField(
+                                        field.name,
+                                      )
+                                    }
+                                  >
+                                    Quitar
+                                  </Button>
+                                </Space>
+                              </Space>
+                            </Col>
+                          ))
+                        ) : (
+                          <Col span={24}>
+                            <Empty
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                              description="No hay campos en la ficha técnica. Podés generarla con IA o agregar campos manualmente."
+                            />
+                          </Col>
+                        )}
+                      </Row>
+
+                      <Divider orientation="left" plain>
+                        Agregar campo propio
+                      </Divider>
+
+                      <Row gutter={[12, 12]} align="bottom">
+                        <Col xs={24} md={9}>
+                          <Text strong>Nombre del campo</Text>
+                          <Input
+                            value={customFieldName}
+                            onChange={event =>
+                              setCustomFieldName(event.target.value)
+                            }
+                            onPressEnter={handleAddDynamicProductField}
+                            placeholder="Ej: Potencia, Material, Capacidad"
+                            style={{ marginTop: 8 }}
+                          />
+                        </Col>
+                        <Col xs={24} md={6}>
+                          <Text strong>Tipo</Text>
+                          <Select
+                            value={customFieldType}
+                            onChange={setCustomFieldType}
+                            options={DYNAMIC_FIELD_TYPES}
+                            style={{ width: '100%', marginTop: 8 }}
+                          />
+                        </Col>
+                        <Col xs={12} md={5}>
+                          <Text strong>Obligatorio</Text>
+                          <div style={{ marginTop: 8 }}>
+                            <Switch
+                              checked={customFieldRequired}
+                              onChange={setCustomFieldRequired}
+                              checkedChildren="Sí"
+                              unCheckedChildren="No"
+                            />
+                          </div>
+                        </Col>
+                        <Col xs={12} md={4}>
+                          <Button
+                            htmlType="button"
+                            block
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={handleAddDynamicProductField}
+                          >
+                            Agregar
+                          </Button>
+                        </Col>
+                      </Row>
+                    </>
+                  )}
+                </Card>
+
+                <Card
+                  id={SECTION_IDS.variantes}
+                  title={
+                    <Space size={10}>
+                      <span className="add-product-step-badge">4</span>
+                      <ClusterOutlined style={{ color: token.colorPrimary }} />
+                      <span className="add-product-card-title">
+                        Opciones vendibles del producto
+                      </span>
+                      {dynamicAttributes.length > 0 && (
+                        <Tag color="success" style={{ borderRadius: 999 }}>
+                          {dynamicAttributes.length} atributos detectados
+                        </Tag>
+                      )}
+                      {!hasVariants && (
+                        <Tag color="default" style={{ borderRadius: 999 }}>
+                          Opcional
+                        </Tag>
+                      )}
+                    </Space>
+                  }
+                  extra={
+                    <Switch
+                      checked={hasVariants}
+                      onChange={checked => {
+                        setHasVariants(checked)
+                        if (!checked) {
+                          setVariants([])
+                          setSelectedAttributes({})
+                        }
+                      }}
+                      checkedChildren="SÍ"
+                      unCheckedChildren="NO"
+                    />
+                  }
+                  style={{
+                    marginBottom: 24,
+                    borderRadius: 20,
+                    border: `1px solid ${token.colorBorderSecondary}`,
+                    boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                  }}
+                  styles={{ body: { padding: 24 } }}
+                >
+                  {hasVariants ? (
+                    <>
+                      <Alert
+                        message={
+                          catalogTemplate
+                            ? `Plantilla de "${catalogTemplate.name}" aplicada. Elegí los valores disponibles para este producto.`
+                            : 'Usá variantes solo cuando el cliente pueda elegir opciones vendibles como color, medida, presentación, capacidad o modelo.'
+                        }
+                        description={
+                          loadingCatalogTemplate
+                            ? 'Consultando la configuración de la subcategoría...'
+                            : catalogTemplate
+                              ? 'Los atributos pertenecen a la subcategoría; precio, stock y SKU siguen siendo propios de cada producto.'
+                              : undefined
+                        }
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: 20, borderRadius: 14 }}
+                      />
+
+                      <div
+                        style={{
+                          marginBottom: 20,
+                          padding: 16,
+                          borderRadius: 16,
+                          background: token.colorFillAlter,
+                          border: `1px solid ${token.colorBorderSecondary}`,
+                        }}
+                      >
+                        <Row gutter={[12, 12]} align="middle">
+                          <Col xs={24} lg={15}>
+                            <Text strong>Creación rápida de variantes</Text>
+                            <Text
+                              type="secondary"
+                              style={{ display: 'block', marginTop: 4 }}
+                            >
+                              Pegá opciones en una línea y generá combinaciones
+                              sin cargar campo por campo.
+                            </Text>
+                            <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
+                              {QUICK_VARIANT_PRESETS.map(preset => (
+                                <Button
+                                  htmlType="button"
+                                  key={preset.key}
+                                  size="small"
+                                  onClick={() => applyVariantPreset(preset)}
+                                  style={{ borderRadius: 999 }}
+                                >
+                                  {preset.label} · {preset.helper}
+                                </Button>
+                              ))}
+                            </Space>
+
+                            <Input.TextArea
+                              value={quickVariantText}
+                              onChange={event =>
+                                setQuickVariantText(event.target.value)
+                              }
+                              rows={2}
+                              placeholder="Ej: Color: Negro, Blanco | Medida: 500ml, 1L | Presentación: Unidad, Pack"
+                              style={{ marginTop: 10 }}
+                            />
+                          </Col>
+                          <Col xs={24} lg={9}>
                             <Space
                               direction="vertical"
-                              size={14}
+                              size={10}
                               style={{ width: '100%' }}
                             >
-                              <Alert
-                                type="info"
-                                showIcon
-                                message="Ningún producto se publica hasta que lo apruebes"
-                                style={{ borderRadius: 12 }}
-                              />
-                              {autoAgentReviewQueue.map(item => (
-                                <Card
-                                  key={item.id}
-                                  size="small"
-                                  style={{ borderRadius: 14 }}
-                                  styles={{ body: { padding: 14 } }}
+                              <Button
+                                htmlType="button"
+                                block
+                                type="primary"
+                                icon={<ThunderboltOutlined />}
+                                onClick={applyQuickVariantsFromText}
+                              >
+                                Crear variantes rápidas
+                              </Button>
+                              <Button
+                                htmlType="button"
+                                block
+                                icon={<ReloadOutlined />}
+                                onClick={generateVariantsFromAttributes}
+                                disabled={!canGenerateVariants}
+                              >
+                                Regenerar combinaciones actuales
+                              </Button>
+                              {normalizedAiDraft?.hasExplicitVariants && (
+                                <Button
+                                  htmlType="button"
+                                  block
+                                  icon={<RobotOutlined />}
+                                  onClick={applyAiVariants}
                                 >
-                                  <Row gutter={14} align="middle">
-                                    <Col flex="72px">
-                                      <img
-                                        src={item.previewUrl}
-                                        alt={`Vista previa de ${item.payload?.title || 'producto preparado por IA'}`}
-                                        style={{
-                                          width: 72,
-                                          height: 72,
-                                          objectFit: 'cover',
-                                          borderRadius: 10,
-                                          border: `1px solid ${token.colorBorderSecondary}`,
-                                        }}
-                                      />
-                                    </Col>
-                                    <Col flex="auto">
-                                      <Text strong>{item.payload?.title}</Text>
+                                  Usar variantes detectadas por IA
+                                </Button>
+                              )}
+                            </Space>
+                          </Col>
+                        </Row>
+                      </div>
+
+                      <div style={{ marginBottom: 20 }}>
+                        <Row gutter={[12, 12]} align="bottom">
+                          <Col xs={24} md={12}>
+                            <Text strong>1. Crear atributo</Text>
+                            <Input
+                              value={newAttributeName}
+                              onChange={event =>
+                                setNewAttributeName(event.target.value)
+                              }
+                              onPressEnter={handleAddCustomAttribute}
+                              placeholder="Ej: Color, Talle, Presentación"
+                              style={{ marginTop: 8 }}
+                            />
+                          </Col>
+                          <Col xs={18} md={8}>
+                            <Text strong>Tipo</Text>
+                            <Select
+                              value={newAttributeType}
+                              onChange={setNewAttributeType}
+                              style={{ width: '100%', marginTop: 8 }}
+                              options={[
+                                { value: 'select', label: 'Lista de opciones' },
+                                { value: 'color', label: 'Color' },
+                                { value: 'text', label: 'Texto' },
+                              ]}
+                            />
+                          </Col>
+                          <Col xs={24} md={4}>
+                            <Button
+                              htmlType="button"
+                              block
+                              type="primary"
+                              onClick={handleAddCustomAttribute}
+                              icon={<PlusOutlined />}
+                              aria-label="Agregar atributo"
+                            >
+                              Agregar
+                            </Button>
+                          </Col>
+                        </Row>
+                      </div>
+
+                      <Divider orientation="left" plain>
+                        2. Definir valores
+                      </Divider>
+
+                      {dynamicAttributes.length > 0 ? (
+                        <Space
+                          direction="vertical"
+                          size={12}
+                          style={{ width: '100%' }}
+                        >
+                          {dynamicAttributes.map((attr, index) => (
+                            <div
+                              key={attr.name}
+                              style={{
+                                padding: 16,
+                                border: `1px solid ${token.colorBorderSecondary}`,
+                                borderRadius: 8,
+                                background: token.colorBgContainer,
+                              }}
+                            >
+                              <Row gutter={[12, 12]} align="middle">
+                                <Col xs={24} md={7}>
+                                  <Space>
+                                    <Badge
+                                      count={index + 1}
+                                      color={token.colorPrimary}
+                                    />
+                                    <div>
+                                      <Text strong>{attr.label}</Text>
                                       <br />
                                       <Text
                                         type="secondary"
-                                        style={{ fontSize: 13 }}
+                                        style={{ fontSize: 12 }}
                                       >
-                                        {item.payload?.categoria}
-                                        {item.payload?.subcategoria
-                                          ? ` / ${item.payload.subcategoria}`
-                                          : ''}
-                                        {' · '}
-                                        {item.payload?.status === 'active'
-                                          ? 'Se publica visible'
-                                          : 'Se crea como borrador'}
+                                        Atributo
                                       </Text>
-                                      <br />
-                                      <Text style={{ fontSize: 13 }}>
-                                        $
-                                        {Number(
-                                          item.payload?.price || 0,
-                                        ).toLocaleString('es-AR')}
-                                        {' · Stock: '}
-                                        {item.payload?.stock ?? 0}
-                                      </Text>
-                                    </Col>
-                                    <Col flex="none">
-                                      <Space>
-                                        <Popconfirm
-                                          title="Descartar producto"
-                                          description="No se va a crear este producto."
-                                          okText="Descartar"
-                                          cancelText="Cancelar"
-                                          okButtonProps={{ danger: true }}
-                                          onConfirm={() =>
-                                            handleDiscardReviewItem(item)
-                                          }
-                                        >
-                                          <Button
-                                            htmlType="button"
-                                            danger
-                                            size="small"
-                                            icon={<DeleteOutlined />}
-                                            loading={
-                                              reviewItemBusyId === item.id
-                                            }
-                                            disabled={
-                                              reviewItemBusyId !== null &&
-                                              reviewItemBusyId !== item.id
-                                            }
-                                            aria-label={`Descartar producto preparado ${item.payload?.title || ''}`}
-                                          />
-                                        </Popconfirm>
-                                        <Button
-                                          htmlType="button"
-                                          type="primary"
-                                          size="small"
-                                          icon={<CheckOutlined />}
-                                          onClick={() =>
-                                            handleApproveReviewItem(item)
-                                          }
-                                          loading={reviewItemBusyId === item.id}
-                                          disabled={
-                                            reviewItemBusyId !== null &&
-                                            reviewItemBusyId !== item.id
-                                          }
-                                        >
-                                          Publicar
-                                        </Button>
-                                      </Space>
-                                    </Col>
-                                  </Row>
-                                </Card>
-                              ))}
-                            </Space>
-                          )}
-                        </Modal>
-
-                        {!fileList.length ? (
-                          <Dragger
-                            multiple
-                            beforeUpload={() => false}
-                            fileList={fileList}
-                            onChange={handleUploadChange}
-                            onRemove={handleRemove}
-                            showUploadList={false}
-                            style={{
-                              borderRadius: 20,
-                              padding: 44,
-                              minHeight: 280,
-                              display: 'flex',
-                              alignItems: 'center',
-                              background: `linear-gradient(135deg, ${token.colorBgContainer}, ${token.colorFillAlter})`,
-                              border: `2px dashed ${token.colorPrimaryBorder || token.colorBorder}`,
-                            }}
-                          >
-                            <div style={{ textAlign: 'center' }}>
-                              <div
-                                style={{
-                                  width: 104,
-                                  height: 104,
-                                  borderRadius: 28,
-                                  background: `${token.colorPrimary}14`,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  margin: '0 auto 18px',
-                                  border: `1px solid ${token.colorPrimaryBorder || token.colorBorder}`,
-                                }}
-                              >
-                                <InboxOutlined
-                                  style={{
-                                    fontSize: 48,
-                                    color: token.colorPrimary,
-                                  }}
-                                />
-                              </div>
-
-                              <Text
-                                strong
-                                style={{ fontSize: 19, display: 'block' }}
-                              >
-                                Arrastrá imágenes o importalas desde el agente
-                              </Text>
-
-                              <Text
-                                type="secondary"
-                                style={{ display: 'block', marginTop: 6 }}
-                              >
-                                Las imágenes cargadas disparan el análisis
-                                visual con IA.
-                              </Text>
-
-                              <Text
-                                type="secondary"
-                                style={{
-                                  fontSize: 12,
-                                  display: 'block',
-                                  marginTop: 10,
-                                }}
-                              >
-                                JPG, PNG, WEBP, HEIC/HEIF · máximo{' '}
-                                {MAX_PRODUCT_IMAGES} imágenes · alta calidad
-                                mejora la precisión
-                              </Text>
+                                    </div>
+                                  </Space>
+                                </Col>
+                                <Col xs={20} md={15}>
+                                  <Select
+                                    mode="tags"
+                                    placeholder={`Valores para ${attr.label}, separados por coma`}
+                                    value={selectedAttributes[attr.name] || []}
+                                    onChange={values =>
+                                      handleAttributeValuesChange(
+                                        attr.name,
+                                        values,
+                                      )
+                                    }
+                                    tokenSeparators={[',']}
+                                    allowClear
+                                    style={{ width: '100%' }}
+                                    options={safeArray(attr.values).map(
+                                      value => ({
+                                        value,
+                                        label: value,
+                                      }),
+                                    )}
+                                  />
+                                </Col>
+                                <Col
+                                  xs={4}
+                                  md={2}
+                                  style={{ textAlign: 'right' }}
+                                >
+                                  <Button
+                                    htmlType="button"
+                                    type="text"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={() =>
+                                      handleRemoveVariantAttribute(attr.name)
+                                    }
+                                    aria-label={`Eliminar atributo ${attr.label}`}
+                                  />
+                                </Col>
+                              </Row>
                             </div>
-                          </Dragger>
-                        ) : (
-                          <ImagePreviewGrid
-                            previews={imagePreviews}
-                            fileList={fileList}
-                            onRemove={handleRemove}
-                            onAddMore={handleAddMoreImages}
-                            onReorder={handleReorderImage}
-                            onSetPrincipal={handleSetPrincipalImage}
-                            onAnalyze={handleReanalyzeImage}
-                            analyzing={loadingIa}
-                          />
-                        )}
-                      </Card>
+                          ))}
+                        </Space>
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="Todavía no hay opciones vendibles. Creá una opción solo si el cliente debe elegir entre alternativas."
+                        />
+                      )}
 
-                      <AIAnalysisPanel
-                        iaResult={iaResult}
-                        loading={loadingIa}
-                        error={errorIa}
-                        onReset={handleReanalyzeImage}
-                        onApplyAll={applyAiAll}
-                        onApplySafeFields={applyAiSafeFields}
-                        onApplyField={applyAiField}
-                        onApplySeo={applyAiSeo}
-                        onApplyTechnicalFields={applyAiTechnicalFields}
-                        onApplyDynamicField={applyAiDynamicField}
-                        onApplyTags={applyAiTags}
-                        onApplyVariants={applyAiVariants}
-                      />
-
-                      <Card
-                        id={SECTION_IDS.informacion}
-                        title={
-                          <Space size={10}>
-                            <span className="add-product-step-badge">2</span>
-                            <ShoppingOutlined
-                              style={{ color: token.colorPrimary }}
-                            />
-                            <span className="add-product-card-title">
-                              Información del producto
-                            </span>
-                            <Tag color="red" style={{ borderRadius: 999 }}>
-                              Requerido
-                            </Tag>
-                          </Space>
-                        }
+                      <div
                         style={{
-                          marginBottom: 24,
-                          borderRadius: 20,
+                          marginTop: 18,
+                          padding: 16,
+                          borderRadius: 8,
+                          background: token.colorFillAlter,
                           border: `1px solid ${token.colorBorderSecondary}`,
-                          boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
                         }}
-                        styles={{ body: { padding: 24 } }}
                       >
-                        <Text
-                          type="secondary"
-                          style={{
-                            display: 'block',
-                            marginBottom: 16,
-                            fontSize: 14,
-                          }}
+                        <Row
+                          gutter={[12, 12]}
+                          align="middle"
+                          justify="space-between"
                         >
-                          Lo que ve el cliente: título, descripción y
-                          clasificación — todo obligatorio.
-                        </Text>
-
-                        <Row gutter={[18, 18]}>
-                          <Col xs={24}>
-                            <ProductField
-                              name="titulo"
-                              label="Título del producto"
-                              rules={[
-                                {
-                                  required: true,
-                                  message: 'El título es obligatorio',
-                                },
-                              ]}
-                            >
-                              <Input
-                                size="large"
-                                placeholder="Nombre comercial claro del producto"
-                                prefix={
-                                  <FileTextOutlined
-                                    style={{ color: token.colorTextSecondary }}
-                                  />
-                                }
-                                showCount
-                                maxLength={120}
-                              />
-                            </ProductField>
+                          <Col flex="auto">
+                            <Text strong>3. Generar variantes</Text>
+                            <br />
+                            <Text type="secondary">
+                              {variantCombinationCount > 0
+                                ? `${configuredVariantAttributes.length} atributos producirán ${variantCombinationCount} variantes individuales.`
+                                : 'Agregá uno o más valores para calcular las combinaciones.'}
+                            </Text>
                           </Col>
-
-                          <Col xs={24}>
-                            <ProductField
-                              name="descripcion"
-                              label="Descripción comercial"
-                              rules={[
-                                {
-                                  required: true,
-                                  message:
-                                    'La descripción comercial es obligatoria',
-                                },
-                              ]}
-                              extra="Texto visible para el cliente: claro, vendedor y útil, sin prometer datos no confirmados."
-                            >
-                              <Input.TextArea
-                                rows={6}
-                                placeholder="Explicá qué es el producto, qué se observa, para qué puede servir y qué detalles ayudan a decidir la compra."
-                                showCount
-                                maxLength={3600}
-                              />
-                            </ProductField>
-                          </Col>
-
-                          <Col xs={24}>
-                            <ProductField
-                              name="descripcionTecnica"
-                              label="Descripción técnica precisa"
-                              extra="Detalle objetivo para ficha ampliada: estructura, partes visibles, terminación, textura, presentación, materialidad y límites de lo que se puede confirmar."
-                            >
-                              <Input.TextArea
-                                rows={7}
-                                disabled={!useTechnicalSheet}
-                                placeholder={
-                                  useTechnicalSheet
-                                    ? 'Detallá características observables y técnicas del producto sin inventar medidas, compatibilidades, garantía u origen si no están confirmados.'
-                                    : 'Activá la ficha técnica para guardar una descripción técnica.'
-                                }
-                                showCount
-                                maxLength={4200}
-                              />
-                            </ProductField>
-                          </Col>
-
-                          <Col xs={24} md={12}>
-                            <ProductField
-                              name="categoria"
-                              label="Categoría"
-                              rules={[
-                                {
-                                  required: true,
-                                  message: 'La categoría es obligatoria',
-                                },
-                              ]}
-                            >
-                              <AutoComplete
-                                allowClear
-                                options={categoryOptions}
-                                filterOption={(inputValue, option) =>
-                                  String(option?.value || '')
-                                    .toLowerCase()
-                                    .includes(inputValue.toLowerCase())
-                                }
-                                getPopupContainer={() => document.body}
-                                onSelect={value => {
-                                  commitClassificationFromForm({
-                                    categoria: value,
-                                  })
-                                }}
-                                onBlur={() => {
-                                  normalizeTitleCaseFormField('categoria')
-                                  commitClassificationFromForm()
-                                }}
+                          <Col>
+                            <Space wrap>
+                              <Button
+                                htmlType="button"
+                                onClick={handleSaveCatalogTemplate}
+                                icon={<SaveOutlined />}
+                                loading={savingCatalogTemplate}
+                                disabled={dynamicAttributes.length === 0}
                               >
-                                <Input
-                                  size="large"
-                                  placeholder="Escribí o elegí una categoría"
-                                  prefix={
-                                    <AppstoreOutlined
-                                      style={{
-                                        color: token.colorTextSecondary,
-                                      }}
-                                    />
-                                  }
-                                />
-                              </AutoComplete>
-                            </ProductField>
-                          </Col>
-
-                          <Col xs={24} md={12}>
-                            <ProductField
-                              name="subcategoria"
-                              label="Subcategoría"
-                              rules={[
-                                {
-                                  required: true,
-                                  message: 'La subcategoría es obligatoria',
-                                },
-                              ]}
-                            >
-                              <AutoComplete
-                                allowClear
-                                options={subcategoryOptions}
-                                filterOption={(inputValue, option) =>
-                                  String(option?.value || '')
-                                    .toLowerCase()
-                                    .includes(inputValue.toLowerCase())
-                                }
-                                getPopupContainer={() => document.body}
-                                onSelect={value => {
-                                  commitClassificationFromForm({
-                                    subcategoria: value,
-                                  })
-                                }}
-                                onBlur={() => {
-                                  normalizeTitleCaseFormField('subcategoria')
-                                  commitClassificationFromForm()
-                                }}
+                                Guardar plantilla
+                              </Button>
+                              <Button
+                                htmlType="button"
+                                type="primary"
+                                onClick={generateVariantsFromAttributes}
+                                icon={<ReloadOutlined />}
+                                disabled={!canGenerateVariants}
                               >
-                                <Input
-                                  size="large"
-                                  placeholder="Escribí o elegí una subcategoría"
-                                  prefix={
-                                    <BranchesOutlined
-                                      style={{
-                                        color: token.colorTextSecondary,
-                                      }}
-                                    />
-                                  }
-                                />
-                              </AutoComplete>
-                            </ProductField>
-                          </Col>
-
-                          <Col xs={24} md={12}>
-                            <ProductField
-                              name="marca"
-                              label="Marca"
-                              rules={[
-                                {
-                                  required: true,
-                                  message: 'La marca es obligatoria',
-                                },
-                              ]}
-                            >
-                              <Input
-                                size="large"
-                                placeholder="Marca visible o declarada"
-                                prefix={
-                                  <ShoppingOutlined
-                                    style={{ color: token.colorTextSecondary }}
-                                  />
-                                }
-                              />
-                            </ProductField>
-                          </Col>
-
-                          <Col xs={24} md={12}>
-                            <ProductField name="material" label="Material">
-                              <Input
-                                size="large"
-                                placeholder="Material principal visible o declarado"
-                                prefix={
-                                  <InfoCircleOutlined
-                                    style={{ color: token.colorTextSecondary }}
-                                  />
-                                }
-                              />
-                            </ProductField>
-                          </Col>
-
-                          <Col xs={24}>
-                            <ProductField name="color" label="Color general">
-                              <Input
-                                size="large"
-                                placeholder="Color dominante o combinación principal"
-                                prefix={
-                                  <FormatPainterOutlined
-                                    style={{ color: token.colorTextSecondary }}
-                                  />
-                                }
-                              />
-                            </ProductField>
+                                Generar {variantCombinationCount || 0} variantes
+                              </Button>
+                            </Space>
                           </Col>
                         </Row>
-                      </Card>
+                        {variantCombinationCount > MAX_GENERATED_VARIANTS && (
+                          <Alert
+                            type="error"
+                            showIcon
+                            style={{ marginTop: 12 }}
+                            message={`Reducí los valores: el máximo es ${MAX_GENERATED_VARIANTS} variantes.`}
+                          />
+                        )}
+                      </div>
 
-                      <Card
-                        id={SECTION_IDS.ficha}
-                        title={
-                          <Space size={10}>
-                            <span className="add-product-step-badge">3</span>
-                            <AppstoreOutlined
-                              style={{ color: token.colorPrimary }}
+                      {variants.length > 0 && (
+                        <>
+                          <Divider orientation="left">
+                            <Space>
+                              <AppstoreOutlined />
+                              <span>
+                                {variants.length} variantes configuradas
+                              </span>
+                            </Space>
+                          </Divider>
+
+                          <div
+                            style={{
+                              marginBottom: 16,
+                              padding: 14,
+                              borderRadius: 16,
+                              background: token.colorFillAlter,
+                              border: `1px solid ${token.colorBorderSecondary}`,
+                            }}
+                          >
+                            <Row gutter={[12, 12]} align="middle">
+                              <Col xs={24} md={8}>
+                                <Text strong>Aplicar precio a todas</Text>
+                                <InputNumber
+                                  value={bulkVariantPrice}
+                                  onChange={setBulkVariantPrice}
+                                  min={0}
+                                  precision={2}
+                                  prefix="$"
+                                  placeholder="Precio común"
+                                  style={{ width: '100%', marginTop: 8 }}
+                                />
+                              </Col>
+                              <Col xs={24} md={8}>
+                                <Text strong>Aplicar stock a todas</Text>
+                                <InputNumber
+                                  value={bulkVariantStock}
+                                  onChange={setBulkVariantStock}
+                                  min={0}
+                                  precision={0}
+                                  placeholder="Stock común"
+                                  style={{ width: '100%', marginTop: 8 }}
+                                />
+                              </Col>
+                              <Col xs={24} md={8}>
+                                <Button
+                                  htmlType="button"
+                                  block
+                                  icon={<CheckOutlined />}
+                                  onClick={applyBulkVariantValues}
+                                  style={{ marginTop: 28 }}
+                                >
+                                  Aplicar a variantes
+                                </Button>
+                              </Col>
+                            </Row>
+                          </div>
+
+                          <Table
+                            dataSource={variants}
+                            pagination={false}
+                            size="middle"
+                            scroll={{ x: 1280 }}
+                            rowKey="key"
+                            bordered={false}
+                            style={{
+                              borderRadius: 16,
+                              overflow: 'hidden',
+                            }}
+                            columns={[
+                              {
+                                title: 'Variante',
+                                dataIndex: 'nombre',
+                                key: 'nombre',
+                                width: 220,
+                                fixed: 'left',
+                                render: (_, record) => (
+                                  <Space direction="vertical" size={6}>
+                                    <Space wrap size={[4, 6]}>
+                                      {Object.entries(record.combinacion).map(
+                                        ([attribute, value]) => (
+                                          <Tag
+                                            key={`${record.key}-${attribute}`}
+                                            color="blue"
+                                            style={{
+                                              margin: 0,
+                                              borderRadius: 4,
+                                            }}
+                                          >
+                                            {dynamicAttributes.find(
+                                              item => item.name === attribute,
+                                            )?.label || attribute}
+                                            : {value}
+                                          </Tag>
+                                        ),
+                                      )}
+                                    </Space>
+                                    <Space size={6} wrap>
+                                      {record.uiStatus === 'new' && (
+                                        <Tag
+                                          color="success"
+                                          style={{ borderRadius: 999 }}
+                                        >
+                                          Nueva
+                                        </Tag>
+                                      )}
+                                      {record.isActive === false && (
+                                        <Tag
+                                          color="default"
+                                          style={{ borderRadius: 999 }}
+                                        >
+                                          Inactiva
+                                        </Tag>
+                                      )}
+                                    </Space>
+                                  </Space>
+                                ),
+                              },
+                              {
+                                title: 'Precio',
+                                dataIndex: 'price',
+                                key: 'price',
+                                width: 150,
+                                render: (_, record) => (
+                                  <InputNumber
+                                    prefix="$"
+                                    style={{ width: '100%' }}
+                                    min={0}
+                                    value={record.price}
+                                    onChange={val => {
+                                      setVariants(prev =>
+                                        prev.map(variant =>
+                                          variant.key === record.key
+                                            ? {
+                                                ...variant,
+                                                price: Number(val || 0),
+                                              }
+                                            : variant,
+                                        ),
+                                      )
+                                    }}
+                                  />
+                                ),
+                              },
+                              {
+                                title: 'Stock',
+                                dataIndex: 'stock',
+                                key: 'stock',
+                                width: 120,
+                                render: (_, record) => (
+                                  <InputNumber
+                                    min={0}
+                                    style={{ width: '100%' }}
+                                    value={record.stock}
+                                    onChange={val => {
+                                      setVariants(prev =>
+                                        prev.map(variant =>
+                                          variant.key === record.key
+                                            ? {
+                                                ...variant,
+                                                stock: Number(val || 0),
+                                              }
+                                            : variant,
+                                        ),
+                                      )
+                                    }}
+                                  />
+                                ),
+                              },
+                              {
+                                title: 'SKU opcional',
+                                dataIndex: 'sku',
+                                key: 'sku',
+                                width: 180,
+                                render: (_, record) => (
+                                  <Input
+                                    placeholder="Ej: FOX-BOTA-42"
+                                    value={record.sku}
+                                    onChange={e => {
+                                      setVariants(prev =>
+                                        prev.map(variant =>
+                                          variant.key === record.key
+                                            ? {
+                                                ...variant,
+                                                sku: e.target.value,
+                                              }
+                                            : variant,
+                                        ),
+                                      )
+                                    }}
+                                  />
+                                ),
+                              },
+                              {
+                                title: 'Imagen de variante',
+                                key: 'image',
+                                width: 260,
+                                render: (_, record) => (
+                                  <VariantImageSelector
+                                    variant={record}
+                                    localImages={localImages}
+                                    onAssign={handleAssignVariantImage}
+                                  />
+                                ),
+                              },
+                              {
+                                title: 'Preview',
+                                key: 'preview',
+                                width: 110,
+                                render: (_, record) => {
+                                  const selectedLocal = localImages.find(
+                                    img => img.uid === record.imageSourceUid,
+                                  )
+
+                                  return selectedLocal?.preview ? (
+                                    <img
+                                      src={selectedLocal.preview}
+                                      alt={record.nombre}
+                                      style={{
+                                        width: 64,
+                                        height: 64,
+                                        objectFit: 'cover',
+                                        borderRadius: 14,
+                                        border: `1px solid ${token.colorBorderSecondary}`,
+                                        boxShadow:
+                                          '0 8px 18px rgba(15,23,42,.08)',
+                                      }}
+                                    />
+                                  ) : (
+                                    <Tag style={{ borderRadius: 999 }}>
+                                      Sin imagen
+                                    </Tag>
+                                  )
+                                },
+                              },
+                              {
+                                title: 'Activo',
+                                key: 'active',
+                                width: 90,
+                                align: 'center',
+                                render: (_, record) => (
+                                  <Switch
+                                    checked={record.isActive !== false}
+                                    onChange={checked => {
+                                      setVariants(prev =>
+                                        prev.map(variant =>
+                                          variant.key === record.key
+                                            ? { ...variant, isActive: checked }
+                                            : variant,
+                                        ),
+                                      )
+                                    }}
+                                    size="small"
+                                  />
+                                ),
+                              },
+                              {
+                                title: '',
+                                key: 'delete',
+                                width: 60,
+                                render: (_, record) => (
+                                  <Button
+                                    htmlType="button"
+                                    type="text"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={() => {
+                                      setVariants(prev =>
+                                        prev.filter(
+                                          variant => variant.key !== record.key,
+                                        ),
+                                      )
+                                    }}
+                                    size="small"
+                                  />
+                                ),
+                              },
+                            ]}
+                          />
+
+                          <Alert
+                            type="warning"
+                            showIcon
+                            style={{ marginTop: 18, borderRadius: 14 }}
+                            message="Si una variante no tiene imagen asignada, se mostrará la imagen general del producto."
+                          />
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div
+                      style={{
+                        padding: 28,
+                        textAlign: 'center',
+                        borderRadius: 16,
+                        background: token.colorFillAlter,
+                        border: `1px dashed ${token.colorBorder}`,
+                      }}
+                    >
+                      <Space direction="vertical" size={12} align="center">
+                        <Text type="secondary">
+                          Este producto no tiene opciones vendibles. Activá
+                          variantes solo si el cliente debe elegir una
+                          alternativa específica antes de comprar.
+                        </Text>
+                        <Space wrap>
+                          <Button
+                            htmlType="button"
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={() => setHasVariants(true)}
+                          >
+                            Crear variantes
+                          </Button>
+                          {dynamicAttributes.length > 0 && (
+                            <Button
+                              htmlType="button"
+                              icon={<ReloadOutlined />}
+                              onClick={() => setHasVariants(true)}
+                            >
+                              Usar plantilla detectada
+                            </Button>
+                          )}
+                          {normalizedAiDraft?.hasExplicitVariants && (
+                            <Button
+                              htmlType="button"
+                              icon={<RobotOutlined />}
+                              onClick={applyAiVariants}
+                            >
+                              Usar variantes de IA
+                            </Button>
+                          )}
+                        </Space>
+                      </Space>
+                    </div>
+                  )}
+                </Card>
+              </Col>
+
+              <Col xs={24} xl={9}>
+                <div className="add-product-side-panel">
+                  <Card
+                    title={
+                      <Space size={10}>
+                        <CheckCircleOutlined
+                          style={{ color: token.colorPrimary }}
+                        />
+                        <span>Estado de carga</span>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    styles={{ body: { padding: 20 } }}
+                  >
+                    <Space
+                      direction="vertical"
+                      size={14}
+                      style={{ width: '100%' }}
+                    >
+                      <div
+                        style={{
+                          padding: 16,
+                          borderRadius: 16,
+                          background: productReadiness.isReady
+                            ? token.colorSuccessBg
+                            : token.colorFillAlter,
+                          border: `1px solid ${
+                            productReadiness.isReady
+                              ? token.colorSuccessBorder
+                              : token.colorBorderSecondary
+                          }`,
+                        }}
+                      >
+                        <Space
+                          align="center"
+                          style={{
+                            width: '100%',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <div>
+                            <Text strong>
+                              {productReadiness.isReady
+                                ? 'Listo para publicar'
+                                : 'Completá lo esencial'}
+                            </Text>
+                            <br />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {productReadiness.doneRequired}/
+                              {productReadiness.requiredChecks.length} datos
+                              obligatorios
+                            </Text>
+                          </div>
+                          <div
+                            style={{
+                              minWidth: 54,
+                              height: 54,
+                              borderRadius: 18,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 900,
+                              color: productReadiness.isReady
+                                ? token.colorSuccess
+                                : token.colorPrimary,
+                              background: token.colorBgContainer,
+                              border: `1px solid ${token.colorBorderSecondary}`,
+                            }}
+                          >
+                            {productReadiness.percent}%
+                          </div>
+                        </Space>
+                      </div>
+
+                      <Space wrap size={[6, 6]}>
+                        {productReadiness.checks.map(check => (
+                          <Tag
+                            key={check.key}
+                            color={
+                              check.done
+                                ? 'success'
+                                : check.required
+                                  ? 'warning'
+                                  : 'default'
+                            }
+                            style={{ borderRadius: 999, marginInlineEnd: 0 }}
+                          >
+                            {check.done ? '✓' : '•'} {check.label}
+                          </Tag>
+                        ))}
+                      </Space>
+
+                      <Alert
+                        type={productReadiness.isReady ? 'success' : 'info'}
+                        showIcon
+                        style={{ borderRadius: 14 }}
+                        message={
+                          productReadiness.isReady
+                            ? 'Ya podés publicar o guardar como borrador.'
+                            : `Faltan: ${missingRequiredLabels.join(', ')}`
+                        }
+                      />
+                    </Space>
+                  </Card>
+                  <Card
+                    id={SECTION_IDS.precio}
+                    title={
+                      <Space size={10}>
+                        <span className="add-product-step-badge">5</span>
+                        <DollarOutlined style={{ color: token.colorPrimary }} />
+                        <span className="add-product-card-title">
+                          Precio y disponibilidad
+                        </span>
+                        <Tag color="red" style={{ borderRadius: 999 }}>
+                          Requerido
+                        </Tag>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    styles={{ body: { padding: 24 } }}
+                  >
+                    <Text
+                      type="secondary"
+                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                    >
+                      Precio, condición y stock visibles en el catálogo —
+                      obligatorios para publicar.
+                    </Text>
+
+                    <Row gutter={[16, 16]}>
+                      <Col xs={24}>
+                        <ProductField
+                          name="precio"
+                          label={
+                            hasVariants ? 'Precio base de referencia' : 'Precio'
+                          }
+                          rules={[
+                            {
+                              required: true,
+                              message: 'El precio es obligatorio',
+                            },
+                          ]}
+                        >
+                          <InputNumber
+                            size="large"
+                            style={{ width: '100%' }}
+                            min={0}
+                            precision={2}
+                            prefix="$"
+                            placeholder="0.00"
+                            onChange={value => {
+                              if (hasVariants && variants.length > 0) {
+                                setVariants(prev =>
+                                  prev.map(variant => ({
+                                    ...variant,
+                                    price:
+                                      Number(variant.price || 0) === 0
+                                        ? Number(value || 0)
+                                        : variant.price,
+                                  })),
+                                )
+                              }
+                            }}
+                          />
+                        </ProductField>
+                      </Col>
+
+                      {!hasVariants && (
+                        <Col xs={24}>
+                          <ProductField
+                            name="cantidad"
+                            label="Cantidad en stock"
+                            rules={[
+                              {
+                                required: true,
+                                message: 'La cantidad es obligatoria',
+                              },
+                            ]}
+                          >
+                            <InputNumber
+                              size="large"
+                              style={{ width: '100%' }}
+                              min={1}
+                              placeholder="1"
+                              prefix={
+                                <NumberOutlined
+                                  style={{ color: token.colorTextSecondary }}
+                                />
+                              }
                             />
-                            <span className="add-product-card-title">
-                              Ficha técnica inteligente
-                            </span>
-                            {dynamicProductFields.length > 0 && (
+                          </ProductField>
+                        </Col>
+                      )}
+
+                      <Col xs={24}>
+                        <ProductField
+                          name="condicion"
+                          label="Condición"
+                          rules={[
+                            {
+                              required: true,
+                              message: 'La condición es obligatoria',
+                            },
+                          ]}
+                        >
+                          <Select
+                            size="large"
+                            placeholder="Seleccioná la condición"
+                          >
+                            <Select.Option value="nuevo">
+                              <Tag color="success" style={{ borderRadius: 999 }}>
+                                Nuevo
+                              </Tag>
+                            </Select.Option>
+                            <Select.Option value="usado">
+                              <Tag color="warning" style={{ borderRadius: 999 }}>
+                                Usado
+                              </Tag>
+                            </Select.Option>
+                            <Select.Option value="reacondicionado">
                               <Tag
                                 color="processing"
                                 style={{ borderRadius: 999 }}
                               >
-                                {dynamicProductFields.length} campos
+                                Reacondicionado
                               </Tag>
-                            )}
-                            {!useTechnicalSheet && (
-                              <Tag
-                                color="default"
-                                style={{ borderRadius: 999 }}
-                              >
-                                Opcional
-                              </Tag>
-                            )}
-                          </Space>
-                        }
-                        extra={
-                          <Switch
-                            checked={useTechnicalSheet}
-                            onChange={checked => {
-                              if (checked) {
-                                setUseTechnicalSheet(true)
-                                const snapshot =
-                                  technicalSheetSnapshotRef.current
-                                if (snapshot) {
-                                  const currentDynamicFields =
-                                    form.getFieldValue('dynamicFields') || {}
-                                  const hasCurrentValues = Object.values(
-                                    currentDynamicFields,
-                                  ).some(value =>
-                                    Array.isArray(value)
-                                      ? value.length > 0
-                                      : value !== undefined &&
-                                        value !== null &&
-                                        value !== '',
-                                  )
-                                  if (
-                                    !hasCurrentValues &&
-                                    !normalizeString(
-                                      form.getFieldValue('descripcionTecnica'),
-                                    )
-                                  ) {
-                                    setProductFormValues({
-                                      descripcionTecnica:
-                                        snapshot.descripcionTecnica,
-                                      dynamicFields: snapshot.dynamicFields,
-                                    })
-                                    message.info(
-                                      'Se restauraron los datos técnicos que habías cargado',
-                                    )
-                                  }
-                                  technicalSheetSnapshotRef.current = null
-                                }
-                                return
-                              }
+                            </Select.Option>
+                          </Select>
+                        </ProductField>
+                      </Col>
+                    </Row>
 
-                              const currentDescripcionTecnica =
-                                form.getFieldValue('descripcionTecnica')
-                              const currentDynamicFields =
-                                form.getFieldValue('dynamicFields') || {}
-                              const hasData =
-                                normalizeString(currentDescripcionTecnica) ||
-                                Object.values(currentDynamicFields).some(
-                                  value =>
-                                    Array.isArray(value)
-                                      ? value.length > 0
-                                      : value !== undefined &&
-                                        value !== null &&
-                                        value !== '',
-                                )
+                    {hasVariants && (
+                      <Alert
+                        message="El stock y la imagen se gestionan por variante."
+                        type="info"
+                        showIcon
+                        style={{ marginTop: 8, borderRadius: 14 }}
+                      />
+                    )}
+                  </Card>
 
-                              const disableTechnicalSheet = () => {
-                                technicalSheetSnapshotRef.current = {
-                                  descripcionTecnica: currentDescripcionTecnica,
-                                  dynamicFields: currentDynamicFields,
-                                }
-                                setUseTechnicalSheet(false)
-                                setProductFormValues({
-                                  descripcionTecnica: undefined,
-                                  dynamicFields: {},
-                                })
-                                message.info(
-                                  'Ficha técnica desactivada para este producto',
-                                )
-                              }
+                  <Card
+                    title={
+                      <Space size={10}>
+                        <FileTextOutlined
+                          style={{ color: token.colorPrimary }}
+                        />
+                        <span className="add-product-card-title">
+                          SEO y contenido comercial
+                        </span>
+                        <Tag color="default" style={{ borderRadius: 999 }}>
+                          Opcional
+                        </Tag>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    styles={{ body: { padding: 24 } }}
+                  >
+                    <Text
+                      type="secondary"
+                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                    >
+                      Mejora cómo se encuentra el producto en buscadores y
+                      recomendaciones internas.
+                    </Text>
 
-                              if (!hasData) {
-                                setUseTechnicalSheet(false)
-                                return
-                              }
-
-                              Modal.confirm({
-                                title: '¿Desactivar la ficha técnica?',
-                                content:
-                                  'Se van a quitar del formulario los datos técnicos cargados (descripción técnica y campos). Si la reactivás sin cargar un producto nuevo, se restauran automáticamente.',
-                                okText: 'Desactivar',
-                                okButtonProps: { danger: true },
-                                cancelText: 'Cancelar',
-                                onOk: disableTechnicalSheet,
-                              })
-                            }}
-                            checkedChildren="Usar"
-                            unCheckedChildren="Omitir"
-                          />
-                        }
-                        style={{
-                          marginBottom: 24,
-                          borderRadius: 20,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-                        }}
-                        styles={{ body: { padding: 24 } }}
+                    <Space
+                      direction="vertical"
+                      size={12}
+                      style={{ width: '100%' }}
+                    >
+                      <Button
+                        htmlType="button"
+                        block
+                        icon={<ThunderboltOutlined />}
+                        onClick={generateSeoFromCurrentValues}
                       >
-                        {!useTechnicalSheet ? (
-                          <div
-                            style={{
-                              padding: 20,
-                              borderRadius: 16,
-                              background: token.colorFillAlter,
-                              border: `1px dashed ${token.colorBorder}`,
-                            }}
-                          >
-                            <Space
-                              direction="vertical"
-                              size={12}
-                              style={{ width: '100%' }}
-                            >
-                              <Alert
-                                type="info"
-                                showIcon
-                                style={{ borderRadius: 14 }}
-                                message="La ficha técnica es opcional"
-                                description="Para productos simples podés omitirla y avanzar más rápido. Activala solo cuando ayude al cliente a comparar, filtrar o entender detalles técnicos."
-                              />
+                        Generar SEO desde el producto
+                      </Button>
 
-                              <Space wrap>
-                                <Button
-                                  htmlType="button"
-                                  type="primary"
-                                  icon={<ThunderboltOutlined />}
-                                  disabled={
-                                    !normalizedAiDraft?.dynamicFields?.length
-                                  }
-                                  onClick={applyAiTechnicalFields}
-                                >
-                                  Generar ficha con IA
-                                </Button>
-                                <Button
-                                  htmlType="button"
-                                  icon={<PlusOutlined />}
-                                  onClick={() => setUseTechnicalSheet(true)}
-                                >
-                                  Crear ficha manual
-                                </Button>
-                              </Space>
-
-                              {normalizedAiDraft?.dynamicFields?.length > 0 && (
-                                <Text type="secondary">
-                                  La IA encontró{' '}
-                                  {normalizedAiDraft.dynamicFields.length} datos
-                                  posibles. Podés aplicarlos y luego quitar los
-                                  que no correspondan.
-                                </Text>
-                              )}
-                            </Space>
-                          </div>
-                        ) : (
-                          <>
-                            <Alert
-                              type="info"
-                              showIcon
-                              style={{ marginBottom: 20, borderRadius: 14 }}
-                              message={
-                                catalogTemplate
-                                  ? `Campos aplicados desde la plantilla de ${catalogTemplate.name || 'la subcategoría'}`
-                                  : 'Estos campos alimentan la ficha técnica, los filtros del catálogo y la información que verá el cliente.'
-                              }
-                              description="Agregá solo datos que ayuden a entender, comparar o filtrar este producto. La IA puede sugerir campos y vos podés corregirlos."
-                            />
-
-                            <Card
-                              size="small"
-                              title="Constructor técnico rápido"
-                              style={{ marginBottom: 20, borderRadius: 16 }}
-                              styles={{ body: { padding: 16 } }}
-                            >
-                              <Space
-                                direction="vertical"
-                                size={14}
-                                style={{ width: '100%' }}
-                              >
-                                <Alert
-                                  type="success"
-                                  showIcon
-                                  style={{ borderRadius: 12 }}
-                                  message="La ficha técnica incluye descripción técnica"
-                                  description="Si desactivás esta sección, no se guardan estos campos ni la descripción técnica en la DB."
-                                />
-
-                                <Space wrap size={[8, 8]}>
-                                  {TECHNICAL_FIELD_PRESETS.map(preset => (
-                                    <Button
-                                      htmlType="button"
-                                      key={preset.key}
-                                      size="small"
-                                      onClick={() =>
-                                        applyTechnicalPreset(preset)
-                                      }
-                                      style={{ borderRadius: 999 }}
-                                    >
-                                      {preset.label} · {preset.helper}
-                                    </Button>
-                                  ))}
-                                </Space>
-
-                                <Input.TextArea
-                                  value={technicalQuickText}
-                                  onChange={event =>
-                                    setTechnicalQuickText(event.target.value)
-                                  }
-                                  rows={2}
-                                  placeholder="Ej: Cilindrada: 700 cc | Transmisión: 6 velocidades | Peso: 220 kg | Uso recomendado: adventure touring"
-                                />
-
-                                <Space wrap>
-                                  <Button
-                                    htmlType="button"
-                                    type="primary"
-                                    icon={<ThunderboltOutlined />}
-                                    onClick={applyTechnicalQuickFields}
-                                  >
-                                    Crear campos técnicos rápidos
-                                  </Button>
-                                  <Button
-                                    htmlType="button"
-                                    icon={<FileTextOutlined />}
-                                    onClick={
-                                      generateTechnicalDescriptionFromCurrentValues
-                                    }
-                                  >
-                                    Crear descripción técnica
-                                  </Button>
-                                </Space>
-                              </Space>
-                            </Card>
-
-                            <Row gutter={[16, 16]}>
-                              {dynamicProductFields.length ? (
-                                dynamicProductFields.map(field => (
-                                  <Col
-                                    xs={24}
-                                    md={field.type === 'textarea' ? 24 : 12}
-                                    key={field.name}
-                                  >
-                                    <Space
-                                      direction="vertical"
-                                      size={4}
-                                      style={{ width: '100%' }}
-                                    >
-                                      <DynamicProductField field={field} />
-                                      <Space size={6} wrap>
-                                        {field.required && (
-                                          <Tag
-                                            color="red"
-                                            style={{ borderRadius: 999 }}
-                                          >
-                                            Obligatorio
-                                          </Tag>
-                                        )}
-                                        {field.source && (
-                                          <Tag style={{ borderRadius: 999 }}>
-                                            {field.source}
-                                          </Tag>
-                                        )}
-                                        <Button
-                                          htmlType="button"
-                                          size="small"
-                                          type="link"
-                                          danger
-                                          onClick={() =>
-                                            handleRemoveDynamicProductField(
-                                              field.name,
-                                            )
-                                          }
-                                        >
-                                          Quitar
-                                        </Button>
-                                      </Space>
-                                    </Space>
-                                  </Col>
-                                ))
-                              ) : (
-                                <Col span={24}>
-                                  <Empty
-                                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                    description="No hay campos en la ficha técnica. Podés generarla con IA o agregar campos manualmente."
-                                  />
-                                </Col>
-                              )}
-                            </Row>
-
-                            <Divider orientation="left" plain>
-                              Agregar campo propio
-                            </Divider>
-
-                            <Row gutter={[12, 12]} align="bottom">
-                              <Col xs={24} md={9}>
-                                <Text strong>Nombre del campo</Text>
-                                <Input
-                                  value={customFieldName}
-                                  onChange={event =>
-                                    setCustomFieldName(event.target.value)
-                                  }
-                                  onPressEnter={handleAddDynamicProductField}
-                                  placeholder="Ej: Potencia, Material, Capacidad"
-                                  style={{ marginTop: 8 }}
-                                />
-                              </Col>
-                              <Col xs={24} md={6}>
-                                <Text strong>Tipo</Text>
-                                <Select
-                                  value={customFieldType}
-                                  onChange={setCustomFieldType}
-                                  options={DYNAMIC_FIELD_TYPES}
-                                  style={{ width: '100%', marginTop: 8 }}
-                                />
-                              </Col>
-                              <Col xs={12} md={5}>
-                                <Text strong>Obligatorio</Text>
-                                <div style={{ marginTop: 8 }}>
-                                  <Switch
-                                    checked={customFieldRequired}
-                                    onChange={setCustomFieldRequired}
-                                    checkedChildren="Sí"
-                                    unCheckedChildren="No"
-                                  />
-                                </div>
-                              </Col>
-                              <Col xs={12} md={4}>
-                                <Button
-                                  htmlType="button"
-                                  block
-                                  type="primary"
-                                  icon={<PlusOutlined />}
-                                  onClick={handleAddDynamicProductField}
-                                >
-                                  Agregar
-                                </Button>
-                              </Col>
-                            </Row>
-                          </>
-                        )}
-                      </Card>
-
-                      <Card
-                        id={SECTION_IDS.variantes}
-                        title={
-                          <Space size={10}>
-                            <span className="add-product-step-badge">4</span>
-                            <ClusterOutlined
-                              style={{ color: token.colorPrimary }}
-                            />
-                            <span className="add-product-card-title">
-                              Opciones vendibles del producto
-                            </span>
-                            {dynamicAttributes.length > 0 && (
-                              <Tag
-                                color="success"
-                                style={{ borderRadius: 999 }}
-                              >
-                                {dynamicAttributes.length} atributos detectados
-                              </Tag>
-                            )}
-                            {!hasVariants && (
-                              <Tag
-                                color="default"
-                                style={{ borderRadius: 999 }}
-                              >
-                                Opcional
-                              </Tag>
-                            )}
-                          </Space>
-                        }
-                        extra={
-                          <Switch
-                            checked={hasVariants}
-                            onChange={checked => {
-                              setHasVariants(checked)
-                              if (!checked) {
-                                setVariants([])
-                                setSelectedAttributes({})
-                              }
-                            }}
-                            checkedChildren="SÍ"
-                            unCheckedChildren="NO"
-                          />
-                        }
-                        style={{
-                          marginBottom: 24,
-                          borderRadius: 20,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-                        }}
-                        styles={{ body: { padding: 24 } }}
+                      <Button
+                        htmlType="button"
+                        block
+                        type="primary"
+                        ghost
+                        icon={<AppstoreOutlined />}
+                        onClick={generateSeoPositioningFromCurrentValues}
                       >
-                        {hasVariants ? (
-                          <>
-                            <Alert
-                              message={
-                                catalogTemplate
-                                  ? `Plantilla de "${catalogTemplate.name}" aplicada. Elegí los valores disponibles para este producto.`
-                                  : 'Usá variantes solo cuando el cliente pueda elegir opciones vendibles como color, medida, presentación, capacidad o modelo.'
-                              }
-                              description={
-                                loadingCatalogTemplate
-                                  ? 'Consultando la configuración de la subcategoría...'
-                                  : catalogTemplate
-                                    ? 'Los atributos pertenecen a la subcategoría; precio, stock y SKU siguen siendo propios de cada producto.'
-                                    : undefined
-                              }
-                              type="info"
-                              showIcon
-                              style={{ marginBottom: 20, borderRadius: 14 }}
-                            />
+                        Crear posicionamiento SEO
+                      </Button>
 
-                            <div
-                              style={{
-                                marginBottom: 20,
-                                padding: 16,
-                                borderRadius: 16,
-                                background: token.colorFillAlter,
-                                border: `1px solid ${token.colorBorderSecondary}`,
-                              }}
-                            >
-                              <Row gutter={[12, 12]} align="middle">
-                                <Col xs={24} lg={15}>
-                                  <Text strong>
-                                    Creación rápida de variantes
-                                  </Text>
-                                  <Text
-                                    type="secondary"
-                                    style={{ display: 'block', marginTop: 4 }}
-                                  >
-                                    Pegá opciones en una línea y generá
-                                    combinaciones sin cargar campo por campo.
-                                  </Text>
-                                  <Space
-                                    wrap
-                                    size={[8, 8]}
-                                    style={{ marginTop: 10 }}
-                                  >
-                                    {QUICK_VARIANT_PRESETS.map(preset => (
-                                      <Button
-                                        htmlType="button"
-                                        key={preset.key}
-                                        size="small"
-                                        onClick={() =>
-                                          applyVariantPreset(preset)
-                                        }
-                                        style={{ borderRadius: 999 }}
-                                      >
-                                        {preset.label} · {preset.helper}
-                                      </Button>
-                                    ))}
-                                  </Space>
+                      <Divider orientation="left" plain>
+                        Posicionamiento SEO
+                      </Divider>
 
-                                  <Input.TextArea
-                                    value={quickVariantText}
-                                    onChange={event =>
-                                      setQuickVariantText(event.target.value)
-                                    }
-                                    rows={2}
-                                    placeholder="Ej: Color: Negro, Blanco | Medida: 500ml, 1L | Presentación: Unidad, Pack"
-                                    style={{ marginTop: 10 }}
-                                  />
-                                </Col>
-                                <Col xs={24} lg={9}>
-                                  <Space
-                                    direction="vertical"
-                                    size={10}
-                                    style={{ width: '100%' }}
-                                  >
-                                    <Button
-                                      htmlType="button"
-                                      block
-                                      type="primary"
-                                      icon={<ThunderboltOutlined />}
-                                      onClick={applyQuickVariantsFromText}
-                                    >
-                                      Crear variantes rápidas
-                                    </Button>
-                                    <Button
-                                      htmlType="button"
-                                      block
-                                      icon={<ReloadOutlined />}
-                                      onClick={generateVariantsFromAttributes}
-                                      disabled={!canGenerateVariants}
-                                    >
-                                      Regenerar combinaciones actuales
-                                    </Button>
-                                    {normalizedAiDraft?.hasExplicitVariants && (
-                                      <Button
-                                        htmlType="button"
-                                        block
-                                        icon={<RobotOutlined />}
-                                        onClick={applyAiVariants}
-                                      >
-                                        Usar variantes detectadas por IA
-                                      </Button>
-                                    )}
-                                  </Space>
-                                </Col>
-                              </Row>
-                            </div>
+                      <ProductField
+                        name="seoFocusKeyword"
+                        label="Keyword principal"
+                      >
+                        <Input placeholder="Ej: Moto Morini X-Cape 700" />
+                      </ProductField>
 
-                            <div style={{ marginBottom: 20 }}>
-                              <Row gutter={[12, 12]} align="bottom">
-                                <Col xs={24} md={12}>
-                                  <Text strong>1. Crear atributo</Text>
-                                  <Input
-                                    value={newAttributeName}
-                                    onChange={event =>
-                                      setNewAttributeName(event.target.value)
-                                    }
-                                    onPressEnter={handleAddCustomAttribute}
-                                    placeholder="Ej: Color, Talle, Presentación"
-                                    style={{ marginTop: 8 }}
-                                  />
-                                </Col>
-                                <Col xs={18} md={8}>
-                                  <Text strong>Tipo</Text>
-                                  <Select
-                                    value={newAttributeType}
-                                    onChange={setNewAttributeType}
-                                    style={{ width: '100%', marginTop: 8 }}
-                                    options={[
-                                      {
-                                        value: 'select',
-                                        label: 'Lista de opciones',
-                                      },
-                                      { value: 'color', label: 'Color' },
-                                      { value: 'text', label: 'Texto' },
-                                    ]}
-                                  />
-                                </Col>
-                                <Col xs={24} md={4}>
-                                  <Button
-                                    htmlType="button"
-                                    block
-                                    type="primary"
-                                    onClick={handleAddCustomAttribute}
-                                    icon={<PlusOutlined />}
-                                    aria-label="Agregar atributo"
-                                  >
-                                    Agregar
-                                  </Button>
-                                </Col>
-                              </Row>
-                            </div>
+                      <ProductField
+                        name="seoSearchIntent"
+                        label="Intención de búsqueda"
+                        initialValue="commercial"
+                      >
+                        <Select options={SEO_POSITIONING_INTENT_OPTIONS} />
+                      </ProductField>
 
-                            <Divider orientation="left" plain>
-                              2. Definir valores
-                            </Divider>
+                      <ProductField
+                        name="seoPositioning"
+                        label="Posicionamiento SEO"
+                      >
+                        <Input.TextArea
+                          rows={4}
+                          maxLength={900}
+                          showCount
+                          placeholder="Definí cómo debe posicionarse este producto en buscadores, qué intención resuelve y qué lo diferencia."
+                        />
+                      </ProductField>
 
-                            {dynamicAttributes.length > 0 ? (
-                              <Space
-                                direction="vertical"
-                                size={12}
-                                style={{ width: '100%' }}
-                              >
-                                {dynamicAttributes.map((attr, index) => (
-                                  <div
-                                    key={attr.name}
-                                    style={{
-                                      padding: 16,
-                                      border: `1px solid ${token.colorBorderSecondary}`,
-                                      borderRadius: 8,
-                                      background: token.colorBgContainer,
-                                    }}
-                                  >
-                                    <Row gutter={[12, 12]} align="middle">
-                                      <Col xs={24} md={7}>
-                                        <Space>
-                                          <Badge
-                                            count={index + 1}
-                                            color={token.colorPrimary}
-                                          />
-                                          <div>
-                                            <Text strong>{attr.label}</Text>
-                                            <br />
-                                            <Text
-                                              type="secondary"
-                                              style={{ fontSize: 12 }}
-                                            >
-                                              Atributo
-                                            </Text>
-                                          </div>
-                                        </Space>
-                                      </Col>
-                                      <Col xs={20} md={15}>
-                                        <Select
-                                          mode="tags"
-                                          placeholder={`Valores para ${attr.label}, separados por coma`}
-                                          value={
-                                            selectedAttributes[attr.name] || []
-                                          }
-                                          onChange={values =>
-                                            handleAttributeValuesChange(
-                                              attr.name,
-                                              values,
-                                            )
-                                          }
-                                          tokenSeparators={[',']}
-                                          allowClear
-                                          style={{ width: '100%' }}
-                                          options={safeArray(attr.values).map(
-                                            value => ({
-                                              value,
-                                              label: value,
-                                            }),
-                                          )}
-                                        />
-                                      </Col>
-                                      <Col
-                                        xs={4}
-                                        md={2}
-                                        style={{ textAlign: 'right' }}
-                                      >
-                                        <Button
-                                          htmlType="button"
-                                          type="text"
-                                          danger
-                                          icon={<DeleteOutlined />}
-                                          onClick={() =>
-                                            handleRemoveVariantAttribute(
-                                              attr.name,
-                                            )
-                                          }
-                                          aria-label={`Eliminar atributo ${attr.label}`}
-                                        />
-                                      </Col>
-                                    </Row>
-                                  </div>
-                                ))}
-                              </Space>
-                            ) : (
-                              <Empty
-                                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description="Todavía no hay opciones vendibles. Creá una opción solo si el cliente debe elegir entre alternativas."
-                              />
-                            )}
+                      <ProductField
+                        name="seoTargetAudience"
+                        label="Audiencia objetivo"
+                      >
+                        <Input placeholder="Ej: usuarios que buscan una motocicleta adventure para ruta y uso mixto" />
+                      </ProductField>
 
-                            <div
-                              style={{
-                                marginTop: 18,
-                                padding: 16,
-                                borderRadius: 8,
-                                background: token.colorFillAlter,
-                                border: `1px solid ${token.colorBorderSecondary}`,
-                              }}
-                            >
-                              <Row
-                                gutter={[12, 12]}
-                                align="middle"
-                                justify="space-between"
-                              >
-                                <Col flex="auto">
-                                  <Text strong>3. Generar variantes</Text>
-                                  <br />
-                                  <Text type="secondary">
-                                    {variantCombinationCount > 0
-                                      ? `${configuredVariantAttributes.length} atributos producirán ${variantCombinationCount} variantes individuales.`
-                                      : 'Agregá uno o más valores para calcular las combinaciones.'}
-                                  </Text>
-                                </Col>
-                                <Col>
-                                  <Space wrap>
-                                    <Button
-                                      htmlType="button"
-                                      onClick={handleSaveCatalogTemplate}
-                                      icon={<SaveOutlined />}
-                                      loading={savingCatalogTemplate}
-                                      disabled={dynamicAttributes.length === 0}
-                                    >
-                                      Guardar plantilla
-                                    </Button>
-                                    <Button
-                                      htmlType="button"
-                                      type="primary"
-                                      onClick={generateVariantsFromAttributes}
-                                      icon={<ReloadOutlined />}
-                                      disabled={!canGenerateVariants}
-                                    >
-                                      Generar {variantCombinationCount || 0}{' '}
-                                      variantes
-                                    </Button>
-                                  </Space>
-                                </Col>
-                              </Row>
-                              {variantCombinationCount >
-                                MAX_GENERATED_VARIANTS && (
-                                <Alert
-                                  type="error"
-                                  showIcon
-                                  style={{ marginTop: 12 }}
-                                  message={`Reducí los valores: el máximo es ${MAX_GENERATED_VARIANTS} variantes.`}
-                                />
-                              )}
-                            </div>
+                      <ProductField
+                        name="seoContentAngle"
+                        label="Enfoque de contenido"
+                      >
+                        <Input.TextArea
+                          rows={2}
+                          maxLength={420}
+                          showCount
+                          placeholder="Qué destacar en la descripción, fichas, contenido y FAQs."
+                        />
+                      </ProductField>
 
-                            {variants.length > 0 && (
-                              <>
-                                <Divider orientation="left">
-                                  <Space>
-                                    <AppstoreOutlined />
-                                    <span>
-                                      {variants.length} variantes configuradas
-                                    </span>
-                                  </Space>
-                                </Divider>
+                      <ProductField name="seoFaq" label="Preguntas frecuentes SEO">
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[',']}
+                          placeholder="Ej: ¿Qué motor tiene?, ¿Para qué uso sirve?, ¿Qué revisar antes de comprar?"
+                        />
+                      </ProductField>
 
-                                <div
-                                  style={{
-                                    marginBottom: 16,
-                                    padding: 14,
-                                    borderRadius: 16,
-                                    background: token.colorFillAlter,
-                                    border: `1px solid ${token.colorBorderSecondary}`,
-                                  }}
-                                >
-                                  <Row gutter={[12, 12]} align="middle">
-                                    <Col xs={24} md={8}>
-                                      <Text strong>Aplicar precio a todas</Text>
-                                      <InputNumber
-                                        value={bulkVariantPrice}
-                                        onChange={setBulkVariantPrice}
-                                        min={0}
-                                        precision={2}
-                                        prefix="$"
-                                        placeholder="Precio común"
-                                        style={{ width: '100%', marginTop: 8 }}
-                                      />
-                                    </Col>
-                                    <Col xs={24} md={8}>
-                                      <Text strong>Aplicar stock a todas</Text>
-                                      <InputNumber
-                                        value={bulkVariantStock}
-                                        onChange={setBulkVariantStock}
-                                        min={0}
-                                        precision={0}
-                                        placeholder="Stock común"
-                                        style={{ width: '100%', marginTop: 8 }}
-                                      />
-                                    </Col>
-                                    <Col xs={24} md={8}>
-                                      <Button
-                                        htmlType="button"
-                                        block
-                                        icon={<CheckOutlined />}
-                                        onClick={applyBulkVariantValues}
-                                        style={{ marginTop: 28 }}
-                                      >
-                                        Aplicar a variantes
-                                      </Button>
-                                    </Col>
-                                  </Row>
-                                </div>
+                      <ProductField
+                        name="seoContentPillars"
+                        label="Pilares de contenido"
+                      >
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[',']}
+                          placeholder="marca, modelo, categoría, material, uso, beneficio"
+                        />
+                      </ProductField>
 
-                                {(() => {
-                                  const renderVariantLabel = record => (
-                                    <Space direction="vertical" size={6}>
-                                      <Space wrap size={[4, 6]}>
-                                        {Object.entries(record.combinacion).map(
-                                          ([attribute, value]) => (
-                                            <Tag
-                                              key={`${record.key}-${attribute}`}
-                                              color="blue"
-                                              style={{
-                                                margin: 0,
-                                                borderRadius: 4,
-                                              }}
-                                            >
-                                              {dynamicAttributes.find(
-                                                item => item.name === attribute,
-                                              )?.label || attribute}
-                                              : {value}
-                                            </Tag>
-                                          ),
-                                        )}
-                                      </Space>
-                                      <Space size={6} wrap>
-                                        {record.uiStatus === 'new' && (
-                                          <Tag
-                                            color="success"
-                                            style={{ borderRadius: 999 }}
-                                          >
-                                            Nueva
-                                          </Tag>
-                                        )}
-                                        {record.isActive === false && (
-                                          <Tag
-                                            color="default"
-                                            style={{ borderRadius: 999 }}
-                                          >
-                                            Inactiva
-                                          </Tag>
-                                        )}
-                                      </Space>
-                                    </Space>
-                                  )
+                      <Divider orientation="left" plain>
+                        SEO básico
+                      </Divider>
 
-                                  const renderVariantPrice = record => (
-                                    <InputNumber
-                                      prefix="$"
-                                      style={{ width: '100%' }}
-                                      min={0}
-                                      value={record.price}
-                                      aria-label={`Precio de ${record.nombre || 'la variante'}`}
-                                      onChange={val => {
-                                        setVariants(prev =>
-                                          prev.map(variant =>
-                                            variant.key === record.key
-                                              ? {
-                                                  ...variant,
-                                                  price: Number(val || 0),
-                                                }
-                                              : variant,
-                                          ),
-                                        )
-                                      }}
-                                    />
-                                  )
+                      <ProductField name="slug" label="Slug URL">
+                        <Input placeholder="nombre-producto-claro" />
+                      </ProductField>
 
-                                  const renderVariantStock = record => (
-                                    <InputNumber
-                                      min={0}
-                                      style={{ width: '100%' }}
-                                      value={record.stock}
-                                      aria-label={`Stock de ${record.nombre || 'la variante'}`}
-                                      onChange={val => {
-                                        setVariants(prev =>
-                                          prev.map(variant =>
-                                            variant.key === record.key
-                                              ? {
-                                                  ...variant,
-                                                  stock: Number(val || 0),
-                                                }
-                                              : variant,
-                                          ),
-                                        )
-                                      }}
-                                    />
-                                  )
+                      <ProductField
+                        name="shortDescription"
+                        label="Descripción corta"
+                      >
+                        <Input.TextArea
+                          rows={2}
+                          maxLength={260}
+                          showCount
+                          placeholder="Resumen comercial breve para cards, SEO y vistas rápidas."
+                        />
+                      </ProductField>
 
-                                  const renderVariantSku = record => (
-                                    <Input
-                                      placeholder="Ej: FOX-BOTA-42"
-                                      value={record.sku}
-                                      aria-label={`SKU de ${record.nombre || 'la variante'}`}
-                                      onChange={e => {
-                                        setVariants(prev =>
-                                          prev.map(variant =>
-                                            variant.key === record.key
-                                              ? {
-                                                  ...variant,
-                                                  sku: e.target.value,
-                                                }
-                                              : variant,
-                                          ),
-                                        )
-                                      }}
-                                    />
-                                  )
+                      <ProductField name="metaTitle" label="Meta title">
+                        <Input
+                          maxLength={70}
+                          showCount
+                          placeholder="Título SEO"
+                        />
+                      </ProductField>
 
-                                  const renderVariantImageSelector = record => (
-                                    <VariantImageSelector
-                                      variant={record}
-                                      localImages={localImages}
-                                      onAssign={handleAssignVariantImage}
-                                    />
-                                  )
+                      <ProductField
+                        name="metaDescription"
+                        label="Meta description"
+                      >
+                        <Input.TextArea
+                          rows={2}
+                          maxLength={160}
+                          showCount
+                          placeholder="Descripción SEO para buscadores."
+                        />
+                      </ProductField>
 
-                                  const renderVariantPreview = record => {
-                                    const selectedLocal = localImages.find(
-                                      img => img.uid === record.imageSourceUid,
-                                    )
+                      <ProductField name="seoKeywords" label="Keywords">
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[',']}
+                          placeholder="marca, categoría, material, uso"
+                        />
+                      </ProductField>
+                    </Space>
+                  </Card>
 
-                                    return selectedLocal?.preview ? (
-                                      <img
-                                        src={selectedLocal.preview}
-                                        alt={`Vista previa de ${record.nombre || 'la variante'}`}
-                                        style={{
-                                          width: 64,
-                                          height: 64,
-                                          objectFit: 'cover',
-                                          borderRadius: 14,
-                                          border: `1px solid ${token.colorBorderSecondary}`,
-                                          boxShadow:
-                                            '0 8px 18px rgba(15,23,42,.08)',
-                                        }}
-                                      />
-                                    ) : (
-                                      <Tag style={{ borderRadius: 999 }}>
-                                        Sin imagen
-                                      </Tag>
-                                    )
-                                  }
+                  <Card
+                    title={
+                      <Space size={10}>
+                        <ShoppingOutlined
+                          style={{ color: token.colorPrimary }}
+                        />
+                        <span className="add-product-card-title">
+                          Logística, garantía y origen
+                        </span>
+                        <Tag color="default" style={{ borderRadius: 999 }}>
+                          Opcional
+                        </Tag>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    styles={{ body: { padding: 24 } }}
+                  >
+                    <Text
+                      type="secondary"
+                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
+                    >
+                      Ayuda a calcular envío y a comunicar garantía y origen —
+                      podés completarlo después.
+                    </Text>
 
-                                  const renderVariantActive = record => (
-                                    <Switch
-                                      checked={record.isActive !== false}
-                                      aria-label={`Activar o desactivar ${record.nombre || 'la variante'}`}
-                                      onChange={checked => {
-                                        setVariants(prev =>
-                                          prev.map(variant =>
-                                            variant.key === record.key
-                                              ? {
-                                                  ...variant,
-                                                  isActive: checked,
-                                                }
-                                              : variant,
-                                          ),
-                                        )
-                                      }}
-                                      size="small"
-                                    />
-                                  )
-
-                                  const renderVariantDelete = record => (
-                                    <Button
-                                      htmlType="button"
-                                      type="text"
-                                      danger
-                                      icon={<DeleteOutlined />}
-                                      onClick={() => {
-                                        setVariants(prev =>
-                                          prev.filter(
-                                            variant =>
-                                              variant.key !== record.key,
-                                          ),
-                                        )
-                                      }}
-                                      size="small"
-                                      aria-label={`Eliminar variante ${record.nombre || record.key}`}
-                                    />
-                                  )
-
-                                  return (
-                                    <>
-                                      <Table
-                                        className="variant-table-desktop"
-                                        dataSource={variants}
-                                        pagination={false}
-                                        size="middle"
-                                        scroll={{ x: 1280 }}
-                                        rowKey="key"
-                                        bordered={false}
-                                        style={{
-                                          borderRadius: 16,
-                                          overflow: 'hidden',
-                                        }}
-                                        columns={[
-                                          {
-                                            title: 'Variante',
-                                            dataIndex: 'nombre',
-                                            key: 'nombre',
-                                            width: 220,
-                                            fixed: 'left',
-                                            render: (_, record) =>
-                                              renderVariantLabel(record),
-                                          },
-                                          {
-                                            title: 'Precio',
-                                            dataIndex: 'price',
-                                            key: 'price',
-                                            width: 150,
-                                            render: (_, record) =>
-                                              renderVariantPrice(record),
-                                          },
-                                          {
-                                            title: 'Stock',
-                                            dataIndex: 'stock',
-                                            key: 'stock',
-                                            width: 120,
-                                            render: (_, record) =>
-                                              renderVariantStock(record),
-                                          },
-                                          {
-                                            title: 'SKU opcional',
-                                            dataIndex: 'sku',
-                                            key: 'sku',
-                                            width: 180,
-                                            render: (_, record) =>
-                                              renderVariantSku(record),
-                                          },
-                                          {
-                                            title: 'Imagen de variante',
-                                            key: 'image',
-                                            width: 260,
-                                            render: (_, record) =>
-                                              renderVariantImageSelector(
-                                                record,
-                                              ),
-                                          },
-                                          {
-                                            title: 'Preview',
-                                            key: 'preview',
-                                            width: 110,
-                                            render: (_, record) =>
-                                              renderVariantPreview(record),
-                                          },
-                                          {
-                                            title: 'Activo',
-                                            key: 'active',
-                                            width: 90,
-                                            align: 'center',
-                                            render: (_, record) =>
-                                              renderVariantActive(record),
-                                          },
-                                          {
-                                            title: '',
-                                            key: 'delete',
-                                            width: 60,
-                                            render: (_, record) =>
-                                              renderVariantDelete(record),
-                                          },
-                                        ]}
-                                      />
-
-                                      <Space
-                                        direction="vertical"
-                                        size={12}
-                                        className="variant-cards-mobile"
-                                        style={{ width: '100%' }}
-                                      >
-                                        {variants.map(record => (
-                                          <Card
-                                            key={record.key}
-                                            size="small"
-                                            style={{ borderRadius: 14 }}
-                                            styles={{ body: { padding: 14 } }}
-                                          >
-                                            <Space
-                                              direction="vertical"
-                                              size={10}
-                                              style={{ width: '100%' }}
-                                            >
-                                              <Row
-                                                justify="space-between"
-                                                align="top"
-                                                wrap={false}
-                                              >
-                                                <Col flex="auto">
-                                                  {renderVariantLabel(record)}
-                                                </Col>
-                                                <Col flex="none">
-                                                  {renderVariantDelete(record)}
-                                                </Col>
-                                              </Row>
-
-                                              <Row gutter={[10, 10]}>
-                                                <Col xs={12}>
-                                                  <Text
-                                                    type="secondary"
-                                                    style={{
-                                                      fontSize: 12,
-                                                      display: 'block',
-                                                      marginBottom: 4,
-                                                    }}
-                                                  >
-                                                    Precio
-                                                  </Text>
-                                                  {renderVariantPrice(record)}
-                                                </Col>
-                                                <Col xs={12}>
-                                                  <Text
-                                                    type="secondary"
-                                                    style={{
-                                                      fontSize: 12,
-                                                      display: 'block',
-                                                      marginBottom: 4,
-                                                    }}
-                                                  >
-                                                    Stock
-                                                  </Text>
-                                                  {renderVariantStock(record)}
-                                                </Col>
-                                                <Col xs={24}>
-                                                  <Text
-                                                    type="secondary"
-                                                    style={{
-                                                      fontSize: 12,
-                                                      display: 'block',
-                                                      marginBottom: 4,
-                                                    }}
-                                                  >
-                                                    SKU opcional
-                                                  </Text>
-                                                  {renderVariantSku(record)}
-                                                </Col>
-                                              </Row>
-
-                                              <Row
-                                                justify="space-between"
-                                                align="middle"
-                                                gutter={[10, 10]}
-                                              >
-                                                <Col flex="auto">
-                                                  {renderVariantImageSelector(
-                                                    record,
-                                                  )}
-                                                </Col>
-                                                <Col flex="none">
-                                                  {renderVariantPreview(record)}
-                                                </Col>
-                                              </Row>
-
-                                              <Row
-                                                justify="space-between"
-                                                align="middle"
-                                              >
-                                                <Col>
-                                                  <Text
-                                                    style={{ fontSize: 13 }}
-                                                  >
-                                                    Variante activa
-                                                  </Text>
-                                                </Col>
-                                                <Col>
-                                                  {renderVariantActive(record)}
-                                                </Col>
-                                              </Row>
-                                            </Space>
-                                          </Card>
-                                        ))}
-                                      </Space>
-                                    </>
-                                  )
-                                })()}
-
-                                <Alert
-                                  type="warning"
-                                  showIcon
-                                  style={{ marginTop: 18, borderRadius: 14 }}
-                                  message="Si una variante no tiene imagen asignada, se mostrará la imagen general del producto."
-                                />
-                              </>
-                            )}
-                          </>
-                        ) : (
-                          <div
-                            style={{
-                              padding: 28,
-                              textAlign: 'center',
-                              borderRadius: 16,
-                              background: token.colorFillAlter,
-                              border: `1px dashed ${token.colorBorder}`,
-                            }}
-                          >
-                            <Space
-                              direction="vertical"
-                              size={12}
-                              align="center"
-                            >
-                              <Text type="secondary">
-                                Este producto no tiene opciones vendibles.
-                                Activá variantes solo si el cliente debe elegir
-                                una alternativa específica antes de comprar.
-                              </Text>
-                              <Space wrap>
-                                <Button
-                                  htmlType="button"
-                                  type="primary"
-                                  icon={<PlusOutlined />}
-                                  onClick={() => setHasVariants(true)}
-                                >
-                                  Crear variantes
-                                </Button>
-                                {dynamicAttributes.length > 0 && (
-                                  <Button
-                                    htmlType="button"
-                                    icon={<ReloadOutlined />}
-                                    onClick={() => setHasVariants(true)}
-                                  >
-                                    Usar plantilla detectada
-                                  </Button>
-                                )}
-                                {normalizedAiDraft?.hasExplicitVariants && (
-                                  <Button
-                                    htmlType="button"
-                                    icon={<RobotOutlined />}
-                                    onClick={applyAiVariants}
-                                  >
-                                    Usar variantes de IA
-                                  </Button>
-                                )}
-                              </Space>
-                            </Space>
-                          </div>
-                        )}
-                      </Card>
-                    </Col>
-
-                    <Col xs={24} xl={9}>
-                      <div className="add-product-side-panel">
-                        <Card
-                          title={
-                            <Space size={10}>
-                              <CheckCircleOutlined
-                                style={{ color: token.colorPrimary }}
-                              />
-                              <span>Estado de carga</span>
-                            </Space>
-                          }
-                          style={{
-                            marginBottom: 24,
-                            borderRadius: 20,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                            boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-                          }}
-                          styles={{ body: { padding: 20 } }}
-                        >
-                          <Space
-                            direction="vertical"
-                            size={14}
+                    <Row gutter={[12, 12]}>
+                      <Col xs={24} sm={12}>
+                        <ProductField name="weightKg" label="Peso kg">
+                          <InputNumber
+                            min={0}
+                            precision={3}
                             style={{ width: '100%' }}
-                          >
-                            <div
-                              style={{
-                                padding: 16,
-                                borderRadius: 16,
-                                background: productReadiness.isReady
-                                  ? token.colorSuccessBg
-                                  : token.colorFillAlter,
-                                border: `1px solid ${
-                                  productReadiness.isReady
-                                    ? token.colorSuccessBorder
-                                    : token.colorBorderSecondary
-                                }`,
-                              }}
-                            >
-                              <Space
-                                align="center"
-                                style={{
-                                  width: '100%',
-                                  justifyContent: 'space-between',
-                                }}
-                              >
-                                <div>
-                                  <Text strong>
-                                    {productReadiness.isReady
-                                      ? 'Listo para publicar'
-                                      : 'Completá lo esencial'}
-                                  </Text>
-                                  <br />
-                                  <Text
-                                    type="secondary"
-                                    style={{ fontSize: 12 }}
-                                  >
-                                    {productReadiness.doneRequired}/
-                                    {productReadiness.requiredChecks.length}{' '}
-                                    datos obligatorios
-                                  </Text>
-                                </div>
-                                <div
-                                  style={{
-                                    minWidth: 54,
-                                    height: 54,
-                                    borderRadius: 18,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontWeight: 900,
-                                    color: productReadiness.isReady
-                                      ? token.colorSuccess
-                                      : token.colorPrimary,
-                                    background: token.colorBgContainer,
-                                    border: `1px solid ${token.colorBorderSecondary}`,
-                                  }}
-                                >
-                                  {productReadiness.percent}%
-                                </div>
-                              </Space>
-                            </div>
-
-                            <Space wrap size={[6, 6]}>
-                              {productReadiness.checks.map(check => (
-                                <Tag
-                                  key={check.key}
-                                  color={
-                                    check.done
-                                      ? 'success'
-                                      : check.required
-                                        ? 'warning'
-                                        : 'default'
-                                  }
-                                  style={{
-                                    borderRadius: 999,
-                                    marginInlineEnd: 0,
-                                  }}
-                                >
-                                  {check.done ? '✓' : '•'} {check.label}
-                                </Tag>
-                              ))}
-                            </Space>
-
-                            <Alert
-                              type={
-                                productReadiness.isReady ? 'success' : 'info'
-                              }
-                              showIcon
-                              style={{ borderRadius: 14 }}
-                              message={
-                                productReadiness.isReady
-                                  ? 'Ya podés publicar o guardar como borrador.'
-                                  : `Faltan: ${missingRequiredLabels.join(', ')}`
-                              }
-                            />
-                          </Space>
-                        </Card>
-                        <Card
-                          id={SECTION_IDS.precio}
-                          title={
-                            <Space size={10}>
-                              <span className="add-product-step-badge">5</span>
-                              <DollarOutlined
-                                style={{ color: token.colorPrimary }}
-                              />
-                              <span className="add-product-card-title">
-                                Precio y disponibilidad
-                              </span>
-                              <Tag color="red" style={{ borderRadius: 999 }}>
-                                Requerido
-                              </Tag>
-                            </Space>
-                          }
-                          style={{
-                            marginBottom: 24,
-                            borderRadius: 20,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                            boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-                          }}
-                          styles={{ body: { padding: 24 } }}
+                            placeholder="0.500"
+                          />
+                        </ProductField>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <ProductField
+                          name="shippingType"
+                          label="Tipo de envío"
+                          initialValue="standard"
                         >
-                          <Text
-                            type="secondary"
-                            style={{
-                              display: 'block',
-                              marginBottom: 16,
-                              fontSize: 14,
-                            }}
-                          >
-                            Precio, condición y stock visibles en el catálogo —
-                            obligatorios para publicar.
-                          </Text>
-
-                          <Row gutter={[16, 16]}>
-                            <Col xs={24}>
-                              <ProductField
-                                name="precio"
-                                label={
-                                  hasVariants
-                                    ? 'Precio base de referencia'
-                                    : 'Precio'
-                                }
-                                rules={[
-                                  {
-                                    required: true,
-                                    message: 'El precio es obligatorio',
-                                  },
-                                ]}
-                              >
-                                <InputNumber
-                                  size="large"
-                                  style={{ width: '100%' }}
-                                  min={0}
-                                  precision={2}
-                                  prefix="$"
-                                  placeholder="0.00"
-                                  onChange={value => {
-                                    if (hasVariants && variants.length > 0) {
-                                      setVariants(prev =>
-                                        prev.map(variant => ({
-                                          ...variant,
-                                          price:
-                                            Number(variant.price || 0) === 0
-                                              ? Number(value || 0)
-                                              : variant.price,
-                                        })),
-                                      )
-                                    }
-                                  }}
-                                />
-                              </ProductField>
-                            </Col>
-
-                            {!hasVariants && (
-                              <Col xs={24}>
-                                <ProductField
-                                  name="cantidad"
-                                  label="Cantidad en stock"
-                                  rules={[
-                                    {
-                                      required: true,
-                                      message: 'La cantidad es obligatoria',
-                                    },
-                                  ]}
-                                >
-                                  <InputNumber
-                                    size="large"
-                                    style={{ width: '100%' }}
-                                    min={1}
-                                    placeholder="1"
-                                    prefix={
-                                      <NumberOutlined
-                                        style={{
-                                          color: token.colorTextSecondary,
-                                        }}
-                                      />
-                                    }
-                                  />
-                                </ProductField>
-                              </Col>
-                            )}
-
-                            <Col xs={24}>
-                              <ProductField
-                                name="condicion"
-                                label="Condición"
-                                rules={[
-                                  {
-                                    required: true,
-                                    message: 'La condición es obligatoria',
-                                  },
-                                ]}
-                              >
-                                <Select
-                                  size="large"
-                                  placeholder="Seleccioná la condición"
-                                >
-                                  <Select.Option value="nuevo">
-                                    <Tag
-                                      color="success"
-                                      style={{ borderRadius: 999 }}
-                                    >
-                                      Nuevo
-                                    </Tag>
-                                  </Select.Option>
-                                  <Select.Option value="usado">
-                                    <Tag
-                                      color="warning"
-                                      style={{ borderRadius: 999 }}
-                                    >
-                                      Usado
-                                    </Tag>
-                                  </Select.Option>
-                                  <Select.Option value="reacondicionado">
-                                    <Tag
-                                      color="processing"
-                                      style={{ borderRadius: 999 }}
-                                    >
-                                      Reacondicionado
-                                    </Tag>
-                                  </Select.Option>
-                                </Select>
-                              </ProductField>
-                            </Col>
-                          </Row>
-
-                          {hasVariants && (
-                            <Alert
-                              message="El stock y la imagen se gestionan por variante."
-                              type="info"
-                              showIcon
-                              style={{ marginTop: 8, borderRadius: 14 }}
-                            />
-                          )}
-                        </Card>
-
-                        <Card
-                          title={
-                            <Space size={10}>
-                              <FileTextOutlined
-                                style={{ color: token.colorPrimary }}
-                              />
-                              <span className="add-product-card-title">
-                                SEO y contenido comercial
-                              </span>
-                              <Tag
-                                color="default"
-                                style={{ borderRadius: 999 }}
-                              >
-                                Opcional
-                              </Tag>
-                            </Space>
-                          }
-                          style={{
-                            marginBottom: 24,
-                            borderRadius: 20,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                            boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-                          }}
-                          styles={{ body: { padding: 24 } }}
-                        >
-                          <Text
-                            type="secondary"
-                            style={{
-                              display: 'block',
-                              marginBottom: 16,
-                              fontSize: 14,
-                            }}
-                          >
-                            Mejora cómo se encuentra el producto en buscadores y
-                            recomendaciones internas.
-                          </Text>
-
-                          <Space
-                            direction="vertical"
-                            size={12}
+                          <Select options={SHIPPING_TYPE_OPTIONS} />
+                        </ProductField>
+                      </Col>
+                      <Col xs={8}>
+                        <ProductField name="packageLengthCm" label="Largo cm">
+                          <InputNumber
+                            min={0}
+                            precision={1}
                             style={{ width: '100%' }}
-                          >
-                            <Button
-                              htmlType="button"
-                              block
-                              icon={<ThunderboltOutlined />}
-                              onClick={generateSeoFromCurrentValues}
-                            >
-                              Generar SEO desde el producto
-                            </Button>
-
-                            <Button
-                              htmlType="button"
-                              block
-                              type="primary"
-                              ghost
-                              icon={<AppstoreOutlined />}
-                              onClick={generateSeoPositioningFromCurrentValues}
-                            >
-                              Crear posicionamiento SEO
-                            </Button>
-
-                            <Divider orientation="left" plain>
-                              Posicionamiento SEO
-                            </Divider>
-
-                            <ProductField
-                              name="seoFocusKeyword"
-                              label="Keyword principal"
-                            >
-                              <Input placeholder="Ej: Moto Morini X-Cape 700" />
-                            </ProductField>
-
-                            <ProductField
-                              name="seoSearchIntent"
-                              label="Intención de búsqueda"
-                              initialValue="commercial"
-                            >
-                              <Select
-                                options={SEO_POSITIONING_INTENT_OPTIONS}
-                              />
-                            </ProductField>
-
-                            <ProductField
-                              name="seoPositioning"
-                              label="Posicionamiento SEO"
-                            >
-                              <Input.TextArea
-                                rows={4}
-                                maxLength={900}
-                                showCount
-                                placeholder="Definí cómo debe posicionarse este producto en buscadores, qué intención resuelve y qué lo diferencia."
-                              />
-                            </ProductField>
-
-                            <ProductField
-                              name="seoTargetAudience"
-                              label="Audiencia objetivo"
-                            >
-                              <Input placeholder="Ej: usuarios que buscan una motocicleta adventure para ruta y uso mixto" />
-                            </ProductField>
-
-                            <ProductField
-                              name="seoContentAngle"
-                              label="Enfoque de contenido"
-                            >
-                              <Input.TextArea
-                                rows={2}
-                                maxLength={420}
-                                showCount
-                                placeholder="Qué destacar en la descripción, fichas, contenido y FAQs."
-                              />
-                            </ProductField>
-
-                            <ProductField
-                              name="seoFaq"
-                              label="Preguntas frecuentes SEO"
-                            >
-                              <Select
-                                width="100%"
-                                mode="tags"
-                                tokenSeparators={[',']}
-                                placeholder="Ej: ¿Qué motor tiene?, ¿Para qué uso sirve?, ¿Qué revisar antes de comprar?"
-                              />
-                            </ProductField>
-
-                            <ProductField
-                              name="seoContentPillars"
-                              label="Pilares de contenido"
-                            >
-                              <Select
-                                mode="tags"
-                                tokenSeparators={[',']}
-                                placeholder="marca, modelo, categoría, material, uso, beneficio"
-                              />
-                            </ProductField>
-
-                            <Divider orientation="left" plain>
-                              SEO básico
-                            </Divider>
-
-                            <ProductField name="slug" label="Slug URL">
-                              <Input placeholder="nombre-producto-claro" />
-                            </ProductField>
-
-                            <ProductField
-                              name="shortDescription"
-                              label="Descripción corta"
-                            >
-                              <Input.TextArea
-                                rows={2}
-                                maxLength={260}
-                                showCount
-                                placeholder="Resumen comercial breve para cards, SEO y vistas rápidas."
-                              />
-                            </ProductField>
-
-                            <ProductField name="metaTitle" label="Meta title">
-                              <Input
-                                maxLength={70}
-                                showCount
-                                placeholder="Título SEO"
-                              />
-                            </ProductField>
-
-                            <ProductField
-                              name="metaDescription"
-                              label="Meta description"
-                            >
-                              <Input.TextArea
-                                rows={2}
-                                maxLength={160}
-                                showCount
-                                placeholder="Descripción SEO para buscadores."
-                              />
-                            </ProductField>
-
-                            <ProductField name="seoKeywords" label="Keywords">
-                              <Select
-                                mode="tags"
-                                tokenSeparators={[',']}
-                                placeholder="marca, categoría, material, uso"
-                              />
-                            </ProductField>
-                          </Space>
-                        </Card>
-
-                        <Card
-                          title={
-                            <Space size={10}>
-                              <ShoppingOutlined
-                                style={{ color: token.colorPrimary }}
-                              />
-                              <span className="add-product-card-title">
-                                Logística, garantía y origen
-                              </span>
-                              <Tag
-                                color="default"
-                                style={{ borderRadius: 999 }}
-                              >
-                                Opcional
-                              </Tag>
-                            </Space>
-                          }
-                          style={{
-                            marginBottom: 24,
-                            borderRadius: 20,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                            boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-                          }}
-                          styles={{ body: { padding: 24 } }}
-                        >
-                          <Text
-                            type="secondary"
-                            style={{
-                              display: 'block',
-                              marginBottom: 16,
-                              fontSize: 14,
-                            }}
-                          >
-                            Ayuda a calcular envío y a comunicar garantía y
-                            origen — podés completarlo después.
-                          </Text>
-
-                          <Row gutter={[12, 12]}>
-                            <Col xs={24} sm={12}>
-                              <ProductField name="weightKg" label="Peso kg">
-                                <InputNumber
-                                  min={0}
-                                  precision={3}
-                                  style={{ width: '100%' }}
-                                  placeholder="0.500"
-                                />
-                              </ProductField>
-                            </Col>
-                            <Col xs={24} sm={12}>
-                              <ProductField
-                                name="shippingType"
-                                label="Tipo de envío"
-                                initialValue="standard"
-                              >
-                                <Select options={SHIPPING_TYPE_OPTIONS} />
-                              </ProductField>
-                            </Col>
-                            <Col xs={8}>
-                              <ProductField
-                                name="packageLengthCm"
-                                label="Largo cm"
-                              >
-                                <InputNumber
-                                  min={0}
-                                  precision={1}
-                                  style={{ width: '100%' }}
-                                />
-                              </ProductField>
-                            </Col>
-                            <Col xs={8}>
-                              <ProductField
-                                name="packageWidthCm"
-                                label="Ancho cm"
-                              >
-                                <InputNumber
-                                  min={0}
-                                  precision={1}
-                                  style={{ width: '100%' }}
-                                />
-                              </ProductField>
-                            </Col>
-                            <Col xs={8}>
-                              <ProductField
-                                name="packageHeightCm"
-                                label="Alto cm"
-                              >
-                                <InputNumber
-                                  min={0}
-                                  precision={1}
-                                  style={{ width: '100%' }}
-                                />
-                              </ProductField>
-                            </Col>
-                            <Col xs={24}>
-                              <ProductField name="warranty" label="Garantía">
-                                <Input placeholder="Ej: 6 meses por defecto de fabricación" />
-                              </ProductField>
-                            </Col>
-                            <Col xs={24}>
-                              <ProductField
-                                name="countryOfOrigin"
-                                label="País de origen"
-                              >
-                                <Input placeholder="Ej: Argentina, Brasil, China" />
-                              </ProductField>
-                            </Col>
-                          </Row>
-                        </Card>
-
-                        <Card
-                          title={
-                            <Space size={10}>
-                              <TagOutlined
-                                style={{ color: token.colorPrimary }}
-                              />
-                              <span>Tags y etiquetas</span>
-                            </Space>
-                          }
-                          style={{
-                            marginBottom: 24,
-                            borderRadius: 20,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                            boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
-                          }}
-                          styles={{ body: { padding: 24 } }}
-                        >
-                          <div style={{ marginBottom: 16 }}>
-                            {editableTags.map(tag => (
-                              <Tag
-                                key={tag}
-                                closable
-                                onClose={() => handleCloseTag(tag)}
-                                color="blue"
-                                style={{
-                                  padding: '5px 12px',
-                                  fontSize: 13,
-                                  margin: '0 8px 8px 0',
-                                  borderRadius: 999,
-                                }}
-                              >
-                                {tag}
-                              </Tag>
-                            ))}
-
-                            {inputVisible ? (
-                              <Input
-                                ref={inputRef}
-                                type="text"
-                                size="small"
-                                style={{ width: 140 }}
-                                value={inputTagValue}
-                                onChange={e => setInputTagValue(e.target.value)}
-                                onBlur={handleInputConfirm}
-                                onPressEnter={handleInputConfirm}
-                              />
-                            ) : (
-                              <Tag
-                                onClick={() => setInputVisible(true)}
-                                icon={<PlusOutlined />}
-                                style={{
-                                  padding: '5px 12px',
-                                  fontSize: 13,
-                                  cursor: 'pointer',
-                                  borderStyle: 'dashed',
-                                  borderRadius: 999,
-                                }}
-                              >
-                                Agregar tag
-                              </Tag>
-                            )}
-                          </div>
-
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            Los tags mejoran búsqueda, filtros y
-                            recomendaciones.
-                          </Text>
-                        </Card>
-
-                        <Card
-                          id={SECTION_IDS.publicar}
-                          className="add-product-publish-card"
-                          style={{
-                            borderRadius: 20,
-                            border: `1px solid ${token.colorBorderSecondary}`,
-                            boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
-                          }}
-                          styles={{ body: { padding: 20 } }}
-                        >
-                          <Space
-                            direction="vertical"
-                            size={14}
+                          />
+                        </ProductField>
+                      </Col>
+                      <Col xs={8}>
+                        <ProductField name="packageWidthCm" label="Ancho cm">
+                          <InputNumber
+                            min={0}
+                            precision={1}
                             style={{ width: '100%' }}
-                          >
-                            <Space size={10}>
-                              <span className="add-product-step-badge">6</span>
-                              <Text strong className="add-product-card-title">
-                                Publicar
-                              </Text>
-                            </Space>
+                          />
+                        </ProductField>
+                      </Col>
+                      <Col xs={8}>
+                        <ProductField name="packageHeightCm" label="Alto cm">
+                          <InputNumber
+                            min={0}
+                            precision={1}
+                            style={{ width: '100%' }}
+                          />
+                        </ProductField>
+                      </Col>
+                      <Col xs={24}>
+                        <ProductField name="warranty" label="Garantía">
+                          <Input placeholder="Ej: 6 meses por defecto de fabricación" />
+                        </ProductField>
+                      </Col>
+                      <Col xs={24}>
+                        <ProductField
+                          name="countryOfOrigin"
+                          label="País de origen"
+                        >
+                          <Input placeholder="Ej: Argentina, Brasil, China" />
+                        </ProductField>
+                      </Col>
+                    </Row>
+                  </Card>
 
-                            {isError && (
-                              <Alert
-                                type="error"
-                                message={
-                                  productMessage || 'Error guardando producto'
-                                }
-                                showIcon
-                                style={{ borderRadius: 14 }}
-                              />
-                            )}
+                  <Card
+                    title={
+                      <Space size={10}>
+                        <TagOutlined style={{ color: token.colorPrimary }} />
+                        <span>Tags y etiquetas</span>
+                      </Space>
+                    }
+                    style={{
+                      marginBottom: 24,
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.05)',
+                    }}
+                    styles={{ body: { padding: 24 } }}
+                  >
+                    <div style={{ marginBottom: 16 }}>
+                      {editableTags.map(tag => (
+                        <Tag
+                          key={tag}
+                          closable
+                          onClose={() => handleCloseTag(tag)}
+                          color="blue"
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: 13,
+                            margin: '0 8px 8px 0',
+                            borderRadius: 999,
+                          }}
+                        >
+                          {tag}
+                        </Tag>
+                      ))}
 
-                            {!productReadiness.isReady && (
-                              <Alert
-                                type="warning"
-                                showIcon
-                                message={`Faltan: ${missingRequiredLabels.join(', ')}`}
-                                style={{ borderRadius: 14 }}
-                              />
-                            )}
+                      {inputVisible ? (
+                        <Input
+                          ref={inputRef}
+                          type="text"
+                          size="small"
+                          style={{ width: 140 }}
+                          value={inputTagValue}
+                          onChange={e => setInputTagValue(e.target.value)}
+                          onBlur={handleInputConfirm}
+                          onPressEnter={handleInputConfirm}
+                        />
+                      ) : (
+                        <Tag
+                          onClick={() => setInputVisible(true)}
+                          icon={<PlusOutlined />}
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: 13,
+                            cursor: 'pointer',
+                            borderStyle: 'dashed',
+                            borderRadius: 999,
+                          }}
+                        >
+                          Agregar tag
+                        </Tag>
+                      )}
+                    </div>
 
-                            {submitErrors.length > 0 && (
-                              <Alert
-                                type="error"
-                                showIcon
-                                style={{ borderRadius: 14 }}
-                                message={
-                                  submitErrors.length === 1
-                                    ? 'No se pudo publicar: hay un problema para resolver'
-                                    : `No se pudo publicar: hay ${submitErrors.length} problemas para resolver`
-                                }
-                                description={
-                                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                    {submitErrors.map((err, idx) => (
-                                      <li key={idx}>
-                                        {err.section ? (
-                                          <a
-                                            href={`#${err.section}`}
-                                            onClick={event => {
-                                              event.preventDefault()
-                                              scrollToSection(err.section)
-                                            }}
-                                          >
-                                            {err.message}
-                                          </a>
-                                        ) : (
-                                          err.message
-                                        )}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                }
-                              />
-                            )}
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Los tags mejoran búsqueda, filtros y recomendaciones.
+                    </Text>
+                  </Card>
 
-                            <div
-                              style={{
-                                padding: 14,
-                                borderRadius: 14,
-                                background: token.colorFillAlter,
-                                border: `1px solid ${token.colorBorderSecondary}`,
-                              }}
-                            >
-                              <Space
-                                align="center"
-                                style={{
-                                  width: '100%',
-                                  justifyContent: 'space-between',
-                                }}
-                              >
-                                <div>
-                                  <Text strong>
-                                    {publishProduct
-                                      ? 'Publicar visible'
-                                      : 'Guardar borrador'}
-                                  </Text>
-                                  <br />
-                                  <Text
-                                    type="secondary"
-                                    style={{ fontSize: 12 }}
-                                  >
-                                    {publishProduct
-                                      ? 'El producto queda activo en el comercio al finalizar.'
-                                      : 'El producto queda oculto para revisión interna.'}
-                                  </Text>
-                                </div>
-                                <Switch
-                                  checked={publishProduct}
-                                  onChange={setPublishProduct}
-                                  checkedChildren="ON"
-                                  unCheckedChildren="OFF"
-                                />
-                              </Space>
-                            </div>
+                  <Card
+                    id={SECTION_IDS.publicar}
+                    className="add-product-publish-card"
+                    style={{
+                      borderRadius: 20,
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+                    }}
+                    styles={{ body: { padding: 20 } }}
+                  >
+                    <Space
+                      direction="vertical"
+                      size={14}
+                      style={{ width: '100%' }}
+                    >
+                      <Space size={10}>
+                        <span className="add-product-step-badge">6</span>
+                        <Text strong className="add-product-card-title">
+                          Publicar
+                        </Text>
+                      </Space>
 
-                            <Button
-                              htmlType="submit"
-                              type="primary"
-                              size="large"
-                              block
-                              loading={isLoading || savingProduct}
-                              icon={<CheckCircleOutlined />}
-                              style={{
-                                height: 52,
-                                fontSize: 16,
-                                fontWeight: 800,
-                                borderRadius: 14,
-                                boxShadow: `0 14px 28px ${token.colorPrimary}30`,
-                              }}
-                            >
-                              {isLoading || savingProduct
-                                ? 'Guardando...'
-                                : publishProduct
-                                  ? hasVariants
-                                    ? `Publicar con ${variants.length} variantes`
-                                    : 'Publicar producto'
-                                  : hasVariants
-                                    ? `Guardar borrador con ${variants.length} variantes`
-                                    : 'Guardar como borrador'}
-                            </Button>
+                      {isError && (
+                        <Alert
+                          type="error"
+                          message={productMessage || 'Error guardando producto'}
+                          showIcon
+                          style={{ borderRadius: 14 }}
+                        />
+                      )}
 
-                            <Text
-                              type="secondary"
-                              style={{
-                                fontSize: 12,
-                                textAlign: 'center',
-                                display: 'block',
-                              }}
-                            >
-                              Se validará tenant, imágenes, variantes y
-                              metadatos IA antes de publicar.
+                      {!productReadiness.isReady && (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={`Faltan: ${missingRequiredLabels.join(', ')}`}
+                          style={{ borderRadius: 14 }}
+                        />
+                      )}
+
+                      <div
+                        style={{
+                          padding: 14,
+                          borderRadius: 14,
+                          background: token.colorFillAlter,
+                          border: `1px solid ${token.colorBorderSecondary}`,
+                        }}
+                      >
+                        <Space
+                          align="center"
+                          style={{
+                            width: '100%',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <div>
+                            <Text strong>
+                              {publishProduct
+                                ? 'Publicar visible'
+                                : 'Guardar borrador'}
                             </Text>
-                          </Space>
-                        </Card>
+                            <br />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {publishProduct
+                                ? 'El producto queda activo en el comercio al finalizar.'
+                                : 'El producto queda oculto para revisión interna.'}
+                            </Text>
+                          </div>
+                          <Switch
+                            checked={publishProduct}
+                            onChange={setPublishProduct}
+                            checkedChildren="ON"
+                            unCheckedChildren="OFF"
+                          />
+                        </Space>
                       </div>
-                    </Col>
-                  </Row>
-                </Form>
-              </ProductFormMutationContext.Provider>
-            </ProductFormDirtyContext.Provider>
-          </Col>
-        </Row>
 
-        <style>{`
+                      <Button
+                        htmlType="submit"
+                        type="primary"
+                        size="large"
+                        block
+                        loading={isLoading || savingProduct}
+                        icon={<CheckCircleOutlined />}
+                        style={{
+                          height: 52,
+                          fontSize: 16,
+                          fontWeight: 800,
+                          borderRadius: 14,
+                          boxShadow: `0 14px 28px ${token.colorPrimary}30`,
+                        }}
+                      >
+                        {isLoading || savingProduct
+                          ? 'Guardando...'
+                          : publishProduct
+                            ? hasVariants
+                              ? `Publicar con ${variants.length} variantes`
+                              : 'Publicar producto'
+                            : hasVariants
+                              ? `Guardar borrador con ${variants.length} variantes`
+                              : 'Guardar como borrador'}
+                      </Button>
+
+                      <Text
+                        type="secondary"
+                        style={{
+                          fontSize: 12,
+                          textAlign: 'center',
+                          display: 'block',
+                        }}
+                      >
+                        Se validará tenant, imágenes, variantes y metadatos IA
+                        antes de publicar.
+                      </Text>
+                    </Space>
+                  </Card>
+                </div>
+              </Col>
+            </Row>
+              </Form>
+            </ProductFormMutationContext.Provider>
+          </ProductFormDirtyContext.Provider>
+        </Col>
+      </Row>
+
+      <style>{`
         html,
         body,
         #root,
@@ -8865,20 +7879,6 @@ export default function AddProduct() {
           padding: 4px 16px 16px !important;
         }
 
-        .variant-cards-mobile {
-          display: none;
-        }
-
-        @media (max-width: 767.98px) {
-          .variant-table-desktop {
-            display: none;
-          }
-
-          .variant-cards-mobile {
-            display: flex;
-          }
-        }
-
         @media (max-width: 575.98px) {
           .add-product-stable-page {
             padding: 12px !important;
@@ -8918,7 +7918,7 @@ export default function AddProduct() {
           }
         }
       `}</style>
-      </div>
+    </div>
     </ConfigProvider>
   )
 }
