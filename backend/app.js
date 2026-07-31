@@ -218,9 +218,6 @@ const csrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/process-due` },
   { method: 'POST', path: `${env.apiPrefix}/product-analysis/wishlist-promotions/run` },
 
-  // Análisis visual de productos (mantiene autenticación JWT propia)
-  { method: 'POST', path: `${env.apiPrefix}/product/analyze-visual` },
-
   // Sesión - refresh y logout (requieren autenticación JWT, no CSRF)
   { method: 'POST', path: `${env.apiPrefix}/user/refresh` },
   { method: 'POST', path: `${env.apiPrefix}/user/logout` },
