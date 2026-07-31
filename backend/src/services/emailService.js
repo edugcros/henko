@@ -546,9 +546,9 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         code: error.code,
       })
 
+      // API key ausente/inválida: config rota, reintentar no cambia nada.
       const authFailed =
         error.code === 'RESEND_NOT_CONFIGURED' ||
-        String(error.code || '').includes('validation_error') ||
         String(error.message || '').toLowerCase().includes('api key')
 
       if (authFailed) {
@@ -562,6 +562,26 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
           details: error.message,
           code: error.code,
           suggestion: 'Verificá que RESEND_API_KEY esté configurada y sea válida.',
+        }
+      }
+
+      // validation_error de Resend: pedido inválido (destinatario fuera del
+      // sandbox, dominio del remitente no verificado, email mal formado,
+      // etc.). No es un problema de credenciales — reintentar tampoco
+      // ayuda, así que se corta acá, pero con el mensaje real de Resend en
+      // vez de sugerir revisar la API key.
+      const requestInvalid = error.code === 'validation_error'
+
+      if (requestInvalid) {
+        logger.error('⚠️ Resend rechazó el envío (solicitud inválida)', {
+          details: error.message,
+        })
+
+        return {
+          success: false,
+          error: 'RESEND_REQUEST_INVALID',
+          details: error.message,
+          code: error.code,
         }
       }
 
