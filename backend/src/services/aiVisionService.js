@@ -13,7 +13,11 @@ import logger from '../../config/logger.js'
 
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim()
 
-const DEFAULT_MODEL = 'gemini-2.5-flash'
+if (!GEMINI_API_KEY) {
+  logger.error('[AI VISION] ❌ GEMINI_API_KEY no configurada - analyzeImage fallará')
+}
+
+const DEFAULT_MODEL = 'gemini-3.6-flash'
 const DEFAULT_CURRENCY = String(process.env.AI_VISION_DEFAULT_CURRENCY || 'ARS').trim().toUpperCase()
 
 const normalizeGeminiModelName = value => {
