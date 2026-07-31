@@ -271,26 +271,76 @@ function sleep(ms) {
  * (el SDK de Gemini lo reenvía al fetch interno si la versión instalada lo soporta)
  * y además corre una carrera contra un timer propio, por si el SDK lo ignora.
  */
+
+/**
+ * Ejecuta una operación con timeout.
+ *
+ * IMPORTANTE:
+ * @google/generative-ai (SDK legacy) no necesita recibir
+ * AbortSignal como segundo argumento de generateContent().
+ *
+ * El timeout se utiliza a nivel de Promise.
+ *
+ * Si el timeout vence, la Promise se rechaza, pero una operación
+ * HTTP interna que el SDK ya haya iniciado puede continuar hasta
+ * que el SDK la cierre. Por eso este mecanismo no debe considerarse
+ * una cancelación real del request.
+ */
 async function runWithTimeout(fn, timeoutMs) {
-  const controller = new AbortController()
+  if (typeof fn !== 'function') {
+    const error = new TypeError(
+      'runWithTimeout requiere una función como primer argumento',
+    )
+
+    error.code = 'INVALID_TIMEOUT_FUNCTION'
+    error.retryable = false
+
+    throw error
+  }
+
+  if (
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs <= 0
+  ) {
+    const error = new TypeError(
+      `timeoutMs inválido: ${timeoutMs}`,
+    )
+
+    error.code = 'INVALID_TIMEOUT'
+    error.retryable = false
+
+    throw error
+  }
+
   let timeoutHandle = null
+
+  const operationPromise = Promise.resolve().then(() => fn())
 
   const timeoutPromise = new Promise((_, reject) => {
     timeoutHandle = setTimeout(() => {
-      controller.abort()
-      const timeoutError = new Error(`Gemini generateContent excedió el timeout de ${timeoutMs}ms`)
+      const timeoutError = new Error(
+        `Gemini generateContent excedió el timeout de ${timeoutMs}ms`,
+      )
+
       timeoutError.code = 'GEMINI_TIMEOUT'
       timeoutError.retryable = true
+
       reject(timeoutError)
     }, timeoutMs)
   })
 
   try {
-    return await Promise.race([fn(controller.signal), timeoutPromise])
+    return await Promise.race([
+      operationPromise,
+      timeoutPromise,
+    ])
   } finally {
-    clearTimeout(timeoutHandle)
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle)
+    }
   }
 }
+
 
 function isRetryableGeminiError(error) {
   const message = String(error?.message || '').toLowerCase()
@@ -1885,7 +1935,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
             },
           },
           {
-            text: prompt,
+            text: String(prompt),
           },
         ],
       },
