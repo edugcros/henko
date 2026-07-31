@@ -90,7 +90,7 @@ export default function useProductAnalyzer() {
         // Backend usa uploadPhoto.single('images')
         // Por eso el campo debe llamarse exactamente "images".
         formData.append('images', imageFile, imageFile.name || 'product-image')
-
+        console.log(formData.get('images'))
         const response = await api.post('/product/analyze-visual', formData, {
           withCredentials: true,
 
@@ -103,7 +103,7 @@ export default function useProductAnalyzer() {
           // Flag útil para que axiosConfig borre application/json si lo tenés como default.
           isMultipart: true,
         })
-        console.log('IA Analyzer Response:', response)
+
         const resData = response.data
 
         if (!resData?.success) {

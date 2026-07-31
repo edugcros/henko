@@ -86,12 +86,19 @@ router.post(
 
     try {
       const result = await analyzeImage(req.file.buffer, req.file.mimetype, tenantId)
-      console.log('IA Analyzer Result:', result)
+console.log('analyzeImage result:', result)
       return res.status(200).json({
         success: true,
         data: result,
       })
     } catch (error) {
+      logger.error('[ANALYZE VISUAL] Error in analyzeImage:', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+        tenantId,
+      })
+
       if (
         error?.message?.includes('429') ||
         error?.message?.toLowerCase?.().includes('rate limit')
@@ -106,6 +113,7 @@ router.post(
       return res.status(500).json({
         success: false,
         message: 'Error al analizar la imagen con IA',
+        error: error?.message,
       })
     }
   }),

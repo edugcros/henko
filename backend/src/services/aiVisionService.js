@@ -1600,8 +1600,14 @@ async function assertSafeRemoteHost(url) {
   }
 }
 
+
 export async function analyzeImage(imageBuffer, mimeType, tenantId) {
-  // Validación con logging detallado
+  /**
+   * ============================================================
+   * 1. VALIDACIÓN INICIAL
+   * ============================================================
+   */
+
   logger.info('[AI VISION] analyzeImage called', {
     isBuffer: Buffer.isBuffer(imageBuffer),
     type: typeof imageBuffer,
@@ -1614,10 +1620,27 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
         stringLength: imageBuffer.length,
         firstChars: imageBuffer.substring(0, 50),
       })
+
       imageBuffer = Buffer.from(imageBuffer, 'utf8')
     } else {
-      throw new Error(`imageBuffer debe ser Buffer o string, recibido: ${typeof imageBuffer}`)
+      const error = new Error(
+        `imageBuffer debe ser Buffer o string, recibido: ${typeof imageBuffer}`,
+      )
+
+      error.code = 'INVALID_IMAGE_BUFFER'
+      error.retryable = false
+
+      throw error
     }
+  }
+
+  if (!imageBuffer.length) {
+    const error = new Error('La imagen está vacía')
+
+    error.code = 'EMPTY_IMAGE_BUFFER'
+    error.retryable = false
+
+    throw error
   }
 
   logger.info('[AI VISION] After conversion', {
@@ -1625,31 +1648,89 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     bufferLength: imageBuffer.length,
   })
 
-  const sniffedMime = validateImageBuffer(imageBuffer)
+  /**
+   * ============================================================
+   * 2. VALIDACIÓN DEL TENANT
+   * ============================================================
+   */
+
   const normalizedTenantId = String(tenantId || '').trim()
 
   if (!mongoose.Types.ObjectId.isValid(normalizedTenantId)) {
     const error = new Error('tenantId inválido')
+
     error.code = 'INVALID_TENANT_ID'
     error.retryable = false
+
     throw error
   }
 
-  const hash = crypto.createHash('sha256').update(imageBuffer).digest('hex')
-  const safeMime = mimeType ? normalizeMimeType(mimeType, { strict: true }) : sniffedMime
+  /**
+   * ============================================================
+   * 3. DETECCIÓN Y NORMALIZACIÓN MIME
+   * ============================================================
+   */
 
-  if (safeMime !== sniffedMime && !(safeMime === 'image/heif' && sniffedMime === 'image/heic')) {
-    logger.warn('MIME declarado distinto a firma detectada; se usa MIME detectado', {
-      tenantId: normalizedTenantId,
-      declaredMimeType: safeMime,
-      sniffedMimeType: sniffedMime,
-      hash,
-    })
+  const sniffedMime = validateImageBuffer(imageBuffer)
+
+  if (!sniffedMime) {
+    const error = new Error(
+      'No se pudo determinar el tipo MIME de la imagen',
+    )
+
+    error.code = 'INVALID_IMAGE_MIME'
+    error.retryable = false
+
+    throw error
   }
 
+  const hash = crypto
+    .createHash('sha256')
+    .update(imageBuffer)
+    .digest('hex')
+
+  const safeMime = mimeType
+    ? normalizeMimeType(mimeType, { strict: true })
+    : sniffedMime
+
+  if (
+    safeMime !== sniffedMime &&
+    !(
+      safeMime === 'image/heif' &&
+      sniffedMime === 'image/heic'
+    )
+  ) {
+    logger.warn(
+      'MIME declarado distinto a firma detectada; se usa MIME detectado',
+      {
+        tenantId: normalizedTenantId,
+        declaredMimeType: safeMime,
+        sniffedMimeType: sniffedMime,
+        hash,
+      },
+    )
+  }
+
+  /**
+   * La firma real de los bytes tiene prioridad.
+   */
   const finalMime = sniffedMime || safeMime
-  const cacheKey = getResultCacheKey({ tenantId: normalizedTenantId, hash })
-  const cachedResult = getCachedEntry(resultCache, cacheKey)
+
+  /**
+   * ============================================================
+   * 4. CACHE LOCAL
+   * ============================================================
+   */
+
+  const cacheKey = getResultCacheKey({
+    tenantId: normalizedTenantId,
+    hash,
+  })
+
+  const cachedResult = getCachedEntry(
+    resultCache,
+    cacheKey,
+  )
 
   if (cachedResult) {
     logger.info('Análisis IA devuelto desde cache local', {
@@ -1657,45 +1738,172 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
       hash,
       model: MODEL_NAME,
     })
+
     return cachedResult
   }
 
   try {
+    /**
+     * ==========================================================
+     * 5. CLIENTE GEMINI
+     * ==========================================================
+     */
+
     const client = getGeminiClient()
-    const learningContext = await loadTenantLearningContext(normalizedTenantId)
+
+    /**
+     * ==========================================================
+     * 6. CONTEXTO DE APRENDIZAJE
+     * ==========================================================
+     */
+
+    const learningContext =
+      await loadTenantLearningContext(
+        normalizedTenantId,
+      )
 
     logger.info('Contexto de aprendizaje cargado', {
       tenantId: normalizedTenantId,
       hash,
       model: MODEL_NAME,
-      knownCategories: learningContext.knownCategories.length,
-      knownBrands: learningContext.knownBrands.length,
-      learnedRules: learningContext.learnedRules.length,
+      knownCategories:
+        learningContext.knownCategories.length,
+      knownBrands:
+        learningContext.knownBrands.length,
+      learnedRules:
+        learningContext.learnedRules.length,
       imageBytes: imageBuffer.length,
       mimeType: finalMime,
     })
 
+    /**
+     * ==========================================================
+     * 7. PROMPT
+     * ==========================================================
+     */
+
     const prompt = buildPrompt({
       tenantId: normalizedTenantId,
-      knownCategories: learningContext.knownCategories,
-      knownBrands: learningContext.knownBrands,
-      learnedRules: learningContext.learnedRules,
-      preferencesByType: learningContext.preferencesByType,
+      knownCategories:
+        learningContext.knownCategories,
+      knownBrands:
+        learningContext.knownBrands,
+      learnedRules:
+        learningContext.learnedRules,
+      preferencesByType:
+        learningContext.preferencesByType,
       materials: COMMERCIAL_MATERIALS,
       currency: DEFAULT_CURRENCY,
     })
 
-    const model = client.getGenerativeModel({ model: MODEL_NAME })
+    /**
+     * ==========================================================
+     * 8. MODELO
+     * ==========================================================
+     */
 
-    // Log detallado antes de convertir a base64
-    logger.debug('[AI VISION] Before base64 conversion', {
-      bufferConstructor: imageBuffer.constructor.name,
-      bufferIsBuffer: Buffer.isBuffer(imageBuffer),
-      bufferLength: imageBuffer.length,
-      firstBytes: imageBuffer.slice(0, 10).toString('hex'),
-      hasToString: typeof imageBuffer.toString === 'function',
-      toStringTest: imageBuffer.toString('hex').substring(0, 20),
+    const model = client.getGenerativeModel({
+      model: MODEL_NAME,
     })
+
+    /**
+     * ==========================================================
+     * 9. CONVERSIÓN CORRECTA DE IMAGEN → BASE64
+     * ==========================================================
+     *
+     * IMPORTANTE:
+     *
+     * @google/generative-ai espera:
+     *
+     * inlineData: {
+     *   mimeType: 'image/webp',
+     *   data: '<BASE64 STRING>'
+     * }
+     *
+     * NO:
+     *
+     * data: Buffer
+     *
+     * porque Buffer termina serializándose como objeto y
+     * Gemini responde:
+     *
+     * "Starting an object on a scalar field"
+     */
+
+    const base64Image = imageBuffer.toString('base64')
+
+    if (!base64Image) {
+      const error = new Error(
+        'No fue posible convertir la imagen a Base64',
+      )
+
+      error.code = 'IMAGE_BASE64_CONVERSION_FAILED'
+      error.retryable = false
+
+      throw error
+    }
+
+    logger.debug('[AI VISION] Base64 preparado', {
+      bufferLength: imageBuffer.length,
+      base64Length: base64Image.length,
+      mimeType: finalMime,
+      base64Prefix: `${base64Image.substring(0, 16)}`,
+    })
+
+    /**
+     * Validación adicional para evitar enviar un payload
+     * corrupto al proveedor.
+     */
+    if (
+      typeof base64Image !== 'string' ||
+      !base64Image.length
+    ) {
+      const error = new Error(
+        'El payload Base64 de la imagen no es válido',
+      )
+
+      error.code = 'INVALID_BASE64_PAYLOAD'
+      error.retryable = false
+
+      throw error
+    }
+
+    /**
+     * ==========================================================
+     * 10. PAYLOAD GEMINI
+     * ==========================================================
+     */
+
+    const contents = [
+      {
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              mimeType: finalMime,
+              data: base64Image,
+            },
+          },
+          {
+            text: prompt,
+          },
+        ],
+      },
+    ]
+
+    logger.debug('[AI VISION] Gemini payload preparado', {
+      model: MODEL_NAME,
+      mimeType: finalMime,
+      imageBytes: imageBuffer.length,
+      base64Length: base64Image.length,
+      promptLength: prompt.length,
+    })
+
+    /**
+     * ==========================================================
+     * 11. GENERACIÓN CON RETRY + TIMEOUT
+     * ==========================================================
+     */
 
     const result = await withRetry(
       () =>
@@ -1703,46 +1911,110 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
           signal =>
             model.generateContent(
               {
-                contents: [
-                  {
-                    role: 'user',
-                    parts: [
-                      {
-                        inlineData: {
-                          data: imageBuffer,
-                          mimeType: finalMime,
-                        },
-                      },
-                      { text: prompt },
-                    ],
-                  },
-                ],
+                contents,
+
                 generationConfig: {
-                  temperature: clampNumber(process.env.AI_VISION_TEMPERATURE, 0.15, 0, 0.7),
-                  topP: clampNumber(process.env.AI_VISION_TOP_P, 0.95, 0.1, 1),
-                  topK: Math.round(clampNumber(process.env.AI_VISION_TOP_K, 40, 1, 100)),
-                  maxOutputTokens: MAX_OUTPUT_TOKENS,
-                  responseMimeType: 'application/json',
+                  temperature: clampNumber(
+                    process.env.AI_VISION_TEMPERATURE,
+                    0.15,
+                    0,
+                    0.7,
+                  ),
+
+                  topP: clampNumber(
+                    process.env.AI_VISION_TOP_P,
+                    0.95,
+                    0.1,
+                    1,
+                  ),
+
+                  topK: Math.round(
+                    clampNumber(
+                      process.env.AI_VISION_TOP_K,
+                      40,
+                      1,
+                      100,
+                    ),
+                  ),
+
+                  maxOutputTokens:
+                    MAX_OUTPUT_TOKENS,
+
+                  responseMimeType:
+                    'application/json',
                 },
               },
-              { signal, timeout: GEMINI_TIMEOUT_MS },
+              {
+                signal,
+                timeout: GEMINI_TIMEOUT_MS,
+              },
             ),
           GEMINI_TIMEOUT_MS,
         ),
       {
-        context: { hash, model: MODEL_NAME, tenantId: normalizedTenantId },
+        context: {
+          hash,
+          model: MODEL_NAME,
+          tenantId: normalizedTenantId,
+        },
       },
     )
 
-    const response = await result.response
-    const rawText = response.text()
-    const parsed = extractJsonObject(rawText)
-    const normalized = normalizeAnalysis(parsed, {
-      hash,
-      tenantId: normalizedTenantId,
-    })
+    /**
+     * ==========================================================
+     * 12. RESPUESTA GEMINI
+     * ==========================================================
+     */
 
-    setCachedEntry(resultCache, cacheKey, normalized, RESULT_CACHE_TTL_MS)
+    const response = await result.response
+
+    const rawText = response.text()
+
+    if (!rawText?.trim()) {
+      const error = new Error(
+        'Gemini devolvió una respuesta vacía',
+      )
+
+      error.code = 'EMPTY_AI_RESPONSE'
+      error.retryable = false
+
+      throw error
+    }
+
+    /**
+     * ==========================================================
+     * 13. PARSING JSON
+     * ==========================================================
+     */
+
+    const parsed = extractJsonObject(rawText)
+
+    const normalized = normalizeAnalysis(
+      parsed,
+      {
+        hash,
+        tenantId: normalizedTenantId,
+      },
+    )
+
+    /**
+     * ==========================================================
+     * 14. CACHE RESULTADO
+     * ==========================================================
+     */
+
+    setCachedEntry(
+      resultCache,
+      cacheKey,
+      normalized,
+      RESULT_CACHE_TTL_MS,
+    )
+
+    /**
+     * ==========================================================
+     * 15. LOG FINAL
+     * ==========================================================
+     */
 
     logger.info('Análisis IA completado', {
       tenantId: normalizedTenantId,
@@ -1754,25 +2026,36 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
       categoria: normalized.categoria,
       subcategoria: normalized.subcategoria,
       marca: normalized.marca,
-      priceConfidence: normalized.price_confidence,
-      materialConfidence: normalized.material_confidence,
+      priceConfidence:
+        normalized.price_confidence,
+      materialConfidence:
+        normalized.material_confidence,
       specs: normalized.specifications.length,
     })
 
     return normalized
   } catch (error) {
+    /**
+     * ==========================================================
+     * 16. ERROR HANDLING
+     * ==========================================================
+     */
+
+    const retryable = isRetryableGeminiError(error)
+
     logError('analyzeImage failed', {
       tenantId: normalizedTenantId,
       hash,
       model: MODEL_NAME,
       error: error?.message,
       code: error?.code,
-      retryable: isRetryableGeminiError(error),
+      retryable,
     })
 
     throw buildProviderError(error)
   }
 }
+
 
 export async function analyzeProductImage(input, legacyMimeType = null, legacyTenantId = null) {
   if (Buffer.isBuffer(input)) {
