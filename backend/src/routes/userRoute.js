@@ -38,6 +38,10 @@ import {
   resolveTenantByDomain,
 } from '../middlewares/tenantMiddleware.js'
 
+import {
+  csrfProtectionDynamic,
+} from '../middlewares/csrfMiddleware.js'
+
 const router = express.Router()
 const adminContext = [
   resolveTenantByDomain,
@@ -60,6 +64,31 @@ const authLimiter = rateLimit({
     success: false,
     message: 'Demasiados intentos. Intente nuevamente en unos minutos.',
   },
+})
+
+router.get('/csrf-token', (req, res) => {
+  try {
+    if (typeof req.csrfToken !== 'function') {
+      return res.status(500).json({
+        success: false,
+        code: 'CSRF_NOT_INITIALIZED',
+        message: 'El middleware CSRF no fue inicializado correctamente',
+      })
+    }
+
+    const csrfToken = req.csrfToken()
+
+    return res.status(200).json({
+      success: true,
+      csrfToken,
+    })
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      code: 'CSRF_TOKEN_GENERATION_FAILED',
+      message: 'No fue posible generar el token CSRF',
+    })
+  }
 })
 
 const registerAdminLimiter = rateLimit({
