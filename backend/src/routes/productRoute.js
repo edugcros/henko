@@ -119,7 +119,10 @@ router.post(
   }),
 )
 
-const conditionalCsrfProtection = (req, res, next) => next()
+const conditionalCsrfProtection = (req, res, next) => {
+  // TODO: Re-enable CSRF after Redis issues resolved
+  next()
+}
 
 router.put('/categories/config', adminContext, upsertCategoryConfig)
 
