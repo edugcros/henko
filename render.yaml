@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: henko-api
+    name: henko-admin
     plan: starter
     runtime: node
     buildCommand: cd backend && npm install
