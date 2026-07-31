@@ -67,56 +67,6 @@ router.post(
   uploadPhoto.single('images'),
   productImgResize,
   aiVisualLimiter,
-  expressAsyncHandler(async (req, res) => {
-    const tenantId = req.user?.tenantId
-
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No se pudo identificar tu comercio. Reintentá el login.',
-      })
-    }
-
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No se subió ninguna imagen',
-      })
-    }
-
-    try {
-      const result = await analyzeImage(req.file.buffer, req.file.mimetype, tenantId)
-
-      return res.status(200).json({
-        success: true,
-        data: result,
-      })
-    } catch (error) {
-      logger.error('[ANALYZE VISUAL] Error in analyzeImage:', {
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack,
-        tenantId,
-      })
-
-      if (
-        error?.message?.includes('429') ||
-        error?.message?.toLowerCase?.().includes('rate limit')
-      ) {
-        return res.status(429).json({
-          success: false,
-          message:
-            'La IA está saturada. Intentá nuevamente en 60 segundos o completá los datos manualmente.',
-        })
-      }
-
-      return res.status(500).json({
-        success: false,
-        message: 'Error al analizar la imagen con IA',
-        error: error?.message,
-      })
-    }
-  }),
 )
 
 const conditionalCsrfProtection = (req, res, next) => {

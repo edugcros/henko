@@ -121,48 +121,73 @@ export const clearCsrfToken = () => {
   delete api.defaults.headers.common['x-csrf-token']
 }
 
-export const fetchCsrfToken = async ({ force = false } = {}) => {
-  try {
-    if (csrfTokenPromise && !force) {
-      return csrfTokenPromise
-    }
 
-    csrfTokenPromise = api
-      .get('/user/csrf-token', {
+export const fetchCsrfToken = async ({ force = false } = {}) => {
+  if (csrfTokenPromise && !force) {
+    return csrfTokenPromise
+  }
+
+  csrfTokenPromise = (async () => {
+    try {
+      const response = await api.get('/user/csrf-token', {
         withCredentials: true,
+
+        // Este endpoint no requiere access token.
         skipAuthRefresh: true,
+
+        // No intentar obtener CSRF nuevamente si este endpoint
+        // devuelve un error relacionado con CSRF.
         skipCsrfRetry: true,
+
+        // No necesitamos métricas para el bootstrap del CSRF.
         skipMetricSession: true,
       })
-      .then(res => {
-        const token =
-          res.data?.csrfToken ||
-          res.data?.token ||
-          res.headers?.['x-csrf-token'] ||
-          null
 
-        if (token) {
-          api.defaults.headers.common['x-csrf-token'] = token
-        }
+      const token =
+        response.data?.csrfToken ||
+        response.data?.token ||
+        response.headers?.['x-csrf-token'] ||
+        null
 
-        return token
+      if (!token) {
+        console.error('[CSRF] Backend respondió sin token', {
+          status: response.status,
+          data: response.data,
+          headers: response.headers,
+        })
+
+        clearCsrfToken()
+
+        return null
+      }
+
+      api.defaults.headers.common['x-csrf-token'] = token
+
+      return token
+    } catch (error) {
+      console.error('[CSRF] Error obteniendo token', {
+        baseURL: env.apiBaseUrl,
+        url: '/user/csrf-token',
+        status: error?.response?.status ?? null,
+        code: error?.response?.data?.code ?? null,
+        message:
+          error?.response?.data?.message ||
+          error?.message ||
+          'Unknown error',
+        responseData: error?.response?.data ?? null,
       })
-      .finally(() => {
-        csrfTokenPromise = null
-      })
 
-    return csrfTokenPromise
-  } catch (err) {
-    console.error('[CSRF] Fallo crítico:', {
-      baseURL: env.apiBaseUrl,
-      message: err?.message,
-      status: err?.response?.status,
-      data: err?.response?.data,
-    })
+      clearCsrfToken()
 
-    return null
-  }
+      return null
+    } finally {
+      csrfTokenPromise = null
+    }
+  })()
+
+  return csrfTokenPromise
 }
+
 
 export const initCsrf = async () => {
   return fetchCsrfToken({ force: true })

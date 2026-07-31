@@ -1662,10 +1662,8 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
    * ============================================================
    */
 
-  logger.info('[AI VISION] analyzeImage called', {
-    isBuffer: Buffer.isBuffer(imageBuffer),
-    type: typeof imageBuffer,
-    length: imageBuffer?.length,
+  logger.debug('[AI VISION] analyzeImage called', {
+    bufferLength: imageBuffer?.length,
   })
 
   if (!Buffer.isBuffer(imageBuffer)) {
@@ -1934,8 +1932,8 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
         parts: [
           {
             inlineData: {
-              mimeType: finalMime,
               data: base64Image,
+              mimeType: finalMime,
             },
           },
           {
