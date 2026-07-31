@@ -4,9 +4,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 
 import {
-  addToCart,
+  addOrUpdateCartItem,
   getCart,
-  updateCartItem,
   removeCartItem,
   emptyCart,
 } from '@features/cart/cartSlice'
@@ -177,7 +176,7 @@ export const useCart = () => {
       }
 
       try {
-        const result = await dispatch(addToCart(itemData)).unwrap()
+        const result = await dispatch(addOrUpdateCartItem(itemData)).unwrap()
 
         trackUserMetric({
           eventType: USER_METRIC_EVENTS.ADD_TO_CART,
@@ -229,13 +228,11 @@ export const useCart = () => {
 
       try {
         return await dispatch(
-          updateCartItem({
+          addOrUpdateCartItem({
             productId,
-            cartData: {
-              quantity: normalizedQuantity,
-              variantId: options.variantId || null,
-              cartKey: options.cartKey || null,
-            },
+            quantity: normalizedQuantity,
+            variantId: options.variantId || null,
+            cartKey: options.cartKey || null,
           }),
         ).unwrap()
       } catch (error) {
