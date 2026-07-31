@@ -30,7 +30,12 @@ export const initCsrfTokenStore = async () => {
     })
 
     redisClient.on('error', err => {
-      logger.error('[CSRF Redis] ❌ Error:', err.message)
+      logger.error('[CSRF Redis] ❌ Error:', {
+        message: err?.message,
+        code: err?.code,
+        name: err?.name,
+        stack: err?.stack,
+      })
     })
 
     redisClient.on('connect', () => {
