@@ -447,11 +447,14 @@ export const createUser = [
     await newUser.save()
 
     if (shouldSendTransactionalEmail()) {
-      try {
-        await sendVerificationEmail(newUser, tenant, rawToken)
-      } catch (error) {
+      // No await: el SMTP es un servicio externo que puede colgarse (host
+      // que bloquea el puerto saliente, timeout de red) mucho más de lo que
+      // un usuario espera un submit. Esperarlo acá dejaba la request — y el
+      // loading del formulario — colgada mientras nodemailer reintentaba.
+      // El registro ya está guardado; el email es best-effort en paralelo.
+      sendVerificationEmail(newUser, tenant, rawToken).catch(error => {
         logger.error(`Error enviando email de verificación: ${error.message}`)
-      }
+      })
     } else {
       logger.info(`Email de verificación omitido en test para: ${email}`)
     }
@@ -653,12 +656,13 @@ export const createUserAdmin = [
     }
 
     if (shouldSendTransactionalEmail()) {
-      try {
-        await sendVerificationEmail(result.admin, result.tenant, rawEmailToken)
-        logger.info(`Email de verificación enviado a: ${email}`)
-      } catch (emailErr) {
-        logger.error(`Fallo envío email verificación: ${emailErr.message}`)
-      }
+      // No await: mismo motivo que en createUser — el registro del tenant
+      // ya está confirmado, no debe depender de que el SMTP responda rápido.
+      sendVerificationEmail(result.admin, result.tenant, rawEmailToken)
+        .then(() => logger.info(`Email de verificación enviado a: ${email}`))
+        .catch(emailErr => {
+          logger.error(`Fallo envío email verificación: ${emailErr.message}`)
+        })
     } else {
       logger.info(`Email de verificación admin omitido en test para: ${email}`)
     }

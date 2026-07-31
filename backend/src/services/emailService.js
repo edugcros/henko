@@ -489,6 +489,14 @@ const createTransporter = async () => {
         process.env.NODE_ENV === 'production',
       ),
     },
+    // Los defaults de nodemailer (2min/30s/10min) dejan una conexión
+    // colgada mucho tiempo si el host bloquea el puerto saliente en vez de
+    // rechazarlo (ya vimos este mismo patrón con Redis/Upstash en Render).
+    // Con esto falla rápido y el error queda en logs en vez de acumular
+    // conexiones a medio abrir.
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 15000,
     debug: process.env.NODE_ENV === 'development',
     logger: process.env.NODE_ENV === 'development',
   }
