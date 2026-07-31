@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "cross-env NODE_ENV=development nodemon server.js",
-    "start": "cross-env NODE_ENV=production node server.js",
+    "start": "node server.js",
     "start:prod": "cross-env NODE_ENV=production node server.js",
     "start:dev": "cross-env NODE_ENV=development node server.js",
     "check:env:dev": "cross-env NODE_ENV=development node src/scripts/checkEnv.js",
