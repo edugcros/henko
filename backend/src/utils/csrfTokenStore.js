@@ -32,6 +32,7 @@ export const initCsrfTokenStore = async () => {
         reconnectStrategy: retries => Math.min(retries * 50, 500),
         keepAlive: 30000,
         noDelay: true,
+        connectTimeout: 5000,
       },
       legacyMode: false,
     })
@@ -46,8 +47,20 @@ export const initCsrfTokenStore = async () => {
       useMemoryCache = false
     })
 
-    await redisClient.connect()
-    logger.info('[CSRF] ✅ Redis inicializado correctamente')
+    // Set 5 second timeout for connection attempt
+    const connectPromise = redisClient.connect()
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Redis connection timeout (5s)')), 5000)
+    )
+
+    try {
+      await Promise.race([connectPromise, timeoutPromise])
+      logger.info('[CSRF] ✅ Redis inicializado correctamente')
+    } catch (timeoutError) {
+      logger.warn('[CSRF] ⚠️ Redis connection timeout, usando memory cache')
+      redisClient = null
+      useMemoryCache = true
+    }
   } catch (error) {
     logger.warn('[CSRF] ⚠️ Redis connection fallback a memory cache:', error.message)
     redisClient = null

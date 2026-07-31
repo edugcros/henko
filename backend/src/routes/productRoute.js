@@ -86,7 +86,7 @@ router.post(
 
     try {
       const result = await analyzeImage(req.file.buffer, req.file.mimetype, tenantId)
-
+      console.log('IA Analyzer Result:', result)
       return res.status(200).json({
         success: true,
         data: result,

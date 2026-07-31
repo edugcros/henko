@@ -103,7 +103,7 @@ export default function useProductAnalyzer() {
           // Flag útil para que axiosConfig borre application/json si lo tenés como default.
           isMultipart: true,
         })
-
+        console.log('IA Analyzer Response:', response)
         const resData = response.data
 
         if (!resData?.success) {
