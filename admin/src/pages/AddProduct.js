@@ -1,7 +1,6 @@
 // 📁 src/pages/AddProduct.jsx
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
-  ConfigProvider,
   Form,
   Input,
   InputNumber,
@@ -24,8 +23,6 @@ import {
   Space,
   Badge,
   Popconfirm,
-  Steps,
-  Collapse,
 } from 'antd'
 import {
   InboxOutlined,
@@ -65,15 +62,6 @@ import productService from '@features/product/productService'
 const { Title, Text, Paragraph } = Typography
 const { Dragger } = Upload
 const { useToken } = theme
-
-const SECTION_IDS = {
-  imagenes: 'add-product-section-imagenes',
-  informacion: 'add-product-section-informacion',
-  ficha: 'add-product-section-ficha',
-  variantes: 'add-product-section-variantes',
-  precio: 'add-product-section-precio',
-  publicar: 'add-product-section-publicar',
-}
 
 const normalizeString = (value = '') => String(value || '').trim()
 
@@ -500,32 +488,6 @@ const validateVariantsForSubmit = variants => {
 
       variantSkus.add(sku)
     }
-  }
-
-  return null
-}
-
-
-const validateProductBasicsForSubmit = ({ values = {}, hasVariants = false }) => {
-  const requiredFields = [
-    ['titulo', 'El título es obligatorio'],
-    ['descripcion', 'La descripción comercial es obligatoria'],
-    ['categoria', 'La categoría es obligatoria'],
-    ['subcategoria', 'La subcategoría es obligatoria'],
-    ['marca', 'La marca es obligatoria'],
-    ['condicion', 'La condición es obligatoria'],
-  ]
-
-  for (const [fieldName, errorMessage] of requiredFields) {
-    if (!normalizeString(values[fieldName])) return errorMessage
-  }
-
-  if (normalizeNumberValue(values.precio) <= 0) {
-    return 'El precio debe ser mayor a 0.'
-  }
-
-  if (!hasVariants && normalizeNumberValue(values.cantidad) <= 0) {
-    return 'La cantidad en stock debe ser mayor a 0.'
   }
 
   return null
@@ -2301,9 +2263,7 @@ const AIAnalysisPanel = ({
                 {confidencePercent}% confianza
               </Tag>
               {shouldReview && (
-                <Tag color="orange" style={{ borderRadius: 999 }}>
-                  Revisar antes de publicar
-                </Tag>
+                <Tag color="orange">Revisar antes de publicar</Tag>
               )}
             </Space>
           </Col>
@@ -2558,14 +2518,8 @@ const AIAnalysisPanel = ({
                         : normalizeString(value) || 'Pendiente'}
                     </Text>
                     <Space size={4} wrap style={{ marginTop: 6 }}>
-                      {field.source && (
-                        <Tag style={{ borderRadius: 999 }}>{field.source}</Tag>
-                      )}
-                      {field.filterable && (
-                        <Tag color="blue" style={{ borderRadius: 999 }}>
-                          Filtro
-                        </Tag>
-                      )}
+                      {field.source && <Tag>{field.source}</Tag>}
+                      {field.filterable && <Tag color="blue">Filtro</Tag>}
                       <Button
                         htmlType="button"
                         type="link"
@@ -2787,19 +2741,19 @@ const DynamicProductField = ({ field }) => {
 
   if (field.type === 'textarea') {
     return (
-      <ProductField
+      <StableFormItem
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
       >
         <Input.TextArea rows={3} showCount maxLength={800} {...commonProps} />
-      </ProductField>
+      </StableFormItem>
     )
   }
 
   if (field.type === 'number') {
     return (
-      <ProductField
+      <StableFormItem
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
@@ -2810,13 +2764,13 @@ const DynamicProductField = ({ field }) => {
           min={0}
           addonAfter={field.unit || undefined}
         />
-      </ProductField>
+      </StableFormItem>
     )
   }
 
   if (field.type === 'select') {
     return (
-      <ProductField
+      <StableFormItem
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
@@ -2830,13 +2784,13 @@ const DynamicProductField = ({ field }) => {
             label: value,
           }))}
         />
-      </ProductField>
+      </StableFormItem>
     )
   }
 
   if (field.type === 'multiselect') {
     return (
-      <ProductField
+      <StableFormItem
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
@@ -2851,26 +2805,26 @@ const DynamicProductField = ({ field }) => {
             label: value,
           }))}
         />
-      </ProductField>
+      </StableFormItem>
     )
   }
 
   if (field.type === 'boolean') {
     return (
-      <ProductField
+      <StableFormItem
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         valuePropName="checked"
         rules={rules}
       >
         <Switch checkedChildren="Sí" unCheckedChildren="No" />
-      </ProductField>
+      </StableFormItem>
     )
   }
 
   if (field.type === 'color') {
     return (
-      <ProductField
+      <StableFormItem
         name={['dynamicFields', field.name]}
         label={field.label || field.name}
         rules={rules}
@@ -2885,18 +2839,18 @@ const DynamicProductField = ({ field }) => {
             label: value,
           }))}
         />
-      </ProductField>
+      </StableFormItem>
     )
   }
 
   return (
-    <ProductField
+    <StableFormItem
       name={['dynamicFields', field.name]}
       label={field.label || field.name}
       rules={rules}
     >
       <Input {...commonProps} />
-    </ProductField>
+    </StableFormItem>
   )
 }
 
@@ -2931,170 +2885,28 @@ const VariantImageSelector = ({ variant, localImages, onAssign }) => {
   )
 }
 
-const normalizeNamePath = name => (Array.isArray(name) ? name : [name]).filter(Boolean)
-
-const buildNestedFieldPatch = (name, value) => {
-  const path = normalizeNamePath(name)
-
-  if (!path.length) return {}
-
-  return path.reduceRight((acc, key, index) => {
-    return index === path.length - 1 ? { [key]: value } : { [key]: acc }
-  }, value)
-}
-
-const setFormFieldValue = (form, name, value) => {
-  if (!name || !form) return
-
-  if (typeof form.setFieldValue === 'function') {
-    form.setFieldValue(name, value)
-    return
-  }
-
-  form.setFieldsValue(buildNestedFieldPatch(name, value))
-}
-
-const extractInputValue = (eventOrValue, valuePropName = 'value') => {
-  if (valuePropName === 'checked') {
-    return typeof eventOrValue === 'boolean'
-      ? eventOrValue
-      : Boolean(eventOrValue?.target?.checked)
-  }
-
-  if (eventOrValue?.target) return eventOrValue.target.value
-
-  return eventOrValue
-}
-
-const getRequiredMessage = (rules = [], label = 'Este campo') => {
-  const requiredRule = safeArray(rules).find(rule => rule?.required)
-
-  return requiredRule?.message || `${label} es obligatorio`
-}
-
-const isEmptyFieldValue = value => {
-  if (Array.isArray(value)) return value.length === 0
-  if (value === undefined || value === null) return true
-  if (typeof value === 'string') return normalizeString(value) === ''
-  return false
-}
-
-const ProductFormDirtyContext = React.createContext(() => {})
-const ProductFormMutationContext = React.createContext({
-  version: 0,
-  notifyMutation: () => {},
-})
-
-const ProductField = React.memo(function ProductField({
+const StableFormItem = React.memo(function StableFormItem({
   children,
   className = '',
   style,
-  name,
-  label,
-  rules = [],
-  extra,
-  help,
-  required,
-  initialValue,
-  valuePropName = 'value',
+  validateTrigger = 'onBlur',
+  ...itemProps
 }) {
-  const form = Form.useFormInstance()
-  const markFormDirty = React.useContext(ProductFormDirtyContext)
-  const { version: formMutationVersion, notifyMutation } = React.useContext(
-    ProductFormMutationContext,
-  )
-  const [fieldValue, setFieldValue] = useState(() => {
-    const currentValue = form.getFieldValue(name)
-    return currentValue === undefined ? initialValue : currentValue
-  })
-  const [fieldError, setFieldError] = useState('')
-  const requiredByRule = required || safeArray(rules).some(rule => rule?.required)
-  const namePath = normalizeNamePath(name)
-  const nameKey = namePath.join('__')
-  const fieldId = namePath.join('_')
-  const stableClassName = ['stable-form-field', className].filter(Boolean).join(' ')
-
-  useEffect(() => {
-    if (initialValue === undefined) return
-
-    const currentValue = form.getFieldValue(name)
-    if (currentValue === undefined) {
-      setFormFieldValue(form, name, initialValue)
-      setFieldValue(initialValue)
-      notifyMutation()
-    }
-  }, [form, initialValue, nameKey, notifyMutation])
-
-  useEffect(() => {
-    const currentValue = form.getFieldValue(name)
-    setFieldValue(currentValue === undefined ? initialValue : currentValue)
-  }, [formMutationVersion, nameKey])
-
-  const validateField = useCallback(
-    nextValue => {
-      const currentValue = nextValue !== undefined ? nextValue : form.getFieldValue(name)
-
-      if (requiredByRule && isEmptyFieldValue(currentValue)) {
-        const messageText = getRequiredMessage(rules, label)
-        setFieldError(messageText)
-        return false
-      }
-
-      setFieldError('')
-      return true
-    },
-    [form, label, name, requiredByRule, rules],
-  )
-
-  const child = React.Children.only(children)
-  const originalOnChange = child.props.onChange
-  const originalOnBlur = child.props.onBlur
-  const originalOnFocus = child.props.onFocus
-  const controlledProps = {
-    id: child.props.id || fieldId,
-    [valuePropName]: valuePropName === 'checked' ? Boolean(fieldValue) : fieldValue,
-    onChange: (...args) => {
-      const nextValue = extractInputValue(args[0], valuePropName)
-      setFieldValue(nextValue)
-      setFormFieldValue(form, name, nextValue)
-      markFormDirty()
-      if (fieldError) validateField(nextValue)
-      originalOnChange?.(...args)
-    },
-    onBlur: (...args) => {
-      validateField()
-      originalOnBlur?.(...args)
-    },
-    onFocus: (...args) => {
-      originalOnFocus?.(...args)
-    },
-    status: fieldError ? 'error' : child.props.status,
-  }
+  const stableClassName = ['stable-form-item', className].filter(Boolean).join(' ')
 
   return (
-    <div
+    <Form.Item
+      {...itemProps}
       className={stableClassName}
+      validateTrigger={validateTrigger}
       style={{
         marginBottom: 18,
-        minHeight: 86,
         overflowAnchor: 'none',
         ...style,
       }}
-      data-field-name={fieldId}
     >
-      {label && (
-        <label htmlFor={fieldId} className="stable-form-field-label">
-          {label}
-          {requiredByRule && <span className="stable-form-field-required">*</span>}
-        </label>
-      )}
-
-      {React.cloneElement(child, controlledProps)}
-
-      <div className="stable-form-field-message" aria-live="polite">
-        {fieldError || help || extra || ' '}
-      </div>
-    </div>
+      {children}
+    </Form.Item>
   )
 })
 
@@ -3163,7 +2975,7 @@ export default function AddProduct() {
   const categoryConfigRequestIdRef = useRef(0)
   const categoryConfigCacheRef = useRef(new Map())
 
-  const markFormAsChanged = useCallback(() => {
+  const handleFormValuesChange = useCallback(() => {
     setFormHasChanges(current => (current ? current : true))
   }, [])
 
@@ -3177,30 +2989,6 @@ export default function AddProduct() {
       file.type || file.mimeType || '',
     ].join('|')
   }, [])
-
-  const [formMutationVersion, setFormMutationVersion] = useState(0)
-
-  const notifyFormMutation = useCallback(() => {
-    setFormMutationVersion(version => version + 1)
-  }, [])
-
-  const setProductFormValues = useCallback(
-    values => {
-      form.setFieldsValue(values)
-      setFormHasChanges(true)
-      notifyFormMutation()
-    },
-    [form, notifyFormMutation],
-  )
-
-  const setProductFormFieldValue = useCallback(
-    (name, value) => {
-      setFormFieldValue(form, name, value)
-      setFormHasChanges(true)
-      notifyFormMutation()
-    },
-    [form, notifyFormMutation],
-  )
 
   const user = useSelector(state => state.user.user)
   const tenantId = user?.tenantId?._id || user?.tenantId || null
@@ -3309,82 +3097,6 @@ export default function AddProduct() {
     watchedTitle,
   ])
 
-  const missingRequiredLabels = useMemo(
-    () =>
-      productReadiness.requiredChecks
-        .filter(check => !check.done)
-        .map(check => check.label),
-    [productReadiness.requiredChecks],
-  )
-
-  const scrollToSection = useCallback(sectionId => {
-    if (typeof document === 'undefined') return
-    const target = document.getElementById(sectionId)
-    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [])
-
-  const wizardSteps = useMemo(() => {
-    const checkByKey = key => productReadiness.checks.find(c => c.key === key)
-    const statusFor = keys => {
-      const relevant = keys.map(checkByKey).filter(Boolean)
-      if (!relevant.length) return 'wait'
-      return relevant.every(check => check.done) ? 'finish' : 'process'
-    }
-
-    return [
-      {
-        key: 'imagenes',
-        title: 'Imágenes',
-        sectionId: SECTION_IDS.imagenes,
-        status: statusFor(['imagenes']),
-      },
-      {
-        key: 'informacion',
-        title: 'Información',
-        sectionId: SECTION_IDS.informacion,
-        status: statusFor([
-          'titulo',
-          'descripcion',
-          'categoria',
-          'subcategoria',
-        ]),
-      },
-      {
-        key: 'ficha',
-        title: 'Ficha técnica',
-        sectionId: SECTION_IDS.ficha,
-        optional: true,
-        status: useTechnicalSheet ? statusFor(['ficha']) : 'wait',
-      },
-      {
-        key: 'variantes',
-        title: 'Variantes',
-        sectionId: SECTION_IDS.variantes,
-        optional: true,
-        status: hasVariants ? statusFor(['variantes']) : 'wait',
-      },
-      {
-        key: 'precio',
-        title: 'Precio y SEO',
-        sectionId: SECTION_IDS.precio,
-        status: statusFor(['precio', 'stock']),
-      },
-      {
-        key: 'publicar',
-        title: 'Publicar',
-        sectionId: SECTION_IDS.publicar,
-        status: productReadiness.isReady ? 'finish' : 'wait',
-      },
-    ]
-  }, [productReadiness, useTechnicalSheet, hasVariants])
-
-  const wizardCurrentStep = useMemo(() => {
-    const idx = wizardSteps.findIndex(
-      step => !step.optional && step.status !== 'finish',
-    )
-    return idx === -1 ? wizardSteps.length - 1 : idx
-  }, [wizardSteps])
-
   const categoryOptions = useMemo(
     () =>
       catalogCategories
@@ -3474,7 +3186,7 @@ export default function AddProduct() {
       const normalizedValue = toTitleCase(currentValue)
 
       if (normalizedValue && normalizedValue !== currentValue) {
-        setProductFormValues({ [fieldName]: normalizedValue })
+        form.setFieldsValue({ [fieldName]: normalizedValue })
       }
     },
     [form],
@@ -3500,7 +3212,7 @@ export default function AddProduct() {
       if (subcategoria && subcategoria !== currentSubcategory) {
         valuesToPatch.subcategoria = subcategoria
       }
-      if (Object.keys(valuesToPatch).length) setProductFormValues(valuesToPatch)
+      if (Object.keys(valuesToPatch).length) form.setFieldsValue(valuesToPatch)
 
       setCommittedClassification(prev => {
         if (prev.categoria === categoria && prev.subcategoria === subcategoria)
@@ -3508,7 +3220,7 @@ export default function AddProduct() {
         return { categoria, subcategoria }
       })
     },
-    [form, setProductFormValues],
+    [form],
   )
 
   useEffect(() => {
@@ -3774,14 +3486,14 @@ export default function AddProduct() {
   const mergeDynamicFieldValues = useCallback(
     values => {
       const currentValues = form.getFieldValue('dynamicFields') || {}
-      setProductFormValues({
+      form.setFieldsValue({
         dynamicFields: {
           ...currentValues,
           ...(values || {}),
         },
       })
     },
-    [form, setProductFormValues],
+    [form],
   )
 
   const applyTechnicalPreset = useCallback(
@@ -3875,9 +3587,9 @@ export default function AddProduct() {
         .join('. ')
 
     setUseTechnicalSheet(true)
-    setProductFormValues({ descripcionTecnica: description })
+    form.setFieldsValue({ descripcionTecnica: description })
     message.success('Descripción técnica creada para la ficha')
-  }, [dynamicProductFields, form, normalizedAiDraft, setProductFormValues])
+  }, [dynamicProductFields, form, normalizedAiDraft])
 
   const applyAiDynamicField = useCallback(
     field => {
@@ -4112,9 +3824,9 @@ export default function AddProduct() {
       return
     }
 
-    setProductFormValues(buildSeoFormValues(baseValues))
+    form.setFieldsValue(buildSeoFormValues(baseValues))
     message.success('SEO generado desde los datos actuales del producto')
-  }, [editableTags, form, normalizedAiDraft, setProductFormValues, useTechnicalSheet])
+  }, [editableTags, form, normalizedAiDraft, useTechnicalSheet])
 
   const generateSeoPositioningFromCurrentValues = useCallback(() => {
     const values = form.getFieldsValue(true) || {}
@@ -4182,7 +3894,7 @@ export default function AddProduct() {
       .map(item => normalizeString(item).toLowerCase())
       .filter(Boolean)
 
-    setProductFormValues({
+    form.setFieldsValue({
       ...buildSeoFormValues({
         ...values,
         titulo: title,
@@ -4203,7 +3915,7 @@ export default function AddProduct() {
     })
 
     message.success('Posicionamiento SEO creado')
-  }, [editableTags, form, normalizedAiDraft, setProductFormValues])
+  }, [editableTags, form, normalizedAiDraft])
 
   const applyAiSeo = useCallback(() => {
     generateSeoFromCurrentValues()
@@ -4280,24 +3992,10 @@ export default function AddProduct() {
         return
       }
 
-      if (fieldName === 'descripcionTecnica') {
-        setUseTechnicalSheet(true)
-      }
-
-      setProductFormValues(cleanPatch)
-
-      if (cleanPatch.categoria || cleanPatch.subcategoria) {
-        commitClassificationFromForm(cleanPatch)
-      }
-
+      form.setFieldsValue(cleanPatch)
       message.success('Campo aplicado al formulario')
     },
-    [
-      commitClassificationFromForm,
-      form,
-      normalizedAiDraft,
-      setProductFormValues,
-    ],
+    [form, normalizedAiDraft],
   )
 
   const applyAiSafeFields = useCallback(() => {
@@ -4324,7 +4022,7 @@ export default function AddProduct() {
       condicion: fields.condicion,
     }
 
-    setProductFormValues(
+    form.setFieldsValue(
       Object.fromEntries(
         Object.entries(patch).filter(
           ([, value]) => value !== undefined && value !== null && value !== '',
@@ -4344,7 +4042,6 @@ export default function AddProduct() {
     applyAiTechnicalFields,
     form,
     generateSeoFromCurrentValues,
-    setProductFormValues,
     normalizedAiDraft,
     useTechnicalSheet,
   ])
@@ -4353,7 +4050,7 @@ export default function AddProduct() {
     if (!normalizedAiDraft) return
 
     const { fields } = normalizedAiDraft
-    setProductFormValues({
+    form.setFieldsValue({
       titulo: fields.titulo,
       descripcion: fields.descripcion,
       descripcionTecnica: useTechnicalSheet
@@ -4394,7 +4091,6 @@ export default function AddProduct() {
     applyAiVariants,
     form,
     generateSeoFromCurrentValues,
-    setProductFormValues,
     normalizedAiDraft,
     useTechnicalSheet,
   ])
@@ -4472,9 +4168,9 @@ export default function AddProduct() {
       const currentValues = form.getFieldValue('dynamicFields') || {}
       const nextValues = { ...currentValues }
       delete nextValues[fieldName]
-      setProductFormValues({ dynamicFields: nextValues })
+      form.setFieldsValue({ dynamicFields: nextValues })
     },
-    [form, setProductFormValues],
+    [form],
   )
 
   const handleAttributeValuesChange = useCallback((attrName, values) => {
@@ -4671,7 +4367,6 @@ export default function AddProduct() {
 
   const resetProductWorkspace = useCallback(() => {
     form.resetFields()
-    notifyFormMutation()
     revokeBlobUrls(imagePreviews)
     setFileList([])
     setImagePreviews([])
@@ -4692,7 +4387,7 @@ export default function AddProduct() {
     lastAnalyzedImageSignatureRef.current = ''
     resetIa()
     dispatch(resetState())
-  }, [dispatch, form, imagePreviews, notifyFormMutation, resetIa])
+  }, [dispatch, form, imagePreviews, resetIa])
 
   const handleImportAgentImage = useCallback(async () => {
     if (!selectedAgentJobId) {
@@ -4988,21 +4683,15 @@ export default function AddProduct() {
     )
   }, [])
 
-  const handleFinish = async submittedValues => {
-    const values = {
-      ...(form.getFieldsValue(true) || {}),
-      ...(submittedValues || {}),
-    }
+  const handleFinish = async values => {
     if (!fileList.length) {
       message.error('Debes subir al menos una imagen')
-      scrollToSection(SECTION_IDS.imagenes)
       return
     }
 
     const fileValidationError = validateSelectedFiles(fileList)
     if (fileValidationError) {
       message.error(fileValidationError)
-      scrollToSection(SECTION_IDS.imagenes)
       return
     }
 
@@ -5011,23 +4700,11 @@ export default function AddProduct() {
       return
     }
 
-    const basicsError = validateProductBasicsForSubmit({ values, hasVariants })
-    if (basicsError) {
-      message.error(basicsError)
-      scrollToSection(
-        /precio|cantidad|stock/i.test(basicsError)
-          ? SECTION_IDS.precio
-          : SECTION_IDS.informacion,
-      )
-      return
-    }
-
     if (hasVariants) {
       const variantError = validateVariantsForSubmit(variants)
 
       if (variantError) {
         message.error(variantError)
-        scrollToSection(SECTION_IDS.variantes)
         return
       }
     }
@@ -5269,37 +4946,6 @@ export default function AddProduct() {
   }
 
   return (
-    <ConfigProvider
-  theme={{
-    token: {
-      fontSize: 16,
-      controlHeight: 44,
-      controlHeightSM: 36,   // clave: "small" ya no significa diminuto
-      controlHeightLG: 52,
-      borderRadius: 12,
-      fontSizeSM: 13,        // los "caption" suben de 12 a 13
-    },
-    components: {
-      Button: { fontWeight: 600, paddingInline: 20 },
-      Card: {
-        headerFontSize: 18,
-        headerHeight: 60,
-        paddingLG: 28,
-      },
-      Form: {
-        labelFontSize: 15,
-        verticalLabelPadding: '0 0 6px',
-        itemMarginBottom: 22,
-      },
-      Input: { paddingBlock: 8 },
-      Select: { optionFontSize: 15 },
-      Table: { cellFontSize: 14, cellPaddingBlock: 12 },
-      Steps: { titleLineHeight: 30, iconSize: 34 },
-      Tag: { fontSizeSM: 13 },
-      Collapse: { headerPadding: '14px 18px', fontSize: 15 },
-    },
-  }}
->
     <div
       className="add-product-stable-page"
       style={{
@@ -5374,7 +5020,7 @@ export default function AddProduct() {
 
               <Col xs={24} lg={9}>
                 <Row gutter={[12, 12]}>
-                  <Col xs={24} sm={8}>
+                  <Col span={8}>
                     <div
                       style={{
                         padding: 14,
@@ -5384,7 +5030,7 @@ export default function AddProduct() {
                         textAlign: 'center',
                       }}
                     >
-                      <Text type="secondary" style={{ fontSize: 13 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
                         Imágenes
                       </Text>
                       <div style={{ fontSize: 22, fontWeight: 800 }}>
@@ -5393,7 +5039,7 @@ export default function AddProduct() {
                     </div>
                   </Col>
 
-                  <Col xs={24} sm={8}>
+                  <Col span={8}>
                     <div
                       style={{
                         padding: 14,
@@ -5403,7 +5049,7 @@ export default function AddProduct() {
                         textAlign: 'center',
                       }}
                     >
-                      <Text type="secondary" style={{ fontSize: 13 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
                         Variantes
                       </Text>
                       <div style={{ fontSize: 22, fontWeight: 800 }}>
@@ -5412,7 +5058,7 @@ export default function AddProduct() {
                     </div>
                   </Col>
 
-                  <Col xs={24} sm={8}>
+                  <Col span={8}>
                     <div
                       style={{
                         padding: 14,
@@ -5422,7 +5068,7 @@ export default function AddProduct() {
                         textAlign: 'center',
                       }}
                     >
-                      <Text type="secondary" style={{ fontSize: 13 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
                         IA
                       </Text>
                       <div style={{ fontSize: 22, fontWeight: 800 }}>
@@ -5435,42 +5081,12 @@ export default function AddProduct() {
             </Row>
           </div>
 
-          <div
-            className="add-product-steps-bar"
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
-              marginBottom: 24,
-              padding: '14px 20px',
-              borderRadius: 16,
-              background: token.colorBgContainer,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
-            }}
-          >
-            <Steps
-              size="small"
-              responsive
-              current={wizardCurrentStep}
-              onChange={index => scrollToSection(wizardSteps[index]?.sectionId)}
-              items={wizardSteps.map(step => ({
-                title: step.optional ? `${step.title} (opcional)` : step.title,
-                status: step.status,
-              }))}
-            />
-          </div>
-
-          <ProductFormDirtyContext.Provider value={markFormAsChanged}>
-            <ProductFormMutationContext.Provider
-              value={{ version: formMutationVersion, notifyMutation: notifyFormMutation }}
-            >
-              <Form
-                form={form}
-                layout="vertical"
-                scrollToFirstError={false}
-                disabled={savingProduct || isLoading}
-                onKeyDown={event => {
+          <Form
+            form={form}
+            layout="vertical"
+            scrollToFirstError={false}
+            onValuesChange={handleFormValuesChange}
+            onKeyDown={event => {
               if (
                 event.key === 'Enter' &&
                 event.target instanceof HTMLInputElement
@@ -5478,37 +5094,15 @@ export default function AddProduct() {
                 event.preventDefault()
               }
             }}
-            onFinish={() => handleFinish(form.getFieldsValue(true))}
+            onFinish={handleFinish}
           >
             <Row gutter={[24, 24]} align="top">
-              <Col xs={24} xl={0}>
-                <Alert
-                  type={productReadiness.isReady ? 'success' : 'warning'}
-                  showIcon
-                  style={{ marginBottom: 20, borderRadius: 14 }}
-                  message={
-                    productReadiness.isReady
-                      ? 'Listo para publicar'
-                      : `Completá lo esencial (${productReadiness.doneRequired}/${productReadiness.requiredChecks.length} · ${productReadiness.percent}%)`
-                  }
-                  description={
-                    productReadiness.isReady
-                      ? undefined
-                      : `Faltan: ${missingRequiredLabels.join(', ')}`
-                  }
-                />
-              </Col>
-
               <Col xs={24} xl={15}>
                 <Card
-                  id={SECTION_IDS.imagenes}
                   title={
                     <Space size={10}>
-                      <span className="add-product-step-badge">1</span>
                       <PictureOutlined style={{ color: token.colorPrimary }} />
-                      <span className="add-product-card-title">
-                        Imágenes del producto
-                      </span>
+                      <span>Imágenes del producto</span>
                       <Tag color="red" style={{ borderRadius: 999 }}>
                         Requerido
                       </Tag>
@@ -5522,43 +5116,16 @@ export default function AddProduct() {
                   }}
                   styles={{ body: { padding: 24 } }}
                 >
-                  <Text
-                    type="secondary"
-                    style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
-                  >
-                    Subí al menos una imagen del producto — es el único dato
-                    obligatorio de esta sección.
-                  </Text>
-
-                  <Collapse
-                    ghost
-                    className="add-product-agent-collapse"
-                    defaultActiveKey={
-                      autoAgentEnabled || currentAgentJob ? ['agent'] : []
-                    }
+                  <div
                     style={{
                       marginBottom: 20,
+                      padding: 20,
                       borderRadius: 18,
                       border: `1px solid ${token.colorBorderSecondary}`,
                       background: `linear-gradient(135deg, ${token.colorFillAlter}, ${token.colorBgContainer})`,
                     }}
-                    items={[
-                      {
-                        key: 'agent',
-                        label: (
-                          <Space size={8}>
-                            <RobotOutlined
-                              style={{ color: token.colorPrimary }}
-                            />
-                            <Text strong style={{ fontSize: 14 }}>
-                              Importar desde el agente IA (
-                              {agentQueueStats.total} pendientes)
-                            </Text>
-                          </Space>
-                        ),
-                        children: (
-                          <>
-                            <Row gutter={[18, 18]} align="middle">
+                  >
+                    <Row gutter={[18, 18]} align="middle">
                       <Col xs={24} lg={8}>
                         <Space direction="vertical" size={6}>
                           <Space wrap>
@@ -5612,7 +5179,7 @@ export default function AddProduct() {
                               value: agentQueueStats.autoSave,
                             },
                           ].map(metric => (
-                            <Col xs={24} sm={8} key={metric.label}>
+                            <Col span={8} key={metric.label}>
                               <div
                                 style={{
                                   padding: '12px 8px',
@@ -5624,7 +5191,7 @@ export default function AddProduct() {
                               >
                                 <Text
                                   type="secondary"
-                                  style={{ fontSize: 13, display: 'block' }}
+                                  style={{ fontSize: 11, display: 'block' }}
                                 >
                                   {metric.label}
                                 </Text>
@@ -5645,7 +5212,6 @@ export default function AddProduct() {
                         >
                           <Space
                             wrap
-                            className="add-product-agent-actions"
                             style={{
                               justifyContent: 'flex-end',
                               width: '100%',
@@ -5686,7 +5252,6 @@ export default function AddProduct() {
 
                           <Space
                             wrap
-                            className="add-product-agent-actions"
                             style={{
                               justifyContent: 'flex-end',
                               width: '100%',
@@ -5754,11 +5319,7 @@ export default function AddProduct() {
                         }
                       />
                     )}
-                          </>
-                        ),
-                      },
-                    ]}
-                  />
+                  </div>
 
                   {!fileList.length ? (
                     <Dragger
@@ -5771,9 +5332,6 @@ export default function AddProduct() {
                       style={{
                         borderRadius: 20,
                         padding: 44,
-                        minHeight: 280,
-                        display: 'flex',
-                        alignItems: 'center',
                         background: `linear-gradient(135deg, ${token.colorBgContainer}, ${token.colorFillAlter})`,
                         border: `2px dashed ${token.colorPrimaryBorder || token.colorBorder}`,
                       }}
@@ -5781,9 +5339,9 @@ export default function AddProduct() {
                       <div style={{ textAlign: 'center' }}>
                         <div
                           style={{
-                            width: 104,
-                            height: 104,
-                            borderRadius: 28,
+                            width: 88,
+                            height: 88,
+                            borderRadius: 24,
                             background: `${token.colorPrimary}14`,
                             display: 'flex',
                             alignItems: 'center',
@@ -5793,14 +5351,11 @@ export default function AddProduct() {
                           }}
                         >
                           <InboxOutlined
-                            style={{ fontSize: 48, color: token.colorPrimary }}
+                            style={{ fontSize: 40, color: token.colorPrimary }}
                           />
                         </div>
 
-                        <Text
-                          strong
-                          style={{ fontSize: 19, display: 'block' }}
-                        >
+                        <Text strong style={{ fontSize: 17, display: 'block' }}>
                           Arrastrá imágenes o importalas desde el agente
                         </Text>
 
@@ -5852,17 +5407,10 @@ export default function AddProduct() {
                 />
 
                 <Card
-                  id={SECTION_IDS.informacion}
                   title={
                     <Space size={10}>
-                      <span className="add-product-step-badge">2</span>
                       <ShoppingOutlined style={{ color: token.colorPrimary }} />
-                      <span className="add-product-card-title">
-                        Información del producto
-                      </span>
-                      <Tag color="red" style={{ borderRadius: 999 }}>
-                        Requerido
-                      </Tag>
+                      <span>Información del producto</span>
                     </Space>
                   }
                   style={{
@@ -5873,17 +5421,9 @@ export default function AddProduct() {
                   }}
                   styles={{ body: { padding: 24 } }}
                 >
-                  <Text
-                    type="secondary"
-                    style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
-                  >
-                    Lo que ve el cliente: título, descripción y clasificación —
-                    todo obligatorio.
-                  </Text>
-
                   <Row gutter={[18, 18]}>
                     <Col xs={24}>
-                      <ProductField
+                      <StableFormItem
                         name="titulo"
                         label="Título del producto"
                         rules={[
@@ -5904,11 +5444,11 @@ export default function AddProduct() {
                           showCount
                           maxLength={120}
                         />
-                      </ProductField>
+                      </StableFormItem>
                     </Col>
 
                     <Col xs={24}>
-                      <ProductField
+                      <StableFormItem
                         name="descripcion"
                         label="Descripción comercial"
                         rules={[
@@ -5925,11 +5465,11 @@ export default function AddProduct() {
                           showCount
                           maxLength={3600}
                         />
-                      </ProductField>
+                      </StableFormItem>
                     </Col>
 
                     <Col xs={24}>
-                      <ProductField
+                      <StableFormItem
                         name="descripcionTecnica"
                         label="Descripción técnica precisa"
                         extra="Detalle objetivo para ficha ampliada: estructura, partes visibles, terminación, textura, presentación, materialidad y límites de lo que se puede confirmar."
@@ -5945,11 +5485,11 @@ export default function AddProduct() {
                           showCount
                           maxLength={4200}
                         />
-                      </ProductField>
+                      </StableFormItem>
                     </Col>
 
                     <Col xs={24} md={12}>
-                      <ProductField
+                      <StableFormItem
                         name="categoria"
                         label="Categoría"
                         rules={[
@@ -5986,11 +5526,11 @@ export default function AddProduct() {
                             }
                           />
                         </AutoComplete>
-                      </ProductField>
+                      </StableFormItem>
                     </Col>
 
                     <Col xs={24} md={12}>
-                      <ProductField
+                      <StableFormItem
                         name="subcategoria"
                         label="Subcategoría"
                         rules={[
@@ -6029,11 +5569,11 @@ export default function AddProduct() {
                             }
                           />
                         </AutoComplete>
-                      </ProductField>
+                      </StableFormItem>
                     </Col>
 
                     <Col xs={24} md={12}>
-                      <ProductField
+                      <StableFormItem
                         name="marca"
                         label="Marca"
                         rules={[
@@ -6052,11 +5592,11 @@ export default function AddProduct() {
                             />
                           }
                         />
-                      </ProductField>
+                      </StableFormItem>
                     </Col>
 
                     <Col xs={24} md={12}>
-                      <ProductField name="material" label="Material">
+                      <StableFormItem name="material" label="Material">
                         <Input
                           size="large"
                           placeholder="Material principal visible o declarado"
@@ -6066,11 +5606,11 @@ export default function AddProduct() {
                             />
                           }
                         />
-                      </ProductField>
+                      </StableFormItem>
                     </Col>
 
                     <Col xs={24}>
-                      <ProductField name="color" label="Color general">
+                      <StableFormItem name="color" label="Color general">
                         <Input
                           size="large"
                           placeholder="Color dominante o combinación principal"
@@ -6080,20 +5620,16 @@ export default function AddProduct() {
                             />
                           }
                         />
-                      </ProductField>
+                      </StableFormItem>
                     </Col>
                   </Row>
                 </Card>
 
                 <Card
-                  id={SECTION_IDS.ficha}
                   title={
                     <Space size={10}>
-                      <span className="add-product-step-badge">3</span>
                       <AppstoreOutlined style={{ color: token.colorPrimary }} />
-                      <span className="add-product-card-title">
-                        Ficha técnica inteligente
-                      </span>
+                      <span>Ficha técnica inteligente</span>
                       {dynamicProductFields.length > 0 && (
                         <Tag color="processing" style={{ borderRadius: 999 }}>
                           {dynamicProductFields.length} campos
@@ -6112,7 +5648,7 @@ export default function AddProduct() {
                       onChange={checked => {
                         setUseTechnicalSheet(checked)
                         if (!checked) {
-                          setProductFormValues({
+                          form.setFieldsValue({
                             descripcionTecnica: undefined,
                             dynamicFields: {},
                           })
@@ -6278,15 +5814,9 @@ export default function AddProduct() {
                                 <DynamicProductField field={field} />
                                 <Space size={6} wrap>
                                   {field.required && (
-                                    <Tag color="red" style={{ borderRadius: 999 }}>
-                                      Obligatorio
-                                    </Tag>
+                                    <Tag color="red">Obligatorio</Tag>
                                   )}
-                                  {field.source && (
-                                    <Tag style={{ borderRadius: 999 }}>
-                                      {field.source}
-                                    </Tag>
-                                  )}
+                                  {field.source && <Tag>{field.source}</Tag>}
                                   <Button
                                     htmlType="button"
                                     size="small"
@@ -6327,7 +5857,7 @@ export default function AddProduct() {
                               setCustomFieldName(event.target.value)
                             }
                             onPressEnter={handleAddDynamicProductField}
-                            placeholder="Ej: Potencia, Material, Capacidad"
+                            placeholder="Nombre de atributo técnico, medida o característica"
                             style={{ marginTop: 8 }}
                           />
                         </Col>
@@ -6368,22 +5898,13 @@ export default function AddProduct() {
                 </Card>
 
                 <Card
-                  id={SECTION_IDS.variantes}
                   title={
                     <Space size={10}>
-                      <span className="add-product-step-badge">4</span>
                       <ClusterOutlined style={{ color: token.colorPrimary }} />
-                      <span className="add-product-card-title">
-                        Opciones vendibles del producto
-                      </span>
+                      <span>Opciones vendibles del producto</span>
                       {dynamicAttributes.length > 0 && (
                         <Tag color="success" style={{ borderRadius: 999 }}>
                           {dynamicAttributes.length} atributos detectados
-                        </Tag>
-                      )}
-                      {!hasVariants && (
-                        <Tag color="default" style={{ borderRadius: 999 }}>
-                          Opcional
                         </Tag>
                       )}
                     </Space>
@@ -6522,7 +6043,7 @@ export default function AddProduct() {
                                 setNewAttributeName(event.target.value)
                               }
                               onPressEnter={handleAddCustomAttribute}
-                              placeholder="Ej: Color, Talle, Presentación"
+                              placeholder="Nombre de la opción vendible"
                               style={{ marginTop: 8 }}
                             />
                           </Col>
@@ -6772,7 +6293,7 @@ export default function AddProduct() {
                                 title: 'Variante',
                                 dataIndex: 'nombre',
                                 key: 'nombre',
-                                width: 220,
+                                width: 260,
                                 fixed: 'left',
                                 render: (_, record) => (
                                   <Space direction="vertical" size={6}>
@@ -6894,7 +6415,7 @@ export default function AddProduct() {
                               {
                                 title: 'Imagen de variante',
                                 key: 'image',
-                                width: 260,
+                                width: 330,
                                 render: (_, record) => (
                                   <VariantImageSelector
                                     variant={record}
@@ -7141,23 +6662,16 @@ export default function AddProduct() {
                         message={
                           productReadiness.isReady
                             ? 'Ya podés publicar o guardar como borrador.'
-                            : `Faltan: ${missingRequiredLabels.join(', ')}`
+                            : 'El flujo rápido solo exige imagen, título, descripción, categoría, precio y stock.'
                         }
                       />
                     </Space>
                   </Card>
                   <Card
-                    id={SECTION_IDS.precio}
                     title={
                       <Space size={10}>
-                        <span className="add-product-step-badge">5</span>
                         <DollarOutlined style={{ color: token.colorPrimary }} />
-                        <span className="add-product-card-title">
-                          Precio y disponibilidad
-                        </span>
-                        <Tag color="red" style={{ borderRadius: 999 }}>
-                          Requerido
-                        </Tag>
+                        <span>Precio y disponibilidad</span>
                       </Space>
                     }
                     style={{
@@ -7168,17 +6682,9 @@ export default function AddProduct() {
                     }}
                     styles={{ body: { padding: 24 } }}
                   >
-                    <Text
-                      type="secondary"
-                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
-                    >
-                      Precio, condición y stock visibles en el catálogo —
-                      obligatorios para publicar.
-                    </Text>
-
                     <Row gutter={[16, 16]}>
                       <Col xs={24}>
-                        <ProductField
+                        <StableFormItem
                           name="precio"
                           label={
                             hasVariants ? 'Precio base de referencia' : 'Precio'
@@ -7211,12 +6717,12 @@ export default function AddProduct() {
                               }
                             }}
                           />
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
 
                       {!hasVariants && (
                         <Col xs={24}>
-                          <ProductField
+                          <StableFormItem
                             name="cantidad"
                             label="Cantidad en stock"
                             rules={[
@@ -7237,12 +6743,12 @@ export default function AddProduct() {
                                 />
                               }
                             />
-                          </ProductField>
+                          </StableFormItem>
                         </Col>
                       )}
 
                       <Col xs={24}>
-                        <ProductField
+                        <StableFormItem
                           name="condicion"
                           label="Condición"
                           rules={[
@@ -7257,25 +6763,16 @@ export default function AddProduct() {
                             placeholder="Seleccioná la condición"
                           >
                             <Select.Option value="nuevo">
-                              <Tag color="success" style={{ borderRadius: 999 }}>
-                                Nuevo
-                              </Tag>
+                              <Tag color="success">Nuevo</Tag>
                             </Select.Option>
                             <Select.Option value="usado">
-                              <Tag color="warning" style={{ borderRadius: 999 }}>
-                                Usado
-                              </Tag>
+                              <Tag color="warning">Usado</Tag>
                             </Select.Option>
                             <Select.Option value="reacondicionado">
-                              <Tag
-                                color="processing"
-                                style={{ borderRadius: 999 }}
-                              >
-                                Reacondicionado
-                              </Tag>
+                              <Tag color="processing">Reacondicionado</Tag>
                             </Select.Option>
                           </Select>
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
                     </Row>
 
@@ -7295,12 +6792,7 @@ export default function AddProduct() {
                         <FileTextOutlined
                           style={{ color: token.colorPrimary }}
                         />
-                        <span className="add-product-card-title">
-                          SEO y contenido comercial
-                        </span>
-                        <Tag color="default" style={{ borderRadius: 999 }}>
-                          Opcional
-                        </Tag>
+                        <span>SEO y contenido comercial</span>
                       </Space>
                     }
                     style={{
@@ -7311,14 +6803,6 @@ export default function AddProduct() {
                     }}
                     styles={{ body: { padding: 24 } }}
                   >
-                    <Text
-                      type="secondary"
-                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
-                    >
-                      Mejora cómo se encuentra el producto en buscadores y
-                      recomendaciones internas.
-                    </Text>
-
                     <Space
                       direction="vertical"
                       size={12}
@@ -7348,22 +6832,22 @@ export default function AddProduct() {
                         Posicionamiento SEO
                       </Divider>
 
-                      <ProductField
+                      <StableFormItem
                         name="seoFocusKeyword"
                         label="Keyword principal"
                       >
                         <Input placeholder="Ej: Moto Morini X-Cape 700" />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField
+                      <StableFormItem
                         name="seoSearchIntent"
                         label="Intención de búsqueda"
                         initialValue="commercial"
                       >
                         <Select options={SEO_POSITIONING_INTENT_OPTIONS} />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField
+                      <StableFormItem
                         name="seoPositioning"
                         label="Posicionamiento SEO"
                       >
@@ -7373,16 +6857,16 @@ export default function AddProduct() {
                           showCount
                           placeholder="Definí cómo debe posicionarse este producto en buscadores, qué intención resuelve y qué lo diferencia."
                         />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField
+                      <StableFormItem
                         name="seoTargetAudience"
                         label="Audiencia objetivo"
                       >
                         <Input placeholder="Ej: usuarios que buscan una motocicleta adventure para ruta y uso mixto" />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField
+                      <StableFormItem
                         name="seoContentAngle"
                         label="Enfoque de contenido"
                       >
@@ -7392,17 +6876,17 @@ export default function AddProduct() {
                           showCount
                           placeholder="Qué destacar en la descripción, fichas, contenido y FAQs."
                         />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField name="seoFaq" label="Preguntas frecuentes SEO">
+                      <StableFormItem name="seoFaq" label="Preguntas frecuentes SEO">
                         <Select
                           mode="tags"
                           tokenSeparators={[',']}
                           placeholder="Ej: ¿Qué motor tiene?, ¿Para qué uso sirve?, ¿Qué revisar antes de comprar?"
                         />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField
+                      <StableFormItem
                         name="seoContentPillars"
                         label="Pilares de contenido"
                       >
@@ -7411,17 +6895,17 @@ export default function AddProduct() {
                           tokenSeparators={[',']}
                           placeholder="marca, modelo, categoría, material, uso, beneficio"
                         />
-                      </ProductField>
+                      </StableFormItem>
 
                       <Divider orientation="left" plain>
                         SEO básico
                       </Divider>
 
-                      <ProductField name="slug" label="Slug URL">
+                      <StableFormItem name="slug" label="Slug URL">
                         <Input placeholder="nombre-producto-claro" />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField
+                      <StableFormItem
                         name="shortDescription"
                         label="Descripción corta"
                       >
@@ -7431,17 +6915,17 @@ export default function AddProduct() {
                           showCount
                           placeholder="Resumen comercial breve para cards, SEO y vistas rápidas."
                         />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField name="metaTitle" label="Meta title">
+                      <StableFormItem name="metaTitle" label="Meta title">
                         <Input
                           maxLength={70}
                           showCount
                           placeholder="Título SEO"
                         />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField
+                      <StableFormItem
                         name="metaDescription"
                         label="Meta description"
                       >
@@ -7451,15 +6935,15 @@ export default function AddProduct() {
                           showCount
                           placeholder="Descripción SEO para buscadores."
                         />
-                      </ProductField>
+                      </StableFormItem>
 
-                      <ProductField name="seoKeywords" label="Keywords">
+                      <StableFormItem name="seoKeywords" label="Keywords">
                         <Select
                           mode="tags"
                           tokenSeparators={[',']}
                           placeholder="marca, categoría, material, uso"
                         />
-                      </ProductField>
+                      </StableFormItem>
                     </Space>
                   </Card>
 
@@ -7469,12 +6953,7 @@ export default function AddProduct() {
                         <ShoppingOutlined
                           style={{ color: token.colorPrimary }}
                         />
-                        <span className="add-product-card-title">
-                          Logística, garantía y origen
-                        </span>
-                        <Tag color="default" style={{ borderRadius: 999 }}>
-                          Opcional
-                        </Tag>
+                        <span>Logística, garantía y origen</span>
                       </Space>
                     }
                     style={{
@@ -7485,73 +6964,65 @@ export default function AddProduct() {
                     }}
                     styles={{ body: { padding: 24 } }}
                   >
-                    <Text
-                      type="secondary"
-                      style={{ display: 'block', marginBottom: 16, fontSize: 14 }}
-                    >
-                      Ayuda a calcular envío y a comunicar garantía y origen —
-                      podés completarlo después.
-                    </Text>
-
                     <Row gutter={[12, 12]}>
                       <Col xs={24} sm={12}>
-                        <ProductField name="weightKg" label="Peso kg">
+                        <StableFormItem name="weightKg" label="Peso kg">
                           <InputNumber
                             min={0}
                             precision={3}
                             style={{ width: '100%' }}
                             placeholder="0.500"
                           />
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
                       <Col xs={24} sm={12}>
-                        <ProductField
+                        <StableFormItem
                           name="shippingType"
                           label="Tipo de envío"
                           initialValue="standard"
                         >
                           <Select options={SHIPPING_TYPE_OPTIONS} />
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
                       <Col xs={8}>
-                        <ProductField name="packageLengthCm" label="Largo cm">
+                        <StableFormItem name="packageLengthCm" label="Largo cm">
                           <InputNumber
                             min={0}
                             precision={1}
                             style={{ width: '100%' }}
                           />
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
                       <Col xs={8}>
-                        <ProductField name="packageWidthCm" label="Ancho cm">
+                        <StableFormItem name="packageWidthCm" label="Ancho cm">
                           <InputNumber
                             min={0}
                             precision={1}
                             style={{ width: '100%' }}
                           />
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
                       <Col xs={8}>
-                        <ProductField name="packageHeightCm" label="Alto cm">
+                        <StableFormItem name="packageHeightCm" label="Alto cm">
                           <InputNumber
                             min={0}
                             precision={1}
                             style={{ width: '100%' }}
                           />
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
                       <Col xs={24}>
-                        <ProductField name="warranty" label="Garantía">
+                        <StableFormItem name="warranty" label="Garantía">
                           <Input placeholder="Ej: 6 meses por defecto de fabricación" />
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
                       <Col xs={24}>
-                        <ProductField
+                        <StableFormItem
                           name="countryOfOrigin"
                           label="País de origen"
                         >
                           <Input placeholder="Ej: Argentina, Brasil, China" />
-                        </ProductField>
+                        </StableFormItem>
                       </Col>
                     </Row>
                   </Card>
@@ -7623,8 +7094,6 @@ export default function AddProduct() {
                   </Card>
 
                   <Card
-                    id={SECTION_IDS.publicar}
-                    className="add-product-publish-card"
                     style={{
                       borderRadius: 20,
                       border: `1px solid ${token.colorBorderSecondary}`,
@@ -7637,27 +7106,11 @@ export default function AddProduct() {
                       size={14}
                       style={{ width: '100%' }}
                     >
-                      <Space size={10}>
-                        <span className="add-product-step-badge">6</span>
-                        <Text strong className="add-product-card-title">
-                          Publicar
-                        </Text>
-                      </Space>
-
                       {isError && (
                         <Alert
                           type="error"
                           message={productMessage || 'Error guardando producto'}
                           showIcon
-                          style={{ borderRadius: 14 }}
-                        />
-                      )}
-
-                      {!productReadiness.isReady && (
-                        <Alert
-                          type="warning"
-                          showIcon
-                          message={`Faltan: ${missingRequiredLabels.join(', ')}`}
                           style={{ borderRadius: 14 }}
                         />
                       )}
@@ -7741,9 +7194,7 @@ export default function AddProduct() {
                 </div>
               </Col>
             </Row>
-              </Form>
-            </ProductFormMutationContext.Provider>
-          </ProductFormDirtyContext.Provider>
+          </Form>
         </Col>
       </Row>
 
@@ -7804,7 +7255,7 @@ export default function AddProduct() {
           gap: 2px;
         }
 
-        .stable-form-field,
+        .ant-form-item,
         .ant-card,
         .ant-row,
         .ai-analysis-card {
@@ -7812,31 +7263,27 @@ export default function AddProduct() {
         }
 
 
-        .stable-form-field {
+        .stable-form-item {
+          margin-bottom: 18px !important;
           overflow-anchor: none !important;
         }
 
-        .stable-form-field-label {
-          display: block;
-          margin-bottom: 6px;
-          color: ${token.colorText};
-          font-size: 14px;
-          font-weight: 600;
-          line-height: 1.35;
+        .stable-form-item .ant-form-item-label {
+          padding-bottom: 6px !important;
         }
 
-        .stable-form-field-required {
-          margin-left: 4px;
-          color: ${token.colorError};
-        }
-
-        .stable-form-field-message {
-          min-height: 20px;
-          margin-top: 6px;
-          color: ${token.colorError};
-          font-size: 12px;
+        .stable-form-item .ant-form-item-explain {
+          min-height: 18px;
           line-height: 1.35;
           transition: none !important;
+        }
+
+        .stable-form-item .ant-form-item-extra {
+          transition: none !important;
+        }
+
+        .stable-form-item .ant-form-item-control-input {
+          min-height: 40px;
         }
 
         .add-product-side-panel {
@@ -7850,75 +7297,7 @@ export default function AddProduct() {
         .ai-analysis-card:hover {
           box-shadow: 0 8px 32px ${token.colorPrimary}25 !important;
         }
-
-        .add-product-card-title {
-          font-size: 17px;
-          font-weight: 700;
-        }
-
-        .add-product-step-badge {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 22px;
-          height: 22px;
-          padding: 0 6px;
-          border-radius: 999px;
-          background: ${token.colorPrimary};
-          color: ${token.colorTextLightSolid || '#fff'};
-          font-size: 12px;
-          font-weight: 700;
-          line-height: 22px;
-        }
-
-        .add-product-agent-collapse .ant-collapse-header {
-          padding: 12px 16px !important;
-        }
-
-        .add-product-agent-collapse .ant-collapse-content-box {
-          padding: 4px 16px 16px !important;
-        }
-
-        @media (max-width: 575.98px) {
-          .add-product-stable-page {
-            padding: 12px !important;
-          }
-
-          .add-product-agent-actions {
-            justify-content: flex-start !important;
-          }
-
-          .add-product-agent-actions .ant-btn {
-            flex: 1 1 auto;
-          }
-
-          .add-product-steps-bar {
-            padding: 10px 12px !important;
-          }
-
-          .add-product-steps-bar .ant-steps-item-title {
-            font-size: 12px !important;
-          }
-
-          .add-product-card-title {
-            font-size: 15px;
-          }
-        }
-
-        @media (min-width: 576px) and (max-width: 1199.98px) {
-          .add-product-stable-page {
-            padding: 16px !important;
-          }
-        }
-
-        @media (min-width: 1200px) {
-          .add-product-publish-card {
-            position: sticky;
-            top: 24px;
-          }
-        }
       `}</style>
     </div>
-    </ConfigProvider>
   )
 }
