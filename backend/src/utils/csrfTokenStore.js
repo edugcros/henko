@@ -26,7 +26,10 @@ export const initCsrfTokenStore = async () => {
       url: env.redisUrl,
       socket: {
         reconnectStrategy: retries => Math.min(retries * 50, 500),
+        keepAlive: 30000,
+        noDelay: true,
       },
+      legacyMode: false,
     })
 
     redisClient.on('error', err => {
