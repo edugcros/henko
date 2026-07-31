@@ -19,7 +19,10 @@ export const initCsrfTokenStore = async () => {
     return
   }
 
-  logger.info('[CSRF] 🔄 Conectando a Redis:', env.redisUrl.substring(0, 50) + '...')
+  const urlObj = new URL(env.redisUrl)
+  const safeUrl = `${urlObj.protocol}//*:*@${urlObj.host}${urlObj.pathname}`
+  logger.info('[CSRF] 🔄 Conectando a Redis:', safeUrl)
+  logger.debug('[CSRF] Protocol:', urlObj.protocol, 'Host:', urlObj.host, 'Port:', urlObj.port)
 
   try {
     redisClient = createClient({
