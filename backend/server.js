@@ -5,7 +5,6 @@ import { env } from './config/env.js'
 import connectDB, { closeDB } from './config/connectDB.js'
 import app from './app.js'
 import logger from './config/logger.js'
-import { initCsrfTokenStore, closeCsrfTokenStore } from './src/utils/csrfTokenStore.js'
 import {
   startAiCartRecoveryWorker,
   stopAiCartRecoveryWorker,
@@ -33,7 +32,7 @@ const startServer = async () => {
     logger.info('[SERVER] 🟢 MongoDB conectado')
 
     logger.info('[SERVER] 🔄 Inicializando CSRF token store...')
-    await initCsrfTokenStore()
+    
     logger.info('[SERVER] ✅ CSRF token store inicializado')
 
     serverInstance = app.listen(PORT, '0.0.0.0', () => {
@@ -91,7 +90,6 @@ const shutdown = async signal => {
       logger.info('🛑 Servidor HTTP cerrado')
     }
 
-    await closeCsrfTokenStore()
     await closeDB()
 
     logger.info('✅ Shutdown completo')

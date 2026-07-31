@@ -29,7 +29,6 @@ import {
   removeFromCart,
   createUserAdmin,
   verifyEmail,
-  getCsrfToken,
 } from '../controller/userCtrl.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
@@ -149,14 +148,6 @@ router.get(
 router.post(
   '/logout',
   logout,
-)
-
-// CSRF token para requests unsafe (POST/PUT/PATCH/DELETE).
-router.get(
-  '/csrf-token',
-  resolveTenantByDomain,
-  authMiddleware,
-  getCsrfToken,
 )
 
 // Cambios sensibles sobre cuenta propia.

@@ -13,7 +13,6 @@ import {
   handleCsrfError,
   logCsrfStatus,
 } from './src/middlewares/csrfMiddleware.js'
-import { initCsrfTokenStore } from './src/utils/csrfTokenStore.js'
 
 import { env } from './config/env.js'
 import { corsOptions } from './config/corsOptions.js'
