@@ -92,13 +92,6 @@ router.post(
         data: result,
       })
     } catch (error) {
-      logger.error('[ANALYZE VISUAL] Error in analyzeImage:', {
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack,
-        tenantId,
-      })
-
       if (
         error?.message?.includes('429') ||
         error?.message?.toLowerCase?.().includes('rate limit')
@@ -113,7 +106,6 @@ router.post(
       return res.status(500).json({
         success: false,
         message: 'Error al analizar la imagen con IA',
-        error: error?.message,
       })
     }
   }),
