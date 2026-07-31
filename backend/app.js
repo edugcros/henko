@@ -292,13 +292,15 @@ if (env.csrfEnabled) {
   app.use(logCsrfStatus)
 
   app.use((req, res, next) => {
-    const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(req.method)
-
-    if (isSafeMethod || isCsrfExempt(req)) {
+    if (isCsrfExempt(req)) {
       return next()
     }
 
-    // csrfProtectionDynamic es async pero Express lo maneja
+    // csrfProtectionDynamic ya distingue internamente métodos seguros
+    // (setea la cookie y expone req.csrfToken sin exigir validación) de
+    // los inseguros (además valida el token). Saltarlo para GET/HEAD/OPTIONS
+    // dejaba a /user/csrf-token sin req.csrfToken nunca — el propio
+    // endpoint que debe entregar el token quedaba siempre en 500.
     return csrfProtectionDynamic(req, res, next)
   })
 }

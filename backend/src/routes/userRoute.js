@@ -41,6 +41,7 @@ import {
 import {
   csrfProtectionDynamic,
 } from '../middlewares/csrfMiddleware.js'
+import { env } from '../../config/env.js'
 
 const router = express.Router()
 const adminContext = [
@@ -67,6 +68,18 @@ const authLimiter = rateLimit({
 })
 
 router.get('/csrf-token', (req, res) => {
+  // CSRF_ENABLED=false apaga csrfProtectionDynamic a nivel global (ver
+  // app.js), así que req.csrfToken nunca se define. Sin esta rama, este
+  // mismo endpoint devolvía 500 en cada request mientras la protección
+  // estuviera deshabilitada, en vez de reflejar ese estado.
+  if (!env.csrfEnabled) {
+    return res.status(200).json({
+      success: true,
+      csrfEnabled: false,
+      csrfToken: null,
+    })
+  }
+
   try {
     if (typeof req.csrfToken !== 'function') {
       return res.status(500).json({
@@ -80,6 +93,7 @@ router.get('/csrf-token', (req, res) => {
 
     return res.status(200).json({
       success: true,
+      csrfEnabled: true,
       csrfToken,
     })
   } catch (error) {
