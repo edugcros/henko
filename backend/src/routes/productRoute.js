@@ -83,12 +83,29 @@ router.post(
       return res.json({ success: true, data: analysis })
     } catch (error) {
       logger.error('[ANALYZE VISUAL ERROR]', {
+        code: error.code || 'UNKNOWN',
+        name: error.name,
         message: error.message,
+        status: error.status ?? error.statusCode ?? null,
         tenantId,
+        mimeType: file.mimetype,
+        imageBytes: file.buffer?.length ?? 0,
+        stack: error.stack,
       })
-      return res.status(500).json({
+
+      // Un fallo de configuración del proveedor (key ausente o malformada)
+      // no es un error del request: sin el código, en producción solo se ve
+      // un 500 opaco y no hay forma de saber qué arreglar.
+      const isProviderConfigError =
+        error.code === 'AI_PROVIDER_DISABLED' ||
+        error.code === 'AI_PROVIDER_KEY_MALFORMED'
+
+      return res.status(isProviderConfigError ? 503 : 500).json({
         success: false,
-        message: 'Error al analizar la imagen con IA'
+        code: error.code || 'AI_ANALYSIS_FAILED',
+        message: isProviderConfigError
+          ? 'El proveedor de IA no está configurado correctamente en el servidor'
+          : 'Error al analizar la imagen con IA',
       })
     }
   })

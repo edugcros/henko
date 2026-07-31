@@ -13,8 +13,41 @@ import logger from '../../config/logger.js'
 
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim()
 
+// La key viaja como header HTTP (x-goog-api-key). Un header solo admite
+// Latin1: si la key trae un carácter fuera de ese rango (típico al pegarla
+// desde un panel que la enmascara con viñetas, o desde un doc que aplicó
+// formato), undici tira "Cannot convert argument to a ByteString..." recién
+// al hacer el request, y el error no menciona la key por ningún lado.
+// Lo detectamos acá para que el fallo diga qué pasa y dónde arreglarlo.
+const findInvalidHeaderChar = value => {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x20 || code > 0x7e) return { index, code }
+  }
+  return null
+}
+
+const GEMINI_API_KEY_INVALID_CHAR = GEMINI_API_KEY
+  ? findInvalidHeaderChar(GEMINI_API_KEY)
+  : null
+
 if (!GEMINI_API_KEY) {
   logger.error('[AI VISION] ❌ GEMINI_API_KEY no configurada - analyzeImage fallará')
+} else if (GEMINI_API_KEY_INVALID_CHAR) {
+  logger.error(
+    '[AI VISION] ❌ GEMINI_API_KEY contiene un carácter inválido para un header HTTP - analyzeImage fallará',
+    {
+      length: GEMINI_API_KEY.length,
+      invalidCharIndex: GEMINI_API_KEY_INVALID_CHAR.index,
+      invalidCharCode: GEMINI_API_KEY_INVALID_CHAR.code,
+      hint: 'Volvé a pegar la key en las variables de entorno; debe ser ASCII (39 chars, empieza con AIza).',
+    },
+  )
+} else {
+  logger.info('[AI VISION] GEMINI_API_KEY validada', {
+    length: GEMINI_API_KEY.length,
+    model: 'ver MODEL_NAME',
+  })
 }
 
 const DEFAULT_MODEL = 'gemini-3.6-flash'
@@ -200,6 +233,16 @@ const getGeminiClient = () => {
   if (!GEMINI_API_KEY) {
     const error = new Error('GEMINI_API_KEY no está configurada')
     error.code = 'AI_PROVIDER_DISABLED'
+    error.retryable = false
+    throw error
+  }
+
+  if (GEMINI_API_KEY_INVALID_CHAR) {
+    const { index, code } = GEMINI_API_KEY_INVALID_CHAR
+    const error = new Error(
+      `GEMINI_API_KEY contiene un carácter inválido para un header HTTP (posición ${index}, código ${code}). Volvé a pegarla: debe ser ASCII.`,
+    )
+    error.code = 'AI_PROVIDER_KEY_MALFORMED'
     error.retryable = false
     throw error
   }
