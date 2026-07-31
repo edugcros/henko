@@ -1389,10 +1389,18 @@ const SingleProduct = () => {
           : '¡Añadido al carrito!',
       )
     } catch (err) {
-      if (process.env.REACT_APP_DEBUG_API === 'true') {
-        console.error('[SingleProduct] Error agregando al carrito:', err)
-      }
-      toast.error(err?.message || 'Iniciá sesión para comprar')
+      console.error('[SingleProduct] Error agregando al carrito:', err)
+
+      // Con createAsyncThunk + rejectWithValue(stringMensaje), .unwrap()
+      // relanza ese string directo (no un Error), así que err?.message
+      // siempre da undefined y el catch caía en un mensaje genérico que
+      // ocultaba el motivo real (stock, tenant, sesión vencida, etc.).
+      const serverMessage =
+        typeof err === 'string'
+          ? err
+          : err?.message || err?.response?.data?.message
+
+      toast.error(serverMessage || 'No se pudo agregar el producto al carrito')
     }
   }, [
     product,
