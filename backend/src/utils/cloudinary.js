@@ -86,10 +86,10 @@ const uploadToCloudinary = (buffer, folder, options = {}) => {
           resourceType === 'video'
             ? options.transformation || []
             : [
-                { quality: 'auto:good', fetch_format: 'auto' },
-                { width: 2000, crop: 'limit' },
-                ...(options.transformation || []),
-              ],
+              { quality: 'auto:good', fetch_format: 'auto' },
+              { width: 2000, crop: 'limit' },
+              ...(options.transformation || []),
+            ],
       }
 
       let timeoutHandle = null

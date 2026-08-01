@@ -77,7 +77,7 @@ router.post(
     if (!file) {
       return res.status(400).json({
         success: false,
-        message: 'No se subió imagen'
+        message: 'No se subió imagen',
       })
     }
 
@@ -124,7 +124,7 @@ router.post(
           : 'Error al analizar la imagen con IA',
       })
     }
-  })
+  }),
 )
 
 const conditionalCsrfProtection = (req, res, next) => {
