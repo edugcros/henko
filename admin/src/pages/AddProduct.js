@@ -5160,32 +5160,39 @@ export default function AddProduct() {
     dispatch(resetState())
   }, [dispatch, form, imagePreviews, notifyFormMutation, resetIa, videoPreviewUrl])
 
-  const handleImportAgentImage = useCallback(async () => {
-    if (!selectedAgentJobId) {
+  const handleImportAgentImage = useCallback(async overrideJobId => {
+    // overrideJobId permite disparar la carga sobre un job puntual (usado
+    // por el auto-loader cuando llega la hora programada) sin depender
+    // del dropdown — setSelectedAgentJobId es async, así que leer
+    // selectedAgentJobId justo después de setearlo daría el valor viejo.
+    const targetJobId =
+      typeof overrideJobId === 'string' ? overrideJobId : selectedAgentJobId
+
+    if (!targetJobId) {
       message.warning('No hay imágenes pendientes del agente')
-      return
+      return false
     }
 
-    const selectedJob = selectedAgentJob
+    const targetJob = agentQueue.find(job => job._id === targetJobId) || null
 
-    if (selectedJob?.status === 'scheduled') {
+    if (targetJob?.status === 'scheduled') {
       message.warning(
         'La imagen todavía está programada. Va a estar disponible en el horario indicado.',
       )
-      return
+      return false
     }
 
     if (hasUserWorkspace) {
       message.warning(
         'Hay un producto en edición. Guardalo, descartalo o limpiá el formulario antes de cargar otra imagen.',
       )
-      return
+      return false
     }
 
     setImportingAgentImage(true)
     try {
       const importResponse = await api.post(
-        `/product-analysis/${selectedAgentJobId}/import-to-add-product`,
+        `/product-analysis/${targetJobId}/import-to-add-product`,
       )
       // Si AddProduct ya la analizó sola (llegó su hora programada), el
       // backend nos manda el análisis ya calculado acá — no hace falta
@@ -5196,7 +5203,7 @@ export default function AddProduct() {
       await waitForUiReset()
 
       const response = await api.get(
-        `/product-analysis/${selectedAgentJobId}/image-file`,
+        `/product-analysis/${targetJobId}/image-file`,
         {
           responseType: 'blob',
         },
@@ -5204,12 +5211,12 @@ export default function AddProduct() {
 
       const blob = response.data
       const filename =
-        selectedJob?.originalFilename || `agent-image-${Date.now()}.jpg`
+        targetJob?.originalFilename || `agent-image-${Date.now()}.jpg`
       const mimeType =
-        blob?.type || selectedJob?.metadata?.mimeType || 'image/jpeg'
+        blob?.type || targetJob?.metadata?.mimeType || 'image/jpeg'
       const imageFile = new File([blob], filename, { type: mimeType })
       const uploadFile = {
-        uid: `agent-${selectedAgentJobId}-${Date.now()}`,
+        uid: `agent-${targetJobId}-${Date.now()}`,
         name: filename,
         status: 'done',
         originFileObj: imageFile,
@@ -5221,11 +5228,9 @@ export default function AddProduct() {
       setFileList(merged)
       setImagePreviews(rebuildPreviews(merged))
 
-      setCurrentAgentJob(selectedJob)
+      setCurrentAgentJob(targetJob)
 
-      setAgentQueue(current =>
-        current.filter(job => job._id !== selectedAgentJobId),
-      )
+      setAgentQueue(current => current.filter(job => job._id !== targetJobId))
       setSelectedAgentJobId(null)
 
       if (alreadyAnalyzed) {
@@ -5235,11 +5240,14 @@ export default function AddProduct() {
         await analyzeImage(imageFile)
         message.success('Imagen del agente cargada en AddProduct')
       }
+
+      return true
     } catch (error) {
       message.error(
         error?.response?.data?.message ||
           'No se pudo importar la imagen del agente',
       )
+      return false
     } finally {
       setImportingAgentImage(false)
     }
@@ -5250,7 +5258,6 @@ export default function AddProduct() {
     hasUserWorkspace,
     resetProductWorkspace,
     selectedAgentJobId,
-    selectedAgentJob,
   ])
 
   const handleDeleteAgentImage = useCallback(async () => {
@@ -5476,6 +5483,56 @@ export default function AddProduct() {
   useEffect(() => {
     processAutoAgentQueue()
   }, [processAutoAgentQueue])
+
+  // Con "Auto activo", una imagen que llega a horario (queda 'pending' en
+  // /admin/product-analysis) no debería necesitar que alguien la
+  // seleccione a mano en el desplegable y apriete "Cargar ahora". Este
+  // efecto hace exactamente eso solo: carga la próxima pendiente en el
+  // formulario y dispara el análisis — la creación del producto sigue
+  // siendo manual (botón "Guardar"), esto solo ahorra el click de carga.
+  // No compite con processAutoAgentQueue: ese procesa jobs con
+  // autoSaveProduct:true (van a la cola de revisión AutoSave); este
+  // procesa el resto.
+  const autoLoadNextPendingJob = useCallback(async () => {
+    if (
+      !autoAgentEnabled ||
+      autoAgentRef.current ||
+      importingAgentImage ||
+      hasUserWorkspace
+    ) {
+      return
+    }
+
+    const nextJob = agentQueue.find(
+      job =>
+        ['pending', 'completed'].includes(job.status) &&
+        job.metadata?.autoSaveProduct !== true &&
+        !autoAgentFailedJobsRef.current.has(job._id),
+    )
+
+    if (!nextJob) return
+
+    autoAgentRef.current = true
+
+    try {
+      const succeeded = await handleImportAgentImage(nextJob._id)
+      if (!succeeded) {
+        autoAgentFailedJobsRef.current.add(nextJob._id)
+      }
+    } finally {
+      autoAgentRef.current = false
+    }
+  }, [
+    agentQueue,
+    autoAgentEnabled,
+    handleImportAgentImage,
+    hasUserWorkspace,
+    importingAgentImage,
+  ])
+
+  useEffect(() => {
+    autoLoadNextPendingJob()
+  }, [autoLoadNextPendingJob])
 
   const handleAddMoreImages = useCallback(
     ({ fileList: incomingFiles }) => {
