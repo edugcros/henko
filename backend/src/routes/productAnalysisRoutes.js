@@ -23,6 +23,8 @@ import {
   getAnalysisAgentStatus,
   runAnalysisJobNow,
   rescheduleAnalysisJob,
+  reportAgentHeartbeat,
+  getAgentHeartbeat,
 } from '../controller/productAnalysisController.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
@@ -234,12 +236,19 @@ router.post(
   analysisWriteLimiter,
   runWishlistPromotionNotifications,
 )
+router.post(
+  '/agent-heartbeat',
+  agentOrAdminAuth,
+  analysisWriteLimiter,
+  reportAgentHeartbeat,
+)
 
 router.use(authenticateAdmin)
 
 router.post('/process-due', analysisWriteLimiter, processDueAnalysisJobs)
 
 router.get('/agent/status', getAnalysisAgentStatus)
+router.get('/agent-heartbeat', getAgentHeartbeat)
 
 router.patch('/:jobId/hide', hideAnalysisJob)
 router.patch('/:jobId/unhide', unhideAnalysisJob)

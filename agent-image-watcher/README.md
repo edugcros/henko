@@ -67,3 +67,41 @@ Los archivos fallidos incluyen un `<imagen>.error.json` con código HTTP y motiv
 Ejecutar mediante un supervisor como systemd, Windows Service, Docker o PM2.
 Debe existir una sola instancia por `WATCH_FOLDER`. `API_BASE_URL` debe utilizar
 HTTPS y cada tenant debe disponer de una credencial independiente.
+
+### Arranque automático en Windows (PM2)
+
+Instalación de una sola vez, en PowerShell como administrador:
+
+```powershell
+npm install -g pm2 pm2-windows-startup
+pm2-startup install
+```
+
+Luego, desde esta carpeta (`agent-image-watcher/`), con el `.env` ya configurado
+(ver sección Configuración arriba):
+
+```powershell
+npm install
+npm run service:install
+npm run service:save
+```
+
+`pm2-startup install` registra un servicio de Windows que arranca PM2 al
+iniciar la máquina; `pm2 save` guarda la lista de procesos actual para que
+se restauren automáticamente en ese arranque. A partir de acá, el agente
+sobrevive a reinicios de la PC y se reinicia solo si el proceso crashea
+(hasta 10 reintentos, con 30s de estabilidad mínima entre reinicios).
+
+Comandos útiles después de instalado:
+
+```powershell
+npm run service:status   # ver si está corriendo
+npm run service:logs     # logs en vivo (Ctrl+C para salir)
+npm run service:restart  # reiniciar manualmente
+npm run service:stop     # detener sin desinstalar
+npm run service:remove   # sacarlo de PM2 por completo
+```
+
+El estado del agente (conectado / última vez visto / cola pendiente) también
+se ve remotamente desde el panel admin, en **Agente IA**
+(`/admin/product-analysis`), sin necesidad de acceder a esta PC.

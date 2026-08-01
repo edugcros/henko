@@ -706,9 +706,12 @@ const buildActivityFeed = jobs => {
     .slice(0, 6)
 }
 
+const WATCHER_ONLINE_THRESHOLD_MS = 3 * 60 * 1000
+
 const AgentStatusBar = ({
   agentStatus,
   agentStatusLoading,
+  agentHeartbeat,
   activity,
   onSweep,
   sweeping,
@@ -718,6 +721,15 @@ const AgentStatusBar = ({
     (agentStatus?.agent?.pollIntervalMs || 0) / 1000,
   )
   const nextRun = agentStatus?.nextRun
+
+  const heartbeatAgeMs = agentHeartbeat?.lastHeartbeatAt
+    ? Date.now() - new Date(agentHeartbeat.lastHeartbeatAt).getTime()
+    : null
+  const isWatcherOnline =
+    heartbeatAgeMs !== null && heartbeatAgeMs < WATCHER_ONLINE_THRESHOLD_MS
+  const watcherTooltip = agentHeartbeat
+    ? `${agentHeartbeat.hostname || 'PC del local'} · v${agentHeartbeat.version || '?'} · pendientes: ${agentHeartbeat.queue?.pending ?? 0} · activos: ${agentHeartbeat.queue?.active ?? 0}${agentHeartbeat.lastError ? ` · último error: ${agentHeartbeat.lastError}` : ''}`
+    : 'El watcher local todavía no envió ningún heartbeat.'
 
   return (
     <Paper
@@ -770,6 +782,21 @@ const AgentStatusBar = ({
           spacing={1.5}
           alignItems={{ sm: 'center' }}
         >
+          <Tooltip title={watcherTooltip}>
+            <Chip
+              size="small"
+              variant={isWatcherOnline ? 'filled' : 'outlined'}
+              color={isWatcherOnline ? 'success' : 'default'}
+              label={
+                isWatcherOnline
+                  ? `Watcher local conectado (${formatRelativeTime(agentHeartbeat.lastHeartbeatAt)})`
+                  : agentHeartbeat
+                    ? `Watcher local sin conexión (visto ${formatRelativeTime(agentHeartbeat.lastHeartbeatAt)})`
+                    : 'Watcher local nunca conectado'
+              }
+            />
+          </Tooltip>
+
           {nextRun && (
             <Tooltip title={nextRun.originalFilename || ''}>
               <Chip
@@ -910,6 +937,7 @@ const ProductAnalysisPage = () => {
 
   const [agentStatus, setAgentStatus] = useState(null)
   const [agentStatusLoading, setAgentStatusLoading] = useState(false)
+  const [agentHeartbeat, setAgentHeartbeat] = useState(null)
   const [runningJobId, setRunningJobId] = useState(null)
   const [rescheduleJob, setRescheduleJob] = useState(null)
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
@@ -1075,6 +1103,16 @@ const ProductAnalysisPage = () => {
     }
   }, [])
 
+  const fetchAgentHeartbeat = useCallback(async () => {
+    try {
+      const { data } = await api.get('/product-analysis/agent-heartbeat')
+      setAgentHeartbeat(data?.data || null)
+    } catch (error) {
+      // Silencioso: es un indicador secundario, no debe tapar la UI
+      // principal con toasts si el endpoint falla puntualmente.
+    }
+  }, [])
+
   const fetchDrafts = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setDraftsLoading(true)
 
@@ -1113,18 +1151,20 @@ const ProductAnalysisPage = () => {
 
   useEffect(() => {
     fetchAgentStatus()
+    fetchAgentHeartbeat()
     fetchDrafts()
-  }, [fetchAgentStatus, fetchDrafts])
+  }, [fetchAgentStatus, fetchAgentHeartbeat, fetchDrafts])
 
   useEffect(() => {
     const interval = setInterval(() => {
       fetchJobs({ silent: true })
       fetchAgentStatus({ silent: true })
+      fetchAgentHeartbeat()
       fetchDrafts({ silent: true })
     }, AUTO_REFRESH_MS)
 
     return () => clearInterval(interval)
-  }, [fetchJobs, fetchAgentStatus, fetchDrafts])
+  }, [fetchJobs, fetchAgentStatus, fetchAgentHeartbeat, fetchDrafts])
 
   const handleSweep = async () => {
     setSweeping(true)
@@ -2093,6 +2133,7 @@ const ProductAnalysisPage = () => {
       <AgentStatusBar
         agentStatus={agentStatus}
         agentStatusLoading={agentStatusLoading}
+        agentHeartbeat={agentHeartbeat}
         activity={activityFeed}
         onSweep={handleSweep}
         sweeping={sweeping}

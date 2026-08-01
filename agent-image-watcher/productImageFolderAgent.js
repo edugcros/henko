@@ -108,6 +108,9 @@ const config = Object.freeze({
   adminToken: process.env.ADMIN_TOKEN,
   analysisEndpoint: process.env.ANALYSIS_ENDPOINT || '/product-analysis/import',
   healthEndpoint: process.env.AGENT_HEALTH_ENDPOINT || '',
+  remoteHeartbeatEnabled: parseBoolean(process.env.AGENT_REMOTE_HEARTBEAT_ENABLED, true),
+  remoteHeartbeatEndpoint:
+    process.env.AGENT_REMOTE_HEARTBEAT_ENDPOINT || '/product-analysis/agent-heartbeat',
   tenantValidateEndpoint: process.env.AGENT_TENANT_VALIDATE_ENDPOINT || '',
   validateTenant: parseBoolean(process.env.AGENT_VALIDATE_TENANT, false),
 
@@ -884,8 +887,10 @@ const acquireInstanceLock = async () => {
   }
 
   await updateLock()
+  pushRemoteHeartbeat().catch(() => undefined)
   heartbeatTimer = setInterval(() => {
     updateLock().catch(error => logger.error('Error de heartbeat', { message: error.message }))
+    pushRemoteHeartbeat().catch(() => undefined)
   }, Math.max(10000, Math.floor(config.lockStaleMs / 3)))
   heartbeatTimer.unref?.()
 }
@@ -940,6 +945,42 @@ const checkBackendHealth = async () => {
     headers: getAuthHeaders(),
     timeout: Math.min(config.requestTimeoutMs, 10000),
   })
+}
+
+// Reporta el estado del proceso local al backend, para que quede visible
+// desde ProductAnalysisPage en el admin (antes solo se escribía a
+// agent-status.json en disco, invisible fuera de esta PC).
+const pushRemoteHeartbeat = async () => {
+  if (!config.remoteHeartbeatEnabled) return
+  if (!config.apiBaseUrl || !config.tenantDomainFallback) return
+
+  const lastFailure = status.recent.find(event => String(event.status || '').includes('failed'))
+
+  try {
+    await axios.post(
+      `${config.apiBaseUrl}${config.remoteHeartbeatEndpoint}`,
+      {
+        state: status.state,
+        version: APP_VERSION,
+        hostname: os.hostname(),
+        queue: {
+          pending: pendingFiles.length,
+          active: activeFiles.size,
+        },
+        counters: status.counters,
+        lastError: lastFailure?.message || '',
+      },
+      {
+        headers: {
+          ...getAuthHeaders(),
+          'x-tenant-domain': config.tenantDomainFallback,
+        },
+        timeout: Math.min(config.requestTimeoutMs, 10000),
+      },
+    )
+  } catch (error) {
+    logger.warn('No se pudo enviar heartbeat remoto', { message: error.message })
+  }
 }
 
 const startStatusServer = async () => {

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url'
 
 import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import Product from '../models/productModel.js'
+import AgentHeartbeat from '../models/agentHeartbeatModel.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import {
   getActorIdFromRequest,
@@ -1614,6 +1615,59 @@ export const getAnalysisAgentStatus = asyncHandler(async (req, res) => {
         originalFilename: nextJob.originalFilename,
       }
       : null,
+  })
+})
+
+// =====================================================
+// AGENT HEARTBEAT (proceso local de la carpeta watcher)
+// =====================================================
+
+const MAX_HEARTBEAT_STRING_LENGTH = 128
+
+const sanitizeHeartbeatString = (value, maxLength = MAX_HEARTBEAT_STRING_LENGTH) => {
+  if (typeof value !== 'string') return ''
+  return value.trim().slice(0, maxLength)
+}
+
+export const reportAgentHeartbeat = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+  const body = req.body || {}
+
+  const update = {
+    state: sanitizeHeartbeatString(body.state, 32) || 'running',
+    version: sanitizeHeartbeatString(body.version, 32),
+    hostname: sanitizeHeartbeatString(body.hostname),
+    lastHeartbeatAt: new Date(),
+    queue: {
+      pending: Math.max(0, Number(body.queue?.pending) || 0),
+      active: Math.max(0, Number(body.queue?.active) || 0),
+    },
+    counters:
+      body.counters && typeof body.counters === 'object' && !Array.isArray(body.counters)
+        ? body.counters
+        : {},
+    lastError: sanitizeHeartbeatString(body.lastError, 500),
+  }
+
+  await AgentHeartbeat.findOneAndUpdate(
+    { tenantId },
+    { $set: update },
+    { upsert: true, setDefaultsOnInsert: true },
+  ).setOptions({ tenantId })
+
+  return res.status(200).json({ success: true })
+})
+
+export const getAgentHeartbeat = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+
+  const heartbeat = await AgentHeartbeat.findOne({ tenantId })
+    .setOptions({ tenantId })
+    .lean()
+
+  return res.status(200).json({
+    success: true,
+    data: heartbeat || null,
   })
 })
 

@@ -12,7 +12,14 @@
     "start": "node productImageFolderAgent.js",
     "dev": "node --watch productImageFolderAgent.js",
     "check": "node --check productImageFolderAgent.js",
-    "test": "node --test"
+    "test": "node --test",
+    "service:install": "pm2 start ecosystem.config.cjs",
+    "service:status": "pm2 status henko-agent",
+    "service:logs": "pm2 logs henko-agent",
+    "service:restart": "pm2 restart henko-agent",
+    "service:stop": "pm2 stop henko-agent",
+    "service:remove": "pm2 delete henko-agent",
+    "service:save": "pm2 save"
   },
   "keywords": [
     "henko",
