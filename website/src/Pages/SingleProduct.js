@@ -34,6 +34,7 @@ import {
   VerifiedUserOutlined as VerifiedIcon,
   RateReviewOutlined as ReviewIcon,
   Inventory2Outlined as StockIcon,
+  PlayCircleOutline as PlayIcon,
 } from '@mui/icons-material'
 import { fetchPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSlice'
 import { selectPublicPromotionalBlocks } from '@features/promotionalBlocks/promotionalBlocksSelectors'
@@ -78,6 +79,11 @@ const MainImageWindow = styled(Paper)(({ theme }) => ({
     height: '100%',
     objectFit: 'contain',
     transition: 'transform 0.15s ease-out',
+  },
+  '& video': {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
   },
 }))
 
@@ -1050,17 +1056,62 @@ const SingleProduct = () => {
     return [{ url: placeholder }]
   }, [product])
 
+  const galleryItems = useMemo(() => {
+    const items = productImages.map(img => ({
+      type: 'image',
+      url: img?.url || placeholder,
+      _id: img?._id,
+    }))
+
+    if (product?.video?.url) {
+      items.push({
+        type: 'video',
+        url: product.video.url,
+        thumbnailUrl: product.video.thumbnailUrl || null,
+      })
+    }
+
+    return items
+  }, [productImages, product])
+
   const variantImageUrl = useMemo(
     () => normalizedSelectedVariant?.image || null,
     [normalizedSelectedVariant],
   )
 
+  const activeGalleryItem = useMemo(
+    () => galleryItems[activeImg] || galleryItems[0] || { type: 'image', url: placeholder },
+    [galleryItems, activeImg],
+  )
+
+  // Reserva el último slot visible para el video si existe, en vez de
+  // dejar que .slice(0, MAX) lo corte cuando hay muchas fotos. Conserva
+  // el índice real dentro de galleryItems (no el índice local del
+  // array recortado), porque activeImg indexa contra galleryItems.
+  const visibleThumbItems = useMemo(() => {
+    const indexed = galleryItems.map((item, index) => ({ item, index }))
+    const hasVideo = galleryItems[galleryItems.length - 1]?.type === 'video'
+
+    if (!hasVideo || indexed.length <= MAX_VISIBLE_THUMBS) {
+      return indexed.slice(0, MAX_VISIBLE_THUMBS)
+    }
+
+    return [
+      ...indexed.slice(0, MAX_VISIBLE_THUMBS - 1),
+      indexed[indexed.length - 1],
+    ]
+  }, [galleryItems])
+
+  // Nunca debe resolver a la URL del video: se usa como imagen (thumb de
+  // carrito, alt de variante), así que si el slot activo es video cae al
+  // thumbnail generado o a la primera foto del producto.
   const activeImageUrl = useMemo(() => {
     if (variantImageUrl) return variantImageUrl
-    return (
-      productImages?.[activeImg]?.url || productImages?.[0]?.url || placeholder
-    )
-  }, [variantImageUrl, productImages, activeImg])
+    if (activeGalleryItem?.type === 'video') {
+      return activeGalleryItem.thumbnailUrl || productImages?.[0]?.url || placeholder
+    }
+    return activeGalleryItem?.url || productImages?.[0]?.url || placeholder
+  }, [variantImageUrl, activeGalleryItem, productImages])
 
   useEffect(() => {
     setActiveImg(0)
@@ -1605,27 +1656,47 @@ const SingleProduct = () => {
                     />
                   </ThumbButton>
                 ) : (
-                  productImages.slice(0, MAX_VISIBLE_THUMBS).map((img, i) => (
-                    <ThumbButton
-                      key={img?._id || img?.url || i}
-                      active={activeImg === i}
-                      onMouseEnter={() => setActiveImg(i)}
-                      onClick={() => setActiveImg(i)}
-                    >
-                      <img
-                        src={img?.url || placeholder}
-                        alt={`thumb-${i}`}
-                        onError={e => {
-                          e.currentTarget.src = placeholder
-                        }}
-                      />
-                    </ThumbButton>
-                  ))
+                  visibleThumbItems.map(({ item, index }) => {
+                    const isVideo = item.type === 'video'
+
+                    return (
+                      <ThumbButton
+                        key={item._id || item.url || index}
+                        active={activeImg === index}
+                        onMouseEnter={() => setActiveImg(index)}
+                        onClick={() => setActiveImg(index)}
+                        sx={isVideo ? { position: 'relative' } : undefined}
+                      >
+                        <img
+                          src={(isVideo ? item.thumbnailUrl : item.url) || placeholder}
+                          alt={isVideo ? 'video-thumb' : `thumb-${index}`}
+                          onError={e => {
+                            e.currentTarget.src = placeholder
+                          }}
+                        />
+                        {isVideo && (
+                          <PlayIcon
+                            sx={{
+                              position: 'absolute',
+                              top: '50%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%)',
+                              fontSize: 28,
+                              color: '#fff',
+                              filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.6))',
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        )}
+                      </ThumbButton>
+                    )
+                  })
                 )}
               </Stack>
 
               <MainImageWindow
                 onMouseMove={e => {
+                  if (activeGalleryItem?.type === 'video') return
                   const { left, top, width, height } =
                     e.currentTarget.getBoundingClientRect()
                   setZoomPos({
@@ -1635,18 +1706,38 @@ const SingleProduct = () => {
                 }}
                 onMouseEnter={() => setIsZooming(true)}
                 onMouseLeave={() => setIsZooming(false)}
+                sx={
+                  activeGalleryItem?.type === 'video'
+                    ? { cursor: 'default' }
+                    : undefined
+                }
               >
-                <img
-                  src={activeImageUrl}
-                  style={{
-                    transformOrigin: `${zoomPos.x}% ${zoomPos.y}%`,
-                    transform: isZooming ? 'scale(2.2)' : 'scale(1)',
-                  }}
-                  alt={product.title}
-                  onError={e => {
-                    e.currentTarget.src = placeholder
-                  }}
-                />
+                {!variantImageUrl && activeGalleryItem?.type === 'video' ? (
+                  <video
+                    key={activeGalleryItem.url}
+                    src={activeGalleryItem.url}
+                    poster={activeGalleryItem.thumbnailUrl || undefined}
+                    controls
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={
+                      variantImageUrl ||
+                      (activeGalleryItem?.type === 'image'
+                        ? activeGalleryItem.url
+                        : activeImageUrl)
+                    }
+                    style={{
+                      transformOrigin: `${zoomPos.x}% ${zoomPos.y}%`,
+                      transform: isZooming ? 'scale(2.2)' : 'scale(1)',
+                    }}
+                    alt={product.title}
+                    onError={e => {
+                      e.currentTarget.src = placeholder
+                    }}
+                  />
+                )}
 
                 {normalizedSelectedVariant?.sku && (
                   <Chip
