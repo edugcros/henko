@@ -176,18 +176,6 @@ const formatDuration = ms => {
 
 const formatNumber = value => Number(value || 0).toLocaleString('es-AR')
 
-const normalizeNumberOrUndefined = value => {
-  if (value === '' || value === null || value === undefined) return undefined
-  const number = Number(value)
-  return Number.isFinite(number) ? number : undefined
-}
-
-const normalizeNumberOrZero = value => {
-  if (value === '' || value === null || value === undefined) return 0
-  const number = Number(value)
-  return Number.isFinite(number) ? number : 0
-}
-
 const uniqueList = values => {
   return [...new Set(values.map(normalizeString).filter(Boolean))].sort(
     (a, b) => a.localeCompare(b),
@@ -926,14 +914,11 @@ const ProductAnalysisPage = () => {
   const [sourceFilter, setSourceFilter] = useState('')
   const [search, setSearch] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
-  const [sendToAddProduct, setSendToAddProduct] = useState(true)
   const [autoSaveInAddProduct, setAutoSaveInAddProduct] = useState(false)
   const [autoPublishProduct, setAutoPublishProduct] = useState(false)
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null)
   const [selectedJob, setSelectedJob] = useState(null)
-  const [approveOpen, setApproveOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [approveForm, setApproveForm] = useState({})
 
   const [agentStatus, setAgentStatus] = useState(null)
   const [agentStatusLoading, setAgentStatusLoading] = useState(false)
@@ -1262,22 +1247,21 @@ const ProductAnalysisPage = () => {
     const form = new FormData()
 
     // Esta página solo programa — nunca analiza con IA ni crea productos
-    // por su cuenta. Apenas se cumple la hora, el job queda 'pending'
-    // esperando a que un admin lo abra en AddProduct: recién ahí arranca
-    // el análisis. Este checkbox solo queda guardado en metadata para que
+    // por su cuenta, sea cual sea el estado de estos switches. Apenas se
+    // cumple la hora, el job queda 'pending' esperando a que un admin lo
+    // abra en AddProduct: recién ahí arranca el análisis. autoSaveProduct/
+    // autoPublishProduct solo quedan guardados en metadata para que
     // AddProduct decida, una vez que sí analiza, si autoguarda el
     // producto o lo deja esperando aprobación manual.
-    const effectiveAutoSave = sendToAddProduct && autoSaveInAddProduct
-
     form.append('image', file)
     form.append('source', 'manual-upload')
     form.append('originalFilename', file.name)
-    form.append('autoAnalyze', String(!sendToAddProduct))
+    form.append('autoAnalyze', 'false')
     form.append('autoCreateProduct', 'false')
-    form.append('autoSaveProduct', String(effectiveAutoSave))
+    form.append('autoSaveProduct', String(autoSaveInAddProduct))
     form.append(
       'autoPublishProduct',
-      String(effectiveAutoSave && autoPublishProduct),
+      String(autoSaveInAddProduct && autoPublishProduct),
     )
 
     if (scheduledIso) form.append('scheduledAt', scheduledIso)
@@ -1288,13 +1272,9 @@ const ProductAnalysisPage = () => {
       await api.post('/product-analysis/import', form, { isMultipart: true })
 
       toast.success(
-        sendToAddProduct
-          ? scheduledIso
-            ? 'Imagen programada para AddProduct'
-            : 'Imagen enviada a la bandeja de AddProduct'
-          : scheduledIso
-            ? 'Imagen programada para análisis'
-            : 'Imagen importada para análisis',
+        scheduledIso
+          ? 'Imagen programada para AddProduct'
+          : 'Imagen enviada a la bandeja de AddProduct',
       )
 
       await Promise.all([fetchJobs(), fetchAgentStatus({ silent: true })])
@@ -1337,11 +1317,11 @@ const ProductAnalysisPage = () => {
 
     try {
       await api.post(`/product-analysis/${jobId}/retry`)
-      toast.success('Reintento iniciado')
+      toast.success('Job liberado a AddProduct para reintentar')
       await fetchJobs()
     } catch (error) {
       toast.error(
-        error?.response?.data?.message || 'No se pudo reintentar el análisis',
+        error?.response?.data?.message || 'No se pudo liberar el job',
       )
     }
   }
@@ -1502,64 +1482,6 @@ const ProductAnalysisPage = () => {
     }
   }
 
-  const openApprove = job => {
-    const analysis = job?.analysis || {}
-
-    setSelectedJob(job)
-    setApproveForm({
-      titulo: analysis.titulo || analysis.title || '',
-      descripcion: analysis.descripcion || analysis.description || '',
-      categoria: analysis.categoria || analysis.category || '',
-      subcategoria: analysis.subcategoria || analysis.subcategory || '',
-      marca: analysis.marca || analysis.brand || '',
-      price: analysis.suggestedPrice ?? analysis.precio_sugerido ?? '',
-      currency: analysis.currency || analysis.moneda || 'ARS',
-      stock: 0,
-      seoTitle: analysis.seoTitle || '',
-      seoDescription: analysis.seoDescription || '',
-      publish: false,
-    })
-    setApproveOpen(true)
-  }
-
-  const closeApprove = () => {
-    setApproveOpen(false)
-    setSelectedJob(null)
-  }
-
-  const approveJob = async () => {
-    const jobId = getJobId(selectedJob)
-
-    if (!jobId) {
-      toast.error('No hay análisis seleccionado')
-      return
-    }
-
-    const payload = {
-      ...approveForm,
-      price: normalizeNumberOrUndefined(approveForm.price),
-      stock: normalizeNumberOrZero(approveForm.stock),
-      publish: Boolean(approveForm.publish),
-    }
-
-    try {
-      await api.post(`/product-analysis/${jobId}/approve`, payload)
-
-      toast.success(
-        payload.publish
-          ? 'Producto creado y publicado'
-          : 'Producto creado como borrador',
-      )
-      setApproveOpen(false)
-      setSelectedJob(null)
-      await fetchJobs()
-    } catch (error) {
-      toast.error(
-        error?.response?.data?.message || 'No se pudo aprobar el análisis',
-      )
-    }
-  }
-
   const clearFilters = () => {
     setStatus('')
     setSearch('')
@@ -1573,11 +1495,9 @@ const ProductAnalysisPage = () => {
     const jobId = getJobId(job)
     const sourcePath = getSourcePath(job)
     const isFinal = ['approved', 'rejected'].includes(job.status)
-    const canRetry =
-      !['approved', 'rejected', 'processing', 'scheduled', 'imported'].includes(
-        job.status,
-      ) && job.metadata?.autoAnalyze !== false
-    const canApprove = job.status === 'completed' && !job.createdProductId
+    const canRetry = !['approved', 'rejected', 'processing', 'scheduled', 'imported'].includes(
+      job.status,
+    )
     const canReject = !['approved', 'rejected', 'imported'].includes(job.status)
     const isAutonomousAddProduct = job.metadata?.autoSaveProduct === true
     const canRunNow =
@@ -1787,22 +1707,10 @@ const ProductAnalysisPage = () => {
               </span>
             </Tooltip>
 
-            <Tooltip title="Reintentar análisis">
+            <Tooltip title="Reintentar (libera a AddProduct)">
               <span>
                 <IconButton onClick={() => retryJob(job)} disabled={!canRetry}>
                   <RefreshIcon />
-                </IconButton>
-              </span>
-            </Tooltip>
-
-            <Tooltip title="Aprobar y crear producto">
-              <span>
-                <IconButton
-                  color="success"
-                  onClick={() => openApprove(job)}
-                  disabled={!canApprove}
-                >
-                  <CheckCircleIcon />
                 </IconButton>
               </span>
             </Tooltip>
@@ -2057,16 +1965,6 @@ const ProductAnalysisPage = () => {
           alignItems={{ md: 'center' }}
           flexWrap="wrap"
         >
-          <FormControlLabel
-            control={
-              <Switch
-                checked={sendToAddProduct}
-                onChange={event => setSendToAddProduct(event.target.checked)}
-              />
-            }
-            label="Enviar a AddProduct"
-          />
-
           <Tooltip title="Esta página solo programa: el análisis con IA arranca recién cuando un admin abre AddProduct y lo carga desde ahí. Este switch solo decide qué hace AddProduct en ese momento — guardar el producto automáticamente o dejarlo esperando tu aprobación manual.">
             <FormControlLabel
               control={
@@ -2075,7 +1973,6 @@ const ProductAnalysisPage = () => {
                   onChange={event =>
                     setAutoSaveInAddProduct(event.target.checked)
                   }
-                  disabled={!sendToAddProduct}
                 />
               }
               label="Autoguardar en AddProduct"
@@ -2087,7 +1984,7 @@ const ProductAnalysisPage = () => {
               <Switch
                 checked={autoPublishProduct}
                 onChange={event => setAutoPublishProduct(event.target.checked)}
-                disabled={!sendToAddProduct || !autoSaveInAddProduct}
+                disabled={!autoSaveInAddProduct}
               />
             }
             label="Publicar al autosave"
@@ -2301,7 +2198,7 @@ const ProductAnalysisPage = () => {
               icon={RateReviewIcon}
               title="Para revisar"
               count={reviewJobs.length}
-              hint="análisis completos sin producto creado, priorizados por menor confianza"
+              hint="análisis completos sin producto creado — abrí AddProduct para crearlo desde ahí"
             />
             {reviewJobs.length > 0 ? (
               <Stack spacing={1.5}>{reviewJobs.map(renderJobCard)}</Stack>
@@ -2360,220 +2257,6 @@ const ProductAnalysisPage = () => {
           {formatNumber(total)} imágenes en total
         </Typography>
       )}
-
-      <Dialog open={approveOpen} onClose={closeApprove} maxWidth="md" fullWidth>
-        <DialogTitle>Aprobar análisis</DialogTitle>
-
-        <DialogContent>
-          {selectedJob && (
-            <Stack
-              direction="row"
-              spacing={2}
-              alignItems="center"
-              sx={{ mb: 2 }}
-            >
-              <JobImage job={selectedJob} size={64} />
-              <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography variant="body2">
-                  Comercio: <strong>{getTenantDomain(selectedJob)}</strong>
-                </Typography>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  display="block"
-                >
-                  {selectedJob.originalFilename || 'Sin nombre de archivo'}
-                </Typography>
-              </Box>
-              {Number.isFinite(selectedJob.analysis?.confidence) && (
-                <ConfidenceMeter value={selectedJob.analysis?.confidence} />
-              )}
-            </Stack>
-          )}
-
-          {selectedJob?.analysis?.hasVariants &&
-            (selectedJob?.metadata?.autoSaveProduct ? (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                La IA detectó variantes (talles, colores, etc.) en esta imagen.
-                Al aprobar, se van a crear como variantes del producto — no se
-                pierden.
-              </Alert>
-            ) : (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                La IA detectó que este producto podría tener variantes (talles,
-                colores, etc.). Esta cola solo crea un producto simple con una
-                imagen — para conservar las variantes, subí la imagen con
-                "Enviar a AddProduct" activado, o usá "Importar desde el agente
-                IA" dentro de AddProduct.
-              </Alert>
-            ))}
-
-          {safeArray(selectedJob?.analysis?.warnings).length > 0 && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              {selectedJob.analysis.warnings.join(' · ')}
-            </Alert>
-          )}
-
-          {(safeArray(selectedJob?.analysis?.tags).length > 0 ||
-            Object.keys(selectedJob?.analysis?.attributes || {}).length >
-              0) && (
-            <Box sx={{ mb: 2 }}>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: 'block', mb: 0.5 }}
-              >
-                Detectado por la IA (informativo, se aplica automáticamente)
-              </Typography>
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                {safeArray(selectedJob?.analysis?.tags).map(tag => (
-                  <Chip key={tag} size="small" label={tag} variant="outlined" />
-                ))}
-                {Object.entries(selectedJob?.analysis?.attributes || {}).map(
-                  ([key, value]) =>
-                    value ? (
-                      <Chip
-                        key={key}
-                        size="small"
-                        color="default"
-                        label={`${key}: ${value}`}
-                      />
-                    ) : null,
-                )}
-              </Stack>
-            </Box>
-          )}
-
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-              gap: 2,
-              mt: 0.5,
-            }}
-          >
-            {['titulo', 'marca', 'categoria', 'subcategoria'].map(field => (
-              <TextField
-                key={field}
-                fullWidth
-                label={field}
-                value={approveForm[field] || ''}
-                onChange={event =>
-                  setApproveForm(prev => ({
-                    ...prev,
-                    [field]: event.target.value,
-                  }))
-                }
-              />
-            ))}
-
-            <TextField
-              fullWidth
-              multiline
-              minRows={3}
-              label="Descripción"
-              value={approveForm.descripcion || ''}
-              onChange={event =>
-                setApproveForm(prev => ({
-                  ...prev,
-                  descripcion: event.target.value,
-                }))
-              }
-              sx={{ gridColumn: { md: '1 / -1' } }}
-            />
-
-            <TextField
-              fullWidth
-              type="number"
-              label="Precio"
-              value={approveForm.price}
-              onChange={event =>
-                setApproveForm(prev => ({
-                  ...prev,
-                  price: event.target.value,
-                }))
-              }
-            />
-
-            <TextField
-              fullWidth
-              type="number"
-              label="Stock"
-              value={approveForm.stock}
-              onChange={event =>
-                setApproveForm(prev => ({
-                  ...prev,
-                  stock: event.target.value,
-                }))
-              }
-            />
-
-            <TextField
-              fullWidth
-              label="Moneda"
-              value={approveForm.currency || 'ARS'}
-              onChange={event =>
-                setApproveForm(prev => ({
-                  ...prev,
-                  currency: event.target.value,
-                }))
-              }
-            />
-
-            <TextField
-              fullWidth
-              label="Título SEO"
-              value={approveForm.seoTitle || ''}
-              helperText="Se usa en buscadores. Si se deja vacío, se genera del título."
-              onChange={event =>
-                setApproveForm(prev => ({
-                  ...prev,
-                  seoTitle: event.target.value,
-                }))
-              }
-              sx={{ gridColumn: { md: '1 / -1' } }}
-            />
-
-            <TextField
-              fullWidth
-              multiline
-              minRows={2}
-              label="Descripción SEO"
-              value={approveForm.seoDescription || ''}
-              helperText="Se usa en buscadores. Si se deja vacío, se genera de la descripción."
-              onChange={event =>
-                setApproveForm(prev => ({
-                  ...prev,
-                  seoDescription: event.target.value,
-                }))
-              }
-              sx={{ gridColumn: { md: '1 / -1' } }}
-            />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={Boolean(approveForm.publish)}
-                  onChange={event =>
-                    setApproveForm(prev => ({
-                      ...prev,
-                      publish: event.target.checked,
-                    }))
-                  }
-                />
-              }
-              label="Publicar inmediatamente"
-            />
-          </Box>
-        </DialogContent>
-
-        <DialogActions>
-          <Button onClick={closeApprove}>Cancelar</Button>
-          <Button variant="contained" onClick={approveJob}>
-            {approveForm.publish ? 'Crear y publicar' : 'Crear borrador'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog
         open={rescheduleOpen}

@@ -14,7 +14,6 @@ import {
   markAnalysisJobImportedToAddProduct,
   completeAddProductJob,
   retryAnalysisJob,
-  approveAnalysisJob,
   rejectAnalysisJob,
   deleteAnalysisJob,
   runWishlistPromotionNotifications,
@@ -262,7 +261,6 @@ router.post('/:jobId/import-to-add-product', markAnalysisJobImportedToAddProduct
 router.post('/:jobId/complete-add-product', completeAddProductJob)
 router.post('/:jobId/retry', retryAnalysisJob)
 router.post('/:jobId/run-now', analysisWriteLimiter, runAnalysisJobNow)
-router.post('/:jobId/approve', approveAnalysisJob)
 router.post('/:jobId/reject', rejectAnalysisJob)
 
 router.delete('/:jobId', deleteAnalysisJob)

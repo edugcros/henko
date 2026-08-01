@@ -1265,9 +1265,16 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
 
   const imageHash = createSha256(file.buffer)
   const source = getRequestSource(req)
-  const autoAnalyze = req.body?.autoAnalyze === undefined
-    ? true
-    : parseBoolean(req.body.autoAnalyze)
+  // /admin/product-analysis (source: manual-upload) solo programa — nunca
+  // debe poder disparar análisis IA en el backend, sin importar qué mande
+  // el body. Esto se refuerza acá, no solo en el frontend, porque el
+  // endpoint es alcanzable directo por API.
+  const autoAnalyze =
+    source === JOB_SOURCE.MANUAL_UPLOAD
+      ? false
+      : req.body?.autoAnalyze === undefined
+        ? true
+        : parseBoolean(req.body.autoAnalyze)
   const scheduledAt = parseFutureDate(req.body?.scheduledAt)
   const shouldSchedule = Boolean(scheduledAt && scheduledAt.getTime() > Date.now())
   const autoCreateProduct = parseBoolean(req.body?.autoCreateProduct)
@@ -2051,235 +2058,25 @@ export const retryAnalysisJob = asyncHandler(async (req, res) => {
     })
   }
 
-  job.status = JOB_STATUS.PROCESSING
+  // /admin/product-analysis solo programa: nunca corre la IA por su
+  // cuenta. "Reintentar" libera el job a 'pending' (forzando
+  // autoAnalyze:false) para que AddProduct lo vuelva a analizar
+  // client-side, igual que cualquier otro job de esta bandeja.
+  job.status = JOB_STATUS.PENDING
   job.error = undefined
-  job.startedAt = new Date()
+  job.failedAt = undefined
+  job.metadata.autoAnalyze = false
   await job.save()
 
-  try {
-    let rawAnalysis
-
-    if (typeof aiVisionService.analyzeProductImageFromUrl === 'function') {
-      rawAnalysis = await aiVisionService.analyzeProductImageFromUrl({
-        tenantId,
-        imageUrl: job.imageUrl,
-        originalFilename: job.originalFilename,
-      })
-    } else {
-      return res.status(501).json({
-        success: false,
-        message:
-          'El servicio IA no implementa analyzeProductImageFromUrl. Para reintentos desde imageUrl, agregá esa función.',
-      })
-    }
-
-    const analysis = sanitizeAnalysis(rawAnalysis)
-
-    job.status = JOB_STATUS.COMPLETED
-    job.analysis = analysis
-    job.processedAt = new Date()
-    job.failedAt = undefined
-    job.error = undefined
-
-    await job.save()
-
-    return res.status(200).json({
-      success: true,
-      message: 'Análisis reintentado correctamente.',
-      job,
-    })
-  } catch (error) {
-    job.status = JOB_STATUS.FAILED
-    job.failedAt = new Date()
-    job.error = {
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-    }
-
-    await job.save()
-
-    logger.error('[ProductAnalysis] Error reintentando análisis', {
-      tenantId: tenantId.toString(),
-      jobId: job._id.toString(),
-      error: error.message,
-    })
-
-    return res.status(500).json({
-      success: false,
-      message: 'Error reintentando análisis IA.',
-      job,
-    })
-  }
-})
-/**
- * POST /api/product-analysis/:jobId/approve
- *
- * Aprueba un análisis y crea un producto en estado draft/hidden.
- *
- * Body opcional:
- * {
- *   "titulo": "...",
- *   "descripcion": "...",
- *   "price": 10000,
- *   "stock": 5,
- *   "categoria": "...",
- *   "subcategoria": "...",
- *   "marca": "...",
- *   "publish": false
- * }
- */
-const applyApproveOverrides = ({ payload, overrides = {} }) => {
-  if (normalizeString(overrides.titulo)) payload.title = normalizeString(overrides.titulo)
-  if (normalizeString(overrides.descripcion)) payload.description = normalizeString(overrides.descripcion)
-  if (normalizeString(overrides.categoria)) payload.categoria = normalizeString(overrides.categoria)
-  if (normalizeString(overrides.subcategoria)) payload.subcategoria = normalizeString(overrides.subcategoria)
-  if (normalizeString(overrides.marca)) payload.marca = normalizeString(overrides.marca)
-  if (normalizeString(overrides.currency)) payload.currency = normalizeString(overrides.currency).toUpperCase()
-
-  const overridePrice = pickFirstNonNegativeNumber(overrides.price, overrides.precio)
-  if (overridePrice !== null) payload.price = overridePrice
-
-  if (!payload.hasVariants) {
-    const overrideStock = pickFirstNonNegativeNumber(overrides.stock)
-    if (overrideStock !== null) payload.stock = overrideStock
-  }
-
-  if (normalizeString(overrides.seoTitle)) {
-    payload.seo = { ...(payload.seo || {}), metaTitle: normalizeString(overrides.seoTitle) }
-  }
-  if (normalizeString(overrides.seoDescription)) {
-    payload.seo = { ...(payload.seo || {}), metaDescription: normalizeString(overrides.seoDescription) }
-  }
-
-  return payload
-}
-
-/**
- * Arma el payload final a aprobar. Si el job pasó por el módulo AddProduct
- * (tiene analysisRaw guardado), usamos ese análisis completo para no
- * perder variantes, ficha técnica, SEO y logística — igual que si un
- * humano lo hubiera completado a mano en AddProduct. Si no, caemos al
- * camino simple de siempre (un producto con una sola imagen).
- */
-const buildApprovalPayload = ({ job, tenantId, overrides, userId }) => {
-  if (job.analysisRaw) {
-    const payload = buildAutonomousProductPayload({
-      analysis: job.analysisRaw,
-      job,
-      tenantId,
-    })
-
-    payload.createdBy = userId || job.createdBy || null
-
-    return applyApproveOverrides({ payload, overrides })
-  }
-
-  return buildProductDraftFromJob({ job, overrides, userId })
-}
-
-export const approveAnalysisJob = asyncHandler(async (req, res) => {
-  const tenantId = getTenantId(req)
-  const userId = getUserId(req)
-
-  if (!tenantId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Tenant no resuelto.',
-    })
-  }
-
-  const job = await ensureJobBelongsToTenant({
-    jobId: req.params.jobId,
-    tenantId,
-    select: '+analysisRaw',
+  logger.info('[ProductAnalysis] Job liberado a AddProduct para reintentar', {
+    tenantId: tenantId.toString(),
+    jobId: job._id.toString(),
   })
 
-  if (job.status !== JOB_STATUS.COMPLETED) {
-    return res.status(409).json({
-      success: false,
-      message: 'Solo se puede aprobar un análisis completado.',
-      currentStatus: job.status,
-    })
-  }
-
-  if (job.createdProductId) {
-    return res.status(409).json({
-      success: false,
-      message: 'Este análisis ya tiene un producto creado.',
-      productId: job.createdProductId,
-    })
-  }
-
-  const publish = parseBoolean(req.body?.publish)
-
-  const productPayload = buildApprovalPayload({
-    job,
-    tenantId,
-    overrides: req.body || {},
-    userId,
-  })
-
-  if (publish) {
-    productPayload.status = 'active'
-    productPayload.visibility = 'visible'
-    productPayload.aiNeedsReview = false
-  }
-
-  const session = await mongoose.startSession()
-
-  let product
-
-  try {
-    await session.withTransaction(async () => {
-      product = await Product.create([productPayload], { session })
-      product = product[0]
-
-      job.status = JOB_STATUS.APPROVED
-      job.createdProductId = product._id
-      job.approvedAt = new Date()
-      job.approvedBy = userId
-
-      markJobAsHidden({
-        job,
-        userId,
-        reason: publish
-          ? 'Producto publicado desde análisis IA.'
-          : 'Producto creado como borrador desde análisis IA.',
-      })
-
-      await job.save({ session })
-    })
-  } catch (error) {
-    logger.error('[ProductAnalysis] Error aprobando análisis', {
-      tenantId: tenantId.toString(),
-      jobId: job._id.toString(),
-      error: error.message,
-    })
-
-    return res.status(500).json({
-      success: false,
-      message: 'Error aprobando análisis y creando producto.',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    })
-  } finally {
-    await session.endSession()
-  }
-
-  await registerVisualFeedbackSafely({
-    tenantId,
-    job,
-    body: req.body || {},
-    userId,
-    productId: product?._id,
-  })
-
-  return res.status(201).json({
+  return res.status(200).json({
     success: true,
-    message: publish
-      ? 'Análisis aprobado y producto publicado.'
-      : 'Análisis aprobado y producto creado como borrador.',
+    message: 'Job liberado para reintentar desde AddProduct.',
     job,
-    product,
   })
 })
 

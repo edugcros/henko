@@ -4078,13 +4078,18 @@ export default function AddProduct() {
           },
         })
 
-        // 'completed' incluye a los jobs que AddProduct ya analizó solo
-        // (llegó su hora programada) y están esperando que alguien los
-        // cargue acá para revisarlos o mandarlos directo a aprobar.
+        // 'pending'/'scheduled' con autoAnalyze:false son los que espera
+        // /admin/product-analysis que AddProduct analice. 'completed' sin
+        // producto se acepta sin ese filtro: ya tiene un análisis hecho
+        // (por AddProduct o por un job autónomo del agente que no llegó a
+        // crear el producto solo) y AddProduct es el único lugar donde
+        // ahora se puede convertir en producto — no hay "Aprobar" en
+        // /admin/product-analysis.
         const items = (Array.isArray(data?.items) ? data.items : []).filter(
           item =>
-            ['pending', 'scheduled', 'completed'].includes(item.status) &&
-            item.metadata?.autoAnalyze === false,
+            (item.status === 'completed' && !item.createdProductId) ||
+            (['pending', 'scheduled'].includes(item.status) &&
+              item.metadata?.autoAnalyze === false),
         )
         setAgentQueue(items)
         if (!preserveSelection) {
