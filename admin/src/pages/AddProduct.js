@@ -61,6 +61,7 @@ import api from '@utils/axiosConfig'
 import {
   createProducts,
   uploadProductImage,
+  uploadProductVideo,
   resetState,
   assignVariantImage,
 } from '@features/product/productSlice'
@@ -130,6 +131,15 @@ const ALLOWED_IMAGE_TYPES = new Set([
   'image/webp',
   'image/heic',
   'image/heif',
+])
+
+const MAX_VIDEO_SIZE_MB = 60
+const MAX_VIDEO_SIZE_BYTES = MAX_VIDEO_SIZE_MB * 1024 * 1024
+const MAX_VIDEO_DURATION_SECONDS = 60
+const ALLOWED_VIDEO_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
 ])
 
 const DYNAMIC_FIELD_TYPES = [
@@ -455,6 +465,52 @@ const validateSelectedFiles = files => {
 
   return null
 }
+
+const isAllowedVideoFile = file => {
+  const fileObject = getUploadFileObject(file)
+  const mimeType = fileObject?.type || file?.type || ''
+  const filename = fileObject?.name || file?.name || ''
+  const extension = filename.split('.').pop()?.toLowerCase()
+  const extensionAllowed = ['mp4', 'webm', 'mov'].includes(extension)
+
+  return ALLOWED_VIDEO_TYPES.has(mimeType) || extensionAllowed
+}
+
+const validateSelectedVideoFile = file => {
+  if (!file) return null
+
+  if (!isAllowedVideoFile(file)) {
+    return 'El formato de video no está permitido (mp4, webm, mov).'
+  }
+
+  const fileObject = getUploadFileObject(file)
+  const size = Number(fileObject?.size || file?.size || 0)
+
+  if (size > MAX_VIDEO_SIZE_BYTES) {
+    return `El video supera ${MAX_VIDEO_SIZE_MB}MB.`
+  }
+
+  return null
+}
+
+const getVideoDuration = file =>
+  new Promise(resolve => {
+    const fileObject = getUploadFileObject(file)
+    if (!fileObject) return resolve(0)
+
+    const url = URL.createObjectURL(fileObject)
+    const videoEl = document.createElement('video')
+    videoEl.preload = 'metadata'
+    videoEl.onloadedmetadata = () => {
+      URL.revokeObjectURL(url)
+      resolve(videoEl.duration || 0)
+    }
+    videoEl.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(0)
+    }
+    videoEl.src = url
+  })
 
 const getJobFlag = (job, key) => Boolean(job?.[key] ?? job?.metadata?.[key])
 
@@ -3382,6 +3438,9 @@ export default function AddProduct() {
   const [editableTags, setEditableTags] = useState([])
   const [fileList, setFileList] = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
+  const [videoFile, setVideoFile] = useState(null)
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState('')
+  const [videoUploading, setVideoUploading] = useState(false)
   const [inputTagValue, setInputTagValue] = useState('')
   const [inputVisible, setInputVisible] = useState(false)
   const [dynamicAttributes, setDynamicAttributes] = useState([])
@@ -4960,6 +5019,44 @@ export default function AddProduct() {
     [analyzeImage, buildImageSignature, iaResult, imagePreviews, loadingIa],
   )
 
+  const handleVideoChange = useCallback(
+    async ({ fileList: newFileList }) => {
+      const selected = newFileList[newFileList.length - 1]
+      if (!selected) return
+
+      const validationError = validateSelectedVideoFile(selected)
+      if (validationError) {
+        message.error(validationError)
+        return
+      }
+
+      const duration = await getVideoDuration(selected)
+      if (duration > MAX_VIDEO_DURATION_SECONDS) {
+        message.error(
+          `El video no puede durar más de ${MAX_VIDEO_DURATION_SECONDS} segundos.`,
+        )
+        return
+      }
+
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl)
+      }
+
+      const fileObject = getUploadFileObject(selected)
+      setVideoFile(selected)
+      setVideoPreviewUrl(URL.createObjectURL(fileObject))
+    },
+    [videoPreviewUrl],
+  )
+
+  const handleRemoveVideo = useCallback(() => {
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl)
+    }
+    setVideoFile(null)
+    setVideoPreviewUrl('')
+  }, [videoPreviewUrl])
+
   const handleReanalyzeImage = useCallback(
     async (index = null) => {
       const uploadFile =
@@ -4998,6 +5095,11 @@ export default function AddProduct() {
     revokeBlobUrls(imagePreviews)
     setFileList([])
     setImagePreviews([])
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl)
+    }
+    setVideoFile(null)
+    setVideoPreviewUrl('')
     setEditableTags([])
     setVariants([])
     setHasVariants(false)
@@ -5017,7 +5119,7 @@ export default function AddProduct() {
     technicalSheetSnapshotRef.current = null
     resetIa()
     dispatch(resetState())
-  }, [dispatch, form, imagePreviews, notifyFormMutation, resetIa])
+  }, [dispatch, form, imagePreviews, notifyFormMutation, resetIa, videoPreviewUrl])
 
   const handleImportAgentImage = useCallback(async () => {
     if (!selectedAgentJobId) {
@@ -5674,6 +5776,24 @@ export default function AddProduct() {
 
         if (uploadedImage?.url) {
           uploadedByUid.set(file.uid, uploadedImage)
+        }
+      }
+
+      if (videoFile) {
+        try {
+          setVideoUploading(true)
+          await dispatch(
+            uploadProductVideo({
+              productId,
+              videoFile: getUploadFileObject(videoFile),
+            }),
+          ).unwrap()
+        } catch (videoError) {
+          message.warning(
+            'El producto se creó, pero el video no pudo subirse. Podés reintentarlo luego desde Editar producto.',
+          )
+        } finally {
+          setVideoUploading(false)
         }
       }
 
@@ -6590,6 +6710,72 @@ export default function AddProduct() {
                             onAnalyze={handleReanalyzeImage}
                             analyzing={loadingIa}
                           />
+                        )}
+                      </Card>
+
+                      <Card
+                        style={{ borderRadius: 20, marginTop: 20 }}
+                        styles={{ body: { padding: 24 } }}
+                      >
+                        <Space
+                          direction="vertical"
+                          size={4}
+                          style={{ width: '100%', marginBottom: 16 }}
+                        >
+                          <Text strong style={{ fontSize: 16 }}>
+                            Video del producto (opcional)
+                          </Text>
+                          <Text type="secondary">
+                            Un solo video de hasta {MAX_VIDEO_SIZE_MB}MB y{' '}
+                            {MAX_VIDEO_DURATION_SECONDS} segundos. MP4, WEBM o
+                            MOV.
+                          </Text>
+                        </Space>
+
+                        {!videoFile ? (
+                          <Upload
+                            accept="video/mp4,video/webm,video/quicktime"
+                            beforeUpload={() => false}
+                            showUploadList={false}
+                            onChange={handleVideoChange}
+                            maxCount={1}
+                          >
+                            <Button icon={<InboxOutlined />}>
+                              Seleccionar video
+                            </Button>
+                          </Upload>
+                        ) : (
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 16,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <video
+                              src={videoPreviewUrl}
+                              controls
+                              style={{
+                                width: 220,
+                                borderRadius: 12,
+                                background: '#000',
+                              }}
+                            />
+                            <Space direction="vertical">
+                              <Text>
+                                {getUploadFileObject(videoFile)?.name ||
+                                  'Video seleccionado'}
+                              </Text>
+                              <Button
+                                danger
+                                loading={videoUploading}
+                                onClick={handleRemoveVideo}
+                              >
+                                Quitar video
+                              </Button>
+                            </Space>
+                          </div>
                         )}
                       </Card>
 

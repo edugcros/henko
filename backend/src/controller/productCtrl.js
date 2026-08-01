@@ -27,7 +27,10 @@ import mongoose from 'mongoose'
 import {
   cloudinaryDeleteImg,
   cloudinaryUploadImg,
+  cloudinaryDeleteVideo,
+  cloudinaryUploadVideo,
 } from '../utils/cloudinary.js'
+import { MAX_VIDEO_DURATION_SECONDS } from '../../config/videoUploadPolicy.js'
 import {
   getUserIdFromRequest,
   isValidObjectId,
@@ -2433,6 +2436,183 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
   } catch (error) {
     logger.error(`Error subiendo imagen: ${error.stack || error.message}`)
     return sendControllerError(res, error, 'Error subiendo imagen')
+  }
+})
+
+// =====================================================
+// UPLOAD PRODUCT VIDEO (uno solo por producto)
+// =====================================================
+
+export const uploadProductVideo = expressAsyncHandler(async (req, res) => {
+  try {
+    const { productId } = req.params
+    validateMongoDbIdMiddleware(productId)
+
+    const tenantId = requireUserTenantId(req)
+    assertSameResolvedTenant(req, tenantId)
+
+    const product = await Product.findOne({
+      _id: productId,
+      tenantId,
+      isDeleted: { $ne: true },
+    }).setOptions({ tenantId })
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Producto no encontrado',
+      })
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se envió ningún video',
+      })
+    }
+
+    const driver = String(process.env.STORAGE_DRIVER || 'cloudinary').toLowerCase()
+
+    if (driver !== 'cloudinary') {
+      return res.status(503).json({
+        success: false,
+        message: 'La subida de video requiere almacenamiento en Cloudinary',
+      })
+    }
+
+    const result = await cloudinaryUploadVideo(req.file.buffer, productId, tenantId)
+
+    if (result.duration && result.duration > MAX_VIDEO_DURATION_SECONDS) {
+      await cloudinaryDeleteVideo(result.public_id).catch(cleanupError => {
+        logger.warn('[Product] No se pudo limpiar video que excede duración', {
+          productId,
+          publicId: result.public_id,
+          error: cleanupError.message,
+        })
+      })
+
+      return res.status(400).json({
+        success: false,
+        message: `El video no puede durar más de ${MAX_VIDEO_DURATION_SECONDS} segundos`,
+      })
+    }
+
+    const previousVideo = product.video
+
+    product.video = {
+      url: result.url,
+      public_id: result.public_id,
+      thumbnailUrl: result.thumbnailUrl || '',
+      duration: result.duration || 0,
+      tenantId,
+    }
+    product.updatedBy = getRequestUserId(req)
+
+    await product.save()
+
+    if (previousVideo?.public_id) {
+      await cloudinaryDeleteVideo(previousVideo.public_id).catch(cleanupError => {
+        logger.warn('[Product] No se pudo eliminar video anterior', {
+          productId,
+          publicId: previousVideo.public_id,
+          error: cleanupError.message,
+        })
+      })
+    }
+
+    await registerProductCatalogChange({
+      tenantId,
+      productId: product._id,
+      changeType: CATALOG_CHANGE_TYPES.PRODUCT_UPDATED,
+      actorId: getRequestUserId(req),
+      metadata: {
+        action: 'upload_product_video',
+        publicId: product.video.public_id,
+      },
+    })
+
+    logger.info(`🎬 Video subido | Producto ${productId}`)
+
+    return res.status(201).json({
+      success: true,
+      data: product.video,
+    })
+  } catch (error) {
+    logger.error(`Error subiendo video: ${error.stack || error.message}`)
+    return sendControllerError(res, error, 'Error subiendo video')
+  }
+})
+
+// =====================================================
+// DELETE PRODUCT VIDEO
+// =====================================================
+
+export const deleteProductVideo = expressAsyncHandler(async (req, res) => {
+  try {
+    const { productId } = req.params
+    validateMongoDbIdMiddleware(productId)
+
+    const tenantId = requireUserTenantId(req)
+    assertSameResolvedTenant(req, tenantId)
+
+    const product = await Product.findOne({
+      _id: productId,
+      tenantId,
+      isDeleted: { $ne: true },
+    }).setOptions({ tenantId })
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Producto no encontrado',
+      })
+    }
+
+    if (!product.video?.public_id) {
+      return res.status(404).json({
+        success: false,
+        message: 'El producto no tiene video',
+      })
+    }
+
+    const removedVideo = product.video
+
+    try {
+      await cloudinaryDeleteVideo(removedVideo.public_id)
+    } catch (videoError) {
+      logger.warn('[Product] No se pudo eliminar video del storage', {
+        productId,
+        tenantId: String(tenantId),
+        publicId: removedVideo.public_id,
+        error: videoError.message,
+      })
+    }
+
+    product.video = null
+    product.updatedBy = getRequestUserId(req)
+
+    await product.save()
+
+    await registerProductCatalogChange({
+      tenantId,
+      productId: product._id,
+      changeType: CATALOG_CHANGE_TYPES.PRODUCT_UPDATED,
+      actorId: getRequestUserId(req),
+      metadata: {
+        action: 'delete_product_video',
+        publicId: removedVideo.public_id,
+      },
+    })
+
+    logger.info(`🗑️ Video eliminado del producto ${productId}`)
+
+    return res.status(200).json({
+      success: true,
+      data: null,
+    })
+  } catch (error) {
+    logger.error(`Error eliminando video de producto: ${error.stack || error.message}`)
+    return sendControllerError(res, error, 'Error eliminando video')
   }
 })
 

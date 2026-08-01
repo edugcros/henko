@@ -76,16 +76,20 @@ const uploadToCloudinary = (buffer, folder, options = {}) => {
 
     const attemptUpload = () => {
       attemptNumber++
+      const resourceType = options.resource_type || 'image'
       const uploadOptions = {
         folder,
         resource_type: 'image',
         overwrite: false,
         ...options,
-        transformation: [
-          { quality: 'auto:good', fetch_format: 'auto' },
-          { width: 2000, crop: 'limit' },
-          ...(options.transformation || []),
-        ],
+        transformation:
+          resourceType === 'video'
+            ? options.transformation || []
+            : [
+                { quality: 'auto:good', fetch_format: 'auto' },
+                { width: 2000, crop: 'limit' },
+                ...(options.transformation || []),
+              ],
       }
 
       let timeoutHandle = null
@@ -210,6 +214,48 @@ export const cloudinaryUploadImg = async (buffer, productId, tenantId) => {
 }
 
 /**
+ * Subir video de producto con reintentos automáticos
+ * @param {Buffer} buffer - Buffer del video
+ * @param {string} productId - ID del producto
+ * @param {string} tenantId - ID del tenant (para organización)
+ */
+export const cloudinaryUploadVideo = async (buffer, productId, tenantId) => {
+  try {
+    const folder = `product/${tenantId}/${productId}/video`
+    const result = await uploadToCloudinary(buffer, folder, {
+      resource_type: 'video',
+    })
+
+    const thumbnailUrl = cloudinary.url(result.public_id, {
+      resource_type: 'video',
+      format: 'jpg',
+      secure: true,
+      transformation: [{ start_offset: '0', width: 800, crop: 'limit' }],
+    })
+
+    return {
+      url: result.secure_url,
+      asset_id: result.asset_id,
+      public_id: result.public_id,
+      duration: result.duration,
+      format: result.format,
+      size: result.bytes,
+      thumbnailUrl,
+    }
+  } catch (error) {
+    logger.error('❌ Error subiendo video a Cloudinary después de reintentos:', {
+      error: error.message,
+      code: error.code,
+      productId,
+      tenantId,
+    })
+    throw new Error(
+      `Error al subir video: ${error.message || 'Cloudinary no disponible'}`,
+    )
+  }
+}
+
+/**
  * Subir asset de tema con reintentos automáticos
  */
 export const cloudinaryUploadThemeAsset = async (buffer, folder = 'themes') => {
@@ -264,6 +310,36 @@ export const cloudinaryDeleteImg = async publicId => {
     }
   } catch (error) {
     logger.error('❌ Error eliminando imagen de Cloudinary:', {
+      error: error.message,
+      publicId,
+    })
+    throw error
+  }
+}
+
+/**
+ * Eliminar video de Cloudinary por public_id
+ * @param {string} publicId - public_id del video en Cloudinary
+ */
+export const cloudinaryDeleteVideo = async publicId => {
+  try {
+    if (!publicId || typeof publicId !== 'string') {
+      throw new Error('public_id inválido')
+    }
+
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: 'video',
+    })
+
+    if (result.result === 'ok' || result.result === 'not found') {
+      logger.info(`🗑️ Video eliminado: ${publicId}`)
+      return { success: true, result: result.result }
+    } else {
+      logger.warn(`⚠️ Resultado inesperado al eliminar video: ${result.result}`)
+      return { success: false, result: result.result }
+    }
+  } catch (error) {
+    logger.error('❌ Error eliminando video de Cloudinary:', {
       error: error.message,
       publicId,
     })

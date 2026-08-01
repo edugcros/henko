@@ -19,6 +19,8 @@ import {
   productPublicReadLimiter,
   uploadProductImage,
   deleteProductImage,
+  uploadProductVideo,
+  deleteProductVideo,
   toggleHelpfulVote,
   assignVariantImage,
 } from '../controller/productCtrl.js'
@@ -30,7 +32,7 @@ import {
   requireTenant,
   resolveTenantByDomain,
 } from '../middlewares/tenantMiddleware.js'
-import { uploadPhoto, productImgResize } from '../middlewares/uploadImage.js'
+import { uploadPhoto, productImgResize, uploadVideo } from '../middlewares/uploadImage.js'
 import { analyzeImage } from '../services/aiVisionService.js'
 import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
@@ -144,6 +146,15 @@ router.post(
 
 router.delete('/:productId/image', adminContext, deleteProductImage)
 router.put('/:productId/variant-image', adminContext, assignVariantImage)
+
+router.post(
+  '/:productId/upload-video',
+  adminContext,
+  uploadVideo.single('video'),
+  uploadProductVideo,
+)
+
+router.delete('/:productId/video', adminContext, deleteProductVideo)
 
 router.put(
   '/:productId/rating/:ratingId/helpful',

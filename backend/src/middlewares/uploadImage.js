@@ -7,9 +7,14 @@ import {
   ALLOWED_IMAGE_MIME_TYPES,
   MAX_IMAGE_UPLOAD_BYTES,
 } from '../../config/imageUploadPolicy.js'
+import {
+  ALLOWED_VIDEO_MIME_TYPES,
+  MAX_VIDEO_UPLOAD_BYTES,
+} from '../../config/videoUploadPolicy.js'
 
 const MAX_SIZE_BYTES = MAX_IMAGE_UPLOAD_BYTES
 const ALLOWED_MIME = new Set(ALLOWED_IMAGE_MIME_TYPES)
+const ALLOWED_VIDEO_MIME = new Set(ALLOWED_VIDEO_MIME_TYPES)
 
 const sanitizeName = name => {
   const base = String(name || 'image').toLowerCase()
@@ -35,6 +40,22 @@ export const uploadPhoto = multer({
   limits: {
     fileSize: MAX_SIZE_BYTES,
     files: 20,
+  },
+})
+
+const videoFileFilter = (_req, file, cb) => {
+  if (!ALLOWED_VIDEO_MIME.has(file.mimetype)) {
+    return cb(new Error('Formato no permitido (mp4, webm, mov)'))
+  }
+  cb(null, true)
+}
+
+export const uploadVideo = multer({
+  storage,
+  fileFilter: videoFileFilter,
+  limits: {
+    fileSize: MAX_VIDEO_UPLOAD_BYTES,
+    files: 1,
   },
 })
 

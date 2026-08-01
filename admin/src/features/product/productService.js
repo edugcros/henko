@@ -235,6 +235,35 @@ const deleteProductImage = async (productId, publicId) => {
     params: { public_id: publicId },
   })
 }
+
+/**
+ * Subir el video del producto (uno solo).
+ * Backend espera field: video.
+ */
+const uploadProductVideo = async (productId, videoFile) => {
+  if (!productId || !videoFile) {
+    throw new Error('Producto o video inválido')
+  }
+
+  const formData = new FormData()
+  formData.append('video', videoFile)
+
+  return apiRequest('post', `/${productId}/upload-video`, formData, {
+    isMultipart: true,
+  })
+}
+
+/**
+ * Eliminar el video del producto.
+ */
+const deleteProductVideo = async productId => {
+  if (!productId) {
+    throw new Error('ID del producto requerido')
+  }
+
+  return apiRequest('delete', `/${productId}/video`)
+}
+
 /**
  * Obtener configuración de una categoría.
  */
@@ -364,6 +393,8 @@ const productService = {
   deleteProduct,
   uploadProductImage,
   deleteProductImage,
+  uploadProductVideo,
+  deleteProductVideo,
   getProducts,
   getProduct,
   rateProduct,

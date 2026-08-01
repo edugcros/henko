@@ -83,6 +83,10 @@ const extractImagesArray = payload => {
   return []
 }
 
+const extractVideoObject = payload => {
+  return payload && 'data' in payload ? payload.data : null
+}
+
 const setRejectedState = (state, action, fallbackMessage) => {
   state.isLoading = false
   state.isError = true
@@ -197,6 +201,39 @@ export const deleteProductImage = createAsyncThunk(
       return response
     } catch (error) {
       const message = normalizeErrorMessage(error, 'Error al eliminar imagen')
+      toast.error(message)
+      return thunkAPI.rejectWithValue({ message })
+    }
+  },
+)
+
+export const uploadProductVideo = createAsyncThunk(
+  'product/uploadVideo',
+  async ({ productId, videoFile }, thunkAPI) => {
+    try {
+      const response = await productService.uploadProductVideo(
+        productId,
+        videoFile,
+      )
+      toast.success('Video subido correctamente')
+      return response
+    } catch (error) {
+      const message = normalizeErrorMessage(error, 'Error al subir video')
+      toast.error(message)
+      return thunkAPI.rejectWithValue({ message })
+    }
+  },
+)
+
+export const deleteProductVideo = createAsyncThunk(
+  'product/deleteVideo',
+  async (productId, thunkAPI) => {
+    try {
+      const response = await productService.deleteProductVideo(productId)
+      toast.success('Video eliminado correctamente')
+      return response
+    } catch (error) {
+      const message = normalizeErrorMessage(error, 'Error al eliminar video')
       toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
@@ -463,6 +500,60 @@ const productSlice = createSlice({
       })
       .addCase(deleteProductImage.rejected, (state, action) => {
         setRejectedState(state, action, 'Error al eliminar imagen')
+      })
+
+      // ==========================================
+      // UPLOAD VIDEO
+      // ==========================================
+      .addCase(uploadProductVideo.pending, state => {
+        state.isLoading = true
+        state.isError = false
+        state.message = ''
+      })
+      .addCase(uploadProductVideo.fulfilled, (state, action) => {
+        state.isLoading = false
+        state.isSuccess = true
+        state.isError = false
+        state.message = ''
+
+        const uploadedVideo = extractVideoObject(action.payload)
+
+        if (state.singleProduct) {
+          state.singleProduct.video = uploadedVideo
+          state.products = replaceProductInList(
+            state.products,
+            state.singleProduct,
+          )
+        }
+      })
+      .addCase(uploadProductVideo.rejected, (state, action) => {
+        setRejectedState(state, action, 'Error al subir video')
+      })
+
+      // ==========================================
+      // DELETE VIDEO
+      // ==========================================
+      .addCase(deleteProductVideo.pending, state => {
+        state.isLoading = true
+        state.isError = false
+        state.message = ''
+      })
+      .addCase(deleteProductVideo.fulfilled, state => {
+        state.isLoading = false
+        state.isSuccess = true
+        state.isError = false
+        state.message = ''
+
+        if (state.singleProduct) {
+          state.singleProduct.video = null
+          state.products = replaceProductInList(
+            state.products,
+            state.singleProduct,
+          )
+        }
+      })
+      .addCase(deleteProductVideo.rejected, (state, action) => {
+        setRejectedState(state, action, 'Error al eliminar video')
       })
 
       // ==========================================

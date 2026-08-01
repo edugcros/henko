@@ -46,12 +46,22 @@ import {
   resetState,
   updateAProduct,
   uploadProductImage,
+  uploadProductVideo,
+  deleteProductVideo,
 } from '../features/product/productSlice'
 
 const { Title, Text, Paragraph } = Typography
 const { TextArea } = Input
 
 const MAX_PRODUCT_IMAGES = 12
+const MAX_VIDEO_SIZE_MB = 60
+const MAX_VIDEO_SIZE_BYTES = MAX_VIDEO_SIZE_MB * 1024 * 1024
+const MAX_VIDEO_DURATION_SECONDS = 60
+const ALLOWED_VIDEO_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+])
 const DEFAULT_VARIANT_ATTRIBUTE = 'variante'
 
 const SPEC_TYPES = [
@@ -1038,6 +1048,10 @@ const EditProduct = () => {
   const [loadError, setLoadError] = useState(null)
   const [productImages, setProductImages] = useState([])
   const [variantTab, setVariantTab] = useState('generator')
+  const [productVideo, setProductVideo] = useState(null)
+  const [newVideoFile, setNewVideoFile] = useState(null)
+  const [newVideoPreviewUrl, setNewVideoPreviewUrl] = useState('')
+  const [videoDeleting, setVideoDeleting] = useState(false)
 
   const {
     singleProduct,
@@ -1151,6 +1165,7 @@ const EditProduct = () => {
       )
       setFileList(images.map((img, index) => toUploadFile(img, index)))
       setProductImages(images)
+      setProductVideo(normalizedProduct.video || null)
       setHasVariants(
         Boolean(normalizedProduct.hasVariants || mappedVariants.length > 0),
       )
@@ -1426,6 +1441,85 @@ const EditProduct = () => {
     [],
   )
 
+  const handleEditVideoChange = useCallback(
+    async ({ fileList: newFileList }) => {
+      const selected = newFileList[newFileList.length - 1]
+      if (!selected) return
+
+      const fileObject = selected.originFileObj || selected
+      const mimeType = fileObject?.type || ''
+      const extension = (fileObject?.name || '').split('.').pop()?.toLowerCase()
+      const allowedExtension = ['mp4', 'webm', 'mov'].includes(extension)
+
+      if (!ALLOWED_VIDEO_TYPES.has(mimeType) && !allowedExtension) {
+        message.error('El formato de video no está permitido (mp4, webm, mov).')
+        return
+      }
+
+      if (Number(fileObject?.size || 0) > MAX_VIDEO_SIZE_BYTES) {
+        message.error(`El video supera ${MAX_VIDEO_SIZE_MB}MB.`)
+        return
+      }
+
+      const duration = await new Promise(resolve => {
+        const url = URL.createObjectURL(fileObject)
+        const videoEl = document.createElement('video')
+        videoEl.preload = 'metadata'
+        videoEl.onloadedmetadata = () => {
+          URL.revokeObjectURL(url)
+          resolve(videoEl.duration || 0)
+        }
+        videoEl.onerror = () => {
+          URL.revokeObjectURL(url)
+          resolve(0)
+        }
+        videoEl.src = url
+      })
+
+      if (duration > MAX_VIDEO_DURATION_SECONDS) {
+        message.error(
+          `El video no puede durar más de ${MAX_VIDEO_DURATION_SECONDS} segundos.`,
+        )
+        return
+      }
+
+      if (newVideoPreviewUrl) {
+        URL.revokeObjectURL(newVideoPreviewUrl)
+      }
+
+      setNewVideoFile(selected)
+      setNewVideoPreviewUrl(URL.createObjectURL(fileObject))
+    },
+    [newVideoPreviewUrl],
+  )
+
+  const handleCancelNewVideo = useCallback(() => {
+    if (newVideoPreviewUrl) {
+      URL.revokeObjectURL(newVideoPreviewUrl)
+    }
+    setNewVideoFile(null)
+    setNewVideoPreviewUrl('')
+  }, [newVideoPreviewUrl])
+
+  const handleDeleteExistingVideo = useCallback(() => {
+    Modal.confirm({
+      title: 'Quitar video del producto',
+      content: 'Esta acción elimina el video ahora mismo, no espera a que guardes cambios.',
+      okText: 'Quitar video',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancelar',
+      onOk: async () => {
+        try {
+          setVideoDeleting(true)
+          await dispatch(deleteProductVideo(productId)).unwrap()
+          setProductVideo(null)
+        } finally {
+          setVideoDeleting(false)
+        }
+      },
+    })
+  }, [dispatch, productId])
+
   const handleFinish = async values => {
     if (hasVariants) {
       const variantError = validateVariantsBeforeSave(variants)
@@ -1536,6 +1630,23 @@ const EditProduct = () => {
 
       setProductImages(mergedImages)
       setFileList(mergedImages.map((img, index) => toUploadFile(img, index)))
+
+      if (newVideoFile) {
+        try {
+          const videoFileObject = newVideoFile.originFileObj || newVideoFile
+          const uploadResponse = await dispatch(
+            uploadProductVideo({ productId, videoFile: videoFileObject }),
+          ).unwrap()
+          setProductVideo(uploadResponse?.data || uploadResponse)
+          if (newVideoPreviewUrl) URL.revokeObjectURL(newVideoPreviewUrl)
+          setNewVideoFile(null)
+          setNewVideoPreviewUrl('')
+        } catch (videoError) {
+          message.warning(
+            'Los cambios se guardaron, pero el video no pudo subirse. Podés reintentarlo.',
+          )
+        }
+      }
 
       if (hasVariants && variants.length > 0) {
         const latestProductResponse = await dispatch(
@@ -2675,6 +2786,90 @@ const EditProduct = () => {
                       </div>
                     )}
                   </Upload>
+                </Card>
+
+                <Card
+                  style={pageStyles.card}
+                  title={
+                    <span style={pageStyles.sectionTitle}>
+                      <PictureOutlined /> Video del producto
+                    </span>
+                  }
+                >
+                  <Paragraph style={pageStyles.muted}>
+                    Un solo video de hasta {MAX_VIDEO_SIZE_MB}MB y{' '}
+                    {MAX_VIDEO_DURATION_SECONDS} segundos. MP4, WEBM o MOV.
+                  </Paragraph>
+
+                  {newVideoFile ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 16,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <video
+                        src={newVideoPreviewUrl}
+                        controls
+                        style={{ width: 220, borderRadius: 12, background: '#000' }}
+                      />
+                      <Space direction="vertical">
+                        <Text type="secondary">
+                          Se subirá al guardar los cambios.
+                        </Text>
+                        <Button onClick={handleCancelNewVideo}>
+                          Cancelar selección
+                        </Button>
+                      </Space>
+                    </div>
+                  ) : productVideo?.url ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 16,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <video
+                        src={productVideo.url}
+                        controls
+                        style={{ width: 220, borderRadius: 12, background: '#000' }}
+                      />
+                      <Space direction="vertical">
+                        <Upload
+                          accept="video/mp4,video/webm,video/quicktime"
+                          beforeUpload={() => false}
+                          showUploadList={false}
+                          onChange={handleEditVideoChange}
+                          maxCount={1}
+                        >
+                          <Button>Reemplazar video</Button>
+                        </Upload>
+                        <Button
+                          danger
+                          loading={videoDeleting}
+                          onClick={handleDeleteExistingVideo}
+                        >
+                          Quitar video
+                        </Button>
+                      </Space>
+                    </div>
+                  ) : (
+                    <Upload
+                      accept="video/mp4,video/webm,video/quicktime"
+                      beforeUpload={() => false}
+                      showUploadList={false}
+                      onChange={handleEditVideoChange}
+                      maxCount={1}
+                    >
+                      <Button icon={<PlusOutlined />}>
+                        Seleccionar video
+                      </Button>
+                    </Upload>
+                  )}
                 </Card>
               </Space>
             </Col>

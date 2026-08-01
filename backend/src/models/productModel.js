@@ -459,6 +459,41 @@ const imageSchema = new Schema(
   },
 )
 
+const videoSchema = new Schema(
+  {
+    public_id: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    url: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    thumbnailUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    duration: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: true,
+    },
+  },
+  {
+    _id: false,
+    timestamps: true,
+  },
+)
+
 const ratingSchema = new Schema(
   {
     star: {
@@ -814,6 +849,10 @@ const productSchema = new Schema(
     images: {
       type: [imageSchema],
       default: [],
+    },
+    video: {
+      type: videoSchema,
+      default: null,
     },
     ratings: {
       type: [ratingSchema],
