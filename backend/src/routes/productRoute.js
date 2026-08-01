@@ -34,6 +34,7 @@ import {
 } from '../middlewares/tenantMiddleware.js'
 import { uploadPhoto, productImgResize, uploadVideo } from '../middlewares/uploadImage.js'
 import { analyzeImage } from '../services/aiVisionService.js'
+import { recordManualAnalysisJob } from '../controller/productAnalysisController.js'
 import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
@@ -72,17 +73,30 @@ router.post(
   expressAsyncHandler(async (req, res) => {
     const { file } = req
     const tenantId = req.user?.tenantId
-    
+
     if (!file) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No se subió imagen' 
+      return res.status(400).json({
+        success: false,
+        message: 'No se subió imagen'
       })
     }
-    
+
     try {
       const analysis = await analyzeImage(file.buffer, file.mimetype, tenantId)
-      return res.json({ success: true, data: analysis })
+
+      const job = await recordManualAnalysisJob({
+        tenantId,
+        userId: req.user?._id || req.user?.id || null,
+        file,
+        originalFilename: file.originalname,
+        analysis,
+      })
+
+      return res.json({
+        success: true,
+        data: analysis,
+        jobId: job?._id || null,
+      })
     } catch (error) {
       logger.error('[ANALYZE VISUAL ERROR]', {
         code: error.code || 'UNKNOWN',

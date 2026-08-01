@@ -480,6 +480,69 @@ export const runVisualAnalysis = async ({ tenantId, file, originalFilename }) =>
   )
 }
 
+/**
+ * Registra en ProductAnalysisJob una imagen analizada desde el dropzone
+ * manual de AddProduct (POST /product/analyze-visual), para que quede
+ * con la misma trazabilidad/historial que las imágenes que trae el
+ * watcher local. NO vuelve a llamar a la IA: reutiliza el análisis que
+ * el caller ya obtuvo, para no duplicar el costo/latencia de Gemini.
+ * Nunca debe romper el flujo interactivo si falla: devuelve null.
+ */
+export const recordManualAnalysisJob = async ({
+  tenantId,
+  userId = null,
+  file,
+  originalFilename,
+  analysis,
+}) => {
+  if (!tenantId || !file?.buffer) return null
+
+  try {
+    const imageHash = createSha256(file.buffer)
+    const sanitizedAnalysis = sanitizeAnalysis(analysis)
+
+    const existing = await ProductAnalysisJob.findOne({ tenantId, imageHash })
+
+    if (existing) {
+      existing.status = JOB_STATUS.COMPLETED
+      existing.analysis = sanitizedAnalysis
+      existing.processedAt = new Date()
+      existing.error = undefined
+      existing.failedAt = undefined
+      await existing.save()
+      return existing
+    }
+
+    const storedImage = await uploadImageToStorage({ file, tenantId })
+
+    return await ProductAnalysisJob.create({
+      tenantId,
+      source: JOB_SOURCE.MANUAL_UPLOAD,
+      originalFilename: normalizeString(originalFilename) || `image-${Date.now()}`,
+      imageUrl: storedImage.url,
+      imagePublicId: storedImage.publicId,
+      imageHash,
+      status: JOB_STATUS.COMPLETED,
+      analysis: sanitizedAnalysis,
+      processedAt: new Date(),
+      createdBy: userId,
+      metadata: {
+        mimeType: file.mimetype,
+        size: file.buffer.length,
+        autoAnalyze: true,
+        autoSaveProduct: false,
+        autoPublishProduct: false,
+      },
+    })
+  } catch (error) {
+    logger.warn('[ProductAnalysis] No se pudo registrar el job de subida manual', {
+      tenantId: String(tenantId),
+      error: error.message,
+    })
+    return null
+  }
+}
+
 const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFilename = '' }) => {
   let job = await ProductAnalysisJob.findOneAndUpdate(
     {

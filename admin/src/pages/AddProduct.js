@@ -27,6 +27,7 @@ import {
   Steps,
   Collapse,
   Modal,
+  Tooltip,
 } from 'antd'
 import {
   InboxOutlined,
@@ -1148,6 +1149,26 @@ const formatDate = value => {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(new Date(value))
+}
+
+const WATCHER_ONLINE_THRESHOLD_MS = 3 * 60 * 1000
+
+const formatRelativeTime = value => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  const diffSeconds = Math.round((Date.now() - date.getTime()) / 1000)
+  if (diffSeconds < 45) return 'hace un momento'
+
+  const diffMinutes = Math.round(diffSeconds / 60)
+  if (diffMinutes < 60) return `hace ${diffMinutes} min`
+
+  const diffHours = Math.round(diffMinutes / 60)
+  if (diffHours < 24) return `hace ${diffHours} h`
+
+  const diffDays = Math.round(diffHours / 24)
+  return `hace ${diffDays} d`
 }
 
 const getStoredBoolean = (key, fallback = false) => {
@@ -3431,6 +3452,7 @@ export default function AddProduct() {
     resetIa,
     loading: loadingIa,
     error: errorIa,
+    lastAnalysisJobId,
   } = useProductAnalyzer()
 
   const [hasVariants, setHasVariants] = useState(false)
@@ -3463,6 +3485,7 @@ export default function AddProduct() {
   const [agentQueue, setAgentQueue] = useState([])
   const [selectedAgentJobId, setSelectedAgentJobId] = useState(null)
   const [loadingAgentQueue, setLoadingAgentQueue] = useState(false)
+  const [agentHeartbeat, setAgentHeartbeat] = useState(null)
   const [importingAgentImage, setImportingAgentImage] = useState(false)
   const [deletingAgentImage, setDeletingAgentImage] = useState(false)
   const [autoAgentEnabled, setAutoAgentEnabled] = useState(() =>
@@ -4085,9 +4108,19 @@ export default function AddProduct() {
     [],
   )
 
+  const fetchAgentHeartbeat = useCallback(async () => {
+    try {
+      const { data } = await api.get('/product-analysis/agent-heartbeat')
+      setAgentHeartbeat(data?.data || null)
+    } catch (error) {
+      // Indicador secundario: si falla no debe interrumpir el flujo de carga.
+    }
+  }, [])
+
   useEffect(() => {
     fetchAgentQueue()
-  }, [fetchAgentQueue])
+    fetchAgentHeartbeat()
+  }, [fetchAgentQueue, fetchAgentHeartbeat])
 
   // La cola del agente puede cambiar de estado sola (una imagen
   // programada se analiza automáticamente apenas llega su hora, sin que
@@ -4098,10 +4131,11 @@ export default function AddProduct() {
   useEffect(() => {
     const interval = setInterval(() => {
       fetchAgentQueue({ silent: true, preserveSelection: true })
+      fetchAgentHeartbeat()
     }, 15000)
 
     return () => clearInterval(interval)
-  }, [fetchAgentQueue])
+  }, [fetchAgentQueue, fetchAgentHeartbeat])
 
   const normalizedAiDraft = useMemo(() => {
     return iaResult && typeof iaResult === 'object'
@@ -5829,9 +5863,15 @@ export default function AddProduct() {
         }
       }
 
-      if (currentAgentJob?._id) {
+      // El job puede venir de la cola del agente (currentAgentJob) o de una
+      // subida manual arrastrada al dropzone (lastAnalysisJobId) — en
+      // ambos casos queda vinculado al producto recién creado para que
+      // aparezca en el historial de /admin/product-analysis.
+      const linkedAnalysisJobId = currentAgentJob?._id || lastAnalysisJobId
+
+      if (linkedAnalysisJobId) {
         await api.post(
-          `/product-analysis/${currentAgentJob._id}/complete-add-product`,
+          `/product-analysis/${linkedAnalysisJobId}/complete-add-product`,
           {
             productId,
           },
@@ -6229,6 +6269,31 @@ export default function AddProduct() {
                                               Procesando
                                             </Tag>
                                           )}
+                                          <Tooltip
+                                            title={
+                                              agentHeartbeat
+                                                ? `${agentHeartbeat.hostname || 'PC del local'} · v${agentHeartbeat.version || '?'} · pendientes: ${agentHeartbeat.queue?.pending ?? 0}`
+                                                : 'El watcher local todavía no envió ningún heartbeat.'
+                                            }
+                                          >
+                                            <Tag
+                                              color={
+                                                agentHeartbeat?.lastHeartbeatAt &&
+                                                Date.now() -
+                                                  new Date(
+                                                    agentHeartbeat.lastHeartbeatAt,
+                                                  ).getTime() <
+                                                  WATCHER_ONLINE_THRESHOLD_MS
+                                                  ? 'success'
+                                                  : 'default'
+                                              }
+                                              style={{ borderRadius: 999 }}
+                                            >
+                                              {agentHeartbeat?.lastHeartbeatAt
+                                                ? `Watcher ${formatRelativeTime(agentHeartbeat.lastHeartbeatAt)}`
+                                                : 'Watcher sin conexión'}
+                                            </Tag>
+                                          </Tooltip>
                                         </Space>
 
                                         <Text strong style={{ fontSize: 15 }}>

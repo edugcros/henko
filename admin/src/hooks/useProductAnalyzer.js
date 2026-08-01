@@ -53,6 +53,7 @@ export default function useProductAnalyzer() {
   const [dynamicFields, setDynamicFields] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [lastAnalysisJobId, setLastAnalysisJobId] = useState(null)
 
   const generateDynamicFields = useCallback(result => {
     if (!result || !result.atributos || typeof result.atributos !== 'object') {
@@ -77,6 +78,7 @@ export default function useProductAnalyzer() {
         setError(validationError)
         setIaResult(null)
         setDynamicFields([])
+        setLastAnalysisJobId(null)
         return null
       }
 
@@ -116,6 +118,10 @@ export default function useProductAnalyzer() {
 
         setIaResult(data)
         setDynamicFields(generateDynamicFields(data))
+        // Job de ProductAnalysisJob creado del lado del backend para esta
+        // misma imagen, así la subida manual queda con la misma
+        // trazabilidad/historial que las que trae el watcher local.
+        setLastAnalysisJobId(resData?.jobId || null)
 
         return data
       } catch (err) {
@@ -126,6 +132,7 @@ export default function useProductAnalyzer() {
         setError(message)
         setIaResult(null)
         setDynamicFields([])
+        setLastAnalysisJobId(null)
 
         return null
       } finally {
@@ -139,6 +146,7 @@ export default function useProductAnalyzer() {
     setIaResult(null)
     setDynamicFields([])
     setError(null)
+    setLastAnalysisJobId(null)
   }, [])
 
   // Carga un análisis que la IA ya calculó (por ejemplo, uno que el
@@ -165,5 +173,6 @@ export default function useProductAnalyzer() {
     resetIa,
     loading,
     error,
+    lastAnalysisJobId,
   }
 }
