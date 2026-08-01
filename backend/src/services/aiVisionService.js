@@ -50,7 +50,7 @@ if (!GEMINI_API_KEY) {
   })
 }
 
-const DEFAULT_MODEL = 'gemini-2.5-flash'
+const DEFAULT_MODEL = 'gemini-3.6-flash'
 const DEFAULT_CURRENCY = String(process.env.AI_VISION_DEFAULT_CURRENCY || 'ARS').trim().toUpperCase()
 
 const normalizeGeminiModelName = value => {
