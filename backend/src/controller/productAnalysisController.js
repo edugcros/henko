@@ -696,19 +696,23 @@ const releaseOrAnalyzeScheduledJob = async payload => {
   }
 
   if (job.metadata?.autoAnalyze === false) {
-    // Se cumplió el plazo programado: el agente no analiza nada acá, le
-    // envía el job al módulo AddProduct, que es quien dispara la IA y
-    // genera el producto de punta a punta.
-    //
-    // Esto corre siempre que el job tenía una hora programada, sin
-    // importar el checkbox "autoSaveProduct" — ese checkbox solo decide
-    // qué pasa con las imágenes SIN hora (quedan pendientes para que un
-    // humano las importe a mano desde AddProduct cuando quiera). Una vez
-    // que hay una hora establecida, llegar a esa hora sin que nadie esté
-    // mirando es exactamente el caso de uso del agente, así que el
-    // análisis tiene que arrancar solo.
-    const { runAddProductAutopilot } = await import('../services/addProductAutopilotService.js')
-    return runAddProductAutopilot(payload)
+    // Se cumplió el plazo programado. /admin/product-analysis solo se
+    // ocupa de programar — la IA nunca corre acá en background. Lo único
+    // que hace el scheduler es liberar el job a 'pending' para que
+    // aparezca en la bandeja de AddProduct.js (fetchAgentQueue ya lo
+    // filtra por status pending/scheduled/completed + autoAnalyze===false).
+    // El análisis lo dispara recién el navegador del admin al abrirlo ahí.
+    if (job.status !== JOB_STATUS.PENDING) {
+      job.status = JOB_STATUS.PENDING
+      await job.save()
+    }
+
+    logger.info('[ProductAnalysis] Job programado liberado a AddProduct (sin analizar en background)', {
+      tenantId: payload.tenantId?.toString(),
+      jobId: payload.jobId?.toString(),
+    })
+
+    return job
   }
 
   return analyzeAndPersistJob(payload)
@@ -1425,39 +1429,15 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
   }
 
   if (!autoAnalyze) {
-    if (autoSaveProduct) {
-      // Sin hora programada: el agente envía el job a AddProduct de
-      // inmediato en lugar de dejarlo pendiente a que alguien lo abra.
-      const { runAddProductAutopilot } = await import('../services/addProductAutopilotService.js')
-      const processedJob = await runAddProductAutopilot({
-        jobId: job._id,
-        tenantId,
-        file: {
-          buffer: Buffer.from(file.buffer),
-          mimetype: file.mimetype,
-        },
-        originalFilename,
-      })
-
-      const autonomousSucceeded = [JOB_STATUS.COMPLETED, JOB_STATUS.APPROVED].includes(
-        processedJob.status,
-      )
-      const autonomousFailureStatus = processedJob.error?.retryable ? 503 : 422
-
-      return res.status(autonomousSucceeded ? 201 : autonomousFailureStatus).json({
-        success: autonomousSucceeded,
-        message: autonomousSucceeded
-          ? processedJob.status === JOB_STATUS.APPROVED
-            ? 'Imagen importada, analizada y guardada automáticamente por AddProduct.'
-            : 'Imagen importada y analizada automáticamente por AddProduct. Esperando aprobación.'
-          : processedJob.error?.message || 'La IA no pudo completar el análisis.',
-        job: processedJob,
-      })
-    }
-
+    // Sin análisis automático — con o sin hora programada, con o sin
+    // autoSaveProduct — el job siempre queda 'pending' esperando a que
+    // un admin lo abra en AddProduct.js. El backend nunca corre la IA
+    // por su cuenta acá; autoSaveProduct/autoPublishProduct quedan
+    // guardados en metadata y los honra AddProduct del lado del cliente
+    // una vez que sí analiza (ver processAutoAgentQueue en AddProduct.js).
     return res.status(201).json({
       success: true,
-      message: 'Imagen importada. Análisis pendiente.',
+      message: 'Imagen importada. Análisis pendiente en AddProduct.',
       job,
     })
   }

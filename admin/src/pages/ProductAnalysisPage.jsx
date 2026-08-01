@@ -771,8 +771,8 @@ const AgentStatusBar = ({
             </Stack>
             <Typography variant="caption" color="text.secondary">
               {enabled
-                ? `Barre la cola cada ${pollSeconds || '?'}s y procesa cada imagen apenas se cumple su hora programada.`
-                : 'El barrido automático está deshabilitado en el servidor. Usá "Ejecutar barrido" para procesar manualmente.'}
+                ? `Barre la cola cada ${pollSeconds || '?'}s y libera cada imagen a AddProduct apenas se cumple su hora programada (no analiza con IA acá).`
+                : 'El barrido automático está deshabilitado en el servidor. Usá "Ejecutar barrido" para liberar manualmente.'}
             </Typography>
           </Box>
         </Stack>
@@ -1261,10 +1261,12 @@ const ProductAnalysisPage = () => {
     const scheduledIso = toIsoOrNull(scheduledAt)
     const form = new FormData()
 
-    // El análisis con IA siempre arranca solo apenas se cumple la hora
-    // programada (eso no depende de ningún checkbox). Lo que SÍ controla
-    // este checkbox es si, además de analizar, AddProduct autoguarda el
-    // producto (lo crea) o lo deja esperando tu aprobación manual.
+    // Esta página solo programa — nunca analiza con IA ni crea productos
+    // por su cuenta. Apenas se cumple la hora, el job queda 'pending'
+    // esperando a que un admin lo abra en AddProduct: recién ahí arranca
+    // el análisis. Este checkbox solo queda guardado en metadata para que
+    // AddProduct decida, una vez que sí analiza, si autoguarda el
+    // producto o lo deja esperando aprobación manual.
     const effectiveAutoSave = sendToAddProduct && autoSaveInAddProduct
 
     form.append('image', file)
@@ -1878,8 +1880,10 @@ const ProductAnalysisPage = () => {
               )}
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Revisá, aprobá o descartá las imágenes que subió el agente local,
-              folder-domain o una carga manual para tu comercio.
+              Programá cuándo queda disponible cada imagen (del agente local o
+              subida acá) para AddProduct. Esta página no analiza con IA ni
+              crea productos por su cuenta — eso lo hace AddProduct cuando un
+              admin la abre ahí.
             </Typography>
           </Box>
 
@@ -2063,7 +2067,7 @@ const ProductAnalysisPage = () => {
             label="Enviar a AddProduct"
           />
 
-          <Tooltip title="El análisis con IA siempre arranca solo al cumplirse la hora programada. Este switch decide si, además, AddProduct autoguarda el producto o lo deja esperando tu aprobación.">
+          <Tooltip title="Esta página solo programa: el análisis con IA arranca recién cuando un admin abre AddProduct y lo carga desde ahí. Este switch solo decide qué hace AddProduct en ese momento — guardar el producto automáticamente o dejarlo esperando tu aprobación manual.">
             <FormControlLabel
               control={
                 <Switch
@@ -2074,7 +2078,7 @@ const ProductAnalysisPage = () => {
                   disabled={!sendToAddProduct}
                 />
               }
-              label="Autoanalizar y guardar en AddProduct"
+              label="Autoguardar en AddProduct"
             />
           </Tooltip>
 
