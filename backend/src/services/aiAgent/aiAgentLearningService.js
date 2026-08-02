@@ -828,8 +828,24 @@ export const registerConversationLearningSignal = async ({
     },
   }
 
+  // Mongo rechaza un update que toque el mismo path con dos operadores
+  // distintos ("Updating the path 'x' would create a conflict at 'x'").
+  // payload trae question/priority/suggestedAnswer/tags/confidence/metadata
+  // completos, pero más abajo el mismo update también los toca vía
+  // $set/$addToSet/$max — así que $setOnInsert solo puede llevar los
+  // campos de identidad que ningún otro operador toca acá.
+  const {
+    question: _question,
+    priority: _priority,
+    suggestedAnswer: _suggestedAnswer,
+    tags: _tags,
+    confidence: _confidence,
+    metadata: _metadata,
+    ...insertOnlyPayload
+  } = payload
+
   const update = {
-    $setOnInsert: payload,
+    $setOnInsert: insertOnlyPayload,
     $inc: {
       'signals.occurrences': 1,
       ...(handoffRequired ? { 'signals.handoffs': 1 } : {}),
@@ -852,6 +868,7 @@ export const registerConversationLearningSignal = async ({
       'metadata.intent': payload.metadata.intent,
       'metadata.intentSubtype': payload.metadata.intentSubtype,
       'metadata.leadScore': payload.metadata.leadScore,
+      'metadata.channel': payload.metadata.channel,
       'metadata.creationReason': payload.metadata.creationReason,
       'metadata.sampleUserText': payload.metadata.sampleUserText,
       'metadata.sampleAssistantText': payload.metadata.sampleAssistantText,
