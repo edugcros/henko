@@ -2678,11 +2678,22 @@ const CheckoutPage = () => {
                           onReady={() => debugLog('✅ Mercado Pago listo')}
                           onError={error => {
                             debugError('❌ Error MP:', error)
-                            alert(
-                              `Error en el formulario de pago: ${
-                                error?.message || 'Error desconocido'
-                              }`,
-                            )
+
+                            // El Brick de Mercado Pago dispara onError también
+                            // para eventos "non_critical" (ej: empty_installments
+                            // mientras el usuario todavía está tipeando el
+                            // número de tarjeta y las cuotas no se calcularon
+                            // todavía) — no son errores reales, son parte
+                            // normal de completar el formulario. Solo el
+                            // cliente debe ver un alert cuando el Brick
+                            // considera que el error es crítico.
+                            if (error?.type === 'critical') {
+                              alert(
+                                `Error en el formulario de pago: ${
+                                  error?.message || 'Error desconocido'
+                                }`,
+                              )
+                            }
                           }}
                           customization={{
                             visual: {
