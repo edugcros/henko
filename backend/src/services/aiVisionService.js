@@ -10,6 +10,7 @@ import mongoose from 'mongoose'
 import AIPreference from '../models/aIPreference.js'
 import CorrectionLog from '../models/correctionLog.js'
 import logger from '../../config/logger.js'
+import { reserveAiUsage, refundAiUsage } from './aiUsageService.js'
 
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim()
 
@@ -1837,6 +1838,26 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     return cachedResult
   }
 
+  /**
+   * ============================================================
+   * 4.5. CUOTA MENSUAL DE IA POR TENANT
+   * ============================================================
+   * Un cache-hit arriba no cuesta nada, así que no cuenta contra la
+   * cuota. A partir de acá sí se va a gastar una llamada real a Gemini.
+   */
+
+  const usageReservation = await reserveAiUsage(normalizedTenantId)
+
+  if (!usageReservation.allowed) {
+    const error = new Error(
+      `Se alcanzó el límite mensual de análisis IA de este comercio (${usageReservation.limit}). Se renueva al empezar el próximo mes, o podés subir de plan.`,
+    )
+    error.code = 'AI_USAGE_LIMIT_EXCEEDED'
+    error.retryable = false
+    error.limit = usageReservation.limit
+    throw error
+  }
+
   try {
     /**
      * ==========================================================
@@ -2146,6 +2167,12 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
       code: error?.code,
       retryable,
     })
+
+    // El proveedor falló después de reservarle cuota al tenant — no le
+    // cobramos un análisis que no entregó nada útil. Este catch solo
+    // envuelve la llamada real a Gemini (la reserva de cuota está antes
+    // del try), así que siempre corresponde devolverla acá.
+    refundAiUsage(normalizedTenantId).catch(() => undefined)
 
     throw buildProviderError(error)
   }

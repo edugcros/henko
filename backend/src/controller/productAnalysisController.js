@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url'
 import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import Product from '../models/productModel.js'
 import AgentHeartbeat from '../models/agentHeartbeatModel.js'
+import { getAiUsageSnapshot } from '../services/aiUsageService.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import {
   getActorIdFromRequest,
@@ -752,6 +753,42 @@ const scheduleAnalysisJob = payload => {
   setImmediate(run)
 }
 
+// Cuántos jobs "vencidos" se procesan de verdad en simultáneo por tanda.
+// Sin este tope, un barrido de cientos de imágenes (bulk import) dispararía
+// esa misma cantidad de llamadas a Gemini/Cloudinary a la vez. No usamos
+// Redis/BullMQ para esto (ver nota en releaseOrAnalyzeScheduledJob más
+// arriba del archivo): Redis quedó descartado en este proyecto por
+// cierres de socket recurrentes en Render. Esto logra el mismo objetivo
+// (concurrencia acotada) con el patrón que este proyecto ya usa en
+// producción para trabajos en background (setInterval + Mongo), sin
+// agregar una dependencia de infraestructura que ya demostró fallar acá.
+const schedulerConcurrency = Math.max(
+  1,
+  Number.parseInt(process.env.PRODUCT_ANALYSIS_SCHEDULER_CONCURRENCY, 10) || 5,
+)
+
+const processJobsWithBoundedConcurrency = async jobs => {
+  for (let i = 0; i < jobs.length; i += schedulerConcurrency) {
+    const batch = jobs.slice(i, i + schedulerConcurrency)
+
+    await Promise.allSettled(
+      batch.map(job =>
+        releaseOrAnalyzeScheduledJob({
+          jobId: job._id,
+          tenantId: job.tenantId,
+          originalFilename: job.originalFilename,
+        }).catch(error => {
+          logger.error('[ProductAnalysis] Error procesando job del barrido', {
+            jobId: String(job._id),
+            tenantId: String(job.tenantId),
+            error: error.message,
+          })
+        }),
+      ),
+    )
+  }
+}
+
 const processDueScheduledJobs = async ({ tenantId = null, limit = 10 } = {}) => {
   const filter = {
     status: JOB_STATUS.SCHEDULED,
@@ -769,11 +806,12 @@ const processDueScheduledJobs = async ({ tenantId = null, limit = 10 } = {}) => 
     .limit(limit)
     .setOptions(tenantId ? {} : { ignoreTenant: true })
 
-  jobs.forEach(job => {
-    scheduleAnalysisJob({
-      jobId: job._id,
-      tenantId: job.tenantId,
-      originalFilename: job.originalFilename,
+  // Fire-and-forget con concurrencia acotada: no bloquea al caller (ni el
+  // setInterval del scheduler, ni el botón "Ejecutar barrido ahora")
+  // esperando a que termine de analizar cada imagen una por una.
+  processJobsWithBoundedConcurrency(jobs).catch(error => {
+    logger.error('[ProductAnalysis] Error fatal en barrido de jobs', {
+      error: error.message,
     })
   })
 
@@ -862,10 +900,18 @@ const schedulerIntervalMs = Math.max(
   Number.parseInt(process.env.PRODUCT_ANALYSIS_SCHEDULER_INTERVAL_MS, 10) || 60000,
   10000,
 )
+// Cuántos jobs vencidos se toman por tick del scheduler. Con carga de
+// bulk import (cientos/miles de imágenes) conviene subirlo por env sin
+// tocar código — el límite real de simultaneidad lo pone
+// schedulerConcurrency, no este número.
+const schedulerBatchSize = Math.max(
+  1,
+  Number.parseInt(process.env.PRODUCT_ANALYSIS_SCHEDULER_BATCH_SIZE, 10) || 20,
+)
 
 if (schedulerEnabled && process.env.NODE_ENV !== 'test') {
   setInterval(() => {
-    processDueScheduledJobs({ limit: 20 }).catch(error => {
+    processDueScheduledJobs({ limit: schedulerBatchSize }).catch(error => {
       logger.error('[ProductAnalysis] Error procesando cola programada', {
         error: error.message,
       })
@@ -1474,6 +1520,120 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
 })
 
 /**
+ * POST /api/product-analysis/bulk-import
+ *
+ * Carga masiva para catálogos grandes: crea muchos ProductAnalysisJob de
+ * una sola vez y responde de inmediato (no espera a que la IA analice
+ * cada imagen — eso lo hace el scheduler en background, con concurrencia
+ * acotada por PRODUCT_ANALYSIS_SCHEDULER_CONCURRENCY).
+ *
+ * Cada imagen se crea como producto BORRADOR automáticamente
+ * (autoCreateProduct forzado a true) pero NUNCA se publica sola
+ * (autoPublishProduct forzado a false, sin excepción, sin importar la
+ * confianza que reporte la IA) — publicar en volumen es una decisión
+ * humana explícita desde la bandeja de borradores.
+ */
+export const bulkImportImagesForAnalysis = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+  const userId = getUserId(req)
+
+  if (!tenantId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Tenant no resuelto.',
+    })
+  }
+
+  const files = Array.isArray(req.files) ? req.files : []
+
+  if (!files.length) {
+    return res.status(400).json({
+      success: false,
+      message: 'Se requiere al menos una imagen en el campo "images".',
+    })
+  }
+
+  const batchId = normalizeString(req.body?.batchId) || undefined
+  const results = { imported: 0, duplicates: 0, failed: 0 }
+  const jobIds = []
+
+  for (const file of files) {
+    try {
+      if (!file?.buffer || !Buffer.isBuffer(file.buffer)) {
+        results.failed += 1
+        continue
+      }
+
+      const imageHash = createSha256(file.buffer)
+      const originalFilename =
+        normalizeString(file.originalname) || `bulk-image-${Date.now()}`
+
+      const existing = await ProductAnalysisJob.findOne({ tenantId, imageHash })
+
+      if (existing) {
+        results.duplicates += 1
+        continue
+      }
+
+      const storedImage = await uploadImageToStorage({ file, tenantId })
+
+      const job = await ProductAnalysisJob.create({
+        tenantId,
+        source: JOB_SOURCE.MANUAL_UPLOAD,
+        originalFilename,
+        imageUrl: storedImage.url,
+        imagePublicId: storedImage.publicId,
+        imageHash,
+        status: JOB_STATUS.SCHEDULED,
+        scheduledAt: new Date(),
+        autoCreateProduct: true,
+        autoPublishProduct: false,
+        createdBy: userId,
+        metadata: {
+          mimeType: file.mimetype,
+          size: file.buffer.length,
+          autoAnalyze: true,
+          autoSaveProduct: false,
+          autoPublishProduct: false,
+          importBatchId: batchId,
+          uploadedFromIp: req.ip,
+          userAgent: req.get('user-agent'),
+        },
+      })
+
+      results.imported += 1
+      jobIds.push(job._id)
+    } catch (error) {
+      if (error?.code === 11000) {
+        results.duplicates += 1
+      } else {
+        results.failed += 1
+        logger.warn('[ProductAnalysis] Error en import masivo', {
+          tenantId: String(tenantId),
+          filename: file?.originalname,
+          error: error.message,
+        })
+      }
+    }
+  }
+
+  logger.info('[ProductAnalysis] Import masivo recibido', {
+    tenantId: tenantId.toString(),
+    total: files.length,
+    rejected: req.rejectedFiles?.length || 0,
+    ...results,
+  })
+
+  return res.status(201).json({
+    success: true,
+    message: `${results.imported} imágenes en cola para analizar y crear como borrador.`,
+    ...results,
+    rejectedFiles: req.rejectedFiles || [],
+    jobIds,
+  })
+})
+
+/**
  * GET /api/product-analysis
  */
 export const listAnalysisJobs = asyncHandler(async (req, res) => {
@@ -1718,6 +1878,20 @@ export const getAgentHeartbeat = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     data: heartbeat || null,
+  })
+})
+
+/**
+ * GET /api/product-analysis/ai-usage
+ */
+export const getAiUsage = asyncHandler(async (req, res) => {
+  const tenantId = getTenantId(req)
+
+  const usage = await getAiUsageSnapshot(tenantId)
+
+  return res.status(200).json({
+    success: true,
+    data: usage,
   })
 })
 

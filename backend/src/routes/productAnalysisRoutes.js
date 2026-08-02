@@ -24,6 +24,8 @@ import {
   rescheduleAnalysisJob,
   reportAgentHeartbeat,
   getAgentHeartbeat,
+  getAiUsage,
+  bulkImportImagesForAnalysis,
 } from '../controller/productAnalysisController.js'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
@@ -168,10 +170,30 @@ const analysisWriteLimiter = rateLimit({
   },
 })
 
+const MAX_BULK_IMAGES = Math.max(
+  1,
+  Number.parseInt(process.env.PRODUCT_ANALYSIS_BULK_MAX_FILES, 10) || 100,
+)
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_IMAGE_UPLOAD_BYTES,
+  },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.mimetype)) {
+      return cb(new Error('Formato de imagen no permitido'))
+    }
+
+    cb(null, true)
+  },
+})
+
+const bulkUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_IMAGE_UPLOAD_BYTES,
+    files: MAX_BULK_IMAGES,
   },
   fileFilter: (req, file, cb) => {
     if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.mimetype)) {
@@ -218,6 +240,50 @@ const validateUploadedImage = async (req, res, next) => {
   }
 }
 
+// Versión plural para bulk-import: un archivo corrupto no debe tirar
+// abajo todo el lote — se descarta ese archivo puntual (queda reportado
+// en la respuesta) y se sigue con el resto.
+const validateUploadedImages = async (req, res, next) => {
+  const files = Array.isArray(req.files) ? req.files : []
+
+  if (!files.length) return next()
+
+  const validFiles = []
+  const rejectedFiles = []
+  const allowedFormats = new Set(ALLOWED_IMAGE_SHARP_FORMATS)
+
+  for (const file of files) {
+    try {
+      const metadata = await sharp(file.buffer, {
+        failOn: 'error',
+        limitInputPixels: 40_000_000,
+      }).metadata()
+
+      if (!allowedFormats.has(metadata.format) || !metadata.width || !metadata.height) {
+        rejectedFiles.push({ filename: file.originalname, reason: 'INVALID_IMAGE_CONTENT' })
+        continue
+      }
+
+      validFiles.push(file)
+    } catch {
+      rejectedFiles.push({ filename: file.originalname, reason: 'CORRUPTED_IMAGE' })
+    }
+  }
+
+  if (!validFiles.length) {
+    return res.status(400).json({
+      success: false,
+      code: 'NO_VALID_IMAGES',
+      message: 'Ninguno de los archivos enviados es una imagen válida.',
+      rejectedFiles,
+    })
+  }
+
+  req.files = validFiles
+  req.rejectedFiles = rejectedFiles
+  return next()
+}
+
 router.use(resolveTenantByDomain)
 router.use(requireTenant)
 
@@ -244,10 +310,19 @@ router.post(
 
 router.use(authenticateAdmin)
 
+router.post(
+  '/bulk-import',
+  analysisWriteLimiter,
+  bulkUpload.array('images', MAX_BULK_IMAGES),
+  validateUploadedImages,
+  bulkImportImagesForAnalysis,
+)
+
 router.post('/process-due', analysisWriteLimiter, processDueAnalysisJobs)
 
 router.get('/agent/status', getAnalysisAgentStatus)
 router.get('/agent-heartbeat', getAgentHeartbeat)
+router.get('/ai-usage', getAiUsage)
 
 router.patch('/:jobId/hide', hideAnalysisJob)
 router.patch('/:jobId/unhide', unhideAnalysisJob)

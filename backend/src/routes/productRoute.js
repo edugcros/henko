@@ -9,6 +9,7 @@ import {
   getaProduct,
   getAllProduct,
   listDraftProducts,
+  bulkPublishDrafts,
   getProductCategories,
   getCategoryConfig,
   upsertCategoryConfig,
@@ -116,6 +117,14 @@ router.post(
         error.code === 'AI_PROVIDER_DISABLED' ||
         error.code === 'AI_PROVIDER_KEY_MALFORMED'
 
+      if (error.code === 'AI_USAGE_LIMIT_EXCEEDED') {
+        return res.status(429).json({
+          success: false,
+          code: error.code,
+          message: error.message,
+        })
+      }
+
       return res.status(isProviderConfigError ? 503 : 500).json({
         success: false,
         code: error.code || 'AI_ANALYSIS_FAILED',
@@ -146,6 +155,7 @@ router.post(
 )
 
 router.get('/admin/drafts', adminContext, listDraftProducts)
+router.put('/admin/drafts/bulk-publish', adminContext, bulkPublishDrafts)
 
 router.put('/:id', adminContext, updateProduct)
 router.delete('/:productId', adminContext, deleteProduct)

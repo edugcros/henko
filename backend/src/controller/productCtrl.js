@@ -1552,6 +1552,60 @@ export const listDraftProducts = expressAsyncHandler(async (req, res) => {
 })
 
 // =====================================================
+// BULK PUBLISH DRAFTS
+// =====================================================
+// Para carga masiva de catálogo: publicar cientos/miles de borradores
+// de a uno (N requests HTTP secuenciales) no escala. Una sola
+// updateMany hace lo mismo en una consulta.
+
+export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
+  const tenantId = requireUserTenantId(req)
+  assertSameResolvedTenant(req, tenantId)
+
+  const productIds = Array.isArray(req.body?.productIds)
+    ? req.body.productIds
+    : []
+  const validIds = productIds.filter(isValidObjectId)
+
+  if (!validIds.length) {
+    return res.status(400).json({
+      success: false,
+      message: 'Se requiere un array productIds con al menos un ID válido.',
+    })
+  }
+
+  const objectIds = validIds.map(id => new mongoose.Types.ObjectId(String(id)))
+
+  const result = await Product.updateMany(
+    {
+      _id: { $in: objectIds },
+      tenantId: new mongoose.Types.ObjectId(String(tenantId)),
+      status: 'draft',
+    },
+    {
+      $set: {
+        status: 'active',
+        visibility: 'visible',
+        aiNeedsReview: false,
+        updatedBy: getRequestUserId(req),
+        publishedAt: new Date(),
+      },
+    },
+  ).setOptions({ tenantId })
+
+  logger.info(
+    `📢 Publicación en bloque: ${result.modifiedCount}/${validIds.length} productos | tenant=${tenantId}`,
+  )
+
+  return res.status(200).json({
+    success: true,
+    message: `${result.modifiedCount} productos publicados.`,
+    published: result.modifiedCount,
+    requested: validIds.length,
+  })
+})
+
+// =====================================================
 // GET ALL PUBLIC PRODUCTS
 // =====================================================
 

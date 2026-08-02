@@ -9,6 +9,7 @@ import {
   Avatar,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -54,6 +55,7 @@ import {
   Refresh as RefreshIcon,
   Search as SearchIcon,
   Storefront as StorefrontIcon,
+  UploadFile as UploadFileIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material'
@@ -485,16 +487,32 @@ const DraftProductCard = ({
   onDiscard,
   publishing,
   discarding,
+  selected,
+  onToggleSelect,
 }) => {
   const variantCount = getDraftVariantCount(product)
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        borderRadius: 3,
+        borderColor: selected ? 'primary.main' : undefined,
+        bgcolor: selected ? 'action.selected' : undefined,
+      }}
+    >
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={2}
         alignItems={{ xs: 'stretch', sm: 'flex-start' }}
       >
+        <Checkbox
+          checked={Boolean(selected)}
+          onChange={() => onToggleSelect(product)}
+          sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, p: 0.5 }}
+        />
+
         <Avatar
           src={getDraftImageUrl(product)}
           alt={product.title}
@@ -700,6 +718,7 @@ const AgentStatusBar = ({
   agentStatus,
   agentStatusLoading,
   agentHeartbeat,
+  aiUsage,
   activity,
   onSweep,
   sweeping,
@@ -784,6 +803,35 @@ const AgentStatusBar = ({
               }
             />
           </Tooltip>
+
+          {aiUsage && (
+            <Tooltip
+              title={
+                aiUsage.unlimited
+                  ? `Plan ${aiUsage.plan}: sin límite mensual de análisis IA.`
+                  : `Plan ${aiUsage.plan}: se renueva el 1° de cada mes.`
+              }
+            >
+              <Chip
+                size="small"
+                variant="outlined"
+                color={
+                  aiUsage.unlimited
+                    ? 'default'
+                    : aiUsage.used >= aiUsage.limit
+                      ? 'error'
+                      : aiUsage.used / aiUsage.limit >= 0.7
+                        ? 'warning'
+                        : 'default'
+                }
+                label={
+                  aiUsage.unlimited
+                    ? `Uso IA: ${formatNumber(aiUsage.used)} este mes`
+                    : `Uso IA: ${formatNumber(aiUsage.used)}/${formatNumber(aiUsage.limit)}`
+                }
+              />
+            </Tooltip>
+          )}
 
           {nextRun && (
             <Tooltip title={nextRun.originalFilename || ''}>
@@ -908,6 +956,10 @@ const ProductAnalysisPage = () => {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkFiles, setBulkFiles] = useState([])
+  const [bulkUploading, setBulkUploading] = useState(false)
+  const [bulkResult, setBulkResult] = useState(null)
   const [sweeping, setSweeping] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [status, setStatus] = useState('')
@@ -923,6 +975,7 @@ const ProductAnalysisPage = () => {
   const [agentStatus, setAgentStatus] = useState(null)
   const [agentStatusLoading, setAgentStatusLoading] = useState(false)
   const [agentHeartbeat, setAgentHeartbeat] = useState(null)
+  const [aiUsage, setAiUsage] = useState(null)
   const [runningJobId, setRunningJobId] = useState(null)
   const [rescheduleJob, setRescheduleJob] = useState(null)
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
@@ -937,6 +990,43 @@ const ProductAnalysisPage = () => {
   const [publishingDraftId, setPublishingDraftId] = useState(null)
   const [discardingDraftId, setDiscardingDraftId] = useState(null)
   const [publishingAll, setPublishingAll] = useState(false)
+  const [selectedDraftIds, setSelectedDraftIds] = useState(() => new Set())
+  const [draftCategoryFilter, setDraftCategoryFilter] = useState('')
+  const [draftMinConfidence, setDraftMinConfidence] = useState(0)
+
+  const draftCategoryOptions = useMemo(
+    () => uniqueList(drafts.map(product => product.categoria)),
+    [drafts],
+  )
+
+  const filteredDrafts = useMemo(() => {
+    return drafts.filter(product => {
+      if (draftCategoryFilter && product.categoria !== draftCategoryFilter) {
+        return false
+      }
+      const confidence = Number(product.aiConfidence) || 0
+      return confidence >= draftMinConfidence
+    })
+  }, [drafts, draftCategoryFilter, draftMinConfidence])
+
+  const toggleDraftSelection = useCallback(product => {
+    const id = getDraftId(product)
+    if (!id) return
+    setSelectedDraftIds(current => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const selectAllFilteredDrafts = useCallback(() => {
+    setSelectedDraftIds(new Set(filteredDrafts.map(getDraftId).filter(Boolean)))
+  }, [filteredDrafts])
+
+  const clearDraftSelection = useCallback(() => {
+    setSelectedDraftIds(new Set())
+  }, [])
 
   const queryParams = useMemo(() => {
     const params = {
@@ -1098,6 +1188,15 @@ const ProductAnalysisPage = () => {
     }
   }, [])
 
+  const fetchAiUsage = useCallback(async () => {
+    try {
+      const { data } = await api.get('/product-analysis/ai-usage')
+      setAiUsage(data?.data || null)
+    } catch (error) {
+      // Silencioso, mismo criterio que el heartbeat del watcher.
+    }
+  }, [])
+
   const fetchDrafts = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setDraftsLoading(true)
 
@@ -1137,19 +1236,21 @@ const ProductAnalysisPage = () => {
   useEffect(() => {
     fetchAgentStatus()
     fetchAgentHeartbeat()
+    fetchAiUsage()
     fetchDrafts()
-  }, [fetchAgentStatus, fetchAgentHeartbeat, fetchDrafts])
+  }, [fetchAgentStatus, fetchAgentHeartbeat, fetchAiUsage, fetchDrafts])
 
   useEffect(() => {
     const interval = setInterval(() => {
       fetchJobs({ silent: true })
       fetchAgentStatus({ silent: true })
       fetchAgentHeartbeat()
+      fetchAiUsage()
       fetchDrafts({ silent: true })
     }, AUTO_REFRESH_MS)
 
     return () => clearInterval(interval)
-  }, [fetchJobs, fetchAgentStatus, fetchAgentHeartbeat, fetchDrafts])
+  }, [fetchJobs, fetchAgentStatus, fetchAgentHeartbeat, fetchAiUsage, fetchDrafts])
 
   const handleSweep = async () => {
     setSweeping(true)
@@ -1183,6 +1284,12 @@ const ProductAnalysisPage = () => {
         current.filter(item => getDraftId(item) !== productId),
       )
       setDraftsTotal(current => Math.max(0, current - 1))
+      setSelectedDraftIds(current => {
+        if (!current.has(productId)) return current
+        const next = new Set(current)
+        next.delete(productId)
+        return next
+      })
     } catch (error) {
       toast.error(
         error?.response?.data?.message || 'No se pudo publicar el producto',
@@ -1192,13 +1299,33 @@ const ProductAnalysisPage = () => {
     }
   }
 
-  const publishAllDrafts = async () => {
+  // Publica en una sola consulta (updateMany en el backend) en vez de N
+  // requests secuenciales — con miles de borradores, publicar de a uno
+  // haría que esto tarde minutos y sea propenso a cortarse a mitad.
+  const publishSelectedDrafts = async () => {
+    const productIds = [...selectedDraftIds]
+    if (!productIds.length) return
+
     setPublishingAll(true)
 
     try {
-      for (const product of drafts) {
-        await publishDraft(product)
-      }
+      const { data } = await api.put('/product/admin/drafts/bulk-publish', {
+        productIds,
+      })
+
+      toast.success(data?.message || `${data?.published || 0} productos publicados`)
+
+      const publishedSet = new Set(productIds)
+      setDrafts(current =>
+        current.filter(item => !publishedSet.has(getDraftId(item))),
+      )
+      setDraftsTotal(current => Math.max(0, current - productIds.length))
+      setSelectedDraftIds(new Set())
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message ||
+          'No se pudo publicar la selección',
+      )
     } finally {
       setPublishingAll(false)
     }
@@ -1223,6 +1350,12 @@ const ProductAnalysisPage = () => {
         current.filter(item => getDraftId(item) !== productId),
       )
       setDraftsTotal(current => Math.max(0, current - 1))
+      setSelectedDraftIds(current => {
+        if (!current.has(productId)) return current
+        const next = new Set(current)
+        next.delete(productId)
+        return next
+      })
     } catch (error) {
       toast.error(
         error?.response?.data?.message || 'No se pudo descartar el borrador',
@@ -1308,6 +1441,59 @@ const ProductAnalysisPage = () => {
       toast.error(data?.message || 'No se pudo importar la imagen')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleBulkFilesSelected = event => {
+    const files = Array.from(event.target.files || [])
+    setBulkFiles(files)
+    setBulkResult(null)
+    event.target.value = ''
+  }
+
+  const removeBulkFile = index => {
+    setBulkFiles(current => current.filter((_file, i) => i !== index))
+  }
+
+  const closeBulkDialog = () => {
+    if (bulkUploading) return
+    setBulkOpen(false)
+    setBulkFiles([])
+    setBulkResult(null)
+  }
+
+  const submitBulkUpload = async () => {
+    if (!bulkFiles.length) return
+
+    const form = new FormData()
+    bulkFiles.forEach(file => form.append('images', file))
+
+    setBulkUploading(true)
+    try {
+      const { data } = await api.post('/product-analysis/bulk-import', form, {
+        isMultipart: true,
+      })
+
+      setBulkResult(data)
+      setBulkFiles([])
+      toast.success(
+        data?.message ||
+          `${data?.imported || 0} imágenes en cola para analizar como borrador`,
+      )
+
+      await Promise.all([
+        fetchJobs(),
+        fetchAgentStatus({ silent: true }),
+        fetchAiUsage(),
+        fetchDrafts({ silent: true }),
+      ])
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message ||
+          'No se pudo completar la carga masiva',
+      )
+    } finally {
+      setBulkUploading(false)
     }
   }
 
@@ -1817,6 +2003,16 @@ const ProductAnalysisPage = () => {
               />
             </Button>
 
+            <Tooltip title="Subí muchas fotos de una vez: cada una queda como producto borrador, nunca se publica sola.">
+              <Button
+                variant="outlined"
+                startIcon={<UploadFileIcon />}
+                onClick={() => setBulkOpen(true)}
+              >
+                Carga masiva
+              </Button>
+            </Tooltip>
+
             <Button
               variant="outlined"
               startIcon={
@@ -2035,6 +2231,7 @@ const ProductAnalysisPage = () => {
         agentStatus={agentStatus}
         agentStatusLoading={agentStatusLoading}
         agentHeartbeat={agentHeartbeat}
+        aiUsage={aiUsage}
         activity={activityFeed}
         onSweep={handleSweep}
         sweeping={sweeping}
@@ -2078,7 +2275,7 @@ const ProductAnalysisPage = () => {
             >
               Actualizar
             </Button>
-            {drafts.length > 1 && (
+            {selectedDraftIds.size > 0 && (
               <Button
                 size="small"
                 variant="contained"
@@ -2090,10 +2287,10 @@ const ProductAnalysisPage = () => {
                     <PublishIcon />
                   )
                 }
-                onClick={publishAllDrafts}
+                onClick={publishSelectedDrafts}
                 disabled={publishingAll || Boolean(publishingDraftId)}
               >
-                Publicar todos ({drafts.length})
+                Publicar seleccionados ({selectedDraftIds.size})
               </Button>
             )}
           </Stack>
@@ -2109,9 +2306,58 @@ const ProductAnalysisPage = () => {
           a la tienda. Revisalos y publicalos cuando quieras.
         </Typography>
 
-        {drafts.length > 0 ? (
+        {drafts.length > 0 && (
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            alignItems={{ sm: 'center' }}
+            sx={{ mb: 2 }}
+          >
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Categoría</InputLabel>
+              <Select
+                label="Categoría"
+                value={draftCategoryFilter}
+                onChange={event => setDraftCategoryFilter(event.target.value)}
+              >
+                <MenuItem value="">Todas</MenuItem>
+                {draftCategoryOptions.map(category => (
+                  <MenuItem key={category} value={category}>
+                    {category}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Confianza mínima</InputLabel>
+              <Select
+                label="Confianza mínima"
+                value={draftMinConfidence}
+                onChange={event => setDraftMinConfidence(Number(event.target.value))}
+              >
+                <MenuItem value={0}>Cualquiera</MenuItem>
+                <MenuItem value={0.5}>50% o más</MenuItem>
+                <MenuItem value={0.7}>70% o más</MenuItem>
+                <MenuItem value={0.9}>90% o más</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Button size="small" onClick={selectAllFilteredDrafts}>
+              Seleccionar {filteredDrafts.length} filtrados
+            </Button>
+
+            {selectedDraftIds.size > 0 && (
+              <Button size="small" onClick={clearDraftSelection}>
+                Deseleccionar todo
+              </Button>
+            )}
+          </Stack>
+        )}
+
+        {filteredDrafts.length > 0 ? (
           <Stack spacing={1.5}>
-            {drafts.map(product => (
+            {filteredDrafts.map(product => (
               <DraftProductCard
                 key={getDraftId(product)}
                 product={product}
@@ -2122,13 +2368,17 @@ const ProductAnalysisPage = () => {
                   publishingDraftId === getDraftId(product) || publishingAll
                 }
                 discarding={discardingDraftId === getDraftId(product)}
+                selected={selectedDraftIds.has(getDraftId(product))}
+                onToggleSelect={toggleDraftSelection}
               />
             ))}
           </Stack>
         ) : (
           !draftsLoading && (
             <Typography variant="body2" color="text.secondary">
-              No hay borradores esperando revisión.
+              {drafts.length > 0
+                ? 'Ningún borrador coincide con los filtros.'
+                : 'No hay borradores esperando revisión.'}
             </Typography>
           )
         )}
@@ -2257,6 +2507,94 @@ const ProductAnalysisPage = () => {
           {formatNumber(total)} imágenes en total
         </Typography>
       )}
+
+      <Dialog open={bulkOpen} onClose={closeBulkDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Carga masiva de imágenes</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Cada imagen se analiza y se crea como producto <strong>borrador</strong> automáticamente.
+            Nunca se publica sola, sin importar la confianza de la IA — publicar es
+            siempre una decisión tuya, en bloque, desde "Borradores pendientes de publicar".
+          </Alert>
+
+          <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+            Elegir imágenes
+            <input
+              hidden
+              multiple
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+              type="file"
+              onChange={handleBulkFilesSelected}
+            />
+          </Button>
+
+          {bulkFiles.length > 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                {bulkFiles.length} imágenes seleccionadas
+              </Typography>
+              <Stack
+                spacing={0.5}
+                sx={{ maxHeight: 220, overflowY: 'auto' }}
+              >
+                {bulkFiles.map((file, index) => (
+                  <Stack
+                    key={`${file.name}-${index}`}
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    sx={{
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      bgcolor: 'action.hover',
+                    }}
+                  >
+                    <Typography variant="caption" noWrap sx={{ maxWidth: '85%' }}>
+                      {file.name}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => removeBulkFile(index)}
+                      disabled={bulkUploading}
+                    >
+                      <CancelIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
+          )}
+
+          {bulkResult && (
+            <Alert
+              severity={bulkResult.failed > 0 ? 'warning' : 'success'}
+              sx={{ mt: 2 }}
+            >
+              {bulkResult.imported} en cola · {bulkResult.duplicates} duplicadas
+              {bulkResult.failed > 0 ? ` · ${bulkResult.failed} fallidas` : ''}
+              {bulkResult.rejectedFiles?.length > 0
+                ? ` · ${bulkResult.rejectedFiles.length} archivos no válidos`
+                : ''}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeBulkDialog} disabled={bulkUploading}>
+            Cerrar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={submitBulkUpload}
+            disabled={!bulkFiles.length || bulkUploading}
+            startIcon={bulkUploading ? <CircularProgress size={16} /> : null}
+          >
+            {bulkUploading
+              ? 'Subiendo...'
+              : `Subir ${bulkFiles.length || ''} imágenes`}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={rescheduleOpen}
