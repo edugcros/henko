@@ -207,6 +207,16 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
         res.headers?.['X-CSRF-Token'] ||
         null
 
+      // El backend responde 200 con csrfToken:null cuando CSRF_ENABLED=false
+      // a nivel servidor — es un estado válido, no una falla (mismo caso ya
+      // resuelto en cartService.js, este archivo tiene su propia copia del
+      // fetch). Tratarlo como error acá tiraba "Fallo crítico" en cada
+      // carga de la app aunque no hubiera nada roto.
+      if (!token && res.data?.csrfEnabled === false) {
+        cachedCsrfToken = null
+        return null
+      }
+
       if (!token) {
         throw new Error('CSRF token no recibido desde backend')
       }
