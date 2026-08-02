@@ -162,6 +162,9 @@ const formatProducts = (products, currency = 'ARS') => {
         `   Categoría: ${product.category || product.categoria || '-'}`,
         `   Subcategoría: ${product.subcategory || product.subcategoria || '-'}`,
         `   Precio: ${product.formattedPrice || formatMoney(product.price, currency)}`,
+        Number(product.compareAtPrice) > Number(product.price)
+          ? `   Precio anterior (en oferta): ${formatMoney(product.compareAtPrice, currency)}`
+          : '',
         `   Stock total: ${product.stock || 0}`,
         `   Disponible: ${product.available !== false ? 'sí' : 'no'}`,
         `   Match búsqueda: ${product.matchScore ?? '-'}`,
@@ -246,6 +249,29 @@ const formatPromotions = (promotions, currency = 'ARS') => {
         }`,
         '   Productos donde aplica:',
         formatApplicableProducts(promo),
+      ].join('\n')
+    })
+    .join('\n\n')
+}
+
+const formatProductOffers = (offers, currency = 'ARS') => {
+  if (!Array.isArray(offers) || offers.length === 0) {
+    return 'No hay productos en oferta activa en este momento.'
+  }
+
+  return offers
+    .slice(0, 8)
+    .map((offer, index) => {
+      return [
+        `${index + 1}. ${offer.title || 'Producto'}`,
+        `   ID interno para acciones (no mostrar al cliente): ${offer.productId || '-'}`,
+        `   Promoción: ${offer.blockTitle || '-'}${offer.label ? ` (${offer.label})` : ''}`,
+        `   Descuento: ${offer.discountPercentage}%`,
+        `   Precio antes: ${offer.formattedPrice || formatMoney(offer.price, currency)}`,
+        `   Precio ahora: ${offer.formattedFinalPrice || formatMoney(offer.finalPrice, currency)}`,
+        `   Stock: ${offer.stock ?? '-'}`,
+        `   Disponible: ${offer.available ? 'sí' : 'no'}`,
+        `   Link/slug: ${offer.slug || '-'}`,
       ].join('\n')
     })
     .join('\n\n')
@@ -461,10 +487,15 @@ PRODUCTOS RELEVANTES:
 ${formatProducts(products, currency)}
 </DATOS_PRODUCTOS>
 
-PROMOCIONES/CUPONES ACTIVOS:
+PROMOCIONES/CUPONES ACTIVOS (con código, se aplican en el checkout):
 <DATOS_PROMOCIONES>
 ${formatPromotions(commerceContext?.promotions || [], currency)}
 </DATOS_PROMOCIONES>
+
+PRODUCTOS EN OFERTA AHORA (descuento directo, sin código):
+<DATOS_OFERTAS_PRODUCTOS>
+${formatProductOffers(commerceContext?.productOffers || [], currency)}
+</DATOS_OFERTAS_PRODUCTOS>
 
 CONOCIMIENTO APROBADO:
 <DATOS_CONOCIMIENTO>

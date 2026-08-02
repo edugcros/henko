@@ -965,6 +965,7 @@ export const processAgentMessage = async ({
     generatedAt: toolContext?.generatedAt,
     products: toolContext?.products || [],
     promotions: toolContext?.promotions || [],
+    productOffers: toolContext?.productOffers || [],
     recommendations: toolContext?.recommendations || [],
     catalogSnapshot: toolContext?.catalogSnapshot || null,
   }

@@ -3,6 +3,7 @@ import mongoose from 'mongoose'
 import Product from '../../models/productModel.js'
 import Coupon from '../../models/couponModel.js'
 import { buildCatalogSnapshotForTenant } from './aiCatalogSnapshotService.js'
+import { findPublicBlocks } from '../promotionalBlockService.js'
 import logger from '../../../config/logger.js'
 
 const clean = value => String(value || '').trim()
@@ -753,6 +754,82 @@ export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
   }
 }
 
+/**
+ * Productos con descuento activo vía PromotionalBlock — el sistema real
+ * de "producto en oferta" que usa el storefront (SingleProduct.js lo
+ * lee con esta misma forma: blockId/blockTitle/blockType/
+ * discountPercentage). getPromotionsTool, en cambio, solo conoce
+ * Coupon (cupones con código) — un concepto de negocio distinto. Sin
+ * esto, el agente nunca se entera de qué productos están en oferta.
+ */
+export const getPromotionalOffersTool = async ({ tenantId, limit = 8 } = {}) => {
+  if (!tenantId) return []
+
+  try {
+    const blocks = await findPublicBlocks({ tenantId })
+    const bestByProduct = new Map()
+
+    for (const block of blocks) {
+      for (const item of block.products || []) {
+        const product = item?.productId
+
+        if (!product || typeof product !== 'object') continue
+        if (item.isActive === false) continue
+
+        const discountPercentage = normalizeNumber(item.discountPercentage)
+        if (discountPercentage <= 0) continue
+
+        const price = getProductBasePrice(product)
+        const currency = product.currency || 'ARS'
+        const finalPrice = Math.max(
+          0,
+          Math.round(price * (1 - discountPercentage / 100)),
+        )
+        const stock = getProductStock(product)
+        const productId = String(product._id)
+
+        const offer = {
+          blockId: String(block._id),
+          blockTitle: clean(block.title),
+          blockType: clean(block.type),
+          productId,
+          title: getProductTitle(product),
+          slug: clean(product.slug),
+          price,
+          formattedPrice: normalizeMoney(price, currency),
+          finalPrice,
+          formattedFinalPrice: normalizeMoney(finalPrice, currency),
+          discountPercentage,
+          label: clean(item.customLabel) || null,
+          stock,
+          available: stock > 0,
+        }
+
+        // Un producto puede estar en más de un bloque a la vez — nos
+        // quedamos con el mejor descuento, mismo criterio que usa el
+        // storefront (resolveBestActiveProductPromotion).
+        const existing = bestByProduct.get(productId)
+        if (!existing || offer.discountPercentage > existing.discountPercentage) {
+          bestByProduct.set(productId, offer)
+        }
+      }
+    }
+
+    const cleanLimit = Math.min(Math.max(Number(limit || 8), 1), 20)
+
+    return [...bestByProduct.values()]
+      .sort((a, b) => b.discountPercentage - a.discountPercentage)
+      .slice(0, cleanLimit)
+  } catch (error) {
+    logger.warn('[AI_AGENT_TOOLS] promotional offers unavailable:', {
+      tenantId,
+      message: error.message,
+    })
+
+    return []
+  }
+}
+
 export const buildProductRecommendationTool = ({
   products = [],
   maxItems = 3,
@@ -788,13 +865,17 @@ export const runAgentCommerceTools = async ({
   productLimit = 12,
   promotionLimit = 8,
 } = {}) => {
-  const [products, promotions, catalogSnapshot] = await Promise.all([
+  const [products, promotions, productOffers, catalogSnapshot] = await Promise.all([
     searchProductsTool({
       tenantId,
       query,
       limit: productLimit,
     }),
     getPromotionsTool({
+      tenantId,
+      limit: promotionLimit,
+    }),
+    getPromotionalOffersTool({
       tenantId,
       limit: promotionLimit,
     }),
@@ -813,6 +894,7 @@ export const runAgentCommerceTools = async ({
     query,
     products: products.length,
     promotions: promotions.length,
+    productOffers: productOffers.length,
     recommendations: recommendations.length,
     catalogSnapshot: {
       totalProducts: catalogSnapshot.totalProducts,
@@ -826,6 +908,7 @@ export const runAgentCommerceTools = async ({
     generatedAt: new Date().toISOString(),
     products,
     promotions,
+    productOffers,
     recommendations,
     catalogSnapshot,
   }
