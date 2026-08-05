@@ -1523,15 +1523,21 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
  * POST /api/product-analysis/bulk-import
  *
  * Carga masiva para catálogos grandes: crea muchos ProductAnalysisJob de
- * una sola vez y responde de inmediato (no espera a que la IA analice
- * cada imagen — eso lo hace el scheduler en background, con concurrencia
- * acotada por PRODUCT_ANALYSIS_SCHEDULER_CONCURRENCY).
+ * una sola vez y responde de inmediato. Regla no negociable de esta
+ * plataforma: AddProduct.js es el ÚNICO lugar que dispara análisis de
+ * IA — así que, a diferencia de una versión anterior de este endpoint,
+ * el backend NUNCA analiza estos jobs por su cuenta (autoAnalyze y
+ * autoCreateProduct quedan forzados a false, sin excepción).
  *
- * Cada imagen se crea como producto BORRADOR automáticamente
- * (autoCreateProduct forzado a true) pero NUNCA se publica sola
- * (autoPublishProduct forzado a false, sin excepción, sin importar la
- * confianza que reporte la IA) — publicar en volumen es una decisión
- * humana explícita desde la bandeja de borradores.
+ * Cada imagen queda 'pending' en la bandeja de AddProduct, con
+ * metadata.autoSaveProduct=true — así que si el admin tiene "Auto
+ * activo" prendido ahí (con la pestaña abierta), AddProduct las analiza
+ * y las deja listas para aprobar en bloque en su propia cola de
+ * revisión "AutoSave". Sigue siendo rápido para catálogos grandes, pero
+ * el análisis siempre lo dispara AddProduct, nunca este endpoint.
+ * autoPublishProduct queda forzado a false sin excepción — publicar en
+ * volumen sigue siendo una decisión humana explícita desde la bandeja
+ * de borradores.
  */
 export const bulkImportImagesForAnalysis = asyncHandler(async (req, res) => {
   const tenantId = getTenantId(req)
@@ -1584,16 +1590,15 @@ export const bulkImportImagesForAnalysis = asyncHandler(async (req, res) => {
         imageUrl: storedImage.url,
         imagePublicId: storedImage.publicId,
         imageHash,
-        status: JOB_STATUS.SCHEDULED,
-        scheduledAt: new Date(),
-        autoCreateProduct: true,
+        status: JOB_STATUS.PENDING,
+        autoCreateProduct: false,
         autoPublishProduct: false,
         createdBy: userId,
         metadata: {
           mimeType: file.mimetype,
           size: file.buffer.length,
-          autoAnalyze: true,
-          autoSaveProduct: false,
+          autoAnalyze: false,
+          autoSaveProduct: true,
           autoPublishProduct: false,
           importBatchId: batchId,
           uploadedFromIp: req.ip,
@@ -1626,7 +1631,7 @@ export const bulkImportImagesForAnalysis = asyncHandler(async (req, res) => {
 
   return res.status(201).json({
     success: true,
-    message: `${results.imported} imágenes en cola para analizar y crear como borrador.`,
+    message: `${results.imported} imágenes en cola, esperando a AddProduct para analizarse.`,
     ...results,
     rejectedFiles: req.rejectedFiles || [],
     jobIds,

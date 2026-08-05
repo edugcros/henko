@@ -59,6 +59,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux'
 import useProductAnalyzer from '../hooks/useProductAnalyzer'
 import api from '@utils/axiosConfig'
+import { formatDate, formatRelativeTime } from '@utils/dateFormat'
 import {
   createProducts,
   uploadProductImage,
@@ -1143,33 +1144,7 @@ const buildLogisticsPayload = values => {
   }
 }
 
-const formatDate = value => {
-  if (!value) return ''
-  return new Intl.DateTimeFormat('es-AR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
 const WATCHER_ONLINE_THRESHOLD_MS = 3 * 60 * 1000
-
-const formatRelativeTime = value => {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-
-  const diffSeconds = Math.round((Date.now() - date.getTime()) / 1000)
-  if (diffSeconds < 45) return 'hace un momento'
-
-  const diffMinutes = Math.round(diffSeconds / 60)
-  if (diffMinutes < 60) return `hace ${diffMinutes} min`
-
-  const diffHours = Math.round(diffMinutes / 60)
-  if (diffHours < 24) return `hace ${diffHours} h`
-
-  const diffDays = Math.round(diffHours / 24)
-  return `hace ${diffDays} d`
-}
 
 const getStoredBoolean = (key, fallback = false) => {
   if (typeof window === 'undefined') return fallback

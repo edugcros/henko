@@ -60,6 +60,7 @@ import {
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material'
 import api from '@utils/axiosConfig'
+import { formatDate, formatRelativeTime } from '@utils/dateFormat'
 
 // =====================================================
 // CONSTANTES
@@ -134,34 +135,6 @@ const toDatetimeLocalValue = date => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-const formatDate = value => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-
-  return new Intl.DateTimeFormat('es-AR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(date)
-}
-
-const formatRelativeTime = value => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-
-  const diffSeconds = Math.round((Date.now() - date.getTime()) / 1000)
-  if (diffSeconds < 45) return 'hace un momento'
-
-  const diffMinutes = Math.round(diffSeconds / 60)
-  if (diffMinutes < 60) return `hace ${diffMinutes} min`
-
-  const diffHours = Math.round(diffMinutes / 60)
-  if (diffHours < 24) return `hace ${diffHours} h`
-
-  const diffDays = Math.round(diffHours / 24)
-  return `hace ${diffDays} d`
-}
 
 const formatDuration = ms => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
@@ -2512,9 +2485,12 @@ const ProductAnalysisPage = () => {
         <DialogTitle>Carga masiva de imágenes</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Cada imagen se analiza y se crea como producto <strong>borrador</strong> automáticamente.
-            Nunca se publica sola, sin importar la confianza de la IA — publicar es
-            siempre una decisión tuya, en bloque, desde "Borradores pendientes de publicar".
+            Esta página solo las pone en cola — el análisis con IA siempre lo
+            hace <strong>AddProduct</strong>. Con "Auto activo" prendido ahí
+            (pestaña abierta), las procesa en bloque y las deja esperando tu
+            aprobación en su cola de revisión; nunca se publican solas, sin
+            importar la confianza de la IA — publicar es siempre una decisión
+            tuya, en bloque, desde "Borradores pendientes de publicar".
           </Alert>
 
           <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
