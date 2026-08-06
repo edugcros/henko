@@ -36,6 +36,8 @@ export default {
       '@pages': path.resolve(__dirname, 'src/Pages'),
       '@hooks': path.resolve(__dirname, 'src/Hooks'),
       '@assets': path.resolve(__dirname, 'src/assets'),
+      '@constants': path.resolve(__dirname, 'src/constants'),
+      '@services': path.resolve(__dirname, 'src/services'),
     },
     fallback: {
       process: 'process/browser',
