@@ -70,7 +70,7 @@ export default function useProductAnalyzer() {
   }, [])
 
   const analyzeImage = useCallback(
-    async file => {
+    async (file, { jobId = null } = {}) => {
       const imageFile = normalizeImageFile(file)
       const validationError = validateImageFile(imageFile)
 
@@ -92,7 +92,13 @@ export default function useProductAnalyzer() {
         // Backend usa uploadPhoto.single('images')
         // Por eso el campo debe llamarse exactamente "images".
         formData.append('images', imageFile, imageFile.name || 'product-image')
-        console.log(formData.get('images'))
+
+        // Cuando la imagen viene de un job ya encolado, el backend debe
+        // actualizar ese job en vez de registrar uno nuevo (si no, el
+        // mismo producto aparece duplicado en la página de programación).
+        if (jobId) {
+          formData.append('jobId', String(jobId))
+        }
         const response = await api.post('/product/analyze-visual', formData, {
           withCredentials: true,
 
@@ -141,6 +147,7 @@ export default function useProductAnalyzer() {
     },
     [generateDynamicFields],
   )
+
 
   const resetIa = useCallback(() => {
     setIaResult(null)

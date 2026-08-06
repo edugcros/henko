@@ -2389,10 +2389,20 @@ const ProductAnalysisPage = () => {
               icon={PendingActionsIcon}
               title="En cola"
               count={queueJobs.length}
-              hint="pendientes y programados, ordenados por hora de ejecución"
+              hint="al cumplirse la hora quedan listas y esperan a que abras AddProduct"
             />
             {queueJobs.length > 0 ? (
-              <Stack spacing={1.5}>{queueJobs.map(renderJobCard)}</Stack>
+              <>
+                {queueJobs.some(job => job.status === 'pending') && (
+                  <Alert severity="info" sx={{ mb: 1.5, borderRadius: 2 }}>
+                    Hay imágenes listas esperando análisis. El análisis con IA
+                    lo hace <strong>AddProduct</strong>: abrí esa pantalla (con
+                    "Auto activo" para que las cargue sola) o no van a
+                    avanzar solas desde acá.
+                  </Alert>
+                )}
+                <Stack spacing={1.5}>{queueJobs.map(renderJobCard)}</Stack>
+              </>
             ) : (
               <Typography variant="body2" color="text.secondary">
                 No hay imágenes esperando su turno.
@@ -2405,7 +2415,7 @@ const ProductAnalysisPage = () => {
               icon={AutorenewIcon}
               title="Procesando"
               count={processingJobs.length}
-              hint="la IA está analizando la imagen ahora mismo"
+              hint="AddProduct está analizando la imagen ahora mismo"
             />
             {processingJobs.length > 0 ? (
               <Stack spacing={1.5}>{processingJobs.map(renderJobCard)}</Stack>

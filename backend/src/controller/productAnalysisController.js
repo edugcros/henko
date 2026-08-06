@@ -495,12 +495,37 @@ export const recordManualAnalysisJob = async ({
   file,
   originalFilename,
   analysis,
+  jobId = null,
 }) => {
   if (!tenantId || !file?.buffer) return null
 
   try {
-    const imageHash = createSha256(file.buffer)
     const sanitizedAnalysis = sanitizeAnalysis(analysis)
+
+    // Si AddProduct está analizando un job que ya existe en la cola, hay
+    // que actualizar ESE job — no crear otro. Sin esto quedaban dos
+    // registros del mismo producto: el original (que la página de
+    // programación mostraba en "historial") y un duplicado creado acá
+    // (que aparecía en "para revisar").
+    if (jobId && isObjectId(jobId)) {
+      const tracked = await ProductAnalysisJob.findOne({ _id: jobId, tenantId })
+
+      if (tracked && !tracked.deletedAt) {
+        tracked.status = JOB_STATUS.COMPLETED
+        tracked.analysis = sanitizedAnalysis
+        tracked.processedAt = new Date()
+        tracked.error = undefined
+        tracked.failedAt = undefined
+        await tracked.save()
+        return tracked
+      }
+    }
+
+    // productImgResize reemplaza file.buffer por la versión WebP y deja
+    // el archivo tal cual llegó en originalBuffer. Hay que hashear el
+    // original: si no, la misma foto hashea distinto según por dónde
+    // entró y la deduplicación por imageHash nunca matchea.
+    const imageHash = createSha256(file.originalBuffer || file.buffer)
 
     const existing = await ProductAnalysisJob.findOne({ tenantId, imageHash })
 

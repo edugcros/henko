@@ -5090,7 +5090,9 @@ export default function AddProduct() {
         resetIa()
         lastAnalyzedImageSignatureRef.current =
           buildImageSignature(imageFile) || ''
-        await analyzeImage(imageFile)
+        // Si la imagen vino de un job de la cola, el reanálisis actualiza
+        // ese mismo job en vez de generar un registro nuevo.
+        await analyzeImage(imageFile, { jobId: currentAgentJob?._id || null })
         message.success(
           index !== null
             ? `Imagen ${index + 1} analizada con IA`
@@ -5100,7 +5102,7 @@ export default function AddProduct() {
         message.error(error?.message || 'No se pudo reanalizar la imagen')
       }
     },
-    [analyzeImage, buildImageSignature, fileList, resetIa],
+    [analyzeImage, buildImageSignature, currentAgentJob, fileList, resetIa],
   )
 
   const resetProductWorkspace = useCallback(() => {
@@ -5212,7 +5214,7 @@ export default function AddProduct() {
         hydrateAnalysis(alreadyAnalyzed)
         message.success('Imagen y análisis de AddProduct cargados')
       } else {
-        await analyzeImage(imageFile)
+        await analyzeImage(imageFile, { jobId: targetJobId })
         message.success('Imagen del agente cargada en AddProduct')
       }
 
@@ -5277,7 +5279,7 @@ export default function AddProduct() {
       const filename = job.originalFilename || `agent-image-${Date.now()}.jpg`
       const mimeType = blob?.type || job.metadata?.mimeType || 'image/jpeg'
       const imageFile = new File([blob], filename, { type: mimeType })
-      const analysis = await analyzeImage(imageFile)
+      const analysis = await analyzeImage(imageFile, { jobId: job._id })
 
       if (!analysis) {
         throw new Error('La IA no devolvió análisis para la imagen')

@@ -91,6 +91,10 @@ router.post(
         file,
         originalFilename: file.originalname,
         analysis,
+        // AddProduct manda el id cuando está analizando un job que ya
+        // está en la cola, para que se actualice ese y no se cree un
+        // duplicado del mismo producto.
+        jobId: req.body?.jobId || null,
       })
 
       return res.json({
