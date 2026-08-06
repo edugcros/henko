@@ -1,4 +1,4 @@
-// diagnostico-ia.js  node --env-file=.env.production diagnostico-ia.js
+// diagnostico-ia.js  node --env-file=.env.production list-models.js
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import process from 'node:process'
 
