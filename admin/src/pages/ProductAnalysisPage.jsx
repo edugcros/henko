@@ -2,11 +2,33 @@
 //
 // PROGRAMACIÓN DE IMÁGENES PARA ADDPRODUCT
 //
-// Rol único de esta pantalla: poner imágenes en cola (ahora o a una hora
-// determinada) y administrar esa cola. NUNCA analiza con IA ni crea
-// productos por su cuenta — eso es responsabilidad exclusiva de
-// AddProduct. Al cumplirse la hora programada, el backend solo libera el
-// job a 'pending' y queda esperando a que un admin abra AddProduct.
+// Rol único de esta pantalla:
+// 1. Poner imágenes en cola (ahora o a una hora determinada)
+// 2. Administrar esa cola (editar programación, cancelar, ver status)
+// 3. NUNCA analiza con IA ni crea productos — eso es SOLO AddProduct
+//
+// FLUJO DE VIDA:
+//   [Upload] → pending/scheduled → [Admin abre AddProduct]
+//   → imported → processing → completed → approved/rejected
+//
+// CICLO DE VIDA DETALLADO:
+//   • pending: Imagen en cola, lista para análisis. Backend espera a que
+//     un admin abra AddProduct para disparar /product/analyze-visual
+//   • scheduled: Imagen encolada para una hora futura. A esa hora, backend
+//     cambia a 'pending' automáticamente.
+//   • imported: Admin acaba de abrir AddProduct con esta imagen. Preparando
+//     análisis IA en el frontend.
+//   • processing: IA está analizando. Resultados aún no disponibles.
+//   • completed: Análisis terminó. Datos listos. Esperando que el admin
+//     apruebe o rechace en AddProduct.
+//   • approved: Admin aprobó, producto creado. Finalizado exitosamente.
+//   • rejected: Admin rechazó. Puede reintentar o descartar.
+//   • failed: Error en análisis IA. Puede reintentar desde pending.
+//
+// API PÚBLICA PARA ADDPRODUCT:
+//   • GET /product/analysis/{jobId} → obtiene job + análisis guardado
+//   • POST /product/analyze-visual → crea/actualiza job + ejecuta IA
+//   • PATCH /product/analysis/{jobId} → actualiza status (imported→processing)
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -63,32 +85,15 @@ import {
 } from '@mui/icons-material'
 import api from '@utils/axiosConfig'
 import { formatDate, formatRelativeTime } from '@utils/dateFormat'
+import { STATUS_META, STATUS_FILTER_OPTIONS } from '@constants/jobStatus'
 
 // =====================================================
 // CONSTANTES
 // =====================================================
 
-// Una sola fuente de verdad por estado: antes esto vivía repartido en
-// STATUS_OPTIONS + STATUS_COLOR + STATUS_LABEL, tres objetos que había
-// que mantener sincronizados a mano.
-const STATUS_META = {
-  pending: { label: 'Pendiente', color: 'default' },
-  scheduled: { label: 'Programado', color: 'info' },
-  imported: { label: 'En AddProduct', color: 'primary' },
-  processing: { label: 'Procesando', color: 'warning' },
-  completed: { label: 'Analizado', color: 'success' },
-  failed: { label: 'Fallido', color: 'error' },
-  approved: { label: 'Aprobado', color: 'success' },
-  rejected: { label: 'Rechazado', color: 'error' },
-}
-
-const STATUS_FILTER_OPTIONS = [
-  { value: '', label: 'Todos los estados' },
-  ...Object.entries(STATUS_META).map(([value, meta]) => ({
-    value,
-    label: meta.label,
-  })),
-]
+// STATUS_META y STATUS_FILTER_OPTIONS importados desde jobStatus.js
+// Única fuente de verdad compartida con AddProduct
+// Ver: src/constants/jobStatus.js
 
 const SOURCE_LABEL = {
   'local-folder-agent': 'Agente local',
