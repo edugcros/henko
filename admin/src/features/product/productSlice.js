@@ -111,6 +111,19 @@ export const getProducts = createAsyncThunk(
   },
 )
 
+export const getAdminProducts = createAsyncThunk(
+  'product/fetchAllAdmin',
+  async (params = {}, thunkAPI) => {
+    try {
+      return await productService.getAdminProducts(params)
+    } catch (error) {
+      const message = normalizeErrorMessage(error, 'Error al obtener productos')
+      toast.error(message)
+      return thunkAPI.rejectWithValue({ message })
+    }
+  },
+)
+
 export const createProducts = createAsyncThunk(
   'product/create',
   async (productData, thunkAPI) => {
@@ -290,6 +303,16 @@ const initialState = {
   deletedProduct: null,
 
   meta: null,
+
+  // Listado admin (todos los estados/visibilidades) — separado de
+  // `products` para no pisar el listado público que usan
+  // ProductSelector/PromotionalBlocksPage/useProducts.
+  adminProducts: [],
+  adminMeta: null,
+  adminStats: null,
+  isAdminLoading: false,
+  isAdminError: false,
+  adminMessage: '',
 }
 
 // ==========================================
@@ -330,6 +353,30 @@ const productSlice = createSlice({
       })
       .addCase(getProducts.rejected, (state, action) => {
         setRejectedState(state, action, 'Error al obtener productos')
+      })
+
+      // ==========================================
+      // GET ADMIN PRODUCTS (todos los estados/visibilidades)
+      // ==========================================
+      .addCase(getAdminProducts.pending, state => {
+        state.isAdminLoading = true
+        state.isAdminError = false
+        state.adminMessage = ''
+      })
+      .addCase(getAdminProducts.fulfilled, (state, action) => {
+        state.isAdminLoading = false
+        state.isAdminError = false
+        state.adminMessage = ''
+
+        state.adminProducts = normalizeProductList(action.payload)
+        state.adminMeta = action.payload?.meta || null
+        state.adminStats = action.payload?.stats || null
+      })
+      .addCase(getAdminProducts.rejected, (state, action) => {
+        state.isAdminLoading = false
+        state.isAdminError = true
+        state.adminMessage =
+          action.payload?.message || 'Error al obtener productos'
       })
 
       // ==========================================
@@ -404,6 +451,10 @@ const productSlice = createSlice({
             state.products,
             state.updatedProduct,
           )
+          state.adminProducts = replaceProductInList(
+            state.adminProducts,
+            state.updatedProduct,
+          )
 
           if (state.singleProduct?._id === state.updatedProduct._id) {
             state.singleProduct = state.updatedProduct
@@ -432,6 +483,9 @@ const productSlice = createSlice({
         const deletedId = action.payload?.productId
         state.deletedProduct = deletedId || null
         state.products = state.products.filter(
+          product => product._id !== deletedId,
+        )
+        state.adminProducts = state.adminProducts.filter(
           product => product._id !== deletedId,
         )
 

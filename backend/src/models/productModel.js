@@ -797,6 +797,11 @@ const productSchema = new Schema(
       default: 0,
       min: 0,
     },
+    lowStockThreshold: {
+      type: Number,
+      default: 5,
+      min: 0,
+    },
     compareAtPrice: {
       type: Number,
       min: 0,

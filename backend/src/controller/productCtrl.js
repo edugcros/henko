@@ -55,6 +55,9 @@ const ALLOWED_PRODUCT_CONDITIONS = ['nuevo', 'usado', 'reacondicionado']
 const ALLOWED_VARIANT_ATTRIBUTE_TYPES = ['select', 'color', 'text']
 const MAX_PUBLIC_PRODUCTS_LIMIT = 100
 const DEFAULT_PUBLIC_PRODUCTS_LIMIT = 12
+const MAX_ADMIN_PRODUCTS_LIMIT = 200
+const DEFAULT_ADMIN_PRODUCTS_LIMIT = 20
+const DEFAULT_LOW_STOCK_THRESHOLD = 5
 const MAX_VARIANT_FILTER_ATTRIBUTES = 12
 const MAX_VARIANT_FILTER_VALUES = 30
 const ALLOWED_MARKET_ATTRIBUTE_TYPES = [
@@ -1013,6 +1016,9 @@ const sanitizeUpdateProductInput = body => {
   if (body.iaSource !== undefined) updates.iaSource = normalizeText(body.iaSource, 'manual')
   if (body.price !== undefined) updates.price = toSafeNumber(body.price, 0)
   if (body.stock !== undefined) updates.stock = toSafeNumber(body.stock, 0)
+  if (body.lowStockThreshold !== undefined) {
+    updates.lowStockThreshold = toSafeNumber(body.lowStockThreshold, DEFAULT_LOW_STOCK_THRESHOLD)
+  }
 
   return updates
 }
@@ -1602,6 +1608,157 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
     message: `${result.modifiedCount} productos publicados.`,
     published: result.modifiedCount,
     requested: validIds.length,
+  })
+})
+
+// =====================================================
+// GET ALL PRODUCTS (ADMIN — todos los estados/visibilidades)
+// =====================================================
+// A diferencia de getAllProduct (storefront público), esto NO pasa por
+// buildStorefrontMatch: el admin necesita ver drafts, archivados y
+// productos ocultos para poder gestionarlos desde Productlist. Antes de
+// este endpoint, el panel admin llamaba al mismo endpoint público que
+// usa la tienda, así que nunca podía ver ni filtrar por esos estados.
+
+export const listAdminProducts = expressAsyncHandler(async (req, res) => {
+  const tenantId = requireUserTenantId(req)
+  assertSameResolvedTenant(req, tenantId)
+
+  const page = toSafePositiveInt(req.query.page, 1, { min: 1, max: 100000 })
+  const limit = toSafePositiveInt(req.query.limit, DEFAULT_ADMIN_PRODUCTS_LIMIT, {
+    min: 1,
+    max: MAX_ADMIN_PRODUCTS_LIMIT,
+  })
+  const skip = (page - 1) * limit
+
+  const q = normalizeText(req.query.q)
+  const status = ALLOWED_PRODUCT_STATUSES.includes(req.query.status)
+    ? req.query.status
+    : null
+  const visibility = ALLOWED_PRODUCT_VISIBILITIES.includes(req.query.visibility)
+    ? req.query.visibility
+    : null
+  const stockFilter = ['low', 'out'].includes(req.query.stockFilter)
+    ? req.query.stockFilter
+    : null
+
+  const sortMap = {
+    'price-asc': { price: 1, _id: 1 },
+    'price-desc': { price: -1, _id: 1 },
+    'stock-asc': { stock: 1, _id: 1 },
+    'stock-desc': { stock: -1, _id: 1 },
+    'title-asc': { title: 1, _id: 1 },
+    'title-desc': { title: -1, _id: 1 },
+    'created-asc': { createdAt: 1, _id: 1 },
+    'created-desc': { createdAt: -1, _id: 1 },
+  }
+  const sort = sortMap[req.query.sort] || { createdAt: -1, _id: 1 }
+
+  const tenantObjectId = new mongoose.Types.ObjectId(String(tenantId))
+
+  const searchMatch = q
+    ? {
+      $or: [
+        { title: new RegExp(escapeRegex(q), 'i') },
+        { marca: new RegExp(escapeRegex(q), 'i') },
+        { categoria: new RegExp(escapeRegex(q), 'i') },
+        { subcategoria: new RegExp(escapeRegex(q), 'i') },
+        { sku: new RegExp(escapeRegex(q), 'i') },
+        { 'variants.sku': new RegExp(escapeRegex(q), 'i') },
+      ],
+    }
+    : {}
+
+  // Base para las stats: respeta la búsqueda pero no el filtro de
+  // estado/visibilidad, así las tarjetas de resumen no desaparecen al
+  // filtrar por un estado puntual.
+  const statsMatch = {
+    tenantId: tenantObjectId,
+    isDeleted: { $ne: true },
+    ...searchMatch,
+  }
+
+  const stockFilterMatch =
+    stockFilter === 'out'
+      ? { stock: { $lte: 0 } }
+      : stockFilter === 'low'
+        ? {
+          stock: { $gt: 0 },
+          $expr: {
+            $lt: ['$stock', { $ifNull: ['$lowStockThreshold', DEFAULT_LOW_STOCK_THRESHOLD] }],
+          },
+        }
+        : {}
+
+  const listQuery = {
+    ...statsMatch,
+    ...(status ? { status } : {}),
+    ...(visibility ? { visibility } : {}),
+    ...stockFilterMatch,
+  }
+
+  const [products, total, [statsResult]] = await Promise.all([
+    Product.find(listQuery).setOptions({ tenantId }).sort(sort).skip(skip).limit(limit).lean(),
+    Product.countDocuments(listQuery).setOptions({ tenantId }),
+    Product.aggregate([
+      { $match: statsMatch },
+      {
+        $facet: {
+          total: [{ $count: 'count' }],
+          byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+          stock: [
+            {
+              $project: {
+                bucket: {
+                  $switch: {
+                    branches: [
+                      { case: { $lte: ['$stock', 0] }, then: 'outOfStock' },
+                      {
+                        case: {
+                          $lt: [
+                            '$stock',
+                            { $ifNull: ['$lowStockThreshold', DEFAULT_LOW_STOCK_THRESHOLD] },
+                          ],
+                        },
+                        then: 'lowStock',
+                      },
+                    ],
+                    default: 'inStock',
+                  },
+                },
+              },
+            },
+            { $group: { _id: '$bucket', count: { $sum: 1 } } },
+          ],
+        },
+      },
+    ]),
+  ])
+
+  const byStatus = (statsResult?.byStatus || []).reduce((acc, item) => {
+    acc[item._id] = item.count
+    return acc
+  }, {})
+  const byStock = (statsResult?.stock || []).reduce((acc, item) => {
+    acc[item._id] = item.count
+    return acc
+  }, {})
+
+  return res.status(200).json({
+    success: true,
+    data: products,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+    stats: {
+      total: statsResult?.total?.[0]?.count || 0,
+      byStatus,
+      lowStock: byStock.lowStock || 0,
+      outOfStock: byStock.outOfStock || 0,
+    },
   })
 })
 

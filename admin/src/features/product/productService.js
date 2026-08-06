@@ -313,6 +313,15 @@ const saveCategoryConfig = async ({
 }
 
 /**
+ * Listado de productos para el panel admin: incluye todos los estados
+ * (active/draft/archived/out-of-stock) y visibilidades, a diferencia de
+ * getProducts (storefront público) que solo trae lo publicable.
+ */
+const getAdminProducts = async (params = {}) => {
+  return apiRequest('get', '/admin/list', undefined, { params })
+}
+
+/**
  * Obtener productos públicos del storefront.
  */
 const getProducts = async (params = {}) => {
@@ -396,6 +405,7 @@ const productService = {
   uploadProductVideo,
   deleteProductVideo,
   getProducts,
+  getAdminProducts,
   getProduct,
   rateProduct,
   getCategoryConfig,

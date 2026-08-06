@@ -8,6 +8,7 @@ import {
   createProduct,
   getaProduct,
   getAllProduct,
+  listAdminProducts,
   listDraftProducts,
   bulkPublishDrafts,
   getProductCategories,
@@ -158,6 +159,7 @@ router.post(
   createProduct,
 )
 
+router.get('/admin/list', adminContext, listAdminProducts)
 router.get('/admin/drafts', adminContext, listDraftProducts)
 router.put('/admin/drafts/bulk-publish', adminContext, bulkPublishDrafts)
 

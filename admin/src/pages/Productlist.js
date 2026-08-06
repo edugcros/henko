@@ -1,7 +1,11 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { getProducts, deleteProduct } from '@features/product/productSlice'
+import {
+  getAdminProducts,
+  updateAProduct,
+  deleteProduct,
+} from '@features/product/productSlice'
 import {
   Box,
   Typography,
@@ -27,13 +31,17 @@ import {
   DialogActions,
   Pagination,
   FormControl,
+  InputLabel,
   Select,
   MenuItem,
+  Menu,
+  Divider,
   Stack,
   useTheme,
   alpha,
   Alert,
   Snackbar,
+  LinearProgress,
 } from '@mui/material'
 import {
   Search as SearchIcon,
@@ -43,7 +51,42 @@ import {
   Inventory as InventoryIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
+  MoreVert as MoreVertIcon,
+  Archive as ArchiveIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Drafts as DraftsIcon,
 } from '@mui/icons-material'
+
+// ============================================================================
+// CONSTANTES
+// ============================================================================
+
+// Estados reales del modelo Product (backend/src/models/productModel.js).
+// Única fuente de verdad para label/color en esta pantalla.
+const PRODUCT_STATUS_META = {
+  active: { label: 'Activo', color: 'success' },
+  draft: { label: 'Borrador', color: 'default' },
+  archived: { label: 'Archivado', color: 'default' },
+  'out-of-stock': { label: 'Sin stock', color: 'error' },
+}
+
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'Todos los estados' },
+  ...Object.entries(PRODUCT_STATUS_META).map(([value, meta]) => ({
+    value,
+    label: meta.label,
+  })),
+]
+
+const VISIBILITY_FILTER_OPTIONS = [
+  { value: '', label: 'Todas' },
+  { value: 'visible', label: 'Visibles' },
+  { value: 'hidden', label: 'Ocultos' },
+]
+
+const DEFAULT_LOW_STOCK_THRESHOLD = 5
+const SEARCH_DEBOUNCE_MS = 400
 
 // ============================================================================
 // HELPERS
@@ -53,11 +96,6 @@ const toNumber = (value, fallback = 0) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
 }
-
-const normalizeText = value =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
 
 const getTenantId = user => {
   if (!user?.tenantId) return null
@@ -88,32 +126,8 @@ const getProductSku = product => {
   return '-'
 }
 
-const getVariantStock = variant => {
-  return toNumber(variant?.stock, 0)
-}
-
-const getProductStock = product => {
-  const hasVariants =
-    Boolean(product?.hasVariants) ||
-    (Array.isArray(product?.variants) && product.variants.length > 0)
-
-  if (hasVariants && Array.isArray(product?.variants)) {
-    return product.variants
-      .filter(variant => variant?.isActive !== false)
-      .reduce((sum, variant) => sum + getVariantStock(variant), 0)
-  }
-
-  return toNumber(product?.stock, 0)
-}
-
-const getMinStockAlert = product => {
-  return (
-    toNumber(product?.minStockAlert, 0) ||
-    toNumber(product?.minStock, 0) ||
-    toNumber(product?.lowStockThreshold, 0) ||
-    10
-  )
-}
+const getLowStockThreshold = product =>
+  toNumber(product?.lowStockThreshold, DEFAULT_LOW_STOCK_THRESHOLD)
 
 const formatPrice = price =>
   new Intl.NumberFormat('es-AR', {
@@ -121,12 +135,28 @@ const formatPrice = price =>
     currency: 'ARS',
   }).format(toNumber(price, 0))
 
+const buildBackendSort = (field, order) => {
+  const key = field === 'createdAt' ? 'created' : field
+  return `${key}-${order}`
+}
+
 // ============================================================================
 // SUB-COMPONENTE: StatCard
 // ============================================================================
 
-const StatCard = ({ title, value, icon, color }) => (
-  <Card sx={{ p: 2, borderRadius: 2, flex: 1, minWidth: 120 }}>
+const StatCard = ({ title, value, icon, color, onClick, active }) => (
+  <Card
+    onClick={onClick}
+    sx={{
+      p: 2,
+      borderRadius: 2,
+      flex: 1,
+      minWidth: 110,
+      cursor: onClick ? 'pointer' : 'default',
+      border: active ? `2px solid ${color}` : '2px solid transparent',
+      transition: 'border-color 0.15s ease',
+    }}
+  >
     <Box display="flex" alignItems="center" justifyContent="space-between">
       <Box>
         <Typography variant="caption" color="text.secondary" fontWeight={500}>
@@ -162,22 +192,38 @@ const Productlist = () => {
   const theme = useTheme()
 
   const {
-    products = [],
-    isLoading,
-    isError,
-    message,
+    adminProducts = [],
+    adminMeta,
+    adminStats,
+    isAdminLoading,
+    isAdminError,
+    adminMessage,
   } = useSelector(state => state.product)
   const user = useSelector(state => state.user.user)
 
   const tenantId = useMemo(() => getTenantId(user), [user])
+  const hasLoadedOnce = useRef(false)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [searchInput, setSearchInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [page, setPage] = useState(1)
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [sortBy, setSortBy] = useState('createdAt')
   const [sortOrder, setSortOrder] = useState('desc')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [visibilityFilter, setVisibilityFilter] = useState('')
+  const [stockFilter, setStockFilter] = useState('')
+  const [mutatingId, setMutatingId] = useState(null)
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null)
+  const [menuProduct, setMenuProduct] = useState(null)
+  const [stockDialog, setStockDialog] = useState({
+    open: false,
+    product: null,
+    stockValue: '',
+    thresholdValue: '',
+  })
   const [snackbar, setSnackbar] = useState({
     open: false,
     severity: 'success',
@@ -185,129 +231,203 @@ const Productlist = () => {
   })
 
   // ============================================================================
-  // FETCH
+  // DEBOUNCE DE BÚSQUEDA
+  // ============================================================================
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearchTerm(searchInput.trim())
+      setPage(1)
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(handle)
+  }, [searchInput])
+
+  // ============================================================================
+  // FETCH (server-side: búsqueda, filtros, orden y paginación)
   // ============================================================================
 
   useEffect(() => {
     if (!tenantId) return
 
-    dispatch(getProducts({ tenantId, limit: 1000 }))
+    dispatch(
+      getAdminProducts({
+        tenantId,
+        page,
+        limit: rowsPerPage,
+        q: searchTerm || undefined,
+        status: statusFilter || undefined,
+        visibility: visibilityFilter || undefined,
+        stockFilter: stockFilter || undefined,
+        sort: buildBackendSort(sortBy, sortOrder),
+      }),
+    )
       .unwrap()
+      .then(() => {
+        hasLoadedOnce.current = true
+      })
       .catch(err => {
         console.error('Error fetching products:', err?.message || err)
       })
-  }, [tenantId, dispatch])
+  }, [
+    tenantId,
+    dispatch,
+    page,
+    rowsPerPage,
+    searchTerm,
+    statusFilter,
+    visibilityFilter,
+    stockFilter,
+    sortBy,
+    sortOrder,
+  ])
 
-  // Reset page when filters change
-  useEffect(() => {
+  // ============================================================================
+  // HANDLERS: FILTROS (page se resetea junto con el filtro, en el mismo
+  // batch de estado, para no disparar un fetch extra con la página vieja)
+  // ============================================================================
+
+  const handleStatusFilterChange = useCallback(value => {
+    setStatusFilter(value)
     setPage(1)
-  }, [searchTerm, rowsPerPage, sortBy, sortOrder])
+  }, [])
 
-  // ============================================================================
-  // MEMOIZED DATA
-  // ============================================================================
+  const handleVisibilityFilterChange = useCallback(value => {
+    setVisibilityFilter(value)
+    setPage(1)
+  }, [])
 
-  const processedProducts = useMemo(() => {
-    const source = Array.isArray(products) ? products : []
+  const toggleStockFilter = useCallback(value => {
+    setStockFilter(prev => (prev === value ? '' : value))
+    setPage(1)
+  }, [])
 
-    let rows = source.map(product => ({
-      ...product,
-      _mainImage: getProductMainImage(product),
-      _brand: getProductBrand(product),
-      _sku: getProductSku(product),
-      _calculatedStock: getProductStock(product),
-      _minStockAlert: getMinStockAlert(product),
-    }))
+  const toggleStatusFilter = useCallback(value => {
+    setStatusFilter(prev => (prev === value ? '' : value))
+    setPage(1)
+  }, [])
 
-    if (searchTerm.trim()) {
-      const query = normalizeText(searchTerm)
+  const handleRowsPerPageChange = useCallback(value => {
+    setRowsPerPage(value)
+    setPage(1)
+  }, [])
 
-      rows = rows.filter(product => {
-        return [
-          product?.title,
-          product?._brand,
-          product?.categoria,
-          product?.subcategoria,
-          product?._sku,
-        ].some(field => normalizeText(field).includes(query))
-      })
-    }
-
-    rows.sort((a, b) => {
-      let aVal
-      let bVal
-
-      switch (sortBy) {
-        case 'price':
-          aVal = toNumber(a.price, 0)
-          bVal = toNumber(b.price, 0)
-          break
-        case 'stock':
-          aVal = a._calculatedStock
-          bVal = b._calculatedStock
-          break
-        case 'title':
-          aVal = normalizeText(a.title)
-          bVal = normalizeText(b.title)
-          break
-        case 'categoria':
-          aVal = normalizeText(a.categoria)
-          bVal = normalizeText(b.categoria)
-          break
-        case 'createdAt':
-        default:
-          aVal = new Date(a.createdAt || 0).getTime()
-          bVal = new Date(b.createdAt || 0).getTime()
-          break
+  const handleSort = useCallback(field => {
+    setPage(1)
+    setSortBy(prevField => {
+      if (prevField === field) {
+        setSortOrder(prevOrder => (prevOrder === 'asc' ? 'desc' : 'asc'))
+        return prevField
       }
 
-      if (aVal === bVal) return 0
-
-      if (sortOrder === 'asc') {
-        return aVal > bVal ? 1 : -1
-      }
-
-      return aVal < bVal ? 1 : -1
+      setSortOrder('asc')
+      return field
     })
+  }, [])
 
-    return rows
-  }, [products, searchTerm, sortBy, sortOrder])
+  // ============================================================================
+  // HANDLERS: ACCIONES RÁPIDAS
+  // ============================================================================
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(processedProducts.length / rowsPerPage),
+  const closeMenu = useCallback(() => {
+    setMenuAnchorEl(null)
+    setMenuProduct(null)
+  }, [])
+
+  const openMenu = useCallback((event, product) => {
+    setMenuAnchorEl(event.currentTarget)
+    setMenuProduct(product)
+  }, [])
+
+  const runQuickUpdate = useCallback(
+    async (productId, data) => {
+      setMutatingId(productId)
+
+      try {
+        await dispatch(updateAProduct({ productId, data })).unwrap()
+      } catch {
+        // El thunk ya muestra el toast de error.
+      } finally {
+        setMutatingId(null)
+      }
+    },
+    [dispatch],
   )
 
-  const paginatedProducts = useMemo(() => {
-    const start = (page - 1) * rowsPerPage
-    return processedProducts.slice(start, start + rowsPerPage)
-  }, [processedProducts, page, rowsPerPage])
+  const handleChangeStatus = useCallback(
+    (product, newStatus) => {
+      closeMenu()
+      runQuickUpdate(product._id, {
+        status: newStatus,
+        ...(newStatus === 'archived' ? { visibility: 'hidden' } : {}),
+      })
+    },
+    [closeMenu, runQuickUpdate],
+  )
 
-  const stats = useMemo(() => {
-    const total = processedProducts.length
-    const active = processedProducts.filter(
-      product => product.status === 'active',
-    ).length
-    const lowStock = processedProducts.filter(product => {
-      const stock = product._calculatedStock
-      const minAlert = product._minStockAlert
-      return stock > 0 && stock < minAlert
-    }).length
-    const outOfStock = processedProducts.filter(
-      product => product._calculatedStock === 0,
-    ).length
+  const handleToggleVisibility = useCallback(
+    product => {
+      closeMenu()
+      const nextVisibility =
+        product.visibility === 'hidden' ? 'visible' : 'hidden'
+      runQuickUpdate(product._id, { visibility: nextVisibility })
+    },
+    [closeMenu, runQuickUpdate],
+  )
 
-    return { total, active, lowStock, outOfStock }
-  }, [processedProducts])
-
-  // ============================================================================
-  // HANDLERS
-  // ============================================================================
-
-  const handleDeleteClick = useCallback(product => {
-    setSelectedProduct(product)
-    setConfirmOpen(true)
+  const openStockDialog = useCallback(product => {
+    setStockDialog({
+      open: true,
+      product,
+      stockValue: String(toNumber(product?.stock, 0)),
+      thresholdValue: String(getLowStockThreshold(product)),
+    })
   }, [])
+
+  const closeStockDialog = useCallback(() => {
+    setStockDialog({
+      open: false,
+      product: null,
+      stockValue: '',
+      thresholdValue: '',
+    })
+  }, [])
+
+  const handleSaveStock = useCallback(async () => {
+    const { product, stockValue, thresholdValue } = stockDialog
+    if (!product?._id) return
+
+    const nextStock = Math.max(0, Math.trunc(toNumber(stockValue, 0)))
+    const nextThreshold = Math.max(
+      0,
+      Math.trunc(toNumber(thresholdValue, DEFAULT_LOW_STOCK_THRESHOLD)),
+    )
+
+    setMutatingId(product._id)
+
+    try {
+      await dispatch(
+        updateAProduct({
+          productId: product._id,
+          data: { stock: nextStock, lowStockThreshold: nextThreshold },
+        }),
+      ).unwrap()
+      closeStockDialog()
+    } catch {
+      // El thunk ya muestra el toast de error.
+    } finally {
+      setMutatingId(null)
+    }
+  }, [dispatch, stockDialog, closeStockDialog])
+
+  const handleDeleteClick = useCallback(
+    product => {
+      closeMenu()
+      setSelectedProduct(product)
+      setConfirmOpen(true)
+    },
+    [closeMenu],
+  )
 
   const handleConfirmDelete = useCallback(async () => {
     if (!selectedProduct?._id) {
@@ -336,25 +456,13 @@ const Productlist = () => {
     }
   }, [dispatch, selectedProduct])
 
-  const handleSort = useCallback(field => {
-    setSortBy(prevField => {
-      if (prevField === field) {
-        setSortOrder(prevOrder => (prevOrder === 'asc' ? 'desc' : 'asc'))
-        return prevField
-      }
-
-      setSortOrder('asc')
-      return field
-    })
-  }, [])
-
   const handleCloseSnackbar = useCallback(() => {
     setSnackbar(prev => ({ ...prev, open: false }))
   }, [])
 
   const getStockStatus = useCallback(
     (stock, minAlert) => {
-      if (stock === 0) {
+      if (stock <= 0) {
         return {
           label: 'Sin stock',
           bgColor: theme.palette.error.main,
@@ -387,7 +495,18 @@ const Productlist = () => {
   // RENDER STATES
   // ============================================================================
 
-  if (isLoading) {
+  const stats = adminStats || {
+    total: 0,
+    byStatus: {},
+    lowStock: 0,
+    outOfStock: 0,
+  }
+  const totalPages = adminMeta?.totalPages || 1
+
+  // Spinner de página completa solo en la carga inicial. Las recargas
+  // posteriores (filtros, acciones rápidas) muestran una barra fina
+  // arriba para no perder el scroll ni el contexto visual de la tabla.
+  if (isAdminLoading && !hasLoadedOnce.current) {
     return (
       <Box
         display="flex"
@@ -413,8 +532,7 @@ const Productlist = () => {
             Productos
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {stats.total} productos • {stats.active} activos • {stats.lowStock}{' '}
-            stock bajo • {stats.outOfStock} sin stock
+            {stats.total} productos en catálogo
           </Typography>
         </Box>
 
@@ -428,7 +546,12 @@ const Productlist = () => {
         </Button>
       </Box>
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={3}>
+      <Stack
+        direction="row"
+        spacing={2}
+        mb={3}
+        sx={{ flexWrap: 'wrap', gap: 2 }}
+      >
         <StatCard
           title="Total"
           value={stats.total}
@@ -437,21 +560,43 @@ const Productlist = () => {
         />
         <StatCard
           title="Activos"
-          value={stats.active}
+          value={stats.byStatus?.active || 0}
           icon={<TrendingUpIcon />}
           color={theme.palette.success.main}
+          onClick={() => toggleStatusFilter('active')}
+          active={statusFilter === 'active'}
+        />
+        <StatCard
+          title="Borradores"
+          value={stats.byStatus?.draft || 0}
+          icon={<DraftsIcon />}
+          color={theme.palette.info.main}
+          onClick={() => toggleStatusFilter('draft')}
+          active={statusFilter === 'draft'}
+        />
+        <StatCard
+          title="Archivados"
+          value={stats.byStatus?.archived || 0}
+          icon={<ArchiveIcon />}
+          color={theme.palette.text.secondary}
+          onClick={() => toggleStatusFilter('archived')}
+          active={statusFilter === 'archived'}
         />
         <StatCard
           title="Stock Bajo"
-          value={stats.lowStock}
+          value={stats.lowStock || 0}
           icon={<TrendingDownIcon />}
           color={theme.palette.warning.main}
+          onClick={() => toggleStockFilter('low')}
+          active={stockFilter === 'low'}
         />
         <StatCard
           title="Sin Stock"
-          value={stats.outOfStock}
+          value={stats.outOfStock || 0}
           icon={<TrendingDownIcon />}
           color={theme.palette.error.main}
+          onClick={() => toggleStockFilter('out')}
+          active={stockFilter === 'out'}
         />
       </Stack>
 
@@ -465,8 +610,8 @@ const Productlist = () => {
             fullWidth
             size="small"
             placeholder="Buscar por nombre, marca, categoría, subcategoría o SKU..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -474,15 +619,45 @@ const Productlist = () => {
                 </InputAdornment>
               ),
             }}
-            sx={{ maxWidth: { sm: 450 } }}
+            sx={{ maxWidth: { sm: 380 } }}
           />
+
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Estado</InputLabel>
+            <Select
+              label="Estado"
+              value={statusFilter}
+              onChange={e => handleStatusFilterChange(e.target.value)}
+            >
+              {STATUS_FILTER_OPTIONS.map(option => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 130 }}>
+            <InputLabel>Visibilidad</InputLabel>
+            <Select
+              label="Visibilidad"
+              value={visibilityFilter}
+              onChange={e => handleVisibilityFilterChange(e.target.value)}
+            >
+              {VISIBILITY_FILTER_OPTIONS.map(option => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
           <Box flex={1} />
 
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <Select
               value={rowsPerPage}
-              onChange={e => setRowsPerPage(Number(e.target.value))}
+              onChange={e => handleRowsPerPageChange(Number(e.target.value))}
             >
               <MenuItem value={10}>10 por página</MenuItem>
               <MenuItem value={25}>25 por página</MenuItem>
@@ -492,9 +667,13 @@ const Productlist = () => {
         </Stack>
       </Card>
 
-      {isError && (
+      {isAdminLoading && hasLoadedOnce.current && (
+        <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />
+      )}
+
+      {isAdminError && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          {message || 'Error al cargar productos'}
+          {adminMessage || 'Error al cargar productos'}
         </Alert>
       )}
 
@@ -512,13 +691,7 @@ const Productlist = () => {
                 {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
               </TableCell>
               <TableCell sx={{ fontWeight: 700 }}>SKU</TableCell>
-              <TableCell
-                onClick={() => handleSort('categoria')}
-                sx={{ cursor: 'pointer', fontWeight: 700 }}
-              >
-                Categoría{' '}
-                {sortBy === 'categoria' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Categoría</TableCell>
               <TableCell
                 onClick={() => handleSort('price')}
                 sx={{ cursor: 'pointer', fontWeight: 700 }}
@@ -539,10 +712,15 @@ const Productlist = () => {
           </TableHead>
 
           <TableBody>
-            {paginatedProducts.map(product => {
-              const stock = product._calculatedStock
-              const minAlert = product._minStockAlert
+            {adminProducts.map(product => {
+              const stock = toNumber(product.stock, 0)
+              const minAlert = getLowStockThreshold(product)
               const stockStatus = getStockStatus(stock, minAlert)
+              const isMutating = mutatingId === product._id
+              const statusMeta = PRODUCT_STATUS_META[product.status] || {
+                label: product.status || 'Sin estado',
+                color: 'default',
+              }
 
               return (
                 <TableRow
@@ -550,6 +728,7 @@ const Productlist = () => {
                   hover
                   sx={{
                     '&:last-child td, &:last-child th': { border: 0 },
+                    opacity: isMutating ? 0.6 : 1,
                     backgroundColor:
                       stock === 0
                         ? alpha(theme.palette.error.main, 0.05)
@@ -559,7 +738,7 @@ const Productlist = () => {
                   <TableCell>
                     <Box display="flex" alignItems="center" gap={2}>
                       <Avatar
-                        src={product._mainImage}
+                        src={getProductMainImage(product)}
                         alt={product.title}
                         variant="rounded"
                         sx={{ width: 50, height: 50 }}
@@ -572,7 +751,8 @@ const Productlist = () => {
                           {product.title || 'Sin título'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {product._brand}
+                          {getProductBrand(product)}
+                          {product.visibility === 'hidden' && ' · Oculto'}
                         </Typography>
                       </Box>
                     </Box>
@@ -584,7 +764,7 @@ const Productlist = () => {
                       fontFamily="monospace"
                       color="text.secondary"
                     >
-                      {product._sku}
+                      {getProductSku(product)}
                     </Typography>
                   </TableCell>
 
@@ -641,20 +821,24 @@ const Productlist = () => {
                           },
                         }}
                       />
+
+                      {product.hasVariants && (
+                        <Tooltip title="Stock agregado de todas las variantes">
+                          <Chip
+                            label="Variantes"
+                            size="small"
+                            variant="outlined"
+                          />
+                        </Tooltip>
+                      )}
                     </Box>
                   </TableCell>
 
                   <TableCell>
                     <Chip
-                      label={
-                        product.status === 'active'
-                          ? 'Activo'
-                          : product.status || 'Sin estado'
-                      }
+                      label={statusMeta.label}
                       size="small"
-                      color={
-                        product.status === 'active' ? 'success' : 'default'
-                      }
+                      color={statusMeta.color}
                       variant={
                         product.status === 'active' ? 'filled' : 'outlined'
                       }
@@ -665,6 +849,7 @@ const Productlist = () => {
                     <Tooltip title="Editar">
                       <IconButton
                         size="small"
+                        disabled={isMutating}
                         onClick={() =>
                           navigate(`/admin/edit-product/${product._id}`)
                         }
@@ -674,13 +859,17 @@ const Productlist = () => {
                       </IconButton>
                     </Tooltip>
 
-                    <Tooltip title="Eliminar">
+                    <Tooltip title="Más acciones">
                       <IconButton
                         size="small"
-                        onClick={() => handleDeleteClick(product)}
-                        sx={{ color: theme.palette.error.main }}
+                        disabled={isMutating}
+                        onClick={e => openMenu(e, product)}
                       >
-                        <DeleteIcon fontSize="small" />
+                        {isMutating ? (
+                          <CircularProgress size={18} />
+                        ) : (
+                          <MoreVertIcon fontSize="small" />
+                        )}
                       </IconButton>
                     </Tooltip>
                   </TableCell>
@@ -688,7 +877,7 @@ const Productlist = () => {
               )
             })}
 
-            {paginatedProducts.length === 0 && (
+            {adminProducts.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
@@ -714,6 +903,142 @@ const Productlist = () => {
         </Box>
       )}
 
+      {/* Menú de acciones rápidas por fila */}
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={closeMenu}
+      >
+        {menuProduct?.hasVariants ? (
+          <MenuItem
+            onClick={() => {
+              closeMenu()
+              navigate(`/admin/edit-product/${menuProduct._id}`)
+            }}
+          >
+            Gestionar stock por variante
+          </MenuItem>
+        ) : (
+          <MenuItem
+            onClick={() => {
+              openStockDialog(menuProduct)
+              closeMenu()
+            }}
+          >
+            Editar stock
+          </MenuItem>
+        )}
+
+        <Divider />
+
+        {menuProduct?.status !== 'active' && (
+          <MenuItem onClick={() => handleChangeStatus(menuProduct, 'active')}>
+            Marcar como activo
+          </MenuItem>
+        )}
+        {menuProduct?.status !== 'draft' && (
+          <MenuItem onClick={() => handleChangeStatus(menuProduct, 'draft')}>
+            Volver a borrador
+          </MenuItem>
+        )}
+        {menuProduct?.status !== 'out-of-stock' && (
+          <MenuItem
+            onClick={() => handleChangeStatus(menuProduct, 'out-of-stock')}
+          >
+            Marcar sin stock
+          </MenuItem>
+        )}
+        {menuProduct?.status !== 'archived' && (
+          <MenuItem onClick={() => handleChangeStatus(menuProduct, 'archived')}>
+            <ArchiveIcon fontSize="small" sx={{ mr: 1 }} />
+            Archivar
+          </MenuItem>
+        )}
+
+        <MenuItem onClick={() => handleToggleVisibility(menuProduct)}>
+          {menuProduct?.visibility === 'hidden' ? (
+            <>
+              <VisibilityIcon fontSize="small" sx={{ mr: 1 }} />
+              Mostrar en tienda
+            </>
+          ) : (
+            <>
+              <VisibilityOffIcon fontSize="small" sx={{ mr: 1 }} />
+              Ocultar de la tienda
+            </>
+          )}
+        </MenuItem>
+
+        <Divider />
+
+        <MenuItem
+          onClick={() => handleDeleteClick(menuProduct)}
+          sx={{ color: theme.palette.error.main }}
+        >
+          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+          Eliminar permanentemente
+        </MenuItem>
+      </Menu>
+
+      {/* Editar stock rápido */}
+      <Dialog
+        open={stockDialog.open}
+        onClose={closeStockDialog}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>Editar stock</DialogTitle>
+
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            {stockDialog.product?.title}
+          </Typography>
+
+          <Stack spacing={2}>
+            <TextField
+              label="Stock actual"
+              type="number"
+              fullWidth
+              size="small"
+              value={stockDialog.stockValue}
+              onChange={e =>
+                setStockDialog(prev => ({
+                  ...prev,
+                  stockValue: e.target.value,
+                }))
+              }
+              inputProps={{ min: 0 }}
+            />
+
+            <TextField
+              label="Alerta de stock bajo"
+              type="number"
+              fullWidth
+              size="small"
+              helperText="Se muestra como 'Stock bajo' cuando el stock cae debajo de este número"
+              value={stockDialog.thresholdValue}
+              onChange={e =>
+                setStockDialog(prev => ({
+                  ...prev,
+                  thresholdValue: e.target.value,
+                }))
+              }
+              inputProps={{ min: 0 }}
+            />
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={closeStockDialog} variant="outlined">
+            Cancelar
+          </Button>
+          <Button onClick={handleSaveStock} variant="contained">
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirmar eliminación permanente */}
       <Dialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
@@ -724,8 +1049,10 @@ const Productlist = () => {
 
         <DialogContent>
           <Typography>
-            Estás por eliminar <strong>{selectedProduct?.title}</strong>. Esta
-            acción no se puede deshacer.
+            Estás por eliminar <strong>{selectedProduct?.title}</strong> de
+            forma permanente. Esta acción no se puede deshacer y borra también
+            sus imágenes. Si solo querés dejar de venderlo, usá
+            &quot;Archivar&quot; en vez de eliminar.
           </Typography>
         </DialogContent>
 
