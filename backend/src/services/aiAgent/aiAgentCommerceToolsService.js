@@ -1,4 +1,8 @@
-// 📁 src/services/aiAgent/aiAgentToolsV2Service.js
+// 📁 src/services/aiAgent/aiAgentCommerceToolsService.js
+// Herramientas comerciales del agente (catálogo, promos, cupones, ofertas).
+// Antes se llamaba aiAgentToolsV2Service: el sufijo "V2" era engañoso, no
+// reemplaza a ningún "V1" — convive con aiAgentToolService (búsqueda de
+// conocimiento aprobado), que resuelve algo distinto.
 import mongoose from 'mongoose'
 import Product from '../../models/productModel.js'
 import Coupon from '../../models/couponModel.js'
@@ -50,7 +54,7 @@ const AI_AGENT_DEBUG =
 const debugLog = (message, meta = {}) => {
   if (!AI_AGENT_DEBUG) return
 
-  logger.debug('[AI_AGENT_TOOLS_V2]', {
+  logger.debug('[AI_AGENT_COMMERCE_TOOLS]', {
     message,
     ...meta,
   })

@@ -3,7 +3,7 @@ import mongoose from 'mongoose'
 import connectDB from '../../config/connectDB.js'
 import logger from '../../config/logger.js'
 import AiAgent from '../models/aiAgentModel.js'
-import { encryptSecret } from '../services/aiAgent/aiCryptoService.js'
+import { encryptSecret } from '../services/aiAgent/secretCryptoService.js'
 
 const SECRET_PATHS = [
   'channels.whatsapp.accessToken',

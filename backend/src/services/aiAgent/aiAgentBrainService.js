@@ -5,7 +5,7 @@ import logger from '../../../config/logger.js'
 import { buildAgentSystemPrompt } from './aiAgentPromptService.js'
 import { callAgentLLM } from './aiAgentLLMService.js'
 import { searchRelevantKnowledgeForAgent } from './aiAgentToolService.js'
-import { runAgentCommerceTools } from './aiAgentToolsV2Service.js'
+import { runAgentCommerceTools } from './aiAgentCommerceToolsService.js'
 import { registerConversationLearningSignal } from './aiAgentLearningService.js'
 import { getOrCreateAiAgentForTenant } from './aiAgentProvisioningService.js'
 import {

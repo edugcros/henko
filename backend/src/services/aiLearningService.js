@@ -1,4 +1,8 @@
 // 📁 src/services/aiLearningService.js
+// APRENDIZAJE DE VISIÓN DE PRODUCTOS: registra correcciones humanas a los
+// análisis de fotos (CorrectionLog → AIPreference). NO confundir con
+// services/aiAgent/aiAgentLearningService.js, que es el aprendizaje
+// conversacional del agente de ventas — otro subsistema, sin relación.
 import crypto from 'node:crypto'
 import CorrectionLog from '../models/correctionLog.js'
 import { promoteLearnedRulesForTenant } from './aiLearningPromotionService.js'

@@ -4,7 +4,7 @@ import mongoose from 'mongoose'
 import {
   encryptSecret,
   decryptSecret,
-} from '../services/aiAgent/aiCryptoService.js'
+} from '../services/aiAgent/secretCryptoService.js'
 import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose

@@ -2,13 +2,13 @@ import {
   encryptSecret,
   decryptSecret,
   maskSecret,
-} from "../services/aiAgent/aiCryptoService.js";
+} from "../services/aiAgent/secretCryptoService.js";
 
 // Clave válida de 32 bytes (base64url) para todo el archivo. getKey() la
 // lee en cada llamada, así que basta con setearla en process.env.
 const TEST_KEY = Buffer.alloc(32, 7).toString("base64url");
 
-describe("aiCryptoService", () => {
+describe("secretCryptoService", () => {
   const original = {
     key: process.env.AI_AGENT_SECRET_ENCRYPTION_KEY,
     env: process.env.NODE_ENV,

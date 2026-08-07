@@ -3,7 +3,7 @@ import mongoose from 'mongoose'
 import connectDB from '../../config/connectDB.js'
 import logger from '../../config/logger.js'
 import Tenant from '../models/tenantModel.js'
-import { encryptSecret } from '../services/aiAgent/aiCryptoService.js'
+import { encryptSecret } from '../services/aiAgent/secretCryptoService.js'
 
 const SECRET_PATHS = [
   'integrations.mercadopago.accessToken',

@@ -12,7 +12,7 @@ import {
 import {
   encryptSecret,
   decryptSecret,
-} from '../services/aiAgent/aiCryptoService.js'
+} from '../services/aiAgent/secretCryptoService.js'
 
 const { Schema } = mongoose
 

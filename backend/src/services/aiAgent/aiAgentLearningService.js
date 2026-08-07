@@ -1,5 +1,7 @@
 // 📁 src/services/aiAgent/aiAgentLearningService.js
 // VERSIÓN PRODUCCIÓN - APRENDIZAJE CONVERSACIONAL / MEMORIA / SUGERENCIAS HUMAN-IN-THE-LOOP
+// NO confundir con services/aiLearningService.js, que es el aprendizaje de
+// visión de productos (correcciones de fotos) — otro subsistema, sin relación.
 
 import crypto from 'node:crypto'
 import AiLearningSuggestion from '../../models/aiLearningSuggestionModel.js'

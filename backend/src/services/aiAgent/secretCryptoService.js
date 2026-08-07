@@ -1,5 +1,7 @@
-// 📁 src/services/aiAgent/aiCryptoService.js
-// Cifrado AES-256-GCM para tokens sensibles del Agente IA.
+// 📁 src/services/aiAgent/secretCryptoService.js
+// Cifrado simétrico AES-256-GCM de secretos en reposo (NO tiene relación
+// con criptomonedas — antes se llamaba aiCryptoService, que confundía).
+// Lo usan aiAgentModel y tenantModel para cifrar tokens de canal.
 import crypto from 'node:crypto'
 
 const ALGORITHM = 'aes-256-gcm'

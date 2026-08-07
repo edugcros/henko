@@ -532,7 +532,7 @@ const buildLearningSignals = ({ intents, products, promotions, policies, userMes
 }
 
 // NOTA: estos getProduct* son a propósito distintos de los homónimos en
-// aiAgentToolsV2Service / aiAgentActionService / aiAgentPromptService. Acá
+// aiAgentCommerceToolsService / aiAgentActionService / aiAgentPromptService. Acá
 // son el guardián anti-alucinación: getProductStock lee SOLO `.stock` (no
 // quantity/qty/inventory) para ser conservador sobre qué números de stock
 // se aceptan en la respuesta del LLM, y getProductPrice devuelve el mínimo
