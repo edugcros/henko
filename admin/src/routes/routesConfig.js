@@ -78,6 +78,18 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  {
+    path: '/admin/agente-ia-conocimiento',
+    Component: pages.AiKnowledgeBasePage,
+    allowedRoles: ['admin'],
+  },
+
+  {
+    path: '/admin/agente-ia-campanas',
+    Component: pages.AiCampaignRulesPage,
+    allowedRoles: ['admin'],
+  },
+
   // 📦 Catálogo
   {
     path: '/admin/AddProduct',

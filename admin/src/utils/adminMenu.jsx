@@ -19,6 +19,8 @@ import OutboxIcon from '@mui/icons-material/Outbox'
 import SmartToyIcon from '@mui/icons-material/SmartToy'
 import SchoolIcon from '@mui/icons-material/School'
 import InsightsIcon from '@mui/icons-material/Insights'
+import MenuBookIcon from '@mui/icons-material/MenuBook'
+import CampaignIcon from '@mui/icons-material/Campaign'
 import { Badge, ListItemIcon } from '@mui/material'
 
 // 🔹 Traducciones y etiquetas
@@ -39,6 +41,8 @@ const translations = {
   'agente-ia-config': 'Agente IA · Config',
   'agente-ia-aprendizaje': 'Agente IA · Aprendizaje',
   'agente-ia-panel': 'Agente IA · Panel',
+  'agente-ia-conocimiento': 'Agente IA · Conocimiento',
+  'agente-ia-campanas': 'Agente IA · Campañas',
 }
 
 // 🔹 Colores por grupo
@@ -79,6 +83,14 @@ const groups = {
   'agente-ia-panel': {
     label: 'Agente IA · Panel',
     icon: InsightsIcon,
+  },
+  'agente-ia-conocimiento': {
+    label: 'Agente IA · Conocimiento',
+    icon: MenuBookIcon,
+  },
+  'agente-ia-campanas': {
+    label: 'Agente IA · Campañas',
+    icon: CampaignIcon,
   },
   EditProduct: { label: 'Editar Producto', icon: AddShoppingCart },
   promociones: { label: 'Promociones', icon: LocalOfferIcon },
