@@ -531,6 +531,14 @@ const buildLearningSignals = ({ intents, products, promotions, policies, userMes
   return signals.slice(0, MAX_LEARNING_SIGNALS)
 }
 
+// NOTA: estos getProduct* son a propósito distintos de los homónimos en
+// aiAgentToolsV2Service / aiAgentActionService / aiAgentPromptService. Acá
+// son el guardián anti-alucinación: getProductStock lee SOLO `.stock` (no
+// quantity/qty/inventory) para ser conservador sobre qué números de stock
+// se aceptan en la respuesta del LLM, y getProductPrice devuelve el mínimo
+// de variantes o un rango {min,max} para validar afirmaciones tipo
+// "desde $X". No los fusiones con las variantes de catálogo/acción: esas
+// leen más campos y aflojarían esta validación.
 const getProductTitle = product => {
   return clean(product?.title || product?.name || product?.nombre || product?.slug || 'Producto')
 }
