@@ -1,6 +1,7 @@
 import { buildAgentActions } from "../services/aiAgent/aiAgentActionService.js";
 import { validateAgentCommerceResponse } from "../services/aiAgent/aiAgentResponseValidatorService.js";
 import { buildDefaultAiAgentPayload } from "../services/aiAgent/aiAgentProvisioningService.js";
+import AiAgent from "../models/aiAgentModel.js";
 
 const productWithVariants = {
   id: "product-1",
@@ -67,7 +68,7 @@ describe("AI agent production contracts", () => {
     expect(result.ok).toBe(false);
     expect(result.shouldFallback).toBe(true);
     expect(result.warnings).toContain(
-      "contains_numbers_not_present_in_context",
+      "contains_unverified_commercial_numbers",
     );
   });
 
@@ -97,11 +98,25 @@ describe("AI agent production contracts", () => {
     });
     expect(payload.behavior.canCreateCartLinks).toBe(true);
     expect(payload.behavior.requireHumanForPayments).toBe(true);
+    // currency debe viajar en el payload y el schema debe poder guardarlo
+    // (lo consume el validador comercial para interpretar montos).
+    expect(payload.businessContext.currency).toBe("ARS");
     expect(payload.businessContext.policies).toEqual({
       shipping: "",
       returns: "",
       payments: "",
       privacy: "",
+      warranty: "",
     });
+  });
+
+  test("schema declares the businessContext fields the agent actually reads", () => {
+    // Guarda contra la regresión que teníamos: campos que el provisioning
+    // escribe y algún consumidor lee, pero que el schema descartaba en
+    // silencio. Si alguien los quita del schema, este test falla.
+    expect(AiAgent.schema.path("businessContext.currency")).toBeDefined();
+    expect(
+      AiAgent.schema.path("businessContext.policies.warranty"),
+    ).toBeDefined();
   });
 });

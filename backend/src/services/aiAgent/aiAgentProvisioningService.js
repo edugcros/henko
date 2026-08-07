@@ -135,16 +135,6 @@ const getTenantName = tenant => {
   )
 }
 
-const getTenantDomain = tenant => {
-  return (
-    clean(tenant?.domain) ||
-    clean(tenant?.customDomain) ||
-    clean(tenant?.shopDomain) ||
-    clean(tenant?.publicDomain) ||
-    ''
-  )
-}
-
 const getTenantCurrency = tenant => {
   return clean(tenant?.currency || tenant?.moneda || DEFAULT_CURRENCY).toUpperCase()
 }
@@ -178,42 +168,13 @@ const buildSuggestionQuery = ({ tenantId, key, namespace = 'default' }) => {
   }
 }
 
-const buildAgentReasoningPolicy = ({ storeName, currency }) => ({
-  enabled: true,
-  mode: 'consultative_commerce',
-  language: DEFAULT_LANGUAGE,
-  currency,
-  principles: [
-    'Primero entender la intención del cliente antes de recomendar.',
-    'No inventar stock, precios, envíos, garantías ni promociones si no están disponibles.',
-    'Pedir una sola aclaración cuando falte un dato clave.',
-    'Recomendar pocas opciones y explicar por qué encajan con la necesidad del cliente.',
-    'Priorizar productos visibles, activos y con stock.',
-    'Derivar a una persona cuando haya reclamos, pagos complejos, datos sensibles o baja confianza.',
-  ],
-  responsePlan: [
-    'Detectar intención: compra, comparación, stock, precio, envío, pago, garantía, reclamo o postventa.',
-    'Buscar señales: categoría, presupuesto, uso, talle/color/capacidad, urgencia y preferencia de marca.',
-    'Responder con información disponible y aclarar límites.',
-    'Proponer el siguiente paso: ver producto, elegir variante, agregar al carrito o hablar con asesor.',
-  ],
-  recommendationStrategy: {
-    maxProductsToRecommend: 3,
-    explainTradeoffs: true,
-    compareBy: [
-      'precio',
-      'stock',
-      'beneficio principal',
-      'variante disponible',
-      'garantía',
-      'envío',
-      'popularidad o reseñas cuando existan',
-    ],
-  },
-  uncertaintyPolicy:
-    `Si una respuesta requiere información no cargada por ${storeName}, responder que ese dato no está confirmado y ofrecer derivar a un asesor.`,
-})
-
+// El payload solo emite campos que el schema de AiAgent declara y que
+// algún consumidor realmente lee. Antes escribía además un bloque de
+// "razonamiento consultivo" (reasoning, conversationPlaybook, goals,
+// handoffTriggers, flags extra de behavior, mensajes de canal, metadata)
+// que Mongoose descartaba en silencio por no existir en el schema y que
+// ningún lector consultaba — puro ruido. El test de contrato
+// aiAgent.services.test.js falla si esto vuelve a divergir del schema.
 export const buildDefaultAiAgentPayload = ({
   tenantId,
   tenant = null,
@@ -221,7 +182,6 @@ export const buildDefaultAiAgentPayload = ({
   const storeName = getTenantName(tenant)
   const currency = getTenantCurrency(tenant)
   const locale = getTenantLocale(tenant)
-  const domain = getTenantDomain(tenant)
 
   return {
     tenantId,
@@ -229,28 +189,13 @@ export const buildDefaultAiAgentPayload = ({
     enabled: true,
 
     channels: {
-      webchat: {
-        enabled: true,
-        welcomeMessage:
-          `Hola, soy el asistente de ${storeName}. Puedo ayudarte a elegir productos, resolver dudas de stock, variantes, pagos, envíos y garantías.`,
-        collectLeadWhenUseful: true,
-      },
-      whatsapp: {
-        enabled: false,
-        handoffMessage:
-          'Te derivo con un asesor para continuar por WhatsApp con información precisa.',
-      },
+      webchat: { enabled: true },
+      whatsapp: { enabled: false },
     },
 
     personality: {
       tone: 'friendly',
       language: locale,
-      style: 'claro, consultivo, breve y orientado a conversión',
-      role:
-        'asesor comercial experto en ecommerce: ayuda a comprar, compara opciones y evita inventar información',
-      empathyLevel: 'high',
-      verbosity: 'medium',
-      persuasionStyle: 'no invasivo',
     },
 
     behavior: {
@@ -261,76 +206,18 @@ export const buildDefaultAiAgentPayload = ({
       requireHumanForClaims: true,
       maxMessagesBeforeHuman: 12,
       minConfidenceToAnswer: 0.62,
-
-      askClarifyingQuestions: true,
-      maxClarifyingQuestions: 1,
-      canCompareProducts: true,
-      canExplainVariants: true,
-      canUseCatalogSpecifications: true,
-      canUseCustomerIntentSignals: true,
-      rememberApprovedLearnings: true,
-
-      handoffTriggers: [
-        'reclamos o conflictos',
-        'solicitud de datos sensibles',
-        'pago manual o transferencia no confirmada',
-        'cambio/devolución sin política cargada',
-        'stock/precio/envío no confirmado',
-        'cliente pide hablar con humano',
-        'confianza baja o información contradictoria',
-      ],
-
-      reasoning: buildAgentReasoningPolicy({ storeName, currency }),
-
-      learning: {
-        enabled: true,
-        sources: [
-          'conversaciones',
-          'correcciones humanas',
-          'catálogo',
-          'políticas aprobadas',
-          'preguntas frecuentes',
-          'comportamiento de compra',
-        ],
-        createSuggestionsFromUnknowns: true,
-        requireHumanApproval: true,
-        minConfidenceToAutoUseApprovedKnowledge: 0.82,
-      },
     },
 
     businessContext: {
-      storeName,
-      domain,
       currency,
       description:
         'Asistente comercial para responder consultas de productos, stock, variantes, promociones, envíos, pagos, garantías, comparaciones y ayuda de compra.',
-      goals: [
-        'resolver dudas sin inventar',
-        'ayudar al cliente a elegir',
-        'reducir abandono de carrito',
-        'capturar oportunidades comerciales',
-        'derivar a humano cuando corresponda',
-      ],
       policies: {
         shipping: '',
         returns: '',
         payments: '',
         privacy: '',
         warranty: '',
-        pickup: '',
-        invoices: '',
-      },
-      conversationPlaybook: {
-        greeting:
-          `Saludar en nombre de ${storeName}, preguntar necesidad y ofrecer ayuda concreta.`,
-        discovery:
-          'Identificar uso, presupuesto, categoría, marca preferida, variantes necesarias y urgencia.',
-        recommendation:
-          'Recomendar hasta 3 opciones con motivo breve y siguiente acción.',
-        objectionHandling:
-          'Responder objeciones de precio, confianza, stock, garantía y envío sin presionar.',
-        closing:
-          'Confirmar producto/variante, sugerir agregar al carrito o derivar con asesor.',
       },
     },
 
@@ -339,11 +226,6 @@ export const buildDefaultAiAgentPayload = ({
       leads: 0,
       handoffs: 0,
       lastInteractionAt: null,
-    },
-
-    metadata: {
-      provisioningVersion: PROVISIONING_VERSION,
-      provisionedBy: 'ai_agent_default_provisioning',
     },
   }
 }
@@ -1130,8 +1012,11 @@ export const provisionAiAgentDefaultsForTenant = async ({
   }
 }
 
+// Refresh idempotente de un agente ya existente. Igual que el payload
+// por defecto: solo toca rutas que el schema declara. Antes seteaba
+// rutas inexistentes (behavior.reasoning, behavior.learning.*,
+// businessContext.storeName, metadata.*) que Mongoose descartaba.
 const buildExistingAgentPatch = ({ tenant } = {}) => {
-  const storeName = getTenantName(tenant)
   const currency = getTenantCurrency(tenant)
   const locale = getTenantLocale(tenant)
 
@@ -1141,18 +1026,7 @@ const buildExistingAgentPatch = ({ tenant } = {}) => {
     'behavior.canCreateCartLinks': true,
     'behavior.requireHumanForPayments': true,
     'behavior.requireHumanForClaims': true,
-    'behavior.canCompareProducts': true,
-    'behavior.canExplainVariants': true,
-    'behavior.canUseCatalogSpecifications': true,
-    'behavior.askClarifyingQuestions': true,
-    'behavior.maxClarifyingQuestions': 1,
-    'behavior.reasoning': buildAgentReasoningPolicy({ storeName, currency }),
-    'behavior.learning.enabled': true,
-    'behavior.learning.requireHumanApproval': true,
-    'businessContext.storeName': storeName,
     'businessContext.currency': currency,
-    'metadata.provisioningVersion': PROVISIONING_VERSION,
-    'metadata.lastProvisionedAt': new Date(),
   }
 }
 

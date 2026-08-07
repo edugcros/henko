@@ -88,11 +88,20 @@ const aiAgentSchema = new Schema(
 
     businessContext: {
       description: { type: String, default: '', maxlength: 5000 },
+      // Lo escribe el provisioning y lo lee el validador comercial para
+      // interpretar montos. Sin declararlo acá, Mongoose lo descartaba y
+      // el validador caía siempre a ARS aunque el tenant vendiera en otra
+      // moneda.
+      currency: { type: String, default: '', trim: true, uppercase: true, maxlength: 8 },
       policies: {
         shipping: { type: String, default: '', maxlength: 4000 },
         returns: { type: String, default: '', maxlength: 4000 },
         payments: { type: String, default: '', maxlength: 4000 },
         privacy: { type: String, default: '', maxlength: 4000 },
+        // Consumida por el validador (fallback/reparación de respuestas)
+        // y por el prompt; antes se descartaba, así que la lógica de
+        // garantía creía siempre que la política estaba vacía.
+        warranty: { type: String, default: '', maxlength: 4000 },
       },
       faq: [
         {

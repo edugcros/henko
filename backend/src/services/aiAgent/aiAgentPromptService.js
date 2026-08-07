@@ -467,6 +467,7 @@ POLÍTICAS DEL COMERCIO:
 Envíos: ${agent?.businessContext?.policies?.shipping || 'Consultar con el comercio.'}
 Cambios/devoluciones: ${agent?.businessContext?.policies?.returns || 'Consultar con el comercio.'}
 Pagos: ${agent?.businessContext?.policies?.payments || 'Consultar con el comercio.'}
+Garantía: ${agent?.businessContext?.policies?.warranty || 'Consultar con el comercio.'}
 Privacidad: ${agent?.businessContext?.policies?.privacy || 'Consultar con el comercio.'}
 
 DATOS ACTUALIZADOS DEL ECOMMERCE:
