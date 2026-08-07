@@ -27,6 +27,7 @@ import {
   decrementStockForLines,
 } from '../services/orderInventoryService.js'
 import { releaseReservedStock } from '../services/paymentOrderOpsService.js'
+import { registerMarketingConsent } from '../services/aiAgent/aiContactPolicyService.js'
 
 import Order, {
   ORDER_STATUS,
@@ -368,6 +369,11 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
     })
   }
   const isCOD = Boolean(req.body?.COD)
+  // Opt-in explícito de marketing desde el checkout (checkbox). Estricto:
+  // solo true booleano o 'true' string cuentan como consentimiento.
+  const marketingConsentGiven =
+    req.body?.marketingConsent === true ||
+    req.body?.marketingConsent === 'true'
   const bodyCouponCode = sanitizeString(
     req.body?.coupon || req.body?.couponDetails?.code,
   )
@@ -610,6 +616,27 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
       buyerEmail:
         createdOrder.shippingAddress?.email ||
         createdOrder.customerSnapshot?.email,
+    })
+  }
+
+  // Si el cliente marcó el opt-in en el checkout, registramos el
+  // consentimiento de marketing para el canal WhatsApp (clave: teléfono).
+  // Es lo que habilita al agente a enviar campañas salientes (p. ej.
+  // recuperación de carrito) fuera de la ventana de servicio de 24h.
+  // Fire-and-forget: un fallo acá nunca debe romper la creación de la orden.
+  const consentPhone = createdOrder.shippingAddress?.phone
+  if (marketingConsentGiven && consentPhone) {
+    registerMarketingConsent({
+      tenantId,
+      channel: 'whatsapp',
+      destination: consentPhone,
+      consentSource: 'checkout_opt_in',
+    }).catch(error => {
+      logger.error('[ORDER_MARKETING_CONSENT_ERROR]', {
+        tenantId,
+        orderId: String(createdOrder._id),
+        error: error?.message,
+      })
     })
   }
 

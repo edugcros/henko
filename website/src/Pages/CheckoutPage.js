@@ -10,11 +10,13 @@ import {
   Box,
   Breadcrumbs,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Container,
   Divider,
   Fade,
+  FormControlLabel,
   Grid,
   IconButton,
   Link as MuiLink,
@@ -653,6 +655,9 @@ const CheckoutPage = () => {
     phone: '',
     email: '',
   })
+  // Opt-in de marketing por WhatsApp. Empieza desmarcado: el consentimiento
+  // debe ser una acción explícita del cliente, no un default.
+  const [marketingConsent, setMarketingConsent] = useState(false)
 
   // ======================================================
   // SELECTORES REDUX
@@ -1385,6 +1390,7 @@ const CheckoutPage = () => {
           subtotal: toNumber(subtotal, 0),
           discount: isCouponValid ? toNumber(validDiscount, 0) : 0,
           total: toNumber(total, 0),
+          marketingConsent,
           coupon: isCouponValid ? appliedCoupon?.code : null,
           couponDetails:
             isCouponValid && appliedCoupon
@@ -2598,6 +2604,31 @@ const CheckoutPage = () => {
                       />
                     </Grid>
                   </Grid>
+
+                  <FormControlLabel
+                    sx={{ mt: 2, alignItems: 'flex-start' }}
+                    control={
+                      <Checkbox
+                        checked={marketingConsent}
+                        onChange={event =>
+                          setMarketingConsent(event.target.checked)
+                        }
+                        sx={{
+                          pt: 0,
+                          color: themeColors.actionPrimary,
+                          '&.Mui-checked': {
+                            color: themeColors.actionPrimary,
+                          },
+                        }}
+                      />
+                    }
+                    label={
+                      <Typography variant="body2" color="text.secondary">
+                        Quiero recibir ofertas y novedades por WhatsApp. Podés
+                        darte de baja cuando quieras.
+                      </Typography>
+                    }
+                  />
 
                   <Button
                     fullWidth
