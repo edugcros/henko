@@ -60,6 +60,12 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  {
+    path: '/admin/agente-ia-config',
+    Component: pages.AiAgentConfigPage,
+    allowedRoles: ['admin'],
+  },
+
   // 📦 Catálogo
   {
     path: '/admin/AddProduct',

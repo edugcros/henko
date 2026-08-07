@@ -186,7 +186,7 @@ const buildAgentConfigUpdate = body => {
   if (body.businessContext?.faq !== undefined) {
     update['businessContext.faq'] = cleanFaq(body.businessContext.faq)
   }
-  for (const field of ['shipping', 'returns', 'payments', 'privacy']) {
+  for (const field of ['shipping', 'returns', 'payments', 'warranty', 'privacy']) {
     if (body.businessContext?.policies?.[field] !== undefined) {
       update[`businessContext.policies.${field}`] = clean(
         body.businessContext.policies[field],
