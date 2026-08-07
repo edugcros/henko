@@ -350,6 +350,151 @@ export const approveKnowledgeItem = asyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, data: item })
 })
 
+export const listKnowledge = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const status = clean(req.query.status) || 'approved'
+  const type = clean(req.query.type)
+  const search = clean(req.query.search)
+  const page = Math.max(1, Number(req.query.page) || 1)
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50))
+
+  const filter = { tenantId }
+
+  if (status !== 'all') {
+    const validStatuses = new Set(['draft', 'pending_approval', 'approved', 'rejected', 'archived'])
+    if (validStatuses.has(status)) filter.status = status
+  }
+
+  if (type && allowedKnowledgeTypes.has(type)) filter.type = type
+
+  if (search) {
+    filter.$or = [
+      { title: { $regex: search, $options: 'i' } },
+      { content: { $regex: search, $options: 'i' } },
+      { tags: { $regex: search, $options: 'i' } },
+    ]
+  }
+
+  const [items, total] = await Promise.all([
+    AiKnowledge.find(filter)
+      .setOptions({ tenantId })
+      .sort({ updatedAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    AiKnowledge.countDocuments(filter).setOptions({ tenantId }),
+  ])
+
+  const counters = await AiKnowledge.aggregate([
+    { $match: { tenantId: filter.tenantId } },
+    { $group: { _id: '$status', count: { $sum: 1 } } },
+  ])
+
+  return res.status(200).json({
+    success: true,
+    data: items,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      counters: Object.fromEntries(counters.map(c => [c._id, c.count])),
+    },
+  })
+})
+
+export const updateKnowledgeItem = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'ID inválido' })
+  }
+
+  const update = {}
+  const title = clean(req.body.title)
+  const content = clean(req.body.content)
+  const type = clean(req.body.type)
+
+  if (title) update.title = title.slice(0, 200)
+  if (content) update.content = content.slice(0, 10000)
+  if (type && allowedKnowledgeTypes.has(type)) update.type = type
+  if (req.body.tags !== undefined) update.tags = cleanStringList(req.body.tags)
+  if (req.body.confidence !== undefined) {
+    update.confidence = toBoundedNumber(req.body.confidence, { min: 0, max: 1, fallback: 1 })
+  }
+
+  if (!Object.keys(update).length) {
+    return res.status(400).json({ success: false, message: 'Nada que actualizar' })
+  }
+
+  const item = await AiKnowledge.findOneAndUpdate(
+    { _id: req.params.id, tenantId },
+    { $set: update },
+    { new: true, runValidators: true },
+  ).setOptions({ tenantId })
+
+  if (!item) {
+    return res.status(404).json({ success: false, message: 'Conocimiento no encontrado' })
+  }
+
+  return res.status(200).json({ success: true, data: item })
+})
+
+export const deleteKnowledgeItem = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'ID inválido' })
+  }
+
+  const item = await AiKnowledge.findOneAndUpdate(
+    { _id: req.params.id, tenantId },
+    { $set: { status: 'archived', archivedAt: new Date() } },
+    { new: true },
+  ).setOptions({ tenantId })
+
+  if (!item) {
+    return res.status(404).json({ success: false, message: 'Conocimiento no encontrado' })
+  }
+
+  return res.status(200).json({ success: true, data: item })
+})
+
+export const listCampaignRules = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const type = clean(req.query.type)
+  const channel = clean(req.query.channel)
+
+  const filter = { tenantId }
+  if (type && allowedRuleTypes.has(type)) filter.type = type
+  if (channel && allowedRuleChannels.has(channel)) filter.channel = channel
+
+  const items = await AiCampaignRule.find(filter)
+    .setOptions({ tenantId })
+    .sort({ updatedAt: -1 })
+    .lean()
+
+  return res.status(200).json({ success: true, data: items })
+})
+
+export const deleteCampaignRule = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'ID de regla inválido' })
+  }
+
+  const rule = await AiCampaignRule.findOneAndDelete(
+    { _id: req.params.id, tenantId },
+  ).setOptions({ tenantId })
+
+  if (!rule) {
+    return res.status(404).json({ success: false, message: 'Regla no encontrada' })
+  }
+
+  return res.status(200).json({ success: true, data: { deleted: true } })
+})
+
 export const upsertCampaignRule = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
   const ruleId = clean(req.params.id || req.body._id)

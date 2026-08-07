@@ -3,9 +3,14 @@ import express from 'express'
 import {
   approveKnowledgeItem,
   createKnowledgeItem,
+  deleteCampaignRule,
+  deleteKnowledgeItem,
   getAiAgentConfig,
+  listCampaignRules,
   listCartRecoveries,
+  listKnowledge,
   testAiAgentMessage,
+  updateKnowledgeItem,
   upsertAiAgentConfig,
   upsertCampaignRule,
 } from '../controller/aiAgentCtrl.js'
@@ -44,10 +49,15 @@ router.get('/metrics', getAiAgentMetrics)
 
 router.get('/cart-recoveries', listCartRecoveries)
 
+router.get('/knowledge', listKnowledge)
 router.post('/knowledge', createKnowledgeItem)
+router.put('/knowledge/:id', updateKnowledgeItem)
 router.patch('/knowledge/:id/approve', approveKnowledgeItem)
+router.delete('/knowledge/:id', deleteKnowledgeItem)
 
+router.get('/campaign-rules', listCampaignRules)
 router.put('/campaign-rules/:id?', upsertCampaignRule)
+router.delete('/campaign-rules/:id', deleteCampaignRule)
 
 router.get('/conversations', listAiConversation)
 router.get('/conversations/:id', getAiConversationById)
