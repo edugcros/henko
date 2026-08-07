@@ -163,37 +163,23 @@ export default merge(baseConfig, {
 
       new ImageMinimizerPlugin({
         minimizer: {
-          implementation: ImageMinimizerPlugin.imageminGenerate,
+          implementation: ImageMinimizerPlugin.sharpMinify,
           options: {
-            plugins: [
-              ['mozjpeg', { quality: 80 }],
-              ['pngquant', { quality: [0.7, 0.9] }],
-              ['optipng', { optimizationLevel: 5 }],
-              ['gifsicle', { interlaced: true }],
-              [
-                'svgo',
-                {
-                  plugins: [
-                    {
-                      name: 'preset-default',
-                      params: {
-                        overrides: {
-                          removeViewBox: false,
-                        },
-                      },
-                    },
-                  ],
-                },
-              ],
-            ],
+            encodeOptions: {
+              jpeg: { quality: 80 },
+              png: { quality: 80 },
+              gif: { effort: 7 },
+            },
           },
         },
         generator: [
           {
             type: 'asset',
-            implementation: ImageMinimizerPlugin.imageminGenerate,
+            implementation: ImageMinimizerPlugin.sharpGenerate,
             options: {
-              plugins: [['imagemin-webp', { quality: 75 }]],
+              encodeOptions: {
+                webp: { quality: 75 },
+              },
             },
             filter: (_source, sourcePath) => /\.(jpe?g|png)$/i.test(sourcePath),
           },
