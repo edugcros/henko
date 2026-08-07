@@ -133,6 +133,12 @@ export const registerCustomerInboundMessage = async ({
   ).setOptions({ tenantId })
 }
 
+// Punto de entrada canónico para registrar consentimiento explícito de
+// marketing. HOY no lo invoca ningún flujo (checkout, perfil, captura de
+// lead), así que canContactCustomer solo permite salientes dentro de la
+// ventana de 24h de WhatsApp o vía plantilla. Para habilitar campañas por
+// consentimiento explícito, llamá a esta función desde el punto donde el
+// cliente acepta recibir mensajes (p. ej. un checkbox en el checkout).
 export const registerMarketingConsent = async ({
   tenantId,
   channel,

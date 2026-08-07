@@ -1,6 +1,5 @@
 // 📁 src/services/aiAgent/aiAgentBrainService.js
 import AiConversation from '../../models/aiConversationModel.js'
-import AiContactPreference from '../../models/aiContactPreferenceModel.js'
 import AiAgent from '../../models/aiAgentModel.js'
 import logger from '../../../config/logger.js'
 import { buildAgentSystemPrompt } from './aiAgentPromptService.js'
@@ -9,7 +8,10 @@ import { searchRelevantKnowledgeForAgent } from './aiAgentToolService.js'
 import { runAgentCommerceTools } from './aiAgentToolsV2Service.js'
 import { registerConversationLearningSignal } from './aiAgentLearningService.js'
 import { getOrCreateAiAgentForTenant } from './aiAgentProvisioningService.js'
-import { registerCustomerInboundMessage } from './aiContactPolicyService.js'
+import {
+  registerCustomerInboundMessage,
+  optOutCustomer,
+} from './aiContactPolicyService.js'
 import { validateAgentCommerceResponse } from './aiAgentResponseValidatorService.js'
 import { extractLeadPreferences } from './aiLeadProfileService.js'
 import {
@@ -145,30 +147,6 @@ const buildCustomerSet = ({ customerName, customerPhone, customerEmail }) => {
   }
 
   return set
-}
-
-const registerOptOut = async ({ tenantId, channel, destination }) => {
-  if (!tenantId || !destination) return null
-
-  return AiContactPreference.findOneAndUpdate(
-    {
-      tenantId,
-      channel,
-      destination,
-    },
-    {
-      $set: {
-        optedOut: true,
-        optedOutAt: new Date(),
-        reason: 'customer_requested',
-      },
-    },
-    {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
-    },
-  ).setOptions({ tenantId })
 }
 
 const buildConversationHistory = conversation => {
@@ -678,7 +656,13 @@ export const processAgentMessage = async ({
   })
 
   if (isOptOutMessage(cleanText)) {
-    await registerOptOut({
+    // Fuente única de opt-out: optOutCustomer normaliza el destino igual
+    // que canContactCustomer (para WhatsApp deja solo dígitos/+), así el
+    // opt-out queda bajo la MISMA clave que después consulta el worker de
+    // recuperación de carrito. El registerOptOut inline anterior escribía
+    // el destino sin normalizar y podía guardar la baja bajo una clave
+    // que nunca se volvía a consultar.
+    await optOutCustomer({
       tenantId,
       channel,
       destination: cleanCustomerPhone || externalUserId,
@@ -705,7 +689,7 @@ export const processAgentMessage = async ({
       agent?.guardrails?.optOutKeywords || [],
     )
   ) {
-    await registerOptOut({
+    await optOutCustomer({
       tenantId,
       channel,
       destination: cleanCustomerPhone || externalUserId,
