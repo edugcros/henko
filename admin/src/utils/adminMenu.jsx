@@ -17,6 +17,7 @@ import QuizIcon from '@mui/icons-material/Quiz'
 import PersonIcon from '@mui/icons-material/Person'
 import OutboxIcon from '@mui/icons-material/Outbox'
 import SmartToyIcon from '@mui/icons-material/SmartToy'
+import SchoolIcon from '@mui/icons-material/School'
 import { Badge, ListItemIcon } from '@mui/material'
 
 // 🔹 Traducciones y etiquetas
@@ -35,6 +36,7 @@ const translations = {
   couponlist: 'Lista de Cupones',
   'bandeja-entrada-ia-comercial': 'Bandeja Entrada Comercial',
   'agente-ia-config': 'Agente IA · Config',
+  'agente-ia-aprendizaje': 'Agente IA · Aprendizaje',
 }
 
 // 🔹 Colores por grupo
@@ -67,6 +69,10 @@ const groups = {
   'agente-ia-config': {
     label: 'Agente IA · Config',
     icon: SmartToyIcon,
+  },
+  'agente-ia-aprendizaje': {
+    label: 'Agente IA · Aprendizaje',
+    icon: SchoolIcon,
   },
   EditProduct: { label: 'Editar Producto', icon: AddShoppingCart },
   promociones: { label: 'Promociones', icon: LocalOfferIcon },

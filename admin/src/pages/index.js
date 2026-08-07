@@ -17,6 +17,7 @@ import PromotionalBlocksPage from './PromotionalBlocksPage'
 import ProductAnalysisPage from './ProductAnalysisPage'
 import AiCommercialInboxPage from './AiCommercialInboxPage'
 import AiAgentConfigPage from './AiAgentConfigPage'
+import AiLearningReviewPage from './AiLearningReviewPage'
 
 const pages = {
   Dashboard,
@@ -27,6 +28,7 @@ const pages = {
   Resetpassword,
   AiCommercialInboxPage,
   AiAgentConfigPage,
+  AiLearningReviewPage,
   AdminOrdersPage,
   AdminRegister,
   AddProduct,

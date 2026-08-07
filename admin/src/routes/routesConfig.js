@@ -66,6 +66,12 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  {
+    path: '/admin/agente-ia-aprendizaje',
+    Component: pages.AiLearningReviewPage,
+    allowedRoles: ['admin'],
+  },
+
   // 📦 Catálogo
   {
     path: '/admin/AddProduct',
