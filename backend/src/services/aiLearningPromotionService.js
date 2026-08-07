@@ -156,7 +156,11 @@ export async function promoteLearnedRulesForTenant(tenantId) {
         lower: true,
         maxLength: 120,
       }) || 'general'
-      const type = normalizeType(learned?.type || field)
+      // Siempre se recalcula desde field, nunca desde learned.type: el
+      // enum de CorrectionLog puede haber degradado el type original a
+      // 'general' al guardarse (bug ya corregido, pero logs viejos
+      // siguen así) — field es la fuente de verdad confiable.
+      const type = normalizeType(field)
       const extracted = extractFromLearnedRule(learned)
 
       if (!extracted?.rawInput || !extracted?.correctedValue) continue

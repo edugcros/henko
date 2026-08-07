@@ -43,14 +43,17 @@ export const receiveWhatsappWebhook = async (req, res) => {
 
       if (!agent) continue
 
-      if (process.env.NODE_ENV === 'production') {
-        const isValidSignature = verifyWhatsappSignature({
-          rawBody: req.rawBody,
-          signatureHeader: req.headers['x-hub-signature-256'],
-          appSecret: agent.channels.whatsapp.appSecret,
-        })
-        if (!isValidSignature) continue
-      }
+      // Siempre se valida la firma — verifyWhatsappSignature ya resuelve
+      // el caso dev/test (sin appSecret configurado) por su cuenta. Antes
+      // esta verificación estaba condicionada a NODE_ENV==='production',
+      // así que cualquier entorno mal configurado (staging, typo en el
+      // deploy) aceptaba webhooks sin comprobar que vinieran de Meta.
+      const isValidSignature = verifyWhatsappSignature({
+        rawBody: req.rawBody,
+        signatureHeader: req.headers['x-hub-signature-256'],
+        appSecret: agent.channels.whatsapp.appSecret,
+      })
+      if (!isValidSignature) continue
 
       const tenant = await Tenant.findById(agent.tenantId).lean()
       if (!tenant) continue

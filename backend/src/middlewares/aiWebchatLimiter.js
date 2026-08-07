@@ -3,22 +3,22 @@ import rateLimit from 'express-rate-limit'
 
 const clean = value => String(value || '').trim()
 
-const getClientIp = req => {
-  const forwardedFor = clean(req.headers['x-forwarded-for'])
-  if (forwardedFor) return forwardedFor.split(',')[0].trim()
-  return clean(req.ip || req.socket?.remoteAddress || 'unknown')
-}
+// req.ip ya resuelve la IP real del cliente respetando la config de
+// "trust proxy" de Express (app.js). Leer x-forwarded-for a mano acá
+// (como se hacía antes) confía en un header que cualquier cliente puede
+// falsificar si el proxy de confianza no lo está sobrescribiendo.
+const getClientIp = req => clean(req.ip || req.socket?.remoteAddress || 'unknown')
 
 export const aiWebchatLimiter = rateLimit({
   windowMs: Number(process.env.AI_WEBCHAT_RATE_LIMIT_WINDOW_MS || 60 * 1000),
   max: Number(process.env.AI_WEBCHAT_RATE_LIMIT_MAX || 20),
+  // La clave se ancla SOLO en tenant+IP. visitorId/sessionId los define
+  // el cliente sin ninguna firma que los respalde — usarlos como parte
+  // (u override) de la clave permitía evadir el límite por completo
+  // mandando un valor distinto en cada request.
   keyGenerator: req => {
     const tenantId = String(req.tenantId || req.tenant?._id || 'unknown')
-    const visitorId = clean(req.body?.visitorId || req.headers['x-ai-visitor-id']).slice(0, 160)
-    const sessionId = clean(req.body?.sessionId || req.headers['x-ai-session-id']).slice(0, 160)
-    const ip = getClientIp(req)
-
-    return `${tenantId}:${visitorId || sessionId || ip}`
+    return `${tenantId}:${getClientIp(req)}`
   },
   standardHeaders: true,
   legacyHeaders: false,

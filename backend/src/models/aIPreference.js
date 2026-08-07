@@ -2,11 +2,18 @@
 import mongoose from 'mongoose'
 import { tenantPlugin } from './tenantPlugin.js'
 
+// Debe mantenerse alineado con AI_LEARNING_RULE_TYPES (correctionLog.js) —
+// una preferencia promovida con un type que no está acá también se
+// degrada en silencio a 'general' al guardarse.
 export const AI_PREFERENCE_TYPES = Object.freeze([
   'category',
   'subcategory',
   'brand',
+  'title',
+  'description',
+  'price',
   'material',
+  'color',
   'attribute',
   'tag',
   'general',

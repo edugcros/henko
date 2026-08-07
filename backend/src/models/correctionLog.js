@@ -2,11 +2,18 @@
 import mongoose from 'mongoose'
 import { tenantPlugin } from './tenantPlugin.js'
 
+// Debe cubrir todo lo que aiLearningService.mapFieldToPreferenceType puede
+// producir — si falta un valor acá, el setter de abajo lo degrada a
+// 'general' en silencio y esa corrección deja de poder distinguirse.
 export const AI_LEARNING_RULE_TYPES = Object.freeze([
   'category',
   'subcategory',
   'brand',
+  'title',
+  'description',
+  'price',
   'material',
+  'color',
   'attribute',
   'tag',
   'general',
