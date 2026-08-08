@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit'
 
 import {
   dispatchOrderCreationEmails,
+  dispatchOrderStatusEmail,
   resendOrderConfirmationEmail,
 } from '../services/orderEmailService.js'
 import {
@@ -970,6 +971,10 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
     order.syncDerivedState()
     await order.save({ tenantId })
 
+    if (nextStatus === ORDER_STATUS.SHIPPED || nextStatus === ORDER_STATUS.DELIVERED) {
+      dispatchOrderStatusEmail({ order, status: nextStatus }).catch(() => {})
+    }
+
     return res.status(200).json({
       success: true,
       data: enrichOrderForResponse(order),
@@ -1106,6 +1111,14 @@ export const updateOrderFulfillmentStatus = expressAsyncHandler(async (req, res)
         'Actualización manual de logística',
       ),
     })
+
+    if (nextFulfillmentStatus === FULFILLMENT_STATUS.SHIPPED) {
+      dispatchOrderStatusEmail({ order, status: 'shipped' }).catch(() => {})
+    }
+
+    if (nextFulfillmentStatus === FULFILLMENT_STATUS.DELIVERED) {
+      dispatchOrderStatusEmail({ order, status: 'delivered' }).catch(() => {})
+    }
 
     return res.status(200).json({
       success: true,
@@ -1267,6 +1280,8 @@ export const cancelOrder = expressAsyncHandler(async (req, res) => {
       })
     })
 
+    dispatchOrderStatusEmail({ order, status: 'cancelled', reason }).catch(() => {})
+
     return res.status(200).json({
       success: true,
       data: enrichOrderForResponse(order),
@@ -1289,6 +1304,8 @@ export const refundOrder = expressAsyncHandler(async (req, res) => {
     const { tenantId, tenantObjectId } = resolveTenantContext(req)
     const performedBy = normalizeObjectId(getUserIdFromRequest(req))
 
+    const reason = sanitizeString(req.body?.reason, 'Reembolso manual')
+
     const order = await runOrderTransaction(async session => {
       return refundOrderWithInventoryRestore({
         orderModel: Order,
@@ -1297,12 +1314,14 @@ export const refundOrder = expressAsyncHandler(async (req, res) => {
         tenantId,
         session,
         performedBy,
-        reason: sanitizeString(req.body?.reason, 'Reembolso manual'),
+        reason,
         req,
         normalizeObjectId,
         isValidId,
       })
     })
+
+    dispatchOrderStatusEmail({ order, status: 'refunded', reason }).catch(() => {})
 
     return res.status(200).json({
       success: true,

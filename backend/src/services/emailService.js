@@ -413,6 +413,7 @@ const normalizeShippingAddress = order => {
     address: sanitizeString(shipping.address),
     city: sanitizeString(shipping.city),
     zipCode: sanitizeString(shipping.zipCode),
+    province: sanitizeString(shipping.province),
     country: sanitizeString(shipping.country, 'AR'),
   }
 }
@@ -449,6 +450,7 @@ const buildPlainTextSummary = ({
     shippingAddress.phone ? `Teléfono: ${shippingAddress.phone}` : null,
     shippingAddress.address ? `Dirección: ${shippingAddress.address}` : null,
     shippingAddress.city ? `Ciudad: ${shippingAddress.city}` : null,
+    shippingAddress.province ? `Provincia: ${shippingAddress.province}` : null,
     shippingAddress.zipCode ? `CP: ${shippingAddress.zipCode}` : null,
   ]
     .filter(Boolean)
@@ -854,6 +856,12 @@ const buildShippingHtml = shippingAddress => {
 }
 
       ${
+  shippingAddress.province
+    ? `<p style="margin: 4px 0; color: #555;"><strong>Provincia:</strong> ${escapeHtml(shippingAddress.province)}</p>`
+    : ''
+}
+
+      ${
   shippingAddress.country
     ? `<p style="margin: 4px 0; color: #555;"><strong>País:</strong> ${escapeHtml(shippingAddress.country)}</p>`
     : ''
@@ -1197,6 +1205,412 @@ export const sendAdminNotificationEmail = async (
 }
 
 // =====================================================
+// EMAILS DE CICLO DE VIDA DE ORDEN
+// =====================================================
+
+const buildOrderStatusEmailHtml = ({
+  storeName,
+  logoUrl,
+  primaryColor,
+  storeUrl,
+  supportEmail,
+  orderNumber,
+  firstName,
+  headline,
+  bodyHtml,
+}) => {
+  const footerHtml = buildFooterHtml({ storeName, supportEmail, storeUrl })
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>${escapeHtml(headline)} - ${escapeHtml(storeName)}</title>
+      </head>
+
+      <body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, Helvetica, sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px 0;">
+          <tr>
+            <td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                ${buildHeaderHtml({
+    storeName,
+    logoUrl,
+    primaryColor,
+    subtitle: `Orden #${orderNumber}`,
+  })}
+
+                <tr>
+                  <td style="padding: 40px 30px;">
+                    <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
+                      Hola <strong>${escapeHtml(firstName)}</strong>,
+                    </p>
+
+                    ${bodyHtml}
+
+                    ${footerHtml}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `
+}
+
+const resolveOrderStatusEmailRecipient = ({
+  order,
+  recipientEmail,
+  context,
+}) => {
+  return getBuyerEmail({
+    recipientEmail,
+    order: normalizeObject(order),
+    payer: context?.payer,
+    user: context?.user,
+  })
+}
+
+export const sendOrderShippedEmail = async (
+  order,
+  recipientEmail = null,
+  tenantConfig = {},
+  context = {},
+) => {
+  const safeOrder = normalizeObject(order)
+
+  const to = resolveOrderStatusEmailRecipient({
+    order: safeOrder,
+    recipientEmail,
+    context,
+  })
+
+  if (!to) {
+    return { success: false, error: 'INVALID_CLIENT_EMAIL' }
+  }
+
+  const storeName = getStoreName(tenantConfig)
+  const primaryColor = getPrimaryColor(tenantConfig)
+  const logoUrl = getLogoUrl(tenantConfig)
+  const storeUrl = getStoreUrl(tenantConfig)
+  const supportEmail = getSupportEmail(tenantConfig)
+  const orderNumber = normalizeOrderId(safeOrder)
+  const shippingAddress = normalizeShippingAddress(safeOrder)
+
+  const trackingNumber = sanitizeString(
+    safeOrder?.shipment?.trackingNumber ||
+    safeOrder?.trackingNumber,
+  )
+  const carrier = sanitizeString(
+    safeOrder?.shipment?.carrier ||
+    safeOrder?.carrier,
+  )
+
+  const trackingHtml = trackingNumber
+    ? `
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <h3 style="margin: 0 0 12px 0; color: #166534; font-size: 16px;">
+          Datos de envío
+        </h3>
+        ${carrier ? `<p style="margin: 4px 0; color: #555;"><strong>Transporte:</strong> ${escapeHtml(carrier)}</p>` : ''}
+        <p style="margin: 4px 0; color: #555;"><strong>Código de seguimiento:</strong> ${escapeHtml(trackingNumber)}</p>
+      </div>
+    `
+    : ''
+
+  const bodyHtml = `
+    <p style="color: #333; font-size: 16px; line-height: 1.6;">
+      Tu orden <strong>#${escapeHtml(orderNumber)}</strong> fue despachada y está en camino.
+    </p>
+    ${trackingHtml}
+    <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px;">
+      Te avisaremos cuando tu pedido haya sido entregado.
+    </p>
+  `
+
+  const html = buildOrderStatusEmailHtml({
+    storeName,
+    logoUrl,
+    primaryColor,
+    storeUrl,
+    supportEmail,
+    orderNumber,
+    firstName: shippingAddress.firstName,
+    headline: 'Tu pedido está en camino',
+    bodyHtml,
+  })
+
+  const textLines = [
+    storeName,
+    `Orden #${orderNumber}`,
+    '',
+    `Hola ${shippingAddress.firstName},`,
+    'Tu orden fue despachada y está en camino.',
+  ]
+
+  if (carrier) textLines.push(`Transporte: ${carrier}`)
+  if (trackingNumber) textLines.push(`Código de seguimiento: ${trackingNumber}`)
+
+  return sendEmail({
+    to,
+    subject: `Tu pedido #${orderNumber} está en camino | ${storeName}`,
+    html,
+    text: textLines.join('\n'),
+    tenantConfig,
+    maxRetries: 2,
+  })
+}
+
+export const sendOrderDeliveredEmail = async (
+  order,
+  recipientEmail = null,
+  tenantConfig = {},
+  context = {},
+) => {
+  const safeOrder = normalizeObject(order)
+
+  const to = resolveOrderStatusEmailRecipient({
+    order: safeOrder,
+    recipientEmail,
+    context,
+  })
+
+  if (!to) {
+    return { success: false, error: 'INVALID_CLIENT_EMAIL' }
+  }
+
+  const storeName = getStoreName(tenantConfig)
+  const primaryColor = getPrimaryColor(tenantConfig)
+  const logoUrl = getLogoUrl(tenantConfig)
+  const storeUrl = getStoreUrl(tenantConfig)
+  const supportEmail = getSupportEmail(tenantConfig)
+  const orderNumber = normalizeOrderId(safeOrder)
+  const shippingAddress = normalizeShippingAddress(safeOrder)
+
+  const bodyHtml = `
+    <p style="color: #333; font-size: 16px; line-height: 1.6;">
+      Tu orden <strong>#${escapeHtml(orderNumber)}</strong> fue entregada exitosamente.
+    </p>
+    <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px;">
+      Esperamos que disfrutes tu compra. Si tenés algún inconveniente, no dudes en contactarnos.
+    </p>
+    ${
+  storeUrl
+    ? `
+        <div style="text-align: center; margin-top: 30px;">
+          <a href="${escapeHtml(storeUrl)}"
+             style="display: inline-block; background: ${primaryColor}; color: #ffffff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">
+            Volver a la tienda
+          </a>
+        </div>
+      `
+    : ''
+}
+  `
+
+  const html = buildOrderStatusEmailHtml({
+    storeName,
+    logoUrl,
+    primaryColor,
+    storeUrl,
+    supportEmail,
+    orderNumber,
+    firstName: shippingAddress.firstName,
+    headline: 'Tu pedido fue entregado',
+    bodyHtml,
+  })
+
+  const text = [
+    storeName,
+    `Orden #${orderNumber}`,
+    '',
+    `Hola ${shippingAddress.firstName},`,
+    'Tu orden fue entregada exitosamente.',
+    'Esperamos que disfrutes tu compra.',
+  ].join('\n')
+
+  return sendEmail({
+    to,
+    subject: `Tu pedido #${orderNumber} fue entregado | ${storeName}`,
+    html,
+    text,
+    tenantConfig,
+    maxRetries: 2,
+  })
+}
+
+export const sendOrderCancelledEmail = async (
+  order,
+  recipientEmail = null,
+  tenantConfig = {},
+  context = {},
+) => {
+  const safeOrder = normalizeObject(order)
+
+  const to = resolveOrderStatusEmailRecipient({
+    order: safeOrder,
+    recipientEmail,
+    context,
+  })
+
+  if (!to) {
+    return { success: false, error: 'INVALID_CLIENT_EMAIL' }
+  }
+
+  const storeName = getStoreName(tenantConfig)
+  const primaryColor = getPrimaryColor(tenantConfig)
+  const logoUrl = getLogoUrl(tenantConfig)
+  const storeUrl = getStoreUrl(tenantConfig)
+  const supportEmail = getSupportEmail(tenantConfig)
+  const orderNumber = normalizeOrderId(safeOrder)
+  const shippingAddress = normalizeShippingAddress(safeOrder)
+  const totals = normalizeOrderTotals(safeOrder)
+
+  const reason = sanitizeString(context?.reason)
+
+  const bodyHtml = `
+    <p style="color: #333; font-size: 16px; line-height: 1.6;">
+      Tu orden <strong>#${escapeHtml(orderNumber)}</strong> por un total de
+      <strong>${formatMoney(totals.total, totals.currency)}</strong> fue cancelada.
+    </p>
+    ${
+  reason
+    ? `
+        <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <p style="margin: 0; color: #991b1b; font-size: 14px;">
+            <strong>Motivo:</strong> ${escapeHtml(reason)}
+          </p>
+        </div>
+      `
+    : ''
+}
+    <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px;">
+      Si tenés preguntas sobre esta cancelación, no dudes en contactarnos.
+    </p>
+  `
+
+  const html = buildOrderStatusEmailHtml({
+    storeName,
+    logoUrl,
+    primaryColor,
+    storeUrl,
+    supportEmail,
+    orderNumber,
+    firstName: shippingAddress.firstName,
+    headline: 'Tu orden fue cancelada',
+    bodyHtml,
+  })
+
+  const textLines = [
+    storeName,
+    `Orden #${orderNumber}`,
+    '',
+    `Hola ${shippingAddress.firstName},`,
+    `Tu orden #${orderNumber} por ${formatMoney(totals.total, totals.currency)} fue cancelada.`,
+  ]
+
+  if (reason) textLines.push(`Motivo: ${reason}`)
+
+  return sendEmail({
+    to,
+    subject: `Tu orden #${orderNumber} fue cancelada | ${storeName}`,
+    html,
+    text: textLines.join('\n'),
+    tenantConfig,
+    maxRetries: 2,
+  })
+}
+
+export const sendOrderRefundedEmail = async (
+  order,
+  recipientEmail = null,
+  tenantConfig = {},
+  context = {},
+) => {
+  const safeOrder = normalizeObject(order)
+
+  const to = resolveOrderStatusEmailRecipient({
+    order: safeOrder,
+    recipientEmail,
+    context,
+  })
+
+  if (!to) {
+    return { success: false, error: 'INVALID_CLIENT_EMAIL' }
+  }
+
+  const storeName = getStoreName(tenantConfig)
+  const primaryColor = getPrimaryColor(tenantConfig)
+  const logoUrl = getLogoUrl(tenantConfig)
+  const storeUrl = getStoreUrl(tenantConfig)
+  const supportEmail = getSupportEmail(tenantConfig)
+  const orderNumber = normalizeOrderId(safeOrder)
+  const shippingAddress = normalizeShippingAddress(safeOrder)
+  const totals = normalizeOrderTotals(safeOrder)
+
+  const reason = sanitizeString(context?.reason)
+
+  const bodyHtml = `
+    <p style="color: #333; font-size: 16px; line-height: 1.6;">
+      Tu orden <strong>#${escapeHtml(orderNumber)}</strong> fue reembolsada.
+      El monto de <strong>${formatMoney(totals.total, totals.currency)}</strong> será acreditado
+      a tu medio de pago original.
+    </p>
+    ${
+  reason
+    ? `
+        <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <p style="margin: 0; color: #1e40af; font-size: 14px;">
+            <strong>Motivo:</strong> ${escapeHtml(reason)}
+          </p>
+        </div>
+      `
+    : ''
+}
+    <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px;">
+      El plazo de acreditación depende de tu medio de pago y puede demorar algunos días hábiles.
+      Si tenés preguntas, no dudes en contactarnos.
+    </p>
+  `
+
+  const html = buildOrderStatusEmailHtml({
+    storeName,
+    logoUrl,
+    primaryColor,
+    storeUrl,
+    supportEmail,
+    orderNumber,
+    firstName: shippingAddress.firstName,
+    headline: 'Tu orden fue reembolsada',
+    bodyHtml,
+  })
+
+  const textLines = [
+    storeName,
+    `Orden #${orderNumber}`,
+    '',
+    `Hola ${shippingAddress.firstName},`,
+    `Tu orden #${orderNumber} fue reembolsada.`,
+    `El monto de ${formatMoney(totals.total, totals.currency)} será acreditado a tu medio de pago original.`,
+  ]
+
+  if (reason) textLines.push(`Motivo: ${reason}`)
+
+  return sendEmail({
+    to,
+    subject: `Tu orden #${orderNumber} fue reembolsada | ${storeName}`,
+    html,
+    text: textLines.join('\n'),
+    tenantConfig,
+    maxRetries: 2,
+  })
+}
+
+// =====================================================
 // APP URS SMTP
 // =====================================================
 
@@ -1235,6 +1649,10 @@ export default {
   sendEmail,
   sendOrderConfirmationEmail,
   sendAdminNotificationEmail,
+  sendOrderShippedEmail,
+  sendOrderDeliveredEmail,
+  sendOrderCancelledEmail,
+  sendOrderRefundedEmail,
   testEmailConnection,
   resetEmailTransporter,
 }

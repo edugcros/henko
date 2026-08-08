@@ -3,6 +3,10 @@ import { Money } from '../utils/money.js'
 import {
   sendAdminNotificationEmail,
   sendOrderConfirmationEmail,
+  sendOrderShippedEmail,
+  sendOrderDeliveredEmail,
+  sendOrderCancelledEmail,
+  sendOrderRefundedEmail,
 } from './emailService.js'
 import { getTenantConfig } from './paymentTenantConfigService.js'
 import logger from '../../config/logger.js'
@@ -274,4 +278,62 @@ export const resendOrderConfirmationEmail = async ({
   }
 
   return result
+}
+
+const STATUS_EMAIL_SENDERS = {
+  shipped: sendOrderShippedEmail,
+  delivered: sendOrderDeliveredEmail,
+  cancelled: sendOrderCancelledEmail,
+  refunded: sendOrderRefundedEmail,
+}
+
+export const dispatchOrderStatusEmail = async ({
+  order,
+  status,
+  reason = null,
+  tenantConfig = null,
+}) => {
+  const sender = STATUS_EMAIL_SENDERS[status]
+
+  if (!sender) return null
+
+  if (isTestEnv) {
+    logger.info('Email de estado de orden omitido en test', {
+      orderId: order?._id?.toString?.(),
+      status,
+    })
+
+    return { success: false, skipped: true, reason: 'TEST_ENV' }
+  }
+
+  try {
+    const resolvedTenantConfig =
+      tenantConfig || await getTenantConfig(order.tenantId)
+    const orderForEmail = buildOrderForEmail(order)
+    const buyerEmail = getBuyerEmail({ order, context: {} })
+
+    const result = await sender(
+      orderForEmail,
+      buyerEmail,
+      resolvedTenantConfig,
+      { reason },
+    )
+
+    logger.info('📧 Email de estado de orden procesado', {
+      orderId: order._id.toString(),
+      status,
+      success: result?.success,
+      messageId: result?.messageId || null,
+    })
+
+    return result
+  } catch (error) {
+    logger.error('❌ Error enviando email de estado de orden', {
+      orderId: order?._id?.toString?.(),
+      status,
+      message: error.message,
+    })
+
+    return { success: false, error: error.message }
+  }
 }
