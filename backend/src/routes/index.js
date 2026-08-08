@@ -19,6 +19,7 @@ import aiAgentRoutes from './aiAgentRoutes.js'
 import whatsappRoutes from './whatsappRoutes.js'
 import aiWebchatRoutes from './aiWebchatRoutes.js'
 import aiLeadAdminRoutes from './aiLeadAdminRoutes.js'
+import paymentConfigRoutes from './paymentConfigRoutes.js'
 
 
 const router = express.Router()
@@ -60,6 +61,7 @@ router.use('/tenants', tenantRoutes)
 // 💳 PAGOS Y TRANSACCIONES
 // =======================================================
 router.use('/payments', paymentRoutes)
+router.use('/payment-config', paymentConfigRoutes)
 
 
 router.use('/promotional-blocks', promotionalBlockRoute) 

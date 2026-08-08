@@ -90,6 +90,13 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // 💳 Pagos
+  {
+    path: '/admin/configuracion-pagos',
+    Component: pages.PaymentConfigPage,
+    allowedRoles: ['admin'],
+  },
+
   // 📦 Catálogo
   {
     path: '/admin/AddProduct',

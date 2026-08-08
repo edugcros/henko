@@ -21,6 +21,7 @@ import SchoolIcon from '@mui/icons-material/School'
 import InsightsIcon from '@mui/icons-material/Insights'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import CampaignIcon from '@mui/icons-material/Campaign'
+import PaymentIcon from '@mui/icons-material/Payment'
 import { Badge, ListItemIcon } from '@mui/material'
 
 // 🔹 Traducciones y etiquetas
@@ -43,6 +44,7 @@ const translations = {
   'agente-ia-panel': 'Agente IA · Panel',
   'agente-ia-conocimiento': 'Agente IA · Conocimiento',
   'agente-ia-campanas': 'Agente IA · Campañas',
+  'configuracion-pagos': 'Configuración de Pagos',
 }
 
 // 🔹 Colores por grupo
@@ -91,6 +93,10 @@ const groups = {
   'agente-ia-campanas': {
     label: 'Agente IA · Campañas',
     icon: CampaignIcon,
+  },
+  'configuracion-pagos': {
+    label: 'Configuración de Pagos',
+    icon: PaymentIcon,
   },
   EditProduct: { label: 'Editar Producto', icon: AddShoppingCart },
   promociones: { label: 'Promociones', icon: LocalOfferIcon },
