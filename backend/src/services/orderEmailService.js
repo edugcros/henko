@@ -81,6 +81,7 @@ export const buildOrderForEmail = order => {
     customerSnapshot: enriched?.customerSnapshot || {},
     paymentStatus: enriched?.paymentStatus,
     paymentIntent: enriched?.paymentIntent,
+    shipment: enriched?.shipment || {},
     createdAt: enriched?.createdAt,
   }
 }

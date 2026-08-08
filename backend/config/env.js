@@ -564,6 +564,18 @@ if (env.isProduction) {
     throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
   }
 
+  if (!process.env.RESEND_API_KEY?.trim()) {
+    throw new Error(
+      'RESEND_API_KEY es obligatoria en producción para enviar emails transaccionales',
+    )
+  }
+
+  if (!process.env.RESEND_FROM_EMAIL?.trim()) {
+    throw new Error(
+      'RESEND_FROM_EMAIL es obligatoria en producción (requiere dominio verificado en Resend, ej: no-reply@tudominio.com)',
+    )
+  }
+
   if (process.env.PRODUCT_ANALYSIS_AGENT_KEY) {
     throw new Error(
       'PRODUCT_ANALYSIS_AGENT_KEY global no está permitido en producción; use PRODUCT_ANALYSIS_AGENT_KEYS_JSON',
