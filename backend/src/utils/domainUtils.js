@@ -79,15 +79,19 @@ export const buildPlatformTenantDomains = ({
     }
   }
 
-  const adminPrefix = adminBase.endsWith(`.${publicBase}`)
-    ? adminBase.slice(0, -(publicBase.length + 1))
-    : ''
+  const isAdminSubdomainOfPublic = adminBase.endsWith(`.${publicBase}`)
+
+  if (isAdminSubdomainOfPublic) {
+    const adminPrefix = adminBase.slice(0, -(publicBase.length + 1))
+    return {
+      shopDomain,
+      adminDomain: `${adminPrefix}.${shopDomain}`,
+    }
+  }
 
   return {
     shopDomain,
-    adminDomain: adminPrefix
-      ? `${adminPrefix}.${shopDomain}`
-      : `admin.${shopDomain}`,
+    adminDomain: `${normalizedSlug}.${adminBase}`,
   }
 }
 

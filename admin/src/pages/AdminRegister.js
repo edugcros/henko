@@ -137,13 +137,16 @@ const buildTenantDomainPreview = ({
     return { storefront, admin: adminBase }
   }
 
-  const adminPrefix = adminBase.endsWith(`.${publicBase}`)
-    ? adminBase.slice(0, -(publicBase.length + 1))
-    : ''
+  const isAdminSubdomainOfPublic = adminBase.endsWith(`.${publicBase}`)
+
+  if (isAdminSubdomainOfPublic) {
+    const adminPrefix = adminBase.slice(0, -(publicBase.length + 1))
+    return { storefront, admin: `${adminPrefix}.${storefront}` }
+  }
 
   return {
     storefront,
-    admin: adminPrefix ? `${adminPrefix}.${storefront}` : `admin.${storefront}`,
+    admin: `${normalizedSlug}.${adminBase}`,
   }
 }
 
