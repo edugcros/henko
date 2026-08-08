@@ -22,6 +22,7 @@ import AiAgentDashboardPage from './AiAgentDashboardPage'
 import AiKnowledgeBasePage from './AiKnowledgeBasePage'
 import AiCampaignRulesPage from './AiCampaignRulesPage'
 import PaymentConfigPage from './PaymentConfigPage'
+import OnboardingWizard from './OnboardingWizard'
 
 const pages = {
   Dashboard,
@@ -37,6 +38,7 @@ const pages = {
   AiKnowledgeBasePage,
   AiCampaignRulesPage,
   PaymentConfigPage,
+  OnboardingWizard,
   AdminOrdersPage,
   AdminRegister,
   AddProduct,

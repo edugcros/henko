@@ -12,6 +12,7 @@ import uploadReducer from '@features/upload/uploadSlice'
 import themeReducer from '@features/theme/themeSlice.js'
 import orderReducer from '@features/order/orderSlice.js'
 import promotionalBlocksReducer from '@features/promotionalBlocks/promotionalBlocksSlice'
+import tenantReducer from '@features/tenant/tenantSlice'
 
 const authPersistConfig = {
   key: 'user',
@@ -30,6 +31,7 @@ const rootReducer = combineReducers({
   theme: themeReducer,
   order: orderReducer,
   promotionalBlocks: promotionalBlocksReducer,
+  tenant: tenantReducer,
 })
 
 // El rootReducer **NO** se persiste entero, solo el slice user

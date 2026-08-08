@@ -573,6 +573,7 @@ export const createUserAdmin = [
               plan,
               status: 'active',
               subscriptionStatus: 'trialing',
+              trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
               domains: [
                 {
                   hostname: shopDomain,

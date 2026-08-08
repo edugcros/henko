@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
+import { fetchTenantSettings } from '../features/tenant/tenantSlice'
 import {
   Alert,
   Box,
@@ -2088,6 +2091,20 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
 
 const Dashboard = () => {
   const [tab, setTab] = useState(0)
+  const dispatch = useDispatch()
+  const navigate = useNavigate()
+  const tenantData = useSelector(s => s.tenant?.data)
+  const tenantLoaded = useSelector(s => s.tenant?.data !== null && !s.tenant?.isLoading)
+
+  useEffect(() => {
+    dispatch(fetchTenantSettings())
+  }, [dispatch])
+
+  useEffect(() => {
+    if (tenantLoaded && tenantData?.onboarding && !tenantData.onboarding.completed) {
+      navigate('/admin/onboarding', { replace: true })
+    }
+  }, [tenantLoaded, tenantData, navigate])
 
   return (
     <Box>

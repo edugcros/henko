@@ -90,6 +90,13 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // 🚀 Onboarding
+  {
+    path: '/admin/onboarding',
+    Component: pages.OnboardingWizard,
+    allowedRoles: ['admin'],
+  },
+
   // 💳 Pagos
   {
     path: '/admin/configuracion-pagos',
