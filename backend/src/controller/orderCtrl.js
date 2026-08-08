@@ -303,6 +303,7 @@ const buildShippingAddress = ({ req, body }) => {
     address: sanitizeString(shippingAddress.address).slice(0, 255),
     city: sanitizeString(shippingAddress.city).slice(0, 100),
     zipCode: sanitizeString(shippingAddress.zipCode).slice(0, 20),
+    province: sanitizeString(shippingAddress.province).slice(0, 100),
     country: sanitizeCountryCode(shippingAddress.country),
   }
 

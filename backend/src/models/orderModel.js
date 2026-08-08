@@ -767,9 +767,15 @@ const orderSchema = new Schema(
         trim: true,
       },
 
+      province: {
+        type: String,
+        maxlength: 100,
+        trim: true,
+      },
+
       country: {
         type: String,
-    
+
         maxlength: 2,
         default: 'AR',
         uppercase: true,

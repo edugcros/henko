@@ -187,6 +187,33 @@ const buildShippingDataFromUser = user => {
       user.profile?.mobile,
       user.profile?.telefono,
     ),
+
+    address: pickFirst(
+      user.address,
+      user.profile?.address,
+      user.shippingAddress?.address,
+    ),
+
+    city: pickFirst(
+      user.city,
+      user.profile?.city,
+      user.shippingAddress?.city,
+    ),
+
+    zipCode: pickFirst(
+      user.zipCode,
+      user.postalCode,
+      user.profile?.zipCode,
+      user.shippingAddress?.zipCode,
+    ),
+
+    province: pickFirst(
+      user.province,
+      user.state,
+      user.provincia,
+      user.profile?.province,
+      user.shippingAddress?.province,
+    ),
   }
 }
 
@@ -571,6 +598,10 @@ const buildConfirmationSnapshot = ({
     lastName: pickFirst(shippingData?.lastName, user?.lastName, user?.apellido),
     email: pickFirst(shippingData?.email, user?.email),
     phone: pickFirst(shippingData?.phone, user?.phone, user?.telefono),
+    address: pickFirst(shippingData?.address),
+    city: pickFirst(shippingData?.city),
+    zipCode: pickFirst(shippingData?.zipCode),
+    province: pickFirst(shippingData?.province),
   }
 
   return {
@@ -654,6 +685,10 @@ const CheckoutPage = () => {
     lastName: '',
     phone: '',
     email: '',
+    address: '',
+    city: '',
+    zipCode: '',
+    province: '',
   })
   // Opt-in de marketing por WhatsApp. Empieza desmarcado: el consentimiento
   // debe ser una acción explícita del cliente, no un default.
@@ -1304,7 +1339,15 @@ const CheckoutPage = () => {
   const validateShippingForm = useCallback(() => {
     const errors = {}
 
-    const required = ['firstName', 'lastName', 'phone', 'email']
+    const required = [
+      'firstName',
+      'lastName',
+      'phone',
+      'email',
+      'address',
+      'city',
+      'zipCode',
+    ]
 
     required.forEach(field => {
       if (!sanitizeText(shippingData[field])) {
@@ -1935,6 +1978,25 @@ const CheckoutPage = () => {
                       {confirmation.customer.phone}
                     </Typography>
                   )}
+
+                  {confirmation.customer.address && (
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ mt: 1 }}
+                    >
+                      {confirmation.customer.address}
+                      {confirmation.customer.city
+                        ? `, ${confirmation.customer.city}`
+                        : ''}
+                      {confirmation.customer.province
+                        ? ` (${confirmation.customer.province})`
+                        : ''}
+                      {confirmation.customer.zipCode
+                        ? ` - CP ${confirmation.customer.zipCode}`
+                        : ''}
+                    </Typography>
+                  )}
                 </Paper>
               </Grid>
 
@@ -2013,8 +2075,8 @@ const CheckoutPage = () => {
             </Grid>
 
             <Alert severity="success" sx={{ borderRadius: 2, mb: 3 }}>
-              Guardamos tu orden. El comercio coordinará la entrega usando los
-              datos de contacto indicados.
+              Guardamos tu orden. El comercio coordinará la entrega a la
+              dirección indicada.
             </Alert>
 
             <Button
@@ -2583,7 +2645,7 @@ const CheckoutPage = () => {
                       />
                     </Grid>
 
-                    <Grid item xs={12}>
+                    <Grid item xs={12} sm={6}>
                       <TextField
                         fullWidth
                         label="Teléfono"
@@ -2601,6 +2663,83 @@ const CheckoutPage = () => {
                           maxLength: 30,
                           inputMode: 'tel',
                         }}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Código Postal"
+                        required
+                        value={shippingData.zipCode}
+                        onChange={event =>
+                          handleShippingFieldChange(
+                            'zipCode',
+                            event.target.value,
+                          )
+                        }
+                        error={Boolean(formErrors.zipCode)}
+                        helperText={formErrors.zipCode || ''}
+                        data-error={Boolean(formErrors.zipCode)}
+                        placeholder="1234"
+                        autoComplete="postal-code"
+                        inputProps={{
+                          maxLength: 20,
+                        }}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Dirección (calle y número)"
+                        required
+                        value={shippingData.address}
+                        onChange={event =>
+                          handleShippingFieldChange(
+                            'address',
+                            event.target.value,
+                          )
+                        }
+                        error={Boolean(formErrors.address)}
+                        helperText={formErrors.address || ''}
+                        data-error={Boolean(formErrors.address)}
+                        placeholder="Av. Corrientes 1234, Piso 2, Depto B"
+                        autoComplete="street-address"
+                        inputProps={{ maxLength: 255 }}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Ciudad / Localidad"
+                        required
+                        value={shippingData.city}
+                        onChange={event =>
+                          handleShippingFieldChange('city', event.target.value)
+                        }
+                        error={Boolean(formErrors.city)}
+                        helperText={formErrors.city || ''}
+                        data-error={Boolean(formErrors.city)}
+                        autoComplete="address-level2"
+                        inputProps={{ maxLength: 100 }}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Provincia / Estado"
+                        value={shippingData.province}
+                        onChange={event =>
+                          handleShippingFieldChange(
+                            'province',
+                            event.target.value,
+                          )
+                        }
+                        autoComplete="address-level1"
+                        inputProps={{ maxLength: 100 }}
                       />
                     </Grid>
                   </Grid>
