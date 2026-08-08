@@ -100,32 +100,63 @@ const getCacheKey = candidates => {
   return `tenant:${candidates.join('|')}`
 }
 
+const NEGATIVE_CACHE_TTL = 60 * 1000
+
+const NOT_FOUND_SENTINEL = Symbol('NOT_FOUND')
+
 const getCachedTenant = candidates => {
   const key = getCacheKey(candidates)
   const cached = tenantCache.get(key)
 
-  if (!cached) return null
+  if (!cached) return undefined
 
-  if (Date.now() - cached.timestamp > CACHE_TTL) {
+  const ttl = cached.data === NOT_FOUND_SENTINEL ? NEGATIVE_CACHE_TTL : CACHE_TTL
+
+  if (Date.now() - cached.timestamp > ttl) {
     tenantCache.delete(key)
-    return null
+    return undefined
   }
 
-  return cached.data
+  // LRU: re-insert to move to end of Map iteration order
+  tenantCache.delete(key)
+  tenantCache.set(key, cached)
+
+  return cached.data === NOT_FOUND_SENTINEL ? null : cached.data
 }
 
-const setCachedTenant = (candidates, tenant) => {
-  if (!tenant) return
+const inflight = new Map()
 
-  if (tenantCache.size >= MAX_CACHE_SIZE) {
-    const firstKey = tenantCache.keys().next().value
-    if (firstKey) tenantCache.delete(firstKey)
+const getOrFetchTenant = async candidates => {
+  const cached = getCachedTenant(candidates)
+  if (cached !== undefined) return cached
+
+  const key = getCacheKey(candidates)
+
+  if (inflight.has(key)) {
+    return inflight.get(key)
   }
 
-  tenantCache.set(getCacheKey(candidates), {
-    data: tenant,
-    timestamp: Date.now(),
-  })
+  const promise = findTenantByDomainCandidates(candidates)
+    .then(tenant => {
+      if (tenantCache.size >= MAX_CACHE_SIZE) {
+        const firstKey = tenantCache.keys().next().value
+        if (firstKey) tenantCache.delete(firstKey)
+      }
+
+      tenantCache.set(key, {
+        data: tenant || NOT_FOUND_SENTINEL,
+        timestamp: Date.now(),
+      })
+
+      return tenant
+    })
+    .finally(() => {
+      inflight.delete(key)
+    })
+
+  inflight.set(key, promise)
+
+  return promise
 }
 
 const deleteCacheByDomain = domain => {
@@ -134,6 +165,7 @@ const deleteCacheByDomain = domain => {
   for (const key of tenantCache.keys()) {
     if (candidates.some(candidate => key.includes(candidate))) {
       tenantCache.delete(key)
+      inflight.delete(key)
     }
   }
 }
@@ -199,7 +231,7 @@ const findTenantByDomainCandidates = async candidates => {
       { legacyDomains: { $in: candidates } },
       { legacyAdminDomains: { $in: candidates } },
     ],
-  }).select('_id name slug domains adminDomains status plan')
+  }).select('_id name slug domains adminDomains status plan').lean()
 }
 
 const attachTenantToRequest = ({
@@ -360,17 +392,9 @@ export const resolveTenantByDomain = async (req, res, next) => {
       }
     }
 
-    let tenant = getCachedTenant(candidates)
-    let fromCache = true
-
-    if (!tenant) {
-      fromCache = false
-      tenant = await findTenantByDomainCandidates(candidates)
-
-      if (tenant) {
-        setCachedTenant(candidates, tenant)
-      }
-    }
+    const cachedCheck = getCachedTenant(candidates)
+    const fromCache = cachedCheck !== undefined
+    const tenant = fromCache ? cachedCheck : await getOrFetchTenant(candidates)
 
     if (!tenant) {
       if (isDev) {

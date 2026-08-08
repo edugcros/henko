@@ -52,6 +52,20 @@ const normalizeSlug = value => {
     .replace(/(^-|-$)+/g, '')
 }
 
+const RESERVED_SLUGS = new Set([
+  'api', 'admin', 'www', 'mail', 'smtp', 'imap', 'pop',
+  'ftp', 'sftp', 'ssh', 'cdn', 'assets', 'static', 'media',
+  'ns1', 'ns2', 'ns3', 'dns', 'mx', 'autoconfig', 'autodiscover',
+  'webmail', 'cpanel', 'whm', 'cgi', 'status', 'health',
+  'blog', 'docs', 'support', 'help', 'app', 'dashboard',
+  'login', 'signup', 'register', 'auth', 'oauth', 'sso',
+  'graphql', 'ws', 'wss', 'socket', 'realtime',
+  'test', 'staging', 'dev', 'demo', 'sandbox', 'preview',
+  'null', 'undefined', 'root', 'system', 'platform',
+  'billing', 'payment', 'checkout', 'store', 'shop',
+  'henko', 'noreply', 'no-reply', 'postmaster', 'abuse',
+])
+
 const PUBLIC_SIGNUP_PLANS = new Set(['starter', 'pro'])
 
 const resolveSignupPlan = (...candidates) => {
@@ -178,6 +192,11 @@ const validationSchema = yup.object({
     .matches(
       /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
       'Usá solo letras, números y guiones. Ej: mi-tienda',
+    )
+    .test(
+      'not-reserved',
+      'Ese identificador está reservado. Elegí otro.',
+      value => !value || !RESERVED_SLUGS.has(normalizeSlug(value)),
     )
     .required('El identificador de tienda es obligatorio'),
 

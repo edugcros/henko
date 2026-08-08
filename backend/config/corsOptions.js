@@ -57,8 +57,19 @@ const isAllowedRootDomain = hostname => {
   })
 }
 
+const CORS_CACHE_TTL = 5 * 60 * 1000
+const CORS_CACHE_MAX = 2000
+const corsOriginCache = new Map()
+
 const isTenantOriginAllowed = async hostnameCandidates => {
   if (!env.allowDynamicTenantOrigins) return false
+
+  const cacheKey = hostnameCandidates.join('|')
+  const cached = corsOriginCache.get(cacheKey)
+
+  if (cached && Date.now() - cached.ts < CORS_CACHE_TTL) {
+    return cached.allowed
+  }
 
   const tenant = await Tenant.findOne({
     status: 'active',
@@ -71,9 +82,18 @@ const isTenantOriginAllowed = async hostnameCandidates => {
       { legacyDomains: { $in: hostnameCandidates } },
       { legacyAdminDomains: { $in: hostnameCandidates } },
     ],
-  }).select('_id')
+  }).select('_id').lean()
 
-  return Boolean(tenant)
+  const allowed = Boolean(tenant)
+
+  if (corsOriginCache.size >= CORS_CACHE_MAX) {
+    const firstKey = corsOriginCache.keys().next().value
+    if (firstKey) corsOriginCache.delete(firstKey)
+  }
+
+  corsOriginCache.set(cacheKey, { allowed, ts: Date.now() })
+
+  return allowed
 }
 
 export const corsOptions = {

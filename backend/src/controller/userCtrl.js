@@ -22,7 +22,7 @@ import { normalizeArgentinePhone } from '../utils/normalizePhone.js'
 import { sendResetPasswordEmail, sendVerificationEmail } from '../services/email/verificationEmail.service.js'
 import { sendResponse } from '../utils/response.js'
 import { getCookieDomain } from '../utils/cookieHelper.js'
-import { buildPlatformTenantDomains } from '../utils/domainUtils.js'
+import { buildPlatformTenantDomains, isReservedSlug } from '../utils/domainUtils.js'
 import {
   getUserIdFromRequest,
   isValidObjectId,
@@ -504,6 +504,9 @@ export const createUserAdmin = [
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
         throw new Error('Usá solo letras, números y guiones')
       }
+      if (isReservedSlug(slug)) {
+        throw new Error('Ese identificador está reservado. Elegí otro.')
+      }
       return true
     }),
   body('plan')
@@ -650,6 +653,20 @@ export const createUserAdmin = [
       }
       if (error.message === 'DOMAIN_EXISTS') {
         return sendResponse(res, 409, false, 'El dominio ya está en uso')
+      }
+
+      if (error.code === 11000) {
+        const field = Object.keys(error.keyPattern || {})[0] || ''
+        if (field === 'slug') {
+          return sendResponse(res, 409, false, 'Ese identificador de tienda ya está en uso')
+        }
+        if (field === 'email') {
+          return sendResponse(res, 409, false, 'El email ya está registrado')
+        }
+        if (field === 'domainKeys') {
+          return sendResponse(res, 409, false, 'El dominio ya está en uso')
+        }
+        return sendResponse(res, 409, false, 'Ya existe un registro con esos datos')
       }
 
       logger.error(`Error creando tenant/admin: ${error.stack || error.message}`)

@@ -92,6 +92,28 @@ export const buildPlatformTenantDomains = ({
 }
 
 // =====================================================
+// Slugs reservados — evitar colisión con infraestructura
+// =====================================================
+
+const RESERVED_SLUGS = new Set([
+  'api', 'admin', 'www', 'mail', 'smtp', 'imap', 'pop',
+  'ftp', 'sftp', 'ssh', 'cdn', 'assets', 'static', 'media',
+  'ns1', 'ns2', 'ns3', 'dns', 'mx', 'autoconfig', 'autodiscover',
+  'webmail', 'cpanel', 'whm', 'cgi', 'status', 'health',
+  'blog', 'docs', 'support', 'help', 'app', 'dashboard',
+  'login', 'signup', 'register', 'auth', 'oauth', 'sso',
+  'graphql', 'ws', 'wss', 'socket', 'realtime',
+  'test', 'staging', 'dev', 'demo', 'sandbox', 'preview',
+  'null', 'undefined', 'root', 'system', 'platform',
+  'billing', 'payment', 'checkout', 'store', 'shop',
+  'henko', 'noreply', 'no-reply', 'postmaster', 'abuse',
+])
+
+export const isReservedSlug = slug => {
+  return RESERVED_SLUGS.has(normalizeSlug(slug))
+}
+
+// =====================================================
 // Candidatos de resolución
 // =====================================================
 
