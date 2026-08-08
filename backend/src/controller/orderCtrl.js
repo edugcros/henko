@@ -1139,6 +1139,66 @@ export const updateOrderFulfillmentStatus = expressAsyncHandler(async (req, res)
 
 
 // =====================================================
+// SHIPMENT DATA
+// =====================================================
+
+export const updateOrderShipment = expressAsyncHandler(async (req, res) => {
+  try {
+    ensureAdminOrManager(req)
+
+    const { tenantId, tenantObjectId } = resolveTenantContext(req)
+    const performedBy = normalizeObjectId(getUserIdFromRequest(req))
+
+    const order = await findOrderForAdminMutation({
+      orderModel: Order,
+      orderId: req.params.id,
+      tenantObjectId,
+      tenantId,
+      normalizeObjectId,
+      isValidId,
+    })
+
+    const trackingNumber = sanitizeString(req.body?.trackingNumber).slice(0, 200)
+    const carrier = sanitizeString(req.body?.carrier).slice(0, 100)
+
+    if (!trackingNumber && !carrier) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere al menos un código de seguimiento o transportista',
+      })
+    }
+
+    if (trackingNumber) order.shipment.trackingNumber = trackingNumber
+    if (carrier) order.shipment.carrier = carrier
+    order.shipment.updatedBy = performedBy
+
+    appendOrderAdminAuditEntry({
+      order,
+      action: 'shipment_updated',
+      req,
+      performedBy,
+      reason: 'Datos de envío actualizados',
+      metadata: { trackingNumber, carrier },
+    })
+
+    await order.save({ tenantId })
+
+    return res.status(200).json({
+      success: true,
+      data: enrichOrderForResponse(order),
+      message: 'Datos de envío actualizados correctamente',
+    })
+  } catch (error) {
+    logger.error(`❌ Error actualizando datos de envío: ${error.stack || error.message}`)
+
+    return res.status(error.statusCode || 400).json({
+      success: false,
+      message: error.message,
+    })
+  }
+})
+
+// =====================================================
 // DELETE ORDER - SOFT DELETE PRODUCCIÓN
 // =====================================================
 

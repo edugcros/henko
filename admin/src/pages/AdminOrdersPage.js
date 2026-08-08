@@ -55,6 +55,8 @@ import {
   Visibility,
   Close,
   DeleteForever,
+  LocalShipping,
+  Save,
 } from '@mui/icons-material'
 import {
   getOrdersThunk,
@@ -64,6 +66,7 @@ import {
   cancelOrderThunk,
   refundOrderThunk,
   deleteOrderThunk,
+  updateOrderShipmentThunk,
 } from '@features/order/orderSlice'
 import dayjs from 'dayjs'
 import debounce from 'lodash.debounce'
@@ -744,6 +747,124 @@ const ShippingCard = memo(({ address }) => {
 
 ShippingCard.displayName = 'ShippingCard'
 
+const ShipmentCard = memo(({ order, onSaveShipment, disabled = false }) => {
+  const shipment = order?.shipment || {}
+  const [trackingNumber, setTrackingNumber] = useState(
+    shipment.trackingNumber || '',
+  )
+  const [carrier, setCarrier] = useState(shipment.carrier || '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setTrackingNumber(shipment.trackingNumber || '')
+    setCarrier(shipment.carrier || '')
+  }, [shipment.trackingNumber, shipment.carrier])
+
+  const hasChanges =
+    trackingNumber.trim() !== (shipment.trackingNumber || '') ||
+    carrier.trim() !== (shipment.carrier || '')
+
+  const canSave = hasChanges && (trackingNumber.trim() || carrier.trim())
+
+  const handleSave = useCallback(async () => {
+    if (!canSave || saving) return
+
+    setSaving(true)
+
+    try {
+      await onSaveShipment(order._id, {
+        trackingNumber: trackingNumber.trim(),
+        carrier: carrier.trim(),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }, [canSave, saving, onSaveShipment, order._id, trackingNumber, carrier])
+
+  return (
+    <Box
+      sx={{
+        mt: 2,
+        p: 3,
+        borderRadius: 1,
+        border: '1px solid #D5D9D9',
+        bgcolor: 'white',
+      }}
+    >
+      <Typography
+        variant="subtitle2"
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          color: CONFIG.COLORS.AMAZON_TEXT,
+          fontWeight: 700,
+          fontSize: '0.9rem',
+          mb: 2,
+          textTransform: 'uppercase',
+        }}
+      >
+        <LocalShipping
+          fontSize="small"
+          sx={{ color: CONFIG.COLORS.AMAZON_BLUE }}
+        />
+        Datos de envío
+      </Typography>
+
+      <TextField
+        label="Código de seguimiento"
+        value={trackingNumber}
+        onChange={e => setTrackingNumber(e.target.value)}
+        size="small"
+        fullWidth
+        disabled={disabled || saving}
+        sx={{ mb: 1.5 }}
+        inputProps={{ maxLength: 200 }}
+      />
+
+      <TextField
+        label="Transportista"
+        value={carrier}
+        onChange={e => setCarrier(e.target.value)}
+        size="small"
+        fullWidth
+        disabled={disabled || saving}
+        sx={{ mb: 1.5 }}
+        inputProps={{ maxLength: 100 }}
+      />
+
+      {shipment.shippedAt && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          Despachado: {dayjs(shipment.shippedAt).format('DD/MM/YYYY HH:mm')}
+        </Typography>
+      )}
+
+      {shipment.deliveredAt && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          Entregado: {dayjs(shipment.deliveredAt).format('DD/MM/YYYY HH:mm')}
+        </Typography>
+      )}
+
+      <Button
+        variant="contained"
+        size="small"
+        startIcon={saving ? <CircularProgress size={16} /> : <Save />}
+        onClick={handleSave}
+        disabled={!canSave || disabled || saving}
+        sx={{
+          mt: 1.5,
+          textTransform: 'none',
+          fontWeight: 600,
+        }}
+      >
+        {saving ? 'Guardando...' : 'Guardar envío'}
+      </Button>
+    </Box>
+  )
+})
+
+ShipmentCard.displayName = 'ShipmentCard'
+
 const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
   return (
     <Box
@@ -1027,6 +1148,7 @@ const OrderRow = memo(
     onLegacyStatusChange,
     onPaymentStatusChange,
     onFulfillmentStatusChange,
+    onSaveShipment,
     onCancel,
     onRefund,
     onDelete,
@@ -1184,6 +1306,12 @@ const OrderRow = memo(
                   <Grid item xs={12} lg={4}>
                     <ShippingCard address={order.shippingAddress} />
 
+                    <ShipmentCard
+                      order={order}
+                      onSaveShipment={onSaveShipment}
+                      disabled={disabled}
+                    />
+
                     <OrderSummary
                       totals={order.totals}
                       paymentStatus={order.paymentStatus}
@@ -1307,6 +1435,7 @@ const OrderDetailDialog = memo(
     onLegacyStatusChange,
     onPaymentStatusChange,
     onFulfillmentStatusChange,
+    onSaveShipment,
     onCancel,
     onRefund,
     onDelete,
@@ -1436,6 +1565,12 @@ const OrderDetailDialog = memo(
                 </Paper>
 
                 <ShippingCard address={order.shippingAddress} />
+
+                <ShipmentCard
+                  order={order}
+                  onSaveShipment={onSaveShipment}
+                  disabled={disabled}
+                />
 
                 <OrderSummary
                   totals={order.totals}
@@ -1674,6 +1809,26 @@ const AdminOrdersPage = () => {
         })
     },
     [dispatch, isUpdating, loadOrders, showSnackbar],
+  )
+
+  const handleSaveShipment = useCallback(
+    (orderId, { trackingNumber, carrier }) => {
+      return dispatch(
+        updateOrderShipmentThunk({ id: orderId, trackingNumber, carrier }),
+      )
+        .unwrap()
+        .then(() => {
+          showSnackbar('Datos de envío actualizados correctamente', 'success')
+          loadOrders()
+        })
+        .catch(error => {
+          showSnackbar(
+            getErrorMessage(error, 'Error actualizando datos de envío'),
+            'error',
+          )
+        })
+    },
+    [dispatch, loadOrders, showSnackbar],
   )
 
   const handleCancel = useCallback(
@@ -2242,6 +2397,7 @@ const AdminOrdersPage = () => {
                       onLegacyStatusChange={handleLegacyStatusChange}
                       onPaymentStatusChange={handlePaymentStatusChange}
                       onFulfillmentStatusChange={handleFulfillmentStatusChange}
+                      onSaveShipment={handleSaveShipment}
                       onCancel={handleCancel}
                       onRefund={handleRefund}
                       onDelete={handleDelete}
@@ -2291,6 +2447,7 @@ const AdminOrdersPage = () => {
         onLegacyStatusChange={handleLegacyStatusChange}
         onPaymentStatusChange={handlePaymentStatusChange}
         onFulfillmentStatusChange={handleFulfillmentStatusChange}
+        onSaveShipment={handleSaveShipment}
         onCancel={handleCancel}
         onRefund={handleRefund}
         onDelete={handleDelete}

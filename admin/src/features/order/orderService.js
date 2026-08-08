@@ -263,6 +263,19 @@ const deleteOrder = async ({ id, force = false } = {}) => {
   })
 }
 
+const updateOrderShipment = async ({ id, trackingNumber, carrier }) => {
+  if (!id) {
+    return {
+      success: false,
+      message: 'ID de orden requerido',
+      errors: [],
+      code: 'ORDER_ID_REQUIRED',
+    }
+  }
+
+  return apiRequest('put', `/${id}/shipment`, { trackingNumber, carrier })
+}
+
 const orderService = {
   getOrders,
   getMyOrders,
@@ -273,6 +286,7 @@ const orderService = {
   cancelOrder,
   refundOrder,
   deleteOrder,
+  updateOrderShipment,
 }
 
 export default orderService

@@ -201,6 +201,29 @@ export const refundOrderThunk = createAsyncThunk(
   },
 )
 
+export const updateOrderShipmentThunk = createAsyncThunk(
+  'order/updateShipment',
+  async (payload, thunkAPI) => {
+    try {
+      const response = await orderService.updateOrderShipment(payload)
+
+      if (!response?.success) {
+        return thunkAPI.rejectWithValue(
+          response?.message || 'Error actualizando datos de envío',
+        )
+      }
+
+      return response
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error?.response?.data?.message ||
+          error?.message ||
+          'Error actualizando datos de envío',
+      )
+    }
+  },
+)
+
 export const deleteOrderThunk = createAsyncThunk(
   'order/deleteOrder',
   async (payload, thunkAPI) => {
@@ -505,6 +528,12 @@ const orderSlice = createSlice({
       .addCase(updateOrderFulfillmentStatusThunk.fulfilled, setFulfilledUpdate)
       .addCase(updateOrderFulfillmentStatusThunk.rejected, (state, action) =>
         setRejectedUpdate(state, action, 'Error actualizando estado logístico'),
+      )
+
+      .addCase(updateOrderShipmentThunk.pending, setPendingUpdate)
+      .addCase(updateOrderShipmentThunk.fulfilled, setFulfilledUpdate)
+      .addCase(updateOrderShipmentThunk.rejected, (state, action) =>
+        setRejectedUpdate(state, action, 'Error actualizando datos de envío'),
       )
 
       .addCase(cancelOrderThunk.pending, setPendingUpdate)

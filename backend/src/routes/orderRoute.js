@@ -13,6 +13,7 @@ import {
   updateOrderStatus,
   updateOrderPaymentStatus,
   updateOrderFulfillmentStatus,
+  updateOrderShipment,
   cancelOrder,
   refundOrder,
   deleteOrder,
@@ -164,6 +165,21 @@ router.put(
   isAdminOrManager,
   orderWriteLimiter,
   updateOrderFulfillmentStatus,
+)
+
+/**
+ * Actualizar datos de envío (tracking, transportista)
+ * PUT /api/order/:id/shipment
+ */
+router.put(
+  '/:id/shipment',
+  resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
+  authMiddleware,
+  isAdminOrManager,
+  orderWriteLimiter,
+  updateOrderShipment,
 )
 
 /**
