@@ -230,7 +230,7 @@ const AdminRegister = () => {
 
   const isLoading = loading.createAdmin === true
 
-  const platformDomain = env.publicBaseDomain || 'henko.com'
+  const platformDomain = env.publicBaseDomain || env.productionDomain || ''
   const isProduction = env.isProduction
   const selectedPlan = resolveSignupPlan(
     searchParams.get('plan'),

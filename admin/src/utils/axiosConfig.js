@@ -22,19 +22,12 @@ const assertApiBaseUrl = () => {
   }
 
   if (env.isProduction) {
-    const forbiddenValues = [
-      'localhost',
-      '127.0.0.1',
-      'henko.local',
-    ]
-
-    forbiddenValues.forEach(value => {
-      if (String(env.apiBaseUrl).includes(value)) {
-        throw new Error(
-          `REACT_APP_API_BASE_URL inválido para esta etapa: ${env.apiBaseUrl}`,
-        )
-      }
-    })
+    const url = String(env.apiBaseUrl)
+    if (/localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(url)) {
+      throw new Error(
+        `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
+      )
+    }
   }
 }
 
@@ -86,8 +79,8 @@ if (!API_BASE_URL) {
   throw new Error('REACT_APP_API_BASE_URL no está configurado en admin')
 }
 
-if (API_BASE_URL.includes('henko-admin.vercel.app')) {
-  throw new Error(`API_BASE_URL inválido: ${API_BASE_URL}`)
+if (env.adminBaseDomain && API_BASE_URL.includes(env.adminBaseDomain)) {
+  throw new Error(`API_BASE_URL apunta al admin, no al backend: ${API_BASE_URL}`)
 }
 
 const api = axios.create({

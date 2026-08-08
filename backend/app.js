@@ -173,9 +173,9 @@ const isTrustedPredeployTunnelRequest = req => {
   const origin = String(req.headers.origin || '').replace(/\/+$/, '').toLowerCase()
 
   const allowedPredeployOrigins = [
-    'https://henko-web.vercel.app',
-    'https://henko-admin.vercel.app',
-  ]
+    env.clientUrl,
+    env.adminFrontendUrl,
+  ].filter(Boolean).map(u => u.replace(/\/+$/, '').toLowerCase())
 
   const enabled =
     !env.isProduction &&

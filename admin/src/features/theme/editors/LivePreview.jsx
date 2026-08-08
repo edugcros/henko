@@ -28,9 +28,9 @@ const normalizePreviewUrl = value => {
 
   const url = new URL(withProtocol(cleanValue))
   const isLocalStorefront =
-    url.hostname === 'henko.local' ||
     url.hostname === 'localhost' ||
-    url.hostname === '127.0.0.1'
+    url.hostname === '127.0.0.1' ||
+    url.hostname.endsWith('.local')
 
   if (!env.isProduction && isLocalStorefront && !url.port) {
     url.port = '3002'

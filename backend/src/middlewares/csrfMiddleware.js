@@ -43,12 +43,11 @@ export const getCookieDomain = req => {
     return `.${rootDomain}`
   }
 
-  // Desarrollo local tipo admin.henko.local / api.henko.local / henko.local
-  if (
-    env.isDevelopment &&
-    (host === 'henko.local' || host.endsWith('.henko.local'))
-  ) {
-    return '.henko.local'
+  // Desarrollo local tipo *.local
+  if (env.isDevelopment && host.endsWith('.local')) {
+    const parts = host.split('.')
+    const rootLocal = parts.slice(-2).join('.')
+    return `.${rootLocal}`
   }
 
   // Custom domains externos:

@@ -30,7 +30,7 @@ const getAllowedAdminOrigins = () => {
   const localOrigins = env.isProduction
     ? []
     : [
-        'http://admin.henko.local:3001',
+        `http://${env.adminBaseDomain || 'admin.localhost'}:3001`,
         'http://localhost:3001',
         'http://127.0.0.1:3001',
       ]

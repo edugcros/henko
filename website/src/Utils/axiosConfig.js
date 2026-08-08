@@ -37,15 +37,12 @@ const assertApiBaseUrl = () => {
   }
 
   if (env.isProduction) {
-    const forbiddenValues = ['localhost', '127.0.0.1', 'henko.local']
-
-    forbiddenValues.forEach(value => {
-      if (String(env.apiBaseUrl).includes(value)) {
-        throw new Error(
-          `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
-        )
-      }
-    })
+    const url = String(env.apiBaseUrl)
+    if (/localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(url)) {
+      throw new Error(
+        `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
+      )
+    }
   }
 }
 

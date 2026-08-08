@@ -82,6 +82,8 @@ export const env = {
     'REACT_APP_PRODUCTION_DOMAIN',
   ),
 
+  adminBaseDomain: getValue('REACT_APP_ADMIN_BASE_DOMAIN'),
+
   adminPreviewOrigins,
 
   assetsBaseUrl: getValue('REACT_APP_ASSETS_BASE_URL'),
@@ -130,21 +132,17 @@ if (
 }
 
 if (env.isProduction) {
-  const forbiddenApiValues = ['localhost', '127.0.0.1', 'henko.local']
-
   if (!/^https:\/\//i.test(String(env.apiBaseUrl || ''))) {
     throw new Error(
       `REACT_APP_API_BASE_URL debe usar HTTPS en producción: ${env.apiBaseUrl}`,
     )
   }
 
-  forbiddenApiValues.forEach(value => {
-    if (String(env.apiBaseUrl || '').includes(value)) {
-      throw new Error(
-        `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
-      )
-    }
-  })
+  if (/localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(String(env.apiBaseUrl || ''))) {
+    throw new Error(
+      `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
+    )
+  }
 
   if (!env.mercadoPagoPublicKey) {
     throw new Error('Falta REACT_APP_MP_PUBLIC_KEY en producción')

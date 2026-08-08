@@ -14,7 +14,6 @@ import {
 import { env } from '../config/env'
 
 const SUBSCRIPTION_PATH = '/subscripcion'
-const LOCAL_ADMIN_BASE_URL = 'http://admin.henko.local:3001'
 
 const cleanValue = value => String(value || '').trim()
 
@@ -43,7 +42,8 @@ const buildAdminBaseUrl = () => {
   const { hostname, protocol, host } = window.location
 
   if (isLocalHostname(hostname)) {
-    return LOCAL_ADMIN_BASE_URL
+    const adminBase = removeProtocol(env?.adminBaseDomain) || `admin.${hostname}`
+    return `${protocol}//${adminBase}:3001`
   }
 
   const adminBaseDomain = removeTrailingSlash(env?.adminBaseDomain)

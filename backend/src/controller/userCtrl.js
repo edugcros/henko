@@ -154,7 +154,7 @@ const buildTenantDomains = storeSlug => {
 
   const baseDomain = env.isProduction
     ? env.publicBaseDomain
-    : env.tenantPublicBaseDomain || env.publicBaseDomain || 'henko.local'
+    : env.tenantPublicBaseDomain || env.publicBaseDomain || 'localhost'
 
   const adminBaseDomain =
     env.tenantAdminBaseDomain ||

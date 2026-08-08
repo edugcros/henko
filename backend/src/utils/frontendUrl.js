@@ -194,7 +194,8 @@ export const getFrontendBaseUrl = (req = null, tenant = null) => {
   }
 
   if (!env.isProduction) {
-    return 'http://henko.local:3002'
+    const devDomain = env.publicBaseDomain || 'localhost'
+    return `http://${devDomain}:3002`
   }
 
   throw new Error('CLIENT_URL / SHOP_FRONTEND_URL no configurado')
