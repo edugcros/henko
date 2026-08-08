@@ -15,6 +15,7 @@ import {
 
 const buildPublicTenantResponse = tenant => {
   const primaryDomain = tenant.getPrimaryDomain?.() || null
+  const mp = tenant.integrations?.mercadopago
 
   return {
     tenantId: tenant._id,
@@ -29,6 +30,11 @@ const buildPublicTenantResponse = tenant => {
     domains: tenant.domains,
     primaryDomain,
     settings: tenant.settings,
+    paymentMethods: {
+      mercadopago: mp?.isEnabled
+        ? { publicKey: mp.publicKey || '', mode: mp.mode || 'test' }
+        : null,
+    },
   }
 }
 
@@ -56,7 +62,7 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
       slug: cleanSlug,
       status: 'active',
     }).select(
-      '_id name slug domains status plan settings currency locale timezone country',
+      '_id name slug domains status plan settings currency locale timezone country integrations.mercadopago.publicKey integrations.mercadopago.isEnabled integrations.mercadopago.mode',
     )
 
     if (!tenantBySlug) {

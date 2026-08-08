@@ -53,6 +53,7 @@ import {
 import { createOrder, resetOrderState } from '@features/orders/orderSlice'
 import { getMe } from '@features/user/userSlice'
 import { useCoupon } from '@hooks/useCoupon'
+import { useTenant } from '../contexts/TenantContext'
 import env from '../config/env'
 import {
   trackUserMetric,
@@ -655,6 +656,7 @@ const buildMetricItems = cartItems => {
 const CheckoutPage = () => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
+  const { themeConfig } = useTenant()
   const purchaseTrackedRef = useRef(false)
   const gaPurchaseTrackedRef = useRef(false)
 
@@ -995,8 +997,9 @@ const CheckoutPage = () => {
   // ======================================================
 
   useEffect(() => {
+    const tenantMp = themeConfig?.paymentMethods?.mercadopago
     const publicKey = String(
-      env?.mercadoPagoPublicKey || process.env.REACT_APP_MP_PUBLIC_KEY || '',
+      tenantMp?.publicKey || env?.mercadoPagoPublicKey || process.env.REACT_APP_MP_PUBLIC_KEY || '',
     ).trim()
 
     if (!publicKey) {
@@ -1026,7 +1029,7 @@ const CheckoutPage = () => {
       setMpReady(false)
       setMpInitError('No se pudo inicializar Mercado Pago.')
     }
-  }, [])
+  }, [themeConfig?.paymentMethods?.mercadopago])
 
   // ======================================================
   // DETECTAR CUPONES DISPONIBLES
