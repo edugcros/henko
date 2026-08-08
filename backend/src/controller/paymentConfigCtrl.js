@@ -52,7 +52,7 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
   }
 
   const current = await Tenant.findById(tenantId)
-    .select('+integrations.mercadopago.accessToken integrations.mercadopago')
+    .select('+integrations.mercadopago.accessToken')
 
   if (!current) {
     return res.status(404).json({ success: false, message: 'Tenant no encontrado' })
