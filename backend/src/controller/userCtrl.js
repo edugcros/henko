@@ -165,17 +165,18 @@ const buildTenantDomains = storeSlug => {
     publicBaseDomain: baseDomain,
     adminBaseDomain,
   })
-  const protocol = env.isProduction ? 'https' : 'http'
+  const isLocal = /localhost|127\.0\.0\.1|\.local$/.test(shopDomain)
+  const protocol = isLocal ? 'http' : 'https'
 
   return {
     shopDomain,
     adminDomain,
-    shopUrl: env.isProduction
-      ? `${protocol}://${shopDomain}`
-      : `${protocol}://${shopDomain}:3002`,
-    adminUrl: env.isProduction
-      ? `${protocol}://${adminDomain}`
-      : `${protocol}://${adminDomain}:3001`,
+    shopUrl: isLocal
+      ? `${protocol}://${shopDomain}:3002`
+      : `${protocol}://${shopDomain}`,
+    adminUrl: isLocal
+      ? `${protocol}://${adminDomain}:3001`
+      : `${protocol}://${adminDomain}`,
   }
 }
 
