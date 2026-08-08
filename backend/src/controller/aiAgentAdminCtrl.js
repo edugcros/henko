@@ -1,6 +1,8 @@
 // 📁 src/controller/aiAgentAdminCtrl.js
 import asyncHandler from 'express-async-handler'
+import mongoose from 'mongoose'
 import AiConversation from '../models/aiConversationModel.js'
+import AiCartRecovery from '../models/aiCartRecoveryModel.js'
 import AiLead from '../models/aiLeadModel.js'
 import {
   getUserIdFromRequest,
@@ -146,45 +148,147 @@ export const getAiConversationById = asyncHandler(async (req, res) => {
   })
 })
 
+const PERIOD_MS = {
+  '7d': 7 * 86400000,
+  '30d': 30 * 86400000,
+  '90d': 90 * 86400000,
+}
+
+const resolvePeriodDate = period => {
+  const ms = PERIOD_MS[period]
+  return ms ? new Date(Date.now() - ms) : null
+}
+
 export const getAiAgentMetrics = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
-  const activeFilter = { tenantId, deletedAt: { $exists: false } }
+  const tenantObjectId = new mongoose.Types.ObjectId(String(tenantId))
+  const periodDate = resolvePeriodDate(clean(req.query.period))
 
-  const [
-    totalConversations,
-    openConversations,
-    waitingHuman,
-    closedConversations,
-    hotLeads,
-  ] = await Promise.all([
-    AiConversation.countDocuments(activeFilter).setOptions({ tenantId }),
-    AiConversation.countDocuments({
-      ...activeFilter,
-      status: 'open',
-    }).setOptions({ tenantId }),
-    AiConversation.countDocuments({
-      ...activeFilter,
-      status: 'waiting_human',
-    }).setOptions({ tenantId }),
-    AiConversation.countDocuments({
-      ...activeFilter,
-      status: 'closed',
-    }).setOptions({ tenantId }),
-    AiLead.countDocuments({
-      tenantId,
-      deletedAt: { $exists: false },
-      score: { $gte: 75 },
-    }).setOptions({ tenantId }),
+  const baseMatch = {
+    tenantId: tenantObjectId,
+    deletedAt: { $exists: false },
+  }
+
+  const conversationMatch = periodDate
+    ? { ...baseMatch, createdAt: { $gte: periodDate } }
+    : baseMatch
+
+  const [conversationStats, leadStats, recoveryStats] = await Promise.all([
+    AiConversation.aggregate([
+      { $match: conversationMatch },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+
+    AiLead.aggregate([
+      { $match: periodDate ? { ...baseMatch, createdAt: { $gte: periodDate } } : baseMatch },
+      {
+        $facet: {
+          byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+          hotLeads: [
+            { $match: { leadScore: { $gte: 75 } } },
+            { $count: 'count' },
+          ],
+          scoreStats: [
+            {
+              $group: {
+                _id: null,
+                avg: { $avg: '$leadScore' },
+                total: { $sum: 1 },
+              },
+            },
+          ],
+        },
+      },
+    ]),
+
+    AiCartRecovery.aggregate([
+      { $match: periodDate ? { tenantId: tenantObjectId, createdAt: { $gte: periodDate } } : { tenantId: tenantObjectId } },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          revenue: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'converted'] },
+                '$cartSnapshot.subtotalCents',
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
   ])
+
+  const convByStatus = Object.fromEntries(
+    conversationStats.map(s => [s._id, s.count]),
+  )
+  const totalConversations = conversationStats.reduce((sum, s) => sum + s.count, 0)
+
+  const leadFacet = leadStats[0] || {}
+  const leadByStatus = Object.fromEntries(
+    (leadFacet.byStatus || []).map(s => [s._id, s.count]),
+  )
+  const totalLeads = Object.values(leadByStatus).reduce((sum, c) => sum + c, 0)
+
+  const recByStatus = Object.fromEntries(
+    recoveryStats.map(s => [s._id, s.count]),
+  )
+  const totalRecoveries = recoveryStats.reduce((sum, s) => sum + s.count, 0)
+  const convertedRecoveries = recByStatus.converted || 0
+  const recoveredRevenueCents = recoveryStats.find(s => s._id === 'converted')?.revenue || 0
 
   return res.status(200).json({
     success: true,
     data: {
+      period: req.query.period || 'all',
+
+      conversations: {
+        total: totalConversations,
+        open: convByStatus.open || 0,
+        waitingHuman: convByStatus.waiting_human || 0,
+        closed: convByStatus.closed || 0,
+        converted: convByStatus.converted || 0,
+        conversionRate: totalConversations > 0
+          ? Math.round(((convByStatus.converted || 0) / totalConversations) * 10000) / 100
+          : 0,
+      },
+
+      leads: {
+        total: totalLeads,
+        hot: leadFacet.hotLeads?.[0]?.count || 0,
+        new: leadByStatus.new || 0,
+        qualified: leadByStatus.qualified || 0,
+        won: leadByStatus.won || 0,
+        lost: leadByStatus.lost || 0,
+        followUp: leadByStatus.follow_up || 0,
+        averageScore: Math.round(leadFacet.scoreStats?.[0]?.avg || 0),
+      },
+
+      cartRecovery: {
+        total: totalRecoveries,
+        sent: recByStatus.sent || 0,
+        converted: convertedRecoveries,
+        failed: recByStatus.failed || 0,
+        pending: (recByStatus.pending || 0) + (recByStatus.scheduled || 0),
+        conversionRate: totalRecoveries > 0
+          ? Math.round((convertedRecoveries / totalRecoveries) * 10000) / 100
+          : 0,
+        recoveredRevenueCents,
+      },
+
+      // Backwards compat: flat keys the old frontend expects
       totalConversations,
-      openConversations,
-      waitingHuman,
-      closedConversations,
-      hotLeads,
+      openConversations: convByStatus.open || 0,
+      waitingHuman: convByStatus.waiting_human || 0,
+      closedConversations: convByStatus.closed || 0,
+      hotLeads: leadFacet.hotLeads?.[0]?.count || 0,
     },
   })
 })

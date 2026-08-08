@@ -269,14 +269,39 @@ export const testAiAgentMessage = asyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, data: result })
 })
 
+const ALLOWED_RECOVERY_STATUSES = new Set([
+  'pending', 'scheduled', 'processing', 'sent',
+  'responded', 'converted', 'cancelled', 'expired', 'failed',
+])
+
 export const listCartRecoveries = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
-  const items = await AiCartRecovery.find({ tenantId })
-    .setOptions({ tenantId })
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean()
-  return res.status(200).json({ success: true, data: items })
+  const page = Math.max(Number(req.query.page || 1), 1)
+  const limit = Math.min(Math.max(Number(req.query.limit || 25), 1), 100)
+  const status = clean(req.query.status)
+
+  const query = { tenantId }
+  if (status && ALLOWED_RECOVERY_STATUSES.has(status)) {
+    query.status = status
+  }
+
+  const [items, total] = await Promise.all([
+    AiCartRecovery.find(query)
+      .setOptions({ tenantId })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    AiCartRecovery.countDocuments(query).setOptions({ tenantId }),
+  ])
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      items,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    },
+  })
 })
 
 export const createKnowledgeItem = asyncHandler(async (req, res) => {

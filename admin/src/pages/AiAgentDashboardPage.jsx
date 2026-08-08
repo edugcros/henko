@@ -1,8 +1,4 @@
 // 📁 admin/src/pages/AiAgentDashboardPage.jsx
-//
-// Dashboard operativo del Agente IA: métricas de conversaciones/leads, una
-// herramienta para probar el agente sin WhatsApp, y el estado de las
-// campañas de recuperación de carrito. Endpoints admin de /ai-agent/*.
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   Alert,
@@ -12,6 +8,8 @@ import {
   CircularProgress,
   Divider,
   Grid,
+  IconButton,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -21,13 +19,17 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import {
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
   Insights as InsightsIcon,
   Refresh as RefreshIcon,
   Send as SendIcon,
   SmartToy as SmartToyIcon,
+  TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material'
 import { formatDate } from '@utils/dateFormat'
 import {
@@ -36,12 +38,11 @@ import {
   testAiAgentMessage,
 } from '../services/aiAgentDashboardService.js'
 
-const METRIC_CARDS = [
-  { key: 'totalConversations', label: 'Conversaciones', color: 'primary.main' },
-  { key: 'openConversations', label: 'Abiertas', color: 'info.main' },
-  { key: 'waitingHuman', label: 'Esperando humano', color: 'warning.main' },
-  { key: 'closedConversations', label: 'Cerradas', color: 'text.secondary' },
-  { key: 'hotLeads', label: 'Leads calientes', color: 'error.main' },
+const PERIOD_OPTIONS = [
+  { value: '7d', label: 'Últimos 7 días' },
+  { value: '30d', label: 'Últimos 30 días' },
+  { value: '90d', label: 'Últimos 90 días' },
+  { value: 'all', label: 'Todo el tiempo' },
 ]
 
 const RECOVERY_STATUS_META = {
@@ -56,6 +57,14 @@ const RECOVERY_STATUS_META = {
   failed: { label: 'Fallido', color: 'error' },
 }
 
+const RECOVERY_STATUS_FILTER = [
+  { value: '', label: 'Todos' },
+  { value: 'pending', label: 'Pendientes' },
+  { value: 'sent', label: 'Enviados' },
+  { value: 'converted', label: 'Convertidos' },
+  { value: 'failed', label: 'Fallidos' },
+]
+
 const formatMoney = (cents, currency = 'ARS') => {
   const amount = Number(cents || 0) / 100
   try {
@@ -69,20 +78,81 @@ const formatMoney = (cents, currency = 'ARS') => {
   }
 }
 
-const MetricCard = ({ label, value, color }) => (
+const MetricCard = ({ label, value, color, suffix }) => (
   <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, height: '100%' }}>
     <Typography variant="caption" color="text.secondary" fontWeight={700}>
       {label}
     </Typography>
     <Typography variant="h4" fontWeight={900} sx={{ mt: 0.5, color }}>
-      {Number(value || 0).toLocaleString('es-AR')}
+      {typeof value === 'number' ? value.toLocaleString('es-AR') : value}
+      {suffix && (
+        <Typography
+          component="span"
+          variant="body2"
+          color="text.secondary"
+          sx={{ ml: 0.5 }}
+        >
+          {suffix}
+        </Typography>
+      )}
     </Typography>
   </Paper>
 )
 
+const RateCard = ({ label, value, color }) => (
+  <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, height: '100%' }}>
+    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+      {label}
+    </Typography>
+    <Stack direction="row" alignItems="baseline" spacing={0.5} sx={{ mt: 0.5 }}>
+      <Typography variant="h4" fontWeight={900} sx={{ color }}>
+        {value}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        %
+      </Typography>
+    </Stack>
+  </Paper>
+)
+
+const LeadFunnel = ({ leads }) => {
+  if (!leads) return null
+  const stages = [
+    { key: 'new', label: 'Nuevos', color: 'info.main' },
+    { key: 'qualified', label: 'Calificados', color: 'primary.main' },
+    { key: 'hot', label: 'Calientes', color: 'error.main' },
+    { key: 'followUp', label: 'Seguimiento', color: 'warning.main' },
+    { key: 'won', label: 'Ganados', color: 'success.main' },
+    { key: 'lost', label: 'Perdidos', color: 'text.disabled' },
+  ]
+
+  return (
+    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+      {stages.map(stage => (
+        <Tooltip key={stage.key} title={stage.label}>
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`${stage.label}: ${leads[stage.key] ?? 0}`}
+            sx={{ fontWeight: 600 }}
+          />
+        </Tooltip>
+      ))}
+    </Stack>
+  )
+}
+
 const AiAgentDashboardPage = () => {
   const [metrics, setMetrics] = useState(null)
   const [recoveries, setRecoveries] = useState([])
+  const [recoveryPagination, setRecoveryPagination] = useState({
+    page: 1,
+    limit: 25,
+    total: 0,
+    pages: 0,
+  })
+  const [recoveryStatus, setRecoveryStatus] = useState('')
+  const [period, setPeriod] = useState('30d')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -91,31 +161,63 @@ const AiAgentDashboardPage = () => {
   const [testing, setTesting] = useState(false)
   const [testError, setTestError] = useState('')
 
-  const load = useCallback(async () => {
+  const loadMetrics = useCallback(async currentPeriod => {
     setLoading(true)
     setError('')
     try {
-      const [metricsData, recoveriesData] = await Promise.all([
-        getAiAgentMetrics(),
-        getAiCartRecoveries(),
-      ])
-      setMetrics(metricsData || {})
-      setRecoveries(Array.isArray(recoveriesData) ? recoveriesData : [])
+      const data = await getAiAgentMetrics(currentPeriod)
+      setMetrics(data || {})
     } catch (err) {
-      console.error('[AI_AGENT_DASHBOARD_ERROR]', err)
+      console.error('[AI_DASHBOARD_METRICS_ERROR]', err)
       setError(
         err?.response?.data?.message ||
           err?.message ||
-          'No se pudo cargar el panel del agente.',
+          'No se pudo cargar las métricas.',
       )
     } finally {
       setLoading(false)
     }
   }, [])
 
+  const loadRecoveries = useCallback(async (page = 1, status = '') => {
+    try {
+      const data = await getAiCartRecoveries({
+        page,
+        limit: 25,
+        status: status || undefined,
+      })
+      const items = data?.items || (Array.isArray(data) ? data : [])
+      setRecoveries(items)
+      if (data?.pagination) {
+        setRecoveryPagination(data.pagination)
+      } else {
+        setRecoveryPagination({
+          page: 1,
+          limit: 25,
+          total: items.length,
+          pages: 1,
+        })
+      }
+    } catch (err) {
+      console.error('[AI_DASHBOARD_RECOVERIES_ERROR]', err)
+    }
+  }, [])
+
   useEffect(() => {
-    load()
-  }, [load])
+    loadMetrics(period)
+    loadRecoveries(1, recoveryStatus)
+  }, [loadMetrics, loadRecoveries, period, recoveryStatus])
+
+  const handleRefresh = useCallback(() => {
+    loadMetrics(period)
+    loadRecoveries(recoveryPagination.page, recoveryStatus)
+  }, [
+    loadMetrics,
+    loadRecoveries,
+    period,
+    recoveryPagination.page,
+    recoveryStatus,
+  ])
 
   const handleTest = useCallback(async () => {
     const message = testInput.trim()
@@ -139,7 +241,11 @@ const AiAgentDashboardPage = () => {
     }
   }, [testInput])
 
-  if (loading) {
+  const conv = metrics?.conversations || {}
+  const leads = metrics?.leads || {}
+  const recovery = metrics?.cartRecovery || {}
+
+  if (loading && !metrics) {
     return (
       <Box
         display="flex"
@@ -154,6 +260,7 @@ const AiAgentDashboardPage = () => {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1080, mx: 'auto' }}>
+      {/* Header */}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
@@ -169,18 +276,35 @@ const AiAgentDashboardPage = () => {
             </Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            Rendimiento del agente, prueba en vivo y campañas de recuperación de
-            carrito.
+            Rendimiento del agente, prueba en vivo y campañas de recuperación.
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={load}
-          sx={{ borderRadius: 2, textTransform: 'none' }}
-        >
-          Actualizar
-        </Button>
+        <Stack direction="row" spacing={1.5}>
+          <TextField
+            select
+            size="small"
+            value={period}
+            onChange={e => setPeriod(e.target.value)}
+            sx={{ minWidth: 170 }}
+          >
+            {PERIOD_OPTIONS.map(opt => (
+              <MenuItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Button
+            variant="outlined"
+            startIcon={
+              loading ? <CircularProgress size={16} /> : <RefreshIcon />
+            }
+            onClick={handleRefresh}
+            disabled={loading}
+            sx={{ borderRadius: 2, textTransform: 'none' }}
+          >
+            Actualizar
+          </Button>
+        </Stack>
       </Stack>
 
       {error && (
@@ -189,18 +313,123 @@ const AiAgentDashboardPage = () => {
         </Alert>
       )}
 
-      <Grid container spacing={2} mb={3}>
-        {METRIC_CARDS.map(card => (
-          <Grid item xs={6} sm={4} md={2.4} key={card.key}>
-            <MetricCard
-              label={card.label}
-              value={metrics?.[card.key]}
-              color={card.color}
-            />
-          </Grid>
-        ))}
+      {/* Conversation metrics */}
+      <Typography variant="overline" color="text.secondary" fontWeight={700}>
+        Conversaciones
+      </Typography>
+      <Grid container spacing={2} mb={3} mt={0.5}>
+        <Grid item xs={6} sm={4} md={2.4}>
+          <MetricCard
+            label="Total"
+            value={conv.total || 0}
+            color="primary.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={4} md={2.4}>
+          <MetricCard
+            label="Abiertas"
+            value={conv.open || 0}
+            color="info.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={4} md={2.4}>
+          <MetricCard
+            label="Esperando humano"
+            value={conv.waitingHuman || 0}
+            color="warning.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={4} md={2.4}>
+          <MetricCard
+            label="Convertidas"
+            value={conv.converted || 0}
+            color="success.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={4} md={2.4}>
+          <RateCard
+            label="Tasa de conversión"
+            value={conv.conversionRate || 0}
+            color="success.main"
+          />
+        </Grid>
       </Grid>
 
+      {/* Lead metrics */}
+      <Typography variant="overline" color="text.secondary" fontWeight={700}>
+        Leads
+      </Typography>
+      <Grid container spacing={2} mb={1} mt={0.5}>
+        <Grid item xs={6} sm={4} md={3}>
+          <MetricCard
+            label="Total leads"
+            value={leads.total || 0}
+            color="primary.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={4} md={3}>
+          <MetricCard
+            label="Leads calientes"
+            value={leads.hot || 0}
+            color="error.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={4} md={3}>
+          <MetricCard
+            label="Ganados"
+            value={leads.won || 0}
+            color="success.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={4} md={3}>
+          <MetricCard
+            label="Score promedio"
+            value={leads.averageScore || 0}
+            color="text.primary"
+            suffix="/ 100"
+          />
+        </Grid>
+      </Grid>
+      <Box sx={{ mb: 3, mt: 1 }}>
+        <LeadFunnel leads={leads} />
+      </Box>
+
+      {/* Cart recovery metrics */}
+      <Typography variant="overline" color="text.secondary" fontWeight={700}>
+        Recuperación de carritos
+      </Typography>
+      <Grid container spacing={2} mb={3} mt={0.5}>
+        <Grid item xs={6} sm={3}>
+          <MetricCard
+            label="Intentos"
+            value={recovery.total || 0}
+            color="primary.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <MetricCard
+            label="Convertidos"
+            value={recovery.converted || 0}
+            color="success.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <RateCard
+            label="Tasa de recupero"
+            value={recovery.conversionRate || 0}
+            color="success.main"
+          />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <MetricCard
+            label="Ingreso recuperado"
+            value={formatMoney(recovery.recoveredRevenueCents)}
+            color="success.main"
+          />
+        </Grid>
+      </Grid>
+
+      {/* Agent tester */}
       <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, mb: 3 }}>
         <Stack direction="row" spacing={1.5} alignItems="center" mb={0.5}>
           <SmartToyIcon color="primary" />
@@ -288,14 +517,39 @@ const AiAgentDashboardPage = () => {
         )}
       </Paper>
 
+      {/* Cart recovery table */}
       <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
         <Box sx={{ p: 2.5, pb: 1.5 }}>
-          <Typography variant="h6" fontWeight={700}>
-            Recuperación de carritos
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Últimos {recoveries.length} intentos de recupero por WhatsApp.
-          </Typography>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            justifyContent="space-between"
+            alignItems={{ sm: 'center' }}
+            spacing={1}
+          >
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <TrendingUpIcon color="primary" fontSize="small" />
+                <Typography variant="h6" fontWeight={700}>
+                  Detalle de recuperación
+                </Typography>
+              </Stack>
+            </Box>
+            <TextField
+              select
+              size="small"
+              value={recoveryStatus}
+              onChange={e => {
+                setRecoveryStatus(e.target.value)
+              }}
+              sx={{ minWidth: 150 }}
+            >
+              {RECOVERY_STATUS_FILTER.map(opt => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
         </Box>
 
         <TableContainer sx={{ maxHeight: 460 }}>
@@ -360,7 +614,11 @@ const AiAgentDashboardPage = () => {
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 5 }}>
                     <Typography color="text.secondary">
-                      Todavía no hay campañas de recuperación.
+                      No hay campañas de recuperación
+                      {recoveryStatus
+                        ? ` con estado "${RECOVERY_STATUS_META[recoveryStatus]?.label || recoveryStatus}"`
+                        : ''}
+                      .
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -368,6 +626,40 @@ const AiAgentDashboardPage = () => {
             </TableBody>
           </Table>
         </TableContainer>
+
+        {recoveryPagination.pages > 1 && (
+          <Stack
+            direction="row"
+            justifyContent="flex-end"
+            alignItems="center"
+            spacing={1}
+            sx={{ p: 1.5, borderTop: '1px solid', borderColor: 'divider' }}
+          >
+            <Typography variant="caption" color="text.secondary">
+              {recoveryPagination.page} / {recoveryPagination.pages}
+              {' · '}
+              {recoveryPagination.total} total
+            </Typography>
+            <IconButton
+              size="small"
+              disabled={recoveryPagination.page <= 1}
+              onClick={() =>
+                loadRecoveries(recoveryPagination.page - 1, recoveryStatus)
+              }
+            >
+              <ChevronLeftIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              disabled={recoveryPagination.page >= recoveryPagination.pages}
+              onClick={() =>
+                loadRecoveries(recoveryPagination.page + 1, recoveryStatus)
+              }
+            >
+              <ChevronRightIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+        )}
       </Paper>
     </Box>
   )
