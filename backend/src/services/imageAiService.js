@@ -1,8 +1,36 @@
 import FormData from 'form-data'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 
 const STABILITY_API_BASE = 'https://api.stability.ai/v2beta/stable-image'
+
+let genAI = null
+
+const translatePromptToEnglish = async prompt => {
+  const geminiKey = env.ai?.geminiApiKey
+  if (!geminiKey) {
+    logger.warn('GEMINI_API_KEY not set — skipping prompt translation')
+    return prompt
+  }
+
+  try {
+    if (!genAI) genAI = new GoogleGenerativeAI(geminiKey)
+
+    const model = genAI.getGenerativeModel({ model: env.ai?.geminiModel || 'gemini-2.0-flash' })
+
+    const result = await model.generateContent(
+      `Translate the following image editing instruction to English. Return ONLY the translated text, nothing else. Do not add quotes or explanations.\n\nText: "${prompt}"`,
+    )
+
+    const translated = result.response.text().trim()
+    logger.info('Prompt translated', { original: prompt, translated })
+    return translated || prompt
+  } catch (err) {
+    logger.warn('Prompt translation failed, using original', { error: err.message })
+    return prompt
+  }
+}
 
 const getApiKey = () => {
   const key = env.stabilityAi?.apiKey
@@ -77,8 +105,11 @@ export const generateVariation = async (
   prompt,
   mimeType = 'image/png',
 ) => {
+  const translatedPrompt = await translatePromptToEnglish(prompt)
+
   logger.info('Stability AI — search-and-replace request', {
-    promptLength: prompt.length,
+    originalPrompt: prompt,
+    translatedPrompt,
   })
 
   const form = new FormData()
@@ -86,7 +117,7 @@ export const generateVariation = async (
     filename: 'image.png',
     contentType: mimeType,
   })
-  form.append('prompt', prompt)
+  form.append('prompt', translatedPrompt)
   form.append('search_prompt', 'background')
   form.append('output_format', 'png')
 
