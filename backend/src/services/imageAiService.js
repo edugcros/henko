@@ -2,7 +2,7 @@ import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-const IMAGE_MODEL = 'gemini-2.5-flash-lite'
+const IMAGE_MODEL = 'gemini-2.0-flash-exp'
 
 const getGeminiKey = () => {
   const key = env.ai?.geminiApiKey
