@@ -1,170 +1,161 @@
+import FormData from 'form-data'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
+const STABILITY_API_BASE = 'https://api.stability.ai/v2beta/stable-image'
 
-const IMAGE_MODEL_CANDIDATES = [
-  'gemini-2.0-flash-exp',
-  'gemini-2.0-flash-preview-image-generation',
-  'gemini-2.0-flash',
-]
+let genAI = null
 
-let resolvedModel = null
+// ─── Gemini: prompt engineering ──────────────────────────
 
-const getGeminiKey = () => {
-  const key = env.ai?.geminiApiKey
+const optimizePrompt = async userPrompt => {
+  const geminiKey = env.ai?.geminiApiKey
+  if (!geminiKey) {
+    logger.warn('GEMINI_API_KEY not set — skipping prompt optimization')
+    return userPrompt
+  }
+
+  try {
+    if (!genAI) genAI = new GoogleGenerativeAI(geminiKey)
+    const model = genAI.getGenerativeModel({
+      model: env.ai?.geminiModel || 'gemini-2.0-flash',
+    })
+
+    const result = await model.generateContent(
+      `You are a prompt engineer for Stability AI image editing (search-and-replace endpoint).
+
+The user uploaded a product photo and wants to change ONLY the background/surroundings while keeping the product intact.
+
+Convert their instruction into an optimal English prompt that describes the desired NEW background scene. This prompt will replace the current background.
+
+Rules:
+- Output ONLY the optimized English prompt, nothing else — no prefix, no quotes, no explanation
+- Describe background scene, lighting, surface, materials, atmosphere
+- Never mention or describe the product itself
+- Be visually specific: mention colors, lighting direction, textures
+- Keep it under 50 words
+- Use simple English, no special characters or markdown
+
+User instruction: "${userPrompt}"`,
+    )
+
+    let optimized = result.response.text().trim()
+    optimized = optimized
+      .replace(/^["'`]+|["'`]+$/g, '')
+      .replace(/^(here['']?s?|prompt|output|result|answer)[:\s]*/i, '')
+      .trim()
+
+    if (!optimized || optimized.length < 5) return userPrompt
+
+    logger.info('Prompt optimized', { original: userPrompt, optimized })
+    return optimized
+  } catch (err) {
+    logger.warn('Prompt optimization failed, using original', { error: err.message })
+    return userPrompt
+  }
+}
+
+// ─── Stability AI ────────────────────────────────────────
+
+const getStabilityKey = () => {
+  const key = env.stabilityAi?.apiKey
   if (!key) {
-    const error = new Error('GEMINI_API_KEY no está configurada')
+    const error = new Error(
+      'STABILITY_AI_API_KEY no está configurada. Agregala en las variables de entorno del servidor.',
+    )
     error.statusCode = 503
     throw error
   }
   return key
 }
 
-const doImageRequest = async (apiKey, model, imageBuffer, mimeType, textPrompt) => {
-  const base64Image = imageBuffer.toString('base64')
-  const url = `${GEMINI_API_BASE}/${model}:generateContent?key=${apiKey}`
+const parseStabilityError = (status, body) => {
+  let parsed = {}
+  try {
+    parsed = JSON.parse(body)
+  } catch {}
+  const detail = parsed?.message || parsed?.name || parsed?.errors?.join(', ') || ''
 
-  const response = await fetch(url, {
+  const messages = {
+    400: detail
+      ? `Stability AI rechazó la solicitud: ${detail}`
+      : 'La imagen no pudo ser procesada. Probá con otra imagen (PNG/JPG, max 10 MB).',
+    401: 'API key de Stability AI inválida. Revisá STABILITY_AI_API_KEY.',
+    402: 'Créditos insuficientes en Stability AI. Recargá en platform.stability.ai.',
+    403: 'El filtro de contenido rechazó la solicitud. Intentá con otra imagen o reformulá el prompt.',
+    429: 'Demasiadas solicitudes a Stability AI. Esperá unos segundos e intentá de nuevo.',
+  }
+
+  return messages[status] || `Error de Stability AI (${status})${detail ? ': ' + detail : ''}`
+}
+
+const stabilityRequest = async (endpoint, formData) => {
+  const apiKey = getStabilityKey()
+
+  const response = await fetch(`${STABILITY_API_BASE}${endpoint}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: textPrompt },
-            { inlineData: { mimeType, data: base64Image } },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseModalities: ['IMAGE', 'TEXT'],
-      },
-    }),
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'image/*',
+      ...formData.getHeaders(),
+    },
+    body: formData.getBuffer(),
   })
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => 'unknown')
-    let parsed = {}
-    try { parsed = JSON.parse(errorBody) } catch {}
-    const detail = parsed?.error?.message || errorBody
+    logger.error(`Stability AI ${endpoint} failed`, {
+      status: response.status,
+      body: errorBody,
+    })
 
-    const err = new Error(detail)
-    err.status = response.status
-    err.isModelError =
-      response.status === 404 ||
-      /text.only|not.found|does not (exist|support)|not supported/i.test(detail)
-    throw err
+    const userMessage = parseStabilityError(response.status, errorBody)
+    const error = new Error(userMessage)
+    error.statusCode = [400, 403].includes(response.status) ? 422 : 502
+    throw error
   }
 
-  const data = await response.json()
-  const candidates = data.candidates || []
+  const resultBuffer = Buffer.from(await response.arrayBuffer())
 
-  if (candidates.length === 0) {
-    const blockReason = data.promptFeedback?.blockReason
-    const err = new Error(
-      blockReason
-        ? `Contenido bloqueado: ${blockReason}`
-        : 'La IA no generó resultados',
-    )
-    err.statusCode = 422
-    throw err
-  }
+  logger.info(`Stability AI ${endpoint} OK`, { outputBytes: resultBuffer.length })
 
-  const parts = candidates[0]?.content?.parts || []
-  const imagePart = parts.find(p => p.inlineData)
-
-  if (!imagePart) {
-    const textPart = parts.find(p => p.text)
-    const err = new Error(
-      textPart?.text || 'La IA respondió sin imagen',
-    )
-    err.statusCode = 422
-    err.isModelError = /text.only|not supported/i.test(textPart?.text || '')
-    throw err
-  }
-
-  return {
-    buffer: Buffer.from(imagePart.inlineData.data, 'base64'),
-    contentType: imagePart.inlineData.mimeType || 'image/png',
-  }
+  return { buffer: resultBuffer, contentType: 'image/png' }
 }
 
-const geminiImageEdit = async (imageBuffer, mimeType, textPrompt) => {
-  const apiKey = getGeminiKey()
-
-  const candidates = []
-  if (resolvedModel) candidates.push(resolvedModel)
-
-  const configured = env.ai?.geminiImageModel
-  if (configured && !candidates.includes(configured)) {
-    candidates.push(configured)
-  }
-
-  for (const m of IMAGE_MODEL_CANDIDATES) {
-    if (!candidates.includes(m)) candidates.push(m)
-  }
-
-  let lastError = null
-
-  for (const model of candidates) {
-    try {
-      logger.info('Gemini image request', { model, mimeType, imageSize: imageBuffer.length })
-      const result = await doImageRequest(apiKey, model, imageBuffer, mimeType, textPrompt)
-
-      if (model !== resolvedModel) {
-        resolvedModel = model
-        logger.info(`Image model resolved: ${model}`)
-      }
-
-      logger.info('Gemini image success', { model, outputSize: result.buffer.length })
-      return result
-    } catch (err) {
-      lastError = err
-      if (err.isModelError) {
-        logger.warn(`Model ${model} incompatible, trying next`, { detail: err.message })
-        continue
-      }
-      break
-    }
-  }
-
-  const status = lastError?.status || 500
-  let userMessage = `Error del servicio de IA: ${lastError?.message || 'error desconocido'}`
-
-  if (lastError?.isModelError) {
-    userMessage =
-      'No se encontró un modelo de Gemini que soporte generación de imágenes. ' +
-      'Configurá la variable GEMINI_IMAGE_MODEL con un modelo válido (ej: gemini-2.0-flash-exp).'
-  } else if (status === 403) {
-    userMessage = 'La API key de Gemini no tiene permisos suficientes.'
-  } else if (status === 429) {
-    userMessage = 'Demasiadas solicitudes. Esperá unos segundos e intentá de nuevo.'
-  } else if (lastError?.statusCode === 422) {
-    userMessage = lastError.message
-  }
-
-  const error = new Error(userMessage)
-  error.statusCode = [400, 404, 422].includes(status) ? 422 : 502
-  throw error
-}
+// ─── Public API ──────────────────────────────────────────
 
 export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
-  logger.info('Gemini — remove background request')
+  logger.info('removeBackground', { bytes: imageBuffer.length, mime: mimeType })
 
-  return geminiImageEdit(
-    imageBuffer,
-    mimeType,
-    'Remove the background from this product photo completely. Return ONLY the product with a clean, pure white background. Maintain the exact same product, size, angle, and quality. Do not modify the product in any way.',
-  )
+  const form = new FormData()
+  form.append('image', imageBuffer, {
+    filename: 'input.png',
+    contentType: mimeType,
+  })
+  form.append('output_format', 'png')
+
+  return stabilityRequest('/edit/remove-background', form)
 }
 
 export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/png') => {
-  logger.info('Gemini — generate variation request', { prompt })
+  const optimizedPrompt = await optimizePrompt(prompt)
 
-  return geminiImageEdit(
-    imageBuffer,
-    mimeType,
-    `Edit this product photo following these instructions. IMPORTANT: Keep the product EXACTLY the same — same shape, color, details, angle, and size. Only modify the background, surroundings, and lighting as described below.\n\nInstructions: ${prompt}`,
-  )
+  logger.info('generateVariation', {
+    bytes: imageBuffer.length,
+    mime: mimeType,
+    original: prompt,
+    optimized: optimizedPrompt,
+  })
+
+  const form = new FormData()
+  form.append('image', imageBuffer, {
+    filename: 'input.png',
+    contentType: mimeType,
+  })
+  form.append('prompt', optimizedPrompt)
+  form.append('search_prompt', 'the background behind and around the main product')
+  form.append('output_format', 'png')
+
+  return stabilityRequest('/edit/search-and-replace', form)
 }
