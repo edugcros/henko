@@ -20,7 +20,20 @@ const translatePromptToEnglish = async prompt => {
     const model = genAI.getGenerativeModel({ model: env.ai?.geminiModel || 'gemini-2.0-flash' })
 
     const result = await model.generateContent(
-      `Translate the following image editing instruction to English. Return ONLY the translated text, nothing else. Do not add quotes or explanations.\n\nText: "${prompt}"`,
+      `You are a prompt engineer for Stability AI's image editing API (search-and-replace endpoint).
+
+The user uploaded a product photo and wants to modify ONLY the background/surroundings while keeping the product intact.
+
+Your job: convert the user's instruction into an optimal English prompt that describes the desired NEW background or scene. The prompt will be used as the "replacement" for the background in the image.
+
+Rules:
+- Output ONLY the optimized English prompt, nothing else
+- Never describe the product itself — only the background, scene, lighting, or surroundings
+- Be visually specific: mention materials, colors, lighting direction, atmosphere
+- Keep it under 80 words
+- If the user mentions something that should appear near/around the product, describe it as part of the scene
+
+User instruction: "${prompt}"`,
     )
 
     const translated = result.response.text().trim()
