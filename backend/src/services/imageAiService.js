@@ -1,3 +1,4 @@
+import FormData from 'form-data'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 
@@ -13,42 +14,50 @@ const getApiKey = () => {
   return key
 }
 
-export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
+const stabilityRequest = async (endpoint, formData) => {
   const apiKey = getApiKey()
 
-  const formData = new FormData()
-  formData.append('image', new Blob([imageBuffer], { type: mimeType }), 'image.png')
-  formData.append('output_format', 'png')
-
-  logger.info('🖼️ Stability AI — remove-background request')
-
-  const response = await fetch(`${STABILITY_API_BASE}/edit/remove-background`, {
+  const response = await fetch(`${STABILITY_API_BASE}${endpoint}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       Accept: 'image/*',
+      ...formData.getHeaders(),
     },
-    body: formData,
+    body: formData.getBuffer(),
   })
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => 'unknown')
-    logger.error('Stability AI remove-background error', {
+    logger.error(`Stability AI ${endpoint} error`, {
       status: response.status,
       body: errorBody,
     })
-    const error = new Error(`Stability AI error: ${response.status}`)
+    const error = new Error(`Stability AI error: ${response.status} — ${errorBody}`)
     error.statusCode = 502
     throw error
   }
 
   const resultBuffer = Buffer.from(await response.arrayBuffer())
 
-  logger.info('Stability AI remove-background success', {
+  logger.info(`Stability AI ${endpoint} success`, {
     outputSize: resultBuffer.length,
   })
 
   return { buffer: resultBuffer, contentType: 'image/png' }
+}
+
+export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
+  logger.info('Stability AI — remove-background request')
+
+  const form = new FormData()
+  form.append('image', imageBuffer, {
+    filename: 'image.png',
+    contentType: mimeType,
+  })
+  form.append('output_format', 'png')
+
+  return stabilityRequest('/edit/remove-background', form)
 }
 
 export const generateVariation = async (
@@ -56,43 +65,18 @@ export const generateVariation = async (
   prompt,
   mimeType = 'image/png',
 ) => {
-  const apiKey = getApiKey()
-
-  const formData = new FormData()
-  formData.append('image', new Blob([imageBuffer], { type: mimeType }), 'image.png')
-  formData.append('prompt', prompt)
-  formData.append('search_prompt', 'background')
-  formData.append('output_format', 'png')
-
-  logger.info('🖼️ Stability AI — search-and-replace request', {
+  logger.info('Stability AI — search-and-replace request', {
     promptLength: prompt.length,
   })
 
-  const response = await fetch(`${STABILITY_API_BASE}/edit/search-and-replace`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: 'image/*',
-    },
-    body: formData,
+  const form = new FormData()
+  form.append('image', imageBuffer, {
+    filename: 'image.png',
+    contentType: mimeType,
   })
+  form.append('prompt', prompt)
+  form.append('search_prompt', 'background')
+  form.append('output_format', 'png')
 
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => 'unknown')
-    logger.error('Stability AI search-and-replace error', {
-      status: response.status,
-      body: errorBody,
-    })
-    const error = new Error(`Stability AI error: ${response.status}`)
-    error.statusCode = 502
-    throw error
-  }
-
-  const resultBuffer = Buffer.from(await response.arrayBuffer())
-
-  logger.info('Stability AI search-and-replace success', {
-    outputSize: resultBuffer.length,
-  })
-
-  return { buffer: resultBuffer, contentType: 'image/png' }
+  return stabilityRequest('/edit/search-and-replace', form)
 }
