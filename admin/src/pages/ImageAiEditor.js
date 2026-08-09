@@ -199,7 +199,7 @@ const ImageAiEditor = () => {
           </Stack>
           <Chip
             icon={<BoltIcon sx={{ fontSize: 14, color: '#FCD34D !important' }} />}
-            label="Powered by Gemini"
+            label="AI Image Editor"
             size="small"
             sx={{ mt: { xs: 1.5, sm: 0 }, alignSelf: { xs: 'flex-start', sm: 'center' }, bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.12)', fontWeight: 600, fontSize: '0.7rem' }}
           />

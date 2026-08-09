@@ -1,9 +1,10 @@
-import FormData from 'form-data'
+import { removeBackground as imglyRemoveBg } from '@imgly/background-removal-node'
+import Replicate from 'replicate'
+import { HfInference } from '@huggingface/inference'
+import sharp from 'sharp'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
-
-const STABILITY_API_BASE = 'https://api.stability.ai/v2beta/stable-image'
 
 let genAI = null
 
@@ -23,11 +24,11 @@ const optimizePrompt = async userPrompt => {
     })
 
     const result = await model.generateContent(
-      `You are a prompt engineer for Stability AI image editing (search-and-replace endpoint).
+      `You are a prompt engineer for AI image generation.
 
-The user uploaded a product photo and wants to change ONLY the background/surroundings while keeping the product intact.
+The user uploaded a product photo and wants to generate a new background scene for it.
 
-Convert their instruction into an optimal English prompt that describes the desired NEW background scene. This prompt will replace the current background.
+Convert their instruction into an optimal English prompt that describes the desired background scene. The prompt will be used with a text-to-image model to generate ONLY the background.
 
 Rules:
 - Output ONLY the optimized English prompt, nothing else — no prefix, no quotes, no explanation
@@ -56,86 +57,76 @@ User instruction: "${userPrompt}"`,
   }
 }
 
-// ─── Stability AI ────────────────────────────────────────
+// ─── Background generation providers ────────────────────
 
-const getStabilityKey = () => {
-  const key = env.stabilityAi?.apiKey
-  if (!key) {
-    const error = new Error(
-      'STABILITY_AI_API_KEY no está configurada. Agregala en las variables de entorno del servidor.',
-    )
-    error.statusCode = 503
-    throw error
-  }
-  return key
+const isCreditsError = err => {
+  const msg = (err?.message || '').toLowerCase()
+  return (
+    msg.includes('insufficient') ||
+    msg.includes('payment') ||
+    msg.includes('billing') ||
+    msg.includes('quota') ||
+    msg.includes('credit') ||
+    err?.status === 402 ||
+    err?.statusCode === 402
+  )
 }
 
-const parseStabilityError = (status, body) => {
-  let parsed = {}
-  try {
-    parsed = JSON.parse(body)
-  } catch {}
-  const detail = parsed?.message || parsed?.name || parsed?.errors?.join(', ') || ''
+const generateBgReplicate = async (prompt, width, height) => {
+  const token = env.replicate?.apiToken
+  if (!token) throw new Error('REPLICATE_API_TOKEN no configurado')
 
-  const messages = {
-    400: detail
-      ? `Stability AI rechazó la solicitud: ${detail}`
-      : 'La imagen no pudo ser procesada. Probá con otra imagen (PNG/JPG, max 10 MB).',
-    401: 'API key de Stability AI inválida. Revisá STABILITY_AI_API_KEY.',
-    402: 'Créditos insuficientes en Stability AI. Recargá en platform.stability.ai.',
-    403: 'El filtro de contenido rechazó la solicitud. Intentá con otra imagen o reformulá el prompt.',
-    429: 'Demasiadas solicitudes a Stability AI. Esperá unos segundos e intentá de nuevo.',
-  }
+  const replicate = new Replicate({ auth: token })
 
-  return messages[status] || `Error de Stability AI (${status})${detail ? ': ' + detail : ''}`
-}
-
-const stabilityRequest = async (endpoint, formData) => {
-  const apiKey = getStabilityKey()
-
-  const response = await fetch(`${STABILITY_API_BASE}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: 'image/*',
-      ...formData.getHeaders(),
+  const aspectRatio = width >= height ? '1:1' : '1:1'
+  const output = await replicate.run('black-forest-labs/flux-schnell', {
+    input: {
+      prompt,
+      num_outputs: 1,
+      aspect_ratio: aspectRatio,
+      output_format: 'png',
+      go_fast: true,
     },
-    body: formData.getBuffer(),
   })
 
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => 'unknown')
-    logger.error(`Stability AI ${endpoint} failed`, {
-      status: response.status,
-      body: errorBody,
-    })
+  const imageUrl = Array.isArray(output) ? output[0] : output
+  if (!imageUrl) throw new Error('Replicate did not return an image')
 
-    const userMessage = parseStabilityError(response.status, errorBody)
-    const error = new Error(userMessage)
-    error.statusCode = [400, 403].includes(response.status) ? 422 : 502
-    throw error
-  }
+  const response = await fetch(typeof imageUrl === 'string' ? imageUrl : imageUrl.url())
+  if (!response.ok) throw new Error(`Failed to download Replicate result: ${response.status}`)
 
-  const resultBuffer = Buffer.from(await response.arrayBuffer())
+  return Buffer.from(await response.arrayBuffer())
+}
 
-  logger.info(`Stability AI ${endpoint} OK`, { outputBytes: resultBuffer.length })
+const generateBgHuggingFace = async (prompt, width, height) => {
+  const token = env.huggingface?.apiKey
+  if (!token) throw new Error('HUGGINGFACE_API_KEY no configurado')
 
-  return { buffer: resultBuffer, contentType: 'image/png' }
+  const hf = new HfInference(token)
+
+  const result = await hf.textToImage({
+    model: 'stabilityai/stable-diffusion-xl-base-1.0',
+    inputs: prompt,
+    parameters: { width: 1024, height: 1024 },
+  })
+
+  return Buffer.from(await result.arrayBuffer())
 }
 
 // ─── Public API ──────────────────────────────────────────
 
 export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
-  logger.info('removeBackground', { bytes: imageBuffer.length, mime: mimeType })
+  logger.info('removeBackground (local @imgly)', { bytes: imageBuffer.length, mime: mimeType })
 
-  const form = new FormData()
-  form.append('image', imageBuffer, {
-    filename: 'input.png',
-    contentType: mimeType,
+  const blob = new Blob([imageBuffer], { type: mimeType })
+  const resultBlob = await imglyRemoveBg(blob, {
+    output: { format: 'image/png', quality: 0.9 },
   })
-  form.append('output_format', 'png')
 
-  return stabilityRequest('/edit/remove-background', form)
+  const buffer = Buffer.from(await resultBlob.arrayBuffer())
+  logger.info('removeBackground OK', { outputBytes: buffer.length })
+
+  return { buffer, contentType: 'image/png' }
 }
 
 export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/png') => {
@@ -148,14 +139,34 @@ export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/p
     optimized: optimizedPrompt,
   })
 
-  const form = new FormData()
-  form.append('image', imageBuffer, {
-    filename: 'input.png',
-    contentType: mimeType,
-  })
-  form.append('prompt', optimizedPrompt)
-  form.append('search_prompt', 'the background behind and around the main product')
-  form.append('output_format', 'png')
+  const { width, height } = await sharp(imageBuffer).metadata()
 
-  return stabilityRequest('/edit/search-and-replace', form)
+  const { buffer: transparentBuf } = await removeBackground(imageBuffer, mimeType)
+
+  let bgBuffer
+  try {
+    bgBuffer = await generateBgReplicate(optimizedPrompt, width, height)
+    logger.info('Background generated via Replicate')
+  } catch (err) {
+    if (isCreditsError(err)) {
+      logger.info('Replicate credits exhausted, falling back to HuggingFace', {
+        error: err.message,
+      })
+      bgBuffer = await generateBgHuggingFace(optimizedPrompt, width, height)
+      logger.info('Background generated via HuggingFace (fallback)')
+    } else {
+      logger.error('Replicate background generation failed', { error: err.message })
+      throw new Error(`Error generando fondo: ${err.message}`)
+    }
+  }
+
+  const result = await sharp(bgBuffer)
+    .resize(width, height, { fit: 'cover' })
+    .composite([{ input: transparentBuf, gravity: 'centre' }])
+    .png()
+    .toBuffer()
+
+  logger.info('generateVariation OK', { outputBytes: result.length })
+
+  return { buffer: result, contentType: 'image/png' }
 }

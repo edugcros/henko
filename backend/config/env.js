@@ -322,6 +322,14 @@ export const env = {
     apiKey: process.env.STABILITY_AI_API_KEY || '',
   },
 
+  replicate: {
+    apiToken: process.env.REPLICATE_API_TOKEN || '',
+  },
+
+  huggingface: {
+    apiKey: process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN || '',
+  },
+
   aiAgent: {
     provider: process.env.AI_AGENT_PROVIDER || 'gemini',
     debug: parseBoolean(process.env.AI_AGENT_DEBUG, false),
