@@ -2,7 +2,14 @@ import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-const IMAGE_MODEL = 'gemini-3.1-flash-image'
+
+const IMAGE_MODEL_CANDIDATES = [
+  'gemini-2.0-flash-exp',
+  'gemini-2.0-flash-preview-image-generation',
+  'gemini-2.0-flash',
+]
+
+let resolvedModel = null
 
 const getGeminiKey = () => {
   const key = env.ai?.geminiApiKey
@@ -14,14 +21,9 @@ const getGeminiKey = () => {
   return key
 }
 
-const geminiImageEdit = async (imageBuffer, mimeType, textPrompt) => {
-  const apiKey = getGeminiKey()
-  const model = env.ai?.geminiImageModel || IMAGE_MODEL
-
+const doImageRequest = async (apiKey, model, imageBuffer, mimeType, textPrompt) => {
   const base64Image = imageBuffer.toString('base64')
   const url = `${GEMINI_API_BASE}/${model}:generateContent?key=${apiKey}`
-
-  logger.info('Gemini image request', { model, mimeType, imageSize: imageBuffer.length })
 
   const response = await fetch(url, {
     method: 'POST',
@@ -43,30 +45,16 @@ const geminiImageEdit = async (imageBuffer, mimeType, textPrompt) => {
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => 'unknown')
-    logger.error('Gemini image edit error', {
-      status: response.status,
-      model,
-      body: errorBody,
-    })
-
     let parsed = {}
     try { parsed = JSON.parse(errorBody) } catch {}
-    const detail = parsed?.error?.message || ''
+    const detail = parsed?.error?.message || errorBody
 
-    let userMessage = `Error del servicio de IA (${response.status})`
-    if (response.status === 403) {
-      userMessage = 'La API key de Gemini no tiene permisos suficientes. Revisá la configuración.'
-    } else if (response.status === 429) {
-      userMessage = 'Demasiadas solicitudes. Esperá unos segundos e intentá de nuevo.'
-    } else if (response.status === 400) {
-      userMessage = `Error al procesar la imagen: ${detail || 'revisá el formato de la imagen e intentá de nuevo.'}`
-    } else if (response.status === 404) {
-      userMessage = `Modelo "${model}" no disponible. Configurá GEMINI_IMAGE_MODEL con un modelo válido.`
-    }
-
-    const error = new Error(userMessage)
-    error.statusCode = response.status === 400 || response.status === 404 ? 422 : 502
-    throw error
+    const err = new Error(detail)
+    err.status = response.status
+    err.isModelError =
+      response.status === 404 ||
+      /text.only|not.found|does not (exist|support)|not supported/i.test(detail)
+    throw err
   }
 
   const data = await response.json()
@@ -74,14 +62,13 @@ const geminiImageEdit = async (imageBuffer, mimeType, textPrompt) => {
 
   if (candidates.length === 0) {
     const blockReason = data.promptFeedback?.blockReason
-    logger.error('Gemini returned no candidates', { blockReason, data })
-    const error = new Error(
+    const err = new Error(
       blockReason
-        ? `Gemini bloqueó la solicitud: ${blockReason}. Probá con otra imagen o descripción.`
-        : 'La IA no generó resultados. Probá con otra imagen.',
+        ? `Contenido bloqueado: ${blockReason}`
+        : 'La IA no generó resultados',
     )
-    error.statusCode = 422
-    throw error
+    err.statusCode = 422
+    throw err
   }
 
   const parts = candidates[0]?.content?.parts || []
@@ -89,29 +76,80 @@ const geminiImageEdit = async (imageBuffer, mimeType, textPrompt) => {
 
   if (!imagePart) {
     const textPart = parts.find(p => p.text)
-    logger.error('Gemini did not return an image', {
-      textResponse: textPart?.text,
-      finishReason: candidates[0]?.finishReason,
-    })
-    const error = new Error(
-      'La IA no pudo generar una imagen. Probá con otra imagen o reformulá la descripción.',
+    const err = new Error(
+      textPart?.text || 'La IA respondió sin imagen',
     )
-    error.statusCode = 422
-    throw error
+    err.statusCode = 422
+    err.isModelError = /text.only|not supported/i.test(textPart?.text || '')
+    throw err
   }
 
-  const buffer = Buffer.from(imagePart.inlineData.data, 'base64')
-  const contentType = imagePart.inlineData.mimeType || 'image/png'
-
-  logger.info('Gemini image edit success', { outputSize: buffer.length, contentType })
-
-  return { buffer, contentType }
+  return {
+    buffer: Buffer.from(imagePart.inlineData.data, 'base64'),
+    contentType: imagePart.inlineData.mimeType || 'image/png',
+  }
 }
 
-export const removeBackground = async (
-  imageBuffer,
-  mimeType = 'image/png',
-) => {
+const geminiImageEdit = async (imageBuffer, mimeType, textPrompt) => {
+  const apiKey = getGeminiKey()
+
+  const candidates = []
+  if (resolvedModel) candidates.push(resolvedModel)
+
+  const configured = env.ai?.geminiImageModel
+  if (configured && !candidates.includes(configured)) {
+    candidates.push(configured)
+  }
+
+  for (const m of IMAGE_MODEL_CANDIDATES) {
+    if (!candidates.includes(m)) candidates.push(m)
+  }
+
+  let lastError = null
+
+  for (const model of candidates) {
+    try {
+      logger.info('Gemini image request', { model, mimeType, imageSize: imageBuffer.length })
+      const result = await doImageRequest(apiKey, model, imageBuffer, mimeType, textPrompt)
+
+      if (model !== resolvedModel) {
+        resolvedModel = model
+        logger.info(`Image model resolved: ${model}`)
+      }
+
+      logger.info('Gemini image success', { model, outputSize: result.buffer.length })
+      return result
+    } catch (err) {
+      lastError = err
+      if (err.isModelError) {
+        logger.warn(`Model ${model} incompatible, trying next`, { detail: err.message })
+        continue
+      }
+      break
+    }
+  }
+
+  const status = lastError?.status || 500
+  let userMessage = `Error del servicio de IA: ${lastError?.message || 'error desconocido'}`
+
+  if (lastError?.isModelError) {
+    userMessage =
+      'No se encontró un modelo de Gemini que soporte generación de imágenes. ' +
+      'Configurá la variable GEMINI_IMAGE_MODEL con un modelo válido (ej: gemini-2.0-flash-exp).'
+  } else if (status === 403) {
+    userMessage = 'La API key de Gemini no tiene permisos suficientes.'
+  } else if (status === 429) {
+    userMessage = 'Demasiadas solicitudes. Esperá unos segundos e intentá de nuevo.'
+  } else if (lastError?.statusCode === 422) {
+    userMessage = lastError.message
+  }
+
+  const error = new Error(userMessage)
+  error.statusCode = [400, 404, 422].includes(status) ? 422 : 502
+  throw error
+}
+
+export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
   logger.info('Gemini — remove background request')
 
   return geminiImageEdit(
@@ -121,11 +159,7 @@ export const removeBackground = async (
   )
 }
 
-export const generateVariation = async (
-  imageBuffer,
-  prompt,
-  mimeType = 'image/png',
-) => {
+export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/png') => {
   logger.info('Gemini — generate variation request', { prompt })
 
   return geminiImageEdit(

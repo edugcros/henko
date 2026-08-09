@@ -9,12 +9,12 @@ import {
   CircularProgress,
   Grid,
   IconButton,
+  LinearProgress,
   Paper,
   Stack,
   TextField,
   Tooltip,
   Typography,
-  useTheme,
 } from '@mui/material'
 import {
   AutoFixHigh as MagicIcon,
@@ -23,41 +23,38 @@ import {
   Delete as DeleteIcon,
   Download as DownloadIcon,
   HideImage as RemoveBgIcon,
-  Image as ImageIcon,
   AutoAwesome as VariationIcon,
   BrokenImage as EmptyIcon,
   SwapHoriz as SwapIcon,
   Bolt as BoltIcon,
   Lightbulb as LightbulbIcon,
-  Spa as SpaIcon,
-  WbSunny as SunnyIcon,
-  Gradient as GradientIcon,
-  TableRestaurant as TableIcon,
 } from '@mui/icons-material'
 import { useSnackbar } from 'notistack'
 import { removeBackground, generateVariation } from '../services/imageAiService'
 
-const MODES = {
-  REMOVE_BG: 'remove-bg',
-  VARIATION: 'variation',
-}
-
+const MODES = { REMOVE_BG: 'remove-bg', VARIATION: 'variation' }
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 
 const PROMPT_SUGGESTIONS = [
-  { label: 'Estudio profesional', full: 'Fondo blanco de estudio profesional con iluminación suave', icon: SunnyIcon },
-  { label: 'Mesa rústica', full: 'Sobre una mesa de madera rústica con luz natural cálida', icon: TableIcon },
-  { label: 'Minimalista gris', full: 'Fondo minimalista gris claro con sombra sutil', icon: GradientIcon },
-  { label: 'Lifestyle moderno', full: 'Escena de lifestyle: sobre un escritorio moderno con plantas', icon: SpaIcon },
-  { label: 'Degradado pastel', full: 'Fondo degradado suave de tonos pastel', icon: GradientIcon },
-  { label: 'Mármol cenital', full: 'Sobre mármol blanco con luz cenital', icon: SunnyIcon },
+  'Fondo blanco de estudio profesional con iluminación suave',
+  'Sobre una mesa de madera rústica con luz natural cálida',
+  'Fondo minimalista gris claro con sombra sutil',
+  'Escena lifestyle: escritorio moderno con plantas',
+  'Fondo degradado suave de tonos pastel',
+  'Sobre mármol blanco con luz cenital',
 ]
 
-const ACCENT = '#6366F1'
-const ACCENT_LIGHT = '#818CF8'
-const ACCENT_DARK = '#4F46E5'
-const GRADIENT_PRIMARY = 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)'
-const GRADIENT_DARK = 'linear-gradient(135deg, #312E81 0%, #4338CA 50%, #6366F1 100%)'
+const V = '#6366F1'
+const VL = '#818CF8'
+const VD = '#4F46E5'
+const GRAD = 'linear-gradient(135deg, #312E81 0%, #4338CA 50%, #6366F1 100%)'
+const GRAD_BTN = 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)'
+
+const fmtSize = bytes => {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const cardSx = {
   borderRadius: 4,
@@ -65,14 +62,15 @@ const cardSx = {
   borderColor: 'divider',
   boxShadow: '0 1px 4px rgba(0,0,0,0.03), 0 4px 12px rgba(0,0,0,0.02)',
   overflow: 'hidden',
-  transition: 'box-shadow 0.25s ease, border-color 0.25s ease',
-  '&:hover': {
-    boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04)',
-  },
 }
 
+const StepBadge = ({ n }) => (
+  <Box sx={{ width: 26, height: 26, borderRadius: '50%', background: GRAD_BTN, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '0.72rem', lineHeight: 1 }}>{n}</Typography>
+  </Box>
+)
+
 const ImageAiEditor = () => {
-  const theme = useTheme()
   const { enqueueSnackbar } = useSnackbar()
   const fileInputRef = useRef(null)
 
@@ -88,17 +86,14 @@ const ImageAiEditor = () => {
     event => {
       const selected = event.target.files?.[0]
       if (!selected) return
-
       if (!selected.type.startsWith('image/')) {
         enqueueSnackbar('Solo se permiten archivos de imagen', { variant: 'warning' })
         return
       }
-
       if (selected.size > MAX_FILE_SIZE) {
         enqueueSnackbar('La imagen no puede superar los 10 MB', { variant: 'warning' })
         return
       }
-
       setFile(selected)
       setPreview(URL.createObjectURL(selected))
       setResults([])
@@ -111,9 +106,7 @@ const ImageAiEditor = () => {
       event.preventDefault()
       setDragActive(false)
       const dropped = event.dataTransfer.files?.[0]
-      if (dropped) {
-        handleFileSelect({ target: { files: [dropped] } })
-      }
+      if (dropped) handleFileSelect({ target: { files: [dropped] } })
     },
     [handleFileSelect],
   )
@@ -127,62 +120,42 @@ const ImageAiEditor = () => {
   }
 
   const handleProcess = async () => {
-    if (!file) {
-      enqueueSnackbar('Subí una imagen primero', { variant: 'warning' })
-      return
-    }
-
+    if (!file) return
     if (mode === MODES.VARIATION && !prompt.trim()) {
       enqueueSnackbar('Escribí un prompt describiendo los cambios', { variant: 'warning' })
       return
     }
-
     try {
       setProcessing(true)
-
-      let result
-      if (mode === MODES.REMOVE_BG) {
-        result = await removeBackground(file)
-      } else {
-        result = await generateVariation(file, prompt.trim())
-      }
+      const result = mode === MODES.REMOVE_BG
+        ? await removeBackground(file)
+        : await generateVariation(file, prompt.trim())
 
       setResults(prev => [
-        {
-          id: Date.now(),
-          image: result.image,
-          mode,
-          prompt: mode === MODES.VARIATION ? prompt.trim() : null,
-          size: result.size,
-        },
+        { id: Date.now(), image: result.image, mode, prompt: mode === MODES.VARIATION ? prompt.trim() : null, size: result.size },
         ...prev,
       ])
-
-      enqueueSnackbar(
-        mode === MODES.REMOVE_BG ? 'Fondo removido exitosamente' : 'Variación generada exitosamente',
-        { variant: 'success' },
-      )
+      enqueueSnackbar(mode === MODES.REMOVE_BG ? 'Fondo removido exitosamente' : 'Variación generada exitosamente', { variant: 'success' })
     } catch (error) {
-      const msg = error.response?.data?.message || error.message || 'Error procesando la imagen'
-      enqueueSnackbar(msg, { variant: 'error' })
+      enqueueSnackbar(error.response?.data?.message || error.message || 'Error procesando la imagen', { variant: 'error' })
     } finally {
       setProcessing(false)
     }
   }
 
-  const handleDownload = result => {
-    const link = document.createElement('a')
-    link.href = result.image
-    link.download = `imagen-ai-${result.id}.png`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const handleDownload = r => {
+    const a = document.createElement('a')
+    a.href = r.image
+    a.download = `imagen-ai-${r.id}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
-  const handleCopyToClipboard = async result => {
+  const handleCopy = async r => {
     try {
-      const response = await fetch(result.image)
-      const blob = await response.blob()
+      const res = await fetch(r.image)
+      const blob = await res.blob()
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
       enqueueSnackbar('Imagen copiada al portapapeles', { variant: 'success' })
     } catch {
@@ -190,140 +163,92 @@ const ImageAiEditor = () => {
     }
   }
 
-  const handleRemoveResult = id => {
-    setResults(prev => prev.filter(r => r.id !== id))
-  }
-
   const isRemoveBg = mode === MODES.REMOVE_BG
 
   return (
     <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
+      {/* ── Header ── */}
       <Paper
         elevation={0}
         sx={{
-          p: { xs: 3, md: 4.5 },
-          mb: 4,
+          p: { xs: 3, md: 4 },
+          mb: 3.5,
           borderRadius: 5,
-          background: GRADIENT_DARK,
+          background: GRAD,
           color: '#fff',
           position: 'relative',
           overflow: 'hidden',
         }}
       >
-        <Box sx={{ position: 'absolute', top: -80, right: -80, width: 320, height: 320, borderRadius: '50%', background: 'rgba(139,92,246,0.15)', filter: 'blur(40px)' }} />
-        <Box sx={{ position: 'absolute', bottom: -100, left: '30%', width: 260, height: 260, borderRadius: '50%', background: 'rgba(99,102,241,0.12)', filter: 'blur(50px)' }} />
-        <Box sx={{ position: 'absolute', top: 20, right: 40, width: 6, height: 6, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.4)' }} />
-        <Box sx={{ position: 'absolute', top: 50, right: 120, width: 4, height: 4, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.25)' }} />
-        <Box sx={{ position: 'absolute', bottom: 30, right: 200, width: 5, height: 5, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.3)' }} />
+        <Box sx={{ position: 'absolute', top: -60, right: -60, width: 280, height: 280, borderRadius: '50%', background: 'rgba(139,92,246,0.15)', filter: 'blur(40px)' }} />
+        <Box sx={{ position: 'absolute', bottom: -80, left: '25%', width: 220, height: 220, borderRadius: '50%', background: 'rgba(99,102,241,0.1)', filter: 'blur(50px)' }} />
 
         <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" sx={{ position: 'relative', zIndex: 1 }}>
           <Stack direction="row" alignItems="center" spacing={2}>
-            <Box
-              sx={{
-                width: 56,
-                height: 56,
-                borderRadius: 3,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(255,255,255,0.1)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}
-            >
-              <MagicIcon sx={{ fontSize: 30 }} />
+            <Box sx={{ width: 52, height: 52, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.12)' }}>
+              <MagicIcon sx={{ fontSize: 27 }} />
             </Box>
             <Box>
-              <Typography variant="h4" fontWeight={900} sx={{ letterSpacing: -1, lineHeight: 1.15 }}>
+              <Typography variant="h5" fontWeight={900} sx={{ letterSpacing: -0.8, lineHeight: 1.2 }}>
                 Editor de Imágenes IA
               </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.7, mt: 0.5, maxWidth: 440 }}>
-                Transformá tus fotos de producto con inteligencia artificial. Quitá fondos o generá variaciones profesionales en segundos.
+              <Typography variant="body2" sx={{ opacity: 0.65, mt: 0.25, maxWidth: 400 }}>
+                Transformá fotos de producto con inteligencia artificial
               </Typography>
             </Box>
           </Stack>
-
           <Chip
-            icon={<BoltIcon sx={{ fontSize: 16, color: '#FCD34D !important' }} />}
-            label="Powered by Gemini AI"
+            icon={<BoltIcon sx={{ fontSize: 14, color: '#FCD34D !important' }} />}
+            label="Powered by Gemini"
             size="small"
-            sx={{
-              mt: { xs: 2, sm: 0 },
-              alignSelf: { xs: 'flex-start', sm: 'center' },
-              bgcolor: 'rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.85)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              backdropFilter: 'blur(10px)',
-              fontWeight: 600,
-              fontSize: '0.75rem',
-              letterSpacing: 0.3,
-            }}
+            sx={{ mt: { xs: 1.5, sm: 0 }, alignSelf: { xs: 'flex-start', sm: 'center' }, bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.12)', fontWeight: 600, fontSize: '0.7rem' }}
           />
         </Stack>
       </Paper>
 
-      <Grid container spacing={3.5}>
-        <Grid item xs={12} md={5}>
-          <Stack spacing={3}>
-            <Card sx={cardSx}>
-              <CardContent sx={{ p: 3 }}>
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2.5 }}>
-                  <Box sx={{ width: 24, height: 24, borderRadius: '50%', background: GRADIENT_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Typography variant="caption" sx={{ color: '#fff', fontWeight: 900, fontSize: '0.7rem', lineHeight: 1 }}>1</Typography>
-                  </Box>
-                  <Typography variant="subtitle2" fontWeight={800}>Elegí qué querés hacer</Typography>
-                </Stack>
+      <Grid container spacing={3}>
+        {/* ── Panel izquierdo ── */}
+        <Grid item xs={12} md={5} lg={4}>
+          <Stack spacing={2.5}>
 
-                <Stack spacing={1.5}>
+            {/* Paso 1 — Modo */}
+            <Card sx={cardSx}>
+              <CardContent sx={{ p: 2.5 }}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                  <StepBadge n={1} />
+                  <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem' }}>Elegí qué querés hacer</Typography>
+                </Stack>
+                <Stack spacing={1}>
                   {[
-                    { value: MODES.REMOVE_BG, icon: RemoveBgIcon, title: 'Quitar fondo', desc: 'Eliminá el fondo y dejá solo el producto sobre blanco' },
-                    { value: MODES.VARIATION, icon: VariationIcon, title: 'Generar variación', desc: 'Cambiá el entorno, fondo e iluminación de tu foto' },
-                  ].map(opt => {
-                    const selected = mode === opt.value
+                    { value: MODES.REMOVE_BG, icon: RemoveBgIcon, title: 'Quitar fondo', desc: 'Producto sobre fondo blanco limpio' },
+                    { value: MODES.VARIATION, icon: VariationIcon, title: 'Generar variación', desc: 'Cambiá fondo, escena o iluminación' },
+                  ].map(o => {
+                    const sel = mode === o.value
                     return (
                       <Paper
-                        key={opt.value}
-                        onClick={() => setMode(opt.value)}
+                        key={o.value}
+                        elevation={0}
+                        onClick={() => setMode(o.value)}
                         sx={{
-                          p: 2,
+                          p: 1.75,
                           cursor: 'pointer',
                           borderRadius: 3,
                           border: '2px solid',
-                          borderColor: selected ? ACCENT : 'divider',
-                          bgcolor: selected ? alpha(ACCENT, 0.04) : 'transparent',
-                          transition: 'all 0.2s ease',
+                          borderColor: sel ? V : 'divider',
+                          bgcolor: sel ? alpha(V, 0.04) : 'transparent',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: 2,
-                          '&:hover': {
-                            borderColor: selected ? ACCENT : alpha(ACCENT, 0.3),
-                            bgcolor: selected ? alpha(ACCENT, 0.06) : alpha(ACCENT, 0.02),
-                          },
+                          gap: 1.5,
+                          transition: 'all 0.15s ease',
+                          '&:hover': { borderColor: sel ? V : alpha(V, 0.35), bgcolor: alpha(V, sel ? 0.06 : 0.02) },
                         }}
                       >
-                        <Box
-                          sx={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 2.5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                            background: selected ? GRADIENT_PRIMARY : 'transparent',
-                            bgcolor: selected ? undefined : alpha(ACCENT, 0.08),
-                            transition: 'all 0.2s ease',
-                          }}
-                        >
-                          <opt.icon sx={{ fontSize: 22, color: selected ? '#fff' : ACCENT }} />
+                        <Box sx={{ width: 40, height: 40, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: sel ? GRAD_BTN : 'transparent', bgcolor: sel ? undefined : alpha(V, 0.07) }}>
+                          <o.icon sx={{ fontSize: 20, color: sel ? '#fff' : V }} />
                         </Box>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="body2" fontWeight={800} sx={{ color: selected ? ACCENT_DARK : 'text.primary' }}>
-                            {opt.title}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.3, display: 'block', mt: 0.25 }}>
-                            {opt.desc}
-                          </Typography>
+                        <Box>
+                          <Typography variant="body2" fontWeight={800} sx={{ color: sel ? VD : 'text.primary', lineHeight: 1.3 }}>{o.title}</Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2, display: 'block' }}>{o.desc}</Typography>
                         </Box>
                       </Paper>
                     )
@@ -332,22 +257,15 @@ const ImageAiEditor = () => {
               </CardContent>
             </Card>
 
+            {/* Paso 2 — Upload */}
             <Card sx={cardSx}>
-              <CardContent sx={{ p: 3 }}>
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2.5 }}>
-                  <Box sx={{ width: 24, height: 24, borderRadius: '50%', background: GRADIENT_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Typography variant="caption" sx={{ color: '#fff', fontWeight: 900, fontSize: '0.7rem', lineHeight: 1 }}>2</Typography>
-                  </Box>
-                  <Typography variant="subtitle2" fontWeight={800}>Subí tu imagen</Typography>
+              <CardContent sx={{ p: 2.5 }}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                  <StepBadge n={2} />
+                  <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem' }}>Subí tu imagen</Typography>
                 </Stack>
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  style={{ display: 'none' }}
-                />
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
 
                 {!preview ? (
                   <Paper
@@ -357,122 +275,67 @@ const ImageAiEditor = () => {
                     onDragLeave={() => setDragActive(false)}
                     onClick={() => fileInputRef.current?.click()}
                     sx={{
-                      p: 5,
+                      p: { xs: 3, md: 4 },
                       textAlign: 'center',
                       cursor: 'pointer',
-                      borderRadius: 4,
+                      borderRadius: 3,
                       border: '2px dashed',
-                      borderColor: dragActive ? ACCENT : alpha('#94A3B8', 0.4),
-                      bgcolor: dragActive ? alpha(ACCENT, 0.04) : alpha('#F8FAFC', 0.5),
-                      transition: 'all 0.25s ease',
-                      '&:hover': {
-                        borderColor: ACCENT_LIGHT,
-                        bgcolor: alpha(ACCENT, 0.03),
-                        '& .upload-icon-wrapper': {
-                          transform: 'translateY(-2px)',
-                          bgcolor: alpha(ACCENT, 0.1),
-                        },
-                      },
+                      borderColor: dragActive ? V : alpha('#94A3B8', 0.35),
+                      bgcolor: dragActive ? alpha(V, 0.04) : alpha('#F8FAFC', 0.5),
+                      transition: 'all 0.2s ease',
+                      '&:hover': { borderColor: VL, bgcolor: alpha(V, 0.03) },
                     }}
                   >
-                    <Box
-                      className="upload-icon-wrapper"
-                      sx={{
-                        width: 64,
-                        height: 64,
-                        borderRadius: 3,
-                        bgcolor: alpha('#94A3B8', 0.08),
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        mx: 'auto',
-                        mb: 2,
-                        transition: 'all 0.25s ease',
-                      }}
-                    >
-                      <UploadIcon sx={{ fontSize: 28, color: dragActive ? ACCENT : '#94A3B8' }} />
+                    <Box sx={{ width: 56, height: 56, borderRadius: 3, bgcolor: alpha('#94A3B8', 0.08), display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 1.5, transition: 'all 0.2s' }}>
+                      <UploadIcon sx={{ fontSize: 26, color: dragActive ? V : '#94A3B8' }} />
                     </Box>
-                    <Typography variant="body2" fontWeight={600} sx={{ color: dragActive ? ACCENT : 'text.secondary' }}>
-                      Arrastrá una imagen o hacé click para seleccionar
+                    <Typography variant="body2" fontWeight={600} color={dragActive ? V : 'text.secondary'}>
+                      Arrastrá o hacé click para subir
                     </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.disabled', mt: 0.5, display: 'block' }}>
+                    <Typography variant="caption" sx={{ color: 'text.disabled', mt: 0.25, display: 'block' }}>
                       JPG, PNG, WebP — hasta 10 MB
                     </Typography>
                   </Paper>
                 ) : (
                   <Box>
-                    <Box
-                      sx={{
-                        borderRadius: 3,
-                        overflow: 'hidden',
-                        bgcolor: '#f1f5f9',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        position: 'relative',
-                      }}
-                    >
-                      <Box
-                        component="img"
-                        src={preview}
-                        alt="Preview"
-                        sx={{
-                          width: '100%',
-                          maxHeight: 280,
-                          objectFit: 'contain',
-                          display: 'block',
-                          p: 1,
-                        }}
-                      />
+                    <Box sx={{ borderRadius: 3, overflow: 'hidden', bgcolor: '#f1f5f9', border: '1px solid', borderColor: 'divider', position: 'relative' }}>
+                      <Box component="img" src={preview} alt="Preview" sx={{ width: '100%', maxHeight: 240, objectFit: 'contain', display: 'block', p: 1 }} />
+                      {processing && (
+                        <Box sx={{ position: 'absolute', inset: 0, bgcolor: 'rgba(255,255,255,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1.5, backdropFilter: 'blur(2px)' }}>
+                          <CircularProgress size={36} sx={{ color: V }} />
+                          <Typography variant="caption" fontWeight={700} sx={{ color: VD }}>Procesando...</Typography>
+                        </Box>
+                      )}
                     </Box>
-                    <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<SwapIcon sx={{ fontSize: 16 }} />}
-                        onClick={() => fileInputRef.current?.click()}
-                        sx={{
-                          borderRadius: 2.5,
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          borderColor: 'divider',
-                          color: 'text.secondary',
-                          '&:hover': { borderColor: ACCENT, color: ACCENT },
-                        }}
-                      >
-                        Cambiar
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<DeleteIcon sx={{ fontSize: 16 }} />}
-                        onClick={handleClear}
-                        sx={{
-                          borderRadius: 2.5,
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          borderColor: 'divider',
-                          color: 'text.secondary',
-                          '&:hover': { borderColor: 'error.main', color: 'error.main' },
-                        }}
-                      >
-                        Limpiar
-                      </Button>
-                    </Stack>
+
+                    {file && (
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1.5 }}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                          {file.name.length > 25 ? file.name.slice(0, 22) + '...' : file.name} · {fmtSize(file.size)}
+                        </Typography>
+                        <Stack direction="row" spacing={0.5}>
+                          <Button size="small" startIcon={<SwapIcon sx={{ fontSize: 14 }} />} onClick={() => fileInputRef.current?.click()} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: 'text.secondary', minWidth: 0, px: 1 }}>
+                            Cambiar
+                          </Button>
+                          <Button size="small" startIcon={<DeleteIcon sx={{ fontSize: 14 }} />} onClick={handleClear} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: 'text.secondary', minWidth: 0, px: 1, '&:hover': { color: 'error.main' } }}>
+                            Quitar
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    )}
                   </Box>
                 )}
               </CardContent>
             </Card>
 
+            {/* Paso 3 — Prompt (solo variación) */}
             {!isRemoveBg && (
               <Card sx={cardSx}>
-                <CardContent sx={{ p: 3 }}>
-                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2.5 }}>
-                    <Box sx={{ width: 24, height: 24, borderRadius: '50%', background: GRADIENT_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Typography variant="caption" sx={{ color: '#fff', fontWeight: 900, fontSize: '0.7rem', lineHeight: 1 }}>3</Typography>
-                    </Box>
-                    <Typography variant="subtitle2" fontWeight={800}>Describí los cambios</Typography>
+                <CardContent sx={{ p: 2.5 }}>
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                    <StepBadge n={3} />
+                    <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem' }}>Describí los cambios</Typography>
                   </Stack>
-
                   <TextField
                     fullWidth
                     multiline
@@ -481,52 +344,35 @@ const ImageAiEditor = () => {
                     onChange={e => setPrompt(e.target.value)}
                     placeholder="Ej: Fondo blanco de estudio profesional con iluminación suave..."
                     inputProps={{ maxLength: 1000 }}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        borderRadius: 3,
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: ACCENT,
-                          borderWidth: 2,
-                        },
-                      },
-                    }}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2.5, fontSize: '0.875rem', '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: V, borderWidth: 2 } } }}
                   />
+                  <Typography variant="caption" sx={{ color: 'text.disabled', mt: 0.5, display: 'block', textAlign: 'right' }}>
+                    {prompt.length}/1000
+                  </Typography>
 
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 0.5, mb: 2 }}>
-                    <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-                      {prompt.length}/1000
-                    </Typography>
-                  </Stack>
-
-                  <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1.5 }}>
-                    <LightbulbIcon sx={{ fontSize: 15, color: '#F59E0B' }} />
-                    <Typography variant="caption" fontWeight={700} sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.8, fontSize: '0.65rem' }}>
+                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1, mb: 1 }}>
+                    <LightbulbIcon sx={{ fontSize: 14, color: '#F59E0B' }} />
+                    <Typography variant="caption" fontWeight={700} sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.6, fontSize: '0.62rem' }}>
                       Ideas rápidas
                     </Typography>
                   </Stack>
-
-                  <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                  <Stack direction="row" flexWrap="wrap" gap={0.5}>
                     {PROMPT_SUGGESTIONS.map(s => (
                       <Chip
-                        key={s.label}
-                        icon={<s.icon sx={{ fontSize: '15px !important' }} />}
-                        label={s.label}
+                        key={s}
+                        label={s.length > 30 ? s.slice(0, 28) + '...' : s}
                         size="small"
-                        onClick={() => setPrompt(s.full)}
-                        variant={prompt === s.full ? 'filled' : 'outlined'}
+                        onClick={() => setPrompt(s)}
+                        variant={prompt === s ? 'filled' : 'outlined'}
                         sx={{
                           fontWeight: 600,
-                          fontSize: '0.72rem',
-                          borderRadius: 2,
-                          borderColor: prompt === s.full ? ACCENT : 'divider',
-                          bgcolor: prompt === s.full ? alpha(ACCENT, 0.08) : 'transparent',
-                          color: prompt === s.full ? ACCENT_DARK : 'text.secondary',
-                          transition: 'all 0.15s ease',
-                          '&:hover': {
-                            borderColor: ACCENT_LIGHT,
-                            bgcolor: alpha(ACCENT, 0.06),
-                            color: ACCENT,
-                          },
+                          fontSize: '0.68rem',
+                          height: 26,
+                          borderRadius: 1.5,
+                          borderColor: prompt === s ? V : 'divider',
+                          bgcolor: prompt === s ? alpha(V, 0.08) : 'transparent',
+                          color: prompt === s ? VD : 'text.secondary',
+                          '&:hover': { borderColor: VL, color: V, bgcolor: alpha(V, 0.04) },
                         }}
                       />
                     ))}
@@ -535,117 +381,83 @@ const ImageAiEditor = () => {
               </Card>
             )}
 
+            {/* CTA */}
             <Button
               variant="contained"
               size="large"
               fullWidth
               onClick={handleProcess}
               disabled={processing || !file}
-              startIcon={
-                processing ? (
-                  <CircularProgress size={20} sx={{ color: 'rgba(255,255,255,0.7)' }} />
-                ) : (
-                  <MagicIcon />
-                )
-              }
+              startIcon={processing ? <CircularProgress size={18} sx={{ color: 'rgba(255,255,255,0.7)' }} /> : <MagicIcon />}
               sx={{
-                borderRadius: 3.5,
+                borderRadius: 3,
                 textTransform: 'none',
                 fontWeight: 800,
-                py: 2,
-                fontSize: '1rem',
-                letterSpacing: 0.2,
-                background: processing ? alpha(ACCENT, 0.7) : GRADIENT_PRIMARY,
-                boxShadow: processing ? 'none' : `0 8px 24px ${alpha(ACCENT, 0.35)}`,
-                transition: 'all 0.25s ease',
-                '&:hover': {
-                  background: GRADIENT_DARK,
-                  boxShadow: `0 12px 32px ${alpha(ACCENT, 0.4)}`,
-                  transform: 'translateY(-1px)',
-                },
+                py: 1.75,
+                fontSize: '0.95rem',
+                background: processing ? alpha(V, 0.65) : GRAD_BTN,
+                boxShadow: processing ? 'none' : `0 6px 20px ${alpha(V, 0.3)}`,
+                transition: 'all 0.2s ease',
+                '&:hover': { background: GRAD, boxShadow: `0 8px 28px ${alpha(V, 0.35)}`, transform: 'translateY(-1px)' },
                 '&:active': { transform: 'translateY(0)' },
-                '&.Mui-disabled': {
-                  background: alpha('#94A3B8', 0.12),
-                  color: alpha('#94A3B8', 0.5),
-                  boxShadow: 'none',
-                },
+                '&.Mui-disabled': { background: alpha('#94A3B8', 0.1), color: alpha('#94A3B8', 0.45), boxShadow: 'none' },
               }}
             >
-              {processing
-                ? 'Procesando con IA...'
-                : isRemoveBg
-                  ? 'Quitar fondo'
-                  : 'Generar variación'}
+              {processing ? 'Procesando con IA...' : isRemoveBg ? 'Quitar fondo' : 'Generar variación'}
             </Button>
           </Stack>
         </Grid>
 
-        <Grid item xs={12} md={7}>
-          <Card sx={{ ...cardSx, minHeight: 500, display: 'flex', flexDirection: 'column' }}>
-            <Box
-              sx={{
-                px: 3,
-                py: 2,
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
+        {/* ── Panel derecho — Resultados ── */}
+        <Grid item xs={12} md={7} lg={8}>
+          <Card sx={{ ...cardSx, minHeight: { md: 540 }, display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <Box sx={{ px: 2.5, py: 1.75, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Stack direction="row" alignItems="center" spacing={1.5}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: results.length > 0 ? '#22C55E' : alpha('#94A3B8', 0.4) }} />
-                <Typography variant="subtitle2" fontWeight={800}>Resultados</Typography>
+                <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: results.length > 0 ? '#22C55E' : alpha('#94A3B8', 0.35) }} />
+                <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem' }}>Resultados</Typography>
                 {results.length > 0 && (
-                  <Chip label={results.length} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700, bgcolor: alpha(ACCENT, 0.08), color: ACCENT }} />
+                  <Chip label={results.length} size="small" sx={{ height: 20, fontSize: '0.68rem', fontWeight: 700, bgcolor: alpha(V, 0.08), color: V }} />
                 )}
               </Stack>
+              {results.length > 1 && (
+                <Button size="small" onClick={() => setResults([])} sx={{ textTransform: 'none', fontSize: '0.72rem', fontWeight: 600, color: 'text.secondary', '&:hover': { color: 'error.main' } }}>
+                  Limpiar todo
+                </Button>
+              )}
             </Box>
 
-            <CardContent sx={{ p: 3, flex: 1, display: 'flex', flexDirection: 'column' }}>
+            {processing && <LinearProgress sx={{ '& .MuiLinearProgress-bar': { bgcolor: V } }} />}
+
+            <CardContent sx={{ p: 2.5, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
               {results.length === 0 ? (
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 4 }}>
-                  <Box
-                    sx={{
-                      width: 88,
-                      height: 88,
-                      borderRadius: 4,
-                      background: alpha('#94A3B8', 0.06),
-                      border: '2px dashed',
-                      borderColor: alpha('#94A3B8', 0.15),
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      mb: 3,
-                    }}
-                  >
-                    <EmptyIcon sx={{ fontSize: 36, color: alpha('#94A3B8', 0.35) }} />
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 6 }}>
+                  <Box sx={{ width: 80, height: 80, borderRadius: 4, background: alpha('#94A3B8', 0.05), border: '2px dashed', borderColor: alpha('#94A3B8', 0.12), display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2.5 }}>
+                    <EmptyIcon sx={{ fontSize: 32, color: alpha('#94A3B8', 0.3) }} />
                   </Box>
-                  <Typography variant="body1" fontWeight={700} sx={{ color: 'text.secondary', mb: 0.5 }}>
+                  <Typography variant="body2" fontWeight={700} sx={{ color: 'text.secondary', mb: 0.5 }}>
                     Sin resultados todavía
                   </Typography>
-                  <Typography variant="body2" sx={{ color: 'text.disabled', textAlign: 'center', maxWidth: 280 }}>
-                    Subí una foto de producto y elegí una acción para ver la magia de la IA
+                  <Typography variant="caption" sx={{ color: 'text.disabled', textAlign: 'center', maxWidth: 260, lineHeight: 1.5 }}>
+                    Subí una foto de producto y elegí una acción para comenzar
                   </Typography>
                 </Box>
               ) : (
-                <Stack spacing={2.5}>
-                  {results.map(result => (
+                <Stack spacing={2}>
+                  {results.map(r => (
                     <Paper
-                      key={result.id}
+                      key={r.id}
                       elevation={0}
                       sx={{
-                        borderRadius: 4,
+                        borderRadius: 3,
                         overflow: 'hidden',
                         border: '1px solid',
                         borderColor: 'divider',
-                        transition: 'all 0.25s ease',
-                        '&:hover': {
-                          boxShadow: `0 4px 20px ${alpha('#000', 0.06)}`,
-                          borderColor: alpha(ACCENT, 0.2),
-                        },
+                        transition: 'all 0.2s ease',
+                        '&:hover': { boxShadow: `0 4px 16px ${alpha('#000', 0.06)}`, borderColor: alpha(V, 0.15) },
                       }}
                     >
+                      {/* Imagen resultado */}
                       <Box
                         sx={{
                           bgcolor: '#f8fafc',
@@ -654,95 +466,49 @@ const ImageAiEditor = () => {
                           display: 'flex',
                           justifyContent: 'center',
                           alignItems: 'center',
-                          p: 2.5,
-                          minHeight: 200,
-                          position: 'relative',
+                          p: 2,
+                          minHeight: 180,
                         }}
                       >
                         <Box
                           component="img"
-                          src={result.image}
+                          src={r.image}
                           alt="Resultado IA"
-                          sx={{
-                            maxWidth: '100%',
-                            maxHeight: 380,
-                            objectFit: 'contain',
-                            borderRadius: 2,
-                            filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.08))',
-                          }}
+                          sx={{ maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 1.5, filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.06))' }}
                         />
                       </Box>
 
-                      <Box sx={{ px: 2.5, py: 2, borderTop: '1px solid', borderColor: 'divider', bgcolor: '#fff' }}>
+                      {/* Info bar */}
+                      <Box sx={{ px: 2, py: 1.5, borderTop: '1px solid', borderColor: 'divider', bgcolor: '#fff' }}>
                         <Stack direction="row" alignItems="center" justifyContent="space-between">
-                          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
-                            <Box
-                              sx={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: 2,
-                                background: result.mode === MODES.REMOVE_BG ? 'linear-gradient(135deg, #10B981, #059669)' : GRADIENT_PRIMARY,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                              }}
-                            >
-                              {result.mode === MODES.REMOVE_BG ? (
-                                <RemoveBgIcon sx={{ fontSize: 16, color: '#fff' }} />
-                              ) : (
-                                <VariationIcon sx={{ fontSize: 16, color: '#fff' }} />
-                              )}
+                          <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
+                            <Box sx={{ width: 30, height: 30, borderRadius: 1.5, background: r.mode === MODES.REMOVE_BG ? 'linear-gradient(135deg, #10B981, #059669)' : GRAD_BTN, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              {r.mode === MODES.REMOVE_BG ? <RemoveBgIcon sx={{ fontSize: 15, color: '#fff' }} /> : <VariationIcon sx={{ fontSize: 15, color: '#fff' }} />}
                             </Box>
                             <Box sx={{ minWidth: 0 }}>
-                              <Typography variant="body2" fontWeight={700}>
-                                {result.mode === MODES.REMOVE_BG ? 'Fondo removido' : 'Variación generada'}
+                              <Typography variant="body2" fontWeight={700} sx={{ fontSize: '0.8rem', lineHeight: 1.3 }}>
+                                {r.mode === MODES.REMOVE_BG ? 'Fondo removido' : 'Variación generada'}
                               </Typography>
-                              {result.prompt && (
-                                <Typography variant="caption" color="text.secondary" noWrap title={result.prompt} sx={{ display: 'block', maxWidth: 260 }}>
-                                  {result.prompt}
+                              {r.prompt && (
+                                <Typography variant="caption" color="text.secondary" noWrap title={r.prompt} sx={{ display: 'block', maxWidth: { xs: 180, md: 320 } }}>
+                                  {r.prompt}
                                 </Typography>
                               )}
                             </Box>
                           </Stack>
 
                           <Stack direction="row" spacing={0.25}>
-                            <Tooltip title="Descargar" arrow>
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDownload(result)}
-                                sx={{
-                                  color: 'text.secondary',
-                                  '&:hover': { color: ACCENT, bgcolor: alpha(ACCENT, 0.08) },
-                                }}
-                              >
-                                <DownloadIcon sx={{ fontSize: 19 }} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Copiar al portapapeles" arrow>
-                              <IconButton
-                                size="small"
-                                onClick={() => handleCopyToClipboard(result)}
-                                sx={{
-                                  color: 'text.secondary',
-                                  '&:hover': { color: ACCENT, bgcolor: alpha(ACCENT, 0.08) },
-                                }}
-                              >
-                                <CopyIcon sx={{ fontSize: 19 }} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Eliminar" arrow>
-                              <IconButton
-                                size="small"
-                                onClick={() => handleRemoveResult(result.id)}
-                                sx={{
-                                  color: 'text.secondary',
-                                  '&:hover': { color: '#EF4444', bgcolor: alpha('#EF4444', 0.08) },
-                                }}
-                              >
-                                <DeleteIcon sx={{ fontSize: 19 }} />
-                              </IconButton>
-                            </Tooltip>
+                            {[
+                              { tip: 'Descargar', icon: DownloadIcon, fn: () => handleDownload(r), hc: V },
+                              { tip: 'Copiar', icon: CopyIcon, fn: () => handleCopy(r), hc: V },
+                              { tip: 'Eliminar', icon: DeleteIcon, fn: () => setResults(p => p.filter(x => x.id !== r.id)), hc: '#EF4444' },
+                            ].map(a => (
+                              <Tooltip key={a.tip} title={a.tip} arrow>
+                                <IconButton size="small" onClick={a.fn} sx={{ color: 'text.secondary', '&:hover': { color: a.hc, bgcolor: alpha(a.hc, 0.08) } }}>
+                                  <a.icon sx={{ fontSize: 18 }} />
+                                </IconButton>
+                              </Tooltip>
+                            ))}
                           </Stack>
                         </Stack>
                       </Box>
