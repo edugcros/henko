@@ -33,8 +33,20 @@ const stabilityRequest = async (endpoint, formData) => {
       status: response.status,
       body: errorBody,
     })
-    const error = new Error(`Stability AI error: ${response.status} — ${errorBody}`)
-    error.statusCode = 502
+
+    let userMessage = `Error del servicio de IA (${response.status})`
+    if (response.status === 403) {
+      userMessage = 'El filtro de contenido de Stability AI rechazó la imagen o el prompt. Intentá con otra imagen o reformulá la descripción.'
+    } else if (response.status === 401) {
+      userMessage = 'La API key de Stability AI no es válida. Revisá la configuración.'
+    } else if (response.status === 402) {
+      userMessage = 'Créditos insuficientes en Stability AI. Recargá tu cuenta.'
+    } else if (response.status === 429) {
+      userMessage = 'Demasiadas solicitudes. Esperá unos segundos e intentá de nuevo.'
+    }
+
+    const error = new Error(userMessage)
+    error.statusCode = response.status === 403 ? 422 : 502
     throw error
   }
 
