@@ -316,11 +316,11 @@ export const env = {
       process.env.GOOGLE_IMAGE_MODEL,
       process.env.GEMINI_MODEL,
       process.env.GOOGLE_MODEL,
-      'gemini-2.0-flash',
+      'gemini-3.1-flash-image',
     ),
 
     googleTextModel: process.env.GOOGLE_TEXT_MODEL || 'gemini-2.0-flash',
-    googleImageModel: process.env.GOOGLE_IMAGE_MODEL || 'gemini-2.0-flash',
+    googleImageModel: process.env.GOOGLE_IMAGE_MODEL || 'gemini-3.1-flash-image',
     minConfidence: Number(process.env.AI_MIN_CONFIDENCE || 0.65),
   },
 
