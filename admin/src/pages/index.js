@@ -23,6 +23,7 @@ import AiKnowledgeBasePage from './AiKnowledgeBasePage'
 import AiCampaignRulesPage from './AiCampaignRulesPage'
 import PaymentConfigPage from './PaymentConfigPage'
 import OnboardingWizard from './OnboardingWizard'
+import ImageAiEditor from './ImageAiEditor'
 
 const pages = {
   Dashboard,
@@ -39,6 +40,7 @@ const pages = {
   AiCampaignRulesPage,
   PaymentConfigPage,
   OnboardingWizard,
+  ImageAiEditor,
   AdminOrdersPage,
   AdminRegister,
   AddProduct,

@@ -104,6 +104,14 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // 🖼️ Editor IA de Imágenes
+  {
+    path: '/admin/editor-imagen-ia',
+    Component: pages.ImageAiEditor,
+    allowedRoles: ['admin'],
+    meta: { new: true },
+  },
+
   // 📦 Catálogo
   {
     path: '/admin/AddProduct',

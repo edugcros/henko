@@ -22,6 +22,7 @@ import InsightsIcon from '@mui/icons-material/Insights'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import PaymentIcon from '@mui/icons-material/Payment'
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import { Badge, ListItemIcon } from '@mui/material'
 
 // 🔹 Traducciones y etiquetas
@@ -45,6 +46,7 @@ const translations = {
   'agente-ia-conocimiento': 'Agente IA · Conocimiento',
   'agente-ia-campanas': 'Agente IA · Campañas',
   'configuracion-pagos': 'Configuración de Pagos',
+  'editor-imagen-ia': 'Editor de Imágenes IA',
 }
 
 // 🔹 Colores por grupo
@@ -58,6 +60,7 @@ const groupColors = {
   marketing: '#f44336',
   themeBuilder: '#607d8b',
   'bandeja-entrada-ia-comercial': '#00bcd4',
+  'editor-imagen-ia': '#8B5CF6',
 }
 
 // 🔹 Grupos y subitems con iconos diferenciados
@@ -97,6 +100,10 @@ const groups = {
   'configuracion-pagos': {
     label: 'Configuración de Pagos',
     icon: PaymentIcon,
+  },
+  'editor-imagen-ia': {
+    label: 'Editor de Imágenes IA',
+    icon: AutoFixHighIcon,
   },
   EditProduct: { label: 'Editar Producto', icon: AddShoppingCart },
   promociones: { label: 'Promociones', icon: LocalOfferIcon },

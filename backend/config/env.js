@@ -324,6 +324,10 @@ export const env = {
     minConfidence: Number(process.env.AI_MIN_CONFIDENCE || 0.65),
   },
 
+  stabilityAi: {
+    apiKey: process.env.STABILITY_AI_API_KEY || '',
+  },
+
   aiAgent: {
     provider: process.env.AI_AGENT_PROVIDER || 'gemini',
     debug: parseBoolean(process.env.AI_AGENT_DEBUG, false),
