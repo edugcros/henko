@@ -31,7 +31,6 @@
     "@google-cloud/storage": "^7.21.0",
     "@google/generative-ai": "^0.24.1",
     "@huggingface/inference": "^4.13.25",
-    "@imgly/background-removal-node": "^1.4.5",
     "axios": "^1.8.4",
     "bcrypt": "^6.0.0",
     "body-parser": "^1.20.3",

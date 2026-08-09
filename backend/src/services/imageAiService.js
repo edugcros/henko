@@ -1,4 +1,3 @@
-import { removeBackground as imglyRemoveBg } from '@imgly/background-removal-node'
 import Replicate from 'replicate'
 import { HfInference } from '@huggingface/inference'
 import sharp from 'sharp'
@@ -57,7 +56,7 @@ User instruction: "${userPrompt}"`,
   }
 }
 
-// ─── Background generation providers ────────────────────
+// ─── Helpers ─────────────────────────────────────────────
 
 const isCreditsError = err => {
   const msg = (err?.message || '').toLowerCase()
@@ -72,18 +71,67 @@ const isCreditsError = err => {
   )
 }
 
-const generateBgReplicate = async (prompt, width, height) => {
+const getReplicate = () => {
   const token = env.replicate?.apiToken
   if (!token) throw new Error('REPLICATE_API_TOKEN no configurado')
+  return new Replicate({ auth: token })
+}
 
-  const replicate = new Replicate({ auth: token })
+const getHf = () => {
+  const token = env.huggingface?.apiKey
+  if (!token) throw new Error('HUGGINGFACE_API_KEY no configurado')
+  return new HfInference(token)
+}
 
-  const aspectRatio = width >= height ? '1:1' : '1:1'
+const downloadUrl = async url => {
+  const r = await fetch(typeof url === 'string' ? url : url.url())
+  if (!r.ok) throw new Error(`Download failed: ${r.status}`)
+  return Buffer.from(await r.arrayBuffer())
+}
+
+// ─── Background removal providers ───────────────────────
+
+const removeBgReplicate = async imageBuffer => {
+  const replicate = getReplicate()
+  const dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`
+
+  const output = await replicate.run('lucataco/remove-bg', {
+    input: { image: dataUrl },
+  })
+
+  return downloadUrl(output)
+}
+
+const removeBgHuggingFace = async imageBuffer => {
+  const hf = getHf()
+  const blob = new Blob([imageBuffer], { type: 'image/png' })
+
+  const result = await hf.imageSegmentation({
+    model: 'briaai/RMBG-2.0',
+    data: blob,
+  })
+
+  if (result instanceof Blob) {
+    return Buffer.from(await result.arrayBuffer())
+  }
+
+  if (Array.isArray(result) && result.length > 0 && result[0].blob) {
+    return Buffer.from(await result[0].blob.arrayBuffer())
+  }
+
+  throw new Error('HuggingFace background removal returned unexpected format')
+}
+
+// ─── Background generation providers ────────────────────
+
+const generateBgReplicate = async prompt => {
+  const replicate = getReplicate()
+
   const output = await replicate.run('black-forest-labs/flux-schnell', {
     input: {
       prompt,
       num_outputs: 1,
-      aspect_ratio: aspectRatio,
+      aspect_ratio: '1:1',
       output_format: 'png',
       go_fast: true,
     },
@@ -92,17 +140,11 @@ const generateBgReplicate = async (prompt, width, height) => {
   const imageUrl = Array.isArray(output) ? output[0] : output
   if (!imageUrl) throw new Error('Replicate did not return an image')
 
-  const response = await fetch(typeof imageUrl === 'string' ? imageUrl : imageUrl.url())
-  if (!response.ok) throw new Error(`Failed to download Replicate result: ${response.status}`)
-
-  return Buffer.from(await response.arrayBuffer())
+  return downloadUrl(imageUrl)
 }
 
-const generateBgHuggingFace = async (prompt, width, height) => {
-  const token = env.huggingface?.apiKey
-  if (!token) throw new Error('HUGGINGFACE_API_KEY no configurado')
-
-  const hf = new HfInference(token)
+const generateBgHuggingFace = async prompt => {
+  const hf = getHf()
 
   const result = await hf.textToImage({
     model: 'stabilityai/stable-diffusion-xl-base-1.0',
@@ -113,17 +155,31 @@ const generateBgHuggingFace = async (prompt, width, height) => {
   return Buffer.from(await result.arrayBuffer())
 }
 
+// ─── Fallback wrappers ──────────────────────────────────
+
+const withFallback = (primary, fallback, label) => async (...args) => {
+  try {
+    return await primary(...args)
+  } catch (err) {
+    if (isCreditsError(err)) {
+      logger.info(`${label}: Replicate credits exhausted, falling back to HuggingFace`, {
+        error: err.message,
+      })
+      return fallback(...args)
+    }
+    throw err
+  }
+}
+
+const removeBgWithFallback = withFallback(removeBgReplicate, removeBgHuggingFace, 'removeBg')
+const generateBgWithFallback = withFallback(generateBgReplicate, generateBgHuggingFace, 'generateBg')
+
 // ─── Public API ──────────────────────────────────────────
 
 export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
-  logger.info('removeBackground (local @imgly)', { bytes: imageBuffer.length, mime: mimeType })
+  logger.info('removeBackground', { bytes: imageBuffer.length, mime: mimeType })
 
-  const blob = new Blob([imageBuffer], { type: mimeType })
-  const resultBlob = await imglyRemoveBg(blob, {
-    output: { format: 'image/png', quality: 0.9 },
-  })
-
-  const buffer = Buffer.from(await resultBlob.arrayBuffer())
+  const buffer = await removeBgWithFallback(imageBuffer)
   logger.info('removeBackground OK', { outputBytes: buffer.length })
 
   return { buffer, contentType: 'image/png' }
@@ -141,24 +197,8 @@ export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/p
 
   const { width, height } = await sharp(imageBuffer).metadata()
 
-  const { buffer: transparentBuf } = await removeBackground(imageBuffer, mimeType)
-
-  let bgBuffer
-  try {
-    bgBuffer = await generateBgReplicate(optimizedPrompt, width, height)
-    logger.info('Background generated via Replicate')
-  } catch (err) {
-    if (isCreditsError(err)) {
-      logger.info('Replicate credits exhausted, falling back to HuggingFace', {
-        error: err.message,
-      })
-      bgBuffer = await generateBgHuggingFace(optimizedPrompt, width, height)
-      logger.info('Background generated via HuggingFace (fallback)')
-    } else {
-      logger.error('Replicate background generation failed', { error: err.message })
-      throw new Error(`Error generando fondo: ${err.message}`)
-    }
-  }
+  const transparentBuf = await removeBgWithFallback(imageBuffer)
+  const bgBuffer = await generateBgWithFallback(optimizedPrompt)
 
   const result = await sharp(bgBuffer)
     .resize(width, height, { fit: 'cover' })
