@@ -65,13 +65,24 @@ import { analyticsAPI } from '../services/api'
 const DEBUG = process.env.REACT_APP_DEBUG_API === 'true'
 
 const CHART_COLORS = {
-  primary: '#2563EB',
-  success: '#16A34A',
+  primary: '#6366F1',
+  success: '#10B981',
   warning: '#F59E0B',
-  error: '#DC2626',
-  purple: '#7C3AED',
-  slate: '#475569',
-  teal: '#0D9488',
+  error: '#EF4444',
+  purple: '#8B5CF6',
+  slate: '#64748B',
+  teal: '#14B8A6',
+}
+
+const KPI_GRADIENTS = {
+  revenue: 'linear-gradient(135deg, #6366F1 0%, #818CF8 100%)',
+  orders: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
+  ticket: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
+  conversion: 'linear-gradient(135deg, #14B8A6 0%, #2DD4BF 100%)',
+  activeCarts: 'linear-gradient(135deg, #10B981 0%, #6EE7B7 100%)',
+  activeValue: 'linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%)',
+  abandonedCarts: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)',
+  abandonedValue: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
 }
 
 const formatNumber = value => Number(value || 0).toLocaleString('es-AR')
@@ -615,67 +626,71 @@ const normalizeTopProductRows = rows => {
 }
 
 const DashboardSectionTitle = ({ title, description }) => (
-  <Box sx={{ mb: 2 }}>
-    <Typography variant="h6" fontWeight={800}>
-      {title}
-    </Typography>
+  <Box sx={{ mb: 2.5 }}>
+    <Stack direction="row" alignItems="center" spacing={1}>
+      <Box sx={{ width: 4, height: 22, borderRadius: 2, background: KPI_GRADIENTS.revenue }} />
+      <Typography variant="h6" fontWeight={800} sx={{ letterSpacing: -0.3 }}>
+        {title}
+      </Typography>
+    </Stack>
     {description && (
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, pl: 2 }}>
         {description}
       </Typography>
     )}
   </Box>
 )
 
-const KpiCard = ({ title, value, icon: Icon, color, description, trend }) => (
-  <Card sx={{ height: '100%', borderRadius: 3 }}>
-    <CardContent>
-      <Stack
-        direction="row"
-        spacing={2}
-        alignItems="flex-start"
-        justifyContent="space-between"
-      >
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            color="text.secondary"
-            variant="overline"
-            fontWeight={800}
-          >
+const KpiCard = ({ title, value, icon: Icon, color, description, trend, gradient }) => (
+  <Card
+    sx={{
+      height: '100%',
+      borderRadius: 3,
+      border: '1px solid',
+      borderColor: 'divider',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+      transition: 'box-shadow 0.2s, transform 0.2s',
+      '&:hover': {
+        boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+        transform: 'translateY(-2px)',
+      },
+    }}
+  >
+    <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+      <Stack direction="row" spacing={2} alignItems="flex-start" justifyContent="space-between">
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography variant="body2" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, letterSpacing: 0.3 }}>
             {title}
           </Typography>
-          <Typography variant="h4" fontWeight={900} sx={{ mt: 0.5 }}>
+          <Typography variant="h4" fontWeight={900} sx={{ lineHeight: 1.2 }}>
             {value}
           </Typography>
-          {description && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              {description}
-            </Typography>
-          )}
           {trend !== undefined && trend !== null && Number(trend) !== 0 && (
-            <Chip
-              size="small"
-              label={`${Number(trend) > 0 ? '+' : ''}${Number(trend).toFixed(2)}% vs período anterior`}
-              color={Number(trend) >= 0 ? 'success' : 'error'}
-              variant="outlined"
-              sx={{ mt: 1 }}
-            />
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1 }}>
+              <TrendIcon sx={{ fontSize: 16, color: Number(trend) >= 0 ? 'success.main' : 'error.main', transform: Number(trend) < 0 ? 'rotate(180deg)' : 'none' }} />
+              <Typography variant="caption" fontWeight={700} color={Number(trend) >= 0 ? 'success.main' : 'error.main'}>
+                {Number(trend) > 0 ? '+' : ''}{Number(trend).toFixed(1)}%
+              </Typography>
+              <Typography variant="caption" color="text.disabled">
+                vs anterior
+              </Typography>
+            </Stack>
           )}
         </Box>
         <Box
           sx={{
-            width: 46,
-            height: 46,
-            borderRadius: 2.5,
+            width: 52,
+            height: 52,
+            borderRadius: 3,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            bgcolor: `${color || CHART_COLORS.primary}18`,
-            color: color || CHART_COLORS.primary,
+            background: gradient || `${color || CHART_COLORS.primary}18`,
+            color: gradient ? '#fff' : (color || CHART_COLORS.primary),
             flexShrink: 0,
           }}
         >
-          <Icon fontSize="medium" />
+          <Icon sx={{ fontSize: 26 }} />
         </Box>
       </Stack>
     </CardContent>
@@ -683,8 +698,11 @@ const KpiCard = ({ title, value, icon: Icon, color, description, trend }) => (
 )
 
 const EmptyState = ({ message }) => (
-  <Box sx={{ py: 5, textAlign: 'center' }}>
-    <Typography variant="body2" color="text.secondary">
+  <Box sx={{ py: 6, textAlign: 'center' }}>
+    <Box sx={{ width: 48, height: 48, borderRadius: 3, bgcolor: 'action.hover', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 1.5 }}>
+      <AnalyticsIcon sx={{ fontSize: 24, color: 'text.disabled' }} />
+    </Box>
+    <Typography variant="body2" color="text.secondary" fontWeight={500}>
       {message}
     </Typography>
   </Box>
@@ -694,17 +712,20 @@ const BarTooltip = ({ active, payload, label, formatter }) => {
   if (!active || !payload?.length) return null
 
   return (
-    <Paper sx={{ p: 1.5, borderRadius: 2 }} elevation={4}>
-      <Typography variant="caption" color="text.secondary">
+    <Paper sx={{ p: 1.5, borderRadius: 2.5, border: '1px solid', borderColor: 'divider', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }} elevation={0}>
+      <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
         {label}
       </Typography>
       {payload.map(item => (
-        <Typography key={item.dataKey} variant="body2" fontWeight={700}>
-          {item.name || item.dataKey}:{' '}
-          {formatter
-            ? formatter(item.value, item.dataKey)
-            : formatNumber(item.value)}
-        </Typography>
+        <Stack key={item.dataKey} direction="row" spacing={1} alignItems="center" sx={{ py: 0.25 }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: item.fill || item.color }} />
+          <Typography variant="body2" fontWeight={600}>
+            {item.name || item.dataKey}:{' '}
+            {formatter
+              ? formatter(item.value, item.dataKey)
+              : formatNumber(item.value)}
+          </Typography>
+        </Stack>
       ))}
     </Paper>
   )
@@ -881,56 +902,79 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
 
   return (
     <Box>
-      <Stack
-        direction={{ xs: 'column', md: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'stretch', md: 'center' }}
-        spacing={2}
-        sx={{ mb: 3 }}
+      <Paper
+        sx={{
+          p: { xs: 2.5, md: 3.5 },
+          mb: 3,
+          borderRadius: 4,
+          background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)',
+          color: '#fff',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
       >
-        <Box>
-          <Typography variant="h5" fontWeight={900}>
-            Vista descriptiva del negocio
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Datos internos del tenant: ventas, tráfico, carritos, productos y
-            conversión real.
-          </Typography>
-        </Box>
+        <Box sx={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
+        <Box sx={{ position: 'absolute', bottom: -60, right: 80, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'stretch', md: 'center' }}
+          spacing={2}
+          sx={{ position: 'relative', zIndex: 1 }}
+        >
+          <Box>
+            <Typography variant="h5" fontWeight={900} sx={{ letterSpacing: -0.5 }}>
+              Panel de control
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.5 }}>
+              Ventas, tráfico, carritos, productos y conversión en tiempo real.
+            </Typography>
+          </Box>
 
-        <Stack direction="row" spacing={1.5} alignItems="center">
-          <Select
-            size="small"
-            value={days}
-            onChange={event => setDays(Number(event.target.value))}
-            sx={{ minWidth: 170 }}
-          >
-            <MenuItem value={7}>Últimos 7 días</MenuItem>
-            <MenuItem value={30}>Últimos 30 días</MenuItem>
-            <MenuItem value={90}>Últimos 90 días</MenuItem>
-            <MenuItem value={180}>Últimos 180 días</MenuItem>
-          </Select>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Select
+              size="small"
+              value={days}
+              onChange={event => setDays(Number(event.target.value))}
+              sx={{
+                minWidth: 170,
+                bgcolor: 'rgba(255,255,255,0.15)',
+                color: '#fff',
+                borderRadius: 2,
+                '& .MuiSelect-icon': { color: '#fff' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+              }}
+            >
+              <MenuItem value={7}>Últimos 7 días</MenuItem>
+              <MenuItem value={30}>Últimos 30 días</MenuItem>
+              <MenuItem value={90}>Últimos 90 días</MenuItem>
+              <MenuItem value={180}>Últimos 180 días</MenuItem>
+            </Select>
 
-          <Tooltip title="Actualizar">
-            <span>
-              <IconButton
-                onClick={() => fetchData()}
-                disabled={loading || refreshing}
-              >
-                <RefreshIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
+            <Tooltip title="Actualizar">
+              <span>
+                <IconButton
+                  onClick={() => fetchData()}
+                  disabled={loading || refreshing}
+                  sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.12)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}
+                >
+                  <RefreshIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
 
-          <Button
-            variant="outlined"
-            startIcon={<SettingsIcon />}
-            onClick={onOpenConfig}
-          >
-            GA4
-          </Button>
+            <Button
+              variant="contained"
+              startIcon={<SettingsIcon />}
+              onClick={onOpenConfig}
+              sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: '#fff', '&:hover': { bgcolor: 'rgba(255,255,255,0.28)' }, boxShadow: 'none' }}
+            >
+              GA4
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
+      </Paper>
 
       {data?.status === 'not_configured' && (
         <Alert severity="info" sx={{ mb: 3 }}>
@@ -939,17 +983,14 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         </Alert>
       )}
 
-      <Grid container spacing={2.5} sx={{ mb: 3 }}>
+      <Grid container spacing={2.5} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Ventas aprobadas"
-            value={
-              loading ? <Skeleton width={90} /> : formatMoney(summary.revenue)
-            }
+            value={loading ? <Skeleton width={90} /> : formatMoney(summary.revenue)}
             icon={TrendIcon}
             trend={summary.revenueGrowth}
-            color={CHART_COLORS.primary}
-            description="Ingresos de órdenes pagadas en el período."
+            gradient={KPI_GRADIENTS.revenue}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
@@ -958,38 +999,23 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             value={loading ? <Skeleton width={90} /> : formatNumber(paidOrders)}
             icon={CartIcon}
             trend={summary.ordersGrowth}
-            color={CHART_COLORS.success}
-            description="Órdenes con pago aprobado y estado activo."
+            gradient={KPI_GRADIENTS.orders}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Ticket promedio"
-            value={
-              loading ? (
-                <Skeleton width={90} />
-              ) : (
-                formatMoney(summary.averageOrderValue)
-              )
-            }
+            value={loading ? <Skeleton width={90} /> : formatMoney(summary.averageOrderValue)}
             icon={PaymentsIcon}
-            color={CHART_COLORS.warning}
-            description="Revenue pagado dividido por órdenes pagadas."
+            gradient={KPI_GRADIENTS.ticket}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Conversión real"
-            value={
-              loading ? (
-                <Skeleton width={90} />
-              ) : (
-                formatPercent(summary.conversionRate)
-              )
-            }
+            value={loading ? <Skeleton width={90} /> : formatPercent(summary.conversionRate)}
             icon={UsersIcon}
-            color={CHART_COLORS.teal}
-            description="Órdenes pagadas sobre sesiones del storefront."
+            gradient={KPI_GRADIENTS.conversion}
           />
         </Grid>
       </Grid>
@@ -999,72 +1025,44 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         description="Diferenciamos carritos activos de abandonados para entender intención de compra y recuperación potencial."
       />
 
-      <Grid container spacing={2.5} sx={{ mb: 3 }}>
+      <Grid container spacing={2.5} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Carritos activos"
-            value={
-              loading ? (
-                <Skeleton width={80} />
-              ) : (
-                formatNumber(summary.activeCarts)
-              )
-            }
+            value={loading ? <Skeleton width={80} /> : formatNumber(summary.activeCarts)}
             icon={CartIcon}
-            color={CHART_COLORS.success}
-            description="Carritos con productos y actividad reciente."
+            gradient={KPI_GRADIENTS.activeCarts}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Valor activo"
-            value={
-              loading ? (
-                <Skeleton width={80} />
-              ) : (
-                formatMoney(summary.activeCartValue)
-              )
-            }
-            icon={CartIcon}
-            color={CHART_COLORS.teal}
-            description="Valor estimado en carritos activos."
+            value={loading ? <Skeleton width={80} /> : formatMoney(summary.activeCartValue)}
+            icon={PaymentsIcon}
+            gradient={KPI_GRADIENTS.activeValue}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Carritos abandonados"
-            value={
-              loading ? (
-                <Skeleton width={80} />
-              ) : (
-                formatNumber(summary.abandonedCarts)
-              )
-            }
+            value={loading ? <Skeleton width={80} /> : formatNumber(summary.abandonedCarts)}
             icon={AbandonedCartIcon}
-            color={CHART_COLORS.error}
-            description="Carritos sin actividad después del umbral."
+            gradient={KPI_GRADIENTS.abandonedCarts}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
           <KpiCard
             title="Valor abandonado"
-            value={
-              loading ? (
-                <Skeleton width={80} />
-              ) : (
-                formatMoney(summary.abandonedCartValue)
-              )
-            }
+            value={loading ? <Skeleton width={80} /> : formatMoney(summary.abandonedCartValue)}
             icon={AbandonedCartIcon}
-            color={CHART_COLORS.purple}
-            description="Potencial recuperable en carritos abandonados."
+            gradient={KPI_GRADIENTS.abandonedValue}
           />
         </Grid>
       </Grid>
 
-      <Grid container spacing={3} sx={{ mb: 3 }}>
+      <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={7}>
-          <Card sx={{ height: '100%', borderRadius: 3 }}>
+          <Card sx={{ height: '100%', borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle
                 title="Ventas, sesiones y carritos reales por día"
@@ -1147,7 +1145,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         </Grid>
 
         <Grid item xs={12} md={5}>
-          <Card sx={{ height: '100%', borderRadius: 3 }}>
+          <Card sx={{ height: '100%', borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle
                 title="Activos vs abandonados"
@@ -1202,7 +1200,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} lg={4}>
-          <Card sx={{ borderRadius: 3 }}>
+          <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle
                 title="Productos más vendidos"
@@ -1257,7 +1255,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         </Grid>
 
         <Grid item xs={12} lg={4}>
-          <Card sx={{ borderRadius: 3 }}>
+          <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle
                 title="Productos más visitados"
@@ -1329,7 +1327,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         </Grid>
 
         <Grid item xs={12} lg={4}>
-          <Card sx={{ borderRadius: 3 }}>
+          <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle
                 title="Productos con más clicks"
@@ -1389,7 +1387,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} lg={7}>
-          <Card sx={{ borderRadius: 3 }}>
+          <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle
                 title="Funnel de conversión"
@@ -1437,7 +1435,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         </Grid>
 
         <Grid item xs={12} lg={5}>
-          <Card sx={{ borderRadius: 3, height: '100%' }}>
+          <Card sx={{ borderRadius: 3, height: '100%', border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle
                 title="Tráfico por fuente"
@@ -1489,7 +1487,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: 3 }}>
+          <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle title="Últimos carritos activos" />
               <Stack spacing={1.5}>
@@ -1536,7 +1534,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: 3 }}>
+          <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <DashboardSectionTitle
                 title="Productos, páginas y búsquedas destacadas"
@@ -1765,7 +1763,7 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
 
   return (
     <Box>
-      <Card sx={{ mb: 3, borderRadius: 3 }}>
+      <Card sx={{ mb: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <CardContent>
           <Stack
             direction="row"
@@ -1823,7 +1821,7 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
         </CardContent>
       </Card>
 
-      <Card sx={{ borderRadius: 3 }}>
+      <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <CardContent>
           <Stack
             direction={{ xs: 'column', md: 'row' }}
@@ -2108,33 +2106,29 @@ const Dashboard = () => {
 
   return (
     <Box>
-      <Stack
-        direction={{ xs: 'column', md: 'row' }}
-        justifyContent="space-between"
-        spacing={2}
-        sx={{ mb: 3 }}
+      <Paper
+        sx={{
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        }}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={900} gutterBottom>
-            <AnalyticsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Métricas
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Ventas, carritos activos, carritos abandonados, productos visitados
-            y conversión del tenant actual.
-          </Typography>
-        </Box>
-      </Stack>
-
-      <Paper sx={{ mb: 3, borderRadius: 3 }}>
         <Tabs
           value={tab}
           onChange={(_, value) => setTab(value)}
           variant="scrollable"
           scrollButtons="auto"
+          sx={{
+            '& .MuiTab-root': { fontWeight: 700, textTransform: 'none', fontSize: '0.95rem', py: 1.5 },
+            '& .Mui-selected': { color: '#6366F1' },
+            '& .MuiTabs-indicator': { backgroundColor: '#6366F1', height: 3, borderRadius: '3px 3px 0 0' },
+          }}
         >
-          <Tab label="Dashboard" />
-          <Tab label="Configuración GA4" />
+          <Tab icon={<AnalyticsIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="Dashboard" />
+          <Tab icon={<SettingsIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="Configuración GA4" />
         </Tabs>
       </Paper>
 
