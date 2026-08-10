@@ -1,13 +1,75 @@
-import FormData from 'form-data'
-import { HfInference } from '@huggingface/inference'
 import sharp from 'sharp'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 
-let genAI = null
+/**
+ * Motores de imagen
+ * ─────────────────
+ * Quitar fondo:  Replicate 851-labs/background-remover (modelo comunitario → requiere version hash)
+ * Generar fondo: Replicate black-forest-labs/flux-schnell (modelo oficial → sin version hash)
+ *                fallback → HuggingFace SD3 (gratis, único txt2img vivo en hf-inference)
+ * Prompt:        Gemini traduce/optimiza el prompt del usuario a inglés
+ *
+ * Nota: HuggingFace NO tiene ningún modelo de background removal disponible en el
+ * tier gratuito (hf-inference sólo sirve segmentación semántica, no recortes con alpha),
+ * por eso quitar fondo depende exclusivamente de Replicate.
+ */
+
+const REPLICATE_API = 'https://api.replicate.com/v1'
+const HF_ROUTER = 'https://router.huggingface.co/hf-inference/models'
+
+const BG_REMOVER_VERSION =
+  'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc'
+const FLUX_MODEL = 'black-forest-labs/flux-schnell'
+const HF_TXT2IMG_MODEL = 'stabilityai/stable-diffusion-3-medium-diffusers'
+
+const MAX_EDGE = 1600
+const POLL_INTERVAL_MS = 1000
+const POLL_MAX_ATTEMPTS = 90
+
+const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
+
+/** Cadena de modelos: el configurado primero, después respaldos conocidos.
+ *  Los modelos de Gemini se retiran seguido (2.5-flash-lite → 404, 2.0-flash → 429),
+ *  así que no dependemos de uno solo. */
+const GEMINI_TEXT_MODELS = [
+  env.ai?.geminiModel,
+  'gemini-2.5-flash',
+  'gemini-flash-lite-latest',
+].filter(Boolean)
+
+// ─── Errores ─────────────────────────────────────────────
+
+const fail = (message, statusCode = 502) => {
+  const error = new Error(message)
+  error.statusCode = statusCode
+  return error
+}
+
+/** undici esconde la causa real en err.cause — sin esto quedamos ciegos. */
+const describe = err => {
+  const cause = err?.cause
+  if (!cause) return err?.message || 'error desconocido'
+  return `${err.message} (${cause.code || cause.message || cause})`
+}
 
 // ─── Gemini: prompt engineering ──────────────────────────
+
+const askGemini = async (key, model, prompt) => {
+  const res = await fetch(`${GEMINI_API}/${model}:generateContent?key=${key}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`${model} → ${res.status}: ${body.slice(0, 120)}`)
+  }
+
+  const json = await res.json()
+  return json?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+}
 
 const optimizePrompt = async userPrompt => {
   const geminiKey = env.ai?.geminiApiKey
@@ -16,14 +78,7 @@ const optimizePrompt = async userPrompt => {
     return userPrompt
   }
 
-  try {
-    if (!genAI) genAI = new GoogleGenerativeAI(geminiKey)
-    const model = genAI.getGenerativeModel({
-      model: env.ai?.geminiModel || 'gemini-2.0-flash',
-    })
-
-    const result = await model.generateContent(
-      `You are a prompt engineer for AI image generation.
+  const instruction = `You are a prompt engineer for AI image generation.
 
 The user uploaded a product photo and wants to generate a new background scene for it.
 
@@ -37,217 +92,235 @@ Rules:
 - Keep it under 50 words
 - Use simple English, no special characters or markdown
 
-User instruction: "${userPrompt}"`,
-    )
+User instruction: "${userPrompt}"`
 
-    let optimized = result.response.text().trim()
-    optimized = optimized
-      .replace(/^["'`]+|["'`]+$/g, '')
-      .replace(/^(here['']?s?|prompt|output|result|answer)[:\s]*/i, '')
-      .trim()
+  for (const model of GEMINI_TEXT_MODELS) {
+    try {
+      const raw = await askGemini(geminiKey, model, instruction)
 
-    if (!optimized || optimized.length < 5) return userPrompt
+      const optimized = raw
+        .trim()
+        .replace(/^["'`]+|["'`]+$/g, '')
+        .replace(/^(here['']?s?|prompt|output|result|answer)[:\s]*/i, '')
+        .trim()
 
-    logger.info('Prompt optimized', { original: userPrompt, optimized })
-    return optimized
-  } catch (err) {
-    logger.warn('Prompt optimization failed, using original', { error: err.message })
-    return userPrompt
+      if (optimized.length < 5) continue
+
+      logger.info('Prompt optimized', { model, original: userPrompt, optimized })
+      return optimized
+    } catch (err) {
+      logger.warn('Gemini model unavailable, trying next', { error: describe(err) })
+    }
   }
+
+  logger.warn('Prompt optimization failed on all models, using original prompt')
+  return userPrompt
 }
 
-// ─── Helpers ─────────────────────────────────────────────
-
-const isCreditsError = err => {
-  const msg = (err?.message || '').toLowerCase()
-  return (
-    msg.includes('insufficient') ||
-    msg.includes('payment') ||
-    msg.includes('billing') ||
-    msg.includes('quota') ||
-    msg.includes('credit') ||
-    err?.status === 402 ||
-    err?.statusCode === 402
-  )
-}
+// ─── Credenciales ────────────────────────────────────────
 
 const getReplicateToken = () => {
   const token = env.replicate?.apiToken
-  if (!token) throw new Error('REPLICATE_API_TOKEN no configurado')
-  return token
-}
-
-const getHfToken = () => {
-  const token = env.huggingface?.apiKey
-  if (!token) throw new Error('HUGGINGFACE_API_KEY no configurado')
-  return token
-}
-
-const waitForReplicatePrediction = async (token, predictionUrl) => {
-  const maxRetries = 60
-  const delayMs = 1000
-
-  for (let i = 0; i < maxRetries; i++) {
-    const res = await fetch(predictionUrl, {
-      headers: { Authorization: `Token ${token}` },
-    })
-
-    if (!res.ok) throw new Error(`Replicate status check failed: ${res.status}`)
-
-    const pred = await res.json()
-
-    if (pred.status === 'succeeded') {
-      if (Array.isArray(pred.output) && pred.output.length > 0) {
-        return pred.output[0]
-      }
-      return pred.output
-    }
-
-    if (pred.status === 'failed') {
-      throw new Error(`Replicate prediction failed: ${pred.error || 'unknown error'}`)
-    }
-
-    if (i < maxRetries - 1) {
-      await new Promise(r => setTimeout(r, delayMs))
-    }
+  if (!token) {
+    throw fail(
+      'REPLICATE_API_TOKEN no está configurado en el servidor. Agregalo en las variables de entorno.',
+      503,
+    )
   }
+  return token
+}
 
-  throw new Error('Replicate prediction timed out after 60 seconds')
+const getHfToken = () => env.huggingface?.apiKey || ''
+
+// ─── Utilidades de imagen ────────────────────────────────
+
+/** Normaliza a PNG y limita el lado mayor: menos payload, menos latencia, menos costo. */
+const normalize = async imageBuffer => {
+  const image = sharp(imageBuffer, { failOn: 'none' })
+  const meta = await image.metadata()
+
+  const needsResize = Math.max(meta.width || 0, meta.height || 0) > MAX_EDGE
+  const buffer = await (needsResize
+    ? image.resize(MAX_EDGE, MAX_EDGE, { fit: 'inside', withoutEnlargement: true })
+    : image
+  )
+    .png()
+    .toBuffer()
+
+  const out = await sharp(buffer).metadata()
+  return { buffer, width: out.width, height: out.height }
 }
 
 const downloadImage = async url => {
   const res = await fetch(url)
-  if (!res.ok) throw new Error(`Download failed: ${res.status}`)
+  if (!res.ok) throw fail(`No se pudo descargar el resultado (${res.status})`)
   return Buffer.from(await res.arrayBuffer())
 }
 
-// ─── Background removal ─────────────────────────────────
+// ─── Replicate ───────────────────────────────────────────
 
-const removeBgReplicate = async imageBuffer => {
-  const token = getReplicateToken()
+/**
+ * Sube el archivo a Replicate y devuelve su URL.
+ * Inlinear la imagen como data URI base64 infla el JSON varios MB y la conexión
+ * se corta a nivel socket ("fetch failed"). La Files API es el camino correcto.
+ */
+const uploadToReplicate = async (token, buffer) => {
+  const form = new FormData()
+  form.append('content', new Blob([buffer], { type: 'image/png' }), 'input.png')
 
-  const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+  const res = await fetch(`${REPLICATE_API}/files`, {
+    method: 'POST',
+    headers: { Authorization: `Token ${token}` },
+    body: form,
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    logger.error('Replicate file upload failed', { status: res.status, body })
+    throw fail(`Replicate rechazó la subida de la imagen (${res.status})`)
+  }
+
+  const json = await res.json()
+  const url = json?.urls?.get
+  if (!url) throw fail('Replicate no devolvió una URL para la imagen subida')
+  return url
+}
+
+const pollPrediction = async (token, url) => {
+  for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(url, { headers: { Authorization: `Token ${token}` } })
+    if (!res.ok) throw fail(`Replicate falló al consultar el estado (${res.status})`)
+
+    const prediction = await res.json()
+
+    if (prediction.status === 'succeeded') {
+      const output = prediction.output
+      return Array.isArray(output) ? output[0] : output
+    }
+
+    if (prediction.status === 'failed' || prediction.status === 'canceled') {
+      throw fail(`Replicate no pudo procesar la imagen: ${prediction.error || prediction.status}`)
+    }
+
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+  }
+
+  throw fail('Replicate tardó demasiado en responder. Intentá de nuevo.')
+}
+
+const createPrediction = async (token, endpoint, payload) => {
+  const res = await fetch(`${REPLICATE_API}${endpoint}`, {
     method: 'POST',
     headers: {
       Authorization: `Token ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      version: 'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc',
-      input: {
-        image: `data:image/png;base64,${imageBuffer.toString('base64')}`,
-        threshold: 0,
-        background_type: 'rgba',
-        format: 'png',
-      },
-    }),
+    body: JSON.stringify(payload),
   })
 
-  if (!createRes.ok) {
-    const errBody = await createRes.text()
-    logger.error('Replicate create prediction failed', { status: createRes.status, body: errBody })
-    throw new Error(`Replicate API error (${createRes.status}): ${errBody}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    logger.error('Replicate create prediction failed', { endpoint, status: res.status, body })
+
+    if (res.status === 402) throw fail('Sin créditos en Replicate.', 402)
+    if (res.status === 401) throw fail('REPLICATE_API_TOKEN inválido.', 503)
+    throw fail(`Replicate rechazó la solicitud (${res.status}): ${body.slice(0, 200)}`)
   }
 
-  const pred = await createRes.json()
-  const outputUrl = await waitForReplicatePrediction(token, pred.urls.get)
+  const prediction = await res.json()
+  const outputUrl = await pollPrediction(token, prediction.urls.get)
+  if (!outputUrl) throw fail('Replicate no devolvió ninguna imagen')
 
   return downloadImage(outputUrl)
 }
 
-const removeBgHuggingFace = async imageBuffer => {
-  const token = getHfToken()
+// ─── Quitar fondo ────────────────────────────────────────
 
-  const response = await fetch('https://api-inference.huggingface.co/models/briaai/RMBG-2.0', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/octet-stream',
+const removeBgReplicate = async imageBuffer => {
+  const token = getReplicateToken()
+  const imageUrl = await uploadToReplicate(token, imageBuffer)
+
+  // Modelo comunitario → /predictions con version hash
+  return createPrediction(token, '/predictions', {
+    version: BG_REMOVER_VERSION,
+    input: {
+      image: imageUrl,
+      threshold: 0,
+      background_type: 'rgba',
+      format: 'png',
     },
-    body: imageBuffer,
   })
-
-  if (!response.ok) {
-    const errBody = await response.text().catch(() => '')
-    throw new Error(`HuggingFace bg removal failed (${response.status}): ${errBody}`)
-  }
-
-  return Buffer.from(await response.arrayBuffer())
 }
 
-// ─── Background generation ──────────────────────────────
+// ─── Generar fondo ───────────────────────────────────────
 
 const generateBgReplicate = async prompt => {
   const token = getReplicateToken()
 
-  const createRes = await fetch('https://api.replicate.com/v1/predictions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${token}`,
-      'Content-Type': 'application/json',
+  // Modelo oficial → /models/{owner}/{name}/predictions, sin version hash
+  return createPrediction(token, `/models/${FLUX_MODEL}/predictions`, {
+    input: {
+      prompt,
+      num_outputs: 1,
+      aspect_ratio: '1:1',
+      output_format: 'png',
+      go_fast: true,
     },
-    body: JSON.stringify({
-      version: 'e7694ba77371875b4c91cb122201ba8a21f02fefd3f771986a4a0137eed410f1',
-      input: {
-        prompt,
-        num_outputs: 1,
-        aspect_ratio: '1:1',
-        output_format: 'png',
-        go_fast: true,
-      },
-    }),
   })
-
-  if (!createRes.ok) {
-    const errBody = await createRes.text()
-    logger.error('Replicate create prediction failed', { status: createRes.status, body: errBody })
-    throw new Error(`Replicate API error (${createRes.status}): ${errBody}`)
-  }
-
-  const pred = await createRes.json()
-  const outputUrl = await waitForReplicatePrediction(token, pred.urls.get)
-
-  return downloadImage(Array.isArray(outputUrl) ? outputUrl[0] : outputUrl)
 }
 
 const generateBgHuggingFace = async prompt => {
-  const hf = new HfInference(getHfToken())
+  const token = getHfToken()
+  if (!token) throw fail('HUGGINGFACE_API_KEY no configurado', 503)
 
-  const result = await hf.textToImage({
-    model: 'stabilityai/stable-diffusion-xl-base-1.0',
-    inputs: prompt,
-    parameters: { width: 1024, height: 1024 },
+  const res = await fetch(`${HF_ROUTER}/${HF_TXT2IMG_MODEL}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ inputs: prompt }),
   })
 
-  return Buffer.from(await result.arrayBuffer())
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    logger.error('HuggingFace txt2img failed', { status: res.status, body })
+    throw fail(`HuggingFace no pudo generar el fondo (${res.status})`)
+  }
+
+  return Buffer.from(await res.arrayBuffer())
 }
 
-// ─── Fallback wrapper ───────────────────────────────────
-
-const withFallback = (primary, fallback, label) => async (...args) => {
+/** Cualquier fallo de Replicate (créditos, red, 5xx) cae a HuggingFace. */
+const generateBg = async prompt => {
   try {
-    return await primary(...args)
+    const buffer = await generateBgReplicate(prompt)
+    logger.info('Background generado con Replicate')
+    return buffer
   } catch (err) {
-    if (isCreditsError(err)) {
-      logger.info(`${label}: Replicate sin créditos, usando HuggingFace`, { error: err.message })
-      return fallback(...args)
-    }
-    throw err
+    logger.warn('Replicate falló, usando HuggingFace', { error: describe(err) })
+    const buffer = await generateBgHuggingFace(prompt)
+    logger.info('Background generado con HuggingFace (fallback)')
+    return buffer
   }
 }
 
-const removeBg = withFallback(removeBgReplicate, removeBgHuggingFace, 'removeBg')
-const generateBg = withFallback(generateBgReplicate, generateBgHuggingFace, 'generateBg')
-
-// ─── Public API ──────────────────────────────────────────
+// ─── API pública ─────────────────────────────────────────
 
 export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
   logger.info('removeBackground', { bytes: imageBuffer.length, mime: mimeType })
 
-  const buffer = await removeBg(imageBuffer)
-  logger.info('removeBackground OK', { outputBytes: buffer.length })
+  const { buffer: normalized } = await normalize(imageBuffer)
 
-  return { buffer, contentType: 'image/png' }
+  try {
+    const buffer = await removeBgReplicate(normalized)
+    logger.info('removeBackground OK', { outputBytes: buffer.length })
+    return { buffer, contentType: 'image/png' }
+  } catch (err) {
+    logger.error('removeBackground failed', { error: describe(err) })
+    if (err.statusCode) throw err
+    throw fail(`No se pudo quitar el fondo: ${describe(err)}`)
+  }
 }
 
 export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/png') => {
@@ -260,17 +333,19 @@ export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/p
     optimized: optimizedPrompt,
   })
 
-  const { width, height } = await sharp(imageBuffer).metadata()
-  const transparentBuf = await removeBg(imageBuffer)
-  const bgBuffer = await generateBg(optimizedPrompt)
+  const { buffer: normalized, width, height } = await normalize(imageBuffer)
 
-  const result = await sharp(bgBuffer)
+  // El recorte va primero: es obligatorio y si falla evitamos pagar un fondo inútil.
+  const cutout = await removeBgReplicate(normalized)
+  const background = await generateBg(optimizedPrompt)
+
+  const buffer = await sharp(background)
     .resize(width, height, { fit: 'cover' })
-    .composite([{ input: transparentBuf, gravity: 'centre' }])
+    .composite([{ input: cutout, gravity: 'centre' }])
     .png()
     .toBuffer()
 
-  logger.info('generateVariation OK', { outputBytes: result.length })
+  logger.info('generateVariation OK', { outputBytes: buffer.length })
 
-  return { buffer: result, contentType: 'image/png' }
+  return { buffer, contentType: 'image/png' }
 }
