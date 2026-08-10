@@ -6,47 +6,51 @@ import sharp from 'sharp'
 import logger from '../../../config/logger.js'
 
 /**
- * Quitar fondo localmente con RMBG-1.4 (ONNX, cuantizado a int8).
+ * Quitar fondo localmente con U2-Net portable (u2netp, ONNX).
  *
  * Corre en el propio proceso: no hay proveedor externo, no hay costo por
  * imagen y no hace falta ninguna API key.
  *
- * Medido antes de elegirlo, contra el modelo fp32 y sobre la misma imagen:
+ * Medido contra RMBG-1.4 sobre la misma imagen, antes de elegirlo:
  *
- *   modelo   señal dentro   fuera    pico RAM   inferencia
- *   q8            0.989     0.026      282 MB       ~6 s
- *   fp32          0.992     0.000      799 MB       ~4 s
+ *   modelo         señal dentro   fuera   pico RAM   inferencia   archivo
+ *   u2netp @320         0.990     0.002     102 MB      0.7 s      4.5 MB
+ *   RMBG-1.4 q8 @1024   0.989     0.026     282 MB      ~6 s        44 MB
+ *   RMBG-1.4 fp32       0.992     0.000     799 MB      ~4 s       176 MB
  *
- * El cuantizado da prácticamente la misma máscara con un tercio de la memoria,
- * así que es el único que entra en una instancia chica. Dos detalles hacen la
- * diferencia entre entrar y morir por OOM:
+ * RMBG-1.4 se probó primero en producción y el contenedor moría por OOM: su
+ * entrada es fija de 1024x1024 y las activaciones intermedias dominan el pico,
+ * que no entra junto a Express y Mongoose en una instancia chica. u2netp
+ * trabaja a 320x320, así que el mismo cálculo cuesta un tercio de memoria y
+ * separa igual o mejor.
+ *
+ * Dos detalles siguen siendo imprescindibles para no morir por OOM:
  *
  *  - `enableCpuMemArena` / `enableMemPattern` en false. Con la arena activada
- *    el pico salta de 282 MB a 897 MB, que es lo que tumbaba el contenedor.
- *  - Una sola inferencia a la vez. Cada una reserva su propio buffer de
+ *    el pico de RMBG saltaba de 282 MB a 897 MB.
+ *  - Una sola inferencia a la vez: cada una reserva su propio buffer de
  *    activaciones, así que dos en paralelo duplican el pico.
- *
- * El modelo tiene input fijo de 1024x1024: no se puede achicar para gastar
- * menos memoria.
  */
 
-const MODEL_URL =
-  'https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx'
+const MODEL_URL = 'https://huggingface.co/tomjackson2023/rembg/resolve/main/u2netp.onnx'
 
-// ~42 MB. Si el archivo en disco es mucho más chico, quedó una descarga a medias.
-const MIN_MODEL_BYTES = 30 * 1024 * 1024
-const INPUT_SIZE = 1024
+// ~4.5 MB. Si el archivo en disco es mucho más chico, quedó una descarga a medias.
+const MIN_MODEL_BYTES = 3 * 1024 * 1024
+const INPUT_SIZE = 320
+
+// u2netp espera la normalización de ImageNet.
+const MEAN = [0.485, 0.456, 0.406]
+const STD = [0.229, 0.224, 0.225]
 
 /**
  * Memoria que hay que tener libre para animarse a correr la inferencia.
- * El pico medido es ~282 MB; dejamos margen porque encima corre Express,
- * Mongoose y el resto del proceso.
+ * El pico medido es ~102 MB; pedimos bastante más porque encima corre Express,
+ * Mongoose y el resto del proceso, y un OOM no se puede atrapar.
  */
-const REQUIRED_FREE_MB = Number(process.env.RMBG_REQUIRED_FREE_MB || 340)
+const REQUIRED_FREE_MB = Number(process.env.RMBG_REQUIRED_FREE_MB || 170)
 
 const modelPath = () =>
-  process.env.RMBG_MODEL_PATH ||
-  path.join(os.tmpdir(), 'henko-ai', 'rmbg-1.4-quantized.onnx')
+  process.env.RMBG_MODEL_PATH || path.join(os.tmpdir(), 'henko-ai', 'u2netp.onnx')
 
 let sessionPromise = null
 let ortPromise = null
@@ -73,20 +77,46 @@ const containerLimitMb = () => {
       const bytes = Number(raw)
       // cgroup v1 usa un número gigante como "sin límite".
       if (Number.isFinite(bytes) && bytes > 0 && bytes < 64 * 1024 ** 3) {
-        return Math.round(bytes / 1024 / 1024)
+        return { limitMb: Math.round(bytes / 1024 / 1024), source: 'cgroup' }
       }
     } catch {
       // el archivo no existe fuera de Linux
     }
   }
 
-  return Math.round(os.totalmem() / 1024 / 1024)
+  /**
+   * Sin cgroup no sabemos cuánto nos toca. `os.totalmem()` acá miente: dentro de
+   * un contenedor devuelve la RAM del host, así que usarlo como límite hacía que
+   * el guard viera decenas de GB libres, dejara pasar la inferencia y el
+   * contenedor muriera igual. Sólo se acepta cuando NO estamos en un contenedor.
+   */
+  return { limitMb: Math.round(os.totalmem() / 1024 / 1024), source: 'os' }
+}
+
+const runningInContainer = () => {
+  if (process.env.RENDER || process.env.KUBERNETES_SERVICE_HOST) return true
+  try {
+    return fs.existsSync('/.dockerenv')
+  } catch {
+    return false
+  }
 }
 
 const memorySnapshot = () => {
-  const limit = containerLimitMb()
+  const { limitMb, source } = containerLimitMb()
   const used = Math.round(process.memoryUsage().rss / 1024 / 1024)
-  return { limit, used, free: limit - used }
+
+  // Un límite proveniente de os.totalmem() dentro de un contenedor no es
+  // confiable: lo marcamos como desconocido en vez de creerle.
+  const trusted = source === 'cgroup' || !runningInContainer()
+
+  return {
+    limit: limitMb,
+    used,
+    free: limitMb - used,
+    source,
+    trusted,
+  }
 }
 
 /**
@@ -95,7 +125,19 @@ const memorySnapshot = () => {
  * única defensa es no arrancar la inferencia si el margen no alcanza.
  */
 const assertEnoughMemory = () => {
-  const { limit, used, free } = memorySnapshot()
+  const snapshot = memorySnapshot()
+  const { limit, free, trusted } = snapshot
+
+  // Un OOM mata el proceso sin dejar rastro: el request muere sin respuesta y
+  // el navegador sólo ve un 502 sin cabeceras CORS. Si no podemos afirmar que
+  // entra, no lo intentamos.
+  if (!trusted) {
+    const error = new Error(
+      'No se pudo determinar el límite de memoria del contenedor, así que no se arriesga la inferencia local.',
+    )
+    error.code = 'RMBG_UNKNOWN_MEMORY_LIMIT'
+    throw error
+  }
 
   if (free < REQUIRED_FREE_MB) {
     const error = new Error(
@@ -105,7 +147,7 @@ const assertEnoughMemory = () => {
     throw error
   }
 
-  return { limit, used, free }
+  return snapshot
 }
 
 // ─── Modelo ──────────────────────────────────────────────
@@ -214,11 +256,11 @@ const buildInput = async (ort, imageBuffer) => {
   const plane = INPUT_SIZE * INPUT_SIZE
   const tensor = new Float32Array(3 * plane)
 
-  // RGB intercalado → planos CHW, escalado a [0,1] y centrado en 0 (media 0.5).
+  // RGB intercalado → planos CHW, escalado a [0,1] y normalizado con ImageNet.
   for (let i = 0; i < plane; i++) {
-    tensor[i] = data[i * 3] / 255 - 0.5
-    tensor[plane + i] = data[i * 3 + 1] / 255 - 0.5
-    tensor[2 * plane + i] = data[i * 3 + 2] / 255 - 0.5
+    tensor[i] = (data[i * 3] / 255 - MEAN[0]) / STD[0]
+    tensor[plane + i] = (data[i * 3 + 1] / 255 - MEAN[1]) / STD[1]
+    tensor[2 * plane + i] = (data[i * 3 + 2] / 255 - MEAN[2]) / STD[2]
   }
 
   return new ort.Tensor('float32', tensor, [1, 3, INPUT_SIZE, INPUT_SIZE])
