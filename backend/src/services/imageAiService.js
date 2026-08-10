@@ -2,18 +2,25 @@ import sharp from 'sharp'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import { getModelChain, isModelUnavailable, markModelDead } from './ai/geminiModels.js'
+import {
+  removeBackgroundLocal,
+  isLocalBackgroundRemovalEnabled,
+} from './ai/backgroundRemoval.js'
 
 /**
  * Motores de imagen
  * ─────────────────
- * Quitar fondo:  Replicate 851-labs/background-remover (modelo comunitario → requiere version hash)
- * Generar fondo: Replicate black-forest-labs/flux-schnell (modelo oficial → sin version hash)
- *                fallback → HuggingFace SD3 (gratis, único txt2img vivo en hf-inference)
+ * Quitar fondo:  RMBG-1.4 local (gratis, sin API key) → Replicate si está el token
+ * Generar fondo: Replicate flux-schnell (modelo oficial) → HuggingFace SD3 (gratis)
  * Prompt:        Gemini traduce/optimiza el prompt del usuario a inglés
  *
- * Nota: HuggingFace NO tiene ningún modelo de background removal disponible en el
- * tier gratuito (hf-inference sólo sirve segmentación semántica, no recortes con alpha),
- * por eso quitar fondo depende exclusivamente de Replicate.
+ * Todo el flujo funciona sin ninguna credencial de pago: el recorte corre en el
+ * propio proceso y el fondo lo genera HuggingFace. Replicate es opcional y sólo
+ * mejora velocidad y calidad cuando hay token.
+ *
+ * HuggingFace no sirve ningún modelo de background removal en su tier gratuito
+ * (hf-inference sólo expone segmentación semántica, no recortes con alpha), por
+ * eso el recorte se resuelve localmente y no contra su API.
  */
 
 const REPLICATE_API = 'https://api.replicate.com/v1'
@@ -247,6 +254,27 @@ const removeBgReplicate = async imageBuffer => {
   })
 }
 
+/**
+ * El recorte local es la opción por defecto: gratis y sin credenciales.
+ * Replicate queda como respaldo para cuando hay token, porque es más rápido
+ * y afina mejor los bordes finos (pelo, transparencias).
+ */
+const removeBg = async imageBuffer => {
+  if (isLocalBackgroundRemovalEnabled()) {
+    try {
+      return await removeBackgroundLocal(imageBuffer)
+    } catch (error) {
+      if (!env.replicate?.apiToken) throw error
+
+      logger.warn('[RMBG] Recorte local falló, se intenta con Replicate', {
+        error: error.message,
+      })
+    }
+  }
+
+  return removeBgReplicate(imageBuffer)
+}
+
 // ─── Generar fondo ───────────────────────────────────────
 
 const generateBgReplicate = async prompt => {
@@ -308,7 +336,7 @@ export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
   const { buffer: normalized } = await normalize(imageBuffer)
 
   try {
-    const buffer = await removeBgReplicate(normalized)
+    const buffer = await removeBg(normalized)
     logger.info('removeBackground OK', { outputBytes: buffer.length })
     return { buffer, contentType: 'image/png' }
   } catch (err) {
@@ -330,8 +358,8 @@ export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/p
 
   const { buffer: normalized, width, height } = await normalize(imageBuffer)
 
-  // El recorte va primero: es obligatorio y si falla evitamos pagar un fondo inútil.
-  const cutout = await removeBgReplicate(normalized)
+  // El recorte va primero: es obligatorio y si falla evitamos generar un fondo inútil.
+  const cutout = await removeBg(normalized)
   const background = await generateBg(optimizedPrompt)
 
   const buffer = await sharp(background)

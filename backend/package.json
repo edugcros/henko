@@ -57,6 +57,7 @@
     "multer": "^2.2.0",
     "node-cache": "^5.1.2",
     "nodemailer": "^9.0.1",
+    "onnxruntime-node": "^1.27.0",
     "redis": "^5.11.0",
     "replicate": "^1.4.0",
     "resend": "^4.8.0",
