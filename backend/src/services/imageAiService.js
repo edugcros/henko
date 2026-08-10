@@ -108,12 +108,19 @@ const fileOutputToBuffer = async output => {
 const removeBgReplicate = async imageBuffer => {
   const replicate = new Replicate({ auth: getReplicateToken(), useFileOutput: false })
 
-  const output = await replicate.run('851-labs/background-remover', {
-    input: { image: imageBuffer },
-  })
+  const output = await replicate.run(
+    '851-labs/background-remover:a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc',
+    {
+      input: {
+        image: imageBuffer,
+        threshold: 0,
+        background_type: 'rgba',
+        format: 'png',
+      },
+    },
+  )
 
-  const url = Array.isArray(output) ? output[0] : output
-  return fileOutputToBuffer(url)
+  return fileOutputToBuffer(output)
 }
 
 const removeBgHuggingFace = async imageBuffer => {
