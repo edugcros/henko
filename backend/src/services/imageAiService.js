@@ -126,14 +126,21 @@ const downloadImage = async url => {
 const removeBgReplicate = async imageBuffer => {
   const token = getReplicateToken()
 
-  const form = new FormData()
-  form.append('version', 'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc')
-  form.append('input', JSON.stringify({ image: imageBuffer.toString('base64') }))
-
   const createRes = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
-    headers: { Authorization: `Token ${token}`, ...form.getHeaders() },
-    body: form.getBuffer(),
+    headers: {
+      Authorization: `Token ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      version: 'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc',
+      input: {
+        image: `data:image/png;base64,${imageBuffer.toString('base64')}`,
+        threshold: 0,
+        background_type: 'rgba',
+        format: 'png',
+      },
+    }),
   })
 
   if (!createRes.ok) {
