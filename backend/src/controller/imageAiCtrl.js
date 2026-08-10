@@ -1,5 +1,26 @@
 import expressAsyncHandler from 'express-async-handler'
 import { removeBackground, generateVariation } from '../services/imageAiService.js'
+import { getBackgroundRemovalStatus } from '../services/ai/backgroundRemoval.js'
+
+/**
+ * Qué motor está disponible y con cuánta memoria cuenta el contenedor.
+ * Un OOM mata el proceso sin dejar rastro en la respuesta, así que sin esto
+ * la única señal desde el navegador es un 502 sin cabeceras CORS.
+ */
+export const handleImageAiStatus = expressAsyncHandler(async (req, res) => {
+  const local = getBackgroundRemovalStatus()
+
+  res.json({
+    success: true,
+    data: {
+      localBackgroundRemoval: local,
+      replicateConfigured: Boolean(process.env.REPLICATE_API_TOKEN),
+      huggingfaceConfigured: Boolean(
+        process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN,
+      ),
+    },
+  })
+})
 
 export const handleRemoveBackground = expressAsyncHandler(async (req, res) => {
   if (!req.file) {

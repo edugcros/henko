@@ -264,9 +264,17 @@ const removeBg = async imageBuffer => {
     try {
       return await removeBackgroundLocal(imageBuffer)
     } catch (error) {
-      if (!env.replicate?.apiToken) throw error
+      if (!env.replicate?.apiToken) {
+        if (error.code === 'RMBG_INSUFFICIENT_MEMORY') {
+          throw fail(
+            `${error.message} Ampliá la instancia, o configurá REPLICATE_API_TOKEN para procesar la imagen fuera del servidor.`,
+            503,
+          )
+        }
+        throw error
+      }
 
-      logger.warn('[RMBG] Recorte local falló, se intenta con Replicate', {
+      logger.warn('[RMBG] Recorte local no disponible, se usa Replicate', {
         error: error.message,
       })
     }

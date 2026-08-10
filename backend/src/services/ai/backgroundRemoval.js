@@ -1,8 +1,8 @@
+import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import sharp from 'sharp'
-import * as ort from 'onnxruntime-node'
 import logger from '../../../config/logger.js'
 
 /**
@@ -37,12 +37,76 @@ const MODEL_URL =
 const MIN_MODEL_BYTES = 30 * 1024 * 1024
 const INPUT_SIZE = 1024
 
+/**
+ * Memoria que hay que tener libre para animarse a correr la inferencia.
+ * El pico medido es ~282 MB; dejamos margen porque encima corre Express,
+ * Mongoose y el resto del proceso.
+ */
+const REQUIRED_FREE_MB = Number(process.env.RMBG_REQUIRED_FREE_MB || 340)
+
 const modelPath = () =>
   process.env.RMBG_MODEL_PATH ||
   path.join(os.tmpdir(), 'henko-ai', 'rmbg-1.4-quantized.onnx')
 
 let sessionPromise = null
+let ortPromise = null
 let queue = Promise.resolve()
+let disabledReason = null
+
+// ─── Memoria disponible ──────────────────────────────────
+
+/**
+ * `os.totalmem()` reporta la RAM del host, no el límite del contenedor, así que
+ * en Render o Docker miente por varios GB. El límite real está en cgroups.
+ */
+const containerLimitMb = () => {
+  const candidates = [
+    '/sys/fs/cgroup/memory.max', // cgroup v2
+    '/sys/fs/cgroup/memory/memory.limit_in_bytes', // cgroup v1
+  ]
+
+  for (const file of candidates) {
+    try {
+      const raw = fs.readFileSync(file, 'utf8').trim()
+      if (!raw || raw === 'max') continue
+
+      const bytes = Number(raw)
+      // cgroup v1 usa un número gigante como "sin límite".
+      if (Number.isFinite(bytes) && bytes > 0 && bytes < 64 * 1024 ** 3) {
+        return Math.round(bytes / 1024 / 1024)
+      }
+    } catch {
+      // el archivo no existe fuera de Linux
+    }
+  }
+
+  return Math.round(os.totalmem() / 1024 / 1024)
+}
+
+const memorySnapshot = () => {
+  const limit = containerLimitMb()
+  const used = Math.round(process.memoryUsage().rss / 1024 / 1024)
+  return { limit, used, free: limit - used }
+}
+
+/**
+ * Un OOM mata el proceso sin pasar por ningún catch: el request muere sin
+ * respuesta y el navegador lo ve como 502 sin cabeceras CORS. Por eso la
+ * única defensa es no arrancar la inferencia si el margen no alcanza.
+ */
+const assertEnoughMemory = () => {
+  const { limit, used, free } = memorySnapshot()
+
+  if (free < REQUIRED_FREE_MB) {
+    const error = new Error(
+      `Memoria insuficiente para el recorte local: ${free} MB libres de ${limit} MB (se necesitan ${REQUIRED_FREE_MB} MB).`,
+    )
+    error.code = 'RMBG_INSUFFICIENT_MEMORY'
+    throw error
+  }
+
+  return { limit, used, free }
+}
 
 // ─── Modelo ──────────────────────────────────────────────
 
@@ -93,10 +157,27 @@ const ensureModel = async () => {
   return destination
 }
 
+/**
+ * onnxruntime-node trae un binario nativo por plataforma. Importarlo arriba
+ * hacía que, si ese binario no resuelve, reventara la cadena de imports y el
+ * servidor entero no levantara. Cargado acá, el fallo queda contenido en esta
+ * función y el resto de la API sigue en pie.
+ */
+const loadOrt = () => {
+  if (!ortPromise) {
+    ortPromise = import('onnxruntime-node').catch(error => {
+      ortPromise = null
+      throw new Error(`onnxruntime-node no disponible: ${error.message}`)
+    })
+  }
+  return ortPromise
+}
+
 /** Una sola sesión por proceso; las llamadas concurrentes comparten la carga. */
 const getSession = () => {
   if (!sessionPromise) {
     sessionPromise = (async () => {
+      const ort = await loadOrt()
       const file = await ensureModel()
       const started = Date.now()
 
@@ -123,7 +204,7 @@ const getSession = () => {
 
 // ─── Inferencia ──────────────────────────────────────────
 
-const buildInput = async imageBuffer => {
+const buildInput = async (ort, imageBuffer) => {
   const { data } = await sharp(imageBuffer)
     .removeAlpha()
     .resize(INPUT_SIZE, INPUT_SIZE, { fit: 'fill' })
@@ -164,8 +245,9 @@ const toAlphaMask = output => {
 }
 
 const infer = async imageBuffer => {
+  const ort = await loadOrt()
   const session = await getSession()
-  const input = await buildInput(imageBuffer)
+  const input = await buildInput(ort, imageBuffer)
 
   const result = await session.run({ [session.inputNames[0]]: input })
   return toAlphaMask(result[session.outputNames[0]])
@@ -186,14 +268,28 @@ const enqueue = task => {
 
 // ─── API pública ─────────────────────────────────────────
 
-export const isLocalBackgroundRemovalEnabled = () =>
-  String(process.env.LOCAL_BG_REMOVAL ?? 'true').toLowerCase() !== 'false'
+export const isLocalBackgroundRemovalEnabled = () => {
+  if (String(process.env.LOCAL_BG_REMOVAL ?? 'true').toLowerCase() === 'false') {
+    return false
+  }
+  // Si ya se descartó en este proceso (sin binario nativo, o instancia chica),
+  // no volvemos a intentarlo request tras request.
+  return disabledReason === null
+}
+
+export const getBackgroundRemovalStatus = () => ({
+  enabled: isLocalBackgroundRemovalEnabled(),
+  disabledReason,
+  requiredFreeMb: REQUIRED_FREE_MB,
+  memory: memorySnapshot(),
+})
 
 /** Descarga y compila el modelo por adelantado para que el primer request no lo pague. */
 export const warmUpBackgroundRemoval = async () => {
   if (!isLocalBackgroundRemovalEnabled()) return false
 
   try {
+    assertEnoughMemory()
     await getSession()
     return true
   } catch (error) {
@@ -210,10 +306,23 @@ export const warmUpBackgroundRemoval = async () => {
 export const removeBackgroundLocal = async imageBuffer => {
   const started = Date.now()
 
+  const memory = assertEnoughMemory()
+
   const { width, height } = await sharp(imageBuffer).metadata()
   if (!width || !height) throw new Error('No se pudo leer la imagen')
 
-  const mask = await enqueue(() => infer(imageBuffer))
+  let mask
+  try {
+    mask = await enqueue(() => infer(imageBuffer))
+  } catch (error) {
+    // Un binario nativo ausente no se arregla reintentando: apagamos el motor
+    // local por lo que queda del proceso y dejamos que el llamador use el remoto.
+    if (/onnxruntime-node no disponible/.test(error.message)) {
+      disabledReason = error.message
+      logger.error('[RMBG] Motor local deshabilitado', { reason: error.message })
+    }
+    throw error
+  }
 
   // `toColourspace('b-w')` no es opcional: al redimensionar, sharp promueve el
   // raw de 1 canal a 3 y joinChannel termina leyendo basura desalineada.
@@ -242,6 +351,8 @@ export const removeBackgroundLocal = async imageBuffer => {
     width,
     height,
     outputBytes: cutout.length,
+    memoryLimitMb: memory.limit,
+    memoryFreeMbBefore: memory.free,
   })
 
   return cutout
