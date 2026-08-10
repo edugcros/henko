@@ -1,4 +1,4 @@
-import Replicate from 'replicate'
+import FormData from 'form-data'
 import { HfInference } from '@huggingface/inference'
 import sharp from 'sharp'
 import { GoogleGenerativeAI } from '@google/generative-ai'
@@ -83,44 +83,69 @@ const getHfToken = () => {
   return token
 }
 
-const fileOutputToBuffer = async output => {
-  if (Buffer.isBuffer(output)) return output
-  if (typeof output === 'string') {
-    const res = await fetch(output)
-    if (!res.ok) throw new Error(`Download failed: ${res.status}`)
-    return Buffer.from(await res.arrayBuffer())
+const waitForReplicatePrediction = async (token, predictionUrl) => {
+  const maxRetries = 60
+  const delayMs = 1000
+
+  for (let i = 0; i < maxRetries; i++) {
+    const res = await fetch(predictionUrl, {
+      headers: { Authorization: `Token ${token}` },
+    })
+
+    if (!res.ok) throw new Error(`Replicate status check failed: ${res.status}`)
+
+    const pred = await res.json()
+
+    if (pred.status === 'succeeded') {
+      if (Array.isArray(pred.output) && pred.output.length > 0) {
+        return pred.output[0]
+      }
+      return pred.output
+    }
+
+    if (pred.status === 'failed') {
+      throw new Error(`Replicate prediction failed: ${pred.error || 'unknown error'}`)
+    }
+
+    if (i < maxRetries - 1) {
+      await new Promise(r => setTimeout(r, delayMs))
+    }
   }
-  if (output && typeof output.url === 'function') {
-    const res = await fetch(output.url())
-    if (!res.ok) throw new Error(`Download failed: ${res.status}`)
-    return Buffer.from(await res.arrayBuffer())
-  }
-  if (output instanceof ReadableStream || (output && typeof output[Symbol.asyncIterator] === 'function')) {
-    const chunks = []
-    for await (const chunk of output) chunks.push(chunk)
-    return Buffer.concat(chunks)
-  }
-  throw new Error('Unexpected Replicate output type')
+
+  throw new Error('Replicate prediction timed out after 60 seconds')
+}
+
+const downloadImage = async url => {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`)
+  return Buffer.from(await res.arrayBuffer())
 }
 
 // ─── Background removal ─────────────────────────────────
 
 const removeBgReplicate = async imageBuffer => {
-  const replicate = new Replicate({ auth: getReplicateToken(), useFileOutput: false })
+  const token = getReplicateToken()
 
-  const output = await replicate.run(
-    '851-labs/background-remover:a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc',
-    {
-      input: {
-        image: imageBuffer,
-        threshold: 0,
-        background_type: 'rgba',
-        format: 'png',
-      },
-    },
-  )
+  const form = new FormData()
+  form.append('version', 'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc')
+  form.append('input', JSON.stringify({ image: imageBuffer.toString('base64') }))
 
-  return fileOutputToBuffer(output)
+  const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST',
+    headers: { Authorization: `Token ${token}`, ...form.getHeaders() },
+    body: form.getBuffer(),
+  })
+
+  if (!createRes.ok) {
+    const errBody = await createRes.text()
+    logger.error('Replicate create prediction failed', { status: createRes.status, body: errBody })
+    throw new Error(`Replicate API error (${createRes.status}): ${errBody}`)
+  }
+
+  const pred = await createRes.json()
+  const outputUrl = await waitForReplicatePrediction(token, pred.urls.get)
+
+  return downloadImage(outputUrl)
 }
 
 const removeBgHuggingFace = async imageBuffer => {
@@ -146,21 +171,36 @@ const removeBgHuggingFace = async imageBuffer => {
 // ─── Background generation ──────────────────────────────
 
 const generateBgReplicate = async prompt => {
-  const replicate = new Replicate({ auth: getReplicateToken(), useFileOutput: false })
+  const token = getReplicateToken()
 
-  const output = await replicate.run('black-forest-labs/flux-schnell', {
-    input: {
-      prompt,
-      num_outputs: 1,
-      aspect_ratio: '1:1',
-      output_format: 'png',
-      go_fast: true,
+  const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Token ${token}`,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      version: 'e7694ba77371875b4c91cb122201ba8a21f02fefd3f771986a4a0137eed410f1',
+      input: {
+        prompt,
+        num_outputs: 1,
+        aspect_ratio: '1:1',
+        output_format: 'png',
+        go_fast: true,
+      },
+    }),
   })
 
-  const url = Array.isArray(output) ? output[0] : output
-  if (!url) throw new Error('Replicate did not return an image')
-  return fileOutputToBuffer(url)
+  if (!createRes.ok) {
+    const errBody = await createRes.text()
+    logger.error('Replicate create prediction failed', { status: createRes.status, body: errBody })
+    throw new Error(`Replicate API error (${createRes.status}): ${errBody}`)
+  }
+
+  const pred = await createRes.json()
+  const outputUrl = await waitForReplicatePrediction(token, pred.urls.get)
+
+  return downloadImage(Array.isArray(outputUrl) ? outputUrl[0] : outputUrl)
 }
 
 const generateBgHuggingFace = async prompt => {
