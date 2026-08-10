@@ -71,61 +71,75 @@ const isCreditsError = err => {
   )
 }
 
-const getReplicate = () => {
+const getReplicateToken = () => {
   const token = env.replicate?.apiToken
   if (!token) throw new Error('REPLICATE_API_TOKEN no configurado')
-  return new Replicate({ auth: token })
+  return token
 }
 
-const getHf = () => {
+const getHfToken = () => {
   const token = env.huggingface?.apiKey
   if (!token) throw new Error('HUGGINGFACE_API_KEY no configurado')
-  return new HfInference(token)
+  return token
 }
 
-const downloadUrl = async url => {
-  const r = await fetch(typeof url === 'string' ? url : url.url())
-  if (!r.ok) throw new Error(`Download failed: ${r.status}`)
-  return Buffer.from(await r.arrayBuffer())
+const fileOutputToBuffer = async output => {
+  if (Buffer.isBuffer(output)) return output
+  if (typeof output === 'string') {
+    const res = await fetch(output)
+    if (!res.ok) throw new Error(`Download failed: ${res.status}`)
+    return Buffer.from(await res.arrayBuffer())
+  }
+  if (output && typeof output.url === 'function') {
+    const res = await fetch(output.url())
+    if (!res.ok) throw new Error(`Download failed: ${res.status}`)
+    return Buffer.from(await res.arrayBuffer())
+  }
+  if (output instanceof ReadableStream || (output && typeof output[Symbol.asyncIterator] === 'function')) {
+    const chunks = []
+    for await (const chunk of output) chunks.push(chunk)
+    return Buffer.concat(chunks)
+  }
+  throw new Error('Unexpected Replicate output type')
 }
 
-// ─── Background removal providers ───────────────────────
+// ─── Background removal ─────────────────────────────────
 
 const removeBgReplicate = async imageBuffer => {
-  const replicate = getReplicate()
-  const dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`
+  const replicate = new Replicate({ auth: getReplicateToken(), useFileOutput: false })
 
-  const output = await replicate.run('lucataco/remove-bg', {
-    input: { image: dataUrl },
+  const output = await replicate.run('851-labs/background-remover', {
+    input: { image: imageBuffer },
   })
 
-  return downloadUrl(output)
+  const url = Array.isArray(output) ? output[0] : output
+  return fileOutputToBuffer(url)
 }
 
 const removeBgHuggingFace = async imageBuffer => {
-  const hf = getHf()
-  const blob = new Blob([imageBuffer], { type: 'image/png' })
+  const token = getHfToken()
 
-  const result = await hf.imageSegmentation({
-    model: 'briaai/RMBG-2.0',
-    data: blob,
+  const response = await fetch('https://api-inference.huggingface.co/models/briaai/RMBG-2.0', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/octet-stream',
+    },
+    body: imageBuffer,
   })
 
-  if (result instanceof Blob) {
-    return Buffer.from(await result.arrayBuffer())
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => '')
+    throw new Error(`HuggingFace bg removal failed (${response.status}): ${errBody}`)
   }
 
-  if (Array.isArray(result) && result.length > 0 && result[0].blob) {
-    return Buffer.from(await result[0].blob.arrayBuffer())
-  }
-
-  throw new Error('HuggingFace background removal returned unexpected format')
+  return Buffer.from(await response.arrayBuffer())
 }
 
-// ─── Background generation providers ────────────────────
+// ─── Background generation ──────────────────────────────
 
 const generateBgReplicate = async prompt => {
-  const replicate = getReplicate()
+  const replicate = new Replicate({ auth: getReplicateToken(), useFileOutput: false })
 
   const output = await replicate.run('black-forest-labs/flux-schnell', {
     input: {
@@ -137,14 +151,13 @@ const generateBgReplicate = async prompt => {
     },
   })
 
-  const imageUrl = Array.isArray(output) ? output[0] : output
-  if (!imageUrl) throw new Error('Replicate did not return an image')
-
-  return downloadUrl(imageUrl)
+  const url = Array.isArray(output) ? output[0] : output
+  if (!url) throw new Error('Replicate did not return an image')
+  return fileOutputToBuffer(url)
 }
 
 const generateBgHuggingFace = async prompt => {
-  const hf = getHf()
+  const hf = new HfInference(getHfToken())
 
   const result = await hf.textToImage({
     model: 'stabilityai/stable-diffusion-xl-base-1.0',
@@ -155,31 +168,29 @@ const generateBgHuggingFace = async prompt => {
   return Buffer.from(await result.arrayBuffer())
 }
 
-// ─── Fallback wrappers ──────────────────────────────────
+// ─── Fallback wrapper ───────────────────────────────────
 
 const withFallback = (primary, fallback, label) => async (...args) => {
   try {
     return await primary(...args)
   } catch (err) {
     if (isCreditsError(err)) {
-      logger.info(`${label}: Replicate credits exhausted, falling back to HuggingFace`, {
-        error: err.message,
-      })
+      logger.info(`${label}: Replicate sin créditos, usando HuggingFace`, { error: err.message })
       return fallback(...args)
     }
     throw err
   }
 }
 
-const removeBgWithFallback = withFallback(removeBgReplicate, removeBgHuggingFace, 'removeBg')
-const generateBgWithFallback = withFallback(generateBgReplicate, generateBgHuggingFace, 'generateBg')
+const removeBg = withFallback(removeBgReplicate, removeBgHuggingFace, 'removeBg')
+const generateBg = withFallback(generateBgReplicate, generateBgHuggingFace, 'generateBg')
 
 // ─── Public API ──────────────────────────────────────────
 
 export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
   logger.info('removeBackground', { bytes: imageBuffer.length, mime: mimeType })
 
-  const buffer = await removeBgWithFallback(imageBuffer)
+  const buffer = await removeBg(imageBuffer)
   logger.info('removeBackground OK', { outputBytes: buffer.length })
 
   return { buffer, contentType: 'image/png' }
@@ -196,9 +207,8 @@ export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/p
   })
 
   const { width, height } = await sharp(imageBuffer).metadata()
-
-  const transparentBuf = await removeBgWithFallback(imageBuffer)
-  const bgBuffer = await generateBgWithFallback(optimizedPrompt)
+  const transparentBuf = await removeBg(imageBuffer)
+  const bgBuffer = await generateBg(optimizedPrompt)
 
   const result = await sharp(bgBuffer)
     .resize(width, height, { fit: 'cover' })
