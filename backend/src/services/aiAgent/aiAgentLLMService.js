@@ -1,6 +1,8 @@
 // 📁 src/services/aiAgent/aiAgentLLMService.js
 // VERSIÓN PRODUCCIÓN - GEMINI / MEMORIA CONVERSACIONAL / RESPUESTAS NO REPETITIVAS
 
+import { getModelChain, isModelUnavailable, markModelDead } from '../ai/geminiModels.js'
+
 const clean = value => String(value || '').trim()
 
 const sleep = milliseconds =>
@@ -9,7 +11,7 @@ const sleep = milliseconds =>
 const DEFAULT_GEMINI_API_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta'
 
-const DEFAULT_MODEL = 'gemini-2.0-flash'
+const DEFAULT_MODEL = 'gemini-2.5-flash'
 const DEFAULT_PROVIDER = 'gemini'
 
 const REPETITIVE_OPENERS = [
@@ -499,7 +501,6 @@ export const callGemini = async ({
     })
   }
 
-  const url = `${getGeminiApiBaseUrl()}/models/${model}:generateContent`
   const safetySettings = getSafetySettings()
 
   const payload = {
@@ -521,7 +522,33 @@ export const callGemini = async ({
     ...(safetySettings ? { safetySettings } : {}),
   }
 
-  const { data } = await fetchGemini({ url, apiKey, payload })
+  // Google retira modelos sin aviso (404) o agota su cuota (429). Un modelo
+  // muerto en GEMINI_MODEL rompía el agente en silencio, así que recorremos
+  // la cadena de respaldos antes de darnos por vencidos.
+  let data
+  let usedModel = model
+  let lastError
+
+  for (const candidate of getModelChain(model)) {
+    try {
+      const url = `${getGeminiApiBaseUrl()}/models/${candidate}:generateContent`
+      const result = await fetchGemini({ url, apiKey, payload })
+
+      data = result.data
+      usedModel = candidate
+      lastError = null
+      break
+    } catch (error) {
+      const detail = String(error?.message || '')
+
+      if (!isModelUnavailable(error?.statusCode, detail)) throw error
+
+      markModelDead(candidate, `${error?.statusCode}: ${detail.slice(0, 80)}`)
+      lastError = error
+    }
+  }
+
+  if (lastError) throw lastError
 
   const content = normalizeGeminiText(data)
   const finishInfo = getGeminiFinishInfo(data)
@@ -533,7 +560,7 @@ export const callGemini = async ({
       content ||
       buildProviderFallbackContent({ messages, reason: 'empty_provider_response' }),
     provider: DEFAULT_PROVIDER,
-    model,
+    model: usedModel,
     finishReason,
     truncated,
     safetyRatings: finishInfo.safetyRatings,

@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
+import { getModelChain, isModelUnavailable, markModelDead } from './ai/geminiModels.js'
 
 /**
  * Motores de imagen
@@ -29,15 +30,6 @@ const POLL_MAX_ATTEMPTS = 90
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
-/** Cadena de modelos: el configurado primero, después respaldos conocidos.
- *  Los modelos de Gemini se retiran seguido (2.5-flash-lite → 404, 2.0-flash → 429),
- *  así que no dependemos de uno solo. */
-const GEMINI_TEXT_MODELS = [
-  env.ai?.geminiModel,
-  'gemini-2.5-flash',
-  'gemini-flash-lite-latest',
-].filter(Boolean)
-
 // ─── Errores ─────────────────────────────────────────────
 
 const fail = (message, statusCode = 502) => {
@@ -64,6 +56,9 @@ const askGemini = async (key, model, prompt) => {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
+    if (isModelUnavailable(res.status, body)) {
+      markModelDead(model, `${res.status}: ${body.slice(0, 80)}`)
+    }
     throw new Error(`${model} → ${res.status}: ${body.slice(0, 120)}`)
   }
 
@@ -94,7 +89,7 @@ Rules:
 
 User instruction: "${userPrompt}"`
 
-  for (const model of GEMINI_TEXT_MODELS) {
+  for (const model of getModelChain(env.ai?.geminiModel)) {
     try {
       const raw = await askGemini(geminiKey, model, instruction)
 

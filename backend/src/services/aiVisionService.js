@@ -11,6 +11,11 @@ import AIPreference from '../models/aIPreference.js'
 import CorrectionLog from '../models/correctionLog.js'
 import logger from '../../config/logger.js'
 import { reserveAiUsage, refundAiUsage } from './aiUsageService.js'
+import {
+  getModelChain,
+  isModelUnavailableError,
+  markModelDead,
+} from './ai/geminiModels.js'
 
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim()
 
@@ -51,7 +56,7 @@ if (!GEMINI_API_KEY) {
   })
 }
 
-const DEFAULT_MODEL = 'gemini-2.5-flash-lite'
+const DEFAULT_MODEL = 'gemini-2.5-flash'
 const DEFAULT_CURRENCY = String(process.env.AI_VISION_DEFAULT_CURRENCY || 'ARS').trim().toUpperCase()
 
 const normalizeGeminiModelName = value => {
@@ -1918,9 +1923,12 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
      * ==========================================================
      */
 
-    const model = client.getGenerativeModel({
-      model: MODEL_NAME,
-    })
+    /**
+     * El modelo configurado puede haber sido retirado por Google (404) o tener
+     * la cuota agotada (429). Resolvemos contra una cadena de respaldos en vez
+     * de depender de un único nombre fijado en las variables de entorno.
+     */
+    const modelChain = getModelChain(MODEL_NAME)
 
     /**
      * ==========================================================
@@ -2021,60 +2029,76 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
      * ==========================================================
      */
 
-    const result = await withRetry(
-      () =>
-        runWithTimeout(
-          signal =>
-            model.generateContent(
-              {
-                contents,
+    const generateWithModel = modelName =>
+      withRetry(
+        () =>
+          runWithTimeout(
+            signal =>
+              client.getGenerativeModel({ model: modelName }).generateContent(
+                {
+                  contents,
 
-                generationConfig: {
-                  temperature: clampNumber(
-                    process.env.AI_VISION_TEMPERATURE,
-                    0.15,
-                    0,
-                    0.7,
-                  ),
-
-                  topP: clampNumber(
-                    process.env.AI_VISION_TOP_P,
-                    0.95,
-                    0.1,
-                    1,
-                  ),
-
-                  topK: Math.round(
-                    clampNumber(
-                      process.env.AI_VISION_TOP_K,
-                      40,
-                      1,
-                      100,
+                  generationConfig: {
+                    temperature: clampNumber(
+                      process.env.AI_VISION_TEMPERATURE,
+                      0.15,
+                      0,
+                      0.7,
                     ),
-                  ),
 
-                  maxOutputTokens:
-                    MAX_OUTPUT_TOKENS,
+                    topP: clampNumber(process.env.AI_VISION_TOP_P, 0.95, 0.1, 1),
 
-                  responseMimeType:
-                    'application/json',
+                    topK: Math.round(
+                      clampNumber(process.env.AI_VISION_TOP_K, 40, 1, 100),
+                    ),
+
+                    maxOutputTokens: MAX_OUTPUT_TOKENS,
+
+                    responseMimeType: 'application/json',
+                  },
                 },
-              },
-              {
-                signal,
-                timeout: GEMINI_TIMEOUT_MS,
-              },
-            ),
-          GEMINI_TIMEOUT_MS,
-        ),
-      {
-        context: {
-          hash,
-          model: MODEL_NAME,
-          tenantId: normalizedTenantId,
+                {
+                  signal,
+                  timeout: GEMINI_TIMEOUT_MS,
+                },
+              ),
+            GEMINI_TIMEOUT_MS,
+          ),
+        {
+          context: {
+            hash,
+            model: modelName,
+            tenantId: normalizedTenantId,
+          },
         },
-      },
-    )
+      )
+
+    let result
+    let activeModel = modelChain[0]
+    let modelError = null
+
+    for (const candidate of modelChain) {
+      try {
+        result = await generateWithModel(candidate)
+        activeModel = candidate
+        modelError = null
+        break
+      } catch (error) {
+        if (!isModelUnavailableError(error)) throw error
+
+        markModelDead(candidate, error?.message?.slice(0, 100))
+        modelError = error
+      }
+    }
+
+    if (modelError) throw modelError
+
+    if (activeModel !== MODEL_NAME) {
+      logger.info('[AI VISION] Modelo de respaldo en uso', {
+        configured: MODEL_NAME,
+        using: activeModel,
+      })
+    }
 
     /**
      * ==========================================================

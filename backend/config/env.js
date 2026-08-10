@@ -305,15 +305,17 @@ export const env = {
     provider: process.env.LLM_PROVIDER || 'google',
     geminiApiKey: process.env.GEMINI_API_KEY,
 
+    // Si el modelo configurado fue retirado o quedó sin cuota, los servicios
+    // caen a la cadena de respaldos de src/services/ai/geminiModels.js.
     geminiModel: getFirstValue(
       process.env.GEMINI_MODEL,
       process.env.GOOGLE_MODEL,
-      'gemini-2.0-flash',
+      'gemini-2.5-flash',
     ),
 
     geminiImageModel: process.env.GEMINI_IMAGE_MODEL || '',
 
-    googleTextModel: process.env.GOOGLE_TEXT_MODEL || 'gemini-2.0-flash',
+    googleTextModel: process.env.GOOGLE_TEXT_MODEL || 'gemini-2.5-flash',
     googleImageModel: process.env.GOOGLE_IMAGE_MODEL || '',
     minConfidence: Number(process.env.AI_MIN_CONFIDENCE || 0.65),
   },
