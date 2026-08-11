@@ -194,6 +194,18 @@ const buildAgentConfigUpdate = body => {
     }
   }
 
+  // AUTOLÍMITE, no cuota.
+  //
+  // Estos dos campos los edita el propio comercio desde su panel. Mientras
+  // fueron la cuota real, cualquier admin de tenant podía subirse el tope
+  // contra la API key de la plataforma — y mandando 0 se quedaba sin tope,
+  // porque el cerebro del agente interpretaba 0 como "ilimitado".
+  //
+  // Hoy el tope efectivo lo fija el plan (services/ai/aiPlanPolicy.js) y el
+  // valor de acá solo puede APRETARLO: sirve para que un comercio se
+  // autorregule por debajo de su plan, nunca para pasarse. La verificación
+  // vive en reserveAiBudget (applyLimitOverride), no acá, para que no haya
+  // dos lugares donde recordar la regla.
   if (body.quotas?.monthlyMessageLimit !== undefined) {
     update['quotas.monthlyMessageLimit'] = toBoundedNumber(
       body.quotas.monthlyMessageLimit,

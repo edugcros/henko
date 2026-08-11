@@ -10,7 +10,14 @@ import mongoose from 'mongoose'
 import AIPreference from '../models/aIPreference.js'
 import CorrectionLog from '../models/correctionLog.js'
 import logger from '../../config/logger.js'
-import { reserveAiUsage, refundAiUsage } from './aiUsageService.js'
+import {
+  AI_METRICS,
+  DENY_REASONS,
+  buildBudgetDenialMessage,
+  reserveAiBudget,
+  refundAiBudget,
+} from './ai/aiBudgetService.js'
+import { loadTenantAiProfile } from './ai/aiCredentialsService.js'
 import {
   getModelChain,
   isModelUnavailableError,
@@ -227,7 +234,10 @@ const ALLOWED_SHIPPING_TYPES = new Set([
 
 const contextCache = new Map()
 const resultCache = new Map()
-let genAI = null
+// Un cliente por API key. Antes era un único cliente global porque había una
+// sola key; con BYOK cada tenant puede traer la suya, y crear un cliente por
+// request desperdicia el keep-alive de la conexión.
+const geminiClients = new Map()
 
 function clampNumber(value, fallback, min, max) {
   const parsed = Number(value)
@@ -235,29 +245,33 @@ function clampNumber(value, fallback, min, max) {
   return Math.min(Math.max(number, min), max)
 }
 
-const getGeminiClient = () => {
-  if (!GEMINI_API_KEY) {
+const getGeminiClient = (apiKey = GEMINI_API_KEY) => {
+  const key = String(apiKey || '').trim()
+
+  if (!key) {
     const error = new Error('GEMINI_API_KEY no está configurada')
     error.code = 'AI_PROVIDER_DISABLED'
     error.retryable = false
     throw error
   }
 
-  if (GEMINI_API_KEY_INVALID_CHAR) {
-    const { index, code } = GEMINI_API_KEY_INVALID_CHAR
+  const invalidChar = findInvalidHeaderChar(key)
+
+  if (invalidChar) {
+    const { index, code } = invalidChar
     const error = new Error(
-      `GEMINI_API_KEY contiene un carácter inválido para un header HTTP (posición ${index}, código ${code}). Volvé a pegarla: debe ser ASCII.`,
+      `La API key de Gemini contiene un carácter inválido para un header HTTP (posición ${index}, código ${code}). Volvé a pegarla: debe ser ASCII.`,
     )
     error.code = 'AI_PROVIDER_KEY_MALFORMED'
     error.retryable = false
     throw error
   }
 
-  if (!genAI) {
-    genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
+  if (!geminiClients.has(key)) {
+    geminiClients.set(key, new GoogleGenerativeAI(key))
   }
 
-  return genAI
+  return geminiClients.get(key)
 }
 
 function sanitizeLogMeta(meta = {}) {
@@ -1851,15 +1865,25 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
    * cuota. A partir de acá sí se va a gastar una llamada real a Gemini.
    */
 
-  const usageReservation = await reserveAiUsage(normalizedTenantId)
+  const aiProfile = await loadTenantAiProfile(normalizedTenantId)
+
+  const usageReservation = await reserveAiBudget({
+    tenantId: normalizedTenantId,
+    metric: AI_METRICS.VISION,
+    profile: aiProfile,
+  })
 
   if (!usageReservation.allowed) {
-    const error = new Error(
-      `Se alcanzó el límite mensual de análisis IA de este comercio (${usageReservation.limit}). Se renueva al empezar el próximo mes, o podés subir de plan.`,
-    )
-    error.code = 'AI_USAGE_LIMIT_EXCEEDED'
+    const error = new Error(buildBudgetDenialMessage(usageReservation))
+    error.code =
+      usageReservation.reason === DENY_REASONS.SUBSCRIPTION
+        ? 'AI_SUBSCRIPTION_INACTIVE'
+        : usageReservation.reason === DENY_REASONS.NO_API_KEY
+          ? 'AI_PROVIDER_DISABLED'
+          : 'AI_USAGE_LIMIT_EXCEEDED'
     error.retryable = false
     error.limit = usageReservation.limit
+    error.reason = usageReservation.reason
     throw error
   }
 
@@ -1870,7 +1894,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
      * ==========================================================
      */
 
-    const client = getGeminiClient()
+    const client = getGeminiClient(aiProfile.apiKey)
 
     /**
      * ==========================================================
@@ -2196,7 +2220,10 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     // cobramos un análisis que no entregó nada útil. Este catch solo
     // envuelve la llamada real a Gemini (la reserva de cuota está antes
     // del try), así que siempre corresponde devolverla acá.
-    refundAiUsage(normalizedTenantId).catch(() => undefined)
+    refundAiBudget({
+      tenantId: normalizedTenantId,
+      metric: AI_METRICS.VISION,
+    }).catch(() => undefined)
 
     throw buildProviderError(error)
   }

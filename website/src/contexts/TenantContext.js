@@ -32,6 +32,7 @@ const CONFIG = {
  * @property {boolean} isLoading - Estado de carga
  * @property {Error|null} error - Error si ocurrió
  * @property {string|null} tenantId - ID del tenant actual
+ * @property {boolean} aiAssistantEnabled - Si el comercio activó el asistente
  * @property {boolean} isReady - Si está listo para usar
  * @property {Function} refresh - Recargar configuración
  * @property {Function} updateOptimistic - Actualización optimista
@@ -47,6 +48,7 @@ const defaultContextValue = {
   isLoading: true,
   error: null,
   tenantId: null,
+  aiAssistantEnabled: false,
   isReady: false,
   refresh: async () => {},
   updateOptimistic: () => {},
@@ -167,9 +169,15 @@ export const TenantProvider = ({ children }) => {
           throw new Error(themeRes.error || 'Error cargando tema')
         }
         // 3. CONSTRUIR CONFIGURACIÓN COMPLETA
+        //
+        // aiAssistantEnabled viaja dentro de la config (y no en un estado
+        // aparte) para que los tres caminos de arranque lo tengan sin
+        // duplicar lógica: red, cache previa y cache de fallback guardan y
+        // leen este mismo objeto.
         const fullConfig = {
           ...themeRes.data,
           tenantId,
+          aiAssistantEnabled: Boolean(tenantRes.data?.aiAssistant?.enabled),
           tenantName:
             tenantName || themeRes.data?.general?.storeName || 'Mi Tienda',
           _meta: {
@@ -354,6 +362,11 @@ export const TenantProvider = ({ children }) => {
       isLoading: localState.isLoading || reduxLoading,
       error: localState.error,
       tenantId: localState.tenantId,
+      // Si el comercio no activó el asistente, la tienda no descarga ni
+      // muestra el widget de chat. Ante la duda arranca en false: mostrar de
+      // más una burbuja que contesta "te va a atender un asesor" es peor
+      // experiencia que no mostrarla.
+      aiAssistantEnabled: Boolean(localState.themeConfig?.aiAssistantEnabled),
       isReady:
         localState.initialized &&
         !!localState.themeConfig &&

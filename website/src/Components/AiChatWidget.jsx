@@ -5,12 +5,15 @@ import {
   Avatar,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Collapse,
   Divider,
   Fade,
+  FormControlLabel,
   IconButton,
+  Link,
   Paper,
   Stack,
   TextField,
@@ -215,6 +218,13 @@ const AiChatWidget = () => {
   const [contactDraft, setContactDraft] = useState(() =>
     getAiWebchatCustomerProfile(),
   )
+  // Si ya hay un contacto guardado, es porque en algún momento lo aceptó:
+  // volver a pedirle la tilde cada vez que corrige un dígito del teléfono
+  // convierte el consentimiento en un trámite y deja de significar algo.
+  const [contactConsent, setContactConsent] = useState(() => {
+    const saved = getAiWebchatCustomerProfile()
+    return Boolean(clean(saved?.email) || clean(saved?.phone))
+  })
   const [lastAiContext, setLastAiContext] = useState({
     conversationId: '',
     externalUserId: '',
@@ -240,8 +250,17 @@ const AiChatWidget = () => {
     }
   }, [contactDraft.email, contactDraft.phone])
 
+  // Un email o un teléfono son un canal de contacto: guardarlos crea un lead
+  // que el comercio puede usar después para escribirle a esta persona. Eso
+  // necesita un sí explícito, no un formulario que aparece solo. Un nombre
+  // suelto no abre ningún canal, así que no exige tilde.
+  const contactRequiresConsent = useMemo(() => {
+    return Boolean(clean(contactDraft.email) || clean(contactDraft.phone))
+  }, [contactDraft.email, contactDraft.phone])
+
   const canSaveContact = useMemo(() => {
     if (contactDraftErrors.email || contactDraftErrors.phone) return false
+    if (contactRequiresConsent && !contactConsent) return false
 
     const normalized = {
       name: clean(contactDraft.name),
@@ -250,7 +269,7 @@ const AiChatWidget = () => {
     }
 
     return Boolean(normalized.name || normalized.email || normalized.phone)
-  }, [contactDraft, contactDraftErrors])
+  }, [contactDraft, contactDraftErrors, contactRequiresConsent, contactConsent])
 
   const canSend = useMemo(() => {
     return message.trim().length > 0 && !loading && !sendingRef.current
@@ -870,6 +889,36 @@ const AiChatWidget = () => {
                     fullWidth
                   />
                 </Stack>
+
+                {contactRequiresConsent && (
+                  <FormControlLabel
+                    sx={{ alignItems: 'flex-start', mr: 0 }}
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={contactConsent}
+                        onChange={event =>
+                          setContactConsent(event.target.checked)
+                        }
+                        sx={{ pt: 0.25 }}
+                      />
+                    }
+                    label={
+                      <Typography variant="caption" color="text.secondary">
+                        Acepto que la tienda guarde estos datos y me contacte
+                        para responder mi consulta.{' '}
+                        <Link
+                          href="/privacy-policy"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          underline="hover"
+                        >
+                          Política de privacidad
+                        </Link>
+                      </Typography>
+                    }
+                  />
+                )}
 
                 <Stack direction="row" spacing={1} justifyContent="flex-end">
                   <Button

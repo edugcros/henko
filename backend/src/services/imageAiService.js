@@ -73,8 +73,11 @@ const askGemini = async (key, model, prompt) => {
   return json?.candidates?.[0]?.content?.parts?.[0]?.text || ''
 }
 
-const optimizePrompt = async userPrompt => {
-  const geminiKey = env.ai?.geminiApiKey
+const optimizePrompt = async (userPrompt, apiKey = null) => {
+  // La key la manda el llamador cuando conoce el tenant (puede ser la propia
+  // del comercio); el fallback a la de la plataforma queda para los usos
+  // internos que no tienen tenant a mano.
+  const geminiKey = String(apiKey || '').trim() || env.ai?.geminiApiKey
   if (!geminiKey) {
     logger.warn('GEMINI_API_KEY not set — skipping prompt optimization')
     return userPrompt
@@ -354,8 +357,13 @@ export const removeBackground = async (imageBuffer, mimeType = 'image/png') => {
   }
 }
 
-export const generateVariation = async (imageBuffer, prompt, mimeType = 'image/png') => {
-  const optimizedPrompt = await optimizePrompt(prompt)
+export const generateVariation = async (
+  imageBuffer,
+  prompt,
+  mimeType = 'image/png',
+  { apiKey = null } = {},
+) => {
+  const optimizedPrompt = await optimizePrompt(prompt, apiKey)
 
   logger.info('generateVariation', {
     bytes: imageBuffer.length,

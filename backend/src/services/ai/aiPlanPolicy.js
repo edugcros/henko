@@ -1,0 +1,343 @@
+// 📁 src/services/ai/aiPlanPolicy.js
+//
+// Única fuente de verdad de "cuánta IA le corresponde a cada plan".
+//
+// Antes de este módulo el sistema tenía tres medidores independientes que no
+// se conocían entre sí:
+//
+//   1. Análisis de imagen  → cuota por plan en aiUsageService (50/300/1500).
+//   2. Agente comercial    → cuota tomada de los *defaults del schema* de
+//                            aiAgentModel (3000 mensajes y 1M de tokens),
+//                            idéntica para un tenant free y uno enterprise
+//                            porque nadie la escribía nunca al aprovisionar.
+//   3. Editor de imágenes  → sin medidor de ningún tipo.
+//
+// El (2) es el que duele: 3000 mensajes/mes contra la key de la plataforma
+// son del orden de USD 9 por tenant gratuito. Con 30 tenants free eso es la
+// factura entera del proyecto, generada por gente que no paga.
+//
+// Acá se declaran los topes por plan y métrica; el cobro atómico vive en
+// aiBudgetService.js y el corte por suscripción se decide con
+// getSubscriptionState().
+//
+// Convención heredada de aiUsageService: 0 = ilimitado.
+
+const clean = value => String(value || '').trim()
+
+export const AI_METRICS = Object.freeze({
+  VISION: 'vision',
+  AGENT_MESSAGES: 'agentMessages',
+  AGENT_TOKENS: 'agentTokens',
+  IMAGE_EDITS: 'imageEdits',
+})
+
+export const AI_METRIC_LIST = Object.freeze(Object.values(AI_METRICS))
+
+export const AI_PLANS = Object.freeze(['free', 'starter', 'pro', 'enterprise'])
+
+export const UNLIMITED = 0
+
+// Etiquetas para el admin y para los mensajes de error. El usuario final del
+// panel no sabe qué es "agentMessages".
+export const AI_METRIC_LABELS = Object.freeze({
+  [AI_METRICS.VISION]: 'análisis de imágenes de producto',
+  [AI_METRICS.AGENT_MESSAGES]: 'mensajes del asistente de ventas',
+  [AI_METRICS.AGENT_TOKENS]: 'tokens del asistente de ventas',
+  [AI_METRICS.IMAGE_EDITS]: 'generaciones de fondo con IA',
+})
+
+/**
+ * Topes mensuales por plan.
+ *
+ * Calibrados sobre el costo real observado de gemini-2.5-flash: un mensaje
+ * del agente con contexto de catálogo ronda los 4-8k tokens de entrada y
+ * ~300 de salida, o sea del orden de USD 0,003. Los números de free están
+ * puestos para que un tenant gratuito cueste centavos, no dólares, y para
+ * que igual alcance a probar el producto de verdad.
+ *
+ * Cualquiera se puede sobrescribir por entorno sin tocar código:
+ *   AI_LIMIT_FREE_AGENT_MESSAGES=500
+ */
+const DEFAULT_PLAN_LIMITS = Object.freeze({
+  free: {
+    [AI_METRICS.VISION]: 50,
+    [AI_METRICS.AGENT_MESSAGES]: 300,
+    [AI_METRICS.AGENT_TOKENS]: 150_000,
+    [AI_METRICS.IMAGE_EDITS]: 10,
+  },
+  starter: {
+    [AI_METRICS.VISION]: 300,
+    [AI_METRICS.AGENT_MESSAGES]: 2_000,
+    [AI_METRICS.AGENT_TOKENS]: 1_200_000,
+    [AI_METRICS.IMAGE_EDITS]: 100,
+  },
+  pro: {
+    [AI_METRICS.VISION]: 1_500,
+    [AI_METRICS.AGENT_MESSAGES]: 10_000,
+    [AI_METRICS.AGENT_TOKENS]: 8_000_000,
+    [AI_METRICS.IMAGE_EDITS]: 500,
+  },
+  enterprise: {
+    [AI_METRICS.VISION]: UNLIMITED,
+    [AI_METRICS.AGENT_MESSAGES]: UNLIMITED,
+    [AI_METRICS.AGENT_TOKENS]: UNLIMITED,
+    [AI_METRICS.IMAGE_EDITS]: UNLIMITED,
+  },
+})
+
+// Nombre de la variable de entorno por métrica. Se escribe a mano en vez de
+// derivarlo con una regex para que un `grep AI_LIMIT_` en el repo encuentre
+// todas las claves reales.
+const METRIC_ENV_SUFFIX = Object.freeze({
+  [AI_METRICS.VISION]: 'VISION',
+  [AI_METRICS.AGENT_MESSAGES]: 'AGENT_MESSAGES',
+  [AI_METRICS.AGENT_TOKENS]: 'AGENT_TOKENS',
+  [AI_METRICS.IMAGE_EDITS]: 'IMAGE_EDITS',
+})
+
+// Variables que ya existían en producción para la cuota de visión. Si el
+// deploy actual las tiene seteadas, mandan ellas: este refactor no debe
+// cambiarle los límites a nadie sin que se entere.
+const LEGACY_VISION_ENV = Object.freeze({
+  free: 'AI_MONTHLY_LIMIT_FREE',
+  starter: 'AI_MONTHLY_LIMIT_STARTER',
+  pro: 'AI_MONTHLY_LIMIT_PRO',
+  enterprise: 'AI_MONTHLY_LIMIT_ENTERPRISE',
+})
+
+export const normalizePlan = plan => {
+  const value = clean(plan).toLowerCase()
+  return AI_PLANS.includes(value) ? value : 'free'
+}
+
+export const normalizeMetric = metric => {
+  const value = clean(metric)
+  return AI_METRIC_LIST.includes(value) ? value : null
+}
+
+const readEnvLimit = name => {
+  const raw = clean(process.env[name])
+  if (!raw) return null
+
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) return null
+
+  return Math.floor(parsed)
+}
+
+/**
+ * Tope mensual de una métrica para un plan. 0 = ilimitado.
+ */
+export const getPlanLimit = (plan, metric) => {
+  const normalizedPlan = normalizePlan(plan)
+  const normalizedMetric = normalizeMetric(metric)
+
+  if (!normalizedMetric) return UNLIMITED
+
+  const envLimit = readEnvLimit(
+    `AI_LIMIT_${normalizedPlan.toUpperCase()}_${METRIC_ENV_SUFFIX[normalizedMetric]}`,
+  )
+  if (envLimit !== null) return envLimit
+
+  if (normalizedMetric === AI_METRICS.VISION) {
+    const legacyLimit = readEnvLimit(LEGACY_VISION_ENV[normalizedPlan])
+    if (legacyLimit !== null) return legacyLimit
+  }
+
+  return DEFAULT_PLAN_LIMITS[normalizedPlan][normalizedMetric]
+}
+
+/**
+ * Todos los topes de un plan de una sola vez (para el snapshot del admin).
+ */
+export const getPlanLimits = plan => {
+  const normalizedPlan = normalizePlan(plan)
+
+  return AI_METRIC_LIST.reduce((limits, metric) => {
+    limits[metric] = getPlanLimit(normalizedPlan, metric)
+    return limits
+  }, {})
+}
+
+/**
+ * Si el tenant trae su propia API key (BYOK), los topes de la plataforma
+ * dejan de tener sentido: el gasto lo paga él directamente contra Google.
+ * Igual seguimos contando el consumo, porque sin ese número no hay forma de
+ * responder "¿por qué está lento?" ni de dimensionar un plan.
+ */
+export const isByokAllowedForPlan = plan => {
+  const normalizedPlan = normalizePlan(plan)
+  const raw = clean(process.env.AI_BYOK_ALLOWED_PLANS)
+
+  if (!raw) return normalizedPlan === 'pro' || normalizedPlan === 'enterprise'
+
+  return raw
+    .split(',')
+    .map(value => clean(value).toLowerCase())
+    .filter(Boolean)
+    .includes(normalizedPlan)
+}
+
+// ─── Suscripción ─────────────────────────────────────────
+
+const SUBSCRIPTION_BLOCKED = Object.freeze(new Set(['cancelled', 'expired']))
+const SUBSCRIPTION_GRACE = Object.freeze(new Set(['past_due']))
+
+// Number('') es 0, no NaN: leer una variable de entorno sin definir con
+// Number(clean(...)) devuelve 0 silenciosamente, y ese 0 se interpretaba como
+// "cero días de gracia" y "tarifa cero". Por eso el valor vacío se descarta
+// antes de convertir.
+const readEnvNumber = (name, { min = 0 } = {}) => {
+  const raw = clean(process.env[name])
+  if (!raw) return null
+
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < min) return null
+
+  return parsed
+}
+
+const getGraceDays = () => readEnvNumber('AI_SUBSCRIPTION_GRACE_DAYS') ?? 7
+
+const isEnforcementEnabled = () => {
+  const raw = clean(process.env.AI_ENFORCE_SUBSCRIPTION).toLowerCase()
+  if (!raw) return true
+  return !['false', '0', 'no', 'off'].includes(raw)
+}
+
+const daysSince = date => {
+  const time = new Date(date).getTime()
+  if (!Number.isFinite(time)) return null
+  return (Date.now() - time) / (24 * 60 * 60 * 1000)
+}
+
+/**
+ * ¿Este comercio tiene derecho a gastar IA de la plataforma hoy?
+ *
+ * Importante: solo corta IA. La tienda, el checkout y el panel siguen
+ * funcionando — cortarle las ventas a un cliente por una tarjeta rechazada
+ * es una forma cara de perderlo.
+ *
+ * `trialEndsAt` nulo se trata como "sin vencimiento". Hoy en producción todos
+ * los tenants están en 'trialing' con esa fecha vacía porque nunca se
+ * mantuvo el campo, así que activar esto no le corta el servicio a nadie
+ * hasta que exista un flujo de facturación real que la escriba.
+ */
+export const getSubscriptionState = (tenant = {}) => {
+  const status = clean(tenant?.subscriptionStatus) || 'trialing'
+  const plan = normalizePlan(tenant?.plan)
+
+  if (!isEnforcementEnabled()) {
+    return { entitled: true, status, plan, reason: 'enforcement_disabled' }
+  }
+
+  if (SUBSCRIPTION_BLOCKED.has(status)) {
+    return { entitled: false, status, plan, reason: `subscription_${status}` }
+  }
+
+  if (SUBSCRIPTION_GRACE.has(status)) {
+    const overdueDays = daysSince(tenant?.subscriptionPastDueAt || tenant?.updatedAt)
+    const graceDays = getGraceDays()
+
+    if (overdueDays !== null && overdueDays > graceDays) {
+      return {
+        entitled: false,
+        status,
+        plan,
+        reason: 'subscription_past_due_grace_expired',
+        graceDays,
+      }
+    }
+
+    return { entitled: true, status, plan, reason: 'subscription_grace', graceDays }
+  }
+
+  if (status === 'trialing' && tenant?.trialEndsAt) {
+    const expiredDays = daysSince(tenant.trialEndsAt)
+
+    if (expiredDays !== null && expiredDays > 0) {
+      return { entitled: false, status, plan, reason: 'trial_expired' }
+    }
+  }
+
+  return { entitled: true, status, plan, reason: 'ok' }
+}
+
+// ─── Costo estimado ──────────────────────────────────────
+
+/**
+ * Costo aproximado en USD de una cantidad de tokens.
+ *
+ * Es una tarifa mezclada (entrada + salida) a propósito: sirve para responder
+ * "¿quién me está quemando la factura?" en el panel, no para facturarle a
+ * nadie. La tarifa real de Google cambia por modelo y por proporción
+ * entrada/salida; si algún día se factura de verdad, esto se reemplaza por el
+ * detalle de usageMetadata (promptTokenCount vs candidatesTokenCount).
+ */
+export const estimateCostUsd = tokens => {
+  const amount = Number(tokens)
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+
+  const rate = readEnvNumber('AI_COST_USD_PER_1M_TOKENS') ?? 0.9
+
+  return (amount / 1_000_000) * rate
+}
+
+/**
+ * Tope global de tokens de la plataforma para el mes, contra la key propia.
+ * Es el disyuntor: aunque la suma de las cuotas por tenant se dispare (por
+ * un plan mal cargado, un bug o un tenant enterprise), la factura tiene un
+ * techo duro que no depende de que ninguna otra cuenta esté bien puesta.
+ *
+ * 0 = sin disyuntor (no recomendado en producción).
+ */
+export const getPlatformMonthlyTokenBudget = () => {
+  const budget = readEnvNumber('AI_PLATFORM_MONTHLY_TOKEN_BUDGET')
+  return budget === null ? UNLIMITED : Math.floor(budget)
+}
+
+/**
+ * Techo por tenant sobre la key COMPARTIDA de la plataforma.
+ *
+ * "Ilimitado" es una entitlement coherente cuando el comercio paga su propio
+ * consumo (BYOK), y una contradicción cuando corre sobre la key de todos: un
+ * único tenant enterprise sin key propia podía consumir el presupuesto
+ * mensual entero y hacer saltar el disyuntor, que corta para TODOS los que
+ * comparten esa key. El tenant grande no pierde nada y los chicos se quedan
+ * sin asistente.
+ *
+ * La regla es una sola y sale de un número que ya existe: nadie sobre la key
+ * compartida puede pasarse de una fracción del presupuesto de la plataforma.
+ * Con el disyuntor apagado no hay fracción que calcular y no se aplica.
+ *
+ * Solo toca los tokens: es la métrica que traduce a dinero. Los topes finitos
+ * de un plan no se tocan — son deliberados.
+ */
+export const getSharedKeyTenantCap = metric => {
+  if (normalizeMetric(metric) !== AI_METRICS.AGENT_TOKENS) return UNLIMITED
+
+  const budget = getPlatformMonthlyTokenBudget()
+  if (budget === UNLIMITED) return UNLIMITED
+
+  const rawShare = readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5
+  const share = Math.min(Math.max(rawShare, 0.01), 1)
+
+  return Math.floor(budget * share)
+}
+
+export default {
+  AI_METRICS,
+  AI_METRIC_LIST,
+  AI_METRIC_LABELS,
+  AI_PLANS,
+  UNLIMITED,
+  normalizePlan,
+  normalizeMetric,
+  getPlanLimit,
+  getPlanLimits,
+  isByokAllowedForPlan,
+  getSubscriptionState,
+  estimateCostUsd,
+  getPlatformMonthlyTokenBudget,
+  getSharedKeyTenantCap,
+}

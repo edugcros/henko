@@ -188,6 +188,38 @@ const tenantSchema = new Schema(
       default: null,
     },
 
+    // Cuándo entró en mora. El corte de IA por falta de pago se cuenta desde
+    // acá (AI_SUBSCRIPTION_GRACE_DAYS) y no desde updatedAt, que cambia cada
+    // vez que el comercio toca cualquier cosa del panel.
+    subscriptionPastDueAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Credenciales propias de IA (BYOK). Cuando están activas, el consumo del
+    // comercio sale de su proyecto de Google y no de la key de la plataforma:
+    // deja de competir por la misma cuota que el resto y paga lo suyo.
+    // Ver src/services/ai/aiCredentialsService.js.
+    ai: {
+      geminiApiKey: {
+        type: String,
+        default: '',
+        select: false,
+        set: value => (value ? encryptSecret(value) : ''),
+        get: value => (value ? decryptSecret(value) : ''),
+      },
+
+      byokEnabled: {
+        type: Boolean,
+        default: false,
+      },
+
+      updatedAt: {
+        type: Date,
+        default: null,
+      },
+    },
+
     currency: {
       type: String,
       default: 'ARS',

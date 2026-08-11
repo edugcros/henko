@@ -3,6 +3,7 @@
 
 import expressAsyncHandler from 'express-async-handler'
 import Tenant from '../models/tenantModel.js'
+import AiAgent from '../models/aiAgentModel.js'
 
 import {
   getDomainCandidates,
@@ -13,7 +14,36 @@ import {
 // Helpers
 // =====================================================
 
-const buildPublicTenantResponse = tenant => {
+/**
+ * ¿Este comercio tiene el asistente activo para la tienda?
+ *
+ * Viaja en la resolución de tenant y no en un endpoint propio porque la
+ * tienda ya llama a este endpoint una vez al arrancar: un request más por
+ * visita, en todas las páginas, para responder un booleano no se justifica.
+ *
+ * Sin este dato la tienda no tiene forma de saberlo y termina mostrándole la
+ * burbuja de chat a todos los compradores, incluso de comercios que nunca
+ * activaron el asistente — que al abrirla reciben "un asesor va a revisar tu
+ * consulta". Peor que no mostrar nada.
+ */
+const isAiAssistantEnabled = async tenantId => {
+  try {
+    const agent = await AiAgent.findOne({ tenantId })
+      .select('enabled channels.webchat.enabled')
+      .setOptions({ tenantId })
+      .lean()
+
+    if (!agent?.enabled) return false
+
+    return agent?.channels?.webchat?.enabled !== false
+  } catch {
+    // La resolución de tenant es lo que hace arrancar la tienda entera: si
+    // esta consulta falla, la tienda abre sin asistente, no rota.
+    return false
+  }
+}
+
+const buildPublicTenantResponse = (tenant, { aiAssistantEnabled = false } = {}) => {
   const primaryDomain = tenant.getPrimaryDomain?.() || null
   const mp = tenant.integrations?.mercadopago
 
@@ -34,6 +64,9 @@ const buildPublicTenantResponse = tenant => {
       mercadopago: mp?.isEnabled
         ? { publicKey: mp.publicKey || '', mode: mp.mode || 'test' }
         : null,
+    },
+    aiAssistant: {
+      enabled: aiAssistantEnabled,
     },
   }
 }
@@ -74,7 +107,9 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: buildPublicTenantResponse(tenantBySlug),
+      data: buildPublicTenantResponse(tenantBySlug, {
+        aiAssistantEnabled: await isAiAssistantEnabled(tenantBySlug._id),
+      }),
     })
   }
 
@@ -122,6 +157,8 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
 
   return res.status(200).json({
     success: true,
-    data: buildPublicTenantResponse(tenantByDomain),
+    data: buildPublicTenantResponse(tenantByDomain, {
+      aiAssistantEnabled: await isAiAssistantEnabled(tenantByDomain._id),
+    }),
   })
 })

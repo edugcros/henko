@@ -1,212 +1,224 @@
-// 📄 src/utils/adminMenu.js
-import React from 'react'
+// 📁 src/utils/adminMenu.jsx
+//
+// Estructura del menú lateral del panel.
+//
+// Antes se derivaba automáticamente de privateRoutes: el orden del menú era
+// el orden del archivo de rutas y todo lo que no estuviera dentro de un grupo
+// quedaba suelto en el primer nivel. Eso daba 17 entradas de primer nivel, y
+// "Productos" — lo que el comercio usa todos los días — caía en la posición
+// 16, debajo de seis pantallas de IA y del wizard de onboarding.
+//
+// Ahora la estructura es explícita. El orden es el de este archivo, y las
+// etiquetas son las que cada pantalla ya usa como título propio, así el menú
+// y la página dicen lo mismo:
+//
+//   - AddProduct         se titula "Crear producto con IA guiada"
+//   - ProductAnalysisPage se titula "Programación de imágenes"
+//
+// Antes se llamaban "Análisis IA" y "Agente IA" respectivamente, mientras que
+// las cinco pantallas del chatbot comercial se llamaban "Agente IA · algo".
+// Tres cosas distintas con el mismo nombre y ninguna con el suyo.
+//
+// Ser explícito tiene un riesgo: una ruta nueva que nadie agregue acá se
+// vuelve inalcanzable desde el menú. Por eso al final se verifica la
+// cobertura contra privateRoutes — lo que falte se agrega igual al final y se
+// avisa por consola en desarrollo, así se nota pero nunca desaparece.
+
 import { privateRoutes } from '../routes/routesConfig'
-import {
-  Dashboard,
-  AutoAwesome,
-  Storefront,
-  LocalOffer,
-  AddShoppingCart,
-} from '@mui/icons-material'
-import ArchitectureIcon from '@mui/icons-material/Architecture'
+
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
+import StorefrontIcon from '@mui/icons-material/Storefront'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import Inventory2Icon from '@mui/icons-material/Inventory2'
+import ScheduleIcon from '@mui/icons-material/Schedule'
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
-import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer'
-import LocalOfferIcon from '@mui/icons-material/LocalOffer'
-import QuizIcon from '@mui/icons-material/Quiz'
 import PersonIcon from '@mui/icons-material/Person'
-import OutboxIcon from '@mui/icons-material/Outbox'
+import QuizIcon from '@mui/icons-material/Quiz'
 import SmartToyIcon from '@mui/icons-material/SmartToy'
-import SchoolIcon from '@mui/icons-material/School'
-import InsightsIcon from '@mui/icons-material/Insights'
+import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer'
+import TuneIcon from '@mui/icons-material/Tune'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
+import SchoolIcon from '@mui/icons-material/School'
 import CampaignIcon from '@mui/icons-material/Campaign'
-import PaymentIcon from '@mui/icons-material/Payment'
+import InsightsIcon from '@mui/icons-material/Insights'
+import LocalOfferIcon from '@mui/icons-material/LocalOffer'
+import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber'
+import PaletteIcon from '@mui/icons-material/Palette'
+import ArchitectureIcon from '@mui/icons-material/Architecture'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
-import { Badge, ListItemIcon } from '@mui/material'
+import PaymentIcon from '@mui/icons-material/Payment'
 
-// 🔹 Traducciones y etiquetas
-const translations = {
-  '': 'Dashboard', // 🔹 agregada
-  clientes: 'Clientes',
-  consultas: 'Consultas',
-  promociones: 'Promociones',
-  ordenes: 'Órdenes',
-  EditProduct: 'Editar Producto',
-  AddProduct: 'Análisis IA',
-  diseñoweb: 'Crear Diseño Web',
-  productlist: 'Lista de Productos',
-  'product-analysis': 'Agente IA',
-  'crear-cupon': 'Crear Cupón',
-  couponlist: 'Lista de Cupones',
-  'bandeja-entrada-ia-comercial': 'Bandeja Entrada Comercial',
-  'agente-ia-config': 'Agente IA · Config',
-  'agente-ia-aprendizaje': 'Agente IA · Aprendizaje',
-  'agente-ia-panel': 'Agente IA · Panel',
-  'agente-ia-conocimiento': 'Agente IA · Conocimiento',
-  'agente-ia-campanas': 'Agente IA · Campañas',
-  'configuracion-pagos': 'Configuración de Pagos',
-  'editor-imagen-ia': 'Editor de Imágenes IA',
-}
+// Rutas que existen pero no van en el menú, con el motivo.
+// Un Set vacío de comentarios haría que la verificación de cobertura de abajo
+// pareciera rota cada vez que alguien la lee.
+const HIDDEN_ROUTES = new Map([
+  // El wizard se abre solo al terminar el alta; como ítem fijo del menú
+  // aparecía para siempre, incluso con el onboarding ya completo.
+  ['onboarding', 'se entra desde el alta, no desde el menú'],
+])
 
-// 🔹 Colores por grupo
-const groupColors = {
-  '': '#4caf50',
-  clientes: '#2196f3',
-  consultas: '#ff9800',
-  ordener: '#9c27b0',
-  promociones: '#ff5722',
-  catalog: '#3f51b5',
-  marketing: '#f44336',
-  themeBuilder: '#607d8b',
-  'bandeja-entrada-ia-comercial': '#00bcd4',
-  'editor-imagen-ia': '#8B5CF6',
-}
+/**
+ * Estructura del menú, en orden de aparición.
+ *
+ * `key` de un grupo NO es una ruta: solo sirve para abrir y cerrar. Las rutas
+ * son las `key` de los hijos y las de los ítems sueltos.
+ *
+ * Dos ítems que serían un grupo de uno (Órdenes, Clientes, Consultas, Pagos)
+ * quedan sueltos a propósito: agrupar un solo hijo agrega un clic y no
+ * organiza nada.
+ */
+const MENU_STRUCTURE = [
+  { key: '', label: 'Dashboard', icon: SpaceDashboardIcon },
 
-// 🔹 Grupos y subitems con iconos diferenciados
-const groups = {
-  '': { label: 'Dashboard', icon: SpaceDashboardIcon },
-  clientes: { label: 'Clientes', icon: PersonIcon },
-  consultas: { label: 'Consultas', icon: QuizIcon },
-  ordener: {
-    label: 'Órdenes',
-    icon: RequestQuoteIcon,
-    items: [{ key: 'ordenes', icon: RequestQuoteIcon }],
-  },
-  'bandeja-entrada-ia-comercial': {
-    label: 'Bandeja Entrada Comercial',
-    icon: QuestionAnswerIcon,
-  },
-  'agente-ia-config': {
-    label: 'Agente IA · Config',
-    icon: SmartToyIcon,
-  },
-  'agente-ia-aprendizaje': {
-    label: 'Agente IA · Aprendizaje',
-    icon: SchoolIcon,
-  },
-  'agente-ia-panel': {
-    label: 'Agente IA · Panel',
-    icon: InsightsIcon,
-  },
-  'agente-ia-conocimiento': {
-    label: 'Agente IA · Conocimiento',
-    icon: MenuBookIcon,
-  },
-  'agente-ia-campanas': {
-    label: 'Agente IA · Campañas',
-    icon: CampaignIcon,
-  },
-  'configuracion-pagos': {
-    label: 'Configuración de Pagos',
-    icon: PaymentIcon,
-  },
-  'editor-imagen-ia': {
-    label: 'Editor de Imágenes IA',
-    icon: AutoFixHighIcon,
-  },
-  EditProduct: { label: 'Editar Producto', icon: AddShoppingCart },
-  promociones: { label: 'Promociones', icon: LocalOfferIcon },
-  catalog: {
+  {
+    key: 'productos',
     label: 'Productos',
-    icon: Storefront,
-    items: [
-      { key: 'AddProduct', icon: AutoAwesome },
-      { key: 'productlist', icon: Storefront },
-      { key: 'product-analysis', icon: OutboxIcon },
+    icon: StorefrontIcon,
+    children: [
+      { key: 'AddProduct', label: 'Crear producto', icon: AutoAwesomeIcon },
+      { key: 'productlist', label: 'Lista de productos', icon: Inventory2Icon },
+      {
+        key: 'product-analysis',
+        label: 'Programación de imágenes',
+        icon: ScheduleIcon,
+      },
     ],
   },
-  marketing: {
-    label: 'Cupones',
-    icon: LocalOffer,
-    items: [{ key: 'crear-cupon', icon: LocalOffer }],
+
+  { key: 'ordenes', label: 'Órdenes', icon: RequestQuoteIcon },
+  { key: 'clientes', label: 'Clientes', icon: PersonIcon },
+  { key: 'consultas', label: 'Consultas', icon: QuizIcon },
+
+  {
+    key: 'asistente-ventas',
+    label: 'Asistente de ventas',
+    icon: SmartToyIcon,
+    children: [
+      {
+        key: 'bandeja-entrada-ia-comercial',
+        label: 'Bandeja de entrada',
+        icon: QuestionAnswerIcon,
+      },
+      { key: 'agente-ia-config', label: 'Configuración', icon: TuneIcon },
+      {
+        key: 'agente-ia-conocimiento',
+        label: 'Base de conocimiento',
+        icon: MenuBookIcon,
+      },
+      { key: 'agente-ia-aprendizaje', label: 'Aprendizaje', icon: SchoolIcon },
+      { key: 'agente-ia-campanas', label: 'Campañas', icon: CampaignIcon },
+      { key: 'agente-ia-panel', label: 'Métricas', icon: InsightsIcon },
+    ],
   },
-  themeBuilder: {
-    label: 'Diseño Web',
-    icon: ArchitectureIcon,
-    items: [{ key: 'diseñoweb', icon: ArchitectureIcon }],
+
+  {
+    key: 'marketing',
+    label: 'Marketing',
+    icon: LocalOfferIcon,
+    children: [
+      { key: 'promociones', label: 'Promociones', icon: LocalOfferIcon },
+      { key: 'crear-cupon', label: 'Cupones', icon: ConfirmationNumberIcon },
+    ],
   },
-}
 
-// 🔹 Función helper para renderizar iconos con MUI
-const renderIcon = (IconComp, color = '#616161', isNew = false) => {
-  const icon = (
-    <ListItemIcon>
-      <IconComp
-        sx={{
-          color,
-          minWidth: 36,
-          fontSize: 26,
-          transition: 'transform 0.2s, color 0.2s',
-          '&:hover': { transform: 'scale(1.2)' },
-        }}
-      />
-    </ListItemIcon>
-  )
+  {
+    key: 'diseno',
+    label: 'Diseño y contenido',
+    icon: PaletteIcon,
+    children: [
+      { key: 'diseñoweb', label: 'Diseño web', icon: ArchitectureIcon },
+      {
+        key: 'editor-imagen-ia',
+        label: 'Editor de imágenes',
+        icon: AutoFixHighIcon,
+      },
+    ],
+  },
 
-  return isNew ? (
-    <Badge color="secondary" variant="dot">
-      {icon}
-    </Badge>
-  ) : (
-    icon
-  )
-}
+  { key: 'configuracion-pagos', label: 'Pagos', icon: PaymentIcon },
+]
 
-// 🔁 Generar menú dinámico y agrupado (solo referencias, no JSX)
-const adminMenuItems = []
+// Ruta → meta, para saber cuáles llevan el punto de "nuevo".
+const routeMetaByKey = new Map(
+  privateRoutes.map(({ path, meta }) => [
+    path.replace('/admin/', ''),
+    meta || {},
+  ]),
+)
 
-privateRoutes.forEach(({ path, meta }) => {
-  const key = path.replace('/admin/', '') || ''
+const isNewRoute = key => Boolean(routeMetaByKey.get(key)?.new)
 
-  const label =
-    translations[key] ||
-    key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-
-  const groupEntry = Object.entries(groups).find(([_, group]) =>
-    group.items?.some(item => typeof item === 'object' && item.key === key),
-  )
-
-  const color = groupColors[groupEntry?.[0]] || '#616161'
-  let IconComp = groups[key]?.icon || Dashboard // fallback
-
-  if (groupEntry) {
-    const [groupKey, group] = groupEntry
-    const itemDef = group.items?.find(
-      item => typeof item === 'object' && item.key === key,
-    )
-    IconComp = itemDef?.icon || group.icon
-
-    const item = {
-      key,
-      label,
-      icon: IconComp,
-      iconColor: color,
-      isNew: meta?.new || false,
-      component: label,
-    }
-
-    const existingGroup = adminMenuItems.find(i => i.key === groupKey)
-    if (existingGroup) existingGroup.children.push(item)
-    else
-      adminMenuItems.push({
-        key: groupKey,
-        label: group.label,
-        icon: group.icon,
-        iconColor: color,
-        children: [item],
-      })
-  } else {
-    // Items sueltos
-    adminMenuItems.push({
-      key,
-      label,
-      icon: IconComp,
-      iconColor: color,
-      isNew: meta?.new || false,
-      component: label,
-    })
-  }
+const buildItem = item => ({
+  key: item.key,
+  label: item.label,
+  icon: item.icon,
+  isNew: isNewRoute(item.key),
 })
+
+const buildGroup = group => {
+  const children = group.children.map(buildItem)
+
+  return {
+    key: group.key,
+    label: group.label,
+    icon: group.icon,
+    // El punto de "nuevo" sube al grupo: si vive dentro de un grupo cerrado,
+    // nadie lo ve.
+    isNew: children.some(child => child.isNew),
+    children,
+  }
+}
+
+const adminMenuItems = MENU_STRUCTURE.map(entry =>
+  entry.children ? buildGroup(entry) : buildItem(entry),
+)
+
+// ─── Verificación de cobertura ───────────────────────────
+
+const menuKeys = new Set(
+  adminMenuItems.flatMap(entry =>
+    entry.children ? entry.children.map(child => child.key) : [entry.key],
+  ),
+)
+
+const orphanRoutes = [...routeMetaByKey.keys()].filter(
+  key => !menuKeys.has(key) && !HIDDEN_ROUTES.has(key),
+)
+
+// El error simétrico: una entrada del menú que apunta a una ruta que no
+// existe navega a un 404 y solo se descubre haciendo clic.
+if (process.env.NODE_ENV !== 'production') {
+  const brokenKeys = [...menuKeys].filter(key => !routeMetaByKey.has(key))
+
+  if (brokenKeys.length) {
+    console.error(
+      `[adminMenu] Entradas del menú sin ruta: ${brokenKeys.join(', ')}. ` +
+        'Navegan a 404. Revisá privateRoutes (src/routes/routesConfig.js).',
+    )
+  }
+}
+
+if (orphanRoutes.length) {
+  // Se agregan al final para que la pantalla siga siendo alcanzable, con la
+  // etiqueta derivada de la ruta. Es un estado transitorio, no un diseño:
+  // lo correcto es darle lugar propio en MENU_STRUCTURE.
+  adminMenuItems.push(
+    ...orphanRoutes.map(key => ({
+      key,
+      label: key
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase()),
+      icon: SpaceDashboardIcon,
+      isNew: isNewRoute(key),
+    })),
+  )
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      `[adminMenu] Rutas sin lugar en el menú: ${orphanRoutes.join(', ')}. ` +
+        'Se agregaron al final. Ubicalas en MENU_STRUCTURE (src/utils/adminMenu.jsx).',
+    )
+  }
+}
 
 export { adminMenuItems }

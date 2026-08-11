@@ -1,6 +1,6 @@
 // 📁 website/src/App.js
 
-import React, { useEffect, Suspense } from 'react'
+import React, { useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import ReactGA from 'react-ga4'
 
@@ -13,8 +13,13 @@ import {
   fallbackRoute,
 } from './Route/routesConfig'
 
-import AiChatWidget from '@components/AiChatWidget'
-import AiCartActionBridge from '@components/AiCartActionBridge'
+// El asistente se carga aparte del bundle principal y solo si el comercio lo
+// activó. Importado de forma estática, sus ~1200 líneas y su docena de íconos
+// de MUI viajaban en la primera carga de toda tienda, incluidas las que nunca
+// encendieron el asistente. El bridge del carrito solo existe para atender
+// las acciones del widget, así que sigue su misma suerte.
+const AiChatWidget = lazy(() => import('@components/AiChatWidget'))
+const AiCartActionBridge = lazy(() => import('@components/AiCartActionBridge'))
 
 import { RouteRenderer } from '@components/RouteWrappers'
 import PublicLayout from '@components/publicLayout'
@@ -23,11 +28,13 @@ import SpinnerCentered from '@components/SpinnerCentered/SpinnerCentered.jsx'
 import ThemePreview from '@pages/ThemePreview'
 import { useAuth } from '@hooks/useAuth'
 import { useUserMetrics } from '@hooks/useUserMetrics'
+import { useTenant } from './contexts/TenantContext'
 
 import './App.css'
 
 const App = () => {
   const { isLoading: authLoading } = useAuth()
+  const { aiAssistantEnabled } = useTenant()
   const location = useLocation()
   const isThemePreviewRoute = location.pathname === '/theme-preview'
 
@@ -79,8 +86,12 @@ const App = () => {
         {RouteRenderer({ routes: [fallbackRoute] })}
       </Routes>
 
-      <AiChatWidget />
-      <AiCartActionBridge />
+      {aiAssistantEnabled && !isThemePreviewRoute && (
+        <>
+          <AiChatWidget />
+          <AiCartActionBridge />
+        </>
+      )}
     </Suspense>
   )
 }

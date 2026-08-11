@@ -119,7 +119,11 @@ const MainLayout = () => {
   }, [user, navigate])
 
   const { selectedKey, openKey } = useMemo(() => {
-    const key = location.pathname.replace('/admin/', '') || 'dashboard'
+    // El Dashboard vive en la key '' (navega a /admin/). Antes esto devolvía
+    // 'dashboard' cuando la ruta quedaba vacía, así que no coincidía con
+    // ninguna entrada del menú y el ítem nunca se marcaba como activo. La
+    // barra opcional cubre además /admin sin barra final.
+    const key = location.pathname.replace(/^\/admin\/?/, '')
     const group = adminMenuItems.find(item =>
       item.children?.some(child => child.key === key),
     )

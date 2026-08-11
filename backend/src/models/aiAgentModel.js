@@ -148,6 +148,18 @@ const aiAgentSchema = new Schema(
       lastTrainingAt: { type: Date, default: null },
     },
 
+    // AUTOLÍMITE del comercio, NO la cuota real.
+    //
+    // Estos defaults fueron la cuota efectiva del agente hasta que existió
+    // services/ai/aiPlanPolicy.js: como el aprovisionamiento nunca los
+    // escribía, un tenant free y uno enterprise tenían exactamente el mismo
+    // derecho a gastar la API key de la plataforma (3000 mensajes al mes).
+    //
+    // Hoy el tope lo fija el plan y lo cobra services/ai/aiBudgetService.js.
+    // Lo de acá solo puede apretar ese tope, nunca aflojarlo.
+    //
+    // Los contadores *Used quedan por compatibilidad de lectura; el consumo
+    // real vive en el modelo AiUsage, por período y por métrica.
     quotas: {
       monthlyMessageLimit: { type: Number, default: 3000, min: 0 },
       monthlyAiTokenLimit: { type: Number, default: 1000000, min: 0 },

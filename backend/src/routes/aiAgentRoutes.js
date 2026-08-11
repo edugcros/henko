@@ -32,6 +32,12 @@ import {
   rejectAiLearningSuggestion,
 } from '../controller/aiAgentLearningCtrl.js'
 
+import {
+  deleteAiCredentials,
+  getAiBudget,
+  updateAiCredentials,
+} from '../controller/aiBudgetCtrl.js'
+
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 
 const router = express.Router()
@@ -46,6 +52,11 @@ router.put('/config', upsertAiAgentConfig)
 router.post('/test-message', testAiAgentMessage)
 
 router.get('/metrics', getAiAgentMetrics)
+
+// Consumo de IA del mes y credencial propia del comercio.
+router.get('/budget', getAiBudget)
+router.put('/credentials', updateAiCredentials)
+router.delete('/credentials', deleteAiCredentials)
 
 router.get('/cart-recoveries', listCartRecoveries)
 

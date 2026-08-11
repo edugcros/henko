@@ -2,7 +2,13 @@
 //
 // Configuración del Agente IA por tenant. Lee GET /ai-agent/config y guarda
 // con PUT /ai-agent/config. Es la pantalla que habilita WhatsApp y ajusta
-// personalidad, comportamiento, políticas, guardrails y cuotas.
+// personalidad, comportamiento, políticas, guardrails y autolímites.
+//
+// Los topes reales de consumo NO se editan acá: los fija el plan del comercio
+// y se muestran en AiBudgetPanel (GET /ai-agent/budget). Los campos de cuota
+// que esta pantalla tenía antes eran editables pero ya no son el tope real,
+// así que quedaron reetiquetados como autolímites — solo sirven para gastar
+// menos que el plan. Ver backend/docs/AI_COST_CONTAINMENT.md.
 //
 // Secretos de WhatsApp (accessToken, appSecret, verifyToken): el backend
 // NUNCA los devuelve (son select:false). Por eso los campos arrancan vacíos
@@ -28,6 +34,7 @@ import {
   Typography,
 } from '@mui/material'
 import {
+  Insights as InsightsIcon,
   Save as SaveIcon,
   SmartToy as SmartToyIcon,
   WhatsApp as WhatsAppIcon,
@@ -36,6 +43,7 @@ import {
   getAiAgentConfig,
   updateAiAgentConfig,
 } from '../services/aiAgentConfigService.js'
+import AiBudgetPanel from '../components/aiBudget/AiBudgetPanel.jsx'
 
 const TONE_OPTIONS = [
   { value: 'friendly', label: 'Cercano' },
@@ -604,8 +612,16 @@ const AiAgentConfigPage = () => {
         </SectionCard>
 
         <SectionCard
-          title="Aprendizaje y cuotas"
-          subtitle="Autoaprendizaje con revisión humana, y topes mensuales de uso."
+          title="Consumo de IA del mes"
+          subtitle="Cuánto llevás usado de cada función, según tu plan."
+          icon={<InsightsIcon color="primary" />}
+        >
+          <AiBudgetPanel />
+        </SectionCard>
+
+        <SectionCard
+          title="Aprendizaje y autolímites"
+          subtitle="Autoaprendizaje con revisión humana, y topes propios para gastar menos que tu plan."
         >
           <Grid container spacing={2.5}>
             <Grid item xs={12} sm={6}>
@@ -634,24 +650,38 @@ const AiAgentConfigPage = () => {
                 label="Requiere aprobación humana"
               />
             </Grid>
+            <Grid item xs={12}>
+              <Alert
+                severity="info"
+                variant="outlined"
+                sx={{ borderRadius: 2, mt: 1 }}
+              >
+                Estos dos valores son <strong>autolímites</strong>: sirven para
+                consumir menos que tu plan, no para ampliarlo. El tope real es
+                el del plan y lo ves arriba. Dejalos en 0 para usar el plan
+                completo.
+              </Alert>
+            </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 type="number"
-                label="Límite mensual de mensajes"
+                label="Autolímite de mensajes por mes"
                 value={form.monthlyMessageLimit}
                 onChange={e => setField('monthlyMessageLimit', e.target.value)}
                 inputProps={{ min: 0 }}
+                helperText="0 = sin autolímite (usa el tope del plan)"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 type="number"
-                label="Límite mensual de tokens IA"
+                label="Autolímite de tokens por mes"
                 value={form.monthlyAiTokenLimit}
                 onChange={e => setField('monthlyAiTokenLimit', e.target.value)}
                 inputProps={{ min: 0 }}
+                helperText="0 = sin autolímite (usa el tope del plan)"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">tokens</InputAdornment>
