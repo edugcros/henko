@@ -466,8 +466,12 @@ export const callGemini = async ({
   responseMimeType,
   responseSchema,
   stopSequences,
+  apiKey: providedApiKey,
 } = {}) => {
-  const apiKey = clean(process.env.GEMINI_API_KEY)
+  // La key la resuelve quien llama (aiCredentialsService), porque puede ser
+  // la del comercio y no la de la plataforma. El fallback a la variable de
+  // entorno queda para los llamadores que todavía no pasan tenant.
+  const apiKey = clean(providedApiKey) || clean(process.env.GEMINI_API_KEY)
   const model = normalizeGeminiModelName()
 
   if (!apiKey) {
@@ -580,6 +584,7 @@ export const callAgentLLM = async ({
   responseMimeType,
   responseSchema,
   stopSequences,
+  apiKey,
 } = {}) => {
   const provider = clean(
     process.env.AI_AGENT_PROVIDER || DEFAULT_PROVIDER,
@@ -600,6 +605,7 @@ export const callAgentLLM = async ({
     responseMimeType,
     responseSchema,
     stopSequences,
+    apiKey,
   })
 }
 
@@ -609,6 +615,7 @@ export const callAgentLLMForRepair = async ({
   previousResponse = '',
   validation = null,
   maxOutputTokens,
+  apiKey,
 } = {}) => {
   const repairMessages = [
     ...(messages || []),
@@ -636,6 +643,7 @@ export const callAgentLLMForRepair = async ({
     temperature: 0.25,
     maxOutputTokens: maxOutputTokens || 900,
     conversationalMode: true,
+    apiKey,
   })
 }
 

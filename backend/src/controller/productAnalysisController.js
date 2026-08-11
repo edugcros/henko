@@ -9,7 +9,10 @@ import { fileURLToPath } from 'url'
 import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import Product from '../models/productModel.js'
 import AgentHeartbeat from '../models/agentHeartbeatModel.js'
-import { getAiUsageSnapshot } from '../services/aiUsageService.js'
+import {
+  getAiBudgetSnapshot,
+  getAiUsageSnapshot,
+} from '../services/ai/aiBudgetService.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import {
   getActorIdFromRequest,
@@ -1917,11 +1920,19 @@ export const getAgentHeartbeat = asyncHandler(async (req, res) => {
 export const getAiUsage = asyncHandler(async (req, res) => {
   const tenantId = getTenantId(req)
 
-  const usage = await getAiUsageSnapshot(tenantId)
+  // Se devuelven las dos formas: `data` mantiene el contrato viejo que ya
+  // consume ProductAnalysisPage (solo análisis de imagen) y `budget` trae el
+  // mes completo — todas las métricas, la suscripción y de qué API key sale
+  // el gasto — para que el panel pueda migrar sin un deploy coordinado.
+  const [usage, budget] = await Promise.all([
+    getAiUsageSnapshot(tenantId),
+    getAiBudgetSnapshot(tenantId),
+  ])
 
   return res.status(200).json({
     success: true,
     data: usage,
+    budget,
   })
 })
 

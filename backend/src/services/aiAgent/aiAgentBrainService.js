@@ -4,6 +4,14 @@ import AiAgent from '../../models/aiAgentModel.js'
 import logger from '../../../config/logger.js'
 import { buildAgentSystemPrompt } from './aiAgentPromptService.js'
 import { callAgentLLM } from './aiAgentLLMService.js'
+import {
+  AI_METRICS,
+  buildBudgetDenialMessage,
+  recordAiConsumption,
+  refundAiBudget,
+  reserveAiBudget,
+} from '../ai/aiBudgetService.js'
+import { loadTenantAiProfile } from '../ai/aiCredentialsService.js'
 import { searchRelevantKnowledgeForAgent } from './aiAgentToolService.js'
 import { runAgentCommerceTools } from './aiAgentCommerceToolsService.js'
 import { registerConversationLearningSignal } from './aiAgentLearningService.js'
@@ -424,6 +432,8 @@ const repairAiResponseIfNeeded = async ({
   recentMessages,
   cleanText,
   conversationMemory,
+  tenantId,
+  profile,
 }) => {
   if (!shouldRepairResponse(validation)) {
     return { aiResult, validation }
@@ -451,7 +461,20 @@ const repairAiResponseIfNeeded = async ({
       ],
       temperature: 0.25,
       maxOutputTokens: Number(process.env.AI_AGENT_REPAIR_MAX_OUTPUT_TOKENS || 700),
+      apiKey: profile?.apiKey,
     })
+
+    // Esta segunda llamada se cobra igual que la primera. Antes no se
+    // registraba en ningún lado, así que toda respuesta regenerada quedaba
+    // fuera de la contabilidad y dentro de la factura.
+    if (tenantId) {
+      await recordAiConsumption({
+        tenantId,
+        metric: AI_METRICS.AGENT_TOKENS,
+        amount: Number(repaired?.usageMetadata?.totalTokenCount || 0),
+        profile,
+      }).catch(() => null)
+    }
 
     if (!clean(repaired?.content)) {
       return { aiResult, validation }
@@ -477,59 +500,59 @@ const repairAiResponseIfNeeded = async ({
   }
 }
 
-const getQuotaPeriod = () => new Date().toISOString().slice(0, 7)
-
-const reserveAgentMessageQuota = async ({ tenantId, agent }) => {
-  const period = getQuotaPeriod()
-
-  if (agent?.quotas?.quotaPeriod !== period) {
-    await AiAgent.updateOne(
-      {
-        _id: agent._id,
-        tenantId,
-        'quotas.quotaPeriod': { $ne: period },
-      },
-      {
-        $set: {
-          'quotas.quotaPeriod': period,
-          'quotas.monthlyMessagesUsed': 0,
-          'quotas.monthlyAiTokensUsed': 0,
-        },
-      },
-    ).setOptions({ tenantId })
-  }
-
+/**
+ * Reserva un mensaje del agente contra la cuota del PLAN del comercio.
+ *
+ * Antes esta cuota salía de `agent.quotas.monthlyMessageLimit`, cuyo valor
+ * real era el default del schema (3000 mensajes) porque el aprovisionamiento
+ * nunca lo escribía. Eso tenía dos consecuencias caras:
+ *
+ *   1. Un tenant free y uno enterprise tenían exactamente el mismo derecho a
+ *      gastar la API key de la plataforma.
+ *   2. El propio comercio podía subirse el tope desde su panel
+ *      (PUT /ai-agent/config), y mandando 0 se quedaba sin tope alguno,
+ *      porque acá 0 significaba "ilimitado".
+ *
+ * Ahora el tope lo fija el plan (aiPlanPolicy) y lo cobra el medidor
+ * compartido (aiBudgetService). El valor del agente sobrevive únicamente como
+ * autolímite: sirve para gastar MENOS que el plan, nunca más.
+ */
+const getAgentSelfLimit = agent => {
   const limit = Number(agent?.quotas?.monthlyMessageLimit || 0)
-  const tokenLimit = Number(agent?.quotas?.monthlyAiTokenLimit || 0)
-  const query = {
-    _id: agent._id,
-    tenantId,
-    ...(limit > 0 ? { 'quotas.monthlyMessagesUsed': { $lt: limit } } : {}),
-    ...(tokenLimit > 0
-      ? { 'quotas.monthlyAiTokensUsed': { $lt: tokenLimit } }
-      : {}),
-  }
-
-  return AiAgent.findOneAndUpdate(
-    query,
-    {
-      $inc: { 'quotas.monthlyMessagesUsed': 1 },
-      $set: { 'quotas.quotaPeriod': period },
-    },
-    { new: true },
-  )
-    .setOptions({ tenantId })
-    .lean()
+  return Number.isFinite(limit) && limit > 0 ? limit : null
 }
 
-const registerTokenUsage = async ({ tenantId, agentId, usageMetadata }) => {
+const reserveAgentMessageQuota = async ({ tenantId, agent, profile }) => {
+  return reserveAiBudget({
+    tenantId,
+    metric: AI_METRICS.AGENT_MESSAGES,
+    // Si ya se pasó del tope de tokens del mes no se contesta un mensaje más:
+    // los tokens recién se conocen después de responder, así que el único
+    // freno posible es el mensaje siguiente.
+    guards: [AI_METRICS.AGENT_TOKENS],
+    limitOverride: getAgentSelfLimit(agent),
+    profile,
+  })
+}
+
+/**
+ * Los tokens se registran a posteriori (no se pueden reservar) y son los que
+ * alimentan tanto la cuota del comercio como el disyuntor global de gasto.
+ *
+ * Incluye la llamada de reparación: antes solo se contaba la primera
+ * respuesta, así que toda respuesta que había que regenerar viajaba gratis en
+ * la contabilidad y cara en la factura.
+ */
+const registerTokenUsage = async ({ tenantId, usageMetadata, profile }) => {
   const tokens = Number(usageMetadata?.totalTokenCount || 0)
   if (!Number.isFinite(tokens) || tokens <= 0) return
 
-  await AiAgent.updateOne(
-    { _id: agentId, tenantId },
-    { $inc: { 'quotas.monthlyAiTokensUsed': Math.round(tokens) } },
-  ).setOptions({ tenantId })
+  await recordAiConsumption({
+    tenantId,
+    metric: AI_METRICS.AGENT_TOKENS,
+    amount: tokens,
+    profile,
+  })
 }
 
 const updateAgentStats = async ({
@@ -812,15 +835,33 @@ export const processAgentMessage = async ({
     }
   }
 
-  agent = await reserveAgentMessageQuota({ tenantId, agent })
-  if (!agent) {
+  const aiProfile = await loadTenantAiProfile(tenantId)
+  const reservation = await reserveAgentMessageQuota({ tenantId, agent, profile: aiProfile })
+
+  if (!reservation.allowed) {
+    logger.warn('[AI_AGENT_BUDGET_DENIED]', {
+      tenantId: String(tenantId),
+      channel,
+      reason: reservation.reason,
+      detail: reservation.detail || null,
+      metric: reservation.metric,
+      used: reservation.used,
+      limit: reservation.limit,
+      plan: reservation.plan,
+    })
+
     return {
+      // Al comprador no se le cuenta el problema comercial del comercio: se
+      // lo deriva a una persona y listo. El detalle real solo se devuelve en
+      // el canal de prueba del panel, donde quien lee es el comerciante.
       reply:
-        'El asistente alcanzó temporalmente su límite de atención automática. Tu consulta queda disponible para un asesor.',
+        channel === 'admin_test'
+          ? buildBudgetDenialMessage(reservation)
+          : 'El asistente alcanzó temporalmente su límite de atención automática. Tu consulta queda disponible para un asesor.',
       intent: 'general_question',
       leadScore: 0,
       handoffRequired: true,
-      reason: 'monthly_message_quota_exceeded',
+      reason: reservation.reason,
       actions: [{ type: 'request_human', label: 'Hablar con un asesor' }],
     }
   }
@@ -986,6 +1027,7 @@ export const processAgentMessage = async ({
       messages: recentMessages,
       temperature: 0.35,
       maxOutputTokens: Number(process.env.AI_AGENT_MAX_OUTPUT_TOKENS || 1200),
+      apiKey: aiProfile.apiKey,
     })
   } catch (error) {
     logger.error('[AI_AGENT_GEMINI_ERROR]', {
@@ -994,6 +1036,14 @@ export const processAgentMessage = async ({
       provider: error?.provider || 'gemini',
       code: error?.code || null,
     })
+
+    // El proveedor no entregó nada, así que el mensaje reservado no se cobra.
+    // Sin esto, una caída de Google le consumía al comercio su cuota mensual
+    // entera a cambio de puros mensajes de fallback.
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.AGENT_MESSAGES,
+    }).catch(() => null)
 
     aiResult = {
       content:
@@ -1009,8 +1059,8 @@ export const processAgentMessage = async ({
 
   await registerTokenUsage({
     tenantId,
-    agentId: agent._id,
     usageMetadata: aiResult.usageMetadata,
+    profile: aiProfile,
   }).catch(() => null)
 
   let validation = validateAgentCommerceResponse({
@@ -1031,6 +1081,8 @@ export const processAgentMessage = async ({
       recentMessages,
       cleanText,
       conversationMemory,
+      tenantId,
+      profile: aiProfile,
     })
 
     aiResult = repaired.aiResult

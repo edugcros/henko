@@ -35,6 +35,8 @@ import {
   resolveTenantByDomain,
 } from '../middlewares/tenantMiddleware.js'
 import { uploadPhoto, productImgResize, uploadVideo } from '../middlewares/uploadImage.js'
+import { requireAiEntitlement } from '../middlewares/aiEntitlementMiddleware.js'
+import { AI_METRICS } from '../services/ai/aiPlanPolicy.js'
 import { analyzeImage } from '../services/aiVisionService.js'
 import { recordManualAnalysisJob } from '../controller/productAnalysisController.js'
 import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
@@ -69,6 +71,9 @@ router.post(
   resolveTenantByDomain,
   authMiddleware,
   isAdmin,
+  // Antes de subir y redimensionar la imagen: si el comercio ya no tiene
+  // cupo, procesar el archivo es trabajo (y memoria) tirados a la basura.
+  requireAiEntitlement(AI_METRICS.VISION),
   uploadPhoto.single('images'),
   productImgResize,
   aiVisualLimiter,
