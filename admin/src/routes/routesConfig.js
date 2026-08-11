@@ -11,12 +11,15 @@ export const publicRoutes = [
   { path: '/subscripcion', Component: pages.SubscriptionPage },
 ]
 // ✅ Rutas públicas dinámicas (con parámetros como tokens)
+//
+// "Pública" acá significa alcanzable sin sesión, así que solo entran las que
+// se autentican con el propio parámetro de la URL. La edición de producto
+// estuvo en esta lista y no correspondía: se renderizaba fuera de
+// PrivateRoute, y un visitante sin sesión veía la pantalla del panel vacía y
+// sin sidebar en vez de que lo mandaran al login. Los datos nunca estuvieron
+// expuestos — el backend exige authMiddleware + isAdmin — pero la pantalla sí.
 export const publicDynamicRoutes = [
   { path: '/reset-password/:token', Component: pages.Resetpassword },
-  {
-    path: '/admin/edit-product/:productId',
-    Component: pages.EditProduct,
-  },
 ]
 
 // 🔐 Rutas protegidas (requieren login pero no rol específico)
@@ -116,6 +119,13 @@ export const privateRoutes = [
   {
     path: '/admin/AddProduct',
     Component: pages.AddProduct,
+    allowedRoles: ['admin'],
+  },
+  // Pantalla de detalle: se llega desde Productlist, no desde el menú (ver
+  // HIDDEN_ROUTES en utils/adminMenu.jsx).
+  {
+    path: '/admin/edit-product/:productId',
+    Component: pages.EditProduct,
     allowedRoles: ['admin'],
   },
   {

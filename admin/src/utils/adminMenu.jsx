@@ -55,6 +55,11 @@ const HIDDEN_ROUTES = new Map([
   // El wizard se abre solo al terminar el alta; como ítem fijo del menú
   // aparecía para siempre, incluso con el onboarding ya completo.
   ['onboarding', 'se entra desde el alta, no desde el menú'],
+
+  // Pantalla de detalle de un producto puntual: se llega desde la lista. Sin
+  // esta entrada, la verificación de cobertura la trataría como ruta huérfana
+  // y la agregaría al menú con un ':productId' en la etiqueta.
+  ['edit-product/:productId', 'se llega desde la lista de productos'],
 ])
 
 /**
