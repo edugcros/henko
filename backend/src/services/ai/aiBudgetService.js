@@ -28,8 +28,8 @@ import {
   UNLIMITED,
   estimateCostUsd,
   getPlanLimit,
-  getPlanLimits,
   getPlatformMonthlyTokenBudget,
+  getSharedKeyTenantCap,
   getSubscriptionState,
   normalizeMetric,
 } from './aiPlanPolicy.js'
@@ -128,15 +128,20 @@ const isPlatformBudgetExhausted = async () => {
   const budget = getPlatformMonthlyTokenBudget()
   if (budget === UNLIMITED) return false
 
-  const cached = await cacheGet(BREAKER_CACHE_KEY)
+  // El período va en la clave: si no, un disyuntor que cortó el día 31 sigue
+  // cortando hasta 30 segundos después del cambio de mes, cuando el contador
+  // real ya arrancó de cero.
+  const period = getCurrentPeriod()
+  const cacheKey = `${BREAKER_CACHE_KEY}:${period}`
+
+  const cached = await cacheGet(cacheKey)
   if (cached !== null && cached !== undefined) return Boolean(cached.exhausted)
 
-  const period = getCurrentPeriod()
   const usage = await AiPlatformUsage.findOne({ period }).lean()
   const tokens = Number(usage?.tokens || 0)
   const exhausted = tokens >= budget
 
-  await cacheSet(BREAKER_CACHE_KEY, { exhausted }, BREAKER_CACHE_TTL_SEC)
+  await cacheSet(cacheKey, { exhausted }, BREAKER_CACHE_TTL_SEC)
 
   return exhausted
 }
@@ -174,7 +179,7 @@ const registerPlatformConsumption = async ({ tokens, costUsd }) => {
   }
 
   // El cache del disyuntor quedó viejo en el momento en que cruzamos el tope.
-  if (updated.tokens >= budget) await cacheDel(BREAKER_CACHE_KEY)
+  if (updated.tokens >= budget) await cacheDel(`${BREAKER_CACHE_KEY}:${period}`)
 
   return updated
 }
@@ -210,6 +215,22 @@ const applyReservation = async ({ tenantId, period, metric, amount, conditions }
  * subiría la cuota desde su propio panel, que es exactamente el agujero que
  * este refactor viene a cerrar.
  */
+/**
+ * Tope efectivo de una métrica: el del plan, salvo que el plan diga
+ * "ilimitado" y el comercio esté corriendo sobre la key compartida. Ahí manda
+ * el techo por tenant de aiPlanPolicy, porque ilimitado-sobre-la-key-de-todos
+ * significa que un solo comercio puede hacer saltar el disyuntor y dejar sin
+ * asistente a los demás.
+ */
+const resolveEffectiveLimit = ({ plan, metric, keySource }) => {
+  const planLimit = getPlanLimit(plan, metric)
+
+  if (keySource !== KEY_SOURCE.PLATFORM) return planLimit
+  if (planLimit !== UNLIMITED) return planLimit
+
+  return getSharedKeyTenantCap(metric)
+}
+
 const applyLimitOverride = (planLimit, override) => {
   const value = Number(override)
   if (!Number.isFinite(value) || value <= 0) return planLimit
@@ -244,7 +265,11 @@ export const reserveAiBudget = async ({
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const subscription = getSubscriptionState(aiProfile)
   const limit = applyLimitOverride(
-    getPlanLimit(aiProfile.plan, normalizedMetric),
+    resolveEffectiveLimit({
+      plan: aiProfile.plan,
+      metric: normalizedMetric,
+      keySource: aiProfile.keySource,
+    }),
     limitOverride,
   )
 
@@ -311,7 +336,11 @@ export const reserveAiBudget = async ({
     .filter(Boolean)
     .map(guardMetric => ({
       metric: guardMetric,
-      limit: getPlanLimit(aiProfile.plan, guardMetric),
+      limit: resolveEffectiveLimit({
+        plan: aiProfile.plan,
+        metric: guardMetric,
+        keySource: aiProfile.keySource,
+      }),
     }))
     .filter(guard => guard.limit !== UNLIMITED)
 
@@ -523,7 +552,11 @@ export const checkAiEntitlement = async ({ tenantId, metric, profile = null }) =
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const subscription = getSubscriptionState(aiProfile)
-  const limit = getPlanLimit(aiProfile.plan, normalizedMetric)
+  const limit = resolveEffectiveLimit({
+    plan: aiProfile.plan,
+    metric: normalizedMetric,
+    keySource: aiProfile.keySource,
+  })
 
   if (!subscription.entitled) {
     return buildDeniedResult({
@@ -623,7 +656,17 @@ export const getAiBudgetSnapshot = async tenantId => {
     .setOptions({ tenantId: id })
     .lean()
 
-  const limits = getPlanLimits(profile.plan)
+  // Los topes del snapshot pasan por la misma resolución que el cobro: si el
+  // panel mostrara "sin límite" y el medidor cortara igual, el comercio no
+  // tendría forma de entender por qué se le apagó el asistente.
+  const limits = AI_METRIC_LIST.reduce((acc, metric) => {
+    acc[metric] = resolveEffectiveLimit({
+      plan: profile.plan,
+      metric,
+      keySource: profile.keySource,
+    })
+    return acc
+  }, {})
   const subscription = getSubscriptionState(profile)
 
   const metrics = AI_METRIC_LIST.reduce((acc, metric) => {

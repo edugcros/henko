@@ -80,6 +80,28 @@ de que ninguna otra cuenta esté bien puesta.
 Los tenants con key propia (BYOK) no se ven afectados por el disyuntor: su
 gasto no toca la factura de la plataforma.
 
+### El techo por tenant sobre la key compartida
+
+El disyuntor solo tiene sentido acompañado de esta regla, porque **corta para
+todos los que comparten la key**. Un único tenant "ilimitado" corriendo sobre
+la key de la plataforma podía consumir el presupuesto entero y dejar sin
+asistente al resto: el grande no perdía nada y los chicos se quedaban afuera.
+
+"Ilimitado" es una entitlement coherente cuando el comercio paga su propio
+consumo, y una contradicción cuando corre sobre la key de todos. Por eso, sobre
+la key compartida, un plan sin tope pasa a tener uno derivado del presupuesto:
+`AI_PLATFORM_PER_TENANT_SHARE` (0.5 por defecto, o sea la mitad).
+
+Solo aplica a los tokens — es la métrica que traduce a dinero — y solo cuando
+el tope del plan es ilimitado. Los topes finitos son deliberados y no se tocan.
+
+**Cómo dimensionar el presupuesto:** por encima de la suma esperada de las
+cuotas de los tenants activos, no por debajo. Un disyuntor por debajo de esa
+suma deja de ser un backstop de anomalías y se convierte en un embudo
+compartido, donde el consumo normal de unos pocos deja sin servicio al resto.
+Con 20M y el plan free en 150k tokens, hacen falta más de 130 comercios
+gratuitos activos para acercarse al techo.
+
 ## Variables de entorno
 
 Todas opcionales; los defaults están calibrados para que un tenant gratuito
@@ -93,8 +115,13 @@ AI_LIMIT_FREE_VISION=50
 AI_LIMIT_FREE_IMAGE_EDITS=10
 # ...ídem STARTER, PRO, ENTERPRISE
 
-# Disyuntor global (0 o sin definir = sin disyuntor, no recomendado en prod)
+# Disyuntor global (sin definir = sin disyuntor, no recomendado en prod).
+# En producción va declarado en render.yaml, no en el dashboard.
 AI_PLATFORM_MONTHLY_TOKEN_BUDGET=20000000
+
+# Fracción máxima del presupuesto que puede consumir un solo tenant sobre la
+# key compartida. Solo aplica a planes con tope ilimitado.
+AI_PLATFORM_PER_TENANT_SHARE=0.5
 
 # Corte por suscripción
 AI_ENFORCE_SUBSCRIPTION=true      # default true
@@ -163,11 +190,19 @@ configurada.
 
 ## Checklist de deploy
 
-1. Definir `AI_PLATFORM_MONTHLY_TOKEN_BUDGET` en Render. Sin esto el disyuntor
-   queda desactivado y el techo vuelve a ser la suma de las cuotas.
-2. Revisar los topes por plan contra el precio real de cada plan.
+1. El disyuntor y la fracción por tenant viajan en `render.yaml`, así que se
+   aplican solos al desplegar. No hace falta tocar el dashboard.
+2. Revisar los topes por plan contra el precio real de cada plan, y el
+   presupuesto contra la suma esperada de cuotas (ver arriba).
 3. Desplegar. No hay migración que correr.
 4. Mirar `GET /api/ai-agent/budget` de un par de tenants y confirmar que el
    consumo se registra.
-5. Cuando exista facturación, escribir `trialEndsAt` y `subscriptionPastDueAt`;
+5. Al mes siguiente, ajustar el presupuesto con el consumo real que quedó en
+   `AiPlatformUsage` en vez de con la estimación inicial.
+6. Cuando exista facturación, escribir `trialEndsAt` y `subscriptionPastDueAt`;
    recién ahí el corte por suscripción empieza a tener efecto.
+
+`AI_AGENT_SECRET_ENCRYPTION_KEY` no se declara en `render.yaml` a propósito:
+ya está en la lista de variables requeridas de `config/env.js`, que aborta el
+arranque en producción si falta. La dependencia está cubierta donde importa y
+duplicarla en el blueprint solo agrega un lugar más donde desincronizarse.

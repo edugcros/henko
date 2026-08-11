@@ -296,6 +296,35 @@ export const getPlatformMonthlyTokenBudget = () => {
   return budget === null ? UNLIMITED : Math.floor(budget)
 }
 
+/**
+ * Techo por tenant sobre la key COMPARTIDA de la plataforma.
+ *
+ * "Ilimitado" es una entitlement coherente cuando el comercio paga su propio
+ * consumo (BYOK), y una contradicción cuando corre sobre la key de todos: un
+ * único tenant enterprise sin key propia podía consumir el presupuesto
+ * mensual entero y hacer saltar el disyuntor, que corta para TODOS los que
+ * comparten esa key. El tenant grande no pierde nada y los chicos se quedan
+ * sin asistente.
+ *
+ * La regla es una sola y sale de un número que ya existe: nadie sobre la key
+ * compartida puede pasarse de una fracción del presupuesto de la plataforma.
+ * Con el disyuntor apagado no hay fracción que calcular y no se aplica.
+ *
+ * Solo toca los tokens: es la métrica que traduce a dinero. Los topes finitos
+ * de un plan no se tocan — son deliberados.
+ */
+export const getSharedKeyTenantCap = metric => {
+  if (normalizeMetric(metric) !== AI_METRICS.AGENT_TOKENS) return UNLIMITED
+
+  const budget = getPlatformMonthlyTokenBudget()
+  if (budget === UNLIMITED) return UNLIMITED
+
+  const rawShare = readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5
+  const share = Math.min(Math.max(rawShare, 0.01), 1)
+
+  return Math.floor(budget * share)
+}
+
 export default {
   AI_METRICS,
   AI_METRIC_LIST,
@@ -310,4 +339,5 @@ export default {
   getSubscriptionState,
   estimateCostUsd,
   getPlatformMonthlyTokenBudget,
+  getSharedKeyTenantCap,
 }

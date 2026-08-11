@@ -204,6 +204,23 @@ jest.unstable_mockModule("../services/ai/aiCredentialsService.js", () => ({
   loadTenantAiProfile: mockProfile,
 }));
 
+// El cache del disyuntor es un Map de módulo con TTL de 30 s. Sin aislarlo,
+// el resultado de un test sobrevive al siguiente y la suite pasa o falla
+// según el orden en que corran.
+const cacheStore = new Map();
+
+jest.unstable_mockModule("../utils/cache.js", () => ({
+  cacheGet: async key => (cacheStore.has(key) ? cacheStore.get(key) : null),
+  cacheSet: async (key, value) => {
+    cacheStore.set(key, value);
+    return true;
+  },
+  cacheDel: async key => {
+    cacheStore.delete(key);
+    return true;
+  },
+}));
+
 const { reserveAiBudget, DENY_REASONS } = await import(
   "../services/ai/aiBudgetService.js"
 );
@@ -232,7 +249,9 @@ const platformProfile = (overrides = {}) => ({
 describe("aiBudgetService · reserva", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    cacheStore.clear();
     delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
+    delete process.env.AI_PLATFORM_PER_TENANT_SHARE;
   });
 
   test("cobra el consumo y devuelve cuánto queda", async () => {
@@ -386,6 +405,92 @@ describe("aiBudgetService · reserva", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe(DENY_REASONS.PLATFORM_BUDGET);
+  });
+
+  test("un tenant ilimitado sobre la key compartida NO es realmente ilimitado", async () => {
+    // Un enterprise sin key propia podía consumir el presupuesto entero y
+    // hacer saltar el disyuntor, que corta para todos los que comparten esa
+    // key: el grande no perdía nada y los chicos se quedaban sin asistente.
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
+    process.env.AI_PLATFORM_PER_TENANT_SHARE = "0.5";
+
+    mockProfile.mockResolvedValue(
+      platformProfile({ plan: "enterprise", keySource: "platform" }),
+    );
+    mockPlatformUsage.findOne.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { agentTokens: 10 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.unlimited).toBe(false);
+    expect(result.limit).toBe(10_000_000);
+
+    delete process.env.AI_PLATFORM_PER_TENANT_SHARE;
+  });
+
+  test("con key propia sí es ilimitado de verdad", async () => {
+    // El techo por tenant existe porque el gasto es de otro. Cuando el
+    // comercio paga el suyo, no hay nada que racionar.
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
+
+    mockProfile.mockResolvedValue(
+      platformProfile({ plan: "enterprise", keySource: "tenant" }),
+    );
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.unlimited).toBe(true);
+  });
+
+  test("sin disyuntor configurado no hay fracción que aplicar", async () => {
+    delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
+
+    mockProfile.mockResolvedValue(
+      platformProfile({ plan: "enterprise", keySource: "platform" }),
+    );
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { agentTokens: 1 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.unlimited).toBe(true);
+  });
+
+  test("el techo compartido no toca los topes finitos de un plan", async () => {
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
+
+    mockProfile.mockResolvedValue(platformProfile({ plan: "free" }));
+    mockPlatformUsage.findOne.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { agentTokens: 5 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+    });
+
+    expect(result.limit).toBe(getPlanLimit("free", AI_METRICS.AGENT_TOKENS));
   });
 
   test("sin ninguna API key configurada no se intenta llamar al proveedor", async () => {
