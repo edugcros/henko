@@ -123,8 +123,8 @@ AI_PLATFORM_MONTHLY_TOKEN_BUDGET=20000000
 # key compartida. Solo aplica a planes con tope ilimitado.
 AI_PLATFORM_PER_TENANT_SHARE=0.5
 
-# Corte por suscripción
-AI_ENFORCE_SUBSCRIPTION=true      # default true
+# Corte por suscripción. DEFAULT: apagado — ver "Compatibilidad".
+AI_ENFORCE_SUBSCRIPTION=false
 AI_SUBSCRIPTION_GRACE_DAYS=7      # días de gracia en past_due
 
 # BYOK: planes habilitados a traer su propia key
@@ -154,10 +154,15 @@ Este refactor no le cambia los límites a nadie sin aviso:
 - **`GET /api/product-analysis/ai-usage` conserva su forma.** Devuelve el
   contrato viejo en `data` y el mes completo en `budget`, para que el panel
   migre sin deploy coordinado.
-- **El corte por suscripción no corta a nadie hoy.** Todos los tenants de
-  producción están en `trialing` con `trialEndsAt` nulo, y un trial sin fecha
-  se trata como "sin vencimiento". El corte empieza a aplicar cuando exista un
-  flujo de facturación que escriba esa fecha.
+- **El corte por suscripción viene apagado, y eso es deliberado.** El alta
+  (`userCtrl`) crea el tenant con `subscriptionStatus: 'trialing'` y
+  `trialEndsAt` a 14 días, y **no hay un solo lugar en el backend que después
+  lo pase a `'active'`**: todavía no existe un flujo de facturación. Con el
+  corte encendido, todo comercio que se registre perdería la IA a los 14 días
+  sin forma de recuperarla salvo editando la base a mano. Una regla que nada
+  puede satisfacer no es una regla, es una trampa. La maquinaria está escrita
+  y probada; se enciende con `AI_ENFORCE_SUBSCRIPTION=true` el día que exista
+  cobranza que mantenga el campo.
 - **El corte solo afecta IA.** La tienda, el checkout y el panel siguen
   funcionando con la suscripción caída. Cortarle las ventas a un cliente por
   una tarjeta rechazada es una forma cara de perderlo.
@@ -199,8 +204,10 @@ configurada.
    consumo se registra.
 5. Al mes siguiente, ajustar el presupuesto con el consumo real que quedó en
    `AiPlatformUsage` en vez de con la estimación inicial.
-6. Cuando exista facturación, escribir `trialEndsAt` y `subscriptionPastDueAt`;
-   recién ahí el corte por suscripción empieza a tener efecto.
+6. Cuando exista facturación —algo que mantenga `subscriptionStatus` y escriba
+   `subscriptionPastDueAt`— recién ahí encender `AI_ENFORCE_SUBSCRIPTION=true`.
+   Antes de eso el corte solo puede hacer daño: dejaría sin IA a cada comercio
+   nuevo a los 14 días del alta.
 
 `AI_AGENT_SECRET_ENCRYPTION_KEY` no se declara en `render.yaml` a propósito:
 ya está en la lista de variables requeridas de `config/env.js`, que aborta el

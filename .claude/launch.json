@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "backend-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "backend"],
+      "port": 5000
+    },
+    {
       "name": "admin-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:local", "--prefix", "admin"],

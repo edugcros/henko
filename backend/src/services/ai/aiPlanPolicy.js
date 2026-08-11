@@ -199,10 +199,24 @@ const readEnvNumber = (name, { min = 0 } = {}) => {
 
 const getGraceDays = () => readEnvNumber('AI_SUBSCRIPTION_GRACE_DAYS') ?? 7
 
+/**
+ * El corte por suscripción viene APAGADO por defecto, y no es una omisión.
+ *
+ * El alta (userCtrl) crea el tenant con subscriptionStatus 'trialing' y
+ * trialEndsAt a 14 días, y no hay un solo lugar en el backend que después lo
+ * pase a 'active' — no existe todavía un flujo de facturación. Con el corte
+ * activado por defecto, todo comercio que se registre pierde la IA a los 14
+ * días sin forma de recuperarla salvo editando la base a mano.
+ *
+ * Una regla que nada puede satisfacer no es una regla, es una trampa. La
+ * maquinaria queda escrita y probada; se enciende con
+ * AI_ENFORCE_SUBSCRIPTION=true el día que exista cobranza que mantenga el
+ * campo.
+ */
 const isEnforcementEnabled = () => {
   const raw = clean(process.env.AI_ENFORCE_SUBSCRIPTION).toLowerCase()
-  if (!raw) return true
-  return !['false', '0', 'no', 'off'].includes(raw)
+  if (!raw) return false
+  return ['true', '1', 'yes', 'si', 'sí', 'on'].includes(raw)
 }
 
 const daysSince = date => {
