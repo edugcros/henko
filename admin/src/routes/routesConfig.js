@@ -100,6 +100,13 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // ⚙️ Configuración del comercio
+  {
+    path: '/admin/configuracion-comercio',
+    Component: pages.StoreSettingsPage,
+    allowedRoles: ['admin'],
+  },
+
   // 💳 Pagos
   {
     path: '/admin/configuracion-pagos',
