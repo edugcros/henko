@@ -572,16 +572,35 @@ if (env.isProduction) {
     throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
   }
 
-  if (!process.env.RESEND_API_KEY?.trim()) {
-    throw new Error(
-      'RESEND_API_KEY es obligatoria en producción para enviar emails transaccionales',
-    )
-  }
+  // Las credenciales que hacen falta dependen del transporte elegido. Exigir
+  // las de Resend cuando se configuró SMTP dejaba el arranque bloqueado por
+  // una API key de un servicio que ese deploy no usa.
+  const emailTransport = String(process.env.EMAIL_TRANSPORT || '')
+    .trim()
+    .toLowerCase()
 
-  if (!process.env.RESEND_FROM_EMAIL?.trim()) {
-    throw new Error(
-      'RESEND_FROM_EMAIL es obligatoria en producción (requiere dominio verificado en Resend, ej: no-reply@tudominio.com)',
+  if (emailTransport === 'smtp') {
+    const missingSmtp = ['EMAIL_HOST', 'EMAIL_USER', 'EMAIL_PASS'].filter(
+      key => !process.env[key]?.trim(),
     )
+
+    if (missingSmtp.length > 0) {
+      throw new Error(
+        `EMAIL_TRANSPORT=smtp requiere ${missingSmtp.join(', ')} en producción`,
+      )
+    }
+  } else {
+    if (!process.env.RESEND_API_KEY?.trim()) {
+      throw new Error(
+        'RESEND_API_KEY es obligatoria en producción para enviar emails transaccionales',
+      )
+    }
+
+    if (!process.env.RESEND_FROM_EMAIL?.trim()) {
+      throw new Error(
+        'RESEND_FROM_EMAIL es obligatoria en producción (requiere dominio verificado en Resend, ej: no-reply@tudominio.com)',
+      )
+    }
   }
 
   if (process.env.PRODUCT_ANALYSIS_AGENT_KEY) {
