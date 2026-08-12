@@ -110,7 +110,26 @@ describe("aiPlanPolicy · suscripción", () => {
     expect(state.entitled).toBe(true);
   });
 
+  test("por defecto el corte está APAGADO", () => {
+    // userCtrl da de alta con trialEndsAt a 14 días y nada en el backend pasa
+    // nunca subscriptionStatus a 'active': no hay facturación todavía. Con el
+    // corte encendido por defecto, todo comercio nuevo perdía la IA a los 14
+    // días sin forma de recuperarla. Se enciende cuando exista cobranza.
+    restoreEnv("AI_ENFORCE_SUBSCRIPTION", undefined);
+
+    const vencido = getSubscriptionState({
+      subscriptionStatus: "trialing",
+      trialEndsAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    });
+    const cancelado = getSubscriptionState({ subscriptionStatus: "cancelled" });
+
+    expect(vencido.entitled).toBe(true);
+    expect(cancelado.entitled).toBe(true);
+  });
+
   test("un trial vencido pierde el derecho a la IA", () => {
+    setEnv("AI_ENFORCE_SUBSCRIPTION", "true");
+
     const state = getSubscriptionState({
       subscriptionStatus: "trialing",
       trialEndsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
@@ -121,12 +140,15 @@ describe("aiPlanPolicy · suscripción", () => {
   });
 
   test("una suscripción cancelada corta la IA", () => {
+    setEnv("AI_ENFORCE_SUBSCRIPTION", "true");
+
     const state = getSubscriptionState({ subscriptionStatus: "cancelled" });
 
     expect(state.entitled).toBe(false);
   });
 
   test("en mora se respeta el período de gracia y después corta", () => {
+    setEnv("AI_ENFORCE_SUBSCRIPTION", "true");
     setEnv("AI_SUBSCRIPTION_GRACE_DAYS", "7");
 
     const dentro = getSubscriptionState({
@@ -153,6 +175,7 @@ describe("aiPlanPolicy · suscripción", () => {
   test("sin AI_SUBSCRIPTION_GRACE_DAYS la gracia por defecto NO es cero", () => {
     // Number('') es 0, así que leer la variable sin definir daba 0 días de
     // gracia: una mora de un minuto cortaba la IA al instante.
+    setEnv("AI_ENFORCE_SUBSCRIPTION", "true");
     restoreEnv("AI_SUBSCRIPTION_GRACE_DAYS", undefined);
 
     const state = getSubscriptionState({
@@ -252,6 +275,7 @@ describe("aiBudgetService · reserva", () => {
     cacheStore.clear();
     delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
     delete process.env.AI_PLATFORM_PER_TENANT_SHARE;
+    delete process.env.AI_ENFORCE_SUBSCRIPTION;
   });
 
   test("cobra el consumo y devuelve cuánto queda", async () => {
@@ -273,6 +297,8 @@ describe("aiBudgetService · reserva", () => {
   });
 
   test("no gasta nada si la suscripción no está al día", async () => {
+    process.env.AI_ENFORCE_SUBSCRIPTION = "true";
+
     mockProfile.mockResolvedValue(
       platformProfile({ subscriptionStatus: "cancelled" }),
     );
