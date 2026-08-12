@@ -2,6 +2,7 @@
 // VERSIÓN PRODUCCIÓN - SMTP / ORDEN CLIENTE / ORDEN ADMIN / MULTI-TENANT / SIN HARDCODE
 
 import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 
@@ -179,6 +180,19 @@ let sandboxSenderWarned = false
 
 const getFromAddress = tenantConfig => {
   const storeName = getStoreName(tenantConfig)
+
+  // Por SMTP el remitente tiene que ser la casilla autenticada: Gmail (y casi
+  // cualquier servidor serio) rechaza o reescribe un "from" que no coincide
+  // con la cuenta que abrió la sesión.
+  if (getEmailTransportName() === SMTP_TRANSPORT) {
+    const smtpFrom =
+      validateEmail(process.env.EMAIL_FROM) ||
+      validateEmail(process.env.EMAIL_USER)
+
+    if (smtpFrom) {
+      return `${escapeHtml(storeName)} <${smtpFrom}>`
+    }
+  }
 
   // Resend exige un dominio propio verificado para el remitente — no se
   // puede mandar "como" una casilla de Gmail que no controla su DNS. Sin
@@ -475,14 +489,93 @@ const buildPlainTextSummary = ({
 }
 
 // =====================================================
-// RESEND CLIENT
+// TRANSPORTES
 // =====================================================
-// SMTP directo (nodemailer + Gmail) quedó descartado: Render no puede
-// alcanzar smtp.gmail.com:465 ni por IPv4 ni por IPv6 (ENETUNREACH /
-// ETIMEDOUT — mismo tipo de bloqueo de red saliente que vimos con
-// Redis/Upstash). Resend usa HTTPS (443), que no sufre ese bloqueo.
+//
+// Hay dos, y la elección NO es de gusto:
+//
+//   resend  HTTPS (443). Es el único que funciona en Render, que bloquea los
+//           puertos SMTP salientes — smtp.gmail.com:465 da ENETUNREACH /
+//           ETIMEDOUT tanto por IPv4 como por IPv6, el mismo tipo de bloqueo
+//           que apareció con Redis/Upstash. A cambio exige un dominio
+//           verificado por DNS para poder mandar desde una dirección propia.
+//   smtp    nodemailer contra un servidor real (Gmail, el hosting, etc).
+//           Anda perfecto desde una máquina de desarrollo y no necesita DNS,
+//           pero muere en Render por el bloqueo de arriba.
+//
+// De ahí el selector:
+//
+//   EMAIL_TRANSPORT=smtp     usa nodemailer
+//   EMAIL_TRANSPORT=resend   usa Resend
+//   sin definir              Resend
+//
+// SMTP es opt-in explícito y no se elige solo aunque haya credenciales
+// cargadas. Las que están en .env hoy Gmail las rechaza (535 BadCredentials:
+// una contraseña de aplicación caducada o revocada), así que autoelegir SMTP
+// rompería el envío local de quien no pidió cambiar nada.
+
+const SMTP_TRANSPORT = 'smtp'
+const RESEND_TRANSPORT = 'resend'
+
+const hasSmtpCredentials = () => {
+  return Boolean(
+    sanitizeString(process.env.EMAIL_HOST) &&
+      sanitizeString(process.env.EMAIL_USER) &&
+      sanitizeString(process.env.EMAIL_PASS),
+  )
+}
+
+export const getEmailTransportName = () => {
+  const forced = sanitizeString(process.env.EMAIL_TRANSPORT).toLowerCase()
+
+  return forced === SMTP_TRANSPORT ? SMTP_TRANSPORT : RESEND_TRANSPORT
+}
 
 let resendClientInstance = null
+let smtpTransporterInstance = null
+let transportAnnounced = false
+
+const announceTransportOnce = transport => {
+  if (transportAnnounced) return
+  transportAnnounced = true
+
+  if (transport === SMTP_TRANSPORT && process.env.NODE_ENV === 'production') {
+    logger.warn(
+      '[EMAIL] Transporte SMTP forzado en producción. Si esto corre en Render, los envíos van a fallar con ENETUNREACH/ETIMEDOUT: bloquea los puertos SMTP salientes. Usá EMAIL_TRANSPORT=resend.',
+    )
+    return
+  }
+
+  logger.info(`[EMAIL] Transporte activo: ${transport}`)
+}
+
+const getSmtpTransporter = () => {
+  if (smtpTransporterInstance) return smtpTransporterInstance
+
+  if (!hasSmtpCredentials()) {
+    const error = new Error(
+      'SMTP incompleto: faltan EMAIL_HOST, EMAIL_USER o EMAIL_PASS',
+    )
+    error.code = 'SMTP_NOT_CONFIGURED'
+    throw error
+  }
+
+  const port = Number(process.env.EMAIL_PORT || 465)
+
+  smtpTransporterInstance = nodemailer.createTransport({
+    host: sanitizeString(process.env.EMAIL_HOST),
+    port,
+    // 465 es SMTPS (TLS desde el saludo). 587 arranca en claro y sube a TLS
+    // con STARTTLS, que nodemailer maneja solo con secure:false.
+    secure: port === 465,
+    auth: {
+      user: sanitizeString(process.env.EMAIL_USER),
+      pass: process.env.EMAIL_PASS,
+    },
+  })
+
+  return smtpTransporterInstance
+}
 
 const getResendClient = () => {
   const apiKey = sanitizeString(process.env.RESEND_API_KEY)
@@ -504,6 +597,7 @@ const getResendClient = () => {
 // tras un error para forzar reconstrucción del cliente en el próximo envío.
 export const resetEmailTransporter = () => {
   resendClientInstance = null
+  smtpTransporterInstance = null
 }
 
 // =====================================================
@@ -521,6 +615,39 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         to: mailOptions.to,
         subject: mailOptions.subject,
       })
+
+      const transport = getEmailTransportName()
+      announceTransportOnce(transport)
+
+      if (transport === SMTP_TRANSPORT) {
+        const info = await getSmtpTransporter().sendMail({
+          from: mailOptions.from,
+          to: mailOptions.to,
+          subject: mailOptions.subject,
+          html: mailOptions.html || undefined,
+          text: mailOptions.text || undefined,
+          replyTo: mailOptions.replyTo || undefined,
+          attachments: mailOptions.attachments?.length
+            ? mailOptions.attachments
+            : undefined,
+        })
+
+        logger.info('✅ Email enviado correctamente', {
+          messageId: info?.messageId,
+          transport: SMTP_TRANSPORT,
+        })
+
+        return {
+          success: true,
+          messageId: info?.messageId || null,
+          // A diferencia de Resend, SMTP informa qué destinatarios aceptó y
+          // cuáles rechazó el servidor. Se pasan tal cual.
+          accepted: info?.accepted?.length ? info.accepted : [mailOptions.to],
+          rejected: info?.rejected || [],
+          response: info?.response || 'smtp-accepted',
+          attempt,
+        }
+      }
 
       const client = getResendClient()
       const { data, error } = await client.emails.send({
@@ -543,6 +670,7 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
 
       logger.info('✅ Email enviado correctamente', {
         messageId: data?.id,
+        transport: RESEND_TRANSPORT,
       })
 
       return {
