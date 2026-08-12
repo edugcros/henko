@@ -49,11 +49,20 @@ export const AI_METRIC_LABELS = Object.freeze({
 /**
  * Topes mensuales por plan.
  *
- * Calibrados sobre el costo real observado de gemini-2.5-flash: un mensaje
- * del agente con contexto de catálogo ronda los 4-8k tokens de entrada y
- * ~300 de salida, o sea del orden de USD 0,003. Los números de free están
- * puestos para que un tenant gratuito cueste centavos, no dólares, y para
- * que igual alcance a probar el producto de verdad.
+ * MEDICIÓN REAL (agosto 2026, gemini-2.5-flash-lite, catálogo vacío, un
+ * saludo de una línea): **2.617 tokens** para un solo mensaje. Ese es el piso
+ * absoluto — un mensaje con catálogo, promociones y memoria de conversación
+ * en el prompt cuesta bastante más.
+ *
+ * De ahí sale la relación entre los dos topes del agente. La primera versión
+ * de estos defaults daba 300 mensajes y 150k tokens a un tenant free, o sea
+ * ~500 tokens por mensaje: el tope de tokens se agotaba a los ~57 mensajes y
+ * el panel seguía prometiendo 300. Un medidor que promete cinco veces lo que
+ * entrega es el mismo problema que este refactor vino a arreglar.
+ *
+ * Regla: los tokens se dimensionan como mensajes x ~5.000, con el tope de
+ * mensajes como la promesa visible y el de tokens como freno de las
+ * conversaciones anormalmente caras, no como el límite de todos los días.
  *
  * Cualquiera se puede sobrescribir por entorno sin tocar código:
  *   AI_LIMIT_FREE_AGENT_MESSAGES=500
@@ -62,19 +71,19 @@ const DEFAULT_PLAN_LIMITS = Object.freeze({
   free: {
     [AI_METRICS.VISION]: 50,
     [AI_METRICS.AGENT_MESSAGES]: 300,
-    [AI_METRICS.AGENT_TOKENS]: 150_000,
+    [AI_METRICS.AGENT_TOKENS]: 1_500_000,
     [AI_METRICS.IMAGE_EDITS]: 10,
   },
   starter: {
     [AI_METRICS.VISION]: 300,
     [AI_METRICS.AGENT_MESSAGES]: 2_000,
-    [AI_METRICS.AGENT_TOKENS]: 1_200_000,
+    [AI_METRICS.AGENT_TOKENS]: 10_000_000,
     [AI_METRICS.IMAGE_EDITS]: 100,
   },
   pro: {
     [AI_METRICS.VISION]: 1_500,
     [AI_METRICS.AGENT_MESSAGES]: 10_000,
-    [AI_METRICS.AGENT_TOKENS]: 8_000_000,
+    [AI_METRICS.AGENT_TOKENS]: 50_000_000,
     [AI_METRICS.IMAGE_EDITS]: 500,
   },
   enterprise: {

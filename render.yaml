@@ -24,7 +24,9 @@ services:
       # plataforma contra GEMINI_API_KEY. Sin esto el techo real es la suma de
       # las cuotas de todos los tenants, así que un solo plan mal cargado lo
       # elimina. ~20M tokens son unos USD 18/mes con la tarifa por defecto.
-      # Ver backend/docs/AI_COST_CONTAINMENT.md.
+      # REVISAR: con free = 1,5M tokens esto cubre ~13 comercios gratuitos
+      # activos. Ajustar contra el consumo real de AiPlatformUsage después del
+      # primer mes. Ver backend/docs/AI_COST_CONTAINMENT.md.
       - key: AI_PLATFORM_MONTHLY_TOKEN_BUDGET
         value: "20000000"
       # Ningún comercio sobre la key compartida puede pasarse de esta fracción
