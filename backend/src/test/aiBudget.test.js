@@ -47,6 +47,20 @@ describe("aiPlanPolicy · topes por plan", () => {
     expect(enterprise).toBe(UNLIMITED);
   });
 
+  test("el tope de tokens alcanza para los mensajes que promete el plan", () => {
+    // Medido: 2.617 tokens para el mensaje más barato posible (catálogo
+    // vacío, un saludo). Si el tope de tokens no cubre mensajes x ese piso,
+    // el panel promete una cantidad de mensajes que el medidor no entrega.
+    const PISO_TOKENS_POR_MENSAJE = 2617;
+
+    for (const plan of ["free", "starter", "pro"]) {
+      const mensajes = getPlanLimit(plan, AI_METRICS.AGENT_MESSAGES);
+      const tokens = getPlanLimit(plan, AI_METRICS.AGENT_TOKENS);
+
+      expect(tokens).toBeGreaterThanOrEqual(mensajes * PISO_TOKENS_POR_MENSAJE);
+    }
+  });
+
   test("los topes crecen de forma monótona con el plan", () => {
     for (const metric of Object.values(AI_METRICS)) {
       const free = getPlanLimit("free", metric);

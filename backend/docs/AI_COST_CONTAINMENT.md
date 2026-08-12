@@ -99,8 +99,21 @@ el tope del plan es ilimitado. Los topes finitos son deliberados y no se tocan.
 cuotas de los tenants activos, no por debajo. Un disyuntor por debajo de esa
 suma deja de ser un backstop de anomalías y se convierte en un embudo
 compartido, donde el consumo normal de unos pocos deja sin servicio al resto.
-Con 20M y el plan free en 150k tokens, hacen falta más de 130 comercios
-gratuitos activos para acercarse al techo.
+
+Con los topes actuales (free = 1,5M tokens), **20M cubre unos 13 comercios
+gratuitos activos**. Es un número a revisar contra la cantidad real de
+tenants: es la única cifra de todo este sistema que se traduce directo en
+plata, y conviene fijarla mirando el consumo registrado en `AiPlatformUsage`
+después del primer mes, no la estimación inicial.
+
+### Medición de referencia
+
+Agosto 2026, `gemini-2.5-flash-lite`, catálogo vacío, un saludo de una línea:
+**2.617 tokens** por mensaje, USD 0,0024. Ese es el piso absoluto — un mensaje
+con catálogo, promociones y memoria de conversación en el prompt cuesta
+bastante más. Los topes de tokens se dimensionan como
+`mensajes x ~5.000` para que el tope visible (mensajes) sea el que manda y el
+de tokens quede como freno de conversaciones anormalmente caras.
 
 ## Variables de entorno
 
