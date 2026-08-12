@@ -178,6 +178,28 @@ const getBuyerEmail = ({
 // cada mail enviado repetiría la misma línea y dejaría de leerse.
 let sandboxSenderWarned = false
 
+/**
+ * Desde qué dirección sale este correo. Única definición de la regla.
+ *
+ * Orden: dominio propio del comercio si está VERIFICADO, después el de la
+ * plataforma, y como último recurso el sandbox del proveedor.
+ *
+ * El estado 'verified' no es un detalle administrativo: un dominio que aún no
+ * publica SPF/DKIM no autoriza a nadie a enviar en su nombre, así que usarlo
+ * como remitente no es "casi funcionar" — es garantizar el rebote o la
+ * carpeta de spam. Por eso pending y failed salen por la plataforma.
+ */
+export const resolveSenderAddress = (tenantConfig = {}) => {
+  const tenantSender =
+    tenantConfig?.email?.status === 'verified'
+      ? validateEmail(tenantConfig?.email?.fromAddress)
+      : null
+
+  if (tenantSender) return tenantSender
+
+  return validateEmail(process.env.RESEND_FROM_EMAIL) || 'onboarding@resend.dev'
+}
+
 const getFromAddress = tenantConfig => {
   const storeName = getStoreName(tenantConfig)
 
@@ -194,19 +216,14 @@ const getFromAddress = tenantConfig => {
     }
   }
 
-  // Resend exige un dominio propio verificado para el remitente — no se
-  // puede mandar "como" una casilla de Gmail que no controla su DNS. Sin
-  // RESEND_FROM_EMAIL (dominio verificado) usamos su dirección sandbox,
-  // que solo sirve para pruebas hasta que se verifique un dominio real.
-  const verifiedFrom = validateEmail(process.env.RESEND_FROM_EMAIL)
-  const fromEmail = verifiedFrom || 'onboarding@resend.dev'
+  const fromEmail = resolveSenderAddress(tenantConfig)
 
   // Sin este aviso la falla es invisible y desconcertante: la API de Resend
   // acepta el envío y devuelve un id, los logs dicen "enviado", y el mail no
   // le llega a nadie salvo al dueño de la cuenta de Resend — que es la única
   // casilla a la que el remitente sandbox puede entregar. Alguien pasa una
   // tarde entera revisando el código de registro por una variable vacía.
-  if (!verifiedFrom && !sandboxSenderWarned) {
+  if (fromEmail === 'onboarding@resend.dev' && !sandboxSenderWarned) {
     sandboxSenderWarned = true
 
     logger.warn(

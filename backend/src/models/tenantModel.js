@@ -196,6 +196,70 @@ const tenantSchema = new Schema(
       default: null,
     },
 
+    // Identidad de correo propia del comercio.
+    //
+    // Sin esto, todos los comercios mandan desde la dirección de la
+    // plataforma y solo se distinguen por el nombre visible: el comprador ve
+    // "Tienda X <no-reply@plataforma.com>", que es exactamente el patrón que
+    // los filtros antispam castigan y que a un comercio con marca propia le
+    // resulta inaceptable.
+    //
+    // Un dominio solo puede usarse como remitente cuando está verificado por
+    // DNS (SPF/DKIM). Mientras tanto el estado queda en 'pending' y los
+    // correos siguen saliendo por la plataforma — nunca se intenta enviar
+    // desde un dominio sin verificar, porque eso rebota o cae en spam.
+    email: {
+      fromAddress: {
+        type: String,
+        default: '',
+        lowercase: true,
+        trim: true,
+      },
+
+      // Solo el dominio, derivado de fromAddress. Se guarda aparte porque es
+      // la unidad que se verifica y la que se consulta contra el proveedor.
+      domain: {
+        type: String,
+        default: '',
+        lowercase: true,
+        trim: true,
+      },
+
+      // Id del dominio en el proveedor, cuando se lo creó por API.
+      providerDomainId: {
+        type: String,
+        default: '',
+        trim: true,
+      },
+
+      status: {
+        type: String,
+        enum: ['none', 'pending', 'verified', 'failed'],
+        default: 'none',
+        index: true,
+      },
+
+      // Registros DNS que el comercio tiene que cargar. Los devuelve el
+      // proveedor al dar de alta el dominio.
+      dnsRecords: {
+        type: [
+          {
+            _id: false,
+            record: { type: String, default: '' },
+            name: { type: String, default: '' },
+            type: { type: String, default: '' },
+            value: { type: String, default: '' },
+            priority: { type: Number, default: null },
+          },
+        ],
+        default: [],
+      },
+
+      verifiedAt: { type: Date, default: null },
+      lastCheckedAt: { type: Date, default: null },
+      lastError: { type: String, default: '' },
+    },
+
     // Credenciales propias de IA (BYOK). Cuando están activas, el consumo del
     // comercio sale de su proyecto de Google y no de la key de la plataforma:
     // deja de competir por la misma cuota que el resto y paga lo suyo.

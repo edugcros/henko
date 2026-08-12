@@ -37,6 +37,7 @@ import {
   fetchTenantSettings,
   saveTenantSettings,
 } from '../features/tenant/tenantSlice'
+import SendingDomainSection from '../components/emailDomain/SendingDomainSection'
 
 const clean = value => String(value ?? '').trim()
 
@@ -270,15 +271,11 @@ const StoreSettingsPage = () => {
             </Grid>
 
             <Grid item xs={12}>
-              <Alert
-                severity="info"
-                variant="outlined"
-                sx={{ borderRadius: 2 }}
-              >
-                Los correos salen desde la dirección de la plataforma con el
-                nombre de tu comercio. Enviarlos desde tu propio dominio
-                requiere verificarlo por DNS y todavía no está disponible.
-              </Alert>
+              <Divider sx={{ mb: 2 }} />
+              <Typography variant="subtitle2" fontWeight={700} mb={1}>
+                Enviar desde tu propio dominio
+              </Typography>
+              <SendingDomainSection />
             </Grid>
 
             <Grid item xs={12} sm={6}>
