@@ -174,10 +174,16 @@ export const TenantProvider = ({ children }) => {
         // aparte) para que los tres caminos de arranque lo tengan sin
         // duplicar lógica: red, cache previa y cache de fallback guardan y
         // leen este mismo objeto.
+        //
+        // Se guarda tal cual lo dijo el backend, incluido `undefined` cuando
+        // no dijo nada. Distinguir "apagado" de "no sé" es lo que evita que
+        // una ventana de deploy apague el asistente en todas las tiendas: la
+        // política de qué hacer ante "no sé" se decide en un solo lugar, al
+        // leer el valor más abajo.
         const fullConfig = {
           ...themeRes.data,
           tenantId,
-          aiAssistantEnabled: Boolean(tenantRes.data?.aiAssistant?.enabled),
+          aiAssistantEnabled: tenantRes.data?.aiAssistant?.enabled,
           tenantName:
             tenantName || themeRes.data?.general?.storeName || 'Mi Tienda',
           _meta: {
@@ -362,11 +368,22 @@ export const TenantProvider = ({ children }) => {
       isLoading: localState.isLoading || reduxLoading,
       error: localState.error,
       tenantId: localState.tenantId,
-      // Si el comercio no activó el asistente, la tienda no descarga ni
-      // muestra el widget de chat. Ante la duda arranca en false: mostrar de
-      // más una burbuja que contesta "te va a atender un asesor" es peor
-      // experiencia que no mostrarla.
-      aiAssistantEnabled: Boolean(localState.themeConfig?.aiAssistantEnabled),
+      // Única decisión sobre si la tienda descarga y muestra el asistente.
+      // Tres estados, no dos:
+      //
+      //   config sin cargar  → false, para no hacer parpadear la burbuja en
+      //                        cada carga antes de saber si corresponde.
+      //   campo ausente      → true. Es un backend que todavía no conoce el
+      //                        campo (o un cache escrito por una versión
+      //                        anterior). Vercel publica en cada push y Render
+      //                        recién al mergear, así que esa ventana existe
+      //                        siempre; fallar cerrado ahí apagaba el
+      //                        asistente en TODAS las tiendas hasta que los
+      //                        dos deploys se emparejaran.
+      //   campo en false     → false. Acá el backend sí sabe y dijo que no.
+      aiAssistantEnabled:
+        Boolean(localState.themeConfig) &&
+        localState.themeConfig.aiAssistantEnabled !== false,
       isReady:
         localState.initialized &&
         !!localState.themeConfig &&
