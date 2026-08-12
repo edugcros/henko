@@ -12,6 +12,7 @@ import {
   sendWhatsappTemplateMessage,
   sendWhatsappTextMessage,
 } from './whatsappService.js'
+import { sendCartRecoveryEmail } from '../email/cartRecoveryEmail.service.js'
 
 const clean = value => String(value || '').trim()
 const PROCESSING_LEASE_MS = Math.min(
@@ -262,6 +263,36 @@ const failRecovery = (params, error) => {
   })
 }
 
+/**
+ * Por qué canal sale esta recuperación.
+ *
+ * WhatsApp primero cuando hay teléfono y el comercio lo tiene configurado —
+ * es el canal con mejor tasa de apertura y el que ya venía funcionando. El
+ * correo entra donde antes no salía nada: comprador sin teléfono, o comercio
+ * que nunca conectó WhatsApp. El registro puede además pedir un canal
+ * explícito, y se respeta si hay con qué cumplirlo.
+ */
+export const resolveRecoveryChannel = ({ recovery, agent } = {}) => {
+  const phone = clean(recovery?.customer?.phone)
+  const email = clean(recovery?.customer?.email)
+
+  const whatsappReady = Boolean(
+    agent?.channels?.whatsapp?.enabled &&
+      clean(agent?.channels?.whatsapp?.phoneNumberId) &&
+      clean(agent?.channels?.whatsapp?.accessToken),
+  )
+
+  const preferred = clean(recovery?.channel).toLowerCase()
+
+  if (preferred === 'email' && email) return 'email'
+  if (preferred === 'whatsapp' && phone && whatsappReady) return 'whatsapp'
+
+  if (phone && whatsappReady) return 'whatsapp'
+  if (email) return 'email'
+
+  return null
+}
+
 export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
   const cleanLimit = Math.min(Math.max(Number(limit || 25), 1), 100)
   const results = []
@@ -285,38 +316,60 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
         continue
       }
 
-      const [tenant, agent, rule] = await Promise.all([
+      // El agente ya no se filtra por WhatsApp habilitado: antes, un comercio
+      // sin WhatsApp cancelaba todas sus recuperaciones aunque tuviera el
+      // correo del comprador.
+      const [tenant, agent] = await Promise.all([
         Tenant.findById(tenantId).setOptions({ ignoreTenant: true }).lean(),
-        AiAgent.findOne({
-          tenantId,
-          enabled: true,
-          'channels.whatsapp.enabled': true,
-        })
+        AiAgent.findOne({ tenantId, enabled: true })
           .select('+channels.whatsapp.accessToken')
           .setOptions({ tenantId }),
-        recovery?.metadata?.ruleId
-          ? AiCampaignRule.findOne({
-            _id: recovery.metadata.ruleId,
-            tenantId,
-            enabled: true,
-          }).setOptions({ tenantId })
-          : AiCampaignRule.findOne({
-            tenantId,
-            type: 'abandoned_cart',
-            enabled: true,
-            channel: 'whatsapp',
-          }).setOptions({ tenantId }),
       ])
 
-      if (!tenant || !agent || !rule) {
+      if (!tenant || !agent) {
         await cancelRecovery(lockParams, 'tenant_agent_or_rule_disabled')
         results.push({ recoveryId: recovery._id, status: 'cancelled' })
         continue
       }
 
-      const destination = clean(recovery?.customer?.phone)
+      const channel = resolveRecoveryChannel({ recovery, agent })
+
+      if (!channel) {
+        await cancelRecovery(lockParams, 'missing_customer_contact')
+        results.push({
+          recoveryId: recovery._id,
+          status: 'cancelled',
+          reason: 'missing_customer_contact',
+        })
+        continue
+      }
+
+      const rule = recovery?.metadata?.ruleId
+        ? await AiCampaignRule.findOne({
+          _id: recovery.metadata.ruleId,
+          tenantId,
+          enabled: true,
+        }).setOptions({ tenantId })
+        : await AiCampaignRule.findOne({
+          tenantId,
+          type: 'abandoned_cart',
+          enabled: true,
+          channel,
+        }).setOptions({ tenantId })
+
+      if (!rule) {
+        await cancelRecovery(lockParams, 'tenant_agent_or_rule_disabled')
+        results.push({ recoveryId: recovery._id, status: 'cancelled' })
+        continue
+      }
+
+      const destination =
+        channel === 'email'
+          ? clean(recovery?.customer?.email)
+          : clean(recovery?.customer?.phone)
+
       if (!destination) {
-        await cancelRecovery(lockParams, 'missing_customer_phone')
+        await cancelRecovery(lockParams, 'missing_customer_contact')
         results.push({ recoveryId: recovery._id, status: 'cancelled' })
         continue
       }
@@ -347,7 +400,7 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
 
       const policy = await canContactCustomer({
         tenantId,
-        channel: 'whatsapp',
+        channel,
         destination,
         minHoursBetweenContacts: Number(
           rule?.trigger?.minHoursBetweenContacts || 6,
@@ -367,7 +420,8 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
 
       const phoneNumberId = clean(agent?.channels?.whatsapp?.phoneNumberId)
       const accessToken = clean(agent?.channels?.whatsapp?.accessToken)
-      if (!phoneNumberId || !accessToken) {
+
+      if (channel === 'whatsapp' && (!phoneNumberId || !accessToken)) {
         await failRecovery(lockParams, 'missing_whatsapp_credentials')
         results.push({
           recoveryId: recovery._id,
@@ -388,11 +442,22 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
         })
         continue
       }
-      const withinCustomerWindow = isWithinWhatsappCustomerWindow(
-        policy.preference,
-      )
+      // La ventana de 24h es una regla de WhatsApp: fuera de ella Meta solo
+      // acepta plantillas aprobadas. Al correo no lo condiciona nada de eso.
+      const withinCustomerWindow =
+        channel === 'whatsapp' &&
+        isWithinWhatsappCustomerWindow(policy.preference)
 
-      if (withinCustomerWindow) {
+      if (channel === 'email') {
+        await sendCartRecoveryEmail({
+          to: destination,
+          // El tenant crudo ya trae name y settings.store.contactEmail, que es
+          // de donde el servicio de correo saca el remitente y el reply-to.
+          tenantConfig: tenant,
+          values,
+          body: replaceTemplateVars(rule.messageTemplate, values),
+        })
+      } else if (withinCustomerWindow) {
         await sendWhatsappTextMessage({
           phoneNumberId,
           accessToken,
@@ -449,7 +514,7 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
         ).setOptions({ tenantId }),
         registerCustomerContact({
           tenantId,
-          channel: 'whatsapp',
+          channel,
           destination,
         }),
       ])
