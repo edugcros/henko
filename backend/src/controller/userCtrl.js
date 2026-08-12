@@ -19,7 +19,11 @@ import { generateRefreshToken } from '../../config/generateRefreshToken.js'
 import { buildFrontendUrl } from '../utils/frontendUrl.js'
 import { withOptionalTransaction } from '../utils/withOptionalTransaction.js'
 import { normalizeArgentinePhone } from '../utils/normalizePhone.js'
-import { sendResetPasswordEmail, sendVerificationEmail } from '../services/email/verificationEmail.service.js'
+import {
+  sendPasswordChangedEmail,
+  sendResetPasswordEmail,
+  sendVerificationEmail,
+} from '../services/email/verificationEmail.service.js'
 import { sendResponse } from '../utils/response.js'
 import { getCookieDomain } from '../utils/cookieHelper.js'
 import { buildPlatformTenantDomains, isReservedSlug } from '../utils/domainUtils.js'
@@ -49,6 +53,22 @@ const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 const DEFAULT_REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 const shouldSendTransactionalEmail = () => env.nodeEnv !== 'test'
+
+/**
+ * Avisa que la contraseña cambió, sin bloquear ni romper la operación.
+ *
+ * El cambio de contraseña ya se guardó y no se revierte: este correo es
+ * cortesía y señal de seguridad, no parte de la transacción.
+ */
+const notifyPasswordChanged = (user, tenant = null) => {
+  if (!shouldSendTransactionalEmail()) return
+
+  sendPasswordChangedEmail(user, tenant).catch(error => {
+    logger.error(
+      `No se pudo avisar el cambio de contraseña a ${user?.email}: ${error.message}`,
+    )
+  })
+}
 
 const SAFE_USER_SELECT =
   '-password -refreshToken -passwordResetToken -passwordResetExpires -emailVerificationToken -emailVerificationExpires -__v'
@@ -1047,6 +1067,8 @@ export const updatePassword = expressAsyncHandler(async (req, res) => {
   await user.save()
   clearAuthCookies(res, req)
 
+  notifyPasswordChanged(user, req.tenant || null)
+
   logger.info(`Contraseña actualizada correctamente para usuario ${user.email}`)
   return sendResponse(
     res,
@@ -1054,6 +1076,78 @@ export const updatePassword = expressAsyncHandler(async (req, res) => {
     true,
     'Contraseña actualizada correctamente. Volvé a iniciar sesión.',
   )
+})
+
+export const resendVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Demasiadas solicitudes. Por favor, intenta de nuevo en 15 minutos.',
+  },
+})
+
+/**
+ * Reenvía el correo de verificación.
+ *
+ * Sin esto el registro era una trampa sin salida: el login rechaza a los no
+ * verificados, el token vence a las 24 horas, y volver a registrarse con el
+ * mismo email choca contra un 409. Quien no recibía el correo —o lo abría
+ * tarde— quedaba fuera para siempre, sin más salida que editar la base a
+ * mano.
+ *
+ * La respuesta es siempre la misma, exista la cuenta o no, esté verificada o
+ * no: si variara, cualquiera podría usar este endpoint para averiguar qué
+ * direcciones están registradas en una tienda.
+ */
+export const resendVerificationEmail = expressAsyncHandler(async (req, res) => {
+  const GENERIC_RESPONSE =
+    'Si la cuenta existe y todavía no fue verificada, te enviamos un correo.'
+
+  const email = normalizeEmail(req.body?.email)
+  const tenantId = req.tenantId
+
+  if (!email || !tenantId) {
+    return sendResponse(res, 200, true, GENERIC_RESPONSE)
+  }
+
+  const user = await User.findOne({ email, tenantId })
+
+  if (!user || user.isEmailVerified) {
+    logger.info(
+      `Reenvío de verificación sin efecto para ${email} (inexistente o ya verificada)`,
+    )
+    return sendResponse(res, 200, true, GENERIC_RESPONSE)
+  }
+
+  const rawToken = user.createEmailVerificationToken()
+  await user.save({ validateBeforeSave: false })
+
+  try {
+    // El dueño de un comercio verifica en el panel y el comprador en la
+    // tienda: mandarlo a la aplicación equivocada es el mismo problema que ya
+    // arrastraba el alta.
+    await sendVerificationEmail(user, req.tenant || null, rawToken, {
+      target: user.role === 'admin' ? 'admin' : 'storefront',
+    })
+
+    logger.info(`Correo de verificación reenviado a ${email}`)
+  } catch (error) {
+    // El token nuevo ya invalidó al anterior. Si además dejáramos pasar el
+    // error, el usuario se quedaría sin el viejo y sin el nuevo.
+    logger.error(`Error reenviando verificación a ${email}: ${error.message}`)
+
+    return sendResponse(
+      res,
+      500,
+      false,
+      'No pudimos enviar el correo en este momento. Intentá de nuevo en unos minutos.',
+    )
+  }
+
+  return sendResponse(res, 200, true, GENERIC_RESPONSE)
 })
 
 export const forgotPasswordLimiter = rateLimit({
@@ -1135,6 +1229,12 @@ export const resetPassword = expressAsyncHandler(async (req, res) => {
   user.passwordResetExpires = undefined
   user.refreshToken = null
   await user.save()
+
+  // Sin await ni propagación de error: el cambio ya está hecho y es
+  // irreversible. Este correo es la única señal que recibiría el dueño de la
+  // casilla si el reseteo no fue suyo, pero que no salga no puede convertir
+  // una operación exitosa en un error para quien la pidió.
+  notifyPasswordChanged(user)
 
   logger.info(`Contraseña restablecida para: ${user.email}`)
   return sendResponse(
