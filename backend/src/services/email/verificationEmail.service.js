@@ -150,3 +150,66 @@ export const sendResetPasswordEmail = async (user, resetUrl) => {
     text: `Restablecé tu contraseña aquí: ${resetUrl}`,
   })
 }
+
+// =====================================================
+// Password changed notice
+// =====================================================
+
+/**
+ * Aviso de que la contraseña cambió.
+ *
+ * No lleva ningún enlace de acción a propósito: su único trabajo es que el
+ * dueño de la casilla se entere. Si el cambio no fue suyo, este correo es la
+ * única señal que va a recibir de que alguien más entró a su cuenta, y hasta
+ * ahora no se enviaba nada después de un reseteo exitoso.
+ *
+ * Falla en silencio para el llamador: el cambio de contraseña ya ocurrió y no
+ * tiene sentido revertirlo —ni mostrarle un error al usuario— porque el correo
+ * de cortesía no salió.
+ */
+export const sendPasswordChangedEmail = async (user, tenantOrName = null) => {
+  if (!user?.email) return { success: false, skipped: true }
+
+  const tenant =
+    typeof tenantOrName === 'object' && tenantOrName !== null
+      ? tenantOrName
+      : null
+
+  const tenantName =
+    tenant?.name ||
+    (typeof tenantOrName === 'string' ? tenantOrName : null) ||
+    process.env.STORE_NAME ||
+    'Tu cuenta'
+
+  const safeTenantName = escapeHtml(tenantName)
+  const safeUserName = escapeHtml(user.firstname || user.email)
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; line-height: 1.5;">
+      <h2>Tu contraseña fue modificada</h2>
+
+      <p>Hola ${safeUserName},</p>
+
+      <p>
+        Te confirmamos que la contraseña de tu cuenta en
+        <strong>${safeTenantName}</strong> se cambió recientemente.
+      </p>
+
+      <p style="background: #fff4f4; border-left: 4px solid #d32f2f; padding: 12px 16px;">
+        <strong>Si no fuiste vos</strong>, alguien más tiene acceso a tu cuenta.
+        Restablecé la contraseña de inmediato y avisanos.
+      </p>
+
+      <p style="font-size: 0.8rem; color: #666;">
+        Si fuiste vos, no hace falta que hagas nada.
+      </p>
+    </div>
+  `
+
+  return sendEmail({
+    to: user.email,
+    subject: `Tu contraseña de ${tenantName} fue modificada`,
+    html,
+    text: `La contraseña de tu cuenta en ${tenantName} se cambió recientemente. Si no fuiste vos, restablecela de inmediato.`,
+  })
+}

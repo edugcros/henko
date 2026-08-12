@@ -47,6 +47,10 @@ const initialState = {
   isError: false,
   isSuccess: false,
   message: '',
+  // El backend rechaza el login de una cuenta sin verificar con un 401 y este
+  // flag. Sin conservarlo, la pantalla no puede distinguirlo de una
+  // contraseña equivocada y no sabe cuándo ofrecer reenviar el correo.
+  isNotVerified: false,
   loading: { createAdmin: false, orders: false },
   error: { createAdmin: null, orders: null },
   orders: { data: [], pagination: null, inFlightKey: null },
@@ -140,9 +144,15 @@ export const loginUser = createAsyncThunk(
       })
       return { user, token }
     } catch (err) {
-      return rejectWithValue(
-        err?.response?.data?.message || 'Error de autenticación',
-      )
+      const data = err?.response?.data
+
+      // isNotVerified viaja aparte del mensaje: es la diferencia entre "te
+      // equivocaste de contraseña" y "tu cuenta existe pero falta activarla",
+      // y solo en el segundo caso tiene sentido ofrecer reenviar el correo.
+      return rejectWithValue({
+        message: data?.message || 'Error de autenticación',
+        isNotVerified: Boolean(data?.isNotVerified),
+      })
     }
   },
 )
@@ -337,7 +347,10 @@ const authSlice = createSlice({
       .addCase(loginUser.rejected, (state, action) => {
         state.isLoading = false
         state.isError = true
-        state.message = action.payload
+        // El payload pasó de string a objeto; se sigue guardando un string en
+        // message para no romper a quien ya lo leía.
+        state.message = action.payload?.message || action.payload
+        state.isNotVerified = Boolean(action.payload?.isNotVerified)
       })
 
       // get orders (admin)

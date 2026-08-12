@@ -15,7 +15,7 @@ import {
   Divider,
 } from '@mui/material'
 import { loginUser, clearState, setCsrfToken } from '@features/auth/authSlice'
-import { fetchCsrfToken } from '@utils/axiosConfig'
+import api, { fetchCsrfToken } from '@utils/axiosConfig'
 import { Newprimary } from '../theme/colors'
 import { useState } from 'react'
 
@@ -34,9 +34,38 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Extraemos el estado global de Redux
-  const { user, token, isError, isSuccess, message } = useSelector(
-    state => state.user || {},
-  )
+  const { user, token, isError, isSuccess, message, isNotVerified } =
+    useSelector(state => state.user || {})
+
+  const [resendState, setResendState] = useState({
+    sending: false,
+    message: '',
+    error: false,
+  })
+
+  const handleResendVerification = async () => {
+    setResendState({ sending: true, message: '', error: false })
+
+    try {
+      const { data } = await api.post('/user/resend-verification', {
+        email: formik.values.email,
+      })
+
+      setResendState({
+        sending: false,
+        error: false,
+        message: data?.message || 'Listo, revisá tu correo.',
+      })
+    } catch (error) {
+      setResendState({
+        sending: false,
+        error: true,
+        message:
+          error?.response?.data?.message ||
+          'No pudimos reenviar el correo. Probá de nuevo en unos minutos.',
+      })
+    }
+  }
 
   // 1. Limpieza: Al desmontar el componente, reseteamos errores y estados de carga
   useEffect(() => {
@@ -169,7 +198,7 @@ const Login = () => {
               )}
             </Button>
 
-            {isError && (
+            {isError && !isNotVerified && (
               <Typography
                 color="error"
                 align="center"
@@ -177,6 +206,43 @@ const Login = () => {
               >
                 {message || 'Credenciales inválidas o error de conexión.'}
               </Typography>
+            )}
+
+            {/* Cuenta sin verificar: no es un error de credenciales, es una
+                cuenta a medio activar. Sin esta salida el correo perdido
+                dejaba al comercio afuera para siempre — el alta rechaza el
+                email repetido y el login no lo deja pasar. */}
+            {isError && isNotVerified && (
+              <Box sx={{ mt: 2 }}>
+                <Typography
+                  align="center"
+                  sx={{ fontSize: '0.875rem', mb: 1.5 }}
+                >
+                  {message}
+                </Typography>
+
+                {resendState.message && (
+                  <Typography
+                    align="center"
+                    color={resendState.error ? 'error' : 'success.main'}
+                    sx={{ fontSize: '0.8rem', mb: 1.5 }}
+                  >
+                    {resendState.message}
+                  </Typography>
+                )}
+
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  disabled={resendState.sending || !formik.values.email}
+                  onClick={handleResendVerification}
+                  sx={{ textTransform: 'none' }}
+                >
+                  {resendState.sending
+                    ? 'Enviando...'
+                    : 'Reenviar correo de verificación'}
+                </Button>
+              </Box>
             )}
 
             <Divider sx={{ my: 3 }} />

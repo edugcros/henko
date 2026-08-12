@@ -11,6 +11,8 @@ import {
   logout,
   forgotPassword,
   forgotPasswordLimiter,
+  resendVerificationEmail,
+  resendVerificationLimiter,
   resetPassword,
   updatePassword,
   getAllUsers,
@@ -159,6 +161,16 @@ router.post(
 router.post(
   '/refresh',
   handleRefreshToken,
+)
+
+// Reenvío del correo de verificación, tenant-aware.
+// Sin esta ruta, un correo de alta que no llegaba dejaba la cuenta bloqueada
+// sin salida: el login exige verificación y el alta rechaza el email repetido.
+router.post(
+  '/resend-verification',
+  resendVerificationLimiter,
+  resolveTenantByDomain,
+  resendVerificationEmail,
 )
 
 // Recuperación de contraseña tenant-aware.
