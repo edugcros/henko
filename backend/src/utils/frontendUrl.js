@@ -142,14 +142,20 @@ const getRequestFrontendUrl = req => {
   return ensureUrl(hostname)
 }
 
-const appendDevelopmentPortIfNeeded = value => {
+// La tienda corre en 3002 y el panel en 3001 (ver .claude/launch.json y los
+// scripts dev de cada paquete), así que el puerto depende de a cuál de los dos
+// apunta el link.
+const STOREFRONT_DEV_PORT = '3002'
+const ADMIN_DEV_PORT = '3001'
+
+const appendDevelopmentPortIfNeeded = (value, port = STOREFRONT_DEV_PORT) => {
   if (env.isProduction) return value
 
   try {
     const url = new URL(value)
 
     if (!url.port && url.hostname.endsWith('.local')) {
-      url.port = '3002'
+      url.port = port
     }
 
     return trimTrailingSlash(url.toString())
@@ -158,25 +164,47 @@ const appendDevelopmentPortIfNeeded = value => {
   }
 }
 
+const getTenantAdminUrl = tenant => {
+  if (!tenant) return null
+
+  if (tenant.adminUrl && (!env.isProduction || !isLocalHostname(tenant.adminUrl))) {
+    return trimTrailingSlash(tenant.adminUrl)
+  }
+
+  const domain = getActiveDomain(tenant.adminDomains)
+
+  if (!domain) return null
+
+  return ensureUrl(domain)
+}
+
 // =====================================================
 // Public API
 // =====================================================
 
 export const getFrontendBaseUrl = (req = null, tenant = null) => {
-  /**
-   * En producción/predeploy, el fallback explícito del ENV debe tener prioridad
-   * para evitar enviar emails con dominios locales como henko.local.
-   */
   const envFallback =
     env.clientUrl ||
     env.shopFrontendUrl ||
     env.app?.url ||
     null
 
-  if (env.isProduction && envFallback) {
-    return trimTrailingSlash(envFallback)
-  }
-
+  /**
+   * El dominio del comercio manda, también en producción.
+   *
+   * Antes el fallback del ENV se devolvía primero cuando isProduction, para
+   * evitar mandar links a dominios locales tipo henko.local. El efecto
+   * colateral era peor que el problema: en un producto multi-tenant, TODOS
+   * los comercios mandaban los mails de verificación y de reseteo apuntando
+   * a la tienda por defecto de la plataforma. Un comprador que se registraba
+   * en la tienda de un comercio recibía un link a otro sitio.
+   *
+   * El riesgo original ya está cubierto aguas abajo: getTenantStorefrontUrl
+   * descarta hostnames locales cuando isProduction (ver getActiveDomain y las
+   * ramas de shopUrl/storefrontUrl), así que devuelve null antes que un
+   * .local. El ENV sigue siendo el respaldo cuando el tenant no tiene un
+   * dominio propio utilizable.
+   */
   const tenantUrl = getTenantStorefrontUrl(tenant)
 
   if (tenantUrl) {
@@ -203,6 +231,42 @@ export const getFrontendBaseUrl = (req = null, tenant = null) => {
 
 export const buildFrontendUrl = (path, req = null, tenant = null) => {
   const baseUrl = getFrontendBaseUrl(req, tenant)
+  const cleanPath = String(path || '').replace(/^\/+/, '')
+
+  return `${baseUrl}/${cleanPath}`
+}
+
+/**
+ * Base del PANEL del comercio, con la misma prioridad que la tienda: primero
+ * el dominio propio del tenant, después el del entorno.
+ *
+ * Existe porque el dueño de un comercio no se verifica en la tienda. Su mail
+ * de alta apuntaba al storefront —donde además no tiene cuenta de comprador—
+ * y terminaba en un "ya podés iniciar sesión" sobre la aplicación equivocada.
+ */
+export const getAdminBaseUrl = (req = null, tenant = null) => {
+  const envFallback = env.adminUrl || env.adminFrontendUrl || null
+
+  const tenantUrl = getTenantAdminUrl(tenant)
+
+  if (tenantUrl) {
+    return appendDevelopmentPortIfNeeded(tenantUrl, ADMIN_DEV_PORT)
+  }
+
+  if (envFallback) {
+    return trimTrailingSlash(envFallback)
+  }
+
+  if (!env.isProduction) {
+    const devDomain = env.adminBaseDomain || 'localhost'
+    return `http://${devDomain}:${ADMIN_DEV_PORT}`
+  }
+
+  throw new Error('ADMIN_URL / ADMIN_FRONTEND_URL no configurado')
+}
+
+export const buildAdminUrl = (path, req = null, tenant = null) => {
+  const baseUrl = getAdminBaseUrl(req, tenant)
   const cleanPath = String(path || '').replace(/^\/+/, '')
 
   return `${baseUrl}/${cleanPath}`
