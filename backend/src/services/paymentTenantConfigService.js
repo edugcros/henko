@@ -151,6 +151,11 @@ export const getTenantConfig = async tenantId => {
         sanitizeString(tenant.settings?.checkout?.defaultCurrency) ||
         sanitizeString(process.env.DEFAULT_CURRENCY) ||
         'ARS',
+      // Identidad de envío propia del comercio. Sin propagarla acá, los
+      // correos de pedido —que son los que más le importan a un comercio con
+      // marca— seguirían saliendo por la plataforma aunque su dominio ya
+      // estuviera verificado. emailService decide con esto.
+      email: tenant.email || null,
       supportEmail:
         normalizeEmail(tenant.settings?.store?.contactEmail) ||
         normalizeEmail(tenant.footer?.email) ||

@@ -1,6 +1,12 @@
 import asyncHandler from 'express-async-handler'
 import Tenant from '../models/tenantModel.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
+import {
+  clearTenantSendingDomain,
+  getTenantEmailIdentity,
+  refreshTenantDomainStatus,
+  registerTenantSendingDomain,
+} from '../services/email/tenantEmailDomainService.js'
 
 const clean = value => String(value ?? '').trim()
 
@@ -62,6 +68,77 @@ export const getTenantSettings = asyncHandler(async (req, res) => {
         ownDomainSupported: false,
       },
     },
+  })
+})
+
+/**
+ * GET /api/tenants/me/email-domain
+ */
+export const getEmailDomain = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+
+  return res.status(200).json({
+    success: true,
+    data: await getTenantEmailIdentity(tenantId),
+  })
+})
+
+/**
+ * PUT /api/tenants/me/email-domain
+ *
+ * Declara desde qué dirección quiere enviar el comercio. No cambia el
+ * remitente todavía: hasta que el dominio esté verificado por DNS, los
+ * correos siguen saliendo por la plataforma.
+ */
+export const updateEmailDomain = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const fromAddress = clean(req.body?.fromAddress)
+
+  if (!isValidEmail(fromAddress)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Ingresá una dirección de correo válida.',
+    })
+  }
+
+  const data = await registerTenantSendingDomain({ tenantId, fromAddress })
+
+  return res.status(200).json({
+    success: true,
+    message:
+      'Dominio registrado. Cargá los registros DNS y después verificá el estado.',
+    data,
+  })
+})
+
+/**
+ * POST /api/tenants/me/email-domain/verify
+ */
+export const verifyEmailDomain = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const data = await refreshTenantDomainStatus(tenantId)
+
+  return res.status(200).json({
+    success: true,
+    message:
+      data.usingOwnDomain
+        ? 'Dominio verificado: tus correos ya salen desde tu dirección.'
+        : 'El dominio todavía no está verificado. Los cambios de DNS pueden tardar en propagarse.',
+    data,
+  })
+})
+
+/**
+ * DELETE /api/tenants/me/email-domain
+ */
+export const deleteEmailDomain = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const data = await clearTenantSendingDomain(tenantId)
+
+  return res.status(200).json({
+    success: true,
+    message: 'Volvés a enviar desde la dirección de la plataforma.',
+    data,
   })
 })
 

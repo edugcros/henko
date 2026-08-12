@@ -29,6 +29,11 @@ const { sendCartRecoveryEmail } = await import(
   "../services/email/cartRecoveryEmail.service.js"
 );
 
+const { resolveSenderAddress } = await import("../services/emailService.js");
+const { extractDomain } = await import(
+  "../services/email/tenantEmailDomainService.js"
+);
+
 const { resolveRecoveryChannel } = await import(
   "../services/aiAgent/aiCartRecoveryWorkerService.js"
 );
@@ -247,5 +252,68 @@ describe("elección de canal de recuperación", () => {
         agent: agentSinWhatsapp,
       }),
     ).toBe("email");
+  });
+});
+
+describe("remitente por comercio", () => {
+  const original = process.env.RESEND_FROM_EMAIL;
+
+  beforeEach(() => {
+    process.env.RESEND_FROM_EMAIL = "no-reply@plataforma.com";
+  });
+
+  afterAll(() => {
+    if (original === undefined) delete process.env.RESEND_FROM_EMAIL;
+    else process.env.RESEND_FROM_EMAIL = original;
+  });
+
+  test("dominio verificado: sale desde la dirección del comercio", () => {
+    expect(
+      resolveSenderAddress({
+        email: { status: "verified", fromAddress: "hola@tiendax.com" },
+      }),
+    ).toBe("hola@tiendax.com");
+  });
+
+  test("dominio pendiente: NO sale desde el comercio", () => {
+    // Un dominio sin SPF/DKIM publicados no autoriza a nadie a enviar en su
+    // nombre: usarlo garantiza rebote o spam.
+    expect(
+      resolveSenderAddress({
+        email: { status: "pending", fromAddress: "hola@tiendax.com" },
+      }),
+    ).toBe("no-reply@plataforma.com");
+  });
+
+  test("dominio fallido: tampoco", () => {
+    expect(
+      resolveSenderAddress({
+        email: { status: "failed", fromAddress: "hola@tiendax.com" },
+      }),
+    ).toBe("no-reply@plataforma.com");
+  });
+
+  test("comercio sin dominio propio: usa el de la plataforma", () => {
+    expect(resolveSenderAddress({})).toBe("no-reply@plataforma.com");
+  });
+
+  test("verificado pero con dirección inválida: no se arriesga", () => {
+    expect(
+      resolveSenderAddress({
+        email: { status: "verified", fromAddress: "esto-no-es-un-mail" },
+      }),
+    ).toBe("no-reply@plataforma.com");
+  });
+
+  test("sin nada configurado cae al sandbox del proveedor", () => {
+    delete process.env.RESEND_FROM_EMAIL;
+    expect(resolveSenderAddress({})).toBe("onboarding@resend.dev");
+  });
+
+  test("extractDomain solo acepta direcciones válidas", () => {
+    expect(extractDomain("hola@tiendax.com")).toBe("tiendax.com");
+    expect(extractDomain("HOLA@TiendaX.com")).toBe("tiendax.com");
+    expect(extractDomain("sin-arroba")).toBe("");
+    expect(extractDomain("")).toBe("");
   });
 });
