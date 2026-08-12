@@ -677,7 +677,9 @@ export const createUserAdmin = [
     if (shouldSendTransactionalEmail()) {
       // No await: mismo motivo que en createUser — el registro del tenant
       // ya está confirmado, no debe depender de que el SMTP responda rápido.
-      sendVerificationEmail(result.admin, result.tenant, rawEmailToken)
+      sendVerificationEmail(result.admin, result.tenant, rawEmailToken, {
+        target: 'admin',
+      })
         .then(() => logger.info(`Email de verificación enviado a: ${email}`))
         .catch(emailErr => {
           logger.error(`Fallo envío email verificación: ${emailErr.message}`)

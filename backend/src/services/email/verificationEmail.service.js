@@ -1,6 +1,6 @@
 // 📁 src/services/email/verificationEmail.service.js
 import { sendEmail } from '../../utils/sendEmail.js'
-import { buildFrontendUrl } from '../../utils/frontendUrl.js'
+import { buildAdminUrl, buildFrontendUrl } from '../../utils/frontendUrl.js'
 
 // =====================================================
 // Helpers
@@ -19,7 +19,19 @@ const escapeHtml = value => {
 // Verification email
 // =====================================================
 
-export const sendVerificationEmail = async (user, tenantOrName, rawToken) => {
+/**
+ * @param target 'storefront' para compradores, 'admin' para el dueño del
+ *               comercio. El dueño no tiene cuenta de comprador, así que
+ *               mandarlo a la tienda lo dejaba verificando en la aplicación
+ *               equivocada y con un botón de "iniciar sesión" que no era el
+ *               suyo.
+ */
+export const sendVerificationEmail = async (
+  user,
+  tenantOrName,
+  rawToken,
+  { target = 'storefront' } = {},
+) => {
   if (!user?.email) {
     throw new Error('Usuario inválido para envío de email de verificación')
   }
@@ -42,11 +54,12 @@ export const sendVerificationEmail = async (user, tenantOrName, rawToken) => {
   const safeTenantName = escapeHtml(tenantName)
   const safeUserName = escapeHtml(user.firstname || user.email)
 
-  const verifyUrl = buildFrontendUrl(
-    `/verify-email?token=${encodeURIComponent(rawToken)}`,
-    null,
-    tenant,
-  )
+  const verifyPath = `/verify-email?token=${encodeURIComponent(rawToken)}`
+
+  const verifyUrl =
+    target === 'admin'
+      ? buildAdminUrl(verifyPath, null, tenant)
+      : buildFrontendUrl(verifyPath, null, tenant)
   const safeVerifyUrl = escapeHtml(verifyUrl)
 
   return sendEmail({

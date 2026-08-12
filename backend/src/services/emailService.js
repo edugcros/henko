@@ -173,6 +173,10 @@ const getBuyerEmail = ({
   )
 }
 
+// El aviso del remitente sandbox se emite una sola vez por proceso: si no,
+// cada mail enviado repetiría la misma línea y dejaría de leerse.
+let sandboxSenderWarned = false
+
 const getFromAddress = tenantConfig => {
   const storeName = getStoreName(tenantConfig)
 
@@ -182,6 +186,19 @@ const getFromAddress = tenantConfig => {
   // que solo sirve para pruebas hasta que se verifique un dominio real.
   const verifiedFrom = validateEmail(process.env.RESEND_FROM_EMAIL)
   const fromEmail = verifiedFrom || 'onboarding@resend.dev'
+
+  // Sin este aviso la falla es invisible y desconcertante: la API de Resend
+  // acepta el envío y devuelve un id, los logs dicen "enviado", y el mail no
+  // le llega a nadie salvo al dueño de la cuenta de Resend — que es la única
+  // casilla a la que el remitente sandbox puede entregar. Alguien pasa una
+  // tarde entera revisando el código de registro por una variable vacía.
+  if (!verifiedFrom && !sandboxSenderWarned) {
+    sandboxSenderWarned = true
+
+    logger.warn(
+      '[EMAIL] RESEND_FROM_EMAIL no está configurada: se usa el remitente sandbox de Resend, que SOLO entrega a la casilla dueña de la cuenta. El resto de los destinatarios no va a recibir nada, aunque el envío figure como exitoso.',
+    )
+  }
 
   return `${escapeHtml(storeName)} <${fromEmail}>`
 }

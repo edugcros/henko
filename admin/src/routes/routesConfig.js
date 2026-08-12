@@ -9,6 +9,9 @@ export const publicRoutes = [
   { path: '/forgot-password', Component: pages.Forgotpassword },
   { path: '/signup', Component: pages.AdminRegister },
   { path: '/subscripcion', Component: pages.SubscriptionPage },
+  // Destino del enlace de verificación del alta. Es público porque la cuenta
+  // todavía no está verificada y por lo tanto no hay sesión posible.
+  { path: '/verify-email', Component: pages.VerifyEmailPage },
 ]
 // ✅ Rutas públicas dinámicas (con parámetros como tokens)
 //

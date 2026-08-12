@@ -25,6 +25,7 @@ import PaymentConfigPage from './PaymentConfigPage'
 import OnboardingWizard from './OnboardingWizard'
 import ImageAiEditor from './ImageAiEditor'
 import StoreSettingsPage from './StoreSettingsPage'
+import VerifyEmailPage from './VerifyEmailPage'
 
 const pages = {
   Dashboard,
@@ -43,6 +44,7 @@ const pages = {
   OnboardingWizard,
   ImageAiEditor,
   StoreSettingsPage,
+  VerifyEmailPage,
   AdminOrdersPage,
   AdminRegister,
   AddProduct,
