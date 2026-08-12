@@ -45,6 +45,22 @@ export const getTenantSettings = asyncHandler(async (req, res) => {
       country: tenant.country,
       settings: tenant.settings,
       onboarding: tenant.onboarding,
+
+      // Identidad con la que salen los mails del comercio.
+      //
+      // El remitente es de la plataforma y no del comercio: Resend exige un
+      // dominio verificado por DNS, y el comercio no controla el nuestro.
+      // Lo que sí es suyo es el nombre visible y la dirección de respuesta.
+      // Se devuelve para que el panel lo muestre tal cual va a llegarle al
+      // comprador, en vez de que el comerciante tenga que deducirlo — es la
+      // pregunta número uno cuando alguien mira un mail transaccional.
+      email: {
+        fromName: tenant.name,
+        fromAddress:
+          clean(process.env.RESEND_FROM_EMAIL) || 'onboarding@resend.dev',
+        replyTo: tenant.settings?.store?.contactEmail || null,
+        ownDomainSupported: false,
+      },
     },
   })
 })

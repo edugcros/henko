@@ -47,6 +47,7 @@ import PaletteIcon from '@mui/icons-material/Palette'
 import ArchitectureIcon from '@mui/icons-material/Architecture'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import PaymentIcon from '@mui/icons-material/Payment'
+import SettingsIcon from '@mui/icons-material/Settings'
 
 // Rutas que existen pero no van en el menú, con el motivo.
 // Un Set vacío de comentarios haría que la verificación de cobertura de abajo
@@ -140,7 +141,19 @@ const MENU_STRUCTURE = [
     ],
   },
 
-  { key: 'configuracion-pagos', label: 'Pagos', icon: PaymentIcon },
+  {
+    key: 'configuracion',
+    label: 'Configuración',
+    icon: SettingsIcon,
+    children: [
+      {
+        key: 'configuracion-comercio',
+        label: 'Comercio',
+        icon: StorefrontIcon,
+      },
+      { key: 'configuracion-pagos', label: 'Pagos', icon: PaymentIcon },
+    ],
+  },
 ]
 
 // Ruta → meta, para saber cuáles llevan el punto de "nuevo".
