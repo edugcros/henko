@@ -213,3 +213,84 @@ export const sendPasswordChangedEmail = async (user, tenantOrName = null) => {
     text: `La contraseña de tu cuenta en ${tenantName} se cambió recientemente. Si no fuiste vos, restablecela de inmediato.`,
   })
 }
+
+// =====================================================
+// Welcome email
+// =====================================================
+
+/**
+ * Bienvenida, después de verificar.
+ *
+ * Va separada del correo de verificación a propósito: ese tiene un único
+ * trabajo —que hagan clic en el enlace— y meterle contenido de bienvenida le
+ * compite la atención. Este sale cuando la cuenta ya quedó activa, que es
+ * cuando la persona está más atenta y no hay nada más que pedirle.
+ *
+ * Nunca bloquea: la cuenta ya está verificada, y que la cortesía no salga no
+ * puede convertir eso en un error.
+ */
+export const sendWelcomeEmail = async (user, tenantOrName = null) => {
+  if (!user?.email) return { success: false, skipped: true }
+
+  const tenant =
+    typeof tenantOrName === 'object' && tenantOrName !== null
+      ? tenantOrName
+      : null
+
+  const tenantName =
+    tenant?.name ||
+    (typeof tenantOrName === 'string' ? tenantOrName : null) ||
+    process.env.STORE_NAME ||
+    'la tienda'
+
+  const safeTenantName = escapeHtml(tenantName)
+  const safeUserName = escapeHtml(user.firstname || user.email)
+
+  const storeUrl = (() => {
+    try {
+      return buildFrontendUrl('/', null, tenant)
+    } catch {
+      // Sin dominio ni ENV utilizable el correo sale igual, sin botón: es una
+      // bienvenida, no vale la pena perderla por un enlace.
+      return ''
+    }
+  })()
+
+  const safeStoreUrl = escapeHtml(storeUrl)
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; line-height: 1.5;">
+      <h2>¡Tu cuenta ya está activa!</h2>
+
+      <p>Hola ${safeUserName},</p>
+
+      <p>
+        Gracias por verificar tu correo. Tu cuenta en
+        <strong>${safeTenantName}</strong> quedó lista para usar.
+      </p>
+
+      ${
+  safeStoreUrl
+    ? `<div style="text-align: center; margin: 30px 0;">
+             <a href="${safeStoreUrl}"
+                style="background:#000; color:#fff; padding:12px 25px; text-decoration:none; border-radius:6px; font-weight:bold;">
+               IR A LA TIENDA
+             </a>
+           </div>`
+    : ''
+}
+
+      <p style="font-size: 0.8rem; color: #666;">
+        Si tenés alguna consulta, respondé este correo y te contestamos.
+      </p>
+    </div>
+  `
+
+  return sendEmail({
+    to: user.email,
+    subject: `Bienvenido a ${tenantName}`,
+    html,
+    text: `Tu cuenta en ${tenantName} ya está activa.${storeUrl ? ` Entrá acá: ${storeUrl}` : ''}`,
+    tenantConfig: tenant || {},
+  })
+}

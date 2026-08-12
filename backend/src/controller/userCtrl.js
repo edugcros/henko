@@ -23,6 +23,7 @@ import {
   sendPasswordChangedEmail,
   sendResetPasswordEmail,
   sendVerificationEmail,
+  sendWelcomeEmail,
 } from '../services/email/verificationEmail.service.js'
 import { sendResponse } from '../utils/response.js'
 import { getCookieDomain } from '../utils/cookieHelper.js'
@@ -401,6 +402,21 @@ export const verifyEmail = expressAsyncHandler(async (req, res) => {
   user.emailVerificationToken = undefined
   user.emailVerificationExpires = undefined
   await user.save({ validateBeforeSave: false })
+
+  // Bienvenida recién acá, no en el alta: hasta este momento no había una
+  // casilla confirmada a la que escribirle. Es el instante de mayor atención
+  // del usuario y hasta ahora se desaprovechaba.
+  if (shouldSendTransactionalEmail()) {
+    const tenant = await Tenant.findById(user.tenantId)
+      .select('name domains settings')
+      .lean()
+
+    sendWelcomeEmail(user, tenant).catch(error => {
+      logger.error(
+        `No se pudo enviar la bienvenida a ${user.email}: ${error.message}`,
+      )
+    })
+  }
 
   return sendResponse(
     res,
