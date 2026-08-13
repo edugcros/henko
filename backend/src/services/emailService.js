@@ -197,25 +197,25 @@ export const resolveSenderAddress = (tenantConfig = {}) => {
 
   if (tenantSender) return tenantSender
 
+  // Sin dominio propio verificado, el default depende del transporte activo.
+  // Antes esta rama vivía en getFromAddress como un return anticipado ANTES
+  // de mirar tenantConfig: bajo SMTP, un comercio con su dominio ya
+  // verificado (por tenantEmailDomainService, vía SendGrid) seguía saliendo
+  // por la casilla de la plataforma, porque nunca se llegaba a chequear
+  // tenantSender arriba.
+  if (getEmailTransportName() === SMTP_TRANSPORT) {
+    return (
+      validateEmail(process.env.EMAIL_FROM) ||
+      validateEmail(process.env.EMAIL_USER) ||
+      ''
+    )
+  }
+
   return validateEmail(process.env.RESEND_FROM_EMAIL) || 'onboarding@resend.dev'
 }
 
 const getFromAddress = tenantConfig => {
   const storeName = getStoreName(tenantConfig)
-
-  // Por SMTP el remitente tiene que ser la casilla autenticada: Gmail (y casi
-  // cualquier servidor serio) rechaza o reescribe un "from" que no coincide
-  // con la cuenta que abrió la sesión.
-  if (getEmailTransportName() === SMTP_TRANSPORT) {
-    const smtpFrom =
-      validateEmail(process.env.EMAIL_FROM) ||
-      validateEmail(process.env.EMAIL_USER)
-
-    if (smtpFrom) {
-      return `${escapeHtml(storeName)} <${smtpFrom}>`
-    }
-  }
-
   const fromEmail = resolveSenderAddress(tenantConfig)
 
   // Sin este aviso la falla es invisible y desconcertante: la API de Resend
@@ -509,16 +509,20 @@ const buildPlainTextSummary = ({
 // TRANSPORTES
 // =====================================================
 //
-// Hay dos, y la elección NO es de gusto:
+// Hay dos:
 //
-//   resend  HTTPS (443). Es el único que funciona en Render, que bloquea los
-//           puertos SMTP salientes — smtp.gmail.com:465 da ENETUNREACH /
-//           ETIMEDOUT tanto por IPv4 como por IPv6, el mismo tipo de bloqueo
-//           que apareció con Redis/Upstash. A cambio exige un dominio
-//           verificado por DNS para poder mandar desde una dirección propia.
-//   smtp    nodemailer contra un servidor real (Gmail, el hosting, etc).
-//           Anda perfecto desde una máquina de desarrollo y no necesita DNS,
-//           pero muere en Render por el bloqueo de arriba.
+//   resend  HTTPS (443) contra la API de Resend.
+//   smtp    nodemailer contra un relay real — hoy, SendGrid.
+//
+// Un incidente anterior contra smtp.gmail.com:465 (ENETUNREACH/ETIMEDOUT por
+// IPv4 y por IPv6) hizo pensar que Render bloqueaba SMTP saliente en general,
+// y este comentario lo decía como hecho. Era cierto solo a medias: Render
+// bloquea los puertos SMTP (25, 465, 587) exclusivamente en instancias FREE,
+// desde septiembre 2025 — en planes pagos 465 y 587 andan bien (el 25 sigue
+// bloqueado para todos, como en casi cualquier host serio). henko-api corre
+// en plan `starter` (ver render.yaml), así que SMTP es una opción real en
+// este proyecto, no solo para desarrollo. Fuente:
+// https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports
 //
 // De ahí el selector:
 //
@@ -555,13 +559,6 @@ let transportAnnounced = false
 const announceTransportOnce = transport => {
   if (transportAnnounced) return
   transportAnnounced = true
-
-  if (transport === SMTP_TRANSPORT && process.env.NODE_ENV === 'production') {
-    logger.warn(
-      '[EMAIL] Transporte SMTP forzado en producción. Si esto corre en Render, los envíos van a fallar con ENETUNREACH/ETIMEDOUT: bloquea los puertos SMTP salientes. Usá EMAIL_TRANSPORT=resend.',
-    )
-    return
-  }
 
   logger.info(`[EMAIL] Transporte activo: ${transport}`)
 }

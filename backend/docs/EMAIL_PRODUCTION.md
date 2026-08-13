@@ -8,10 +8,16 @@ cada comercio manda desde su propia marca.
 Una sola función: `resolveSenderAddress` en `services/emailService.js`. El
 orden es:
 
-1. **Dominio propio del comercio**, si su estado es `verified`.
-2. **Dominio de la plataforma** (`RESEND_FROM_EMAIL`).
-3. **Sandbox del proveedor** (`onboarding@resend.dev`), que solo entrega a la
-   casilla dueña de la cuenta de Resend.
+1. **Dominio propio del comercio**, si su estado es `verified`. Esto vale
+   para los dos transportes por igual — un comercio con su dominio verificado
+   sale desde su dirección tanto si la plataforma envía por Resend como por
+   SMTP.
+2. **Dominio de la plataforma**: `RESEND_FROM_EMAIL` bajo Resend, `EMAIL_FROM`
+   (o `EMAIL_USER`) bajo SMTP.
+3. Con Resend y nada configurado, cae al **sandbox del proveedor**
+   (`onboarding@resend.dev`), que solo entrega a la casilla dueña de la
+   cuenta. SMTP no tiene sandbox: sin `EMAIL_FROM`/`EMAIL_USER` no hay
+   remitente, y el envío falla explícito en vez de fingir que salió.
 
 El estado `verified` no es burocracia. Un dominio que todavía no publica
 SPF/DKIM no autoriza a nadie a enviar en su nombre: usarlo como remitente no
@@ -22,30 +28,71 @@ El panel resuelve la dirección efectiva **con esta misma función**, no con una
 copia de la regla. Si pudieran discrepar, un comercio vería "verificado"
 mientras sus correos siguen saliendo por la plataforma.
 
+## El transporte
+
+`EMAIL_TRANSPORT` elige el mecanismo de envío:
+
+- **resend** (default): API HTTPS de Resend.
+- **smtp**: `EMAIL_TRANSPORT=smtp`, nodemailer contra un relay SMTP real —
+  hoy configurado para SendGrid.
+
+Durante un tiempo el comentario en el código decía que SMTP "muere en
+Render", basado en un incidente real contra `smtp.gmail.com:465`. Eso
+resultó ser **específico del plan gratuito**: Render bloquea los puertos SMTP
+salientes (25, 465, 587) solo en instancias free desde septiembre 2025; en
+planes pagos 465 y 587 funcionan (el 25 sigue bloqueado para todos, como en
+casi cualquier host serio, contra abuso). `henko-api` corre en `starter`
+(pago) — confirmado en `render.yaml` — así que SMTP es una opción real en
+este proyecto, no solo para desarrollo local.
+
+Fuente: [Render changelog — Free web services will no longer allow outbound
+traffic to SMTP
+ports](https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports).
+
 ## Paso 0 — que la plataforma pueda enviar
 
-Sin esto no llega ningún correo, de ningún comercio.
+Sin esto no llega ningún correo, de ningún comercio. Elegí un camino:
 
-1. En Resend, agregar el dominio `henko.com` y cargar los registros DNS.
-2. Cuando figure verificado, definir en Render:
-   ```
-   RESEND_FROM_EMAIL=no-reply@henko.com
-   ```
-3. Confirmar que el aviso `[EMAIL] RESEND_FROM_EMAIL no está configurada`
-   dejó de aparecer en los logs.
+### Opción A — SendGrid por SMTP (recomendado)
 
-Hoy esa variable está **vacía** en `.env.development` y en `.env.production`.
-En Render tiene que haber algún valor porque `config/env.js` aborta el
-arranque si falta, pero conviene confirmar cuál es: si apunta a un dominio no
-verificado, Resend rechaza todos los envíos.
+```
+EMAIL_TRANSPORT=smtp
+EMAIL_HOST=smtp.sendgrid.net
+EMAIL_PORT=587
+EMAIL_USER=apikey
+EMAIL_PASS=SG.xxxxxxxx        # el API key real de SendGrid
+EMAIL_FROM=no-reply@henko.com # remitente de la plataforma
+```
+
+`EMAIL_USER` es literalmente el string `apikey` — no un usuario real. La
+autenticación va toda en `EMAIL_PASS`.
+
+### Opción B — Resend por API
+
+```
+RESEND_API_KEY=re_xxxxxxxx
+RESEND_FROM_EMAIL=no-reply@henko.com
+```
+
+En cualquiera de las dos: el dominio (`henko.com`) tiene que estar verificado
+del lado del proveedor elegido antes de que salga un solo correo real —
+`no-reply@henko.com` sin verificar rebota igual que el de cualquier comercio
+sin verificar.
+
+Hoy `RESEND_FROM_EMAIL` está **vacía** en `.env.development` y en
+`.env.production`. En Render tiene que haber algún valor porque
+`config/env.js` aborta el arranque si falta (para el transporte activo, no
+para el que no se usa), pero conviene confirmar cuál es: si apunta a un
+dominio no verificado, el envío se rechaza igual.
 
 ## Paso 1 — que cada comercio mande desde su dominio
 
-Flujo desde el panel del comercio:
+Mismo flujo sin importar el transporte activo — la pantalla del panel
+(`SendingDomainSection`) y los endpoints no cambian:
 
 1. El comercio carga la dirección desde la que quiere enviar
    (`PUT /api/tenants/me/email-domain`). El dominio se da de alta en el
-   proveedor y quedan guardados los registros DNS a publicar.
+   proveedor activo y quedan guardados los registros DNS a publicar.
 2. El comercio carga esos registros en su DNS.
 3. Pide verificar (`POST /api/tenants/me/email-domain/verify`). Si el
    proveedor confirma, el estado pasa a `verified` y **desde el siguiente
@@ -56,17 +103,28 @@ que el comercio se quede sin correos.
 
 ### Requiere una key con permisos
 
-Dar de alta y consultar dominios necesita una API key de administración:
+Dar de alta y consultar dominios necesita una API key de administración —
+distinta según el proveedor activo:
 
 ```
+# Bajo EMAIL_TRANSPORT=smtp (SendGrid)
+SENDGRID_API_KEY=SG.xxxxxxxx   # opcional: si no está, se reusa EMAIL_PASS
+
+# Bajo el transporte por default (Resend)
 RESEND_MANAGEMENT_API_KEY=re_...
 ```
 
-La key de envío que usa `emailService` **no sirve** — Resend responde
-`restricted_api_key`. Sin la key de administración el alta se registra igual
-en estado `pending` con el motivo explicado en `email.lastError`, y alguien lo
-completa a mano desde el panel de Resend. El sistema nunca queda creyendo que
-manda desde un dominio que no controla.
+Con SendGrid, la MISMA key que autentica el SMTP normalmente alcanza —
+`SENDGRID_API_KEY` solo hace falta si se quiere separar una key de solo-envío
+de una con permiso de administrar dominios (SendGrid controla esto por scope
+de la key, no por un tipo de key distinto como Resend). Con Resend, la key de
+envío **no sirve** para esto — responde `restricted_api_key` — y hace falta
+una separada.
+
+Sin la key de administración correspondiente, el alta se registra igual en
+estado `pending` con el motivo explicado en `email.lastError`, y alguien lo
+completa a mano desde el panel del proveedor. El sistema nunca queda creyendo
+que manda desde un dominio que no controla.
 
 ## Endpoints
 
@@ -86,20 +144,16 @@ DELETE /api/tenants/me/email-domain          vuelve al remitente de la plataform
 | Dirección del remitente | ❌ de la plataforma | ✅ la suya |
 | Entregabilidad | la de la plataforma | la de su propio dominio |
 
-## El transporte
-
-Dos opciones, y la elección no es de gusto:
-
-- **resend** (default): HTTPS por el 443. Es el único que funciona en Render,
-  que bloquea los puertos SMTP salientes.
-- **smtp**: `EMAIL_TRANSPORT=smtp`, nodemailer. Sirve para desarrollar sin
-  depender de DNS. **Muere en Render** por ese bloqueo de egreso.
-
-Ver `services/emailService.js` para el detalle.
+Ver `services/emailService.js` para el detalle del transporte y
+`services/email/tenantEmailDomainService.js` para el detalle de la
+verificación de dominio por proveedor.
 
 ## Inventario de correos
 
-Dieciséis, todos conectados y cubiertos por `src/test/emailFlows.test.js`:
+Dieciséis, todos conectados. Cubiertos por `src/test/emailFlows.test.js`
+(contenido y remitente de cada correo) y
+`src/test/tenantEmailDomain.test.js` (alta y verificación de dominio contra
+cada proveedor):
 
 **Cuenta** — verificación (comprador), verificación (comercio), reenvío de
 verificación, bienvenida, reseteo de contraseña, aviso de contraseña
