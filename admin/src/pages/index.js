@@ -1,31 +1,46 @@
-import Dashboard from './Dashboard'
+import { lazy } from 'react'
 import Login from './Login'
-import Forgotpassword from './Forgotpassword'
-import Resetpassword from './Resetpassword'
-import AdminOrdersPage from './AdminOrdersPage'
-import AdminRegister from './AdminRegister'
-import Customers from './Customers'
-import Enquiries from './Enquiries'
-import AddProduct from './AddProduct'
-import Productlist from './Productlist'
-import SubscriptionPage from './SubscriptionPage'
-import NotFound from './NotFound' // Asegurate de tener esta también
-import ThemeCustomizer from './ThemeCustomizer'
-import CouponsPage from './CouponsPage'
-import EditProduct from './EditProduct'
-import PromotionalBlocksPage from './PromotionalBlocksPage'
-import ProductAnalysisPage from './ProductAnalysisPage'
-import AiCommercialInboxPage from './AiCommercialInboxPage'
-import AiAgentConfigPage from './AiAgentConfigPage'
-import AiLearningReviewPage from './AiLearningReviewPage'
-import AiAgentDashboardPage from './AiAgentDashboardPage'
-import AiKnowledgeBasePage from './AiKnowledgeBasePage'
-import AiCampaignRulesPage from './AiCampaignRulesPage'
-import PaymentConfigPage from './PaymentConfigPage'
-import OnboardingWizard from './OnboardingWizard'
-import ImageAiEditor from './ImageAiEditor'
-import StoreSettingsPage from './StoreSettingsPage'
-import VerifyEmailPage from './VerifyEmailPage'
+
+// 📦 Todo lo demás carga bajo demanda.
+//
+// Antes esto era 27 imports estáticos, y con un solo entry point
+// (src/index.js) webpack los metía a todos en el mismo grafo. El
+// splitChunks.maxSize de webpack.prod.js los troceaba en pedazos de 250KB
+// para bajarlos en paralelo, pero seguían siendo TODOS obligatorios en la
+// primera carga — 3,08 MiB medidos, entrypoint marcado [big] por webpack.
+// Alguien que entra a cambiar una contraseña bajaba también AddProduct
+// (9.316 líneas) sin haberlo pedido.
+//
+// Login queda afuera de este lazy(): es la única pantalla que ve un usuario
+// sin sesión, y evitar el parpadeo del Suspense ahí vale más que los KB que
+// ahorra.
+const Dashboard = lazy(() => import('./Dashboard'))
+const Forgotpassword = lazy(() => import('./Forgotpassword'))
+const Resetpassword = lazy(() => import('./Resetpassword'))
+const AdminOrdersPage = lazy(() => import('./AdminOrdersPage'))
+const AdminRegister = lazy(() => import('./AdminRegister'))
+const Customers = lazy(() => import('./Customers'))
+const Enquiries = lazy(() => import('./Enquiries'))
+const AddProduct = lazy(() => import('./AddProduct'))
+const Productlist = lazy(() => import('./Productlist'))
+const SubscriptionPage = lazy(() => import('./SubscriptionPage'))
+const NotFound = lazy(() => import('./NotFound'))
+const ThemeCustomizer = lazy(() => import('./ThemeCustomizer'))
+const CouponsPage = lazy(() => import('./CouponsPage'))
+const EditProduct = lazy(() => import('./EditProduct'))
+const PromotionalBlocksPage = lazy(() => import('./PromotionalBlocksPage'))
+const ProductAnalysisPage = lazy(() => import('./ProductAnalysisPage'))
+const AiCommercialInboxPage = lazy(() => import('./AiCommercialInboxPage'))
+const AiAgentConfigPage = lazy(() => import('./AiAgentConfigPage'))
+const AiLearningReviewPage = lazy(() => import('./AiLearningReviewPage'))
+const AiAgentDashboardPage = lazy(() => import('./AiAgentDashboardPage'))
+const AiKnowledgeBasePage = lazy(() => import('./AiKnowledgeBasePage'))
+const AiCampaignRulesPage = lazy(() => import('./AiCampaignRulesPage'))
+const PaymentConfigPage = lazy(() => import('./PaymentConfigPage'))
+const OnboardingWizard = lazy(() => import('./OnboardingWizard'))
+const ImageAiEditor = lazy(() => import('./ImageAiEditor'))
+const StoreSettingsPage = lazy(() => import('./StoreSettingsPage'))
+const VerifyEmailPage = lazy(() => import('./VerifyEmailPage'))
 
 const pages = {
   Dashboard,

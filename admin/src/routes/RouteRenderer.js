@@ -1,8 +1,9 @@
 // 📄 src/routes/RouteRenderer.js — VERSIÓN FUNCIONAL CORREGIDA
-import React from 'react'
+import React, { Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import PrivateRoute from '@components/PrivateRoute'
 import MainLayout from '@components/MainLayout'
+import SpinnerCentered from '@components/SpinnerCentered'
 import {
   publicRoutes,
   publicDynamicRoutes,
@@ -54,20 +55,29 @@ const RouteRenderer = ({ isLoggedIn }) => {
     fallbackRoute?.Component || (() => <div>404 - Página no encontrada</div>)
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={<Navigate to={isLoggedIn ? '/admin' : '/login'} replace />}
-      />
+    // Todas las páginas salvo Login son React.lazy() (ver pages/index.js):
+    // un solo límite de Suspense alcanza porque una sola ruta está montada
+    // a la vez. El spinner es el mismo que ya se usa en otras cargas
+    // asincrónicas del panel, no uno nuevo a mantener.
+    <Suspense fallback={<SpinnerCentered />}>
+      <Routes>
+        <Route
+          path="/"
+          element={<Navigate to={isLoggedIn ? '/admin' : '/login'} replace />}
+        />
 
-      {renderPublicRoutes()}
+        {renderPublicRoutes()}
 
-      <Route path="/admin" element={<PrivateRoute allowedRoles={['admin']} />}>
-        <Route element={<MainLayout />}>{renderAdminRoutes()}</Route>
-      </Route>
+        <Route
+          path="/admin"
+          element={<PrivateRoute allowedRoles={['admin']} />}
+        >
+          <Route element={<MainLayout />}>{renderAdminRoutes()}</Route>
+        </Route>
 
-      <Route path={fallbackPath} element={<FallbackComponent />} />
-    </Routes>
+        <Route path={fallbackPath} element={<FallbackComponent />} />
+      </Routes>
+    </Suspense>
   )
 }
 
