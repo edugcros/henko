@@ -317,3 +317,63 @@ describe("remitente por comercio", () => {
     expect(extractDomain("")).toBe("");
   });
 });
+
+describe("remitente por comercio · bajo SMTP", () => {
+  beforeEach(() => {
+    process.env.EMAIL_TRANSPORT = "smtp";
+  });
+
+  afterEach(() => {
+    delete process.env.EMAIL_TRANSPORT;
+    delete process.env.EMAIL_FROM;
+    delete process.env.EMAIL_USER;
+  });
+
+  test("dominio verificado: gana incluso con SMTP activo", () => {
+    // Este es el bug que encontró la propia migración a SendGrid: la rama de
+    // SMTP resolvía el remitente ANTES de mirar si el tenant tenía un
+    // dominio propio verificado, así que un comercio con su dominio ya
+    // autenticado en SendGrid seguía saliendo por la casilla compartida de
+    // la plataforma.
+    process.env.EMAIL_FROM = "no-reply@plataforma.com";
+
+    expect(
+      resolveSenderAddress({
+        email: { status: "verified", fromAddress: "hola@tiendax.com" },
+      }),
+    ).toBe("hola@tiendax.com");
+  });
+
+  test("sin dominio propio, usa EMAIL_FROM de la plataforma", () => {
+    process.env.EMAIL_FROM = "no-reply@plataforma.com";
+    process.env.EMAIL_USER = "otra@plataforma.com";
+
+    expect(resolveSenderAddress({})).toBe("no-reply@plataforma.com");
+  });
+
+  test("sin EMAIL_FROM, cae a EMAIL_USER", () => {
+    process.env.EMAIL_USER = "cuenta@plataforma.com";
+
+    expect(resolveSenderAddress({})).toBe("cuenta@plataforma.com");
+  });
+
+  test("sin nada configurado no inventa una dirección", () => {
+    // A diferencia de Resend, SMTP no tiene un sandbox al que caer: sin
+    // EMAIL_FROM ni EMAIL_USER no hay remitente seguro. getSmtpTransporter
+    // ya bloquea el envío en ese caso (falta EMAIL_USER); esto solo
+    // confirma que resolveSenderAddress no inventa un valor para tapar el
+    // problema.
+    expect(resolveSenderAddress({})).toBe("");
+  });
+
+  test("no confunde el remitente de Resend con el de SMTP", () => {
+    // Si quedó configurado RESEND_FROM_EMAIL de una migración anterior, bajo
+    // SMTP no tiene que usarse: son remitentes de proveedores distintos.
+    process.env.RESEND_FROM_EMAIL = "no-reply@resend-leftover.com";
+    process.env.EMAIL_FROM = "no-reply@plataforma.com";
+
+    expect(resolveSenderAddress({})).toBe("no-reply@plataforma.com");
+
+    delete process.env.RESEND_FROM_EMAIL;
+  });
+});
