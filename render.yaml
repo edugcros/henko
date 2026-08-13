@@ -40,6 +40,37 @@ services:
         value: true
       - key: AUTO_PUBLISH_PRODUCT
         value: false
+      # Correo transaccional: verificación de cuenta, reseteo de contraseña,
+      # confirmación de pedido, recuperación de carrito. Verificado en vivo el
+      # 13/08/2026 contra un Single Sender real de SendGrid — no es teórico.
+      # Detalle completo en backend/docs/EMAIL_PRODUCTION.md.
+      #
+      # EMAIL_TRANSPORT=smtp usa nodemailer contra el relay de SendGrid, no la
+      # API de Resend. Render bloquea los puertos SMTP salientes solo en el
+      # plan free (ver el doc); este servicio corre en `starter`, donde 587
+      # funciona.
+      - key: EMAIL_TRANSPORT
+        value: smtp
+      - key: EMAIL_HOST
+        value: smtp.sendgrid.net
+      - key: EMAIL_PORT
+        value: "587"
+      # Literal "apikey" — no es un usuario real, así lo exige SendGrid. La
+      # autenticación completa va en EMAIL_PASS.
+      - key: EMAIL_USER
+        value: apikey
+      # La API key de SendGrid (Full Access: manda correo Y administra
+      # dominios por comercio — sin el scope de dominios, "conectar mi
+      # dominio" en el panel deja de poder verificar nada). Cargarla a mano
+      # acá, nunca en el repo.
+      - key: EMAIL_PASS
+        sync: false
+      # La dirección verificada como Single Sender en SendGrid (Settings →
+      # Sender Authentication → Verify a Single Sender). Sin verificar
+      # exactamente esa dirección ahí, SendGrid rechaza el envío aunque la key
+      # sea válida.
+      - key: EMAIL_FROM
+        sync: false
       - key: MONGODB_URL
         sync: false
       - key: MONGO_ENABLE_TRANSACTIONS
