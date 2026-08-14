@@ -51,39 +51,52 @@ ports](https://render.com/changelog/free-web-services-will-no-longer-allow-outbo
 
 ## Paso 0 — que la plataforma pueda enviar
 
-Sin esto no llega ningún correo, de ningún comercio. Elegí un camino:
+Sin esto no llega ningún correo, de ningún comercio. **Estado: resuelto y
+verificado en vivo el 13/08/2026** — SendGrid por SMTP, no Resend. Cuatro
+correos reales confirmados end-to-end contra el flujo real (no un mock):
+verificación de cuenta, activación al hacer clic, reseteo de contraseña,
+aviso de contraseña modificada — los cuatro con message-id real de SendGrid.
 
-### Opción A — SendGrid por SMTP (recomendado)
+### SendGrid por SMTP (la opción activa)
+
+`render.yaml` ya declara `EMAIL_TRANSPORT`, `EMAIL_HOST`, `EMAIL_PORT` y
+`EMAIL_USER` como valores fijos, versionados. Faltan cargar dos **secretos**
+en el dashboard de Render (`sync: false` — el blueprint los pide, nunca van
+al repo):
 
 ```
-EMAIL_TRANSPORT=smtp
-EMAIL_HOST=smtp.sendgrid.net
-EMAIL_PORT=587
-EMAIL_USER=apikey
-EMAIL_PASS=SG.xxxxxxxx        # el API key real de SendGrid
-EMAIL_FROM=no-reply@henko.com # remitente de la plataforma
+EMAIL_PASS=SG.xxxxxxxx           # API key de SendGrid, Full Access
+EMAIL_FROM=alguien@undominio.com # la dirección verificada como Single Sender
 ```
 
-`EMAIL_USER` es literalmente el string `apikey` — no un usuario real. La
-autenticación va toda en `EMAIL_PASS`.
+Dos requisitos que no son obvios desde la documentación de SendGrid, así que
+quedan anotados acá:
 
-### Opción B — Resend por API
+- **La key tiene que ser Full Access**, no solo "Mail Send". El scope
+  `whitelabel.*` (dominios) es lo que además le permite al panel administrar
+  el dominio de cada comercio (`tenantEmailDomainService.js`) — con una key
+  restringida, "conectar mi dominio" queda roto para todos los comercios,
+  aunque el envío de la plataforma funcione.
+- **`EMAIL_FROM` tiene que ser exactamente la dirección que se verificó como
+  Single Sender** (Settings → Sender Authentication → Verify a Single
+  Sender en SendGrid — requiere clic en un mail de confirmación, no DNS). La
+  documentación pública de SendGrid dice que `address`/`city`/`country` son
+  opcionales al crear el sender; la API real los exige — probado en vivo,
+  no asumido del doc.
+
+### Resend por API (alternativa, no configurada hoy)
 
 ```
 RESEND_API_KEY=re_xxxxxxxx
 RESEND_FROM_EMAIL=no-reply@henko.com
 ```
 
-En cualquiera de las dos: el dominio (`henko.com`) tiene que estar verificado
-del lado del proveedor elegido antes de que salga un solo correo real —
-`no-reply@henko.com` sin verificar rebota igual que el de cualquier comercio
-sin verificar.
-
-Hoy `RESEND_FROM_EMAIL` está **vacía** en `.env.development` y en
-`.env.production`. En Render tiene que haber algún valor porque
-`config/env.js` aborta el arranque si falta (para el transporte activo, no
-para el que no se usa), pero conviene confirmar cuál es: si apunta a un
-dominio no verificado, el envío se rechaza igual.
+`RESEND_FROM_EMAIL` está vacía tanto en `.env.development` como en
+`.env.production`, y no está declarada en `render.yaml`. Mientras
+`EMAIL_TRANSPORT=smtp` sea el transporte activo, esto no bloquea nada — pero
+si algún día se vuelve a Resend como transporte, hay que verificar un
+dominio ahí primero (ver "El transporte" arriba: sin eso, Resend cae al
+sandbox `onboarding@resend.dev`, que solo entrega al dueño de la cuenta).
 
 ## Paso 1 — que cada comercio mande desde su dominio
 
