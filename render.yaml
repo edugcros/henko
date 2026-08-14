@@ -1,7 +1,10 @@
 services:
   - type: web
     name: henko-api
-    plan: starter
+    # El servicio real en Render corre en el plan Free (confirmado contra la
+    # API de Render, no asumido) — no en `starter`. Ver EMAIL_TRANSPORT abajo:
+    # esto es lo que obliga a usar la Web API de SendGrid en vez de SMTP.
+    plan: free
     runtime: node
     buildCommand: cd backend && npm install
     startCommand: cd backend && npm start
@@ -42,27 +45,33 @@ services:
         value: false
       # Correo transaccional: verificación de cuenta, reseteo de contraseña,
       # confirmación de pedido, recuperación de carrito. Verificado en vivo el
-      # 13/08/2026 contra un Single Sender real de SendGrid — no es teórico.
+      # 14/08/2026 contra un Single Sender real de SendGrid — no es teórico.
       # Detalle completo en backend/docs/EMAIL_PRODUCTION.md.
       #
-      # EMAIL_TRANSPORT=smtp usa nodemailer contra el relay de SendGrid, no la
-      # API de Resend. Render bloquea los puertos SMTP salientes solo en el
-      # plan free (ver el doc); este servicio corre en `starter`, donde 587
-      # funciona.
+      # EMAIL_TRANSPORT=sendgrid_api usa la Web API de SendGrid (HTTPS/443),
+      # no smtp ni la API de Resend. Un primer intento con EMAIL_TRANSPORT=smtp
+      # contra smtp.sendgrid.net:587 se quedó colgado sin error en producción:
+      # este servicio corre en el plan Free de Render, que bloquea los
+      # puertos SMTP salientes (25, 465, 587) desde septiembre 2025. La Web
+      # API usa el mismo puerto 443 que cualquier fetch, así que no choca con
+      # ese bloqueo.
       - key: EMAIL_TRANSPORT
-        value: smtp
+        value: sendgrid_api
+      # Sin efecto bajo sendgrid_api (son de nodemailer/smtp) — quedan
+      # documentados por si algún día se corre este backend en un plan pago
+      # y conviene volver a smtp.
       - key: EMAIL_HOST
         value: smtp.sendgrid.net
       - key: EMAIL_PORT
         value: "587"
-      # Literal "apikey" — no es un usuario real, así lo exige SendGrid. La
-      # autenticación completa va en EMAIL_PASS.
+      # Literal "apikey" — no es un usuario real, así lo exige SendGrid bajo
+      # smtp. sendgrid_api no lo usa (la key va en el header Authorization).
       - key: EMAIL_USER
         value: apikey
       # La API key de SendGrid (Full Access: manda correo Y administra
       # dominios por comercio — sin el scope de dominios, "conectar mi
       # dominio" en el panel deja de poder verificar nada). Cargarla a mano
-      # acá, nunca en el repo.
+      # acá, nunca en el repo. Sirve igual para sendgrid_api y para smtp.
       - key: EMAIL_PASS
         sync: false
       # La dirección verificada como Single Sender en SendGrid (Settings →

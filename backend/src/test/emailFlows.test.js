@@ -256,15 +256,26 @@ describe("elección de canal de recuperación", () => {
 });
 
 describe("remitente por comercio", () => {
-  const original = process.env.RESEND_FROM_EMAIL;
+  // .env.development trae credenciales reales de SendGrid (EMAIL_TRANSPORT,
+  // EMAIL_FROM, EMAIL_USER) que config/env.js carga incluso bajo
+  // NODE_ENV=test. Sin limpiarlas acá, estos tests asumen transporte
+  // resend pero corren contra smtp/sendgrid_api y fallan por variables de
+  // entorno ambientales, no por el código bajo prueba.
+  const ORIGINAL_KEYS = ["RESEND_FROM_EMAIL", "EMAIL_TRANSPORT", "EMAIL_FROM", "EMAIL_USER"];
+  const originals = Object.fromEntries(ORIGINAL_KEYS.map(key => [key, process.env[key]]));
 
   beforeEach(() => {
     process.env.RESEND_FROM_EMAIL = "no-reply@plataforma.com";
+    delete process.env.EMAIL_TRANSPORT;
+    delete process.env.EMAIL_FROM;
+    delete process.env.EMAIL_USER;
   });
 
   afterAll(() => {
-    if (original === undefined) delete process.env.RESEND_FROM_EMAIL;
-    else process.env.RESEND_FROM_EMAIL = original;
+    ORIGINAL_KEYS.forEach(key => {
+      if (originals[key] === undefined) delete process.env[key];
+      else process.env[key] = originals[key];
+    });
   });
 
   test("dominio verificado: sale desde la dirección del comercio", () => {

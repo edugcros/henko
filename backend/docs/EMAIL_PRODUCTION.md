@@ -3,6 +3,21 @@
 Agosto 2026. Qué hace falta para que los correos lleguen de verdad, y cómo
 cada comercio manda desde su propia marca.
 
+## `render.yaml` no es lo que corre en Render
+
+El servicio `henko-api` en Render **no está enlazado como Blueprint activo**
+a este `render.yaml` — se creó y se administra a mano desde el dashboard.
+Commitear un cambio acá (agregar una env var, cambiar un valor) no lo aplica
+solo: alguien tiene que replicarlo a mano en Environment del servicio, o
+disparar una sincronización de Blueprint si en algún momento se configura
+una. El 14/08/2026 esto causó exactamente el bug de este documento: el PR
+que agregaba `EMAIL_TRANSPORT`/`EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER` se
+mergeó y deployó, pero esas cuatro variables nunca llegaron al servicio real
+— solo los dos secretos (`EMAIL_PASS`, `EMAIL_FROM`) que se habían cargado
+a mano seguían el flujo correcto. El resto del archivo (`plan:`, límites de
+IA, etc.) tiene el mismo problema: es la intención documentada, no un
+espejo de la config viva.
+
 ## Lo que decide el remitente
 
 Una sola función: `resolveSenderAddress` en `services/emailService.js`. El
@@ -33,17 +48,31 @@ mientras sus correos siguen saliendo por la plataforma.
 `EMAIL_TRANSPORT` elige el mecanismo de envío:
 
 - **resend** (default): API HTTPS de Resend.
-- **smtp**: `EMAIL_TRANSPORT=smtp`, nodemailer contra un relay SMTP real —
-  hoy configurado para SendGrid.
+- **sendgrid_api** (el activo en producción): Web API HTTPS de SendGrid
+  (`POST /v3/mail/send`), autenticada con la misma API key que administra
+  dominios (`EMAIL_PASS`).
+- **smtp**: `EMAIL_TRANSPORT=smtp`, nodemailer contra un relay SMTP real por
+  socket — hoy apuntaría a SendGrid, pero no funciona en este proyecto (ver
+  abajo).
 
 Durante un tiempo el comentario en el código decía que SMTP "muere en
-Render", basado en un incidente real contra `smtp.gmail.com:465`. Eso
-resultó ser **específico del plan gratuito**: Render bloquea los puertos SMTP
-salientes (25, 465, 587) solo en instancias free desde septiembre 2025; en
-planes pagos 465 y 587 funcionan (el 25 sigue bloqueado para todos, como en
-casi cualquier host serio, contra abuso). `henko-api` corre en `starter`
-(pago) — confirmado en `render.yaml` — así que SMTP es una opción real en
-este proyecto, no solo para desarrollo local.
+Render", basado en un incidente real contra `smtp.gmail.com:465`, y después
+se corrigió a "eso era solo el plan free, y este proyecto corre en `starter`
+(pago), así que SMTP funciona". Esa segunda versión también estaba mal: la
+corrección se apoyó en lo que decía `render.yaml` (`plan: starter`) sin
+chequear el servicio real. `henko-api` corre en el plan **Free** de Render —
+confirmado el 14/08/2026 contra la propia API de Render
+(`GET /v1/services/{id}` → `serviceDetails.plan: "free"`), no contra el
+archivo. Un intento real con `EMAIL_TRANSPORT=smtp` contra
+`smtp.sendgrid.net:587` lo confirmó en producción: la conexión se quedó
+colgada sin error ni éxito — consistente con un bloqueo silencioso de
+puerto, no con credenciales rotas.
+
+Por eso el transporte activo es **sendgrid_api**: usa el puerto 443 como
+cualquier llamada HTTPS normal, así que el bloqueo de puertos SMTP de Render
+no lo afecta. `smtp` se mantiene en el código para quien corra este backend
+en un plan pago de Render o fuera de Render — ahí sí es una opción real —
+pero no es lo que usa este proyecto hoy.
 
 Fuente: [Render changelog — Free web services will no longer allow outbound
 traffic to SMTP
@@ -52,17 +81,23 @@ ports](https://render.com/changelog/free-web-services-will-no-longer-allow-outbo
 ## Paso 0 — que la plataforma pueda enviar
 
 Sin esto no llega ningún correo, de ningún comercio. **Estado: resuelto y
-verificado en vivo el 13/08/2026** — SendGrid por SMTP, no Resend. Cuatro
-correos reales confirmados end-to-end contra el flujo real (no un mock):
-verificación de cuenta, activación al hacer clic, reseteo de contraseña,
-aviso de contraseña modificada — los cuatro con message-id real de SendGrid.
+verificado en vivo el 14/08/2026** — SendGrid por su Web API, no SMTP ni
+Resend. Confirmado con un registro real contra `https://henko.onrender.com`
+(no local, no mock): `[EMAIL] Transporte activo: sendgrid_api` en los logs
+de Render, sin error, con `x-message-id` de SendGrid en la respuesta.
 
-### SendGrid por SMTP (la opción activa)
+Antes de llegar ahí, el mismo día se probó `EMAIL_TRANSPORT=smtp` en
+producción y se colgó sin error — el servicio corre en el plan Free de
+Render, que bloquea los puertos SMTP salientes. Ver "El transporte" arriba
+para el detalle completo de por qué se pasó a `sendgrid_api`.
 
-`render.yaml` ya declara `EMAIL_TRANSPORT`, `EMAIL_HOST`, `EMAIL_PORT` y
-`EMAIL_USER` como valores fijos, versionados. Faltan cargar dos **secretos**
-en el dashboard de Render (`sync: false` — el blueprint los pide, nunca van
-al repo):
+### SendGrid por su Web API (la opción activa)
+
+`render.yaml` ya declara `EMAIL_TRANSPORT=sendgrid_api` como valor fijo,
+versionado (junto con `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`, que quedan sin
+uso bajo este transporte pero documentados por si algún día conviene volver
+a `smtp` en un plan pago). Faltan cargar dos **secretos** en el dashboard de
+Render (`sync: false` — el blueprint los pide, nunca van al repo):
 
 ```
 EMAIL_PASS=SG.xxxxxxxx           # API key de SendGrid, Full Access

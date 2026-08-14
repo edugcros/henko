@@ -40,7 +40,7 @@ export const extractDomain = address => {
 }
 
 const getActiveEmailProvider = () =>
-  getEmailTransportName() === 'smtp' ? 'sendgrid' : 'resend'
+  ['smtp', 'sendgrid_api'].includes(getEmailTransportName()) ? 'sendgrid' : 'resend'
 
 const normalizeRecords = records => {
   if (!Array.isArray(records)) return []

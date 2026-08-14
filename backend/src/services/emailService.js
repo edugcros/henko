@@ -203,7 +203,9 @@ export const resolveSenderAddress = (tenantConfig = {}) => {
   // verificado (por tenantEmailDomainService, vía SendGrid) seguía saliendo
   // por la casilla de la plataforma, porque nunca se llegaba a chequear
   // tenantSender arriba.
-  if (getEmailTransportName() === SMTP_TRANSPORT) {
+  const activeTransport = getEmailTransportName()
+
+  if (activeTransport === SMTP_TRANSPORT || activeTransport === SENDGRID_API_TRANSPORT) {
     return (
       validateEmail(process.env.EMAIL_FROM) ||
       validateEmail(process.env.EMAIL_USER) ||
@@ -509,34 +511,33 @@ const buildPlainTextSummary = ({
 // TRANSPORTES
 // =====================================================
 //
-// Hay dos:
+// Hay tres:
 //
-//   resend  HTTPS (443) contra la API de Resend.
-//   smtp    nodemailer contra un relay real — hoy, SendGrid.
+//   resend        HTTPS (443) contra la API de Resend.
+//   smtp          nodemailer contra un relay real por socket — hoy, SendGrid.
+//   sendgrid_api  HTTPS (443) contra la Web API de SendGrid (mismo remitente
+//                 y misma API key que smtp, pero sin abrir un socket SMTP).
 //
-// Un incidente anterior contra smtp.gmail.com:465 (ENETUNREACH/ETIMEDOUT por
-// IPv4 y por IPv6) hizo pensar que Render bloqueaba SMTP saliente en general,
-// y este comentario lo decía como hecho. Era cierto solo a medias: Render
-// bloquea los puertos SMTP (25, 465, 587) exclusivamente en instancias FREE,
-// desde septiembre 2025 — en planes pagos 465 y 587 andan bien (el 25 sigue
-// bloqueado para todos, como en casi cualquier host serio). henko-api corre
-// en plan `starter` (ver render.yaml), así que SMTP es una opción real en
-// este proyecto, no solo para desarrollo. Fuente:
-// https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports
+// henko-api corre en el plan FREE de Render (verificado contra la propia
+// API de Render, no asumido), y ese plan bloquea los puertos SMTP salientes
+// (25, 465, 587) desde septiembre 2025 — un intento real contra
+// smtp.sendgrid.net:587 se quedó colgado sin error ni éxito, consistente con
+// un bloqueo silencioso de puerto, no con credenciales inválidas. `smtp`
+// sigue existiendo para quien corra este backend en un plan pago o fuera de
+// Render, pero en este proyecto el default en producción es `sendgrid_api`.
+// Fuente: https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports
 //
 // De ahí el selector:
 //
-//   EMAIL_TRANSPORT=smtp     usa nodemailer
-//   EMAIL_TRANSPORT=resend   usa Resend
-//   sin definir              Resend
-//
-// SMTP es opt-in explícito y no se elige solo aunque haya credenciales
-// cargadas. Las que están en .env hoy Gmail las rechaza (535 BadCredentials:
-// una contraseña de aplicación caducada o revocada), así que autoelegir SMTP
-// rompería el envío local de quien no pidió cambiar nada.
+//   EMAIL_TRANSPORT=smtp          nodemailer por socket
+//   EMAIL_TRANSPORT=sendgrid_api  Web API de SendGrid (HTTPS)
+//   EMAIL_TRANSPORT=resend        Resend
+//   sin definir                   Resend
 
 const SMTP_TRANSPORT = 'smtp'
 const RESEND_TRANSPORT = 'resend'
+const SENDGRID_API_TRANSPORT = 'sendgrid_api'
+const SENDGRID_MAIL_SEND_URL = 'https://api.sendgrid.com/v3/mail/send'
 
 const hasSmtpCredentials = () => {
   return Boolean(
@@ -549,7 +550,27 @@ const hasSmtpCredentials = () => {
 export const getEmailTransportName = () => {
   const forced = sanitizeString(process.env.EMAIL_TRANSPORT).toLowerCase()
 
-  return forced === SMTP_TRANSPORT ? SMTP_TRANSPORT : RESEND_TRANSPORT
+  if (forced === SMTP_TRANSPORT) return SMTP_TRANSPORT
+  if (forced === SENDGRID_API_TRANSPORT) return SENDGRID_API_TRANSPORT
+  return RESEND_TRANSPORT
+}
+
+const getSendGridApiKeyForSend = () =>
+  sanitizeString(process.env.SENDGRID_API_KEY) || sanitizeString(process.env.EMAIL_PASS)
+
+// El from ya llega armado como 'Nombre <email>' (o solo 'email') porque lo
+// arma getFromAddress para los otros dos transportes, que aceptan ese string
+// tal cual. La Web API de SendGrid en cambio pide from como {email, name}.
+const parseFromHeader = raw => {
+  const str = sanitizeString(raw)
+  const match = /^(.*)<([^>]+)>\s*$/.exec(str)
+
+  if (match) {
+    const name = match[1].trim().replace(/^"|"$/g, '')
+    return { email: match[2].trim(), name: name || undefined }
+  }
+
+  return { email: str }
 }
 
 let resendClientInstance = null
@@ -663,6 +684,66 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         }
       }
 
+      if (transport === SENDGRID_API_TRANSPORT) {
+        const apiKey = getSendGridApiKeyForSend()
+
+        if (!apiKey) {
+          const error = new Error(
+            'SendGrid API: falta EMAIL_PASS o SENDGRID_API_KEY',
+          )
+          error.code = 'SENDGRID_API_NOT_CONFIGURED'
+          throw error
+        }
+
+        const { email: fromEmail, name: fromName } = parseFromHeader(mailOptions.from)
+        const content = [
+          mailOptions.text ? { type: 'text/plain', value: mailOptions.text } : null,
+          mailOptions.html ? { type: 'text/html', value: mailOptions.html } : null,
+        ].filter(Boolean)
+
+        const response = await fetch(SENDGRID_MAIL_SEND_URL, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            personalizations: [{ to: [{ email: mailOptions.to }] }],
+            from: { email: fromEmail, ...(fromName ? { name: fromName } : {}) },
+            ...(mailOptions.replyTo ? { reply_to: { email: mailOptions.replyTo } } : {}),
+            subject: mailOptions.subject,
+            content,
+          }),
+        })
+
+        if (!response.ok) {
+          const body = await response.text().catch(() => '')
+          const error = new Error(
+            `SendGrid API rechazó el envío (${response.status}): ${body.slice(0, 500)}`,
+          )
+          error.code = response.status === 401 || response.status === 403
+            ? 'SENDGRID_AUTH_FAILED'
+            : 'SENDGRID_REQUEST_INVALID'
+          throw error
+        }
+
+        const messageId = response.headers.get('x-message-id')
+
+        logger.info('✅ Email enviado correctamente', {
+          messageId,
+          transport: SENDGRID_API_TRANSPORT,
+        })
+
+        return {
+          success: true,
+          messageId: messageId || null,
+          accepted: [mailOptions.to],
+          rejected: [],
+          response: 'sendgrid-api-accepted',
+          attempt,
+        }
+      }
+
       const client = getResendClient()
       const { data, error } = await client.emails.send({
         from: mailOptions.from,
@@ -741,6 +822,34 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         return {
           success: false,
           error: 'RESEND_REQUEST_INVALID',
+          details: error.message,
+          code: error.code,
+        }
+      }
+
+      // Igual que con Resend: config rota o pedido inválido no se arregla
+      // reintentando.
+      if (error.code === 'SENDGRID_API_NOT_CONFIGURED' || error.code === 'SENDGRID_AUTH_FAILED') {
+        logger.error('🔒 Error de configuración de SendGrid API', {
+          suggestion: 'Verificá EMAIL_PASS (o SENDGRID_API_KEY) en las variables de entorno.',
+        })
+
+        return {
+          success: false,
+          error: 'SENDGRID_AUTHENTICATION_FAILED',
+          details: error.message,
+          code: error.code,
+        }
+      }
+
+      if (error.code === 'SENDGRID_REQUEST_INVALID') {
+        logger.error('⚠️ SendGrid API rechazó el envío (solicitud inválida)', {
+          details: error.message,
+        })
+
+        return {
+          success: false,
+          error: 'SENDGRID_REQUEST_INVALID',
           details: error.message,
           code: error.code,
         }
