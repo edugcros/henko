@@ -153,6 +153,12 @@ export const env = {
   mercadoPagoPublicKey: clean(process.env.REACT_APP_MP_PUBLIC_KEY),
 
   gaMeasurementId: clean(process.env.REACT_APP_GA_MEASUREMENT_ID),
+
+  // Opcional a propósito: sin esta key el widget de Turnstile simplemente no
+  // se renderiza (ver components/TurnstileWidget.jsx) y el alta de tienda
+  // sigue funcionando como hoy. No la vuelvas obligatoria en producción sin
+  // confirmar antes que el backend tiene TURNSTILE_SECRET_KEY cargada.
+  turnstileSiteKey: clean(process.env.REACT_APP_TURNSTILE_SITE_KEY),
 }
 
 // =====================================================

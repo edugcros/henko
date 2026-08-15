@@ -1,5 +1,5 @@
 // 📁 AdminRegister.js
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { useFormik } from 'formik'
 import { useDispatch, useSelector } from 'react-redux'
@@ -36,6 +36,7 @@ import {
 } from '@mui/icons-material'
 
 import { createUserAdmin } from '@features/auth/authSlice'
+import TurnstileWidget from '../components/TurnstileWidget'
 import { env } from '../config/env'
 
 // =====================================================
@@ -232,6 +233,8 @@ const AdminRegister = () => {
   } = useSelector(state => state.user || {})
 
   const isLoading = loading.createAdmin === true
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const captchaPending = Boolean(env.turnstileSiteKey) && !turnstileToken
 
   const platformDomain = env.publicBaseDomain || env.productionDomain || ''
   const isProduction = env.isProduction
@@ -262,6 +265,7 @@ const AdminRegister = () => {
         storeSlug: normalizeSlug(values.storeSlug),
         plan: values.plan || 'starter',
         password: values.password,
+        turnstileToken,
       }
 
       try {
@@ -656,6 +660,16 @@ const AdminRegister = () => {
                     }}
                   />
 
+                  {env.turnstileSiteKey && (
+                    <Box display="flex" justifyContent="center">
+                      <TurnstileWidget
+                        siteKey={env.turnstileSiteKey}
+                        onVerify={setTurnstileToken}
+                        onExpire={() => setTurnstileToken('')}
+                      />
+                    </Box>
+                  )}
+
                   {isError && (
                     <Alert
                       severity="error"
@@ -670,7 +684,7 @@ const AdminRegister = () => {
                     type="submit"
                     fullWidth
                     variant="contained"
-                    disabled={isLoading}
+                    disabled={isLoading || captchaPending}
                     sx={{
                       py: 2.2,
                       borderRadius: 4,

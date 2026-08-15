@@ -43,6 +43,7 @@ import {
 import {
   csrfProtectionDynamic,
 } from '../middlewares/csrfMiddleware.js'
+import { verifyTurnstile } from '../middlewares/turnstileMiddleware.js'
 import { env } from '../../config/env.js'
 
 const router = express.Router()
@@ -146,6 +147,7 @@ router.post(
 router.post(
   '/register',
   authLimiter,
+  verifyTurnstile,
   resolveTenantByDomain,
   createUser,
 )
@@ -154,6 +156,7 @@ router.post(
 router.post(
   '/register-admin',
   registerAdminLimiter,
+  verifyTurnstile,
   createUserAdmin,
 )
 
