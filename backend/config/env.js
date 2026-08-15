@@ -589,6 +589,20 @@ if (env.isProduction) {
         `EMAIL_TRANSPORT=smtp requiere ${missingSmtp.join(', ')} en producción`,
       )
     }
+  } else if (emailTransport === 'sendgrid_api') {
+    // Reusa EMAIL_PASS (la API key de SendGrid) — no hace falta una
+    // credencial separada. Ver services/emailService.js.
+    if (!process.env.EMAIL_PASS?.trim() && !process.env.SENDGRID_API_KEY?.trim()) {
+      throw new Error(
+        'EMAIL_TRANSPORT=sendgrid_api requiere EMAIL_PASS (o SENDGRID_API_KEY) en producción',
+      )
+    }
+
+    if (!process.env.EMAIL_FROM?.trim()) {
+      throw new Error(
+        'EMAIL_TRANSPORT=sendgrid_api requiere EMAIL_FROM (la dirección verificada como Single Sender en SendGrid) en producción',
+      )
+    }
   } else {
     if (!process.env.RESEND_API_KEY?.trim()) {
       throw new Error(
