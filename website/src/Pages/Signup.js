@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useFormik } from 'formik'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, Link } from 'react-router-dom'
@@ -17,9 +17,11 @@ import {
 } from '@mui/material'
 import Meta from '@components/Meta'
 import BreadCrumb from '@components/BreadCrumb'
+import TurnstileWidget from '@components/TurnstileWidget'
 import { registerUser, clearState } from '@features/user/userSlice'
 import { useTenant } from '../contexts/TenantContext'
 import { getThemeColors } from '@utils/themeRuntime'
+import { env } from '../config/env'
 
 const validationSchema = yup.object({
   firstname: yup.string().required('El nombre es obligatorio'),
@@ -41,6 +43,7 @@ const Signup = () => {
     () => getThemeColors(themeConfig || {}),
     [themeConfig],
   )
+  const [turnstileToken, setTurnstileToken] = useState('')
 
   useEffect(() => {
     dispatch(clearState())
@@ -57,8 +60,9 @@ const Signup = () => {
     validationSchema,
     onSubmit: async (values, { resetForm }) => {
       try {
-        await dispatch(registerUser(values)).unwrap()
+        await dispatch(registerUser({ ...values, turnstileToken })).unwrap()
         resetForm()
+        setTurnstileToken('')
         dispatch(clearState())
         navigate('/login')
       } catch (error) {
@@ -66,6 +70,8 @@ const Signup = () => {
       }
     },
   })
+
+  const captchaPending = Boolean(env.turnstileSiteKey) && !turnstileToken
 
   const {
     handleSubmit,
@@ -216,6 +222,16 @@ const Signup = () => {
                   variant="outlined"
                 />
 
+                {env.turnstileSiteKey && (
+                  <Box display="flex" justifyContent="center">
+                    <TurnstileWidget
+                      siteKey={env.turnstileSiteKey}
+                      onVerify={setTurnstileToken}
+                      onExpire={() => setTurnstileToken('')}
+                    />
+                  </Box>
+                )}
+
                 {/* Mensajes de error o éxito */}
                 {isError && (
                   <Typography variant="body2" color="error" align="center">
@@ -237,6 +253,7 @@ const Signup = () => {
                   type="submit"
                   fullWidth
                   variant="contained"
+                  disabled={captchaPending}
                   sx={{
                     backgroundColor: themeColors.actionPrimary,
                     color: themeColors.actionPrimaryText,

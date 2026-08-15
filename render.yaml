@@ -80,6 +80,14 @@ services:
       # sea válida.
       - key: EMAIL_FROM
         sync: false
+      # Anti-bot en /user/register y /user/register-admin (Cloudflare
+      # Turnstile). Sin esta key el registro sigue funcionando exactamente
+      # igual que hoy, sin verificar nada — ver
+      # src/middlewares/turnstileMiddleware.js. Se crea gratis en
+      # dash.cloudflare.com → Turnstile, junto con la site key que va en
+      # REACT_APP_TURNSTILE_SITE_KEY de los dos frontends (Vercel).
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
       - key: MONGODB_URL
         sync: false
       - key: MONGO_ENABLE_TRANSACTIONS

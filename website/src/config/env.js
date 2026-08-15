@@ -112,6 +112,12 @@ export const env = {
   gaMeasurementId: getValue('REACT_APP_GA_MEASUREMENT_ID'),
 
   debugApi: parseBoolean(getValue('REACT_APP_DEBUG_API'), false),
+
+  // Opcional a propósito: sin esta key el widget de Turnstile simplemente no
+  // se renderiza (ver Components/TurnstileWidget.jsx) y el registro sigue
+  // funcionando como hoy. No la vuelvas obligatoria en producción sin
+  // confirmar antes que el backend tiene TURNSTILE_SECRET_KEY cargada.
+  turnstileSiteKey: getValue('REACT_APP_TURNSTILE_SITE_KEY'),
 }
 
 if (
