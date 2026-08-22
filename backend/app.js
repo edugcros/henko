@@ -58,7 +58,19 @@ app.use(
   }),
 )
 
-app.use(morgan(env.isProduction ? 'combined' : 'dev'))
+// El handshake GET del webhook de WhatsApp manda WHATSAPP_VERIFY_TOKEN como
+// query param (hub.verify_token) — morgan 'combined' loguea la URL completa,
+// así que sin este token quedaba el secreto en texto plano en los access logs
+// cada vez que Meta (re)valida el webhook.
+morgan.token('safe-url', req => {
+  const url = req.originalUrl || req.url || ''
+  return url.replace(/([?&]hub\.verify_token=)[^&]+/i, '$1[redacted]')
+})
+
+const PRODUCTION_LOG_FORMAT =
+  ':remote-addr - :remote-user [:date[clf]] ":method :safe-url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'
+
+app.use(morgan(env.isProduction ? PRODUCTION_LOG_FORMAT : 'dev'))
 
 // =======================================================
 // BODY PARSERS
