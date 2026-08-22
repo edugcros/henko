@@ -79,9 +79,10 @@ const SectionCard = ({ title, subtitle, icon, children }) => (
  * Cómo le va a llegar el mail al comprador.
  *
  * Se muestra literal porque es la pregunta que genera más confusión: el
- * remitente es de la plataforma (Resend exige un dominio verificado por DNS)
- * y lo que el comercio controla es el nombre visible y el reply-to. Decirlo
- * acá evita el ticket de "¿por qué no sale desde mi dominio?".
+ * remitente es de la plataforma salvo que el dominio propio esté verificado
+ * (SendGrid exige DNS para eso) — lo que el comercio siempre controla es el
+ * nombre visible y el reply-to. Decirlo acá evita el ticket de "¿por qué no
+ * sale desde mi dominio?".
  */
 const EmailPreview = ({ fromName, fromAddress, replyTo }) => (
   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
@@ -112,6 +113,7 @@ const StoreSettingsPage = () => {
   )
 
   const [form, setForm] = useState(null)
+  const [emailIdentity, setEmailIdentity] = useState(null)
   const [snackbar, setSnackbar] = useState({
     open: false,
     severity: 'success',
@@ -265,7 +267,7 @@ const StoreSettingsPage = () => {
             <Grid item xs={12}>
               <EmailPreview
                 fromName={clean(form.name)}
-                fromAddress={data?.email?.fromAddress || ''}
+                fromAddress={emailIdentity?.effectiveFromAddress || ''}
                 replyTo={clean(form.contactEmail)}
               />
             </Grid>
@@ -275,7 +277,7 @@ const StoreSettingsPage = () => {
               <Typography variant="subtitle2" fontWeight={700} mb={1}>
                 Enviar desde tu propio dominio
               </Typography>
-              <SendingDomainSection />
+              <SendingDomainSection onIdentityChange={setEmailIdentity} />
             </Grid>
 
             <Grid item xs={12} sm={6}>
