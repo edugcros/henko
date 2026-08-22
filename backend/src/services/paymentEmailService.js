@@ -7,6 +7,7 @@ import {
   sendOrderConfirmationEmail,
 } from './emailService.js'
 import logger from '../../config/logger.js'
+import { normalizeEmail, isValidEmail } from './email/emailShared.js'
 
 const { Schema } = mongoose
 
@@ -68,8 +69,6 @@ const EmailJob =
   mongoose.models.EmailJob ||
   mongoose.model('EmailJob', EmailJobSchema)
 
-const normalizeEmail = value => String(value || '').trim().toLowerCase()
-const isValidEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value))
 const getSafeErrorMessage = error => error?.message || 'Error inesperado'
 
 const selectedAttributesToObject = value => {

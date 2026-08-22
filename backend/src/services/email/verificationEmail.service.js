@@ -1,19 +1,7 @@
 // 📁 src/services/email/verificationEmail.service.js
 import { sendEmail } from '../../utils/sendEmail.js'
 import { buildAdminUrl, buildFrontendUrl } from '../../utils/frontendUrl.js'
-
-// =====================================================
-// Helpers
-// =====================================================
-
-const escapeHtml = value => {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
+import { escapeHtml, sanitizeString } from './emailShared.js'
 
 // =====================================================
 // Verification email
@@ -64,7 +52,7 @@ export const sendVerificationEmail = async (
 
   return sendEmail({
     to: user.email,
-    subject: `Bienvenido a ${tenantName} - Verificá tu cuenta`,
+    subject: `Bienvenido a ${sanitizeString(tenantName)} - Verificá tu cuenta`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; line-height: 1.5;">
         <h2>¡Hola ${safeUserName}!</h2>
@@ -208,7 +196,7 @@ export const sendPasswordChangedEmail = async (user, tenantOrName = null) => {
 
   return sendEmail({
     to: user.email,
-    subject: `Tu contraseña de ${tenantName} fue modificada`,
+    subject: `Tu contraseña de ${sanitizeString(tenantName)} fue modificada`,
     html,
     text: `La contraseña de tu cuenta en ${tenantName} se cambió recientemente. Si no fuiste vos, restablecela de inmediato.`,
   })
@@ -288,7 +276,7 @@ export const sendWelcomeEmail = async (user, tenantOrName = null) => {
 
   return sendEmail({
     to: user.email,
-    subject: `Bienvenido a ${tenantName}`,
+    subject: `Bienvenido a ${sanitizeString(tenantName)}`,
     html,
     text: `Tu cuenta en ${tenantName} ya está activa.${storeUrl ? ` Entrá acá: ${storeUrl}` : ''}`,
     tenantConfig: tenant || {},
