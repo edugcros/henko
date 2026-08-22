@@ -52,7 +52,15 @@ const TurnstileWidget = ({ siteKey, onVerify, onExpire }) => {
     return () => {
       cancelled = true
       if (widgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(widgetIdRef.current)
+        // El widget puede haber sido invalidado por Cloudflare (doble
+        // montaje de StrictMode, HMR) antes de este cleanup — remove()
+        // lanza "Cannot find Widget" en ese caso y no debe romper el efecto.
+        try {
+          window.turnstile.remove(widgetIdRef.current)
+        } catch {
+          // no-op: el widget ya no existe del lado de Cloudflare
+        }
+        widgetIdRef.current = null
       }
     }
   }, [siteKey])

@@ -67,6 +67,42 @@ const RESERVED_SLUGS = new Set([
   'henko', 'noreply', 'no-reply', 'postmaster', 'abuse',
 ])
 
+// Distancia de edición simple (Levenshtein) para atrapar typos de slugs
+// reservados críticos (ej. "henkoo", "henk0" en vez de "henko") — debe
+// coincidir con backend/src/utils/domainUtils.js.
+const levenshteinDistance = (a, b) => {
+  const rows = a.length + 1
+  const cols = b.length + 1
+  const matrix = Array.from({ length: rows }, (_, i) => [i, ...Array(cols - 1).fill(0)])
+  matrix[0] = Array.from({ length: cols }, (_, j) => j)
+
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      )
+    }
+  }
+
+  return matrix[rows - 1][cols - 1]
+}
+
+const TYPO_SENSITIVE_SLUGS = ['henko']
+const TYPO_DISTANCE_THRESHOLD = 1
+
+const isReservedSlug = slug => {
+  const normalized = normalizeSlug(slug)
+
+  if (RESERVED_SLUGS.has(normalized)) return true
+
+  return TYPO_SENSITIVE_SLUGS.some(
+    reserved => levenshteinDistance(normalized, reserved) <= TYPO_DISTANCE_THRESHOLD,
+  )
+}
+
 const PUBLIC_SIGNUP_PLANS = new Set(['starter', 'pro'])
 
 const resolveSignupPlan = (...candidates) => {
@@ -200,7 +236,7 @@ const validationSchema = yup.object({
     .test(
       'not-reserved',
       'Ese identificador está reservado. Elegí otro.',
-      value => !value || !RESERVED_SLUGS.has(normalizeSlug(value)),
+      value => !value || !isReservedSlug(value),
     )
     .required('El identificador de tienda es obligatorio'),
 

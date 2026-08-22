@@ -113,8 +113,43 @@ const RESERVED_SLUGS = new Set([
   'henko', 'noreply', 'no-reply', 'postmaster', 'abuse',
 ])
 
+// Distancia de edición simple (Levenshtein) para atrapar typos de slugs
+// reservados críticos (ej. "henkoo", "henk0" en vez de "henko") que de
+// otro modo pasarían la validación por no matchear el Set exacto.
+const levenshteinDistance = (a, b) => {
+  const rows = a.length + 1
+  const cols = b.length + 1
+  const matrix = Array.from({ length: rows }, (_, i) => [i, ...Array(cols - 1).fill(0)])
+  matrix[0] = Array.from({ length: cols }, (_, j) => j)
+
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      )
+    }
+  }
+
+  return matrix[rows - 1][cols - 1]
+}
+
+// Slugs que, por ser el nombre de la propia plataforma, son especialmente
+// sensibles a typos (generan subdominios sintácticamente válidos pero sin
+// DNS/hosts configurado, o habilitan typosquatting de la marca).
+const TYPO_SENSITIVE_SLUGS = ['henko']
+const TYPO_DISTANCE_THRESHOLD = 1
+
 export const isReservedSlug = slug => {
-  return RESERVED_SLUGS.has(normalizeSlug(slug))
+  const normalized = normalizeSlug(slug)
+
+  if (RESERVED_SLUGS.has(normalized)) return true
+
+  return TYPO_SENSITIVE_SLUGS.some(
+    reserved => levenshteinDistance(normalized, reserved) <= TYPO_DISTANCE_THRESHOLD,
+  )
 }
 
 // =====================================================
