@@ -611,7 +611,15 @@ export const mpWebhook = async (req, res) => {
 
   try {
     if (!verifyMercadoPagoWebhookSignature(req)) {
-      logger.warn('⚠️ Webhook Mercado Pago con firma inválida')
+      // error, no warn: si MP_WEBHOOK_SECRET no coincide con el configurado
+      // en el dashboard de Mercado Pago, ESTO se dispara para cada
+      // notificación real y el pedido asociado queda colgado en "pending"
+      // sin ninguna otra señal — necesita ser imposible de no ver.
+      logger.error('🔴 Webhook Mercado Pago con firma inválida — revisar MP_WEBHOOK_SECRET', {
+        code: 'MP_WEBHOOK_SIGNATURE_INVALID',
+        ip: req.ip,
+        paymentId: req.body?.data?.id || req.query?.['data.id'] || req.query?.id || null,
+      })
       return
     }
 

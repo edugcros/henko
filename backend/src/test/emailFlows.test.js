@@ -8,7 +8,7 @@ process.env.CLIENT_URL = "https://tienda-plataforma.com";
 process.env.ADMIN_URL = "https://panel-plataforma.com";
 
 // Se intercepta el envío en el borde: lo que interesa verificar es QUÉ correo
-// se arma y a quién va, no que Resend o Gmail acepten la conexión.
+// se arma y a quién va, no que SendGrid acepte la conexión.
 const sentEmails = [];
 
 jest.unstable_mockModule("../utils/sendEmail.js", () => ({
@@ -256,17 +256,14 @@ describe("elección de canal de recuperación", () => {
 });
 
 describe("remitente por comercio", () => {
-  // .env.development trae credenciales reales de SendGrid (EMAIL_TRANSPORT,
-  // EMAIL_FROM, EMAIL_USER) que config/env.js carga incluso bajo
-  // NODE_ENV=test. Sin limpiarlas acá, estos tests asumen transporte
-  // resend pero corren contra smtp/sendgrid_api y fallan por variables de
-  // entorno ambientales, no por el código bajo prueba.
-  const ORIGINAL_KEYS = ["RESEND_FROM_EMAIL", "EMAIL_TRANSPORT", "EMAIL_FROM", "EMAIL_USER"];
+  // .env.development trae credenciales reales de SendGrid (EMAIL_FROM,
+  // EMAIL_USER) que config/env.js carga incluso bajo NODE_ENV=test. Sin
+  // limpiarlas acá, estos tests correrían contra esas variables ambientales
+  // en vez del estado que cada test arma explícitamente.
+  const ORIGINAL_KEYS = ["EMAIL_FROM", "EMAIL_USER"];
   const originals = Object.fromEntries(ORIGINAL_KEYS.map(key => [key, process.env[key]]));
 
   beforeEach(() => {
-    process.env.RESEND_FROM_EMAIL = "no-reply@plataforma.com";
-    delete process.env.EMAIL_TRANSPORT;
     delete process.env.EMAIL_FROM;
     delete process.env.EMAIL_USER;
   });
@@ -279,6 +276,8 @@ describe("remitente por comercio", () => {
   });
 
   test("dominio verificado: sale desde la dirección del comercio", () => {
+    process.env.EMAIL_FROM = "no-reply@plataforma.com";
+
     expect(
       resolveSenderAddress({
         email: { status: "verified", fromAddress: "hola@tiendax.com" },
@@ -289,6 +288,8 @@ describe("remitente por comercio", () => {
   test("dominio pendiente: NO sale desde el comercio", () => {
     // Un dominio sin SPF/DKIM publicados no autoriza a nadie a enviar en su
     // nombre: usarlo garantiza rebote o spam.
+    process.env.EMAIL_FROM = "no-reply@plataforma.com";
+
     expect(
       resolveSenderAddress({
         email: { status: "pending", fromAddress: "hola@tiendax.com" },
@@ -297,62 +298,13 @@ describe("remitente por comercio", () => {
   });
 
   test("dominio fallido: tampoco", () => {
+    process.env.EMAIL_FROM = "no-reply@plataforma.com";
+
     expect(
       resolveSenderAddress({
         email: { status: "failed", fromAddress: "hola@tiendax.com" },
       }),
     ).toBe("no-reply@plataforma.com");
-  });
-
-  test("comercio sin dominio propio: usa el de la plataforma", () => {
-    expect(resolveSenderAddress({})).toBe("no-reply@plataforma.com");
-  });
-
-  test("verificado pero con dirección inválida: no se arriesga", () => {
-    expect(
-      resolveSenderAddress({
-        email: { status: "verified", fromAddress: "esto-no-es-un-mail" },
-      }),
-    ).toBe("no-reply@plataforma.com");
-  });
-
-  test("sin nada configurado cae al sandbox del proveedor", () => {
-    delete process.env.RESEND_FROM_EMAIL;
-    expect(resolveSenderAddress({})).toBe("onboarding@resend.dev");
-  });
-
-  test("extractDomain solo acepta direcciones válidas", () => {
-    expect(extractDomain("hola@tiendax.com")).toBe("tiendax.com");
-    expect(extractDomain("HOLA@TiendaX.com")).toBe("tiendax.com");
-    expect(extractDomain("sin-arroba")).toBe("");
-    expect(extractDomain("")).toBe("");
-  });
-});
-
-describe("remitente por comercio · bajo SMTP", () => {
-  beforeEach(() => {
-    process.env.EMAIL_TRANSPORT = "smtp";
-  });
-
-  afterEach(() => {
-    delete process.env.EMAIL_TRANSPORT;
-    delete process.env.EMAIL_FROM;
-    delete process.env.EMAIL_USER;
-  });
-
-  test("dominio verificado: gana incluso con SMTP activo", () => {
-    // Este es el bug que encontró la propia migración a SendGrid: la rama de
-    // SMTP resolvía el remitente ANTES de mirar si el tenant tenía un
-    // dominio propio verificado, así que un comercio con su dominio ya
-    // autenticado en SendGrid seguía saliendo por la casilla compartida de
-    // la plataforma.
-    process.env.EMAIL_FROM = "no-reply@plataforma.com";
-
-    expect(
-      resolveSenderAddress({
-        email: { status: "verified", fromAddress: "hola@tiendax.com" },
-      }),
-    ).toBe("hola@tiendax.com");
   });
 
   test("sin dominio propio, usa EMAIL_FROM de la plataforma", () => {
@@ -368,23 +320,28 @@ describe("remitente por comercio · bajo SMTP", () => {
     expect(resolveSenderAddress({})).toBe("cuenta@plataforma.com");
   });
 
+  test("verificado pero con dirección inválida: no se arriesga", () => {
+    process.env.EMAIL_FROM = "no-reply@plataforma.com";
+
+    expect(
+      resolveSenderAddress({
+        email: { status: "verified", fromAddress: "esto-no-es-un-mail" },
+      }),
+    ).toBe("no-reply@plataforma.com");
+  });
+
   test("sin nada configurado no inventa una dirección", () => {
-    // A diferencia de Resend, SMTP no tiene un sandbox al que caer: sin
-    // EMAIL_FROM ni EMAIL_USER no hay remitente seguro. getSmtpTransporter
-    // ya bloquea el envío en ese caso (falta EMAIL_USER); esto solo
-    // confirma que resolveSenderAddress no inventa un valor para tapar el
-    // problema.
+    // SendGrid no tiene sandbox al que caer: sin EMAIL_FROM ni EMAIL_USER no
+    // hay remitente seguro — el envío falla explícito río abajo en vez de
+    // fingir que salió. Esto solo confirma que resolveSenderAddress no
+    // inventa un valor para tapar el problema.
     expect(resolveSenderAddress({})).toBe("");
   });
 
-  test("no confunde el remitente de Resend con el de SMTP", () => {
-    // Si quedó configurado RESEND_FROM_EMAIL de una migración anterior, bajo
-    // SMTP no tiene que usarse: son remitentes de proveedores distintos.
-    process.env.RESEND_FROM_EMAIL = "no-reply@resend-leftover.com";
-    process.env.EMAIL_FROM = "no-reply@plataforma.com";
-
-    expect(resolveSenderAddress({})).toBe("no-reply@plataforma.com");
-
-    delete process.env.RESEND_FROM_EMAIL;
+  test("extractDomain solo acepta direcciones válidas", () => {
+    expect(extractDomain("hola@tiendax.com")).toBe("tiendax.com");
+    expect(extractDomain("HOLA@TiendaX.com")).toBe("tiendax.com");
+    expect(extractDomain("sin-arroba")).toBe("");
+    expect(extractDomain("")).toBe("");
   });
 });

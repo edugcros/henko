@@ -69,10 +69,6 @@ beforeEach(() => {
   mockFindById.mockClear();
   mockUpdateOne.mockClear();
   originalFetch = global.fetch;
-  delete process.env.EMAIL_TRANSPORT;
-  delete process.env.RESEND_API_KEY;
-  delete process.env.RESEND_MANAGEMENT_API_KEY;
-  delete process.env.RESEND_FROM_EMAIL;
   delete process.env.SENDGRID_API_KEY;
   delete process.env.EMAIL_PASS;
   delete process.env.EMAIL_FROM;
@@ -95,40 +91,17 @@ describe("extractDomain", () => {
   });
 });
 
-describe("registro de dominio · Resend (default)", () => {
-  test("guarda los registros DNS y el estado que devuelve el proveedor", async () => {
-    process.env.RESEND_API_KEY = "re_test";
-    global.fetch = jest.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        id: "domain_123",
-        status: "not_started",
-        records: [
-          { record: "SPF", name: "send", type: "TXT", value: "v=spf1..." },
-        ],
-      }),
-    }));
-
-    const result = await registerTenantSendingDomain({
-      tenantId: TENANT_ID,
-      fromAddress: "no-reply@tiendax.com",
-    });
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.resend.com/domains",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(result.requested.status).toBe("pending");
-    expect(result.requested.dnsRecords).toEqual([
-      { record: "SPF", name: "send", type: "TXT", value: "v=spf1...", priority: null },
-    ]);
-    expect(result.provider).toBe("Resend");
+describe("registro de dominio", () => {
+  beforeEach(() => {
+    process.env.SENDGRID_API_KEY = "SG.test";
   });
 
   test("sin API key de administración, registra el intento y explica por qué", async () => {
-    // Sin RESEND_API_KEY ni RESEND_MANAGEMENT_API_KEY configuradas: el alta
-    // no puede llamar al proveedor, pero tiene que quedar registrada igual,
-    // nunca en un estado que aparente estar verificado.
+    // Sin SENDGRID_API_KEY ni EMAIL_PASS configuradas: el alta no puede
+    // llamar al proveedor, pero tiene que quedar registrada igual, nunca en
+    // un estado que aparente estar verificado.
+    delete process.env.SENDGRID_API_KEY;
+
     const result = await registerTenantSendingDomain({
       tenantId: TENANT_ID,
       fromAddress: "no-reply@tiendax.com",
@@ -151,18 +124,11 @@ describe("registro de dominio · Resend (default)", () => {
 
     expect(global.fetch).not.toHaveBeenCalled();
   });
-});
-
-describe("registro de dominio · SendGrid (EMAIL_TRANSPORT=smtp)", () => {
-  beforeEach(() => {
-    process.env.EMAIL_TRANSPORT = "smtp";
-    process.env.SENDGRID_API_KEY = "SG.test";
-  });
 
   test("arma el body con automatic_security y normaliza el DNS-como-objeto a array", async () => {
     // El DNS de SendGrid llega como {mail_cname, dkim1, dkim2}, no como
-    // array — es la diferencia real con Resend, y si no se normaliza acá el
-    // panel (SendingDomainSection) no tiene nada que iterar.
+    // array — si no se normaliza acá el panel (SendingDomainSection) no
+    // tiene nada que iterar.
     global.fetch = jest.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -249,9 +215,8 @@ describe("registro de dominio · SendGrid (EMAIL_TRANSPORT=smtp)", () => {
   });
 });
 
-describe("verificación de dominio · SendGrid", () => {
+describe("verificación de dominio", () => {
   beforeEach(() => {
-    process.env.EMAIL_TRANSPORT = "smtp";
     process.env.SENDGRID_API_KEY = "SG.test";
     tenantDoc.email = {
       fromAddress: "no-reply@tiendax.com",
@@ -322,9 +287,9 @@ describe("verificación de dominio · SendGrid", () => {
   });
 });
 
-describe("efectivo vs solicitado, sin importar el proveedor", () => {
+describe("efectivo vs solicitado", () => {
   test("pending: el remitente efectivo sigue siendo el de la plataforma", async () => {
-    process.env.RESEND_FROM_EMAIL = "no-reply@plataforma.com";
+    process.env.EMAIL_FROM = "no-reply@plataforma.com";
     tenantDoc.email = {
       fromAddress: "no-reply@tiendax.com",
       domain: "tiendax.com",
