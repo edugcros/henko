@@ -1,5 +1,6 @@
 // 📁 config/env.js
 import dotenv from 'dotenv'
+import crypto from 'node:crypto'
 
 const envFile =
   process.env.NODE_ENV === 'production'
@@ -572,49 +573,21 @@ if (env.isProduction) {
     throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
   }
 
-  // Las credenciales que hacen falta dependen del transporte elegido. Exigir
-  // las de Resend cuando se configuró SMTP dejaba el arranque bloqueado por
-  // una API key de un servicio que ese deploy no usa.
-  const emailTransport = String(process.env.EMAIL_TRANSPORT || '')
-    .trim()
-    .toLowerCase()
-
-  if (emailTransport === 'smtp') {
-    const missingSmtp = ['EMAIL_HOST', 'EMAIL_USER', 'EMAIL_PASS'].filter(
-      key => !process.env[key]?.trim(),
+  // SendGrid es el único proveedor de envío soportado (ver
+  // services/emailService.js — el porqué está en docs/EMAIL_PRODUCTION.md).
+  // EMAIL_PASS ya sirve como API key; SENDGRID_API_KEY solo hace falta si se
+  // quiere separar una key de solo-envío de una con permiso de administrar
+  // dominios.
+  if (!process.env.EMAIL_PASS?.trim() && !process.env.SENDGRID_API_KEY?.trim()) {
+    throw new Error(
+      'Falta EMAIL_PASS (o SENDGRID_API_KEY) en producción — es la API key de SendGrid',
     )
+  }
 
-    if (missingSmtp.length > 0) {
-      throw new Error(
-        `EMAIL_TRANSPORT=smtp requiere ${missingSmtp.join(', ')} en producción`,
-      )
-    }
-  } else if (emailTransport === 'sendgrid_api') {
-    // Reusa EMAIL_PASS (la API key de SendGrid) — no hace falta una
-    // credencial separada. Ver services/emailService.js.
-    if (!process.env.EMAIL_PASS?.trim() && !process.env.SENDGRID_API_KEY?.trim()) {
-      throw new Error(
-        'EMAIL_TRANSPORT=sendgrid_api requiere EMAIL_PASS (o SENDGRID_API_KEY) en producción',
-      )
-    }
-
-    if (!process.env.EMAIL_FROM?.trim()) {
-      throw new Error(
-        'EMAIL_TRANSPORT=sendgrid_api requiere EMAIL_FROM (la dirección verificada como Single Sender en SendGrid) en producción',
-      )
-    }
-  } else {
-    if (!process.env.RESEND_API_KEY?.trim()) {
-      throw new Error(
-        'RESEND_API_KEY es obligatoria en producción para enviar emails transaccionales',
-      )
-    }
-
-    if (!process.env.RESEND_FROM_EMAIL?.trim()) {
-      throw new Error(
-        'RESEND_FROM_EMAIL es obligatoria en producción (requiere dominio verificado en Resend, ej: no-reply@tudominio.com)',
-      )
-    }
+  if (!process.env.EMAIL_FROM?.trim()) {
+    throw new Error(
+      'Falta EMAIL_FROM en producción (la dirección verificada como Single Sender en SendGrid)',
+    )
   }
 
   if (process.env.PRODUCT_ANALYSIS_AGENT_KEY) {
@@ -650,6 +623,59 @@ if (env.isProduction) {
       'PRODUCT_ANALYSIS_AGENT_KEYS_JSON debe mapear cada dominio a un hash SHA-256',
     )
   }
+
+  // Un mismo secreto detrás de JWT_SECRET/REFRESH_TOKEN_SECRET/COOKIE_SECRET
+  // significa que filtrar cualquiera de los tres compromete sesión, refresh y
+  // cookies firmadas/CSRF de una sola vez. Ya pasó en este proyecto — el
+  // secreto compartido terminó siendo, además, el hash real de una
+  // PRODUCT_ANALYSIS_AGENT_KEYS_JSON en producción — así que se valida acá
+  // que no vuelva a ocurrir ninguna de las dos formas.
+  const sessionSecrets = {
+    JWT_SECRET: env.jwtSecret,
+    REFRESH_TOKEN_SECRET: env.refreshTokenSecret,
+    COOKIE_SECRET: env.cookieSecret,
+  }
+
+  const MIN_SESSION_SECRET_LENGTH = 32
+
+  Object.entries(sessionSecrets).forEach(([name, value]) => {
+    if (String(value || '').length < MIN_SESSION_SECRET_LENGTH) {
+      throw new Error(
+        `${name} debe tener al menos ${MIN_SESSION_SECRET_LENGTH} caracteres en producción`,
+      )
+    }
+  })
+
+  const sessionSecretEntries = Object.entries(sessionSecrets)
+
+  for (let i = 0; i < sessionSecretEntries.length; i += 1) {
+    for (let j = i + 1; j < sessionSecretEntries.length; j += 1) {
+      const [nameA, valueA] = sessionSecretEntries[i]
+      const [nameB, valueB] = sessionSecretEntries[j]
+
+      if (valueA === valueB) {
+        throw new Error(
+          `${nameA} y ${nameB} no pueden tener el mismo valor en producción`,
+        )
+      }
+    }
+  }
+
+  const agentKeyHashes = new Set(
+    Object.values(productAnalysisAgentKeys).map(hash =>
+      String(hash).trim().toLowerCase(),
+    ),
+  )
+
+  Object.entries(sessionSecrets).forEach(([name, value]) => {
+    const hash = crypto.createHash('sha256').update(String(value)).digest('hex')
+
+    if (agentKeyHashes.has(hash)) {
+      throw new Error(
+        `${name} no puede ser la misma clave (hasheada) que una entrada de PRODUCT_ANALYSIS_AGENT_KEYS_JSON`,
+      )
+    }
+  })
 }
 
 export default env

@@ -7,25 +7,13 @@
 // una exigencia de un proveedor en particular: es cómo funciona el correo.
 // Cualquiera serio pide lo mismo, y sin eso el mensaje rebota o cae en spam.
 //
-// Este servicio da de alta el dominio en el proveedor, guarda los registros
-// DNS que el comercio tiene que cargar, y consulta el estado de verificación.
-//
-// Dos proveedores posibles, elegidos por el mismo EMAIL_TRANSPORT que decide
-// cómo se envía el correo (ver emailService.js):
-//
-//   resend (default)  API de Resend, https://api.resend.com/domains
-//   smtp              El relay SMTP configurado es SendGrid (EMAIL_HOST=
-//                      smtp.sendgrid.net), así que la administración de
-//                      dominios usa la API de SendGrid — misma cuenta, mismo
-//                      API key que ya autentica el envío.
-//
-// Si el día de mañana el transporte SMTP apunta a otro proveedor (no
-// SendGrid), este archivo es el único lugar que hay que tocar: la forma
-// pública (register/refresh/clear/getIdentity) no cambia.
+// Este servicio da de alta el dominio en SendGrid (el único proveedor de
+// envío, ver emailService.js), guarda los registros DNS que el comercio
+// tiene que cargar, y consulta el estado de verificación.
 
 import Tenant from '../../models/tenantModel.js'
 import logger from '../../../config/logger.js'
-import { getEmailTransportName, resolveSenderAddress } from '../emailService.js'
+import { resolveSenderAddress } from '../emailService.js'
 import { sanitizeString as clean, EMAIL_REGEX as EMAIL_RE } from './emailShared.js'
 
 const REQUEST_TIMEOUT_MS = 15000
@@ -35,9 +23,6 @@ export const extractDomain = address => {
   if (!EMAIL_RE.test(value)) return ''
   return value.split('@')[1] || ''
 }
-
-const getActiveEmailProvider = () =>
-  ['smtp', 'sendgrid_api'].includes(getEmailTransportName()) ? 'sendgrid' : 'resend'
 
 const normalizeRecords = records => {
   if (!Array.isArray(records)) return []
@@ -52,102 +37,6 @@ const normalizeRecords = records => {
         ? null
         : Number(item.priority),
   }))
-}
-
-// ─── Resend ──────────────────────────────────────────────
-
-const RESEND_API = 'https://api.resend.com'
-
-const getResendManagementKey = () =>
-  clean(process.env.RESEND_MANAGEMENT_API_KEY) ||
-  clean(process.env.RESEND_API_KEY)
-
-const resendRequest = async (path, { method = 'GET', body } = {}) => {
-  const key = getResendManagementKey()
-
-  if (!key) {
-    const error = new Error('No hay API key de Resend configurada')
-    error.code = 'PROVIDER_NOT_CONFIGURED'
-    throw error
-  }
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${RESEND_API}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    })
-
-    const data = await response.json().catch(() => null)
-
-    if (!response.ok) {
-      const error = new Error(
-        data?.message || `Resend respondió ${response.status}`,
-      )
-      // El caso más probable en este proyecto: la key de envío no sirve para
-      // administrar dominios, y el mensaje del proveedor no lo deja claro.
-      error.code =
-        data?.name === 'restricted_api_key'
-          ? 'PROVIDER_KEY_CANNOT_MANAGE_DOMAINS'
-          : 'PROVIDER_ERROR'
-      error.statusCode = response.status
-      throw error
-    }
-
-    return data
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
-// Resend usa 'verified' cuando el dominio quedó listo; el resto de sus
-// estados (not_started, pending, temporary_failure) siguen siendo espera, y
-// 'failure' es un no definitivo.
-const mapResendStatus = status => {
-  const value = clean(status).toLowerCase()
-
-  if (value === 'verified') return 'verified'
-  if (value === 'failure' || value === 'failed') return 'failed'
-
-  return 'pending'
-}
-
-const resendCreateDomain = async domain => {
-  const created = await resendRequest('/domains', {
-    method: 'POST',
-    body: { name: domain },
-  })
-
-  return {
-    id: clean(created?.id),
-    dns: normalizeRecords(created?.records),
-    status: mapResendStatus(created?.status),
-  }
-}
-
-const resendFetchDomain = async ({ domainId, domain }) => {
-  // Con id se consulta directo; sin él hay que buscarlo por nombre, que es
-  // el caso de un dominio dado de alta a mano en el panel de Resend.
-  const data = domainId
-    ? await resendRequest(`/domains/${domainId}`)
-    : (await resendRequest('/domains'))?.data?.find(
-      item => clean(item?.name).toLowerCase() === domain,
-    )
-
-  if (!data) return null
-
-  return {
-    id: clean(data?.id) || domainId,
-    dns: normalizeRecords(data?.records),
-    status: mapResendStatus(data?.status),
-  }
 }
 
 // ─── SendGrid ────────────────────────────────────────────
@@ -192,10 +81,9 @@ const sendGridRequest = async (path, { method = 'GET', body } = {}) => {
         data?.message ||
         `SendGrid respondió ${response.status}`
       const error = new Error(message)
-      // SendGrid controla permisos por scope de API key en vez de un código
-      // de error dedicado como el "restricted_api_key" de Resend: un 401/403
-      // acá casi siempre significa que la key no tiene el scope de Domain
-      // Authentication habilitado.
+      // SendGrid controla permisos por scope de API key, no por un código de
+      // error dedicado: un 401/403 acá casi siempre significa que la key no
+      // tiene el scope de Domain Authentication habilitado.
       error.code =
         response.status === 401 || response.status === 403
           ? 'PROVIDER_KEY_CANNOT_MANAGE_DOMAINS'
@@ -279,21 +167,6 @@ const sendGridFetchDomain = async ({ domainId, domain }) => {
   }
 }
 
-// ─── Selector de proveedor ───────────────────────────────
-
-const createProviderDomain = domain =>
-  getActiveEmailProvider() === 'sendgrid'
-    ? sendGridCreateDomain(domain)
-    : resendCreateDomain(domain)
-
-const fetchProviderDomain = params =>
-  getActiveEmailProvider() === 'sendgrid'
-    ? sendGridFetchDomain(params)
-    : resendFetchDomain(params)
-
-const getProviderLabel = () =>
-  getActiveEmailProvider() === 'sendgrid' ? 'SendGrid' : 'Resend'
-
 const isDuplicateDomainError = error => {
   const message = String(error?.message || '').toLowerCase()
   return (
@@ -341,7 +214,7 @@ export const registerTenantSendingDomain = async ({ tenantId, fromAddress }) => 
   }
 
   try {
-    const created = await createProviderDomain(domain)
+    const created = await sendGridCreateDomain(domain)
 
     update['email.providerDomainId'] = created.id
     update['email.dnsRecords'] = created.dns
@@ -352,13 +225,12 @@ export const registerTenantSendingDomain = async ({ tenantId, fromAddress }) => 
     if (!isDuplicateDomainError(error)) {
       update['email.lastError'] =
         error.code === 'PROVIDER_KEY_CANNOT_MANAGE_DOMAINS'
-          ? `La API key configurada no puede administrar dominios. Un administrador tiene que dar de alta el dominio en ${getProviderLabel()}.`
+          ? 'La API key configurada no puede administrar dominios. Un administrador tiene que dar de alta el dominio en SendGrid.'
           : error.message
 
       logger.warn('[EMAIL DOMAIN] No se pudo dar de alta el dominio', {
         tenantId: String(tenantId),
         domain,
-        provider: getActiveEmailProvider(),
         code: error.code,
       })
     }
@@ -384,7 +256,7 @@ export const refreshTenantDomainStatus = async tenantId => {
   const domainId = clean(tenant.email.providerDomainId)
 
   try {
-    const data = await fetchProviderDomain({
+    const data = await sendGridFetchDomain({
       domainId,
       domain: tenant.email.domain,
     })
@@ -428,7 +300,7 @@ export const refreshTenantDomainStatus = async tenantId => {
           'email.lastCheckedAt': new Date(),
           'email.lastError':
             error.code === 'PROVIDER_KEY_CANNOT_MANAGE_DOMAINS'
-              ? `La API key configurada no puede consultar dominios. Verificá el estado desde el panel de ${getProviderLabel()}.`
+              ? 'La API key configurada no puede consultar dominios. Verificá el estado desde el panel de SendGrid.'
               : error.message,
         },
       },
@@ -476,7 +348,7 @@ export const getTenantEmailIdentity = async tenantId => {
     // saliendo por la plataforma.
     effectiveFromAddress: resolveSenderAddress({ email }),
     usingOwnDomain: verified,
-    provider: getProviderLabel(),
+    provider: 'SendGrid',
     replyTo: tenant?.settings?.store?.contactEmail || null,
     requested: {
       fromAddress: email.fromAddress || '',
@@ -487,11 +359,7 @@ export const getTenantEmailIdentity = async tenantId => {
       lastCheckedAt: email.lastCheckedAt || null,
       lastError: email.lastError || '',
     },
-    canManageDomains: Boolean(
-      getActiveEmailProvider() === 'sendgrid'
-        ? getSendGridApiKey()
-        : getResendManagementKey(),
-    ),
+    canManageDomains: Boolean(getSendGridApiKey()),
   }
 }
 
