@@ -7,14 +7,16 @@ import {
   refreshTenantDomainStatus,
   registerTenantSendingDomain,
 } from '../services/email/tenantEmailDomainService.js'
+import { isValidEmail } from '../services/email/emailShared.js'
 
+// Uso genérico (no solo emails): algunos campos de este controller son texto
+// libre potencialmente multilínea (descripción, dirección), así que no puede
+// compartir el sanitizeString de emailShared, que corta saltos de línea a
+// propósito para valores que terminan en headers de email.
 const clean = value => String(value ?? '').trim()
 
 const requireTenantId = req =>
   resolveAuthorizedTenantFromRequest(req, { requireUserTenant: true }).tenantId
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const isValidEmail = v => EMAIL_RE.test(clean(v))
 
 const ONBOARDING_STEPS = [
   'account',

@@ -11,8 +11,8 @@ import UserMetricEvent, {
 import WishlistPromotionNotification from '../models/wishlistPromotionNotificationModel.js'
 import { sendEmail } from './emailService.js'
 import { env } from '../../config/env.js'
+import { escapeHtml, sanitizeString, validateEmail as normalizeEmail } from './email/emailShared.js'
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DEFAULT_STOREFRONT_DEV_PORT = String(
   env.storefrontPort || process.env.STOREFRONT_PORT || 3002,
 )
@@ -33,26 +33,6 @@ const CUSTOMER_ROLES = new Set([
   'cliente',
   'buyer',
 ])
-
-const sanitizeString = (value, fallback = '') => {
-  if (value === undefined || value === null) return fallback
-  const clean = String(value).trim()
-  return clean || fallback
-}
-
-const escapeHtml = value => {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
-
-const normalizeEmail = value => {
-  const email = sanitizeString(value).toLowerCase()
-  return EMAIL_REGEX.test(email) ? email : null
-}
 
 const toObjectId = value => {
   if (!mongoose.Types.ObjectId.isValid(value)) return null

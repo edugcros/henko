@@ -5,40 +5,17 @@ import { Resend } from 'resend'
 import nodemailer from 'nodemailer'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
+import { validateEmail, escapeHtml, sanitizeString } from './email/emailShared.js'
 
 // =====================================================
 // CONSTANTES
 // =====================================================
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const isProd = process.env.NODE_ENV === 'production'
 
 // =====================================================
 // HELPERS BÁSICOS
 // =====================================================
-
-const sanitizeString = (value, fallback = '') => {
-  if (value === undefined || value === null) return fallback
-
-  const clean = String(value).trim()
-  return clean || fallback
-}
-
-const validateEmail = email => {
-  if (!email || typeof email !== 'string') return null
-
-  const trimmed = email.trim().toLowerCase()
-  return EMAIL_REGEX.test(trimmed) ? trimmed : null
-}
-
-const escapeHtml = value => {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
 
 const getEnvBoolean = (value, fallback = false) => {
   if (value === undefined || value === null || value === '') return fallback
@@ -538,6 +515,7 @@ const SMTP_TRANSPORT = 'smtp'
 const RESEND_TRANSPORT = 'resend'
 const SENDGRID_API_TRANSPORT = 'sendgrid_api'
 const SENDGRID_MAIL_SEND_URL = 'https://api.sendgrid.com/v3/mail/send'
+const EMAIL_SEND_TIMEOUT_MS = 15000
 
 const hasSmtpCredentials = () => {
   return Boolean(
@@ -607,6 +585,13 @@ const getSmtpTransporter = () => {
       user: sanitizeString(process.env.EMAIL_USER),
       pass: process.env.EMAIL_PASS,
     },
+    // Sin esto una conexión bloqueada (puerto filtrado, servidor caído) se
+    // cuelga indefinidamente en vez de fallar y dejar que sendWithRetry
+    // reintente — es justo lo que pasó al probar SMTP contra el plan Free
+    // de Render antes de migrar a sendgrid_api (ver docs/EMAIL_PRODUCTION.md).
+    connectionTimeout: EMAIL_SEND_TIMEOUT_MS,
+    greetingTimeout: EMAIL_SEND_TIMEOUT_MS,
+    socketTimeout: EMAIL_SEND_TIMEOUT_MS,
   })
 
   return smtpTransporterInstance
@@ -701,20 +686,44 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
           mailOptions.html ? { type: 'text/html', value: mailOptions.html } : null,
         ].filter(Boolean)
 
-        const response = await fetch(SENDGRID_MAIL_SEND_URL, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            personalizations: [{ to: [{ email: mailOptions.to }] }],
-            from: { email: fromEmail, ...(fromName ? { name: fromName } : {}) },
-            ...(mailOptions.replyTo ? { reply_to: { email: mailOptions.replyTo } } : {}),
-            subject: mailOptions.subject,
-            content,
-          }),
-        })
+        // Sin timeout, una respuesta que nunca llega deja la promesa colgada
+        // indefinidamente en vez de fallar y dejar reintentar (mismo
+        // problema que motivó el timeout del transporter SMTP arriba).
+        const abortController = new AbortController()
+        const timeoutId = setTimeout(
+          () => abortController.abort(),
+          EMAIL_SEND_TIMEOUT_MS,
+        )
+
+        let response
+        try {
+          response = await fetch(SENDGRID_MAIL_SEND_URL, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              personalizations: [{ to: [{ email: mailOptions.to }] }],
+              from: { email: fromEmail, ...(fromName ? { name: fromName } : {}) },
+              ...(mailOptions.replyTo ? { reply_to: { email: mailOptions.replyTo } } : {}),
+              subject: mailOptions.subject,
+              content,
+            }),
+            signal: abortController.signal,
+          })
+        } catch (fetchError) {
+          if (fetchError.name === 'AbortError') {
+            const timeoutError = new Error(
+              `SendGrid API no respondió en ${EMAIL_SEND_TIMEOUT_MS}ms`,
+            )
+            timeoutError.code = 'SENDGRID_TIMEOUT'
+            throw timeoutError
+          }
+          throw fetchError
+        } finally {
+          clearTimeout(timeoutId)
+        }
 
         if (!response.ok) {
           const body = await response.text().catch(() => '')

@@ -26,12 +26,9 @@
 import Tenant from '../../models/tenantModel.js'
 import logger from '../../../config/logger.js'
 import { getEmailTransportName, resolveSenderAddress } from '../emailService.js'
+import { sanitizeString as clean, EMAIL_REGEX as EMAIL_RE } from './emailShared.js'
 
 const REQUEST_TIMEOUT_MS = 15000
-
-const clean = value => String(value ?? '').trim()
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export const extractDomain = address => {
   const value = clean(address).toLowerCase()

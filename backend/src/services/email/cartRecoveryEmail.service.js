@@ -8,17 +8,7 @@
 // su email en el checkout. Las dos mitades estaban construidas y sin unir.
 
 import { sendEmail } from '../../utils/sendEmail.js'
-
-const escapeHtml = value => {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
-
-const clean = value => String(value ?? '').trim()
+import { escapeHtml, sanitizeString as clean } from './emailShared.js'
 
 /**
  * @param values  Las mismas variables que arma el worker para la plantilla de

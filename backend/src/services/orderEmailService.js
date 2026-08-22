@@ -10,12 +10,9 @@ import {
 } from './emailService.js'
 import { getTenantConfig } from './paymentTenantConfigService.js'
 import logger from '../../config/logger.js'
+import { normalizeEmail, isValidEmail } from './email/emailShared.js'
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const isTestEnv = process.env.NODE_ENV === 'test'
-
-const normalizeEmail = value => String(value || '').trim().toLowerCase()
-const isValidEmail = value => EMAIL_REGEX.test(normalizeEmail(value))
 
 const selectedAttributesToObject = value => {
   if (!value) return {}
