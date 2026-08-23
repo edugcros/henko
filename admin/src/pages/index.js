@@ -29,6 +29,7 @@ const ThemeCustomizer = lazy(() => import('./ThemeCustomizer'))
 const CouponsPage = lazy(() => import('./CouponsPage'))
 const EditProduct = lazy(() => import('./EditProduct'))
 const PromotionalBlocksPage = lazy(() => import('./PromotionalBlocksPage'))
+const SocialPromotionPage = lazy(() => import('./SocialPromotionPage'))
 const ProductAnalysisPage = lazy(() => import('./ProductAnalysisPage'))
 const AiCommercialInboxPage = lazy(() => import('./AiCommercialInboxPage'))
 const AiAgentConfigPage = lazy(() => import('./AiAgentConfigPage'))
@@ -66,6 +67,7 @@ const pages = {
   Customers,
   ThemeCustomizer,
   PromotionalBlocksPage,
+  SocialPromotionPage,
   ProductAnalysisPage,
   Enquiries,
   Productlist,
