@@ -50,6 +50,11 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
   {
+    path: '/admin/redes-sociales',
+    Component: pages.SocialPromotionPage,
+    allowedRoles: ['admin'],
+  },
+  {
     path: '/admin/clientes',
     Component: pages.Customers,
     allowedRoles: ['admin'],

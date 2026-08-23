@@ -42,6 +42,7 @@ import SchoolIcon from '@mui/icons-material/School'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import InsightsIcon from '@mui/icons-material/Insights'
 import LocalOfferIcon from '@mui/icons-material/LocalOffer'
+import InstagramIcon from '@mui/icons-material/Instagram'
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber'
 import PaletteIcon from '@mui/icons-material/Palette'
 import ArchitectureIcon from '@mui/icons-material/Architecture'
@@ -124,6 +125,7 @@ const MENU_STRUCTURE = [
     children: [
       { key: 'promociones', label: 'Promociones', icon: LocalOfferIcon },
       { key: 'crear-cupon', label: 'Cupones', icon: ConfirmationNumberIcon },
+      { key: 'redes-sociales', label: 'Redes sociales', icon: InstagramIcon },
     ],
   },
 
