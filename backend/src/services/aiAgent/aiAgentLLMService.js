@@ -432,6 +432,7 @@ const buildGenerationConfig = ({
   responseMimeType,
   responseSchema,
   stopSequences,
+  thinkingBudget,
 }) => {
   const safeMaxOutputTokens = Math.min(
     Math.max(
@@ -454,6 +455,16 @@ const buildGenerationConfig = ({
     ...(Array.isArray(stopSequences) && stopSequences.length
       ? { stopSequences: stopSequences.map(clean).filter(Boolean).slice(0, 5) }
       : {}),
+    // Los modelos Gemini "thinking" (gemini-3.6-flash, y 2.5 mientras vivió)
+    // gastan maxOutputTokens en razonamiento interno antes de escribir la
+    // respuesta — con presupuestos chicos (tareas de JSON corto, sin
+    // razonamiento real que hacer) eso corta la respuesta con MAX_TOKENS
+    // antes de que el modelo llegue a contestar. La API rechaza budget:0
+    // (400 INVALID_ARGUMENT) en estos modelos; 1 es el mínimo aceptado y
+    // deja el razonamiento en la práctica desactivado.
+    ...(Number.isFinite(thinkingBudget)
+      ? { thinkingConfig: { thinkingBudget } }
+      : {}),
   }
 }
 
@@ -466,6 +477,7 @@ export const callGemini = async ({
   responseMimeType,
   responseSchema,
   stopSequences,
+  thinkingBudget,
   apiKey: providedApiKey,
 } = {}) => {
   // La key la resuelve quien llama (aiCredentialsService), porque puede ser
@@ -522,6 +534,7 @@ export const callGemini = async ({
       responseMimeType,
       responseSchema,
       stopSequences,
+      thinkingBudget,
     }),
     ...(safetySettings ? { safetySettings } : {}),
   }
@@ -584,6 +597,7 @@ export const callAgentLLM = async ({
   responseMimeType,
   responseSchema,
   stopSequences,
+  thinkingBudget,
   apiKey,
 } = {}) => {
   const provider = clean(
@@ -605,6 +619,7 @@ export const callAgentLLM = async ({
     responseMimeType,
     responseSchema,
     stopSequences,
+    thinkingBudget,
     apiKey,
   })
 }

@@ -112,6 +112,11 @@ export const generateSocialCaption = async (product, { apiKey, storeName } = {})
     temperature: 0.6,
     maxOutputTokens: MAX_CAPTION_OUTPUT_TOKENS,
     responseMimeType: 'application/json',
+    // Un caption + hashtags no necesita razonamiento — y en los modelos
+    // "thinking" (ver geminiModels.js) ese razonamiento comía el presupuesto
+    // de tokens entero antes de escribir el JSON. thinkingBudget:0 lo rechaza
+    // la API (400); 1 es el mínimo que acepta.
+    thinkingBudget: 1,
     apiKey,
   })
 
