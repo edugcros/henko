@@ -12,7 +12,12 @@ import { callAgentLLM } from '../aiAgent/aiAgentLLMService.js'
 
 const clean = value => String(value ?? '').trim()
 
-const MAX_CAPTION_OUTPUT_TOKENS = 500
+// aiVisionService.js usa un piso de 1024 para llamadas JSON a Gemini por la
+// misma razón: 500 alcanza para un caption corto de prueba pero un producto
+// real (descripción más larga, más hashtags) puede empujar la respuesta a
+// MAX_TOKENS y cortar el JSON a la mitad — no es un error del modelo, es un
+// presupuesto de tokens angosto.
+const MAX_CAPTION_OUTPUT_TOKENS = 1024
 
 /**
  * Mismo patrón que aiVisionService.extractJsonObject: el modelo a veces
@@ -120,7 +125,25 @@ export const generateSocialCaption = async (product, { apiKey, storeName } = {})
     throw error
   }
 
-  const parsed = extractJsonObject(result.content)
+  // finishReason MAX_TOKENS deja el JSON cortado a la mitad (una comilla o un
+  // corchete sin cerrar) — el parseo de abajo va a fallar igual, pero con un
+  // mensaje genérico que no dice por qué. Cortar acá da un error accionable
+  // (reintentá) en vez de "no se pudo parsear".
+  if (result.truncated) {
+    const error = new Error('La respuesta del modelo se cortó por longitud, probá de nuevo')
+    error.code = 'SOCIAL_CAPTION_TRUNCATED'
+    throw error
+  }
+
+  let parsed
+  try {
+    parsed = extractJsonObject(result.content)
+  } catch (parseError) {
+    // El mensaje solo no alcanza para diagnosticar un caso nuevo sin volver a
+    // reproducirlo a mano — un fragmento del contenido real sí.
+    parseError.rawContentSnippet = result.content.slice(0, 300)
+    throw parseError
+  }
 
   const caption = clean(parsed?.caption)
   const hashtags = Array.isArray(parsed?.hashtags)

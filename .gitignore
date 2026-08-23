@@ -47,6 +47,7 @@ website/build/
 **/*.env.local
 **/*.env.development
 **/*.env.production
+**/sendgrid.env
 
 # --- Secrets / local operational artifacts ---
 **/*service-account*.json
