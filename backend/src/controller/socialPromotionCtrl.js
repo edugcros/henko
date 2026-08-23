@@ -75,6 +75,7 @@ export const generateProductSocialContent = expressAsyncHandler(async (req, res)
       productId: id,
       message: error.message,
       code: error.code,
+      rawContentSnippet: error.rawContentSnippet,
     })
 
     throw error

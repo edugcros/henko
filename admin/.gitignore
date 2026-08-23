@@ -13,6 +13,8 @@ admin/build/
 website/dist/
 website/build/
 
+sendgrid.env
+
 # --- Node.js ---
 **/node_modules/
 **/npm-debug.log*
