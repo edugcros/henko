@@ -517,6 +517,19 @@ const orderSchema = new Schema(
       index: true,
     },
 
+    // Capturado una sola vez al crear la orden (header x-metric-session-id
+    // que el frontend ya manda en todo request). Permite que el evento
+    // PURCHASE server-side, sin importar por cuál de los 3 caminos de
+    // aprobación llegue, lleve la misma sesión que tuvo el visitante durante
+    // todo el funnel (PRODUCT_VIEW → ADD_TO_CART → CHECKOUT_START). Nunca se
+    // vuelve a leer de req después de la creación.
+    sessionId: {
+      type: String,
+      trim: true,
+      maxlength: 180,
+      default: '',
+    },
+
     products: {
       type: [orderProductSchema],
       validate: [
@@ -847,6 +860,22 @@ const orderSchema = new Schema(
       default: null,
     },
 
+    // Guarda contra reescribir el UserMetricEvent server-side de PURCHASE si
+    // el mismo pago se reconcilia más de una vez. Independiente de
+    // metaPurchaseEventSent: son dos sistemas distintos (registro interno de
+    // ventas vs. Meta Conversions API) que pueden fallar o reintentarse por
+    // separado — acoplarlos significa que una caída de Meta bloquearía (o un
+    // bug de Meta corrompería) la señal de "esta venta ya quedó registrada".
+    commercePurchaseEventSent: {
+      type: Boolean,
+      default: false,
+    },
+
+    commercePurchaseEventSentAt: {
+      type: Date,
+      default: null,
+    },
+
     deletedAt: {
       type: Date,
       default: null,
@@ -950,6 +979,7 @@ orderSchema.index({ tenantId: 1, refundStatus: 1, createdAt: -1 })
 orderSchema.index({ tenantId: 1, 'paymentIntent.id': 1 })
 orderSchema.index({ tenantId: 1, 'paymentIntent.amountCents': 1, createdAt: -1 })
 orderSchema.index({ tenantId: 1, 'auditLog.performedBy': 1, 'auditLog.createdAt': -1 })
+orderSchema.index({ tenantId: 1, sessionId: 1 })
 
 // =====================================================
 // HOOKS

@@ -30,6 +30,7 @@ import {
   queuePaymentEmails,
 } from '../services/paymentEmailService.js'
 import { sendMetaPurchaseEvent } from '../services/meta/metaCapiService.js'
+import { recordServerPurchaseEvent } from '../services/commerceEvents/commerceEventService.js'
 import { consumeOrderCouponIfNeeded } from '../services/orderCouponService.js'
 import {
   buildMercadoPagoPaymentData,
@@ -180,10 +181,13 @@ const queueApprovedPaymentSideEffects = async ({
 
   const tenantConfig = await getTenantConfig(tenantId)
 
-  // Se manda antes del save de queuePaymentEmails (no tiene uno propio) para
-  // que metaPurchaseEventSent viaje en el mismo write que emailSent, en vez
-  // de arriesgar una segunda escritura corriendo en paralelo. Nunca tira —
-  // ver metaCapiService.js.
+  // Ambos se mandan antes del save de queuePaymentEmails (no tiene uno
+  // propio) para que sus flags viajen en el mismo write que emailSent, en
+  // vez de arriesgar una segunda escritura corriendo en paralelo. Ninguno
+  // tira — ver commerceEventService.js y metaCapiService.js. El registro
+  // interno va primero porque es la base de la que depende todo lo demás,
+  // no un tercero — aunque el orden entre los dos no cambia el resultado.
+  await recordServerPurchaseEvent({ order, tenantId, req })
   await sendMetaPurchaseEvent({ order, tenantId, req })
 
   return queuePaymentEmails({
@@ -401,6 +405,11 @@ export const processPayment = async (req, res) => {
         userId,
         tenantId,
         shippingAddress,
+        // Mismo header que el frontend ya manda en todo request (ver
+        // axiosConfig.js) — se captura acá, una sola vez, para que el
+        // PURCHASE server-side pueda unir toda la sesión del visitante sin
+        // importar por cuál de los 3 caminos de aprobación termine llegando.
+        sessionId: sanitizeString(req.headers['x-metric-session-id']),
       })
 
       logger.info('🛒 Orden creada desde carrito', {

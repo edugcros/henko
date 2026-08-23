@@ -42,6 +42,7 @@ export const createOrderFromCart = async ({
   userId,
   tenantId,
   shippingAddress = {},
+  sessionId = '',
 }) => {
   const cart = await Cart.findOne({
     _id: toObjectId(cartId),
@@ -61,6 +62,7 @@ export const createOrderFromCart = async ({
     tenantId: toObjectId(tenantId),
     idempotencyKey: crypto.randomUUID(),
     orderby: toObjectId(userId),
+    sessionId: sanitizeString(sessionId).slice(0, 180),
 
     products: lines,
 
