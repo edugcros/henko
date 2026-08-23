@@ -1119,13 +1119,20 @@ export const processAgentMessage = async ({
     }
   }
 
+  // conversationId viaja en la acción add_to_cart para que, si el cliente la
+  // acepta, el agregado al carrito quede trazable hasta esta conversación
+  // (ver AiCartActionBridge.js y commerceEventService.js::markOrderAiInfluenced).
   const actions = buildAgentActions({
     text: cleanText,
     responseText: aiResult.content,
     products,
     promotions,
     behavior: agent?.behavior || {},
-  })
+  }).map(action =>
+    action.type === 'add_to_cart'
+      ? { ...action, conversationId: String(conversation._id) }
+      : action,
+  )
 
   if (actions.length > 0) {
     aiResult = {

@@ -30,7 +30,7 @@ import {
   queuePaymentEmails,
 } from '../services/paymentEmailService.js'
 import { sendMetaPurchaseEvent } from '../services/meta/metaCapiService.js'
-import { recordServerPurchaseEvent } from '../services/commerceEvents/commerceEventService.js'
+import { recordServerPurchaseEvent, markOrderAiInfluenced } from '../services/commerceEvents/commerceEventService.js'
 import { markCartRecoveryConverted } from '../services/aiAgent/aiCartRecoveryService.js'
 import { consumeOrderCouponIfNeeded } from '../services/orderCouponService.js'
 import {
@@ -202,6 +202,10 @@ const queueApprovedPaymentSideEffects = async ({
   await recordServerPurchaseEvent({ order, tenantId, req })
   await sendMetaPurchaseEvent({ order, tenantId, req })
   await markCartRecoveryConverted({ order, tenantId })
+  // Corre después de recordServerPurchaseEvent a propósito: actualiza el
+  // mismo documento de PURCHASE que esa función ya escribió (mismo eventId
+  // determinístico), no crea uno nuevo.
+  await markOrderAiInfluenced({ order, tenantId })
 
   return queuePaymentEmails({
     order,

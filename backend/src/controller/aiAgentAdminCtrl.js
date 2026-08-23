@@ -4,6 +4,7 @@ import mongoose from 'mongoose'
 import AiConversation from '../models/aiConversationModel.js'
 import AiCartRecovery from '../models/aiCartRecoveryModel.js'
 import AiLead from '../models/aiLeadModel.js'
+import UserMetricEvent from '../models/userMetricEventModel.js'
 import {
   getUserIdFromRequest,
   isValidObjectId,
@@ -173,7 +174,7 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
     ? { ...baseMatch, createdAt: { $gte: periodDate } }
     : baseMatch
 
-  const [conversationStats, leadStats, recoveryStats] = await Promise.all([
+  const [conversationStats, leadStats, recoveryStats, salesInfluenceStats] = await Promise.all([
     AiConversation.aggregate([
       { $match: conversationMatch },
       {
@@ -224,6 +225,35 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
         },
       },
     ]),
+
+    // Ventas influenciadas por IA — se apoya en el mismo registro server-side
+    // de PURCHASE (Bloque 1) que ya sirve de fuente de verdad de ingresos, y
+    // en el flag que le agrega commerceEventService.js::markOrderAiInfluenced
+    // cuando alguno de los productos de la orden llegó al carrito por una
+    // acción explícita del agente (no por haber "charlado" con él).
+    UserMetricEvent.aggregate([
+      {
+        $match: {
+          tenantId: tenantObjectId,
+          eventType: 'purchase',
+          source: 'system',
+          ...(periodDate ? { occurredAt: { $gte: periodDate } } : {}),
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$value' },
+          aiInfluencedRevenue: {
+            $sum: { $cond: ['$metadata.aiInfluenced', '$value', 0] },
+          },
+          totalOrders: { $sum: 1 },
+          aiInfluencedOrders: {
+            $sum: { $cond: ['$metadata.aiInfluenced', 1, 0] },
+          },
+        },
+      },
+    ]),
   ])
 
   const convByStatus = Object.fromEntries(
@@ -243,6 +273,8 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
   const totalRecoveries = recoveryStats.reduce((sum, s) => sum + s.count, 0)
   const convertedRecoveries = recByStatus.converted || 0
   const recoveredRevenueCents = recoveryStats.find(s => s._id === 'converted')?.revenue || 0
+
+  const salesFacet = salesInfluenceStats[0] || {}
 
   return res.status(200).json({
     success: true,
@@ -281,6 +313,16 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
           ? Math.round((convertedRecoveries / totalRecoveries) * 10000) / 100
           : 0,
         recoveredRevenueCents,
+      },
+
+      salesInfluence: {
+        totalRevenueCents: salesFacet.totalRevenue || 0,
+        aiInfluencedRevenueCents: salesFacet.aiInfluencedRevenue || 0,
+        aiInfluencedOrders: salesFacet.aiInfluencedOrders || 0,
+        totalOrders: salesFacet.totalOrders || 0,
+        percentage: salesFacet.totalRevenue > 0
+          ? Math.round((salesFacet.aiInfluencedRevenue / salesFacet.totalRevenue) * 10000) / 100
+          : 0,
       },
 
       // Backwards compat: flat keys the old frontend expects
