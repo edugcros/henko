@@ -62,6 +62,13 @@ export const recordServerPurchaseEvent = async ({ order, tenantId, req }) => {
       tenantDomain: sanitizeString(req?.headers?.host || '', 180),
       eventType: USER_METRIC_EVENTS.PURCHASE,
       source: 'system',
+      attribution: {
+        utmSource: sanitizeString(order.attribution?.utmSource, 120),
+        utmMedium: sanitizeString(order.attribution?.utmMedium, 120),
+        utmCampaign: sanitizeString(order.attribution?.utmCampaign, 160),
+        utmContent: sanitizeString(order.attribution?.utmContent, 160),
+        utmTerm: sanitizeString(order.attribution?.utmTerm, 160),
+      },
       orderObjectId: order._id,
       orderId: String(order._id),
       paymentId: sanitizeString(order.paymentIntent?.providerPaymentId, 180),

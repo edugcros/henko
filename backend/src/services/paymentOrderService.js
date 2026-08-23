@@ -43,6 +43,8 @@ export const createOrderFromCart = async ({
   tenantId,
   shippingAddress = {},
   sessionId = '',
+  attribution = {},
+  metaClickIds = {},
 }) => {
   const cart = await Cart.findOne({
     _id: toObjectId(cartId),
@@ -63,6 +65,17 @@ export const createOrderFromCart = async ({
     idempotencyKey: crypto.randomUUID(),
     orderby: toObjectId(userId),
     sessionId: sanitizeString(sessionId).slice(0, 180),
+    attribution: {
+      utmSource: sanitizeString(attribution.utmSource).slice(0, 120),
+      utmMedium: sanitizeString(attribution.utmMedium).slice(0, 120),
+      utmCampaign: sanitizeString(attribution.utmCampaign).slice(0, 160),
+      utmContent: sanitizeString(attribution.utmContent).slice(0, 160),
+      utmTerm: sanitizeString(attribution.utmTerm).slice(0, 160),
+    },
+    metaClickIds: {
+      fbc: sanitizeString(metaClickIds.fbc).slice(0, 300),
+      fbp: sanitizeString(metaClickIds.fbp).slice(0, 300),
+    },
 
     products: lines,
 

@@ -5,6 +5,13 @@ import { env } from '../config/env.js'
 
 let _store = null
 const METRIC_SESSION_KEY = 'henko_metric_session_id'
+// Misma clave que userMetricsService.js usa para persistir el primer touch
+// de UTMs — no se puede importar esa función acá (userMetricsService.js
+// importa este archivo, no al revés), así que esta es una copia local
+// minimalista que lee/escribe la misma clave, para que ambas queden
+// sincronizadas en el mismo valor aunque el código esté duplicado.
+const ATTRIBUTION_KEY = 'henko_metric_attribution'
+const ATTRIBUTION_TTL_MS = 24 * 60 * 60 * 1000
 
 export const setApiStore = store => {
   _store = store
@@ -105,6 +112,41 @@ const getMetricSessionId = () => {
     return sessionId
   } catch {
     return createMetricSessionId()
+  }
+}
+
+const getAttributionForHeader = () => {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const params = new window.URLSearchParams(window.location.search)
+    const current = {
+      utmSource: params.get('utm_source') || '',
+      utmMedium: params.get('utm_medium') || '',
+      utmCampaign: params.get('utm_campaign') || '',
+      utmContent: params.get('utm_content') || '',
+      utmTerm: params.get('utm_term') || '',
+    }
+
+    if (Object.values(current).some(Boolean)) {
+      window.localStorage.setItem(
+        ATTRIBUTION_KEY,
+        JSON.stringify({
+          value: current,
+          expiresAt: Date.now() + ATTRIBUTION_TTL_MS,
+        }),
+      )
+      return current
+    }
+
+    const stored = JSON.parse(
+      window.localStorage.getItem(ATTRIBUTION_KEY) || 'null',
+    )
+    if (!stored || Date.now() > Number(stored.expiresAt || 0)) return null
+
+    return stored.value || null
+  } catch {
+    return null
   }
 }
 
@@ -282,6 +324,19 @@ api.interceptors.request.use(
     if (metricSessionId) {
       requestConfig.headers['x-metric-session-id'] = metricSessionId
     }
+
+    const attribution = requestConfig.skipMetricSession
+      ? null
+      : getAttributionForHeader()
+    if (attribution && Object.values(attribution).some(Boolean)) {
+      requestConfig.headers['x-metric-attribution'] =
+        JSON.stringify(attribution)
+    }
+
+    const fbc = Cookies.get('_fbc')
+    const fbp = Cookies.get('_fbp')
+    if (fbc) requestConfig.headers['x-fbc'] = fbc
+    if (fbp) requestConfig.headers['x-fbp'] = fbp
 
     if (requestConfig.skipTenantHeader) {
       removeTenantHeaders(requestConfig.headers)
