@@ -29,6 +29,7 @@ import {
   processPendingEmails,
   queuePaymentEmails,
 } from '../services/paymentEmailService.js'
+import { sendMetaPurchaseEvent } from '../services/meta/metaCapiService.js'
 import { consumeOrderCouponIfNeeded } from '../services/orderCouponService.js'
 import {
   buildMercadoPagoPaymentData,
@@ -178,6 +179,12 @@ const queueApprovedPaymentSideEffects = async ({
   })
 
   const tenantConfig = await getTenantConfig(tenantId)
+
+  // Se manda antes del save de queuePaymentEmails (no tiene uno propio) para
+  // que metaPurchaseEventSent viaje en el mismo write que emailSent, en vez
+  // de arriesgar una segunda escritura corriendo en paralelo. Nunca tira —
+  // ver metaCapiService.js.
+  await sendMetaPurchaseEvent({ order, tenantId, req })
 
   return queuePaymentEmails({
     order,

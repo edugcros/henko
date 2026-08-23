@@ -20,6 +20,7 @@ import whatsappRoutes from './whatsappRoutes.js'
 import aiWebchatRoutes from './aiWebchatRoutes.js'
 import aiLeadAdminRoutes from './aiLeadAdminRoutes.js'
 import paymentConfigRoutes from './paymentConfigRoutes.js'
+import metaPixelConfigRoutes from './metaPixelConfigRoutes.js'
 import imageAiRoutes from './imageAiRoutes.js'
 
 
@@ -63,6 +64,7 @@ router.use('/tenants', tenantRoutes)
 // =======================================================
 router.use('/payments', paymentRoutes)
 router.use('/payment-config', paymentConfigRoutes)
+router.use('/meta-pixel-config', metaPixelConfigRoutes)
 router.use('/image-ai', imageAiRoutes)
 
 

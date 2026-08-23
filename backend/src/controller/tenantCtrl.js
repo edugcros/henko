@@ -46,6 +46,7 @@ const isAiAssistantEnabled = async tenantId => {
 const buildPublicTenantResponse = (tenant, { aiAssistantEnabled = false } = {}) => {
   const primaryDomain = tenant.getPrimaryDomain?.() || null
   const mp = tenant.integrations?.mercadopago
+  const meta = tenant.integrations?.meta
 
   return {
     tenantId: tenant._id,
@@ -64,6 +65,12 @@ const buildPublicTenantResponse = (tenant, { aiAssistantEnabled = false } = {}) 
       mercadopago: mp?.isEnabled
         ? { publicKey: mp.publicKey || '', mode: mp.mode || 'test' }
         : null,
+    },
+    // Solo el pixelId — es un identificador público, pensado para vivir en
+    // el HTML. El accessToken de Conversions API es select:false y jamás
+    // debe salir por acá: ese lado corre server-side (metaCapiService.js).
+    tracking: {
+      meta: meta?.isEnabled && meta?.pixelId ? { pixelId: meta.pixelId } : null,
     },
     aiAssistant: {
       enabled: aiAssistantEnabled,
@@ -95,7 +102,7 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
       slug: cleanSlug,
       status: 'active',
     }).select(
-      '_id name slug domains status plan settings currency locale timezone country integrations.mercadopago.publicKey integrations.mercadopago.isEnabled integrations.mercadopago.mode',
+      '_id name slug domains status plan settings currency locale timezone country integrations.mercadopago.publicKey integrations.mercadopago.isEnabled integrations.mercadopago.mode integrations.meta.pixelId integrations.meta.isEnabled',
     )
 
     if (!tenantBySlug) {

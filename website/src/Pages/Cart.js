@@ -8,6 +8,7 @@ import {
   removeCartItem,
   emptyCart,
 } from '@features/cart/cartSlice'
+import { trackMetaEvent } from '@utils/metaPixel'
 import {
   Box,
   Typography,
@@ -835,6 +836,14 @@ const Cart = () => {
         }),
       })
     }
+
+    trackMetaEvent('InitiateCheckout', {
+      currency: CURRENCY,
+      value: totalAmount,
+      content_ids: cartItems.map(item => String(getItemProductId(item))),
+      content_type: 'product',
+      num_items: cartItems.length,
+    })
   }, [cartItems, totalAmount, quantities])
 
   const handleCloseNotification = useCallback((event, reason) => {

@@ -29,6 +29,7 @@ import ThemePreview from '@pages/ThemePreview'
 import { useAuth } from '@hooks/useAuth'
 import { useUserMetrics } from '@hooks/useUserMetrics'
 import { useTenant } from './contexts/TenantContext'
+import { trackMetaEvent } from '@utils/metaPixel'
 
 import './App.css'
 
@@ -48,6 +49,7 @@ const App = () => {
       page: location.pathname + location.search,
       title: document.title,
     })
+    trackMetaEvent('PageView')
   }, [location])
 
   if (authLoading && !isThemePreviewRoute) {

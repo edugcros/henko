@@ -42,6 +42,7 @@ import ReactStars from 'react-stars'
 import toast, { Toaster } from 'react-hot-toast'
 
 import { getProduct, rateProduct } from '@features/products/productSlice'
+import { trackMetaEvent } from '@utils/metaPixel'
 import { addOrUpdateCartItem } from '@features/cart/cartSlice'
 import {
   getUserProductWishlist,
@@ -1002,6 +1003,18 @@ const SingleProduct = () => {
     setSelectedVariant(null)
     setSelectedAttributes({})
     setActiveImg(0)
+  }, [product?._id])
+
+  useEffect(() => {
+    if (!product?._id) return
+
+    trackMetaEvent('ViewContent', {
+      content_ids: [String(product._id)],
+      content_type: 'product',
+      content_name: product.title || '',
+      value: Number(product.price) || 0,
+      currency: 'ARS',
+    })
   }, [product?._id])
 
   const hasVariants = useMemo(

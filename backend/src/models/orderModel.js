@@ -834,6 +834,19 @@ const orderSchema = new Schema(
       default: null,
     },
 
+    // Guarda contra reenviar el evento Purchase a Meta Conversions API si el
+    // mismo pago se reconcilia más de una vez (webhook + poll de estado
+    // pueden llamar a commitApprovedPaymentIfNeeded para la misma orden).
+    metaPurchaseEventSent: {
+      type: Boolean,
+      default: false,
+    },
+
+    metaPurchaseEventSentAt: {
+      type: Date,
+      default: null,
+    },
+
     deletedAt: {
       type: Date,
       default: null,

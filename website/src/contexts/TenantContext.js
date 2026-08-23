@@ -10,6 +10,7 @@ import React, {
 import { useDispatch, useSelector } from 'react-redux'
 import tenantService from '../services/tenantService'
 import { setPreviewMode, updateLocalConfig } from '@features/theme/themeSlice'
+import { initMetaPixel } from '@utils/metaPixel'
 
 // ==========================================
 // CONFIGURACIÓN
@@ -186,12 +187,20 @@ export const TenantProvider = ({ children }) => {
           aiAssistantEnabled: tenantRes.data?.aiAssistant?.enabled,
           tenantName:
             tenantName || themeRes.data?.general?.storeName || 'Mi Tienda',
+          tracking: tenantRes.data?.tracking || null,
           _meta: {
             loadedAt: Date.now(),
             source: 'api',
             hostname,
           },
         }
+
+        // El pixel se inyecta recién acá porque public/index.html es un solo
+        // build compartido por todos los tenants — no hay dónde hardcodearlo
+        // por tienda. No-op si el comercio no configuró Meta Pixel.
+        const pixelId = fullConfig.tracking?.meta?.pixelId
+        if (pixelId) initMetaPixel(pixelId)
+
         // 4. GUARDAR EN CACHE
         saveToCache(fullConfig)
 
@@ -327,6 +336,9 @@ export const TenantProvider = ({ children }) => {
         initialized: true,
       })
       dispatch(updateLocalConfig(cached))
+
+      const cachedPixelId = cached.tracking?.meta?.pixelId
+      if (cachedPixelId) initMetaPixel(cachedPixelId)
     }
 
     // Cargar fresco (siempre)

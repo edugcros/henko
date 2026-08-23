@@ -122,6 +122,14 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // 📊 Meta Pixel / Conversions API
+  {
+    path: '/admin/meta-pixel',
+    Component: pages.MetaPixelConfigPage,
+    allowedRoles: ['admin'],
+    meta: { new: true },
+  },
+
   // 🖼️ Editor IA de Imágenes
   {
     path: '/admin/editor-imagen-ia',
