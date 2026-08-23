@@ -101,18 +101,29 @@ const CopyableValue = ({ value }) => {
   )
 }
 
-const SendingDomainSection = () => {
+/**
+ * @param onIdentityChange Notifica al padre cada vez que se resuelve o
+ *   cambia la identidad de envío — StoreSettingsPage la usa para el preview
+ *   "así lo ve tu cliente", que necesita el mismo `effectiveFromAddress`
+ *   real, no una copia de la regla que pueda desincronizarse.
+ */
+const SendingDomainSection = ({ onIdentityChange } = {}) => {
   const [identity, setIdentity] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [draft, setDraft] = useState('')
   const [feedback, setFeedback] = useState(null)
 
+  const applyIdentity = data => {
+    setIdentity(data)
+    onIdentityChange?.(data)
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await getEmailDomain()
-      setIdentity(data)
+      applyIdentity(data)
       setDraft(data?.requested?.fromAddress || '')
     } catch (error) {
       setFeedback({
@@ -136,7 +147,7 @@ const SendingDomainSection = () => {
 
     try {
       const data = await fn()
-      setIdentity(data)
+      applyIdentity(data)
       setDraft(data?.requested?.fromAddress || '')
 
       if (action === 'verify') {

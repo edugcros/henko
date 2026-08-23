@@ -339,10 +339,17 @@ const getOrderCustomerName = order => {
   return `${firstName} ${lastName}`.trim()
 }
 
+// Mismo orden que getBuyerEmail en backend/src/services/orderEmailService.js
+// — es la fuente real que usa el backend para decidir a qué dirección le
+// llegan los emails transaccionales de esta orden. Si el orden difiere acá,
+// el admin le puede mostrar al operador un email distinto del que el
+// cliente realmente recibió (ej. compró logueado pero puso otro email en el
+// checkout).
 const getOrderCustomerEmail = order =>
-  order?.orderby?.email ||
-  order?.customerSnapshot?.email ||
   order?.shippingAddress?.email ||
+  order?.customerSnapshot?.email ||
+  order?.paymentIntent?.payerEmail ||
+  order?.orderby?.email ||
   'Sin email'
 
 const getOrderCustomerPhone = order =>

@@ -1362,6 +1362,56 @@ export const unblockUser = expressAsyncHandler(async (req, res) => {
   return sendResponse(res, 200, true, 'Usuario desbloqueado correctamente', user)
 })
 
+/**
+ * Verificación manual desde el admin.
+ *
+ * Mientras el remitente de la plataforma no tenga un dominio propio
+ * autenticado (ver docs/EMAIL_PRODUCTION.md), la entrega de los correos de
+ * verificación es inconsistente — un comprador real puede quedar sin poder
+ * confirmar su cuenta sin que sea culpa suya. Esto le da a un admin ya
+ * autenticado una salida explícita para casos de soporte puntuales, sin
+ * exponer el token de verificación por ningún canal — es una acción
+ * administrativa auditada, no un atajo que evite la verificación.
+ */
+export const verifyUserManually = expressAsyncHandler(async (req, res) => {
+  const { id } = req.params
+  requireValidId(id)
+
+  const user = await User.findOne({ _id: id, tenantId: req.user.tenantId })
+
+  if (!user) return sendResponse(res, 404, false, 'Usuario no encontrado')
+
+  if (user.isEmailVerified) {
+    return sendResponse(res, 409, false, 'El usuario ya estaba verificado')
+  }
+
+  user.isEmailVerified = true
+  user.emailVerificationToken = undefined
+  user.emailVerificationExpires = undefined
+  await user.save({ validateBeforeSave: false })
+
+  // Rastro de auditoría explícito: esto bypassea la prueba de que el dueño
+  // de la casilla la controla, así que queda registrado quién lo autorizó.
+  logger.info(
+    `Verificación manual: ${user.email} verificado a mano por admin ${req.user.email || req.user._id} (tenant ${req.user.tenantId})`,
+  )
+
+  if (shouldSendTransactionalEmail()) {
+    const tenant = await Tenant.findById(user.tenantId)
+      .select('name domains settings')
+      .lean()
+
+    sendWelcomeEmail(user, tenant).catch(error => {
+      logger.error(
+        `No se pudo enviar la bienvenida a ${user.email}: ${error.message}`,
+      )
+    })
+  }
+
+  const safeUser = await User.findById(user._id).select(SAFE_USER_SELECT)
+  return sendResponse(res, 200, true, 'Usuario verificado manualmente', safeUser)
+})
+
 // =====================================================
 // WISHLIST
 // =====================================================

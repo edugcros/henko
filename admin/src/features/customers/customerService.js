@@ -35,12 +35,14 @@ const getAllUsers = async (params = {}, { signal } = {}) => {
 const deleteUser = async id => apiRequest('delete', `/${id}`)
 const blockUser = async id => apiRequest('put', `/block-user/${id}`)
 const unblockUser = async id => apiRequest('put', `/unblock-user/${id}`)
+const verifyUser = async id => apiRequest('put', `/verify-user/${id}`)
 
 const customerService = {
   getAllUsers,
   deleteUser,
   blockUser,
   unblockUser,
+  verifyUser,
 }
 
 export default customerService
