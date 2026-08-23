@@ -12,12 +12,31 @@ import { callAgentLLM } from '../aiAgent/aiAgentLLMService.js'
 
 const clean = value => String(value ?? '').trim()
 
-// aiVisionService.js usa un piso de 1024 para llamadas JSON a Gemini por la
-// misma razón: 500 alcanza para un caption corto de prueba pero un producto
-// real (descripción más larga, más hashtags) puede empujar la respuesta a
-// MAX_TOKENS y cortar el JSON a la mitad — no es un error del modelo, es un
-// presupuesto de tokens angosto.
-const MAX_CAPTION_OUTPUT_TOKENS = 1024
+// Mismo patrón que AI_VISION_MAX_OUTPUT_TOKENS en aiVisionService.js: un
+// tope hardcodeado sin vía de override fue justo lo que rompió esto en
+// producción dos veces seguidas. La primera vez, 500 no alcanzaba ni para un
+// caption real (aparte del JSON de la respuesta). La segunda, con el tope ya
+// en 1024: probado en vivo contra gemini-3.6-flash, el "pensamiento" interno
+// del modelo (thoughtsTokenCount) NO respeta thinkingBudget como un techo —
+// es un mínimo, no un máximo — y consumió entre 0 y ~550 tokens de forma no
+// determinística entre llamados idénticos, dejando a veces muy poco margen
+// para la respuesta real. 2048 le da margen al peor caso observado sin
+// acercarse al techo real de la API (8192). El env var permite subirlo sin
+// redeploy si un modelo futuro piensa todavía más.
+const MAX_CAPTION_OUTPUT_TOKENS = Math.min(
+  Math.max(Number(process.env.AI_SOCIAL_CAPTION_MAX_OUTPUT_TOKENS || 2048), 256),
+  8192,
+)
+
+// La API de Gemini rechaza thinkingBudget:0 (400 INVALID_ARGUMENT) en los
+// modelos "thinking" — 1 es el mínimo aceptado. No elimina el razonamiento
+// (ver nota arriba), pero lo sesga hacia abajo; la defensa real contra
+// MAX_TOKENS es el margen de MAX_CAPTION_OUTPUT_TOKENS. Env var por si un
+// modelo futuro exige otro mínimo.
+const CAPTION_THINKING_BUDGET = Math.max(
+  Number(process.env.AI_SOCIAL_CAPTION_THINKING_BUDGET || 1),
+  1,
+)
 
 /**
  * Mismo patrón que aiVisionService.extractJsonObject: el modelo a veces
@@ -114,9 +133,8 @@ export const generateSocialCaption = async (product, { apiKey, storeName } = {})
     responseMimeType: 'application/json',
     // Un caption + hashtags no necesita razonamiento — y en los modelos
     // "thinking" (ver geminiModels.js) ese razonamiento comía el presupuesto
-    // de tokens entero antes de escribir el JSON. thinkingBudget:0 lo rechaza
-    // la API (400); 1 es el mínimo que acepta.
-    thinkingBudget: 1,
+    // de tokens entero antes de escribir el JSON.
+    thinkingBudget: CAPTION_THINKING_BUDGET,
     apiKey,
   })
 
