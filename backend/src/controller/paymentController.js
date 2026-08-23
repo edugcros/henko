@@ -31,6 +31,7 @@ import {
 } from '../services/paymentEmailService.js'
 import { sendMetaPurchaseEvent } from '../services/meta/metaCapiService.js'
 import { recordServerPurchaseEvent } from '../services/commerceEvents/commerceEventService.js'
+import { markCartRecoveryConverted } from '../services/aiAgent/aiCartRecoveryService.js'
 import { consumeOrderCouponIfNeeded } from '../services/orderCouponService.js'
 import {
   buildMercadoPagoPaymentData,
@@ -200,6 +201,7 @@ const queueApprovedPaymentSideEffects = async ({
   // no un tercero — aunque el orden entre los dos no cambia el resultado.
   await recordServerPurchaseEvent({ order, tenantId, req })
   await sendMetaPurchaseEvent({ order, tenantId, req })
+  await markCartRecoveryConverted({ order, tenantId })
 
   return queuePaymentEmails({
     order,

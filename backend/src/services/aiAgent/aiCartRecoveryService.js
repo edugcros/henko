@@ -5,6 +5,7 @@ import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
 import AiCampaignRule from '../../models/aiCampaignRuleModel.js'
 import User from '../../models/userModel.js'
 import Product from '../../models/productModel.js'
+import logger from '../../../config/logger.js'
 
 const clean = value => String(value || '').trim()
 
@@ -297,4 +298,61 @@ export const createCartRecoveryFromCart = async ({
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   ).setOptions({ tenantId })
+}
+
+/**
+ * Si esta compra fue precedida por un mensaje de recuperación de carrito
+ * todavía vigente para este cliente, lo marca convertido. Activa el
+ * dashboard que ya existe (aiAgentAdminCtrl.js::getAiAgentMetrics) sin
+ * tocarlo — ese ya suma cartSnapshot.subtotalCents de todo lo que esté en
+ * status:'converted'. Nunca tira: un fallo acá no debe romper la
+ * confirmación del pago.
+ *
+ * Sin cartId en Order (el Cart se borra al aprobarse el pago), la unión es
+ * por tenantId + userId, tomando el AiCartRecovery más reciente en sent o
+ * responded cuyo expiresAt todavía no venció al momento del pago. Es una
+ * aproximación por cliente, no por carrito — si el mismo cliente compra dos
+ * veces antes de que expire un intento de recuperación, la segunda compra
+ * no tiene forma de distinguirse de la primera.
+ */
+export const markCartRecoveryConverted = async ({ order, tenantId }) => {
+  if (!order?.orderby) return { converted: false, reason: 'no_user' }
+
+  try {
+    const recovery = await AiCartRecovery.findOne({
+      tenantId,
+      userId: order.orderby,
+      status: { $in: ['sent', 'responded'] },
+      expiresAt: { $gte: order.paidAt || new Date() },
+    })
+      .sort({ sentAt: -1 })
+      .setOptions({ tenantId })
+
+    if (!recovery) return { converted: false, reason: 'no_match' }
+
+    recovery.status = 'converted'
+    recovery.convertedAt = new Date()
+    recovery.orderId = order._id
+    await recovery.save({ tenantId })
+
+    await Promise.all([
+      AiCampaignRule.updateOne(
+        { tenantId, type: 'abandoned_cart' },
+        { $inc: { 'stats.conversions': 1 } },
+      ).setOptions({ tenantId }),
+      AiAgent.updateOne(
+        { tenantId },
+        { $inc: { 'stats.cartRecoveriesConverted': 1 } },
+      ).setOptions({ tenantId }),
+    ])
+
+    return { converted: true, recoveryId: recovery._id }
+  } catch (error) {
+    logger.error('❌ Error marcando recuperación de carrito como convertida', {
+      orderId: order?._id?.toString?.(),
+      tenantId: String(tenantId),
+      message: error?.message,
+    })
+    return { converted: false, reason: 'error', error: error?.message }
+  }
 }
