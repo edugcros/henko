@@ -1830,7 +1830,8 @@ const getUserBehaviorStats = async (tenantId, dateRange) => {
       {
         $group: {
           _id: {
-            $ifNull: ['$attribution.utmSource', 'direct'],
+            source: { $ifNull: ['$attribution.utmSource', 'direct'] },
+            campaign: { $ifNull: ['$attribution.utmCampaign', null] },
           },
           sessions: { $addToSet: '$sessionId' },
           users: { $addToSet: '$userId' },
@@ -1851,13 +1852,32 @@ const getUserBehaviorStats = async (tenantId, dateRange) => {
               ],
             },
           },
+          // Ingreso real: solo del registro server-side (source: system) —
+          // el mismo que Bloque 1 construyó para ser la fuente de verdad. El
+          // evento del cliente (source: storefront) queda afuera de esta
+          // suma a propósito, para no contar la misma venta dos veces.
+          revenue: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$eventType', USER_METRIC_EVENTS.PURCHASE] },
+                    { $eq: ['$source', 'system'] },
+                  ],
+                },
+                '$value',
+                0,
+              ],
+            },
+          },
         },
       },
       {
         $project: {
           channel: {
-            $cond: [{ $eq: ['$_id', ''] }, 'direct', '$_id'],
+            $cond: [{ $eq: ['$_id.source', ''] }, 'direct', '$_id.source'],
           },
+          campaign: '$_id.campaign',
           sessions: { $size: '$sessions' },
           users: {
             $size: {
@@ -1869,10 +1889,11 @@ const getUserBehaviorStats = async (tenantId, dateRange) => {
             },
           },
           conversions: 1,
+          revenue: 1,
           _id: 0,
         },
       },
-      { $sort: { sessions: -1 } },
+      { $sort: { revenue: -1 } },
       { $limit: metricsConfig.trafficSourcesLimit },
     ]),
     UserMetricEvent.aggregate([

@@ -82,6 +82,17 @@ const sanitizeString = (value, fallback = '') => {
 
 const normalizeEmail = value => sanitizeString(value).toLowerCase()
 
+// Un header de atribución corrupto o ausente nunca debe romper la creación
+// de la orden — el peor caso aceptable es "sin atribución", no un 500.
+const safeJsonParse = value => {
+  if (typeof value !== 'string' || !value) return null
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
 const isValidEmail = value => EMAIL_REGEX.test(normalizeEmail(value))
 
 const getUserId = getUserIdFromRequest
@@ -405,11 +416,17 @@ export const processPayment = async (req, res) => {
         userId,
         tenantId,
         shippingAddress,
-        // Mismo header que el frontend ya manda en todo request (ver
-        // axiosConfig.js) — se captura acá, una sola vez, para que el
-        // PURCHASE server-side pueda unir toda la sesión del visitante sin
-        // importar por cuál de los 3 caminos de aprobación termine llegando.
+        // Mismos headers que el frontend ya manda en todo request (ver
+        // axiosConfig.js) — se capturan acá, una sola vez, para que el
+        // PURCHASE server-side pueda unir toda la sesión y la campaña del
+        // visitante sin importar por cuál de los 3 caminos de aprobación
+        // termine llegando.
         sessionId: sanitizeString(req.headers['x-metric-session-id']),
+        attribution: safeJsonParse(req.headers['x-metric-attribution']) || {},
+        metaClickIds: {
+          fbc: sanitizeString(req.headers['x-fbc']),
+          fbp: sanitizeString(req.headers['x-fbp']),
+        },
       })
 
       logger.info('🛒 Orden creada desde carrito', {

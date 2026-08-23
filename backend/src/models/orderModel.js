@@ -530,6 +530,27 @@ const orderSchema = new Schema(
       default: '',
     },
 
+    // Capturado una sola vez al crear la orden (headers x-metric-attribution
+    // / x-fbc / x-fbp que el frontend ya manda en todo request — ver
+    // axiosConfig.js). Permite que el PURCHASE server-side sepa qué campaña
+    // originó la venta, sin depender del evento del cliente (que puede
+    // perderse) para esa atribución.
+    attribution: {
+      utmSource: { type: String, trim: true, maxlength: 120, default: '' },
+      utmMedium: { type: String, trim: true, maxlength: 120, default: '' },
+      utmCampaign: { type: String, trim: true, maxlength: 160, default: '' },
+      utmContent: { type: String, trim: true, maxlength: 160, default: '' },
+      utmTerm: { type: String, trim: true, maxlength: 160, default: '' },
+    },
+
+    // Cookies que el propio Pixel de Meta setea en el navegador (_fbc/_fbp).
+    // Mandarlas a Conversions API mejora el match quality de Meta sin
+    // depender de parsear UTMs a mano.
+    metaClickIds: {
+      fbc: { type: String, trim: true, maxlength: 300, default: '' },
+      fbp: { type: String, trim: true, maxlength: 300, default: '' },
+    },
+
     products: {
       type: [orderProductSchema],
       validate: [

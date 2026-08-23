@@ -55,6 +55,11 @@ const buildPurchasePayload = (order, { requestIp, userAgent, sourceUrl } = {}) =
     ...(hashedEmail ? { em: [hashedEmail] } : {}),
     ...(requestIp ? { client_ip_address: requestIp } : {}),
     ...(userAgent ? { client_user_agent: userAgent } : {}),
+    // Cookies que el propio Pixel setea en el navegador — Meta las prefiere
+    // sobre parsear UTMs a mano para su propio matching de campaña,
+    // especialmente en sesiones afectadas por Safari/ITP.
+    ...(order.metaClickIds?.fbc ? { fbc: order.metaClickIds.fbc } : {}),
+    ...(order.metaClickIds?.fbp ? { fbp: order.metaClickIds.fbp } : {}),
   }
 
   const contents = (order.products || []).map(item => ({
