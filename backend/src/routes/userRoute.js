@@ -21,6 +21,7 @@ import {
   updateUser,
   blockUser,
   unblockUser,
+  verifyUserManually,
   getWishlist,
   toggleWishlist,
   saveAddress,
@@ -303,6 +304,12 @@ router.put(
   '/unblock-user/:id',
   adminContext,
   unblockUser,
+)
+
+router.put(
+  '/verify-user/:id',
+  adminContext,
+  verifyUserManually,
 )
 
 router.delete(

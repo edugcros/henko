@@ -50,6 +50,18 @@ export const toggleBlockUser = createAsyncThunk(
   },
 )
 
+export const verifyUserManually = createAsyncThunk(
+  'customers/verifyManually',
+  async (id, thunkAPI) => {
+    try {
+      return await customerService.verifyUser(id)
+    } catch (err) {
+      const message = err.response?.data?.message || err.message
+      return thunkAPI.rejectWithValue(message)
+    }
+  },
+)
+
 // =====================
 // SLICE
 // =====================
@@ -109,6 +121,27 @@ const customersSlice = createSlice({
         }
       })
       .addCase(toggleBlockUser.rejected, (state, action) => {
+        state.isLoading = false
+        state.error = action.payload
+      })
+
+      // ---------- VERIFY MANUALLY ----------
+      .addCase(verifyUserManually.pending, state => {
+        state.isLoading = true
+      })
+      .addCase(verifyUserManually.fulfilled, (state, action) => {
+        state.isLoading = false
+        const updated = action.payload
+
+        if (!updated?._id) return
+
+        const index = state.customers.findIndex(u => u._id === updated._id)
+
+        if (index !== -1) {
+          state.customers[index] = updated
+        }
+      })
+      .addCase(verifyUserManually.rejected, (state, action) => {
         state.isLoading = false
         state.error = action.payload
       })

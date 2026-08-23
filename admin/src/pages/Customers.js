@@ -4,7 +4,9 @@ import {
   getUsers,
   removeUser,
   toggleBlockUser,
+  verifyUserManually,
 } from '@features/customers/customerSlice'
+import { toast } from 'react-toastify'
 
 import {
   Box,
@@ -29,6 +31,7 @@ import {
 import DeleteIcon from '@mui/icons-material/Delete'
 import BlockIcon from '@mui/icons-material/Block'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead'
 import PersonIcon from '@mui/icons-material/Person'
 import PhoneIcon from '@mui/icons-material/Phone'
 
@@ -64,9 +67,15 @@ const Customers = () => {
         await dispatch(
           toggleBlockUser({ id: selectedUser._id, block: false }),
         ).unwrap()
+      } else if (actionType === 'verify') {
+        await dispatch(verifyUserManually(selectedUser._id)).unwrap()
+        toast.success(`${selectedUser.email} verificado correctamente.`)
       }
     } catch (err) {
       console.error('Error ejecutando acción:', err)
+      if (actionType === 'verify') {
+        toast.error(err || 'No se pudo verificar al usuario.')
+      }
     } finally {
       setConfirmOpen(false)
       setSelectedUser(null)
@@ -191,6 +200,13 @@ const Customers = () => {
                           color={user.isBlocked ? 'error' : 'success'}
                           size="small"
                         />
+                        {!user.isEmailVerified && (
+                          <Chip
+                            label="SIN VERIFICAR"
+                            color="warning"
+                            size="small"
+                          />
+                        )}
                       </Stack>
                     </Stack>
 
@@ -199,6 +215,21 @@ const Customers = () => {
                       spacing={1}
                       justifyContent="flex-end"
                     >
+                      {!user.isEmailVerified && (
+                        <Tooltip title="Verificar manualmente">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleActionClick(user, 'verify')}
+                            sx={{
+                              bgcolor: 'info.light',
+                              color: 'white',
+                              '&:hover': { opacity: 0.8 },
+                            }}
+                          >
+                            <MarkEmailReadIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <Tooltip
                         title={user.isBlocked ? 'Desbloquear' : 'Bloquear'}
                       >
@@ -266,6 +297,8 @@ const Customers = () => {
               `¿Deseas restringir el acceso a ${selectedUser?.firstname}?`}
             {actionType === 'unblock' &&
               `¿Deseas restaurar el acceso a ${selectedUser?.firstname}?`}
+            {actionType === 'verify' &&
+              `¿Confirmás que verificaste por otro medio que ${selectedUser?.email} es una casilla real de ${selectedUser?.firstname}? Esta acción marca su cuenta como verificada sin pasar por el correo de confirmación.`}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
