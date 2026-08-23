@@ -58,6 +58,7 @@ export const normalizeAiCartAction = action => {
   return {
     type: 'add_to_cart',
     productId: clean(action.productId || action.id) || null,
+    conversationId: clean(action.conversationId) || null,
     variantId: clean(action.variantId) || null,
     variantSku: clean(action.variantSku || action.variantSKU || action.sku),
     quantity,

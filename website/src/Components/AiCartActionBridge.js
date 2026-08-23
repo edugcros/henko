@@ -10,6 +10,10 @@ import {
   savePendingAiCartAction,
 } from '@utils/aiCartActionUtils'
 import { addOrUpdateCartItem, getCart } from '@features/cart/cartSlice'
+import {
+  trackUserMetric,
+  USER_METRIC_EVENTS,
+} from '../services/userMetricsService'
 
 const AI_EVENT_NAMESPACE =
   process.env.REACT_APP_AI_EVENT_NAMESPACE || 'commerce:ai'
@@ -77,6 +81,24 @@ const AiCartActionBridge = () => {
           await dispatch(getCart()).unwrap()
         } catch {
           // No bloqueamos la experiencia si falla el refresh.
+        }
+
+        // Único rastro de que este agregado lo generó la IA, no el cliente
+        // navegando el catálogo — es la señal que después conecta con una
+        // compra real (ver commerceEventService.js::markOrderAiInfluenced).
+        // El bridge evita useCart.js a propósito (no corre dentro de un
+        // componente de producto), así que dispara el mismo evento a mano.
+        try {
+          trackUserMetric({
+            eventType: USER_METRIC_EVENTS.ADD_TO_CART,
+            source: 'agent',
+            productId: action.productId,
+            quantity: action.quantity,
+            value: Number(action.price || 0) * Number(action.quantity || 1),
+            metadata: { conversationId: action.conversationId || null },
+          })
+        } catch {
+          // Analytics no debe romper la UX.
         }
 
         clearPendingAiCartAction()

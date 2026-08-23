@@ -108,4 +108,58 @@ export const recordServerPurchaseEvent = async ({ order, tenantId, req }) => {
   }
 }
 
-export default { recordServerPurchaseEvent }
+const AI_INFLUENCE_WINDOW_DAYS = Number(process.env.AI_INFLUENCE_WINDOW_DAYS || 30)
+
+/**
+ * Si alguno de los productos de esta orden llegó al carrito por una acción
+ * explícita del agente de IA (no "el cliente charló con la IA", sino "la IA
+ * generó el agregado al carrito de este producto puntual" — ver
+ * AiCartActionBridge.js), lo marca en el mismo registro de PURCHASE que ya
+ * escribió recordServerPurchaseEvent. Nunca tira.
+ */
+export const markOrderAiInfluenced = async ({ order, tenantId }) => {
+  if (!order?.orderby) return { influenced: false, reason: 'no_user' }
+
+  try {
+    const productIds = (order.products || []).map(item => item.product).filter(Boolean)
+    if (!productIds.length) return { influenced: false, reason: 'no_products' }
+
+    const since = new Date(Date.now() - AI_INFLUENCE_WINDOW_DAYS * 86400000)
+
+    const aiAddEvents = await UserMetricEvent.find({
+      tenantId,
+      userId: order.orderby,
+      eventType: USER_METRIC_EVENTS.ADD_TO_CART,
+      source: 'agent',
+      productId: { $in: productIds },
+      occurredAt: { $gte: since, $lte: order.paidAt || new Date() },
+    })
+      .select('productId')
+      .setOptions({ tenantId })
+
+    if (!aiAddEvents.length) return { influenced: false, reason: 'no_match' }
+
+    const influencedProductIds = [...new Set(aiAddEvents.map(event => String(event.productId)))]
+
+    await UserMetricEvent.updateOne(
+      { tenantId, eventId: getOrderEventId(order) },
+      {
+        $set: {
+          'metadata.aiInfluenced': true,
+          'metadata.aiInfluencedProductIds': influencedProductIds,
+        },
+      },
+    ).setOptions({ tenantId })
+
+    return { influenced: true, productIds: influencedProductIds }
+  } catch (error) {
+    logger.error('❌ Error marcando orden como influenciada por IA', {
+      orderId: order?._id?.toString?.(),
+      tenantId: String(tenantId),
+      message: error?.message,
+    })
+    return { influenced: false, reason: 'error', error: error?.message }
+  }
+}
+
+export default { recordServerPurchaseEvent, markOrderAiInfluenced }

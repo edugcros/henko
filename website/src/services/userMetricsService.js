@@ -320,7 +320,10 @@ const normalizeEvent = event => {
   const normalized = {
     ...sanitizeObject(event),
     eventId: safeString(event?.eventId || createEventId(eventType), 180),
-    source: SOURCE,
+    // Default 'storefront' para todo el tráfico orgánico; un caller puede
+    // pisarlo (ver AiCartActionBridge.js, que manda 'agent') — el backend ya
+    // valida contra ALLOWED_SOURCES y cae a 'unknown' si no reconoce el valor.
+    source: safeString(event?.source, 40) || SOURCE,
     eventType,
     sessionId: safeString(event?.sessionId || getMetricSessionId(), 128),
     tenantDomain: safeString(event?.tenantDomain || getTenantDomain(), 180),
