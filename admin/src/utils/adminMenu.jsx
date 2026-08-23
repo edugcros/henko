@@ -126,6 +126,7 @@ const MENU_STRUCTURE = [
       { key: 'promociones', label: 'Promociones', icon: LocalOfferIcon },
       { key: 'crear-cupon', label: 'Cupones', icon: ConfirmationNumberIcon },
       { key: 'redes-sociales', label: 'Redes sociales', icon: InstagramIcon },
+      { key: 'meta-pixel', label: 'Meta Pixel', icon: InsightsIcon },
     ],
   },
 

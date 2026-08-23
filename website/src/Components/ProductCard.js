@@ -32,6 +32,7 @@ import {
 } from '@features/user/userSlice'
 import { addToCompare } from '@features/compare/compareSlice'
 import { addOrUpdateCartItem } from '@features/cart/cartSlice'
+import { trackMetaEvent } from '@utils/metaPixel'
 import {
   formatCurrency,
   getActiveThemeConfig,
@@ -397,6 +398,14 @@ const HomeProductCard = React.memo(
                 quantity: 1,
               },
             ],
+          })
+
+          trackMetaEvent('AddToCart', {
+            currency: commerceSettings.currency,
+            value: finalPrice,
+            content_ids: [String(product?._id || product?.id || '')],
+            content_type: 'product',
+            content_name: getProductTitle(product),
           })
         } catch {
           // Analytics no debe romper la UX.

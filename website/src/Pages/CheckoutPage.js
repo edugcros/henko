@@ -44,6 +44,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Link, useNavigate } from 'react-router-dom'
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 import ReactGA from 'react-ga4'
+import { trackMetaEvent } from '@utils/metaPixel'
 
 import { applyCoupon, resetCouponState } from '@features/coupon/couponSlice'
 import {
@@ -487,6 +488,14 @@ const getPaymentDisplayId = payment => {
   return normalizeId(
     payment?.id || payment?.paymentId || payment?.transactionId,
   )
+}
+
+// Mismo event_id que manda el backend para este pedido (order._id) — ver
+// metaCapiService.js. Tiene que ser el _id crudo, no getOrderDisplayId (que
+// prioriza orderNumber/code para mostrar), porque el servidor no tiene forma
+// de reconstruir ese valor de vuelta a partir del pedido.
+const getOrderTrackingId = order => {
+  return normalizeId(order?._id || order?.id || order?.orderId)
 }
 
 const getPaymentStatusValue = payment => {
@@ -1215,6 +1224,23 @@ const CheckoutPage = () => {
           quantity: item.quantity,
         })),
       })
+
+      // event_id compartido con el Purchase que manda el backend por
+      // Conversions API (mismo order._id) — así Meta deduplica un solo
+      // evento en vez de contar la compra dos veces (pixel + servidor).
+      trackMetaEvent(
+        'Purchase',
+        {
+          value: toNumber(confirmationSnapshot.totals.total, 0),
+          currency: 'ARS',
+          content_ids: confirmationSnapshot.items.map(item =>
+            String(item.productId),
+          ),
+          content_type: 'product',
+          num_items: confirmationSnapshot.items.length,
+        },
+        getOrderTrackingId(activeOrder),
+      )
     }
   }, [
     paymentSuccess,

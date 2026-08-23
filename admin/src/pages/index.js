@@ -38,6 +38,7 @@ const AiAgentDashboardPage = lazy(() => import('./AiAgentDashboardPage'))
 const AiKnowledgeBasePage = lazy(() => import('./AiKnowledgeBasePage'))
 const AiCampaignRulesPage = lazy(() => import('./AiCampaignRulesPage'))
 const PaymentConfigPage = lazy(() => import('./PaymentConfigPage'))
+const MetaPixelConfigPage = lazy(() => import('./MetaPixelConfigPage'))
 const OnboardingWizard = lazy(() => import('./OnboardingWizard'))
 const ImageAiEditor = lazy(() => import('./ImageAiEditor'))
 const StoreSettingsPage = lazy(() => import('./StoreSettingsPage'))
@@ -57,6 +58,7 @@ const pages = {
   AiKnowledgeBasePage,
   AiCampaignRulesPage,
   PaymentConfigPage,
+  MetaPixelConfigPage,
   OnboardingWizard,
   ImageAiEditor,
   StoreSettingsPage,
