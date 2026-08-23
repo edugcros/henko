@@ -39,6 +39,7 @@ import { requireAiEntitlement } from '../middlewares/aiEntitlementMiddleware.js'
 import { AI_METRICS } from '../services/ai/aiPlanPolicy.js'
 import { analyzeImage } from '../services/aiVisionService.js'
 import { recordManualAnalysisJob } from '../controller/productAnalysisController.js'
+import { generateProductSocialContent } from '../controller/socialPromotionCtrl.js'
 import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
@@ -181,6 +182,16 @@ router.post(
 
 router.delete('/:productId/image', adminContext, deleteProductImage)
 router.put('/:productId/variant-image', adminContext, assignVariantImage)
+
+// Kit de contenido para redes (caption + hashtags generados por IA). Mismo
+// costo que un mensaje del agente — gate temprano acá, cobro atómico en el
+// controller (ver services/ai/socialCaptionService.js).
+router.post(
+  '/:id/social-caption',
+  adminContext,
+  requireAiEntitlement(AI_METRICS.AGENT_MESSAGES),
+  generateProductSocialContent,
+)
 
 router.post(
   '/:productId/upload-video',
