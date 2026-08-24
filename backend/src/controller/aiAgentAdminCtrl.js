@@ -2,14 +2,16 @@
 import asyncHandler from 'express-async-handler'
 import mongoose from 'mongoose'
 import AiConversation from '../models/aiConversationModel.js'
-import AiCartRecovery from '../models/aiCartRecoveryModel.js'
 import AiLead from '../models/aiLeadModel.js'
-import UserMetricEvent from '../models/userMetricEventModel.js'
 import {
   getUserIdFromRequest,
   isValidObjectId,
   resolveAuthorizedTenantFromRequest,
 } from '../utils/requestContext.js'
+import {
+  getCartRecoveryRevenue,
+  getAiInfluencedSalesStats,
+} from '../services/aiAgent/aiAgentRevenueInsightsService.js'
 
 const clean = value => String(value || '').trim()
 const allowedStatuses = new Set([
@@ -174,7 +176,7 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
     ? { ...baseMatch, createdAt: { $gte: periodDate } }
     : baseMatch
 
-  const [conversationStats, leadStats, recoveryStats, salesInfluenceStats] = await Promise.all([
+  const [conversationStats, leadStats, cartRecoveryData, salesInfluenceData] = await Promise.all([
     AiConversation.aggregate([
       { $match: conversationMatch },
       {
@@ -207,53 +209,12 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
       },
     ]),
 
-    AiCartRecovery.aggregate([
-      { $match: periodDate ? { tenantId: tenantObjectId, createdAt: { $gte: periodDate } } : { tenantId: tenantObjectId } },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          revenue: {
-            $sum: {
-              $cond: [
-                { $eq: ['$status', 'converted'] },
-                '$cartSnapshot.subtotalCents',
-                0,
-              ],
-            },
-          },
-        },
-      },
-    ]),
-
-    // Ventas influenciadas por IA — se apoya en el mismo registro server-side
-    // de PURCHASE (Bloque 1) que ya sirve de fuente de verdad de ingresos, y
-    // en el flag que le agrega commerceEventService.js::markOrderAiInfluenced
-    // cuando alguno de los productos de la orden llegó al carrito por una
-    // acción explícita del agente (no por haber "charlado" con él).
-    UserMetricEvent.aggregate([
-      {
-        $match: {
-          tenantId: tenantObjectId,
-          eventType: 'purchase',
-          source: 'system',
-          ...(periodDate ? { occurredAt: { $gte: periodDate } } : {}),
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$value' },
-          aiInfluencedRevenue: {
-            $sum: { $cond: ['$metadata.aiInfluenced', '$value', 0] },
-          },
-          totalOrders: { $sum: 1 },
-          aiInfluencedOrders: {
-            $sum: { $cond: ['$metadata.aiInfluenced', 1, 0] },
-          },
-        },
-      },
-    ]),
+    // Recuperación de carritos y ventas influenciadas por IA — extraídas a
+    // aiAgentRevenueInsightsService.js para que el tablero económico general
+    // (statsService.js::getDashboardStats) use exactamente los mismos
+    // números sin duplicar la query.
+    getCartRecoveryRevenue(tenantId, periodDate),
+    getAiInfluencedSalesStats(tenantId, periodDate),
   ])
 
   const convByStatus = Object.fromEntries(
@@ -266,15 +227,6 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
     (leadFacet.byStatus || []).map(s => [s._id, s.count]),
   )
   const totalLeads = Object.values(leadByStatus).reduce((sum, c) => sum + c, 0)
-
-  const recByStatus = Object.fromEntries(
-    recoveryStats.map(s => [s._id, s.count]),
-  )
-  const totalRecoveries = recoveryStats.reduce((sum, s) => sum + s.count, 0)
-  const convertedRecoveries = recByStatus.converted || 0
-  const recoveredRevenueCents = recoveryStats.find(s => s._id === 'converted')?.revenue || 0
-
-  const salesFacet = salesInfluenceStats[0] || {}
 
   return res.status(200).json({
     success: true,
@@ -303,27 +255,9 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
         averageScore: Math.round(leadFacet.scoreStats?.[0]?.avg || 0),
       },
 
-      cartRecovery: {
-        total: totalRecoveries,
-        sent: recByStatus.sent || 0,
-        converted: convertedRecoveries,
-        failed: recByStatus.failed || 0,
-        pending: (recByStatus.pending || 0) + (recByStatus.scheduled || 0),
-        conversionRate: totalRecoveries > 0
-          ? Math.round((convertedRecoveries / totalRecoveries) * 10000) / 100
-          : 0,
-        recoveredRevenueCents,
-      },
+      cartRecovery: cartRecoveryData,
 
-      salesInfluence: {
-        totalRevenueCents: salesFacet.totalRevenue || 0,
-        aiInfluencedRevenueCents: salesFacet.aiInfluencedRevenue || 0,
-        aiInfluencedOrders: salesFacet.aiInfluencedOrders || 0,
-        totalOrders: salesFacet.totalOrders || 0,
-        percentage: salesFacet.totalRevenue > 0
-          ? Math.round((salesFacet.aiInfluencedRevenue / salesFacet.totalRevenue) * 10000) / 100
-          : 0,
-      },
+      salesInfluence: salesInfluenceData,
 
       // Backwards compat: flat keys the old frontend expects
       totalConversations,
