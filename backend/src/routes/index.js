@@ -22,6 +22,7 @@ import aiLeadAdminRoutes from './aiLeadAdminRoutes.js'
 import paymentConfigRoutes from './paymentConfigRoutes.js'
 import metaPixelConfigRoutes from './metaPixelConfigRoutes.js'
 import imageAiRoutes from './imageAiRoutes.js'
+import platformRoutes from './platformRoutes.js'
 
 
 const router = express.Router()
@@ -78,5 +79,11 @@ router.use('/enquiry', enqRouter)
 // 📦 ÓRDENES Y PEDIDOS
 // =======================================================
 router.use('/order', orderRoute)
+
+// =======================================================
+// 🏛️ PLATAFORMA (reportes cruzados entre comercios — ver
+// middlewares/platformOwnerMiddleware.js)
+// =======================================================
+router.use('/platform', platformRoutes)
 
 export default router

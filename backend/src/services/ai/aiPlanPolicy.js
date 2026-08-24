@@ -306,6 +306,35 @@ export const estimateCostUsd = tokens => {
   return (amount / 1_000_000) * rate
 }
 
+// ─── Precio de plan ──────────────────────────────────────
+
+// Únicos precios "reales" que existen hoy en el código: SubscriptionPage.js
+// (admin/src/pages/SubscriptionPage.js) los muestra hardcodeados como
+// referencia visual, $29/$99 — se reusan acá como default, no se inventan
+// nuevos. `enterprise` es precio a medida: null a propósito, no 0 — un 0
+// numérico se leería como margen falso en cualquier reporte que lo use.
+const DEFAULT_PLAN_PRICE_USD = Object.freeze({
+  free: 0,
+  starter: 29,
+  pro: 99,
+  enterprise: null,
+})
+
+/**
+ * Precio nominal mensual del plan, en USD. `null` significa precio a medida
+ * (no hay un número fijo que asumir) — distinguirlo de 0 importa para
+ * cualquier cálculo de margen que use este valor.
+ *
+ * Se puede sobrescribir por entorno sin tocar código:
+ *   PLAN_PRICE_USD_STARTER=35
+ */
+export const getPlanMonthlyPriceUsd = plan => {
+  const normalizedPlan = normalizePlan(plan)
+  const envPrice = readEnvNumber(`PLAN_PRICE_USD_${normalizedPlan.toUpperCase()}`)
+  if (envPrice !== null) return envPrice
+  return DEFAULT_PLAN_PRICE_USD[normalizedPlan]
+}
+
 /**
  * Tope global de tokens de la plataforma para el mes, contra la key propia.
  * Es el disyuntor: aunque la suma de las cuotas por tenant se dispare (por
@@ -361,6 +390,7 @@ export default {
   isByokAllowedForPlan,
   getSubscriptionState,
   estimateCostUsd,
+  getPlanMonthlyPriceUsd,
   getPlatformMonthlyTokenBudget,
   getSharedKeyTenantCap,
 }
