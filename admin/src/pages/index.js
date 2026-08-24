@@ -42,6 +42,7 @@ const MetaPixelConfigPage = lazy(() => import('./MetaPixelConfigPage'))
 const OnboardingWizard = lazy(() => import('./OnboardingWizard'))
 const ImageAiEditor = lazy(() => import('./ImageAiEditor'))
 const PlatformMarginPage = lazy(() => import('./PlatformMarginPage'))
+const AiInsightsPage = lazy(() => import('./AiInsightsPage'))
 const StoreSettingsPage = lazy(() => import('./StoreSettingsPage'))
 const VerifyEmailPage = lazy(() => import('./VerifyEmailPage'))
 
@@ -63,6 +64,7 @@ const pages = {
   OnboardingWizard,
   ImageAiEditor,
   PlatformMarginPage,
+  AiInsightsPage,
   StoreSettingsPage,
   VerifyEmailPage,
   AdminOrdersPage,
