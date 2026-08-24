@@ -101,6 +101,14 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // 🩺 Diagnóstico (Bloque 8.4-8.9) — detección de problemas + recomendación
+  {
+    path: '/admin/diagnostico',
+    Component: pages.AiInsightsPage,
+    allowedRoles: ['admin'],
+    meta: { new: true },
+  },
+
   // 🚀 Onboarding
   {
     path: '/admin/onboarding',

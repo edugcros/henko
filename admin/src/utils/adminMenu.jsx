@@ -41,6 +41,7 @@ import MenuBookIcon from '@mui/icons-material/MenuBook'
 import SchoolIcon from '@mui/icons-material/School'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import InsightsIcon from '@mui/icons-material/Insights'
+import TroubleshootIcon from '@mui/icons-material/Troubleshoot'
 import LocalOfferIcon from '@mui/icons-material/LocalOffer'
 import InstagramIcon from '@mui/icons-material/Instagram'
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber'
@@ -95,6 +96,7 @@ const MENU_STRUCTURE = [
   { key: 'ordenes', label: 'Órdenes', icon: RequestQuoteIcon },
   { key: 'clientes', label: 'Clientes', icon: PersonIcon },
   { key: 'consultas', label: 'Consultas', icon: QuizIcon },
+  { key: 'diagnostico', label: 'Diagnóstico', icon: TroubleshootIcon },
 
   {
     key: 'asistente-ventas',

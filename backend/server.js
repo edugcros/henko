@@ -9,6 +9,10 @@ import {
   startAiCartRecoveryWorker,
   stopAiCartRecoveryWorker,
 } from './src/workers/aiCartRecoveryWorker.js'
+import {
+  startAiInsightWorker,
+  stopAiInsightWorker,
+} from './src/workers/aiInsightWorker.js'
 
 // =====================================================
 // Configuración servidor
@@ -43,6 +47,7 @@ const startServer = async () => {
       logger.info(`🔗 API Prefix: ${env.apiPrefix}`)
 
       startAiCartRecoveryWorker({ logger })
+      startAiInsightWorker({ logger })
     })
 
     serverInstance.on('error', err => {
@@ -77,6 +82,7 @@ const shutdown = async signal => {
 
   try {
     stopAiCartRecoveryWorker()
+    stopAiInsightWorker()
 
     if (serverInstance && isServerListening) {
       await new Promise((resolve, reject) => {

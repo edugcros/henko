@@ -23,6 +23,7 @@ import paymentConfigRoutes from './paymentConfigRoutes.js'
 import metaPixelConfigRoutes from './metaPixelConfigRoutes.js'
 import imageAiRoutes from './imageAiRoutes.js'
 import platformRoutes from './platformRoutes.js'
+import aiInsightRoutes from './aiInsightRoutes.js'
 
 
 const router = express.Router()
@@ -85,5 +86,6 @@ router.use('/order', orderRoute)
 // middlewares/platformOwnerMiddleware.js)
 // =======================================================
 router.use('/platform', platformRoutes)
+router.use('/insights', aiInsightRoutes)
 
 export default router
