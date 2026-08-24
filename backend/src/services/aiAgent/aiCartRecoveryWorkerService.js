@@ -13,6 +13,15 @@ import {
   sendWhatsappTextMessage,
 } from './whatsappService.js'
 import { sendCartRecoveryEmail } from '../email/cartRecoveryEmail.service.js'
+import {
+  AI_METRICS,
+  recordAiConsumption,
+  refundAiBudget,
+  reserveAiBudget,
+} from '../ai/aiBudgetService.js'
+import { resolveTenantAiCredentials } from '../ai/aiCredentialsService.js'
+import { generatePersonalizedRecoveryMessage } from './aiCartRecoveryMessageService.js'
+import logger from '../../../config/logger.js'
 
 const clean = value => String(value || '').trim()
 const PROCESSING_LEASE_MS = Math.min(
@@ -133,6 +142,49 @@ const replaceTemplateVars = (template, values) => {
     .replaceAll('{{itemCount}}', values.itemCount)
     .replaceAll('{{cartTotal}}', values.cartTotal)
     .replaceAll('{{checkoutUrl}}', values.checkoutUrl)
+}
+
+/**
+ * La IA es una mejora, no una dependencia dura: si no hay cupo, no hay API
+ * key, o el modelo falla, el envío tiene que salir igual con la plantilla
+ * estática — nunca tira, siempre reembolsa la reserva en el camino de falla.
+ * Exportada (mismo criterio que resolveRecoveryChannel) para poder probarla
+ * directo, sin correr el loop de claim global contra recuperaciones reales.
+ */
+export const tryPersonalizeMessage = async ({ tenantId, values }) => {
+  const reservation = await reserveAiBudget({
+    tenantId,
+    metric: AI_METRICS.AGENT_MESSAGES,
+    guards: [AI_METRICS.AGENT_TOKENS],
+  })
+
+  if (!reservation.allowed) return null
+
+  try {
+    const credentials = await resolveTenantAiCredentials(tenantId)
+    const result = await generatePersonalizedRecoveryMessage({
+      values,
+      apiKey: credentials.apiKey,
+    })
+
+    if (result.tokensUsed > 0) {
+      await recordAiConsumption({
+        tenantId,
+        metric: AI_METRICS.AGENT_TOKENS,
+        amount: result.tokensUsed,
+      })
+    }
+
+    return result.message
+  } catch (error) {
+    await refundAiBudget({ tenantId, metric: AI_METRICS.AGENT_MESSAGES })
+    logger.warn('⚠️ No se pudo personalizar el mensaje de recuperación con IA, se usa la plantilla', {
+      tenantId: String(tenantId),
+      message: error?.message,
+      code: error?.code,
+    })
+    return null
+  }
 }
 
 const claimNextRecovery = async () => {
@@ -448,6 +500,18 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
         channel === 'whatsapp' &&
         isWithinWhatsappCustomerWindow(policy.preference)
 
+      // Solo email y WhatsApp-texto-libre pueden llevar contenido generado
+      // por IA — la ruta de plantilla (abajo) exige texto pre-aprobado por
+      // Meta con parámetros fijos, no admite texto libre sin importar qué
+      // tan bien escrito esté.
+      const canPersonalize =
+        rule?.useAiPersonalization && (channel === 'email' || withinCustomerWindow)
+      const personalizedMessage = canPersonalize
+        ? await tryPersonalizeMessage({ tenantId, values })
+        : null
+      const aiPersonalized = Boolean(personalizedMessage)
+      const messageBody = personalizedMessage || replaceTemplateVars(rule.messageTemplate, values)
+
       if (channel === 'email') {
         await sendCartRecoveryEmail({
           to: destination,
@@ -455,14 +519,14 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
           // de donde el servicio de correo saca el remitente y el reply-to.
           tenantConfig: tenant,
           values,
-          body: replaceTemplateVars(rule.messageTemplate, values),
+          body: messageBody,
         })
       } else if (withinCustomerWindow) {
         await sendWhatsappTextMessage({
           phoneNumberId,
           accessToken,
           to: destination,
-          text: replaceTemplateVars(rule.messageTemplate, values),
+          text: messageBody,
         })
       } else {
         const templateName = clean(rule?.whatsappTemplate?.name)
@@ -497,9 +561,10 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
         status: 'sent',
         set: {
           sentAt,
-          lastMessage: replaceTemplateVars(rule.messageTemplate, values),
+          lastMessage: messageBody,
           'metadata.lastSentBy': 'ai_cart_recovery_worker',
           'metadata.sentAsTemplate': !withinCustomerWindow,
+          'metadata.aiPersonalized': aiPersonalized,
         },
       })
 
