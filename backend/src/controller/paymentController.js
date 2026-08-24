@@ -224,6 +224,26 @@ const commitApprovedPaymentIfNeeded = async ({
 }) => {
   if (order.paymentStatus !== PAYMENT_STATUS.APPROVED) return null
 
+  // Reclamo atómico: processPayment, el webhook y el polling de
+  // getPaymentStatus pueden llegar acá para la MISMA orden casi al mismo
+  // tiempo (usan namespaces de lock distintos entre sí, nunca colisionan).
+  // Este findOneAndUpdate condicionado es lo único que realmente garantiza
+  // que el resto de esta función — stock, cupón, el save con
+  // optimisticConcurrency, y todos los efectos de queueApprovedPaymentSideEffects
+  // (evento de compra, Meta CAPI, conversión de recuperación de carrito,
+  // influencia de IA, emails) — corra una sola vez. El que pierde la carrera
+  // nunca toca order.save(): evita tanto el doble conteo como el
+  // VersionError que antes se filtraba al comprador como un pago fallido.
+  const claimed = await Order.findOneAndUpdate(
+    { _id: order._id, tenantId, paymentEffectsCommittedAt: null },
+    { $set: { paymentEffectsCommittedAt: new Date() } },
+    { new: true },
+  ).setOptions({ tenantId })
+
+  if (!claimed) return null
+
+  order.paymentEffectsCommittedAt = claimed.paymentEffectsCommittedAt
+
   if (!order.stockCommittedAt) {
     await confirmSoldStock(order.products, tenantId)
     order.stockCommittedAt = new Date()
@@ -595,6 +615,37 @@ export const processPayment = async (req, res) => {
       stockReserved = false
     }
 
+    // El pago YA se aprobó (Mercado Pago respondió approved y quedó escrito
+    // en el documento en memoria) y el error ocurrió confirmándolo — stock,
+    // cupón o efectos post-pago. Lo más probable es que el webhook o el
+    // polling de reconciliación ganaron la carrera de confirmar esta misma
+    // orden primero (ver paymentEffectsCommittedAt en
+    // commitApprovedPaymentIfNeeded) y este intento perdió un save por
+    // optimisticConcurrency. Reportarle un error al comprador acá sería
+    // mentirle sobre un pago que sí se hizo — se le devuelve éxito con el
+    // estado real de la orden.
+    if (order && order.paymentStatus === PAYMENT_STATUS.APPROVED) {
+      logger.warn('⚠️ Error confirmando pago ya aprobado — devolviendo éxito al cliente', {
+        orderId: order._id?.toString?.(),
+        tenantId: String(tenantId),
+        message: getSafeErrorMessage(error),
+      })
+
+      return res.status(200).json({
+        success: true,
+        id: order.paymentIntent?.providerPaymentId || null,
+        message: getStatusMessage(order.paymentIntent?.providerRawStatus || 'approved'),
+        orderId: order._id,
+        paymentStatus: order.paymentStatus,
+        orderStatus: order.orderStatus,
+        provider: order.paymentIntent?.provider || null,
+        providerStatus: order.paymentIntent?.providerRawStatus || null,
+        providerStatusDetail: order.paymentIntent?.statusDetail || null,
+        providerPaymentId: order.paymentIntent?.providerPaymentId || null,
+        emailQueued: true,
+      })
+    }
+
     logger.error(
       '❌ PAYMENT ERROR DETALLADO',
       getErrorLogPayload({
@@ -787,6 +838,7 @@ export const mpWebhook = async (req, res) => {
         tenantId,
         userId: order.orderby,
         payer: { email: order.paymentIntent?.payerEmail },
+        req,
       })
     } else {
       await releaseRejectedPaymentReservationIfNeeded({

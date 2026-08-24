@@ -847,6 +847,20 @@ const orderSchema = new Schema(
       default: null,
     },
 
+    // Reclamo atómico de "ya se corrieron los efectos de pago aprobado"
+    // (stock, cupón, evento de compra, Meta CAPI, conversión de recuperación
+    // de carrito, influencia de IA, emails). processPayment, el webhook de
+    // Mercado Pago y el polling de reconciliación de getPaymentStatus pueden
+    // llegar a confirmar la MISMA orden casi al mismo tiempo — usan
+    // namespaces de lock distintos entre sí (no colisionan), así que este
+    // campo, seteado con un findOneAndUpdate condicionado en
+    // commitApprovedPaymentIfNeeded, es la única garantía real de que el
+    // commit corra una sola vez. Ver paymentController.js.
+    paymentEffectsCommittedAt: {
+      type: Date,
+      default: null,
+    },
+
     couponConsumedAt: {
       type: Date,
       default: null,

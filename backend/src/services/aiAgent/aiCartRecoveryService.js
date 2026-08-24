@@ -319,21 +319,31 @@ export const markCartRecoveryConverted = async ({ order, tenantId }) => {
   if (!order?.orderby) return { converted: false, reason: 'no_user' }
 
   try {
-    const recovery = await AiCartRecovery.findOne({
-      tenantId,
-      userId: order.orderby,
-      status: { $in: ['sent', 'responded'] },
-      expiresAt: { $gte: order.paidAt || new Date() },
-    })
-      .sort({ sentAt: -1 })
-      .setOptions({ tenantId })
+    // findOneAndUpdate con el status en el filtro (no un findOne + save
+    // separado) para que sea atómico a nivel de documento: si
+    // commitApprovedPaymentIfNeeded llega a correr dos veces para la misma
+    // orden (dos ejecuciones concurrentes, cada una con su propia copia en
+    // memoria), la segunda ya no encuentra el documento en 'sent'/'responded'
+    // — evita marcar la misma recuperación convertida (y sus contadores)
+    // dos veces.
+    const recovery = await AiCartRecovery.findOneAndUpdate(
+      {
+        tenantId,
+        userId: order.orderby,
+        status: { $in: ['sent', 'responded'] },
+        expiresAt: { $gte: order.paidAt || new Date() },
+      },
+      {
+        $set: {
+          status: 'converted',
+          convertedAt: new Date(),
+          orderId: order._id,
+        },
+      },
+      { sort: { sentAt: -1 }, new: true, runValidators: true },
+    ).setOptions({ tenantId })
 
     if (!recovery) return { converted: false, reason: 'no_match' }
-
-    recovery.status = 'converted'
-    recovery.convertedAt = new Date()
-    recovery.orderId = order._id
-    await recovery.save({ tenantId })
 
     await Promise.all([
       AiCampaignRule.updateOne(

@@ -10,10 +10,10 @@ import mongoose from 'mongoose'
 import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
 import UserMetricEvent, { USER_METRIC_EVENTS } from '../../models/userMetricEventModel.js'
 
-const buildPeriodMatch = (tenantObjectId, periodDate, extra = {}) => ({
+const buildPeriodMatch = (tenantObjectId, periodDate, { dateField = 'occurredAt', ...extra } = {}) => ({
   tenantId: tenantObjectId,
   ...extra,
-  ...(periodDate ? { createdAt: { $gte: periodDate } } : {}),
+  ...(periodDate ? { [dateField]: { $gte: periodDate } } : {}),
 })
 
 /**
@@ -26,7 +26,7 @@ export const getCartRecoveryRevenue = async (tenantId, periodDate) => {
   const tenantObjectId = new mongoose.Types.ObjectId(String(tenantId))
 
   const recoveryStats = await AiCartRecovery.aggregate([
-    { $match: buildPeriodMatch(tenantObjectId, periodDate) },
+    { $match: buildPeriodMatch(tenantObjectId, periodDate, { dateField: 'sentAt' }) },
     {
       $group: {
         _id: '$status',
@@ -71,6 +71,7 @@ export const getAiInfluencedSalesStats = async (tenantId, periodDate) => {
   const [facet] = await UserMetricEvent.aggregate([
     {
       $match: buildPeriodMatch(tenantObjectId, periodDate, {
+        dateField: 'occurredAt',
         eventType: USER_METRIC_EVENTS.PURCHASE,
         source: 'system',
       }),

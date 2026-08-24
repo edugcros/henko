@@ -384,6 +384,15 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
         continue
       }
 
+      // Un comercio suspendido (no-activo) no debería gastar presupuesto de
+      // IA ni enviar mensajes de recuperación. Cancelar la recuperación sin
+      // reintento. Ver auditoría de seguridad de Bloques 1-3.
+      if (tenant.status !== 'active') {
+        await cancelRecovery(lockParams, 'tenant_not_active')
+        results.push({ recoveryId: recovery._id, status: 'cancelled', reason: 'tenant_not_active' })
+        continue
+      }
+
       const channel = resolveRecoveryChannel({ recovery, agent })
 
       if (!channel) {
