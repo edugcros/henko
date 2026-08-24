@@ -15,6 +15,7 @@ import logger from '../../config/logger.js'
 import {
   getCartRecoveryRevenue,
   getAiInfluencedSalesStats,
+  getTotalGeneratedValue,
 } from './aiAgent/aiAgentRevenueInsightsService.js'
 
 const PAID_PAYMENT_STATUSES = [PAYMENT_STATUS.APPROVED]
@@ -81,6 +82,7 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     paymentStats,
     cartRecoveryRevenue,
     aiInfluencedSales,
+    totalGeneratedValueStats,
   ] = await Promise.all([
     getSalesStats(tenantId, dateRange),
     getOrderStats(tenantId, dateRange),
@@ -98,6 +100,7 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     getPaymentStats(tenantId, dateRange),
     getCartRecoveryRevenue(tenantId, dateRange.start),
     getAiInfluencedSalesStats(tenantId, dateRange.start),
+    getTotalGeneratedValue(tenantId, dateRange.start),
   ])
 
   const conversionRate = calculateRate(orderStats.paidOrders, userBehaviorStats.sessions)
@@ -161,6 +164,11 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
         .reduce((sum, source) => sum + (source.revenue || 0), 0),
       recoveredRevenue: Money.toDecimal(cartRecoveryRevenue.recoveredRevenueCents || 0),
       aiInfluencedRevenue: aiInfluencedSales.aiInfluencedRevenue || 0,
+      // No es metaRevenue + recoveredRevenue + aiInfluencedRevenue — esas tres
+      // pueden solaparse (una orden puede cumplir más de una condición a la
+      // vez). Este número cuenta cada orden una sola vez, ver
+      // aiAgentRevenueInsightsService.js::getTotalGeneratedValue.
+      totalGeneratedValue: totalGeneratedValueStats.totalGeneratedValue || 0,
       conversionRate,
       productClickThroughRate: calculateRate(userBehaviorStats.productClicks, userBehaviorStats.productImpressions),
       productViewRate: calculateRate(userBehaviorStats.productViewSessions, userBehaviorStats.sessions),
@@ -210,6 +218,7 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
       revenueSources: {
         revenue: 'Order (paymentStatus/orderStatus aprobados, excluye canceladas/reembolsadas)',
         metaRevenueAndRecoveredAndAiInfluenced: 'UserMetricEvent PURCHASE (source:system), registrado al aprobar el pago — no se actualiza si la orden se cancela o reembolsa después, así que puede no sumar exacto contra `revenue` en comercios con cancelaciones frecuentes.',
+        totalGeneratedValue: 'Suma de UserMetricEvent PURCHASE con atribución de campaña, influencia de IA, o recuperación de carrito — cada orden cuenta una sola vez aunque cumpla más de una condición (evita doble conteo cuando se solapan).',
       },
     },
     realtime: realtimeStats,

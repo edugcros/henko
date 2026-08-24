@@ -34,6 +34,7 @@ import {
 } from '@mui/material'
 import {
   Analytics as AnalyticsIcon,
+  AutoAwesome as SparkleIcon,
   Campaign as CampaignIcon,
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
@@ -89,6 +90,7 @@ const KPI_GRADIENTS = {
   metaRevenue: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
   recoveredRevenue: 'linear-gradient(135deg, #22C55E 0%, #4ADE80 100%)',
   aiInfluencedRevenue: 'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)',
+  totalGeneratedValue: 'linear-gradient(135deg, #4338CA 0%, #A855F7 100%)',
 }
 
 const formatNumber = value => Number(value || 0).toLocaleString('es-AR')
@@ -1022,6 +1024,22 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             value={loading ? <Skeleton width={90} /> : formatPercent(summary.conversionRate)}
             icon={UsersIcon}
             gradient={KPI_GRADIENTS.conversion}
+          />
+        </Grid>
+      </Grid>
+
+      <DashboardSectionTitle
+        title="Valor generado por HENKO"
+        description="Ventas con atribución de campaña, influencia de IA o recuperación de carrito, sumadas una sola vez por orden aunque cumplan más de una condición a la vez."
+      />
+
+      <Grid container spacing={2.5} sx={{ mb: 2.5 }}>
+        <Grid item xs={12}>
+          <KpiCard
+            title="Valor total generado por HENKO"
+            value={loading ? <Skeleton width={140} /> : formatMoney(summary.totalGeneratedValue)}
+            icon={SparkleIcon}
+            gradient={KPI_GRADIENTS.totalGeneratedValue}
           />
         </Grid>
       </Grid>

@@ -99,4 +99,43 @@ export const getAiInfluencedSalesStats = async (tenantId, periodDate) => {
   }
 }
 
-export default { getCartRecoveryRevenue, getAiInfluencedSalesStats }
+/**
+ * "Valor generado por HENKO": suma de compras que vinieron de una campaña
+ * (Bloque 2), fueron influenciadas por una recomendación de IA (Bloque 4) o
+ * se recuperaron por WhatsApp/email (Bloque 3) — un solo número en vez de
+ * tres tarjetas sueltas (Bloque 8A).
+ *
+ * No es la suma de metaRevenue + recoveredRevenue + aiInfluencedRevenue: esas
+ * tres pueden solaparse (una misma orden puede venir de una campaña Y estar
+ * influenciada por IA a la vez), y sumarlas directamente contaría esa venta
+ * más de una vez. La PURCHASE de UserMetricEvent es única por orden
+ * (eventId: commerce_purchase:<orderId>, índice único desde el Bloque 1), así
+ * que agrupar con un único $or evita el doble conteo sin necesitar dedupe
+ * manual — cada orden que cumple una o más condiciones se cuenta una sola vez.
+ */
+export const getTotalGeneratedValue = async (tenantId, periodDate) => {
+  const tenantObjectId = new mongoose.Types.ObjectId(String(tenantId))
+
+  const [facet] = await UserMetricEvent.aggregate([
+    {
+      $match: buildPeriodMatch(tenantObjectId, periodDate, {
+        dateField: 'occurredAt',
+        eventType: USER_METRIC_EVENTS.PURCHASE,
+        source: 'system',
+        $or: [
+          { 'attribution.utmCampaign': { $ne: '' } },
+          { 'metadata.aiInfluenced': true },
+          { 'metadata.cartRecovered': true },
+        ],
+      }),
+    },
+    { $group: { _id: null, totalValue: { $sum: '$value' }, orderCount: { $sum: 1 } } },
+  ])
+
+  return {
+    totalGeneratedValue: facet?.totalValue || 0,
+    orderCount: facet?.orderCount || 0,
+  }
+}
+
+export default { getCartRecoveryRevenue, getAiInfluencedSalesStats, getTotalGeneratedValue }

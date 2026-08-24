@@ -24,7 +24,6 @@ import {
 import { escapeRegex } from '../utils/escapeRegex.js'
 import logger from '../../config/logger.js'
 import * as aiVisionService from '../services/aiVisionService.js'
-import { registerVisualFeedback } from '../services/aiLearningService.js'
 import {
   buildAutonomousProductPayload,
   buildNormalizedDraftFromAnalysis,
@@ -1126,73 +1125,6 @@ const ensureJobBelongsToTenant = async ({ jobId, tenantId, select = null }) => {
   return job
 }
 
-
-const hasHumanCorrectionPayload = body => {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return false
-
-  return [
-    'titulo',
-    'descripcion',
-    'price',
-    'precio',
-    'categoria',
-    'subcategoria',
-    'marca',
-    'material',
-    'color',
-    'tags',
-    'attributes',
-    'atributos',
-  ].some(key => body[key] !== undefined)
-}
-
-const buildHumanCorrectionFromBody = body => ({
-  titulo: normalizeString(body?.titulo || body?.title),
-  descripcion: normalizeString(body?.descripcion || body?.description),
-  categoria: normalizeString(body?.categoria || body?.category),
-  subcategoria: normalizeString(body?.subcategoria || body?.subcategory),
-  marca: normalizeString(body?.marca || body?.brand),
-  precio_sugerido: pickFirstNonNegativeNumber(body?.price, body?.precio),
-  atributos: {
-    ...(body?.attributes && typeof body.attributes === 'object' && !Array.isArray(body.attributes)
-      ? body.attributes
-      : {}),
-    ...(body?.atributos && typeof body.atributos === 'object' && !Array.isArray(body.atributos)
-      ? body.atributos
-      : {}),
-    ...(normalizeString(body?.material) ? { material: normalizeString(body.material) } : {}),
-    ...(normalizeString(body?.color) ? { color: normalizeString(body.color) } : {}),
-  },
-  tags: sanitizeStringArray(body?.tags, { lower: true, maxItems: 30 }),
-})
-
-const registerVisualFeedbackSafely = async ({ tenantId, job, body, userId, productId }) => {
-  if (!hasHumanCorrectionPayload(body)) return null
-
-  try {
-    return await registerVisualFeedback({
-      tenantId: String(tenantId),
-      originalIAOutput: job.analysis || {},
-      humanCorrection: buildHumanCorrectionFromBody(body),
-      metadata: {
-        imageHash: job.imageHash,
-        sourceModel: job.analysis?.source || job.analysis?.aiSource || job.aiSource,
-        jobId: String(job._id),
-        productId: productId ? String(productId) : '',
-        userId: userId ? String(userId) : '',
-        source: 'product_analysis_approval',
-      },
-    })
-  } catch (error) {
-    logger.warn('[ProductAnalysis] No se pudo registrar feedback visual', {
-      tenantId: String(tenantId),
-      jobId: String(job?._id || ''),
-      error: error.message,
-    })
-
-    return null
-  }
-}
 
 // =====================================================
 // CONTROLLERS
