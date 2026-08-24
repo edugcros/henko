@@ -8,7 +8,7 @@
 
 import mongoose from 'mongoose'
 import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
-import UserMetricEvent from '../../models/userMetricEventModel.js'
+import UserMetricEvent, { USER_METRIC_EVENTS } from '../../models/userMetricEventModel.js'
 
 const buildPeriodMatch = (tenantObjectId, periodDate, extra = {}) => ({
   tenantId: tenantObjectId,
@@ -71,7 +71,7 @@ export const getAiInfluencedSalesStats = async (tenantId, periodDate) => {
   const [facet] = await UserMetricEvent.aggregate([
     {
       $match: buildPeriodMatch(tenantObjectId, periodDate, {
-        eventType: 'purchase',
+        eventType: USER_METRIC_EVENTS.PURCHASE,
         source: 'system',
       }),
     },
