@@ -101,11 +101,14 @@ async function upsertPreference({
       type,
     },
     {
+      // usageCount NO va acá: $setOnInsert y $inc sobre el mismo campo en el
+      // mismo update chocan (Mongo lo rechaza — "would create a conflict").
+      // $inc sobre un campo ausente en el insert ya lo inicializa en el
+      // valor del incremento, así que no hace falta declararlo dos veces.
       $setOnInsert: {
         tenantId,
         rawInput,
         type,
-        usageCount: 0,
         createdAt: new Date(),
       },
       $set: {

@@ -464,6 +464,13 @@ const imageSchema = new Schema(
       enum: ['remove-bg', 'variation', ''],
       default: '',
     },
+    // Para qué uso comercial se generó (solo aplica a aiSource:'variation'
+    // — 'store' es directamente el resultado de 'remove-bg', sin variante).
+    imagePurpose: {
+      type: String,
+      enum: ['store', 'ad', 'social', 'alternative', ''],
+      default: '',
+    },
   },
   {
     _id: true,

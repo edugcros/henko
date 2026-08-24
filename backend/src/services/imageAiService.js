@@ -35,6 +35,40 @@ const MAX_EDGE = 1600
 const POLL_INTERVAL_MS = 1000
 const POLL_MAX_ATTEMPTS = 90
 
+// 'store' no entra acá: ya es exactamente removeBackground (el corte limpio
+// ES la imagen para tienda), no una variante de generateVariation.
+const PURPOSE_ASPECT = {
+  ad: { ratio: '16:9', wRatio: 16, hRatio: 9 },
+  social: { ratio: '1:1', wRatio: 1, hRatio: 1 },
+  alternative: { ratio: '4:5', wRatio: 4, hRatio: 5 },
+}
+
+/**
+ * Sin purpose, devuelve el comportamiento de siempre: el canvas final es el
+ * de la foto original, sin ninguna proporción forzada — retrocompatible con
+ * cualquier caller que no mande el parámetro nuevo.
+ *
+ * Exportada (mismo criterio que tryPersonalizeMessage en el Bloque 7) para
+ * poder verificar la matemática del canvas directamente, sin depender de
+ * credenciales reales de Replicate/HuggingFace.
+ */
+export const resolveTargetCanvas = (purpose, originalWidth, originalHeight) => {
+  const preset = PURPOSE_ASPECT[purpose]
+  if (!preset) return { width: originalWidth, height: originalHeight, replicateRatio: '1:1' }
+
+  const baseEdge = Math.min(MAX_EDGE, Math.max(originalWidth, originalHeight))
+
+  if (preset.wRatio >= preset.hRatio) {
+    const width = baseEdge
+    const height = Math.round((baseEdge * preset.hRatio) / preset.wRatio)
+    return { width, height, replicateRatio: preset.ratio }
+  }
+
+  const height = baseEdge
+  const width = Math.round((baseEdge * preset.wRatio) / preset.hRatio)
+  return { width, height, replicateRatio: preset.ratio }
+}
+
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 // ─── Errores ─────────────────────────────────────────────
@@ -288,7 +322,7 @@ const removeBg = async imageBuffer => {
 
 // ─── Generar fondo ───────────────────────────────────────
 
-const generateBgReplicate = async prompt => {
+const generateBgReplicate = async (prompt, aspectRatio = '1:1') => {
   const token = getReplicateToken()
 
   // Modelo oficial → /models/{owner}/{name}/predictions, sin version hash
@@ -296,7 +330,7 @@ const generateBgReplicate = async prompt => {
     input: {
       prompt,
       num_outputs: 1,
-      aspect_ratio: '1:1',
+      aspect_ratio: aspectRatio,
       output_format: 'png',
       go_fast: true,
     },
@@ -325,10 +359,15 @@ const generateBgHuggingFace = async prompt => {
   return Buffer.from(await res.arrayBuffer())
 }
 
-/** Cualquier fallo de Replicate (créditos, red, 5xx) cae a HuggingFace. */
-const generateBg = async prompt => {
+/**
+ * Cualquier fallo de Replicate (créditos, red, 5xx) cae a HuggingFace.
+ * HuggingFace no soporta aspect_ratio en esta API de inferencia simple — el
+ * fallback siempre genera cuadrado; el resize final igual lo ajusta al
+ * canvas de destino, solo que sin el encuadre nativo que sí da Replicate.
+ */
+const generateBg = async (prompt, aspectRatio = '1:1') => {
   try {
-    const buffer = await generateBgReplicate(prompt)
+    const buffer = await generateBgReplicate(prompt, aspectRatio)
     logger.info('Background generado con Replicate')
     return buffer
   } catch (err) {
@@ -361,7 +400,7 @@ export const generateVariation = async (
   imageBuffer,
   prompt,
   mimeType = 'image/png',
-  { apiKey = null } = {},
+  { apiKey = null, purpose = null } = {},
 ) => {
   const optimizedPrompt = await optimizePrompt(prompt, apiKey)
 
@@ -370,17 +409,31 @@ export const generateVariation = async (
     mime: mimeType,
     original: prompt,
     optimized: optimizedPrompt,
+    purpose,
   })
 
   const { buffer: normalized, width, height } = await normalize(imageBuffer)
+  const canvas = resolveTargetCanvas(purpose, width, height)
 
   // El recorte va primero: es obligatorio y si falla evitamos generar un fondo inútil.
   const cutout = await removeBg(normalized)
-  const background = await generateBg(optimizedPrompt)
+  const background = await generateBg(optimizedPrompt, canvas.replicateRatio)
+
+  // El producto se ajusta con "contain" (no deformarlo) dentro del canvas de
+  // destino antes de componerlo — importante cuando el canvas cambia de
+  // proporción respecto a la foto original (ej. 16:9 para publicidad). El
+  // fondo generado sí cubre el canvas completo con "cover", como siempre.
+  const cutoutFitted = await sharp(cutout)
+    .resize(canvas.width, canvas.height, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
+    .toBuffer()
 
   const buffer = await sharp(background)
-    .resize(width, height, { fit: 'cover' })
-    .composite([{ input: cutout, gravity: 'centre' }])
+    .resize(canvas.width, canvas.height, { fit: 'cover' })
+    .composite([{ input: cutoutFitted, gravity: 'centre' }])
     .png()
     .toBuffer()
 

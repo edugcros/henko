@@ -242,6 +242,40 @@ function computeLearnedRules(originalIAOutput, humanCorrection) {
     correctedValue: corrected.description,
     confidence: 0.5,
   })
+
+  // Señal de estilo, no de contenido — separada de la regla de arriba (que
+  // compara el texto en sí). rawInput fijo para que las correcciones de un
+  // mismo tenant se agrupen bajo la misma clave en la promoción a
+  // AIPreference (aiLearningPromotionService.js) y acumulen ocurrencias en
+  // vez de crear una entrada nueva cada vez. field:'description_style' cae
+  // en el bucket 'general' por default en mapFieldToPreferenceType/
+  // normalizeType — ya está wireado para llegar al prompt sin tocar nada más.
+  const originalDescLength = original.description.length
+  const correctedDescLength = corrected.description.length
+
+  if (
+    correctedDescLength > 0 &&
+    originalDescLength > 0 &&
+    Math.abs(correctedDescLength - originalDescLength) > originalDescLength * 0.25
+  ) {
+    const bucket = correctedDescLength < originalDescLength ? 'cortas' : 'extensas'
+    rules.push(
+      buildStructuredRule({
+        field: 'description_style',
+        rawInput: 'preferencia_largo_descripcion',
+        correctedValue: bucket,
+        // 0.7, no 0.5: promoteLearnedRulesForTenant exige score>=0.8 y el
+        // repetitionBoost tope es +0.25 (a partir de 5 ocurrencias) — con
+        // 0.5 esta regla nunca llega a promoverse aunque se repita para
+        // siempre (0.5+0.25=0.75<0.8). Confirmado con verificación real: a
+        // las 3 ocurrencias (el mínimo default) el boost es +0.15, así que
+        // hace falta una base >=0.65 para cruzar el umbral en ese punto.
+        confidence: 0.7,
+        reason: `Este comercio tiende a preferir descripciones ${bucket} (última corrección: ~${correctedDescLength} caracteres) — ajustá el largo de "descripcion" en consecuencia.`,
+      }),
+    )
+  }
+
   pushRuleIfChanged(rules, {
     field: 'category',
     originalValue: original.category,

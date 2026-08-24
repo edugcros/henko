@@ -14,10 +14,11 @@ export const removeBackground = async file => {
   return unwrap(response)
 }
 
-export const generateVariation = async (file, prompt) => {
+export const generateVariation = async (file, prompt, purpose) => {
   const formData = new FormData()
   formData.append('image', file)
   formData.append('prompt', prompt)
+  if (purpose) formData.append('purpose', purpose)
 
   const response = await api.post('/image-ai/generate-variation', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
