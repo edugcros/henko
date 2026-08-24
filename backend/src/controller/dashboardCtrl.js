@@ -1,4 +1,6 @@
+import expressAsyncHandler from 'express-async-handler'
 import { getDashboardStats } from '../services/statsService.js'
+import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
 
 const normalizeTimeframe = value => {
@@ -14,36 +16,34 @@ const normalizeTimeframe = value => {
   return '30d'
 }
 
-export const getDashboardData = async (req, res) => {
+// La ruta ya corre resolveTenantByDomain antes de llegar acá (ver
+// dashboardRoute.js), así que req.tenantId (resuelto por dominio) existe —
+// pero este handler lo ignoraba y confiaba solo en req.user.tenantId (el del
+// JWT), sin cruzar uno contra el otro. resolveAuthorizedTenantFromRequest es
+// el mismo helper que ya usa el resto del panel admin para esa doble
+// verificación.
+export const getDashboardData = expressAsyncHandler(async (req, res) => {
+  const { tenantId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  })
+
+  const timeframe = normalizeTimeframe(req.query.timeframe || req.query.days)
+
+  let stats
   try {
-    const tenantId = req.user?.tenantId
-
-    if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tenant no identificado',
-      })
-    }
-
-    const timeframe = normalizeTimeframe(req.query.timeframe || req.query.days)
-    const stats = await getDashboardStats(tenantId, timeframe)
-
-    return res.status(200).json({
-      success: true,
-      configured: true,
-      timeframe,
-      data: stats,
-      ...stats,
-    })
+    stats = await getDashboardStats(tenantId, timeframe)
   } catch (error) {
     logger.error('Dashboard error', { error: error.message, stack: error.stack })
-
-    return res.status(500).json({
-      success: false,
-      message: 'Error obteniendo datos del dashboard',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    })
+    throw error
   }
-}
+
+  return res.status(200).json({
+    success: true,
+    configured: true,
+    timeframe,
+    data: stats,
+    ...stats,
+  })
+})
 
 export default getDashboardData

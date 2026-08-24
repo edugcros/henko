@@ -12,6 +12,10 @@ import { Money } from '../utils/money.js'
 import mongoose from 'mongoose'
 import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
+import {
+  getCartRecoveryRevenue,
+  getAiInfluencedSalesStats,
+} from './aiAgent/aiAgentRevenueInsightsService.js'
 
 const PAID_PAYMENT_STATUSES = [PAYMENT_STATUS.APPROVED]
 const ACTIVE_ORDER_STATUSES = [
@@ -75,6 +79,8 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     userBehaviorStats,
     realtimeStats,
     paymentStats,
+    cartRecoveryRevenue,
+    aiInfluencedSales,
   ] = await Promise.all([
     getSalesStats(tenantId, dateRange),
     getOrderStats(tenantId, dateRange),
@@ -90,6 +96,8 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     getUserBehaviorStats(tenantId, dateRange),
     getRealtimeStats(tenantId),
     getPaymentStats(tenantId, dateRange),
+    getCartRecoveryRevenue(tenantId, dateRange.start),
+    getAiInfluencedSalesStats(tenantId, dateRange.start),
   ])
 
   const conversionRate = calculateRate(orderStats.paidOrders, userBehaviorStats.sessions)
@@ -142,6 +150,17 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
       abandonedCarts: abandonedCartStats.count,
       abandonedCartValue: abandonedCartStats.value,
       abandonedCartItems: abandonedCartStats.items,
+      // Ingreso por campaña (ya calculado por fuente en traffic.sources,
+      // Bloque 2 — acá solo el rollup excluyendo tráfico directo), recuperado
+      // por WhatsApp (Bloque 3) e influenciado por IA (Bloque 4). Los tres
+      // salen de UserMetricEvent, no de Order como el resto de este bloque —
+      // ver la nota en `definitions.revenueSources` sobre por qué pueden no
+      // sumar exacto contra `revenue` en un comercio con cancelaciones.
+      metaRevenue: (userBehaviorStats.sources || [])
+        .filter(source => source.channel !== 'direct')
+        .reduce((sum, source) => sum + (source.revenue || 0), 0),
+      recoveredRevenue: Money.toDecimal(cartRecoveryRevenue.recoveredRevenueCents || 0),
+      aiInfluencedRevenue: aiInfluencedSales.aiInfluencedRevenue || 0,
       conversionRate,
       productClickThroughRate: calculateRate(userBehaviorStats.productClicks, userBehaviorStats.productImpressions),
       productViewRate: calculateRate(userBehaviorStats.productViewSessions, userBehaviorStats.sessions),
@@ -188,6 +207,10 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
         paidOrderStatuses: ACTIVE_ORDER_STATUSES,
       },
       realtime: realtimeStats.definition,
+      revenueSources: {
+        revenue: 'Order (paymentStatus/orderStatus aprobados, excluye canceladas/reembolsadas)',
+        metaRevenueAndRecoveredAndAiInfluenced: 'UserMetricEvent PURCHASE (source:system), registrado al aprobar el pago — no se actualiza si la orden se cancela o reembolsa después, así que puede no sumar exacto contra `revenue` en comercios con cancelaciones frecuentes.',
+      },
     },
     realtime: realtimeStats,
   }

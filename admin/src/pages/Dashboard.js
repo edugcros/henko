@@ -34,6 +34,7 @@ import {
 } from '@mui/material'
 import {
   Analytics as AnalyticsIcon,
+  Campaign as CampaignIcon,
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
   Info as InfoIcon,
@@ -44,9 +45,11 @@ import {
   Save as SaveIcon,
   Settings as SettingsIcon,
   ShoppingCart as CartIcon,
+  SmartToy as AiIcon,
   TrendingUp as TrendIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
+  WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material'
 import {
   Bar,
@@ -83,6 +86,9 @@ const KPI_GRADIENTS = {
   activeValue: 'linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%)',
   abandonedCarts: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)',
   abandonedValue: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
+  metaRevenue: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
+  recoveredRevenue: 'linear-gradient(135deg, #22C55E 0%, #4ADE80 100%)',
+  aiInfluencedRevenue: 'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)',
 }
 
 const formatNumber = value => Number(value || 0).toLocaleString('es-AR')
@@ -1016,6 +1022,56 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             value={loading ? <Skeleton width={90} /> : formatPercent(summary.conversionRate)}
             icon={UsersIcon}
             gradient={KPI_GRADIENTS.conversion}
+          />
+        </Grid>
+      </Grid>
+
+      <DashboardSectionTitle
+        title="Impacto de campañas, recuperación e IA"
+        description="Recortes de la venta total: cuánto vino de campañas de Meta, cuánto se recuperó por WhatsApp y cuánto influyó el agente de IA. Se calculan al momento de aprobar el pago, así que en un comercio con cancelaciones frecuentes pueden no sumar exacto contra las ventas aprobadas de arriba."
+      />
+
+      <Grid container spacing={2.5} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} lg={3}>
+          <KpiCard
+            title="Ingreso por campañas"
+            value={
+              loading ? (
+                <Skeleton width={90} />
+              ) : (
+                formatMoney(summary.metaRevenue)
+              )
+            }
+            icon={CampaignIcon}
+            gradient={KPI_GRADIENTS.metaRevenue}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <KpiCard
+            title="Recuperado por WhatsApp"
+            value={
+              loading ? (
+                <Skeleton width={90} />
+              ) : (
+                formatMoney(summary.recoveredRevenue)
+              )
+            }
+            icon={WhatsAppIcon}
+            gradient={KPI_GRADIENTS.recoveredRevenue}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} lg={3}>
+          <KpiCard
+            title="Influenciado por IA"
+            value={
+              loading ? (
+                <Skeleton width={90} />
+              ) : (
+                formatMoney(summary.aiInfluencedRevenue)
+              )
+            }
+            icon={AiIcon}
+            gradient={KPI_GRADIENTS.aiInfluencedRevenue}
           />
         </Grid>
       </Grid>
