@@ -452,6 +452,18 @@ const imageSchema = new Schema(
       ref: 'Tenant',
       required: true,
     },
+
+    // Procedencia — distingue una foto subida a mano de una generada/editada
+    // con IA (Editor de Imágenes IA, backend/src/services/imageAiService.js).
+    isAiGenerated: {
+      type: Boolean,
+      default: false,
+    },
+    aiSource: {
+      type: String,
+      enum: ['remove-bg', 'variation', ''],
+      default: '',
+    },
   },
   {
     _id: true,
