@@ -42,6 +42,15 @@ import productService from '@features/product/productService'
 const MODES = { REMOVE_BG: 'remove-bg', VARIATION: 'variation' }
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 
+// 'store' no tiene entrada acá: es directamente el resultado de "Quitar
+// fondo" (mode REMOVE_BG), no una variante de "Generar variación".
+const PURPOSE_OPTIONS = [
+  { value: '', label: 'Genérico', hint: 'Igual que hoy — proporción de la foto original' },
+  { value: 'ad', label: 'Publicidad', hint: 'Formato panorámico 16:9' },
+  { value: 'social', label: 'Redes sociales', hint: 'Formato cuadrado 1:1' },
+  { value: 'alternative', label: 'Alternativa', hint: 'Formato vertical 4:5' },
+]
+
 const PROMPT_SUGGESTIONS = [
   'Fondo blanco de estudio profesional con iluminación suave',
   'Sobre una mesa de madera rústica con luz natural cálida',
@@ -82,6 +91,7 @@ const ImageAiEditor = () => {
   const fileInputRef = useRef(null)
 
   const [mode, setMode] = useState(MODES.REMOVE_BG)
+  const [purpose, setPurpose] = useState('')
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [prompt, setPrompt] = useState('')
@@ -143,10 +153,17 @@ const ImageAiEditor = () => {
       setProcessing(true)
       const result = mode === MODES.REMOVE_BG
         ? await removeBackground(file)
-        : await generateVariation(file, prompt.trim())
+        : await generateVariation(file, prompt.trim(), purpose || undefined)
 
       setResults(prev => [
-        { id: Date.now(), image: result.image, mode, prompt: mode === MODES.VARIATION ? prompt.trim() : null, size: result.size },
+        {
+          id: Date.now(),
+          image: result.image,
+          mode,
+          prompt: mode === MODES.VARIATION ? prompt.trim() : null,
+          purpose: mode === MODES.VARIATION ? purpose : '',
+          size: result.size,
+        },
         ...prev,
       ])
       enqueueSnackbar(mode === MODES.REMOVE_BG ? 'Fondo removido exitosamente' : 'Variación generada exitosamente', { variant: 'success' })
@@ -227,6 +244,7 @@ const ImageAiEditor = () => {
       await productService.uploadProductImage(selectedProduct._id, imageFile, {
         aiGenerated: true,
         aiSource: attachTarget.mode,
+        imagePurpose: attachTarget.mode === MODES.REMOVE_BG ? 'store' : attachTarget.purpose || '',
       })
 
       enqueueSnackbar(`Imagen agregada a "${selectedProduct.title}"`, { variant: 'success' })
@@ -331,6 +349,37 @@ const ImageAiEditor = () => {
                 </Stack>
               </CardContent>
             </Card>
+
+            {/* Paso 1b — Propósito (solo en modo Variación) */}
+            {mode === MODES.VARIATION && (
+              <Card sx={cardSx}>
+                <CardContent sx={{ p: 2.5 }}>
+                  <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem', mb: 1.5 }}>
+                    Propósito de la imagen
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    {PURPOSE_OPTIONS.map(o => (
+                      <Chip
+                        key={o.value || 'generic'}
+                        label={o.label}
+                        onClick={() => setPurpose(o.value)}
+                        variant={purpose === o.value ? 'filled' : 'outlined'}
+                        sx={{
+                          fontWeight: 700,
+                          borderColor: purpose === o.value ? V : 'divider',
+                          bgcolor: purpose === o.value ? V : 'transparent',
+                          color: purpose === o.value ? '#fff' : 'text.primary',
+                          '&:hover': { bgcolor: purpose === o.value ? V : alpha(V, 0.06) },
+                        }}
+                      />
+                    ))}
+                  </Stack>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1 }}>
+                    {PURPOSE_OPTIONS.find(o => o.value === purpose)?.hint}
+                  </Typography>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Paso 2 — Upload */}
             <Card sx={cardSx}>
@@ -561,9 +610,18 @@ const ImageAiEditor = () => {
                               {r.mode === MODES.REMOVE_BG ? <RemoveBgIcon sx={{ fontSize: 15, color: '#fff' }} /> : <VariationIcon sx={{ fontSize: 15, color: '#fff' }} />}
                             </Box>
                             <Box sx={{ minWidth: 0 }}>
-                              <Typography variant="body2" fontWeight={700} sx={{ fontSize: '0.8rem', lineHeight: 1.3 }}>
-                                {r.mode === MODES.REMOVE_BG ? 'Fondo removido' : 'Variación generada'}
-                              </Typography>
+                              <Stack direction="row" alignItems="center" spacing={0.75}>
+                                <Typography variant="body2" fontWeight={700} sx={{ fontSize: '0.8rem', lineHeight: 1.3 }}>
+                                  {r.mode === MODES.REMOVE_BG ? 'Fondo removido' : 'Variación generada'}
+                                </Typography>
+                                {r.purpose && (
+                                  <Chip
+                                    label={PURPOSE_OPTIONS.find(o => o.value === r.purpose)?.label || r.purpose}
+                                    size="small"
+                                    sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, bgcolor: alpha(V, 0.08), color: VD }}
+                                  />
+                                )}
+                              </Stack>
                               {r.prompt && (
                                 <Typography variant="caption" color="text.secondary" noWrap title={r.prompt} sx={{ display: 'block', maxWidth: { xs: 180, md: 320 } }}>
                                   {r.prompt}

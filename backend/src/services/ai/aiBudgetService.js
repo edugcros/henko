@@ -27,6 +27,7 @@ import {
   AI_METRIC_LIST,
   UNLIMITED,
   estimateCostUsd,
+  estimateImageCostUsd,
   getPlanLimit,
   getPlatformMonthlyTokenBudget,
   getSharedKeyTenantCap,
@@ -538,6 +539,48 @@ export const recordAiConsumption = async ({
 }
 
 /**
+ * Costo de una generación de imagen (Replicate/HuggingFace) — separado de
+ * recordAiConsumption porque reserveAiBudget para IMAGE_EDITS ya incrementa
+ * el contador de cuota por su cuenta (applyReservation); esta función solo
+ * toca estimatedCostUsd, nunca counters.imageEdits, para no duplicar el
+ * conteo de cuota.
+ */
+export const recordImageGenerationCost = async ({ tenantId, profile = null, count = 1 }) => {
+  const id = clean(tenantId)
+  if (!id) return
+
+  const aiProfile = profile || (await loadTenantAiProfile(id))
+  if (aiProfile.keySource === KEY_SOURCE.TENANT) return // BYOK: no le cuesta a la plataforma
+
+  const costUsd = estimateImageCostUsd(count)
+  if (costUsd <= 0) return
+
+  const period = getCurrentPeriod()
+
+  try {
+    await AiUsage.findOneAndUpdate(
+      { tenantId: id, period },
+      {
+        $inc: { estimatedCostUsd: costUsd },
+        $set: { lastActivityAt: new Date() },
+      },
+      { upsert: true, setDefaultsOnInsert: true },
+    ).setOptions({ tenantId: id })
+  } catch (error) {
+    logger.warn('[AI BUDGET] No se pudo registrar costo de imagen', {
+      tenantId: id,
+      error: error.message,
+    })
+  }
+
+  await registerPlatformConsumption({ tokens: 0, costUsd }).catch(error => {
+    logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma (imagen)', {
+      error: error.message,
+    })
+  })
+}
+
+/**
  * Chequeo sin reservar, para el middleware de ruta: corta temprano al que ya
  * está sin cupo o sin suscripción, sin duplicar el contador que después
  * incrementa el servicio.
@@ -734,6 +777,7 @@ export default {
   reserveAiBudget,
   refundAiBudget,
   recordAiConsumption,
+  recordImageGenerationCost,
   checkAiEntitlement,
   getAiBudgetSnapshot,
   getAiUsageSnapshot,

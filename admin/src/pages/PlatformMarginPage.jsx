@@ -145,6 +145,24 @@ export default function PlatformMarginPage() {
         </Paper>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
           <Typography variant="caption" color="text.secondary">
+            Comunicaciones
+          </Typography>
+          <Typography variant="h6" fontWeight={800}>
+            {formatUsd(totals.totalCommunicationsCostUsd)}
+          </Typography>
+        </Paper>
+        <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
+          <Typography variant="caption" color="text.secondary">
+            Infra + storage (plataforma)
+          </Typography>
+          <Typography variant="h6" fontWeight={800}>
+            {formatUsd(
+              (totals.infraCostUsd || 0) + (totals.storageCostUsd || 0),
+            )}
+          </Typography>
+        </Paper>
+        <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
+          <Typography variant="caption" color="text.secondary">
             Margen estimado
           </Typography>
           <Typography variant="h6" fontWeight={800}>
@@ -166,6 +184,7 @@ export default function PlatformMarginPage() {
               <TableCell>Estado</TableCell>
               <TableCell align="right">Precio del plan</TableCell>
               <TableCell align="right">Costo de IA</TableCell>
+              <TableCell align="right">Comunicaciones</TableCell>
               <TableCell align="right">Margen estimado</TableCell>
             </TableRow>
           </TableHead>
@@ -191,6 +210,9 @@ export default function PlatformMarginPage() {
                   {formatUsd(tenant.aiCostUsd)}
                 </TableCell>
                 <TableCell align="right">
+                  {formatUsd(tenant.communicationsCostUsd)}
+                </TableCell>
+                <TableCell align="right">
                   {formatUsd(tenant.estimatedMarginUsd)}
                 </TableCell>
               </TableRow>
@@ -198,7 +220,7 @@ export default function PlatformMarginPage() {
             {!tenants.length && (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   align="center"
                   sx={{ py: 4, color: 'text.secondary' }}
                 >

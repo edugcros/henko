@@ -306,6 +306,24 @@ export const estimateCostUsd = tokens => {
   return (amount / 1_000_000) * rate
 }
 
+/**
+ * Costo aproximado en USD de N generaciones de imagen (Replicate/HuggingFace,
+ * ver imageAiService.js::generateVariation). El default ($0.02/imagen) es una
+ * estimación conservadora sobre el costo típico documentado de Replicate
+ * (flux-schnell + el fallback ocasional de quitar fondo) — no una factura
+ * real. Mismo criterio que estimateCostUsd: sirve para el panel, no para
+ * cobrarle a nadie; el env var permite corregirlo con datos reales de
+ * facturación el día que existan.
+ */
+export const estimateImageCostUsd = count => {
+  const amount = Number(count)
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+
+  const rate = readEnvNumber('AI_COST_USD_PER_IMAGE_EDIT') ?? 0.02
+
+  return amount * rate
+}
+
 // ─── Precio de plan ──────────────────────────────────────
 
 // Únicos precios "reales" que existen hoy en el código: SubscriptionPage.js
@@ -334,6 +352,34 @@ export const getPlanMonthlyPriceUsd = plan => {
   if (envPrice !== null) return envPrice
   return DEFAULT_PLAN_PRICE_USD[normalizedPlan]
 }
+
+// ─── Costos operativos de HENKO (Bloque 8.10) ────────────
+//
+// Sin default no-cero: a diferencia del costo de IA (que sí se puede
+// estimar con una tarifa pública documentada), infraestructura y storage son
+// lo que HENKO paga de verdad a sus propios proveedores — no hay una tarifa
+// "típica" razonable que inventar acá. Quedan en 0 hasta que se carguen
+// números reales por variable de entorno; el reporte de margen es honesto
+// sobre esto en vez de mostrar una cifra que parece precisa y no lo es.
+
+export const getPlatformMonthlyInfraCostUsd = () =>
+  Math.max(0, readEnvNumber('PLATFORM_INFRA_MONTHLY_COST_USD') ?? 0)
+
+export const getPlatformMonthlyStorageCostUsd = () =>
+  Math.max(0, readEnvNumber('PLATFORM_STORAGE_MONTHLY_COST_USD') ?? 0)
+
+/**
+ * A diferencia de infra/storage (costos fijos de la plataforma, no
+ * atribuibles a un comercio puntual sin inventar un criterio de reparto), el
+ * envío de emails/WhatsApp sí tiene volumen real y medible por comercio
+ * (Order.emailSent, AiCartRecovery por canal) — ver platformMarginService.js.
+ * Acá solo la tarifa por envío, también en 0 por default.
+ */
+export const getEmailCostPerSendUsd = () =>
+  Math.max(0, readEnvNumber('EMAIL_COST_USD_PER_SEND') ?? 0)
+
+export const getWhatsappCostPerSendUsd = () =>
+  Math.max(0, readEnvNumber('WHATSAPP_COST_USD_PER_SEND') ?? 0)
 
 /**
  * Tope global de tokens de la plataforma para el mes, contra la key propia.
@@ -390,7 +436,12 @@ export default {
   isByokAllowedForPlan,
   getSubscriptionState,
   estimateCostUsd,
+  estimateImageCostUsd,
   getPlanMonthlyPriceUsd,
   getPlatformMonthlyTokenBudget,
   getSharedKeyTenantCap,
+  getPlatformMonthlyInfraCostUsd,
+  getPlatformMonthlyStorageCostUsd,
+  getEmailCostPerSendUsd,
+  getWhatsappCostPerSendUsd,
 }

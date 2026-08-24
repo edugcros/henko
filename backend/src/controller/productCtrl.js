@@ -2608,6 +2608,9 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
     const aiSource = ['remove-bg', 'variation'].includes(req.body?.aiSource)
       ? req.body.aiSource
       : ''
+    const imagePurpose = ['store', 'ad', 'social', 'alternative'].includes(req.body?.imagePurpose)
+      ? req.body.imagePurpose
+      : ''
 
     for (const file of req.files) {
       const buffer = file.processedBuffer || file.buffer
@@ -2641,6 +2644,7 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
         tenantId,
         isAiGenerated: aiGenerated,
         aiSource: aiGenerated ? aiSource : '',
+        imagePurpose: aiGenerated ? imagePurpose : '',
       })
     }
 

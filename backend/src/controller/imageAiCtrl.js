@@ -4,9 +4,12 @@ import { getBackgroundRemovalStatus } from '../services/ai/backgroundRemoval.js'
 import {
   AI_METRICS,
   buildBudgetDenialMessage,
+  recordImageGenerationCost,
   refundAiBudget,
   reserveAiBudget,
 } from '../services/ai/aiBudgetService.js'
+
+const IMAGE_PURPOSES = new Set(['ad', 'social', 'alternative'])
 import { resolveTenantAiCredentials } from '../services/ai/aiCredentialsService.js'
 
 /**
@@ -63,6 +66,7 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
   }
 
   const tenantId = String(req.user?.tenantId || req.tenantId || '').trim()
+  const purpose = IMAGE_PURPOSES.has(req.body.purpose) ? req.body.purpose : null
 
   // Generar un fondo cuesta plata en tres lugares a la vez (Gemini optimiza
   // el prompt, Replicate o HuggingFace generan la imagen). Es la única de las
@@ -88,12 +92,18 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
 
     result = await generateVariation(req.file.buffer, prompt, req.file.mimetype, {
       apiKey: credentials.apiKey,
+      purpose,
     })
   } catch (error) {
     // El proveedor falló: la generación no se entregó, así que no se cobra.
     await refundAiBudget({ tenantId, metric: AI_METRICS.IMAGE_EDITS })
     throw error
   }
+
+  // El costo se registra separado de la reserva de cupo (esta ya incrementó
+  // counters.imageEdits) — solo suma a estimatedCostUsd, nunca duplica el
+  // conteo de cuota. Ver aiBudgetService.js::recordImageGenerationCost.
+  await recordImageGenerationCost({ tenantId })
 
   const base64 = result.buffer.toString('base64')
 
@@ -104,6 +114,7 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
       contentType: result.contentType,
       size: result.buffer.length,
       prompt,
+      purpose,
     },
   })
 })
