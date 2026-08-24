@@ -2601,6 +2601,14 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
     const driver = String(process.env.STORAGE_DRIVER || 'cloudinary').toLowerCase()
     const uploadedImages = []
 
+    // Opcionales: el Editor de Imágenes IA sube el resultado por este mismo
+    // endpoint (ver ImageAiEditor.js), marcando de dónde vino. Una subida
+    // manual normal no manda estos campos — quedan false/'' igual que hoy.
+    const aiGenerated = String(req.body?.aiGenerated || '') === 'true'
+    const aiSource = ['remove-bg', 'variation'].includes(req.body?.aiSource)
+      ? req.body.aiSource
+      : ''
+
     for (const file of req.files) {
       const buffer = file.processedBuffer || file.buffer
       if (!buffer) continue
@@ -2631,6 +2639,8 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
         isMain: false,
         order: product.images.length + uploadedImages.length,
         tenantId,
+        isAiGenerated: aiGenerated,
+        aiSource: aiGenerated ? aiSource : '',
       })
     }
 

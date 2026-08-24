@@ -1,12 +1,17 @@
 import React, { useState, useCallback, useRef } from 'react'
 import {
   alpha,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
   IconButton,
   LinearProgress,
@@ -23,6 +28,7 @@ import {
   Delete as DeleteIcon,
   Download as DownloadIcon,
   HideImage as RemoveBgIcon,
+  Inventory2 as AttachIcon,
   AutoAwesome as VariationIcon,
   BrokenImage as EmptyIcon,
   SwapHoriz as SwapIcon,
@@ -31,6 +37,7 @@ import {
 } from '@mui/icons-material'
 import { useSnackbar } from 'notistack'
 import { removeBackground, generateVariation } from '../services/imageAiService'
+import productService from '@features/product/productService'
 
 const MODES = { REMOVE_BG: 'remove-bg', VARIATION: 'variation' }
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -81,6 +88,13 @@ const ImageAiEditor = () => {
   const [processing, setProcessing] = useState(false)
   const [results, setResults] = useState([])
   const [dragActive, setDragActive] = useState(false)
+
+  const [attachTarget, setAttachTarget] = useState(null)
+  const [productQuery, setProductQuery] = useState('')
+  const [productOptions, setProductOptions] = useState([])
+  const [productSearching, setProductSearching] = useState(false)
+  const [selectedProduct, setSelectedProduct] = useState(null)
+  const [attaching, setAttaching] = useState(false)
 
   const handleFileSelect = useCallback(
     event => {
@@ -160,6 +174,67 @@ const ImageAiEditor = () => {
       enqueueSnackbar('Imagen copiada al portapapeles', { variant: 'success' })
     } catch {
       enqueueSnackbar('No se pudo copiar la imagen', { variant: 'error' })
+    }
+  }
+
+  const searchDebounceRef = useRef(null)
+
+  const handleOpenAttachDialog = r => {
+    setAttachTarget(r)
+    setSelectedProduct(null)
+    setProductQuery('')
+    setProductOptions([])
+  }
+
+  const handleCloseAttachDialog = () => {
+    if (attaching) return
+    setAttachTarget(null)
+  }
+
+  const handleProductQueryChange = query => {
+    setProductQuery(query)
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+
+    if (!query.trim()) {
+      setProductOptions([])
+      return
+    }
+
+    searchDebounceRef.current = setTimeout(async () => {
+      setProductSearching(true)
+      try {
+        const res = await productService.getAdminProducts({ q: query.trim(), limit: 10 })
+        setProductOptions(res?.data || [])
+      } catch {
+        setProductOptions([])
+      } finally {
+        setProductSearching(false)
+      }
+    }, 350)
+  }
+
+  const handleAttachToProduct = async () => {
+    if (!attachTarget || !selectedProduct) return
+
+    try {
+      setAttaching(true)
+      const response = await fetch(attachTarget.image)
+      const blob = await response.blob()
+      const imageFile = new File([blob], `ai-${attachTarget.mode}-${attachTarget.id}.png`, {
+        type: blob.type || 'image/png',
+      })
+
+      await productService.uploadProductImage(selectedProduct._id, imageFile, {
+        aiGenerated: true,
+        aiSource: attachTarget.mode,
+      })
+
+      enqueueSnackbar(`Imagen agregada a "${selectedProduct.title}"`, { variant: 'success' })
+      setAttachTarget(null)
+    } catch (error) {
+      enqueueSnackbar(error.message || 'No se pudo agregar la imagen al producto', { variant: 'error' })
+    } finally {
+      setAttaching(false)
     }
   }
 
@@ -499,6 +574,7 @@ const ImageAiEditor = () => {
 
                           <Stack direction="row" spacing={0.25}>
                             {[
+                              { tip: 'Usar en un producto', icon: AttachIcon, fn: () => handleOpenAttachDialog(r), hc: V },
                               { tip: 'Descargar', icon: DownloadIcon, fn: () => handleDownload(r), hc: V },
                               { tip: 'Copiar', icon: CopyIcon, fn: () => handleCopy(r), hc: V },
                               { tip: 'Eliminar', icon: DeleteIcon, fn: () => setResults(p => p.filter(x => x.id !== r.id)), hc: '#EF4444' },
@@ -520,6 +596,56 @@ const ImageAiEditor = () => {
           </Card>
         </Grid>
       </Grid>
+
+      <Dialog open={Boolean(attachTarget)} onClose={handleCloseAttachDialog} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>Usar en un producto</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Buscá el producto al que querés agregar esta imagen.
+          </Typography>
+          <Autocomplete
+            options={productOptions}
+            loading={productSearching}
+            value={selectedProduct}
+            onChange={(_, value) => setSelectedProduct(value)}
+            inputValue={productQuery}
+            onInputChange={(_, value) => handleProductQueryChange(value)}
+            getOptionLabel={option => option?.title || ''}
+            isOptionEqualToValue={(option, value) => option._id === value._id}
+            noOptionsText={productQuery.trim() ? 'Sin resultados' : 'Escribí para buscar'}
+            renderInput={params => (
+              <TextField
+                {...params}
+                label="Producto"
+                placeholder="Título o marca"
+                autoFocus
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {productSearching ? <CircularProgress color="inherit" size={16} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={handleCloseAttachDialog} disabled={attaching}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleAttachToProduct}
+            disabled={!selectedProduct || attaching}
+            startIcon={attaching ? <CircularProgress size={16} color="inherit" /> : <AttachIcon />}
+          >
+            {attaching ? 'Agregando…' : 'Agregar al producto'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

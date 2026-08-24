@@ -203,15 +203,25 @@ const deleteProduct = async productId => {
 
 /**
  * Subir imágenes globales del producto.
- * Backend espera field: images.
+ * Backend espera field: images. { aiGenerated, aiSource } es opcional — lo
+ * usa el Editor de Imágenes IA (ver ImageAiEditor.js) para marcar de dónde
+ * vino la imagen; una subida manual normal no manda esos campos.
  */
-const uploadProductImage = async (productId, imageFile) => {
+const uploadProductImage = async (
+  productId,
+  imageFile,
+  { aiGenerated, aiSource } = {},
+) => {
   if (!productId || !imageFile) {
     throw new Error('Producto o imagen inválida')
   }
 
   const formData = new FormData()
   formData.append('images', imageFile)
+  if (aiGenerated) {
+    formData.append('aiGenerated', 'true')
+    formData.append('aiSource', aiSource || '')
+  }
 
   return apiRequest('post', `/${productId}/upload-image`, formData, {
     isMultipart: true,
