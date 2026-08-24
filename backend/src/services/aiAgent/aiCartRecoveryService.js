@@ -5,6 +5,7 @@ import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
 import AiCampaignRule from '../../models/aiCampaignRuleModel.js'
 import User from '../../models/userModel.js'
 import Product from '../../models/productModel.js'
+import UserMetricEvent from '../../models/userMetricEventModel.js'
 import logger from '../../../config/logger.js'
 
 const clean = value => String(value || '').trim()
@@ -353,6 +354,14 @@ export const markCartRecoveryConverted = async ({ order, tenantId }) => {
       AiAgent.updateOne(
         { tenantId },
         { $inc: { 'stats.cartRecoveriesConverted': 1 } },
+      ).setOptions({ tenantId }),
+      // Misma señal que markOrderAiInfluenced deja en el mismo evento de
+      // PURCHASE (mismo eventId determinístico) — permite calcular "valor
+      // generado por HENKO" contando cada orden una sola vez, sin duplicar
+      // lógica de agregación por canal.
+      UserMetricEvent.updateOne(
+        { tenantId, eventId: `commerce_purchase:${order._id}` },
+        { $set: { 'metadata.cartRecovered': true } },
       ).setOptions({ tenantId }),
     ])
 

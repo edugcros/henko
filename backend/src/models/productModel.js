@@ -927,6 +927,16 @@ const productSchema = new Schema(
       index: true,
     },
 
+    // Mapa { [campo]: 'human' } — qué campos corrigió un humano sobre lo que
+    // generó la IA. La ausencia de una clave para un campo que sí vino de
+    // aiOriginalOutput se interpreta como 'ai' — no hace falta poblar ese
+    // caso, solo marcar lo que un humano tocó (ver productCtrl.js, usa el
+    // diffSummary que ya devuelve registerVisualFeedback).
+    aiFieldProvenance: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
     // Auditoría
     createdBy: {
       type: Schema.Types.ObjectId,

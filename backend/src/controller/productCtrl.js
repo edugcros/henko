@@ -1397,7 +1397,7 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     // =====================================================
     if (iaGenerated && aiOriginal && typeof aiOriginal === 'object') {
       try {
-        await registerVisualFeedback({
+        const feedbackResult = await registerVisualFeedback({
           tenantId,
           originalIAOutput: aiOriginal,
           humanCorrection: buildHumanCorrectionPayload(product),
@@ -1410,6 +1410,15 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
             createdBy: userId ? String(userId) : null,
           },
         })
+
+        if (feedbackResult?.diffSummary?.length) {
+          const provenance = { ...(product.aiFieldProvenance || {}) }
+          for (const entry of feedbackResult.diffSummary) {
+            provenance[entry.field] = 'human'
+          }
+          product.aiFieldProvenance = provenance
+          await product.save()
+        }
 
         logger.info(
           `🧠 Learning registrado en CREATE | product=${product._id} | tenant=${tenantId}`,
@@ -2341,7 +2350,7 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
 
     if (product.iaGenerated && aiOriginal) {
       try {
-        await registerVisualFeedback({
+        const feedbackResult = await registerVisualFeedback({
           tenantId,
           originalIAOutput: aiOriginal,
           humanCorrection: buildHumanCorrectionPayload(product),
@@ -2350,6 +2359,15 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
             productId: product._id,
           },
         })
+
+        if (feedbackResult?.diffSummary?.length) {
+          const provenance = { ...(product.aiFieldProvenance || {}) }
+          for (const entry of feedbackResult.diffSummary) {
+            provenance[entry.field] = 'human'
+          }
+          product.aiFieldProvenance = provenance
+          await product.save()
+        }
 
         logger.info(`🧠 Learning registrado en UPDATE | product=${product._id}`)
       } catch (error) {

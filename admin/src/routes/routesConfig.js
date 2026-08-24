@@ -138,6 +138,17 @@ export const privateRoutes = [
     meta: { new: true },
   },
 
+  // 💰 Margen de plataforma — deliberadamente sin entrada en adminMenu.jsx.
+  // El gate real es server-side (requirePlatformOwner, allowlist de email);
+  // cualquier admin de cualquier comercio puede llegar por URL directa, pero
+  // no tiene sentido mostrarle a todos un ítem de menú a un reporte
+  // financiero cruzado que de todos modos le va a devolver 403.
+  {
+    path: '/admin/plataforma/margen',
+    Component: pages.PlatformMarginPage,
+    allowedRoles: ['admin'],
+  },
+
   // 📦 Catálogo
   {
     path: '/admin/AddProduct',
