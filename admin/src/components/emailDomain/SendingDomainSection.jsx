@@ -44,6 +44,44 @@ import {
 const clean = value => String(value ?? '').trim()
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Mismo criterio que backend/src/services/email/tenantEmailDomainService.js
+// (no se puede compartir código entre paquetes acá) — feedback instantáneo
+// antes de pegarle al servidor, pero el guard real (el que no se puede
+// evitar) vive en el backend.
+const FREE_EMAIL_PROVIDER_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'hotmail.com',
+  'hotmail.com.ar',
+  'hotmail.es',
+  'outlook.com',
+  'outlook.com.ar',
+  'outlook.es',
+  'live.com',
+  'live.com.ar',
+  'msn.com',
+  'yahoo.com',
+  'yahoo.com.ar',
+  'yahoo.es',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'protonmail.com',
+  'proton.me',
+  'gmx.com',
+  'gmx.net',
+  'mail.com',
+  'yandex.com',
+  'yandex.ru',
+  'zoho.com',
+])
+
+const isFreeEmailProviderAddress = address => {
+  const domain = clean(address).toLowerCase().split('@')[1] || ''
+  return FREE_EMAIL_PROVIDER_DOMAINS.has(domain)
+}
+
 const STATUS_META = {
   verified: {
     label: 'Verificado',
@@ -195,7 +233,8 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
   const requested = identity.requested || {}
   const status = requested.status || 'none'
   const meta = STATUS_META[status]
-  const draftIsValid = EMAIL_RE.test(clean(draft))
+  const draftIsFreeProvider = isFreeEmailProviderAddress(draft)
+  const draftIsValid = EMAIL_RE.test(clean(draft)) && !draftIsFreeProvider
   const records = requested.dnsRecords || []
 
   return (
@@ -282,7 +321,11 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
               onChange={event => setDraft(event.target.value)}
               error={Boolean(clean(draft)) && !draftIsValid}
               helperText={
-                clean(draft) && !draftIsValid ? 'Revisá el formato' : ''
+                clean(draft) && draftIsFreeProvider
+                  ? 'Gmail, Hotmail, Outlook y similares no se pueden verificar como dominio propio — necesitás un dominio propio (ej: tumarca.com).'
+                  : clean(draft) && !draftIsValid
+                    ? 'Revisá el formato'
+                    : ''
               }
             />
             <Button

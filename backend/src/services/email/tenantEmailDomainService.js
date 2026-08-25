@@ -24,6 +24,47 @@ export const extractDomain = address => {
   return value.split('@')[1] || ''
 }
 
+// Proveedores de correo gratuitos/personales conocidos. El DNS de estos
+// dominios lo controla el proveedor (Google, Microsoft, Yahoo...), no el
+// comercio — SendGrid da de alta el dominio igual (no lo rechaza en el
+// alta), pero la validación de DNS nunca puede pasar porque el comercio no
+// tiene forma de publicar los registros CNAME/DKIM que pide. Sin este
+// guard, el estado queda en "pending" para siempre, sin ningún error que
+// explique por qué — muy común en comercios chicos que todavía no tienen
+// dominio propio. Lista no exhaustiva (cubre los casos más comunes en
+// Argentina y global), no reemplaza la explicación en la UI.
+const FREE_EMAIL_PROVIDER_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'hotmail.com',
+  'hotmail.com.ar',
+  'hotmail.es',
+  'outlook.com',
+  'outlook.com.ar',
+  'outlook.es',
+  'live.com',
+  'live.com.ar',
+  'msn.com',
+  'yahoo.com',
+  'yahoo.com.ar',
+  'yahoo.es',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'protonmail.com',
+  'proton.me',
+  'gmx.com',
+  'gmx.net',
+  'mail.com',
+  'yandex.com',
+  'yandex.ru',
+  'zoho.com',
+])
+
+export const isFreeEmailProviderDomain = domain =>
+  FREE_EMAIL_PROVIDER_DOMAINS.has(clean(domain).toLowerCase())
+
 const normalizeRecords = records => {
   if (!Array.isArray(records)) return []
 
@@ -191,6 +232,15 @@ export const registerTenantSendingDomain = async ({ tenantId, fromAddress }) => 
   if (!domain) {
     const error = new Error('La dirección de envío no es válida')
     error.statusCode = 400
+    throw error
+  }
+
+  if (isFreeEmailProviderDomain(domain)) {
+    const error = new Error(
+      'Los proveedores de correo gratuitos (Gmail, Hotmail, Outlook, Yahoo, etc.) no se pueden verificar como dominio propio — el DNS de ese dominio lo controla el proveedor, no vos. Necesitás un dominio propio (por ejemplo, tumarca.com) para esta función.',
+    )
+    error.statusCode = 400
+    error.code = 'FREE_EMAIL_PROVIDER_NOT_SUPPORTED'
     throw error
   }
 
@@ -365,6 +415,7 @@ export const getTenantEmailIdentity = async tenantId => {
 
 export default {
   extractDomain,
+  isFreeEmailProviderDomain,
   registerTenantSendingDomain,
   refreshTenantDomainStatus,
   clearTenantSendingDomain,
