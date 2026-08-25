@@ -11,6 +11,8 @@ import { normalizeEmail, isValidEmail } from './email/emailShared.js'
 
 const { Schema } = mongoose
 
+const isProd = process.env.NODE_ENV === 'production'
+
 const EmailJobSchema = new Schema(
   {
     type: {
@@ -175,11 +177,16 @@ export const queuePaymentEmails = async ({
 }) => {
   const buyerEmail = extractBuyerEmail({ order, payer, req })
 
+  // ADMIN_EMAIL es una casilla única de toda la plataforma — en producción
+  // nunca puede ser el destino de un aviso de venta de un tenant sin su
+  // propio contactEmail/adminEmail configurado, o los pedidos de cualquier
+  // comercio terminarían todos en la misma bandeja. Mismo guard que ya usan
+  // emailService.js::getAdminEmail y paymentTenantConfigService.js.
   const adminEmail =
     normalizeEmail(tenantConfig?.adminEmail) ||
     normalizeEmail(tenantConfig?.email) ||
     normalizeEmail(tenantConfig?.settings?.store?.contactEmail) ||
-    normalizeEmail(process.env.ADMIN_EMAIL) ||
+    (!isProd ? normalizeEmail(process.env.ADMIN_EMAIL) : null) ||
     null
 
   const orderForEmail = buildOrderForEmail(order)

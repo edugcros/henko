@@ -126,7 +126,13 @@ quedan anotados acá:
   con la key real de producción, mientras que `POST /v3/mail/send` funciona
   sin problema — consistente con una key limitada a "Mail Send" únicamente.
   Hay que generar una key nueva con Full Access en SendGrid y reemplazarla
-  en Render.
+  en Render. **Resuelto el 25/08/2026**: key nueva generada con Full Access,
+  confirmado en vivo que `/v3/verified_senders`, `/v3/whitelabel/domains` y
+  `/v3/stats` devuelven `200` (antes `403`), y cargada en Render →
+  `EMAIL_PASS`. Un envío real de prueba (`POST /v3/mail/send` directo a
+  SendGrid, mismo remitente verificado que usa producción) devolvió `202`
+  con `x-message-id` real, y el correo **llegó, pero a spam** — confirma en
+  vivo el problema de remitente de abajo, ya no es solo teórico.
 - **`EMAIL_FROM` tiene que ser exactamente la dirección que se verificó como
   Single Sender** (Settings → Sender Authentication → Verify a Single
   Sender en SendGrid — requiere clic en un mail de confirmación, no DNS). La
