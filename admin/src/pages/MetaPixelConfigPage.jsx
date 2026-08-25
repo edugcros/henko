@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -10,6 +13,7 @@ import {
   Divider,
   FormControlLabel,
   Grid,
+  Link,
   Paper,
   Snackbar,
   Stack,
@@ -22,6 +26,7 @@ import {
   Insights as InsightsIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material'
 import {
   getMetaPixelConfig,
@@ -52,6 +57,118 @@ const toPayload = form => {
   }
   return { meta }
 }
+
+const GUIDE_STEPS = [
+  {
+    tag: 'En Meta',
+    title: 'Creá tu cartera de negocios',
+    body: (
+      <>
+        Entrá a{' '}
+        <Link
+          href="https://business.facebook.com"
+          target="_blank"
+          rel="noopener"
+        >
+          business.facebook.com
+        </Link>{' '}
+        y elegí <strong>Crear cuenta</strong>. Te va a pedir el nombre de tu
+        comercio, tu nombre y un email de trabajo.
+      </>
+    ),
+  },
+  {
+    tag: 'En Meta',
+    title: 'Completá los datos de contacto',
+    body: (
+      <>
+        Configuración del negocio → Información del negocio. Cargá un email y
+        teléfono de contacto de tu comercio si todavía no los tenés.
+      </>
+    ),
+    warning:
+      'Meta no te deja avanzar sin esto — aparece como "Falta información de contacto" en cuanto entrás a gestionar la cartera.',
+  },
+  {
+    tag: 'En Meta',
+    title: 'Activá tu clave de acceso (passkey)',
+    body: (
+      <>
+        <Link
+          href="https://accountscenter.facebook.com"
+          target="_blank"
+          rel="noopener"
+        >
+          accountscenter.facebook.com
+        </Link>{' '}
+        → Contraseña y seguridad → Claves de acceso → creá una (huella digital,
+        Face ID o el PIN del equipo).
+      </>
+    ),
+    warning:
+      'Es un requisito de seguridad de Meta para administrar una cartera de negocios — no tiene que ver con tu Pixel en particular, pero te bloquea hasta activarlo.',
+  },
+  {
+    tag: 'En Meta',
+    title: 'Creá el Pixel',
+    body: (
+      <>
+        <Link
+          href="https://business.facebook.com/events_manager2"
+          target="_blank"
+          rel="noopener"
+        >
+          Events Manager
+        </Link>{' '}
+        → Conectar fuentes de datos → Web → Meta Pixel. Ponele un nombre y
+        creálo — te muestra el <strong>ID de Pixel</strong> (15-16 dígitos).
+      </>
+    ),
+  },
+  {
+    tag: 'En Meta',
+    title: 'Generá tu token de acceso',
+    body: (
+      <>
+        Dentro de ese mismo Pixel: Configuración → Conversions API →{' '}
+        <strong>Generar token de acceso</strong>. Tratalo como una contraseña.
+      </>
+    ),
+  },
+  {
+    tag: 'En HENKO',
+    title: 'Pegá tus datos acá arriba',
+    body: 'ID de Pixel y token en los campos de esta pantalla, activá el switch y guardá.',
+  },
+  {
+    tag: 'En Meta',
+    title: 'Probá que esté funcionando',
+    body: 'Events Manager → pestaña "Eventos de prueba". Te da un código temporal — pegalo junto al ID de Pixel acá arriba, navegá tu tienda en otra pestaña, y deberías ver los eventos llegar en tiempo real.',
+  },
+]
+
+const FAQ_ITEMS = [
+  {
+    q: '"Necesitás una cuenta publicitaria para acceder a Ads Manager"',
+    a: 'Aparece si entraste por Ads Manager en vez de Events Manager. Si solo querés medir (no pautar todavía), entrá directo por Events Manager (paso 4) — ahí no hace falta cuenta publicitaria. Si vas a correr anuncios, creála desde Configuración del negocio → Cuentas → Cuentas publicitarias (ojo: la moneda no se puede cambiar después de creada la cuenta).',
+  },
+  {
+    q: '"La llave de acceso no está activada"',
+    a: 'Es el paso 3 — la passkey. No se puede gestionar la cartera de negocios sin activarla al menos una vez.',
+  },
+  {
+    q: '"Falta información de contacto"',
+    a: 'Es el paso 2. Completá el email y teléfono del negocio en la información del negocio y el aviso desaparece.',
+  },
+  {
+    q: '¿Puedo usar Gmail o Hotmail para esto?',
+    a: 'Sí — para el Pixel, el email de tu cuenta de Facebook no tiene restricciones. Es distinto del dominio de envío de correo de la tienda (ese sí necesita un dominio propio), que es una configuración aparte dentro de HENKO.',
+  },
+  {
+    q: 'En "Eventos de prueba" no aparece nada',
+    a: 'Revisá que el switch de esta pantalla esté activado y que el token esté guardado, y que sigas navegando con el código de prueba pegado — se vence a las pocas horas y hay que generar uno nuevo.',
+  },
+]
 
 const SectionCard = ({ title, subtitle, icon, children }) => (
   <Card variant="outlined" sx={{ borderRadius: 3 }}>
@@ -288,28 +405,82 @@ const MetaPixelConfigPage = () => {
         </SectionCard>
 
         <SectionCard
-          title="Ayuda"
-          subtitle="Cómo obtener tu ID de Pixel y tu Access Token."
+          title="Cómo conseguir tu ID de Pixel y tu token"
+          subtitle="Paso a paso, incluidos los tropiezos más comunes con Meta."
           icon={<InsightsIcon sx={{ color: '#1877f2' }} />}
         >
-          <Typography variant="body2" color="text.secondary" component="div">
-            <ol style={{ paddingLeft: 20, margin: 0 }}>
-              <li>
-                Ingresá a <strong>business.facebook.com/events_manager</strong>{' '}
-                con tu cuenta de Meta Business.
-              </li>
-              <li>
-                Elegí tu Pixel (o creá uno) y copiá el <em>ID de Pixel</em>{' '}
-                desde la pestaña de configuración.
-              </li>
-              <li>
-                En <strong>Configuración → Conversions API</strong> generá un{' '}
-                <em>Access Token</em> del sistema.
-              </li>
-              <li>Pegá ambos valores en los campos de arriba.</li>
-              <li>Activá el switch y guardá los cambios.</li>
-            </ol>
-          </Typography>
+          <Stack spacing={0}>
+            {GUIDE_STEPS.map((step, index) => (
+              <Box
+                key={step.title}
+                sx={{
+                  py: 2,
+                  borderBottom:
+                    index < GUIDE_STEPS.length - 1 ? '1px solid' : 'none',
+                  borderColor: 'divider',
+                }}
+              >
+                <Stack direction="row" spacing={2} alignItems="flex-start">
+                  <Typography
+                    variant="h6"
+                    color="text.disabled"
+                    sx={{ minWidth: 28, fontWeight: 600 }}
+                  >
+                    {index + 1}
+                  </Typography>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Chip
+                      size="small"
+                      label={step.tag}
+                      color={step.tag === 'En HENKO' ? 'primary' : 'default'}
+                      variant={step.tag === 'En HENKO' ? 'filled' : 'outlined'}
+                      sx={{ mb: 1 }}
+                    />
+                    <Typography variant="subtitle2" fontWeight={700} mb={0.5}>
+                      {step.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {step.body}
+                    </Typography>
+                    {step.warning && (
+                      <Alert severity="warning" sx={{ mt: 1.5 }}>
+                        {step.warning}
+                      </Alert>
+                    )}
+                  </Box>
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </SectionCard>
+
+        <SectionCard
+          title="Preguntas frecuentes"
+          subtitle="Los mensajes de Meta que más confunden — y qué hacer con cada uno."
+          icon={<InsightsIcon sx={{ color: '#1877f2' }} />}
+        >
+          <Stack spacing={1}>
+            {FAQ_ITEMS.map(item => (
+              <Accordion
+                key={item.q}
+                disableGutters
+                elevation={0}
+                variant="outlined"
+                sx={{ borderRadius: 2, '&:before': { display: 'none' } }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    {item.q}
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Typography variant="body2" color="text.secondary">
+                    {item.a}
+                  </Typography>
+                </AccordionDetails>
+              </Accordion>
+            ))}
+          </Stack>
         </SectionCard>
 
         <Paper
