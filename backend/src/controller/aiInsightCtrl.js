@@ -37,6 +37,7 @@ const allowedTypes = new Set([
   'campaign_underperformance',
   'customer_inactivity',
   'cart_recovery_underperformance',
+  'product_low_margin',
 ])
 
 const requireTenantId = req =>

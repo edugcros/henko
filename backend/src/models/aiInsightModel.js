@@ -33,6 +33,7 @@ const aiInsightSchema = new Schema(
         'campaign_underperformance',
         'customer_inactivity',
         'cart_recovery_underperformance',
+        'product_low_margin',
       ],
       required: true,
       index: true,

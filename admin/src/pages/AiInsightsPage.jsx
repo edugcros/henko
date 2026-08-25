@@ -71,6 +71,7 @@ const TYPE_META = {
     label: 'Recuperación de carrito',
     color: 'error',
   },
+  product_low_margin: { label: 'Margen bajo', color: 'warning' },
 }
 
 const TYPE_OPTIONS = [

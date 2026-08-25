@@ -184,6 +184,102 @@ export const detectCartConversionDrop = async (tenantId, { windowDays = 7 } = {}
 }
 
 /**
+ * Productos con margen bruto bajo — Bloque 8.5. Solo evalúa productos con
+ * costoUnitario REAL cargado (nunca estimado por IA, ver productModel.js);
+ * sin ese dato no hay margen que calcular, y el detector simplemente no
+ * incluye ese producto — no inventa un costo para poder opinar sobre él.
+ *
+ * Cruza ventas reales (revenue + unidades, mismo dato de items[] que ya usa
+ * commerceEventService.js::buildItems — price/quantity/subtotal reales de
+ * cada línea de compra) contra el costo real. Dos condiciones a la vez, no
+ * una sola: margen % bajo Y volumen de venta real — un producto con margen
+ * bajo pero apenas $2.000 vendidos no merece la misma atención que uno con
+ * margen bajo y $2.000.000 vendidos, aunque el % sea idéntico.
+ */
+export const detectProductLowMargin = async (tenantId, { days = 30 } = {}) => {
+  const tenantObjectId = new mongoose.Types.ObjectId(String(tenantId))
+  const since = daysAgo(days)
+  const marginThreshold = readEnvNumber('AI_INSIGHT_LOW_MARGIN_PCT', 20) / 100
+  // Default en moneda del tenant (ARS típicamente) — mismo criterio de
+  // "estimación razonable, documentada, sobrescribible" que el resto de
+  // los defaults de costo de este bloque, no una factura real.
+  const minRevenue = readEnvNumber('AI_INSIGHT_MIN_MARGIN_REVENUE', 50000)
+
+  const productsWithCost = await Product.find({
+    tenantId,
+    costoUnitario: { $ne: null, $gt: 0 },
+  })
+    .select('title costoUnitario')
+    .setOptions({ tenantId })
+    .lean()
+
+  if (!productsWithCost.length) return []
+
+  const costByProduct = new Map(productsWithCost.map(p => [String(p._id), p.costoUnitario]))
+  const titleByProduct = new Map(productsWithCost.map(p => [String(p._id), p.title]))
+  const productObjectIds = productsWithCost.map(p => p._id)
+
+  const salesRows = await UserMetricEvent.aggregate([
+    {
+      $match: {
+        tenantId: tenantObjectId,
+        occurredAt: { $gte: since },
+        eventType: USER_METRIC_EVENTS.PURCHASE,
+        source: 'system',
+      },
+    },
+    { $unwind: '$items' },
+    { $match: { 'items.productObjectId': { $in: productObjectIds } } },
+    {
+      $group: {
+        _id: '$items.productObjectId',
+        revenue: { $sum: '$items.subtotal' },
+        units: { $sum: '$items.quantity' },
+      },
+    },
+  ])
+
+  const candidates = salesRows
+    .map(row => {
+      const productId = String(row._id)
+      const costoUnitario = costByProduct.get(productId)
+      const units = row.units || 0
+      const revenue = row.revenue || 0
+      const cost = costoUnitario * units
+      const margin = revenue - cost
+      const marginRate = revenue > 0 ? margin / revenue : 0
+      return { productId, revenue, cost, margin, marginRate, units, costoUnitario }
+    })
+    .filter(c => c.revenue >= minRevenue && c.marginRate < marginThreshold)
+
+  return candidates.map(c => {
+    const title = titleByProduct.get(c.productId) || 'Producto'
+    const marginPct = round2(c.marginRate * 100)
+    const revenue = round2(c.revenue)
+    const cost = round2(c.cost)
+    const margin = round2(c.margin)
+
+    return {
+      type: 'product_low_margin',
+      entity: { kind: 'product', id: c.productId, label: title },
+      evidence: {
+        revenue,
+        cost,
+        margin,
+        marginPct,
+        units: c.units,
+        costoUnitario: c.costoUnitario,
+        days,
+      },
+      priority: marginPct <= 0 ? 'high' : 'medium',
+      title: `Margen bajo: ${title}`,
+      description: `"${title}" vendió $${revenue} en los últimos ${days} días (${c.units} unidades, costo cargado $${c.costoUnitario}/unidad) pero el margen real es de solo ${marginPct}% ($${margin}). Se recomienda revisar el precio de venta o el costo cargado. Se vuelve a medir el margen más adelante para confirmar si el cambio funcionó.`,
+      measurement: { metricName: 'marginPct', beforeValue: marginPct },
+    }
+  })
+}
+
+/**
  * Recuperación de carritos (WhatsApp/email, Bloque 3) con conversión en
  * baja — DISTINTO de detectCartConversionDrop de arriba, que mide conversión
  * general del sitio (órdenes/sesiones) y puede caer por motivos que no
@@ -419,6 +515,46 @@ export const measureOverallConversion = async (tenantId, { windowDays = 7 } = {}
   const sessions = sessionRows[0]?.sessions || 0
   const conversionRate = sessions > 0 ? round2((orders / sessions) * 100) : 0
   return { orders, sessions, conversionRate }
+}
+
+export const measureProductMargin = async (tenantId, productId, { days = 30 } = {}) => {
+  const tenantObjectId = new mongoose.Types.ObjectId(String(tenantId))
+  const productObjectId = new mongoose.Types.ObjectId(String(productId))
+  const since = daysAgo(days)
+
+  const [product, salesRows] = await Promise.all([
+    Product.findOne({ _id: productObjectId, tenantId })
+      .select('costoUnitario')
+      .setOptions({ tenantId })
+      .lean(),
+    UserMetricEvent.aggregate([
+      {
+        $match: {
+          tenantId: tenantObjectId,
+          occurredAt: { $gte: since },
+          eventType: USER_METRIC_EVENTS.PURCHASE,
+          source: 'system',
+        },
+      },
+      { $unwind: '$items' },
+      { $match: { 'items.productObjectId': productObjectId } },
+      { $group: { _id: null, revenue: { $sum: '$items.subtotal' }, units: { $sum: '$items.quantity' } } },
+    ]),
+  ])
+
+  // El comercio pudo haber borrado el costo cargado entre la detección y
+  // esta remedición — sin costo real, no hay margen que remedir.
+  if (!product || product.costoUnitario === null || product.costoUnitario === undefined) {
+    return { marginPct: null, revenue: 0, cost: 0, margin: 0, units: 0 }
+  }
+
+  const revenue = salesRows[0]?.revenue || 0
+  const units = salesRows[0]?.units || 0
+  const cost = product.costoUnitario * units
+  const margin = revenue - cost
+  const marginPct = revenue > 0 ? round2((margin / revenue) * 100) : 0
+
+  return { marginPct, revenue: round2(revenue), cost: round2(cost), margin: round2(margin), units }
 }
 
 export const measureCartRecoveryConversion = async (tenantId, { windowDays = 7 } = {}) => {
