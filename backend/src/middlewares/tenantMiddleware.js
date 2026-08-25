@@ -231,7 +231,7 @@ const findTenantByDomainCandidates = async candidates => {
       { legacyDomains: { $in: candidates } },
       { legacyAdminDomains: { $in: candidates } },
     ],
-  }).select('_id name slug domains adminDomains status plan').lean()
+  }).select('_id name slug domains adminDomains status plan email').lean()
 }
 
 const attachTenantToRequest = ({
