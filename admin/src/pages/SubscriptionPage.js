@@ -22,12 +22,23 @@ import {
 const { Paragraph, Text, Title } = Typography
 const { useToken } = theme
 
+// Tipo de cambio de referencia: dólar oficial VENTA, Banco Nación, cierre
+// del 24/08/2026 (El Cronista / La Nación / Infobae) — mismo tipo de cambio
+// usado en backend/src/services/ai/aiPlanPolicy.js para el precio real de
+// "starter", así no hay dos referencias distintas para la misma conversión.
+// Es un valor de referencia fijado a mano, no una integración en vivo — se
+// actualiza acá (y en aiPlanPolicy.js) cuando haga falta.
+const USD_ARS_REFERENCE_RATE = 1530
+
 const SUBSCRIPTION_PLANS = Object.freeze([
   {
     id: 'starter',
     name: 'Emprendedor',
     description: 'Las herramientas esenciales para poner en marcha una tienda.',
-    monthlyPrice: 29,
+    // Decisión de negocio real: $40.000 ARS/mes. El USD que se muestra al
+    // lado es derivado del tipo de cambio de referencia de arriba, no un
+    // precio en dólares fijado aparte.
+    monthlyPriceArs: 40000,
     icon: RocketOutlined,
     features: [
       'Hasta 100 productos',
@@ -43,7 +54,10 @@ const SUBSCRIPTION_PLANS = Object.freeze([
     name: 'Profesional',
     description:
       'Automatización y capacidad para una operación en crecimiento.',
-    monthlyPrice: 99,
+    // Sin decisión de negocio todavía — sigue siendo el placeholder visual
+    // de siempre ($99 USD). El ARS que se muestra al lado es derivado del
+    // tipo de cambio de referencia, no una decisión de precio en pesos.
+    monthlyPriceUsd: 99,
     icon: CrownOutlined,
     features: [
       'Productos ilimitados',
@@ -57,17 +71,36 @@ const SUBSCRIPTION_PLANS = Object.freeze([
   },
 ])
 
-const formatMonthlyPrice = value =>
+const getPlanPrices = plan => {
+  const ars =
+    plan.monthlyPriceArs ??
+    Math.round(plan.monthlyPriceUsd * USD_ARS_REFERENCE_RATE)
+  const usd =
+    plan.monthlyPriceUsd ?? plan.monthlyPriceArs / USD_ARS_REFERENCE_RATE
+
+  return { ars, usd }
+}
+
+const formatArs = value =>
   new Intl.NumberFormat('es-AR', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'ARS',
     maximumFractionDigits: 0,
+  }).format(value)
+
+const formatUsd = value =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value)
 
 const PlanCard = ({ plan, onSelect }) => {
   const { token } = useToken()
   const PlanIcon = plan.icon
   const accentColor = plan.featured ? token.colorPrimary : token.colorInfo
+  const { ars, usd } = getPlanPrices(plan)
 
   return (
     <Card
@@ -122,18 +155,23 @@ const PlanCard = ({ plan, onSelect }) => {
         {plan.description}
       </Paragraph>
 
-      <Flex align="baseline" gap={8}>
-        <Text
-          strong
-          style={{
-            color: token.colorTextHeading,
-            fontSize: 38,
-            lineHeight: 1.1,
-          }}
-        >
-          {formatMonthlyPrice(plan.monthlyPrice)}
+      <Flex vertical gap={2}>
+        <Flex align="baseline" gap={8}>
+          <Text
+            strong
+            style={{
+              color: token.colorTextHeading,
+              fontSize: 38,
+              lineHeight: 1.1,
+            }}
+          >
+            {formatArs(ars)}
+          </Text>
+          <Text type="secondary">por mes</Text>
+        </Flex>
+        <Text type="secondary" style={{ fontSize: 15 }}>
+          ≈ {formatUsd(usd)} USD
         </Text>
-        <Text type="secondary">por mes</Text>
       </Flex>
 
       <Divider style={{ margin: '24px 0 18px' }} />
@@ -163,7 +201,7 @@ const PlanCard = ({ plan, onSelect }) => {
         size="large"
         block
         onClick={() => onSelect(plan.id)}
-        aria-label={`${plan.actionLabel}, ${formatMonthlyPrice(plan.monthlyPrice)} por mes`}
+        aria-label={`${plan.actionLabel}, ${formatArs(ars)} por mes (aproximadamente ${formatUsd(usd)} USD)`}
         style={{ height: 48, fontWeight: 600 }}
       >
         {plan.actionLabel}

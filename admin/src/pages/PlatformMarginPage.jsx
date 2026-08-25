@@ -103,6 +103,7 @@ export default function PlatformMarginPage() {
 
   const tenants = report?.tenants || []
   const totals = report?.totals || {}
+  const lifecycle = report?.lifecycle || {}
   const notes = report?.notes || []
 
   return (
@@ -167,6 +168,56 @@ export default function PlatformMarginPage() {
           </Typography>
           <Typography variant="h6" fontWeight={800}>
             {formatUsd(totals.totalEstimatedMarginUsd)}
+          </Typography>
+        </Paper>
+      </Stack>
+
+      <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1 }}>
+        Ciclo de vida de comercios
+      </Typography>
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}
+      >
+        <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
+          <Typography variant="caption" color="text.secondary">
+            Altas este período
+          </Typography>
+          <Typography variant="h6" fontWeight={800}>
+            {lifecycle.newTenantsInPeriod ?? '—'}
+          </Typography>
+        </Paper>
+        <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
+          <Typography variant="caption" color="text.secondary">
+            Comercios activos
+          </Typography>
+          <Typography variant="h6" fontWeight={800}>
+            {lifecycle.activeTenantsCount ?? 0}
+          </Typography>
+        </Paper>
+        <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
+          <Typography variant="caption" color="text.secondary">
+            Comercios suspendidos
+          </Typography>
+          <Typography variant="h6" fontWeight={800}>
+            {lifecycle.suspendedTenantsCount ?? 0}
+          </Typography>
+        </Paper>
+        <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
+          <Typography variant="caption" color="text.secondary">
+            Bajas (aprox., este período)
+          </Typography>
+          <Typography variant="h6" fontWeight={800}>
+            {lifecycle.deletedInPeriodApprox ?? '—'}
+          </Typography>
+        </Paper>
+        <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
+          <Typography variant="caption" color="text.secondary">
+            En plan pago (nominal)
+          </Typography>
+          <Typography variant="h6" fontWeight={800}>
+            {lifecycle.nonFreePlanTenantsCount ?? 0}
           </Typography>
         </Paper>
       </Stack>

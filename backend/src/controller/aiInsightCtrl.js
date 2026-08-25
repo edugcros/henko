@@ -11,6 +11,10 @@ import {
   dismissInsight,
 } from '../services/insights/aiInsightService.js'
 import {
+  generateReactivationMessage,
+  sendReactivationMessage,
+} from '../services/insights/aiInsightActionService.js'
+import {
   getUserIdFromRequest,
   isValidObjectId,
   resolveAuthorizedTenantFromRequest,
@@ -137,4 +141,42 @@ export const archiveAiInsight = asyncHandler(async (req, res) => {
   const insight = await archiveInsight({ insightId: req.params.id, tenantId })
 
   return res.status(200).json({ success: true, message: 'Insight archivado', data: insight })
+})
+
+// Bloque 8.8 (alcance acotado): arma el texto, no envía nada todavía — el
+// admin lo revisa/edita en el panel antes de confirmar el envío.
+export const previewReactivationMessage = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  if (!validateInsightId(req, res)) return
+
+  const insight = await AiInsight.findOne({ _id: req.params.id, tenantId })
+    .setOptions({ tenantId })
+    .lean()
+
+  if (!insight) {
+    return res.status(404).json({ success: false, message: 'Insight no encontrado' })
+  }
+
+  const result = await generateReactivationMessage({ tenantId, insight })
+
+  return res.status(200).json({ success: true, data: result })
+})
+
+export const sendAiInsightReactivationMessage = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  if (!validateInsightId(req, res)) return
+  const userId = getUserIdFromRequest(req)
+
+  const insight = await sendReactivationMessage({
+    tenantId,
+    insightId: req.params.id,
+    adminUserId: userId,
+    message: req.body?.message,
+  })
+
+  return res.status(200).json({
+    success: true,
+    message: 'Mensaje de reactivación enviado',
+    data: insight,
+  })
 })

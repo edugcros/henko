@@ -3,9 +3,10 @@
 // Motor de diagnóstico (Bloque 8.4-8.9) — HENKO detecta problemas de negocio
 // (producto con baja conversión, caída de conversión general, campaña de
 // bajo rendimiento, cliente inactivo), explica la causa con datos reales, y
-// recomienda qué hacer. Solo recomienda — ninguna acción se ejecuta sola
-// (8.8, acciones automáticas, queda para más adelante). Mismo esqueleto que
-// AiLearningReviewPage.jsx.
+// recomienda qué hacer. Para cliente inactivo hay un primer paso de acción
+// (8.8, alcance acotado): HENKO arma un mensaje de reactivación, pero nunca
+// lo manda sin que el admin lo revise/edite y confirme en el diálogo. Mismo
+// esqueleto que AiLearningReviewPage.jsx.
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
@@ -30,6 +31,7 @@ import {
 import {
   Archive as ArchiveIcon,
   Insights as InsightsIcon,
+  MarkEmailRead as ReactivationIcon,
   PlayCircleOutline as AcknowledgeIcon,
   Refresh as RefreshIcon,
   Cancel as DismissIcon,
@@ -39,6 +41,8 @@ import {
   archiveInsight,
   dismissInsight,
   listInsights,
+  previewReactivationMessage,
+  sendReactivationMessage,
 } from '../services/aiInsightService.js'
 
 const STATUS_OPTIONS = [
@@ -78,12 +82,15 @@ const formatEvidence = evidence => {
     .join(' · ')
 }
 
+const CHANNEL_LABEL = { email: 'email', whatsapp: 'WhatsApp' }
+
 const InsightCard = ({
   insight,
   busy,
   onAcknowledge,
   onDismiss,
   onArchive,
+  onReactivate,
 }) => {
   const typeMeta = TYPE_META[insight.type] || {
     label: insight.type,
@@ -92,6 +99,10 @@ const InsightCard = ({
   const isPending = insight.status === 'pending_review'
   const isMeasuring = insight.status === 'measuring'
   const canArchive = ['resolved', 'dismissed'].includes(insight.status)
+  const canReactivate =
+    insight.type === 'customer_inactivity' &&
+    (isPending || isMeasuring) &&
+    !insight.action?.actionType
 
   return (
     <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
@@ -170,6 +181,20 @@ const InsightCard = ({
             </Typography>
           )}
 
+          {insight.action?.actionType === 'reactivation_message' && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 1, display: 'block' }}
+            >
+              Mensaje de reactivación enviado por{' '}
+              {CHANNEL_LABEL[insight.action.channel] || insight.action.channel}
+              {insight.action.executedAt &&
+                ` el ${new Date(insight.action.executedAt).toLocaleDateString('es-AR')}`}
+              .
+            </Typography>
+          )}
+
           {insight.status === 'dismissed' && insight.dismissReason && (
             <Typography
               variant="caption"
@@ -181,13 +206,25 @@ const InsightCard = ({
           )}
         </Box>
 
-        {(isPending || canArchive) && (
+        {(isPending || canReactivate || canArchive) && (
           <Stack spacing={1} sx={{ minWidth: 132 }}>
+            {canReactivate && (
+              <Button
+                size="small"
+                variant="contained"
+                color="secondary"
+                startIcon={<ReactivationIcon />}
+                disabled={busy}
+                onClick={() => onReactivate(insight)}
+              >
+                Reactivar cliente
+              </Button>
+            )}
             {isPending && (
               <>
                 <Button
                   size="small"
-                  variant="contained"
+                  variant={canReactivate ? 'outlined' : 'contained'}
                   color="primary"
                   startIcon={<AcknowledgeIcon />}
                   disabled={busy}
@@ -244,6 +281,7 @@ const AiInsightsPage = () => {
     message: '',
   })
   const [dismissDialog, setDismissDialog] = useState(null)
+  const [reactivationDialog, setReactivationDialog] = useState(null)
 
   const params = useMemo(
     () => ({
@@ -333,6 +371,69 @@ const AiInsightsPage = () => {
     },
     [runAction],
   )
+
+  const openReactivation = useCallback(async insight => {
+    const id = getId(insight)
+    setReactivationDialog({
+      id,
+      message: '',
+      loading: true,
+      error: '',
+      sending: false,
+    })
+    try {
+      const result = await previewReactivationMessage(id)
+      setReactivationDialog(prev =>
+        prev && prev.id === id
+          ? { ...prev, message: result?.message || '', loading: false }
+          : prev,
+      )
+    } catch (err) {
+      console.error('[AI_INSIGHTS_PREVIEW_ERROR]', err)
+      setReactivationDialog(prev =>
+        prev && prev.id === id
+          ? {
+              ...prev,
+              loading: false,
+              error:
+                err?.response?.data?.message ||
+                err?.message ||
+                'No se pudo generar el mensaje.',
+            }
+          : prev,
+      )
+    }
+  }, [])
+
+  const confirmReactivation = useCallback(async () => {
+    const dialog = reactivationDialog
+    if (!dialog || !clean(dialog.message)) return
+
+    setReactivationDialog(prev =>
+      prev ? { ...prev, sending: true, error: '' } : prev,
+    )
+
+    try {
+      await sendReactivationMessage(dialog.id, clean(dialog.message))
+      setReactivationDialog(null)
+      notify('success', 'Mensaje de reactivación enviado.')
+      await load()
+    } catch (err) {
+      console.error('[AI_INSIGHTS_SEND_ERROR]', err)
+      setReactivationDialog(prev =>
+        prev
+          ? {
+              ...prev,
+              sending: false,
+              error:
+                err?.response?.data?.message ||
+                err?.message ||
+                'No se pudo enviar el mensaje.',
+            }
+          : prev,
+      )
+    }
+  }, [reactivationDialog, load])
 
   const pendingCount = counters.pending_review || 0
 
@@ -437,6 +538,7 @@ const AiInsightsPage = () => {
               onAcknowledge={handleAcknowledge}
               onDismiss={openDismiss}
               onArchive={handleArchive}
+              onReactivate={openReactivation}
             />
           ))}
         </Stack>
@@ -467,6 +569,69 @@ const AiInsightsPage = () => {
           <Button onClick={() => setDismissDialog(null)}>Cancelar</Button>
           <Button variant="contained" color="error" onClick={confirmDismiss}>
             Descartar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(reactivationDialog)}
+        onClose={() => setReactivationDialog(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Mensaje de reactivación</DialogTitle>
+        <DialogContent>
+          <Divider sx={{ mb: 2 }} />
+          {reactivationDialog?.loading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Revisá y editá el mensaje antes de enviarlo — nada sale sin
+                confirmar acá.
+              </Typography>
+              <TextField
+                fullWidth
+                multiline
+                minRows={4}
+                label="Mensaje"
+                value={reactivationDialog?.message || ''}
+                onChange={e =>
+                  setReactivationDialog(prev =>
+                    prev ? { ...prev, message: e.target.value } : prev,
+                  )
+                }
+                inputProps={{ maxLength: 2000 }}
+                disabled={reactivationDialog?.sending}
+              />
+              {reactivationDialog?.error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {reactivationDialog.error}
+                </Alert>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setReactivationDialog(null)}
+            disabled={reactivationDialog?.sending}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={confirmReactivation}
+            disabled={
+              reactivationDialog?.loading ||
+              reactivationDialog?.sending ||
+              !clean(reactivationDialog?.message)
+            }
+          >
+            {reactivationDialog?.sending ? 'Enviando…' : 'Enviar mensaje'}
           </Button>
         </DialogActions>
       </Dialog>

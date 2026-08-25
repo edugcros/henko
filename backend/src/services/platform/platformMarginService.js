@@ -56,9 +56,12 @@ const parsePeriodRange = period => {
 export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   const range = parsePeriodRange(period)
 
-  const [tenants, usageRows, emailOrderRows, recoveryRows] = await Promise.all([
-    Tenant.find({ status: { $ne: 'deleted' } })
-      .select('name plan status subscriptionStatus createdAt')
+  const [allTenants, usageRows, emailOrderRows, recoveryRows] = await Promise.all([
+    // Sin filtrar por status acá a propósito: el margen (abajo) solo mira
+    // comercios no borrados, pero el ciclo de vida (más abajo) necesita ver
+    // también los borrados para poder contarlos en el período.
+    Tenant.find({})
+      .select('name plan status subscriptionStatus createdAt updatedAt')
       .lean(),
     AiUsage.aggregate([
       { $match: { period } },
@@ -80,6 +83,8 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       ]).option({ ignoreTenant: true })
       : Promise.resolve([]),
   ])
+
+  const tenants = allTenants.filter(tenant => tenant.status !== 'deleted')
 
   const costByTenant = new Map(
     usageRows.map(row => [String(row.tenantId), row.estimatedCostUsd || 0]),
@@ -156,6 +161,43 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     tenantRows.reduce((sum, row) => sum + row.communicationsCostUsd, 0),
   )
 
+  // Ciclo de vida de comercios — separado del cálculo de margen porque usa
+  // allTenants (incluye borrados) y no depende de AiUsage/Order/AiCartRecovery.
+  // Solo se reportan acá los números que realmente se pueden medir hoy:
+  // altas (createdAt real) y el estado actual (status). "Cancelación" y
+  // "comercio que paga" NO tienen una fuente de datos real todavía — no
+  // existe flujo de cobro ni un campo que se actualice al cancelar — así que
+  // no se inventan, se señalan explícitamente en notes.
+  const newTenantsInPeriod = range
+    ? allTenants.filter(
+      tenant => tenant.createdAt >= range.start && tenant.createdAt < range.end,
+    ).length
+    : null
+
+  // Aproximación: no existe un campo deletedAt. Se infiere del updatedAt de
+  // un tenant que hoy está en status:'deleted' — puede desviarse si ese
+  // registro se tocó de nuevo después de borrarse, pero es la única señal
+  // disponible sin agregar un campo nuevo al modelo.
+  const deletedInPeriodApprox = range
+    ? allTenants.filter(
+      tenant =>
+        tenant.status === 'deleted' &&
+        tenant.updatedAt >= range.start &&
+        tenant.updatedAt < range.end,
+    ).length
+    : null
+
+  const lifecycle = {
+    newTenantsInPeriod,
+    deletedInPeriodApprox,
+    activeTenantsCount: allTenants.filter(tenant => tenant.status === 'active').length,
+    suspendedTenantsCount: allTenants.filter(tenant => tenant.status === 'suspended').length,
+    deletedTenantsCount: allTenants.filter(tenant => tenant.status === 'deleted').length,
+    // Plan pago NOMINAL (asignado a mano en el tenant), no comercios que
+    // efectivamente estén pagando — ver nota, no existe flujo de cobro.
+    nonFreePlanTenantsCount: tenants.filter(tenant => tenant.plan !== 'free').length,
+  }
+
   const totals = {
     tenantCount: tenantRows.length,
     customPricingCount: tenantRows.length - billable.length,
@@ -175,12 +217,15 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     period,
     tenants: tenantRows,
     totals,
+    lifecycle,
     notes: [
       'estimatedMarginUsd por comercio es precio del plan menos costo de IA y de comunicaciones de ESE comercio — no incluye la porción de infraestructura/storage (ver los dos puntos siguientes).',
-      'infraCostUsd y storageCostUsd son costos totales de la plataforma, no prorrateados por comercio — dividirlos individualmente inventaría una precisión que no existe hoy. Se restan una sola vez en totals.totalEstimatedMarginUsd, en 0 hasta configurar PLATFORM_INFRA_MONTHLY_COST_USD / PLATFORM_STORAGE_MONTHLY_COST_USD.',
-      'communicationsCostUsd por comercio sí es medible (volumen real de envíos de email/WhatsApp) pero la tarifa por envío es configurable y por defecto 0 (EMAIL_COST_USD_PER_SEND / WHATSAPP_COST_USD_PER_SEND) hasta que se cargue un valor real.',
+      'infraCostUsd y storageCostUsd son costos totales de la plataforma, no prorrateados por comercio — dividirlos individualmente inventaría una precisión que no existe hoy. Se restan una sola vez en totals.totalEstimatedMarginUsd. Default estimado por investigación de precios públicos de Render/MongoDB Atlas/Cloudinary (ver aiPlanPolicy.js) — no es la factura real de HENKO, sobrescribible con PLATFORM_INFRA_MONTHLY_COST_USD / PLATFORM_STORAGE_MONTHLY_COST_USD en cuanto haya una factura real para comparar.',
+      'communicationsCostUsd por comercio sí es medible (volumen real de envíos de email/WhatsApp). La tarifa por envío también es una estimación de precios públicos de SendGrid/Meta WhatsApp (ver aiPlanPolicy.js), configurable con EMAIL_COST_USD_PER_SEND / WHATSAPP_COST_USD_PER_SEND.',
       'planPriceUsd null significa precio a medida (enterprise) — no se estima automáticamente.',
       'subscriptionStatus no refleja cobro real todavía — no existe flujo de facturación (ver aiPlanPolicy.js).',
+      'lifecycle.deletedInPeriodApprox es una aproximación (no hay campo deletedAt, se infiere de updatedAt) — no un dato exacto.',
+      'No existe hoy un concepto real de "cancelación de suscripción" ni de "comercio que paga": no hay flujo de cobro ni un campo que se actualice al cancelar. lifecycle.nonFreePlanTenantsCount cuenta comercios en un plan pago asignado a mano, no comercios efectivamente facturados.',
     ],
   }
 }

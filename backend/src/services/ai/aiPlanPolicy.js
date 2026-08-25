@@ -326,14 +326,21 @@ export const estimateImageCostUsd = count => {
 
 // ─── Precio de plan ──────────────────────────────────────
 
-// Únicos precios "reales" que existen hoy en el código: SubscriptionPage.js
-// (admin/src/pages/SubscriptionPage.js) los muestra hardcodeados como
-// referencia visual, $29/$99 — se reusan acá como default, no se inventan
-// nuevos. `enterprise` es precio a medida: null a propósito, no 0 — un 0
-// numérico se leería como margen falso en cualquier reporte que lo use.
+// starter: decisión de negocio del usuario — $40.000 ARS/mes, convertido a
+// USD porque todo este motor de margen ya opera en USD (evita un refactor
+// de moneda para un solo número). Conversión al dólar oficial VENTA, Banco
+// Nación, cierre del 24/08/2026 ($1.530 ARS/USD — El Cronista/La Nación/
+// Infobae, mismo tipo de cambio usado en admin/src/pages/SubscriptionPage.js
+// para no tener dos referencias distintas): 40000 / 1530 ≈ 26.14.
+// PLAN_PRICE_USD_STARTER sobrescribe esto el día que haga falta ajustar por
+// inflación/tipo de cambio sin tocar código.
+// pro/$99 sigue siendo el placeholder visual de SubscriptionPage.js — no
+// hubo una decisión de negocio para ese plan todavía.
+// `enterprise` es precio a medida: null a propósito, no 0 — un 0 numérico
+// se leería como margen falso en cualquier reporte que lo use.
 const DEFAULT_PLAN_PRICE_USD = Object.freeze({
   free: 0,
-  starter: 29,
+  starter: 26.14,
   pro: 99,
   enterprise: null,
 })
@@ -355,31 +362,51 @@ export const getPlanMonthlyPriceUsd = plan => {
 
 // ─── Costos operativos de HENKO (Bloque 8.10) ────────────
 //
-// Sin default no-cero: a diferencia del costo de IA (que sí se puede
-// estimar con una tarifa pública documentada), infraestructura y storage son
-// lo que HENKO paga de verdad a sus propios proveedores — no hay una tarifa
-// "típica" razonable que inventar acá. Quedan en 0 hasta que se carguen
-// números reales por variable de entorno; el reporte de margen es honesto
-// sobre esto en vez de mostrar una cifra que parece precisa y no lo es.
+// A diferencia de la primera versión de esto (que quedaba en 0 porque no
+// había números reales a mano), estos defaults salen de una búsqueda de
+// precios públicos de los proveedores que HENKO ya usa (Render, MongoDB
+// Atlas, Cloudinary, SendGrid, Meta WhatsApp) — NO son la factura real de
+// HENKO, que puede diferir por el plan/tier contratado, volumen o
+// descuentos. Igual que estimateCostUsd/estimateImageCostUsd más arriba: una
+// estimación razonable y documentada, sobrescribible por variable de entorno
+// en cuanto haya una factura real para comparar.
 
+// Render Standard (backend con workers en background, no puede dormir como
+// el free/starter tier): ~$25/mes. + MongoDB Atlas M10 dedicado: ~$57/mes
+// por nodo listado — un replica set de producción real son 3 nodos, así que
+// la factura real de Atlas puede ser bastante mayor a este número; se deja
+// el precio de un solo nodo (el dato público más citado) en vez de estimar
+// un multiplicador que no se puede confirmar sin la factura real.
+// Total infra: 25 + 57 = 82.
 export const getPlatformMonthlyInfraCostUsd = () =>
-  Math.max(0, readEnvNumber('PLATFORM_INFRA_MONTHLY_COST_USD') ?? 0)
+  Math.max(0, readEnvNumber('PLATFORM_INFRA_MONTHLY_COST_USD') ?? 82)
 
+// Cloudinary Plus (storage/transformaciones de imágenes de producto de
+// todos los comercios, plan mensual sin compromiso anual): $89/mes.
 export const getPlatformMonthlyStorageCostUsd = () =>
-  Math.max(0, readEnvNumber('PLATFORM_STORAGE_MONTHLY_COST_USD') ?? 0)
+  Math.max(0, readEnvNumber('PLATFORM_STORAGE_MONTHLY_COST_USD') ?? 89)
 
 /**
  * A diferencia de infra/storage (costos fijos de la plataforma, no
  * atribuibles a un comercio puntual sin inventar un criterio de reparto), el
  * envío de emails/WhatsApp sí tiene volumen real y medible por comercio
  * (Order.emailSent, AiCartRecovery por canal) — ver platformMarginService.js.
- * Acá solo la tarifa por envío, también en 0 por default.
+ * Acá solo la tarifa por envío.
  */
-export const getEmailCostPerSendUsd = () =>
-  Math.max(0, readEnvNumber('EMAIL_COST_USD_PER_SEND') ?? 0)
 
+// SendGrid Essentials: $19.95/mes por 50.000 emails incluidos →
+// 19.95 / 50000 ≈ $0.0004 por envío (costo promedio dentro del plan, no la
+// tarifa de excedente que solo aplica pasado ese volumen).
+export const getEmailCostPerSendUsd = () =>
+  Math.max(0, readEnvNumber('EMAIL_COST_USD_PER_SEND') ?? 0.0004)
+
+// Meta WhatsApp Business API, tarifa Argentina, categoría "marketing"
+// (la que aplica a recuperación de carrito / reactivación — no son mensajes
+// transaccionales de una orden existente): $0.0618 por conversación, más un
+// margen típico de BSP de $0.003–$0.010 (se toma el punto medio, ~$0.005) →
+// ~$0.067 por envío.
 export const getWhatsappCostPerSendUsd = () =>
-  Math.max(0, readEnvNumber('WHATSAPP_COST_USD_PER_SEND') ?? 0)
+  Math.max(0, readEnvNumber('WHATSAPP_COST_USD_PER_SEND') ?? 0.067)
 
 /**
  * Tope global de tokens de la plataforma para el mes, contra la key propia.
