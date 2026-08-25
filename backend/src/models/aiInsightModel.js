@@ -121,15 +121,20 @@ const aiInsightSchema = new Schema(
     dismissedAt: { type: Date, default: null },
     dismissReason: { type: String, trim: true, maxlength: 500, default: '' },
 
-    // Rastro de la acción concreta ejecutada sobre este insight (hoy solo
-    // customer_inactivity la tiene). "actionType", no "type" — un campo
-    // anidado llamado literalmente "type" hace que mongoose interprete todo
-    // este objeto como la declaración de tipo del path "action" y descarte
-    // el resto de las claves hermanas.
+    // Rastro de la acción concreta ejecutada sobre este insight (Bloque
+    // 8.8, por niveles — ver aiInsightActionService.js). "actionType", no
+    // "type" — un campo anidado llamado literalmente "type" hace que
+    // mongoose interprete todo este objeto como la declaración de tipo del
+    // path "action" y descarte el resto de las claves hermanas.
     action: {
       actionType: {
         type: String,
-        enum: ['reactivation_message', 'cart_recovery_reinforcement', null],
+        enum: [
+          'reactivation_message',
+          'cart_recovery_reinforcement',
+          'price_reduction',
+          null,
+        ],
         default: null,
       },
       // channel/message solo aplican a reactivation_message.

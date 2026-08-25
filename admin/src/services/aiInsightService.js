@@ -61,6 +61,20 @@ export const applyCartRecoveryReinforcement = async id => {
   return unwrap(response)
 }
 
+// Bloque 8.8 Nivel 3 (alcance acotado, solo product_underperformance): arma
+// el plan de reducción de precio, no toca nada todavía.
+export const previewPriceReduction = async id => {
+  const response = await api.post(`/insights/${id}/price-reduction/preview`, {})
+  return unwrap(response)
+}
+
+export const applyPriceReduction = async (id, newPrice) => {
+  const response = await api.post(`/insights/${id}/price-reduction/apply`, {
+    newPrice,
+  })
+  return unwrap(response)
+}
+
 export default {
   listInsights,
   acknowledgeInsight,
@@ -70,4 +84,6 @@ export default {
   sendReactivationMessage,
   previewCartRecoveryReinforcement,
   applyCartRecoveryReinforcement,
+  previewPriceReduction,
+  applyPriceReduction,
 }

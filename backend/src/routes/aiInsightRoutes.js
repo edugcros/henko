@@ -12,6 +12,8 @@ import {
   sendAiInsightReactivationMessage,
   previewCartRecoveryReinforcementCtrl,
   applyCartRecoveryReinforcementCtrl,
+  previewPriceReductionCtrl,
+  applyPriceReductionCtrl,
 } from '../controller/aiInsightCtrl.js'
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 
@@ -32,5 +34,7 @@ router.post('/:id/reactivation-message/preview', previewReactivationMessage)
 router.post('/:id/reactivation-message/send', sendAiInsightReactivationMessage)
 router.post('/:id/cart-recovery-reinforcement/preview', previewCartRecoveryReinforcementCtrl)
 router.post('/:id/cart-recovery-reinforcement/apply', applyCartRecoveryReinforcementCtrl)
+router.post('/:id/price-reduction/preview', previewPriceReductionCtrl)
+router.post('/:id/price-reduction/apply', applyPriceReductionCtrl)
 
 export default router

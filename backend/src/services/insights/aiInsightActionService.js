@@ -1,17 +1,18 @@
 // 📁 src/services/insights/aiInsightActionService.js
 //
-// Primer paso de "acción" del Bloque 8.8 (alcance acotado con el usuario):
-// solo para insights customer_inactivity, solo mensaje de reactivación, y
-// el admin SIEMPRE revisa/edita el texto antes de que salga — HENKO no
-// manda nada sin ese clic de confirmación. Reusa toda la infraestructura de
-// mensajería del Bloque 7 (presupuesto de IA, política de contacto, envío
-// por email/WhatsApp) en vez de reinventarla.
+// Acciones del Bloque 8.8 (alcance acotado con el usuario, escalado en
+// niveles): reactivación de clientes (Nivel 1), refuerzo de recuperación de
+// carritos (Nivel 2), reducción de precio en productos de bajo rendimiento
+// (Nivel 3). En los tres casos HENKO arma la propuesta pero nunca la
+// ejecuta sola — el admin siempre revisa/edita y confirma con un clic
+// explícito antes de que cualquier cambio real se aplique.
 
 import User from '../../models/userModel.js'
 import Tenant from '../../models/tenantModel.js'
 import AiAgent from '../../models/aiAgentModel.js'
 import AiInsight from '../../models/aiInsightModel.js'
 import AiCampaignRule from '../../models/aiCampaignRuleModel.js'
+import Product from '../../models/productModel.js'
 import {
   canContactCustomer,
   isWithinWhatsappCustomerWindow,
@@ -440,9 +441,174 @@ export const applyCartRecoveryReinforcement = async ({ tenantId, insightId, admi
   return updated
 }
 
+// ─── product_underperformance: reducir precio (8.8 Nivel 3) ──────────────
+//
+// Mucho tráfico, poca conversión — la propuesta es bajar el precio un %
+// configurable. El admin ve el precio actual y el sugerido, puede editar
+// el precio final antes de confirmar (mismo principio que el mensaje de
+// reactivación), y recién ahí se aplica. Si el producto tiene costoUnitario
+// cargado (Bloque 8.5), la reducción nunca lo lleva por debajo del costo
+// real — no se sugiere vender a pérdida.
+
+const round2Money = value => Math.round(value * 100) / 100
+
+const getPriceReductionPct = () =>
+  Math.min(Math.max(Number(process.env.AI_INSIGHT_PRICE_REDUCTION_PCT || 5), 1), 50) / 100
+
+const buildPriceReductionPlan = product => {
+  const currentPrice = Number(product.price || 0)
+  const reductionPct = getPriceReductionPct()
+  const rawSuggested = currentPrice * (1 - reductionPct)
+
+  const costFloor =
+    product.costoUnitario !== null && product.costoUnitario !== undefined
+      ? Number(product.costoUnitario)
+      : null
+
+  const cappedByCost = costFloor !== null && rawSuggested < costFloor
+  const suggestedPrice = round2Money(cappedByCost ? costFloor : rawSuggested)
+
+  return {
+    currentPrice,
+    suggestedPrice,
+    reductionPct: round2Money(reductionPct * 100),
+    costFloor,
+    cappedByCost,
+    hasVariants: Boolean(product.hasVariants),
+    variantCount: Array.isArray(product.variants) ? product.variants.length : 0,
+  }
+}
+
+export const previewPriceReduction = async ({ tenantId, insight }) => {
+  if (insight?.type !== 'product_underperformance') {
+    const error = new Error('Esta acción solo aplica a insights de producto con bajo rendimiento')
+    error.statusCode = 400
+    throw error
+  }
+
+  const product = await Product.findOne({ _id: insight.entity?.id, tenantId })
+    .select('price costoUnitario hasVariants variants')
+    .setOptions({ tenantId })
+    .lean()
+
+  if (!product) {
+    const error = new Error('Producto no encontrado')
+    error.statusCode = 404
+    throw error
+  }
+
+  return buildPriceReductionPlan(product)
+}
+
+export const applyPriceReduction = async ({ tenantId, insightId, adminUserId, newPrice }) => {
+  const requestedPrice = round2Money(Number(newPrice))
+
+  if (!Number.isFinite(requestedPrice) || requestedPrice <= 0) {
+    const error = new Error('El precio no puede estar vacío ni ser 0')
+    error.statusCode = 400
+    throw error
+  }
+
+  const insight = await AiInsight.findOne({
+    _id: insightId,
+    tenantId,
+    type: 'product_underperformance',
+    status: { $in: ['pending_review', 'measuring'] },
+    'action.actionType': null,
+  }).setOptions({ tenantId })
+
+  if (!insight) {
+    const error = new Error('Insight no encontrado o ya no admite esta acción')
+    error.statusCode = 404
+    throw error
+  }
+
+  const product = await Product.findOne({ _id: insight.entity?.id, tenantId }).setOptions({ tenantId })
+
+  if (!product) {
+    const error = new Error('Producto no encontrado')
+    error.statusCode = 404
+    throw error
+  }
+
+  const previousPrice = Number(product.price || 0)
+
+  if (requestedPrice >= previousPrice) {
+    const error = new Error('El precio nuevo debe ser menor al precio actual')
+    error.statusCode = 400
+    throw error
+  }
+
+  // No vender a pérdida si hay un costo real cargado — mismo guard que el
+  // preview, revalidado acá por si el admin editó el precio a mano después
+  // de ver la sugerencia.
+  if (
+    product.costoUnitario !== null &&
+    product.costoUnitario !== undefined &&
+    requestedPrice < product.costoUnitario
+  ) {
+    const error = new Error(
+      `El precio propuesto ($${requestedPrice}) queda por debajo del costo cargado ($${product.costoUnitario}) — ajustalo antes de confirmar`,
+    )
+    error.statusCode = 409
+    throw error
+  }
+
+  const ratio = requestedPrice / previousPrice
+  let variantsUpdated = 0
+
+  product.price = requestedPrice
+
+  if (product.hasVariants && Array.isArray(product.variants)) {
+    for (const variant of product.variants) {
+      if (variant.isActive === false) continue
+      variant.price = round2Money(Number(variant.price || 0) * ratio)
+      variantsUpdated += 1
+    }
+  }
+
+  await product.save()
+
+  const remeasureDays = Math.max(Number(process.env.AI_INSIGHT_REMEASURE_DAYS || 14), 1)
+  const measureAfterDate = new Date(Date.now() + remeasureDays * 86400000)
+
+  const updated = await AiInsight.findOneAndUpdate(
+    { _id: insight._id, tenantId },
+    {
+      $set: {
+        status: 'measuring',
+        acknowledgedBy: insight.acknowledgedBy || adminUserId || null,
+        acknowledgedAt: insight.acknowledgedAt || new Date(),
+        'measurement.measureAfterDate': measureAfterDate,
+        'action.actionType': 'price_reduction',
+        'action.detail': {
+          previousPrice,
+          newPrice: product.price,
+          variantsUpdated,
+        },
+        'action.executedAt': new Date(),
+        'action.executedBy': adminUserId || null,
+      },
+    },
+    { new: true },
+  ).setOptions({ tenantId })
+
+  logger.info('💲 Precio reducido por recomendación de HENKO', {
+    tenantId: String(tenantId),
+    insightId: String(insight._id),
+    productId: String(product._id),
+    previousPrice,
+    newPrice: product.price,
+  })
+
+  return updated
+}
+
 export default {
   generateReactivationMessage,
   sendReactivationMessage,
   previewCartRecoveryReinforcement,
   applyCartRecoveryReinforcement,
+  previewPriceReduction,
+  applyPriceReduction,
 }
