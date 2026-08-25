@@ -408,7 +408,7 @@ export const verifyEmail = expressAsyncHandler(async (req, res) => {
   // del usuario y hasta ahora se desaprovechaba.
   if (shouldSendTransactionalEmail()) {
     const tenant = await Tenant.findById(user.tenantId)
-      .select('name domains settings')
+      .select('name domains settings email')
       .lean()
 
     sendWelcomeEmail(user, tenant).catch(error => {
@@ -1205,7 +1205,7 @@ export const forgotPassword = expressAsyncHandler(async (req, res) => {
   }
 
   try {
-    await sendResetPasswordEmail(user, resetUrl)
+    await sendResetPasswordEmail(user, resetUrl, req.tenant || null)
     logger.info(`Correo de recuperación enviado a ${user.email}`)
     return sendResponse(res, 200, true, 'Si el correo existe, un enlace será enviado.')
   } catch (error) {
@@ -1398,7 +1398,7 @@ export const verifyUserManually = expressAsyncHandler(async (req, res) => {
 
   if (shouldSendTransactionalEmail()) {
     const tenant = await Tenant.findById(user.tenantId)
-      .select('name domains settings')
+      .select('name domains settings email')
       .lean()
 
     sendWelcomeEmail(user, tenant).catch(error => {
