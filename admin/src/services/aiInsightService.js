@@ -43,6 +43,24 @@ export const sendReactivationMessage = async (id, message) => {
   return unwrap(response)
 }
 
+// Bloque 8.8 Nivel 2 (alcance acotado, solo cart_recovery_underperformance):
+// arma el plan antes/después de reglas de recuperación, no toca nada todavía.
+export const previewCartRecoveryReinforcement = async id => {
+  const response = await api.post(
+    `/insights/${id}/cart-recovery-reinforcement/preview`,
+    {},
+  )
+  return unwrap(response)
+}
+
+export const applyCartRecoveryReinforcement = async id => {
+  const response = await api.post(
+    `/insights/${id}/cart-recovery-reinforcement/apply`,
+    {},
+  )
+  return unwrap(response)
+}
+
 export default {
   listInsights,
   acknowledgeInsight,
@@ -50,4 +68,6 @@ export default {
   archiveInsight,
   previewReactivationMessage,
   sendReactivationMessage,
+  previewCartRecoveryReinforcement,
+  applyCartRecoveryReinforcement,
 }

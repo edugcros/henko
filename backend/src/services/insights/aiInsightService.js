@@ -1,6 +1,6 @@
 // 📁 src/services/insights/aiInsightService.js
 //
-// Orquesta los 4 detectores (aiInsightDetectionService.js) y persiste sus
+// Orquesta los 5 detectores (aiInsightDetectionService.js) y persiste sus
 // candidatos. Mismo patrón de upsert-sin-pisar-lo-ya-tocado que
 // aiAgentLearningService.js::upsertLearningSuggestion — un re-escaneo
 // actualiza los números de un insight todavía pending_review, pero nunca
@@ -13,10 +13,12 @@ import {
   detectCartConversionDrop,
   detectCampaignUnderperformance,
   detectCustomerInactivity,
+  detectCartRecoveryUnderperformance,
   measureProductConversion,
   measureOverallConversion,
   measureCampaignConversion,
   measureCustomerDaysSinceLastOrder,
+  measureCartRecoveryConversion,
 } from './aiInsightDetectionService.js'
 
 // Solo un insight en pending_review puede refrescarse solo en un re-escaneo
@@ -77,6 +79,7 @@ export const runInsightScanForTenant = async tenantId => {
     detectCartConversionDrop(tenantId),
     detectCampaignUnderperformance(tenantId),
     detectCustomerInactivity(tenantId),
+    detectCartRecoveryUnderperformance(tenantId),
   ])
 
   const candidates = []
@@ -186,6 +189,9 @@ const remeasureOne = async insight => {
   }
   if (type === 'customer_inactivity') {
     return measureCustomerDaysSinceLastOrder(insight.tenantId, entity.id)
+  }
+  if (type === 'cart_recovery_underperformance') {
+    return measureCartRecoveryConversion(insight.tenantId)
   }
   return null
 }

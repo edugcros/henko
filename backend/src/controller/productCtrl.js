@@ -928,6 +928,9 @@ const normalizeVariantsPayload = (rawVariants, tenantId) => {
       key,
       attributes,
       price: toSafeNumber(variant.price, 0),
+      // Bloque 8.5 — opcional, null cuando no se informa (no 0, que se
+      // leería como "cuesta gratis" en cualquier cálculo de margen).
+      costoUnitario: toSafeNumber(variant.costoUnitario, null),
       stock: toSafeNumber(variant.stock, 0),
       sku: normalizeText(variant.sku).toUpperCase() || undefined,
       image: normalizeVariantImage(variant.image),
@@ -977,6 +980,8 @@ const sanitizeCreateProductInput = body => ({
   categoria: normalizeText(body.categoria, ''),
   subcategoria: normalizeText(body.subcategoria, ''),
   compareAtPrice: toSafeNumber(body.compareAtPrice, 0),
+  // Bloque 8.5 — opcional, null cuando no se informa.
+  costoUnitario: toSafeNumber(body.costoUnitario, null),
   currency: normalizeText(body.currency, 'ARS').toUpperCase(),
   sku: normalizeText(body.sku, '').toUpperCase() || undefined,
   condicion: ALLOWED_PRODUCT_CONDITIONS.includes(body.condicion)
@@ -1015,6 +1020,9 @@ const sanitizeUpdateProductInput = body => {
   if (body.iaGenerated !== undefined) updates.iaGenerated = parseBoolean(body.iaGenerated, false)
   if (body.iaSource !== undefined) updates.iaSource = normalizeText(body.iaSource, 'manual')
   if (body.price !== undefined) updates.price = toSafeNumber(body.price, 0)
+  // Bloque 8.5 — opcional, null borra el costo informado (permite volver a
+  // "no informado" si el comercio se equivocó al cargarlo).
+  if (body.costoUnitario !== undefined) updates.costoUnitario = toSafeNumber(body.costoUnitario, null)
   if (body.stock !== undefined) updates.stock = toSafeNumber(body.stock, 0)
   if (body.lowStockThreshold !== undefined) {
     updates.lowStockThreshold = toSafeNumber(body.lowStockThreshold, DEFAULT_LOW_STOCK_THRESHOLD)

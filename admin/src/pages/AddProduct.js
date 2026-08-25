@@ -375,6 +375,15 @@ const normalizeNumberValue = value => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
 
+// Como normalizeNumberValue, pero preserva "no informado" como null —
+// costoUnitario (Bloque 8.5) nunca debe convertirse en 0 por defecto, un 0
+// se leería como "no cuesta nada", no como "sin dato".
+const normalizeOptionalNumberValue = value => {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
 const normalizeSku = value => {
   const clean = normalizeString(value).toUpperCase()
 
@@ -834,6 +843,7 @@ const generateVariantRowsFromSelection = ({
       nombre: buildVariantName(combination) || `Variante ${index + 1}`,
       combinacion: combination,
       price: previous?.price ?? Number(basePrice || 0),
+      costoUnitario: previous?.costoUnitario ?? null,
       stock: previous?.stock ?? 0,
       sku: previous?.sku || generatedSku,
       isActive: previous?.isActive ?? true,
@@ -1875,6 +1885,9 @@ const normalizeAiAnalysisForForm = analysis => {
           price: Number(
             variant?.precio || variant?.price || analysis?.precio_sugerido || 0,
           ),
+          // La IA nunca sugiere costo (ver aiVisionService.js) — siempre
+          // arranca sin informar, el comercio lo carga a mano si quiere.
+          costoUnitario: null,
           stock: Number(variant?.stock || 0),
           sku: variant?.sku || '',
           isActive: true,
@@ -5718,6 +5731,9 @@ export default function AddProduct() {
               attributes: combination,
               combinacion: combination,
               price: normalizeNumberValue(variant.price),
+              costoUnitario: normalizeOptionalNumberValue(
+                variant.costoUnitario,
+              ),
               stock: normalizeNumberValue(variant.stock),
               isActive: variant.isActive !== false,
             }
@@ -5747,6 +5763,7 @@ export default function AddProduct() {
         subcategoria: toTitleCase(values.subcategoria),
         marca: normalizeString(values.marca),
         price: Number(values.precio || 0),
+        costoUnitario: normalizeOptionalNumberValue(values.costoUnitario),
         stock: hasVariants
           ? getVariantStockTotal(variants)
           : normalizeNumberValue(values.cantidad || 0),
@@ -7965,6 +7982,32 @@ export default function AddProduct() {
                                     />
                                   )
 
+                                  const renderVariantCost = record => (
+                                    <InputNumber
+                                      prefix="$"
+                                      style={{ width: '100%' }}
+                                      min={0}
+                                      placeholder="Sin informar"
+                                      value={record.costoUnitario}
+                                      aria-label={`Costo unitario de ${record.nombre || 'la variante'}`}
+                                      onChange={val => {
+                                        setVariants(prev =>
+                                          prev.map(variant =>
+                                            variant.key === record.key
+                                              ? {
+                                                  ...variant,
+                                                  costoUnitario:
+                                                    normalizeOptionalNumberValue(
+                                                      val,
+                                                    ),
+                                                }
+                                              : variant,
+                                          ),
+                                        )
+                                      }}
+                                    />
+                                  )
+
                                   const renderVariantStock = record => (
                                     <InputNumber
                                       min={0}
@@ -8112,6 +8155,14 @@ export default function AddProduct() {
                                               renderVariantPrice(record),
                                           },
                                           {
+                                            title: 'Costo (opcional)',
+                                            dataIndex: 'costoUnitario',
+                                            key: 'costoUnitario',
+                                            width: 150,
+                                            render: (_, record) =>
+                                              renderVariantCost(record),
+                                          },
+                                          {
                                             title: 'Stock',
                                             dataIndex: 'stock',
                                             key: 'stock',
@@ -8218,6 +8269,19 @@ export default function AddProduct() {
                                                     Stock
                                                   </Text>
                                                   {renderVariantStock(record)}
+                                                </Col>
+                                                <Col xs={12}>
+                                                  <Text
+                                                    type="secondary"
+                                                    style={{
+                                                      fontSize: 12,
+                                                      display: 'block',
+                                                      marginBottom: 4,
+                                                    }}
+                                                  >
+                                                    Costo (opcional)
+                                                  </Text>
+                                                  {renderVariantCost(record)}
                                                 </Col>
                                                 <Col xs={24}>
                                                   <Text
@@ -8521,6 +8585,35 @@ export default function AddProduct() {
                                   }}
                                 />
                               </ProductField>
+                            </Col>
+
+                            <Col xs={24}>
+                              <ProductField
+                                name="costoUnitario"
+                                label="Costo unitario (opcional)"
+                              >
+                                <InputNumber
+                                  size="large"
+                                  style={{ width: '100%' }}
+                                  min={0}
+                                  precision={2}
+                                  prefix="$"
+                                  placeholder="Sin informar"
+                                />
+                              </ProductField>
+                              <Text
+                                type="secondary"
+                                style={{
+                                  display: 'block',
+                                  marginTop: -8,
+                                  marginBottom: 8,
+                                  fontSize: 12,
+                                }}
+                              >
+                                Lo que te cuesta a vos, no lo que cobrás. Solo
+                                se usa para calcular margen — nunca se le
+                                muestra al cliente ni se lo inventa la IA.
+                              </Text>
                             </Col>
 
                             {!hasVariants && (

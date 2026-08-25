@@ -13,6 +13,7 @@ import mongoose from 'mongoose'
 import Order, { ORDER_STATUS, PAYMENT_STATUS } from '../../models/orderModel.js'
 import Product from '../../models/productModel.js'
 import UserMetricEvent, { USER_METRIC_EVENTS } from '../../models/userMetricEventModel.js'
+import { getCartRecoveryRevenue } from '../aiAgent/aiAgentRevenueInsightsService.js'
 
 const PAID_PAYMENT_STATUSES = [PAYMENT_STATUS.APPROVED]
 const ACTIVE_ORDER_STATUSES = [
@@ -178,6 +179,63 @@ export const detectCartConversionDrop = async (tenantId, { windowDays = 7 } = {}
       title: `Caída de conversión: ${dropPct}%`,
       description: `La conversión bajó de ${previousPct}% a ${currentPct}% en los últimos ${windowDays} días (antes: ${previous.orders} órdenes / ${previous.sessions} sesiones; ahora: ${current.orders} / ${current.sessions}). Se recomienda revisar el proceso de checkout, tiempos de carga, o si algún método de pago dejó de funcionar. Se vuelve a medir la conversión más adelante para confirmar si el cambio funcionó.`,
       measurement: { metricName: 'conversionRate', beforeValue: currentPct },
+    },
+  ]
+}
+
+/**
+ * Recuperación de carritos (WhatsApp/email, Bloque 3) con conversión en
+ * baja — DISTINTO de detectCartConversionDrop de arriba, que mide conversión
+ * general del sitio (órdenes/sesiones) y puede caer por motivos que no
+ * tienen nada que ver con la recuperación de carritos (checkout roto, medio
+ * de pago caído). Este detector mide específicamente qué porción de los
+ * mensajes de recuperación ENVIADOS terminó en compra — la métrica correcta
+ * para respaldar una acción que refuerza esa estrategia puntual (Bloque 8.8,
+ * ver aiInsightActionService.js::applyCartRecoveryReinforcement). Reusa
+ * getCartRecoveryRevenue (Bloque 3/5), no duplica la agregación.
+ */
+export const detectCartRecoveryUnderperformance = async (tenantId, { windowDays = 7 } = {}) => {
+  const dropThreshold = readEnvNumber('AI_INSIGHT_RECOVERY_DROP_PCT', 15) / 100
+  const minRecoveriesForBaseline = readEnvNumber('AI_INSIGHT_MIN_RECOVERIES_FOR_BASELINE', 5)
+
+  const now = new Date()
+  const currentStart = daysAgo(windowDays)
+  const previousStart = daysAgo(windowDays * 2)
+
+  const [current, previous] = await Promise.all([
+    getCartRecoveryRevenue(tenantId, currentStart, now),
+    getCartRecoveryRevenue(tenantId, previousStart, currentStart),
+  ])
+
+  // Sin volumen suficiente de recuperaciones enviadas en el período anterior,
+  // no hay base real para comparar — mismo criterio que detectCartConversionDrop.
+  if (previous.total < minRecoveriesForBaseline || previous.conversionRate <= 0) return []
+
+  const previousRate = previous.conversionRate / 100
+  const currentRate = current.conversionRate / 100
+  const dropRatio = (previousRate - currentRate) / previousRate
+  if (dropRatio < dropThreshold) return []
+
+  const dropPct = round2(dropRatio * 100)
+
+  return [
+    {
+      type: 'cart_recovery_underperformance',
+      entity: { kind: null, id: '', label: '' },
+      evidence: {
+        currentConversionRate: current.conversionRate,
+        previousConversionRate: previous.conversionRate,
+        dropPct,
+        currentSent: current.total,
+        currentConverted: current.converted,
+        previousSent: previous.total,
+        previousConverted: previous.converted,
+        windowDays,
+      },
+      priority: dropRatio >= 0.35 ? 'high' : 'medium',
+      title: `Recuperación de carritos con baja conversión: -${dropPct}%`,
+      description: `De los mensajes de recuperación de carrito enviados en los últimos ${windowDays} días, ${current.converted} de ${current.total} terminaron en compra (${current.conversionRate}%) — antes convertía ${previous.conversionRate}% (${previous.converted}/${previous.total}). Se puede reforzar la estrategia (más intentos por carrito, personalización con IA) para intentar revertirlo. Se vuelve a medir para confirmar si ayudó.`,
+      measurement: { metricName: 'recoveryConversionRate', beforeValue: current.conversionRate },
     },
   ]
 }
@@ -361,6 +419,13 @@ export const measureOverallConversion = async (tenantId, { windowDays = 7 } = {}
   const sessions = sessionRows[0]?.sessions || 0
   const conversionRate = sessions > 0 ? round2((orders / sessions) * 100) : 0
   return { orders, sessions, conversionRate }
+}
+
+export const measureCartRecoveryConversion = async (tenantId, { windowDays = 7 } = {}) => {
+  const start = daysAgo(windowDays)
+  const now = new Date()
+  const { conversionRate, total, converted } = await getCartRecoveryRevenue(tenantId, start, now)
+  return { conversionRate, total, converted }
 }
 
 export const measureCampaignConversion = async (tenantId, campaign, { days = 30 } = {}) => {

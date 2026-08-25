@@ -10,6 +10,8 @@ import {
   listAiInsights,
   previewReactivationMessage,
   sendAiInsightReactivationMessage,
+  previewCartRecoveryReinforcementCtrl,
+  applyCartRecoveryReinforcementCtrl,
 } from '../controller/aiInsightCtrl.js'
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 
@@ -28,5 +30,7 @@ router.post('/:id/dismiss', dismissAiInsight)
 router.post('/:id/archive', archiveAiInsight)
 router.post('/:id/reactivation-message/preview', previewReactivationMessage)
 router.post('/:id/reactivation-message/send', sendAiInsightReactivationMessage)
+router.post('/:id/cart-recovery-reinforcement/preview', previewCartRecoveryReinforcementCtrl)
+router.post('/:id/cart-recovery-reinforcement/apply', applyCartRecoveryReinforcementCtrl)
 
 export default router
