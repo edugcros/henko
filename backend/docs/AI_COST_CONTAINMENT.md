@@ -129,7 +129,12 @@ AI_LIMIT_FREE_IMAGE_EDITS=10
 # ...ídem STARTER, PRO, ENTERPRISE
 
 # Disyuntor global (sin definir = sin disyuntor, no recomendado en prod).
-# En producción va declarado en render.yaml, no en el dashboard.
+# render.yaml lo declaraba, pero ese archivo no está enlazado como Blueprint
+# activo en Render — commitearlo ahí NO lo aplica al servicio real (mismo
+# incidente documentado en EMAIL_PRODUCTION.md con EMAIL_FROM/EMAIL_PASS).
+# HAY QUE CARGARLO A MANO en el dashboard de Render → Environment.
+# Confirmado el 25/08/2026: no aparece en la lista real de variables del
+# servicio — el disyuntor global probablemente NO está activo hoy.
 AI_PLATFORM_MONTHLY_TOKEN_BUDGET=20000000
 
 # Fracción máxima del presupuesto que puede consumir un solo tenant sobre la
@@ -208,8 +213,12 @@ configurada.
 
 ## Checklist de deploy
 
-1. El disyuntor y la fracción por tenant viajan en `render.yaml`, así que se
-   aplican solos al desplegar. No hace falta tocar el dashboard.
+1. El disyuntor y la fracción por tenant NO se aplican solos — `render.yaml`
+   no está enlazado como Blueprint activo en Render (confirmado, mismo
+   problema que ya afectó a `EMAIL_FROM`/`EMAIL_PASS`). Hay que cargar
+   `AI_PLATFORM_MONTHLY_TOKEN_BUDGET` y `AI_PLATFORM_PER_TENANT_SHARE` a mano
+   en el dashboard de Render → Environment antes de confiar en que el freno
+   de gasto está activo.
 2. Revisar los topes por plan contra el precio real de cada plan, y el
    presupuesto contra la suma esperada de cuotas (ver arriba).
 3. Desplegar. No hay migración que correr.

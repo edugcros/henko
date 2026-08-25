@@ -3,20 +3,28 @@
 Agosto 2026. Qué hace falta para que los correos lleguen de verdad, y cómo
 cada comercio manda desde su propia marca.
 
-## `render.yaml` no es lo que corre en Render
+## El servicio de Render se administra a mano, no por Blueprint
 
-El servicio `henko-api` en Render **no está enlazado como Blueprint activo**
-a este `render.yaml` — se creó y se administra a mano desde el dashboard.
-Commitear un cambio acá (agregar una env var, cambiar un valor) no lo aplica
-solo: alguien tiene que replicarlo a mano en Environment del servicio, o
-disparar una sincronización de Blueprint si en algún momento se configura
-una. El 14/08/2026 esto causó exactamente el bug de este documento: el PR
-que agregaba `EMAIL_TRANSPORT`/`EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER` se
-mergeó y deployó, pero esas cuatro variables nunca llegaron al servicio real
-— solo los dos secretos (`EMAIL_PASS`, `EMAIL_FROM`) que se habían cargado
-a mano seguían el flujo correcto. El resto del archivo (`plan:`, límites de
-IA, etc.) tiene el mismo problema: es la intención documentada, no un
-espejo de la config viva.
+`henko-api` **nunca estuvo enlazado como Blueprint activo** a un
+`render.yaml` — se creó y se administra a mano desde el dashboard de
+Render → Environment. El repo tuvo un `render.yaml` documentando la
+intención (qué variables debería tener el servicio y por qué), pero
+commitear un cambio ahí **nunca aplicó nada solo** — alguien tenía que
+replicarlo a mano en el dashboard igual.
+
+El 14/08/2026 esto causó exactamente el bug de este documento: el PR que
+agregaba `EMAIL_TRANSPORT`/`EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER` se mergeó
+y deployó, pero esas cuatro variables nunca llegaron al servicio real —
+solo los dos secretos (`EMAIL_PASS`, `EMAIL_FROM`) que se habían cargado a
+mano seguían el flujo correcto. El mismo patrón volvió a aparecer el
+25/08/2026 con `AI_PLATFORM_MONTHLY_TOKEN_BUDGET`/`AI_PLATFORM_PER_TENANT_SHARE`
+(ver `AI_COST_CONTAINMENT.md`) — confirmado que tampoco llegaron nunca al
+servicio real. Por eso el archivo se eliminó del repo el 25/08/2026: hacía
+más daño pareciendo activo que el que evitaba como documentación.
+
+**Regla que queda**: cualquier variable de entorno nueva o cambiada se
+carga directo en Render → Environment del servicio correspondiente. Nunca
+asumir que un archivo en el repo la aplicó.
 
 ## Lo que decide el remitente
 
@@ -74,21 +82,31 @@ ports](https://render.com/changelog/free-web-services-will-no-longer-allow-outbo
 
 ## Paso 0 — que la plataforma pueda enviar
 
-Sin esto no llega ningún correo, de ningún comercio. **Estado: resuelto y
-verificado en vivo el 14/08/2026** — SendGrid por su Web API. Confirmado con
-un registro real contra `https://henko.onrender.com` (no local, no mock):
-`[EMAIL] Proveedor: SendGrid (Web API)` en los logs de Render, sin error,
-con `x-message-id` de SendGrid en la respuesta.
+Sin esto no llega ningún correo, de ningún comercio. El transporte (SendGrid
+por su Web API) se verificó en vivo el 14/08/2026 — confirmado con un
+registro real contra `https://henko.onrender.com`: `[EMAIL] Proveedor:
+SendGrid (Web API)` en los logs de Render, sin error, con `x-message-id` de
+SendGrid en la respuesta. Eso sigue siendo cierto.
 
-Antes de llegar ahí, el mismo día se probó SMTP en producción y se colgó
-sin error — el servicio corre en el plan Free de Render, que bloquea los
-puertos SMTP salientes. Ver "El transporte" arriba para el detalle completo
-de por qué el código solo soporta la Web API.
+**Pero el 25/08/2026 se encontró un problema distinto, más serio**:
+`EMAIL_FROM` está cargado con una dirección `@gmail.com`. SendGrid acepta
+el envío (devuelve `messageId`, no hay error en los logs), pero ningún
+proveedor de correo real (Gmail, Outlook, Yahoo) confía en un mensaje que
+dice venir de `@gmail.com` sin salir de la infraestructura de Google — se
+pierde en el camino, sin error visible en ningún lado. El transporte
+funciona; el remitente no es de fiar. Ver la sección "Paso 0" para el
+diagnóstico completo y qué falta para arreglarlo de verdad (dominio propio
+autenticado, hoy pendiente de comprar el dominio).
+
+Antes de llegar al transporte actual, el 14/08/2026 se probó SMTP en
+producción y se colgó sin error — el servicio corre en el plan Free de
+Render, que bloquea los puertos SMTP salientes. Ver "El transporte" arriba
+para el detalle completo de por qué el código solo soporta la Web API.
 
 ### SendGrid por su Web API
 
-Faltan cargar dos **secretos** en el dashboard de Render (`sync: false` — el
-blueprint los pide, nunca van al repo):
+Faltan cargar dos **secretos**, directo en Render → Environment (nunca en
+el repo):
 
 ```
 EMAIL_PASS=SG.xxxxxxxx           # API key de SendGrid, Full Access
@@ -102,7 +120,13 @@ quedan anotados acá:
   `whitelabel.*` (dominios) es lo que además le permite al panel administrar
   el dominio de cada comercio (`tenantEmailDomainService.js`) — con una key
   restringida, "conectar mi dominio" queda roto para todos los comercios,
-  aunque el envío de la plataforma funcione.
+  aunque el envío de la plataforma funcione. **Confirmado el 25/08/2026 que
+  la key actual NO tiene ese scope**: `GET /v3/verified_senders`,
+  `/v3/whitelabel/domains` y `/v3/stats` devuelven `403 access forbidden`
+  con la key real de producción, mientras que `POST /v3/mail/send` funciona
+  sin problema — consistente con una key limitada a "Mail Send" únicamente.
+  Hay que generar una key nueva con Full Access en SendGrid y reemplazarla
+  en Render.
 - **`EMAIL_FROM` tiene que ser exactamente la dirección que se verificó como
   Single Sender** (Settings → Sender Authentication → Verify a Single
   Sender en SendGrid — requiere clic en un mail de confirmación, no DNS). La
