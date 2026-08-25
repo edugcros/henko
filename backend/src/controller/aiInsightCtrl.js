@@ -13,6 +13,8 @@ import {
 import {
   generateReactivationMessage,
   sendReactivationMessage,
+  previewCartRecoveryReinforcement,
+  applyCartRecoveryReinforcement,
 } from '../services/insights/aiInsightActionService.js'
 import {
   getUserIdFromRequest,
@@ -34,6 +36,7 @@ const allowedTypes = new Set([
   'cart_conversion_drop',
   'campaign_underperformance',
   'customer_inactivity',
+  'cart_recovery_underperformance',
 ])
 
 const requireTenantId = req =>
@@ -177,6 +180,43 @@ export const sendAiInsightReactivationMessage = asyncHandler(async (req, res) =>
   return res.status(200).json({
     success: true,
     message: 'Mensaje de reactivación enviado',
+    data: insight,
+  })
+})
+
+// Bloque 8.8 Nivel 2 (alcance acotado): arma el plan antes/después de
+// reglas de recuperación de carrito, no toca nada todavía.
+export const previewCartRecoveryReinforcementCtrl = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  if (!validateInsightId(req, res)) return
+
+  const insight = await AiInsight.findOne({ _id: req.params.id, tenantId })
+    .setOptions({ tenantId })
+    .lean()
+
+  if (!insight) {
+    return res.status(404).json({ success: false, message: 'Insight no encontrado' })
+  }
+
+  const result = await previewCartRecoveryReinforcement({ tenantId, insight })
+
+  return res.status(200).json({ success: true, data: result })
+})
+
+export const applyCartRecoveryReinforcementCtrl = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  if (!validateInsightId(req, res)) return
+  const userId = getUserIdFromRequest(req)
+
+  const insight = await applyCartRecoveryReinforcement({
+    tenantId,
+    insightId: req.params.id,
+    adminUserId: userId,
+  })
+
+  return res.status(200).json({
+    success: true,
+    message: 'Recuperación de carritos reforzada',
     data: insight,
   })
 })

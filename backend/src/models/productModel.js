@@ -45,6 +45,16 @@ const toMoney = value => {
   return Number(num.toFixed(2))
 }
 
+// Como toMoney, pero preserva "no informado" como null en vez de
+// convertirlo en 0 — para costoUnitario (Bloque 8.5), 0 significaría "este
+// producto no cuesta nada", que es un dato falso, no la ausencia del dato.
+const toMoneyOrNull = value => {
+  if (value === null || value === undefined || value === '') return null
+  const num = Number(value)
+  if (!Number.isFinite(num) || num < 0) return null
+  return Number(num.toFixed(2))
+}
+
 const toNonNegativeInteger = value => {
   const num = Number(value)
   if (!Number.isFinite(num) || num < 0) return 0
@@ -248,6 +258,7 @@ const normalizeVariants = variants => {
     variant.attributes = attributes
     variant.key = normalizeText(variant.key) || buildVariantKeyFromAttributes(attributes)
     variant.price = toMoney(variant.price)
+    variant.costoUnitario = toMoneyOrNull(variant.costoUnitario)
     variant.stock = toNonNegativeInteger(variant.stock)
     variant.sku = normalizeSku(variant.sku)
 
@@ -387,6 +398,7 @@ const normalizeDerivedProductFields = product => {
   product.sku = normalizeSku(product.sku)
   product.tags = normalizeTags(product.tags)
   product.price = toMoney(product.price)
+  product.costoUnitario = toMoneyOrNull(product.costoUnitario)
   product.compareAtPrice = toMoney(product.compareAtPrice)
   product.stock = toNonNegativeInteger(product.stock)
 
@@ -633,6 +645,15 @@ const variantSchema = new Schema(
       required: true,
       min: 0,
     },
+    // Costo real de ESTA variante (Bloque 8.5) — opcional, nunca lo estima
+    // la IA. Distinto de `price` (lo que cobra el comercio): esto es lo que
+    // le costó a él. null = no informado, no "cuesta 0" — un 0 numérico se
+    // leería como margen 100% falso en cualquier cálculo que lo use.
+    costoUnitario: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
     stock: {
       type: Number,
       required: true,
@@ -810,6 +831,17 @@ const productSchema = new Schema(
       type: Number,
       required: [true, 'El precio es obligatorio'],
       min: 0,
+    },
+    // Costo real del producto (Bloque 8.5) — opcional, nunca lo estima la
+    // IA (ver aiVisionService.js, su esquema de salida no lo incluye).
+    // Sirve de fallback cuando el producto NO tiene variantes, o cuando
+    // tiene pero alguna variante puntual no cargó su propio costo. null =
+    // no informado; sin este dato HENKO no calcula margen para el
+    // producto, no inventa un costo estimado.
+    costoUnitario: {
+      type: Number,
+      min: 0,
+      default: null,
     },
     stock: {
       type: Number,
@@ -1064,6 +1096,7 @@ productSchema.methods.getVariantData = function getVariantData(attributes) {
   if (!this.hasVariants) {
     return {
       price: this.price,
+      costoUnitario: this.costoUnitario,
       stock: this.stock,
       sku: this.sku,
     }
@@ -1075,6 +1108,9 @@ productSchema.methods.getVariantData = function getVariantData(attributes) {
   return variant
     ? {
       price: variant.price,
+      // Costo real de esta combinación puntual — si la variante no cargó
+      // el suyo, cae al costo del producto (puede seguir siendo null).
+      costoUnitario: variant.costoUnitario ?? this.costoUnitario,
       stock: variant.stock,
       sku: variant.sku,
       image: variant.image,

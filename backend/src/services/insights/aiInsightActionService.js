@@ -11,6 +11,7 @@ import User from '../../models/userModel.js'
 import Tenant from '../../models/tenantModel.js'
 import AiAgent from '../../models/aiAgentModel.js'
 import AiInsight from '../../models/aiInsightModel.js'
+import AiCampaignRule from '../../models/aiCampaignRuleModel.js'
 import {
   canContactCustomer,
   isWithinWhatsappCustomerWindow,
@@ -282,4 +283,166 @@ export const sendReactivationMessage = async ({ tenantId, insightId, adminUserId
   return updated
 }
 
-export default { generateReactivationMessage, sendReactivationMessage }
+// ─── cart_recovery_underperformance: reforzar recuperación (8.8 Nivel 2) ──
+//
+// A diferencia de la reactivación (que manda un mensaje), acá no hay texto
+// que revisar: la "propuesta" es un cambio concreto de configuración sobre
+// las reglas de recuperación de carrito (AiCampaignRule tipo abandoned_cart)
+// que YA existen — activa/ajusta la estrategia existente, no crea una nueva.
+// El admin ve el antes/después de cada regla antes de aprobar (mismo
+// principio de revisar-antes-de-ejecutar que reactivación, adaptado a un
+// cambio de config en vez de un mensaje).
+
+// Tope ya impuesto por el propio schema (trigger.maxAttempts max:5) — se
+// referencia acá para no proponer un valor que Mongoose va a rechazar.
+const REINFORCEMENT_MAX_ATTEMPTS_CAP = 5
+// Baja el piso de carrito elegible un 30% — más carritos entran a la
+// estrategia de recuperación. No se toca si ya está en 0 (sin piso).
+const REINFORCEMENT_MIN_CART_REDUCTION_RATIO = 0.3
+
+const buildReinforcementPlan = rule => {
+  const currentMaxAttempts = rule.trigger?.maxAttempts ?? 2
+  const currentMinCartAmountCents = rule.trigger?.minCartAmountCents ?? 0
+  const currentAiPersonalization = rule.useAiPersonalization !== false
+
+  const nextMaxAttempts = Math.min(currentMaxAttempts + 1, REINFORCEMENT_MAX_ATTEMPTS_CAP)
+  const nextMinCartAmountCents =
+    currentMinCartAmountCents > 0
+      ? Math.round(currentMinCartAmountCents * (1 - REINFORCEMENT_MIN_CART_REDUCTION_RATIO))
+      : currentMinCartAmountCents
+  const nextAiPersonalization = true
+
+  const changed =
+    nextMaxAttempts !== currentMaxAttempts ||
+    nextMinCartAmountCents !== currentMinCartAmountCents ||
+    nextAiPersonalization !== currentAiPersonalization
+
+  return {
+    ruleId: String(rule._id),
+    channel: rule.channel,
+    changed,
+    before: {
+      maxAttempts: currentMaxAttempts,
+      minCartAmountCents: currentMinCartAmountCents,
+      useAiPersonalization: currentAiPersonalization,
+    },
+    after: {
+      maxAttempts: nextMaxAttempts,
+      minCartAmountCents: nextMinCartAmountCents,
+      useAiPersonalization: nextAiPersonalization,
+    },
+  }
+}
+
+const loadAbandonedCartRules = tenantId =>
+  AiCampaignRule.find({ tenantId, type: 'abandoned_cart', enabled: true }).setOptions({ tenantId })
+
+/**
+ * Arma el plan de refuerzo (antes/después por regla) SIN escribir nada — el
+ * admin lo revisa antes de aprobar.
+ */
+export const previewCartRecoveryReinforcement = async ({ tenantId, insight }) => {
+  if (insight?.type !== 'cart_recovery_underperformance') {
+    const error = new Error('Esta acción solo aplica a insights de recuperación de carrito con baja conversión')
+    error.statusCode = 400
+    throw error
+  }
+
+  const rules = await loadAbandonedCartRules(tenantId)
+
+  if (!rules.length) {
+    const error = new Error('No hay reglas de recuperación de carrito activas para reforzar')
+    error.statusCode = 409
+    throw error
+  }
+
+  const plans = rules.map(buildReinforcementPlan)
+
+  return { plans, hasChanges: plans.some(plan => plan.changed) }
+}
+
+/**
+ * Aplica el plan de refuerzo sobre las reglas reales y deja rastro en el
+ * insight — mismo guard de "una sola acción por insight" que reactivación.
+ */
+export const applyCartRecoveryReinforcement = async ({ tenantId, insightId, adminUserId }) => {
+  const insight = await AiInsight.findOne({
+    _id: insightId,
+    tenantId,
+    type: 'cart_recovery_underperformance',
+    status: { $in: ['pending_review', 'measuring'] },
+    'action.actionType': null,
+  }).setOptions({ tenantId })
+
+  if (!insight) {
+    const error = new Error('Insight no encontrado o ya no admite esta acción')
+    error.statusCode = 404
+    throw error
+  }
+
+  const rules = await loadAbandonedCartRules(tenantId)
+
+  if (!rules.length) {
+    const error = new Error('No hay reglas de recuperación de carrito activas para reforzar')
+    error.statusCode = 409
+    throw error
+  }
+
+  const plans = rules.map(buildReinforcementPlan).filter(plan => plan.changed)
+
+  if (!plans.length) {
+    const error = new Error('La configuración de recuperación ya está al máximo — no hay nada para reforzar')
+    error.statusCode = 409
+    throw error
+  }
+
+  await Promise.all(
+    plans.map(plan =>
+      AiCampaignRule.updateOne(
+        { _id: plan.ruleId, tenantId },
+        {
+          $set: {
+            'trigger.maxAttempts': plan.after.maxAttempts,
+            'trigger.minCartAmountCents': plan.after.minCartAmountCents,
+            useAiPersonalization: plan.after.useAiPersonalization,
+          },
+        },
+      ).setOptions({ tenantId }),
+    ),
+  )
+
+  const remeasureDays = Math.max(Number(process.env.AI_INSIGHT_REMEASURE_DAYS || 14), 1)
+  const measureAfterDate = new Date(Date.now() + remeasureDays * 86400000)
+
+  const updated = await AiInsight.findOneAndUpdate(
+    { _id: insight._id, tenantId },
+    {
+      $set: {
+        status: 'measuring',
+        acknowledgedBy: insight.acknowledgedBy || adminUserId || null,
+        acknowledgedAt: insight.acknowledgedAt || new Date(),
+        'measurement.measureAfterDate': measureAfterDate,
+        'action.actionType': 'cart_recovery_reinforcement',
+        'action.detail': { rulesUpdated: plans },
+        'action.executedAt': new Date(),
+        'action.executedBy': adminUserId || null,
+      },
+    },
+    { new: true },
+  ).setOptions({ tenantId })
+
+  logger.info('🚀 Recuperación de carritos reforzada', {
+    tenantId: String(tenantId),
+    insightId: String(insight._id),
+    rulesUpdated: plans.length,
+  })
+
+  return updated
+}
+
+export default {
+  generateReactivationMessage,
+  sendReactivationMessage,
+  previewCartRecoveryReinforcement,
+  applyCartRecoveryReinforcement,
+}

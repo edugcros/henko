@@ -32,6 +32,7 @@ const aiInsightSchema = new Schema(
         'cart_conversion_drop',
         'campaign_underperformance',
         'customer_inactivity',
+        'cart_recovery_underperformance',
       ],
       required: true,
       index: true,
@@ -127,11 +128,16 @@ const aiInsightSchema = new Schema(
     action: {
       actionType: {
         type: String,
-        enum: ['reactivation_message', null],
+        enum: ['reactivation_message', 'cart_recovery_reinforcement', null],
         default: null,
       },
+      // channel/message solo aplican a reactivation_message.
       channel: { type: String, enum: ['email', 'whatsapp', ''], default: '' },
       message: { type: String, trim: true, maxlength: 2000, default: '' },
+      // Detalle específico de la acción cuando no es un mensaje — ej. qué
+      // reglas de AiCampaignRule se tocaron y con qué valores
+      // (cart_recovery_reinforcement, ver aiInsightActionService.js).
+      detail: { type: Schema.Types.Mixed, default: {} },
       executedAt: { type: Date, default: null },
       executedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     },

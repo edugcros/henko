@@ -24,6 +24,11 @@ import {
   Paper,
   Snackbar,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -35,6 +40,7 @@ import {
   PlayCircleOutline as AcknowledgeIcon,
   Refresh as RefreshIcon,
   Cancel as DismissIcon,
+  Bolt as ReinforcementIcon,
 } from '@mui/icons-material'
 import {
   acknowledgeInsight,
@@ -43,6 +49,8 @@ import {
   listInsights,
   previewReactivationMessage,
   sendReactivationMessage,
+  previewCartRecoveryReinforcement,
+  applyCartRecoveryReinforcement,
 } from '../services/aiInsightService.js'
 
 const STATUS_OPTIONS = [
@@ -59,6 +67,10 @@ const TYPE_META = {
   cart_conversion_drop: { label: 'Conversión', color: 'error' },
   campaign_underperformance: { label: 'Campaña', color: 'info' },
   customer_inactivity: { label: 'Cliente inactivo', color: 'secondary' },
+  cart_recovery_underperformance: {
+    label: 'Recuperación de carrito',
+    color: 'error',
+  },
 }
 
 const TYPE_OPTIONS = [
@@ -91,6 +103,7 @@ const InsightCard = ({
   onDismiss,
   onArchive,
   onReactivate,
+  onReinforce,
 }) => {
   const typeMeta = TYPE_META[insight.type] || {
     label: insight.type,
@@ -101,6 +114,10 @@ const InsightCard = ({
   const canArchive = ['resolved', 'dismissed'].includes(insight.status)
   const canReactivate =
     insight.type === 'customer_inactivity' &&
+    (isPending || isMeasuring) &&
+    !insight.action?.actionType
+  const canReinforce =
+    insight.type === 'cart_recovery_underperformance' &&
     (isPending || isMeasuring) &&
     !insight.action?.actionType
 
@@ -195,6 +212,20 @@ const InsightCard = ({
             </Typography>
           )}
 
+          {insight.action?.actionType === 'cart_recovery_reinforcement' && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 1, display: 'block' }}
+            >
+              Recuperación reforzada
+              {insight.action.executedAt &&
+                ` el ${new Date(insight.action.executedAt).toLocaleDateString('es-AR')}`}{' '}
+              ({insight.action.detail?.rulesUpdated?.length || 0} regla(s)
+              ajustada(s)).
+            </Typography>
+          )}
+
           {insight.status === 'dismissed' && insight.dismissReason && (
             <Typography
               variant="caption"
@@ -206,7 +237,7 @@ const InsightCard = ({
           )}
         </Box>
 
-        {(isPending || canReactivate || canArchive) && (
+        {(isPending || canReactivate || canReinforce || canArchive) && (
           <Stack spacing={1} sx={{ minWidth: 132 }}>
             {canReactivate && (
               <Button
@@ -220,11 +251,25 @@ const InsightCard = ({
                 Reactivar cliente
               </Button>
             )}
+            {canReinforce && (
+              <Button
+                size="small"
+                variant="contained"
+                color="secondary"
+                startIcon={<ReinforcementIcon />}
+                disabled={busy}
+                onClick={() => onReinforce(insight)}
+              >
+                Reforzar recuperación
+              </Button>
+            )}
             {isPending && (
               <>
                 <Button
                   size="small"
-                  variant={canReactivate ? 'outlined' : 'contained'}
+                  variant={
+                    canReactivate || canReinforce ? 'outlined' : 'contained'
+                  }
                   color="primary"
                   startIcon={<AcknowledgeIcon />}
                   disabled={busy}
@@ -282,6 +327,7 @@ const AiInsightsPage = () => {
   })
   const [dismissDialog, setDismissDialog] = useState(null)
   const [reactivationDialog, setReactivationDialog] = useState(null)
+  const [reinforcementDialog, setReinforcementDialog] = useState(null)
 
   const params = useMemo(
     () => ({
@@ -435,6 +481,75 @@ const AiInsightsPage = () => {
     }
   }, [reactivationDialog, load])
 
+  const openReinforcement = useCallback(async insight => {
+    const id = getId(insight)
+    setReinforcementDialog({
+      id,
+      plans: [],
+      hasChanges: false,
+      loading: true,
+      error: '',
+      applying: false,
+    })
+    try {
+      const result = await previewCartRecoveryReinforcement(id)
+      setReinforcementDialog(prev =>
+        prev && prev.id === id
+          ? {
+              ...prev,
+              plans: result?.plans || [],
+              hasChanges: Boolean(result?.hasChanges),
+              loading: false,
+            }
+          : prev,
+      )
+    } catch (err) {
+      console.error('[AI_INSIGHTS_REINFORCEMENT_PREVIEW_ERROR]', err)
+      setReinforcementDialog(prev =>
+        prev && prev.id === id
+          ? {
+              ...prev,
+              loading: false,
+              error:
+                err?.response?.data?.message ||
+                err?.message ||
+                'No se pudo armar el plan de refuerzo.',
+            }
+          : prev,
+      )
+    }
+  }, [])
+
+  const confirmReinforcement = useCallback(async () => {
+    const dialog = reinforcementDialog
+    if (!dialog || !dialog.hasChanges) return
+
+    setReinforcementDialog(prev =>
+      prev ? { ...prev, applying: true, error: '' } : prev,
+    )
+
+    try {
+      await applyCartRecoveryReinforcement(dialog.id)
+      setReinforcementDialog(null)
+      notify('success', 'Recuperación de carritos reforzada.')
+      await load()
+    } catch (err) {
+      console.error('[AI_INSIGHTS_REINFORCEMENT_APPLY_ERROR]', err)
+      setReinforcementDialog(prev =>
+        prev
+          ? {
+              ...prev,
+              applying: false,
+              error:
+                err?.response?.data?.message ||
+                err?.message ||
+                'No se pudo aplicar el refuerzo.',
+            }
+          : prev,
+      )
+    }
+  }, [reinforcementDialog, load])
+
   const pendingCount = counters.pending_review || 0
 
   return (
@@ -539,6 +654,7 @@ const AiInsightsPage = () => {
               onDismiss={openDismiss}
               onArchive={handleArchive}
               onReactivate={openReactivation}
+              onReinforce={openReinforcement}
             />
           ))}
         </Stack>
@@ -632,6 +748,108 @@ const AiInsightsPage = () => {
             }
           >
             {reactivationDialog?.sending ? 'Enviando…' : 'Enviar mensaje'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(reinforcementDialog)}
+        onClose={() => setReinforcementDialog(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Reforzar recuperación de carritos</DialogTitle>
+        <DialogContent>
+          <Divider sx={{ mb: 2 }} />
+          {reinforcementDialog?.loading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Esto ajusta las reglas de recuperación de carrito que ya tenés
+                activas — nada se aplica hasta que confirmes.
+              </Typography>
+
+              {reinforcementDialog?.plans?.length > 0 && (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Canal</TableCell>
+                      <TableCell>Intentos máx.</TableCell>
+                      <TableCell>Piso de carrito</TableCell>
+                      <TableCell>Personalización IA</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {reinforcementDialog.plans.map(plan => (
+                      <TableRow key={plan.ruleId}>
+                        <TableCell>
+                          {CHANNEL_LABEL[plan.channel] || plan.channel}
+                        </TableCell>
+                        <TableCell>
+                          {plan.changed &&
+                          plan.before.maxAttempts !== plan.after.maxAttempts
+                            ? `${plan.before.maxAttempts} → ${plan.after.maxAttempts}`
+                            : plan.before.maxAttempts}
+                        </TableCell>
+                        <TableCell>
+                          {plan.changed &&
+                          plan.before.minCartAmountCents !==
+                            plan.after.minCartAmountCents
+                            ? `$${(plan.before.minCartAmountCents / 100).toFixed(0)} → $${(plan.after.minCartAmountCents / 100).toFixed(0)}`
+                            : `$${(plan.before.minCartAmountCents / 100).toFixed(0)}`}
+                        </TableCell>
+                        <TableCell>
+                          {plan.changed &&
+                          plan.before.useAiPersonalization !==
+                            plan.after.useAiPersonalization
+                            ? 'Desactivada → Activada'
+                            : plan.before.useAiPersonalization
+                              ? 'Activada'
+                              : 'Desactivada'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+
+              {!reinforcementDialog?.loading &&
+                !reinforcementDialog?.hasChanges && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    La configuración de recuperación ya está al máximo — no hay
+                    nada para reforzar.
+                  </Alert>
+                )}
+
+              {reinforcementDialog?.error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {reinforcementDialog.error}
+                </Alert>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setReinforcementDialog(null)}
+            disabled={reinforcementDialog?.applying}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={confirmReinforcement}
+            disabled={
+              reinforcementDialog?.loading ||
+              reinforcementDialog?.applying ||
+              !reinforcementDialog?.hasChanges
+            }
+          >
+            {reinforcementDialog?.applying ? 'Aplicando…' : 'Aplicar refuerzo'}
           </Button>
         </DialogActions>
       </Dialog>

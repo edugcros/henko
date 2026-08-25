@@ -10,10 +10,16 @@ import mongoose from 'mongoose'
 import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
 import UserMetricEvent, { USER_METRIC_EVENTS } from '../../models/userMetricEventModel.js'
 
-const buildPeriodMatch = (tenantObjectId, periodDate, { dateField = 'occurredAt', ...extra } = {}) => ({
+const buildPeriodMatch = (
+  tenantObjectId,
+  periodDate,
+  { dateField = 'occurredAt', periodEndDate = null, ...extra } = {},
+) => ({
   tenantId: tenantObjectId,
   ...extra,
-  ...(periodDate ? { [dateField]: { $gte: periodDate } } : {}),
+  ...(periodDate
+    ? { [dateField]: periodEndDate ? { $gte: periodDate, $lt: periodEndDate } : { $gte: periodDate } }
+    : {}),
 })
 
 /**
@@ -21,12 +27,17 @@ const buildPeriodMatch = (tenantObjectId, periodDate, { dateField = 'occurredAt'
  * aiAgentAdminCtrl.js::getAiAgentMetrics (revenue = suma de
  * cartSnapshot.subtotalCents de los AiCartRecovery en status:'converted',
  * ver commerceEvents/... markCartRecoveryConverted del Bloque 3).
+ *
+ * `periodEndDate` es opcional (todos los call sites existentes lo omiten y
+ * siguen midiendo "desde periodDate hasta ahora") — lo agrega el detector de
+ * recuperación con baja conversión (aiInsightDetectionService.js) para poder
+ * comparar una ventana acotada (últimos 7 días) contra la anterior.
  */
-export const getCartRecoveryRevenue = async (tenantId, periodDate) => {
+export const getCartRecoveryRevenue = async (tenantId, periodDate, periodEndDate = null) => {
   const tenantObjectId = new mongoose.Types.ObjectId(String(tenantId))
 
   const recoveryStats = await AiCartRecovery.aggregate([
-    { $match: buildPeriodMatch(tenantObjectId, periodDate, { dateField: 'sentAt' }) },
+    { $match: buildPeriodMatch(tenantObjectId, periodDate, { dateField: 'sentAt', periodEndDate }) },
     {
       $group: {
         _id: '$status',

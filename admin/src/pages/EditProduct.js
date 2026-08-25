@@ -158,6 +158,17 @@ const normalizeNumber = value => {
   return Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : 0
 }
 
+// Como normalizeNumber, pero preserva "no informado" como null —
+// costoUnitario (Bloque 8.5) nunca debe convertirse en 0 por defecto, un 0
+// se leería como "no cuesta nada", no como "sin dato".
+const normalizeOptionalNumber = value => {
+  if (value === null || value === undefined || value === '') return null
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) && numericValue >= 0
+    ? numericValue
+    : null
+}
+
 const formatMoney = value =>
   `$${Number(value || 0).toLocaleString('es-AR', {
     minimumFractionDigits: 2,
@@ -349,6 +360,7 @@ const mapServerVariantToEditor = (variant, index, productImages = []) => {
     attributes,
     attributeText: serializeAttributes(attributes),
     price: normalizeNumber(variant.price),
+    costoUnitario: normalizeOptionalNumber(variant.costoUnitario),
     stock: normalizeNumber(variant.stock),
     sku: variant.sku || '',
     isActive: variant.isActive !== false,
@@ -372,6 +384,7 @@ const createVariantFromAttributes = ({
   attributes: normalizeAttributes(attributes),
   attributeText: serializeAttributes(attributes),
   price: normalizeNumber(basePrice),
+  costoUnitario: null,
   stock: normalizeNumber(stock),
   sku: '',
   isActive: true,
@@ -580,6 +593,7 @@ const buildVariantPayload = (variant, index) => {
     attributes,
     combinacion: attributes,
     price: normalizeNumber(variant.price),
+    costoUnitario: normalizeOptionalNumber(variant.costoUnitario),
     stock: normalizeNumber(variant.stock),
     isActive: variant.isActive !== false,
     image: variant.assignedImage?.url
@@ -1141,6 +1155,7 @@ const EditProduct = () => {
         title: normalizedProduct.title || '',
         description: normalizedProduct.description || '',
         price: normalizeNumber(normalizedProduct.price),
+        costoUnitario: normalizeOptionalNumber(normalizedProduct.costoUnitario),
         stock: normalizeNumber(normalizedProduct.stock),
         categoria: normalizedProduct.categoria || '',
         subcategoria: normalizedProduct.subcategoria || '',
@@ -1565,6 +1580,7 @@ const EditProduct = () => {
           .map(tag => normalizeString(tag).toLowerCase())
           .filter(Boolean),
         price: normalizeNumber(values.price),
+        costoUnitario: normalizeOptionalNumber(values.costoUnitario),
         stock: hasVariants ? totalVariantStock : normalizeNumber(values.stock),
         hasVariants,
         visibility: normalizedProduct?.visibility || 'visible',
@@ -1977,6 +1993,26 @@ const EditProduct = () => {
             prefix="$"
             onChange={value =>
               updateVariant(record.key, { price: normalizeNumber(value) })
+            }
+          />
+        ),
+      },
+      {
+        title: 'Costo (opcional)',
+        dataIndex: 'costoUnitario',
+        key: 'costoUnitario',
+        width: 150,
+        render: (_, record) => (
+          <InputNumber
+            min={0}
+            value={record.costoUnitario}
+            style={{ width: '100%' }}
+            prefix="$"
+            placeholder="Sin informar"
+            onChange={value =>
+              updateVariant(record.key, {
+                costoUnitario: normalizeOptionalNumber(value),
+              })
             }
           />
         ),
@@ -2639,6 +2675,21 @@ const EditProduct = () => {
                           style={{ width: '100%' }}
                           prefix="$"
                           min={0}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} sm={12}>
+                      <Form.Item
+                        name="costoUnitario"
+                        label="Costo unitario (opcional)"
+                        tooltip="Lo que te cuesta a vos, no lo que cobrás. Solo se usa para calcular margen — nunca se le muestra al cliente ni se lo inventa la IA."
+                      >
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          prefix="$"
+                          min={0}
+                          placeholder="Sin informar"
                         />
                       </Form.Item>
                     </Col>
