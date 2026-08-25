@@ -41,6 +41,7 @@ import {
   Refresh as RefreshIcon,
   Cancel as DismissIcon,
   Bolt as ReinforcementIcon,
+  Sell as PriceReductionIcon,
 } from '@mui/icons-material'
 import {
   acknowledgeInsight,
@@ -51,6 +52,8 @@ import {
   sendReactivationMessage,
   previewCartRecoveryReinforcement,
   applyCartRecoveryReinforcement,
+  previewPriceReduction,
+  applyPriceReduction,
 } from '../services/aiInsightService.js'
 
 const STATUS_OPTIONS = [
@@ -71,6 +74,7 @@ const TYPE_META = {
     label: 'Recuperación de carrito',
     color: 'error',
   },
+  product_low_margin: { label: 'Margen bajo', color: 'warning' },
 }
 
 const TYPE_OPTIONS = [
@@ -104,6 +108,7 @@ const InsightCard = ({
   onArchive,
   onReactivate,
   onReinforce,
+  onReducePrice,
 }) => {
   const typeMeta = TYPE_META[insight.type] || {
     label: insight.type,
@@ -118,6 +123,10 @@ const InsightCard = ({
     !insight.action?.actionType
   const canReinforce =
     insight.type === 'cart_recovery_underperformance' &&
+    (isPending || isMeasuring) &&
+    !insight.action?.actionType
+  const canReducePrice =
+    insight.type === 'product_underperformance' &&
     (isPending || isMeasuring) &&
     !insight.action?.actionType
 
@@ -226,6 +235,22 @@ const InsightCard = ({
             </Typography>
           )}
 
+          {insight.action?.actionType === 'price_reduction' && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 1, display: 'block' }}
+            >
+              Precio reducido de ${insight.action.detail?.previousPrice} a $
+              {insight.action.detail?.newPrice}
+              {insight.action.detail?.variantsUpdated > 0 &&
+                ` (${insight.action.detail.variantsUpdated} variante(s) ajustada(s))`}
+              {insight.action.executedAt &&
+                ` el ${new Date(insight.action.executedAt).toLocaleDateString('es-AR')}`}
+              .
+            </Typography>
+          )}
+
           {insight.status === 'dismissed' && insight.dismissReason && (
             <Typography
               variant="caption"
@@ -237,7 +262,11 @@ const InsightCard = ({
           )}
         </Box>
 
-        {(isPending || canReactivate || canReinforce || canArchive) && (
+        {(isPending ||
+          canReactivate ||
+          canReinforce ||
+          canReducePrice ||
+          canArchive) && (
           <Stack spacing={1} sx={{ minWidth: 132 }}>
             {canReactivate && (
               <Button
@@ -263,12 +292,26 @@ const InsightCard = ({
                 Reforzar recuperación
               </Button>
             )}
+            {canReducePrice && (
+              <Button
+                size="small"
+                variant="contained"
+                color="secondary"
+                startIcon={<PriceReductionIcon />}
+                disabled={busy}
+                onClick={() => onReducePrice(insight)}
+              >
+                Reducir precio
+              </Button>
+            )}
             {isPending && (
               <>
                 <Button
                   size="small"
                   variant={
-                    canReactivate || canReinforce ? 'outlined' : 'contained'
+                    canReactivate || canReinforce || canReducePrice
+                      ? 'outlined'
+                      : 'contained'
                   }
                   color="primary"
                   startIcon={<AcknowledgeIcon />}
@@ -328,6 +371,7 @@ const AiInsightsPage = () => {
   const [dismissDialog, setDismissDialog] = useState(null)
   const [reactivationDialog, setReactivationDialog] = useState(null)
   const [reinforcementDialog, setReinforcementDialog] = useState(null)
+  const [priceReductionDialog, setPriceReductionDialog] = useState(null)
 
   const params = useMemo(
     () => ({
@@ -550,6 +594,77 @@ const AiInsightsPage = () => {
     }
   }, [reinforcementDialog, load])
 
+  const openPriceReduction = useCallback(async insight => {
+    const id = getId(insight)
+    setPriceReductionDialog({
+      id,
+      newPrice: '',
+      plan: null,
+      loading: true,
+      error: '',
+      applying: false,
+    })
+    try {
+      const result = await previewPriceReduction(id)
+      setPriceReductionDialog(prev =>
+        prev && prev.id === id
+          ? {
+              ...prev,
+              plan: result || null,
+              newPrice: result?.suggestedPrice ?? '',
+              loading: false,
+            }
+          : prev,
+      )
+    } catch (err) {
+      console.error('[AI_INSIGHTS_PRICE_PREVIEW_ERROR]', err)
+      setPriceReductionDialog(prev =>
+        prev && prev.id === id
+          ? {
+              ...prev,
+              loading: false,
+              error:
+                err?.response?.data?.message ||
+                err?.message ||
+                'No se pudo armar la propuesta de precio.',
+            }
+          : prev,
+      )
+    }
+  }, [])
+
+  const confirmPriceReduction = useCallback(async () => {
+    const dialog = priceReductionDialog
+    const newPriceNumber = Number(dialog?.newPrice)
+    if (!dialog || !Number.isFinite(newPriceNumber) || newPriceNumber <= 0)
+      return
+
+    setPriceReductionDialog(prev =>
+      prev ? { ...prev, applying: true, error: '' } : prev,
+    )
+
+    try {
+      await applyPriceReduction(dialog.id, newPriceNumber)
+      setPriceReductionDialog(null)
+      notify('success', 'Precio actualizado.')
+      await load()
+    } catch (err) {
+      console.error('[AI_INSIGHTS_PRICE_APPLY_ERROR]', err)
+      setPriceReductionDialog(prev =>
+        prev
+          ? {
+              ...prev,
+              applying: false,
+              error:
+                err?.response?.data?.message ||
+                err?.message ||
+                'No se pudo aplicar el nuevo precio.',
+            }
+          : prev,
+      )
+    }
+  }, [priceReductionDialog, load])
+
   const pendingCount = counters.pending_review || 0
 
   return (
@@ -655,6 +770,7 @@ const AiInsightsPage = () => {
               onArchive={handleArchive}
               onReactivate={openReactivation}
               onReinforce={openReinforcement}
+              onReducePrice={openPriceReduction}
             />
           ))}
         </Stack>
@@ -850,6 +966,94 @@ const AiInsightsPage = () => {
             }
           >
             {reinforcementDialog?.applying ? 'Aplicando…' : 'Aplicar refuerzo'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(priceReductionDialog)}
+        onClose={() => setPriceReductionDialog(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Reducir precio</DialogTitle>
+        <DialogContent>
+          <Divider sx={{ mb: 2 }} />
+          {priceReductionDialog?.loading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : priceReductionDialog?.plan ? (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Precio actual: ${priceReductionDialog.plan.currentPrice} ·
+                sugerencia: -{priceReductionDialog.plan.reductionPct}%. Podés
+                editar el precio final antes de confirmar — nada se aplica hasta
+                que lo hagas.
+              </Typography>
+
+              {priceReductionDialog.plan.cappedByCost && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  La sugerencia se limitó para no vender por debajo del costo
+                  cargado (${priceReductionDialog.plan.costFloor}).
+                </Alert>
+              )}
+
+              {priceReductionDialog.plan.hasVariants && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Este producto tiene {priceReductionDialog.plan.variantCount}{' '}
+                  variante(s) — el nuevo precio se aplica proporcionalmente a
+                  todas las que estén activas.
+                </Alert>
+              )}
+
+              <TextField
+                fullWidth
+                type="number"
+                label="Precio nuevo"
+                value={priceReductionDialog.newPrice}
+                onChange={e =>
+                  setPriceReductionDialog(prev =>
+                    prev ? { ...prev, newPrice: e.target.value } : prev,
+                  )
+                }
+                inputProps={{ min: 0, step: '0.01' }}
+                disabled={priceReductionDialog.applying}
+              />
+
+              {priceReductionDialog?.error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {priceReductionDialog.error}
+                </Alert>
+              )}
+            </>
+          ) : (
+            priceReductionDialog?.error && (
+              <Alert severity="error">{priceReductionDialog.error}</Alert>
+            )
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setPriceReductionDialog(null)}
+            disabled={priceReductionDialog?.applying}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={confirmPriceReduction}
+            disabled={
+              priceReductionDialog?.loading ||
+              priceReductionDialog?.applying ||
+              !priceReductionDialog?.plan ||
+              !(Number(priceReductionDialog?.newPrice) > 0) ||
+              Number(priceReductionDialog?.newPrice) >=
+                Number(priceReductionDialog?.plan?.currentPrice)
+            }
+          >
+            {priceReductionDialog?.applying ? 'Aplicando…' : 'Aplicar precio'}
           </Button>
         </DialogActions>
       </Dialog>

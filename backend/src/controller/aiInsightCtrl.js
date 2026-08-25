@@ -15,6 +15,8 @@ import {
   sendReactivationMessage,
   previewCartRecoveryReinforcement,
   applyCartRecoveryReinforcement,
+  previewPriceReduction,
+  applyPriceReduction,
 } from '../services/insights/aiInsightActionService.js'
 import {
   getUserIdFromRequest,
@@ -37,6 +39,7 @@ const allowedTypes = new Set([
   'campaign_underperformance',
   'customer_inactivity',
   'cart_recovery_underperformance',
+  'product_low_margin',
 ])
 
 const requireTenantId = req =>
@@ -217,6 +220,44 @@ export const applyCartRecoveryReinforcementCtrl = asyncHandler(async (req, res) 
   return res.status(200).json({
     success: true,
     message: 'Recuperación de carritos reforzada',
+    data: insight,
+  })
+})
+
+// Bloque 8.8 Nivel 3 (alcance acotado): arma el plan de reducción de
+// precio, no toca nada todavía.
+export const previewPriceReductionCtrl = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  if (!validateInsightId(req, res)) return
+
+  const insight = await AiInsight.findOne({ _id: req.params.id, tenantId })
+    .setOptions({ tenantId })
+    .lean()
+
+  if (!insight) {
+    return res.status(404).json({ success: false, message: 'Insight no encontrado' })
+  }
+
+  const result = await previewPriceReduction({ tenantId, insight })
+
+  return res.status(200).json({ success: true, data: result })
+})
+
+export const applyPriceReductionCtrl = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  if (!validateInsightId(req, res)) return
+  const userId = getUserIdFromRequest(req)
+
+  const insight = await applyPriceReduction({
+    tenantId,
+    insightId: req.params.id,
+    adminUserId: userId,
+    newPrice: req.body?.newPrice,
+  })
+
+  return res.status(200).json({
+    success: true,
+    message: 'Precio actualizado',
     data: insight,
   })
 })
