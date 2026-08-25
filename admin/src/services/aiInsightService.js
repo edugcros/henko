@@ -26,9 +26,28 @@ export const archiveInsight = async id => {
   return unwrap(response)
 }
 
+// Bloque 8.8 (alcance acotado, solo customer_inactivity): arma el texto, no
+// envía nada — el admin lo revisa/edita antes de confirmar con sendReactivationMessage.
+export const previewReactivationMessage = async id => {
+  const response = await api.post(
+    `/insights/${id}/reactivation-message/preview`,
+    {},
+  )
+  return unwrap(response)
+}
+
+export const sendReactivationMessage = async (id, message) => {
+  const response = await api.post(`/insights/${id}/reactivation-message/send`, {
+    message,
+  })
+  return unwrap(response)
+}
+
 export default {
   listInsights,
   acknowledgeInsight,
   dismissInsight,
   archiveInsight,
+  previewReactivationMessage,
+  sendReactivationMessage,
 }

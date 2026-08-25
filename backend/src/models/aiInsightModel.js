@@ -5,8 +5,11 @@
 // fingerprint único por tenant para no duplicar en re-escaneos, y un guard
 // que no pisa un insight que un humano ya tocó (ver aiInsightService.js).
 //
-// Recomienda, nunca actúa solo — 8.8 (acciones automáticas) queda fuera a
-// propósito, es una decisión de negocio aparte.
+// Recomienda — HENKO nunca decide ni ejecuta solo. Para customer_inactivity
+// existe un primer paso de "acción" (8.8, alcance acotado con el usuario):
+// un botón que arma un mensaje de reactivación con IA, el admin lo revisa y
+// edita, y recién si lo confirma se envía. El resto de los tipos de insight
+// se quedan en solo-recomendación por ahora — ver aiInsightActionService.js.
 
 import mongoose from 'mongoose'
 import { tenantPlugin } from './tenantPlugin.js'
@@ -115,6 +118,23 @@ const aiInsightSchema = new Schema(
     },
     dismissedAt: { type: Date, default: null },
     dismissReason: { type: String, trim: true, maxlength: 500, default: '' },
+
+    // Rastro de la acción concreta ejecutada sobre este insight (hoy solo
+    // customer_inactivity la tiene). "actionType", no "type" — un campo
+    // anidado llamado literalmente "type" hace que mongoose interprete todo
+    // este objeto como la declaración de tipo del path "action" y descarte
+    // el resto de las claves hermanas.
+    action: {
+      actionType: {
+        type: String,
+        enum: ['reactivation_message', null],
+        default: null,
+      },
+      channel: { type: String, enum: ['email', 'whatsapp', ''], default: '' },
+      message: { type: String, trim: true, maxlength: 2000, default: '' },
+      executedAt: { type: Date, default: null },
+      executedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    },
 
     detectedAt: { type: Date, default: Date.now },
   },

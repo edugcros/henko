@@ -91,6 +91,35 @@ function hash(value) {
   return crypto.createHash('sha256').update(String(value || '')).digest('hex')
 }
 
+// Stoplist chica, no exhaustiva — alcanza para descartar ruido de
+// conectores/artículos al detectar palabras de contenido evitadas.
+const SPANISH_STOPWORDS = new Set([
+  'de', 'la', 'el', 'en', 'un', 'una', 'unos', 'unas', 'y', 'con', 'para',
+  'que', 'los', 'las', 'del', 'al', 'es', 'por', 'su', 'sus', 'se', 'lo',
+  'este', 'esta', 'estos', 'estas', 'muy', 'más', 'mas', 'sin', 'como',
+  'tiene', 'tienen', 'ser', 'son', 'fue', 'han', 'ha', 'les', 'nos', 'tus',
+  'pero', 'todo', 'toda', 'todos', 'todas', 'también', 'sobre', 'entre',
+])
+
+// Proxy barata de "tono" — frecuencia de signos de exclamación/emojis. No
+// mide tono en sentido lingüístico (eso necesitaría un LLM juzgando la
+// corrección, no comparando texto), pero sí es una señal real y verificable
+// que varios manuales de estilo de e-commerce usan como proxy operativa de
+// "entusiasta" vs "sobrio".
+const EMOJI_REGEX = /\p{Extended_Pictographic}/gu
+
+function countEmphasisSignals(text) {
+  const exclamations = (String(text || '').match(/!/g) || []).length
+  const emojis = (String(text || '').match(EMOJI_REGEX) || []).length
+  return exclamations + emojis
+}
+
+function extractContentWords(text) {
+  return (String(text || '').match(/\p{L}+/gu) || [])
+    .map(word => word.toLowerCase())
+    .filter(word => word.length >= 4 && !SPANISH_STOPWORDS.has(word))
+}
+
 function buildStructuredRule({
   field,
   rawInput = null,
@@ -274,6 +303,57 @@ function computeLearnedRules(originalIAOutput, humanCorrection) {
         reason: `Este comercio tiende a preferir descripciones ${bucket} (última corrección: ~${correctedDescLength} caracteres) — ajustá el largo de "descripcion" en consecuencia.`,
       }),
     )
+  }
+
+  if (original.description && corrected.description) {
+    const originalEmphasis = countEmphasisSignals(original.description)
+    const correctedEmphasis = countEmphasisSignals(corrected.description)
+
+    if (correctedEmphasis === 0 && originalEmphasis > 0) {
+      rules.push(
+        buildStructuredRule({
+          field: 'tone_punctuation',
+          rawInput: 'preferencia_tono_puntuacion',
+          correctedValue: 'sobria',
+          confidence: 0.7,
+          reason: 'Este comercio le sacó los signos de exclamación / emojis a la descripción — preferí un tono sobrio, sin exclamaciones ni emojis.',
+        }),
+      )
+    } else if (correctedEmphasis > originalEmphasis) {
+      rules.push(
+        buildStructuredRule({
+          field: 'tone_punctuation',
+          rawInput: 'preferencia_tono_puntuacion',
+          correctedValue: 'entusiasta',
+          confidence: 0.7,
+          reason: 'Este comercio agregó signos de exclamación / emojis a la descripción — preferí un tono más entusiasta.',
+        }),
+      )
+    }
+
+    // Vocabulario evitado — palabras de contenido (4+ letras, sin
+    // stopwords) que estaban en lo que generó la IA y desaparecieron en la
+    // corrección humana. Una sola corrección no alcanza como señal (puede
+    // ser una reescritura cualquiera, no una palabra que el comercio
+    // realmente evita) — confidence base más baja (0.55) que el resto de
+    // las reglas de esta función a propósito: hacen falta 5 repeticiones de
+    // la MISMA palabra para cruzar el umbral de promoción (0.55 + tope de
+    // repetitionBoost 0.25 = 0.80), más conservador que el resto.
+    const originalWords = new Set(extractContentWords(original.description))
+    const correctedWords = new Set(extractContentWords(corrected.description))
+    const removedWords = [...originalWords].filter(word => !correctedWords.has(word))
+
+    for (const word of removedWords.slice(0, 5)) {
+      rules.push(
+        buildStructuredRule({
+          field: 'avoided_word',
+          rawInput: word,
+          correctedValue: 'evitar',
+          confidence: 0.55,
+          reason: `Este comercio sacó la palabra "${word}" al corregir una descripción — considerar evitarla en las descripciones de este tenant.`,
+        }),
+      )
+    }
   }
 
   pushRuleIfChanged(rules, {
