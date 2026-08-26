@@ -73,9 +73,16 @@ const Customers = () => {
       }
     } catch (err) {
       console.error('Error ejecutando acción:', err)
-      if (actionType === 'verify') {
-        toast.error(err || 'No se pudo verificar al usuario.')
+      // Las 3 ramas restantes (delete/block/unblock) solo logueaban a
+      // consola y cerraban el modal como si nada — el operador nunca se
+      // enteraba de que la acción había fallado.
+      const fallbackByAction = {
+        delete: 'No se pudo eliminar al cliente.',
+        block: 'No se pudo bloquear al cliente.',
+        unblock: 'No se pudo desbloquear al cliente.',
+        verify: 'No se pudo verificar al usuario.',
       }
+      toast.error(err || fallbackByAction[actionType] || 'No se pudo completar la acción.')
     } finally {
       setConfirmOpen(false)
       setSelectedUser(null)

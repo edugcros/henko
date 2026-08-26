@@ -2,7 +2,6 @@ import { configureStore, combineReducers } from '@reduxjs/toolkit'
 import { persistStore, persistReducer } from 'redux-persist'
 import storageSession from 'redux-persist/lib/storage/session' // o 'redux-persist/lib/storage' si querés localStorage
 
-import dashboardReducer from '../features/dashboard/dashboardSlice'
 import authReducer from '@features/auth/authSlice'
 import couponReducer from '@features/coupons/couponSlice'
 import customerReducer from '@features/customers/customerSlice'
@@ -24,7 +23,6 @@ const rootReducer = combineReducers({
   user: persistReducer(authPersistConfig, authReducer),
   product: productReducer,
   customers: customerReducer,
-  dashboard: dashboardReducer,
   enquiry: enquiryReducer,
   upload: uploadReducer,
   coupon: couponReducer,

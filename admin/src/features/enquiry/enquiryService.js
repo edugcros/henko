@@ -15,24 +15,6 @@ const normalizeAuthResponse = res => {
 }
 
 // ======================================================
-// Manejo uniforme de errores
-// ======================================================
-const handleApiError = (error, fallback = 'Error inesperado') => {
-  // Prioridad 1: Error enviado por el Backend (res.status(400).send({message: '...'}))
-  // Prioridad 2: Error de Axios (error.message)
-  const msg = error?.response?.data?.message || error?.message || fallback
-
-  console.error('API Error:', msg)
-
-  // Retornamos un objeto con el mismo "shape" que el éxito pero con success: false
-  return {
-    success: false,
-    message: msg,
-    errors: error?.response?.data?.errors || [], // Por si envías lista de validaciones
-  }
-}
-
-// ======================================================
 // CSRF Loader (con auto-recuperación)
 // ======================================================
 let cachedCsrfToken = null
@@ -43,31 +25,33 @@ const ensureCsrf = async () => {
 }
 
 // ======================================================
-// Request genérico (prefija /user y agrega CSRF)
+// Request genérico (prefija /enquiry y agrega CSRF)
 // ======================================================
+// No atrapa errores acá: el caller (los thunks de enquirySlice.js) ya tiene
+// su propio try/catch que espera que esto rechace para poder despachar
+// rejectWithValue. Antes esto atrapaba y devolvía {success:false,...} como
+// si fuera una respuesta válida — el thunk nunca se enteraba del fallo y en
+// deleteEnquiry incluso quitaba la consulta de la lista sin haberla borrado
+// realmente en el backend.
 const apiRequest = async (method, endpoint, data, options = {}) => {
-  try {
-    const csrfToken = await ensureCsrf()
+  const csrfToken = await ensureCsrf()
 
-    const config = {
-      method,
-      url: `/enquiry${endpoint}`,
-      withCredentials: true,
-      ...options,
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
-        'x-csrf-token': csrfToken, // <--- enviar token CSRF
-        ...options.headers,
-      },
-    }
-    if (data !== undefined) config.data = data
-
-    const res = await api(config)
-    return res.data
-  } catch (err) {
-    return handleApiError(err)
+  const config = {
+    method,
+    url: `/enquiry${endpoint}`,
+    withCredentials: true,
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${localStorage.getItem('token')}`,
+      'x-csrf-token': csrfToken, // <--- enviar token CSRF
+      ...options.headers,
+    },
   }
+  if (data !== undefined) config.data = data
+
+  const res = await api(config)
+  return res.data
 }
 
 // --- FUNCIONES EXPORTADAS CORREGIDAS ---
@@ -81,8 +65,14 @@ export const getEnquiries = async () => {
 // src/features/enquiry/enquiryService.js
 export const sendReply = async (id, message) => {
   // ⚠️ Importante: Verifica si tu backend usa /enquiry/reply o solo /reply
+  //
+  // Sin .data acá: apiRequest ya devuelve el body completo ({success, data}),
+  // igual que getEnquiries/updateEnquiry/deleteEnquiry en este mismo archivo.
+  // Extraer .data acá duplicaba el unwrap que ya hace el thunk consumidor
+  // (sendReplyEnquiry en enquirySlice.js), así que la respuesta real nunca
+  // llegaba con forma de enquiry actualizada.
   const response = await apiRequest('post', `/reply/${id}`, { message })
-  return response.data
+  return response
 }
 export const updateEnquiryStatus = async (id, status) => {
   const response = await apiRequest('put', `/${id}`, { status })
