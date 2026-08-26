@@ -32,6 +32,14 @@ const safeStorage = {
     sessionStorage.removeItem('wishlist')
     sessionStorage.removeItem('csrfToken')
   },
+  removeAuth: () => {
+    safeStorage.removeUser()
+    try {
+      Cookies.remove('token', { path: '/' })
+    } catch {
+      // Limpieza best-effort: el navegador puede bloquear cookies.
+    }
+  },
 }
 
 // ---------------------------
