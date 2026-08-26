@@ -13,6 +13,7 @@ import {
 } from '../services/orderEmailService.js'
 import {
   consumeCouponAtomic,
+  consumeCouponForUserAtomic,
   createCouponUsageRecord,
   ensureCouponUsageAllowedForUser,
   evaluateCouponDiscount,
@@ -503,6 +504,17 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
        *   Esto evita agotar cupones por pagos rechazados/abandonados.
        */
       if (couponDoc && isCOD) {
+        // Orden importante: primero el límite por-usuario (atómico), después
+        // el global — ambos dentro de la misma transacción que crea la
+        // orden, así que si cualquiera de los dos falla, nada queda a medio
+        // consumir (runOrderTransaction aborta todo el bloque).
+        await consumeCouponForUserAtomic({
+          coupon: couponDoc,
+          userId: normalizeObjectId(userId),
+          tenantId,
+          session,
+        })
+
         couponDoc = await consumeCouponAtomic({
           coupon: couponDoc,
           tenantId,

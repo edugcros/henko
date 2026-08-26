@@ -1,5 +1,6 @@
 import Coupon from '../models/couponModel.js'
 import CouponUsage from '../models/CouponUsageModel.js'
+import CouponUserUsageCounter from '../models/couponUserUsageCounterModel.js'
 import logger from '../../config/logger.js'
 
 const sanitizeString = (value, fallback = '') => {
@@ -208,6 +209,57 @@ export const consumeCouponAtomic = async ({
   return consumed
 }
 
+/**
+ * Contraparte atómica de ensureCouponUsageAllowedForUser (que solo hace un
+ * chequeo de lectura, útil para feedback rápido pero no atómico). Esta
+ * función es el gate real: incrementa un contador por (tenant, cupón,
+ * usuario) con la misma condición-en-el-filtro que ya usa consumeCouponAtomic
+ * para el límite global, así que dos requests concurrentes del mismo usuario
+ * no pueden pasar ambas aunque ambas hayan pasado el chequeo de lectura
+ * previo. Sin límite por usuario (null/undefined), no hace nada.
+ */
+export const consumeCouponForUserAtomic = async ({
+  coupon,
+  userId,
+  tenantId,
+  session = null,
+}) => {
+  const limit = coupon?.usageLimitPerUser
+
+  if (limit === null || limit === undefined) return
+
+  const filter = { tenantId, coupon: coupon._id, user: userId }
+
+  const updated = await CouponUserUsageCounter.findOneAndUpdate(
+    { ...filter, count: { $lt: limit } },
+    { $inc: { count: 1 } },
+    { session },
+  ).setOptions({ tenantId })
+
+  if (updated) return
+
+  // El contador puede no existir todavía (primer uso de este usuario para
+  // este cupón) — se crea con upsert; si dos requests concurrentes lo crean
+  // a la vez, el índice único deja pasar solo una, la otra recibe E11000 y
+  // reintenta el incremento condicional de arriba sobre el doc ya creado.
+  try {
+    await CouponUserUsageCounter.create([{ ...filter, count: 1 }], { session })
+    return
+  } catch (error) {
+    if (error?.code !== 11000) throw error
+  }
+
+  const retried = await CouponUserUsageCounter.findOneAndUpdate(
+    { ...filter, count: { $lt: limit } },
+    { $inc: { count: 1 } },
+    { session },
+  ).setOptions({ tenantId })
+
+  if (retried) return
+
+  throw new Error('Ya alcanzaste el límite de uso de este cupón')
+}
+
 export const createCouponUsageRecord = async ({
   coupon,
   order,
@@ -321,6 +373,19 @@ export const consumeOrderCouponIfNeeded = async ({
     }
 
     throw usageError
+  }
+
+  try {
+    await consumeCouponForUserAtomic({ coupon: couponDoc, userId, tenantId })
+  } catch (limitError) {
+    logger.error(
+      '❌ No se pudo incrementar el contador por-usuario del cupón al aprobar el pago (el pago ya fue cobrado, no se revierte)',
+      {
+        orderId: order._id?.toString?.(),
+        couponId: String(couponId),
+        message: limitError?.message,
+      },
+    )
   }
 
   try {
