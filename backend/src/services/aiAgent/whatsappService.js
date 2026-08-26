@@ -66,8 +66,15 @@ export const verifyWhatsappSignature = ({
 }) => {
   const cleanSecret = clean(appSecret)
 
+  // Sin appSecret configurado no hay forma de validar que el webhook venga
+  // realmente de Meta — falla cerrado siempre, sin importar el ambiente. El
+  // fallback anterior (aceptar sin firma fuera de NODE_ENV==='production')
+  // dejaba cualquier staging o deploy mal configurado abierto a mensajes
+  // falsificados que el agente de IA procesa y responde en nombre del
+  // comercio. Para probar en dev, configurar un appSecret real del agente
+  // de prueba — no relajar esta validación.
   if (!cleanSecret) {
-    return process.env.NODE_ENV !== 'production'
+    return false
   }
 
   const received = clean(signatureHeader)
