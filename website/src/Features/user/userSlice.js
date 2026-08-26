@@ -213,7 +213,6 @@ export const getUserProductWishlist = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const res = await userService.getUserWishlist()
-      console.log(res)
       // Normalizar: puede venir { success:true, data: [...] } o { data: [...] } o directamente [...]
       const wishlistData =
         res && res.data && Array.isArray(res.data)
@@ -416,12 +415,6 @@ const userSlice = createSlice({
       localStorage.removeItem('token')
       Cookies.remove('token')
     },
-    // Tomar token desde cookie (por ejemplo SSR/hydration)
-    setTokenFromCookie(state, action) {
-      state.token = action.payload
-      sessionStorage.setItem('token', action.payload)
-    },
-
     // Reemplazar wishlist manualmente (útil para sync)
     setWishlist: (state, action) => {
       state.wishlist = Array.isArray(action.payload) ? action.payload : []
@@ -648,7 +641,6 @@ export const {
   clearState,
   setCsrfToken,
   resetAuthState,
-  setTokenFromCookie,
   setWishlist,
 } = userSlice.actions
 
