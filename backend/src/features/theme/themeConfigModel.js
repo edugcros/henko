@@ -86,6 +86,41 @@ function isValidColor(value) {
   )
 }
 
+// Cualquier campo de URL configurable por el comercio (link del hero,
+// redes sociales del footer) termina como href/to crudo en el storefront
+// público — un valor tipo "javascript:..." ahí es XSS ejecutable contra los
+// propios compradores del comercio al hacer clic. Solo se permite: vacío
+// (cae al default del campo), ruta relativa de un solo slash, o http(s)
+// absoluto. Nada de javascript:/data:/vbscript:/file:/protocolo-relativo.
+function isSafeThemeUrl(value) {
+  if (value === undefined || value === null || value === '') return true
+  if (typeof value !== 'string') return false
+  const v = value.trim()
+  if (!v) return true
+
+  return /^https?:\/\/[^\s]+$/i.test(v) || /^\/(?!\/)[^\s]*$/.test(v)
+}
+
+// Sin parser de CSS real disponible, esto es defensa en profundidad por
+// blocklist — no pretende ser exhaustivo, corta los vectores conocidos de
+// CSS-injection/XSS (expression() de IE viejo, url(javascript:...),
+// @import externo, -moz-binding, comportamiento behavior:, y cualquier
+// intento de cerrar el <style> e inyectar un <script> literal).
+const DANGEROUS_CSS_PATTERNS = [
+  /expression\s*\(/i,
+  /url\s*\(\s*['"]?\s*(javascript|data\s*:\s*text\/html|vbscript)\s*:/i,
+  /-moz-binding\s*:/i,
+  /behavior\s*:/i,
+  /@import/i,
+  /<\s*\/?\s*script/i,
+  /<\s*\/?\s*style/i,
+]
+
+function isSafeCustomCss(value) {
+  if (!value) return true
+  return !DANGEROUS_CSS_PATTERNS.some(pattern => pattern.test(value))
+}
+
 const getImageUrl = image => {
   if (!image) return null
   if (typeof image === 'string') return image
@@ -375,7 +410,12 @@ const heroSchema = new Schema(
     overlayOpacity: { type: Number, default: 0.3, min: 0, max: 1 },
     showCta: { type: Boolean, default: true },
     ctaText: { type: String, default: 'Ver productos', maxlength: 50, trim: true },
-    ctaLink: { type: String, default: '/products', trim: true },
+    ctaLink: {
+      type: String,
+      default: '/products',
+      trim: true,
+      validate: { validator: isSafeThemeUrl, message: 'Link del botón del hero inválido' },
+    },
     backgroundImage: { type: imageAssetSchema, default: null },
     textColor: {
       type: String,
@@ -422,12 +462,42 @@ const footerSchema = new Schema(
       trim: true,
     },
     social: {
-      facebook: { type: String, default: '', trim: true },
-      instagram: { type: String, default: '', trim: true },
-      twitter: { type: String, default: '', trim: true },
-      youtube: { type: String, default: '', trim: true },
-      tiktok: { type: String, default: '', trim: true },
-      linkedin: { type: String, default: '', trim: true },
+      facebook: {
+        type: String,
+        default: '',
+        trim: true,
+        validate: { validator: isSafeThemeUrl, message: 'Link de Facebook inválido' },
+      },
+      instagram: {
+        type: String,
+        default: '',
+        trim: true,
+        validate: { validator: isSafeThemeUrl, message: 'Link de Instagram inválido' },
+      },
+      twitter: {
+        type: String,
+        default: '',
+        trim: true,
+        validate: { validator: isSafeThemeUrl, message: 'Link de Twitter inválido' },
+      },
+      youtube: {
+        type: String,
+        default: '',
+        trim: true,
+        validate: { validator: isSafeThemeUrl, message: 'Link de YouTube inválido' },
+      },
+      tiktok: {
+        type: String,
+        default: '',
+        trim: true,
+        validate: { validator: isSafeThemeUrl, message: 'Link de TikTok inválido' },
+      },
+      linkedin: {
+        type: String,
+        default: '',
+        trim: true,
+        validate: { validator: isSafeThemeUrl, message: 'Link de LinkedIn inválido' },
+      },
     },
     columns: { type: Number, default: 4, min: 1, max: 6 },
   },
@@ -505,10 +575,16 @@ const advancedSchema = new Schema(
       type: String,
       default: '',
       maxlength: 50000,
-      validate: {
-        validator: value => !value || value.length <= 50000,
-        message: 'CSS custom excede límite de 50KB',
-      },
+      validate: [
+        {
+          validator: value => !value || value.length <= 50000,
+          message: 'CSS custom excede límite de 50KB',
+        },
+        {
+          validator: isSafeCustomCss,
+          message: 'CSS custom contiene un patrón potencialmente peligroso (expression, url(javascript:...), @import, -moz-binding, behavior, o una etiqueta <script>/<style>)',
+        },
+      ],
     },
     customJS: {
       type: String,
