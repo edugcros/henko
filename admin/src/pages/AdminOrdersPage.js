@@ -1105,7 +1105,11 @@ const OrderControlPanel = memo(
             variant="outlined"
             color="error"
             onClick={() => onCancel(order._id, orderTotal)}
-            disabled={isFinalState || disabled}
+            disabled={
+              isFinalState ||
+              disabled ||
+              order.paymentStatus === PAYMENT_STATUSES.APPROVED
+            }
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
             Cancelar
@@ -1954,7 +1958,7 @@ const AdminOrdersPage = () => {
       promise = dispatch(
         refundOrderThunk({ id: payload?.id || confirmDialog.orderId }),
       )
-      successMessage = 'Orden reembolsada correctamente'
+      successMessage = 'Orden marcada como reembolsada — verificá que el reembolso se haya procesado en Mercado Pago'
     } else if (action === CONFIRM_ACTIONS.CANCELLED) {
       promise = dispatch(
         cancelOrderThunk({
@@ -2117,14 +2121,14 @@ const AdminOrdersPage = () => {
       confirmDialog.action === CONFIRM_ACTIONS.CANCEL_ORDER ||
       confirmDialog.action === CONFIRM_ACTIONS.CANCELLED
     ) {
-      return '¿Deseas cancelar esta orden? Esta acción puede restaurar stock según la lógica del backend.'
+      return '¿Deseas cancelar esta orden? Restaura el stock reservado. Si el pago ya estaba aprobado, esta acción NO devuelve el dinero — para eso usá "Reembolsar".'
     }
 
     if (
       confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER ||
       confirmDialog.action === CONFIRM_ACTIONS.REFUNDED
     ) {
-      return '¿Deseas reembolsar esta orden? Esta acción debe estar alineada con el proveedor de pago.'
+      return '¿Deseas marcar esta orden como reembolsada? Esto solo actualiza el registro interno — el reembolso real en Mercado Pago hay que hacerlo aparte, desde su panel.'
     }
 
     if (confirmDialog.action === CONFIRM_ACTIONS.APPROVE_PAYMENT) {
