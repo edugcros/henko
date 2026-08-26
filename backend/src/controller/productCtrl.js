@@ -1503,6 +1503,7 @@ export const getaProduct = expressAsyncHandler(async (req, res) => {
     }
 
   const product = await Product.findOne(productQuery)
+    .select('-costoUnitario -variants.costoUnitario')
     .setOptions({ tenantId })
     .lean()
 
@@ -1840,6 +1841,7 @@ export const getAllProduct = expressAsyncHandler(async (req, res) => {
 
   const [products, total, facets] = await Promise.all([
     Product.find(query)
+      .select('-costoUnitario -variants.costoUnitario')
       .setOptions({ tenantId })
       .sort(getSafePublicSort(sort))
       .skip(skip)
