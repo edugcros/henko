@@ -1,5 +1,6 @@
 
 import { buildFrontendUrl } from '../utils/frontendUrl.js'
+import logger from '../../config/logger.js'
 
 export const notFound = (req, res) => {
   // Si alguien abre el link de reset contra la API, redirigimos al storefront.
@@ -31,6 +32,20 @@ export const errorHandler = (err, req, res, next) => {
     res.statusCode >= 400 && res.statusCode <= 599
       ? res.statusCode
       : safeDeclaredStatus
+
+  // Único punto que ve todos los errores de la app — sin esto, un incidente
+  // real en producción no deja ningún rastro server-side, solo lo que el
+  // cliente reporte. Siempre corre, independiente de NODE_ENV.
+  logger.error(err.message || 'Error sin mensaje', {
+    stack: err.stack,
+    name: err.name,
+    code: err.code,
+    statusCode,
+    method: req.method,
+    path: req.originalUrl,
+    tenantId: req.tenantId ? String(req.tenantId) : undefined,
+    userId: req.user?._id ? String(req.user._id) : undefined,
+  })
 
   // 1. Mongoose Validation
   if (err.name === 'ValidationError') {
