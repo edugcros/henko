@@ -25,6 +25,15 @@ const getAssetUrl = asset => {
   return asset.url || null
 }
 
+// Los links de redes sociales vienen del theme config del tenant y se
+// renderizan crudos en href — sin este chequeo, un valor guardado como
+// "javascript:..." se ejecutaría al click. El backend ya lo valida al
+// guardar (themeConfigModel.js::isSafeThemeUrl), pero un valor guardado
+// antes de ese fix seguiría sirviéndose acá. Mismo criterio que
+// Home.js::heroConfig.
+const isValidUrl = url =>
+  typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
+
 const Footer = () => {
   const { themeConfig } = useTenant()
   const themeState = useSelector(state => state.theme) || {}
@@ -185,7 +194,7 @@ const Footer = () => {
                   { Icon: GitHub, url: social.facebook },
                   { Icon: YouTube, url: social.youtube },
                 ]
-                  .filter(item => item.url)
+                  .filter(item => isValidUrl(item.url))
                   .map(({ Icon, url }, i) => (
                     <IconButton
                       key={i}
