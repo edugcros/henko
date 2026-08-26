@@ -32,15 +32,19 @@ const makeQuery = result => {
 };
 
 let tenantDoc;
+// Otro tenant que ya tiene el dominio reclamado, para probar el guard
+// anti-hijack. null = nadie más lo tiene (caso normal).
+let otherTenantWithDomain = null;
 
 const mockFindById = jest.fn(() => makeQuery(tenantDoc));
+const mockFindOne = jest.fn(() => makeQuery(otherTenantWithDomain));
 const mockUpdateOne = jest.fn(async (_filter, update) => {
   applySet(tenantDoc, update.$set);
   return { acknowledged: true };
 });
 
 jest.unstable_mockModule("../models/tenantModel.js", () => ({
-  default: { findById: mockFindById, updateOne: mockUpdateOne },
+  default: { findById: mockFindById, findOne: mockFindOne, updateOne: mockUpdateOne },
 }));
 
 const {
@@ -66,7 +70,9 @@ let originalFetch;
 
 beforeEach(() => {
   resetTenant();
+  otherTenantWithDomain = null;
   mockFindById.mockClear();
+  mockFindOne.mockClear();
   mockUpdateOne.mockClear();
   originalFetch = global.fetch;
   delete process.env.SENDGRID_API_KEY;
@@ -196,6 +202,31 @@ describe("registro de dominio", () => {
 
     const [, options] = global.fetch.mock.calls[0];
     expect(options.headers.Authorization).toBe("Bearer SG.desde-email-pass");
+  });
+
+  test("rechaza el dominio si otro comercio ya lo tiene reclamado", async () => {
+    // La cuenta de SendGrid es compartida entre todos los comercios: si otro
+    // tenant ya registró (o verificó) este dominio, dejar que un segundo lo
+    // reclame permitiría mandar correo "desde" un dominio que no controla.
+    otherTenantWithDomain = { _id: "64b7f0000000000000000099" };
+    global.fetch = jest.fn();
+
+    await expect(
+      registerTenantSendingDomain({
+        tenantId: TENANT_ID,
+        fromAddress: "no-reply@tiendax.com",
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: "DOMAIN_ALREADY_CLAIMED",
+    });
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockUpdateOne).not.toHaveBeenCalled();
+
+    const [filter] = mockFindOne.mock.calls[0];
+    expect(filter["email.domain"]).toBe("tiendax.com");
+    expect(filter._id.$ne).toBe(TENANT_ID);
   });
 
   test("una key sin permiso de administrar dominios no rompe el alta", async () => {

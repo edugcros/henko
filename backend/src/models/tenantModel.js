@@ -559,6 +559,25 @@ tenantSchema.index(
   },
 )
 
+/**
+ * Un dominio de envío de correo (email.domain) solo puede estar reclamado
+ * por un comercio a la vez — sin esto, dos tenants pueden registrar el mismo
+ * dominio (la cuenta de SendGrid es compartida entre todos) y, si el dueño
+ * real ya lo verificó por DNS, el otro comercio queda mostrando "verificado"
+ * y enviando correo con esa identidad sin controlar el dominio. Última línea
+ * de defensa contra la carrera; el chequeo principal vive en
+ * tenantEmailDomainService.js antes de llamar al proveedor.
+ */
+tenantSchema.index(
+  { 'email.domain': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'email.domain': { $type: 'string', $ne: '' },
+    },
+  },
+)
+
 // =====================================================
 // Hooks
 // =====================================================

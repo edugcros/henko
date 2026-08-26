@@ -244,6 +244,26 @@ export const registerTenantSendingDomain = async ({ tenantId, fromAddress }) => 
     throw error
   }
 
+  // La cuenta de SendGrid es una sola, compartida por todos los comercios —
+  // sin este chequeo, un segundo tenant podría registrar el mismo dominio
+  // que otro ya verificó por DNS y quedar mostrando "verificado" (y
+  // enviando correo con esa identidad) sin controlar el dominio realmente.
+  const domainOwner = await Tenant.findOne({
+    _id: { $ne: tenantId },
+    'email.domain': domain,
+  })
+    .select('_id')
+    .lean()
+
+  if (domainOwner) {
+    const error = new Error(
+      'Este dominio ya está registrado como remitente por otro comercio de la plataforma. Si te pertenece, contactá a soporte.',
+    )
+    error.statusCode = 409
+    error.code = 'DOMAIN_ALREADY_CLAIMED'
+    throw error
+  }
+
   const tenant = await Tenant.findById(tenantId)
 
   if (!tenant) {
