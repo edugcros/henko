@@ -14,7 +14,6 @@ import {
 // Reducers
 import userReducer from '@features/user/userSlice'
 import productReducer from '@features/products/productSlice'
-import contactReducer from '@features/contact/contactSlice'
 import couponReducer from '@features/coupon/couponSlice'
 import cartReducer from '@features/cart/cartSlice'
 import colorReducer from '@features/colors/colorSlice'
@@ -39,7 +38,6 @@ const rootReducer = combineReducers({
   user: persistReducer(userPersistConfig, userReducer),
   product: productReducer,
   theme: themeReducer,
-  contact: contactReducer,
   coupon: couponReducer,
   cart: cartReducer,
   color: colorReducer,

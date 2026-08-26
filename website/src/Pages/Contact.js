@@ -2,7 +2,12 @@ import React from 'react'
 import { useDispatch } from 'react-redux'
 import * as yup from 'yup'
 import { useFormik } from 'formik'
-import { createQuery } from '@features/contact/contactSlice'
+import toast from 'react-hot-toast'
+// contactSlice/contactService nunca enviaban nada al backend (bug real de
+// firma de apiRequest, arrastraba restos de copy-paste de un servicio de
+// login) — createEnquiry es la misma feature ya probada en producción,
+// usada por el flujo de "Preguntar" de SingleProduct.js.
+import { createEnquiry } from '@features/enquiries/enquirySlice'
 import Meta from '@components/Meta.js'
 import BreadCrumb from '@components/BreadCrumb.js'
 import Container from '@components/Container.js'
@@ -15,10 +20,18 @@ const Contact = () => {
   const dispatch = useDispatch()
 
   const contactSchema = yup.object({
-    name: yup.string().required('Name is required'),
-    comment: yup.string().required('Comment is required'),
-    email: yup.string().required('Email is required'),
-    mobile: yup.string().required('Mobile is required'),
+    name: yup.string().trim().required('El nombre es obligatorio'),
+    comment: yup.string().trim().required('El comentario es obligatorio'),
+    email: yup
+      .string()
+      .trim()
+      .email('Email inválido')
+      .required('El email es obligatorio'),
+    mobile: yup
+      .string()
+      .trim()
+      .matches(/^\+?[0-9()\-\s]{10,20}$/, 'Teléfono inválido, incluí el código de área')
+      .required('El teléfono es obligatorio'),
   })
 
   const formik = useFormik({
@@ -29,8 +42,18 @@ const Contact = () => {
       comment: '',
     },
     validationSchema: contactSchema,
-    onSubmit: values => {
-      dispatch(createQuery(values))
+    onSubmit: async (values, { resetForm }) => {
+      try {
+        await dispatch(createEnquiry(values)).unwrap()
+        toast.success('¡Consulta enviada! Nos pondremos en contacto pronto.')
+        resetForm()
+      } catch (error) {
+        const message =
+          typeof error === 'string'
+            ? error
+            : error?.message || 'No se pudo enviar la consulta'
+        toast.error(message)
+      }
     },
   })
 
@@ -120,7 +143,13 @@ const Contact = () => {
                     </div>
                   </div>
                   <div>
-                    <button className="button border-0">Submit</button>
+                    <button
+                      type="submit"
+                      className="button border-0"
+                      disabled={formik.isSubmitting}
+                    >
+                      {formik.isSubmitting ? 'Enviando...' : 'Submit'}
+                    </button>
                   </div>
                 </form>
               </div>
