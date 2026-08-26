@@ -31,6 +31,7 @@ import { buildPlatformTenantDomains, isReservedSlug } from '../utils/domainUtils
 import {
   getUserIdFromRequest,
   isValidObjectId,
+  resolveAuthorizedTenantFromRequest,
 } from '../utils/requestContext.js'
 
 import expressAsyncHandler from 'express-async-handler'
@@ -1547,7 +1548,15 @@ export const saveAddress = [
 
 export const userCart = expressAsyncHandler(async (req, res) => {
   const userId = getRequestUserId(req)
-  const tenantId = req.tenantId
+  // req.tenantId solo (resuelto por dominio/header, controlable por el
+  // cliente) sin cruzarlo contra el tenant real del usuario autenticado
+  // permitía crear/leer/borrar carritos taggeados con un tenant ajeno al
+  // usuario. resolveAuthorizedTenantFromRequest es el mismo helper que ya
+  // usa el resto del panel (dashboardCtrl.js, tenantSettingsCtrl.js, etc.)
+  // para esa doble verificación.
+  const { tenantId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  })
   const {
     productId,
     quantity,
@@ -1704,7 +1713,9 @@ export const userCart = expressAsyncHandler(async (req, res) => {
 
 export const getUserCart = expressAsyncHandler(async (req, res) => {
   const userId = getRequestUserId(req)
-  const tenantId = req.tenantId
+  const { tenantId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  })
 
   requireValidId(userId, 'No autorizado')
   requireValidId(tenantId, 'tenantId inválido')
@@ -1740,7 +1751,9 @@ export const getUserCart = expressAsyncHandler(async (req, res) => {
 
 export const removeFromCart = expressAsyncHandler(async (req, res) => {
   const userId = getRequestUserId(req)
-  const tenantId = req.tenantId
+  const { tenantId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  })
   const { productId } = req.params
   const { variantId, cartKey } = req.query
 
@@ -1781,7 +1794,9 @@ export const removeFromCart = expressAsyncHandler(async (req, res) => {
 
 export const emptyCart = expressAsyncHandler(async (req, res) => {
   const userId = getRequestUserId(req)
-  const tenantId = req.tenantId
+  const { tenantId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  })
 
   requireValidId(userId, 'No autorizado')
   requireValidId(tenantId, 'tenantId inválido')
