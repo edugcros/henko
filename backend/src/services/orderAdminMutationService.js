@@ -118,6 +118,19 @@ export const cancelOrderWithInventoryRestore = async ({
     throw error
   }
 
+  // Una orden con pago ya aprobado no se puede "cancelar" sin más: cancelar
+  // solo ajusta el estado interno y restaura stock, nunca devuelve la plata
+  // al cliente. Forzar el flujo de reembolso evita que quede cobrada y
+  // marcada como cancelada sin ningún registro de que hay que reembolsarla.
+  if (order.paymentStatus === PAYMENT_STATUS.APPROVED) {
+    const error = new Error(
+      'Esta orden ya tiene el pago aprobado — cancelar no reembolsa el dinero automáticamente. Usá la acción de reembolso.',
+    )
+    error.statusCode = 409
+    error.code = 'ORDER_CANCEL_REQUIRES_REFUND'
+    throw error
+  }
+
   if (!order.stockRestoredAt && order.stockReservedAt) {
     await releaseReservedStock(order.products, tenantId)
 

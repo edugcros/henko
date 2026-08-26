@@ -1352,6 +1352,7 @@ export const cancelOrder = expressAsyncHandler(async (req, res) => {
 
     return res.status(error.statusCode || 400).json({
       success: false,
+      code: error.code,
       message: error.message,
     })
   }
