@@ -52,6 +52,7 @@ export const sendVerificationEmail = async (
 
   return sendEmail({
     to: user.email,
+    tenantConfig: tenant || {},
     subject: `Bienvenido a ${sanitizeString(tenantName)} - Verificá tu cuenta`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; line-height: 1.5;">
@@ -87,7 +88,7 @@ export const sendVerificationEmail = async (
 // Reset password email
 // =====================================================
 
-export const sendResetPasswordEmail = async (user, resetUrl) => {
+export const sendResetPasswordEmail = async (user, resetUrl, tenant = null) => {
   if (!user?.email) {
     throw new Error('Usuario inválido para envío de email')
   }
@@ -133,6 +134,7 @@ export const sendResetPasswordEmail = async (user, resetUrl) => {
 
   return sendEmail({
     to: user.email,
+    tenantConfig: tenant || {},
     subject: 'Restablecer contraseña',
     html,
     text: `Restablecé tu contraseña aquí: ${resetUrl}`,
@@ -196,6 +198,7 @@ export const sendPasswordChangedEmail = async (user, tenantOrName = null) => {
 
   return sendEmail({
     to: user.email,
+    tenantConfig: tenant || {},
     subject: `Tu contraseña de ${sanitizeString(tenantName)} fue modificada`,
     html,
     text: `La contraseña de tu cuenta en ${tenantName} se cambió recientemente. Si no fuiste vos, restablecela de inmediato.`,
