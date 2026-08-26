@@ -18,7 +18,6 @@ import couponReducer from '@features/coupon/couponSlice'
 import cartReducer from '@features/cart/cartSlice'
 import colorReducer from '@features/colors/colorSlice'
 import enquiryReducer from '@features/enquiries/enquirySlice'
-import productCategoryReducer from '@features/productCategories/productCategorySlice'
 import orderReducer from '@features/orders/orderSlice'
 import compareReducer from '@features/compare/compareSlice'
 import themeReducer from '@features/theme/themeSlice'
@@ -42,7 +41,6 @@ const rootReducer = combineReducers({
   cart: cartReducer,
   color: colorReducer,
   enquiry: enquiryReducer,
-  productCategory: productCategoryReducer,
   order: orderReducer,
   compare: compareReducer,
   promotionalBlocks: promotionalBlocksReducer,

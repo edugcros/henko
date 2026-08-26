@@ -8,7 +8,6 @@ import couponReducer from '@features/coupons/couponSlice'
 import customerReducer from '@features/customers/customerSlice'
 import enquiryReducer from '@features/enquiry/enquirySlice'
 import productReducer from '@features/product/productSlice'
-import uploadReducer from '@features/upload/uploadSlice'
 import themeReducer from '@features/theme/themeSlice.js'
 import orderReducer from '@features/order/orderSlice.js'
 import promotionalBlocksReducer from '@features/promotionalBlocks/promotionalBlocksSlice'
@@ -26,7 +25,6 @@ const rootReducer = combineReducers({
   customers: customerReducer,
   dashboard: dashboardReducer,
   enquiry: enquiryReducer,
-  upload: uploadReducer,
   coupon: couponReducer,
   theme: themeReducer,
   order: orderReducer,
