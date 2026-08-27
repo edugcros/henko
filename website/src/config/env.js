@@ -46,6 +46,19 @@ const hasInternalWhitespace = value => {
   return /\s/.test(String(value || ''))
 }
 
+// REACT_APP_API_BASE_URL puede ser una ruta relativa ("/api") en vez de una
+// URL absoluta — necesario cuando el backend vive en un dominio distinto al
+// frontend (Vercel vs. Render) y se resuelve con un rewrite de proxy en
+// vercel.json en vez de pegarle directo. Los navegadores modernos bloquean
+// cookies de terceros por default: si el frontend está en foo.vercel.app y
+// el backend en bar.onrender.com, cualquier cookie httpOnly que el backend
+// intente setear (token/refreshToken/_csrf) es de tercero y el navegador la
+// descarta — el login "funciona" pero la sesión nunca persiste. Con una
+// ruta relativa, las requests salen hacia el propio dominio del frontend y
+// Vercel las reenvía server-side; para el navegador nunca salieron de un
+// solo origen, así que las cookies quedan de primera parte.
+const isRelativeApiPath = value => /^\/(?!\/)/.test(String(value || '').trim())
+
 const nodeEnv =
   getValue('REACT_APP_NODE_ENV') || process.env.NODE_ENV || 'development'
 
@@ -138,13 +151,18 @@ if (
 }
 
 if (env.isProduction) {
-  if (!/^https:\/\//i.test(String(env.apiBaseUrl || ''))) {
+  const apiBaseUrlIsRelative = isRelativeApiPath(env.apiBaseUrl)
+
+  if (!apiBaseUrlIsRelative && !/^https:\/\//i.test(String(env.apiBaseUrl || ''))) {
     throw new Error(
       `REACT_APP_API_BASE_URL debe usar HTTPS en producción: ${env.apiBaseUrl}`,
     )
   }
 
-  if (/localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(String(env.apiBaseUrl || ''))) {
+  if (
+    !apiBaseUrlIsRelative &&
+    /localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(String(env.apiBaseUrl || ''))
+  ) {
     throw new Error(
       `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
     )

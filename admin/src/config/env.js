@@ -68,6 +68,21 @@ const isValidUrl = value => {
   }
 }
 
+// REACT_APP_API_BASE_URL puede ser una ruta relativa ("/api") en vez de una
+// URL absoluta — es el caso cuando el backend vive en un dominio distinto al
+// frontend (Vercel vs. Render, por ejemplo) y se resuelve con un rewrite de
+// proxy en vercel.json en vez de pegarle directo. Los navegadores modernos
+// bloquean cookies de terceros por default: si el frontend está en
+// foo.vercel.app y el backend en bar.onrender.com, cualquier cookie httpOnly
+// que el backend intente setear (token/refreshToken/_csrf) es de tercero y
+// el navegador la descarta — el login "funciona" pero la sesión nunca
+// persiste. Con una ruta relativa, las requests salen hacia el propio
+// dominio del frontend y Vercel las reenvía server-side; para el navegador
+// nunca salieron de un solo origen, así que las cookies quedan de primera
+// parte. Sin dominio propio compartido entre frontend y backend, es la
+// única forma de que el login por cookie httpOnly funcione de verdad.
+const isRelativeApiPath = value => /^\/(?!\/)/.test(clean(value))
+
 const hasPlaceholder = value => {
   const normalized = clean(value).toUpperCase()
 
@@ -169,7 +184,7 @@ if (!env.apiBaseUrl) {
   throw new Error('REACT_APP_API_BASE_URL es obligatorio')
 }
 
-if (!isValidUrl(env.apiBaseUrl)) {
+if (!isRelativeApiPath(env.apiBaseUrl) && !isValidUrl(env.apiBaseUrl)) {
   throw new Error(`REACT_APP_API_BASE_URL inválido: ${env.apiBaseUrl}`)
 }
 
@@ -179,7 +194,7 @@ if (!env.apiBaseUrl.endsWith('/api')) {
   )
 }
 
-if (env.apiUrl && !isValidUrl(env.apiUrl)) {
+if (env.apiUrl && !isRelativeApiPath(env.apiUrl) && !isValidUrl(env.apiUrl)) {
   throw new Error(`REACT_APP_API_URL inválido: ${env.apiUrl}`)
 }
 
@@ -220,7 +235,7 @@ if (env.isProduction) {
     )
   }
 
-  if (!isHttpsUrl(env.apiBaseUrl)) {
+  if (!isRelativeApiPath(env.apiBaseUrl) && !isHttpsUrl(env.apiBaseUrl)) {
     throw new Error(
       `REACT_APP_API_BASE_URL debe usar HTTPS en producción: ${env.apiBaseUrl}`,
     )
