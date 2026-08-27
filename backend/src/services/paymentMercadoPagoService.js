@@ -16,9 +16,22 @@ const MP_TO_DOMAIN_PAYMENT_STATUS = {
   approved: PAYMENT_STATUS.APPROVED,
   pending: PAYMENT_STATUS.PENDING,
   in_process: PAYMENT_STATUS.PENDING,
+  // authorized: el pago quedó reservado/autorizado pero todavía no
+  // capturado (flujos de captura diferida) — no es dinero cobrado
+  // todavía, así que va al mismo bucket que in_process, no a approved.
+  authorized: PAYMENT_STATUS.PENDING,
+  // in_mediation: el pago entró en disputa — todavía no es un resultado
+  // final, se resuelve más adelante como approved/refunded/etc.
+  in_mediation: PAYMENT_STATUS.PENDING,
   rejected: PAYMENT_STATUS.REJECTED,
   cancelled: PAYMENT_STATUS.CANCELLED,
   refunded: PAYMENT_STATUS.REFUNDED,
+  // charged_back: el banco del cliente reversó un pago ya aprobado
+  // (contracargo). No hay un status de dominio dedicado para esto — se
+  // mapea a refunded porque el efecto real es el mismo (la plata ya no
+  // está, no hay que despachar/mantener la reserva de stock) y activa
+  // el mismo camino de liberación de stock (NEGATIVE_PAYMENT_STATUSES).
+  charged_back: PAYMENT_STATUS.REFUNDED,
 }
 
 export const FINAL_PAYMENT_STATUSES = new Set([
