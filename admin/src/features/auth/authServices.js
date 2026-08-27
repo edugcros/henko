@@ -226,8 +226,18 @@ const resetPassword = async ({ token, password }) => {
 // ======================================================
 
 const getCurrentUser = async () => {
+  // silentAuthCheck: esto se llama en el bootstrap de useAuth.js, en TODAS
+  // las páginas incluida /login, para cualquier visitante tenga o no
+  // sesión. Si no hay sesión, /me responde 401 y el interceptor intenta
+  // refrescar — eso está bien (restaura la sesión sola si el refresh
+  // token sigue vivo). Lo que no puede pasar es que, si el refresh
+  // TAMBIÉN falla, el interceptor haga el redirect duro a /login que ya
+  // hace para requests normales: en /login eso recarga la página, lo que
+  // vuelve a montar useAuth(), que vuelve a llamar acá — bucle infinito.
+  // Ver axiosConfig.js, el catch del bloque de refresh.
   const response = await apiRequest('get', '/me', undefined, {
     skipCsrf: false,
+    silentAuthCheck: true,
   })
 
   const normalized = normalizeAuthResponse(response)

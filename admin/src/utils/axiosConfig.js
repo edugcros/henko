@@ -323,7 +323,14 @@ api.interceptors.response.use(
 
         return api(originalRequest)
       } catch (refreshError) {
-        if (typeof window !== 'undefined') {
+        // silentAuthCheck (useAuth.js::bootstrap, vía getCurrentUser): esta
+        // request corre en TODAS las páginas, incluida /login, para
+        // cualquier visitante tenga o no sesión. Redirigir acá cuando
+        // falla el refresh recargaría /login — remonta App.js, que vuelve
+        // a disparar el mismo chequeo, que vuelve a fallar: bucle
+        // infinito. getMe.rejected (authSlice.js) ya deja
+        // isAuthenticated:false sin necesidad de este redirect.
+        if (typeof window !== 'undefined' && !originalRequest.silentAuthCheck) {
           window.location.href = '/login'
         }
 
