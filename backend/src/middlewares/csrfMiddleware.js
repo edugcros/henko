@@ -2,58 +2,7 @@
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import crypto from 'node:crypto'
-
-/**
- * Determina el dominio de cookie de forma segura.
- *
- * Reglas:
- * - localhost / 127.0.0.1 => undefined
- * - root domain de plataforma => .rootDomain
- * - subdominios bajo root domain => .rootDomain
- * - henko.local en development => .henko.local
- * - custom domains externos => undefined
- */
-export const getCookieDomain = req => {
-  const host = String(
-    req.hostname ||
-      req.get('host')?.split(':')[0] ||
-      '',
-  )
-    .trim()
-    .toLowerCase()
-
-  if (!host || host === 'localhost' || host === '127.0.0.1') {
-    return undefined
-  }
-
-  const rootDomain = String(
-    env.rootDomain ||
-      env.publicBaseDomain ||
-      '',
-  )
-    .replace(/^\./, '')
-    .trim()
-    .toLowerCase()
-
-  if (rootDomain && host === rootDomain) {
-    return `.${rootDomain}`
-  }
-
-  if (rootDomain && host.endsWith(`.${rootDomain}`)) {
-    return `.${rootDomain}`
-  }
-
-  // Desarrollo local tipo *.local
-  if (env.isDevelopment && host.endsWith('.local')) {
-    const parts = host.split('.')
-    const rootLocal = parts.slice(-2).join('.')
-    return `.${rootLocal}`
-  }
-
-  // Custom domains externos:
-  // no seteamos domain global; el navegador la asocia al host exacto.
-  return undefined
-}
+import { getCookieDomain } from '../utils/cookieHelper.js'
 
 /**
  * Middleware CSRF recomendado para arquitectura multi-tenant.
