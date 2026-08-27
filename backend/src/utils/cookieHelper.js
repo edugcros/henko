@@ -1,31 +1,17 @@
 // backend/src/utils/cookieHelper.js
-import { env } from '../../config/env.js'
 
-export const getCookieDomain = req => {
-  // 1. Obtenemos el host actual (dinámico)
-  const host = req.hostname || req.get('host')?.split(':')[0]
-
-  // 2. Si es localhost, devolvemos undefined (obligatorio para navegadores)
-  if (!host || host === 'localhost' || host === '127.0.0.1') return undefined
-
-  // 3. CASO ESPECIAL: Si el host es tu dominio principal (SaaS)
-  // Usamos la variable de entorno para asegurar que sea .henkoapp.com
-  const rootDomain = String(env.rootDomain || env.publicBaseDomain || '')
-    .replace(/^\./, '')
-    .trim()
-    .toLowerCase()
-
-  if (rootDomain && host.includes(rootDomain)) {
-    return `.${rootDomain}`
-  }
-
-  // 4. CASO TENANT: Si es un dominio de cliente diferente (tienda-pepe.com)
-  const parts = host.split('.')
-  if (parts.length >= 2) {
-    // Si el dominio termina en algo simple como .com, .local, .net
-    // El slice(-2) funciona perfecto.
-    return `.${parts.slice(-2).join('.')}`
-  }
-
-  return undefined
-}
+// Único lugar que decide el scope de dominio de las cookies de sesión
+// (token/refreshToken/_csrf) — antes había una segunda implementación
+// duplicada en csrfMiddleware.js que divergía de esta para dominios
+// custom de tenant (una caía a .parentdomain, la otra a host-only).
+//
+// Siempre host-only (sin Domain) a propósito: si se scopea al dominio
+// raíz compartido (.henkoapp.com), admin.tenant.henkoapp.com y
+// shop.tenant.henkoapp.com terminan compartiendo la MISMA cookie en el
+// mismo navegador — la sesión más reciente pisa a la anterior. Admin y
+// storefront son dos flujos de login independientes (potencialmente
+// personas distintas en el mismo dispositivo) y no tienen que compartir
+// cookie jar entre sí. El aislamiento entre tenants no depende de esto
+// de todos modos: lo hace el claim tenantId del JWT, validado en cada
+// request server-side.
+export const getCookieDomain = () => undefined

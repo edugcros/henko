@@ -54,6 +54,7 @@ const MAX_CART_QUANTITY = Number(process.env.MAX_CART_QUANTITY || 99)
 const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 const DEFAULT_REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const DEFAULT_ACCESS_COOKIE_MAX_AGE_MS = 15 * 60 * 1000
 const shouldSendTransactionalEmail = () => env.nodeEnv !== 'test'
 
 /**
@@ -167,6 +168,10 @@ const getRefreshCookieMaxAge = () => {
     process.env.JWT_REFRESH_EXPIRES,
     DEFAULT_REFRESH_COOKIE_MAX_AGE_MS,
   )
+}
+
+const getAccessCookieMaxAge = () => {
+  return parseDurationToMs(env.jwtAccessExpires, DEFAULT_ACCESS_COOKIE_MAX_AGE_MS)
 }
 
 const buildTenantDomains = storeSlug => {
@@ -335,15 +340,34 @@ const clearAuthCookies = (res, req) => {
   })
 }
 
-const sendAuthCookies = (res, req, refreshToken) => {
+// Fase 1 del refactor de storage de JWT: agrega la cookie httpOnly del
+// access token, sin tocar los bodies JSON de login/refresh todavía — el
+// frontend viejo (que sigue leyendo data.token) no se entera del cambio.
+// Ver el plan completo en el repo de planes de la sesión.
+const sendAuthCookies = (res, req, refreshToken, accessToken) => {
+  const secure = env.cookieSecure ?? isProd
+  const sameSite = env.cookieSameSite || (isProd ? 'None' : 'Lax')
+  const domain = getCookieDomain(req)
+
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: env.cookieSecure ?? isProd,
-    sameSite: env.cookieSameSite || (isProd ? 'None' : 'Lax'),
-    domain: getCookieDomain(req),
+    secure,
+    sameSite,
+    domain,
     path: '/',
     maxAge: getRefreshCookieMaxAge(),
   })
+
+  if (accessToken) {
+    res.cookie('token', accessToken, {
+      httpOnly: true,
+      secure,
+      sameSite,
+      domain,
+      path: '/',
+      maxAge: getAccessCookieMaxAge(),
+    })
+  }
 }
 
 const toSafeQuantity = value => {
@@ -915,7 +939,7 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
     },
   ).setOptions({ ignoreTenant: true })
 
-  sendAuthCookies(res, req, refreshToken)
+  sendAuthCookies(res, req, refreshToken, accessToken)
 
   logger.info(`Login exitoso: ${email} (${user.role}) | tenant=${tenant._id}`)
 
@@ -1013,7 +1037,7 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
 
   user.refreshToken = hashedJti
   await user.save({ validateBeforeSave: false })
-  sendAuthCookies(res, req, newRefreshToken)
+  sendAuthCookies(res, req, newRefreshToken, newAccessToken)
 
   logger.info(`Tokens renovados exitosamente para ${user.email}`)
 
