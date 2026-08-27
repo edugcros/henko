@@ -95,20 +95,9 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
 
     const csrfToken = shouldUseCsrf ? await ensureCsrf() : null
 
-    const isValidToken = token => {
-      return (
-        token &&
-        token !== 'null' &&
-        token !== 'undefined' &&
-        String(token).trim() !== ''
-      )
-    }
-
-    const rawToken =
-      localStorage.getItem('token') || Cookies.get('token') || null
-
-    const token = isValidToken(rawToken) ? rawToken : null
-
+    // Sin Authorization manual: el access token vive en una cookie httpOnly
+    // desde el backend (fase 1 del refactor de JWT) — withCredentials:true
+    // ya la manda sola, y JS no puede (ni debe poder) leerla.
     const config = {
       method,
       url: `/user${endpoint}`,
@@ -116,7 +105,6 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
       ...options,
       headers: {
         Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
         ...options.headers,
       },
@@ -193,17 +181,10 @@ const loginUser = async userData => {
       )
     }
 
-    const { token } = normalized
-
-    if (token) {
-      localStorage.setItem('token', token)
-    }
-
     return {
       success: true,
       data: {
         user: normalized?.user,
-        token: normalized?.token,
       },
     }
   } catch (error) {
@@ -259,7 +240,6 @@ const getCurrentUser = async () => {
     success: true,
     data: {
       user: normalized.user,
-      token: localStorage.getItem('token'),
     },
   }
 }
@@ -275,9 +255,7 @@ const logoutUser = async () => {
     })
 
     sessionStorage.clear()
-    localStorage.removeItem('token')
 
-    Cookies.remove('token', { path: '/' })
     Cookies.remove('X-CSRF-Token', { path: '/' })
     Cookies.remove('XSRF-TOKEN', { path: '/' })
     Cookies.remove('_csrf', { path: '/' })
@@ -290,9 +268,7 @@ const logoutUser = async () => {
     }
   } catch (error) {
     sessionStorage.clear()
-    localStorage.removeItem('token')
 
-    Cookies.remove('token', { path: '/' })
     Cookies.remove('X-CSRF-Token', { path: '/' })
     Cookies.remove('XSRF-TOKEN', { path: '/' })
     Cookies.remove('_csrf', { path: '/' })
@@ -399,23 +375,13 @@ const refreshToken = async () => {
       throw new Error(response.data?.message || 'Refresh inválido')
     }
 
-    const normalized = normalizeAuthResponse(response.data)
-    const token =
-      normalized?.token || response.data?.token || response.data?.accessToken
-
-    if (!token) {
-      throw new Error('Token ausente en refresh')
-    }
-
-    localStorage.setItem('token', token)
-
+    // El refresh ya rotó y re-seteó la cookie httpOnly del access token
+    // server-side (fase 1 del refactor de JWT) — esta llamada a /me no
+    // necesita adjuntar nada a mano, viaja con la cookie nueva sola.
     const me = await api.get('/user/me', {
       withCredentials: true,
       skipAuthRefresh: true,
       skipCsrfRetry: true,
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
     })
 
     const user =
@@ -423,15 +389,10 @@ const refreshToken = async () => {
 
     return {
       success: true,
-      data: {
-        user,
-        token,
-      },
+      data: { user },
     }
   } catch (error) {
     sessionStorage.removeItem('user')
-    localStorage.removeItem('token')
-    Cookies.remove('token', { path: '/' })
 
     return {
       success: false,

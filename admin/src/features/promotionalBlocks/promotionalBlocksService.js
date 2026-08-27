@@ -1,11 +1,7 @@
 // 📁 src/features/promotionalBlocks/promotionalBlocksService.js
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
-import Cookies from 'js-cookie'
 
 const BASE_URL = '/promotional-blocks'
-
-const getAuthToken = () =>
-  Cookies.get('token') || localStorage.getItem('token') || null
 
 const getTenantDomain = () => {
   if (typeof window === 'undefined') return undefined
@@ -37,8 +33,7 @@ const extractErrorMessage = (
  *
  * Respeta el mismo patrón de productService:
  * - CSRF automático
- * - Authorization Bearer
- * - withCredentials
+ * - withCredentials (cookie httpOnly del access token)
  * - params
  * - headers extra
  * - X-Tenant-Domain para resolución multi-tenant
@@ -51,7 +46,6 @@ const apiRequest = async (
 ) => {
   try {
     const csrfToken = await fetchCsrfToken()
-    const token = getAuthToken()
 
     const {
       headers: customHeaders = {},
@@ -67,7 +61,6 @@ const apiRequest = async (
       Accept: 'application/json',
       'Content-Type': 'application/json',
       ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(includeTenantDomain && tenantDomain
         ? { 'X-Tenant-Domain': tenantDomain }
         : {}),

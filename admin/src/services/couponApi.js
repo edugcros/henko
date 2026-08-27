@@ -1,6 +1,5 @@
 // src/services/couponApi.js
 import api from '@utils/axiosConfig'
-import Cookies from 'js-cookie'
 
 // ======================================================
 // CONFIGURACIÓN
@@ -12,10 +11,6 @@ const MAX_RETRIES = 2
 // ======================================================
 // UTILIDADES
 // ======================================================
-
-const getAuthToken = () => {
-  return localStorage.getItem('token') || Cookies.get('token') || null
-}
 
 export const getTenantId = (source = {}) => {
   const tenantId =
@@ -53,11 +48,6 @@ const buildHeaders = (options = {}) => {
 
   if (hasBody) {
     headers['Content-Type'] = 'application/json'
-  }
-
-  const token = getAuthToken()
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
   }
 
   return headers

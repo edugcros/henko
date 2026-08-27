@@ -1,16 +1,5 @@
 // 📁 src/features/product/productService.js
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
-import Cookies from 'js-cookie'
-
-const getAuthToken = () => {
-  const token = Cookies.get('token') || localStorage.getItem('token') || null
-
-  if (!token || token === 'null' || token === 'undefined') {
-    return null
-  }
-
-  return token
-}
 
 const extractErrorMessage = (error, fallback = 'API Error') => {
   return (
@@ -104,7 +93,6 @@ const normalizeAiProductPayload = productData => {
 const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
   try {
     const csrfToken = await fetchCsrfToken()
-    const token = getAuthToken()
 
     const {
       headers: customHeaders = {},
@@ -116,7 +104,6 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     const headers = {
       Accept: 'application/json',
       ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...customHeaders,
     }
 

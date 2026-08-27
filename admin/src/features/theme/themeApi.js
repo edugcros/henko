@@ -1,6 +1,5 @@
 // src/features/theme/themeApi.js - VERSIÓN PRODUCCIÓN REFACTORIZADA
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
-import Cookies from 'js-cookie'
 import { sanitizePayload, normalizeImageAsset } from './utils/themeSanitizer.js'
 
 export { normalizeImageAsset }
@@ -19,8 +18,6 @@ const UPLOAD_TIMEOUT = 60000
 // UTILIDADES INTERNAS
 // ==========================================
 
-const getAuthToken = () => Cookies.get('token')
-
 /**
  * Construye headers según tipo de request
  */
@@ -35,9 +32,8 @@ const buildHeaders = async ({ isMultipart = false, customHeaders = {} }) => {
     console.warn('[ThemeAPI] No se pudo obtener CSRF token')
   }
 
-  // Auth
-  const token = getAuthToken()
-  if (token) headers.Authorization = `Bearer ${token}`
+  // Sin Authorization manual: el access token vive en una cookie httpOnly
+  // desde el backend, withCredentials:true (axiosConfig.js) ya la manda sola.
 
   // Content-Type solo si NO es FormData (axios lo setea con boundary)
   if (!isMultipart) {
