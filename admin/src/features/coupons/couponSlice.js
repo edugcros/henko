@@ -565,17 +565,19 @@ export const couponSlice = createSlice({
         state.isLoading = false
         state.isSuccess = true
         state.assignmentResult = action.payload
-        // Actualizar en lista si existe
-        const index = state.coupons.findIndex(
-          c => c.id === action.payload?.id || c._id === action.payload?._id,
-        )
+        // Actualizar en lista si existe.
+        //
+        // Solo se compara .id: normalizeCoupon (couponService.js) siempre
+        // devuelve {id, ...}, nunca ._id — el OR con c._id === payload._id
+        // comparaba undefined === undefined, que es cierto para el PRIMER
+        // cupón del array sin importar cuál se acababa de asignar, así que
+        // findIndex devolvía 0 siempre y se sobreescribía el cupón
+        // equivocado.
+        const index = state.coupons.findIndex(c => c.id === action.payload?.id)
         if (index !== -1) {
           state.coupons[index] = action.payload
         }
-        if (
-          state.currentCoupon?.id === action.payload?.id ||
-          state.currentCoupon?._id === action.payload?._id
-        ) {
+        if (state.currentCoupon?.id === action.payload?.id) {
           state.currentCoupon = action.payload
         }
       })
