@@ -12,7 +12,7 @@ import UserMetricEvent, {
 import { resolveCartPricing } from '../services/cartPricingService.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import { env } from '../../config/env.js'
-import { verifyRefreshToken } from '../../config/generateRefreshToken.js'
+import { verifyRefreshToken, hashRefreshJti } from '../../config/generateRefreshToken.js'
 import { generateAccessToken } from '../../config/generateAccessToken.js'
 import { generateRefreshToken } from '../../config/generateRefreshToken.js'
 
@@ -39,7 +39,6 @@ import { body, validationResult } from 'express-validator'
 import rateLimit from 'express-rate-limit'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
-import bcrypt from 'bcrypt'
 import process from 'process'
 import mongoose from 'mongoose'
 
@@ -1002,44 +1001,49 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
     return sendResponse(res, 403, false, 'Token inválido o expirado')
   }
 
-  const user = await User.findById(decoded.sub)
-    .select('+refreshToken role tenantId email isBlocked')
-    .setOptions({ ignoreTenant: true })
-
-  if (!user || !user.refreshToken || user.isBlocked) {
-    return sendResponse(res, 403, false, 'Usuario inválido')
-  }
-
-  const isValidJti = await bcrypt.compare(decoded.jti, user.refreshToken)
-  if (!isValidJti) {
-    user.refreshToken = null
-    await user.save({ validateBeforeSave: false })
-    return sendResponse(res, 403, false, 'Token de refresco inválido')
-  }
-
-  const tenant = await Tenant.findById(user.tenantId).select('_id status')
+  const tenant = await Tenant.findById(decoded.tenantId).select('_id status')
   if (!tenant || tenant.status !== 'active') {
     return sendResponse(res, 403, false, 'Tenant inválido o inactivo')
   }
 
-  const newAccessToken = generateAccessToken(user._id, {
-    role: user.role,
-    tenantId: user.tenantId,
+  const { refreshToken: newRefreshToken, hashedJti: newHashedJti } =
+    await generateRefreshToken(decoded.sub, {
+      tenantId: decoded.tenantId,
+      role: decoded.role,
+    })
+
+  // Rotación atómica: compare-and-swap sobre el hash determinístico del jti
+  // vigente (ver hashRefreshJti en generateRefreshToken.js — antes esto era
+  // un read → bcrypt.compare → write en 3 pasos separados, sin atomicidad).
+  // Dos requests de refresh casi simultáneas (varios componentes del
+  // dashboard reaccionando en paralelo a un access token vencido tras un
+  // reload, cada uno disparando su propio refresh) podían leer el MISMO
+  // refreshToken válido, pasar las dos el compare, y pisarse la escritura
+  // una a la otra: la cookie que terminaba en el navegador podía no
+  // coincidir con lo que quedó persistido, y el PRÓXIMO refresh fallaba con
+  // "Token de refresco inválido" aunque la sesión fuera legítima — esto
+  // hace que solo UNA de las dos requests concurrentes pueda ganar la
+  // carrera; la otra no matchea ningún documento en vez de corromper el
+  // estado.
+  const updatedUser = await User.findOneAndUpdate(
+    { _id: decoded.sub, refreshToken: hashRefreshJti(decoded.jti) },
+    { $set: { refreshToken: newHashedJti } },
+  )
+    .select('+refreshToken role tenantId email isBlocked')
+    .setOptions({ ignoreTenant: true })
+
+  if (!updatedUser || updatedUser.isBlocked) {
+    return sendResponse(res, 403, false, 'Token de refresco inválido')
+  }
+
+  const newAccessToken = generateAccessToken(updatedUser._id, {
+    role: updatedUser.role,
+    tenantId: updatedUser.tenantId,
   })
 
-  const { refreshToken: newRefreshToken, hashedJti } = await generateRefreshToken(
-    user._id,
-    {
-      tenantId: user.tenantId,
-      role: user.role,
-    },
-  )
-
-  user.refreshToken = hashedJti
-  await user.save({ validateBeforeSave: false })
   sendAuthCookies(res, req, newRefreshToken, newAccessToken)
 
-  logger.info(`Tokens renovados exitosamente para ${user.email}`)
+  logger.info(`Tokens renovados exitosamente para ${updatedUser.email}`)
 
   return res.status(200).json({
     success: true,
