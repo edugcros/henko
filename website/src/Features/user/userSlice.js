@@ -2,7 +2,6 @@
 import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit'
 import userService from '@features/user/userService'
 import { toast } from 'react-toastify'
-import Cookies from 'js-cookie'
 
 /**
  * userSlice.js
@@ -46,10 +45,6 @@ const safeStorage = {
    Estado inicial
    --------------------------- */
 const initialUser = safeStorage.getUser()
-const initialToken =
-  Cookies.get('token') ||
-  (typeof window !== 'undefined' ? localStorage.getItem('token') : null) ||
-  null
 const initialWishlist = (() => {
   try {
     const raw = sessionStorage.getItem('wishlist')
@@ -61,9 +56,13 @@ const initialWishlist = (() => {
 
 const initialState = {
   user: safeStorage.getUser(),
-  token: initialToken,
   csrfToken: sessionStorage.getItem('csrfToken'),
-  isAuthenticated: !!safeStorage.getUser() && !!initialToken,
+  // El access token vive en una cookie httpOnly desde el backend — JS no
+  // puede leerla para saber si hay sesión viva. Un user cacheado en
+  // sessionStorage no es prueba de sesión (puede ser viejo/stale);
+  // isAuthenticated arranca en false y getMe() (dispatchado por
+  // useAuth.js al montar la app) es la única fuente de verdad real.
+  isAuthenticated: false,
   wishlist: initialWishlist,
   admin: null,
 
@@ -106,8 +105,10 @@ export const selectUser = state => state.user?.user
 
 /**
  * loginUser
- * - userService.loginUser devuelve { success, data: { user, token } }
- * - Guardamos usuario y token (si vienen) en sessionStorage + cookie
+ * - userService.loginUser devuelve { success, data: { user } } — el access
+ *   token va en una cookie httpOnly que setea el backend, nunca en el body.
+ * - Guardamos solo el usuario en sessionStorage (cache de display, no de
+ *   sesión: getMe() sigue siendo quien confirma si la sesión es real).
  */
 export const loginUser = createAsyncThunk(
   'user/login',
@@ -120,15 +121,14 @@ export const loginUser = createAsyncThunk(
         return rejectWithValue(res?.message || 'Credenciales incorrectas')
       }
 
-      const { user, token, csrfToken } = res.data
+      const { user, csrfToken } = res.data
 
-      // 🔥 CRÍTICO: Si el login nos da un token nuevo, lo inyectamos en el estado inmediatamente
       if (csrfToken) {
         dispatch(setCsrfToken(csrfToken))
       }
 
       safeStorage.setUser(user)
-      return { user, token }
+      return { user }
     } catch (err) {
       // Evitamos el "error is not defined" asegurando que usamos 'err'
       const message =
@@ -145,13 +145,12 @@ export const refreshSession = createAsyncThunk(
       const res = await userService.refreshToken()
       if (!res?.success) throw new Error('Sesión expirada')
 
-      const { user, token, csrfToken } = res.data
+      const { csrfToken } = res.data || {}
 
       // Sincronizamos el nuevo CSRF que suele venir con el refresh
       if (csrfToken) dispatch(setCsrfToken(csrfToken))
 
-      safeStorage.setUser(user)
-      return { user, token }
+      return {}
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Sesión expirada')
     }
@@ -167,7 +166,6 @@ export const logoutUser = createAsyncThunk(
     try {
       const res = await userService.logoutUser()
       safeStorage.removeUser()
-      Cookies.remove('token')
       toast.success('Sesión cerrada correctamente')
       return res
     } catch (err) {
@@ -280,9 +278,9 @@ export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
       )
     }
 
-    const { user, token } = response.data
+    const { user } = response.data
     safeStorage.setUser(user)
-    return { user, token }
+    return { user }
   } catch (error) {
     return thunkAPI.rejectWithValue(
       error.response?.data || 'Error al obtener perfil',
@@ -403,7 +401,6 @@ const userSlice = createSlice({
     // Reset completo de auth (logout forzado)
     resetAuthState: state => {
       state.user = null
-      state.token = null
       state.csrfToken = null
       state.isAuthenticated = false
       state.isSuccess = false
@@ -412,8 +409,6 @@ const userSlice = createSlice({
       state.message = ''
       state.wishlist = []
       safeStorage.removeUser()
-      localStorage.removeItem('token')
-      Cookies.remove('token')
     },
     // Reemplazar wishlist manualmente (útil para sync)
     setWishlist: (state, action) => {
@@ -440,7 +435,6 @@ const userSlice = createSlice({
         state.isSuccess = true
         state.isAuthenticated = true
         state.user = action.payload.user
-        state.token = action.payload.token
         state.isError = false
         state.message = ''
       })
@@ -460,14 +454,12 @@ const userSlice = createSlice({
       .addCase(getMe.fulfilled, (state, action) => {
         state.isLoading = false
         state.user = action.payload?.user || null
-        state.token = action.payload?.token || null
         state.isAuthenticated = Boolean(action.payload?.user)
         state.isError = false
       })
       .addCase(getMe.rejected, (state, action) => {
         state.isLoading = false
         state.user = null
-        state.token = null
         state.isAuthenticated = false
         state.isError = true
         state.message =
@@ -527,16 +519,12 @@ const userSlice = createSlice({
         state.isError = action.payload
       })
 
-      // REFRESH SESSION
-      .addCase(refreshSession.fulfilled, (state, action) => {
-        state.user = action.payload.user
-        state.token = action.payload.token
-        state.isAuthenticated = true
-        safeStorage.setUser(action.payload.user)
-      })
+      // REFRESH SESSION — rota la cookie httpOnly server-side; no trae user
+      // (nunca lo trajo: userService.refreshToken() solo devuelve
+      // {success, data:{csrfToken}}), así que no toca isAuthenticated/user
+      // acá. getMe() sigue siendo la única fuente de verdad de sesión.
       .addCase(refreshSession.rejected, state => {
         state.user = null
-        state.token = null
         state.isAuthenticated = false
         safeStorage.removeUser()
       })
@@ -550,7 +538,6 @@ const userSlice = createSlice({
         state.isSuccess = true // Cambiar a true indica que la acción de logout terminó bien
         state.isError = false
         state.user = null
-        state.token = null
         state.isAuthenticated = false
         state.csrfToken = null
         state.wishlist = []
@@ -565,7 +552,6 @@ const userSlice = createSlice({
 
         // --- Limpieza de Estado ---
         state.user = null
-        state.token = null
         state.csrfToken = null
         state.isAuthenticated = false
         state.wishlist = []

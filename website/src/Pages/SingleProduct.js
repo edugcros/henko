@@ -854,12 +854,6 @@ const getCatalogTags = product => {
   ].slice(0, 14)
 }
 
-const hasClientAuthToken = () => {
-  if (typeof window === 'undefined') return false
-  const token = window.localStorage.getItem('token')
-  return Boolean(token && token !== 'null' && token !== 'undefined')
-}
-
 const SectionTitle = ({ label, eyebrow }) => (
   <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2.5 }}>
     <Divider sx={{ flex: 1, opacity: 0.8 }} />
@@ -1478,7 +1472,7 @@ const SingleProduct = () => {
   ])
 
   const handleRateSubmit = async () => {
-    const canRate = Boolean(user && (isAuthenticated || hasClientAuthToken()))
+    const canRate = Boolean(user && isAuthenticated)
 
     if (!canRate) {
       toast.error('Iniciá sesión para calificar')

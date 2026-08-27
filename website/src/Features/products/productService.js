@@ -20,7 +20,6 @@ const apiRequest = async (
   const normalizedMethod = method.toLowerCase()
   const isReadOnly = ['get', 'head', 'options'].includes(normalizedMethod)
 
-  const token = localStorage.getItem('token')
   const csrfToken = isReadOnly ? null : await ensureCsrf()
 
   const config = {
@@ -30,7 +29,6 @@ const apiRequest = async (
     params,
     headers: {
       Accept: 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
       ...(isMultipart ? { 'Content-Type': 'multipart/form-data' } : {}),
     },

@@ -189,15 +189,10 @@ const register = async userData => {
 
   const normalized = normalizeAuthResponse(response)
 
-  if (normalized?.token) {
-    localStorage.setItem('token', normalized.token)
-  }
-
   return {
     success: true,
     data: {
       user: normalized?.user,
-      token: normalized?.token,
     },
   }
 }
@@ -211,53 +206,22 @@ const loginUser = async userData => {
 
   const normalized = normalizeAuthResponse(response)
 
-  if (normalized?.token) {
-    localStorage.setItem('token', normalized.token)
-  }
-
   return {
     success: true,
     data: {
       user: normalized?.user,
-      token: normalized?.token,
     },
   }
 }
 
-const loginAdmin = async values => {
-  const response = await apiRequest('post', '/admin-login', values)
-
-  if (response.success === false) return response
-
-  const normalized = normalizeAuthResponse(response)
-
-  if (normalized?.token) {
-    localStorage.setItem('token', normalized.token)
-
-    Cookies.set('token', normalized.token, {
-      expires: 1,
-      path: '/',
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
-    })
-  }
-
-  return {
-    success: true,
-    data: {
-      user: normalized?.user,
-      token: normalized?.token,
-    },
-  }
-}
+// loginAdmin fue borrado: no existe ninguna UI de login de admin en el
+// storefront (confirmado por grep) — era código muerto sin ningún caller.
 
 const logoutUser = async () => {
   const response = await apiRequest('post', '/logout')
 
-  localStorage.removeItem('token')
   sessionStorage.removeItem('user')
 
-  Cookies.remove('token', { path: '/' })
   Cookies.remove('XSRF-TOKEN', { path: '/' })
   Cookies.remove('X-CSRF-Token', { path: '/' })
 
@@ -290,7 +254,6 @@ const getCurrentUser = async () => {
     success: true,
     data: {
       user: normalized.user,
-      token: normalized.token || localStorage.getItem('token'),
     },
   }
 }
@@ -371,32 +334,15 @@ const refreshToken = async () => {
       throw new Error(response.data?.message || 'Refresh inválido')
     }
 
-    const normalized = normalizeAuthResponse(response.data)
-    const token =
-      normalized?.token || response.data?.token || response.data?.accessToken
-
-    if (!token) {
-      throw new Error('Token ausente en refresh')
-    }
-
-    localStorage.setItem('token', token)
-
-    Cookies.set('token', token, {
-      path: '/',
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
-    })
-
+    // El refresh ya rotó y re-seteó la cookie httpOnly del access token
+    // server-side (fase 1 del refactor de JWT) — no hay nada más que
+    // persistir del lado del cliente.
     return {
       success: true,
-      data: {
-        token,
-      },
+      data: {},
     }
   } catch (error) {
     sessionStorage.removeItem('user')
-    localStorage.removeItem('token')
-    Cookies.remove('token', { path: '/' })
 
     return {
       success: false,
@@ -436,7 +382,6 @@ const userService = {
   register,
   loginUser,
   logoutUser,
-  loginAdmin,
   updateUser,
   updateUserAddress,
   updatePassword,

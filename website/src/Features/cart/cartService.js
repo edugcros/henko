@@ -9,16 +9,6 @@ const extractErrorMessage = (error, fallback = 'Error inesperado') => {
   return error?.response?.data?.message || error?.message || fallback
 }
 
-const getAccessToken = () => {
-  const token = localStorage.getItem('token')
-
-  if (!token || token === 'null' || token === 'undefined') {
-    return null
-  }
-
-  return token
-}
-
 const ensureCsrf = async () => {
   if (cachedCsrfToken) return cachedCsrfToken
 
@@ -54,12 +44,6 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
   const headers = {
     Accept: 'application/json',
     ...(options.headers || {}),
-  }
-
-  const token = getAccessToken()
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
   }
 
   if (isMutatingRequest && !options.skipCsrf) {

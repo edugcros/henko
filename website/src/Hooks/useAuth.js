@@ -1,56 +1,54 @@
 // 📁 src/hooks/useAuth.js
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
-import { jwtDecode } from 'jwt-decode'
-import { loginUser, logoutUser } from '@features/user/userSlice'
+import { getMe } from '@features/user/userSlice'
 
 /**
  * Hook para manejar la sesión del usuario en el Frontend.
- * Nota: No busca el JWT en cookies porque es httpOnly (invisible para JS).
- * Se basa en el objeto 'user' de Redux y sessionStorage.
+ * No busca el JWT en cookies porque es httpOnly (invisible para JS) — el
+ * único chequeo confiable de si hay sesión es preguntarle al backend
+ * directamente vía /user/me (getMe), que ya actualiza
+ * isAuthenticated/user en Redux según la respuesta real.
+ *
+ * useAuth() se llama desde 4 componentes distintos (App.js, PrivateRoute,
+ * PublicRoute, privateLayout) — cada uno con su propia instancia del hook.
+ * Sin este cache a nivel módulo, cada montaje/desmontaje al navegar entre
+ * rutas públicas/privadas dispararía un getMe() nuevo. authBootstrapPromise
+ * asegura que el dispatch real ocurra una sola vez por sesión de la SPA; el
+ * resto de las instancias solo esperan la misma promesa ya en vuelo (o ya
+ * resuelta). Después del bootstrap inicial, loginUser/logoutUser ya
+ * mantienen isAuthenticated/user al día en Redux directamente — no hace
+ * falta repetir el chequeo.
  */
+let authBootstrapPromise = null
+
+const ensureAuthBootstrap = dispatch => {
+  if (!authBootstrapPromise) {
+    authBootstrapPromise = dispatch(getMe())
+  }
+
+  return authBootstrapPromise
+}
+
 export const useAuth = () => {
   const dispatch = useDispatch()
   const userFromRedux = useSelector(state => state.user?.user)
-  const [isLoading, setIsLoading] = useState(true)
-
-  // Utilidad para persistencia manual del usuario (No sensible)
-  const safeStorage = useMemo(
-    () => ({
-      getUser: () => {
-        try {
-          const item = sessionStorage.getItem('user')
-          return item && item !== 'undefined' ? JSON.parse(item) : null
-        } catch (e) {
-          return null
-        }
-      },
-      removeUser: () => sessionStorage.removeItem('user'),
-    }),
-    [],
-  )
+  const isAuthenticatedRedux = useSelector(state => state.user?.isAuthenticated)
+  const [bootstrapped, setBootstrapped] = useState(false)
 
   useEffect(() => {
-    const hydrateAuth = () => {
-      const userStorage = safeStorage.getUser()
+    let active = true
 
-      // Si tenemos usuario en storage pero no en Redux, hidratamos el estado
-      if (userStorage && !userFromRedux) {
-        dispatch(loginUser(userStorage))
-      }
+    ensureAuthBootstrap(dispatch).finally(() => {
+      if (active) setBootstrapped(true)
+    })
 
-      setIsLoading(false)
+    return () => {
+      active = false
     }
+  }, [dispatch])
 
-    hydrateAuth()
-  }, [dispatch, userFromRedux, safeStorage])
-
-  /**
-   * isAuthenticated:
-   * Ahora se basa en la existencia del objeto user en Redux.
-   * El Backend es quien realmente valida la sesión vía cookies.
-   */
-  const isAuthenticated = !!userFromRedux
+  const isAuthenticated = Boolean(isAuthenticatedRedux && userFromRedux)
   const userRole = userFromRedux?.role || 'user'
   const isBlocked = !!userFromRedux?.isBlocked
 
@@ -58,7 +56,7 @@ export const useAuth = () => {
     isAuthenticated,
     userRole,
     user: userFromRedux,
-    isLoading,
+    isLoading: !bootstrapped,
     isBlocked,
     // El token no se expone aquí porque JS no debe manipularlo (Seguridad)
   }

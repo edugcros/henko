@@ -1,11 +1,7 @@
 // 📁 src/features/promotionalBlocks/promotionalBlocksService.js
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
-import Cookies from 'js-cookie'
 
 const BASE_URL = '/promotional-blocks'
-
-const getAuthToken = () =>
-  Cookies.get('token') || localStorage.getItem('token') || null
 
 const getTenantDomain = () => {
   if (typeof window === 'undefined') return undefined
@@ -40,13 +36,11 @@ const apiRequest = async (
 ) => {
   try {
     const csrfToken = await fetchCsrfToken()
-    const token = getAuthToken()
 
     const {
       headers: customHeaders = {},
       params,
       withCredentials = true,
-      includeAuth = false,
       includeCsrf = false,
       includeTenantDomain = true,
       ...restOptions
@@ -57,7 +51,6 @@ const apiRequest = async (
     const headers = {
       Accept: 'application/json',
       ...(includeCsrf && csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(includeAuth && token ? { Authorization: `Bearer ${token}` } : {}),
       ...(includeTenantDomain && tenantDomain
         ? { 'X-Tenant-Domain': tenantDomain }
         : {}),
@@ -91,7 +84,6 @@ const apiRequest = async (
 const getPublicPromotionalBlocks = async (params = {}) => {
   return apiRequest('get', '/public', undefined, {
     params,
-    includeAuth: false,
     includeCsrf: false,
     includeTenantDomain: true,
   })
@@ -107,7 +99,6 @@ const getPublicPromotionalBlockBySlug = async slug => {
   }
 
   return apiRequest('get', `/public/${encodeURIComponent(slug)}`, undefined, {
-    includeAuth: false,
     includeCsrf: false,
     includeTenantDomain: true,
   })

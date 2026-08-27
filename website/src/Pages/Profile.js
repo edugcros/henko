@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom'
 import { useTenant } from '../contexts/TenantContext'
 import { logoutUser, clearState, updateProfile } from '@features/user/userSlice'
 import { persistor } from '@app/store'
-import Cookies from 'js-cookie'
 
 import {
   Box,
@@ -121,24 +120,15 @@ const Profile = () => {
   }
 
   const handleLogout = async () => {
+    // Antes había un intento de "refrescar antes de cerrar sesión" acá,
+    // condicionado a leer una cookie 'token' legible por JS — dependía de
+    // un storage que ya no existe (el access token es httpOnly desde la
+    // fase 1 del refactor de JWT) y encima estaba roto (reasignaba
+    // refreshToken al módulo completo del servicio en vez de a su export
+    // nombrado, tiraba TypeError atrapado en silencio). El logout
+    // server-side (dispatch(logoutUser())) alcanza solo — no depende de
+    // si el access token está por vencer o no.
     try {
-      const token = Cookies.get('token')
-      if (token) {
-        const refreshToken = (await import('@features/user/userService'))
-          .default
-        try {
-          const refreshResponse = await refreshToken()
-          if (refreshResponse.success && refreshResponse.token) {
-            Cookies.set('token', refreshResponse.token, {
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: 'Strict',
-            })
-          }
-        } catch (err) {
-          console.warn('Refresh token falló', err)
-        }
-      }
-
       await dispatch(logoutUser()).unwrap()
       await persistor.purge()
       dispatch(clearState())
