@@ -2,6 +2,7 @@
 import React, { Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import PrivateRoute from '@components/PrivateRoute'
+import PublicRoute from '@components/PublicRoute'
 import MainLayout from '@components/MainLayout'
 import SpinnerCentered from '@components/SpinnerCentered'
 import {
@@ -12,6 +13,15 @@ import {
   fallbackRoute,
 } from './routesConfig'
 
+// Rutas públicas donde no tiene sentido quedarse si ya hay una sesión
+// válida — ver PublicRoute.js. Acotado a /login (el caso confirmado: un
+// usuario ya autenticado puede aterrizar ahí por un redirect duro previo del
+// interceptor de axios y quedaba trabado mirando el formulario para
+// siempre, sin que nada lo mandara de vuelta). No se aplica a todo
+// publicRoutes: /subscripcion, por ejemplo, tiene que seguir siendo visible
+// estando logueado.
+const REDIRECT_IF_AUTHENTICATED_PATHS = new Set(['/login'])
+
 // 🔁 Rutas públicas y protegidas
 const renderPublicRoutes = () =>
   [...publicRoutes, ...publicDynamicRoutes, ...protectedRoutes]
@@ -21,7 +31,16 @@ const renderPublicRoutes = () =>
         console.error(`🚨 ERROR: Ruta "${path}" tiene Component undefined`)
         return null
       }
-      return <Route key={path} path={path} element={<_Component />} />
+
+      const element = REDIRECT_IF_AUTHENTICATED_PATHS.has(path) ? (
+        <PublicRoute>
+          <_Component />
+        </PublicRoute>
+      ) : (
+        <_Component />
+      )
+
+      return <Route key={path} path={path} element={element} />
     })
     .filter(Boolean)
 
