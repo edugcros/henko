@@ -189,6 +189,21 @@ api.interceptors.request.use(
       config.baseURL = API_BASE_URL
     }
 
+    // El rewrite de proxy en vercel.json (/api/:path* → backend) no matchea
+    // una URL cuyo path termina en "/" (ej. "/product/?tenantId=...") — cae
+    // al catch-all del SPA y Vercel devuelve (y cachea) el index.html en vez
+    // de la respuesta real. Pasa con endpoints tipo "listar todo" que arman
+    // la URL como `${recurso}${endpoint}` con endpoint:'/'. Sacar la barra
+    // final acá, en el único lugar por el que pasa toda request, evita tener
+    // que tocar cada service que arma la URL así.
+    if (
+      typeof config.url === 'string' &&
+      config.url.length > 1 &&
+      config.url.endsWith('/')
+    ) {
+      config.url = config.url.slice(0, -1)
+    }
+
     if (env.enableTenantDomainResolution) {
       const tenantDomain = getTenantDomain()
 
