@@ -44,7 +44,7 @@ const Login = () => {
   )
 
   // Extraemos el estado global de Redux
-  const { user, token, isError, isSuccess, message } = useSelector(
+  const { user, isError, isSuccess, message } = useSelector(
     state => state.user || {},
   )
 
@@ -57,8 +57,15 @@ const Login = () => {
 
   // 2. Efecto de Redirección: Solo se dispara cuando el login es exitoso
   // Cuando el login fue exitoso → obtener CSRF + redirigir
+  //
+  // Antes dependía de `token` leído de Redux — desde la fase 2 del
+  // refactor de JWT el token ya no vive ahí (es una cookie httpOnly), así
+  // que `token` quedaba permanentemente undefined y este efecto nunca
+  // disparaba: el login "funcionaba" (Redux quedaba autenticado) pero la
+  // pantalla se quedaba trabada en el spinner. loginUser.fulfilled ya
+  // setea isSuccess y user juntos, alcanza con eso.
   useEffect(() => {
-    if (isSuccess && (token || (user && token))) {
+    if (isSuccess && user) {
       fetchCsrfToken().then(csrf => {
         if (csrf) dispatch(setCsrfToken(csrf))
         navigate('/')
@@ -66,7 +73,7 @@ const Login = () => {
     } else if (isError) {
       setIsSubmitting(false)
     }
-  }, [isSuccess, isError, token, user, navigate, dispatch])
+  }, [isSuccess, isError, user, navigate, dispatch])
 
   // 3. Configuración de Formik
   const formik = useFormik({
