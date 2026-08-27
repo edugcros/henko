@@ -211,6 +211,36 @@ const loginUser = async userData => {
   }
 }
 // ======================================================
+// FORGOT / RESET PASSWORD
+// ======================================================
+
+const forgotPassword = async email => {
+  // /user/forgot-password está exento de CSRF (app.js) — quien pidió
+  // recuperar su contraseña no tiene sesión, así que no puede tener un
+  // token CSRF válido todavía.
+  const response = await apiRequest(
+    'post',
+    '/forgot-password',
+    { email },
+    { withCredentials: true, skipCsrf: true },
+  )
+
+  return response
+}
+
+const resetPassword = async ({ token, password }) => {
+  // Mismo motivo que forgotPassword: exento de CSRF.
+  const response = await apiRequest(
+    'put',
+    '/reset-password',
+    { token, password },
+    { withCredentials: true, skipCsrf: true },
+  )
+
+  return response
+}
+
+// ======================================================
 // CURRENT USER
 // ======================================================
 
@@ -425,6 +455,8 @@ const authService = {
   registerAdmin,
   refreshToken,
   getCurrentUser,
+  forgotPassword,
+  resetPassword,
 }
 
 export default authService
