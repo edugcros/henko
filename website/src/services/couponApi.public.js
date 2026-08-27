@@ -1,19 +1,10 @@
 // src/services/couponApi.public.js
 import api from '@utils/axiosConfig'
 
-const getHeaders = () => {
-  const headers = {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-  }
-
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token')
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-
-  return headers
-}
+const getHeaders = () => ({
+  Accept: 'application/json',
+  'Content-Type': 'application/json',
+})
 
 export const getProductCoupons = async (productId, userId) => {
   const params = userId ? `?userId=${userId}` : ''

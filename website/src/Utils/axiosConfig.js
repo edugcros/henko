@@ -19,15 +19,10 @@ export const setApiStore = store => {
 
 const clearClientAuthState = () => {
   if (typeof window !== 'undefined') {
-    window.localStorage.removeItem('token')
     window.sessionStorage.removeItem('user')
     window.sessionStorage.removeItem('wishlist')
     window.sessionStorage.removeItem('csrfToken')
   }
-
-  Cookies.remove('token', { path: '/' })
-  delete api.defaults.headers.common.Authorization
-  delete api.defaults.headers.common.authorization
 
   if (_store?.dispatch) {
     _store.dispatch({ type: 'user/resetAuthState' })
@@ -64,26 +59,6 @@ const getTenantDomain = () => {
 
   // Mejor para multi-tenant: evita mandar puerto en producción/dev.
   return window.location.hostname
-}
-
-const isValidToken = token => {
-  return (
-    token &&
-    token !== 'null' &&
-    token !== 'undefined' &&
-    String(token).trim() !== ''
-  )
-}
-
-const getAuthToken = () => {
-  const cookieToken = Cookies.get('token')
-  const localToken =
-    typeof window !== 'undefined' ? localStorage.getItem('token') : null
-
-  if (isValidToken(cookieToken)) return cookieToken
-  if (isValidToken(localToken)) return localToken
-
-  return null
 }
 
 const createMetricSessionId = () => {
@@ -342,14 +317,9 @@ api.interceptors.request.use(
       removeTenantHeaders(requestConfig.headers)
     }
 
-    const token = getAuthToken()
-
-    if (isValidToken(token) && !requestConfig.url?.includes('/refresh')) {
-      requestConfig.headers.Authorization = `Bearer ${token}`
-    } else {
-      delete requestConfig.headers.Authorization
-      delete requestConfig.headers.authorization
-    }
+    // Sin Authorization manual: el access token vive en una cookie httpOnly
+    // desde el backend (fase 1 del refactor de JWT) — withCredentials:true
+    // ya la manda sola.
 
     if (shouldAttachCsrf(requestConfig)) {
       const headerName = getCsrfHeaderName()
@@ -487,22 +457,10 @@ api.interceptors.response.use(
             })
         }
 
-        const res = await refreshTokenPromise
-
-        const token =
-          res.data?.token ||
-          res.data?.accessToken ||
-          res.data?.data?.token ||
-          res.data?.data?.accessToken ||
-          null
-
-        if (isValidToken(token)) {
-          localStorage.setItem('token', token)
-          api.defaults.headers.common.Authorization = `Bearer ${token}`
-
-          originalRequest.headers = originalRequest.headers || {}
-          originalRequest.headers.Authorization = `Bearer ${token}`
-        }
+        // El refresh ya rotó y re-seteó la cookie httpOnly del access
+        // token server-side — reintentar la request original alcanza, va
+        // a viajar con la cookie nueva sola (withCredentials:true).
+        await refreshTokenPromise
 
         return api(originalRequest)
       } catch (refreshError) {

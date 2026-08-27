@@ -29,7 +29,12 @@ export const RESET_APP = 'RESET_APP'
 const userPersistConfig = {
   key: 'user',
   storage,
-  whitelist: ['user', 'token', 'wishlist'], // lo correcto
+  // 'token' fuera a propósito: el access token vive en una cookie httpOnly
+  // desde el backend, nunca en localStorage (que es donde apunta `storage`
+  // acá — este era el peor de los canales de fuga, el token terminaba
+  // duplicado en localStorage por este blob Y por los .setItem explícitos
+  // que ya se sacaron de userService.js).
+  whitelist: ['user', 'wishlist'],
 }
 
 // Root reducer
