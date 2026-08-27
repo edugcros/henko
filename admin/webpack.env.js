@@ -105,6 +105,16 @@ const isValidUrl = value => {
   }
 }
 
+// REACT_APP_API_BASE_URL/REACT_APP_API_URL pueden ser una ruta relativa
+// ("/api") en vez de una URL absoluta — necesario cuando el backend vive en
+// un dominio distinto al frontend (Vercel vs. Render) y se resuelve con un
+// rewrite de proxy en vercel.json en vez de pegarle directo, porque los
+// navegadores modernos bloquean las cookies httpOnly de sesión si son "de
+// tercero" (dominio distinto al de la página). Ver src/config/env.js, que
+// tiene esta misma excepción para la validación en runtime — esta es la
+// build-time, corre en el build de Vercel antes de que exista un browser.
+const isRelativeApiPath = value => /^\/(?!\/)/.test(clean(value))
+
 const hasForbiddenDeployValue = value => {
   return /localhost|127\.0\.0\.1|0\.0\.0\.0|henko\.local|\.local|\.test/i.test(
     String(value || ''),
@@ -144,7 +154,9 @@ const assertDeployEnv = () => {
   const mpPublicKey = getEnvValue('REACT_APP_MP_PUBLIC_KEY')
   const debugApi = getEnvValue('REACT_APP_DEBUG_API').toLowerCase()
 
-  if (!isValidUrl(apiBaseUrl)) {
+  const apiBaseUrlIsRelative = isRelativeApiPath(apiBaseUrl)
+
+  if (!apiBaseUrlIsRelative && !isValidUrl(apiBaseUrl)) {
     throw new Error(`REACT_APP_API_BASE_URL inválido: ${apiBaseUrl}`)
   }
 
@@ -154,7 +166,7 @@ const assertDeployEnv = () => {
     )
   }
 
-  if (apiUrl && !isValidUrl(apiUrl)) {
+  if (apiUrl && !isRelativeApiPath(apiUrl) && !isValidUrl(apiUrl)) {
     throw new Error(`REACT_APP_API_URL inválido: ${apiUrl}`)
   }
 
@@ -185,6 +197,7 @@ const assertDeployEnv = () => {
 
   ;[apiBaseUrl, apiUrl, assetsBaseUrl, storefrontPreviewUrl]
     .filter(Boolean)
+    .filter(value => !isRelativeApiPath(value))
     .forEach(value => {
       if (!isHttpsUrl(value)) {
         throw new Error(
