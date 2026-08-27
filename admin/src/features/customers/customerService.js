@@ -13,7 +13,6 @@ const apiRequest = async (method, endpoint, data, params, signal) => {
     ...(signal && { signal }),
     headers: {
       Accept: 'application/json',
-      Authorization: `Bearer ${localStorage.getItem('token')}`,
     },
   })
 

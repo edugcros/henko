@@ -1,6 +1,5 @@
 // 📁 admin/src/utils/axiosConfig.js
 import axios from 'axios'
-import Cookies from 'js-cookie'
 import { env } from '../config/env.js'
 
 let _store = null
@@ -40,14 +39,6 @@ assertApiBaseUrl()
 const getTenantDomain = () => {
   if (typeof window === 'undefined') return null
   return window.location.host
-}
-
-const getAuthToken = () => {
-  return (
-    Cookies.get('token') ||
-    localStorage.getItem('token') ||
-    null
-  )
 }
 
 const getMetricSessionId = () => {
@@ -213,12 +204,9 @@ api.interceptors.request.use(
       config.headers['x-metric-session-id'] = metricSessionId
     }
 
-    const token = getAuthToken()
-
-    if (token && !config.url?.includes('/refresh')) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-
+    // Sin Authorization manual: el access token vive en una cookie httpOnly
+    // desde el backend (fase 1 del refactor de JWT) — withCredentials:true
+    // ya la manda sola.
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
       console.log('[ADMIN API REQUEST]', {
         method: config.method,
@@ -328,22 +316,13 @@ api.interceptors.response.use(
             })
         }
 
-        const res = await refreshTokenPromise
-        const token = res.data?.token || res.data?.accessToken
-
-        if (token) {
-          localStorage.setItem('token', token)
-          api.defaults.headers.common.Authorization = `Bearer ${token}`
-
-          originalRequest.headers = originalRequest.headers || {}
-          originalRequest.headers.Authorization = `Bearer ${token}`
-        }
+        // El refresh ya rotó y re-seteó la cookie httpOnly del access
+        // token server-side — reintentar la request original alcanza, va
+        // a viajar con la cookie nueva sola (withCredentials:true).
+        await refreshTokenPromise
 
         return api(originalRequest)
       } catch (refreshError) {
-        localStorage.removeItem('token')
-        Cookies.remove('token')
-
         if (typeof window !== 'undefined') {
           window.location.href = '/login'
         }

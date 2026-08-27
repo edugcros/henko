@@ -1,7 +1,5 @@
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
 
-const getAuthToken = () => localStorage.getItem('token')
-
 const handleApiError = (error, fallback = 'Error inesperado') => {
   const msg = error?.response?.data?.message || error?.message || fallback
   return { success: false, message: msg }
@@ -10,15 +8,11 @@ const handleApiError = (error, fallback = 'Error inesperado') => {
 const authedRequest = async (method, endpoint, data) => {
   try {
     await fetchCsrfToken()
-    const token = getAuthToken()
-    if (!token) {
-      return { success: false, message: 'Sesión expirada', code: 'AUTH_TOKEN_MISSING' }
-    }
 
     const config = {
       method,
       url: `/tenants${endpoint}`,
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      headers: { Accept: 'application/json' },
       withCredentials: true,
       ...(data !== undefined && { data }),
     }

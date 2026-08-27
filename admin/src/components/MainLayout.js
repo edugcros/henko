@@ -5,7 +5,6 @@ import { ToastContainer } from 'react-toastify'
 import { logoutUser, resetAuthState } from '@features/auth/authSlice'
 import { adminMenuItems } from '@utils/adminMenu'
 import { persistor } from '@app/store'
-import Cookies from 'js-cookie'
 
 import {
   Box,
@@ -147,8 +146,10 @@ const MainLayout = () => {
       sessionStorage.clear()
       localStorage.removeItem('persist:root')
 
-      Cookies.remove('token')
-      Cookies.remove('refreshToken')
+      // token/refreshToken viven en cookies httpOnly — JS no puede leerlas
+      // ni removerlas (ni falta que haga: el logout server-side ya las
+      // limpió). Cookies.remove acá era un no-op desde siempre para
+      // refreshToken, y lo es para token desde la fase 1 del refactor.
 
       navigate('/login', { replace: true })
     } catch (error) {

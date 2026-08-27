@@ -1,14 +1,11 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
-import Cookies from 'js-cookie'
-import { jwtDecode } from 'jwt-decode'
 import { fetchCsrfToken } from '@utils/axiosConfig'
-import { logoutUser, setCsrfToken } from '@features/auth/authSlice'
+import { getMe, logoutUser, setCsrfToken } from '@features/auth/authSlice'
 
 const CSRF_STORAGE_KEY = 'csrfToken'
 const CSRF_FETCHED_AT_KEY = 'csrfTokenFetchedAt'
 const USER_STORAGE_KEY = 'user'
-const TOKEN_STORAGE_KEY = 'token'
 
 // El backend suele emitir CSRF por ~15 min.
 // Refrescamos antes para evitar 403 intermitentes.
@@ -52,22 +49,6 @@ const safeSessionRemove = keys => {
   }
 }
 
-const getTokenFromStorage = () => {
-  return safeSessionGet(TOKEN_STORAGE_KEY)
-}
-
-const getTokenFromCookie = () => {
-  try {
-    return Cookies.get('token') || null
-  } catch {
-    return null
-  }
-}
-
-const getRuntimeToken = tokenRedux => {
-  return tokenRedux || getTokenFromStorage() || getTokenFromCookie()
-}
-
 const getUserFromStorage = () => {
   const item = safeSessionGet(USER_STORAGE_KEY)
 
@@ -75,26 +56,6 @@ const getUserFromStorage = () => {
 
   try {
     return JSON.parse(item)
-  } catch {
-    return null
-  }
-}
-
-const decodeTokenSafely = token => {
-  if (!token) return null
-
-  try {
-    const decoded = jwtDecode(token)
-
-    if (!decoded || typeof decoded !== 'object') {
-      return null
-    }
-
-    if (decoded.exp && decoded.exp * 1000 <= Date.now()) {
-      return null
-    }
-
-    return decoded
   } catch {
     return null
   }
@@ -112,12 +73,7 @@ const isStoredCsrfFresh = () => {
 }
 
 const clearLocalAuthSession = () => {
-  safeSessionRemove([
-    TOKEN_STORAGE_KEY,
-    USER_STORAGE_KEY,
-    CSRF_STORAGE_KEY,
-    CSRF_FETCHED_AT_KEY,
-  ])
+  safeSessionRemove([USER_STORAGE_KEY, CSRF_STORAGE_KEY, CSRF_FETCHED_AT_KEY])
 }
 
 export const useAuth = () => {
@@ -132,57 +88,35 @@ export const useAuth = () => {
 
   const {
     user: userRedux,
-    token: tokenRedux,
+    isAuthenticated: isAuthenticatedRedux,
     csrfToken: csrfTokenRedux,
-    isLoading,
   } = authState
 
   const [csrfTokenState, setCsrfTokenState] = useState(
     () => csrfTokenRedux || safeSessionGet(CSRF_STORAGE_KEY) || '',
   )
-  const [decodedToken, setDecodedToken] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [bootstrapped, setBootstrapped] = useState(false)
   const [csrfLoading, setCsrfLoading] = useState(false)
   const [csrfError, setCsrfError] = useState(null)
 
+  // El access token vive en una cookie httpOnly desde el backend — JS no
+  // puede leerla para saber si hay sesión. El único chequeo confiable es
+  // preguntarle al backend directamente vía /user/me; getMe.fulfilled/
+  // .rejected en authSlice.js ya actualizan isAuthenticated/user según la
+  // respuesta. No se dispara logoutUser() acá si falla: un 401 en el
+  // bootstrap significa "nunca hubo sesión", no "había una sesión que
+  // cerrar" — dispatchear logout ahí llamaría al backend sin necesidad.
   useEffect(() => {
     let active = true
 
-    const token = getRuntimeToken(tokenRedux)
-
-    if (!token) {
-      setDecodedToken(null)
-      setLoading(false)
-      return () => {
-        active = false
-      }
-    }
-
-    const decoded = decodeTokenSafely(token)
-
-    if (!decoded) {
-      clearLocalAuthSession()
-      dispatch(logoutUser())
-
-      if (active) {
-        setDecodedToken(null)
-        setLoading(false)
-      }
-
-      return () => {
-        active = false
-      }
-    }
-
-    if (active) {
-      setDecodedToken(decoded)
-      setLoading(false)
-    }
+    dispatch(getMe()).finally(() => {
+      if (active) setBootstrapped(true)
+    })
 
     return () => {
       active = false
     }
-  }, [tokenRedux, dispatch])
+  }, [dispatch])
 
   const fetchAndSetCsrf = useCallback(
     async ({ force = false } = {}) => {
@@ -234,27 +168,21 @@ export const useAuth = () => {
   }, [csrfTokenRedux, csrfTokenState])
 
   const user = useMemo(() => {
-    return userRedux || getUserFromStorage() || decodedToken
-  }, [userRedux, decodedToken])
+    return userRedux || getUserFromStorage()
+  }, [userRedux])
 
-  const userRole = decodedToken?.role || user?.role || 'user'
+  const userRole = user?.role || 'user'
 
   const isBlocked = Boolean(
-    decodedToken?.isBlocked ||
-    user?.isBlocked ||
-    user?.blocked ||
-    user?.status === 'blocked',
+    user?.isBlocked || user?.blocked || user?.status === 'blocked',
   )
 
   const isAuthenticated = useMemo(() => {
-    const token = getRuntimeToken(tokenRedux)
-
-    return Boolean(decodedToken && token && user && !isBlocked)
-  }, [decodedToken, tokenRedux, user, isBlocked])
+    return Boolean(isAuthenticatedRedux && user && !isBlocked)
+  }, [isAuthenticatedRedux, user, isBlocked])
 
   const doLogoutUser = useCallback(async () => {
     clearLocalAuthSession()
-    setDecodedToken(null)
     setCsrfTokenState('')
     await dispatch(logoutUser())
   }, [dispatch])
@@ -267,7 +195,7 @@ export const useAuth = () => {
     csrfToken: csrfTokenState || csrfTokenRedux || '',
     csrfLoading,
     csrfError,
-    isLoading: loading || Boolean(isLoading),
+    isLoading: !bootstrapped,
     logoutUser: doLogoutUser,
     refreshCsrf: fetchAndSetCsrf,
   }

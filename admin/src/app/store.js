@@ -15,7 +15,9 @@ import tenantReducer from '@features/tenant/tenantSlice'
 const authPersistConfig = {
   key: 'user',
   storage: storageSession, // O storage para localStorage
-  whitelist: ['user', 'token', 'isAuthenticated'], // Persistí sólo lo necesario
+  // 'token' fuera a propósito: el access token vive en una cookie httpOnly
+  // desde el backend, nunca en storage legible por JS.
+  whitelist: ['user', 'isAuthenticated'],
 }
 
 const rootReducer = combineReducers({

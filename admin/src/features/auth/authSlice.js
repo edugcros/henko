@@ -1,6 +1,5 @@
 // 📁 src/features/auth/authSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
-import Cookies from 'js-cookie'
 import authService from './authServices'
 import { toast } from 'react-toastify'
 // ---------------------------
@@ -32,13 +31,12 @@ const safeStorage = {
     sessionStorage.removeItem('wishlist')
     sessionStorage.removeItem('csrfToken')
   },
+  // El access token vive en una cookie httpOnly desde el backend (fase 1
+  // del refactor de JWT) — JS no puede leerla ni removerla, y no hace
+  // falta: el logout server-side ya la limpia. removeAuth queda como
+  // alias de removeUser por compatibilidad con los callers existentes.
   removeAuth: () => {
     safeStorage.removeUser()
-    try {
-      Cookies.remove('token', { path: '/' })
-    } catch {
-      // Limpieza best-effort: el navegador puede bloquear cookies.
-    }
   },
 }
 
@@ -48,7 +46,6 @@ const safeStorage = {
 
 const initialState = {
   user: safeStorage.getUser(),
-  token: null,
   csrfToken: sessionStorage.getItem('csrfToken'),
   isAuthenticated: !!safeStorage.getUser(),
   isLoading: false,
@@ -113,9 +110,9 @@ export const refreshSession = createAsyncThunk(
       if (!res?.success || !res.data)
         return thunkAPI.rejectWithValue('Refresh inválido')
 
-      const { user, token } = res.data
+      const { user } = res.data
       safeStorage.setUser(user) // Sincronizamos storage
-      return { user, token }
+      return { user }
     } catch (error) {
       safeStorage.removeAuth()
       return thunkAPI.rejectWithValue(error?.response?.data || 'Refresh failed')
@@ -134,23 +131,15 @@ export const loginUser = createAsyncThunk(
         return rejectWithValue('Respuesta inválida del servidor durante login')
       }
 
-      const { user, token, csrfToken } = res.data
+      const { user, csrfToken } = res.data
 
-      // 🔥 CRÍTICO: Si el login nos da un token nuevo, lo inyectamos en el estado inmediatamente
       if (csrfToken) {
         dispatch(setCsrfToken(csrfToken))
       }
 
-      const isProd = process.env.NODE_ENV === 'production'
-
       safeStorage.setUser(user)
 
-      Cookies.set('token', token, {
-        path: '/',
-        secure: isProd,
-        sameSite: 'Lax',
-      })
-      return { user, token }
+      return { user }
     } catch (err) {
       const data = err?.response?.data
 
@@ -263,7 +252,6 @@ const authSlice = createSlice({
     },
     resetAuthState: state => {
       state.user = null
-      state.token = null
       state.csrfToken = null
       state.isAuthenticated = false
       state.isSuccess = false
@@ -272,11 +260,10 @@ const authSlice = createSlice({
       state.message = ''
       state.orders = { data: [], pagination: null }
       try {
-        Cookies.remove('token', { path: '/' })
         sessionStorage.removeItem('user')
         sessionStorage.removeItem('csrfToken')
       } catch {
-        // Limpieza best-effort: el navegador puede bloquear cookies/storage.
+        // Limpieza best-effort: el navegador puede bloquear storage.
       }
     },
     setCsrfToken: (state, action) => {
@@ -304,21 +291,11 @@ const authSlice = createSlice({
         state.error.createAdmin = null
         state.message = ''
 
+        // register-admin nunca devuelve un token: el admin creado tiene
+        // que loguearse aparte una vez verificado el email. isAuthenticated
+        // queda en false acá a propósito.
         state.user = action.payload
-        state.isAuthenticated = Boolean(action.payload?.token)
-        state.token = action.payload?.token || null
-
-        if (action.payload?.token) {
-          try {
-            Cookies.set('token', action.payload.token, {
-              path: '/',
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: 'Lax',
-            })
-          } catch {
-            // Persistencia best-effort para navegadores con cookies restringidas.
-          }
-        }
+        state.isAuthenticated = false
 
         try {
           sessionStorage.setItem('user', JSON.stringify(action.payload))
@@ -348,7 +325,6 @@ const authSlice = createSlice({
         state.isSuccess = true
         state.isAuthenticated = true
         state.user = action.payload.user
-        state.token = action.payload.token
         state.isError = false
       })
 
@@ -412,7 +388,6 @@ const authSlice = createSlice({
 
         // 2. Limpiar datos del usuario
         state.user = null
-        state.token = null
         state.csrfToken = null
         state.isAuthenticated = false
 
@@ -431,7 +406,6 @@ const authSlice = createSlice({
 
         // --- Limpieza de Estado ---
         state.user = null
-        state.token = null
         state.csrfToken = null
         state.isAuthenticated = false
         state.orders = { data: [], pagination: null }
@@ -443,25 +417,22 @@ const authSlice = createSlice({
       /* ---------- GET ME ---------- */
       .addCase(getMe.fulfilled, (state, action) => {
         state.user = action.payload?.data || action.payload
-        state.token = action.payload?.token || null
         state.isAuthenticated = true
       })
       .addCase(getMe.rejected, state => {
         state.user = null
-        state.token = null
         state.isAuthenticated = false
       })
 
       .addCase(refreshSession.fulfilled, (state, action) => {
-        const { user, token } = action.payload
+        const { user } = action.payload
         state.user = user
-        state.token = token
         state.isAuthenticated = true
       })
 
       .addCase(refreshSession.rejected, state => {
         state.user = null
-        state.token = null
+        state.isAuthenticated = false
       })
   },
 })

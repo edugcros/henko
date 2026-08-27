@@ -1,5 +1,4 @@
 // src/features/user/userService.js
-import Cookies from 'js-cookie'
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
 
 // ======================================================
@@ -43,7 +42,6 @@ const apiRequest = async (method, endpoint, data, options = {}) => {
     ...options,
     headers: {
       Accept: 'application/json',
-      Authorization: `Bearer ${localStorage.getItem('token')}`,
       'x-csrf-token': csrfToken, // <--- enviar token CSRF
       ...options.headers,
     },

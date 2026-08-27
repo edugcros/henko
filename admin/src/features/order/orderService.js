@@ -1,8 +1,6 @@
 // 📁 src/features/order/orderService.js
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
 
-const getAuthToken = () => localStorage.getItem('token')
-
 const handleApiError = (error, fallback = 'Error inesperado') => {
   const msg = error?.response?.data?.message || error?.message || fallback
 
@@ -32,23 +30,11 @@ const apiRequest = async (
   try {
     await fetchCsrfToken()
 
-    const token = getAuthToken()
-
-    if (!token) {
-      return {
-        success: false,
-        message: 'Sesión expirada. Por favor inicie sesión nuevamente.',
-        errors: [],
-        code: 'AUTH_TOKEN_MISSING',
-      }
-    }
-
     const config = {
       method,
       url: `/order${endpoint}`,
       headers: {
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       withCredentials: true,
       ...(data !== undefined && { data }),
@@ -90,21 +76,9 @@ const createOrder = async orderData => {
   try {
     await fetchCsrfToken()
 
-    const token = getAuthToken()
-
-    if (!token) {
-      return {
-        success: false,
-        message: 'No autorizado',
-        errors: [],
-        code: 'AUTH_TOKEN_MISSING',
-      }
-    }
-
     const response = await api.post('/order/create', orderData, {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
       withCredentials: true,
