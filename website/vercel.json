@@ -3,8 +3,18 @@
   "outputDirectory": "build",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://henko.onrender.com/api/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
     }
   ]
 }
