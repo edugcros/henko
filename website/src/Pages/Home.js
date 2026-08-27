@@ -390,7 +390,13 @@ const Home = () => {
       alignment: hero.alignment || 'left',
       height: hero.height || 'medium',
       ctaText: hero.ctaText || 'Ver productos',
-      ctaLink: hero.ctaLink || '/product',
+      // A diferencia de bannerImage/specialBanner (mismo helper, dos líneas
+      // más abajo), esto se manda crudo al prop `to` de un <Link> real —
+      // sin este chequeo, un ctaLink guardado como "javascript:..." se
+      // ejecutaría al click. El backend ya lo valida al guardar
+      // (themeConfigModel.js::isSafeThemeUrl), pero un valor guardado antes
+      // de ese fix seguiría sirviéndose acá sin este segundo chequeo.
+      ctaLink: isValidUrl(hero.ctaLink) ? hero.ctaLink : '/product',
       showCta: hero.showCta !== false,
       bannerImage: isValidUrl(heroImage) ? heroImage : DEFAULT_IMAGES.hero,
       specialBanner: isValidUrl(activeConfig?.specialBanner)
