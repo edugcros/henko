@@ -56,9 +56,8 @@ const initialState = {
   // flag. Sin conservarlo, la pantalla no puede distinguirlo de una
   // contraseña equivocada y no sabe cuándo ofrecer reenviar el correo.
   isNotVerified: false,
-  loading: { createAdmin: false, orders: false },
-  error: { createAdmin: null, orders: null },
-  orders: { data: [], pagination: null, inFlightKey: null },
+  loading: { createAdmin: false },
+  error: { createAdmin: null },
 }
 
 // ---------------------------
@@ -102,24 +101,6 @@ export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
   }
 })
 
-export const refreshSession = createAsyncThunk(
-  'auth/refreshSession',
-  async (_, thunkAPI) => {
-    try {
-      const res = await authService.refreshToken()
-      if (!res?.success || !res.data)
-        return thunkAPI.rejectWithValue('Refresh inválido')
-
-      const { user } = res.data
-      safeStorage.setUser(user) // Sincronizamos storage
-      return { user }
-    } catch (error) {
-      safeStorage.removeAuth()
-      return thunkAPI.rejectWithValue(error?.response?.data || 'Refresh failed')
-    }
-  },
-)
-
 export const loginUser = createAsyncThunk(
   'user/admin-login',
   async (userData, { dispatch, rejectWithValue }) => {
@@ -150,62 +131,6 @@ export const loginUser = createAsyncThunk(
         message: data?.message || 'Error de autenticación',
         isNotVerified: Boolean(data?.isNotVerified),
       })
-    }
-  },
-)
-
-// params: { page, limit, status, q, from, to }
-let loadingOrders = false
-
-const makeKey = (p = {}) =>
-  JSON.stringify({
-    page: p.page ?? 1,
-    limit: p.limit ?? 20,
-    status: p.status || null,
-    q: p.q || null,
-    from: p.from || null,
-    to: p.to || null,
-  })
-
-export const getOrders = createAsyncThunk(
-  'orders/getAll',
-  async (params, { rejectWithValue }) => {
-    try {
-      const res = await authService.getOrders(params) // debe devolver { success, data, pagination }
-      if (!res?.success)
-        throw new Error(res?.message || 'Error al obtener órdenes')
-      return {
-        data: res.data || [],
-        pagination: res.pagination || null,
-        _qk: makeKey(params),
-      }
-    } catch (e) {
-      return rejectWithValue(e?.message || 'Error al obtener órdenes')
-    }
-  },
-  {
-    condition: (params, { getState }) => {
-      const s = getState().user // ← usa el nombre real del slice en tu store
-      const key = makeKey(params)
-      if (s?.orders?.inFlightKey && s.orders.inFlightKey === key) return false
-      return true
-    },
-  },
-)
-
-// Actualizar estado de una orden (Admin)
-export const updateOrderStatus = createAsyncThunk(
-  'orders/updateStatus',
-  async ({ id, status }, { rejectWithValue }) => {
-    try {
-      const res = await authService.updateOrderStatus(id, status)
-      if (!res?.success)
-        throw new Error(res?.message || 'No se pudo actualizar el estado')
-      return res.data // orden actualizada
-    } catch (error) {
-      return rejectWithValue(
-        error?.message || 'No se pudo actualizar el estado',
-      )
     }
   },
 )
@@ -258,7 +183,6 @@ const authSlice = createSlice({
       state.isError = false
       state.isLoading = false
       state.message = ''
-      state.orders = { data: [], pagination: null }
       try {
         sessionStorage.removeItem('user')
         sessionStorage.removeItem('csrfToken')
@@ -337,44 +261,6 @@ const authSlice = createSlice({
         state.isNotVerified = Boolean(action.payload?.isNotVerified)
       })
 
-      // get orders (admin)
-      .addCase(getOrders.pending, (state, action) => {
-        state.isLoading = true
-        state.orders.inFlightKey = makeKey(action.meta.arg || {})
-      })
-      .addCase(getOrders.fulfilled, (state, action) => {
-        state.isLoading = false
-        state.orders = {
-          data: action.payload?.data || [],
-          pagination: action.payload?.pagination || {
-            total: 0,
-            page: 1,
-            pages: 1,
-          },
-          inFlightKey: null,
-        }
-        state.isSuccess = true
-        state.isError = false
-      })
-      .addCase(getOrders.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.message = action.payload || action.error?.message
-        state.orders.inFlightKey = null
-      })
-      // update order status (admin)
-      .addCase(updateOrderStatus.pending, state => {})
-      .addCase(updateOrderStatus.fulfilled, (state, action) => {
-        const updated = action.payload
-        const idx = state.orders.data.findIndex(o => o._id === updated._id)
-        if (idx >= 0) state.orders.data[idx] = updated
-        state.isSuccess = true
-      })
-      .addCase(updateOrderStatus.rejected, (state, action) => {
-        state.isError = true
-        state.message = action.payload || action.error?.message
-      })
-
       // logout
       .addCase(logoutUser.pending, state => {
         state.isLoading = true
@@ -391,9 +277,6 @@ const authSlice = createSlice({
         state.csrfToken = null
         state.isAuthenticated = false
 
-        // 3. Limpiar datos de negocio (importante para multi-tenant)
-        state.orders = { data: [], pagination: null }
-
         // 🔥 NOTA: El try/catch con Cookies y sessionStorage NO VA AQUÍ.
         // Eso ya lo ejecutamos en el Thunk antes de llegar a este punto.
       })
@@ -408,29 +291,22 @@ const authSlice = createSlice({
         state.user = null
         state.csrfToken = null
         state.isAuthenticated = false
-        state.orders = { data: [], pagination: null }
 
         // 🔥 NOTA: La limpieza de Cookies y sessionStorage ya debe estar en el
         // catch del createAsyncThunk que escribimos antes. No la repitas aquí.
       })
 
       /* ---------- GET ME ---------- */
+      .addCase(getMe.pending, state => {
+        state.isLoading = true
+      })
       .addCase(getMe.fulfilled, (state, action) => {
+        state.isLoading = false
         state.user = action.payload?.data || action.payload
         state.isAuthenticated = true
       })
       .addCase(getMe.rejected, state => {
-        state.user = null
-        state.isAuthenticated = false
-      })
-
-      .addCase(refreshSession.fulfilled, (state, action) => {
-        const { user } = action.payload
-        state.user = user
-        state.isAuthenticated = true
-      })
-
-      .addCase(refreshSession.rejected, state => {
+        state.isLoading = false
         state.user = null
         state.isAuthenticated = false
       })
