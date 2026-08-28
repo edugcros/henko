@@ -1032,7 +1032,32 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
     .select('+refreshToken role tenantId email isBlocked')
     .setOptions({ ignoreTenant: true })
 
-  if (!updatedUser || updatedUser.isBlocked) {
+  if (!updatedUser) {
+    // Diagnóstico: el filtro atómico no matcheó nada — puede ser que el
+    // usuario ya no exista, o que el refreshToken guardado no coincida con
+    // el jti de esta cookie (ya rotado por otra request, o realmente
+    // robado/reusado). Esta lectura extra es solo para loguear cuál de los
+    // dos casos fue — no afecta la respuesta, que sigue siendo 403 en
+    // ambos.
+    const existingUser = await User.findById(decoded.sub)
+      .select('email refreshToken')
+      .setOptions({ ignoreTenant: true })
+
+    logger.warn('[REFRESH] Rotación atómica no matcheó ningún documento', {
+      userId: String(decoded.sub),
+      userExists: Boolean(existingUser),
+      userEmail: existingUser?.email,
+      hadStoredRefreshToken: Boolean(existingUser?.refreshToken),
+    })
+
+    return sendResponse(res, 403, false, 'Token de refresco inválido')
+  }
+
+  if (updatedUser.isBlocked) {
+    logger.warn('[REFRESH] Usuario bloqueado intentó refrescar', {
+      userId: String(updatedUser._id),
+      email: updatedUser.email,
+    })
     return sendResponse(res, 403, false, 'Token de refresco inválido')
   }
 
