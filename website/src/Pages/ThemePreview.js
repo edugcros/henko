@@ -64,13 +64,22 @@ const ThemePreview = () => {
       getOrigin(searchParams?.get('adminOrigin')) ||
       getOrigin(typeof document !== 'undefined' ? document.referrer : '')
 
-    const parentOrigin = allowedAdminOrigins.has(requestedParentOrigin)
-      ? requestedParentOrigin
-      : [...allowedAdminOrigins][0]
+    // Preferimos el origen pedido (adminOrigin del query param, o
+    // document.referrer) por sobre la allowlist: si REACT_APP_
+    // ADMIN_PREVIEW_ORIGINS no está configurada (allowedAdminOrigins vacío),
+    // el fallback anterior terminaba en window.location.origin — el propio
+    // origen del storefront — y el postMessage de "estoy listo" fallaba
+    // porque el padre real (el panel admin) nunca es el mismo origen que
+    // este iframe. La allowlist sigue siendo la que manda para ACEPTAR
+    // mensajes entrantes (línea de abajo, handleMessage) — esto solo
+    // decide a qué origen intentar avisar que ya cargamos.
+    const parentOrigin =
+      requestedParentOrigin ||
+      (allowedAdminOrigins.size ? [...allowedAdminOrigins][0] : '')
 
     return {
       allowedAdminOrigins,
-      parentOrigin: parentOrigin || window.location.origin,
+      parentOrigin,
     }
   }, [])
 
@@ -104,10 +113,15 @@ const ThemePreview = () => {
 
     window.addEventListener('message', handleMessage)
 
-    window.parent?.postMessage(
-      { type: 'HENKO_THEME_PREVIEW_READY' },
-      previewHandshake.parentOrigin,
-    )
+    // Sin un parentOrigin real no hay a quién avisarle "estoy listo" —
+    // mandar el postMessage igual tiraría el mismo error de origen que
+    // este fix resuelve para el caso normal.
+    if (previewHandshake.parentOrigin) {
+      window.parent?.postMessage(
+        { type: 'HENKO_THEME_PREVIEW_READY' },
+        previewHandshake.parentOrigin,
+      )
+    }
     setIsConnected(true)
 
     return () => {
