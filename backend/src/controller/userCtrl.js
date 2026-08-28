@@ -53,6 +53,13 @@ const MAX_CART_QUANTITY = Number(process.env.MAX_CART_QUANTITY || 99)
 const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 const DEFAULT_REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+// Sesión de admin: se cierra por inactividad, no por tiempo fijo. Cada
+// refresh (disparado por cualquier request mientras el admin está activo)
+// vuelve a extender esta ventana desde cero — si no hay ninguna request en
+// 1h, la cookie vence sola y el próximo intento de refresh ya no tiene
+// nada válido que usar. No afecta a los clientes de la tienda (esa sigue
+// siendo DEFAULT_REFRESH_COOKIE_MAX_AGE_MS, 7 días).
+const DEFAULT_ADMIN_REFRESH_COOKIE_MAX_AGE_MS = 60 * 60 * 1000
 const DEFAULT_ACCESS_COOKIE_MAX_AGE_MS = 15 * 60 * 1000
 const shouldSendTransactionalEmail = () => env.nodeEnv !== 'test'
 
@@ -162,7 +169,14 @@ const parseDurationToMs = (value, fallbackMs) => {
   return amount * multipliers[unit]
 }
 
-const getRefreshCookieMaxAge = () => {
+const getRefreshCookieMaxAge = role => {
+  if (role === 'admin') {
+    return parseDurationToMs(
+      process.env.JWT_ADMIN_REFRESH_EXPIRES,
+      DEFAULT_ADMIN_REFRESH_COOKIE_MAX_AGE_MS,
+    )
+  }
+
   return parseDurationToMs(
     process.env.JWT_REFRESH_EXPIRES,
     DEFAULT_REFRESH_COOKIE_MAX_AGE_MS,
@@ -343,7 +357,7 @@ const clearAuthCookies = (res, req) => {
 // access token, sin tocar los bodies JSON de login/refresh todavía — el
 // frontend viejo (que sigue leyendo data.token) no se entera del cambio.
 // Ver el plan completo en el repo de planes de la sesión.
-const sendAuthCookies = (res, req, refreshToken, accessToken) => {
+const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
   const secure = env.cookieSecure ?? isProd
   const sameSite = env.cookieSameSite || (isProd ? 'None' : 'Lax')
   const domain = getCookieDomain(req)
@@ -354,7 +368,7 @@ const sendAuthCookies = (res, req, refreshToken, accessToken) => {
     sameSite,
     domain,
     path: '/',
-    maxAge: getRefreshCookieMaxAge(),
+    maxAge: getRefreshCookieMaxAge(role),
   })
 
   if (accessToken) {
@@ -938,7 +952,7 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
     },
   ).setOptions({ ignoreTenant: true })
 
-  sendAuthCookies(res, req, refreshToken, accessToken)
+  sendAuthCookies(res, req, refreshToken, accessToken, user.role)
 
   logger.info(`Login exitoso: ${email} (${user.role}) | tenant=${tenant._id}`)
 
@@ -1066,7 +1080,7 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
     tenantId: updatedUser.tenantId,
   })
 
-  sendAuthCookies(res, req, newRefreshToken, newAccessToken)
+  sendAuthCookies(res, req, newRefreshToken, newAccessToken, updatedUser.role)
 
   logger.info(`Tokens renovados exitosamente para ${updatedUser.email}`)
 

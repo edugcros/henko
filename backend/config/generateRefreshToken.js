@@ -7,6 +7,17 @@ const getIssuer = () => env.jwtIssuer || 'commerce-platform-api'
 const getAudience = () => env.jwtAudience || 'commerce-platform-client'
 const TOKEN_VERSION = 1
 
+// Sesión de admin: se cierra por inactividad (1h por defecto), no por
+// tiempo fijo — cada refresh vuelve a extender la ventana. Se firma acá,
+// en el propio JWT (no solo en el maxAge de la cookie en userCtrl.js), para
+// que la expiración quede garantizada en las dos capas — la cookie y el
+// token firmado — de forma consistente. No afecta a clientes de la tienda
+// (siguen con env.jwtRefreshExpires, 7 días).
+const getRefreshExpiresIn = role =>
+  role === 'admin'
+    ? process.env.JWT_ADMIN_REFRESH_EXPIRES || '1h'
+    : env.jwtRefreshExpires
+
 /**
  * Hash determinístico del jti (un UUID random, 122 bits de entropía — no un
  * secreto de baja entropía tipo password) para guardar en Mongo. Antes se
@@ -62,7 +73,7 @@ export const generateRefreshToken = async (userId, extraPayload = {}) => {
   }
 
   const refreshToken = jwt.sign(payload, env.refreshTokenSecret, {
-    expiresIn: env.jwtRefreshExpires,
+    expiresIn: getRefreshExpiresIn(extraPayload.role),
     algorithm: 'HS256',
   })
 
