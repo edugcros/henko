@@ -1,5 +1,5 @@
 import express from 'express'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import {
   createEnquiry,
   updateEnquiryStatus,
@@ -18,12 +18,16 @@ import {
 } from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
+
 const publicEnquiryLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 8,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => `${req.tenantId || 'no-tenant'}:${req.ip}`,
+
+  keyGenerator: req =>
+    `${req.tenantId || 'no-tenant'}:${ipKeyGenerator(req.ip)}`,
+
   message: {
     success: false,
     message: 'Demasiadas consultas. Intentá nuevamente en unos minutos.',

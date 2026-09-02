@@ -186,8 +186,7 @@ const analysisWriteLimiter = rateLimit({
       return `${tenantId}:user:${userId}`
     }
 
-    // Fallback para requests sin identidad.
-    // ipKeyGenerator normaliza correctamente IPv4/IPv6.
+    // Fallback: tenant + IP normalizada.
     return `${tenantId}:ip:${ipKeyGenerator(req.ip)}`
   },
 

@@ -2,7 +2,7 @@
 // VERSIÓN PRODUCCIÓN - MULTI-TENANT / SHOP DOMAIN / ADMIN DOMAIN / CSRF
 
 import express from 'express'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import multer from 'multer'
 
 import {
@@ -96,8 +96,15 @@ const handleMulterError = (err, req, res, next) => {
 // =====================================================
 
 const getAdminRateLimitKey = req => {
-  const actorId = req.user?._id || req.user?.id || req.ip || 'anonymous'
-  const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
+  const actorId =
+    req.user?._id ||
+    req.user?.id ||
+    (req.ip ? ipKeyGenerator(req.ip) : 'anonymous')
+
+  const tenantId =
+    req.tenantId ||
+    req.user?.tenantId ||
+    'no-tenant'
 
   return `${tenantId}:${actorId}`
 }
@@ -150,11 +157,10 @@ const publicLimiter = rateLimit({
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => req.tenantId || req.ip,
-  message: {
-    success: false,
-    message: 'Demasiadas peticiones',
-  },
+  keyGenerator: req =>
+    req.tenantId
+      ? String(req.tenantId)
+      : `ip:${ipKeyGenerator(req.ip)}`,
 })
 
 const cssLimiter = rateLimit({
@@ -162,7 +168,10 @@ const cssLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => req.tenantId || req.ip,
+    keyGenerator: req =>
+    req.tenantId
+      ? String(req.tenantId)
+      : `ip:${ipKeyGenerator(req.ip)}`,
   message: {
     success: false,
     message: 'Demasiadas peticiones de CSS',

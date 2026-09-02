@@ -1,5 +1,5 @@
 // 📁 src/middlewares/aiWebchatLimiter.js
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 
 const clean = value => String(value || '').trim()
 
@@ -7,7 +7,8 @@ const clean = value => String(value || '').trim()
 // "trust proxy" de Express (app.js). Leer x-forwarded-for a mano acá
 // (como se hacía antes) confía en un header que cualquier cliente puede
 // falsificar si el proxy de confianza no lo está sobrescribiendo.
-const getClientIp = req => clean(req.ip || req.socket?.remoteAddress || 'unknown')
+const getClientIp = req =>
+  ipKeyGenerator(req.ip)
 
 export const aiWebchatLimiter = rateLimit({
   windowMs: Number(process.env.AI_WEBCHAT_RATE_LIMIT_WINDOW_MS || 60 * 1000),

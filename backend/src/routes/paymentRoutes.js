@@ -2,7 +2,7 @@
 // VERSIÓN PRODUCCIÓN - MULTI-TENANT / SHOP DOMAIN / RATE LIMIT / WEBHOOK SAFE
 
 import express from 'express'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 
 import {
   getPaymentPublicConfig,
@@ -29,15 +29,25 @@ const paymentWriteLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+
   keyGenerator: req => {
-    const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
-    const actorId = req.user?._id || req.user?.id || req.ip || 'anonymous'
+    const tenantId =
+      req.tenantId ||
+      req.user?.tenantId ||
+      'no-tenant'
+
+    const actorId =
+      req.user?._id ||
+      req.user?.id ||
+      (req.ip ? `ip:${ipKeyGenerator(req.ip)}` : 'anonymous')
 
     return `${tenantId}:${actorId}`
   },
+
   message: {
     success: false,
-    message: 'Demasiados intentos de pago. Esperá unos minutos e intentá nuevamente.',
+    message:
+      'Demasiados intentos de pago. Esperá unos minutos e intentá nuevamente.',
   },
 })
 
@@ -46,12 +56,22 @@ const mpWebhookLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => {
-    const mpSignature = req.headers['x-signature'] || 'no-signature'
-    const mpRequestId = req.headers['x-request-id'] || 'no-request-id'
 
-    return `mp-webhook:${mpSignature}:${mpRequestId}:${req.ip}`
+  keyGenerator: req => {
+    const mpSignature =
+      req.headers['x-signature'] || 'no-signature'
+
+    const mpRequestId =
+      req.headers['x-request-id'] || 'no-request-id'
+
+    return [
+      'mp-webhook',
+      mpSignature,
+      mpRequestId,
+      ipKeyGenerator(req.ip),
+    ].join(':')
   },
+
   message: {
     success: false,
     message: 'Demasiadas notificaciones recibidas.',
