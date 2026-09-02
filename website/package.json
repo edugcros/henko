@@ -29,7 +29,6 @@
     "@emotion/styled": "^11.11.0",
     "@mercadopago/sdk-react": "^1.0.7",
     "@mui/icons-material": "^9.4.0",
-    "@mui/lab": "^9.0.0-beta.9",
     "@mui/material": "^9.4.0",
     "@reduxjs/toolkit": "^2.5.1",
     "@sentry/browser": "^9.10.1",
