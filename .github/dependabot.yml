@@ -1,0 +1,57 @@
+version: 2
+updates:
+  # Backend: Express saltó de 4.x a 5.x sin avisarlo en la descripción del
+  # PR de Dependabot (venía "escondido" dentro de un bump de qs/browserslist)
+  # y tumbó producción entera — 3 crashes en cadena antes de encontrar la
+  # causa real. Los paquetes core de abajo quedan excluidos de bumps de
+  # versión MAYOR automáticos: parche/minor siguen entrando solos, un salto
+  # mayor necesita revisión humana deliberada, no un merge rápido de "2
+  # paquetes menores".
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      npm_and_yarn:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "express"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mongoose"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "npm"
+    directory: "/admin"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      npm_and_yarn:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-router-dom"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "npm"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      npm_and_yarn:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-router-dom"
+        update-types: ["version-update:semver-major"]
