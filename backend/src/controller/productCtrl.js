@@ -3290,18 +3290,18 @@ export const toggleHelpfulVote = expressAsyncHandler(async (req, res) => {
 
 const getRateLimitTenantKey = req => {
   const tenantId =
-    req.tenant?._id?.toString?.() ||
-    req.user?.tenantId?.toString?.() ||
-    req.headers?.['x-tenant-id'] ||
-    req.headers?.['x-tenant-domain'] ||
-    req.hostname ||
-    'unknown-tenant'
+    req.tenantId ||
+    req.user?.tenantId ||
+    'no-tenant'
 
-  const forwardedFor = String(req.headers?.['x-forwarded-for'] || '')
-    .split(',')[0]
-    .trim()
+  const clientIp =
+    req.ip ||
+    req.socket?.remoteAddress ||
+    'unknown-client'
 
-  return `${tenantId}:${forwardedFor || req.ip || req.socket?.remoteAddress || 'unknown-client'}`
+  return `${tenantId}:${clientIp !== 'unknown-client'
+    ? ipKeyGenerator(clientIp)
+    : clientIp}`
 }
 
 const productRateLimitHandler = message => (req, res, _next, options) => {

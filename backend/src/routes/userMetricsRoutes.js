@@ -38,7 +38,12 @@ const metricsRateLimiter = rateLimit({
   max: 180,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => `${getTenantKey(req)}:${getClientIp(req)}`,
+  keyGenerator: req => {
+    const tenantKey = getTenantKey(req)
+    const clientIp = getClientIp(req)
+
+    return `${tenantKey}:${clientIp ? ipKeyGenerator(clientIp) : 'unknown-client'}`
+  },
   handler: (req, res, _next, options) => {
     const retryAfter = Math.ceil((options.windowMs || 60 * 1000) / 1000)
 
