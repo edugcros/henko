@@ -36,7 +36,7 @@ import {
 
 import expressAsyncHandler from 'express-async-handler'
 import { body, validationResult } from 'express-validator'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import process from 'process'

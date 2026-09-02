@@ -4,7 +4,7 @@
 import mongoose from 'mongoose'
 import expressAsyncHandler from 'express-async-handler'
 import crypto from 'crypto'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 
 import {
   dispatchOrderCreationEmails,

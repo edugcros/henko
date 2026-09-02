@@ -18,7 +18,7 @@ import {
 import { registerAiCatalogChangedEvent } from '../services/aiAgent/aiCatalogEventService.js'
 
 import expressAsyncHandler from 'express-async-handler'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'

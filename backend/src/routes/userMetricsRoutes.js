@@ -1,6 +1,6 @@
 // 📁 src/routes/userMetricsRoutes.js
 import express from 'express'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 
 import { trackUserMetricEvent } from '../controller/userMetricsCtrl.js'
 import {
