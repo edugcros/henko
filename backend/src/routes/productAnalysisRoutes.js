@@ -2,7 +2,7 @@
 import express from 'express'
 import multer from 'multer'
 import crypto from 'crypto'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import sharp from 'sharp'
 
 import {
@@ -152,21 +152,49 @@ const agentOrAdminAuth = (req, res, next) => {
 }
 
 const analysisWriteLimiter = rateLimit({
-  windowMs: Number(process.env.PRODUCT_ANALYSIS_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
-  max: Number(process.env.PRODUCT_ANALYSIS_RATE_LIMIT_MAX || 240),
+  windowMs: Number(
+    process.env.PRODUCT_ANALYSIS_RATE_LIMIT_WINDOW_MS ||
+      15 * 60 * 1000,
+  ),
+
+  max: Number(
+    process.env.PRODUCT_ANALYSIS_RATE_LIMIT_MAX || 240,
+  ),
+
   standardHeaders: true,
   legacyHeaders: false,
+
   keyGenerator: req => {
+    const tenantId = req.tenantId || 'no-tenant'
     const agentKey = req.get('x-agent-api-key')
-    const actor = req.user?._id ||
-      (agentKey
-        ? crypto.createHash('sha256').update(agentKey).digest('hex').slice(0, 16)
-        : req.ip)
-    return `${req.tenantId || 'no-tenant'}:${actor}`
+
+    // Agente: aislado por tenant + hash de su API key.
+    if (agentKey) {
+      const agentId = crypto
+        .createHash('sha256')
+        .update(agentKey)
+        .digest('hex')
+        .slice(0, 16)
+
+      return `${tenantId}:agent:${agentId}`
+    }
+
+    // Usuario autenticado: aislado por tenant + usuario.
+    const userId = req.user?._id || req.user?.id
+
+    if (userId) {
+      return `${tenantId}:user:${userId}`
+    }
+
+    // Fallback para requests sin identidad.
+    // ipKeyGenerator normaliza correctamente IPv4/IPv6.
+    return `${tenantId}:ip:${ipKeyGenerator(req.ip)}`
   },
+
   message: {
     success: false,
-    message: 'Demasiadas operaciones de análisis. Intente nuevamente más tarde.',
+    message:
+      'Demasiadas operaciones de análisis. Intente nuevamente más tarde.',
   },
 })
 
