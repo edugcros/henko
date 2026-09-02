@@ -67,7 +67,14 @@ router.patch('/knowledge/:id/approve', approveKnowledgeItem)
 router.delete('/knowledge/:id', deleteKnowledgeItem)
 
 router.get('/campaign-rules', listCampaignRules)
-router.put('/campaign-rules/:id?', upsertCampaignRule)
+// Antes era una sola ruta con el param opcional Express 4 (':id?'): la
+// versión de path-to-regexp que trae el router actual ya no soporta esa
+// sintaxis y tira un TypeError al registrar la ruta (crashea el arranque
+// del server entero, no solo esta request). upsertCampaignRule ya maneja
+// req.params.id ausente como creación — separar la ruta en dos no cambia
+// ese comportamiento, solo evita la sintaxis que dejó de andar.
+router.put('/campaign-rules', upsertCampaignRule)
+router.put('/campaign-rules/:id', upsertCampaignRule)
 router.delete('/campaign-rules/:id', deleteCampaignRule)
 
 router.get('/conversations', listAiConversation)
