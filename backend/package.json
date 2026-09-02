@@ -27,7 +27,7 @@
     "testTimeout": 30000
   },
   "dependencies": {
-    "@google-analytics/data": "^5.2.2",
+    "@google-analytics/data": "^7.0.0",
     "@google-cloud/storage": "^8.0.1",
     "@google/generative-ai": "^0.24.1",
     "@huggingface/inference": "^4.13.28",
