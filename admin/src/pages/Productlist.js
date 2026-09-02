@@ -153,7 +153,7 @@ const StatCard = ({ title, value, icon, color, onClick, active }) => (
       transition: 'border-color 0.15s ease',
     }}
   >
-    <Box display="flex" alignItems="center" justifyContent="space-between">
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <Box>
         <Typography variant="caption" color="text.secondary" fontWeight={500}>
           {title}
@@ -499,7 +499,7 @@ const Productlist = () => {
   // arriba para no perder el scroll ni el contexto visual de la tabla.
   if (isAdminLoading && !hasLoadedOnce.current) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
         <CircularProgress size={60} />
       </Box>
     )
@@ -507,7 +507,7 @@ const Productlist = () => {
 
   return (
     <Box p={3}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h4" fontWeight={700}>
             Productos
@@ -584,12 +584,14 @@ const Productlist = () => {
             placeholder="Buscar por nombre, marca, categoría, subcategoría o SKU..."
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon color="action" />
-                </InputAdornment>
-              ),
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon color="action" />
+                  </InputAdornment>
+                ),
+              },
             }}
             sx={{ maxWidth: { sm: 380 } }}
           />
@@ -703,7 +705,7 @@ const Productlist = () => {
                   }}
                 >
                   <TableCell>
-                    <Box display="flex" alignItems="center" gap={2}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                       <Avatar
                         src={getProductMainImage(product)}
                         alt={product.title}
@@ -754,7 +756,7 @@ const Productlist = () => {
                   </TableCell>
 
                   <TableCell>
-                    <Box display="flex" alignItems="center" gap={1.5}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Typography
                         variant="body2"
                         fontWeight={700}
@@ -844,7 +846,7 @@ const Productlist = () => {
       </TableContainer>
 
       {totalPages > 1 && (
-        <Box display="flex" justifyContent="center" mt={3}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
           <Pagination
             count={totalPages}
             page={page}

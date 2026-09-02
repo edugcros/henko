@@ -163,7 +163,7 @@ const Login = () => {
               helperText={formik.touched.password && formik.errors.password}
             />
 
-            <Box display="flex" justifyContent="flex-end" sx={{ mt: 1, mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1, mb: 2 }}>
               <Link
                 to="/forgot-password"
                 style={{

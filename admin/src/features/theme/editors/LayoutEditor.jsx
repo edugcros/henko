@@ -16,7 +16,7 @@ const LayoutEditor = ({ value, onChange }) => {
 
       <Grid container spacing={3}>
         {/* Max Width */}
-        <Grid item xs={12}>
+        <Grid xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
               Ancho Máximo del Contenedor: {layout.maxWidth ?? 1200}px
@@ -38,7 +38,7 @@ const LayoutEditor = ({ value, onChange }) => {
         </Grid>
 
         {/* Container Padding */}
-        <Grid item xs={12}>
+        <Grid xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
               Padding Horizontal: {layout.containerPadding ?? 0}px
@@ -56,7 +56,7 @@ const LayoutEditor = ({ value, onChange }) => {
         </Grid>
 
         {/* Border Radius */}
-        <Grid item xs={12}>
+        <Grid xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
               Radio de Bordes (Layout): {layout.borderRadius ?? 8}px
@@ -74,7 +74,7 @@ const LayoutEditor = ({ value, onChange }) => {
         </Grid>
 
         {/* Shadow Intensity */}
-        <Grid item xs={12}>
+        <Grid xs={12}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
               Intensidad de Sombras: {layout.shadowIntensity ?? 2}

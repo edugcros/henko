@@ -34,7 +34,7 @@ import {
   MoreVert as MoreVertIcon,
   Edit as EditIcon,
   ContentCopy as CloneIcon,
-  DeleteOutline as DeleteIcon,
+  DeleteOutlined as DeleteIcon,
   DeleteForever as HardDeleteIcon,
   RestoreFromTrash as RestoreIcon,
   Layers as StackableIcon,

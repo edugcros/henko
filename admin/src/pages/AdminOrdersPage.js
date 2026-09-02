@@ -860,7 +860,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
         Resumen del pedido
       </Typography>
 
-      <Box display="flex" justifyContent="space-between" mb={1.5}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
         <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
           Subtotal
         </Typography>
@@ -869,7 +869,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
         </Typography>
       </Box>
 
-      <Box display="flex" justifyContent="space-between" mb={1.5}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
         <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
           Descuento
         </Typography>
@@ -880,7 +880,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
 
       <Divider sx={{ my: 2 }} />
 
-      <Box display="flex" justifyContent="space-between" alignItems="center">
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography
           variant="h6"
           sx={{
@@ -1213,7 +1213,7 @@ const OrderRow = memo(
             <TableCell colSpan={8} sx={{ p: 0, bgcolor: '#FAFAFA' }}>
               <Box sx={{ p: 3 }}>
                 <Grid container spacing={3}>
-                  <Grid item xs={12} lg={8}>
+                  <Grid xs={12} lg={8}>
                     <Typography
                       variant="h6"
                       sx={{
@@ -1231,7 +1231,7 @@ const OrderRow = memo(
                     ))}
                   </Grid>
 
-                  <Grid item xs={12} lg={4}>
+                  <Grid xs={12} lg={4}>
                     <ShippingCard address={order.shippingAddress} />
 
                     <ShipmentCard
@@ -1402,7 +1402,7 @@ const OrderDetailDialog = memo(
         <DialogContent dividers sx={{ bgcolor: '#F7F7F7', p: 0 }}>
           <Box sx={{ p: 3 }}>
             <Grid container spacing={3}>
-              <Grid item xs={12} md={8}>
+              <Grid xs={12} md={8}>
                 <Paper sx={{ p: 3, borderRadius: 1, border: '1px solid #D5D9D9' }}>
                   <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}>
                     Productos ({order.products?.length || 0})
@@ -1414,7 +1414,7 @@ const OrderDetailDialog = memo(
                 </Paper>
               </Grid>
 
-              <Grid item xs={12} md={4}>
+              <Grid xs={12} md={4}>
                 <Paper
                   sx={{
                     p: 3,
@@ -2063,7 +2063,7 @@ const AdminOrdersPage = () => {
               {stats.total} pedidos • {formatCurrency(stats.totalRevenue)} en ventas
             </Typography>
 
-            <Box display="flex" gap={1} flexWrap="wrap">
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               <Chip label={`${stats.open} abiertas`} size="small" />
               <Chip label={`${stats.processing} procesando`} size="small" />
               <Chip label={`${stats.delivered} entregadas`} size="small" />
@@ -2081,7 +2081,7 @@ const AdminOrdersPage = () => {
 
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={4}>
+            <Grid xs={12} md={4}>
               <TextField
                 fullWidth
                 size="small"
@@ -2092,24 +2092,26 @@ const AdminOrdersPage = () => {
                 inputProps={{
                   maxLength: CONFIG.MAX_SEARCH_LENGTH,
                 }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search fontSize="small" />
-                    </InputAdornment>
-                  ),
-                  endAdornment: searchTerm && (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={handleResetSearch} disabled={isUpdating}>
-                        <Close fontSize="small" />
-                      </IconButton>
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search fontSize="small" />
+                      </InputAdornment>
+                    ),
+                    endAdornment: searchTerm && (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={handleResetSearch} disabled={isUpdating}>
+                          <Close fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
             </Grid>
 
-            <Grid item xs={12} md={2}>
+            <Grid xs={12} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel>Estado orden</InputLabel>
                 <Select
@@ -2129,7 +2131,7 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid item xs={12} md={2}>
+            <Grid xs={12} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel>Pago</InputLabel>
                 <Select
@@ -2148,7 +2150,7 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid item xs={12} md={2}>
+            <Grid xs={12} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel>Logística</InputLabel>
                 <Select
@@ -2168,8 +2170,8 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid item xs={12} md={2}>
-              <Box display="flex" justifyContent="flex-end" gap={1}>
+            <Grid xs={12} md={2}>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                 <Button
                   variant="outlined"
                   startIcon={<Download />}
@@ -2248,7 +2250,7 @@ const AdminOrdersPage = () => {
             </TableContainer>
 
             {pagination.pages > 1 && (
-              <Box display="flex" justifyContent="center" mt={3}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
                 <Pagination
                   count={pagination.pages}
                   page={pagination.page}

@@ -425,7 +425,7 @@ const AiKnowledgeBasePage = () => {
       </Stack>
 
       {loading ? (
-        <Box display="flex" justifyContent="center" py={8}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
         </Box>
       ) : items.length === 0 ? (

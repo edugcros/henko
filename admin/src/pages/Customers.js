@@ -122,13 +122,13 @@ const Customers = () => {
       </Stack>
 
       {isLoading && customers.length === 0 ? (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
           <CircularProgress size={60} thickness={4} />
         </Box>
       ) : (
         <Grid container spacing={3}>
           {customers.map(user => (
-            <Grid item xs={12} sm={6} lg={4} key={user._id}>
+            <Grid xs={12} sm={6} lg={4} key={user._id}>
               <Fade in={true} timeout={500}>
                 <Card
                   elevation={3}

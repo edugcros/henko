@@ -46,7 +46,7 @@ const FooterEditor = ({ value, onChange, onLogoUpload }) => {
 
       {/* Logo y Descripción */}
       <Grid container spacing={3}>
-        <Grid item xs={12}>
+        <Grid xs={12}>
           <Typography variant="subtitle2" gutterBottom>
             Logo del Footer
           </Typography>
@@ -58,7 +58,7 @@ const FooterEditor = ({ value, onChange, onLogoUpload }) => {
           />
         </Grid>
 
-        <Grid item xs={12}>
+        <Grid xs={12}>
           <TextField
             fullWidth
             multiline
@@ -69,7 +69,7 @@ const FooterEditor = ({ value, onChange, onLogoUpload }) => {
           />
         </Grid>
 
-        <Grid item xs={12} sm={6}>
+        <Grid xs={12} sm={6}>
           <TextField
             fullWidth
             label="Email de Contacto"
@@ -78,7 +78,7 @@ const FooterEditor = ({ value, onChange, onLogoUpload }) => {
           />
         </Grid>
 
-        <Grid item xs={12} sm={6}>
+        <Grid xs={12} sm={6}>
           <TextField
             fullWidth
             label="Teléfono"
@@ -118,7 +118,7 @@ const FooterEditor = ({ value, onChange, onLogoUpload }) => {
         </Typography>
         <Grid container spacing={2}>
           {SOCIAL_PLATFORMS.map(({ key, label, placeholder }) => (
-            <Grid item xs={12} sm={6} key={key}>
+            <Grid xs={12} sm={6} key={key}>
               <TextField
                 fullWidth
                 size="small"

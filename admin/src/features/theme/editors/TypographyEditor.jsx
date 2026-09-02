@@ -350,7 +350,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
           </Paper>
 
           <Grid container spacing={1.25}>
-            <Grid item xs={6}>
+            <Grid xs={6}>
               <TextField
                 fullWidth
                 size="small"
@@ -358,12 +358,12 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
                 label="Tamaño"
                 value={heading.size}
                 onChange={event => updateHeading('size', Number(event.target.value))}
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">px</InputAdornment>,
+                slotProps={{
+                  input: { endAdornment: <InputAdornment position="end">px</InputAdornment> },
                 }}
               />
             </Grid>
-            <Grid item xs={6}>
+            <Grid xs={6}>
               <TextField
                 fullWidth
                 size="small"
@@ -413,7 +413,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
 
       <SettingGroupComponents title="Texto auxiliar" caption="Captions, metadatos y ayudas.">
         <Grid container spacing={1.25}>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               size="small"
@@ -421,12 +421,12 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               label="Tamaño"
               value={typography.secondary.size}
               onChange={event => updateSecondary('size', Number(event.target.value))}
-              InputProps={{
-                endAdornment: <InputAdornment position="end">px</InputAdornment>,
+              slotProps={{
+                input: { endAdornment: <InputAdornment position="end">px</InputAdornment> },
               }}
             />
           </Grid>
-          <Grid item xs={6}>
+          <Grid xs={6}>
             <TextField
               fullWidth
               size="small"
@@ -437,7 +437,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               inputProps={{ min: 300, max: 900, step: 50 }}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <RangeControlComponents
               label="Interlineado"
               value={typography.secondary.lineHeight}
@@ -447,7 +447,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               onChange={nextValue => updateSecondary('lineHeight', nextValue)}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <RangeControlComponents
               label="Espaciado"
               value={typography.secondary.letterSpacing}

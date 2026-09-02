@@ -26,8 +26,8 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined'
 import {

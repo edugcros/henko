@@ -42,11 +42,11 @@ const ProductsEditor = ({ value, onChange }) => {
   }
 
   return (
-    <Box display="flex" flexDirection="column" gap={2}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* ================= LAYOUT ================= */}
       <Section title="Layout" subtitle="Estructura del grid de productos">
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
+          <Grid xs={12} md={6}>
             <FormControl fullWidth size="small">
               <InputLabel>Tipo de Grid</InputLabel>
               <Select
@@ -62,7 +62,7 @@ const ProductsEditor = ({ value, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid xs={12} md={6}>
             <Typography variant="caption">Columnas: {products.columns ?? 4}</Typography>
             <Slider
               size="small"
@@ -75,7 +75,7 @@ const ProductsEditor = ({ value, onChange }) => {
             />
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <Typography variant="caption">Espaciado: {products.gap ?? 24}px</Typography>
             <Slider
               size="small"
@@ -93,7 +93,7 @@ const ProductsEditor = ({ value, onChange }) => {
       {/* ================= VISUAL ================= */}
       <Section title="Estilo Visual" subtitle="Comportamiento e imagen de las cards">
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
+          <Grid xs={12} md={6}>
             <FormControl fullWidth size="small">
               <InputLabel>Efecto Hover</InputLabel>
               <Select
@@ -109,7 +109,7 @@ const ProductsEditor = ({ value, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid xs={12} md={6}>
             <FormControl fullWidth size="small">
               <InputLabel>Aspect Ratio</InputLabel>
               <Select
@@ -125,7 +125,7 @@ const ProductsEditor = ({ value, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <Typography variant="caption">
               Productos por página: {products.itemsPerPage ?? 12}
             </Typography>
@@ -153,7 +153,7 @@ const ProductsEditor = ({ value, onChange }) => {
             { key: 'showRating', label: 'Rating', defaultValue: true },
             { key: 'showPrice', label: 'Precio', defaultValue: true },
           ].map(({ key, label, defaultValue }) => (
-            <Grid item xs={12} md={6} key={key}>
+            <Grid xs={12} md={6} key={key}>
               <FormControlLabel
                 control={
                   <Switch

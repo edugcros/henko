@@ -21,7 +21,7 @@ import {
   StorefrontOutlined as LogoIcon,
   SearchOutlined as SearchIcon,
   LocalMallOutlined as CartIcon,
-  PersonOutline as AccountIcon,
+  PersonOutlined as AccountIcon,
   FavoriteBorder as WishlistIcon,
   CompareArrows as CompareIcon,
   TuneOutlined as SettingsIcon,
@@ -307,7 +307,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
 
         <Grid container spacing={2}>
           {HEADER_COLOR_FIELDS.map(field => (
-            <Grid item xs={12} md={6} key={field.key}>
+            <Grid xs={12} md={6} key={field.key}>
               <ColorPicker
                 label={field.label}
                 description={field.description}
@@ -422,7 +422,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
             const checked = getToggleChecked(header, key, defaultValue)
 
             return (
-              <Grid item xs={12} sm={6} key={key}>
+              <Grid xs={12} sm={6} key={key}>
                 <Paper
                   elevation={0}
                   sx={{

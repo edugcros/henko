@@ -25,7 +25,7 @@ const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJ
             },
             { key: 'enableServiceWorker', label: 'Service Worker (PWA)' },
           ].map(({ key, label }) => (
-            <Grid item xs={12} sm={6} key={key}>
+            <Grid xs={12} sm={6} key={key}>
               <FormControlLabel
                 control={
                   <Switch
@@ -119,13 +119,13 @@ const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJ
           <TextField
             size="small"
             placeholder="Exportar tema como JSON"
-            InputProps={{ readOnly: true }}
+            slotProps={{ input: { readOnly: true } }}
             sx={{ flex: 1 }}
           />
           <TextField
             size="small"
             placeholder="Importar desde JSON"
-            InputProps={{ readOnly: true }}
+            slotProps={{ input: { readOnly: true } }}
             sx={{ flex: 1 }}
           />
         </Box>

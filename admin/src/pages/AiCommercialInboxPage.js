@@ -298,27 +298,27 @@ const AiCommercialInboxPage = () => {
         )}
 
         <Grid container spacing={2}>
-          <Grid item xs={6} md={2}>
+          <Grid xs={6} md={2}>
             <SummaryCardComponent label="Total" value={summary.total} />
           </Grid>
 
-          <Grid item xs={6} md={2}>
+          <Grid xs={6} md={2}>
             <SummaryCardComponent label="Nuevos hoy" value={summary.today} />
           </Grid>
 
-          <Grid item xs={6} md={2}>
+          <Grid xs={6} md={2}>
             <SummaryCardComponent label="Calientes" value={summary.hot} tone="hot" />
           </Grid>
 
-          <Grid item xs={6} md={2}>
+          <Grid xs={6} md={2}>
             <SummaryCardComponent label="Seguimientos" value={summary.pendingFollowUps} />
           </Grid>
 
-          <Grid item xs={6} md={2}>
+          <Grid xs={6} md={2}>
             <SummaryCardComponent label="Ganados" value={summary.won} />
           </Grid>
 
-          <Grid item xs={6} md={2}>
+          <Grid xs={6} md={2}>
             <SummaryCardComponent label="Score prom." value={summary.averageLeadScore} />
           </Grid>
         </Grid>
@@ -389,7 +389,7 @@ const AiCommercialInboxPage = () => {
         </Paper>
 
         <Grid container spacing={2} sx={{ minHeight: 680 }}>
-          <Grid item xs={12} md={3.2}>
+          <Grid xs={12} md={3.2}>
             <Paper
               variant="outlined"
               sx={{
@@ -422,7 +422,7 @@ const AiCommercialInboxPage = () => {
             </Paper>
           </Grid>
 
-          <Grid item xs={12} md={4}>
+          <Grid xs={12} md={4}>
             {detailLoading ? (
               <Paper
                 variant="outlined"
@@ -503,7 +503,7 @@ const AiCommercialInboxPage = () => {
             )}
           </Grid>
 
-          <Grid item xs={12} md={4.8}>
+          <Grid xs={12} md={4.8}>
             <LeadConversationPanel
               conversation={conversation}
               lead={selectedLead}
