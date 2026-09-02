@@ -45,11 +45,14 @@ app.set('trust proxy', env.trustProxy ? 1 : false)
 // =======================================================
 
 app.use(cors(corsOptions))
-// Wildcard con nombre ('/*splat') — la versión de path-to-regexp que trae
-// router ya no acepta un '*' suelto (mismo tipo de crash en el arranque que
-// el de aiAgentRoutes.js: PR #115). El nombre del parámetro no importa acá,
-// nunca se lee.
-app.options('/*splat', cors(corsOptions))
+// Bare '*' — la sintaxis correcta para la versión vieja de path-to-regexp
+// que trae Express 4 (0.1.13). PR #116 lo había cambiado a '/*splat' para
+// la sintaxis nueva de path-to-regexp v7/v8 que trae Express 5 — pero
+// Express se volvió a la 4.x (ver PR #117: la 5.x se coló sin querer en un
+// bump de Dependabot y rompía en cadena). Confirmado con path-to-regexp
+// 0.1.13 en mano: '*' matchea cualquier ruta, '/*splat' NO — solo
+// matchearía una URL que terminara literalmente en "splat".
+app.options('*', cors(corsOptions))
 
 // =======================================================
 // SECURITY LAYER
