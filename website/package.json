@@ -38,7 +38,7 @@
     "axios": "^1.2.1",
     "classnames": "^2.5.1",
     "dayjs": "^1.11.13",
-    "dotenv": "^16.4.7",
+    "dotenv": "^17.4.2",
     "formik": "^2.2.9",
     "framer-motion": "^12.40.0",
     "is-docker": "^4.0.0",
