@@ -520,7 +520,7 @@ const AdminRegister = () => {
               <form onSubmit={formik.handleSubmit}>
                 <Stack spacing={3}>
                   <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
+                    <Grid xs={12} sm={6}>
                       <TextField
                         fullWidth
                         label="Nombre"
@@ -532,7 +532,7 @@ const AdminRegister = () => {
                       />
                     </Grid>
 
-                    <Grid item xs={12} sm={6}>
+                    <Grid xs={12} sm={6}>
                       <TextField
                         fullWidth
                         label="Apellido"
@@ -551,13 +551,15 @@ const AdminRegister = () => {
                     {...formik.getFieldProps('email')}
                     error={formik.touched.email && Boolean(formik.errors.email)}
                     helperText={formik.touched.email && formik.errors.email}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Email color="action" />
-                        </InputAdornment>
-                      ),
-                      sx: { borderRadius: 3 },
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Email color="action" />
+                          </InputAdornment>
+                        ),
+                        sx: { borderRadius: 3 },
+                      },
                     }}
                   />
 
@@ -579,13 +581,15 @@ const AdminRegister = () => {
                       (formik.touched.mobile && formik.errors.mobile) ||
                       'Sin 0 y sin 15. Ej: 3585132769'
                     }
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Phone color="action" />
-                        </InputAdornment>
-                      ),
-                      sx: { borderRadius: 3 },
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Phone color="action" />
+                          </InputAdornment>
+                        ),
+                        sx: { borderRadius: 3 },
+                      },
                     }}
                   />
 
@@ -599,13 +603,15 @@ const AdminRegister = () => {
                     name="storeName"
                     error={formik.touched.storeName && Boolean(formik.errors.storeName)}
                     helperText={formik.touched.storeName && formik.errors.storeName}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Storefront color="action" />
-                        </InputAdornment>
-                      ),
-                      sx: { borderRadius: 3 },
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Storefront color="action" />
+                          </InputAdornment>
+                        ),
+                        sx: { borderRadius: 3 },
+                      },
                     }}
                   />
 
@@ -625,13 +631,15 @@ const AdminRegister = () => {
                         (formik.touched.storeSlug && formik.errors.storeSlug) ||
                         'Se usará para crear tu subdominio interno.'
                       }
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Badge color="action" />
-                          </InputAdornment>
-                        ),
-                        sx: { borderRadius: 3 },
+                      slotProps={{
+                        input: {
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <Badge color="action" />
+                            </InputAdornment>
+                          ),
+                          sx: { borderRadius: 3 },
+                        },
                       }}
                     />
 
@@ -671,18 +679,20 @@ const AdminRegister = () => {
                     {...formik.getFieldProps('password')}
                     error={formik.touched.password && Boolean(formik.errors.password)}
                     helperText={formik.touched.password && formik.errors.password}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Lock color="action" />
-                        </InputAdornment>
-                      ),
-                      sx: { borderRadius: 3 },
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Lock color="action" />
+                          </InputAdornment>
+                        ),
+                        sx: { borderRadius: 3 },
+                      },
                     }}
                   />
 
                   {env.turnstileSiteKey && (
-                    <Box display="flex" justifyContent="center">
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                       <TurnstileWidget
                         siteKey={env.turnstileSiteKey}
                         onVerify={setTurnstileToken}

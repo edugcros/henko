@@ -470,7 +470,7 @@ const AiLearningReviewPage = () => {
 
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, mb: 3 }}>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={4}>
+          <Grid xs={12} sm={4}>
             <TextField
               select
               fullWidth
@@ -487,7 +487,7 @@ const AiLearningReviewPage = () => {
               ))}
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={4}>
+          <Grid xs={12} sm={4}>
             <TextField
               select
               fullWidth
@@ -503,7 +503,7 @@ const AiLearningReviewPage = () => {
               ))}
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={4}>
+          <Grid xs={12} sm={4}>
             <TextField
               fullWidth
               size="small"
@@ -589,7 +589,7 @@ const AiLearningReviewPage = () => {
       )}
 
       {loading ? (
-        <Box display="flex" justifyContent="center" py={6}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
         </Box>
       ) : items.length === 0 ? (

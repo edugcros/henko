@@ -119,7 +119,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
         </Typography>
 
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
+          <Grid xs={12} md={6}>
             <FormControl fullWidth size="small">
               <InputLabel>Page Transition</InputLabel>
               <Select
@@ -135,7 +135,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid xs={12} md={6}>
             <FormControl fullWidth size="small">
               <InputLabel>Element Entrance</InputLabel>
               <Select
@@ -191,7 +191,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
         </Typography>
 
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
+          <Grid xs={12} md={6}>
             <FormControl fullWidth size="small">
               <InputLabel>Easing</InputLabel>
               <Select
@@ -207,7 +207,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid xs={12} md={6}>
             <Typography variant="caption">Hover Scale ({animations.hoverScale ?? 1.02})</Typography>
             <Slider
               value={animations.hoverScale ?? 1.02}
@@ -244,7 +244,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
           Preview
         </Typography>
 
-        <Box display="flex" gap={2} justifyContent="center">
+        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
           {[0, 1, 2].map(i => (
             <Box
               key={i}

@@ -114,7 +114,8 @@ const ColorPicker = ({
         onChange={handleInputChange}
         onBlur={handleBlur}
         placeholder="#3B82F6"
-        InputProps={{
+        slotProps={{
+          input: {
           startAdornment: (
             <InputAdornment position="start">
               <Box
@@ -141,6 +142,7 @@ const ColorPicker = ({
                 </Tooltip>
               </InputAdornment>
             ) : null,
+          },
         }}
         sx={{
           '& input': {

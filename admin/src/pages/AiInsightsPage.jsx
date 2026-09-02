@@ -37,7 +37,7 @@ import {
   Archive as ArchiveIcon,
   Insights as InsightsIcon,
   MarkEmailRead as ReactivationIcon,
-  PlayCircleOutline as AcknowledgeIcon,
+  PlayCircleOutlined as AcknowledgeIcon,
   Refresh as RefreshIcon,
   Cancel as DismissIcon,
   Bolt as ReinforcementIcon,
@@ -632,7 +632,7 @@ const AiInsightsPage = () => {
 
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, mb: 3 }}>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               select
               fullWidth
@@ -649,7 +649,7 @@ const AiInsightsPage = () => {
               ))}
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid xs={12} sm={6}>
             <TextField
               select
               fullWidth
@@ -675,7 +675,7 @@ const AiInsightsPage = () => {
       )}
 
       {loading ? (
-        <Box display="flex" justifyContent="center" py={6}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
         </Box>
       ) : items.length === 0 ? (
@@ -737,7 +737,7 @@ const AiInsightsPage = () => {
         <DialogContent>
           <Divider sx={{ mb: 2 }} />
           {reactivationDialog?.loading ? (
-            <Box display="flex" justifyContent="center" py={4}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress size={28} />
             </Box>
           ) : (
@@ -799,7 +799,7 @@ const AiInsightsPage = () => {
         <DialogContent>
           <Divider sx={{ mb: 2 }} />
           {reinforcementDialog?.loading ? (
-            <Box display="flex" justifyContent="center" py={4}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress size={28} />
             </Box>
           ) : (
@@ -894,7 +894,7 @@ const AiInsightsPage = () => {
         <DialogContent>
           <Divider sx={{ mb: 2 }} />
           {priceReductionDialog?.loading ? (
-            <Box display="flex" justifyContent="center" py={4}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress size={28} />
             </Box>
           ) : priceReductionDialog?.plan ? (

@@ -375,17 +375,19 @@ const CouponsPage = () => {
             placeholder="Buscar por código..."
             value={filters.search}
             onChange={e => handleFilterChange('search', e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-              endAdornment: filters.search && (
-                <IconButton size="small" onClick={() => handleFilterChange('search', '')}>
-                  <ClearIcon fontSize="small" />
-                </IconButton>
-              ),
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+                endAdornment: filters.search && (
+                  <IconButton size="small" onClick={() => handleFilterChange('search', '')}>
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                ),
+              },
             }}
             sx={{ flex: 2 }}
           />

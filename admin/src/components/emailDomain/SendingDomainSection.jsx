@@ -32,7 +32,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined'
 
 import {
   deleteEmailDomain,

@@ -398,7 +398,7 @@ const ImageAiEditor = () => {
 
       <Grid container spacing={3}>
         {/* ── Panel izquierdo ── */}
-        <Grid item xs={12} md={5} lg={4}>
+        <Grid xs={12} md={5} lg={4}>
           <Stack spacing={2.5}>
             {/* Paso 1 — Modo */}
             <Card sx={cardSx}>
@@ -838,7 +838,7 @@ const ImageAiEditor = () => {
         </Grid>
 
         {/* ── Panel derecho — Resultados ── */}
-        <Grid item xs={12} md={7} lg={8}>
+        <Grid xs={12} md={7} lg={8}>
           <Card
             sx={{
               ...cardSx,
@@ -1169,14 +1169,16 @@ const ImageAiEditor = () => {
                 label="Producto"
                 placeholder="Título o marca"
                 autoFocus
-                InputProps={{
-                  ...params.InputProps,
-                  endAdornment: (
-                    <>
-                      {productSearching ? <CircularProgress color="inherit" size={16} /> : null}
-                      {params.InputProps.endAdornment}
-                    </>
-                  ),
+                slotProps={{
+                  input: {
+                    ...params.slotProps.input,
+                    endAdornment: (
+                      <>
+                        {productSearching ? <CircularProgress color="inherit" size={16} /> : null}
+                        {params.slotProps.input.endAdornment}
+                      </>
+                    ),
+                  },
                 }}
               />
             )}

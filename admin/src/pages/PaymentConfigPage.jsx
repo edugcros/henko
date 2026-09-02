@@ -137,7 +137,7 @@ const PaymentConfigPage = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
         <CircularProgress />
       </Box>
     )
@@ -236,7 +236,7 @@ const PaymentConfigPage = () => {
             <Divider />
 
             <Grid container spacing={2.5}>
-              <Grid item xs={12} sm={4}>
+              <Grid xs={12} sm={4}>
                 <TextField
                   select
                   fullWidth
@@ -251,7 +251,7 @@ const PaymentConfigPage = () => {
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={12} sm={8}>
+              <Grid xs={12} sm={8}>
                 <TextField
                   fullWidth
                   label="Public Key"
@@ -265,7 +265,7 @@ const PaymentConfigPage = () => {
                   inputProps={{ maxLength: 300 }}
                 />
               </Grid>
-              <Grid item xs={12}>
+              <Grid xs={12}>
                 <TextField
                   fullWidth
                   type="password"

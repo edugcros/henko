@@ -234,7 +234,7 @@ const MetaPixelConfigPage = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
         <CircularProgress />
       </Box>
     )
@@ -333,7 +333,7 @@ const MetaPixelConfigPage = () => {
             <Divider />
 
             <Grid container spacing={2.5}>
-              <Grid item xs={12} sm={5}>
+              <Grid xs={12} sm={5}>
                 <TextField
                   fullWidth
                   label="ID de Pixel"
@@ -343,7 +343,7 @@ const MetaPixelConfigPage = () => {
                   inputProps={{ maxLength: 20 }}
                 />
               </Grid>
-              <Grid item xs={12} sm={7}>
+              <Grid xs={12} sm={7}>
                 <TextField
                   fullWidth
                   type="password"

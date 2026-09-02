@@ -123,7 +123,7 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
         caption="Define la apariencia por defecto de los CTA."
       >
         <Grid container spacing={1.25}>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth size="small">
               <InputLabel>Variante</InputLabel>
               <Select
@@ -139,7 +139,7 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <FormControl fullWidth size="small">
               <InputLabel>Tamaño</InputLabel>
               <Select

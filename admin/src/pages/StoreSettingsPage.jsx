@@ -29,7 +29,7 @@ import {
   Typography,
 } from '@mui/material'
 import StorefrontIcon from '@mui/icons-material/Storefront'
-import MailOutlineIcon from '@mui/icons-material/MailOutline'
+import MailOutlineIcon from '@mui/icons-material/MailOutlined'
 import PaletteIcon from '@mui/icons-material/Palette'
 import SaveIcon from '@mui/icons-material/Save'
 
@@ -207,7 +207,7 @@ const StoreSettingsPage = () => {
           icon={<StorefrontIcon color="primary" />}
         >
           <Grid container spacing={2.5}>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 required
@@ -218,7 +218,7 @@ const StoreSettingsPage = () => {
                 helperText={!clean(form.name) ? 'El nombre no puede quedar vacío' : ''}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 multiline
@@ -239,7 +239,7 @@ const StoreSettingsPage = () => {
           icon={<MailOutlineIcon color="primary" />}
         >
           <Grid container spacing={2.5}>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 type="email"
@@ -254,7 +254,7 @@ const StoreSettingsPage = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <EmailPreview
                 fromName={clean(form.name)}
                 fromAddress={emailIdentity?.effectiveFromAddress || ''}
@@ -262,7 +262,7 @@ const StoreSettingsPage = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <Divider sx={{ mb: 2 }} />
               <Typography variant="subtitle2" fontWeight={700} mb={1}>
                 Enviar desde tu propio dominio
@@ -270,7 +270,7 @@ const StoreSettingsPage = () => {
               <SendingDomainSection onIdentityChange={setEmailIdentity} />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Teléfono"
@@ -279,7 +279,7 @@ const StoreSettingsPage = () => {
                 inputProps={{ maxLength: 30 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Dirección"
@@ -297,7 +297,7 @@ const StoreSettingsPage = () => {
           icon={<PaletteIcon color="primary" />}
         >
           <Grid container spacing={2.5}>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="URL del logo"
@@ -306,7 +306,7 @@ const StoreSettingsPage = () => {
                 placeholder="https://..."
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="URL del favicon"
