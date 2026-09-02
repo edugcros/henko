@@ -45,7 +45,11 @@ app.set('trust proxy', env.trustProxy ? 1 : false)
 // =======================================================
 
 app.use(cors(corsOptions))
-app.options('*', cors(corsOptions))
+// Wildcard con nombre ('/*splat') — la versión de path-to-regexp que trae
+// router ya no acepta un '*' suelto (mismo tipo de crash en el arranque que
+// el de aiAgentRoutes.js: PR #115). El nombre del parámetro no importa acá,
+// nunca se lee.
+app.options('/*splat', cors(corsOptions))
 
 // =======================================================
 // SECURITY LAYER
