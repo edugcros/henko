@@ -86,12 +86,7 @@ const MetricCard = ({ label, value, color, suffix }) => (
     <Typography variant="h4" fontWeight={900} sx={{ mt: 0.5, color }}>
       {typeof value === 'number' ? value.toLocaleString('es-AR') : value}
       {suffix && (
-        <Typography
-          component="span"
-          variant="body2"
-          color="text.secondary"
-          sx={{ ml: 0.5 }}
-        >
+        <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
           {suffix}
         </Typography>
       )}
@@ -169,11 +164,7 @@ const AiAgentDashboardPage = () => {
       setMetrics(data || {})
     } catch (err) {
       console.error('[AI_DASHBOARD_METRICS_ERROR]', err)
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudo cargar las métricas.',
-      )
+      setError(err?.response?.data?.message || err?.message || 'No se pudo cargar las métricas.')
     } finally {
       setLoading(false)
     }
@@ -211,13 +202,7 @@ const AiAgentDashboardPage = () => {
   const handleRefresh = useCallback(() => {
     loadMetrics(period)
     loadRecoveries(recoveryPagination.page, recoveryStatus)
-  }, [
-    loadMetrics,
-    loadRecoveries,
-    period,
-    recoveryPagination.page,
-    recoveryStatus,
-  ])
+  }, [loadMetrics, loadRecoveries, period, recoveryPagination.page, recoveryStatus])
 
   const handleTest = useCallback(async () => {
     const message = testInput.trim()
@@ -231,11 +216,7 @@ const AiAgentDashboardPage = () => {
       setTestResult(result || null)
     } catch (err) {
       console.error('[AI_AGENT_TEST_ERROR]', err)
-      setTestError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudo probar el agente.',
-      )
+      setTestError(err?.response?.data?.message || err?.message || 'No se pudo probar el agente.')
     } finally {
       setTesting(false)
     }
@@ -247,12 +228,7 @@ const AiAgentDashboardPage = () => {
 
   if (loading && !metrics) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="60vh"
-      >
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
         <CircularProgress />
       </Box>
     )
@@ -295,9 +271,7 @@ const AiAgentDashboardPage = () => {
           </TextField>
           <Button
             variant="outlined"
-            startIcon={
-              loading ? <CircularProgress size={16} /> : <RefreshIcon />
-            }
+            startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
             onClick={handleRefresh}
             disabled={loading}
             sx={{ borderRadius: 2, textTransform: 'none' }}
@@ -319,18 +293,10 @@ const AiAgentDashboardPage = () => {
       </Typography>
       <Grid container spacing={2} mb={3} mt={0.5}>
         <Grid item xs={6} sm={4} md={2.4}>
-          <MetricCard
-            label="Total"
-            value={conv.total || 0}
-            color="primary.main"
-          />
+          <MetricCard label="Total" value={conv.total || 0} color="primary.main" />
         </Grid>
         <Grid item xs={6} sm={4} md={2.4}>
-          <MetricCard
-            label="Abiertas"
-            value={conv.open || 0}
-            color="info.main"
-          />
+          <MetricCard label="Abiertas" value={conv.open || 0} color="info.main" />
         </Grid>
         <Grid item xs={6} sm={4} md={2.4}>
           <MetricCard
@@ -340,11 +306,7 @@ const AiAgentDashboardPage = () => {
           />
         </Grid>
         <Grid item xs={6} sm={4} md={2.4}>
-          <MetricCard
-            label="Convertidas"
-            value={conv.converted || 0}
-            color="success.main"
-          />
+          <MetricCard label="Convertidas" value={conv.converted || 0} color="success.main" />
         </Grid>
         <Grid item xs={6} sm={4} md={2.4}>
           <RateCard
@@ -361,25 +323,13 @@ const AiAgentDashboardPage = () => {
       </Typography>
       <Grid container spacing={2} mb={1} mt={0.5}>
         <Grid item xs={6} sm={4} md={3}>
-          <MetricCard
-            label="Total leads"
-            value={leads.total || 0}
-            color="primary.main"
-          />
+          <MetricCard label="Total leads" value={leads.total || 0} color="primary.main" />
         </Grid>
         <Grid item xs={6} sm={4} md={3}>
-          <MetricCard
-            label="Leads calientes"
-            value={leads.hot || 0}
-            color="error.main"
-          />
+          <MetricCard label="Leads calientes" value={leads.hot || 0} color="error.main" />
         </Grid>
         <Grid item xs={6} sm={4} md={3}>
-          <MetricCard
-            label="Ganados"
-            value={leads.won || 0}
-            color="success.main"
-          />
+          <MetricCard label="Ganados" value={leads.won || 0} color="success.main" />
         </Grid>
         <Grid item xs={6} sm={4} md={3}>
           <MetricCard
@@ -400,18 +350,10 @@ const AiAgentDashboardPage = () => {
       </Typography>
       <Grid container spacing={2} mb={3} mt={0.5}>
         <Grid item xs={6} sm={3}>
-          <MetricCard
-            label="Intentos"
-            value={recovery.total || 0}
-            color="primary.main"
-          />
+          <MetricCard label="Intentos" value={recovery.total || 0} color="primary.main" />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <MetricCard
-            label="Convertidos"
-            value={recovery.converted || 0}
-            color="success.main"
-          />
+          <MetricCard label="Convertidos" value={recovery.converted || 0} color="success.main" />
         </Grid>
         <Grid item xs={6} sm={3}>
           <RateCard
@@ -438,16 +380,12 @@ const AiAgentDashboardPage = () => {
           </Typography>
         </Stack>
         <Typography variant="body2" color="text.secondary" mb={2}>
-          Escribí como si fueras un cliente. El agente responde con su
-          configuración actual, sin necesidad de WhatsApp.
+          Escribí como si fueras un cliente. El agente responde con su configuración actual, sin
+          necesidad de WhatsApp.
         </Typography>
         <Divider sx={{ mb: 2.5 }} />
 
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={1.5}
-          alignItems="flex-start"
-        >
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-start">
           <TextField
             fullWidth
             multiline
@@ -460,13 +398,7 @@ const AiAgentDashboardPage = () => {
           />
           <Button
             variant="contained"
-            startIcon={
-              testing ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <SendIcon />
-              )
-            }
+            startIcon={testing ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
             onClick={handleTest}
             disabled={testing || !testInput.trim()}
             sx={{
@@ -496,11 +428,7 @@ const AiAgentDashboardPage = () => {
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1.5 }}>
               {testResult.intent && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={`Intención: ${testResult.intent}`}
-                />
+                <Chip size="small" variant="outlined" label={`Intención: ${testResult.intent}`} />
               )}
               {testResult.leadScore !== undefined && (
                 <Chip
@@ -583,17 +511,10 @@ const AiAgentDashboardPage = () => {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      {formatMoney(
-                        item.cartSnapshot?.subtotalCents,
-                        item.cartSnapshot?.currency,
-                      )}
+                      {formatMoney(item.cartSnapshot?.subtotalCents, item.cartSnapshot?.currency)}
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        size="small"
-                        label={statusMeta.label}
-                        color={statusMeta.color}
-                      />
+                      <Chip size="small" label={statusMeta.label} color={statusMeta.color} />
                     </TableCell>
                     <TableCell align="center">{item.attempts ?? 0}</TableCell>
                     <TableCell>
@@ -643,18 +564,14 @@ const AiAgentDashboardPage = () => {
             <IconButton
               size="small"
               disabled={recoveryPagination.page <= 1}
-              onClick={() =>
-                loadRecoveries(recoveryPagination.page - 1, recoveryStatus)
-              }
+              onClick={() => loadRecoveries(recoveryPagination.page - 1, recoveryStatus)}
             >
               <ChevronLeftIcon fontSize="small" />
             </IconButton>
             <IconButton
               size="small"
               disabled={recoveryPagination.page >= recoveryPagination.pages}
-              onClick={() =>
-                loadRecoveries(recoveryPagination.page + 1, recoveryStatus)
-              }
+              onClick={() => loadRecoveries(recoveryPagination.page + 1, recoveryStatus)}
             >
               <ChevronRightIcon fontSize="small" />
             </IconButton>

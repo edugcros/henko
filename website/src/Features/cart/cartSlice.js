@@ -1,9 +1,4 @@
-import {
-  createSlice,
-  createAsyncThunk,
-  createAction,
-  createSelector,
-} from '@reduxjs/toolkit'
+import { createSlice, createAsyncThunk, createAction, createSelector } from '@reduxjs/toolkit'
 import cartService from './cartService'
 
 const PLACEHOLDER_IMAGE = '/assets/images/placeholder.png'
@@ -36,11 +31,7 @@ const normalizeVariantId = (item = {}) => {
 
 const normalizeVariantSku = (item = {}) => {
   return (
-    item.variantSku ||
-    item.variantSKU ||
-    item.selectedVariant?.sku ||
-    item.variant?.sku ||
-    null
+    item.variantSku || item.variantSKU || item.selectedVariant?.sku || item.variant?.sku || null
   )
 }
 
@@ -67,16 +58,10 @@ const normalizeCartItems = data => {
 
   return products.map(item => {
     const populatedProduct =
-      item.productId && typeof item.productId === 'object'
-        ? item.productId
-        : null
+      item.productId && typeof item.productId === 'object' ? item.productId : null
 
     const productId =
-      populatedProduct?._id ||
-      item.productId ||
-      item.product?._id ||
-      item.product ||
-      null
+      populatedProduct?._id || item.productId || item.product?._id || item.product || null
 
     const selectedAttributes = normalizeAttributes(item)
     const variantId = normalizeVariantId(item)
@@ -84,24 +69,17 @@ const normalizeCartItems = data => {
 
     const fallbackImage =
       populatedProduct?.image ||
-      (Array.isArray(populatedProduct?.images) &&
-      populatedProduct.images.length > 0
+      (Array.isArray(populatedProduct?.images) && populatedProduct.images.length > 0
         ? populatedProduct.images[0]?.url
         : PLACEHOLDER_IMAGE)
 
     const selectedVariantImage =
-      item.selectedVariant?.image ||
-      item.variant?.image?.url ||
-      item.variant?.image ||
-      null
+      item.selectedVariant?.image || item.variant?.image?.url || item.variant?.image || null
 
     const normalizedImage = item.image || selectedVariantImage || fallbackImage
 
     const price = toNumber(
-      item.price ??
-        item.selectedVariant?.price ??
-        item.variant?.price ??
-        populatedProduct?.price,
+      item.price ?? item.selectedVariant?.price ?? item.variant?.price ?? populatedProduct?.price,
       0,
     )
 
@@ -109,10 +87,7 @@ const normalizeCartItems = data => {
     const subtotal = toNumber(item.subtotal, price * quantity)
 
     const stock = toNumber(
-      item.stock ??
-        item.selectedVariant?.stock ??
-        item.variant?.stock ??
-        populatedProduct?.stock,
+      item.stock ?? item.selectedVariant?.stock ?? item.variant?.stock ?? populatedProduct?.stock,
       0,
     )
 
@@ -139,18 +114,12 @@ const normalizeCartItems = data => {
       selectedAttributes,
       variantAttributes: selectedAttributes,
       hasVariants: Boolean(
-        item.hasVariants ||
-        variantId ||
-        Object.keys(selectedAttributes).length > 0,
+        item.hasVariants || variantId || Object.keys(selectedAttributes).length > 0,
       ),
 
       selectedVariant: item.selectedVariant
         ? {
-            id:
-              item.selectedVariant.id ||
-              item.selectedVariant._id ||
-              variantId ||
-              null,
+            id: item.selectedVariant.id || item.selectedVariant._id || variantId || null,
             sku: item.selectedVariant.sku || variantSku || null,
             price: toNumber(item.selectedVariant.price, price),
             stock: toNumber(item.selectedVariant.stock, stock),
@@ -174,10 +143,7 @@ const normalizeCartItems = data => {
 }
 
 const calculateTotal = items =>
-  items.reduce(
-    (acc, item) => acc + toNumber(item.price) * toNumber(item.quantity),
-    0,
-  )
+  items.reduce((acc, item) => acc + toNumber(item.price) * toNumber(item.quantity), 0)
 
 const initialState = {
   cartItems: [],
@@ -193,9 +159,7 @@ export const getCart = createAsyncThunk('cart/getCart', async (_, thunkAPI) => {
     const response = await cartService.getCart()
     return response
   } catch (error) {
-    return thunkAPI.rejectWithValue(
-      error?.message || 'No se pudo obtener el carrito',
-    )
+    return thunkAPI.rejectWithValue(error?.message || 'No se pudo obtener el carrito')
   }
 })
 
@@ -206,35 +170,26 @@ export const addOrUpdateCartItem = createAsyncThunk(
       const response = await cartService.addOrUpdateCartItem(cartData)
       return response.data || response
     } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error?.message || 'No se pudo actualizar el carrito',
-      )
+      return thunkAPI.rejectWithValue(error?.message || 'No se pudo actualizar el carrito')
     }
   },
 )
 
-export const removeCartItem = createAsyncThunk(
-  'cart/removeItem',
-  async (payload, thunkAPI) => {
-    try {
-      const response = await cartService.removeCartItem(payload)
-      return response.data || response
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error?.message || 'No se pudo eliminar el item',
-      )
-    }
-  },
-)
+export const removeCartItem = createAsyncThunk('cart/removeItem', async (payload, thunkAPI) => {
+  try {
+    const response = await cartService.removeCartItem(payload)
+    return response.data || response
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error?.message || 'No se pudo eliminar el item')
+  }
+})
 
 export const emptyCart = createAsyncThunk('cart/empty', async (_, thunkAPI) => {
   try {
     const response = await cartService.emptyCart()
     return response.data || response
   } catch (error) {
-    return thunkAPI.rejectWithValue(
-      error?.message || 'No se pudo vaciar el carrito',
-    )
+    return thunkAPI.rejectWithValue(error?.message || 'No se pudo vaciar el carrito')
   }
 })
 

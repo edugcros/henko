@@ -1,20 +1,17 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import tenantService from './tenantService'
 
-export const fetchTenantSettings = createAsyncThunk(
-  'tenant/fetchSettings',
-  async (_, thunkAPI) => {
-    try {
-      const response = await tenantService.getTenantSettings()
-      if (!response?.success) {
-        return thunkAPI.rejectWithValue(response?.message || 'Error cargando configuración')
-      }
-      return response.data
-    } catch (error) {
-      return thunkAPI.rejectWithValue(error?.message || 'Error inesperado')
+export const fetchTenantSettings = createAsyncThunk('tenant/fetchSettings', async (_, thunkAPI) => {
+  try {
+    const response = await tenantService.getTenantSettings()
+    if (!response?.success) {
+      return thunkAPI.rejectWithValue(response?.message || 'Error cargando configuración')
     }
-  },
-)
+    return response.data
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error?.message || 'Error inesperado')
+  }
+})
 
 export const saveTenantSettings = createAsyncThunk(
   'tenant/saveSettings',

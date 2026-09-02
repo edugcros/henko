@@ -140,11 +140,7 @@ const MetricMeter = ({ metric, data }) => {
 
       {severity.Icon && (
         <Stack direction="row" spacing={0.5} alignItems="center" mt={0.75}>
-          <severity.Icon
-            fontSize="small"
-            color={severity.color}
-            sx={{ fontSize: 16 }}
-          />
+          <severity.Icon fontSize="small" color={severity.color} sx={{ fontSize: 16 }} />
           <Typography variant="caption" color="text.secondary">
             {severity.label}
             {severity.level === 'critical' &&
@@ -170,11 +166,7 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
       setApiKey('')
       onSaved(budget)
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudo guardar la API key.',
-      )
+      setError(err?.response?.data?.message || err?.message || 'No se pudo guardar la API key.')
     } finally {
       setBusy(false)
     }
@@ -188,11 +180,7 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
       const budget = await deleteAiCredentials()
       onCleared(budget)
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudo desactivar la API key.',
-      )
+      setError(err?.response?.data?.message || err?.message || 'No se pudo desactivar la API key.')
     } finally {
       setBusy(false)
     }
@@ -201,9 +189,8 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
   if (!credentials?.byokAllowed) {
     return (
       <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
-        Con el plan Pro podés conectar tu propia cuenta de Google: el consumo de
-        IA deja de contar contra estos límites y se factura directamente en tu
-        cuenta.
+        Con el plan Pro podés conectar tu propia cuenta de Google: el consumo de IA deja de contar
+        contra estos límites y se factura directamente en tu cuenta.
       </Alert>
     )
   }
@@ -214,8 +201,8 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
         <Stack direction="row" spacing={1} alignItems="center">
           <CheckCircleOutlineIcon color="success" fontSize="small" />
           <Typography variant="body2" color="text.primary">
-            Estás usando tu propia API key. El consumo de IA se factura en tu
-            cuenta de Google y no consume los límites del plan.
+            Estás usando tu propia API key. El consumo de IA se factura en tu cuenta de Google y no
+            consume los límites del plan.
           </Typography>
         </Stack>
 
@@ -244,14 +231,9 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
   return (
     <Stack spacing={1.5}>
       <Typography variant="body2" color="text.secondary">
-        Conectá tu propia cuenta de Google para que el consumo de IA se facture
-        ahí y deje de contar contra los límites del plan. La key se guarda
-        cifrada y no se vuelve a mostrar.{' '}
-        <Link
-          href="https://aistudio.google.com/apikey"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        Conectá tu propia cuenta de Google para que el consumo de IA se facture ahí y deje de contar
+        contra los límites del plan. La key se guarda cifrada y no se vuelve a mostrar.{' '}
+        <Link href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">
           Obtener una API key
         </Link>
       </Typography>
@@ -277,13 +259,7 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
           variant="contained"
           onClick={handleSave}
           disabled={busy || !apiKey.trim()}
-          startIcon={
-            busy ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : (
-              <KeyOutlinedIcon />
-            )
-          }
+          startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <KeyOutlinedIcon />}
           sx={{ borderRadius: 2, textTransform: 'none', whiteSpace: 'nowrap' }}
         >
           {busy ? 'Verificando...' : 'Conectar'}
@@ -307,9 +283,7 @@ const AiBudgetPanel = () => {
     } catch (err) {
       console.error('[AI_BUDGET_LOAD_ERROR]', err)
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudo cargar el consumo de IA.',
+        err?.response?.data?.message || err?.message || 'No se pudo cargar el consumo de IA.',
       )
     } finally {
       setLoading(false)
@@ -323,12 +297,10 @@ const AiBudgetPanel = () => {
   const metrics = useMemo(() => {
     if (!budget?.metrics) return []
 
-    return METRIC_ORDER.filter(metric => budget.metrics[metric]).map(
-      metric => ({
-        metric,
-        data: budget.metrics[metric],
-      }),
-    )
+    return METRIC_ORDER.filter(metric => budget.metrics[metric]).map(metric => ({
+      metric,
+      data: budget.metrics[metric],
+    }))
   }, [budget])
 
   if (loading) {
@@ -353,24 +325,14 @@ const AiBudgetPanel = () => {
 
   return (
     <Stack spacing={2.5}>
-      <Stack
-        direction="row"
-        spacing={1}
-        alignItems="center"
-        flexWrap="wrap"
-        useFlexGap
-      >
+      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
         <Chip
           size="small"
           label={`Plan ${PLAN_LABELS[budget.plan] || budget.plan}`}
           color="primary"
           variant="outlined"
         />
-        <Chip
-          size="small"
-          label={`Período ${budget.period}`}
-          variant="outlined"
-        />
+        <Chip size="small" label={`Período ${budget.period}`} variant="outlined" />
         {usingOwnKey && (
           <Chip
             size="small"
@@ -393,15 +355,15 @@ const AiBudgetPanel = () => {
 
       {!budget.subscription?.entitled && (
         <Alert severity="warning" variant="outlined" sx={{ borderRadius: 2 }}>
-          Las funciones de IA están pausadas porque la suscripción no está al
-          día. El resto de la tienda sigue funcionando con normalidad.
+          Las funciones de IA están pausadas porque la suscripción no está al día. El resto de la
+          tienda sigue funcionando con normalidad.
         </Alert>
       )}
 
       {usingOwnKey ? (
         <Alert severity="success" variant="outlined" sx={{ borderRadius: 2 }}>
-          El consumo de este mes corre por tu propia cuenta de Google. Se sigue
-          registrando abajo para que puedas dimensionarlo, pero no tiene tope.
+          El consumo de este mes corre por tu propia cuenta de Google. Se sigue registrando abajo
+          para que puedas dimensionarlo, pero no tiene tope.
         </Alert>
       ) : null}
 
@@ -413,11 +375,7 @@ const AiBudgetPanel = () => {
 
       <Divider />
 
-      <ByokSection
-        credentials={budget.credentials}
-        onSaved={setBudget}
-        onCleared={setBudget}
-      />
+      <ByokSection credentials={budget.credentials} onSaved={setBudget} onCleared={setBudget} />
     </Stack>
   )
 }

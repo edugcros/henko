@@ -31,8 +31,7 @@ const getAssetUrl = asset => {
 // guardar (themeConfigModel.js::isSafeThemeUrl), pero un valor guardado
 // antes de ese fix seguiría sirviéndose acá. Mismo criterio que
 // Home.js::heroConfig.
-const isValidUrl = url =>
-  typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
+const isValidUrl = url => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
 
 const Footer = () => {
   const { themeConfig } = useTenant()
@@ -83,11 +82,7 @@ const Footer = () => {
                     alt="newsletter"
                     sx={{ width: 40, height: 40 }}
                   />
-                  <Typography
-                    variant="subtitle1"
-                    fontWeight="600"
-                    sx={{ fontSize: 16 }}
-                  >
+                  <Typography variant="subtitle1" fontWeight="600" sx={{ fontSize: 16 }}>
                     {footer.newsletterText || 'Suscribite a nuestro Newsletter'}
                   </Typography>
                 </Stack>
@@ -150,13 +145,8 @@ const Footer = () => {
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
                 {general.storeName || 'Contacto'}
               </Typography>
-              <Typography
-                variant="body2"
-                sx={{ color: alpha(themeColors.background, 0.7) }}
-              >
-                {footer.description ||
-                  general.tagline ||
-                  'Tu tienda de confianza.'}
+              <Typography variant="body2" sx={{ color: alpha(themeColors.background, 0.7) }}>
+                {footer.description || general.tagline || 'Tu tienda de confianza.'}
               </Typography>
               {footer.phone && (
                 <Typography
@@ -164,10 +154,7 @@ const Footer = () => {
                   sx={{ mt: 1, color: alpha(themeColors.background, 0.8) }}
                 >
                   Tel:{' '}
-                  <a
-                    href={`tel:${footer.phone}`}
-                    style={{ color: themeColors.background }}
-                  >
+                  <a href={`tel:${footer.phone}`} style={{ color: themeColors.background }}>
                     {footer.phone}
                   </a>
                 </Typography>
@@ -178,10 +165,7 @@ const Footer = () => {
                   sx={{ mt: 0.5, color: alpha(themeColors.background, 0.8) }}
                 >
                   Email:{' '}
-                  <a
-                    href={`mailto:${footer.email}`}
-                    style={{ color: themeColors.background }}
-                  >
+                  <a href={`mailto:${footer.email}`} style={{ color: themeColors.background }}>
                     {footer.email}
                   </a>
                 </Typography>
@@ -265,28 +249,13 @@ const Footer = () => {
                 Cuenta
               </Typography>
               <Stack spacing={0.5}>
-                <MuiLink
-                  component={RouterLink}
-                  to="/about"
-                  underline="hover"
-                  sx={footerLinkSx}
-                >
+                <MuiLink component={RouterLink} to="/about" underline="hover" sx={footerLinkSx}>
                   Sobre Nosotros
                 </MuiLink>
-                <MuiLink
-                  component={RouterLink}
-                  to="/faq"
-                  underline="hover"
-                  sx={footerLinkSx}
-                >
+                <MuiLink component={RouterLink} to="/faq" underline="hover" sx={footerLinkSx}>
                   Preguntas Frecuentes
                 </MuiLink>
-                <MuiLink
-                  component={RouterLink}
-                  to="/contact"
-                  underline="hover"
-                  sx={footerLinkSx}
-                >
+                <MuiLink component={RouterLink} to="/contact" underline="hover" sx={footerLinkSx}>
                   Contacto
                 </MuiLink>
               </Stack>
@@ -339,10 +308,7 @@ const Footer = () => {
       {/* Línea inferior */}
       <Divider sx={{ bgcolor: alpha(themeColors.background, 0.08) }} />
       <Box sx={{ py: 1.5, textAlign: 'center', bgcolor: themeColors.text }}>
-        <Typography
-          variant="caption"
-          sx={{ color: alpha(themeColors.background, 0.6) }}
-        >
+        <Typography variant="caption" sx={{ color: alpha(themeColors.background, 0.6) }}>
           © {new Date().getFullYear()} — Powered by henko
         </Typography>
       </Box>

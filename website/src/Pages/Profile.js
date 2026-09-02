@@ -49,11 +49,7 @@ const Profile = () => {
   const theme = useTheme()
   const { themeConfig, isReady } = useTenant()
 
-  const {
-    user,
-    wishlist,
-    isLoading: isUserLoading,
-  } = useSelector(state => state.user)
+  const { user, wishlist, isLoading: isUserLoading } = useSelector(state => state.user)
   const { cartItems } = useSelector(state => state.cart)
   const compareItems = useSelector(state => state.compare?.items || [])
 
@@ -85,8 +81,7 @@ const Profile = () => {
   // Colores dinámicos del tema
   const colors = {
     primary: themeConfig?.colors?.primary || theme.palette.brand.main,
-    background:
-      themeConfig?.colors?.background || theme.palette.background.default,
+    background: themeConfig?.colors?.background || theme.palette.background.default,
   }
 
   if (!isReady || (isUserLoading && !user)) {
@@ -164,9 +159,7 @@ const Profile = () => {
     } catch (error) {
       console.error('Error actualizando perfil:', error)
       setFormError(
-        typeof error === 'string'
-          ? error
-          : error?.message || 'No se pudo actualizar el perfil.',
+        typeof error === 'string' ? error : error?.message || 'No se pudo actualizar el perfil.',
       )
     }
   }
@@ -177,8 +170,7 @@ const Profile = () => {
     setIsEditing(false)
   }
 
-  const fullName =
-    [user.firstname, user.lastname].filter(Boolean).join(' ') || 'Usuario'
+  const fullName = [user.firstname, user.lastname].filter(Boolean).join(' ') || 'Usuario'
 
   const stats = [
     {
@@ -213,12 +205,7 @@ const Profile = () => {
         bgcolor: alpha(colors.background, 0.5),
       }}
     >
-      <Typography
-        variant="h4"
-        fontWeight={800}
-        gutterBottom
-        sx={{ color: 'text.primary' }}
-      >
+      <Typography variant="h4" fontWeight={800} gutterBottom sx={{ color: 'text.primary' }}>
         Mi Perfil
       </Typography>
 
@@ -278,10 +265,7 @@ const Profile = () => {
                 <ListItemIcon>
                   <PhoneIcon color="action" />
                 </ListItemIcon>
-                <ListItemText
-                  primary="Teléfono"
-                  secondary={user.mobile || 'No especificado'}
-                />
+                <ListItemText primary="Teléfono" secondary={user.mobile || 'No especificado'} />
               </ListItem>
             </List>
 
@@ -336,12 +320,7 @@ const Profile = () => {
               mb: 3,
             }}
           >
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              mb={3}
-            >
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
               <Typography
                 variant="h6"
                 fontWeight={700}
@@ -362,18 +341,10 @@ const Profile = () => {
                 </Button>
               ) : (
                 <Box>
-                  <IconButton
-                    onClick={handleCancelEdit}
-                    color="error"
-                    disabled={isUserLoading}
-                  >
+                  <IconButton onClick={handleCancelEdit} color="error" disabled={isUserLoading}>
                     <CancelIcon />
                   </IconButton>
-                  <IconButton
-                    onClick={handleSave}
-                    color="success"
-                    disabled={isUserLoading}
-                  >
+                  <IconButton onClick={handleSave} color="success" disabled={isUserLoading}>
                     <SaveIcon />
                   </IconButton>
                 </Box>
@@ -414,9 +385,7 @@ const Profile = () => {
                   fullWidth
                   label="Apellido"
                   value={formData.lastname}
-                  onChange={e =>
-                    setFormData(prev => ({ ...prev, lastname: e.target.value }))
-                  }
+                  onChange={e => setFormData(prev => ({ ...prev, lastname: e.target.value }))}
                   disabled={!isEditing}
                   InputProps={{ readOnly: !isEditing }}
                 />
@@ -427,9 +396,7 @@ const Profile = () => {
                   fullWidth
                   label="Email"
                   value={formData.email}
-                  onChange={e =>
-                    setFormData(prev => ({ ...prev, email: e.target.value }))
-                  }
+                  onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
                   disabled={!isEditing}
                   InputProps={{ readOnly: !isEditing }}
                 />
@@ -440,9 +407,7 @@ const Profile = () => {
                   fullWidth
                   label="Teléfono"
                   value={formData.mobile}
-                  onChange={e =>
-                    setFormData(prev => ({ ...prev, mobile: e.target.value }))
-                  }
+                  onChange={e => setFormData(prev => ({ ...prev, mobile: e.target.value }))}
                   disabled={!isEditing}
                   InputProps={{ readOnly: !isEditing }}
                 />
@@ -453,9 +418,7 @@ const Profile = () => {
                   fullWidth
                   label="Dirección"
                   value={formData.address}
-                  onChange={e =>
-                    setFormData(prev => ({ ...prev, address: e.target.value }))
-                  }
+                  onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))}
                   disabled={!isEditing}
                   InputProps={{ readOnly: !isEditing }}
                   inputProps={{ maxLength: 200 }}

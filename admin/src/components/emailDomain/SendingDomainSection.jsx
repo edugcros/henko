@@ -166,9 +166,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
     } catch (error) {
       setFeedback({
         severity: 'error',
-        message:
-          error?.response?.data?.message ||
-          'No se pudo cargar el dominio de envío.',
+        message: error?.response?.data?.message || 'No se pudo cargar el dominio de envío.',
       })
     } finally {
       setLoading(false)
@@ -193,8 +191,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
           data?.usingOwnDomain
             ? {
                 severity: 'success',
-                message:
-                  'Dominio verificado. Tus correos ya salen desde tu dirección.',
+                message: 'Dominio verificado. Tus correos ya salen desde tu dirección.',
               }
             : {
                 severity: 'info',
@@ -206,8 +203,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
     } catch (error) {
       setFeedback({
         severity: 'error',
-        message:
-          error?.response?.data?.message || 'No se pudo completar la acción.',
+        message: error?.response?.data?.message || 'No se pudo completar la acción.',
       })
     } finally {
       setBusy('')
@@ -239,13 +235,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
 
   return (
     <Stack spacing={2.5}>
-      <Stack
-        direction="row"
-        spacing={1}
-        alignItems="center"
-        flexWrap="wrap"
-        useFlexGap
-      >
+      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
         <Typography variant="body2" color="text.secondary">
           Enviando como:
         </Typography>
@@ -267,11 +257,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
       </Stack>
 
       {feedback && (
-        <Alert
-          severity={feedback.severity}
-          variant="outlined"
-          sx={{ borderRadius: 2 }}
-        >
+        <Alert severity={feedback.severity} variant="outlined" sx={{ borderRadius: 2 }}>
           {feedback.message}
         </Alert>
       )}
@@ -285,8 +271,8 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
       {status === 'verified' ? (
         <Stack spacing={1.5} alignItems="flex-start">
           <Typography variant="body2" color="text.primary">
-            Tus correos salen desde <strong>{requested.fromAddress}</strong>,
-            con la reputación de tu propio dominio.
+            Tus correos salen desde <strong>{requested.fromAddress}</strong>, con la reputación de
+            tu propio dominio.
           </Typography>
 
           <Button
@@ -297,17 +283,14 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
             onClick={() => run('delete', deleteEmailDomain)}
             sx={{ borderRadius: 2, textTransform: 'none' }}
           >
-            {busy === 'delete'
-              ? 'Quitando...'
-              : 'Volver a la dirección de la plataforma'}
+            {busy === 'delete' ? 'Quitando...' : 'Volver a la dirección de la plataforma'}
           </Button>
         </Stack>
       ) : (
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Para enviar desde tu propia dirección, tu dominio tiene que
-            autorizarlo por DNS. Hasta que eso esté listo, los correos siguen
-            saliendo por la plataforma.
+            Para enviar desde tu propia dirección, tu dominio tiene que autorizarlo por DNS. Hasta
+            que eso esté listo, los correos siguen saliendo por la plataforma.
           </Typography>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
@@ -360,9 +343,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
                   <TableBody>
                     {records.map((record, index) => (
                       <TableRow key={`${record.type}-${record.name}-${index}`}>
-                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                          {record.type}
-                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{record.type}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                           <CopyableValue value={record.name} />
                         </TableCell>
@@ -382,9 +363,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
                   onClick={() => run('verify', verifyEmailDomain)}
                   sx={{ borderRadius: 2, textTransform: 'none' }}
                 >
-                  {busy === 'verify'
-                    ? 'Verificando...'
-                    : 'Ya los cargué, verificar'}
+                  {busy === 'verify' ? 'Verificando...' : 'Ya los cargué, verificar'}
                 </Button>
 
                 <Button
@@ -402,9 +381,8 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
 
           {!identity.canManageDomains && status !== 'none' && (
             <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
-              La verificación automática no está habilitada en esta instalación.
-              Un administrador tiene que completar el alta del dominio desde el
-              proveedor de correo.
+              La verificación automática no está habilitada en esta instalación. Un administrador
+              tiene que completar el alta del dominio desde el proveedor de correo.
             </Alert>
           )}
         </Stack>

@@ -108,11 +108,7 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
       <div className="form-row">
         <div className="form-group">
           <label>Tipo de Descuento</label>
-          <select
-            name="discountType"
-            value={config.discountType}
-            onChange={handleChange}
-          >
+          <select name="discountType" value={config.discountType} onChange={handleChange}>
             <option value="percentage">Porcentaje (%)</option>
             <option value="fixed_amount">Monto Fijo ($)</option>
           </select>
@@ -129,9 +125,7 @@ const BulkGenerator = ({ onSuccess, onCancel }) => {
             min="0"
             className={errors.discountValue ? 'error' : ''}
           />
-          {errors.discountValue && (
-            <span className="error-text">{errors.discountValue}</span>
-          )}
+          {errors.discountValue && <span className="error-text">{errors.discountValue}</span>}
         </div>
       </div>
 

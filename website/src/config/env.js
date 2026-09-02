@@ -59,23 +59,17 @@ const hasInternalWhitespace = value => {
 // solo origen, así que las cookies quedan de primera parte.
 const isRelativeApiPath = value => /^\/(?!\/)/.test(String(value || '').trim())
 
-const nodeEnv =
-  getValue('REACT_APP_NODE_ENV') || process.env.NODE_ENV || 'development'
+const nodeEnv = getValue('REACT_APP_NODE_ENV') || process.env.NODE_ENV || 'development'
 
 const isProduction =
-  getValue('REACT_APP_NODE_ENV') === 'production' ||
-  process.env.NODE_ENV === 'production'
+  getValue('REACT_APP_NODE_ENV') === 'production' || process.env.NODE_ENV === 'production'
 
 const predeployMode = parseBoolean(getValue('REACT_APP_PREDEPLOY_MODE'), false)
 
 const apiBaseUrl = getValue('REACT_APP_API_BASE_URL', 'REACT_APP_API_URL')
 
-const mercadoPagoPublicKey = sanitizeMercadoPagoPublicKey(
-  getValue('REACT_APP_MP_PUBLIC_KEY'),
-)
-const mpTestPayerEmail = sanitizeEnvValue(
-  getValue('REACT_APP_MP_TEST_PAYER_EMAIL'),
-)
+const mercadoPagoPublicKey = sanitizeMercadoPagoPublicKey(getValue('REACT_APP_MP_PUBLIC_KEY'))
+const mpTestPayerEmail = sanitizeEnvValue(getValue('REACT_APP_MP_TEST_PAYER_EMAIL'))
 
 const adminPreviewOrigins = getValue('REACT_APP_ADMIN_PREVIEW_ORIGINS')
 
@@ -90,10 +84,7 @@ export const env = {
 
   csrfHeaderName: getValue('REACT_APP_CSRF_HEADER_NAME') || 'x-csrf-token',
 
-  publicBaseDomain: getValue(
-    'REACT_APP_PUBLIC_BASE_DOMAIN',
-    'REACT_APP_PRODUCTION_DOMAIN',
-  ),
+  publicBaseDomain: getValue('REACT_APP_PUBLIC_BASE_DOMAIN', 'REACT_APP_PRODUCTION_DOMAIN'),
 
   adminBaseDomain: getValue('REACT_APP_ADMIN_BASE_DOMAIN'),
 
@@ -106,15 +97,9 @@ export const env = {
     true,
   ),
 
-  enablePromotionalBlocks: parseBoolean(
-    getValue('REACT_APP_ENABLE_PROMOTIONAL_BLOCKS'),
-    true,
-  ),
+  enablePromotionalBlocks: parseBoolean(getValue('REACT_APP_ENABLE_PROMOTIONAL_BLOCKS'), true),
 
-  enableAiFeatures: parseBoolean(
-    getValue('REACT_APP_ENABLE_AI_FEATURES'),
-    true,
-  ),
+  enableAiFeatures: parseBoolean(getValue('REACT_APP_ENABLE_AI_FEATURES'), true),
 
   mercadoPagoPublicKey,
 
@@ -133,10 +118,7 @@ export const env = {
   turnstileSiteKey: getValue('REACT_APP_TURNSTILE_SITE_KEY'),
 }
 
-if (
-  env.mercadoPagoPublicKey &&
-  hasInternalWhitespace(env.mercadoPagoPublicKey)
-) {
+if (env.mercadoPagoPublicKey && hasInternalWhitespace(env.mercadoPagoPublicKey)) {
   throw new Error('REACT_APP_MP_PUBLIC_KEY inválida: contiene espacios')
 }
 
@@ -145,27 +127,21 @@ if (
   !isMercadoPagoTestKey(env.mercadoPagoPublicKey) &&
   !isMercadoPagoProdKey(env.mercadoPagoPublicKey)
 ) {
-  throw new Error(
-    'REACT_APP_MP_PUBLIC_KEY inválida: debe comenzar con TEST- o APP_USR-',
-  )
+  throw new Error('REACT_APP_MP_PUBLIC_KEY inválida: debe comenzar con TEST- o APP_USR-')
 }
 
 if (env.isProduction) {
   const apiBaseUrlIsRelative = isRelativeApiPath(env.apiBaseUrl)
 
   if (!apiBaseUrlIsRelative && !/^https:\/\//i.test(String(env.apiBaseUrl || ''))) {
-    throw new Error(
-      `REACT_APP_API_BASE_URL debe usar HTTPS en producción: ${env.apiBaseUrl}`,
-    )
+    throw new Error(`REACT_APP_API_BASE_URL debe usar HTTPS en producción: ${env.apiBaseUrl}`)
   }
 
   if (
     !apiBaseUrlIsRelative &&
     /localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(String(env.apiBaseUrl || ''))
   ) {
-    throw new Error(
-      `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
-    )
+    throw new Error(`REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`)
   }
 
   if (!env.mercadoPagoPublicKey) {
@@ -173,15 +149,11 @@ if (env.isProduction) {
   }
 
   if (!isMercadoPagoProdKey(env.mercadoPagoPublicKey)) {
-    throw new Error(
-      'REACT_APP_MP_PUBLIC_KEY debe ser una clave productiva APP_USR- en producción',
-    )
+    throw new Error('REACT_APP_MP_PUBLIC_KEY debe ser una clave productiva APP_USR- en producción')
   }
 
   if (isMercadoPagoTestKey(env.mercadoPagoPublicKey)) {
-    throw new Error(
-      'REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en producción',
-    )
+    throw new Error('REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en producción')
   }
 }
 

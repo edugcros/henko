@@ -49,9 +49,7 @@ const renderAdminRoutes = () =>
   privateRoutes
     .map(({ path, Component: _Component }) => {
       if (!_Component) {
-        console.error(
-          `🚨 ERROR: Ruta admin "${path}" tiene Component undefined`,
-        )
+        console.error(`🚨 ERROR: Ruta admin "${path}" tiene Component undefined`)
         return null
       }
 
@@ -80,17 +78,11 @@ const RouteRenderer = ({ isLoggedIn }) => {
     // asincrónicas del panel, no uno nuevo a mantener.
     <Suspense fallback={<SpinnerCentered />}>
       <Routes>
-        <Route
-          path="/"
-          element={<Navigate to={isLoggedIn ? '/admin' : '/login'} replace />}
-        />
+        <Route path="/" element={<Navigate to={isLoggedIn ? '/admin' : '/login'} replace />} />
 
         {renderPublicRoutes()}
 
-        <Route
-          path="/admin"
-          element={<PrivateRoute allowedRoles={['admin']} />}
-        >
+        <Route path="/admin" element={<PrivateRoute allowedRoles={['admin']} />}>
           <Route element={<MainLayout />}>{renderAdminRoutes()}</Route>
         </Route>
 

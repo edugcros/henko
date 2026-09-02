@@ -23,9 +23,7 @@ const assertApiBaseUrl = () => {
   if (env.isProduction) {
     const url = String(env.apiBaseUrl)
     if (/localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(url)) {
-      throw new Error(
-        `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
-      )
+      throw new Error(`REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`)
     }
   }
 }
@@ -47,9 +45,10 @@ const getMetricSessionId = () => {
   let sessionId = localStorage.getItem(METRIC_SESSION_KEY)
 
   if (!sessionId) {
-    sessionId = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    sessionId =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`
     localStorage.setItem(METRIC_SESSION_KEY, sessionId)
   }
 
@@ -61,10 +60,7 @@ const getMetricSessionId = () => {
 // =====================================================
 
 const API_BASE_URL =
-  env.apiBaseUrl ||
-  process.env.REACT_APP_API_BASE_URL ||
-  process.env.REACT_APP_API_URL ||
-  ''
+  env.apiBaseUrl || process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_URL || ''
 
 if (!API_BASE_URL) {
   throw new Error('REACT_APP_API_BASE_URL no está configurado en admin')
@@ -104,7 +100,6 @@ export const clearCsrfToken = () => {
   csrfTokenPromise = null
   delete api.defaults.headers.common['x-csrf-token']
 }
-
 
 export const fetchCsrfToken = async ({ force = false } = {}) => {
   if (csrfTokenPromise && !force) {
@@ -154,10 +149,7 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
         url: '/user/csrf-token',
         status: error?.response?.status ?? null,
         code: error?.response?.data?.code ?? null,
-        message:
-          error?.response?.data?.message ||
-          error?.message ||
-          'Unknown error',
+        message: error?.response?.data?.message || error?.message || 'Unknown error',
         responseData: error?.response?.data ?? null,
       })
 
@@ -171,7 +163,6 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
 
   return csrfTokenPromise
 }
-
 
 export const initCsrf = async () => {
   return fetchCsrfToken({ force: true })
@@ -196,11 +187,7 @@ api.interceptors.request.use(
     // la URL como `${recurso}${endpoint}` con endpoint:'/'. Sacar la barra
     // final acá, en el único lugar por el que pasa toda request, evita tener
     // que tocar cada service que arma la URL así.
-    if (
-      typeof config.url === 'string' &&
-      config.url.length > 1 &&
-      config.url.endsWith('/')
-    ) {
+    if (typeof config.url === 'string' && config.url.length > 1 && config.url.endsWith('/')) {
       config.url = config.url.slice(0, -1)
     }
 
@@ -212,9 +199,7 @@ api.interceptors.request.use(
       }
     }
 
-    const metricSessionId = config.skipMetricSession
-      ? null
-      : getMetricSessionId()
+    const metricSessionId = config.skipMetricSession ? null : getMetricSessionId()
     if (metricSessionId) {
       config.headers['x-metric-session-id'] = metricSessionId
     }
@@ -231,8 +216,7 @@ api.interceptors.request.use(
         tenant: config.headers[env.tenantHeader || 'x-tenant-domain'],
       })
     }
-    const isFormData =
-      typeof FormData !== 'undefined' && config.data instanceof FormData
+    const isFormData = typeof FormData !== 'undefined' && config.data instanceof FormData
 
     if (isFormData || config.isMultipart) {
       delete config.headers['Content-Type']
@@ -279,11 +263,7 @@ api.interceptors.response.use(
     // =====================================================
 
     const isCsrfError =
-      status === 403 &&
-      (
-        code === 'EBADCSRFTOKEN' ||
-        message.toLowerCase().includes('csrf')
-      )
+      status === 403 && (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
 
     if (isCsrfError && !originalRequest.skipCsrfRetry) {
       originalRequest._retry = true
@@ -306,12 +286,7 @@ api.interceptors.response.use(
     const isLoginRequest = originalRequest.url?.includes('/login')
     const isRefreshRequest = originalRequest.url?.includes('/refresh')
 
-    if (
-      isAuthError &&
-      !isLoginRequest &&
-      !isRefreshRequest &&
-      !originalRequest.skipAuthRefresh
-    ) {
+    if (isAuthError && !isLoginRequest && !isRefreshRequest && !originalRequest.skipAuthRefresh) {
       originalRequest._retry = true
 
       try {

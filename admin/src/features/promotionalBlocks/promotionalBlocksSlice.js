@@ -107,9 +107,7 @@ export const fetchPromotionalBlocks = createAsyncThunk(
     try {
       return await promotionalBlocksService.getPromotionalBlocks(params)
     } catch (error) {
-      return rejectWithValue(
-        getErrorMessage(error, 'Error al cargar bloques promocionales'),
-      )
+      return rejectWithValue(getErrorMessage(error, 'Error al cargar bloques promocionales'))
     }
   },
 )
@@ -122,13 +120,10 @@ export const fetchPromotionalBlock = createAsyncThunk(
         return rejectWithValue('ID del bloque promocional requerido')
       }
 
-      const response =
-        await promotionalBlocksService.getPromotionalBlock(blockId)
+      const response = await promotionalBlocksService.getPromotionalBlock(blockId)
       return normalizeEntityResponse(response)
     } catch (error) {
-      return rejectWithValue(
-        getErrorMessage(error, 'Error al cargar el bloque promocional'),
-      )
+      return rejectWithValue(getErrorMessage(error, 'Error al cargar el bloque promocional'))
     }
   },
 )
@@ -141,13 +136,10 @@ export const createPromotionalBlock = createAsyncThunk(
         return rejectWithValue('Payload del bloque promocional inválido')
       }
 
-      const response =
-        await promotionalBlocksService.createPromotionalBlock(blockData)
+      const response = await promotionalBlocksService.createPromotionalBlock(blockData)
       return normalizeEntityResponse(response)
     } catch (error) {
-      return rejectWithValue(
-        getErrorMessage(error, 'Error al crear bloque promocional'),
-      )
+      return rejectWithValue(getErrorMessage(error, 'Error al crear bloque promocional'))
     }
   },
 )
@@ -166,16 +158,11 @@ export const updatePromotionalBlock = createAsyncThunk(
         return rejectWithValue('Payload de actualización inválido')
       }
 
-      const response = await promotionalBlocksService.updatePromotionalBlock(
-        finalId,
-        data,
-      )
+      const response = await promotionalBlocksService.updatePromotionalBlock(finalId, data)
 
       return normalizeEntityResponse(response)
     } catch (error) {
-      return rejectWithValue(
-        getErrorMessage(error, 'Error al actualizar bloque promocional'),
-      )
+      return rejectWithValue(getErrorMessage(error, 'Error al actualizar bloque promocional'))
     }
   },
 )
@@ -194,19 +181,15 @@ export const togglePromotionalBlockStatus = createAsyncThunk(
         return rejectWithValue('El estado del bloque debe ser booleano')
       }
 
-      const response =
-        await promotionalBlocksService.togglePromotionalBlockStatus(
-          finalId,
-          isActive,
-        )
+      const response = await promotionalBlocksService.togglePromotionalBlockStatus(
+        finalId,
+        isActive,
+      )
 
       return normalizeEntityResponse(response)
     } catch (error) {
       return rejectWithValue(
-        getErrorMessage(
-          error,
-          'Error al cambiar estado del bloque promocional',
-        ),
+        getErrorMessage(error, 'Error al cambiar estado del bloque promocional'),
       )
     }
   },
@@ -216,8 +199,7 @@ export const deletePromotionalBlock = createAsyncThunk(
   'promotionalBlocks/delete',
   async (payload, { rejectWithValue }) => {
     try {
-      const finalId =
-        typeof payload === 'string' ? payload : payload?.id || payload?.blockId
+      const finalId = typeof payload === 'string' ? payload : payload?.id || payload?.blockId
 
       const hard = typeof payload === 'object' ? Boolean(payload?.hard) : false
 
@@ -225,10 +207,7 @@ export const deletePromotionalBlock = createAsyncThunk(
         return rejectWithValue('ID del bloque promocional requerido')
       }
 
-      const response = await promotionalBlocksService.deletePromotionalBlock(
-        finalId,
-        { hard },
-      )
+      const response = await promotionalBlocksService.deletePromotionalBlock(finalId, { hard })
 
       const normalized = normalizeEntityResponse(response)
 
@@ -237,9 +216,7 @@ export const deletePromotionalBlock = createAsyncThunk(
         hardDeleted: Boolean(normalized?.hardDeleted || hard),
       }
     } catch (error) {
-      return rejectWithValue(
-        getErrorMessage(error, 'Error al eliminar bloque promocional'),
-      )
+      return rejectWithValue(getErrorMessage(error, 'Error al eliminar bloque promocional'))
     }
   },
 )
@@ -252,15 +229,11 @@ export const fetchPublicPromotionalBlocks = createAsyncThunk(
   'promotionalBlocks/fetchPublic',
   async (params = { placement: 'home' }, { rejectWithValue }) => {
     try {
-      const response =
-        await promotionalBlocksService.getPublicPromotionalBlocks(params)
+      const response = await promotionalBlocksService.getPublicPromotionalBlocks(params)
       return normalizePublicListResponse(response)
     } catch (error) {
       return rejectWithValue(
-        getErrorMessage(
-          error,
-          'Error al cargar bloques promocionales públicos',
-        ),
+        getErrorMessage(error, 'Error al cargar bloques promocionales públicos'),
       )
     }
   },
@@ -274,14 +247,11 @@ export const fetchPublicPromotionalBlockBySlug = createAsyncThunk(
         return rejectWithValue('Slug del bloque promocional requerido')
       }
 
-      const response =
-        await promotionalBlocksService.getPublicPromotionalBlockBySlug(slug)
+      const response = await promotionalBlocksService.getPublicPromotionalBlockBySlug(slug)
 
       return normalizeEntityResponse(response)
     } catch (error) {
-      return rejectWithValue(
-        getErrorMessage(error, 'Error al cargar bloque promocional público'),
-      )
+      return rejectWithValue(getErrorMessage(error, 'Error al cargar bloque promocional público'))
     }
   },
 )
@@ -459,12 +429,8 @@ const promotionalBlocksSlice = createSlice({
 
         state.isDeleting = false
 
-        state.blocks = state.blocks.filter(
-          block => String(block._id) !== deletedId,
-        )
-        state.publicBlocks = state.publicBlocks.filter(
-          block => String(block._id) !== deletedId,
-        )
+        state.blocks = state.blocks.filter(block => String(block._id) !== deletedId)
+        state.publicBlocks = state.publicBlocks.filter(block => String(block._id) !== deletedId)
 
         state.meta.total = Math.max(0, Number(state.meta.total || 0) - 1)
 

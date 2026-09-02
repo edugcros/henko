@@ -121,7 +121,9 @@ const ThemeStep = ({ form, setForm }) => (
           src={form.logoUrl}
           alt="Logo preview"
           style={{ maxWidth: 200, maxHeight: 80, objectFit: 'contain' }}
-          onError={e => { e.target.style.display = 'none' }}
+          onError={e => {
+            e.target.style.display = 'none'
+          }}
         />
       </Box>
     )}
@@ -224,17 +226,19 @@ const OnboardingWizard = () => {
     if (!validateStore()) return false
     setSaving(true)
     try {
-      await dispatch(saveTenantSettings({
-        name: form.name.trim(),
-        settings: {
-          store: {
-            description: form.description,
-            contactEmail: form.contactEmail,
-            contactPhone: form.contactPhone,
-            address: form.address,
+      await dispatch(
+        saveTenantSettings({
+          name: form.name.trim(),
+          settings: {
+            store: {
+              description: form.description,
+              contactEmail: form.contactEmail,
+              contactPhone: form.contactPhone,
+              address: form.address,
+            },
           },
-        },
-      })).unwrap()
+        }),
+      ).unwrap()
       return true
     } catch {
       return false
@@ -246,14 +250,16 @@ const OnboardingWizard = () => {
   const saveThemeSettings = async () => {
     setSaving(true)
     try {
-      await dispatch(saveTenantSettings({
-        settings: {
-          branding: {
-            logoUrl: form.logoUrl,
-            faviconUrl: form.faviconUrl,
+      await dispatch(
+        saveTenantSettings({
+          settings: {
+            branding: {
+              logoUrl: form.logoUrl,
+              faviconUrl: form.faviconUrl,
+            },
           },
-        },
-      })).unwrap()
+        }),
+      ).unwrap()
       return true
     } catch {
       return false
@@ -303,7 +309,14 @@ const OnboardingWizard = () => {
 
   if (isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '60vh',
+        }}
+      >
         <CircularProgress />
       </Box>
     )
@@ -321,7 +334,11 @@ const OnboardingWizard = () => {
         Completa estos pasos para dejar tu tienda lista para vender.
       </Typography>
 
-      <LinearProgress variant="determinate" value={progress} sx={{ mb: 3, borderRadius: 1, height: 8 }} />
+      <LinearProgress
+        variant="determinate"
+        value={progress}
+        sx={{ mb: 3, borderRadius: 1, height: 8 }}
+      />
 
       <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
         {STEPS.map(s => (
@@ -331,7 +348,11 @@ const OnboardingWizard = () => {
         ))}
       </Stepper>
 
-      {successMsg && <Alert severity="success" sx={{ mb: 2 }}>{successMsg}</Alert>}
+      {successMsg && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {successMsg}
+        </Alert>
+      )}
 
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent sx={{ p: 3 }}>
@@ -343,11 +364,7 @@ const OnboardingWizard = () => {
       </Card>
 
       <Stack direction="row" justifyContent="space-between">
-        <Button
-          variant="outlined"
-          onClick={goBack}
-          disabled={activeStep === 0 || saving}
-        >
+        <Button variant="outlined" onClick={goBack} disabled={activeStep === 0 || saving}>
           Anterior
         </Button>
 
@@ -367,11 +384,7 @@ const OnboardingWizard = () => {
               Finalizar
             </Button>
           ) : (
-            <Button
-              variant="contained"
-              onClick={goNext}
-              disabled={saving}
-            >
+            <Button variant="contained" onClick={goNext} disabled={saving}>
               {saving ? <CircularProgress size={18} /> : 'Siguiente'}
             </Button>
           )}

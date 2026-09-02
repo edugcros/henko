@@ -71,17 +71,13 @@ export const createUserAdmin = createAsyncThunk(
       const response = await authService.registerAdmin(payload)
 
       if (!response?.success) {
-        return rejectWithValue(
-          response?.message || 'Error al crear el comercio',
-        )
+        return rejectWithValue(response?.message || 'Error al crear el comercio')
       }
 
       return response.data || response
     } catch (error) {
       return rejectWithValue(
-        error?.response?.data?.message ||
-          error?.message ||
-          'Error al crear el comercio',
+        error?.response?.data?.message || error?.message || 'Error al crear el comercio',
       )
     }
   },
@@ -95,9 +91,7 @@ export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
     if (data.user) safeStorage.setUser(data.user)
     return data
   } catch (error) {
-    return thunkAPI.rejectWithValue(
-      error.response?.data || 'Error al obtener perfil',
-    )
+    return thunkAPI.rejectWithValue(error.response?.data || 'Error al obtener perfil')
   }
 })
 
@@ -135,32 +129,29 @@ export const loginUser = createAsyncThunk(
   },
 )
 
-export const logoutUser = createAsyncThunk(
-  'user/logout',
-  async (_, { rejectWithValue }) => {
-    try {
-      // 1. Llamada al service (que a su vez llama al backend)
-      const res = await authService.logoutUser()
+export const logoutUser = createAsyncThunk('user/logout', async (_, { rejectWithValue }) => {
+  try {
+    // 1. Llamada al service (que a su vez llama al backend)
+    const res = await authService.logoutUser()
 
-      // 2. Limpieza de storage local (Lo que el JS SÍ controla)
-      safeStorage.removeAuth()
-      sessionStorage.clear() // Borra cualquier rastro de tenant o estado temporal
+    // 2. Limpieza de storage local (Lo que el JS SÍ controla)
+    safeStorage.removeAuth()
+    sessionStorage.clear() // Borra cualquier rastro de tenant o estado temporal
 
-      // 3. Feedback visual
-      toast.success('Sesión cerrada correctamente')
+    // 3. Feedback visual
+    toast.success('Sesión cerrada correctamente')
 
-      return res
-    } catch (err) {
-      // Aunque falle la petición (ej. el servidor está caído),
-      // forzamos la limpieza local para que el usuario no quede atrapado
-      safeStorage.removeAuth()
-      sessionStorage.clear()
+    return res
+  } catch (err) {
+    // Aunque falle la petición (ej. el servidor está caído),
+    // forzamos la limpieza local para que el usuario no quede atrapado
+    safeStorage.removeAuth()
+    sessionStorage.clear()
 
-      const message = err?.message || 'Error al cerrar sesión'
-      return rejectWithValue(message)
-    }
-  },
-)
+    const message = err?.message || 'Error al cerrar sesión'
+    return rejectWithValue(message)
+  }
+})
 
 // ---------------------------
 // Slice
@@ -284,8 +275,7 @@ const authSlice = createSlice({
         state.isLoading = false
         // Mantenemos el error para mostrar un toast de "El servidor no respondió, pero se cerró la sesión local"
         state.isError = true
-        state.message =
-          action.payload || 'Error al cerrar sesión en el servidor'
+        state.message = action.payload || 'Error al cerrar sesión en el servidor'
 
         // --- Limpieza de Estado ---
         state.user = null

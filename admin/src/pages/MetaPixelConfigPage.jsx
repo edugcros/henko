@@ -28,10 +28,7 @@ import {
   Cancel as CancelIcon,
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material'
-import {
-  getMetaPixelConfig,
-  updateMetaPixelConfig,
-} from '../services/metaPixelConfigService.js'
+import { getMetaPixelConfig, updateMetaPixelConfig } from '../services/metaPixelConfigService.js'
 
 const clean = value => String(value ?? '').trim()
 
@@ -65,15 +62,11 @@ const GUIDE_STEPS = [
     body: (
       <>
         Entrá a{' '}
-        <Link
-          href="https://business.facebook.com"
-          target="_blank"
-          rel="noopener"
-        >
+        <Link href="https://business.facebook.com" target="_blank" rel="noopener">
           business.facebook.com
         </Link>{' '}
-        y elegí <strong>Crear cuenta</strong>. Te va a pedir el nombre de tu
-        comercio, tu nombre y un email de trabajo.
+        y elegí <strong>Crear cuenta</strong>. Te va a pedir el nombre de tu comercio, tu nombre y
+        un email de trabajo.
       </>
     ),
   },
@@ -82,8 +75,8 @@ const GUIDE_STEPS = [
     title: 'Completá los datos de contacto',
     body: (
       <>
-        Configuración del negocio → Información del negocio. Cargá un email y
-        teléfono de contacto de tu comercio si todavía no los tenés.
+        Configuración del negocio → Información del negocio. Cargá un email y teléfono de contacto
+        de tu comercio si todavía no los tenés.
       </>
     ),
     warning:
@@ -94,15 +87,11 @@ const GUIDE_STEPS = [
     title: 'Activá tu clave de acceso (passkey)',
     body: (
       <>
-        <Link
-          href="https://accountscenter.facebook.com"
-          target="_blank"
-          rel="noopener"
-        >
+        <Link href="https://accountscenter.facebook.com" target="_blank" rel="noopener">
           accountscenter.facebook.com
         </Link>{' '}
-        → Contraseña y seguridad → Claves de acceso → creá una (huella digital,
-        Face ID o el PIN del equipo).
+        → Contraseña y seguridad → Claves de acceso → creá una (huella digital, Face ID o el PIN del
+        equipo).
       </>
     ),
     warning:
@@ -113,15 +102,11 @@ const GUIDE_STEPS = [
     title: 'Creá el Pixel',
     body: (
       <>
-        <Link
-          href="https://business.facebook.com/events_manager2"
-          target="_blank"
-          rel="noopener"
-        >
+        <Link href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener">
           Events Manager
         </Link>{' '}
-        → Conectar fuentes de datos → Web → Meta Pixel. Ponele un nombre y
-        creálo — te muestra el <strong>ID de Pixel</strong> (15-16 dígitos).
+        → Conectar fuentes de datos → Web → Meta Pixel. Ponele un nombre y creálo — te muestra el{' '}
+        <strong>ID de Pixel</strong> (15-16 dígitos).
       </>
     ),
   },
@@ -223,10 +208,7 @@ const MetaPixelConfigPage = () => {
     load()
   }, [load])
 
-  const setField = useCallback(
-    (key, value) => setForm(prev => ({ ...prev, [key]: value })),
-    [],
-  )
+  const setField = useCallback((key, value) => setForm(prev => ({ ...prev, [key]: value })), [])
 
   const handleSave = useCallback(async () => {
     if (!form) return
@@ -243,9 +225,7 @@ const MetaPixelConfigPage = () => {
     } catch (err) {
       console.error('[META_PIXEL_CONFIG_SAVE_ERROR]', err)
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudo guardar la configuración.',
+        err?.response?.data?.message || err?.message || 'No se pudo guardar la configuración.',
       )
     } finally {
       setSaving(false)
@@ -254,12 +234,7 @@ const MetaPixelConfigPage = () => {
 
   if (loading) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="60vh"
-      >
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
         <CircularProgress />
       </Box>
     )
@@ -268,10 +243,7 @@ const MetaPixelConfigPage = () => {
   if (!form) {
     return (
       <Box p={3}>
-        <Alert
-          severity="error"
-          action={<Button onClick={load}>Reintentar</Button>}
-        >
+        <Alert severity="error" action={<Button onClick={load}>Reintentar</Button>}>
           {error || 'No se pudo cargar la configuración.'}
         </Alert>
       </Box>
@@ -296,20 +268,13 @@ const MetaPixelConfigPage = () => {
             Meta Pixel
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Medí y optimizá campañas de Facebook e Instagram con datos reales de
-            tu tienda.
+            Medí y optimizá campañas de Facebook e Instagram con datos reales de tu tienda.
           </Typography>
         </Box>
         <Button
           variant="contained"
           size="large"
-          startIcon={
-            saving ? (
-              <CircularProgress size={18} color="inherit" />
-            ) : (
-              <SaveIcon />
-            )
-          }
+          startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
           onClick={handleSave}
           disabled={saving}
           sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
@@ -331,12 +296,7 @@ const MetaPixelConfigPage = () => {
           icon={<InsightsIcon color="primary" />}
         >
           <Stack spacing={2.5}>
-            <Stack
-              direction="row"
-              spacing={2}
-              alignItems="center"
-              flexWrap="wrap"
-            >
+            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
               <FormControlLabel
                 control={
                   <Switch
@@ -344,11 +304,7 @@ const MetaPixelConfigPage = () => {
                     onChange={e => setField('isEnabled', e.target.checked)}
                   />
                 }
-                label={
-                  form.isEnabled
-                    ? 'Meta Pixel activado'
-                    : 'Meta Pixel desactivado'
-                }
+                label={form.isEnabled ? 'Meta Pixel activado' : 'Meta Pixel desactivado'}
               />
               {form.hasAccessToken ? (
                 <Chip
@@ -369,8 +325,7 @@ const MetaPixelConfigPage = () => {
               )}
               {form.connectedAt && (
                 <Typography variant="caption" color="text.secondary">
-                  Conectado:{' '}
-                  {new Date(form.connectedAt).toLocaleDateString('es-AR')}
+                  Conectado: {new Date(form.connectedAt).toLocaleDateString('es-AR')}
                 </Typography>
               )}
             </Stack>
@@ -415,8 +370,7 @@ const MetaPixelConfigPage = () => {
                 key={step.title}
                 sx={{
                   py: 2,
-                  borderBottom:
-                    index < GUIDE_STEPS.length - 1 ? '1px solid' : 'none',
+                  borderBottom: index < GUIDE_STEPS.length - 1 ? '1px solid' : 'none',
                   borderColor: 'divider',
                 }}
               >
@@ -496,13 +450,7 @@ const MetaPixelConfigPage = () => {
           <Button
             variant="contained"
             size="large"
-            startIcon={
-              saving ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <SaveIcon />
-              )
-            }
+            startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
             onClick={handleSave}
             disabled={saving}
             sx={{ borderRadius: 2, textTransform: 'none', px: 4 }}

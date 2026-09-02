@@ -33,10 +33,7 @@ import MailOutlineIcon from '@mui/icons-material/MailOutline'
 import PaletteIcon from '@mui/icons-material/Palette'
 import SaveIcon from '@mui/icons-material/Save'
 
-import {
-  fetchTenantSettings,
-  saveTenantSettings,
-} from '../features/tenant/tenantSlice'
+import { fetchTenantSettings, saveTenantSettings } from '../features/tenant/tenantSlice'
 import SendingDomainSection from '../components/emailDomain/SendingDomainSection'
 
 const clean = value => String(value ?? '').trim()
@@ -108,9 +105,7 @@ const EmailPreview = ({ fromName, fromAddress, replyTo }) => (
 
 const StoreSettingsPage = () => {
   const dispatch = useDispatch()
-  const { data, isLoading, isSaving, isError, message } = useSelector(
-    state => state.tenant || {},
-  )
+  const { data, isLoading, isSaving, isError, message } = useSelector(state => state.tenant || {})
 
   const [form, setForm] = useState(null)
   const [emailIdentity, setEmailIdentity] = useState(null)
@@ -130,10 +125,7 @@ const StoreSettingsPage = () => {
     if (data) setForm(toForm(data))
   }, [data])
 
-  const setField = useCallback(
-    (key, value) => setForm(prev => ({ ...prev, [key]: value })),
-    [],
-  )
+  const setField = useCallback((key, value) => setForm(prev => ({ ...prev, [key]: value })), [])
 
   const emailError = useMemo(() => {
     const value = clean(form?.contactEmail)
@@ -223,9 +215,7 @@ const StoreSettingsPage = () => {
                 value={form.name}
                 onChange={e => setField('name', e.target.value)}
                 error={!clean(form.name)}
-                helperText={
-                  !clean(form.name) ? 'El nombre no puede quedar vacío' : ''
-                }
+                helperText={!clean(form.name) ? 'El nombre no puede quedar vacío' : ''}
               />
             </Grid>
             <Grid item xs={12}>
@@ -341,13 +331,7 @@ const StoreSettingsPage = () => {
           <Button
             variant="contained"
             size="large"
-            startIcon={
-              isSaving ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <SaveIcon />
-              )
-            }
+            startIcon={isSaving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
             onClick={handleSave}
             disabled={!canSave}
             sx={{ borderRadius: 2, textTransform: 'none', px: 4 }}

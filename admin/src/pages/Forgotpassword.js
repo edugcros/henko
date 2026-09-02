@@ -16,10 +16,7 @@ import authService from '@features/auth/authServices'
 import { Newprimary } from '../theme/colors'
 
 const validationSchema = yup.object({
-  email: yup
-    .string()
-    .email('Debe ser un correo válido')
-    .required('El correo es obligatorio'),
+  email: yup.string().email('Debe ser un correo válido').required('El correo es obligatorio'),
 })
 
 const Forgotpassword = () => {
@@ -43,8 +40,7 @@ const Forgotpassword = () => {
         setResult({
           sent: false,
           error:
-            error?.message ||
-            'No pudimos procesar la solicitud. Probá de nuevo en unos minutos.',
+            error?.message || 'No pudimos procesar la solicitud. Probá de nuevo en unos minutos.',
         })
       } finally {
         setIsSubmitting(false)
@@ -77,24 +73,14 @@ const Forgotpassword = () => {
           >
             Recuperar contraseña
           </Typography>
-          <Typography
-            variant="body2"
-            align="center"
-            color="text.secondary"
-            sx={{ mb: 3 }}
-          >
-            Ingresá el correo de tu cuenta y te enviamos un enlace para
-            restablecerla.
+          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
+            Ingresá el correo de tu cuenta y te enviamos un enlace para restablecerla.
           </Typography>
 
           {result.sent ? (
-            <Typography
-              align="center"
-              color="success.main"
-              sx={{ fontSize: '0.9rem' }}
-            >
-              Si el correo existe en nuestro sistema, vas a recibir un enlace
-              para restablecer tu contraseña en unos minutos.
+            <Typography align="center" color="success.main" sx={{ fontSize: '0.9rem' }}>
+              Si el correo existe en nuestro sistema, vas a recibir un enlace para restablecer tu
+              contraseña en unos minutos.
             </Typography>
           ) : (
             <form onSubmit={formik.handleSubmit} noValidate>
@@ -126,19 +112,11 @@ const Forgotpassword = () => {
                 }}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? (
-                  <CircularProgress size={24} color="inherit" />
-                ) : (
-                  'Enviar enlace'
-                )}
+                {isSubmitting ? <CircularProgress size={24} color="inherit" /> : 'Enviar enlace'}
               </Button>
 
               {result.error && (
-                <Typography
-                  color="error"
-                  align="center"
-                  sx={{ mt: 2, fontSize: '0.875rem' }}
-                >
+                <Typography color="error" align="center" sx={{ mt: 2, fontSize: '0.875rem' }}>
                   {result.error}
                 </Typography>
               )}

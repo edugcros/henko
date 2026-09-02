@@ -12,15 +12,7 @@
 // justamente porque su cuenta no está verificada.
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Container,
-  Paper,
-  Typography,
-} from '@mui/material'
+import { Alert, Box, Button, CircularProgress, Container, Paper, Typography } from '@mui/material'
 import api from '@utils/axiosConfig'
 
 const VerifyEmailPage = () => {
@@ -52,10 +44,10 @@ const VerifyEmailPage = () => {
 
     const run = async () => {
       try {
-        const { data } = await api.get(
-          `/user/verify-email?token=${encodeURIComponent(token)}`,
-          { skipAuthRefresh: true, skipCsrfRetry: true },
-        )
+        const { data } = await api.get(`/user/verify-email?token=${encodeURIComponent(token)}`, {
+          skipAuthRefresh: true,
+          skipCsrfRetry: true,
+        })
 
         if (data?.success !== true) {
           throw new Error(data?.message || 'No se pudo verificar el correo.')
@@ -119,12 +111,7 @@ const VerifyEmailPage = () => {
               Tu cuenta de comercio ya está activa.
             </Typography>
 
-            <Button
-              component={Link}
-              to="/login"
-              variant="contained"
-              size="large"
-            >
+            <Button component={Link} to="/login" variant="contained" size="large">
               Entrar al panel
             </Button>
           </Box>
@@ -137,16 +124,10 @@ const VerifyEmailPage = () => {
             </Alert>
 
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Si el enlace expiró, volvé a registrarte o pedí uno nuevo desde el
-              inicio de sesión.
+              Si el enlace expiró, volvé a registrarte o pedí uno nuevo desde el inicio de sesión.
             </Typography>
 
-            <Button
-              component={Link}
-              to="/login"
-              variant="outlined"
-              size="large"
-            >
+            <Button component={Link} to="/login" variant="outlined" size="large">
               Ir al inicio de sesión
             </Button>
           </Box>

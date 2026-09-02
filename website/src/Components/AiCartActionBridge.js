@@ -10,13 +10,9 @@ import {
   savePendingAiCartAction,
 } from '@utils/aiCartActionUtils'
 import { addOrUpdateCartItem, getCart } from '@features/cart/cartSlice'
-import {
-  trackUserMetric,
-  USER_METRIC_EVENTS,
-} from '../services/userMetricsService'
+import { trackUserMetric, USER_METRIC_EVENTS } from '../services/userMetricsService'
 
-const AI_EVENT_NAMESPACE =
-  process.env.REACT_APP_AI_EVENT_NAMESPACE || 'commerce:ai'
+const AI_EVENT_NAMESPACE = process.env.REACT_APP_AI_EVENT_NAMESPACE || 'commerce:ai'
 
 const AI_ADD_TO_CART_EVENT = `${AI_EVENT_NAMESPACE}:add-to-cart`
 const AI_CART_ACTION_RESULT_EVENT = `${AI_EVENT_NAMESPACE}:cart-action-result`
@@ -55,8 +51,7 @@ const AiCartActionBridge = () => {
         notifyResult({
           success: false,
           code: 'AI_CART_PRODUCT_MISSING',
-          message:
-            'No se pudo identificar el producto para agregar al carrito.',
+          message: 'No se pudo identificar el producto para agregar al carrito.',
           action,
         })
 

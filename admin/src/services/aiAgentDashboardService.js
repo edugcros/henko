@@ -15,11 +15,7 @@ export const testAiAgentMessage = async message => {
   return unwrap(response)
 }
 
-export const getAiCartRecoveries = async ({
-  page = 1,
-  limit = 25,
-  status,
-} = {}) => {
+export const getAiCartRecoveries = async ({ page = 1, limit = 25, status } = {}) => {
   const params = { page, limit }
   if (status) params.status = status
   const response = await api.get('/ai-agent/cart-recoveries', { params })

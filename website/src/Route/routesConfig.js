@@ -25,9 +25,7 @@ const lazyDefault = importer =>
     const module = await importer()
 
     if (!module?.default) {
-      throw new Error(
-        '[routesConfig] Lazy import inválido: el módulo no tiene export default.',
-      )
+      throw new Error('[routesConfig] Lazy import inválido: el módulo no tiene export default.')
     }
 
     return {
@@ -71,9 +69,7 @@ export const publicRoutes = [
 ]
 
 // ✅ Rutas públicas dinámicas universales
-export const publicDynamicRoutes = [
-  { path: '/product/:id', Component: SingleProduct },
-]
+export const publicDynamicRoutes = [{ path: '/product/:id', Component: SingleProduct }]
 
 // 🔐 Rutas solo para usuarios NO logueados
 export const authRoutes = [
@@ -113,15 +109,11 @@ export const fallbackRoute = {
 // 🧠 Sets de validación
 export const publicRoutesSet = new Set(publicRoutes.map(route => route.path))
 
-export const publicDynamicRoutesSet = new Set(
-  publicDynamicRoutes.map(route => route.path),
-)
+export const publicDynamicRoutesSet = new Set(publicDynamicRoutes.map(route => route.path))
 
 export const authRoutesSet = new Set(authRoutes.map(route => route.path))
 
-export const protectedRoutesSet = new Set(
-  protectedRoutes.map(route => route.path),
-)
+export const protectedRoutesSet = new Set(protectedRoutes.map(route => route.path))
 
 export const privateRoutesSet = new Set(privateRoutes.map(route => route.path))
 

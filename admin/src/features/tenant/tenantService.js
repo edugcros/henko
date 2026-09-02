@@ -18,7 +18,11 @@ const authedRequest = async (method, endpoint, data) => {
     }
 
     const response = await api(config)
-    return { success: true, data: response.data?.data, message: response.data?.message || 'OK' }
+    return {
+      success: true,
+      data: response.data?.data,
+      message: response.data?.message || 'OK',
+    }
   } catch (error) {
     return handleApiError(error)
   }

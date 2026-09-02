@@ -118,16 +118,9 @@ const normalizeImageUrl = img => {
   if (typeof img === 'string' && img.trim()) return img.trim()
 
   if (typeof img === 'object') {
-    const candidates = [
-      img.url,
-      img.secure_url,
-      img.src,
-      img.imageUrl,
-      img.imageURL,
-    ]
+    const candidates = [img.url, img.secure_url, img.src, img.imageUrl, img.imageURL]
     for (const candidate of candidates) {
-      if (typeof candidate === 'string' && candidate.trim())
-        return candidate.trim()
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
     }
   }
 
@@ -168,9 +161,7 @@ const humanizeKey = value => {
 
 const normalizeAttributes = variant => {
   if (!variant) return {}
-  return toObject(
-    variant.attributes || variant.combinacion || variant.attributeValues,
-  )
+  return toObject(variant.attributes || variant.combinacion || variant.attributeValues)
 }
 
 const buildVariantIdentifier = variant => {
@@ -270,25 +261,16 @@ const inferVariantAttributesFromVariants = variants => {
   return Array.from(map.values())
 }
 
-const ProductVariantSelector = ({
-  product,
-  onVariantSelect,
-  selectedVariant,
-}) => {
+const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) => {
   const theme = useTheme()
 
   const variants = useMemo(
-    () =>
-      safeArray(product?.variants).filter(
-        variant => variant?.isActive !== false,
-      ),
+    () => safeArray(product?.variants).filter(variant => variant?.isActive !== false),
     [product?.variants],
   )
 
   const variantAttributes = useMemo(() => {
-    const configured = safeArray(product?.variantAttributes).filter(
-      attr => attr?.name,
-    )
+    const configured = safeArray(product?.variantAttributes).filter(attr => attr?.name)
     if (configured.length) return configured
     return inferVariantAttributesFromVariants(variants)
   }, [product?.variantAttributes, variants])
@@ -300,12 +282,9 @@ const ProductVariantSelector = ({
   }, [product?._id])
 
   useEffect(() => {
-    const requiredKeys = variantAttributes
-      .map(attr => attr?.name)
-      .filter(Boolean)
+    const requiredKeys = variantAttributes.map(attr => attr?.name).filter(Boolean)
     const hasAllSelections =
-      requiredKeys.length > 0 &&
-      requiredKeys.every(key => Boolean(selections[key]))
+      requiredKeys.length > 0 && requiredKeys.every(key => Boolean(selections[key]))
 
     if (!hasAllSelections) {
       onVariantSelect?.(null, selections)
@@ -365,9 +344,7 @@ const ProductVariantSelector = ({
           updated[attrName] = value
         }
 
-        const changedIndex = variantAttributes.findIndex(
-          attr => attr.name === attrName,
-        )
+        const changedIndex = variantAttributes.findIndex(attr => attr.name === attrName)
         variantAttributes.forEach((attr, index) => {
           if (index > changedIndex) delete updated[attr.name]
         })
@@ -382,9 +359,7 @@ const ProductVariantSelector = ({
     attrName => {
       setSelections(prev => {
         const updated = { ...prev }
-        const changedIndex = variantAttributes.findIndex(
-          attr => attr.name === attrName,
-        )
+        const changedIndex = variantAttributes.findIndex(attr => attr.name === attrName)
 
         delete updated[attrName]
 
@@ -422,12 +397,7 @@ const ProductVariantSelector = ({
         borderRadius: 3,
       }}
     >
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-        sx={{ mb: 1.5 }}
-      >
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
         <Box>
           <Typography variant="subtitle2" fontWeight={900} color="text.primary">
             Elegí las opciones disponibles
@@ -453,8 +423,7 @@ const ProductVariantSelector = ({
         if (!attrName) return null
 
         const availableValues = getAvailableValues(attrName, selections)
-        const isDisabled =
-          index > 0 && !selections[variantAttributes[index - 1]?.name]
+        const isDisabled = index > 0 && !selections[variantAttributes[index - 1]?.name]
         const currentValue = selections[attrName] || ''
 
         return (
@@ -465,12 +434,7 @@ const ProductVariantSelector = ({
               alignItems="center"
               sx={{ mb: 0.75 }}
             >
-              <Typography
-                variant="caption"
-                color="text.primary"
-                fontWeight={800}
-                display="block"
-              >
+              <Typography variant="caption" color="text.primary" fontWeight={800} display="block">
                 {attrLabel} {currentValue ? '✓' : ''}
               </Typography>
 
@@ -515,15 +479,10 @@ const ProductVariantSelector = ({
                       minWidth: 44,
                       borderRadius: '999px !important',
                       px: 1.2,
-                      bgcolor:
-                        currentValue === value ? 'primary.main' : 'transparent',
-                      color:
-                        currentValue === value
-                          ? 'primary.contrastText'
-                          : 'inherit',
+                      bgcolor: currentValue === value ? 'primary.main' : 'transparent',
+                      color: currentValue === value ? 'primary.contrastText' : 'inherit',
                       border: '1px solid !important',
-                      borderColor:
-                        currentValue === value ? 'primary.main' : 'divider',
+                      borderColor: currentValue === value ? 'primary.main' : 'divider',
                     }}
                   >
                     {value}
@@ -534,13 +493,9 @@ const ProductVariantSelector = ({
               <FormControl fullWidth size="small" disabled={isDisabled}>
                 <Select
                   value={currentValue}
-                  onChange={event =>
-                    handleSelectionChange(attrName, event.target.value || null)
-                  }
+                  onChange={event => handleSelectionChange(attrName, event.target.value || null)}
                   displayEmpty
-                  renderValue={selected =>
-                    selected || `Seleccionar ${attrLabel}`
-                  }
+                  renderValue={selected => selected || `Seleccionar ${attrLabel}`}
                 >
                   <MenuItem value="">
                     <em>Quitar selección</em>
@@ -568,12 +523,7 @@ const ProductVariantSelector = ({
             borderRadius: 2,
           }}
         >
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-            gap={1}
-          >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
             <Typography variant="caption" fontWeight={800} color="text.primary">
               Disponible: {Number(selectedVariant.stock || 0)} unidades
             </Typography>
@@ -588,8 +538,7 @@ const ProductVariantSelector = ({
         </Box>
       ) : (
         <Alert severity="warning" sx={{ mt: 2 }} icon={<StockIcon />}>
-          Seleccioná todas las opciones para ver precio, imagen y disponibilidad
-          exactas.
+          Seleccioná todas las opciones para ver precio, imagen y disponibilidad exactas.
         </Alert>
       )}
     </Paper>
@@ -605,8 +554,7 @@ const getEntityId = value => {
 
 const getProductFromPromotionalItem = item => {
   if (!item) return null
-  if (item.productId && typeof item.productId === 'object')
-    return item.productId
+  if (item.productId && typeof item.productId === 'object') return item.productId
   if (item.product && typeof item.product === 'object') return item.product
   return null
 }
@@ -621,8 +569,7 @@ const getDiscountedPrice = (price, discountPercentage) => {
 const getReviewerName = review => {
   if (!review) return 'Cliente'
 
-  const directName =
-    review.postedByName || review.userName || review.name || review.reviewerName
+  const directName = review.postedByName || review.userName || review.name || review.reviewerName
   if (directName && String(directName).trim()) return String(directName).trim()
 
   const postedBy = review.postedBy
@@ -643,8 +590,7 @@ const getReviewerName = review => {
   return 'Cliente'
 }
 
-const getReviewerInitial = review =>
-  getReviewerName(review).charAt(0).toUpperCase()
+const getReviewerInitial = review => getReviewerName(review).charAt(0).toUpperCase()
 
 const formatSpecificationValue = value => {
   if (Array.isArray(value)) return value.filter(Boolean).join(', ')
@@ -652,14 +598,8 @@ const formatSpecificationValue = value => {
   if (value === undefined || value === null || value === '') return ''
   if (typeof value === 'object') {
     return Object.entries(value)
-      .filter(
-        ([, itemValue]) =>
-          itemValue !== undefined && itemValue !== null && itemValue !== '',
-      )
-      .map(
-        ([key, itemValue]) =>
-          `${humanizeKey(key)}: ${formatSpecificationValue(itemValue)}`,
-      )
+      .filter(([, itemValue]) => itemValue !== undefined && itemValue !== null && itemValue !== '')
+      .map(([key, itemValue]) => `${humanizeKey(key)}: ${formatSpecificationValue(itemValue)}`)
       .join(' · ')
   }
   return String(value)
@@ -674,12 +614,7 @@ const normalizeSpecificationArray = explicitSpecifications => {
 
       return {
         key,
-        label:
-          spec.label ||
-          spec.title ||
-          spec.name ||
-          humanizeKey(key) ||
-          `Dato ${index + 1}`,
+        label: spec.label || spec.title || spec.name || humanizeKey(key) || `Dato ${index + 1}`,
         value: formatSpecificationValue(rawValue),
         unit: spec.unit || spec.suffix || '',
         group: spec.group || spec.section || 'Ficha técnica',
@@ -706,9 +641,7 @@ const normalizeSpecificationRows = product => {
     toObject(product?.categoryAttributes),
     toObject(product?.dynamicFields),
     toObject(product?.atributos),
-    !Array.isArray(product?.specifications)
-      ? toObject(product?.specifications)
-      : {},
+    !Array.isArray(product?.specifications) ? toObject(product?.specifications) : {},
   ]
 
   const merged = Object.assign({}, ...baseObjects)
@@ -717,9 +650,7 @@ const normalizeSpecificationRows = product => {
   if (product?.color && !merged.color) merged.color = product.color
 
   return Object.entries(merged)
-    .filter(
-      ([, value]) => value !== undefined && value !== null && value !== '',
-    )
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
     .map(([key, value], index) => ({
       key,
       label: humanizeKey(key),
@@ -745,9 +676,7 @@ const normalizeLogisticsRows = product => {
   const logistics = product?.logistics || {}
   const rows = []
 
-  const weight = Number(
-    logistics.weightKg ?? logistics.weight ?? product?.weightKg ?? 0,
-  )
+  const weight = Number(logistics.weightKg ?? logistics.weight ?? product?.weightKg ?? 0)
   if (weight > 0) rows.push({ label: 'Peso', value: `${weight} kg` })
 
   const dimensions =
@@ -839,9 +768,7 @@ const getCatalogTags = product => {
   const tagValues = [
     ...safeArray(product?.tags),
     ...safeArray(product?.seo?.keywords),
-    ...safeArray(product?.filterAttributes).map(
-      item => item?.value || item?.label,
-    ),
+    ...safeArray(product?.filterAttributes).map(item => item?.value || item?.label),
   ]
 
   return [
@@ -912,11 +839,7 @@ const SpecCard = ({ spec, themeColors }) => (
     <Typography variant="caption" color="text.secondary" fontWeight={900}>
       {spec.label}
     </Typography>
-    <Typography
-      variant="body2"
-      fontWeight={800}
-      sx={{ color: themeColors.text, mt: 0.35 }}
-    >
+    <Typography variant="body2" fontWeight={800} sx={{ color: themeColors.text, mt: 0.35 }}>
       {spec.value}
       {spec.unit ? ` ${spec.unit}` : ''}
     </Typography>
@@ -930,9 +853,7 @@ const SingleProduct = () => {
   const rawProduct = useSelector(s => s.product.singleProduct)
   const product = useMemo(() => {
     if (!rawProduct || typeof rawProduct !== 'object') return rawProduct
-    return rawProduct?.data && typeof rawProduct.data === 'object'
-      ? rawProduct.data
-      : rawProduct
+    return rawProduct?.data && typeof rawProduct.data === 'object' ? rawProduct.data : rawProduct
   }, [rawProduct])
 
   const { isLoading } = useSelector(s => s.product)
@@ -941,22 +862,10 @@ const SingleProduct = () => {
   const themeState = useSelector(state => state.theme) || {}
   const promotionalBlocks = useSelector(selectPublicPromotionalBlocks)
 
-  const activeThemeConfig = useMemo(
-    () => getActiveThemeConfig(themeState),
-    [themeState],
-  )
-  const layoutConfig = useMemo(
-    () => getLayoutThemeConfig(activeThemeConfig),
-    [activeThemeConfig],
-  )
-  const spacingConfig = useMemo(
-    () => getSpacingThemeConfig(activeThemeConfig),
-    [activeThemeConfig],
-  )
-  const themeColors = useMemo(
-    () => getThemeColors(activeThemeConfig),
-    [activeThemeConfig],
-  )
+  const activeThemeConfig = useMemo(() => getActiveThemeConfig(themeState), [themeState])
+  const layoutConfig = useMemo(() => getLayoutThemeConfig(activeThemeConfig), [activeThemeConfig])
+  const spacingConfig = useMemo(() => getSpacingThemeConfig(activeThemeConfig), [activeThemeConfig])
+  const themeColors = useMemo(() => getThemeColors(activeThemeConfig), [activeThemeConfig])
 
   const formatPrice = useCallback(
     value => formatCurrency(value, activeThemeConfig),
@@ -1058,8 +967,7 @@ const SingleProduct = () => {
   const hasActivePromotion = promotionDiscount > 0
 
   const productImages = useMemo(() => {
-    if (Array.isArray(product?.images) && product.images.length > 0)
-      return product.images
+    if (Array.isArray(product?.images) && product.images.length > 0) return product.images
     return [{ url: placeholder }]
   }, [product])
 
@@ -1103,10 +1011,7 @@ const SingleProduct = () => {
       return indexed.slice(0, MAX_VISIBLE_THUMBS)
     }
 
-    return [
-      ...indexed.slice(0, MAX_VISIBLE_THUMBS - 1),
-      indexed[indexed.length - 1],
-    ]
+    return [...indexed.slice(0, MAX_VISIBLE_THUMBS - 1), indexed[indexed.length - 1]]
   }, [galleryItems])
 
   // Nunca debe resolver a la URL del video: se usa como imagen (thumb de
@@ -1145,22 +1050,14 @@ const SingleProduct = () => {
     const persistedAverage = Number(product.totalrating) || 0
     const avg =
       count > 0
-        ? ratingsArray.reduce(
-            (acc, curr) => acc + (Number(curr.star) || 0),
-            0,
-          ) / count
+        ? ratingsArray.reduce((acc, curr) => acc + (Number(curr.star) || 0), 0) / count
         : persistedAverage
 
     return {
       score: avg > 0 ? avg.toFixed(1) : 'N/A',
       count,
       avg,
-      summary:
-        avg >= 4.2
-          ? 'Alta confianza'
-          : avg > 0
-            ? 'Calidad evaluada'
-            : 'Sin reseñas',
+      summary: avg >= 4.2 ? 'Alta confianza' : avg > 0 ? 'Calidad evaluada' : 'Sin reseñas',
       reason:
         count > 0
           ? `Basado en ${count} opiniones.`
@@ -1172,9 +1069,7 @@ const SingleProduct = () => {
 
   const displayPrice = useMemo(() => {
     const applyDiscount = price => {
-      return hasActivePromotion
-        ? getDiscountedPrice(price, promotionDiscount)
-        : Number(price || 0)
+      return hasActivePromotion ? getDiscountedPrice(price, promotionDiscount) : Number(price || 0)
     }
 
     if (normalizedSelectedVariant?.price > 0) {
@@ -1229,13 +1124,7 @@ const SingleProduct = () => {
       discountPercentage: promotionDiscount,
       isRange: false,
     }
-  }, [
-    normalizedSelectedVariant,
-    hasVariants,
-    product,
-    hasActivePromotion,
-    promotionDiscount,
-  ])
+  }, [normalizedSelectedVariant, hasVariants, product, hasActivePromotion, promotionDiscount])
 
   const displayStock = useMemo(() => {
     if (normalizedSelectedVariant) return normalizedSelectedVariant.stock
@@ -1262,25 +1151,13 @@ const SingleProduct = () => {
 
   const isFavorite = useMemo(
     () =>
-      wishlist?.some(
-        item =>
-          String(item._id || item.id) === String(product?._id || product?.id),
-      ),
+      wishlist?.some(item => String(item._id || item.id) === String(product?._id || product?.id)),
     [wishlist, product],
   )
 
-  const commercialDescription = useMemo(
-    () => getCommercialDescription(product),
-    [product],
-  )
-  const technicalDescription = useMemo(
-    () => getTechnicalDescription(product),
-    [product],
-  )
-  const shortDescription = useMemo(
-    () => getShortDescription(product),
-    [product],
-  )
+  const commercialDescription = useMemo(() => getCommercialDescription(product), [product])
+  const technicalDescription = useMemo(() => getTechnicalDescription(product), [product])
+  const shortDescription = useMemo(() => getShortDescription(product), [product])
   const catalogTags = useMemo(() => getCatalogTags(product), [product])
 
   const descriptionParagraphs = useMemo(
@@ -1301,18 +1178,12 @@ const SingleProduct = () => {
     [technicalDescription],
   )
 
-  const productSpecifications = useMemo(
-    () => normalizeSpecificationRows(product),
-    [product],
-  )
+  const productSpecifications = useMemo(() => normalizeSpecificationRows(product), [product])
   const specificationGroups = useMemo(
     () => groupSpecifications(productSpecifications),
     [productSpecifications],
   )
-  const logisticsRows = useMemo(
-    () => normalizeLogisticsRows(product),
-    [product],
-  )
+  const logisticsRows = useMemo(() => normalizeLogisticsRows(product), [product])
 
   const handleVariantSelect = useCallback((variant, attributes) => {
     setSelectedVariant(variant || null)
@@ -1374,13 +1245,12 @@ const SingleProduct = () => {
     }
 
     try {
-      const { originalPrice, finalPrice, discountPercentage, hasPromotion } =
-        resolveCartPricing({
-          priceInfo: displayPrice,
-          variantsEnabled: hasVariants,
-          normalizedVariant: normalizedSelectedVariant,
-          productData: product,
-        })
+      const { originalPrice, finalPrice, discountPercentage, hasPromotion } = resolveCartPricing({
+        priceInfo: displayPrice,
+        variantsEnabled: hasVariants,
+        normalizedVariant: normalizedSelectedVariant,
+        productData: product,
+      })
 
       const resolvedImage = hasVariants
         ? normalizedSelectedVariant?.image || activeImageUrl || placeholder
@@ -1442,9 +1312,7 @@ const SingleProduct = () => {
 
       await dispatch(addOrUpdateCartItem(cartItem)).unwrap()
       toast.success(
-        hasPromotion
-          ? '¡Producto en oferta añadido al carrito!'
-          : '¡Añadido al carrito!',
+        hasPromotion ? '¡Producto en oferta añadido al carrito!' : '¡Añadido al carrito!',
       )
     } catch (err) {
       console.error('[SingleProduct] Error agregando al carrito:', err)
@@ -1454,9 +1322,7 @@ const SingleProduct = () => {
       // siempre da undefined y el catch caía en un mensaje genérico que
       // ocultaba el motivo real (stock, tenant, sesión vencida, etc.).
       const serverMessage =
-        typeof err === 'string'
-          ? err
-          : err?.message || err?.response?.data?.message
+        typeof err === 'string' ? err : err?.message || err?.response?.data?.message
 
       toast.error(serverMessage || 'No se pudo agregar el producto al carrito')
     }
@@ -1482,11 +1348,7 @@ const SingleProduct = () => {
     const normalizedStar = Math.trunc(Number(userStar))
     const productId = product?._id || product?.id
 
-    if (
-      !Number.isInteger(normalizedStar) ||
-      normalizedStar < 1 ||
-      normalizedStar > 5
-    ) {
+    if (!Number.isInteger(normalizedStar) || normalizedStar < 1 || normalizedStar > 5) {
       toast.error('Seleccioná una calificación válida entre 1 y 5 estrellas')
       return
     }
@@ -1513,11 +1375,7 @@ const SingleProduct = () => {
       setUserComment('')
       dispatch(getProduct(id))
     } catch (err) {
-      toast.error(
-        typeof err === 'string'
-          ? err
-          : err?.message || 'Error al publicar reseña',
-      )
+      toast.error(typeof err === 'string' ? err : err?.message || 'Error al publicar reseña')
     } finally {
       setIsSubmittingRating(false)
     }
@@ -1532,8 +1390,7 @@ const SingleProduct = () => {
       }
 
       const emailRegex = /\S+@\S+\.\S+/
-      if (!emailRegex.test(guestData.email))
-        return toast.error('Email no válido')
+      if (!emailRegex.test(guestData.email)) return toast.error('Email no válido')
     }
 
     const payload = {
@@ -1543,9 +1400,7 @@ const SingleProduct = () => {
       email: user ? user.email : guestData.email,
       mobile: user ? user.mobile : guestData.mobile,
       comment: `Consulta sobre: ${product.title}${
-        normalizedSelectedVariant?.sku
-          ? ` (Variante: ${normalizedSelectedVariant.sku})`
-          : ''
+        normalizedSelectedVariant?.sku ? ` (Variante: ${normalizedSelectedVariant.sku})` : ''
       } - Mensaje: ${question}`,
       tenantId: product.tenantId,
     }
@@ -1588,33 +1443,18 @@ const SingleProduct = () => {
     >
       <Toaster position="bottom-right" />
 
-      <Grid
-        container
-        spacing={{ xs: 4, md: 7 }}
-        justifyContent="center"
-        alignItems="flex-start"
-      >
+      <Grid container spacing={{ xs: 4, md: 7 }} justifyContent="center" alignItems="flex-start">
         <Grid item xs={12} md={6}>
           <Stack spacing={2.5} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
             <Box sx={{ width: '100%', maxWidth: 580 }}>
               <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 1.5 }}>
                 {product?.categoria && (
-                  <Chip
-                    size="small"
-                    label={product.categoria}
-                    variant="outlined"
-                  />
+                  <Chip size="small" label={product.categoria} variant="outlined" />
                 )}
                 {product?.subcategoria && (
-                  <Chip
-                    size="small"
-                    label={product.subcategoria}
-                    variant="outlined"
-                  />
+                  <Chip size="small" label={product.subcategoria} variant="outlined" />
                 )}
-                {product?.marca && (
-                  <Chip size="small" label={product.marca} variant="outlined" />
-                )}
+                {product?.marca && <Chip size="small" label={product.marca} variant="outlined" />}
               </Stack>
 
               <Typography
@@ -1704,8 +1544,7 @@ const SingleProduct = () => {
               <MainImageWindow
                 onMouseMove={e => {
                   if (activeGalleryItem?.type === 'video') return
-                  const { left, top, width, height } =
-                    e.currentTarget.getBoundingClientRect()
+                  const { left, top, width, height } = e.currentTarget.getBoundingClientRect()
                   setZoomPos({
                     x: ((e.pageX - window.scrollX - left) / width) * 100,
                     y: ((e.pageY - window.scrollY - top) / height) * 100,
@@ -1713,11 +1552,7 @@ const SingleProduct = () => {
                 }}
                 onMouseEnter={() => setIsZooming(true)}
                 onMouseLeave={() => setIsZooming(false)}
-                sx={
-                  activeGalleryItem?.type === 'video'
-                    ? { cursor: 'default' }
-                    : undefined
-                }
+                sx={activeGalleryItem?.type === 'video' ? { cursor: 'default' } : undefined}
               >
                 {!variantImageUrl && activeGalleryItem?.type === 'video' ? (
                   <video
@@ -1731,9 +1566,7 @@ const SingleProduct = () => {
                   <img
                     src={
                       variantImageUrl ||
-                      (activeGalleryItem?.type === 'image'
-                        ? activeGalleryItem.url
-                        : activeImageUrl)
+                      (activeGalleryItem?.type === 'image' ? activeGalleryItem.url : activeImageUrl)
                     }
                     style={{
                       transformOrigin: `${zoomPos.x}% ${zoomPos.y}%`,
@@ -1778,16 +1611,11 @@ const SingleProduct = () => {
                         fontWeight: 700,
                       }}
                     >
-                      {formatPrice(displayPrice.min)} -{' '}
-                      {formatPrice(displayPrice.max)}
+                      {formatPrice(displayPrice.min)} - {formatPrice(displayPrice.max)}
                     </Typography>
                   )}
 
-                  <Typography
-                    variant="h5"
-                    fontWeight={900}
-                    sx={{ color: themeColors.cardPrice }}
-                  >
+                  <Typography variant="h5" fontWeight={900} sx={{ color: themeColors.cardPrice }}>
                     Desde {formatPrice(displayPrice.finalMin)} hasta{' '}
                     {formatPrice(displayPrice.finalMax)}
                   </Typography>
@@ -1807,11 +1635,7 @@ const SingleProduct = () => {
                     </Typography>
                   )}
 
-                  <Typography
-                    variant="h4"
-                    fontWeight={950}
-                    sx={{ color: themeColors.cardPrice }}
-                  >
+                  <Typography variant="h4" fontWeight={950} sx={{ color: themeColors.cardPrice }}>
                     {formatPrice(displayPrice.final)}
                   </Typography>
                 </Box>
@@ -1840,10 +1664,7 @@ const SingleProduct = () => {
               )}
 
               {hasVariants && !normalizedSelectedVariant && (
-                <Typography
-                  variant="body2"
-                  sx={{ color: themeColors.cardMutedText, mt: 0.75 }}
-                >
+                <Typography variant="body2" sx={{ color: themeColors.cardMutedText, mt: 0.75 }}>
                   Seleccioná opciones para ver precio exacto.
                 </Typography>
               )}
@@ -1880,11 +1701,7 @@ const SingleProduct = () => {
               }}
             >
               <Stack direction="row" spacing={2} alignItems="center">
-                <Typography
-                  variant="h3"
-                  sx={{ color: themeColors.cardPrice }}
-                  fontWeight={950}
-                >
+                <Typography variant="h3" sx={{ color: themeColors.cardPrice }} fontWeight={950}>
                   {iaAnalysis.score}
                 </Typography>
                 <Box>
@@ -1920,17 +1737,11 @@ const SingleProduct = () => {
                 sx={{
                   height: 58,
                   borderRadius: 3,
-                  bgcolor: isAvailable
-                    ? themeColors.actionPrimary
-                    : 'action.disabledBackground',
-                  color: isAvailable
-                    ? themeColors.actionPrimaryText
-                    : 'text.disabled',
+                  bgcolor: isAvailable ? themeColors.actionPrimary : 'action.disabledBackground',
+                  color: isAvailable ? themeColors.actionPrimaryText : 'text.disabled',
                   fontWeight: 900,
                   '&:hover': {
-                    bgcolor: isAvailable
-                      ? themeColors.actionPrimary
-                      : 'action.disabledBackground',
+                    bgcolor: isAvailable ? themeColors.actionPrimary : 'action.disabledBackground',
                   },
                 }}
               >
@@ -1943,9 +1754,7 @@ const SingleProduct = () => {
 
               <IconButton
                 onClick={() =>
-                  user
-                    ? dispatch(toggleWishlist(product._id))
-                    : toast.error('Iniciá sesión')
+                  user ? dispatch(toggleWishlist(product._id)) : toast.error('Iniciá sesión')
                 }
                 sx={{
                   borderRadius: 3,
@@ -1963,12 +1772,7 @@ const SingleProduct = () => {
             <Divider />
 
             <Box>
-              <Stack
-                direction="row"
-                justifyContent="space-between"
-                alignItems="center"
-                mb={1}
-              >
+              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
                 <Typography variant="h6" fontWeight={900} color="text.primary">
                   Calificación general
                 </Typography>
@@ -2019,18 +1823,14 @@ const SingleProduct = () => {
                       sx={{ color: theme.palette.primary.main }}
                     >
                       Opinando sobre:{' '}
-                      {Object.values(normalizedSelectedVariant.attributes).join(
-                        ' / ',
-                      )}
+                      {Object.values(normalizedSelectedVariant.attributes).join(' / ')}
                     </Typography>
                   )}
                   <ReactStars
                     count={5}
                     size={28}
                     value={userStar}
-                    onChange={value =>
-                      setUserStar(Math.trunc(Number(value)) || 0)
-                    }
+                    onChange={value => setUserStar(Math.trunc(Number(value)) || 0)}
                     color2={themeColors.warning}
                   />
                   <TextField
@@ -2139,20 +1939,11 @@ const SingleProduct = () => {
             width: '100%',
           }}
         >
-          <SectionTitle
-            label="Ficha técnica"
-            eyebrow="Detalle y especificaciones"
-          />
+          <SectionTitle label="Ficha técnica" eyebrow="Detalle y especificaciones" />
 
           <Grid container spacing={3}>
             {technicalParagraphs.length > 0 && (
-              <Grid
-                item
-                xs={12}
-                md={
-                  productSpecifications.length || logisticsRows.length ? 5 : 12
-                }
-              >
+              <Grid item xs={12} md={productSpecifications.length || logisticsRows.length ? 5 : 12}>
                 <Paper
                   variant="outlined"
                   sx={{
@@ -2185,11 +1976,7 @@ const SingleProduct = () => {
             )}
 
             {productSpecifications.length > 0 && (
-              <Grid
-                item
-                xs={12}
-                md={technicalParagraphs.length || logisticsRows.length ? 7 : 12}
-              >
+              <Grid item xs={12} md={technicalParagraphs.length || logisticsRows.length ? 7 : 12}>
                 <Paper
                   variant="outlined"
                   sx={{
@@ -2200,34 +1987,24 @@ const SingleProduct = () => {
                   }}
                 >
                   <Stack spacing={2.5}>
-                    {Object.entries(specificationGroups).map(
-                      ([group, specs]) => (
-                        <Box key={group}>
-                          <Typography
-                            variant="subtitle2"
-                            fontWeight={950}
-                            sx={{ mb: 1, color: themeColors.cardMutedText }}
-                          >
-                            {group}
-                          </Typography>
-                          <Grid container spacing={1.5}>
-                            {specs.map(spec => (
-                              <Grid
-                                item
-                                xs={12}
-                                sm={6}
-                                key={`${group}-${spec.key}`}
-                              >
-                                <SpecCard
-                                  spec={spec}
-                                  themeColors={themeColors}
-                                />
-                              </Grid>
-                            ))}
-                          </Grid>
-                        </Box>
-                      ),
-                    )}
+                    {Object.entries(specificationGroups).map(([group, specs]) => (
+                      <Box key={group}>
+                        <Typography
+                          variant="subtitle2"
+                          fontWeight={950}
+                          sx={{ mb: 1, color: themeColors.cardMutedText }}
+                        >
+                          {group}
+                        </Typography>
+                        <Grid container spacing={1.5}>
+                          {specs.map(spec => (
+                            <Grid item xs={12} sm={6} key={`${group}-${spec.key}`}>
+                              <SpecCard spec={spec} themeColors={themeColors} />
+                            </Grid>
+                          ))}
+                        </Grid>
+                      </Box>
+                    ))}
                   </Stack>
                 </Paper>
               </Grid>
@@ -2243,11 +2020,7 @@ const SingleProduct = () => {
                     bgcolor: 'background.paper',
                   }}
                 >
-                  <Typography
-                    variant="h6"
-                    fontWeight={950}
-                    sx={{ mb: 2, color: themeColors.text }}
-                  >
+                  <Typography variant="h6" fontWeight={950} sx={{ mb: 2, color: themeColors.text }}>
                     Envío, garantía y origen
                   </Typography>
                   <Grid container spacing={1.5}>
@@ -2263,11 +2036,7 @@ const SingleProduct = () => {
                             height: '100%',
                           }}
                         >
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            fontWeight={900}
-                          >
+                          <Typography variant="caption" color="text.secondary" fontWeight={900}>
                             {row.label}
                           </Typography>
                           <Typography
@@ -2304,10 +2073,7 @@ const SingleProduct = () => {
           Preguntas al vendedor
         </Typography>
 
-        <Paper
-          sx={{ p: 3, borderRadius: 4, bgcolor: 'background.paper' }}
-          variant="outlined"
-        >
+        <Paper sx={{ p: 3, borderRadius: 4, bgcolor: 'background.paper' }} variant="outlined">
           <Stack spacing={2.5}>
             {!user && (
               <Grid container spacing={2}>
@@ -2318,9 +2084,7 @@ const SingleProduct = () => {
                     name="name"
                     size="small"
                     value={guestData.name}
-                    onChange={e =>
-                      setGuestData({ ...guestData, name: e.target.value })
-                    }
+                    onChange={e => setGuestData({ ...guestData, name: e.target.value })}
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -2330,9 +2094,7 @@ const SingleProduct = () => {
                     name="email"
                     size="small"
                     value={guestData.email}
-                    onChange={e =>
-                      setGuestData({ ...guestData, email: e.target.value })
-                    }
+                    onChange={e => setGuestData({ ...guestData, email: e.target.value })}
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -2342,9 +2104,7 @@ const SingleProduct = () => {
                     name="mobile"
                     size="small"
                     value={guestData.mobile}
-                    onChange={e =>
-                      setGuestData({ ...guestData, mobile: e.target.value })
-                    }
+                    onChange={e => setGuestData({ ...guestData, mobile: e.target.value })}
                   />
                 </Grid>
               </Grid>

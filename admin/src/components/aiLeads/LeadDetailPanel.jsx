@@ -68,11 +68,7 @@ const copy = value => {
 
 const getProductRef = product => {
   return clean(
-    product?._id ||
-      product?.productId ||
-      product?.slug ||
-      product?.sku ||
-      product?.title,
+    product?._id || product?.productId || product?.slug || product?.sku || product?.title,
   )
 }
 
@@ -161,9 +157,7 @@ const ConfirmDialogComponent = ({
           variant="contained"
           disabled={loading || !canConfirm}
           onClick={() => onConfirm?.(clean(reason))}
-          startIcon={
-            loading ? <CircularProgress size={16} color="inherit" /> : null
-          }
+          startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
           sx={{ textTransform: 'none', fontWeight: 900 }}
         >
           {confirmLabel}
@@ -194,9 +188,7 @@ const LeadDetailPanel = ({
   const customer = lead?.customer || {}
 
   const products = useMemo(() => {
-    return Array.isArray(lead?.productsOfInterest)
-      ? lead.productsOfInterest
-      : []
+    return Array.isArray(lead?.productsOfInterest) ? lead.productsOfInterest : []
   }, [lead?.productsOfInterest])
 
   if (!lead) {
@@ -270,11 +262,7 @@ const LeadDetailPanel = ({
   }
 
   const displayName =
-    lead.displayName ||
-    customer.name ||
-    customer.email ||
-    customer.phone ||
-    'Cliente web'
+    lead.displayName || customer.name || customer.email || customer.phone || 'Cliente web'
 
   return (
     <>
@@ -302,11 +290,7 @@ const LeadDetailPanel = ({
             <Stack direction="row" gap={1} flexWrap="wrap">
               <LeadStatusBadge status={lead.status} />
               <LeadScoreBadge score={lead.leadScore || lead.score} />
-              <Chip
-                size="small"
-                label={lead.intent || 'unknown'}
-                variant="outlined"
-              />
+              <Chip size="small" label={lead.intent || 'unknown'} variant="outlined" />
             </Stack>
           </Stack>
         </Box>
@@ -319,9 +303,7 @@ const LeadDetailPanel = ({
               </Typography>
 
               <Stack spacing={0.8}>
-                <Typography variant="body2">
-                  Nombre: {customer.name || 'Sin nombre'}
-                </Typography>
+                <Typography variant="body2">Nombre: {customer.name || 'Sin nombre'}</Typography>
 
                 <Stack direction="row" alignItems="center" spacing={0.5}>
                   <Typography variant="body2" sx={{ flex: 1 }}>
@@ -330,10 +312,7 @@ const LeadDetailPanel = ({
 
                   {customer.email && (
                     <Tooltip title="Copiar email">
-                      <IconButton
-                        size="small"
-                        onClick={() => copy(customer.email)}
-                      >
+                      <IconButton size="small" onClick={() => copy(customer.email)}>
                         <ContentCopyIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -348,19 +327,13 @@ const LeadDetailPanel = ({
                   {customer.phone && (
                     <>
                       <Tooltip title="Copiar teléfono">
-                        <IconButton
-                          size="small"
-                          onClick={() => copy(customer.phone)}
-                        >
+                        <IconButton size="small" onClick={() => copy(customer.phone)}>
                           <ContentCopyIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
 
                       <Tooltip title="Abrir WhatsApp">
-                        <IconButton
-                          size="small"
-                          onClick={() => openWhatsapp(customer.phone)}
-                        >
+                        <IconButton size="small" onClick={() => openWhatsapp(customer.phone)}>
                           <WhatsAppIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -438,13 +411,11 @@ const LeadDetailPanel = ({
                     onClick={() =>
                       openConfirm({
                         title: 'Marcar lead como perdido',
-                        description:
-                          'Indicá el motivo para mantener trazabilidad comercial.',
+                        description: 'Indicá el motivo para mantener trazabilidad comercial.',
                         severity: 'warning',
                         confirmLabel: 'Marcar perdido',
                         requireReason: true,
-                        defaultReason:
-                          'Marcado como perdido desde bandeja comercial',
+                        defaultReason: 'Marcado como perdido desde bandeja comercial',
                         onConfirm: async reason => {
                           await onMarkLost?.(reason)
                           closeConfirm()
@@ -575,25 +546,15 @@ const LeadDetailPanel = ({
                         variant="outlined"
                         sx={{ p: 1.2, borderRadius: 2 }}
                       >
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          alignItems="flex-start"
-                        >
+                        <Stack direction="row" spacing={1} alignItems="flex-start">
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography variant="body2" fontWeight={800} noWrap>
                               {product.title || 'Producto'}
                             </Typography>
 
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              {product.slug || product.sku || 'Sin slug/SKU'} ·
-                              $
-                              {Number(product.price || 0).toLocaleString(
-                                'es-AR',
-                              )}
+                            <Typography variant="caption" color="text.secondary">
+                              {product.slug || product.sku || 'Sin slug/SKU'} · $
+                              {Number(product.price || 0).toLocaleString('es-AR')}
                             </Typography>
 
                             {product.lastMentionedAt && (
@@ -602,8 +563,7 @@ const LeadDetailPanel = ({
                                 color="text.secondary"
                                 sx={{ display: 'block' }}
                               >
-                                Mencionado:{' '}
-                                {formatDate(product.lastMentionedAt)}
+                                Mencionado: {formatDate(product.lastMentionedAt)}
                               </Typography>
                             )}
                           </Box>
@@ -669,8 +629,7 @@ const LeadDetailPanel = ({
                     >
                       <Typography variant="body2">{item.text}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {item.createdByName || 'Admin'} ·{' '}
-                        {formatDate(item.createdAt)}
+                        {item.createdByName || 'Admin'} · {formatDate(item.createdAt)}
                       </Typography>
                     </Paper>
                   ))}

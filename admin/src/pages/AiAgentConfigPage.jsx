@@ -39,10 +39,7 @@ import {
   SmartToy as SmartToyIcon,
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material'
-import {
-  getAiAgentConfig,
-  updateAiAgentConfig,
-} from '../services/aiAgentConfigService.js'
+import { getAiAgentConfig, updateAiAgentConfig } from '../services/aiAgentConfigService.js'
 import AiBudgetPanel from '../components/aiBudget/AiBudgetPanel.jsx'
 
 const TONE_OPTIONS = [
@@ -227,10 +224,7 @@ const AiAgentConfigPage = () => {
     load()
   }, [load])
 
-  const setField = useCallback(
-    (key, value) => setForm(prev => ({ ...prev, [key]: value })),
-    [],
-  )
+  const setField = useCallback((key, value) => setForm(prev => ({ ...prev, [key]: value })), [])
 
   const handleSave = useCallback(async () => {
     if (!form) return
@@ -249,9 +243,7 @@ const AiAgentConfigPage = () => {
     } catch (err) {
       console.error('[AI_AGENT_CONFIG_SAVE_ERROR]', err)
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudo guardar la configuración.',
+        err?.response?.data?.message || err?.message || 'No se pudo guardar la configuración.',
       )
     } finally {
       setSaving(false)
@@ -259,21 +251,13 @@ const AiAgentConfigPage = () => {
   }, [form])
 
   const whatsappSecretHelp = useMemo(
-    () =>
-      form?.phoneNumberId
-        ? 'Dejá en blanco para no cambiar el valor guardado.'
-        : '',
+    () => (form?.phoneNumberId ? 'Dejá en blanco para no cambiar el valor guardado.' : ''),
     [form?.phoneNumberId],
   )
 
   if (loading) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="60vh"
-      >
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
         <CircularProgress />
       </Box>
     )
@@ -282,10 +266,7 @@ const AiAgentConfigPage = () => {
   if (!form) {
     return (
       <Box p={3}>
-        <Alert
-          severity="error"
-          action={<Button onClick={load}>Reintentar</Button>}
-        >
+        <Alert severity="error" action={<Button onClick={load}>Reintentar</Button>}>
           {error || 'No se pudo cargar la configuración.'}
         </Alert>
       </Box>
@@ -306,20 +287,13 @@ const AiAgentConfigPage = () => {
             Agente IA · Configuración
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Activá el agente, conectá WhatsApp y ajustá cómo conversa con tus
-            clientes.
+            Activá el agente, conectá WhatsApp y ajustá cómo conversa con tus clientes.
           </Typography>
         </Box>
         <Button
           variant="contained"
           size="large"
-          startIcon={
-            saving ? (
-              <CircularProgress size={18} color="inherit" />
-            ) : (
-              <SaveIcon />
-            )
-          }
+          startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
           onClick={handleSave}
           disabled={saving}
           sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
@@ -451,10 +425,7 @@ const AiAgentConfigPage = () => {
           </Stack>
         </SectionCard>
 
-        <SectionCard
-          title="Personalidad"
-          subtitle="Cómo se presenta y habla el asistente."
-        >
+        <SectionCard title="Personalidad" subtitle="Cómo se presenta y habla el asistente.">
           <Grid container spacing={2.5}>
             <Grid item xs={12} sm={4}>
               <TextField
@@ -507,10 +478,7 @@ const AiAgentConfigPage = () => {
               <Grid item xs={12} sm={6} key={key}>
                 <FormControlLabel
                   control={
-                    <Switch
-                      checked={form[key]}
-                      onChange={e => setField(key, e.target.checked)}
-                    />
+                    <Switch checked={form[key]} onChange={e => setField(key, e.target.checked)} />
                   }
                   label={label}
                 />
@@ -522,9 +490,7 @@ const AiAgentConfigPage = () => {
                 type="number"
                 label="Máx. mensajes antes de derivar"
                 value={form.maxMessagesBeforeHuman}
-                onChange={e =>
-                  setField('maxMessagesBeforeHuman', e.target.value)
-                }
+                onChange={e => setField('maxMessagesBeforeHuman', e.target.value)}
                 inputProps={{ min: 1, max: 80 }}
               />
             </Grid>
@@ -534,9 +500,7 @@ const AiAgentConfigPage = () => {
                 type="number"
                 label="Confianza mínima para responder"
                 value={form.minConfidenceToAnswer}
-                onChange={e =>
-                  setField('minConfidenceToAnswer', e.target.value)
-                }
+                onChange={e => setField('minConfidenceToAnswer', e.target.value)}
                 inputProps={{ min: 0, max: 1, step: 0.05 }}
                 helperText="Entre 0 y 1"
               />
@@ -629,9 +593,7 @@ const AiAgentConfigPage = () => {
                 control={
                   <Switch
                     checked={form.learningEnabled}
-                    onChange={e =>
-                      setField('learningEnabled', e.target.checked)
-                    }
+                    onChange={e => setField('learningEnabled', e.target.checked)}
                   />
                 }
                 label="Autoaprendizaje activado"
@@ -642,24 +604,17 @@ const AiAgentConfigPage = () => {
                 control={
                   <Switch
                     checked={form.learningRequireApproval}
-                    onChange={e =>
-                      setField('learningRequireApproval', e.target.checked)
-                    }
+                    onChange={e => setField('learningRequireApproval', e.target.checked)}
                   />
                 }
                 label="Requiere aprobación humana"
               />
             </Grid>
             <Grid item xs={12}>
-              <Alert
-                severity="info"
-                variant="outlined"
-                sx={{ borderRadius: 2, mt: 1 }}
-              >
-                Estos dos valores son <strong>autolímites</strong>: sirven para
-                consumir menos que tu plan, no para ampliarlo. El tope real es
-                el del plan y lo ves arriba. Dejalos en 0 para usar el plan
-                completo.
+              <Alert severity="info" variant="outlined" sx={{ borderRadius: 2, mt: 1 }}>
+                Estos dos valores son <strong>autolímites</strong>: sirven para consumir menos que
+                tu plan, no para ampliarlo. El tope real es el del plan y lo ves arriba. Dejalos en
+                0 para usar el plan completo.
               </Alert>
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -683,9 +638,7 @@ const AiAgentConfigPage = () => {
                 inputProps={{ min: 0 }}
                 helperText="0 = sin autolímite (usa el tope del plan)"
                 InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">tokens</InputAdornment>
-                  ),
+                  endAdornment: <InputAdornment position="end">tokens</InputAdornment>,
                 }}
               />
             </Grid>
@@ -705,13 +658,7 @@ const AiAgentConfigPage = () => {
           <Button
             variant="contained"
             size="large"
-            startIcon={
-              saving ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <SaveIcon />
-              )
-            }
+            startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
             onClick={handleSave}
             disabled={saving}
             sx={{ borderRadius: 2, textTransform: 'none', px: 4 }}

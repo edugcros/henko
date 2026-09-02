@@ -22,11 +22,7 @@ const Contact = () => {
   const contactSchema = yup.object({
     name: yup.string().trim().required('El nombre es obligatorio'),
     comment: yup.string().trim().required('El comentario es obligatorio'),
-    email: yup
-      .string()
-      .trim()
-      .email('Email inválido')
-      .required('El email es obligatorio'),
+    email: yup.string().trim().email('Email inválido').required('El email es obligatorio'),
     mobile: yup
       .string()
       .trim()
@@ -49,9 +45,7 @@ const Contact = () => {
         resetForm()
       } catch (error) {
         const message =
-          typeof error === 'string'
-            ? error
-            : error?.message || 'No se pudo enviar la consulta'
+          typeof error === 'string' ? error : error?.message || 'No se pudo enviar la consulta'
         toast.error(message)
       }
     },
@@ -94,9 +88,7 @@ const Contact = () => {
                       onBlur={formik.handleBlur('name')}
                       value={formik.values.name}
                     />
-                    <div className="errors">
-                      {formik.touched.name && formik.errors.name}
-                    </div>
+                    <div className="errors">{formik.touched.name && formik.errors.name}</div>
                   </div>
                   <div>
                     <input
@@ -108,9 +100,7 @@ const Contact = () => {
                       onBlur={formik.handleBlur('email')}
                       value={formik.values.email}
                     />
-                    <div className="errors">
-                      {formik.touched.email && formik.errors.email}
-                    </div>
+                    <div className="errors">{formik.touched.email && formik.errors.email}</div>
                   </div>
                   <div>
                     <input
@@ -122,9 +112,7 @@ const Contact = () => {
                       onBlur={formik.handleBlur('mobile')}
                       value={formik.values.mobile}
                     />
-                    <div className="errors">
-                      {formik.touched.mobile && formik.errors.mobile}
-                    </div>
+                    <div className="errors">{formik.touched.mobile && formik.errors.mobile}</div>
                   </div>
                   <div>
                     <textarea
@@ -138,9 +126,7 @@ const Contact = () => {
                       onBlur={formik.handleBlur('comment')}
                       value={formik.values.comment}
                     ></textarea>
-                    <div className="errors">
-                      {formik.touched.comment && formik.errors.comment}
-                    </div>
+                    <div className="errors">{formik.touched.comment && formik.errors.comment}</div>
                   </div>
                   <div>
                     <button
@@ -160,8 +146,7 @@ const Contact = () => {
                     <li className="mb-3 d-flex gap-15 align-items-center">
                       <AiOutlineHome className="fs-5" />
                       <address className="mb-0">
-                        Hno:277 , Near village chopal , Mandaura, Sonipat,
-                        Haryana
+                        Hno:277 , Near village chopal , Mandaura, Sonipat, Haryana
                       </address>
                     </li>
                     <li className="mb-3 d-flex gap-15 align-items-center">
@@ -170,9 +155,7 @@ const Contact = () => {
                     </li>
                     <li className="mb-3 d-flex gap-15 align-items-center">
                       <AiOutlineMail className="fs-5" />
-                      <a href="mailto:grecoeduardo87@gmail.com">
-                        grecoeduardo87@gmail.com
-                      </a>
+                      <a href="mailto:grecoeduardo87@gmail.com">grecoeduardo87@gmail.com</a>
                     </li>
                     <li className="mb-3 d-flex gap-15 align-items-center">
                       <BiInfoCircle className="fs-5" />

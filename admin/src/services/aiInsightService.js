@@ -29,10 +29,7 @@ export const archiveInsight = async id => {
 // Bloque 8.8 (alcance acotado, solo customer_inactivity): arma el texto, no
 // envía nada — el admin lo revisa/edita antes de confirmar con sendReactivationMessage.
 export const previewReactivationMessage = async id => {
-  const response = await api.post(
-    `/insights/${id}/reactivation-message/preview`,
-    {},
-  )
+  const response = await api.post(`/insights/${id}/reactivation-message/preview`, {})
   return unwrap(response)
 }
 
@@ -46,18 +43,12 @@ export const sendReactivationMessage = async (id, message) => {
 // Bloque 8.8 Nivel 2 (alcance acotado, solo cart_recovery_underperformance):
 // arma el plan antes/después de reglas de recuperación, no toca nada todavía.
 export const previewCartRecoveryReinforcement = async id => {
-  const response = await api.post(
-    `/insights/${id}/cart-recovery-reinforcement/preview`,
-    {},
-  )
+  const response = await api.post(`/insights/${id}/cart-recovery-reinforcement/preview`, {})
   return unwrap(response)
 }
 
 export const applyCartRecoveryReinforcement = async id => {
-  const response = await api.post(
-    `/insights/${id}/cart-recovery-reinforcement/apply`,
-    {},
-  )
+  const response = await api.post(`/insights/${id}/cart-recovery-reinforcement/apply`, {})
   return unwrap(response)
 }
 

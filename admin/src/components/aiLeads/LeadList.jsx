@@ -70,12 +70,7 @@ const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
             <ListItemText
               primary={
                 <Stack spacing={0.8}>
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    gap={1}
-                  >
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
                     <Typography variant="subtitle2" fontWeight={800} noWrap>
                       {lead.displayName ||
                         lead.customer?.name ||
@@ -99,30 +94,13 @@ const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
               }
               secondary={
                 <Box sx={{ mt: 1 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                    noWrap
-                  >
-                    {lead.customer?.email ||
-                      lead.customer?.phone ||
-                      'Sin datos de contacto'}
+                  <Typography variant="caption" color="text.secondary" display="block" noWrap>
+                    {lead.customer?.email || lead.customer?.phone || 'Sin datos de contacto'}
                   </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                    noWrap
-                  >
+                  <Typography variant="caption" color="text.secondary" display="block" noWrap>
                     Producto: {getProductLabel(lead)}
                   </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.primary"
-                    sx={{ mt: 0.6 }}
-                    noWrap
-                  >
+                  <Typography variant="body2" color="text.primary" sx={{ mt: 0.6 }} noWrap>
                     {lead.lastMessage || 'Sin último mensaje registrado'}
                   </Typography>
                 </Box>

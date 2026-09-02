@@ -51,9 +51,7 @@ const formatMoney = value => {
 
 const SocialPromotionPage = () => {
   const dispatch = useDispatch()
-  const { products, isLoading: productsLoading } = useSelector(
-    state => state.product || {},
-  )
+  const { products, isLoading: productsLoading } = useSelector(state => state.product || {})
 
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [generating, setGenerating] = useState(false)
@@ -79,9 +77,7 @@ const SocialPromotionPage = () => {
     setError('')
 
     try {
-      const data = await socialPromotionService.generateSocialContent(
-        selectedProduct._id,
-      )
+      const data = await socialPromotionService.generateSocialContent(selectedProduct._id)
       setResult(data)
       setCaptionDraft(data.caption)
     } catch (err) {
@@ -115,9 +111,8 @@ const SocialPromotionPage = () => {
         </Typography>
       </Stack>
       <Typography variant="body2" color="text.secondary" mb={4}>
-        Elegí un producto y generá un caption con hashtags listo para copiar y
-        postear en Instagram. No publica nada automáticamente — revisás el texto
-        y lo subís vos desde tu cuenta.
+        Elegí un producto y generá un caption con hashtags listo para copiar y postear en Instagram.
+        No publica nada automáticamente — revisás el texto y lo subís vos desde tu cuenta.
       </Typography>
 
       <Card variant="outlined" sx={{ borderRadius: 3, mb: 3 }}>
@@ -167,11 +162,7 @@ const SocialPromotionPage = () => {
               <Button
                 variant="contained"
                 startIcon={
-                  generating ? (
-                    <CircularProgress size={16} color="inherit" />
-                  ) : (
-                    <AutoAwesomeIcon />
-                  )
+                  generating ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />
                 }
                 onClick={handleGenerate}
                 disabled={generating}
@@ -181,11 +172,7 @@ const SocialPromotionPage = () => {
                   whiteSpace: 'nowrap',
                 }}
               >
-                {generating
-                  ? 'Generando...'
-                  : result
-                    ? 'Regenerar'
-                    : 'Generar contenido'}
+                {generating ? 'Generando...' : result ? 'Regenerar' : 'Generar contenido'}
               </Button>
             </Stack>
           )}
@@ -193,11 +180,7 @@ const SocialPromotionPage = () => {
       </Card>
 
       {error && (
-        <Alert
-          severity="error"
-          variant="outlined"
-          sx={{ borderRadius: 2, mb: 3 }}
-        >
+        <Alert severity="error" variant="outlined" sx={{ borderRadius: 2, mb: 3 }}>
           {error}
         </Alert>
       )}
@@ -205,22 +188,13 @@ const SocialPromotionPage = () => {
       {result && (
         <Card variant="outlined" sx={{ borderRadius: 3 }}>
           <CardContent>
-            <Stack
-              direction="row"
-              justifyContent="space-between"
-              alignItems="center"
-              mb={2}
-            >
+            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
               <Typography variant="h6" fontWeight={700}>
                 Contenido generado
               </Typography>
               <Tooltip title="Regenerar">
                 <span>
-                  <IconButton
-                    onClick={handleGenerate}
-                    disabled={generating}
-                    size="small"
-                  >
+                  <IconButton onClick={handleGenerate} disabled={generating} size="small">
                     <RefreshIcon fontSize="small" />
                   </IconButton>
                 </span>
@@ -243,11 +217,7 @@ const SocialPromotionPage = () => {
               />
             )}
 
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              fontWeight={700}
-            >
+            <Typography variant="caption" color="text.secondary" fontWeight={700}>
               CAPTION
             </Typography>
             <TextField
@@ -270,21 +240,10 @@ const SocialPromotionPage = () => {
               </Button>
             </Stack>
 
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              fontWeight={700}
-            >
+            <Typography variant="caption" color="text.secondary" fontWeight={700}>
               HASHTAGS
             </Typography>
-            <Stack
-              direction="row"
-              spacing={0.75}
-              flexWrap="wrap"
-              useFlexGap
-              mt={1}
-              mb={2.5}
-            >
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap mt={1} mb={2.5}>
               {(result.hashtags || []).map(tag => (
                 <Chip key={tag} label={`#${tag}`} size="small" />
               ))}
@@ -303,9 +262,7 @@ const SocialPromotionPage = () => {
                 size="small"
                 variant="contained"
                 startIcon={<ContentCopyIcon fontSize="small" />}
-                onClick={() =>
-                  copyToClipboard(`${captionDraft}\n\n${hashtagsText}`, 'Todo')
-                }
+                onClick={() => copyToClipboard(`${captionDraft}\n\n${hashtagsText}`, 'Todo')}
                 sx={{ borderRadius: 2, textTransform: 'none' }}
               >
                 Copiar todo
@@ -315,8 +272,8 @@ const SocialPromotionPage = () => {
             <Divider sx={{ my: 2.5 }} />
 
             <Typography variant="body2" color="text.secondary">
-              Descargá la imagen desde la ficha del producto y pegá este texto
-              al crear el post en Instagram.
+              Descargá la imagen desde la ficha del producto y pegá este texto al crear el post en
+              Instagram.
             </Typography>
           </CardContent>
         </Card>

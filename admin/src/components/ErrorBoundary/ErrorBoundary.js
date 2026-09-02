@@ -31,8 +31,7 @@ class ErrorBoundary extends React.Component {
             <div className="error-container">
               <h1 className="error-title">😢 Ocurrió un error inesperado</h1>
               <p className="error-message">
-                Lo sentimos, algo salió mal. Por favor, recarga la página o
-                intenta más tarde.
+                Lo sentimos, algo salió mal. Por favor, recarga la página o intenta más tarde.
               </p>
               <button className="error-btn" onClick={this.handleReload}>
                 🔄 Recargar Página

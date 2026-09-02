@@ -12,19 +12,9 @@ const normalizeAuthResponse = response => {
   const raw = response?.data || response
 
   return {
-    user:
-      raw?.user ||
-      raw?.data?.user ||
-      raw?.data?.profile ||
-      raw?.profile ||
-      null,
+    user: raw?.user || raw?.data?.user || raw?.data?.profile || raw?.profile || null,
 
-    token:
-      raw?.token ||
-      raw?.accessToken ||
-      raw?.data?.token ||
-      raw?.data?.accessToken ||
-      null,
+    token: raw?.token || raw?.accessToken || raw?.data?.token || raw?.data?.accessToken || null,
 
     refreshToken: raw?.refreshToken || raw?.data?.refreshToken || null,
   }
@@ -38,10 +28,7 @@ const getApiErrorMessage = (error, fallback = 'Error inesperado') => {
   if (typeof error === 'string') return error
 
   return (
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    fallback
+    error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback
   )
 }
 
@@ -175,10 +162,7 @@ const loginUser = async userData => {
     const normalized = normalizeAuthResponse(response)
 
     if (!normalized?.user) {
-      throw new Error(
-        response?.data?.message ||
-          'Respuesta inválida del servidor durante login',
-      )
+      throw new Error(response?.data?.message || 'Respuesta inválida del servidor durante login')
     }
 
     return {

@@ -1,11 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import {
-  getAdminProducts,
-  updateAProduct,
-  deleteProduct,
-} from '@features/product/productSlice'
+import { getAdminProducts, updateAProduct, deleteProduct } from '@features/product/productSlice'
 import {
   Box,
   Typography,
@@ -368,8 +364,7 @@ const Productlist = () => {
   const handleToggleVisibility = useCallback(
     product => {
       closeMenu()
-      const nextVisibility =
-        product.visibility === 'hidden' ? 'visible' : 'hidden'
+      const nextVisibility = product.visibility === 'hidden' ? 'visible' : 'hidden'
       runQuickUpdate(product._id, { visibility: nextVisibility })
     },
     [closeMenu, runQuickUpdate],
@@ -484,11 +479,7 @@ const Productlist = () => {
         icon: <TrendingUpIcon fontSize="small" />,
       }
     },
-    [
-      theme.palette.error.main,
-      theme.palette.success.main,
-      theme.palette.warning.main,
-    ],
+    [theme.palette.error.main, theme.palette.success.main, theme.palette.warning.main],
   )
 
   // ============================================================================
@@ -508,12 +499,7 @@ const Productlist = () => {
   // arriba para no perder el scroll ni el contexto visual de la tabla.
   if (isAdminLoading && !hasLoadedOnce.current) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="60vh"
-      >
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
         <CircularProgress size={60} />
       </Box>
     )
@@ -521,12 +507,7 @@ const Productlist = () => {
 
   return (
     <Box p={3}>
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={3}
-      >
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
           <Typography variant="h4" fontWeight={700}>
             Productos
@@ -546,12 +527,7 @@ const Productlist = () => {
         </Button>
       </Box>
 
-      <Stack
-        direction="row"
-        spacing={2}
-        mb={3}
-        sx={{ flexWrap: 'wrap', gap: 2 }}
-      >
+      <Stack direction="row" spacing={2} mb={3} sx={{ flexWrap: 'wrap', gap: 2 }}>
         <StatCard
           title="Total"
           value={stats.total}
@@ -601,11 +577,7 @@ const Productlist = () => {
       </Stack>
 
       <Card sx={{ mb: 3, p: 2, borderRadius: 2 }}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          alignItems="center"
-        >
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
           <TextField
             fullWidth
             size="small"
@@ -680,15 +652,12 @@ const Productlist = () => {
       <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 2 }}>
         <Table size="small">
           <TableHead>
-            <TableRow
-              sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.05) }}
-            >
+            <TableRow sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
               <TableCell
                 onClick={() => handleSort('title')}
                 sx={{ cursor: 'pointer', fontWeight: 700 }}
               >
-                Producto{' '}
-                {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
+                Producto {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
               </TableCell>
               <TableCell sx={{ fontWeight: 700 }}>SKU</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Categoría</TableCell>
@@ -730,9 +699,7 @@ const Productlist = () => {
                     '&:last-child td, &:last-child th': { border: 0 },
                     opacity: isMutating ? 0.6 : 1,
                     backgroundColor:
-                      stock === 0
-                        ? alpha(theme.palette.error.main, 0.05)
-                        : 'inherit',
+                      stock === 0 ? alpha(theme.palette.error.main, 0.05) : 'inherit',
                   }}
                 >
                   <TableCell>
@@ -759,11 +726,7 @@ const Productlist = () => {
                   </TableCell>
 
                   <TableCell>
-                    <Typography
-                      variant="body2"
-                      fontFamily="monospace"
-                      color="text.secondary"
-                    >
+                    <Typography variant="body2" fontFamily="monospace" color="text.secondary">
                       {getProductSku(product)}
                     </Typography>
                   </TableCell>
@@ -824,11 +787,7 @@ const Productlist = () => {
 
                       {product.hasVariants && (
                         <Tooltip title="Stock agregado de todas las variantes">
-                          <Chip
-                            label="Variantes"
-                            size="small"
-                            variant="outlined"
-                          />
+                          <Chip label="Variantes" size="small" variant="outlined" />
                         </Tooltip>
                       )}
                     </Box>
@@ -839,9 +798,7 @@ const Productlist = () => {
                       label={statusMeta.label}
                       size="small"
                       color={statusMeta.color}
-                      variant={
-                        product.status === 'active' ? 'filled' : 'outlined'
-                      }
+                      variant={product.status === 'active' ? 'filled' : 'outlined'}
                     />
                   </TableCell>
 
@@ -850,9 +807,7 @@ const Productlist = () => {
                       <IconButton
                         size="small"
                         disabled={isMutating}
-                        onClick={() =>
-                          navigate(`/admin/edit-product/${product._id}`)
-                        }
+                        onClick={() => navigate(`/admin/edit-product/${product._id}`)}
                         sx={{ color: theme.palette.primary.main }}
                       >
                         <EditIcon fontSize="small" />
@@ -880,9 +835,7 @@ const Productlist = () => {
             {adminProducts.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    No se encontraron productos
-                  </Typography>
+                  <Typography color="text.secondary">No se encontraron productos</Typography>
                 </TableCell>
               </TableRow>
             )}
@@ -904,11 +857,7 @@ const Productlist = () => {
       )}
 
       {/* Menú de acciones rápidas por fila */}
-      <Menu
-        anchorEl={menuAnchorEl}
-        open={Boolean(menuAnchorEl)}
-        onClose={closeMenu}
-      >
+      <Menu anchorEl={menuAnchorEl} open={Boolean(menuAnchorEl)} onClose={closeMenu}>
         {menuProduct?.hasVariants ? (
           <MenuItem
             onClick={() => {
@@ -942,9 +891,7 @@ const Productlist = () => {
           </MenuItem>
         )}
         {menuProduct?.status !== 'out-of-stock' && (
-          <MenuItem
-            onClick={() => handleChangeStatus(menuProduct, 'out-of-stock')}
-          >
+          <MenuItem onClick={() => handleChangeStatus(menuProduct, 'out-of-stock')}>
             Marcar sin stock
           </MenuItem>
         )}
@@ -981,12 +928,7 @@ const Productlist = () => {
       </Menu>
 
       {/* Editar stock rápido */}
-      <Dialog
-        open={stockDialog.open}
-        onClose={closeStockDialog}
-        maxWidth="xs"
-        fullWidth
-      >
+      <Dialog open={stockDialog.open} onClose={closeStockDialog} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ pb: 1 }}>Editar stock</DialogTitle>
 
         <DialogContent>
@@ -1039,20 +981,14 @@ const Productlist = () => {
       </Dialog>
 
       {/* Confirmar eliminación permanente */}
-      <Dialog
-        open={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ pb: 1 }}>¿Eliminar producto?</DialogTitle>
 
         <DialogContent>
           <Typography>
-            Estás por eliminar <strong>{selectedProduct?.title}</strong> de
-            forma permanente. Esta acción no se puede deshacer y borra también
-            sus imágenes. Si solo querés dejar de venderlo, usá
-            &quot;Archivar&quot; en vez de eliminar.
+            Estás por eliminar <strong>{selectedProduct?.title}</strong> de forma permanente. Esta
+            acción no se puede deshacer y borra también sus imágenes. Si solo querés dejar de
+            venderlo, usá &quot;Archivar&quot; en vez de eliminar.
           </Typography>
         </DialogContent>
 

@@ -54,17 +54,71 @@ const normalizeSlug = value => {
 }
 
 const RESERVED_SLUGS = new Set([
-  'api', 'admin', 'www', 'mail', 'smtp', 'imap', 'pop',
-  'ftp', 'sftp', 'ssh', 'cdn', 'assets', 'static', 'media',
-  'ns1', 'ns2', 'ns3', 'dns', 'mx', 'autoconfig', 'autodiscover',
-  'webmail', 'cpanel', 'whm', 'cgi', 'status', 'health',
-  'blog', 'docs', 'support', 'help', 'app', 'dashboard',
-  'login', 'signup', 'register', 'auth', 'oauth', 'sso',
-  'graphql', 'ws', 'wss', 'socket', 'realtime',
-  'test', 'staging', 'dev', 'demo', 'sandbox', 'preview',
-  'null', 'undefined', 'root', 'system', 'platform',
-  'billing', 'payment', 'checkout', 'store', 'shop',
-  'henko', 'noreply', 'no-reply', 'postmaster', 'abuse',
+  'api',
+  'admin',
+  'www',
+  'mail',
+  'smtp',
+  'imap',
+  'pop',
+  'ftp',
+  'sftp',
+  'ssh',
+  'cdn',
+  'assets',
+  'static',
+  'media',
+  'ns1',
+  'ns2',
+  'ns3',
+  'dns',
+  'mx',
+  'autoconfig',
+  'autodiscover',
+  'webmail',
+  'cpanel',
+  'whm',
+  'cgi',
+  'status',
+  'health',
+  'blog',
+  'docs',
+  'support',
+  'help',
+  'app',
+  'dashboard',
+  'login',
+  'signup',
+  'register',
+  'auth',
+  'oauth',
+  'sso',
+  'graphql',
+  'ws',
+  'wss',
+  'socket',
+  'realtime',
+  'test',
+  'staging',
+  'dev',
+  'demo',
+  'sandbox',
+  'preview',
+  'null',
+  'undefined',
+  'root',
+  'system',
+  'platform',
+  'billing',
+  'payment',
+  'checkout',
+  'store',
+  'shop',
+  'henko',
+  'noreply',
+  'no-reply',
+  'postmaster',
+  'abuse',
 ])
 
 // Distancia de edición simple (Levenshtein) para atrapar typos de slugs
@@ -148,11 +202,7 @@ const getHostnameFromUrl = value => {
   }
 }
 
-const buildTenantDomainPreview = ({
-  slug,
-  publicBaseDomain,
-  adminBaseDomain,
-}) => {
+const buildTenantDomainPreview = ({ slug, publicBaseDomain, adminBaseDomain }) => {
   const normalizedSlug = normalizeSlug(slug)
   const publicBase = getHostnameFromUrl(publicBaseDomain)
   const adminBase = getHostnameFromUrl(adminBaseDomain)
@@ -192,11 +242,7 @@ const buildTenantDomainPreview = ({
 // =====================================================
 
 const validationSchema = yup.object({
-  firstname: yup
-    .string()
-    .trim()
-    .min(2, 'Mínimo 2 caracteres')
-    .required('El nombre es obligatorio'),
+  firstname: yup.string().trim().min(2, 'Mínimo 2 caracteres').required('El nombre es obligatorio'),
 
   lastname: yup
     .string()
@@ -204,11 +250,7 @@ const validationSchema = yup.object({
     .min(2, 'Mínimo 2 caracteres')
     .required('El apellido es obligatorio'),
 
-  email: yup
-    .string()
-    .trim()
-    .email('Correo inválido')
-    .required('El correo es obligatorio'),
+  email: yup.string().trim().email('Correo inválido').required('El correo es obligatorio'),
 
   mobile: yup
     .string()
@@ -229,10 +271,7 @@ const validationSchema = yup.object({
     .lowercase()
     .min(3, 'Mínimo 3 caracteres')
     .max(60, 'Máximo 60 caracteres')
-    .matches(
-      /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-      'Usá solo letras, números y guiones. Ej: mi-tienda',
-    )
+    .matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Usá solo letras, números y guiones. Ej: mi-tienda')
     .test(
       'not-reserved',
       'Ese identificador está reservado. Elegí otro.',
@@ -240,10 +279,7 @@ const validationSchema = yup.object({
     )
     .required('El identificador de tienda es obligatorio'),
 
-  password: yup
-    .string()
-    .min(8, 'Mínimo 8 caracteres')
-    .required('La contraseña es obligatoria'),
+  password: yup.string().min(8, 'Mínimo 8 caracteres').required('La contraseña es obligatoria'),
 
   plan: yup
     .string()
@@ -260,13 +296,7 @@ const AdminRegister = () => {
   const location = useLocation()
   const [searchParams] = useSearchParams()
 
-  const {
-    isSuccess,
-    isError,
-    message,
-    loading = {},
-    user,
-  } = useSelector(state => state.user || {})
+  const { isSuccess, isError, message, loading = {}, user } = useSelector(state => state.user || {})
 
   const isLoading = loading.createAdmin === true
   const [turnstileToken, setTurnstileToken] = useState('')
@@ -274,10 +304,7 @@ const AdminRegister = () => {
 
   const platformDomain = env.publicBaseDomain || env.productionDomain || ''
   const isProduction = env.isProduction
-  const selectedPlan = resolveSignupPlan(
-    searchParams.get('plan'),
-    location.state?.planId,
-  )
+  const selectedPlan = resolveSignupPlan(searchParams.get('plan'), location.state?.planId)
 
   const formik = useFormik({
     initialValues: {
@@ -334,8 +361,7 @@ const AdminRegister = () => {
     tenantData?.primaryDomain ||
     storefrontPreview
 
-  const adminUrl =
-    tenantData?.adminUrl || tenantData?.urls?.admin || adminPreview
+  const adminUrl = tenantData?.adminUrl || tenantData?.urls?.admin || adminPreview
 
   const handleGoToAdmin = () => {
     const finalUrl = appendAdminPath(ensureUrl(adminUrl))
@@ -414,8 +440,7 @@ const AdminRegister = () => {
               </Typography>
 
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Tu tienda queda lista con storefront, panel admin y dominio
-                interno.
+                Tu tienda queda lista con storefront, panel admin y dominio interno.
               </Typography>
             </Box>
 
@@ -433,9 +458,8 @@ const AdminRegister = () => {
                   <AlertTitle sx={{ fontWeight: 800, fontSize: '1.1rem' }}>
                     ¡Tienda creada!
                   </AlertTitle>
-                  La tienda{' '}
-                  <strong>{tenantData?.name || formik.values.storeName}</strong>{' '}
-                  fue creada correctamente.
+                  La tienda <strong>{tenantData?.name || formik.values.storeName}</strong> fue
+                  creada correctamente.
                 </Alert>
 
                 <Box
@@ -446,17 +470,9 @@ const AdminRegister = () => {
                     border: '1px solid #334155',
                   }}
                 >
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{ mb: 2, color: '#94a3b8' }}
-                  >
+                  <Stack direction="row" spacing={1} sx={{ mb: 2, color: '#94a3b8' }}>
                     <Terminal sx={{ fontSize: 20 }} />
-                    <Typography
-                      variant="caption"
-                      fontWeight={800}
-                      sx={{ letterSpacing: 1 }}
-                    >
+                    <Typography variant="caption" fontWeight={800} sx={{ letterSpacing: 1 }}>
                       DOMINIOS CREADOS
                     </Typography>
                   </Stack>
@@ -477,8 +493,7 @@ const AdminRegister = () => {
 
                   {!isProduction && (
                     <Alert severity="info" sx={{ mt: 2, borderRadius: 3 }}>
-                      En desarrollo agregá estos dominios al archivo hosts de
-                      Windows.
+                      En desarrollo agregá estos dominios al archivo hosts de Windows.
                     </Alert>
                   )}
                 </Box>
@@ -495,8 +510,7 @@ const AdminRegister = () => {
                     fontWeight: 800,
                     textTransform: 'none',
                     fontSize: '1.1rem',
-                    boxShadow: theme =>
-                      `0 10px 20px ${alpha(theme.palette.primary.main, 0.3)}`,
+                    boxShadow: theme => `0 10px 20px ${alpha(theme.palette.primary.main, 0.3)}`,
                   }}
                 >
                   Abrir Panel de Control
@@ -512,13 +526,8 @@ const AdminRegister = () => {
                         label="Nombre"
                         placeholder="Ej. Juan"
                         {...formik.getFieldProps('firstname')}
-                        error={
-                          formik.touched.firstname &&
-                          Boolean(formik.errors.firstname)
-                        }
-                        helperText={
-                          formik.touched.firstname && formik.errors.firstname
-                        }
+                        error={formik.touched.firstname && Boolean(formik.errors.firstname)}
+                        helperText={formik.touched.firstname && formik.errors.firstname}
                         sx={{ '& .MuiOutlinedInput-root': { borderRadius: 3 } }}
                       />
                     </Grid>
@@ -529,13 +538,8 @@ const AdminRegister = () => {
                         label="Apellido"
                         placeholder="Ej. Pérez"
                         {...formik.getFieldProps('lastname')}
-                        error={
-                          formik.touched.lastname &&
-                          Boolean(formik.errors.lastname)
-                        }
-                        helperText={
-                          formik.touched.lastname && formik.errors.lastname
-                        }
+                        error={formik.touched.lastname && Boolean(formik.errors.lastname)}
+                        helperText={formik.touched.lastname && formik.errors.lastname}
                         sx={{ '& .MuiOutlinedInput-root': { borderRadius: 3 } }}
                       />
                     </Grid>
@@ -566,15 +570,11 @@ const AdminRegister = () => {
                     value={formik.values.mobile}
                     onChange={event => {
                       const val = event.target.value.replace(/\D/g, '')
-                      const cleanedVal = val.startsWith('0')
-                        ? val.substring(1)
-                        : val
+                      const cleanedVal = val.startsWith('0') ? val.substring(1) : val
                       formik.setFieldValue('mobile', cleanedVal)
                     }}
                     onBlur={formik.handleBlur}
-                    error={
-                      formik.touched.mobile && Boolean(formik.errors.mobile)
-                    }
+                    error={formik.touched.mobile && Boolean(formik.errors.mobile)}
                     helperText={
                       (formik.touched.mobile && formik.errors.mobile) ||
                       'Sin 0 y sin 15. Ej: 3585132769'
@@ -597,13 +597,8 @@ const AdminRegister = () => {
                     onChange={handleStoreNameChange}
                     onBlur={formik.handleBlur}
                     name="storeName"
-                    error={
-                      formik.touched.storeName &&
-                      Boolean(formik.errors.storeName)
-                    }
-                    helperText={
-                      formik.touched.storeName && formik.errors.storeName
-                    }
+                    error={formik.touched.storeName && Boolean(formik.errors.storeName)}
+                    helperText={formik.touched.storeName && formik.errors.storeName}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -621,17 +616,11 @@ const AdminRegister = () => {
                       placeholder="mi-tienda"
                       value={formik.values.storeSlug}
                       onChange={event =>
-                        formik.setFieldValue(
-                          'storeSlug',
-                          normalizeSlug(event.target.value),
-                        )
+                        formik.setFieldValue('storeSlug', normalizeSlug(event.target.value))
                       }
                       onBlur={formik.handleBlur}
                       name="storeSlug"
-                      error={
-                        formik.touched.storeSlug &&
-                        Boolean(formik.errors.storeSlug)
-                      }
+                      error={formik.touched.storeSlug && Boolean(formik.errors.storeSlug)}
                       helperText={
                         (formik.touched.storeSlug && formik.errors.storeSlug) ||
                         'Se usará para crear tu subdominio interno.'
@@ -680,12 +669,8 @@ const AdminRegister = () => {
                     type="password"
                     label="Contraseña"
                     {...formik.getFieldProps('password')}
-                    error={
-                      formik.touched.password && Boolean(formik.errors.password)
-                    }
-                    helperText={
-                      formik.touched.password && formik.errors.password
-                    }
+                    error={formik.touched.password && Boolean(formik.errors.password)}
+                    helperText={formik.touched.password && formik.errors.password}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -707,11 +692,7 @@ const AdminRegister = () => {
                   )}
 
                   {isError && (
-                    <Alert
-                      severity="error"
-                      variant="filled"
-                      sx={{ borderRadius: 3 }}
-                    >
+                    <Alert severity="error" variant="filled" sx={{ borderRadius: 3 }}>
                       {message || 'Error creando la tienda'}
                     </Alert>
                   )}
@@ -731,11 +712,7 @@ const AdminRegister = () => {
                       boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                     }}
                   >
-                    {isLoading ? (
-                      <CircularProgress size={26} color="inherit" />
-                    ) : (
-                      'Crear tienda'
-                    )}
+                    {isLoading ? <CircularProgress size={26} color="inherit" /> : 'Crear tienda'}
                   </Button>
                 </Stack>
               </form>

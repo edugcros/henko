@@ -249,12 +249,9 @@ const FULFILLMENT_BADGE_CONFIGS = {
 
 const normalizeValue = value => {
   if (value === null || value === undefined) return 0
-  if (typeof value === 'object' && value.$numberDecimal)
-    return Number(value.$numberDecimal) || 0
-  if (typeof value === 'object' && value.$numberInt)
-    return Number(value.$numberInt) || 0
-  if (typeof value === 'object' && value.$numberLong)
-    return Number(value.$numberLong) || 0
+  if (typeof value === 'object' && value.$numberDecimal) return Number(value.$numberDecimal) || 0
+  if (typeof value === 'object' && value.$numberInt) return Number(value.$numberInt) || 0
+  if (typeof value === 'object' && value.$numberLong) return Number(value.$numberLong) || 0
 
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
@@ -380,21 +377,11 @@ const getProductImageUrl = product => {
 }
 
 const getLineImageUrl = item => {
-  return (
-    item?.imageSnapshot ||
-    item?.image ||
-    getProductImageUrl(item?.product) ||
-    null
-  )
+  return item?.imageSnapshot || item?.image || getProductImageUrl(item?.product) || null
 }
 
 const getLineTitle = item => {
-  return (
-    item?.product?.title ||
-    item?.title ||
-    item?.titleSnapshot ||
-    'Producto sin título'
-  )
+  return item?.product?.title || item?.title || item?.titleSnapshot || 'Producto sin título'
 }
 
 const getLineSku = item => {
@@ -416,9 +403,7 @@ const getLineQuantity = item => {
 const isOrderProtectedFromDelete = order => {
   const paymentStatus = normalizeString(order?.paymentStatus).toLowerCase()
   const orderStatus = normalizeOrderStatusForUI(order?.orderStatus)
-  const fulfillmentStatus = normalizeString(
-    order?.fulfillmentStatus,
-  ).toLowerCase()
+  const fulfillmentStatus = normalizeString(order?.fulfillmentStatus).toLowerCase()
 
   return (
     paymentStatus === PAYMENT_STATUSES.APPROVED ||
@@ -445,11 +430,7 @@ const getErrorStatus = error => {
   return error.status || error.data?.status || null
 }
 
-const downloadTextFile = ({
-  filename,
-  content,
-  mimeType = 'text/csv;charset=utf-8;',
-}) => {
+const downloadTextFile = ({ filename, content, mimeType = 'text/csv;charset=utf-8;' }) => {
   const blob = new Blob([content], { type: mimeType })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -503,8 +484,7 @@ const buildOrdersCsv = orders => {
 
 const StatusBadge = memo(({ status, size = 'small' }) => {
   const normalizedStatus = normalizeOrderStatusForUI(status)
-  const config =
-    STATUS_BADGE_CONFIGS[normalizedStatus] || STATUS_BADGE_CONFIGS.open
+  const config = STATUS_BADGE_CONFIGS[normalizedStatus] || STATUS_BADGE_CONFIGS.open
 
   return (
     <Box
@@ -663,10 +643,7 @@ const ProductItem = memo(({ item }) => {
           {formatCurrency(subtotal)}
         </Typography>
 
-        <Typography
-          variant="caption"
-          sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}
-        >
+        <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
           {quantity} × {formatCurrency(price)}
         </Typography>
       </Box>
@@ -702,10 +679,7 @@ const ShippingCard = memo(({ address }) => {
           textTransform: 'uppercase',
         }}
       >
-        <LocationOn
-          fontSize="small"
-          sx={{ color: CONFIG.COLORS.AMAZON_BLUE }}
-        />
+        <LocationOn fontSize="small" sx={{ color: CONFIG.COLORS.AMAZON_BLUE }} />
         Dirección de envío
       </Typography>
 
@@ -713,17 +687,11 @@ const ShippingCard = memo(({ address }) => {
         {address.firstName || '-'} {address.lastName || ''}
       </Typography>
 
-      <Typography
-        variant="body2"
-        sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY, mt: 0.5 }}
-      >
+      <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY, mt: 0.5 }}>
         {address.address || 'Sin dirección'}
       </Typography>
 
-      <Typography
-        variant="body2"
-        sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}
-      >
+      <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
         {address.city || 'Sin ciudad'}
         {address.zipCode && `, CP: ${address.zipCode}`}
         {address.country && `, ${address.country}`}
@@ -756,9 +724,7 @@ ShippingCard.displayName = 'ShippingCard'
 
 const ShipmentCard = memo(({ order, onSaveShipment, disabled = false }) => {
   const shipment = order?.shipment || {}
-  const [trackingNumber, setTrackingNumber] = useState(
-    shipment.trackingNumber || '',
-  )
+  const [trackingNumber, setTrackingNumber] = useState(shipment.trackingNumber || '')
   const [carrier, setCarrier] = useState(shipment.carrier || '')
   const [saving, setSaving] = useState(false)
 
@@ -811,10 +777,7 @@ const ShipmentCard = memo(({ order, onSaveShipment, disabled = false }) => {
           textTransform: 'uppercase',
         }}
       >
-        <LocalShipping
-          fontSize="small"
-          sx={{ color: CONFIG.COLORS.AMAZON_BLUE }}
-        />
+        <LocalShipping fontSize="small" sx={{ color: CONFIG.COLORS.AMAZON_BLUE }} />
         Datos de envío
       </Typography>
 
@@ -898,10 +861,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
       </Typography>
 
       <Box display="flex" justifyContent="space-between" mb={1.5}>
-        <Typography
-          variant="body2"
-          sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}
-        >
+        <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
           Subtotal
         </Typography>
         <Typography variant="body2" fontWeight={500}>
@@ -910,10 +870,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
       </Box>
 
       <Box display="flex" justifyContent="space-between" mb={1.5}>
-        <Typography
-          variant="body2"
-          sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}
-        >
+        <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
           Descuento
         </Typography>
         <Typography variant="body2" fontWeight={500}>
@@ -977,12 +934,10 @@ const OrderControlPanel = memo(
     const isRefunded = normalizedOrderStatus === ORDER_STATUSES.REFUNDED
     const isFinalState = isCancelled || isRefunded
     const isPaymentApproved = order.paymentStatus === PAYMENT_STATUSES.APPROVED
-    const allowedPaymentStatuses = PAYMENT_TRANSITIONS[order.paymentStatus] || [
-      order.paymentStatus,
+    const allowedPaymentStatuses = PAYMENT_TRANSITIONS[order.paymentStatus] || [order.paymentStatus]
+    const allowedFulfillmentStatuses = FULFILLMENT_TRANSITIONS[order.fulfillmentStatus] || [
+      order.fulfillmentStatus,
     ]
-    const allowedFulfillmentStatuses = FULFILLMENT_TRANSITIONS[
-      order.fulfillmentStatus
-    ] || [order.fulfillmentStatus]
     const orderTotal = normalizeValue(order.totals?.total)
 
     return (
@@ -1017,12 +972,7 @@ const OrderControlPanel = memo(
             Estado comercial
           </Typography>
           <StatusBadge status={normalizedOrderStatus} size="medium" />
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            display="block"
-            sx={{ mt: 0.75 }}
-          >
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.75 }}>
             Se calcula automáticamente según el pago y la logística.
           </Typography>
         </Box>
@@ -1032,12 +982,8 @@ const OrderControlPanel = memo(
           <Select
             value={order.paymentStatus || PAYMENT_STATUSES.PENDING}
             label="Estado del Pago"
-            onChange={e =>
-              onPaymentStatusChange(order._id, e.target.value, orderTotal)
-            }
-            disabled={
-              isFinalState || disabled || allowedPaymentStatuses.length === 1
-            }
+            onChange={e => onPaymentStatusChange(order._id, e.target.value, orderTotal)}
+            disabled={isFinalState || disabled || allowedPaymentStatuses.length === 1}
           >
             {allowedPaymentStatuses.includes('pending') && (
               <MenuItem value="pending">Pendiente</MenuItem>
@@ -1105,11 +1051,7 @@ const OrderControlPanel = memo(
             variant="outlined"
             color="error"
             onClick={() => onCancel(order._id, orderTotal)}
-            disabled={
-              isFinalState ||
-              disabled ||
-              order.paymentStatus === PAYMENT_STATUSES.APPROVED
-            }
+            disabled={isFinalState || disabled || order.paymentStatus === PAYMENT_STATUSES.APPROVED}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
             Cancelar
@@ -1119,11 +1061,7 @@ const OrderControlPanel = memo(
             variant="outlined"
             color="secondary"
             onClick={() => onRefund(order._id, orderTotal)}
-            disabled={
-              order.paymentStatus !== PAYMENT_STATUSES.APPROVED ||
-              isRefunded ||
-              disabled
-            }
+            disabled={order.paymentStatus !== PAYMENT_STATUSES.APPROVED || isRefunded || disabled}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
             Reembolsar
@@ -1190,26 +1128,15 @@ const OrderRow = memo(
         >
           <TableCell padding="checkbox">
             <IconButton size="small" onClick={handleToggle} disabled={disabled}>
-              {expanded ? (
-                <ExpandLess fontSize="small" />
-              ) : (
-                <ExpandMore fontSize="small" />
-              )}
+              {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
             </IconButton>
           </TableCell>
 
           <TableCell>
-            <Typography
-              variant="body2"
-              fontWeight={600}
-              sx={{ color: CONFIG.COLORS.AMAZON_BLUE }}
-            >
+            <Typography variant="body2" fontWeight={600} sx={{ color: CONFIG.COLORS.AMAZON_BLUE }}>
               #{getOrderDisplayId(order)}
             </Typography>
-            <Typography
-              variant="caption"
-              sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}
-            >
+            <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
               {formatDateShort(order.createdAt)}
             </Typography>
           </TableCell>
@@ -1220,27 +1147,17 @@ const OrderRow = memo(
             </Typography>
 
             {customerName && (
-              <Typography
-                variant="caption"
-                sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}
-              >
+              <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
                 {customerName}
               </Typography>
             )}
           </TableCell>
 
           <TableCell align="right">
-            <Typography
-              variant="body2"
-              fontWeight={700}
-              sx={{ color: CONFIG.COLORS.AMAZON_RED }}
-            >
+            <Typography variant="body2" fontWeight={700} sx={{ color: CONFIG.COLORS.AMAZON_RED }}>
               {formatCurrency(order.totals?.total)}
             </Typography>
-            <Typography
-              variant="caption"
-              sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}
-            >
+            <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
               {order.products?.length || 0} items
             </Typography>
           </TableCell>
@@ -1403,9 +1320,7 @@ const ConfirmDialog = memo(
             </Alert>
           )}
 
-          <Typography id="admin-order-confirm-description">
-            {message}
-          </Typography>
+          <Typography id="admin-order-confirm-description">{message}</Typography>
         </DialogContent>
 
         <DialogActions sx={{ p: 2, gap: 1 }}>
@@ -1423,9 +1338,7 @@ const ConfirmDialog = memo(
             onClick={onConfirm}
             color={confirmColor}
             disabled={loading}
-            startIcon={
-              loading ? <CircularProgress size={16} color="inherit" /> : null
-            }
+            startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
             {loading ? 'Procesando...' : confirmText}
@@ -1477,19 +1390,11 @@ const OrderDetailDialog = memo(
             alignItems: 'center',
           }}
         >
-          <Typography
-            id="admin-order-detail-title"
-            variant="h6"
-            sx={{ fontWeight: 700 }}
-          >
+          <Typography id="admin-order-detail-title" variant="h6" sx={{ fontWeight: 700 }}>
             Pedido #{getOrderDisplayId(order)}
           </Typography>
 
-          <IconButton
-            onClick={onClose}
-            sx={{ color: 'white' }}
-            disabled={disabled}
-          >
+          <IconButton onClick={onClose} sx={{ color: 'white' }} disabled={disabled}>
             <Close />
           </IconButton>
         </DialogTitle>
@@ -1498,21 +1403,13 @@ const OrderDetailDialog = memo(
           <Box sx={{ p: 3 }}>
             <Grid container spacing={3}>
               <Grid item xs={12} md={8}>
-                <Paper
-                  sx={{ p: 3, borderRadius: 1, border: '1px solid #D5D9D9' }}
-                >
-                  <Typography
-                    variant="h6"
-                    sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}
-                  >
+                <Paper sx={{ p: 3, borderRadius: 1, border: '1px solid #D5D9D9' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}>
                     Productos ({order.products?.length || 0})
                   </Typography>
 
                   {order.products?.map((item, idx) => (
-                    <ProductItem
-                      key={`detail-${order._id}-${idx}`}
-                      item={item}
-                    />
+                    <ProductItem key={`detail-${order._id}-${idx}`} item={item} />
                   ))}
                 </Paper>
               </Grid>
@@ -1526,19 +1423,12 @@ const OrderDetailDialog = memo(
                     mb: 2,
                   }}
                 >
-                  <Typography
-                    variant="h6"
-                    sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}
-                  >
+                  <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}>
                     Cliente
                   </Typography>
 
                   <Box mb={2}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      display="block"
-                    >
+                    <Typography variant="caption" color="text.secondary" display="block">
                       Email
                     </Typography>
                     <Typography variant="body2" fontWeight={500}>
@@ -1547,11 +1437,7 @@ const OrderDetailDialog = memo(
                   </Box>
 
                   <Box mb={2}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      display="block"
-                    >
+                    <Typography variant="caption" color="text.secondary" display="block">
                       Nombre
                     </Typography>
                     <Typography variant="body2" fontWeight={500}>
@@ -1561,11 +1447,7 @@ const OrderDetailDialog = memo(
 
                   {customerPhone && (
                     <Box>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        display="block"
-                      >
+                      <Typography variant="caption" color="text.secondary" display="block">
                         Teléfono
                       </Typography>
                       <Typography variant="body2" fontWeight={500}>
@@ -1577,11 +1459,7 @@ const OrderDetailDialog = memo(
 
                 <ShippingCard address={order.shippingAddress} />
 
-                <ShipmentCard
-                  order={order}
-                  onSaveShipment={onSaveShipment}
-                  disabled={disabled}
-                />
+                <ShipmentCard order={order} onSaveShipment={onSaveShipment} disabled={disabled} />
 
                 <OrderSummary
                   totals={order.totals}
@@ -1727,10 +1605,7 @@ const AdminOrdersPage = () => {
 
       const legacyStatus = normalizeOrderStatusForLegacyApi(newStatus)
 
-      if (
-        legacyStatus === ORDER_STATUSES.CANCELLED ||
-        legacyStatus === ORDER_STATUSES.REFUNDED
-      ) {
+      if (legacyStatus === ORDER_STATUSES.CANCELLED || legacyStatus === ORDER_STATUSES.REFUNDED) {
         const order = orders.find(item => item._id === orderId)
 
         setConfirmDialog({
@@ -1746,19 +1621,14 @@ const AdminOrdersPage = () => {
         return
       }
 
-      dispatch(
-        updateOrderStatusThunk({ id: orderId, orderStatus: legacyStatus }),
-      )
+      dispatch(updateOrderStatusThunk({ id: orderId, orderStatus: legacyStatus }))
         .unwrap()
         .then(() => {
           showSnackbar('Estado comercial actualizado correctamente', 'success')
           loadOrders()
         })
         .catch(error => {
-          showSnackbar(
-            getErrorMessage(error, 'Error actualizando estado'),
-            'error',
-          )
+          showSnackbar(getErrorMessage(error, 'Error actualizando estado'), 'error')
         })
     },
     [dispatch, isUpdating, loadOrders, orders, showSnackbar],
@@ -1768,10 +1638,7 @@ const AdminOrdersPage = () => {
     (orderId, paymentStatus, orderTotal = 0) => {
       if (isUpdating) return
 
-      if (
-        paymentStatus === PAYMENT_STATUSES.APPROVED &&
-        orderTotal > CONFIG.HIGH_VALUE_THRESHOLD
-      ) {
+      if (paymentStatus === PAYMENT_STATUSES.APPROVED && orderTotal > CONFIG.HIGH_VALUE_THRESHOLD) {
         setConfirmDialog({
           ...EMPTY_CONFIRM_DIALOG,
           open: true,
@@ -1791,10 +1658,7 @@ const AdminOrdersPage = () => {
           loadOrders()
         })
         .catch(error => {
-          showSnackbar(
-            getErrorMessage(error, 'Error actualizando pago'),
-            'error',
-          )
+          showSnackbar(getErrorMessage(error, 'Error actualizando pago'), 'error')
         })
     },
     [dispatch, isUpdating, loadOrders, showSnackbar],
@@ -1804,19 +1668,14 @@ const AdminOrdersPage = () => {
     (orderId, fulfillmentStatus) => {
       if (isUpdating) return
 
-      dispatch(
-        updateOrderFulfillmentStatusThunk({ id: orderId, fulfillmentStatus }),
-      )
+      dispatch(updateOrderFulfillmentStatusThunk({ id: orderId, fulfillmentStatus }))
         .unwrap()
         .then(() => {
           showSnackbar('Estado logístico actualizado correctamente', 'success')
           loadOrders()
         })
         .catch(error => {
-          showSnackbar(
-            getErrorMessage(error, 'Error actualizando logística'),
-            'error',
-          )
+          showSnackbar(getErrorMessage(error, 'Error actualizando logística'), 'error')
         })
     },
     [dispatch, isUpdating, loadOrders, showSnackbar],
@@ -1824,19 +1683,14 @@ const AdminOrdersPage = () => {
 
   const handleSaveShipment = useCallback(
     (orderId, { trackingNumber, carrier }) => {
-      return dispatch(
-        updateOrderShipmentThunk({ id: orderId, trackingNumber, carrier }),
-      )
+      return dispatch(updateOrderShipmentThunk({ id: orderId, trackingNumber, carrier }))
         .unwrap()
         .then(() => {
           showSnackbar('Datos de envío actualizados correctamente', 'success')
           loadOrders()
         })
         .catch(error => {
-          showSnackbar(
-            getErrorMessage(error, 'Error actualizando datos de envío'),
-            'error',
-          )
+          showSnackbar(getErrorMessage(error, 'Error actualizando datos de envío'), 'error')
         })
     },
     [dispatch, loadOrders, showSnackbar],
@@ -1951,14 +1805,10 @@ const AdminOrdersPage = () => {
     } else if (action === CONFIRM_ACTIONS.CANCEL_ORDER) {
       promise = dispatch(cancelOrderThunk(payload))
       successMessage = 'Orden cancelada correctamente'
-    } else if (
-      action === CONFIRM_ACTIONS.REFUND_ORDER ||
-      action === CONFIRM_ACTIONS.REFUNDED
-    ) {
-      promise = dispatch(
-        refundOrderThunk({ id: payload?.id || confirmDialog.orderId }),
-      )
-      successMessage = 'Orden marcada como reembolsada — verificá que el reembolso se haya procesado en Mercado Pago'
+    } else if (action === CONFIRM_ACTIONS.REFUND_ORDER || action === CONFIRM_ACTIONS.REFUNDED) {
+      promise = dispatch(refundOrderThunk({ id: payload?.id || confirmDialog.orderId }))
+      successMessage =
+        'Orden marcada como reembolsada — verificá que el reembolso se haya procesado en Mercado Pago'
     } else if (action === CONFIRM_ACTIONS.CANCELLED) {
       promise = dispatch(
         cancelOrderThunk({
@@ -2062,26 +1912,18 @@ const AdminOrdersPage = () => {
     const total = pagination.total
 
     const open = orders.filter(
-      order =>
-        normalizeOrderStatusForUI(order.orderStatus) === ORDER_STATUSES.OPEN,
+      order => normalizeOrderStatusForUI(order.orderStatus) === ORDER_STATUSES.OPEN,
     ).length
 
     const processing = orders.filter(
-      order =>
-        normalizeOrderStatusForUI(order.orderStatus) ===
-        ORDER_STATUSES.PROCESSING,
+      order => normalizeOrderStatusForUI(order.orderStatus) === ORDER_STATUSES.PROCESSING,
     ).length
 
     const delivered = orders.filter(
-      order =>
-        normalizeOrderStatusForUI(order.orderStatus) ===
-        ORDER_STATUSES.DELIVERED,
+      order => normalizeOrderStatusForUI(order.orderStatus) === ORDER_STATUSES.DELIVERED,
     ).length
 
-    const totalRevenue = orders.reduce(
-      (sum, order) => sum + normalizeValue(order.totals?.total),
-      0,
-    )
+    const totalRevenue = orders.reduce((sum, order) => sum + normalizeValue(order.totals?.total), 0)
 
     return { total, open, processing, delivered, totalRevenue }
   }, [orders, pagination.total])
@@ -2218,8 +2060,7 @@ const AdminOrdersPage = () => {
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <Typography variant="body2">
-              {stats.total} pedidos • {formatCurrency(stats.totalRevenue)} en
-              ventas
+              {stats.total} pedidos • {formatCurrency(stats.totalRevenue)} en ventas
             </Typography>
 
             <Box display="flex" gap={1} flexWrap="wrap">
@@ -2259,11 +2100,7 @@ const AdminOrdersPage = () => {
                   ),
                   endAdornment: searchTerm && (
                     <InputAdornment position="end">
-                      <IconButton
-                        size="small"
-                        onClick={handleResetSearch}
-                        disabled={isUpdating}
-                      >
+                      <IconButton size="small" onClick={handleResetSearch} disabled={isUpdating}>
                         <Close fontSize="small" />
                       </IconButton>
                     </InputAdornment>
@@ -2279,9 +2116,7 @@ const AdminOrdersPage = () => {
                   value={filters.status}
                   label="Estado orden"
                   disabled={isUpdating}
-                  onChange={event =>
-                    handleFilterChange('status', event.target.value)
-                  }
+                  onChange={event => handleFilterChange('status', event.target.value)}
                 >
                   <MenuItem value="">Todos</MenuItem>
                   <MenuItem value="open">Abierta</MenuItem>
@@ -2301,9 +2136,7 @@ const AdminOrdersPage = () => {
                   value={filters.paymentStatus}
                   label="Pago"
                   disabled={isUpdating}
-                  onChange={event =>
-                    handleFilterChange('paymentStatus', event.target.value)
-                  }
+                  onChange={event => handleFilterChange('paymentStatus', event.target.value)}
                 >
                   <MenuItem value="">Todos</MenuItem>
                   <MenuItem value="pending">Pendiente</MenuItem>
@@ -2322,9 +2155,7 @@ const AdminOrdersPage = () => {
                   value={filters.fulfillmentStatus}
                   label="Logística"
                   disabled={isUpdating}
-                  onChange={event =>
-                    handleFilterChange('fulfillmentStatus', event.target.value)
-                  }
+                  onChange={event => handleFilterChange('fulfillmentStatus', event.target.value)}
                 >
                   <MenuItem value="">Todos</MenuItem>
                   <MenuItem value="unfulfilled">Sin preparar</MenuItem>
@@ -2352,11 +2183,7 @@ const AdminOrdersPage = () => {
                 <Button
                   variant="contained"
                   startIcon={
-                    isLoading ? (
-                      <CircularProgress size={16} color="inherit" />
-                    ) : (
-                      <Refresh />
-                    )
+                    isLoading ? <CircularProgress size={16} color="inherit" /> : <Refresh />
                   }
                   onClick={loadOrders}
                   disabled={isLoading || isUpdating}
@@ -2471,11 +2298,7 @@ const AdminOrdersPage = () => {
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <Alert
-          onClose={handleCloseSnackbar}
-          severity={snackbar.severity}
-          variant="filled"
-        >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} variant="filled">
           {snackbar.message}
         </Alert>
       </Snackbar>

@@ -56,9 +56,7 @@ const ThemePreview = () => {
     const allowedAdminOrigins = getAllowedAdminOrigins()
 
     const searchParams =
-      typeof window !== 'undefined'
-        ? new window.URLSearchParams(window.location.search)
-        : null
+      typeof window !== 'undefined' ? new window.URLSearchParams(window.location.search) : null
 
     const requestedParentOrigin =
       getOrigin(searchParams?.get('adminOrigin')) ||
@@ -74,8 +72,7 @@ const ThemePreview = () => {
     // mensajes entrantes (línea de abajo, handleMessage) — esto solo
     // decide a qué origen intentar avisar que ya cargamos.
     const parentOrigin =
-      requestedParentOrigin ||
-      (allowedAdminOrigins.size ? [...allowedAdminOrigins][0] : '')
+      requestedParentOrigin || (allowedAdminOrigins.size ? [...allowedAdminOrigins][0] : '')
 
     return {
       allowedAdminOrigins,
@@ -101,10 +98,7 @@ const ThemePreview = () => {
       if (!message || message.type !== 'HENKO_THEME_PREVIEW_UPDATE') return
       if (!message.payload || typeof message.payload !== 'object') return
 
-      sessionStorage.setItem(
-        PREVIEW_STORAGE_KEY,
-        JSON.stringify(message.payload),
-      )
+      sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(message.payload))
 
       dispatch(updatePreviewConfig(message.payload))
       dispatch(setPreviewMode(true))

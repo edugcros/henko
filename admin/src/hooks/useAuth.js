@@ -173,9 +173,7 @@ export const useAuth = () => {
 
   const userRole = user?.role || 'user'
 
-  const isBlocked = Boolean(
-    user?.isBlocked || user?.blocked || user?.status === 'blocked',
-  )
+  const isBlocked = Boolean(user?.isBlocked || user?.blocked || user?.status === 'blocked')
 
   const isAuthenticated = useMemo(() => {
     return Boolean(isAuthenticatedRedux && user && !isBlocked)

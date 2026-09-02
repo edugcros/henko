@@ -137,9 +137,7 @@ const toDatetimeLocalValue = date => {
 }
 
 const uniqueList = values =>
-  [...new Set(values.map(normalizeString).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b),
-  )
+  [...new Set(values.map(normalizeString).filter(Boolean))].sort((a, b) => a.localeCompare(b))
 
 const getAnalysisTitle = job =>
   normalizeString(job?.analysis?.titulo) ||
@@ -165,8 +163,7 @@ const getImageUrl = job =>
   normalizeString(job?.metadata?.originalUrl)
 
 const getTenantDomain = job =>
-  normalizeString(job?.tenantDomain) ||
-  normalizeString(job?.metadata?.tenantDomain)
+  normalizeString(job?.tenantDomain) || normalizeString(job?.metadata?.tenantDomain)
 
 const getSource = job => normalizeString(job?.source) || 'manual-upload'
 const getSourceLabel = job => SOURCE_LABEL[getSource(job)] || getSource(job)
@@ -209,10 +206,7 @@ const formatCountdown = ms => {
 // =====================================================
 
 const StatCard = ({ label, value, color = 'text.primary', hint }) => (
-  <Paper
-    variant="outlined"
-    sx={{ px: 2, py: 1.5, borderRadius: 3, minWidth: 0 }}
-  >
+  <Paper variant="outlined" sx={{ px: 2, py: 1.5, borderRadius: 3, minWidth: 0 }}>
     <Typography variant="h5" fontWeight={900} color={color} lineHeight={1.2}>
       {formatNumber(value)}
     </Typography>
@@ -434,9 +428,7 @@ const DraftProductCard = ({
           <Button
             size="small"
             color="error"
-            startIcon={
-              discarding ? <CircularProgress size={14} color="inherit" /> : <DeleteIcon />
-            }
+            startIcon={discarding ? <CircularProgress size={14} color="inherit" /> : <DeleteIcon />}
             onClick={() => onDiscard(product)}
             disabled={publishing || discarding}
           >
@@ -563,14 +555,10 @@ const ProductAnalysisPage = () => {
   )
 
   const historyJobs = useMemo(() => {
-    const grouped = new Set(
-      [...queueJobs, ...processingJobs, ...reviewJobs].map(getJobId),
-    )
+    const grouped = new Set([...queueJobs, ...processingJobs, ...reviewJobs].map(getJobId))
     return visibleJobs
       .filter(job => !grouped.has(getJobId(job)))
-      .sort(
-        (a, b) => new Date(getHistoryTimestamp(b)) - new Date(getHistoryTimestamp(a)),
-      )
+      .sort((a, b) => new Date(getHistoryTimestamp(b)) - new Date(getHistoryTimestamp(a)))
   }, [visibleJobs, queueJobs, processingJobs, reviewJobs])
 
   const failedCount = useMemo(
@@ -617,7 +605,9 @@ const ProductAnalysisPage = () => {
       if (!silent) setLoading(true)
 
       try {
-        const { data } = await api.get('/product-analysis', { params: queryParams })
+        const { data } = await api.get('/product-analysis', {
+          params: queryParams,
+        })
 
         setJobs(Array.isArray(data?.items) ? data.items : [])
         setTotal(Number(data?.total) || 0)
@@ -625,9 +615,7 @@ const ProductAnalysisPage = () => {
         setLastUpdatedAt(new Date())
       } catch (error) {
         if (!silent) {
-          toast.error(
-            error?.response?.data?.message || 'No se pudo cargar la cola',
-          )
+          toast.error(error?.response?.data?.message || 'No se pudo cargar la cola')
         }
       } finally {
         if (!silent) setLoading(false)
@@ -664,9 +652,7 @@ const ProductAnalysisPage = () => {
       setDraftsTotal(Number(data?.meta?.total) || 0)
     } catch (error) {
       if (!silent) {
-        toast.error(
-          error?.response?.data?.message || 'No se pudieron cargar los borradores',
-        )
+        toast.error(error?.response?.data?.message || 'No se pudieron cargar los borradores')
       }
     } finally {
       if (!silent) setDraftsLoading(false)
@@ -675,11 +661,7 @@ const ProductAnalysisPage = () => {
 
   const refreshAll = useCallback(
     ({ silent = false } = {}) =>
-      Promise.all([
-        fetchJobs({ silent }),
-        fetchSystemStatus(),
-        fetchDrafts({ silent }),
-      ]),
+      Promise.all([fetchJobs({ silent }), fetchSystemStatus(), fetchDrafts({ silent })]),
     [fetchJobs, fetchSystemStatus, fetchDrafts],
   )
 
@@ -796,9 +778,7 @@ const ProductAnalysisPage = () => {
 
       await refreshAll()
     } catch (error) {
-      toast.error(
-        error?.response?.data?.message || 'No se pudo completar la carga masiva',
-      )
+      toast.error(error?.response?.data?.message || 'No se pudo completar la carga masiva')
     } finally {
       setBulkUploading(false)
     }
@@ -1022,7 +1002,10 @@ const ProductAnalysisPage = () => {
 
   const renderJobCard = job => {
     const jobId = getJobId(job)
-    const meta = STATUS_META[job.status] || { label: job.status, color: 'default' }
+    const meta = STATUS_META[job.status] || {
+      label: job.status,
+      color: 'default',
+    }
     const sourcePath = getSourcePath(job)
     const isRunningNow = runningJobId === jobId
 
@@ -1131,7 +1114,10 @@ const ProductAnalysisPage = () => {
           <Stack
             direction={{ xs: 'row', sm: 'column' }}
             spacing={0.25}
-            sx={{ flexShrink: 0, alignSelf: { xs: 'flex-end', sm: 'flex-start' } }}
+            sx={{
+              flexShrink: 0,
+              alignSelf: { xs: 'flex-end', sm: 'flex-start' },
+            }}
           >
             <Tooltip title="Liberar ahora (no esperar la hora)">
               <span>
@@ -1216,11 +1202,7 @@ const ProductAnalysisPage = () => {
             `linear-gradient(135deg, ${theme.palette.primary.main}0A, transparent 60%)`,
         }}
       >
-        <Stack
-          direction={{ xs: 'column', lg: 'row' }}
-          justifyContent="space-between"
-          gap={2}
-        >
+        <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" gap={2}>
           <Box>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
               <Typography variant="h5" fontWeight={900}>
@@ -1237,9 +1219,9 @@ const ProductAnalysisPage = () => {
               )}
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-              Poné imágenes en cola, ahora o a una hora determinada. Al cumplirse
-              la hora quedan disponibles en <strong>AddProduct</strong>, que es
-              quien las analiza con IA y arma el producto.
+              Poné imágenes en cola, ahora o a una hora determinada. Al cumplirse la hora quedan
+              disponibles en <strong>AddProduct</strong>, que es quien las analiza con IA y arma el
+              producto.
             </Typography>
           </Box>
 
@@ -1392,7 +1374,10 @@ const ProductAnalysisPage = () => {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, minmax(0, 1fr))' },
+            gridTemplateColumns: {
+              xs: '1fr 1fr',
+              md: 'repeat(4, minmax(0, 1fr))',
+            },
             gap: 1.5,
             mt: 2,
           }}
@@ -1442,11 +1427,7 @@ const ProductAnalysisPage = () => {
 
           <FormControl fullWidth size="small">
             <InputLabel>Estado</InputLabel>
-            <Select
-              label="Estado"
-              value={status}
-              onChange={event => setStatus(event.target.value)}
-            >
+            <Select label="Estado" value={status} onChange={event => setStatus(event.target.value)}>
               {STATUS_FILTER_OPTIONS.map(option => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
@@ -1502,10 +1483,11 @@ const ProductAnalysisPage = () => {
           emptyText: 'No hay imágenes en cola.',
           extra: readyWaitingCount > 0 && (
             <Alert severity="info" sx={{ mb: 1.5, borderRadius: 2 }}>
-              Hay {readyWaitingCount} imagen{readyWaitingCount === 1 ? '' : 'es'} lista
-              {readyWaitingCount === 1 ? '' : 's'}. El análisis lo hace{' '}
-              <strong>AddProduct</strong>: abrí esa pantalla (con "Auto activo"
-              para que las cargue sola) o no van a avanzar desde acá.
+              Hay {readyWaitingCount} imagen
+              {readyWaitingCount === 1 ? '' : 'es'} lista
+              {readyWaitingCount === 1 ? '' : 's'}. El análisis lo hace <strong>AddProduct</strong>:
+              abrí esa pantalla (con "Auto activo" para que las cargue sola) o no van a avanzar
+              desde acá.
             </Alert>
           ),
         })}
@@ -1648,9 +1630,7 @@ const ProductAnalysisPage = () => {
             <Button
               size="small"
               onClick={() =>
-                setSelectedDraftIds(
-                  new Set(filteredDrafts.map(getDraftId).filter(Boolean)),
-                )
+                setSelectedDraftIds(new Set(filteredDrafts.map(getDraftId).filter(Boolean)))
               }
             >
               Seleccionar {filteredDrafts.length}
@@ -1699,9 +1679,8 @@ const ProductAnalysisPage = () => {
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
             Esta página solo las pone en cola — el análisis siempre lo hace{' '}
-            <strong>AddProduct</strong>. Con "Auto activo" prendido ahí, las
-            procesa en bloque y las deja esperando tu aprobación; nunca se
-            publican solas.
+            <strong>AddProduct</strong>. Con "Auto activo" prendido ahí, las procesa en bloque y las
+            deja esperando tu aprobación; nunca se publican solas.
           </Alert>
 
           <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
@@ -1727,7 +1706,12 @@ const ProductAnalysisPage = () => {
                     direction="row"
                     alignItems="center"
                     justifyContent="space-between"
-                    sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: 'action.hover' }}
+                    sx={{
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      bgcolor: 'action.hover',
+                    }}
                   >
                     <Typography variant="caption" noWrap sx={{ maxWidth: '85%' }}>
                       {file.name}
@@ -1817,8 +1801,8 @@ const ProductAnalysisPage = () => {
         <DialogTitle>Eliminar de la cola</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
-            Se va a eliminar <strong>{getAnalysisTitle(deleteJob)}</strong> y su
-            imagen. Esta acción no se puede deshacer.
+            Se va a eliminar <strong>{getAnalysisTitle(deleteJob)}</strong> y su imagen. Esta acción
+            no se puede deshacer.
           </Typography>
           {deleteJob?.createdProductId && (
             <Alert severity="info" sx={{ mt: 2 }}>

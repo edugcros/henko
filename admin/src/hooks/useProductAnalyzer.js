@@ -1,10 +1,7 @@
 // 📁 src/hooks/useProductAnalyzer.js
 import { useState, useCallback } from 'react'
 import api from '@utils/axiosConfig'
-import {
-  MAX_IMAGE_SIZE_MB,
-  SUPPORTED_IMAGE_TYPES,
-} from '../constants/imageUpload'
+import { MAX_IMAGE_SIZE_MB, SUPPORTED_IMAGE_TYPES } from '../constants/imageUpload'
 
 const detectType = value => {
   if (typeof value === 'number') return 'number'
@@ -115,9 +112,7 @@ export default function useProductAnalyzer() {
         const resData = response.data
 
         if (!resData?.success) {
-          throw new Error(
-            resData?.message || 'La IA no pudo clasificar el producto',
-          )
+          throw new Error(resData?.message || 'La IA no pudo clasificar el producto')
         }
 
         const data = resData?.data || null
@@ -147,7 +142,6 @@ export default function useProductAnalyzer() {
     },
     [generateDynamicFields],
   )
-
 
   const resetIa = useCallback(() => {
     setIaResult(null)

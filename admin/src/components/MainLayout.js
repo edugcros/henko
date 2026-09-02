@@ -123,9 +123,7 @@ const MainLayout = () => {
     // ninguna entrada del menú y el ítem nunca se marcaba como activo. La
     // barra opcional cubre además /admin sin barra final.
     const key = location.pathname.replace(/^\/admin\/?/, '')
-    const group = adminMenuItems.find(item =>
-      item.children?.some(child => child.key === key),
-    )
+    const group = adminMenuItems.find(item => item.children?.some(child => child.key === key))
     return { selectedKey: key, openKey: group?.key }
   }, [location.pathname])
 
@@ -178,21 +176,19 @@ const MainLayout = () => {
       if (group.children?.length) {
         return (
           <Box key={group.key}>
-            <ListItemButton
-              onClick={() => handleGroupToggle(group.key)}
-              sx={groupHeaderSx}
-            >
+            <ListItemButton onClick={() => handleGroupToggle(group.key)} sx={groupHeaderSx}>
               <ListItemIcon>
                 <Badge color="error" variant={group.isNew ? 'dot' : 'standard'}>
                   <GroupIcon sx={{ fontSize: 22 }} />
                 </Badge>
               </ListItemIcon>
               {!collapsed && <ListItemText primary={group.label} />}
-              {!collapsed && (
-                isOpen
-                  ? <ExpandLess sx={{ fontSize: 18, color: TEXT_SECONDARY }} />
-                  : <ExpandMore sx={{ fontSize: 18, color: TEXT_SECONDARY }} />
-              )}
+              {!collapsed &&
+                (isOpen ? (
+                  <ExpandLess sx={{ fontSize: 18, color: TEXT_SECONDARY }} />
+                ) : (
+                  <ExpandMore sx={{ fontSize: 18, color: TEXT_SECONDARY }} />
+                ))}
             </ListItemButton>
 
             <Collapse in={isOpen} timeout="auto" unmountOnExit>
@@ -207,10 +203,7 @@ const MainLayout = () => {
                       onClick={() => navigate(`/admin/${item.key}`)}
                     >
                       <ListItemIcon>
-                        <Badge
-                          color="error"
-                          variant={item.isNew ? 'dot' : 'standard'}
-                        >
+                        <Badge color="error" variant={item.isNew ? 'dot' : 'standard'}>
                           <ItemIcon sx={{ fontSize: 20 }} />
                         </Badge>
                       </ListItemIcon>
@@ -292,7 +285,15 @@ const MainLayout = () => {
                 H
               </Box>
               <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#fff', lineHeight: 1.2, letterSpacing: -0.3 }}>
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    fontWeight: 800,
+                    color: '#fff',
+                    lineHeight: 1.2,
+                    letterSpacing: -0.3,
+                  }}
+                >
                   Henko
                 </Typography>
                 <Typography variant="caption" sx={{ color: TEXT_SECONDARY, fontSize: '0.7rem' }}>
@@ -337,10 +338,18 @@ const MainLayout = () => {
                   {user?.firstname?.[0]?.toUpperCase() || 'A'}
                 </Avatar>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.8rem' }} noWrap>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: '#fff', fontWeight: 600, fontSize: '0.8rem' }}
+                    noWrap
+                  >
                     {user.firstname} {user.lastname}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: TEXT_SECONDARY, fontSize: '0.7rem' }} noWrap>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: TEXT_SECONDARY, fontSize: '0.7rem' }}
+                    noWrap
+                  >
                     {user.email || 'Admin'}
                   </Typography>
                 </Box>
@@ -386,7 +395,15 @@ const MainLayout = () => {
                     >
                       {user?.firstname?.[0]?.toUpperCase() || 'A'}
                     </Avatar>
-                    <Typography variant="body2" sx={{ ml: 1, fontWeight: 600, color: 'text.primary', fontSize: '0.85rem' }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        ml: 1,
+                        fontWeight: 600,
+                        color: 'text.primary',
+                        fontSize: '0.85rem',
+                      }}
+                    >
                       {user.firstname}
                     </Typography>
                   </IconButton>
@@ -428,12 +445,7 @@ const MainLayout = () => {
         </AppBar>
 
         <Box sx={{ p: 3, flex: 1, bgcolor: '#f8fafc' }}>
-          <ToastContainer
-            position="top-right"
-            autoClose={250}
-            newestOnTop
-            theme="light"
-          />
+          <ToastContainer position="top-right" autoClose={250} newestOnTop theme="light" />
           <Outlet />
         </Box>
       </Box>

@@ -81,10 +81,8 @@ const EMPTY_FORM = {
 }
 
 const RuleCard = ({ rule, busy, onEdit, onDelete }) => {
-  const typeLabel =
-    RULE_TYPES.find(t => t.value === rule.type)?.label || rule.type
-  const channelLabel =
-    CHANNEL_OPTIONS.find(c => c.value === rule.channel)?.label || rule.channel
+  const typeLabel = RULE_TYPES.find(t => t.value === rule.type)?.label || rule.type
+  const channelLabel = CHANNEL_OPTIONS.find(c => c.value === rule.channel)?.label || rule.channel
 
   return (
     <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
@@ -96,18 +94,8 @@ const RuleCard = ({ rule, busy, onEdit, onDelete }) => {
         flexWrap="wrap"
       >
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            flexWrap="wrap"
-            mb={1}
-          >
-            <Chip
-              size="small"
-              label={typeLabel}
-              color={TYPE_COLOR[rule.type] || 'default'}
-            />
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" mb={1}>
+            <Chip size="small" label={typeLabel} color={TYPE_COLOR[rule.type] || 'default'} />
             <Chip size="small" variant="outlined" label={channelLabel} />
             <Chip
               size="small"
@@ -155,8 +143,7 @@ const RuleCard = ({ rule, busy, onEdit, onDelete }) => {
             </Typography>
             {(rule.stats?.sent > 0 || rule.stats?.conversions > 0) && (
               <Typography variant="caption" color="text.secondary">
-                Enviados: {rule.stats?.sent || 0} | Convertidos:{' '}
-                {rule.stats?.conversions || 0}
+                Enviados: {rule.stats?.sent || 0} | Convertidos: {rule.stats?.conversions || 0}
               </Typography>
             )}
           </Stack>
@@ -226,8 +213,7 @@ const AiCampaignRulesPage = () => {
     load()
   }, [load])
 
-  const flash = (message, severity = 'success') =>
-    setSnackbar({ open: true, severity, message })
+  const flash = (message, severity = 'success') => setSnackbar({ open: true, severity, message })
 
   const openCreateDialog = () => {
     setFormData(EMPTY_FORM)
@@ -290,18 +276,12 @@ const AiCampaignRulesPage = () => {
     try {
       const payload = { ...formData }
       delete payload._id
-      await upsertCampaignRule(
-        payload,
-        formDialog === 'edit' ? formData._id : undefined,
-      )
+      await upsertCampaignRule(payload, formDialog === 'edit' ? formData._id : undefined)
       flash(formDialog === 'edit' ? 'Regla actualizada.' : 'Regla creada.')
       setFormDialog(null)
       load()
     } catch (err) {
-      flash(
-        err?.response?.data?.message || err?.message || 'Error al guardar.',
-        'error',
-      )
+      flash(err?.response?.data?.message || err?.message || 'Error al guardar.', 'error')
     } finally {
       setSaving(false)
     }
@@ -317,10 +297,7 @@ const AiCampaignRulesPage = () => {
       setDeleteDialog(null)
       load()
     } catch (err) {
-      flash(
-        err?.response?.data?.message || err?.message || 'Error al eliminar.',
-        'error',
-      )
+      flash(err?.response?.data?.message || err?.message || 'Error al eliminar.', 'error')
     } finally {
       setBusyId(null)
     }
@@ -343,8 +320,7 @@ const AiCampaignRulesPage = () => {
             </Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            Reglas automáticas: carrito abandonado, follow-up, post-compra y
-            winback.
+            Reglas automáticas: carrito abandonado, follow-up, post-compra y winback.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
@@ -378,13 +354,8 @@ const AiCampaignRulesPage = () => {
           <CircularProgress />
         </Box>
       ) : rules.length === 0 ? (
-        <Paper
-          variant="outlined"
-          sx={{ p: 5, textAlign: 'center', borderRadius: 3 }}
-        >
-          <Typography color="text.secondary">
-            No hay reglas de campaña configuradas.
-          </Typography>
+        <Paper variant="outlined" sx={{ p: 5, textAlign: 'center', borderRadius: 3 }}>
+          <Typography color="text.secondary">No hay reglas de campaña configuradas.</Typography>
         </Paper>
       ) : (
         <Stack spacing={2}>
@@ -473,9 +444,7 @@ const AiCampaignRulesPage = () => {
               control={
                 <Switch
                   checked={formData.useAiPersonalization}
-                  onChange={e =>
-                    setField('useAiPersonalization', e.target.checked)
-                  }
+                  onChange={e => setField('useAiPersonalization', e.target.checked)}
                 />
               }
               label="Personalización con IA"
@@ -493,9 +462,7 @@ const AiCampaignRulesPage = () => {
                   type="number"
                   fullWidth
                   value={formData.trigger.delayMinutes}
-                  onChange={e =>
-                    setField('trigger.delayMinutes', Number(e.target.value))
-                  }
+                  onChange={e => setField('trigger.delayMinutes', Number(e.target.value))}
                   inputProps={{ min: 1, max: 43200 }}
                 />
               </Grid>
@@ -505,9 +472,7 @@ const AiCampaignRulesPage = () => {
                   type="number"
                   fullWidth
                   value={formData.trigger.maxAttempts}
-                  onChange={e =>
-                    setField('trigger.maxAttempts', Number(e.target.value))
-                  }
+                  onChange={e => setField('trigger.maxAttempts', Number(e.target.value))}
                   inputProps={{ min: 1, max: 5 }}
                 />
               </Grid>
@@ -518,10 +483,7 @@ const AiCampaignRulesPage = () => {
                   fullWidth
                   value={formData.trigger.minHoursBetweenContacts}
                   onChange={e =>
-                    setField(
-                      'trigger.minHoursBetweenContacts',
-                      Number(e.target.value),
-                    )
+                    setField('trigger.minHoursBetweenContacts', Number(e.target.value))
                   }
                   inputProps={{ min: 1, max: 168 }}
                 />
@@ -532,12 +494,7 @@ const AiCampaignRulesPage = () => {
                   type="number"
                   fullWidth
                   value={formData.trigger.minCartAmountCents}
-                  onChange={e =>
-                    setField(
-                      'trigger.minCartAmountCents',
-                      Number(e.target.value),
-                    )
-                  }
+                  onChange={e => setField('trigger.minCartAmountCents', Number(e.target.value))}
                   inputProps={{ min: 0 }}
                 />
               </Grid>
@@ -546,9 +503,7 @@ const AiCampaignRulesPage = () => {
                   label="Hora inicio"
                   fullWidth
                   value={formData.trigger.businessHours.start}
-                  onChange={e =>
-                    setField('trigger.businessHours.start', e.target.value)
-                  }
+                  onChange={e => setField('trigger.businessHours.start', e.target.value)}
                   placeholder="09:00"
                 />
               </Grid>
@@ -557,9 +512,7 @@ const AiCampaignRulesPage = () => {
                   label="Hora fin"
                   fullWidth
                   value={formData.trigger.businessHours.end}
-                  onChange={e =>
-                    setField('trigger.businessHours.end', e.target.value)
-                  }
+                  onChange={e => setField('trigger.businessHours.end', e.target.value)}
                   placeholder="20:00"
                 />
               </Grid>
@@ -569,9 +522,7 @@ const AiCampaignRulesPage = () => {
               control={
                 <Switch
                   checked={formData.trigger.onlyBusinessHours}
-                  onChange={e =>
-                    setField('trigger.onlyBusinessHours', e.target.checked)
-                  }
+                  onChange={e => setField('trigger.onlyBusinessHours', e.target.checked)}
                 />
               }
               label="Solo en horario comercial"
@@ -586,9 +537,7 @@ const AiCampaignRulesPage = () => {
               control={
                 <Switch
                   checked={formData.whatsappTemplate.enabled}
-                  onChange={e =>
-                    setField('whatsappTemplate.enabled', e.target.checked)
-                  }
+                  onChange={e => setField('whatsappTemplate.enabled', e.target.checked)}
                 />
               }
               label="Usar template aprobado por Meta"
@@ -600,17 +549,13 @@ const AiCampaignRulesPage = () => {
                   label="Nombre del template"
                   fullWidth
                   value={formData.whatsappTemplate.name}
-                  onChange={e =>
-                    setField('whatsappTemplate.name', e.target.value)
-                  }
+                  onChange={e => setField('whatsappTemplate.name', e.target.value)}
                   inputProps={{ maxLength: 120 }}
                 />
                 <TextField
                   label="Idioma"
                   value={formData.whatsappTemplate.languageCode}
-                  onChange={e =>
-                    setField('whatsappTemplate.languageCode', e.target.value)
-                  }
+                  onChange={e => setField('whatsappTemplate.languageCode', e.target.value)}
                   inputProps={{ maxLength: 20 }}
                   sx={{ minWidth: 120 }}
                 />
@@ -662,23 +607,15 @@ const AiCampaignRulesPage = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={deleteDialog !== null}
-        onClose={() => setDeleteDialog(null)}
-        maxWidth="xs"
-      >
+      <Dialog open={deleteDialog !== null} onClose={() => setDeleteDialog(null)} maxWidth="xs">
         <DialogTitle>Eliminar regla</DialogTitle>
         <DialogContent>
           <Typography>
-            ¿Eliminar la regla &quot;{deleteDialog?.name}&quot;? Esta acción no
-            se puede deshacer.
+            ¿Eliminar la regla &quot;{deleteDialog?.name}&quot;? Esta acción no se puede deshacer.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button
-            onClick={() => setDeleteDialog(null)}
-            sx={{ textTransform: 'none' }}
-          >
+          <Button onClick={() => setDeleteDialog(null)} sx={{ textTransform: 'none' }}>
             Cancelar
           </Button>
           <Button

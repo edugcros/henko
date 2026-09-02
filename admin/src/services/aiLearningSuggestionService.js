@@ -12,36 +12,24 @@ export const listLearningSuggestions = async params => {
 
 // Aprobar convierte la sugerencia en conocimiento aprobado. title/content/tags
 // son opcionales: si el admin no los edita, el backend usa los de la sugerencia.
-export const approveLearningSuggestion = async (
-  id,
-  { title, content, tags } = {},
-) => {
-  const response = await api.post(
-    `/ai-agent/learning-suggestions/${id}/approve`,
-    {
-      title,
-      content,
-      tags,
-    },
-  )
+export const approveLearningSuggestion = async (id, { title, content, tags } = {}) => {
+  const response = await api.post(`/ai-agent/learning-suggestions/${id}/approve`, {
+    title,
+    content,
+    tags,
+  })
   return unwrap(response)
 }
 
 export const rejectLearningSuggestion = async (id, reason = '') => {
-  const response = await api.post(
-    `/ai-agent/learning-suggestions/${id}/reject`,
-    {
-      reason,
-    },
-  )
+  const response = await api.post(`/ai-agent/learning-suggestions/${id}/reject`, {
+    reason,
+  })
   return unwrap(response)
 }
 
 export const archiveLearningSuggestion = async id => {
-  const response = await api.post(
-    `/ai-agent/learning-suggestions/${id}/archive`,
-    {},
-  )
+  const response = await api.post(`/ai-agent/learning-suggestions/${id}/archive`, {})
   return unwrap(response)
 }
 

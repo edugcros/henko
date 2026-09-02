@@ -1,10 +1,7 @@
 // 📁 admin/src/features/marketing/socialPromotionService.js
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
 
-const extractErrorMessage = (
-  error,
-  fallback = 'No se pudo generar el contenido',
-) => {
+const extractErrorMessage = (error, fallback = 'No se pudo generar el contenido') => {
   return (
     error?.response?.data?.message ||
     error?.response?.data?.error ||

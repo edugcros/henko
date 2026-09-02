@@ -12,38 +12,30 @@ const initialState = {
 // THUNKS
 // =====================
 
-export const getUsers = createAsyncThunk(
-  'customers/getAll',
-  async (params, thunkAPI) => {
-    try {
-      return await customerService.getAllUsers(params, {
-        signal: thunkAPI.signal,
-      })
-    } catch (err) {
-      return thunkAPI.rejectWithValue(err.message)
-    }
-  },
-)
+export const getUsers = createAsyncThunk('customers/getAll', async (params, thunkAPI) => {
+  try {
+    return await customerService.getAllUsers(params, {
+      signal: thunkAPI.signal,
+    })
+  } catch (err) {
+    return thunkAPI.rejectWithValue(err.message)
+  }
+})
 
-export const removeUser = createAsyncThunk(
-  'customers/remove',
-  async (id, thunkAPI) => {
-    try {
-      await customerService.deleteUser(id)
-      return id
-    } catch (err) {
-      return thunkAPI.rejectWithValue(err.message)
-    }
-  },
-)
+export const removeUser = createAsyncThunk('customers/remove', async (id, thunkAPI) => {
+  try {
+    await customerService.deleteUser(id)
+    return id
+  } catch (err) {
+    return thunkAPI.rejectWithValue(err.message)
+  }
+})
 
 export const toggleBlockUser = createAsyncThunk(
   'customers/toggleBlock',
   async ({ id, block }, thunkAPI) => {
     try {
-      return block
-        ? await customerService.blockUser(id)
-        : await customerService.unblockUser(id)
+      return block ? await customerService.blockUser(id) : await customerService.unblockUser(id)
     } catch (err) {
       return thunkAPI.rejectWithValue(err.message)
     }

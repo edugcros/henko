@@ -26,11 +26,7 @@ const PrivateRoute = ({ allowedRoles }) => {
   /**
    * 🚫 Autenticado pero sin rol permitido
    */
-  if (
-    allowedRoles &&
-    Array.isArray(allowedRoles) &&
-    !allowedRoles.includes(user.role)
-  ) {
+  if (allowedRoles && Array.isArray(allowedRoles) && !allowedRoles.includes(user.role)) {
     return <Navigate to="/403" replace />
   }
 

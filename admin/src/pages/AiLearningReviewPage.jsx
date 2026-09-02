@@ -110,13 +110,7 @@ const SuggestionCard = ({
           />
         )}
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            flexWrap="wrap"
-            mb={1}
-          >
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" mb={1}>
             <Chip size="small" label={typeMeta.label} color={typeMeta.color} />
             {suggestion.priority && (
               <Chip
@@ -126,17 +120,9 @@ const SuggestionCard = ({
                 color={PRIORITY_COLOR[suggestion.priority] || 'default'}
               />
             )}
-            <Chip
-              size="small"
-              variant="outlined"
-              label={`Confianza ${confidencePct}%`}
-            />
+            <Chip size="small" variant="outlined" label={`Confianza ${confidencePct}%`} />
             {suggestion.metadata?.intent && (
-              <Chip
-                size="small"
-                variant="outlined"
-                label={suggestion.metadata.intent}
-              />
+              <Chip size="small" variant="outlined" label={suggestion.metadata.intent} />
             )}
           </Stack>
 
@@ -167,12 +153,7 @@ const SuggestionCard = ({
           )}
 
           {Array.isArray(suggestion.tags) && suggestion.tags.length > 0 && (
-            <Stack
-              direction="row"
-              spacing={0.5}
-              flexWrap="wrap"
-              sx={{ mt: 1.5 }}
-            >
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 1.5 }}>
               {suggestion.tags.map(tag => (
                 <Chip key={tag} size="small" variant="outlined" label={tag} />
               ))}
@@ -180,11 +161,7 @@ const SuggestionCard = ({
           )}
 
           {suggestion.status === 'rejected' && suggestion.reason && (
-            <Typography
-              variant="caption"
-              color="error"
-              sx={{ mt: 1, display: 'block' }}
-            >
+            <Typography variant="caption" color="error" sx={{ mt: 1, display: 'block' }}>
               Rechazada: {suggestion.reason}
             </Typography>
           )}
@@ -279,9 +256,7 @@ const AiLearningReviewPage = () => {
     } catch (err) {
       console.error('[AI_LEARNING_LIST_ERROR]', err)
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudieron cargar las sugerencias.',
+        err?.response?.data?.message || err?.message || 'No se pudieron cargar las sugerencias.',
       )
     } finally {
       setLoading(false)
@@ -298,8 +273,7 @@ const AiLearningReviewPage = () => {
     setSelectedIds(new Set())
   }, [params])
 
-  const notify = (severity, message) =>
-    setSnackbar({ open: true, severity, message })
+  const notify = (severity, message) => setSnackbar({ open: true, severity, message })
 
   const pendingItems = useMemo(
     () => items.filter(item => item.status === 'pending_review'),
@@ -307,8 +281,7 @@ const AiLearningReviewPage = () => {
   )
 
   const allPendingSelected =
-    pendingItems.length > 0 &&
-    pendingItems.every(item => selectedIds.has(getId(item)))
+    pendingItems.length > 0 && pendingItems.every(item => selectedIds.has(getId(item)))
 
   const toggleSelect = useCallback(suggestion => {
     const id = getId(suggestion)
@@ -323,8 +296,7 @@ const AiLearningReviewPage = () => {
   const toggleSelectAllPending = useCallback(() => {
     setSelectedIds(prev => {
       const allSelected =
-        pendingItems.length > 0 &&
-        pendingItems.every(item => prev.has(getId(item)))
+        pendingItems.length > 0 && pendingItems.every(item => prev.has(getId(item)))
       if (allSelected) return new Set()
       return new Set(pendingItems.map(getId))
     })
@@ -351,10 +323,7 @@ const AiLearningReviewPage = () => {
         } else if (succeeded === 0) {
           notify('error', `No se pudo completar la acción en ninguna (${failed}).`)
         } else {
-          notify(
-            'warning',
-            `${succeeded} ${successVerb}, ${failed} falló(aron) — revisá la lista.`,
-          )
+          notify('warning', `${succeeded} ${successVerb}, ${failed} falló(aron) — revisá la lista.`)
         }
 
         clearSelection()
@@ -393,11 +362,7 @@ const AiLearningReviewPage = () => {
   }, [bulkRejectDialog, selectedIds, runBulkAction])
 
   const handleBulkArchive = useCallback(() => {
-    runBulkAction(
-      [...selectedIds],
-      id => archiveLearningSuggestion(id),
-      'archivada(s)',
-    )
+    runBulkAction([...selectedIds], id => archiveLearningSuggestion(id), 'archivada(s)')
   }, [selectedIds, runBulkAction])
 
   const runAction = useCallback(
@@ -410,11 +375,7 @@ const AiLearningReviewPage = () => {
         await load()
       } catch (err) {
         console.error('[AI_LEARNING_ACTION_ERROR]', err)
-        setError(
-          err?.response?.data?.message ||
-            err?.message ||
-            'No se pudo completar la acción.',
-        )
+        setError(err?.response?.data?.message || err?.message || 'No se pudo completar la acción.')
       } finally {
         setBusyId(null)
       }
@@ -468,11 +429,7 @@ const AiLearningReviewPage = () => {
   const handleArchive = useCallback(
     suggestion => {
       const id = getId(suggestion)
-      runAction(
-        id,
-        () => archiveLearningSuggestion(id),
-        'Sugerencia archivada.',
-      )
+      runAction(id, () => archiveLearningSuggestion(id), 'Sugerencia archivada.')
     },
     [runAction],
   )
@@ -496,8 +453,7 @@ const AiLearningReviewPage = () => {
             </Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            Revisá lo que el agente aprendió antes de que lo use con clientes
-            reales.
+            Revisá lo que el agente aprendió antes de que lo use con clientes reales.
             {pendingCount > 0 && ` ${pendingCount} pendiente(s) de revisión.`}
           </Typography>
         </Box>
@@ -526,8 +482,7 @@ const AiLearningReviewPage = () => {
               {STATUS_OPTIONS.map(option => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
-                  {counters[option.value] !== undefined &&
-                    ` (${counters[option.value]})`}
+                  {counters[option.value] !== undefined && ` (${counters[option.value]})`}
                 </MenuItem>
               ))}
             </TextField>
@@ -638,13 +593,8 @@ const AiLearningReviewPage = () => {
           <CircularProgress />
         </Box>
       ) : items.length === 0 ? (
-        <Paper
-          variant="outlined"
-          sx={{ p: 6, borderRadius: 3, textAlign: 'center' }}
-        >
-          <Typography color="text.secondary">
-            No hay sugerencias para este filtro.
-          </Typography>
+        <Paper variant="outlined" sx={{ p: 6, borderRadius: 3, textAlign: 'center' }}>
+          <Typography color="text.secondary">No hay sugerencias para este filtro.</Typography>
         </Paper>
       ) : (
         <Stack spacing={2}>
@@ -673,17 +623,15 @@ const AiLearningReviewPage = () => {
         <DialogTitle>Aprobar y convertir en conocimiento</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Se agregará a la base de conocimiento aprobada del agente. Podés
-            editar el texto antes de confirmar.
+            Se agregará a la base de conocimiento aprobada del agente. Podés editar el texto antes
+            de confirmar.
           </Typography>
           <Stack spacing={2.5} sx={{ mt: 1 }}>
             <TextField
               fullWidth
               label="Título"
               value={approveDialog?.title || ''}
-              onChange={e =>
-                setApproveDialog(prev => ({ ...prev, title: e.target.value }))
-              }
+              onChange={e => setApproveDialog(prev => ({ ...prev, title: e.target.value }))}
               inputProps={{ maxLength: 200 }}
             />
             <TextField
@@ -692,18 +640,14 @@ const AiLearningReviewPage = () => {
               minRows={4}
               label="Contenido"
               value={approveDialog?.content || ''}
-              onChange={e =>
-                setApproveDialog(prev => ({ ...prev, content: e.target.value }))
-              }
+              onChange={e => setApproveDialog(prev => ({ ...prev, content: e.target.value }))}
               inputProps={{ maxLength: 10000 }}
             />
             <TextField
               fullWidth
               label="Tags (separados por coma)"
               value={approveDialog?.tags || ''}
-              onChange={e =>
-                setApproveDialog(prev => ({ ...prev, tags: e.target.value }))
-              }
+              onChange={e => setApproveDialog(prev => ({ ...prev, tags: e.target.value }))}
             />
           </Stack>
         </DialogContent>
@@ -736,9 +680,7 @@ const AiLearningReviewPage = () => {
             minRows={3}
             label="Motivo (opcional)"
             value={rejectDialog?.reason || ''}
-            onChange={e =>
-              setRejectDialog(prev => ({ ...prev, reason: e.target.value }))
-            }
+            onChange={e => setRejectDialog(prev => ({ ...prev, reason: e.target.value }))}
             inputProps={{ maxLength: 500 }}
           />
         </DialogContent>
@@ -757,9 +699,7 @@ const AiLearningReviewPage = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>
-          Rechazar {selectedIds.size} sugerencia(s)
-        </DialogTitle>
+        <DialogTitle>Rechazar {selectedIds.size} sugerencia(s)</DialogTitle>
         <DialogContent>
           <Divider sx={{ mb: 2 }} />
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -771,9 +711,7 @@ const AiLearningReviewPage = () => {
             minRows={3}
             label="Motivo (opcional)"
             value={bulkRejectDialog?.reason || ''}
-            onChange={e =>
-              setBulkRejectDialog(prev => ({ ...prev, reason: e.target.value }))
-            }
+            onChange={e => setBulkRejectDialog(prev => ({ ...prev, reason: e.target.value }))}
             inputProps={{ maxLength: 500 }}
           />
         </DialogContent>

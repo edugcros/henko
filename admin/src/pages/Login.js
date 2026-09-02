@@ -21,10 +21,7 @@ import { useState } from 'react'
 
 // Esquema de validación
 const validationSchema = yup.object({
-  email: yup
-    .string()
-    .email('Debe ser un correo válido')
-    .required('El correo es obligatorio'),
+  email: yup.string().email('Debe ser un correo válido').required('El correo es obligatorio'),
   password: yup.string().required('La contraseña es obligatoria'),
 })
 
@@ -136,12 +133,7 @@ const Login = () => {
           >
             Panel de Administración
           </Typography>
-          <Typography
-            variant="body2"
-            align="center"
-            color="text.secondary"
-            sx={{ mb: 3 }}
-          >
+          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
             Accedé a tu cuenta para continuar.
           </Typography>
 
@@ -201,19 +193,11 @@ const Login = () => {
               }}
               disabled={isSubmitting}
             >
-              {isSubmitting ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                'Ingresar'
-              )}
+              {isSubmitting ? <CircularProgress size={24} color="inherit" /> : 'Ingresar'}
             </Button>
 
             {isError && !isNotVerified && (
-              <Typography
-                color="error"
-                align="center"
-                sx={{ mt: 2, fontSize: '0.875rem' }}
-              >
+              <Typography color="error" align="center" sx={{ mt: 2, fontSize: '0.875rem' }}>
                 {message || 'Credenciales inválidas o error de conexión.'}
               </Typography>
             )}
@@ -224,10 +208,7 @@ const Login = () => {
                 email repetido y el login no lo deja pasar. */}
             {isError && isNotVerified && (
               <Box sx={{ mt: 2 }}>
-                <Typography
-                  align="center"
-                  sx={{ fontSize: '0.875rem', mb: 1.5 }}
-                >
+                <Typography align="center" sx={{ fontSize: '0.875rem', mb: 1.5 }}>
                   {message}
                 </Typography>
 
@@ -248,9 +229,7 @@ const Login = () => {
                   onClick={handleResendVerification}
                   sx={{ textTransform: 'none' }}
                 >
-                  {resendState.sending
-                    ? 'Enviando...'
-                    : 'Reenviar correo de verificación'}
+                  {resendState.sending ? 'Enviando...' : 'Reenviar correo de verificación'}
                 </Button>
               </Box>
             )}

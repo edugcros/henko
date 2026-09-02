@@ -163,10 +163,7 @@ const MENU_STRUCTURE = [
 
 // Ruta → meta, para saber cuáles llevan el punto de "nuevo".
 const routeMetaByKey = new Map(
-  privateRoutes.map(({ path, meta }) => [
-    path.replace('/admin/', ''),
-    meta || {},
-  ]),
+  privateRoutes.map(({ path, meta }) => [path.replace('/admin/', ''), meta || {}]),
 )
 
 const isNewRoute = key => Boolean(routeMetaByKey.get(key)?.new)
@@ -228,9 +225,7 @@ if (orphanRoutes.length) {
   adminMenuItems.push(
     ...orphanRoutes.map(key => ({
       key,
-      label: key
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, char => char.toUpperCase()),
+      label: key.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
       icon: SpaceDashboardIcon,
       isNew: isNewRoute(key),
     })),

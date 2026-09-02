@@ -140,13 +140,7 @@ const InsightCard = ({
         flexWrap="wrap"
       >
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            flexWrap="wrap"
-            mb={1}
-          >
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" mb={1}>
             <Chip size="small" label={typeMeta.label} color={typeMeta.color} />
             {insight.priority && (
               <Chip
@@ -157,11 +151,7 @@ const InsightCard = ({
               />
             )}
             {insight.entity?.label && (
-              <Chip
-                size="small"
-                variant="outlined"
-                label={insight.entity.label}
-              />
+              <Chip size="small" variant="outlined" label={insight.entity.label} />
             )}
           </Stack>
 
@@ -174,45 +164,26 @@ const InsightCard = ({
           </Typography>
 
           {formatEvidence(insight.evidence) && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ mt: 1, display: 'block' }}
-            >
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
               {formatEvidence(insight.evidence)}
             </Typography>
           )}
 
           {isMeasuring && insight.measurement?.measureAfterDate && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ mt: 0.5, display: 'block' }}
-            >
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
               Se vuelve a medir el{' '}
-              {new Date(
-                insight.measurement.measureAfterDate,
-              ).toLocaleDateString('es-AR')}
+              {new Date(insight.measurement.measureAfterDate).toLocaleDateString('es-AR')}
             </Typography>
           )}
 
           {insight.status === 'resolved' && insight.measurement && (
-            <Typography
-              variant="body2"
-              color="success.main"
-              sx={{ mt: 1, fontWeight: 600 }}
-            >
-              Antes: {insight.measurement.beforeValue} → Ahora:{' '}
-              {insight.measurement.afterValue}
+            <Typography variant="body2" color="success.main" sx={{ mt: 1, fontWeight: 600 }}>
+              Antes: {insight.measurement.beforeValue} → Ahora: {insight.measurement.afterValue}
             </Typography>
           )}
 
           {insight.action?.actionType === 'reactivation_message' && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ mt: 1, display: 'block' }}
-            >
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
               Mensaje de reactivación enviado por{' '}
               {CHANNEL_LABEL[insight.action.channel] || insight.action.channel}
               {insight.action.executedAt &&
@@ -222,25 +193,16 @@ const InsightCard = ({
           )}
 
           {insight.action?.actionType === 'cart_recovery_reinforcement' && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ mt: 1, display: 'block' }}
-            >
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
               Recuperación reforzada
               {insight.action.executedAt &&
                 ` el ${new Date(insight.action.executedAt).toLocaleDateString('es-AR')}`}{' '}
-              ({insight.action.detail?.rulesUpdated?.length || 0} regla(s)
-              ajustada(s)).
+              ({insight.action.detail?.rulesUpdated?.length || 0} regla(s) ajustada(s)).
             </Typography>
           )}
 
           {insight.action?.actionType === 'price_reduction' && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ mt: 1, display: 'block' }}
-            >
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
               Precio reducido de ${insight.action.detail?.previousPrice} a $
               {insight.action.detail?.newPrice}
               {insight.action.detail?.variantsUpdated > 0 &&
@@ -252,21 +214,13 @@ const InsightCard = ({
           )}
 
           {insight.status === 'dismissed' && insight.dismissReason && (
-            <Typography
-              variant="caption"
-              color="error"
-              sx={{ mt: 1, display: 'block' }}
-            >
+            <Typography variant="caption" color="error" sx={{ mt: 1, display: 'block' }}>
               Descartado: {insight.dismissReason}
             </Typography>
           )}
         </Box>
 
-        {(isPending ||
-          canReactivate ||
-          canReinforce ||
-          canReducePrice ||
-          canArchive) && (
+        {(isPending || canReactivate || canReinforce || canReducePrice || canArchive) && (
           <Stack spacing={1} sx={{ minWidth: 132 }}>
             {canReactivate && (
               <Button
@@ -309,9 +263,7 @@ const InsightCard = ({
                 <Button
                   size="small"
                   variant={
-                    canReactivate || canReinforce || canReducePrice
-                      ? 'outlined'
-                      : 'contained'
+                    canReactivate || canReinforce || canReducePrice ? 'outlined' : 'contained'
                   }
                   color="primary"
                   startIcon={<AcknowledgeIcon />}
@@ -393,9 +345,7 @@ const AiInsightsPage = () => {
     } catch (err) {
       console.error('[AI_INSIGHTS_LIST_ERROR]', err)
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudieron cargar los insights.',
+        err?.response?.data?.message || err?.message || 'No se pudieron cargar los insights.',
       )
     } finally {
       setLoading(false)
@@ -406,8 +356,7 @@ const AiInsightsPage = () => {
     load()
   }, [load])
 
-  const notify = (severity, message) =>
-    setSnackbar({ open: true, severity, message })
+  const notify = (severity, message) => setSnackbar({ open: true, severity, message })
 
   const runAction = useCallback(
     async (id, action, successMessage) => {
@@ -419,11 +368,7 @@ const AiInsightsPage = () => {
         await load()
       } catch (err) {
         console.error('[AI_INSIGHTS_ACTION_ERROR]', err)
-        setError(
-          err?.response?.data?.message ||
-            err?.message ||
-            'No se pudo completar la acción.',
-        )
+        setError(err?.response?.data?.message || err?.message || 'No se pudo completar la acción.')
       } finally {
         setBusyId(null)
       }
@@ -474,9 +419,7 @@ const AiInsightsPage = () => {
     try {
       const result = await previewReactivationMessage(id)
       setReactivationDialog(prev =>
-        prev && prev.id === id
-          ? { ...prev, message: result?.message || '', loading: false }
-          : prev,
+        prev && prev.id === id ? { ...prev, message: result?.message || '', loading: false } : prev,
       )
     } catch (err) {
       console.error('[AI_INSIGHTS_PREVIEW_ERROR]', err)
@@ -486,9 +429,7 @@ const AiInsightsPage = () => {
               ...prev,
               loading: false,
               error:
-                err?.response?.data?.message ||
-                err?.message ||
-                'No se pudo generar el mensaje.',
+                err?.response?.data?.message || err?.message || 'No se pudo generar el mensaje.',
             }
           : prev,
       )
@@ -499,9 +440,7 @@ const AiInsightsPage = () => {
     const dialog = reactivationDialog
     if (!dialog || !clean(dialog.message)) return
 
-    setReactivationDialog(prev =>
-      prev ? { ...prev, sending: true, error: '' } : prev,
-    )
+    setReactivationDialog(prev => (prev ? { ...prev, sending: true, error: '' } : prev))
 
     try {
       await sendReactivationMessage(dialog.id, clean(dialog.message))
@@ -516,9 +455,7 @@ const AiInsightsPage = () => {
               ...prev,
               sending: false,
               error:
-                err?.response?.data?.message ||
-                err?.message ||
-                'No se pudo enviar el mensaje.',
+                err?.response?.data?.message || err?.message || 'No se pudo enviar el mensaje.',
             }
           : prev,
       )
@@ -568,9 +505,7 @@ const AiInsightsPage = () => {
     const dialog = reinforcementDialog
     if (!dialog || !dialog.hasChanges) return
 
-    setReinforcementDialog(prev =>
-      prev ? { ...prev, applying: true, error: '' } : prev,
-    )
+    setReinforcementDialog(prev => (prev ? { ...prev, applying: true, error: '' } : prev))
 
     try {
       await applyCartRecoveryReinforcement(dialog.id)
@@ -585,9 +520,7 @@ const AiInsightsPage = () => {
               ...prev,
               applying: false,
               error:
-                err?.response?.data?.message ||
-                err?.message ||
-                'No se pudo aplicar el refuerzo.',
+                err?.response?.data?.message || err?.message || 'No se pudo aplicar el refuerzo.',
             }
           : prev,
       )
@@ -636,12 +569,9 @@ const AiInsightsPage = () => {
   const confirmPriceReduction = useCallback(async () => {
     const dialog = priceReductionDialog
     const newPriceNumber = Number(dialog?.newPrice)
-    if (!dialog || !Number.isFinite(newPriceNumber) || newPriceNumber <= 0)
-      return
+    if (!dialog || !Number.isFinite(newPriceNumber) || newPriceNumber <= 0) return
 
-    setPriceReductionDialog(prev =>
-      prev ? { ...prev, applying: true, error: '' } : prev,
-    )
+    setPriceReductionDialog(prev => (prev ? { ...prev, applying: true, error: '' } : prev))
 
     try {
       await applyPriceReduction(dialog.id, newPriceNumber)
@@ -684,8 +614,8 @@ const AiInsightsPage = () => {
             </Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            Problemas que HENKO detectó con datos reales de tu tienda, con una
-            recomendación de qué hacer.
+            Problemas que HENKO detectó con datos reales de tu tienda, con una recomendación de qué
+            hacer.
             {pendingCount > 0 && ` ${pendingCount} pendiente(s) de revisión.`}
           </Typography>
         </Box>
@@ -714,8 +644,7 @@ const AiInsightsPage = () => {
               {STATUS_OPTIONS.map(option => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
-                  {counters[option.value] !== undefined &&
-                    ` (${counters[option.value]})`}
+                  {counters[option.value] !== undefined && ` (${counters[option.value]})`}
                 </MenuItem>
               ))}
             </TextField>
@@ -750,13 +679,8 @@ const AiInsightsPage = () => {
           <CircularProgress />
         </Box>
       ) : items.length === 0 ? (
-        <Paper
-          variant="outlined"
-          sx={{ p: 6, borderRadius: 3, textAlign: 'center' }}
-        >
-          <Typography color="text.secondary">
-            No hay insights para este filtro.
-          </Typography>
+        <Paper variant="outlined" sx={{ p: 6, borderRadius: 3, textAlign: 'center' }}>
+          <Typography color="text.secondary">No hay insights para este filtro.</Typography>
         </Paper>
       ) : (
         <Stack spacing={2}>
@@ -791,9 +715,7 @@ const AiInsightsPage = () => {
             minRows={3}
             label="Motivo (opcional)"
             value={dismissDialog?.reason || ''}
-            onChange={e =>
-              setDismissDialog(prev => ({ ...prev, reason: e.target.value }))
-            }
+            onChange={e => setDismissDialog(prev => ({ ...prev, reason: e.target.value }))}
             inputProps={{ maxLength: 500 }}
           />
         </DialogContent>
@@ -821,8 +743,7 @@ const AiInsightsPage = () => {
           ) : (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Revisá y editá el mensaje antes de enviarlo — nada sale sin
-                confirmar acá.
+                Revisá y editá el mensaje antes de enviarlo — nada sale sin confirmar acá.
               </Typography>
               <TextField
                 fullWidth
@@ -884,8 +805,8 @@ const AiInsightsPage = () => {
           ) : (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Esto ajusta las reglas de recuperación de carrito que ya tenés
-                activas — nada se aplica hasta que confirmes.
+                Esto ajusta las reglas de recuperación de carrito que ya tenés activas — nada se
+                aplica hasta que confirmes.
               </Typography>
 
               {reinforcementDialog?.plans?.length > 0 && (
@@ -901,26 +822,21 @@ const AiInsightsPage = () => {
                   <TableBody>
                     {reinforcementDialog.plans.map(plan => (
                       <TableRow key={plan.ruleId}>
+                        <TableCell>{CHANNEL_LABEL[plan.channel] || plan.channel}</TableCell>
                         <TableCell>
-                          {CHANNEL_LABEL[plan.channel] || plan.channel}
-                        </TableCell>
-                        <TableCell>
-                          {plan.changed &&
-                          plan.before.maxAttempts !== plan.after.maxAttempts
+                          {plan.changed && plan.before.maxAttempts !== plan.after.maxAttempts
                             ? `${plan.before.maxAttempts} → ${plan.after.maxAttempts}`
                             : plan.before.maxAttempts}
                         </TableCell>
                         <TableCell>
                           {plan.changed &&
-                          plan.before.minCartAmountCents !==
-                            plan.after.minCartAmountCents
+                          plan.before.minCartAmountCents !== plan.after.minCartAmountCents
                             ? `$${(plan.before.minCartAmountCents / 100).toFixed(0)} → $${(plan.after.minCartAmountCents / 100).toFixed(0)}`
                             : `$${(plan.before.minCartAmountCents / 100).toFixed(0)}`}
                         </TableCell>
                         <TableCell>
                           {plan.changed &&
-                          plan.before.useAiPersonalization !==
-                            plan.after.useAiPersonalization
+                          plan.before.useAiPersonalization !== plan.after.useAiPersonalization
                             ? 'Desactivada → Activada'
                             : plan.before.useAiPersonalization
                               ? 'Activada'
@@ -932,13 +848,11 @@ const AiInsightsPage = () => {
                 </Table>
               )}
 
-              {!reinforcementDialog?.loading &&
-                !reinforcementDialog?.hasChanges && (
-                  <Alert severity="info" sx={{ mt: 2 }}>
-                    La configuración de recuperación ya está al máximo — no hay
-                    nada para reforzar.
-                  </Alert>
-                )}
+              {!reinforcementDialog?.loading && !reinforcementDialog?.hasChanges && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  La configuración de recuperación ya está al máximo — no hay nada para reforzar.
+                </Alert>
+              )}
 
               {reinforcementDialog?.error && (
                 <Alert severity="error" sx={{ mt: 2 }}>
@@ -986,24 +900,22 @@ const AiInsightsPage = () => {
           ) : priceReductionDialog?.plan ? (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Precio actual: ${priceReductionDialog.plan.currentPrice} ·
-                sugerencia: -{priceReductionDialog.plan.reductionPct}%. Podés
-                editar el precio final antes de confirmar — nada se aplica hasta
-                que lo hagas.
+                Precio actual: ${priceReductionDialog.plan.currentPrice} · sugerencia: -
+                {priceReductionDialog.plan.reductionPct}%. Podés editar el precio final antes de
+                confirmar — nada se aplica hasta que lo hagas.
               </Typography>
 
               {priceReductionDialog.plan.cappedByCost && (
                 <Alert severity="warning" sx={{ mb: 2 }}>
-                  La sugerencia se limitó para no vender por debajo del costo
-                  cargado (${priceReductionDialog.plan.costFloor}).
+                  La sugerencia se limitó para no vender por debajo del costo cargado ($
+                  {priceReductionDialog.plan.costFloor}).
                 </Alert>
               )}
 
               {priceReductionDialog.plan.hasVariants && (
                 <Alert severity="info" sx={{ mb: 2 }}>
-                  Este producto tiene {priceReductionDialog.plan.variantCount}{' '}
-                  variante(s) — el nuevo precio se aplica proporcionalmente a
-                  todas las que estén activas.
+                  Este producto tiene {priceReductionDialog.plan.variantCount} variante(s) — el
+                  nuevo precio se aplica proporcionalmente a todas las que estén activas.
                 </Alert>
               )}
 

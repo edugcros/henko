@@ -125,18 +125,8 @@ const normalizeTypography = value => {
         ...source,
         size: clamp(source.size, DEFAULT_HEADINGS[key].size, 14, 72),
         weight: clamp(source.weight, DEFAULT_HEADINGS[key].weight, 300, 950),
-        lineHeight: clamp(
-          source.lineHeight,
-          DEFAULT_HEADINGS[key].lineHeight,
-          0.9,
-          2,
-        ),
-        letterSpacing: clamp(
-          source.letterSpacing,
-          DEFAULT_HEADINGS[key].letterSpacing,
-          -2,
-          2,
-        ),
+        lineHeight: clamp(source.lineHeight, DEFAULT_HEADINGS[key].lineHeight, 0.9, 2),
+        letterSpacing: clamp(source.letterSpacing, DEFAULT_HEADINGS[key].letterSpacing, -2, 2),
         transform: source.transform || DEFAULT_HEADINGS[key].transform,
       }
       return acc
@@ -160,15 +150,7 @@ const SettingGroupComponents = ({ title, caption, children }) => (
   </Paper>
 )
 
-const RangeControlComponents = ({
-  label,
-  value,
-  min,
-  max,
-  step,
-  suffix = '',
-  onChange,
-}) => (
+const RangeControlComponents = ({ label, value, min, max, step, suffix = '', onChange }) => (
   <Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between">
       <Typography variant="body2" fontWeight={700}>
@@ -266,10 +248,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
         </Paper>
       )}
 
-      <SettingGroupComponents
-        title="Fuentes"
-        caption="Elegí una fuente por rol de lectura."
-      >
+      <SettingGroupComponents title="Fuentes" caption="Elegí una fuente por rol de lectura.">
         <Stack spacing={1.25}>
           <FontSelectComponents
             label="Texto general"
@@ -284,9 +263,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
           <FontSelectComponents
             label="Texto auxiliar"
             value={typography.secondaryFont}
-            onChange={nextValue =>
-              updateTypography({ secondaryFont: nextValue })
-            }
+            onChange={nextValue => updateTypography({ secondaryFont: nextValue })}
           />
         </Stack>
       </SettingGroupComponents>
@@ -367,13 +344,8 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
             >
               Nueva colección
             </Typography>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: 'block', mt: 0.5 }}
-            >
-              {selectedHeading.toUpperCase()} · {heading.size}px · peso{' '}
-              {heading.weight}
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {selectedHeading.toUpperCase()} · {heading.size}px · peso {heading.weight}
             </Typography>
           </Paper>
 
@@ -385,13 +357,9 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
                 type="number"
                 label="Tamaño"
                 value={heading.size}
-                onChange={event =>
-                  updateHeading('size', Number(event.target.value))
-                }
+                onChange={event => updateHeading('size', Number(event.target.value))}
                 InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">px</InputAdornment>
-                  ),
+                  endAdornment: <InputAdornment position="end">px</InputAdornment>,
                 }}
               />
             </Grid>
@@ -402,9 +370,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
                 type="number"
                 label="Peso"
                 value={heading.weight}
-                onChange={event =>
-                  updateHeading('weight', Number(event.target.value))
-                }
+                onChange={event => updateHeading('weight', Number(event.target.value))}
                 inputProps={{ min: 300, max: 950, step: 50 }}
               />
             </Grid>
@@ -445,10 +411,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
         </Stack>
       </SettingGroupComponents>
 
-      <SettingGroupComponents
-        title="Texto auxiliar"
-        caption="Captions, metadatos y ayudas."
-      >
+      <SettingGroupComponents title="Texto auxiliar" caption="Captions, metadatos y ayudas.">
         <Grid container spacing={1.25}>
           <Grid item xs={6}>
             <TextField
@@ -457,13 +420,9 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               type="number"
               label="Tamaño"
               value={typography.secondary.size}
-              onChange={event =>
-                updateSecondary('size', Number(event.target.value))
-              }
+              onChange={event => updateSecondary('size', Number(event.target.value))}
               InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">px</InputAdornment>
-                ),
+                endAdornment: <InputAdornment position="end">px</InputAdornment>,
               }}
             />
           </Grid>
@@ -474,9 +433,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               type="number"
               label="Peso"
               value={typography.secondary.weight}
-              onChange={event =>
-                updateSecondary('weight', Number(event.target.value))
-              }
+              onChange={event => updateSecondary('weight', Number(event.target.value))}
               inputProps={{ min: 300, max: 900, step: 50 }}
             />
           </Grid>
@@ -498,9 +455,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               max={2}
               step={0.1}
               suffix="px"
-              onChange={nextValue =>
-                updateSecondary('letterSpacing', nextValue)
-              }
+              onChange={nextValue => updateSecondary('letterSpacing', nextValue)}
             />
           </Grid>
         </Grid>
@@ -525,8 +480,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               lineHeight: typography.lineHeight,
             }}
           >
-            Producto destacado con una descripción clara, precio y llamada a la
-            acción.
+            Producto destacado con una descripción clara, precio y llamada a la acción.
           </Typography>
           <Typography
             sx={{

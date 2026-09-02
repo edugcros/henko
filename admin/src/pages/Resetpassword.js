@@ -106,21 +106,12 @@ const Resetpassword = () => {
           >
             Restablecer contraseña
           </Typography>
-          <Typography
-            variant="body2"
-            align="center"
-            color="text.secondary"
-            sx={{ mb: 3 }}
-          >
+          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
             Elegí tu nueva contraseña.
           </Typography>
 
           {result.done ? (
-            <Typography
-              align="center"
-              color="success.main"
-              sx={{ fontSize: '0.9rem' }}
-            >
+            <Typography align="center" color="success.main" sx={{ fontSize: '0.9rem' }}>
               Contraseña restablecida correctamente. Te redirigimos al login...
             </Typography>
           ) : (
@@ -147,13 +138,8 @@ const Resetpassword = () => {
                 variant="outlined"
                 margin="normal"
                 {...formik.getFieldProps('confirmPassword')}
-                error={
-                  formik.touched.confirmPassword &&
-                  Boolean(formik.errors.confirmPassword)
-                }
-                helperText={
-                  formik.touched.confirmPassword && formik.errors.confirmPassword
-                }
+                error={formik.touched.confirmPassword && Boolean(formik.errors.confirmPassword)}
+                helperText={formik.touched.confirmPassword && formik.errors.confirmPassword}
               />
 
               <Button
@@ -179,11 +165,7 @@ const Resetpassword = () => {
               </Button>
 
               {result.error && (
-                <Typography
-                  color="error"
-                  align="center"
-                  sx={{ mt: 2, fontSize: '0.875rem' }}
-                >
+                <Typography color="error" align="center" sx={{ mt: 2, fontSize: '0.875rem' }}>
                   {result.error}
                 </Typography>
               )}

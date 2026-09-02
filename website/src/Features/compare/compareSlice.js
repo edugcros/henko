@@ -29,6 +29,5 @@ const compareSlice = createSlice({
   },
 })
 
-export const { addToCompare, removeFromCompare, clearCompare } =
-  compareSlice.actions
+export const { addToCompare, removeFromCompare, clearCompare } = compareSlice.actions
 export default compareSlice.reducer

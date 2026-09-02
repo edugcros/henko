@@ -1,7 +1,6 @@
 // 📁 src/features/promotionalBlocks/promotionalBlocksSelectors.js
 
-export const selectPromotionalBlocksState = state =>
-  state.promotionalBlocks || {}
+export const selectPromotionalBlocksState = state => state.promotionalBlocks || {}
 
 export const selectPublicPromotionalBlocks = state =>
   selectPromotionalBlocksState(state).publicBlocks || []

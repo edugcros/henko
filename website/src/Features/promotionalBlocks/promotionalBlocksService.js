@@ -8,10 +8,7 @@ const getTenantDomain = () => {
   return window.location.host
 }
 
-const extractErrorMessage = (
-  error,
-  fallback = 'Error en Promotional Blocks',
-) => {
+const extractErrorMessage = (error, fallback = 'Error en Promotional Blocks') => {
   const data = error?.response?.data
 
   if (typeof data === 'string') return data
@@ -28,12 +25,7 @@ const extractErrorMessage = (
   return error?.message || fallback
 }
 
-const apiRequest = async (
-  method,
-  endpoint = '',
-  data = undefined,
-  options = {},
-) => {
+const apiRequest = async (method, endpoint = '', data = undefined, options = {}) => {
   try {
     const csrfToken = await fetchCsrfToken()
 
@@ -51,9 +43,7 @@ const apiRequest = async (
     const headers = {
       Accept: 'application/json',
       ...(includeCsrf && csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(includeTenantDomain && tenantDomain
-        ? { 'X-Tenant-Domain': tenantDomain }
-        : {}),
+      ...(includeTenantDomain && tenantDomain ? { 'X-Tenant-Domain': tenantDomain } : {}),
       ...customHeaders,
     }
 

@@ -41,8 +41,7 @@ export const COLOR_ROLE_GROUPS = [
       {
         key: 'primary',
         label: 'Marca primaria',
-        appliesTo:
-          'Acentos de marca, recursos editoriales y detalles de identidad.',
+        appliesTo: 'Acentos de marca, recursos editoriales y detalles de identidad.',
       },
       {
         key: 'secondary',
@@ -52,8 +51,7 @@ export const COLOR_ROLE_GROUPS = [
       {
         key: 'accent',
         label: 'Acento',
-        appliesTo:
-          'Énfasis puntual, destacados visuales e iconografía editorial.',
+        appliesTo: 'Énfasis puntual, destacados visuales e iconografía editorial.',
       },
     ],
   },
@@ -71,8 +69,7 @@ export const COLOR_ROLE_GROUPS = [
       {
         key: 'surface',
         label: 'Superficie base',
-        appliesTo:
-          'Bloques genéricos del layout, modales y superficies no especializadas.',
+        appliesTo: 'Bloques genéricos del layout, modales y superficies no especializadas.',
       },
       {
         key: 'text',
@@ -128,8 +125,7 @@ export const COLOR_ROLE_GROUPS = [
       {
         key: 'cardBackground',
         label: 'Card fondo',
-        appliesTo:
-          'Fondo de cards de producto, paneles laterales y bloques elevados.',
+        appliesTo: 'Fondo de cards de producto, paneles laterales y bloques elevados.',
       },
       {
         key: 'cardText',
@@ -189,8 +185,7 @@ export const COLOR_ROLE_GROUPS = [
   {
     id: 'commerce',
     title: 'Ecommerce',
-    description:
-      'Señales comerciales del catálogo. Deben quedar separadas de acciones y layout.',
+    description: 'Señales comerciales del catálogo. Deben quedar separadas de acciones y layout.',
     fields: [
       {
         key: 'price',
@@ -217,8 +212,7 @@ export const COLOR_ROLE_GROUPS = [
   {
     id: 'feedback',
     title: 'Estados',
-    description:
-      'Feedback del sistema: validación, éxito, error, advertencia e información.',
+    description: 'Feedback del sistema: validación, éxito, error, advertencia e información.',
     fields: [
       {
         key: 'success',

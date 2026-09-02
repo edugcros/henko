@@ -1,13 +1,5 @@
 import React from 'react'
-import {
-  Box,
-  Typography,
-  TextField,
-  Paper,
-  Grid,
-  Switch,
-  FormControlLabel,
-} from '@mui/material'
+import { Box, Typography, TextField, Paper, Grid, Switch, FormControlLabel } from '@mui/material'
 import ImageUploader from '@components/ImageUploader'
 
 const SOCIAL_PLATFORMS = [

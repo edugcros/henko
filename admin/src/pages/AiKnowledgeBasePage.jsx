@@ -100,13 +100,7 @@ const KnowledgeCard = ({ item, busy, onEdit, onApprove, onArchive }) => {
         flexWrap="wrap"
       >
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            flexWrap="wrap"
-            mb={1}
-          >
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" mb={1}>
             <Chip size="small" label={typeMeta.label} color={typeMeta.color} />
             <Chip
               size="small"
@@ -140,12 +134,7 @@ const KnowledgeCard = ({ item, busy, onEdit, onApprove, onArchive }) => {
           </Typography>
 
           {Array.isArray(item.tags) && item.tags.length > 0 && (
-            <Stack
-              direction="row"
-              spacing={0.5}
-              flexWrap="wrap"
-              sx={{ mt: 1.5 }}
-            >
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 1.5 }}>
               {item.tags.map(tag => (
                 <Chip key={tag} size="small" variant="outlined" label={tag} />
               ))}
@@ -252,8 +241,7 @@ const AiKnowledgeBasePage = () => {
     load()
   }, [load])
 
-  const flash = (message, severity = 'success') =>
-    setSnackbar({ open: true, severity, message })
+  const flash = (message, severity = 'success') => setSnackbar({ open: true, severity, message })
 
   const openCreateDialog = () => {
     setFormData(EMPTY_FORM)
@@ -305,10 +293,7 @@ const AiKnowledgeBasePage = () => {
       setFormDialog(null)
       load()
     } catch (err) {
-      flash(
-        err?.response?.data?.message || err?.message || 'Error al guardar.',
-        'error',
-      )
+      flash(err?.response?.data?.message || err?.message || 'Error al guardar.', 'error')
     } finally {
       setSaving(false)
     }
@@ -323,10 +308,7 @@ const AiKnowledgeBasePage = () => {
         flash('Conocimiento aprobado.')
         load()
       } catch (err) {
-        flash(
-          err?.response?.data?.message || err?.message || 'Error al aprobar.',
-          'error',
-        )
+        flash(err?.response?.data?.message || err?.message || 'Error al aprobar.', 'error')
       } finally {
         setBusyId(null)
       }
@@ -343,10 +325,7 @@ const AiKnowledgeBasePage = () => {
         flash('Conocimiento archivado.')
         load()
       } catch (err) {
-        flash(
-          err?.response?.data?.message || err?.message || 'Error al archivar.',
-          'error',
-        )
+        flash(err?.response?.data?.message || err?.message || 'Error al archivar.', 'error')
       } finally {
         setBusyId(null)
       }
@@ -377,8 +356,7 @@ const AiKnowledgeBasePage = () => {
             </Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            FAQs, políticas, hints de producto y scripts que el agente usa para
-            responder.
+            FAQs, políticas, hints de producto y scripts que el agente usa para responder.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
@@ -451,10 +429,7 @@ const AiKnowledgeBasePage = () => {
           <CircularProgress />
         </Box>
       ) : items.length === 0 ? (
-        <Paper
-          variant="outlined"
-          sx={{ p: 5, textAlign: 'center', borderRadius: 3 }}
-        >
+        <Paper variant="outlined" sx={{ p: 5, textAlign: 'center', borderRadius: 3 }}>
           <Typography color="text.secondary">
             No se encontró conocimiento con estos filtros.
           </Typography>
@@ -472,13 +447,8 @@ const AiKnowledgeBasePage = () => {
             />
           ))}
           {meta.totalPages > 1 && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              textAlign="center"
-            >
-              Mostrando {items.length} de {meta.total} (página {meta.page} de{' '}
-              {meta.totalPages})
+            <Typography variant="caption" color="text.secondary" textAlign="center">
+              Mostrando {items.length} de {meta.total} (página {meta.page} de {meta.totalPages})
             </Typography>
           )}
         </Stack>
@@ -499,9 +469,7 @@ const AiKnowledgeBasePage = () => {
               label="Título"
               fullWidth
               value={formData.title}
-              onChange={e =>
-                setFormData(prev => ({ ...prev, title: e.target.value }))
-              }
+              onChange={e => setFormData(prev => ({ ...prev, title: e.target.value }))}
               inputProps={{ maxLength: 200 }}
             />
             <TextField
@@ -511,18 +479,14 @@ const AiKnowledgeBasePage = () => {
               minRows={3}
               maxRows={10}
               value={formData.content}
-              onChange={e =>
-                setFormData(prev => ({ ...prev, content: e.target.value }))
-              }
+              onChange={e => setFormData(prev => ({ ...prev, content: e.target.value }))}
               inputProps={{ maxLength: 10000 }}
             />
             <TextField
               select
               label="Tipo"
               value={formData.type}
-              onChange={e =>
-                setFormData(prev => ({ ...prev, type: e.target.value }))
-              }
+              onChange={e => setFormData(prev => ({ ...prev, type: e.target.value }))}
             >
               {Object.entries(TYPE_META).map(([value, meta]) => (
                 <MenuItem key={value} value={value}>
@@ -534,9 +498,7 @@ const AiKnowledgeBasePage = () => {
               label="Tags (separados por coma)"
               fullWidth
               value={formData.tags}
-              onChange={e =>
-                setFormData(prev => ({ ...prev, tags: e.target.value }))
-              }
+              onChange={e => setFormData(prev => ({ ...prev, tags: e.target.value }))}
               placeholder="envío, devolución, talle"
             />
           </Stack>

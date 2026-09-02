@@ -41,9 +41,7 @@ const assertApiBaseUrl = () => {
   if (env.isProduction) {
     const url = String(env.apiBaseUrl)
     if (/localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(url)) {
-      throw new Error(
-        `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
-      )
+      throw new Error(`REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`)
     }
   }
 }
@@ -114,9 +112,7 @@ const getAttributionForHeader = () => {
       return current
     }
 
-    const stored = JSON.parse(
-      window.localStorage.getItem(ATTRIBUTION_KEY) || 'null',
-    )
+    const stored = JSON.parse(window.localStorage.getItem(ATTRIBUTION_KEY) || 'null')
     if (!stored || Date.now() > Number(stored.expiresAt || 0)) return null
 
     return stored.value || null
@@ -126,9 +122,7 @@ const getAttributionForHeader = () => {
 }
 
 const isSafeMethod = method => {
-  return ['get', 'head', 'options'].includes(
-    String(method || 'get').toLowerCase(),
-  )
+  return ['get', 'head', 'options'].includes(String(method || 'get').toLowerCase())
 }
 
 const shouldAttachCsrf = requestConfig => {
@@ -308,19 +302,14 @@ api.interceptors.request.use(
       }
     }
 
-    const metricSessionId = requestConfig.skipMetricSession
-      ? null
-      : getMetricSessionId()
+    const metricSessionId = requestConfig.skipMetricSession ? null : getMetricSessionId()
     if (metricSessionId) {
       requestConfig.headers['x-metric-session-id'] = metricSessionId
     }
 
-    const attribution = requestConfig.skipMetricSession
-      ? null
-      : getAttributionForHeader()
+    const attribution = requestConfig.skipMetricSession ? null : getAttributionForHeader()
     if (attribution && Object.values(attribution).some(Boolean)) {
-      requestConfig.headers['x-metric-attribution'] =
-        JSON.stringify(attribution)
+      requestConfig.headers['x-metric-attribution'] = JSON.stringify(attribution)
     }
 
     const fbc = Cookies.get('_fbc')
@@ -413,14 +402,9 @@ api.interceptors.response.use(
     // =====================================================
 
     const isCsrfError =
-      status === 403 &&
-      (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
+      status === 403 && (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
 
-    if (
-      isCsrfError &&
-      !originalRequest._csrfRetry &&
-      !originalRequest.skipCsrfRetry
-    ) {
+    if (isCsrfError && !originalRequest._csrfRetry && !originalRequest.skipCsrfRetry) {
       originalRequest._csrfRetry = true
 
       clearCsrfToken()

@@ -49,12 +49,7 @@ const statusColors = {
 const Enquiries = () => {
   const dispatch = useDispatch()
 
-  const {
-    enquiries,
-    isLoading,
-    isSuccess,
-    message: msg,
-  } = useSelector(state => state.enquiry)
+  const { enquiries, isLoading, isSuccess, message: msg } = useSelector(state => state.enquiry)
   // Estados para modales
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [replyOpen, setReplyOpen] = useState(false)
@@ -126,9 +121,7 @@ const Enquiries = () => {
       })
   }
 
-  const enquiryList = Array.isArray(enquiries)
-    ? enquiries
-    : enquiries?.data || []
+  const enquiryList = Array.isArray(enquiries) ? enquiries : enquiries?.data || []
   const totalEnquiries = enquiryList.length
   const inProgress = enquiryList.filter(e => e.status === 'In Progress').length
   const resolved = enquiryList.filter(e => e.status === 'Resolved').length
@@ -169,16 +162,8 @@ const Enquiries = () => {
               border: '1px solid #ddd',
             }}
           />
-          <Chip
-            label={`En Proceso: ${inProgress}`}
-            color="warning"
-            sx={{ fontWeight: 'bold' }}
-          />
-          <Chip
-            label={`Resueltas: ${resolved}`}
-            color="success"
-            sx={{ fontWeight: 'bold' }}
-          />
+          <Chip label={`En Proceso: ${inProgress}`} color="warning" sx={{ fontWeight: 'bold' }} />
+          <Chip label={`Resueltas: ${resolved}`} color="success" sx={{ fontWeight: 'bold' }} />
         </Stack>
       </Stack>
 
@@ -313,11 +298,7 @@ const Enquiries = () => {
                       minHeight: 60,
                     }}
                   >
-                    <Typography
-                      variant="body2"
-                      color="#455a64"
-                      sx={{ fontStyle: 'italic' }}
-                    >
+                    <Typography variant="body2" color="#455a64" sx={{ fontStyle: 'italic' }}>
                       "{enquiry.comment}"
                     </Typography>
                   </Box>
@@ -330,9 +311,7 @@ const Enquiries = () => {
                   >
                     <Select
                       value={enquiry.status || 'Submitted'}
-                      onChange={e =>
-                        handleStatusChange(enquiry, e.target.value)
-                      }
+                      onChange={e => handleStatusChange(enquiry, e.target.value)}
                       size="small"
                       sx={{
                         borderRadius: 2,
@@ -348,11 +327,7 @@ const Enquiries = () => {
                     </Select>
 
                     <Chip
-                      label={
-                        enquiry.status === 'Submitted'
-                          ? 'Nueva'
-                          : enquiry.status
-                      }
+                      label={enquiry.status === 'Submitted' ? 'Nueva' : enquiry.status}
                       size="small"
                       color={statusColors[enquiry.status] || 'default'}
                       sx={{ fontWeight: 'bold' }}
@@ -386,10 +361,7 @@ const Enquiries = () => {
           <Typography variant="caption" color="text.secondary" gutterBottom>
             Consulta original:
           </Typography>
-          <Typography
-            variant="body2"
-            sx={{ mb: 3, p: 2, bgcolor: '#f0f4f8', borderRadius: 2 }}
-          >
+          <Typography variant="body2" sx={{ mb: 3, p: 2, bgcolor: '#f0f4f8', borderRadius: 2 }}>
             "{selectedEnquiry?.comment}"
           </Typography>
           <TextField

@@ -9,34 +9,29 @@ import couponPublicApi from '../../services/couponApi.public'
 // createCoupon en particular apuntaba a un método que couponService.js ni
 // siquiera exportaba (TypeError si alguna vez se hubiera dispatchado). Se
 // eliminan junto con couponService.js.
-export const applyCoupon = createAsyncThunk(
-  'coupon/apply',
-  async (couponData, thunkAPI) => {
-    try {
-      const result = await couponPublicApi.validate(couponData.code, {
-        items: couponData.items,
-        subtotal: couponData.subtotal,
-        userId: couponData.userId,
-      })
+export const applyCoupon = createAsyncThunk('coupon/apply', async (couponData, thunkAPI) => {
+  try {
+    const result = await couponPublicApi.validate(couponData.code, {
+      items: couponData.items,
+      subtotal: couponData.subtotal,
+      userId: couponData.userId,
+    })
 
-      if (!result) {
-        throw new Error('No se recibió respuesta del servidor')
-      }
-
-      if (result.valid === false || result.success === false) {
-        return thunkAPI.rejectWithValue(result.message || 'Cupón no válido')
-      }
-
-      return result
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message ||
-          error.message ||
-          'Error al aplicar cupón',
-      )
+    if (!result) {
+      throw new Error('No se recibió respuesta del servidor')
     }
-  },
-)
+
+    if (result.valid === false || result.success === false) {
+      return thunkAPI.rejectWithValue(result.message || 'Cupón no válido')
+    }
+
+    return result
+  } catch (error) {
+    return thunkAPI.rejectWithValue(
+      error.response?.data?.message || error.message || 'Error al aplicar cupón',
+    )
+  }
+})
 
 export const resetCouponState = createAction('coupon/reset-state')
 

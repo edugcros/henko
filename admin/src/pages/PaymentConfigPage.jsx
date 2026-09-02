@@ -24,10 +24,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
 } from '@mui/icons-material'
-import {
-  getPaymentConfig,
-  updatePaymentConfig,
-} from '../services/paymentConfigService.js'
+import { getPaymentConfig, updatePaymentConfig } from '../services/paymentConfigService.js'
 
 const MODE_OPTIONS = [
   { value: 'test', label: 'Test (sandbox)' },
@@ -114,10 +111,7 @@ const PaymentConfigPage = () => {
     load()
   }, [load])
 
-  const setField = useCallback(
-    (key, value) => setForm(prev => ({ ...prev, [key]: value })),
-    [],
-  )
+  const setField = useCallback((key, value) => setForm(prev => ({ ...prev, [key]: value })), [])
 
   const handleSave = useCallback(async () => {
     if (!form) return
@@ -134,9 +128,7 @@ const PaymentConfigPage = () => {
     } catch (err) {
       console.error('[PAYMENT_CONFIG_SAVE_ERROR]', err)
       setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          'No se pudo guardar la configuración.',
+        err?.response?.data?.message || err?.message || 'No se pudo guardar la configuración.',
       )
     } finally {
       setSaving(false)
@@ -145,12 +137,7 @@ const PaymentConfigPage = () => {
 
   if (loading) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="60vh"
-      >
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
         <CircularProgress />
       </Box>
     )
@@ -159,10 +146,7 @@ const PaymentConfigPage = () => {
   if (!form) {
     return (
       <Box p={3}>
-        <Alert
-          severity="error"
-          action={<Button onClick={load}>Reintentar</Button>}
-        >
+        <Alert severity="error" action={<Button onClick={load}>Reintentar</Button>}>
           {error || 'No se pudo cargar la configuración.'}
         </Alert>
       </Box>
@@ -193,13 +177,7 @@ const PaymentConfigPage = () => {
         <Button
           variant="contained"
           size="large"
-          startIcon={
-            saving ? (
-              <CircularProgress size={18} color="inherit" />
-            ) : (
-              <SaveIcon />
-            )
-          }
+          startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
           onClick={handleSave}
           disabled={saving}
           sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
@@ -221,12 +199,7 @@ const PaymentConfigPage = () => {
           icon={<PaymentIcon color="primary" />}
         >
           <Stack spacing={2.5}>
-            <Stack
-              direction="row"
-              spacing={2}
-              alignItems="center"
-              flexWrap="wrap"
-            >
+            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
               <FormControlLabel
                 control={
                   <Switch
@@ -234,11 +207,7 @@ const PaymentConfigPage = () => {
                     onChange={e => setField('isEnabled', e.target.checked)}
                   />
                 }
-                label={
-                  form.isEnabled
-                    ? 'Mercado Pago activado'
-                    : 'Mercado Pago desactivado'
-                }
+                label={form.isEnabled ? 'Mercado Pago activado' : 'Mercado Pago desactivado'}
               />
               {form.hasAccessToken ? (
                 <Chip
@@ -259,8 +228,7 @@ const PaymentConfigPage = () => {
               )}
               {form.connectedAt && (
                 <Typography variant="caption" color="text.secondary">
-                  Conectado:{' '}
-                  {new Date(form.connectedAt).toLocaleDateString('es-AR')}
+                  Conectado: {new Date(form.connectedAt).toLocaleDateString('es-AR')}
                 </Typography>
               )}
             </Stack>
@@ -321,20 +289,18 @@ const PaymentConfigPage = () => {
           <Typography variant="body2" color="text.secondary" component="div">
             <ol style={{ paddingLeft: 20, margin: 0 }}>
               <li>
-                Ingresá a <strong>mercadopago.com.ar/developers</strong> con tu
-                cuenta de Mercado Pago.
+                Ingresá a <strong>mercadopago.com.ar/developers</strong> con tu cuenta de Mercado
+                Pago.
               </li>
               <li>
-                Creá una aplicación (o usá una existente) en{' '}
-                <strong>Tus integraciones</strong>.
+                Creá una aplicación (o usá una existente) en <strong>Tus integraciones</strong>.
               </li>
               <li>
-                En <strong>Credenciales de producción</strong> (o de test) copiá
-                la <em>Public Key</em> y el <em>Access Token</em>.
+                En <strong>Credenciales de producción</strong> (o de test) copiá la{' '}
+                <em>Public Key</em> y el <em>Access Token</em>.
               </li>
               <li>
-                Pegá ambos valores en los campos de arriba y seleccioná el modo
-                correspondiente.
+                Pegá ambos valores en los campos de arriba y seleccioná el modo correspondiente.
               </li>
               <li>Activá el switch y guardá los cambios.</li>
             </ol>
@@ -354,13 +320,7 @@ const PaymentConfigPage = () => {
           <Button
             variant="contained"
             size="large"
-            startIcon={
-              saving ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <SaveIcon />
-              )
-            }
+            startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
             onClick={handleSave}
             disabled={saving}
             sx={{ borderRadius: 2, textTransform: 'none', px: 4 }}
