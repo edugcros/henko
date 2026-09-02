@@ -9,6 +9,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -73,6 +74,8 @@ const getId = item => item?._id || item?.id || ''
 const SuggestionCard = ({
   suggestion,
   busy,
+  selected,
+  onToggleSelect,
   onApprove,
   onReject,
   onArchive,
@@ -82,7 +85,15 @@ const SuggestionCard = ({
   const confidencePct = Math.round(Number(suggestion.confidence || 0) * 100)
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2.5,
+        borderRadius: 3,
+        borderColor: selected ? 'primary.main' : undefined,
+        bgcolor: selected ? 'action.selected' : undefined,
+      }}
+    >
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -90,6 +101,14 @@ const SuggestionCard = ({
         spacing={2}
         flexWrap="wrap"
       >
+        {isPending && (
+          <Checkbox
+            checked={selected}
+            onChange={() => onToggleSelect(suggestion)}
+            disabled={busy}
+            sx={{ mt: -1, ml: -1.5 }}
+          />
+        )}
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Stack
             direction="row"
@@ -232,6 +251,13 @@ const AiLearningReviewPage = () => {
   const [approveDialog, setApproveDialog] = useState(null)
   const [rejectDialog, setRejectDialog] = useState(null)
 
+  // Selección múltiple: solo tiene sentido sobre pendientes — aprobar/
+  // rechazar/archivar ya aprobadas o rechazadas no es una acción válida (ver
+  // isPending en SuggestionCard, que solo muestra las acciones ahí).
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkRejectDialog, setBulkRejectDialog] = useState(null)
+
   const params = useMemo(
     () => ({
       status,
@@ -266,8 +292,113 @@ const AiLearningReviewPage = () => {
     load()
   }, [load])
 
+  // Cambiar de filtro cambia qué items están en pantalla — una selección
+  // hecha con otro filtro ya no tiene sentido acá.
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [params])
+
   const notify = (severity, message) =>
     setSnackbar({ open: true, severity, message })
+
+  const pendingItems = useMemo(
+    () => items.filter(item => item.status === 'pending_review'),
+    [items],
+  )
+
+  const allPendingSelected =
+    pendingItems.length > 0 &&
+    pendingItems.every(item => selectedIds.has(getId(item)))
+
+  const toggleSelect = useCallback(suggestion => {
+    const id = getId(suggestion)
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleSelectAllPending = useCallback(() => {
+    setSelectedIds(prev => {
+      const allSelected =
+        pendingItems.length > 0 &&
+        pendingItems.every(item => prev.has(getId(item)))
+      if (allSelected) return new Set()
+      return new Set(pendingItems.map(getId))
+    })
+  }, [pendingItems])
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
+
+  // Promise.allSettled, no Promise.all: si una sugerencia falla (ej. otro
+  // admin la tocó mientras tanto), el resto de la tanda igual se aplica —
+  // reporta cuántas salieron bien y cuántas no en vez de perder todo el lote
+  // por una sola falla.
+  const runBulkAction = useCallback(
+    async (ids, actionFn, successVerb) => {
+      if (!ids.length) return
+      setBulkBusy(true)
+      setError('')
+      try {
+        const results = await Promise.allSettled(ids.map(id => actionFn(id)))
+        const succeeded = results.filter(r => r.status === 'fulfilled').length
+        const failed = results.length - succeeded
+
+        if (failed === 0) {
+          notify('success', `${succeeded} sugerencia(s) ${successVerb}.`)
+        } else if (succeeded === 0) {
+          notify('error', `No se pudo completar la acción en ninguna (${failed}).`)
+        } else {
+          notify(
+            'warning',
+            `${succeeded} ${successVerb}, ${failed} falló(aron) — revisá la lista.`,
+          )
+        }
+
+        clearSelection()
+        await load()
+      } finally {
+        setBulkBusy(false)
+      }
+    },
+    [clearSelection, load],
+  )
+
+  const handleBulkApprove = useCallback(() => {
+    // Sin overrides de title/content/tags: el backend usa lo que ya trae
+    // cada sugerencia (mismo comportamiento que "Aprobar" individual sin
+    // editar nada en el diálogo).
+    runBulkAction(
+      [...selectedIds],
+      id => approveLearningSuggestion(id),
+      'aprobada(s) y convertida(s) en conocimiento',
+    )
+  }, [selectedIds, runBulkAction])
+
+  const openBulkReject = useCallback(() => {
+    setBulkRejectDialog({ reason: '' })
+  }, [])
+
+  const confirmBulkReject = useCallback(async () => {
+    const dialog = bulkRejectDialog
+    if (!dialog) return
+    setBulkRejectDialog(null)
+    await runBulkAction(
+      [...selectedIds],
+      id => rejectLearningSuggestion(id, clean(dialog.reason)),
+      'rechazada(s)',
+    )
+  }, [bulkRejectDialog, selectedIds, runBulkAction])
+
+  const handleBulkArchive = useCallback(() => {
+    runBulkAction(
+      [...selectedIds],
+      id => archiveLearningSuggestion(id),
+      'archivada(s)',
+    )
+  }, [selectedIds, runBulkAction])
 
   const runAction = useCallback(
     async (id, action, successMessage) => {
@@ -436,6 +567,72 @@ const AiLearningReviewPage = () => {
         </Alert>
       )}
 
+      {pendingItems.length > 0 && (
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 1.5,
+            borderRadius: 3,
+            mb: 2,
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 1,
+          }}
+        >
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: 1 }}>
+            <Checkbox
+              checked={allPendingSelected}
+              indeterminate={selectedIds.size > 0 && !allPendingSelected}
+              onChange={toggleSelectAllPending}
+              disabled={bulkBusy}
+            />
+            <Typography variant="body2" color="text.secondary">
+              {selectedIds.size > 0
+                ? `${selectedIds.size} seleccionada(s)`
+                : `Seleccionar las ${pendingItems.length} pendiente(s) visibles`}
+            </Typography>
+          </Stack>
+
+          {selectedIds.size > 0 && (
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                startIcon={<CheckCircleIcon />}
+                disabled={bulkBusy}
+                onClick={handleBulkApprove}
+              >
+                Aprobar
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                startIcon={<CancelIcon />}
+                disabled={bulkBusy}
+                onClick={openBulkReject}
+              >
+                Rechazar
+              </Button>
+              <Button
+                size="small"
+                variant="text"
+                startIcon={<ArchiveIcon />}
+                disabled={bulkBusy}
+                onClick={handleBulkArchive}
+              >
+                Archivar
+              </Button>
+              <Button size="small" onClick={clearSelection} disabled={bulkBusy}>
+                Cancelar
+              </Button>
+            </Stack>
+          )}
+        </Paper>
+      )}
+
       {loading ? (
         <Box display="flex" justifyContent="center" py={6}>
           <CircularProgress />
@@ -455,7 +652,9 @@ const AiLearningReviewPage = () => {
             <SuggestionCard
               key={getId(suggestion)}
               suggestion={suggestion}
-              busy={busyId === getId(suggestion)}
+              busy={busyId === getId(suggestion) || bulkBusy}
+              selected={selectedIds.has(getId(suggestion))}
+              onToggleSelect={toggleSelect}
               onApprove={openApprove}
               onReject={openReject}
               onArchive={handleArchive}
@@ -547,6 +746,41 @@ const AiLearningReviewPage = () => {
           <Button onClick={() => setRejectDialog(null)}>Cancelar</Button>
           <Button variant="contained" color="error" onClick={confirmReject}>
             Rechazar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rechazar en lote: un motivo compartido para todas las seleccionadas */}
+      <Dialog
+        open={Boolean(bulkRejectDialog)}
+        onClose={() => setBulkRejectDialog(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Rechazar {selectedIds.size} sugerencia(s)
+        </DialogTitle>
+        <DialogContent>
+          <Divider sx={{ mb: 2 }} />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            El motivo se aplica a todas las sugerencias seleccionadas.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={3}
+            label="Motivo (opcional)"
+            value={bulkRejectDialog?.reason || ''}
+            onChange={e =>
+              setBulkRejectDialog(prev => ({ ...prev, reason: e.target.value }))
+            }
+            inputProps={{ maxLength: 500 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setBulkRejectDialog(null)}>Cancelar</Button>
+          <Button variant="contained" color="error" onClick={confirmBulkReject}>
+            Rechazar {selectedIds.size}
           </Button>
         </DialogActions>
       </Dialog>
