@@ -221,6 +221,7 @@ const csrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/user/register` },
   { method: 'POST', path: `${env.apiPrefix}/user/register-admin` },
 
+  { method: 'POST', path: `${env.apiPrefix}/metrics/events`},
   { method: 'POST', path: `${env.apiPrefix}/user/forgot-password` },
   { method: 'PUT', path: `${env.apiPrefix}/user/reset-password` },
 
