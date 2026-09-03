@@ -80,10 +80,10 @@ const formatMoney = (cents, currency = 'ARS') => {
 
 const MetricCard = ({ label, value, color, suffix }) => (
   <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, height: '100%' }}>
-    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
       {label}
     </Typography>
-    <Typography variant="h4" fontWeight={900} sx={{ mt: 0.5, color }}>
+    <Typography variant="h4" sx={{ fontWeight: 900, mt: 0.5, color }}>
       {typeof value === 'number' ? value.toLocaleString('es-AR') : value}
       {suffix && (
         <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
@@ -96,11 +96,11 @@ const MetricCard = ({ label, value, color, suffix }) => (
 
 const RateCard = ({ label, value, color }) => (
   <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, height: '100%' }}>
-    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
       {label}
     </Typography>
-    <Stack direction="row" alignItems="baseline" spacing={0.5} sx={{ mt: 0.5 }}>
-      <Typography variant="h4" fontWeight={900} sx={{ color }}>
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline', mt: 0.5 }}>
+      <Typography variant="h4" sx={{ fontWeight: 900, color }}>
         {value}
       </Typography>
       <Typography variant="body2" color="text.secondary">
@@ -122,7 +122,7 @@ const LeadFunnel = ({ leads }) => {
   ]
 
   return (
-    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
       {stages.map(stage => (
         <Tooltip key={stage.key} title={stage.label}>
           <Chip
@@ -239,15 +239,15 @@ const AiAgentDashboardPage = () => {
       {/* Header */}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ sm: 'center' }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }} 
+        
         spacing={2}
-        mb={3}
+        
       >
         <Box>
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
             <InsightsIcon color="primary" />
-            <Typography variant="h4" fontWeight={800}>
+            <Typography variant="h4" sx={{ fontWeight: 800 }}>
               Agente IA · Panel
             </Typography>
           </Stack>
@@ -288,10 +288,10 @@ const AiAgentDashboardPage = () => {
       )}
 
       {/* Conversation metrics */}
-      <Typography variant="overline" color="text.secondary" fontWeight={700}>
+      <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>
         Conversaciones
       </Typography>
-      <Grid container spacing={2} mb={3} mt={0.5}>
+      <Grid container spacing={2} sx={{ mb: 3, mt: 0.5 }}>
         <Grid xs={6} sm={4} md={2.4}>
           <MetricCard label="Total" value={conv.total || 0} color="primary.main" />
         </Grid>
@@ -318,10 +318,10 @@ const AiAgentDashboardPage = () => {
       </Grid>
 
       {/* Lead metrics */}
-      <Typography variant="overline" color="text.secondary" fontWeight={700}>
+      <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>
         Leads
       </Typography>
-      <Grid container spacing={2} mb={1} mt={0.5}>
+      <Grid container spacing={2} sx={{ mb: 1, mt: 0.5 }}>
         <Grid xs={6} sm={4} md={3}>
           <MetricCard label="Total leads" value={leads.total || 0} color="primary.main" />
         </Grid>
@@ -345,10 +345,10 @@ const AiAgentDashboardPage = () => {
       </Box>
 
       {/* Cart recovery metrics */}
-      <Typography variant="overline" color="text.secondary" fontWeight={700}>
+      <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700 }}>
         Recuperación de carritos
       </Typography>
-      <Grid container spacing={2} mb={3} mt={0.5}>
+      <Grid container spacing={2} sx={{ mb: 3, mt: 0.5 }}>
         <Grid xs={6} sm={3}>
           <MetricCard label="Intentos" value={recovery.total || 0} color="primary.main" />
         </Grid>
@@ -373,19 +373,19 @@ const AiAgentDashboardPage = () => {
 
       {/* Agent tester */}
       <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, mb: 3 }}>
-        <Stack direction="row" spacing={1.5} alignItems="center" mb={0.5}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
           <SmartToyIcon color="primary" />
-          <Typography variant="h6" fontWeight={700}>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Probar el agente
           </Typography>
         </Stack>
-        <Typography variant="body2" color="text.secondary" mb={2}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Escribí como si fueras un cliente. El agente responde con su configuración actual, sin
           necesidad de WhatsApp.
         </Typography>
         <Divider sx={{ mb: 2.5 }} />
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-start">
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: 'flex-start' }}>
           <TextField
             fullWidth
             multiline
@@ -426,7 +426,7 @@ const AiAgentDashboardPage = () => {
             <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
               {testResult.reply || '(sin respuesta)'}
             </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1.5 }}>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', mt: 1.5 }}>
               {testResult.intent && (
                 <Chip size="small" variant="outlined" label={`Intención: ${testResult.intent}`} />
               )}
@@ -450,14 +450,14 @@ const AiAgentDashboardPage = () => {
         <Box sx={{ p: 2.5, pb: 1.5 }}>
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
-            justifyContent="space-between"
-            alignItems={{ sm: 'center' }}
+            sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }} 
+            
             spacing={1}
           >
             <Box>
-              <Stack direction="row" spacing={1} alignItems="center">
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                 <TrendingUpIcon color="primary" fontSize="small" />
-                <Typography variant="h6" fontWeight={700}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
                   Detalle de recuperación
                 </Typography>
               </Stack>
@@ -503,7 +503,7 @@ const AiAgentDashboardPage = () => {
                 return (
                   <TableRow key={item._id || item.id} hover>
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {item.customer?.name || 'Sin nombre'}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -551,10 +551,10 @@ const AiAgentDashboardPage = () => {
         {recoveryPagination.pages > 1 && (
           <Stack
             direction="row"
-            justifyContent="flex-end"
-            alignItems="center"
+            
+            
             spacing={1}
-            sx={{ p: 1.5, borderTop: '1px solid', borderColor: 'divider' }}
+            sx={{ justifyContent: 'flex-end', alignItems: 'center', p: 1.5, borderTop: '1px solid', borderColor: 'divider' }}
           >
             <Typography variant="caption" color="text.secondary">
               {recoveryPagination.page} / {recoveryPagination.pages}

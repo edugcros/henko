@@ -76,7 +76,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
         <>
           {/* ===================== CONTENT ===================== */}
           <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
               Contenido
             </Typography>
 
@@ -105,7 +105,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
 
           {/* ===================== LAYOUT ===================== */}
           <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
               Layout
             </Typography>
 
@@ -146,7 +146,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
 
           {/* ===================== CTA ===================== */}
           <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
               Call To Action
             </Typography>
 
@@ -161,7 +161,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
             />
 
             {hero.showCta !== false && (
-              <Grid container spacing={2} mt={1}>
+              <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid xs={12} md={6}>
                   <TextField
                     fullWidth
@@ -185,7 +185,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
 
           {/* ===================== MEDIA ===================== */}
           <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
               Imagen & Overlay
             </Typography>
 
@@ -196,7 +196,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
               label="Imagen"
             />
 
-            <Box mt={3}>
+            <Box sx={{ mt: 3 }}>
               <Typography variant="caption">
                 Overlay ({Math.round((hero.overlayOpacity ?? 0.3) * 100)}%)
               </Typography>
@@ -214,7 +214,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
 
           {/* ===================== PREVIEW ===================== */}
           <Paper sx={{ p: 3 }}>
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
               Preview
             </Typography>
 

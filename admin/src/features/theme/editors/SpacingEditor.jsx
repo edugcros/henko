@@ -76,7 +76,7 @@ const SpacingEditor = ({ value, onChange }) => {
                 }}
               >
                 <Box>
-                  <Typography variant="subtitle2" fontWeight={600}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                     {label}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">

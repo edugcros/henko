@@ -155,10 +155,10 @@ const StatCard = ({ title, value, icon, color, onClick, active }) => (
   >
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <Box>
-        <Typography variant="caption" color="text.secondary" fontWeight={500}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
           {title}
         </Typography>
-        <Typography variant="h5" fontWeight={700} color={color}>
+        <Typography variant="h5" sx={{ fontWeight: 700 }} color={color}>
           {value}
         </Typography>
       </Box>
@@ -506,10 +506,10 @@ const Productlist = () => {
   }
 
   return (
-    <Box p={3}>
+    <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Typography variant="h4" fontWeight={700}>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
             Productos
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -527,7 +527,7 @@ const Productlist = () => {
         </Button>
       </Box>
 
-      <Stack direction="row" spacing={2} mb={3} sx={{ flexWrap: 'wrap', gap: 2 }}>
+      <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <StatCard
           title="Total"
           value={stats.total}
@@ -577,7 +577,7 @@ const Productlist = () => {
       </Stack>
 
       <Card sx={{ mb: 3, p: 2, borderRadius: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: 'center' }}>
           <TextField
             fullWidth
             size="small"
@@ -626,7 +626,7 @@ const Productlist = () => {
             </Select>
           </FormControl>
 
-          <Box flex={1} />
+          <Box sx={{ flex: 1 }}/>
 
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <Select
@@ -716,7 +716,7 @@ const Productlist = () => {
                       </Avatar>
 
                       <Box>
-                        <Typography variant="subtitle2" fontWeight={600}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                           {product.title || 'Sin título'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
@@ -728,7 +728,7 @@ const Productlist = () => {
                   </TableCell>
 
                   <TableCell>
-                    <Typography variant="body2" fontFamily="monospace" color="text.secondary">
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }} color="text.secondary">
                       {getProductSku(product)}
                     </Typography>
                   </TableCell>
@@ -750,7 +750,7 @@ const Productlist = () => {
                   </TableCell>
 
                   <TableCell>
-                    <Typography variant="subtitle2" fontWeight={600}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                       {formatPrice(product.price)}
                     </Typography>
                   </TableCell>
@@ -759,8 +759,8 @@ const Productlist = () => {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Typography
                         variant="body2"
-                        fontWeight={700}
-                        fontSize="1rem"
+                        sx={{ fontWeight: 700, fontSize: '1rem' }} 
+                        
                         color={
                           stock === 0
                             ? 'error.main'
@@ -934,7 +934,7 @@ const Productlist = () => {
         <DialogTitle sx={{ pb: 1 }}>Editar stock</DialogTitle>
 
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" mb={2}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {stockDialog.product?.title}
           </Typography>
 

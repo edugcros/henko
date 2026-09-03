@@ -137,7 +137,7 @@ const normalizeTypography = value => {
 const SettingGroupComponents = ({ title, caption, children }) => (
   <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.25 }}>
     <Stack spacing={0.25} sx={{ mb: 1.5 }}>
-      <Typography variant="subtitle2" fontWeight={850}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
         {title}
       </Typography>
       {caption && (
@@ -152,8 +152,8 @@ const SettingGroupComponents = ({ title, caption, children }) => (
 
 const RangeControlComponents = ({ label, value, min, max, step, suffix = '', onChange }) => (
   <Box>
-    <Stack direction="row" alignItems="center" justifyContent="space-between">
-      <Typography variant="body2" fontWeight={700}>
+    <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+      <Typography variant="body2" sx={{ fontWeight: 700 }}>
         {label}
       </Typography>
       <Typography variant="caption" color="text.secondary">
@@ -239,7 +239,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
             borderColor: alpha(muiTheme.palette.primary.main, 0.18),
           }}
         >
-          <Typography variant="subtitle2" fontWeight={850}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
             Tipografía
           </Typography>
           <Typography variant="caption" color="text.secondary">

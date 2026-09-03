@@ -174,14 +174,14 @@ const toPayload = form => {
 const SectionCard = ({ title, subtitle, icon, children }) => (
   <Card variant="outlined" sx={{ borderRadius: 3 }}>
     <CardContent>
-      <Stack direction="row" spacing={1.5} alignItems="center" mb={0.5}>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
         {icon}
-        <Typography variant="h6" fontWeight={700}>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {title}
         </Typography>
       </Stack>
       {subtitle && (
-        <Typography variant="body2" color="text.secondary" mb={2}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {subtitle}
         </Typography>
       )}
@@ -265,7 +265,7 @@ const AiAgentConfigPage = () => {
 
   if (!form) {
     return (
-      <Box p={3}>
+      <Box sx={{ p: 3 }}>
         <Alert severity="error" action={<Button onClick={load}>Reintentar</Button>}>
           {error || 'No se pudo cargar la configuración.'}
         </Alert>
@@ -277,13 +277,13 @@ const AiAgentConfigPage = () => {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 980, mx: 'auto' }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ sm: 'center' }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }} 
+        
         spacing={2}
-        mb={3}
+        
       >
         <Box>
-          <Typography variant="h4" fontWeight={800}>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>
             Agente IA · Configuración
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -324,7 +324,7 @@ const AiAgentConfigPage = () => {
                 inputProps={{ maxLength: 100 }}
               />
             </Grid>
-            <Grid xs={12} sm={5} display="flex" alignItems="center">
+            <Grid xs={12} sm={5} sx={{ display: 'flex', alignItems: 'center' }}>
               <FormControlLabel
                 control={
                   <Switch

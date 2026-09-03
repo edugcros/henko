@@ -423,9 +423,9 @@ const AdminRegister = () => {
             <Box sx={{ textAlign: 'center', mb: 5 }}>
               <Typography
                 variant="h3"
-                fontWeight={900}
+
                 color="primary"
-                sx={{ letterSpacing: '-2px', mb: 1 }}
+                sx={{ fontWeight: 900, letterSpacing: '-2px', mb: 1 }}
               >
                 henko
               </Typography>
@@ -433,8 +433,8 @@ const AdminRegister = () => {
               <Typography
                 variant="h6"
                 color="text.secondary"
-                fontWeight={500}
-                sx={{ opacity: 0.8 }}
+
+                sx={{ fontWeight: 500, opacity: 0.8 }}
               >
                 Creá tu tienda online
               </Typography>
@@ -472,7 +472,7 @@ const AdminRegister = () => {
                 >
                   <Stack direction="row" spacing={1} sx={{ mb: 2, color: '#94a3b8' }}>
                     <Terminal sx={{ fontSize: 20 }} />
-                    <Typography variant="caption" fontWeight={800} sx={{ letterSpacing: 1 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 1 }}>
                       DOMINIOS CREADOS
                     </Typography>
                   </Stack>

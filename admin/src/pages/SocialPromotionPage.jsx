@@ -103,14 +103,14 @@ const SocialPromotionPage = () => {
   }
 
   return (
-    <Box p={{ xs: 2, md: 4 }} maxWidth={760} mx="auto">
-      <Stack direction="row" spacing={1.5} alignItems="center" mb={0.5}>
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 760, mx: 'auto' }}>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
         <InstagramIcon color="primary" fontSize="large" />
-        <Typography variant="h4" fontWeight={700}>
+        <Typography variant="h4" sx={{ fontWeight: 700 }}>
           Redes sociales
         </Typography>
       </Stack>
-      <Typography variant="body2" color="text.secondary" mb={4}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
         Elegí un producto y generá un caption con hashtags listo para copiar y postear en Instagram.
         No publica nada automáticamente — revisás el texto y lo subís vos desde tu cuenta.
       </Typography>
@@ -134,7 +134,7 @@ const SocialPromotionPage = () => {
           />
 
           {selectedProduct && (
-            <Stack direction="row" spacing={2} alignItems="center" mt={2.5}>
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mt: 2.5 }}>
               {getMainImage(selectedProduct) ? (
                 <Box
                   component="img"
@@ -151,8 +151,8 @@ const SocialPromotionPage = () => {
                   }}
                 />
               ) : null}
-              <Box flex={1} overflow="hidden">
-                <Typography variant="subtitle1" fontWeight={600} noWrap>
+              <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }} noWrap>
                   {selectedProduct.title}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -188,8 +188,11 @@ const SocialPromotionPage = () => {
       {result && (
         <Card variant="outlined" sx={{ borderRadius: 3 }}>
           <CardContent>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6" fontWeight={700}>
+            <Stack
+              direction="row"
+              sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
+            >
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 Contenido generado
               </Typography>
               <Tooltip title="Regenerar">
@@ -217,7 +220,7 @@ const SocialPromotionPage = () => {
               />
             )}
 
-            <Typography variant="caption" color="text.secondary" fontWeight={700}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
               CAPTION
             </Typography>
             <TextField
@@ -229,7 +232,7 @@ const SocialPromotionPage = () => {
               sx={{ mt: 0.5, mb: 1.5 }}
             />
 
-            <Stack direction="row" justifyContent="flex-end" mb={2.5}>
+            <Stack direction="row" sx={{ justifyContent: 'flex-end', mb: 2.5 }}>
               <Button
                 size="small"
                 startIcon={<ContentCopyIcon fontSize="small" />}
@@ -240,16 +243,21 @@ const SocialPromotionPage = () => {
               </Button>
             </Stack>
 
-            <Typography variant="caption" color="text.secondary" fontWeight={700}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
               HASHTAGS
             </Typography>
-            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap mt={1} mb={2.5}>
+            <Stack
+              direction="row"
+              spacing={0.75}
+              sx={{ flexWrap: 'wrap', mt: 1, mb: 2.5 }}
+              useFlexGap
+            >
               {(result.hashtags || []).map(tag => (
                 <Chip key={tag} label={`#${tag}`} size="small" />
               ))}
             </Stack>
 
-            <Stack direction="row" spacing={1.5} justifyContent="flex-end">
+            <Stack direction="row" spacing={1.5} sx={{ justifyContent: 'flex-end' }}>
               <Button
                 size="small"
                 startIcon={<ContentCopyIcon fontSize="small" />}

@@ -96,10 +96,9 @@ const SuggestionCard = ({
     >
       <Stack
         direction="row"
-        justifyContent="space-between"
-        alignItems="flex-start"
+        sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}
+
         spacing={2}
-        flexWrap="wrap"
       >
         {isPending && (
           <Checkbox
@@ -110,7 +109,7 @@ const SuggestionCard = ({
           />
         )}
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" mb={1}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
             <Chip size="small" label={typeMeta.label} color={typeMeta.color} />
             {suggestion.priority && (
               <Chip
@@ -126,7 +125,7 @@ const SuggestionCard = ({
             )}
           </Stack>
 
-          <Typography variant="subtitle1" fontWeight={700}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
             {suggestion.title || suggestion.question || 'Sugerencia sin título'}
           </Typography>
 
@@ -153,7 +152,7 @@ const SuggestionCard = ({
           )}
 
           {Array.isArray(suggestion.tags) && suggestion.tags.length > 0 && (
-            <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 1.5 }}>
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', mt: 1.5 }}>
               {suggestion.tags.map(tag => (
                 <Chip key={tag} size="small" variant="outlined" label={tag} />
               ))}
@@ -440,15 +439,14 @@ const AiLearningReviewPage = () => {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 980, mx: 'auto' }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ sm: 'center' }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+
         spacing={2}
-        mb={3}
       >
         <Box>
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
             <SchoolIcon color="primary" />
-            <Typography variant="h4" fontWeight={800}>
+            <Typography variant="h4" sx={{ fontWeight: 800 }}>
               Aprendizaje del agente
             </Typography>
           </Stack>
@@ -469,7 +467,7 @@ const AiLearningReviewPage = () => {
       </Stack>
 
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
+        <Grid container spacing={2} sx={{ alignItems: 'center' }}>
           <Grid xs={12} sm={4}>
             <TextField
               select
@@ -535,7 +533,7 @@ const AiLearningReviewPage = () => {
             gap: 1,
           }}
         >
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: 1 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flex: 1 }}>
             <Checkbox
               checked={allPendingSelected}
               indeterminate={selectedIds.size > 0 && !allPendingSelected}
@@ -550,7 +548,7 @@ const AiLearningReviewPage = () => {
           </Stack>
 
           {selectedIds.size > 0 && (
-            <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
               <Button
                 size="small"
                 variant="contained"

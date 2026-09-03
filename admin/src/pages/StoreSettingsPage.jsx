@@ -55,14 +55,14 @@ const toForm = data => ({
 const SectionCard = ({ title, subtitle, icon, children }) => (
   <Card variant="outlined" sx={{ borderRadius: 3 }}>
     <CardContent>
-      <Stack direction="row" spacing={1.5} alignItems="center" mb={0.5}>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
         {icon}
-        <Typography variant="h6" fontWeight={700}>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {title}
         </Typography>
       </Stack>
       {subtitle && (
-        <Typography variant="body2" color="text.secondary" mb={2}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {subtitle}
         </Typography>
       )}
@@ -83,11 +83,11 @@ const SectionCard = ({ title, subtitle, icon, children }) => (
  */
 const EmailPreview = ({ fromName, fromAddress, replyTo }) => (
   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
-    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
       ASÍ LO VE TU CLIENTE
     </Typography>
 
-    <Stack spacing={0.5} mt={1}>
+    <Stack spacing={0.5} sx={{ mt: 1 }}>
       <Typography variant="body2" color="text.primary">
         <strong>De:</strong> {fromName || 'Tu comercio'} &lt;{fromAddress}&gt;
       </Typography>
@@ -175,7 +175,7 @@ const StoreSettingsPage = () => {
 
   if (isLoading && !form) {
     return (
-      <Stack alignItems="center" py={6}>
+      <Stack sx={{ alignItems: 'center', py: 6 }}>
         <CircularProgress />
       </Stack>
     )
@@ -193,10 +193,10 @@ const StoreSettingsPage = () => {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 900, mx: 'auto' }}>
-      <Typography variant="h5" fontWeight={900} mb={0.5}>
+      <Typography variant="h5" sx={{ fontWeight: 900, mb: 0.5 }}>
         Configuración del comercio
       </Typography>
-      <Typography variant="body2" color="text.secondary" mb={3}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Los datos con los que tu tienda se presenta y por los que te contactan.
       </Typography>
 
@@ -264,7 +264,7 @@ const StoreSettingsPage = () => {
 
             <Grid xs={12}>
               <Divider sx={{ mb: 2 }} />
-              <Typography variant="subtitle2" fontWeight={700} mb={1}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                 Enviar desde tu propio dominio
               </Typography>
               <SendingDomainSection onIdentityChange={setEmailIdentity} />

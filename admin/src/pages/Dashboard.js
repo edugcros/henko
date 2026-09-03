@@ -478,21 +478,21 @@ const ProductThumbnail = ({ image, title, fallback }) => (
 
 const PageInsightItem = ({ item }) => (
   <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2 }}>
-    <Stack direction="row" spacing={1.25} alignItems="center">
+    <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
       <ProductThumbnail
         image={item.image}
         title={item.title}
         fallback={item.isProductPage ? 'PR' : 'PG'}
       />
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography variant="body2" fontWeight={800} noWrap title={item.title}>
+        <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap title={item.title}>
           {item.title}
         </Typography>
         <Typography variant="caption" color="text.secondary" noWrap title={item.path}>
           {item.isProductPage ? 'Producto visitado' : item.path}
         </Typography>
       </Box>
-      <Stack spacing={0.5} alignItems="flex-end" sx={{ flexShrink: 0 }}>
+      <Stack spacing={0.5} sx={{ alignItems: 'flex-end', flexShrink: 0 }}>
         <Chip size="small" label={`${formatNumber(item.views)} vistas`} />
         {item.sessions > 0 && (
           <Typography variant="caption" color="text.secondary">
@@ -506,10 +506,10 @@ const PageInsightItem = ({ item }) => (
 
 const SearchInsightItem = ({ item }) => (
   <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2 }}>
-    <Stack direction="row" spacing={1.25} alignItems="center">
+    <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
       <ProductThumbnail image={item.image} title={item.title} fallback="BQ" />
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography variant="body2" fontWeight={800} noWrap title={item.title}>
+        <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap title={item.title}>
           {item.title}
         </Typography>
         <Typography variant="caption" color="text.secondary" noWrap title={item.query}>
@@ -597,7 +597,7 @@ const normalizeTopProductRows = rows => {
 
 const DashboardSectionTitle = ({ title, description }) => (
   <Box sx={{ mb: 2.5 }}>
-    <Stack direction="row" alignItems="center" spacing={1}>
+    <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
       <Box
         sx={{
           width: 4,
@@ -606,7 +606,7 @@ const DashboardSectionTitle = ({ title, description }) => (
           background: KPI_GRADIENTS.revenue,
         }}
       />
-      <Typography variant="h6" fontWeight={800} sx={{ letterSpacing: -0.3 }}>
+      <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: -0.3 }}>
         {title}
       </Typography>
     </Stack>
@@ -634,21 +634,21 @@ const KpiCard = ({ title, value, icon: Icon, color, description, trend, gradient
     }}
   >
     <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-      <Stack direction="row" spacing={2} alignItems="flex-start" justifyContent="space-between">
+      <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography
             variant="body2"
             color="text.secondary"
-            fontWeight={600}
-            sx={{ mb: 0.5, letterSpacing: 0.3 }}
+            
+            sx={{ fontWeight: 600, mb: 0.5, letterSpacing: 0.3 }}
           >
             {title}
           </Typography>
-          <Typography variant="h4" fontWeight={900} sx={{ lineHeight: 1.2 }}>
+          <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1.2 }}>
             {value}
           </Typography>
           {trend !== undefined && trend !== null && Number(trend) !== 0 && (
-            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1 }}>
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mt: 1 }}>
               <TrendIcon
                 sx={{
                   fontSize: 16,
@@ -658,7 +658,7 @@ const KpiCard = ({ title, value, icon: Icon, color, description, trend, gradient
               />
               <Typography
                 variant="caption"
-                fontWeight={700}
+                sx={{ fontWeight: 700 }} 
                 color={Number(trend) >= 0 ? 'success.main' : 'error.main'}
               >
                 {Number(trend) > 0 ? '+' : ''}
@@ -707,7 +707,7 @@ const EmptyState = ({ message }) => (
     >
       <AnalyticsIcon sx={{ fontSize: 24, color: 'text.disabled' }} />
     </Box>
-    <Typography variant="body2" color="text.secondary" fontWeight={500}>
+    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
       {message}
     </Typography>
   </Box>
@@ -730,13 +730,13 @@ const BarTooltip = ({ active, payload, label, formatter }) => {
       <Typography
         variant="caption"
         color="text.secondary"
-        fontWeight={600}
-        sx={{ mb: 0.5, display: 'block' }}
+        
+        sx={{ fontWeight: 600, mb: 0.5, display: 'block' }}
       >
         {label}
       </Typography>
       {payload.map(item => (
-        <Stack key={item.dataKey} direction="row" spacing={1} alignItems="center" sx={{ py: 0.25 }}>
+        <Stack key={item.dataKey} direction="row" spacing={1} sx={{ alignItems: 'center', py: 0.25 }}>
           <Box
             sx={{
               width: 8,
@@ -745,7 +745,7 @@ const BarTooltip = ({ active, payload, label, formatter }) => {
               bgcolor: item.fill || item.color,
             }}
           />
-          <Typography variant="body2" fontWeight={600}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
             {item.name || item.dataKey}:{' '}
             {formatter ? formatter(item.value, item.dataKey) : formatNumber(item.value)}
           </Typography>
@@ -937,13 +937,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         />
         <Stack
           direction={{ xs: 'column', md: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ xs: 'stretch', md: 'center' }}
+          
+          
           spacing={2}
-          sx={{ position: 'relative', zIndex: 1 }}
+          sx={{ justifyContent: 'space-between', alignItems: { xs: 'stretch', md: 'center' }, position: 'relative', zIndex: 1 }}
         >
           <Box>
-            <Typography variant="h5" fontWeight={900} sx={{ letterSpacing: -0.5 }}>
+            <Typography variant="h5" sx={{ fontWeight: 900, letterSpacing: -0.5 }}>
               Panel de control
             </Typography>
             <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.5 }}>
@@ -951,7 +951,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             </Typography>
           </Box>
 
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
             <Select
               size="small"
               value={days}
@@ -1594,9 +1594,9 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                     .slice(0, 6)
                     .map(cart => (
                       <Paper key={cart.cartId} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                        <Stack direction="row" justifyContent="space-between" spacing={2}>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between' }} spacing={2}>
                           <Box sx={{ minWidth: 0 }}>
-                            <Typography variant="body2" fontWeight={800} noWrap>
+                            <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap>
                               Carrito #{String(cart.cartId || '').slice(-6)}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
@@ -1604,7 +1604,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                               {new Date(cart.updatedAt).toLocaleString('es-AR')}
                             </Typography>
                           </Box>
-                          <Typography variant="body2" fontWeight={900}>
+                          <Typography variant="body2" sx={{ fontWeight: 900 }}>
                             {formatMoney(cart.value)}
                           </Typography>
                         </Stack>
@@ -1636,7 +1636,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
               />
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
                     Productos o páginas más vistas
                   </Typography>
                   <Stack spacing={1}>
@@ -1650,7 +1650,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                   </Stack>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
                     Búsquedas frecuentes
                   </Typography>
                   <Stack spacing={1}>
@@ -1847,9 +1847,9 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
         }}
       >
         <CardContent>
-          <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+          <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
             <Box>
-              <Typography variant="h6" fontWeight={800}>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
                 Estado de conexión
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -1869,7 +1869,7 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
           </Stack>
 
           {status?.configured && (
-            <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap">
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', mt: 2 }}>
               <Chip
                 size="small"
                 label={`Measurement ID: ${status.measurementId || 'configurado'}`}
@@ -1904,12 +1904,12 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
         <CardContent>
           <Stack
             direction={{ xs: 'column', md: 'row' }}
-            justifyContent="space-between"
+            
             spacing={2}
-            sx={{ mb: 3 }}
+            sx={{ justifyContent: 'space-between', mb: 3 }}
           >
             <Box>
-              <Typography variant="h6" fontWeight={800}>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
                 <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
                 Configuración GA4
               </Typography>
@@ -1972,8 +1972,8 @@ const AnalyticsConfigView = ({ onConfigurationSuccess }) => {
               }}
               onClick={() => setShowJsonDialog(true)}
             >
-              <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-                <Stack direction="row" spacing={1} alignItems="center">
+              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }} spacing={2}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                   {formData.serviceAccountJson ? (
                     isJsonValid ? (
                       <CheckIcon color="success" />

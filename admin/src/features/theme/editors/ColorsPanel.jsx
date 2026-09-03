@@ -94,7 +94,7 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange, sectionM
     <Box>
       {sectionMeta?.appliesTo && (
         <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
-          <Typography variant="subtitle2" fontWeight={600}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
             {sectionMeta.label || 'Colores'}
           </Typography>
           <Typography variant="caption" color="text.secondary">

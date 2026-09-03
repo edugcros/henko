@@ -114,8 +114,8 @@ const UsageProgress = ({ count, limit }) => {
 
   return (
     <Box sx={{ minWidth: 120 }}>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
-        <Typography variant="caption" fontWeight="bold">
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+        <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
           {count}
           {limit ? ` / ${limit}` : ' usos'}
         </Typography>
@@ -145,7 +145,7 @@ const ProductSummary = ({ products = [] }) => {
   const extraCount = visibleProducts.length - 1
 
   return (
-    <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 220 }}>
+    <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', minWidth: 220 }}>
       <AvatarGroup
         max={3}
         sx={{
@@ -175,10 +175,15 @@ const ProductSummary = ({ products = [] }) => {
       </AvatarGroup>
 
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="body2" fontWeight={700} noWrap title={getProductTitle(firstProduct)}>
+        <Typography
+          variant="body2"
+          sx={{ fontWeight: 700 }}
+          noWrap
+          title={getProductTitle(firstProduct)}
+        >
           {getProductTitle(firstProduct)}
         </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap display="block">
+        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
           {extraCount > 0
             ? `+${extraCount} producto${extraCount === 1 ? '' : 's'} más`
             : firstProduct?.sku || 'Producto asignado'}
@@ -343,7 +348,7 @@ const CouponList = ({
                 }}
               >
                 <TableCell>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
                     <Typography
                       variant="body2"
                       component="code"
@@ -367,16 +372,16 @@ const CouponList = ({
                   <Typography
                     variant="caption"
                     color="text.secondary"
-                    display="block"
+
                     noWrap
-                    sx={{ maxWidth: 200, mt: 0.5 }}
+                    sx={{ display: 'block', maxWidth: 200, mt: 0.5 }}
                   >
                     {coupon.description || 'Sin descripción'}
                   </Typography>
                 </TableCell>
 
                 <TableCell>
-                  <Typography variant="body2" fontWeight="bold">
+                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                     {coupon.discountType === 'percentage'
                       ? `${coupon.discountValue}%`
                       : `$${coupon.discountValue}`}
@@ -389,10 +394,10 @@ const CouponList = ({
                 </TableCell>
 
                 <TableCell>
-                  <Typography variant="caption" display="block">
+                  <Typography variant="caption" sx={{ display: 'block' }}>
                     Desde: {formatDate(coupon.startDate)}
                   </Typography>
-                  <Typography variant="caption" display="block">
+                  <Typography variant="caption" sx={{ display: 'block' }}>
                     Hasta: {formatDate(coupon.endDate)}
                   </Typography>
                 </TableCell>
@@ -433,9 +438,10 @@ const CouponList = ({
       {/* Footer / Pagination */}
       <Stack
         direction="row"
-        justifyContent="space-between"
-        alignItems="center"
+
         sx={{
+          justifyContent: 'space-between',
+          alignItems: 'center',
           p: 2,
           borderTop: '1px solid',
           borderColor: 'divider',

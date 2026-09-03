@@ -88,13 +88,12 @@ const RuleCard = ({ rule, busy, onEdit, onDelete }) => {
     <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
       <Stack
         direction="row"
-        justifyContent="space-between"
-        alignItems="flex-start"
+        sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}
+
         spacing={2}
-        flexWrap="wrap"
       >
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" mb={1}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
             <Chip size="small" label={typeLabel} color={TYPE_COLOR[rule.type] || 'default'} />
             <Chip size="small" variant="outlined" label={channelLabel} />
             <Chip
@@ -113,7 +112,7 @@ const RuleCard = ({ rule, busy, onEdit, onDelete }) => {
             )}
           </Stack>
 
-          <Typography variant="subtitle1" fontWeight={700}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
             {rule.name || 'Sin nombre'}
           </Typography>
 
@@ -130,7 +129,7 @@ const RuleCard = ({ rule, busy, onEdit, onDelete }) => {
             {rule.messageTemplate}
           </Typography>
 
-          <Stack direction="row" spacing={2} sx={{ mt: 1.5 }} flexWrap="wrap">
+          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', mt: 1.5 }}>
             <Typography variant="caption" color="text.secondary">
               Delay: {rule.trigger?.delayMinutes || 30} min
             </Typography>
@@ -307,15 +306,14 @@ const AiCampaignRulesPage = () => {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1080, mx: 'auto' }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ sm: 'center' }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+
         spacing={2}
-        mb={3}
       >
         <Box>
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
             <CampaignIcon color="primary" />
-            <Typography variant="h4" fontWeight={800}>
+            <Typography variant="h4" sx={{ fontWeight: 800 }}>
               Reglas de campaña
             </Typography>
           </Stack>
@@ -451,7 +449,7 @@ const AiCampaignRulesPage = () => {
             />
 
             <Divider />
-            <Typography variant="subtitle2" fontWeight={700}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               Trigger
             </Typography>
 
@@ -529,7 +527,7 @@ const AiCampaignRulesPage = () => {
             />
 
             <Divider />
-            <Typography variant="subtitle2" fontWeight={700}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               Template de WhatsApp (fuera de ventana 24h)
             </Typography>
 
@@ -563,7 +561,7 @@ const AiCampaignRulesPage = () => {
             )}
 
             <Divider />
-            <Typography variant="subtitle2" fontWeight={700}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               Oferta / Cupón
             </Typography>
 

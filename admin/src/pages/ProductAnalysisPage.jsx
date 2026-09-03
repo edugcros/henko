@@ -207,14 +207,14 @@ const formatCountdown = ms => {
 
 const StatCard = ({ label, value, color = 'text.primary', hint }) => (
   <Paper variant="outlined" sx={{ px: 2, py: 1.5, borderRadius: 3, minWidth: 0 }}>
-    <Typography variant="h5" fontWeight={900} color={color} lineHeight={1.2}>
+    <Typography variant="h5" sx={{ fontWeight: 900, lineHeight: 1.2 }} color={color}>
       {formatNumber(value)}
     </Typography>
-    <Typography variant="caption" color="text.secondary" noWrap display="block">
+    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
       {label}
     </Typography>
     {hint && (
-      <Typography variant="caption" color="text.disabled" noWrap display="block">
+      <Typography variant="caption" color="text.disabled" noWrap sx={{ display: 'block' }}>
         {hint}
       </Typography>
     )}
@@ -249,11 +249,11 @@ const ConfidenceMeter = ({ value }) => {
 
   return (
     <Box sx={{ minWidth: 140 }}>
-      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.25 }}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.25 }}>
         <Typography variant="caption" color="text.secondary">
           Confianza IA
         </Typography>
-        <Typography variant="caption" fontWeight={800}>
+        <Typography variant="caption" sx={{ fontWeight: 800 }}>
           {percent}%
         </Typography>
       </Stack>
@@ -284,9 +284,9 @@ const CountdownChip = ({ scheduledAt, now }) => {
 }
 
 const SectionHeader = ({ icon: Icon, title, count, hint }) => (
-  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5 }}>
     <Icon fontSize="small" color="action" />
-    <Typography variant="subtitle1" fontWeight={800}>
+    <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
       {title}
     </Typography>
     <Chip size="small" label={formatNumber(count)} />
@@ -348,13 +348,15 @@ const DraftProductCard = ({
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack
             direction="row"
-            justifyContent="space-between"
-            alignItems="flex-start"
-            flexWrap="wrap"
-            gap={1}
+            sx={{
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              flexWrap: 'wrap',
+              gap: 1,
+            }}
           >
             <Box sx={{ minWidth: 0 }}>
-              <Typography fontWeight={800} noWrap>
+              <Typography sx={{ fontWeight: 800 }} noWrap>
                 {product.title || 'Sin título'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -364,7 +366,7 @@ const DraftProductCard = ({
               </Typography>
             </Box>
 
-            <Typography variant="h6" fontWeight={900} color="primary.main">
+            <Typography variant="h6" sx={{ fontWeight: 900 }} color="primary.main">
               {new Intl.NumberFormat('es-AR', {
                 style: 'currency',
                 currency: product.currency || 'ARS',
@@ -373,7 +375,7 @@ const DraftProductCard = ({
             </Typography>
           </Stack>
 
-          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+          <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap', mt: 1 }}>
             {variantCount > 0 && (
               <Chip
                 size="small"
@@ -1021,13 +1023,15 @@ const ProductAnalysisPage = () => {
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Stack
               direction="row"
-              justifyContent="space-between"
-              alignItems="flex-start"
-              flexWrap="wrap"
-              gap={1}
+              sx={{
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+                gap: 1,
+              }}
             >
               <Box sx={{ minWidth: 0 }}>
-                <Typography fontWeight={800} noWrap>
+                <Typography sx={{ fontWeight: 800 }} noWrap>
                   {getAnalysisTitle(job)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" noWrap>
@@ -1038,7 +1042,7 @@ const ProductAnalysisPage = () => {
               <Chip label={meta.label} color={meta.color} size="small" />
             </Stack>
 
-            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+            <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap', mt: 1 }}>
               <Chip size="small" variant="outlined" label={getSourceLabel(job)} />
 
               {job.status === 'scheduled' && (
@@ -1081,7 +1085,7 @@ const ProductAnalysisPage = () => {
               </Box>
             )}
 
-            <Stack direction="row" spacing={2} flexWrap="wrap" sx={{ mt: 1 }}>
+            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', mt: 1 }}>
               <Typography variant="caption" color="text.secondary">
                 Creado {formatRelativeTime(job.createdAt)}
               </Typography>
@@ -1202,10 +1206,13 @@ const ProductAnalysisPage = () => {
             `linear-gradient(135deg, ${theme.palette.primary.main}0A, transparent 60%)`,
         }}
       >
-        <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" gap={2}>
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          sx={{ justifyContent: 'space-between', gap: 2 }}
+        >
           <Box>
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-              <Typography variant="h5" fontWeight={900}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              <Typography variant="h5" sx={{ fontWeight: 900 }}>
                 Programación de imágenes
               </Typography>
               {currentTenantDomain && (
@@ -1225,7 +1232,7 @@ const ProductAnalysisPage = () => {
             </Typography>
           </Box>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} alignItems="flex-start">
+          <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 1, alignItems: 'flex-start' }}>
             <Button
               component="label"
               variant="contained"
@@ -1262,9 +1269,8 @@ const ProductAnalysisPage = () => {
         {/* OPCIONES DE ENCOLADO */}
         <Stack
           direction={{ xs: 'column', md: 'row' }}
-          gap={2}
-          alignItems={{ md: 'center' }}
-          sx={{ mt: 2.5 }}
+
+          sx={{ gap: 2, alignItems: { md: 'center' }, mt: 2.5 }}
         >
           <TextField
             size="small"
@@ -1305,11 +1311,9 @@ const ProductAnalysisPage = () => {
       <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 3 }}>
         <Stack
           direction={{ xs: 'column', md: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ md: 'center' }}
-          gap={2}
+          sx={{ justifyContent: 'space-between', alignItems: { md: 'center' }, gap: 2 }}
         >
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
             <Chip
               size="small"
               color={schedulerEnabled ? 'success' : 'default'}
@@ -1533,7 +1537,7 @@ const ProductAnalysisPage = () => {
       </Stack>
 
       {totalPages > 1 && (
-        <Stack alignItems="center" sx={{ mt: 3 }}>
+        <Stack sx={{ alignItems: 'center', mt: 3 }}>
           <Pagination
             count={totalPages}
             page={page}
@@ -1559,13 +1563,11 @@ const ProductAnalysisPage = () => {
       >
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ sm: 'center' }}
-          gap={1.5}
+          sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, gap: 1.5 }}
         >
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <DraftsIcon fontSize="small" color={drafts.length > 0 ? 'warning' : 'action'} />
-            <Typography variant="subtitle1" fontWeight={800}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
               Borradores listos para publicar
             </Typography>
             <Chip size="small" label={formatNumber(draftsTotal)} />
@@ -1596,8 +1598,8 @@ const ProductAnalysisPage = () => {
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
             spacing={1.5}
-            alignItems={{ sm: 'center' }}
-            sx={{ mt: 2 }}
+
+            sx={{ alignItems: { sm: 'center' }, mt: 2 }}
           >
             <FormControl size="small" sx={{ minWidth: 170 }}>
               <InputLabel>Categoría</InputLabel>
@@ -1706,9 +1708,10 @@ const ProductAnalysisPage = () => {
                   <Stack
                     key={`${file.name}-${index}`}
                     direction="row"
-                    alignItems="center"
-                    justifyContent="space-between"
+
                     sx={{
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
                       px: 1,
                       py: 0.5,
                       borderRadius: 1,
@@ -1765,9 +1768,9 @@ const ProductAnalysisPage = () => {
         <DialogTitle>Reprogramar imagen</DialogTitle>
         <DialogContent>
           {rescheduleJob && (
-            <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 2 }}>
               <JobImage job={rescheduleJob} size={56} />
-              <Typography variant="body2" fontWeight={700} noWrap>
+              <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
                 {getAnalysisTitle(rescheduleJob)}
               </Typography>
             </Stack>

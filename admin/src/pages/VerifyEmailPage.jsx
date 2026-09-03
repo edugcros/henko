@@ -93,7 +93,7 @@ const VerifyEmailPage = () => {
         </Typography>
 
         {status === 'loading' && (
-          <Box mt={2}>
+          <Box sx={{ mt: 2 }}>
             <CircularProgress />
             <Typography variant="h6" sx={{ mt: 3 }}>
               {message}
@@ -102,7 +102,7 @@ const VerifyEmailPage = () => {
         )}
 
         {status === 'success' && (
-          <Box mt={2}>
+          <Box sx={{ mt: 2 }}>
             <Alert severity="success" sx={{ mb: 3, textAlign: 'left' }}>
               {message}
             </Alert>
@@ -118,7 +118,7 @@ const VerifyEmailPage = () => {
         )}
 
         {status === 'error' && (
-          <Box mt={2}>
+          <Box sx={{ mt: 2 }}>
             <Alert severity="error" sx={{ mb: 3, textAlign: 'left' }}>
               {message}
             </Alert>

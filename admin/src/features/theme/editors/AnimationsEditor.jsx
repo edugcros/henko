@@ -96,7 +96,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
     <Box>
       {/* ===================== PRESET ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Preset
         </Typography>
 
@@ -114,7 +114,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== BEHAVIOR ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Comportamiento
         </Typography>
 
@@ -155,11 +155,11 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== TIMING ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Timing
         </Typography>
 
-        <Box mb={3}>
+        <Box sx={{ mb: 3 }}>
           <Typography variant="caption">Duración ({animations.duration ?? 300}ms)</Typography>
           <Slider
             value={animations.duration ?? 300}
@@ -186,7 +186,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== INTERACTION ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Interacción
         </Typography>
 
@@ -223,7 +223,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== ACCESSIBILITY ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Accesibilidad
         </Typography>
 
@@ -240,7 +240,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== PREVIEW ===================== */}
       <Paper sx={{ p: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Preview
         </Typography>
 

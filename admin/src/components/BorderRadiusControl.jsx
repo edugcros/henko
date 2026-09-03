@@ -42,7 +42,7 @@ const BorderRadiusControl = ({ value, onChange }) => {
                     mb: 1,
                   }}
                 >
-                  <Typography variant="body2" fontWeight={500}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
                     {preset.label}
                   </Typography>
                   <TextField

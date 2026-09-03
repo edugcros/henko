@@ -127,23 +127,22 @@ const Enquiries = () => {
   const resolved = enquiryList.filter(e => e.status === 'Resolved').length
 
   return (
-    <Box p={4} sx={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
+    <Box sx={{ p: 4, backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
       <Toaster position="top-right" />
 
       {/* Cabecera */}
       <Stack
         direction={{ xs: 'column', md: 'row' }}
-        justifyContent="space-between"
-        alignItems="center"
-        mb={4}
+        sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 4 }}
+
         spacing={2}
       >
         <Box>
           <Typography
             variant="h4"
-            fontWeight={800}
+
             color="#1A2027"
-            sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
+            sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 2 }}
           >
             <QuestionAnswerIcon fontSize="large" color="primary" />
             Gestión de Consultas
@@ -171,11 +170,13 @@ const Enquiries = () => {
 
       {isLoading && (
         <Box
-          display="flex"
-          flexDirection="column"
-          alignItems="center"
-          justifyContent="center"
-          my={10}
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            my: 10,
+          }}
         >
           <CircularProgress thickness={5} size={50} />
           <Typography sx={{ mt: 2 }} color="text.secondary">
@@ -228,18 +229,16 @@ const Enquiries = () => {
                   }}
                 />
 
-                <Box p={3}>
-                  <Stack direction="row" justifyContent="space-between" mb={2}>
+                <Box sx={{ p: 3 }}>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 2 }}>
                     <Box>
-                      <Typography variant="subtitle1" fontWeight={700}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                         {enquiry.name}
                       </Typography>
                       <Typography
                         variant="caption"
                         color="text.secondary"
-                        display="flex"
-                        alignItems="center"
-                        gap={0.5}
+                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                       >
                         <CalendarTodayIcon sx={{ fontSize: 12 }} />
                         {new Date(enquiry.createdAt).toLocaleDateString()}
@@ -268,21 +267,19 @@ const Enquiries = () => {
                     </Stack>
                   </Stack>
 
-                  <Stack spacing={0.5} mb={2}>
+                  <Stack spacing={0.5} sx={{ mb: 2 }}>
                     <Typography
                       variant="body2"
-                      display="flex"
-                      alignItems="center"
-                      gap={1}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+
                       color="text.secondary"
                     >
                       <EmailIcon sx={{ fontSize: 16 }} /> {enquiry.email}
                     </Typography>
                     <Typography
                       variant="body2"
-                      display="flex"
-                      alignItems="center"
-                      gap={1}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+
                       color="text.secondary"
                     >
                       <PhoneIcon sx={{ fontSize: 16 }} /> {enquiry.mobile}
@@ -306,8 +303,7 @@ const Enquiries = () => {
                   <Stack
                     direction="row"
                     spacing={1}
-                    alignItems="center"
-                    justifyContent="space-between"
+                    sx={{ alignItems: 'center', justifyContent: 'space-between' }}
                   >
                     <Select
                       value={enquiry.status || 'Submitted'}
@@ -399,7 +395,7 @@ const Enquiries = () => {
           },
         }}
       >
-        <DialogTitle fontWeight={700}>¿Eliminar consulta?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>¿Eliminar consulta?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
             Se eliminará la consulta de <b>{selectedEnquiry?.name}</b>.

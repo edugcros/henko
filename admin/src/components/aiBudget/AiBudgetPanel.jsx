@@ -102,12 +102,11 @@ const MetricMeter = ({ metric, data }) => {
     <Box>
       <Stack
         direction="row"
-        justifyContent="space-between"
-        alignItems="baseline"
+        sx={{ justifyContent: 'space-between', alignItems: 'baseline', mb: 0.75 }}
+
         spacing={1}
-        mb={0.75}
       >
-        <Typography variant="body2" color="text.primary" fontWeight={600}>
+        <Typography variant="body2" color="text.primary" sx={{ fontWeight: 600 }}>
           {METRIC_TITLES[metric] || data?.label || metric}
         </Typography>
 
@@ -139,7 +138,7 @@ const MetricMeter = ({ metric, data }) => {
       )}
 
       {severity.Icon && (
-        <Stack direction="row" spacing={0.5} alignItems="center" mt={0.75}>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mt: 0.75 }}>
           <severity.Icon fontSize="small" color={severity.color} sx={{ fontSize: 16 }} />
           <Typography variant="caption" color="text.secondary">
             {severity.label}
@@ -198,7 +197,7 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
   if (credentials?.hasTenantKey) {
     return (
       <Stack spacing={1.5}>
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <CheckCircleOutlineIcon color="success" fontSize="small" />
           <Typography variant="body2" color="text.primary">
             Estás usando tu propia API key. El consumo de IA se factura en tu cuenta de Google y no
@@ -305,7 +304,7 @@ const AiBudgetPanel = () => {
 
   if (loading) {
     return (
-      <Stack alignItems="center" py={3}>
+      <Stack sx={{ alignItems: 'center', py: 3 }}>
         <CircularProgress size={24} />
       </Stack>
     )
@@ -325,7 +324,7 @@ const AiBudgetPanel = () => {
 
   return (
     <Stack spacing={2.5}>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }} useFlexGap>
         <Chip
           size="small"
           label={`Plan ${PLAN_LABELS[budget.plan] || budget.plan}`}

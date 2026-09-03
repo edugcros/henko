@@ -94,13 +94,12 @@ const KnowledgeCard = ({ item, busy, onEdit, onApprove, onArchive }) => {
     <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
       <Stack
         direction="row"
-        justifyContent="space-between"
-        alignItems="flex-start"
+        sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}
+
         spacing={2}
-        flexWrap="wrap"
       >
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" mb={1}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
             <Chip size="small" label={typeMeta.label} color={typeMeta.color} />
             <Chip
               size="small"
@@ -115,7 +114,7 @@ const KnowledgeCard = ({ item, busy, onEdit, onApprove, onArchive }) => {
             />
           </Stack>
 
-          <Typography variant="subtitle1" fontWeight={700}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
             {item.title || 'Sin título'}
           </Typography>
 
@@ -134,7 +133,7 @@ const KnowledgeCard = ({ item, busy, onEdit, onApprove, onArchive }) => {
           </Typography>
 
           {Array.isArray(item.tags) && item.tags.length > 0 && (
-            <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 1.5 }}>
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', mt: 1.5 }}>
               {item.tags.map(tag => (
                 <Chip key={tag} size="small" variant="outlined" label={tag} />
               ))}
@@ -343,15 +342,14 @@ const AiKnowledgeBasePage = () => {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1080, mx: 'auto' }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ sm: 'center' }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+
         spacing={2}
-        mb={3}
       >
         <Box>
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
             <MenuBookIcon color="primary" />
-            <Typography variant="h4" fontWeight={800}>
+            <Typography variant="h4" sx={{ fontWeight: 800 }}>
               Base de conocimiento
             </Typography>
           </Stack>
@@ -385,7 +383,7 @@ const AiKnowledgeBasePage = () => {
         </Alert>
       )}
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} mb={3}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 3 }}>
         <TextField
           select
           size="small"
@@ -447,7 +445,7 @@ const AiKnowledgeBasePage = () => {
             />
           ))}
           {meta.totalPages > 1 && (
-            <Typography variant="caption" color="text.secondary" textAlign="center">
+            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
               Mostrando {items.length} de {meta.total} (página {meta.page} de {meta.totalPages})
             </Typography>
           )}

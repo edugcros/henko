@@ -96,10 +96,10 @@ const Customers = () => {
   const blockedUsers = customers?.filter(u => u.isBlocked).length || 0
 
   return (
-    <Box p={{ xs: 2, md: 4 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={4}>
+    <Box sx={{ p: { xs: 2, md: 4 } }}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Box>
-          <Typography variant="h4" fontWeight={700} color="primary.main">
+          <Typography variant="h4" sx={{ fontWeight: 700 }} color="primary.main">
             Gestión de Clientes
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -139,8 +139,8 @@ const Customers = () => {
                     border: user.isBlocked ? '1px solid #ef5350' : 'none',
                   }}
                 >
-                  <Box p={3}>
-                    <Stack direction="row" spacing={2} alignItems="center" mb={2}>
+                  <Box sx={{ p: 3 }}>
+                    <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 2 }}>
                       <Avatar
                         sx={{
                           bgcolor: user.isBlocked ? 'error.light' : 'primary.main',
@@ -148,8 +148,8 @@ const Customers = () => {
                       >
                         <PersonIcon />
                       </Avatar>
-                      <Box overflow="hidden">
-                        <Typography variant="h6" noWrap fontWeight={600}>
+                      <Box sx={{ overflow: 'hidden' }}>
+                        <Typography variant="h6" noWrap sx={{ fontWeight: 600 }}>
                           {user.firstname} {user.lastname}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" noWrap>
@@ -160,8 +160,8 @@ const Customers = () => {
 
                     <Divider sx={{ my: 1.5 }} />
 
-                    <Stack spacing={1} mb={2}>
-                      <Stack direction="row" alignItems="center" spacing={1}>
+                    <Stack spacing={1} sx={{ mb: 2 }}>
+                      <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
                         <PhoneIcon fontSize="small" color="action" />
                         <Typography variant="body2">{user.mobile || 'No registrado'}</Typography>
                       </Stack>
@@ -178,7 +178,7 @@ const Customers = () => {
                       </Stack>
                     </Stack>
 
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                    <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
                       {!user.isEmailVerified && (
                         <Tooltip title="Verificar manualmente">
                           <IconButton
@@ -236,7 +236,7 @@ const Customers = () => {
 
       {/* Empty State */}
       {!isLoading && customers.length === 0 && (
-        <Box textAlign="center" py={10}>
+        <Box sx={{ textAlign: 'center', py: 10 }}>
           <Typography variant="h6" color="text.secondary">
             No hay clientes registrados en tu comercio.
           </Typography>
