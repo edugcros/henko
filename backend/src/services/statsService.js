@@ -1192,6 +1192,10 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
             USER_METRIC_EVENTS.PRODUCT_VIEW,
             USER_METRIC_EVENTS.PRODUCT_CLICK,
             USER_METRIC_EVENTS.ADD_TO_CART,
+            // Necesario para el CTR: el denominador correcto de un
+            // click-through son las impresiones (cuántas veces se mostró la
+            // card), no las vistas de la página de detalle.
+            USER_METRIC_EVENTS.PRODUCT_IMPRESSION,
           ],
         },
       },
@@ -1256,7 +1260,24 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
             $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.ADD_TO_CART] }, 1, 0],
           },
         },
-        sessions: { $addToSet: '$sessionId' },
+        impressions: {
+          $sum: {
+            $cond: [{ $eq: ['$eventType', USER_METRIC_EVENTS.PRODUCT_IMPRESSION] }, 1, 0],
+          },
+        },
+        // Solo sesiones que interactuaron (view/click/add). Las impresiones
+        // entraron al pipeline por el CTR, pero contarlas acá cambiaría el
+        // significado de "sessions": pasaría de "sesiones que interactuaron
+        // con el producto" a "sesiones que lo tuvieron en pantalla".
+        interactionSessions: {
+          $addToSet: {
+            $cond: [
+              { $eq: ['$eventType', USER_METRIC_EVENTS.PRODUCT_IMPRESSION] },
+              null,
+              '$sessionId',
+            ],
+          },
+        },
         // FIX: era { $sum: '$value' }. En PRODUCT_VIEW / PRODUCT_CLICK /
         // ADD_TO_CART el campo `value` es el PRECIO del producto, repetido en
         // cada evento — sumarlo daba precio × cantidad de eventos (396.032.436
@@ -1296,7 +1317,16 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
         views: 1,
         clicks: 1,
         addToCart: 1,
-        sessions: { $size: '$sessions' },
+        impressions: 1,
+        sessions: {
+          $size: {
+            $filter: {
+              input: '$interactionSessions',
+              as: 'session',
+              cond: { $ne: ['$$session', null] },
+            },
+          },
+        },
         averagePrice: { $round: [{ $ifNull: ['$averagePrice', 0] }, 2] },
       },
     },
@@ -1305,7 +1335,14 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
   return rows.map(row => ({
     ...row,
     conversionRate: calculateRate(row.addToCart, row.views),
-    clickThroughRate: calculateRate(row.clicks, row.views),
+    // FIX: dividía clicks por views y daba CTRs de más de 100% (116%, 160%):
+    // los clicks nacen en las cards de listados y las views en la página de
+    // detalle — se puede clickear sin generar view. El denominador correcto
+    // son las impresiones. Si un producto no tiene impresiones registradas
+    // (tracking incompleto), null es más honesto que un porcentaje sobre
+    // cero o que volver al denominador equivocado.
+    clickThroughRate:
+      row.impressions > 0 ? calculateRate(row.clicks, row.impressions) : null,
   }))
 }
 
@@ -1582,8 +1619,9 @@ const getTopClickedProducts = async (
         users: { $addToSet: '$userId' },
         lastClickedAt: { $max: '$occurredAt' },
         value: { $sum: '$value' },
-        // El nombre que el producto tenía cuando lo clickearon. Es lo único
-        // que queda si después se borró del catálogo.
+        // El nombre que el producto tenía cuando lo clickearon — es lo único
+        // que queda si después se borró del catálogo. Verificado: el top de
+        // clicks apuntaba a un productId que ya no existe en la colección.
         titleFromEvent: {
           $first: {
             $ifNull: ['$metadata.title', '$metadata.productTitle'],
@@ -1609,8 +1647,11 @@ const getTopClickedProducts = async (
       _id: { $in: validProductObjectIds },
       tenantId: tenantObjectId,
     })
-      // El tenantPlugin necesita el tenantId en las opciones para no bloquear
-      // la query — mismo patrón que usa el resto del proyecto.
+      // FIX: sin setOptions el tenantPlugin bloquea la query y no devuelve
+      // ningún producto, así que el productMap quedaba vacío y todos los
+      // títulos caían al fallback 'Producto'. getTopVisitedProducts no tiene
+      // el problema porque resuelve el producto con $lookup dentro de un
+      // aggregate, que no pasa por el plugin.
       .setOptions({ tenantId })
       .select('title name slug sku images price categoria category marca brand')
       .lean()
@@ -1629,15 +1670,15 @@ const getTopClickedProducts = async (
     return {
       productId,
       // Orden de preferencia: nombre actual del catálogo → nombre al momento
-      // del click → aviso de que ya no existe. Nunca un genérico que se
-      // confunda con un error de carga.
+      // del click → aviso de que ya no existe. Nunca un genérico ("Producto")
+      // que se confunda con un error de carga.
       title:
         product?.title ||
         product?.name ||
         row.titleFromEvent ||
         'Producto eliminado',
-      // `exists` permite que el panel distinga un producto vivo de uno
-      // borrado, en vez de tener que inferirlo del título.
+      // Permite al panel distinguir un producto vivo de uno borrado sin
+      // inferirlo del título.
       exists: Boolean(product),
       slug: product?.slug || null,
       sku: product?.sku || null,
