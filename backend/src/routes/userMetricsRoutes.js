@@ -59,9 +59,9 @@ const metricsRateLimiter = rateLimit({
 
 router.post(
   '/events',
-  metricsRateLimiter,
   resolveTenantByDomain,
   requireTenant,
+  metricsRateLimiter,
   trackUserMetricEvent,
 )
 
