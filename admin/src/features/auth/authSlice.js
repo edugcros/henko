@@ -25,16 +25,38 @@ const safeStorage = {
       return null
     }
   },
+  setToken: token => {
+    if (typeof window === 'undefined' || !token) return
+    try {
+      sessionStorage.setItem('auth_token', String(token))
+    } catch {
+      sessionStorage.removeItem('auth_token')
+    }
+  },
+  getToken: () => {
+    if (typeof window === 'undefined') return null
+    try {
+      const token = sessionStorage.getItem('auth_token')
+      return token && String(token).trim() ? token : null
+    } catch {
+      return null
+    }
+  },
+  removeToken: () => {
+    if (typeof window === 'undefined') return
+    sessionStorage.removeItem('auth_token')
+  },
   removeUser: () => {
     if (typeof window === 'undefined') return
     sessionStorage.removeItem('user')
     sessionStorage.removeItem('wishlist')
     sessionStorage.removeItem('csrfToken')
+    safeStorage.removeToken()
   },
   // El access token vive en una cookie httpOnly desde el backend (fase 1
-  // del refactor de JWT) — JS no puede leerla ni removerla, y no hace
-  // falta: el logout server-side ya la limpia. removeAuth queda como
-  // alias de removeUser por compatibilidad con los callers existentes.
+  // del refactor de JWT) — JS no puede leerla ni removerla, pero también
+  // se guarda en sessionStorage como fallback para cross-origin requests.
+  // El logout server-side limpia la cookie; removeAuth limpia el storage local.
   removeAuth: () => {
     safeStorage.removeUser()
   },
@@ -89,6 +111,8 @@ export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
     // Normalizamos: la data suele venir en response.data
     const data = response.data || response
     if (data.user) safeStorage.setUser(data.user)
+    // Si el refresh devolvió un token, guardarlo como fallback
+    if (data.token) safeStorage.setToken(data.token)
     return data
   } catch (error) {
     return thunkAPI.rejectWithValue(error.response?.data || 'Error al obtener perfil')
@@ -106,7 +130,7 @@ export const loginUser = createAsyncThunk(
         return rejectWithValue('Respuesta inválida del servidor durante login')
       }
 
-      const { user, csrfToken } = res.data
+      const { user, token, csrfToken } = res.data
 
       if (csrfToken) {
         dispatch(setCsrfToken(csrfToken))
@@ -114,7 +138,13 @@ export const loginUser = createAsyncThunk(
 
       safeStorage.setUser(user)
 
-      return { user }
+      // Guardar el token como fallback para cross-origin requests
+      // (cuando las cookies httpOnly no estén disponibles)
+      if (token) {
+        safeStorage.setToken(token)
+      }
+
+      return { user, token }
     } catch (err) {
       const data = err?.response?.data
 

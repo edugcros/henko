@@ -204,9 +204,22 @@ api.interceptors.request.use(
       config.headers['x-metric-session-id'] = metricSessionId
     }
 
-    // Sin Authorization manual: el access token vive en una cookie httpOnly
-    // desde el backend (fase 1 del refactor de JWT) — withCredentials:true
-    // ya la manda sola.
+    // Access token fallback: intenta viajar en cookie httpOnly (withCredentials:true),
+    // pero si las cookies no están disponibles (cross-origin, different domain),
+    // intenta usar Authorization header como fallback.
+    // El backend acepta ambos: getAccessTokenFromRequest() chequea Bearer header primero.
+    if (!config.headers.Authorization && !config.headers.authorization) {
+      try {
+        // Intenta obtener token de sessionStorage como fallback para cross-origin
+        const storedToken = typeof window !== 'undefined' && window.sessionStorage?.getItem?.('auth_token')
+        if (storedToken && typeof storedToken === 'string' && storedToken.trim()) {
+          config.headers.Authorization = `Bearer ${storedToken}`
+        }
+      } catch {
+        // sessionStorage might be unavailable (private browsing, etc)
+      }
+    }
+
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
       console.log('[ADMIN API REQUEST]', {
         method: config.method,
@@ -214,6 +227,7 @@ api.interceptors.request.use(
         url: config.url,
         fullURL: `${config.baseURL || ''}${config.url || ''}`,
         tenant: config.headers[env.tenantHeader || 'x-tenant-domain'],
+        hasAuth: Boolean(config.headers.Authorization || config.headers.authorization),
       })
     }
     const isFormData = typeof FormData !== 'undefined' && config.data instanceof FormData
@@ -301,6 +315,19 @@ api.interceptors.response.use(
                 skipCsrfRetry: true,
               },
             )
+            .then(refreshResponse => {
+              // Guardar el token del refresh response como fallback
+              // para cross-origin requests (sessionStorage fallback)
+              const token = refreshResponse?.data?.token || refreshResponse?.data?.accessToken
+              if (token && typeof window !== 'undefined') {
+                try {
+                  window.sessionStorage?.setItem?.('auth_token', String(token))
+                } catch {
+                  // sessionStorage might be unavailable
+                }
+              }
+              return refreshResponse
+            })
             .finally(() => {
               refreshTokenPromise = null
             })

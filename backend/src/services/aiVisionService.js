@@ -101,7 +101,7 @@ const GEMINI_RETRY_BASE_DELAY_MS = Math.min(
 )
 const GEMINI_RETRY_MAX_DELAY_MS = 15000
 const GEMINI_TIMEOUT_MS = Math.min(
-  Math.max(Number(process.env.GEMINI_TIMEOUT_MS || 60000), 5000),
+  Math.max(Number(process.env.GEMINI_TIMEOUT_MS || 45000), 5000),
   180000,
 )
 const MAX_IMAGE_BYTES = Math.min(
@@ -348,10 +348,9 @@ function sleep(ms) {
  *
  * El timeout se utiliza a nivel de Promise.
  *
- * Si el timeout vence, la Promise se rechaza, pero una operación
- * HTTP interna que el SDK ya haya iniciado puede continuar hasta
- * que el SDK la cierre. Por eso este mecanismo no debe considerarse
- * una cancelación real del request.
+ * Si el timeout vence, la Promise se rechaza y se intenta cancelar
+ * cualquier operación HTTP interna. El mecanismo de abort ayuda al SDK
+ * a detener requests pendientes cuando lo soporta.
  */
 async function runWithTimeout(fn, timeoutMs) {
   if (typeof fn !== 'function') {
@@ -380,11 +379,15 @@ async function runWithTimeout(fn, timeoutMs) {
   }
 
   let timeoutHandle = null
+  const controller = new AbortController()
 
-  const operationPromise = Promise.resolve().then(() => fn())
+  const operationPromise = Promise.resolve().then(() => fn(controller.signal))
 
   const timeoutPromise = new Promise((_, reject) => {
     timeoutHandle = setTimeout(() => {
+      // Intenta abortar cualquier operación pendiente
+      controller.abort()
+
       const timeoutError = new Error(
         `Gemini generateContent excedió el timeout de ${timeoutMs}ms`,
       )
@@ -405,6 +408,7 @@ async function runWithTimeout(fn, timeoutMs) {
     if (timeoutHandle) {
       clearTimeout(timeoutHandle)
     }
+    controller.abort()
   }
 }
 
@@ -2103,11 +2107,24 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
     for (const candidate of modelChain) {
       try {
+        logger.debug('[AI VISION] Intentando generar con modelo', {
+          model: candidate,
+          hash,
+          tenantId: normalizedTenantId,
+          timeoutMs: GEMINI_TIMEOUT_MS,
+        })
         result = await generateWithModel(candidate)
         activeModel = candidate
         modelError = null
         break
       } catch (error) {
+        logger.warn('[AI VISION] Error con modelo', {
+          model: candidate,
+          error: error?.message,
+          code: error?.code,
+          isTimeout: error?.code === 'GEMINI_TIMEOUT',
+        })
+
         if (!isModelUnavailableError(error)) throw error
 
         markModelDead(candidate, error?.message?.slice(0, 100))
@@ -2121,6 +2138,8 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
       logger.info('[AI VISION] Modelo de respaldo en uso', {
         configured: MODEL_NAME,
         using: activeModel,
+        hash,
+        tenantId: normalizedTenantId,
       })
     }
 
