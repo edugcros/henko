@@ -163,12 +163,12 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
         .filter(source => source.channel !== 'direct')
         .reduce((sum, source) => sum + (source.revenue || 0), 0),
       recoveredRevenue: Money.toDecimal(cartRecoveryRevenue.recoveredRevenueCents || 0),
-      aiInfluencedRevenue: aiInfluencedSales.aiInfluencedRevenue || 0,
+      aiInfluencedRevenue: Money.toDecimal(aiInfluencedSales.aiInfluencedRevenue || 0),
       // No es metaRevenue + recoveredRevenue + aiInfluencedRevenue — esas tres
       // pueden solaparse (una orden puede cumplir más de una condición a la
       // vez). Este número cuenta cada orden una sola vez, ver
       // aiAgentRevenueInsightsService.js::getTotalGeneratedValue.
-      totalGeneratedValue: totalGeneratedValueStats.totalGeneratedValue || 0,
+      totalGeneratedValue: Money.toDecimal(totalGeneratedValueStats.totalGeneratedValue || 0),
       conversionRate,
       productClickThroughRate: calculateRate(userBehaviorStats.productClicks, userBehaviorStats.productImpressions),
       productViewRate: calculateRate(userBehaviorStats.productViewSessions, userBehaviorStats.sessions),
