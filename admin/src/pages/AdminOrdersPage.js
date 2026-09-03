@@ -611,15 +611,11 @@ const ProductItem = memo(({ item }) => {
         </Avatar>
       </Badge>
 
-      <Box flex={1} minWidth={0}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography
           variant="body1"
-          fontWeight={500}
-          sx={{
-            color: CONFIG.COLORS.AMAZON_TEXT,
-            mb: 0.5,
-            lineHeight: 1.4,
-          }}
+
+          sx={{ fontWeight: 500, color: CONFIG.COLORS.AMAZON_TEXT, mb: 0.5, lineHeight: 1.4 }}
         >
           {title}
         </Typography>
@@ -634,11 +630,11 @@ const ProductItem = memo(({ item }) => {
         )}
       </Box>
 
-      <Box textAlign="right" minWidth={110}>
+      <Box sx={{ textAlign: 'right', minWidth: 110 }}>
         <Typography
           variant="body1"
-          fontWeight={700}
-          sx={{ color: CONFIG.COLORS.AMAZON_RED, fontSize: '1.1rem' }}
+
+          sx={{ fontWeight: 700, color: CONFIG.COLORS.AMAZON_RED, fontSize: '1.1rem' }}
         >
           {formatCurrency(subtotal)}
         </Typography>
@@ -683,7 +679,7 @@ const ShippingCard = memo(({ address }) => {
         Dirección de envío
       </Typography>
 
-      <Typography variant="body1" fontWeight={600}>
+      <Typography variant="body1" sx={{ fontWeight: 600 }}>
         {address.firstName || '-'} {address.lastName || ''}
       </Typography>
 
@@ -697,7 +693,7 @@ const ShippingCard = memo(({ address }) => {
         {address.country && `, ${address.country}`}
       </Typography>
 
-      <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
+      <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }} useFlexGap>
         {address.email && (
           <Chip
             icon={<Email fontSize="small" />}
@@ -804,13 +800,13 @@ const ShipmentCard = memo(({ order, onSaveShipment, disabled = false }) => {
       />
 
       {shipment.shippedAt && (
-        <Typography variant="caption" color="text.secondary" display="block">
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
           Despachado: {dayjs(shipment.shippedAt).format('DD/MM/YYYY HH:mm')}
         </Typography>
       )}
 
       {shipment.deliveredAt && (
-        <Typography variant="caption" color="text.secondary" display="block">
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
           Entregado: {dayjs(shipment.deliveredAt).format('DD/MM/YYYY HH:mm')}
         </Typography>
       )}
@@ -864,7 +860,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
         <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
           Subtotal
         </Typography>
-        <Typography variant="body2" fontWeight={500}>
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>
           {formatCurrency(totals?.subtotal)}
         </Typography>
       </Box>
@@ -873,7 +869,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
         <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
           Descuento
         </Typography>
-        <Typography variant="body2" fontWeight={500}>
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>
           -{formatCurrency(totals?.discount)}
         </Typography>
       </Box>
@@ -904,7 +900,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
         </Typography>
       </Box>
 
-      <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
+      <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }} useFlexGap>
         <PaymentBadge paymentStatus={paymentStatus} />
         <FulfillmentBadge fulfillmentStatus={fulfillmentStatus} />
       </Stack>
@@ -968,11 +964,11 @@ const OrderControlPanel = memo(
         </Typography>
 
         <Box sx={{ mb: 2 }}>
-          <Typography variant="caption" color="text.secondary" display="block">
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             Estado comercial
           </Typography>
           <StatusBadge status={normalizedOrderStatus} size="medium" />
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.75 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
             Se calcula automáticamente según el pago y la logística.
           </Typography>
         </Box>
@@ -1046,7 +1042,7 @@ const OrderControlPanel = memo(
           </Alert>
         )}
 
-        <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
+        <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }} useFlexGap>
           <Button
             variant="outlined"
             color="error"
@@ -1133,7 +1129,7 @@ const OrderRow = memo(
           </TableCell>
 
           <TableCell>
-            <Typography variant="body2" fontWeight={600} sx={{ color: CONFIG.COLORS.AMAZON_BLUE }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: CONFIG.COLORS.AMAZON_BLUE }}>
               #{getOrderDisplayId(order)}
             </Typography>
             <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
@@ -1154,7 +1150,7 @@ const OrderRow = memo(
           </TableCell>
 
           <TableCell align="right">
-            <Typography variant="body2" fontWeight={700} sx={{ color: CONFIG.COLORS.AMAZON_RED }}>
+            <Typography variant="body2" sx={{ fontWeight: 700, color: CONFIG.COLORS.AMAZON_RED }}>
               {formatCurrency(order.totals?.total)}
             </Typography>
             <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
@@ -1213,7 +1209,7 @@ const OrderRow = memo(
             <TableCell colSpan={8} sx={{ p: 0, bgcolor: '#FAFAFA' }}>
               <Box sx={{ p: 3 }}>
                 <Grid container spacing={3}>
-                  <Grid xs={12} lg={8}>
+                  <Grid size={{ xs: 12, lg: 8 }}>
                     <Typography
                       variant="h6"
                       sx={{
@@ -1231,7 +1227,7 @@ const OrderRow = memo(
                     ))}
                   </Grid>
 
-                  <Grid xs={12} lg={4}>
+                  <Grid size={{ xs: 12, lg: 4 }}>
                     <ShippingCard address={order.shippingAddress} />
 
                     <ShipmentCard
@@ -1402,7 +1398,7 @@ const OrderDetailDialog = memo(
         <DialogContent dividers sx={{ bgcolor: '#F7F7F7', p: 0 }}>
           <Box sx={{ p: 3 }}>
             <Grid container spacing={3}>
-              <Grid xs={12} md={8}>
+              <Grid size={{ xs: 12, md: 8 }}>
                 <Paper sx={{ p: 3, borderRadius: 1, border: '1px solid #D5D9D9' }}>
                   <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}>
                     Productos ({order.products?.length || 0})
@@ -1414,7 +1410,7 @@ const OrderDetailDialog = memo(
                 </Paper>
               </Grid>
 
-              <Grid xs={12} md={4}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <Paper
                   sx={{
                     p: 3,
@@ -1427,30 +1423,34 @@ const OrderDetailDialog = memo(
                     Cliente
                   </Typography>
 
-                  <Box mb={2}>
-                    <Typography variant="caption" color="text.secondary" display="block">
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                       Email
                     </Typography>
-                    <Typography variant="body2" fontWeight={500}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {customerEmail}
                     </Typography>
                   </Box>
 
-                  <Box mb={2}>
-                    <Typography variant="caption" color="text.secondary" display="block">
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                       Nombre
                     </Typography>
-                    <Typography variant="body2" fontWeight={500}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {customerName || '-'}
                     </Typography>
                   </Box>
 
                   {customerPhone && (
                     <Box>
-                      <Typography variant="caption" color="text.secondary" display="block">
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: 'block' }}
+                      >
                         Teléfono
                       </Typography>
-                      <Typography variant="body2" fontWeight={500}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
                         {customerPhone}
                       </Typography>
                     </Box>
@@ -2054,7 +2054,7 @@ const AdminOrdersPage = () => {
         }}
       >
         <Container maxWidth="xl">
-          <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
             Gestión de Pedidos
           </Typography>
 
@@ -2080,8 +2080,8 @@ const AdminOrdersPage = () => {
         )}
 
         <Paper sx={{ p: 2, mb: 3 }}>
-          <Grid container spacing={2} alignItems="center">
-            <Grid xs={12} md={4}>
+          <Grid container spacing={2} sx={{ alignItems: 'center' }}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <TextField
                 fullWidth
                 size="small"
@@ -2111,7 +2111,7 @@ const AdminOrdersPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Estado orden</InputLabel>
                 <Select
@@ -2131,7 +2131,7 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Pago</InputLabel>
                 <Select
@@ -2150,7 +2150,7 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Logística</InputLabel>
                 <Select
@@ -2170,7 +2170,7 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                 <Button
                   variant="outlined"

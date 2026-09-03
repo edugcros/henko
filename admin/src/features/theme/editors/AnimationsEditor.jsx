@@ -96,7 +96,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
     <Box>
       {/* ===================== PRESET ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Preset
         </Typography>
 
@@ -114,12 +114,12 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== BEHAVIOR ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Comportamiento
         </Typography>
 
         <Grid container spacing={2}>
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Page Transition</InputLabel>
               <Select
@@ -135,7 +135,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Element Entrance</InputLabel>
               <Select
@@ -155,11 +155,11 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== TIMING ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Timing
         </Typography>
 
-        <Box mb={3}>
+        <Box sx={{ mb: 3 }}>
           <Typography variant="caption">Duración ({animations.duration ?? 300}ms)</Typography>
           <Slider
             value={animations.duration ?? 300}
@@ -186,12 +186,12 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== INTERACTION ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Interacción
         </Typography>
 
         <Grid container spacing={2}>
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Easing</InputLabel>
               <Select
@@ -207,7 +207,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Typography variant="caption">Hover Scale ({animations.hoverScale ?? 1.02})</Typography>
             <Slider
               value={animations.hoverScale ?? 1.02}
@@ -223,7 +223,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== ACCESSIBILITY ===================== */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Accesibilidad
         </Typography>
 
@@ -240,7 +240,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
 
       {/* ===================== PREVIEW ===================== */}
       <Paper sx={{ p: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>
           Preview
         </Typography>
 

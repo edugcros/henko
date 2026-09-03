@@ -13,7 +13,7 @@ const Section = ({ title, subtitle, children }) => {
       }}
     >
       <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle1" fontWeight={600}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
           {title}
         </Typography>
         {subtitle && (

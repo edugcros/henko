@@ -311,13 +311,16 @@ const CouponsPage = () => {
       {/* Header */}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
+
         spacing={2}
-        sx={{ mb: 4 }}
+        sx={{
+          justifyContent: 'space-between',
+          alignItems: { xs: 'flex-start', sm: 'center' },
+          mb: 4,
+        }}
       >
         <Box>
-          <Typography variant="h4" fontWeight="800" color="primary.main" gutterBottom>
+          <Typography variant="h4" sx={{ fontWeight: '800' }} color="primary.main" gutterBottom>
             Gestión de Cupones
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -368,7 +371,7 @@ const CouponsPage = () => {
           backdropFilter: 'blur(8px)',
         }}
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="center">
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ alignItems: 'center' }}>
           <TextField
             fullWidth
             size="small"
@@ -442,7 +445,7 @@ const CouponsPage = () => {
       {/* Lista */}
       <Box sx={{ minHeight: 400 }}>
         {isLoading && !coupons.length ? (
-          <Stack alignItems="center" sx={{ py: 10 }}>
+          <Stack sx={{ alignItems: 'center', py: 10 }}>
             <CircularProgress />
             <Typography sx={{ mt: 2 }} color="text.secondary">
               Cargando cupones...

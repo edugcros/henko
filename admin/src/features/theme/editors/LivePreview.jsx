@@ -174,7 +174,7 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="subtitle2" fontWeight={800} lineHeight={1.15}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.15 }}>
             Vista Previa Real
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -214,7 +214,7 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
         {loadWarning && (
           <Alert severity="warning" sx={{ m: 1 }}>
             {loadWarning}
-            <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+            <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
               URL: {previewUrl}
             </Typography>
           </Alert>

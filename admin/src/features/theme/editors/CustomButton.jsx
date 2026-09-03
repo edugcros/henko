@@ -40,7 +40,7 @@ const VARIANT_OPTIONS = [
 const SettingGroupComponents = ({ title, caption, children }) => (
   <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.25 }}>
     <Stack spacing={0.25} sx={{ mb: 1.5 }}>
-      <Typography variant="subtitle2" fontWeight={850}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
         {title}
       </Typography>
       {caption && (
@@ -55,8 +55,8 @@ const SettingGroupComponents = ({ title, caption, children }) => (
 
 const RangeControlComponents = ({ label, value, min, max, step, suffix = '', onChange }) => (
   <Box>
-    <Stack direction="row" alignItems="center" justifyContent="space-between">
-      <Typography variant="body2" fontWeight={700}>
+    <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+      <Typography variant="body2" sx={{ fontWeight: 700 }}>
         {label}
       </Typography>
       <Typography variant="caption" color="text.secondary">
@@ -109,7 +109,7 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
     <Stack spacing={1.5}>
       {sectionMeta?.appliesTo && (
         <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.25 }}>
-          <Typography variant="subtitle2" fontWeight={850}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
             Botones
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -123,7 +123,7 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
         caption="Define la apariencia por defecto de los CTA."
       >
         <Grid container spacing={1.25}>
-          <Grid xs={12}>
+          <Grid size={{ xs: 12 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Variante</InputLabel>
               <Select
@@ -139,7 +139,7 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid xs={12}>
+          <Grid size={{ xs: 12 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Tamaño</InputLabel>
               <Select
@@ -215,8 +215,8 @@ const CustomButton = ({ value, onChange, theme, sectionMeta }) => {
 
       <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.25 }}>
         <Stack spacing={1.25}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography variant="subtitle2" fontWeight={850}>
+          <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
               Vista previa
             </Typography>
             <Chip size="small" label={buttons.variant} variant="outlined" />

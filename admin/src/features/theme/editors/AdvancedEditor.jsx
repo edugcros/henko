@@ -25,7 +25,7 @@ const AdvancedEditor = ({ value, customCSS, customJS, onChange, onCSSChange, onJ
             },
             { key: 'enableServiceWorker', label: 'Service Worker (PWA)' },
           ].map(({ key, label }) => (
-            <Grid xs={12} sm={6} key={key}>
+            <Grid size={{ xs: 12, sm: 6 }} key={key}>
               <FormControlLabel
                 control={
                   <Switch

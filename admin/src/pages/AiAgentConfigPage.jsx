@@ -174,14 +174,14 @@ const toPayload = form => {
 const SectionCard = ({ title, subtitle, icon, children }) => (
   <Card variant="outlined" sx={{ borderRadius: 3 }}>
     <CardContent>
-      <Stack direction="row" spacing={1.5} alignItems="center" mb={0.5}>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
         {icon}
-        <Typography variant="h6" fontWeight={700}>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {title}
         </Typography>
       </Stack>
       {subtitle && (
-        <Typography variant="body2" color="text.secondary" mb={2}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {subtitle}
         </Typography>
       )}
@@ -265,7 +265,7 @@ const AiAgentConfigPage = () => {
 
   if (!form) {
     return (
-      <Box p={3}>
+      <Box sx={{ p: 3 }}>
         <Alert severity="error" action={<Button onClick={load}>Reintentar</Button>}>
           {error || 'No se pudo cargar la configuración.'}
         </Alert>
@@ -277,13 +277,13 @@ const AiAgentConfigPage = () => {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 980, mx: 'auto' }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ sm: 'center' }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }} 
+        
         spacing={2}
-        mb={3}
+        
       >
         <Box>
-          <Typography variant="h4" fontWeight={800}>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>
             Agente IA · Configuración
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -315,7 +315,7 @@ const AiAgentConfigPage = () => {
           icon={<SmartToyIcon color="primary" />}
         >
           <Grid container spacing={2.5}>
-            <Grid xs={12} sm={7}>
+            <Grid size={{ xs: 12, sm: 7 }}>
               <TextField
                 fullWidth
                 label="Nombre del asistente"
@@ -324,7 +324,7 @@ const AiAgentConfigPage = () => {
                 inputProps={{ maxLength: 100 }}
               />
             </Grid>
-            <Grid xs={12} sm={5} display="flex" alignItems="center">
+            <Grid size={{ xs: 12, sm: 5 }} sx={{ display: 'flex', alignItems: 'center' }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -367,7 +367,7 @@ const AiAgentConfigPage = () => {
             />
 
             <Grid container spacing={2.5}>
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
                   label="Phone Number ID"
@@ -376,7 +376,7 @@ const AiAgentConfigPage = () => {
                   inputProps={{ maxLength: 300 }}
                 />
               </Grid>
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
                   label="Business Account ID"
@@ -385,7 +385,7 @@ const AiAgentConfigPage = () => {
                   inputProps={{ maxLength: 300 }}
                 />
               </Grid>
-              <Grid xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   type="password"
@@ -397,7 +397,7 @@ const AiAgentConfigPage = () => {
                   autoComplete="new-password"
                 />
               </Grid>
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
                   type="password"
@@ -409,7 +409,7 @@ const AiAgentConfigPage = () => {
                   autoComplete="new-password"
                 />
               </Grid>
-              <Grid xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
                   fullWidth
                   type="password"
@@ -427,7 +427,7 @@ const AiAgentConfigPage = () => {
 
         <SectionCard title="Personalidad" subtitle="Cómo se presenta y habla el asistente.">
           <Grid container spacing={2.5}>
-            <Grid xs={12} sm={4}>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField
                 select
                 fullWidth
@@ -442,7 +442,7 @@ const AiAgentConfigPage = () => {
                 ))}
               </TextField>
             </Grid>
-            <Grid xs={12} sm={4}>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField
                 fullWidth
                 label="Idioma"
@@ -451,7 +451,7 @@ const AiAgentConfigPage = () => {
                 inputProps={{ maxLength: 20 }}
               />
             </Grid>
-            <Grid xs={12} sm={4}>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField
                 fullWidth
                 label="Firma"
@@ -475,7 +475,7 @@ const AiAgentConfigPage = () => {
               ['requireHumanForPayments', 'Deriva a humano en pagos'],
               ['requireHumanForClaims', 'Deriva a humano en reclamos'],
             ].map(([key, label]) => (
-              <Grid xs={12} sm={6} key={key}>
+              <Grid size={{ xs: 12, sm: 6 }} key={key}>
                 <FormControlLabel
                   control={
                     <Switch checked={form[key]} onChange={e => setField(key, e.target.checked)} />
@@ -484,7 +484,7 @@ const AiAgentConfigPage = () => {
                 />
               </Grid>
             ))}
-            <Grid xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 type="number"
@@ -494,7 +494,7 @@ const AiAgentConfigPage = () => {
                 inputProps={{ min: 1, max: 80 }}
               />
             </Grid>
-            <Grid xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 type="number"
@@ -530,7 +530,7 @@ const AiAgentConfigPage = () => {
                 ['warranty', 'Garantía'],
                 ['privacy', 'Privacidad'],
               ].map(([key, label]) => (
-                <Grid xs={12} sm={6} key={key}>
+                <Grid size={{ xs: 12, sm: 6 }} key={key}>
                   <TextField
                     fullWidth
                     multiline
@@ -588,7 +588,7 @@ const AiAgentConfigPage = () => {
           subtitle="Autoaprendizaje con revisión humana, y topes propios para gastar menos que tu plan."
         >
           <Grid container spacing={2.5}>
-            <Grid xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -599,7 +599,7 @@ const AiAgentConfigPage = () => {
                 label="Autoaprendizaje activado"
               />
             </Grid>
-            <Grid xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -610,14 +610,14 @@ const AiAgentConfigPage = () => {
                 label="Requiere aprobación humana"
               />
             </Grid>
-            <Grid xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Alert severity="info" variant="outlined" sx={{ borderRadius: 2, mt: 1 }}>
                 Estos dos valores son <strong>autolímites</strong>: sirven para consumir menos que
                 tu plan, no para ampliarlo. El tope real es el del plan y lo ves arriba. Dejalos en
                 0 para usar el plan completo.
               </Alert>
             </Grid>
-            <Grid xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 type="number"
@@ -628,7 +628,7 @@ const AiAgentConfigPage = () => {
                 helperText="0 = sin autolímite (usa el tope del plan)"
               />
             </Grid>
-            <Grid xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 type="number"

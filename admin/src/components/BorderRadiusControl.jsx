@@ -33,7 +33,7 @@ const BorderRadiusControl = ({ value, onChange }) => {
           const numericValue = getNumericValue(value?.[preset.key])
 
           return (
-            <Grid xs={12} sm={6} key={preset.key}>
+            <Grid size={{ xs: 12, sm: 6 }} key={preset.key}>
               <Box sx={{ mb: 2 }}>
                 <Box
                   sx={{
@@ -42,7 +42,7 @@ const BorderRadiusControl = ({ value, onChange }) => {
                     mb: 1,
                   }}
                 >
-                  <Typography variant="body2" fontWeight={500}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
                     {preset.label}
                   </Typography>
                   <TextField

@@ -94,8 +94,8 @@ const ColorPicker = ({
       }}
     >
       {/* Header */}
-      <Box mb={1}>
-        <Typography variant="body2" fontWeight={600}>
+      <Box sx={{ mb: 1 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {label}
         </Typography>
 
@@ -161,7 +161,7 @@ const ColorPicker = ({
           horizontal: 'left',
         }}
       >
-        <Box p={2}>
+        <Box sx={{ p: 2 }}>
           <HexColorPicker
             color={isValidHex(draftValue) ? draftValue : '#000000'}
             onChange={handlePickerChange}
@@ -169,13 +169,11 @@ const ColorPicker = ({
           />
 
           <Box
-            mt={1}
-            textAlign="center"
-            sx={{
-              fontFamily: 'monospace',
+            
+            
+            sx={{ mt: 1, textAlign: 'center', fontFamily: 'monospace',
               fontSize: 12,
-              color: 'text.secondary',
-            }}
+              color: 'text.secondary', }}
           >
             {draftValue.toUpperCase()}
           </Box>

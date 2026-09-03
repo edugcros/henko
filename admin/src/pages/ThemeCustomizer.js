@@ -612,7 +612,7 @@ const ThemeCustomizer = () => {
                       </Tooltip>
 
                       <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography variant="subtitle1" fontWeight={850} sx={{ lineHeight: 1.2 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 850, lineHeight: 1.2 }}>
                           {activeSection.label}
                         </Typography>
                         <Typography
@@ -654,7 +654,7 @@ const ThemeCustomizer = () => {
                     }}
                   >
                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 1.5 }}>
-                      <Typography variant="subtitle2" fontWeight={800} gutterBottom>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }} gutterBottom>
                         Identidad general
                       </Typography>
                       <TextField
@@ -674,7 +674,7 @@ const ThemeCustomizer = () => {
                         sx={{ mt: 1.5 }}
                       />
                       {faviconUrl && (
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.5 }}>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 1.5 }}>
                           <CloudUploadIcon color="action" fontSize="small" />
                           <Typography variant="caption" color="text.secondary">
                             Favicon cargado
@@ -755,7 +755,7 @@ const ThemeCustomizer = () => {
                   borderRadius: 1.5,
                 }}
               >
-                <Typography variant="caption" fontWeight={800}>
+                <Typography variant="caption" sx={{ fontWeight: 800 }}>
                   Vista previa
                 </Typography>
                 {Object.keys(VIEWPORT_CONFIG).map(viewport => (
@@ -801,7 +801,7 @@ const ThemeCustomizer = () => {
                       flexWrap: 'wrap',
                     }}
                   >
-                    <Typography variant="subtitle2" fontWeight={850}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
                       Vista previa de la tienda
                     </Typography>
                     <Box sx={{ flex: 1 }} />

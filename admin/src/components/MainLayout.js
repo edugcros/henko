@@ -326,7 +326,7 @@ const MainLayout = () => {
           }}
         >
           {!collapsed && (
-            <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1.5}>
               <Box
                 sx={{
                   width: 36,
@@ -384,7 +384,7 @@ const MainLayout = () => {
           <>
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', mx: 1.5 }} />
             <Box sx={{ p: 2 }}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
                 <Avatar
                   sx={{
                     width: 34,
@@ -430,7 +430,7 @@ const MainLayout = () => {
         >
           <Toolbar sx={{ justifyContent: 'flex-end', minHeight: '56px !important' }}>
             {user && (
-              <Stack direction="row" spacing={1} alignItems="center">
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                 <Tooltip title="Cerrar sesión">
                   <IconButton
                     onClick={handleDropdownOpen}
@@ -493,7 +493,7 @@ const MainLayout = () => {
                     sx={{ gap: 1.5, py: 1.25 }}
                   >
                     <LogoutIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-                    <Typography variant="body2" fontWeight={500}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       Cerrar sesión
                     </Typography>
                   </MenuItem>

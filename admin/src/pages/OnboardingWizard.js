@@ -327,7 +327,7 @@ const OnboardingWizard = () => {
 
   return (
     <Box sx={{ maxWidth: 720, mx: 'auto', py: 4, px: 2 }}>
-      <Typography variant="h4" fontWeight={700} gutterBottom>
+      <Typography variant="h4" sx={{ fontWeight: 700 }} gutterBottom>
         Configura tu tienda
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
@@ -363,7 +363,7 @@ const OnboardingWizard = () => {
         </CardContent>
       </Card>
 
-      <Stack direction="row" justifyContent="space-between">
+      <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
         <Button variant="outlined" onClick={goBack} disabled={activeStep === 0 || saving}>
           Anterior
         </Button>

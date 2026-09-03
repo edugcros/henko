@@ -105,7 +105,7 @@ export default function PlatformMarginPage() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Typography variant="h5" fontWeight={800} sx={{ mb: 0.5 }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
         Margen de HENKO por comercio
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -117,7 +117,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Comercios
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {totals.tenantCount ?? 0}
           </Typography>
         </Paper>
@@ -125,7 +125,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Ingreso por planes
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {formatUsd(totals.totalPlanRevenueUsd)}
           </Typography>
         </Paper>
@@ -133,7 +133,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Costo de IA
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {formatUsd(totals.totalAiCostUsd)}
           </Typography>
         </Paper>
@@ -141,7 +141,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Comunicaciones
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {formatUsd(totals.totalCommunicationsCostUsd)}
           </Typography>
         </Paper>
@@ -149,7 +149,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Infra + storage (plataforma)
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {formatUsd((totals.infraCostUsd || 0) + (totals.storageCostUsd || 0))}
           </Typography>
         </Paper>
@@ -157,13 +157,13 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Margen estimado
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {formatUsd(totals.totalEstimatedMarginUsd)}
           </Typography>
         </Paper>
       </Stack>
 
-      <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1 }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1 }}>
         Ciclo de vida de comercios
       </Typography>
       <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
@@ -171,7 +171,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Altas este período
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {lifecycle.newTenantsInPeriod ?? '—'}
           </Typography>
         </Paper>
@@ -179,7 +179,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Comercios activos
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {lifecycle.activeTenantsCount ?? 0}
           </Typography>
         </Paper>
@@ -187,7 +187,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Comercios suspendidos
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {lifecycle.suspendedTenantsCount ?? 0}
           </Typography>
         </Paper>
@@ -195,7 +195,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             Bajas (aprox., este período)
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {lifecycle.deletedInPeriodApprox ?? '—'}
           </Typography>
         </Paper>
@@ -203,7 +203,7 @@ export default function PlatformMarginPage() {
           <Typography variant="caption" color="text.secondary">
             En plan pago (nominal)
           </Typography>
-          <Typography variant="h6" fontWeight={800}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {lifecycle.nonFreePlanTenantsCount ?? 0}
           </Typography>
         </Paper>

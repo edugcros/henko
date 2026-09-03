@@ -119,7 +119,7 @@ const CopyableValue = ({ value }) => {
   }
 
   return (
-    <Stack direction="row" spacing={0.5} alignItems="flex-start">
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'flex-start' }}>
       <Typography
         variant="caption"
         sx={{
@@ -212,7 +212,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
 
   if (loading) {
     return (
-      <Stack alignItems="center" py={3}>
+      <Stack sx={{ alignItems: 'center', py: 3 }}>
         <CircularProgress size={22} />
       </Stack>
     )
@@ -235,7 +235,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
 
   return (
     <Stack spacing={2.5}>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }} useFlexGap>
         <Typography variant="body2" color="text.secondary">
           Enviando como:
         </Typography>
@@ -269,7 +269,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
       )}
 
       {status === 'verified' ? (
-        <Stack spacing={1.5} alignItems="flex-start">
+        <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
           <Typography variant="body2" color="text.primary">
             Tus correos salen desde <strong>{requested.fromAddress}</strong>, con la reputación de
             tu propio dominio.
@@ -327,7 +327,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
 
           {records.length > 0 && (
             <Box>
-              <Typography variant="body2" fontWeight={700} mb={1}>
+              <Typography variant="body2" sx={{ fontWeight: 700, mb: 1 }}>
                 Cargá estos registros en el DNS de {requested.domain}
               </Typography>
 
@@ -356,7 +356,7 @@ const SendingDomainSection = ({ onIdentityChange } = {}) => {
                 </Table>
               </Box>
 
-              <Stack direction="row" spacing={1.5} mt={2} alignItems="center">
+              <Stack direction="row" spacing={1.5} sx={{ mt: 2, alignItems: 'center' }}>
                 <Button
                   variant="contained"
                   disabled={busy === 'verify'}

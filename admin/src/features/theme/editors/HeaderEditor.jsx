@@ -257,11 +257,11 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
       >
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          sx={{ justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' } }}
+
           spacing={1.5}
         >
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
             <Box sx={iconBoxSx(true)}>
               <SettingsIcon fontSize="small" />
             </Box>
@@ -289,7 +289,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
 
       {/* ===================== APPEARANCE ===================== */}
       <Paper elevation={0} sx={cardSx}>
-        <Stack direction="row" spacing={1.5} alignItems="center" mb={1.5}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1.5 }}>
           <Box sx={iconBoxSx(true)}>
             <BrandingIcon fontSize="small" />
           </Box>
@@ -307,7 +307,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
 
         <Grid container spacing={2}>
           {HEADER_COLOR_FIELDS.map(field => (
-            <Grid xs={12} md={6} key={field.key}>
+            <Grid size={{ xs: 12, md: 6 }} key={field.key}>
               <ColorPicker
                 label={field.label}
                 description={field.description}
@@ -321,7 +321,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
 
       {/* ===================== LAYOUT ===================== */}
       <Paper elevation={0} sx={cardSx}>
-        <Stack direction="row" spacing={1.5} alignItems="center" mb={1.5}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1.5 }}>
           <Box sx={iconBoxSx(true)}>
             <HeightIcon fontSize="small" />
           </Box>
@@ -350,7 +350,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
 
       {/* ===================== BRANDING ===================== */}
       <Paper elevation={0} sx={cardSx}>
-        <Stack direction="row" spacing={1.5} alignItems="center" mb={1.5}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1.5 }}>
           <Box sx={iconBoxSx(header.showLogo !== false)}>
             <BrandingIcon fontSize="small" />
           </Box>
@@ -366,7 +366,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
           </Box>
         </Stack>
 
-        <Typography variant="caption" sx={captionSx} display="block" mb={1}>
+        <Typography variant="caption" sx={{ ...captionSx, display: 'block', mb: 1 }}>
           Logo
         </Typography>
 
@@ -378,7 +378,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
         />
 
         {header.showLogo !== false && (
-          <Box mt={2}>
+          <Box sx={{ mt: 2 }}>
             <Divider sx={{ mb: 2 }} />
 
             <Typography variant="caption" sx={captionSx}>
@@ -400,7 +400,7 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
 
       {/* ===================== VISIBILITY ===================== */}
       <Paper elevation={0} sx={{ ...cardSx, mb: 0 }}>
-        <Stack direction="row" spacing={1.5} alignItems="center" mb={1}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1 }}>
           <Box sx={iconBoxSx(true)}>
             <SettingsIcon fontSize="small" />
           </Box>
@@ -416,13 +416,13 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
           </Box>
         </Stack>
 
-        <Grid container spacing={1.25} mt={0.5}>
+        <Grid container spacing={1.25} sx={{ mt: 0.5 }}>
           {TOGGLES.map(toggle => {
             const { key, label, description, defaultValue } = toggle
             const checked = getToggleChecked(header, key, defaultValue)
 
             return (
-              <Grid xs={12} sm={6} key={key}>
+              <Grid size={{ xs: 12, sm: 6 }} key={key}>
                 <Paper
                   elevation={0}
                   sx={{
@@ -455,8 +455,8 @@ const HeaderEditor = ({ value = {}, colors = {}, onChange, onColorChange, onLogo
                       <Stack
                         direction="row"
                         spacing={1.25}
-                        alignItems="center"
-                        sx={{ minWidth: 0 }}
+
+                        sx={{ alignItems: 'center', minWidth: 0 }}
                       >
                         <Box sx={iconBoxSx(checked)}>
                           {React.createElement(toggle.icon, {

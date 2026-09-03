@@ -346,11 +346,15 @@ const ImageAiEditor = () => {
 
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
-          alignItems={{ sm: 'center' }}
-          justifyContent="space-between"
-          sx={{ position: 'relative', zIndex: 1 }}
+
+          sx={{
+            alignItems: { sm: 'center' },
+            justifyContent: 'space-between',
+            position: 'relative',
+            zIndex: 1,
+          }}
         >
-          <Stack direction="row" alignItems="center" spacing={2}>
+          <Stack direction="row" sx={{ alignItems: 'center' }} spacing={2}>
             <Box
               sx={{
                 width: 52,
@@ -369,8 +373,8 @@ const ImageAiEditor = () => {
             <Box>
               <Typography
                 variant="h5"
-                fontWeight={900}
-                sx={{ letterSpacing: -0.8, lineHeight: 1.2 }}
+
+                sx={{ fontWeight: 900, letterSpacing: -0.8, lineHeight: 1.2 }}
               >
                 Editor de Imágenes IA
               </Typography>
@@ -398,14 +402,14 @@ const ImageAiEditor = () => {
 
       <Grid container spacing={3}>
         {/* ── Panel izquierdo ── */}
-        <Grid xs={12} md={5} lg={4}>
+        <Grid size={{ xs: 12, md: 5, lg: 4 }}>
           <Stack spacing={2.5}>
             {/* Paso 1 — Modo */}
             <Card sx={cardSx}>
               <CardContent sx={{ p: 2.5 }}>
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
                   <StepBadge n={1} />
-                  <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: '0.82rem' }}>
                     Elegí qué querés hacer
                   </Typography>
                 </Stack>
@@ -465,8 +469,9 @@ const ImageAiEditor = () => {
                         <Box>
                           <Typography
                             variant="body2"
-                            fontWeight={800}
+
                             sx={{
+                              fontWeight: 800,
                               color: sel ? VD : 'text.primary',
                               lineHeight: 1.3,
                             }}
@@ -497,12 +502,12 @@ const ImageAiEditor = () => {
                 <CardContent sx={{ p: 2.5 }}>
                   <Typography
                     variant="subtitle2"
-                    fontWeight={800}
-                    sx={{ fontSize: '0.82rem', mb: 1.5 }}
+
+                    sx={{ fontWeight: 800, fontSize: '0.82rem', mb: 1.5 }}
                   >
                     Propósito de la imagen
                   </Typography>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
                     {PURPOSE_OPTIONS.map(o => (
                       <Chip
                         key={o.value || 'generic'}
@@ -534,9 +539,9 @@ const ImageAiEditor = () => {
             {/* Paso 2 — Upload */}
             <Card sx={cardSx}>
               <CardContent sx={{ p: 2.5 }}>
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
                   <StepBadge n={2} />
-                  <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: '0.82rem' }}>
                     Subí tu imagen
                   </Typography>
                 </Stack>
@@ -589,7 +594,7 @@ const ImageAiEditor = () => {
                     </Box>
                     <Typography
                       variant="body2"
-                      fontWeight={600}
+                      sx={{ fontWeight: 600 }}
                       color={dragActive ? V : 'text.secondary'}
                     >
                       Arrastrá o hacé click para subir
@@ -644,7 +649,7 @@ const ImageAiEditor = () => {
                           }}
                         >
                           <CircularProgress size={36} sx={{ color: V }} />
-                          <Typography variant="caption" fontWeight={700} sx={{ color: VD }}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: VD }}>
                             Procesando...
                           </Typography>
                         </Box>
@@ -654,9 +659,8 @@ const ImageAiEditor = () => {
                     {file && (
                       <Stack
                         direction="row"
-                        alignItems="center"
-                        justifyContent="space-between"
-                        sx={{ mt: 1.5 }}
+
+                        sx={{ alignItems: 'center', justifyContent: 'space-between', mt: 1.5 }}
                       >
                         <Typography
                           variant="caption"
@@ -711,9 +715,9 @@ const ImageAiEditor = () => {
             {!isRemoveBg && (
               <Card sx={cardSx}>
                 <CardContent sx={{ p: 2.5 }}>
-                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
                     <StepBadge n={3} />
-                    <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem' }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: '0.82rem' }}>
                       Describí los cambios
                     </Typography>
                   </Stack>
@@ -748,12 +752,13 @@ const ImageAiEditor = () => {
                     {prompt.length}/1000
                   </Typography>
 
-                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 1, mb: 1 }}>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mt: 1, mb: 1 }}>
                     <LightbulbIcon sx={{ fontSize: 14, color: '#F59E0B' }} />
                     <Typography
                       variant="caption"
-                      fontWeight={700}
+
                       sx={{
+                        fontWeight: 700,
                         color: 'text.secondary',
                         textTransform: 'uppercase',
                         letterSpacing: 0.6,
@@ -763,7 +768,7 @@ const ImageAiEditor = () => {
                       Ideas rápidas
                     </Typography>
                   </Stack>
-                  <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                  <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
                     {PROMPT_SUGGESTIONS.map(s => (
                       <Chip
                         key={s}
@@ -838,7 +843,7 @@ const ImageAiEditor = () => {
         </Grid>
 
         {/* ── Panel derecho — Resultados ── */}
-        <Grid xs={12} md={7} lg={8}>
+        <Grid size={{ xs: 12, md: 7, lg: 8 }}>
           <Card
             sx={{
               ...cardSx,
@@ -859,7 +864,7 @@ const ImageAiEditor = () => {
                 justifyContent: 'space-between',
               }}
             >
-              <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1.5}>
                 <Box
                   sx={{
                     width: 7,
@@ -868,7 +873,7 @@ const ImageAiEditor = () => {
                     bgcolor: results.length > 0 ? '#22C55E' : alpha('#94A3B8', 0.35),
                   }}
                 />
-                <Typography variant="subtitle2" fontWeight={800} sx={{ fontSize: '0.82rem' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: '0.82rem' }}>
                   Resultados
                 </Typography>
                 {results.length > 0 && (
@@ -942,8 +947,8 @@ const ImageAiEditor = () => {
                   </Box>
                   <Typography
                     variant="body2"
-                    fontWeight={700}
-                    sx={{ color: 'text.secondary', mb: 0.5 }}
+
+                    sx={{ fontWeight: 700, color: 'text.secondary', mb: 0.5 }}
                   >
                     Sin resultados todavía
                   </Typography>
@@ -1014,12 +1019,15 @@ const ImageAiEditor = () => {
                           bgcolor: '#fff',
                         }}
                       >
-                        <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Stack
+                          direction="row"
+                          sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+                        >
                           <Stack
                             direction="row"
-                            alignItems="center"
+
                             spacing={1.25}
-                            sx={{ minWidth: 0 }}
+                            sx={{ alignItems: 'center', minWidth: 0 }}
                           >
                             <Box
                               sx={{
@@ -1043,11 +1051,11 @@ const ImageAiEditor = () => {
                               )}
                             </Box>
                             <Box sx={{ minWidth: 0 }}>
-                              <Stack direction="row" alignItems="center" spacing={0.75}>
+                              <Stack direction="row" sx={{ alignItems: 'center' }} spacing={0.75}>
                                 <Typography
                                   variant="body2"
-                                  fontWeight={700}
-                                  sx={{ fontSize: '0.8rem', lineHeight: 1.3 }}
+
+                                  sx={{ fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.3 }}
                                 >
                                   {r.mode === MODES.REMOVE_BG
                                     ? 'Fondo removido'

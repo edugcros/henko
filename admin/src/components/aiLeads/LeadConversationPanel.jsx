@@ -38,8 +38,8 @@ const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversa
         variant="outlined"
         sx={{ height: '100%', p: 3, display: 'grid', placeItems: 'center' }}
       >
-        <Box textAlign="center">
-          <Typography variant="h6" fontWeight={800}>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
             Seleccioná un lead
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -66,9 +66,12 @@ const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversa
           borderBottom: theme => `1px solid ${theme.palette.divider}`,
         }}
       >
-        <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
+        <Stack
+          direction="row"
+          sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}
+        >
           <Box>
-            <Typography variant="h6" fontWeight={900}>
+            <Typography variant="h6" sx={{ fontWeight: 900 }}>
               Conversación
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -118,8 +121,8 @@ const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversa
                       color: isUser ? 'text.primary' : 'primary.contrastText',
                     }}
                   >
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.6 }}>
-                      <Typography variant="caption" fontWeight={800}>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.6 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 800 }}>
                         {getRoleLabel(message.role)}
                       </Typography>
                       <Typography variant="caption" sx={{ opacity: 0.7 }}>

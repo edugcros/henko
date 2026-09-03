@@ -134,13 +134,12 @@ const InsightCard = ({
     <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
       <Stack
         direction="row"
-        justifyContent="space-between"
-        alignItems="flex-start"
+        sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}
+
         spacing={2}
-        flexWrap="wrap"
       >
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" mb={1}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
             <Chip size="small" label={typeMeta.label} color={typeMeta.color} />
             {insight.priority && (
               <Chip
@@ -155,7 +154,7 @@ const InsightCard = ({
             )}
           </Stack>
 
-          <Typography variant="subtitle1" fontWeight={700}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
             {insight.title}
           </Typography>
 
@@ -601,15 +600,14 @@ const AiInsightsPage = () => {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 980, mx: 'auto' }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ sm: 'center' }}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+
         spacing={2}
-        mb={3}
       >
         <Box>
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
             <InsightsIcon color="primary" />
-            <Typography variant="h4" fontWeight={800}>
+            <Typography variant="h4" sx={{ fontWeight: 800 }}>
               Diagnóstico
             </Typography>
           </Stack>
@@ -631,8 +629,8 @@ const AiInsightsPage = () => {
       </Stack>
 
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid xs={12} sm={6}>
+        <Grid container spacing={2} sx={{ alignItems: 'center' }}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               select
               fullWidth
@@ -649,7 +647,7 @@ const AiInsightsPage = () => {
               ))}
             </TextField>
           </Grid>
-          <Grid xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               select
               fullWidth

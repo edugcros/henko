@@ -197,7 +197,7 @@ export default function MarketIntelligencePage() {
 
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-start">
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
             <TextField
               fullWidth
               label="Producto o categoría"
@@ -242,7 +242,7 @@ export default function MarketIntelligencePage() {
             sx={{ mt: 2, '&:before': { display: 'none' }, bgcolor: 'transparent' }}
           >
             <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0 }}>
-              <Stack direction="row" alignItems="center" spacing={1}>
+              <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
                 <Typography variant="body2">Calcular rentabilidad</Typography>
                 {hasCost && <Chip size="small" label="Con costos" color="primary" variant="outlined" />}
               </Stack>
@@ -375,9 +375,9 @@ export default function MarketIntelligencePage() {
               <CardContent>
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
-                  alignItems={{ sm: 'center' }}
+                  
                   spacing={2}
-                  sx={{ mb: 2 }}
+                  sx={{ alignItems: { sm: 'center' }, mb: 2 }}
                 >
                   <Typography variant="subtitle1">Rentabilidad</Typography>
                   {profit.marketPosition && (
@@ -396,7 +396,7 @@ export default function MarketIntelligencePage() {
 
                 <Grid container spacing={3}>
                   <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Typography variant="caption" color="text.secondary" display="block">
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                       Tu costo total por unidad
                     </Typography>
                     <Typography variant="h6">
@@ -409,8 +409,8 @@ export default function MarketIntelligencePage() {
                       <Typography
                         variant="caption"
                         color="text.secondary"
-                        display="block"
-                        sx={{ cursor: 'help' }}
+                        
+                        sx={{ display: 'block', cursor: 'help' }}
                       >
                         Empezás a ganar desde
                       </Typography>
@@ -422,7 +422,7 @@ export default function MarketIntelligencePage() {
 
                   {prices?.median && (
                     <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                      <Typography variant="caption" color="text.secondary" display="block">
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                         Precio típico del mercado
                       </Typography>
                       <Typography variant="h6">{money(prices.median, prices.currency)}</Typography>
@@ -449,7 +449,7 @@ export default function MarketIntelligencePage() {
 
                         return (
                           <Grid size={{ xs: 6, md: 3 }} key={key}>
-                            <Typography variant="caption" color="text.secondary" display="block">
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                               {label}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -510,7 +510,7 @@ export default function MarketIntelligencePage() {
                       un elemento y un fragmento con texto crudo rompía la
                       reconciliación de React (removeChild sobre un nodo que
                       Emotion ya había reemplazado). */}
-                  <Stack direction="row" alignItems="baseline" spacing={0.5} sx={{ my: 1 }}>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline', my: 1 }}>
                     {unmeasurable ? (
                       <Typography variant="h5" component="span" color="text.secondary">
                         Sin datos
@@ -537,7 +537,7 @@ export default function MarketIntelligencePage() {
                   <Typography variant="body2">{result.demandClassification}</Typography>
 
                   {result.measuredWeight != null && (
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                       Se pudo evaluar el {Math.round(result.measuredWeight * 100)}% del modelo
                     </Typography>
                   )}
@@ -554,7 +554,7 @@ export default function MarketIntelligencePage() {
                     </Typography>
                   </Tooltip>
 
-                  <Stack direction="row" alignItems="baseline" spacing={0.5} sx={{ my: 1 }}>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'baseline', my: 1 }}>
                     <Typography variant="h3" component="span">
                       {safeProgressValue(result.confidenceScore)}
                     </Typography>
@@ -578,7 +578,7 @@ export default function MarketIntelligencePage() {
 
           <Card variant="outlined" sx={{ mb: 3 }}>
             <CardContent>
-              <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1 }}>
+              <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 1 }}>
                 <Typography variant="subtitle1">Conclusión</Typography>
                 <Chip
                   label={RECOMMENDATION[result.recommendation]?.label || result.recommendation}
@@ -607,7 +607,7 @@ export default function MarketIntelligencePage() {
 
                   return (
                     <Grid size={{ xs: 6, sm: 4, md: 2 }} key={key}>
-                      <Typography variant="caption" color="text.secondary" display="block">
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                         {COMPONENT_LABELS[key] || key}
                       </Typography>
                       <Tooltip title={source?.help || ''} placement="top">
@@ -625,17 +625,17 @@ export default function MarketIntelligencePage() {
               </Grid>
 
               {Array.isArray(result.unmeasured) && result.unmeasured.length > 0 && (
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
                   Sin datos para: {result.unmeasured.map(k => COMPONENT_LABELS[k] || k).join(', ')}
                 </Typography>
               )}
 
               <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
-                <Typography variant="caption" display="block">
+                <Typography variant="caption" sx={{ display: 'block' }}>
                   <strong>≈</strong> señal estimada a partir de lo que se encontró buscando en la web ·{' '}
                   <strong>◐</strong> combina datos de tu tienda con información externa
                 </Typography>
-                <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
                   Los puntajes todavía no están calibrados con datos históricos. Sirven para comparar
                   productos entre sí, no como medidas absolutas: un 70 significa "más que un 50", no
                   "70% de demanda".
@@ -654,7 +654,7 @@ export default function MarketIntelligencePage() {
 
               {prices && (
                 <Box sx={{ mb: 2 }}>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                     Precios encontrados ({prices.sampleSize} ofertas)
                   </Typography>
                   <Stack direction="row" spacing={3} sx={{ mt: 1 }}>
@@ -664,7 +664,7 @@ export default function MarketIntelligencePage() {
                       ['Más caro', prices.max],
                     ].map(([label, value]) => (
                       <Box key={label}>
-                        <Typography variant="caption" color="text.secondary" display="block">
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                           {label}
                         </Typography>
                         <Typography variant="body1">{money(value, prices.currency)}</Typography>
@@ -672,7 +672,7 @@ export default function MarketIntelligencePage() {
                     ))}
                   </Stack>
                   {result?.rawSignals?.shopping?.merchantCount > 0 && (
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                       {result.rawSignals.shopping.merchantCount} vendedores distintos
                     </Typography>
                   )}
@@ -696,8 +696,8 @@ export default function MarketIntelligencePage() {
                             <Box key={i} sx={{ pt: i === 0 ? 0 : 1 }}>
                               <Stack
                                 direction="row"
-                                justifyContent="space-between"
-                                alignItems="flex-start"
+                                sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }} 
+                                
                                 spacing={2}
                               >
                                 <Box sx={{ minWidth: 0 }}>
@@ -721,7 +721,7 @@ export default function MarketIntelligencePage() {
                                     {offer.rating ? ` · ${offer.rating}★` : ''}
                                   </Typography>
                                 </Box>
-                                <Typography variant="body2" fontWeight={500} sx={{ whiteSpace: 'nowrap' }}>
+                                <Typography variant="body2" sx={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                                   {money(offer.price, offer.currency || prices?.currency)}
                                 </Typography>
                               </Stack>
@@ -729,7 +729,7 @@ export default function MarketIntelligencePage() {
                           ))}
                         </Stack>
 
-                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
                           Muestra de las ofertas encontradas en Google Shopping. Solo aparecen comercios
                           que publican su catálogo ahí, así que puede haber tiendas del rubro que no
                           figuren. Revisá si los productos listados son realmente comparables al tuyo.
@@ -757,7 +757,7 @@ export default function MarketIntelligencePage() {
                   {gemini.recurringComplaints?.length > 0 && (
                     <>
                       <Divider sx={{ my: 1 }} />
-                      <Typography variant="body2" fontWeight={500}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
                         Quejas frecuentes de compradores
                       </Typography>
                       {gemini.recurringComplaints.map((complaint, i) => (
@@ -787,7 +787,7 @@ export default function MarketIntelligencePage() {
                 <Button size="small" onClick={() => handleAnalyze(true)} disabled={loading}>
                   Volver a analizar con datos frescos
                 </Button>
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                   Consulta las fuentes de nuevo en lugar de usar el resultado guardado.
                 </Typography>
               </Box>
