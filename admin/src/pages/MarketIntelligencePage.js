@@ -183,12 +183,17 @@ export default function MarketIntelligencePage() {
       // Descartamos respuestas viejas: sin esto, una peticion lenta lanzada
       // antes puede pisar los resultados de la tecla mas reciente.
       if (seq !== requestSeq.current) return
-      const rows = Array.isArray(response?.data) ? response.data : []
+      // getAdminProducts retorna la respuesta desenrollada (via apiRequest),
+      // así que response ya es el array o el objeto con los datos
+      const rows = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
       setProductOptions(rows)
-    } catch {
+    } catch (err) {
       // El desplegable es una ayuda, no el camino unico: si el catalogo no
       // carga, el campo sigue aceptando texto libre y el analisis funciona.
-      if (seq === requestSeq.current) setProductOptions([])
+      if (seq === requestSeq.current) {
+        setProductOptions([])
+        console.warn('Error fetching products:', err)
+      }
     } finally {
       if (seq === requestSeq.current) setOptionsLoading(false)
     }
