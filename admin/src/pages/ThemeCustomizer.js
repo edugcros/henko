@@ -460,13 +460,19 @@ const ThemeCustomizer = () => {
           }}
         >
           <Toolbar sx={{ minHeight: APP_BAR_HEIGHT, gap: 1, flexWrap: 'wrap' }}>
-            <Tooltip title="Volver al panel de administración">
+            <Tooltip title={settingsOpen ? 'Volver a secciones' : 'Volver al panel de administración'}>
               <IconButton
                 size="small"
                 edge="start"
                 color="inherit"
-                aria-label="Volver al panel de administración"
-                onClick={() => navigate('/admin')}
+                aria-label={settingsOpen ? 'Volver a secciones' : 'Volver al panel de administración'}
+                onClick={() => {
+                  if (settingsOpen) {
+                    setSettingsOpen(false)
+                  } else {
+                    navigate('/admin')
+                  }
+                }}
               >
                 <ArrowBackIcon />
               </IconButton>
