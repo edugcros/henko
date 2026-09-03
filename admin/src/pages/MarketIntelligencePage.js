@@ -321,36 +321,39 @@ export default function MarketIntelligencePage() {
                   </Stack>
                 )
               }}
-              renderInput={params => (
-                <TextField
-                  {...params}
-                  label="Producto o categoría"
-                  placeholder="Ej: freidora de aire 5 litros"
-                  onKeyDown={e => {
-                    // Con el desplegable abierto, Enter le pertenece al
-                    // Autocomplete (elige la opción resaltada). MUI escucha en
-                    // el root y el evento burbujea desde el input, así que acá
-                    // defaultPrevented todavía es false: hay que mirar el
-                    // estado de apertura, no el evento.
-                    if (e.key === 'Enter' && !optionsOpen) handleAnalyze(false)
-                  }}
-                  helperText="Elegí uno de tu catálogo o escribí como buscaría un cliente. Evitá modelos, SKU y colores."
-                  slotProps={{
-                    htmlInput: { ...params.inputProps, maxLength: 200 },
-                    input: {
-                      ...params.InputProps,
-                      endAdornment: (
-                        <>
-                          {optionsLoading ? (
-                            <CircularProgress size={18} />
-                          ) : null}
-                          {params.InputProps.endAdornment}
-                        </>
-                      ),
-                    },
-                  }}
-                />
-              )}
+              renderInput={params => {
+                const { InputProps = {} } = params
+                return (
+                  <TextField
+                    {...params}
+                    label="Producto o categoría"
+                    placeholder="Ej: freidora de aire 5 litros"
+                    onKeyDown={e => {
+                      // Con el desplegable abierto, Enter le pertenece al
+                      // Autocomplete (elige la opción resaltada). MUI escucha en
+                      // el root y el evento burbujea desde el input, así que acá
+                      // defaultPrevented todavía es false: hay que mirar el
+                      // estado de apertura, no el evento.
+                      if (e.key === 'Enter' && !optionsOpen) handleAnalyze(false)
+                    }}
+                    helperText="Elegí uno de tu catálogo o escribí como buscaría un cliente. Evitá modelos, SKU y colores."
+                    slotProps={{
+                      htmlInput: { ...params.inputProps, maxLength: 200 },
+                      input: {
+                        ...InputProps,
+                        endAdornment: (
+                          <>
+                            {optionsLoading ? (
+                              <CircularProgress size={18} />
+                            ) : null}
+                            {InputProps.endAdornment}
+                          </>
+                        ),
+                      },
+                    }}
+                  />
+                )
+              }}
             />
             <TextField
               select
