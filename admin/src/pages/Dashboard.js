@@ -1016,7 +1016,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       )}
 
       <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Ventas aprobadas"
             value={loading ? <Skeleton width={90} /> : formatMoney(summary.revenue)}
@@ -1025,7 +1025,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             gradient={KPI_GRADIENTS.revenue}
           />
         </Grid>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Órdenes pagadas"
             value={loading ? <Skeleton width={90} /> : formatNumber(paidOrders)}
@@ -1034,7 +1034,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             gradient={KPI_GRADIENTS.orders}
           />
         </Grid>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Ticket promedio"
             value={loading ? <Skeleton width={90} /> : formatMoney(summary.averageOrderValue)}
@@ -1042,7 +1042,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             gradient={KPI_GRADIENTS.ticket}
           />
         </Grid>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Conversión real"
             value={loading ? <Skeleton width={90} /> : formatPercent(summary.conversionRate)}
@@ -1058,7 +1058,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       />
 
       <Grid container spacing={2.5} sx={{ mb: 2.5 }}>
-        <Grid xs={12}>
+        <Grid size={12}>
           <KpiCard
             title="Valor total generado por HENKO"
             value={loading ? <Skeleton width={140} /> : formatMoney(summary.totalGeneratedValue)}
@@ -1074,7 +1074,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       />
 
       <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Ingreso por campañas"
             value={loading ? <Skeleton width={90} /> : formatMoney(summary.metaRevenue)}
@@ -1082,7 +1082,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             gradient={KPI_GRADIENTS.metaRevenue}
           />
         </Grid>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Recuperado por WhatsApp"
             value={loading ? <Skeleton width={90} /> : formatMoney(summary.recoveredRevenue)}
@@ -1090,7 +1090,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             gradient={KPI_GRADIENTS.recoveredRevenue}
           />
         </Grid>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Influenciado por IA"
             value={loading ? <Skeleton width={90} /> : formatMoney(summary.aiInfluencedRevenue)}
@@ -1106,7 +1106,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       />
 
       <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Carritos activos"
             value={loading ? <Skeleton width={80} /> : formatNumber(summary.activeCarts)}
@@ -1114,7 +1114,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             gradient={KPI_GRADIENTS.activeCarts}
           />
         </Grid>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Valor activo"
             value={loading ? <Skeleton width={80} /> : formatMoney(summary.activeCartValue)}
@@ -1122,7 +1122,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             gradient={KPI_GRADIENTS.activeValue}
           />
         </Grid>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Carritos abandonados"
             value={loading ? <Skeleton width={80} /> : formatNumber(summary.abandonedCarts)}
@@ -1130,7 +1130,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
             gradient={KPI_GRADIENTS.abandonedCarts}
           />
         </Grid>
-        <Grid xs={12} sm={6} lg={3}>
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Valor abandonado"
             value={loading ? <Skeleton width={80} /> : formatMoney(summary.abandonedCartValue)}
@@ -1141,7 +1141,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       </Grid>
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid xs={12} md={7}>
+        <Grid size={{ xs: 12, md: 7 }}>
           <Card
             sx={{
               height: '100%',
@@ -1217,7 +1217,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
           </Card>
         </Grid>
 
-        <Grid xs={12} md={5}>
+        <Grid size={{ xs: 12, md: 5 }}>
           <Card
             sx={{
               height: '100%',
@@ -1278,7 +1278,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       />
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid xs={12} lg={4}>
+        <Grid size={{ xs: 12, lg: 4 }}>
           <Card
             sx={{
               borderRadius: 3,
@@ -1332,7 +1332,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
           </Card>
         </Grid>
 
-        <Grid xs={12} lg={4}>
+        <Grid size={{ xs: 12, lg: 4 }}>
           <Card
             sx={{
               borderRadius: 3,
@@ -1401,7 +1401,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
           </Card>
         </Grid>
 
-        <Grid xs={12} lg={4}>
+        <Grid size={{ xs: 12, lg: 4 }}>
           <Card
             sx={{
               borderRadius: 3,
@@ -1458,7 +1458,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       </Grid>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid xs={12} lg={7}>
+        <Grid size={{ xs: 12, lg: 7 }}>
           <Card
             sx={{
               borderRadius: 3,
@@ -1507,7 +1507,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
           </Card>
         </Grid>
 
-        <Grid xs={12} lg={5}>
+        <Grid size={{ xs: 12, lg: 5 }}>
           <Card
             sx={{
               borderRadius: 3,
@@ -1559,7 +1559,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
       </Grid>
 
       <Grid container spacing={3}>
-        <Grid xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Card
             sx={{
               borderRadius: 3,
@@ -1602,7 +1602,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
           </Card>
         </Grid>
 
-        <Grid xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Card
             sx={{
               borderRadius: 3,
@@ -1617,7 +1617,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 description="Cuando la URL pertenece a un producto, se muestra nombre e imagen en lugar del path técnico."
               />
               <Grid container spacing={2}>
-                <Grid xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
                     Productos o páginas más vistas
                   </Typography>
@@ -1631,7 +1631,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                     )}
                   </Stack>
                 </Grid>
-                <Grid xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
                     Búsquedas frecuentes
                   </Typography>
