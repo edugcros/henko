@@ -43,6 +43,42 @@ const tenantCache = new Map()
 // Utilidades internas
 // =====================================================
 
+const normalizeHost = value => {
+  if (!value) return ''
+
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    .split(',')[0]
+    .trim()
+}
+
+const getRequestTenantHost = req => {
+  const forwardedHost = normalizeHost(
+    req.headers?.['x-forwarded-host'],
+  )
+
+  if (forwardedHost) {
+    return forwardedHost
+  }
+
+  const origin = String(req.headers?.origin || '').trim()
+
+  if (origin) {
+    try {
+      return normalizeHost(new URL(origin).host)
+    } catch {
+      // continuar
+    }
+  }
+
+  return normalizeHost(
+    req.headers?.host || req.hostname,
+  )
+}
+
 const getHeaderValue = (req, headerName) => {
   const value = req.headers?.[headerName]
   return Array.isArray(value) ? value[0] : value
@@ -355,7 +391,14 @@ export const resolveTenantByDomain = async (req, res, next) => {
       isApiHostWithoutTenantHeader({
         explicitTenantHeader,
         selectedHost: rawHost,
-      })
+      }),
+
+      logger.info('[TENANT RESOLUTION]', {
+  host: req.headers?.host,
+  forwardedHost: req.headers?.['x-forwarded-host'],
+  origin: req.headers?.origin,
+  hostname: req.hostname,
+})
     ) {
       return sendResponse(
         res,
