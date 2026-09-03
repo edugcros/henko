@@ -92,7 +92,7 @@ const MIN_PRICE_CONFIDENCE_FOR_AUTOSAVE = clampNumber(
   1,
 )
 const MAX_RETRIES = Math.min(
-  Math.max(Number(process.env.GEMINI_MAX_RETRIES || 3), 1),
+  Math.max(Number(process.env.GEMINI_MAX_RETRIES || 3), 2),
   5,
 )
 const GEMINI_RETRY_BASE_DELAY_MS = Math.min(
