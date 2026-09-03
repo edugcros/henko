@@ -1156,7 +1156,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Ventas, sesiones y carritos reales por día"
                 description="Cruza revenue pagado, sesiones reales y carritos activos/abandonados desde MongoDB."
               />
-              <Box height={360}>
+              <Box sx={{ height: 360 }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={360} />
                 ) : dailyRows.length ? (
@@ -1232,7 +1232,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Activos vs abandonados"
                 description="Comparación directa de cantidad de carritos y productos involucrados."
               />
-              <Box height={330}>
+              <Box sx={{ height: 330 }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={330} />
                 ) : (
@@ -1292,7 +1292,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Productos más vendidos"
                 description="Ordenados por revenue aprobado."
               />
-              <Box height={loading ? 340 : getVerticalChartHeight(topSellingProducts, 360)}>
+              <Box
+                sx={{
+                  height: loading
+                    ? 340
+                    : getVerticalChartHeight(topSellingProducts, 360),
+                }}
+              >
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topSellingProducts.length ? (
@@ -1346,7 +1352,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Productos más visitados"
                 description="Ordenados por vistas de producto y enriquecidos con clicks y add to cart."
               />
-              <Box height={loading ? 340 : getVerticalChartHeight(topVisitedProducts, 360)}>
+              <Box
+                sx={{
+                  height: loading
+                    ? 340
+                    : getVerticalChartHeight(topVisitedProducts, 360),
+                }}
+              >
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topVisitedProducts.length ? (
@@ -1415,7 +1427,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Productos con más clicks"
                 description="Clicks por producto desde cards, listados, búsquedas o bloques promocionales."
               />
-              <Box height={loading ? 340 : getVerticalChartHeight(topClickedProducts, 360)}>
+              <Box
+                sx={{
+                  height: loading
+                    ? 340
+                    : getVerticalChartHeight(topClickedProducts, 360),
+                }}
+              >
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topClickedProducts.length ? (
@@ -1472,7 +1490,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Funnel de conversión"
                 description="Cada barra usa conteos reales: sesiones, vistas, clicks, carrito, checkout, pagos y compras."
               />
-              <Box height={360}>
+              <Box sx={{ height: 360 }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={360} />
                 ) : funnelRows.length ? (
@@ -1522,7 +1540,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 title="Tráfico por fuente"
                 description="Sesiones y conversiones agrupadas por UTM source."
               />
-              <Box height={360}>
+              <Box sx={{ height: 360 }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={360} />
                 ) : trafficRows.length ? (
