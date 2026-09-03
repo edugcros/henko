@@ -6,12 +6,14 @@
 // slotProps en vez de inputProps. La versión anterior usaba API de MUI v5
 // y disparaba warnings de props desconocidas llegando al DOM.
 
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Autocomplete,
+  Avatar,
   Box,
   Button,
   Card,
@@ -31,6 +33,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
 import { analyzeProduct } from '../utils/marketIntelligenceApi.js'
+import productService from '../features/product/productService'
 
 const COUNTRIES = [
   { code: 'AR', label: 'Argentina' },
@@ -130,13 +133,74 @@ const scoreColor = value => {
 // warning de MUI y renderizan la barra vacía sin indicación de por qué.
 const safeProgressValue = value => (Number.isFinite(Number(value)) ? Number(value) : 0)
 
+// El desplegable ofrece el catalogo propio, pero el analisis sigue aceptando
+// texto libre: la pantalla existe para evaluar productos que todavia NO estan
+// en el catalogo, asi que un Autocomplete cerrado romperia su caso de uso
+// principal. De ahi freeSolo.
+const PRODUCT_OPTIONS_LIMIT = 50
+const PRODUCT_SEARCH_DEBOUNCE_MS = 350
+
+const getProductLabel = option =>
+  typeof option === 'string' ? option : option?.title || option?.name || ''
+
+const getProductImage = option => {
+  if (typeof option === 'string') return ''
+  const first = Array.isArray(option?.images) ? option.images[0] : null
+  return first?.url || first?.secure_url || ''
+}
+
+const getProductSubtitle = option => {
+  if (typeof option === 'string') return ''
+  const parts = [option?.categoria, option?.subcategoria].filter(Boolean)
+  return parts.join(' \u203a ')
+}
+
 export default function MarketIntelligencePage() {
   const [product, setProduct] = useState('')
+  const [productOptions, setProductOptions] = useState([])
+  const [optionsLoading, setOptionsLoading] = useState(false)
+  const [optionsOpen, setOptionsOpen] = useState(false)
   const [country, setCountry] = useState('AR')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [costs, setCosts] = useState(EMPTY_COSTS)
+
+  // La busqueda va contra el backend (parametro q) en vez de traer todo el
+  // catalogo y filtrar en el cliente: una tienda grande no entra en memoria y
+  // el endpoint ya resuelve el match por titulo, categoria y SKU.
+  const requestSeq = useRef(0)
+
+  const fetchProductOptions = useCallback(async query => {
+    const seq = ++requestSeq.current
+    setOptionsLoading(true)
+    try {
+      const response = await productService.getAdminProducts({
+        q: query || undefined,
+        limit: PRODUCT_OPTIONS_LIMIT,
+        page: 1,
+      })
+      // Descartamos respuestas viejas: sin esto, una peticion lenta lanzada
+      // antes puede pisar los resultados de la tecla mas reciente.
+      if (seq !== requestSeq.current) return
+      const rows = Array.isArray(response?.data) ? response.data : []
+      setProductOptions(rows)
+    } catch {
+      // El desplegable es una ayuda, no el camino unico: si el catalogo no
+      // carga, el campo sigue aceptando texto libre y el analisis funciona.
+      if (seq === requestSeq.current) setProductOptions([])
+    } finally {
+      if (seq === requestSeq.current) setOptionsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handle = window.setTimeout(
+      () => fetchProductOptions(product),
+      PRODUCT_SEARCH_DEBOUNCE_MS,
+    )
+    return () => window.clearTimeout(handle)
+  }, [product, fetchProductOptions])
 
   const setCost = (field, value) => setCosts(prev => ({ ...prev, [field]: value }))
   const hasCost = Number(costs.unitCost) > 0
@@ -198,16 +262,90 @@ export default function MarketIntelligencePage() {
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
-            <TextField
+            <Autocomplete
+              freeSolo
               fullWidth
-              label="Producto o categoría"
-              placeholder="Ej: freidora de aire 5 litros"
-              value={product}
-              onChange={e => setProduct(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAnalyze(false)}
               disabled={loading}
-              helperText="Escribí como buscaría un cliente. Evitá modelos, SKU y colores."
-              slotProps={{ htmlInput: { maxLength: 200 } }}
+              options={productOptions}
+              loading={optionsLoading}
+              open={optionsOpen}
+              onOpen={() => setOptionsOpen(true)}
+              onClose={() => setOptionsOpen(false)}
+              loadingText="Buscando productos…"
+              noOptionsText="Sin coincidencias en tu catálogo — podés analizarlo igual"
+              inputValue={product}
+              onInputChange={(_, value) => setProduct(value)}
+              getOptionLabel={getProductLabel}
+              isOptionEqualToValue={(option, value) =>
+                getProductLabel(option) === getProductLabel(value)
+              }
+              // El backend ya filtró por q; volver a filtrar en el cliente
+              // esconderia resultados que sí coinciden por SKU o categoría.
+              filterOptions={x => x}
+              renderOption={(props, option) => {
+                const { key, ...rest } = props
+                return (
+                  <Stack
+                    component="li"
+                    key={key}
+                    {...rest}
+                    direction="row"
+                    spacing={1.5}
+                    sx={{ alignItems: 'center' }}
+                  >
+                    <Avatar
+                      variant="rounded"
+                      src={getProductImage(option)}
+                      alt=""
+                      sx={{ width: 36, height: 36, bgcolor: 'action.hover' }}
+                    />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" noWrap>
+                        {getProductLabel(option)}
+                      </Typography>
+                      {getProductSubtitle(option) && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          noWrap
+                        >
+                          {getProductSubtitle(option)}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Stack>
+                )
+              }}
+              renderInput={params => (
+                <TextField
+                  {...params}
+                  label="Producto o categoría"
+                  placeholder="Ej: freidora de aire 5 litros"
+                  onKeyDown={e => {
+                    // Con el desplegable abierto, Enter le pertenece al
+                    // Autocomplete (elige la opción resaltada). MUI escucha en
+                    // el root y el evento burbujea desde el input, así que acá
+                    // defaultPrevented todavía es false: hay que mirar el
+                    // estado de apertura, no el evento.
+                    if (e.key === 'Enter' && !optionsOpen) handleAnalyze(false)
+                  }}
+                  helperText="Elegí uno de tu catálogo o escribí como buscaría un cliente. Evitá modelos, SKU y colores."
+                  slotProps={{
+                    htmlInput: { ...params.inputProps, maxLength: 200 },
+                    input: {
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {optionsLoading ? (
+                            <CircularProgress size={18} />
+                          ) : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    },
+                  }}
+                />
+              )}
             />
             <TextField
               select
