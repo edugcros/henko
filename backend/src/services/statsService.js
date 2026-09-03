@@ -1582,6 +1582,13 @@ const getTopClickedProducts = async (
         users: { $addToSet: '$userId' },
         lastClickedAt: { $max: '$occurredAt' },
         value: { $sum: '$value' },
+        // El nombre que el producto tenía cuando lo clickearon. Es lo único
+        // que queda si después se borró del catálogo.
+        titleFromEvent: {
+          $first: {
+            $ifNull: ['$metadata.title', '$metadata.productTitle'],
+          },
+        },
       },
     },
     {
@@ -1602,11 +1609,8 @@ const getTopClickedProducts = async (
       _id: { $in: validProductObjectIds },
       tenantId: tenantObjectId,
     })
-      // FIX: sin setOptions el tenantPlugin bloquea la query y no devuelve
-      // ningún producto, así que el productMap quedaba vacío y todos los
-      // títulos caían al fallback 'Producto'. getTopVisitedProducts no tiene
-      // el problema porque resuelve el producto con $lookup dentro de un
-      // aggregate, que no pasa por el plugin.
+      // El tenantPlugin necesita el tenantId en las opciones para no bloquear
+      // la query — mismo patrón que usa el resto del proyecto.
       .setOptions({ tenantId })
       .select('title name slug sku images price categoria category marca brand')
       .lean()
@@ -1624,7 +1628,17 @@ const getTopClickedProducts = async (
 
     return {
       productId,
-      title: product?.title || product?.name || 'Producto',
+      // Orden de preferencia: nombre actual del catálogo → nombre al momento
+      // del click → aviso de que ya no existe. Nunca un genérico que se
+      // confunda con un error de carga.
+      title:
+        product?.title ||
+        product?.name ||
+        row.titleFromEvent ||
+        'Producto eliminado',
+      // `exists` permite que el panel distinga un producto vivo de uno
+      // borrado, en vez de tener que inferirlo del título.
+      exists: Boolean(product),
       slug: product?.slug || null,
       sku: product?.sku || null,
       category: product?.categoria || product?.category || null,
