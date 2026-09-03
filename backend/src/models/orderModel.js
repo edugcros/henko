@@ -127,6 +127,7 @@ const auditLogEntrySchema = new Schema(
         'payment_updated',
         'payment_failed',
         'fulfillment_updated',
+        'shipment_updated',
         'cancelled',
         'refunded',
         'stock_restored',
