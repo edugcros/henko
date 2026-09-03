@@ -168,7 +168,7 @@ const cssLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-    keyGenerator: req =>
+  keyGenerator: req =>
     req.tenantId
       ? String(req.tenantId)
       : `ip:${ipKeyGenerator(req.ip)}`,

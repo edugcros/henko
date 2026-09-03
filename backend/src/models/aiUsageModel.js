@@ -69,6 +69,15 @@ const aiUsageSchema = new Schema(
       type: Date,
       default: null,
     },
+    counters: {
+      vision: { type: Number, default: 0, min: 0 },
+      agentMessages: { type: Number, default: 0, min: 0 },
+      agentTokens: { type: Number, default: 0, min: 0 },
+      imageEdits: { type: Number, default: 0, min: 0 },
+      marketAnalyses: { type: Number, default: 0, min: 0 },
+      marketTokens: { type: Number, default: 0, min: 0 },
+
+    },
   },
   { timestamps: true },
 )

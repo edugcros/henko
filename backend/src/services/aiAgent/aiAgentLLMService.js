@@ -1,5 +1,13 @@
 // 📁 src/services/aiAgent/aiAgentLLMService.js
 // VERSIÓN PRODUCCIÓN - GEMINI / MEMORIA CONVERSACIONAL / RESPUESTAS NO REPETITIVAS
+//
+// PATCH APLICADO (aditivo, no rompe llamadores existentes):
+// 1. callGemini/callAgentLLM aceptan un parámetro opcional "tools" que se
+//    pasa tal cual al payload de la API (necesario para Google Search
+//    grounding desde marketIntelligence/sources/geminiGroundingSource.js).
+//    Si no se pasa, el payload es idéntico al de antes del patch.
+// 2. getGeminiFinishInfo ahora también extrae groundingMetadata, para poder
+//    citar fuentes reales cuando se usa el tool de grounding.
 
 import { getModelChain, isModelUnavailable, markModelDead } from '../ai/geminiModels.js'
 
@@ -223,6 +231,9 @@ const getGeminiFinishInfo = response => {
     finishReason: firstCandidate.finishReason || '',
     safetyRatings: firstCandidate.safetyRatings || [],
     citationMetadata: firstCandidate.citationMetadata || null,
+    // PATCH: necesario para citar fuentes reales cuando se usa el tool de
+    // Google Search grounding (ver marketIntelligence/sources/geminiGroundingSource.js).
+    groundingMetadata: firstCandidate.groundingMetadata || null,
   }
 }
 
@@ -462,6 +473,11 @@ const buildGenerationConfig = ({
     // antes de que el modelo llegue a contestar. La API rechaza budget:0
     // (400 INVALID_ARGUMENT) en estos modelos; 1 es el mínimo aceptado y
     // deja el razonamiento en la práctica desactivado.
+    //
+    // PATCH: si vas a combinar esto con tools de grounding (google_search),
+    // NO pases thinkingBudget bajo en esa llamada específica — el modelo
+    // puede necesitar presupuesto de thinking para decidir qué buscar, y
+    // cortarlo temprano corta el grounding a mitad de camino.
     ...(Number.isFinite(thinkingBudget)
       ? { thinkingConfig: { thinkingBudget } }
       : {}),
@@ -479,6 +495,10 @@ export const callGemini = async ({
   stopSequences,
   thinkingBudget,
   apiKey: providedApiKey,
+  // PATCH: opcional, pasado tal cual al payload de la API (ej. para
+  // Google Search grounding: tools: [{ google_search: {} }]). Si no se
+  // pasa, el comportamiento y el payload son idénticos a antes del patch.
+  tools,
 } = {}) => {
   // La key la resuelve quien llama (aiCredentialsService), porque puede ser
   // la del comercio y no la de la plataforma. El fallback a la variable de
@@ -537,6 +557,8 @@ export const callGemini = async ({
       thinkingBudget,
     }),
     ...(safetySettings ? { safetySettings } : {}),
+    // PATCH: aditivo — payload idéntico al de antes si "tools" no se pasa.
+    ...(Array.isArray(tools) && tools.length ? { tools } : {}),
   }
 
   // Google retira modelos sin aviso (404) o agota su cuota (429). Un modelo
@@ -560,7 +582,10 @@ export const callGemini = async ({
 
       if (!isModelUnavailable(error?.statusCode, detail)) throw error
 
-      markModelDead(candidate, `${error?.statusCode}: ${detail.slice(0, 80)}`)
+      // El tercer argumento es lo que permite distinguir un retiro de Google
+      // (permanente) de una cuota agotada (temporal, con cooldown). Sin él,
+      // un 429 dejaría el modelo descartado hasta reiniciar el proceso.
+      markModelDead(candidate, `${error?.statusCode}: ${detail.slice(0, 80)}`, error?.statusCode)
       lastError = error
     }
   }
@@ -582,6 +607,8 @@ export const callGemini = async ({
     truncated,
     safetyRatings: finishInfo.safetyRatings,
     citationMetadata: finishInfo.citationMetadata,
+    // PATCH: fuentes reales de Google Search grounding, cuando se usó el tool.
+    groundingMetadata: finishInfo.groundingMetadata,
     usageMetadata: data?.usageMetadata || null,
     fallback: !content,
     error: content ? null : 'empty_provider_response',
@@ -599,6 +626,8 @@ export const callAgentLLM = async ({
   stopSequences,
   thinkingBudget,
   apiKey,
+  // PATCH: propagado igual que el resto de los parámetros opcionales.
+  tools,
 } = {}) => {
   const provider = clean(
     process.env.AI_AGENT_PROVIDER || DEFAULT_PROVIDER,
@@ -621,6 +650,7 @@ export const callAgentLLM = async ({
     stopSequences,
     thinkingBudget,
     apiKey,
+    tools,
   })
 }
 

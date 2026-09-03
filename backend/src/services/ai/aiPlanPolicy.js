@@ -29,6 +29,8 @@ export const AI_METRICS = Object.freeze({
   AGENT_MESSAGES: 'agentMessages',
   AGENT_TOKENS: 'agentTokens',
   IMAGE_EDITS: 'imageEdits',
+  MARKET_ANALYSES: 'marketAnalyses',
+  MARKET_TOKENS: 'marketTokens',
 })
 
 export const AI_METRIC_LIST = Object.freeze(Object.values(AI_METRICS))
@@ -44,6 +46,8 @@ export const AI_METRIC_LABELS = Object.freeze({
   [AI_METRICS.AGENT_MESSAGES]: 'mensajes del asistente de ventas',
   [AI_METRICS.AGENT_TOKENS]: 'tokens del asistente de ventas',
   [AI_METRICS.IMAGE_EDITS]: 'generaciones de fondo con IA',
+  [AI_METRICS.MARKET_ANALYSES]: 'análisis de demanda de mercado',
+  [AI_METRICS.MARKET_TOKENS]: 'consumo de los análisis de mercado',
 })
 
 /**
@@ -73,10 +77,13 @@ const DEFAULT_PLAN_LIMITS = Object.freeze({
     [AI_METRICS.AGENT_MESSAGES]: 300,
     [AI_METRICS.AGENT_TOKENS]: 1_500_000,
     [AI_METRICS.IMAGE_EDITS]: 10,
+    [AI_METRICS.MARKET_TOKENS]: 250_000,
+
   },
   starter: {
     [AI_METRICS.VISION]: 300,
     [AI_METRICS.AGENT_MESSAGES]: 2_000,
+    [AI_METRICS.MARKET_TOKENS]: 1_250_000,
     [AI_METRICS.AGENT_TOKENS]: 10_000_000,
     [AI_METRICS.IMAGE_EDITS]: 100,
   },
@@ -85,6 +92,8 @@ const DEFAULT_PLAN_LIMITS = Object.freeze({
     [AI_METRICS.AGENT_MESSAGES]: 10_000,
     [AI_METRICS.AGENT_TOKENS]: 50_000_000,
     [AI_METRICS.IMAGE_EDITS]: 500,
+    [AI_METRICS.MARKET_ANALYSES]: 'MARKET_ANALYSES',
+    [AI_METRICS.MARKET_TOKENS]: 'MARKET_TOKENS',
   },
   enterprise: {
     [AI_METRICS.VISION]: UNLIMITED,
@@ -102,6 +111,8 @@ const METRIC_ENV_SUFFIX = Object.freeze({
   [AI_METRICS.AGENT_MESSAGES]: 'AGENT_MESSAGES',
   [AI_METRICS.AGENT_TOKENS]: 'AGENT_TOKENS',
   [AI_METRICS.IMAGE_EDITS]: 'IMAGE_EDITS',
+  [AI_METRICS.IMAGE_EDITS]: 'IMAGE_EDITS',
+  [AI_METRICS.MARKET_ANALYSES]: 'MARKET_ANALYSES',
 })
 
 // Variables que ya existían en producción para la cuota de visión. Si el
@@ -133,6 +144,7 @@ const readEnvLimit = name => {
 
   return Math.floor(parsed)
 }
+
 
 /**
  * Tope mensual de una métrica para un plan. 0 = ilimitado.
@@ -439,6 +451,8 @@ export const getPlatformMonthlyTokenBudget = () => {
  * de un plan no se tocan — son deliberados.
  */
 export const getSharedKeyTenantCap = metric => {
+  const TOKEN_METRICS = [AI_METRICS.AGENT_TOKENS, AI_METRICS.MARKET_TOKENS]
+  if (!TOKEN_METRICS.includes(normalizeMetric(metric))) return UNLIMITED
   if (normalizeMetric(metric) !== AI_METRICS.AGENT_TOKENS) return UNLIMITED
 
   const budget = getPlatformMonthlyTokenBudget()

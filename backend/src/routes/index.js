@@ -24,6 +24,7 @@ import metaPixelConfigRoutes from './metaPixelConfigRoutes.js'
 import imageAiRoutes from './imageAiRoutes.js'
 import platformRoutes from './platformRoutes.js'
 import aiInsightRoutes from './aiInsightRoutes.js'
+import marketintelligenceRoutes from './marketintelligenceRoutes.js'
 
 
 const router = express.Router()
@@ -33,6 +34,14 @@ const router = express.Router()
 // =======================================================
 router.use('/user', userRoute)
 router.use('/dash', dashboardRoute)
+
+
+// =======================================================
+// 📊 MARKET INTELLIGENCE
+// =======================================================
+
+router.use('/market-intelligence', marketintelligenceRoutes)
+
 
 // =======================================================
 // 🛍️ CATÁLOGO DE PRODUCTOS
