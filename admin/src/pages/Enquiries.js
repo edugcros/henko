@@ -203,7 +203,7 @@ const Enquiries = () => {
 
       <Grid container spacing={3}>
         {enquiryList.map(enquiry => (
-          <Grid xs={12} sm={6} md={4} key={enquiry._id}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={enquiry._id}>
             <Fade in={true}>
               <Card
                 sx={{

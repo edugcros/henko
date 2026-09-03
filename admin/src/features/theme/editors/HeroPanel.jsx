@@ -81,7 +81,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
             </Typography>
 
             <Grid container spacing={2}>
-              <Grid xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Título"
@@ -90,7 +90,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                 />
               </Grid>
 
-              <Grid xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   multiline
@@ -110,7 +110,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
             </Typography>
 
             <Grid container spacing={2}>
-              <Grid xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Alineación</InputLabel>
                   <Select
@@ -126,7 +126,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                 </FormControl>
               </Grid>
 
-              <Grid xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Altura</InputLabel>
                   <Select
@@ -162,7 +162,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
 
             {hero.showCta !== false && (
               <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth
                     label="Texto"
@@ -171,7 +171,7 @@ const HeroPanel = ({ value = {}, onChange, colors = {}, onImageUpload }) => {
                   />
                 </Grid>
 
-                <Grid xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth
                     label="Link"

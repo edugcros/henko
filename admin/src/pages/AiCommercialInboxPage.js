@@ -95,11 +95,11 @@ const SummaryCardComponent = ({ label, value, tone }) => (
       bgcolor: tone === 'hot' ? 'error.50' : 'background.paper',
     }}
   >
-    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
       {label}
     </Typography>
 
-    <Typography variant="h5" fontWeight={950} sx={{ mt: 0.5 }}>
+    <Typography variant="h5" sx={{ fontWeight: 950, mt: 0.5 }}>
       {Number(value || 0).toLocaleString('es-AR')}
     </Typography>
   </Paper>
@@ -256,12 +256,12 @@ const AiCommercialInboxPage = () => {
       <Stack spacing={2.5}>
         <Stack
           direction={{ xs: 'column', md: 'row' }}
-          alignItems={{ md: 'center' }}
-          justifyContent="space-between"
+          sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between' }}
+
           spacing={2}
         >
           <Box>
-            <Typography variant="h4" fontWeight={950}>
+            <Typography variant="h4" sx={{ fontWeight: 950 }}>
               Bandeja comercial IA
             </Typography>
 
@@ -298,27 +298,27 @@ const AiCommercialInboxPage = () => {
         )}
 
         <Grid container spacing={2}>
-          <Grid xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <SummaryCardComponent label="Total" value={summary.total} />
           </Grid>
 
-          <Grid xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <SummaryCardComponent label="Nuevos hoy" value={summary.today} />
           </Grid>
 
-          <Grid xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <SummaryCardComponent label="Calientes" value={summary.hot} tone="hot" />
           </Grid>
 
-          <Grid xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <SummaryCardComponent label="Seguimientos" value={summary.pendingFollowUps} />
           </Grid>
 
-          <Grid xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <SummaryCardComponent label="Ganados" value={summary.won} />
           </Grid>
 
-          <Grid xs={6} md={2}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <SummaryCardComponent label="Score prom." value={summary.averageLeadScore} />
           </Grid>
         </Grid>
@@ -327,7 +327,7 @@ const AiCommercialInboxPage = () => {
           <Stack
             direction={{ xs: 'column', md: 'row' }}
             spacing={1.5}
-            alignItems={{ md: 'center' }}
+            sx={{ alignItems: { md: 'center' } }}
           >
             <TextField
               size="small"
@@ -389,7 +389,7 @@ const AiCommercialInboxPage = () => {
         </Paper>
 
         <Grid container spacing={2} sx={{ minHeight: 680 }}>
-          <Grid xs={12} md={3.2}>
+          <Grid size={{ xs: 12, md: 3.2 }}>
             <Paper
               variant="outlined"
               sx={{
@@ -405,8 +405,11 @@ const AiCommercialInboxPage = () => {
                   borderBottom: theme => `1px solid ${theme.palette.divider}`,
                 }}
               >
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography fontWeight={900}>Leads</Typography>
+                <Stack
+                  direction="row"
+                  sx={{ justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <Typography sx={{ fontWeight: 900 }}>Leads</Typography>
                   <Chip size="small" label={leads.length} />
                 </Stack>
               </Box>
@@ -422,7 +425,7 @@ const AiCommercialInboxPage = () => {
             </Paper>
           </Grid>
 
-          <Grid xs={12} md={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
             {detailLoading ? (
               <Paper
                 variant="outlined"
@@ -503,7 +506,7 @@ const AiCommercialInboxPage = () => {
             )}
           </Grid>
 
-          <Grid xs={12} md={4.8}>
+          <Grid size={{ xs: 12, md: 4.8 }}>
             <LeadConversationPanel
               conversation={conversation}
               lead={selectedLead}
@@ -532,7 +535,7 @@ const AiCommercialInboxPage = () => {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle fontWeight={900}>Eliminar conversación de la base</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900 }}>Eliminar conversación de la base</DialogTitle>
 
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>

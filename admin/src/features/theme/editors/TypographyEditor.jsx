@@ -350,7 +350,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
           </Paper>
 
           <Grid container spacing={1.25}>
-            <Grid xs={6}>
+            <Grid size={{ xs: 6 }}>
               <TextField
                 fullWidth
                 size="small"
@@ -363,7 +363,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
                 }}
               />
             </Grid>
-            <Grid xs={6}>
+            <Grid size={{ xs: 6 }}>
               <TextField
                 fullWidth
                 size="small"
@@ -413,7 +413,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
 
       <SettingGroupComponents title="Texto auxiliar" caption="Captions, metadatos y ayudas.">
         <Grid container spacing={1.25}>
-          <Grid xs={6}>
+          <Grid size={{ xs: 6 }}>
             <TextField
               fullWidth
               size="small"
@@ -426,7 +426,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               }}
             />
           </Grid>
-          <Grid xs={6}>
+          <Grid size={{ xs: 6 }}>
             <TextField
               fullWidth
               size="small"
@@ -437,7 +437,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               inputProps={{ min: 300, max: 900, step: 50 }}
             />
           </Grid>
-          <Grid xs={12}>
+          <Grid size={{ xs: 12 }}>
             <RangeControlComponents
               label="Interlineado"
               value={typography.secondary.lineHeight}
@@ -447,7 +447,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               onChange={nextValue => updateSecondary('lineHeight', nextValue)}
             />
           </Grid>
-          <Grid xs={12}>
+          <Grid size={{ xs: 12 }}>
             <RangeControlComponents
               label="Espaciado"
               value={typography.secondary.letterSpacing}

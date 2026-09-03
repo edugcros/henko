@@ -48,7 +48,7 @@ const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
   if (!leads.length) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="subtitle1" fontWeight={700}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
           No hay leads para este filtro
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -70,8 +70,11 @@ const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
             <ListItemText
               primary={
                 <Stack spacing={0.8}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
-                    <Typography variant="subtitle2" fontWeight={800} noWrap>
+                  <Stack
+                    direction="row"
+                    sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
+                  >
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800 }} noWrap>
                       {lead.displayName ||
                         lead.customer?.name ||
                         lead.customer?.email ||
@@ -86,7 +89,7 @@ const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
                     </Typography>
                   </Stack>
 
-                  <Stack direction="row" gap={0.8} flexWrap="wrap">
+                  <Stack direction="row" sx={{ gap: 0.8, flexWrap: 'wrap' }}>
                     <LeadStatusBadge status={lead.status} />
                     <LeadScoreBadge score={lead.leadScore || lead.score} />
                   </Stack>
@@ -94,10 +97,20 @@ const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
               }
               secondary={
                 <Box sx={{ mt: 1 }}>
-                  <Typography variant="caption" color="text.secondary" display="block" noWrap>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block' }}
+                    noWrap
+                  >
                     {lead.customer?.email || lead.customer?.phone || 'Sin datos de contacto'}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" display="block" noWrap>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block' }}
+                    noWrap
+                  >
                     Producto: {getProductLabel(lead)}
                   </Typography>
                   <Typography variant="body2" color="text.primary" sx={{ mt: 0.6 }} noWrap>

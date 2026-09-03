@@ -971,7 +971,7 @@ const PromotionalBlocksPage = () => {
 
       <Container maxWidth="xl" sx={{ mt: 4 }}>
         <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Paper sx={{ p: 3, borderRadius: 3 }}>
               <Typography variant="h3" sx={{ fontWeight: 900 }} color="primary">
                 {activeBlocksCount}
@@ -980,7 +980,7 @@ const PromotionalBlocksPage = () => {
             </Paper>
           </Grid>
 
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Paper sx={{ p: 3, borderRadius: 3 }}>
               <Typography variant="h3" sx={{ fontWeight: 900 }} color="warning.main">
                 {scheduledBlocksCount}
@@ -989,7 +989,7 @@ const PromotionalBlocksPage = () => {
             </Paper>
           </Grid>
 
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Paper sx={{ p: 3, borderRadius: 3 }}>
               <Typography variant="h3" sx={{ fontWeight: 900 }} color="error">
                 {expiredBlocksCount}
@@ -998,7 +998,7 @@ const PromotionalBlocksPage = () => {
             </Paper>
           </Grid>
 
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Paper sx={{ p: 3, borderRadius: 3 }}>
               <Typography variant="h3" sx={{ fontWeight: 900 }}>
                 {meta?.total || 0}
@@ -1010,7 +1010,7 @@ const PromotionalBlocksPage = () => {
 
         <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
           <Grid container spacing={2}>
-            <Grid xs={12} md={5}>
+            <Grid size={{ xs: 12, md: 5 }}>
               <TextField
                 fullWidth
                 label="Buscar bloque"
@@ -1029,7 +1029,7 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <FormControl fullWidth>
                 <InputLabel>Tipo</InputLabel>
                 <Select
@@ -1050,7 +1050,7 @@ const PromotionalBlocksPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <FormControl fullWidth>
                 <InputLabel>Ubicación</InputLabel>
                 <Select
@@ -1071,7 +1071,7 @@ const PromotionalBlocksPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={1}>
+            <Grid size={{ xs: 12, md: 1 }}>
               <Button
                 fullWidth
                 variant="outlined"
@@ -1208,13 +1208,13 @@ const PromotionalBlocksPage = () => {
 
         <DialogContent dividers>
           <Grid container spacing={3}>
-            <Grid xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Typography variant="h6" sx={{ fontWeight: 800 }}>
                 Datos generales
               </Typography>
             </Grid>
 
-            <Grid xs={12} md={8}>
+            <Grid size={{ xs: 12, md: 8 }}>
               <TextField
                 fullWidth
                 required
@@ -1224,7 +1224,7 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <TextField
                 fullWidth
                 label="Slug opcional"
@@ -1234,7 +1234,7 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <FormControl fullWidth required>
                 <InputLabel>Tipo</InputLabel>
                 <Select
@@ -1251,7 +1251,7 @@ const PromotionalBlocksPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <FormControl fullWidth required>
                 <InputLabel>Ubicación</InputLabel>
                 <Select
@@ -1268,7 +1268,7 @@ const PromotionalBlocksPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <FormControl fullWidth>
                 <InputLabel>Visibilidad</InputLabel>
                 <Select
@@ -1285,7 +1285,7 @@ const PromotionalBlocksPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 multiline
@@ -1296,17 +1296,17 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Divider />
             </Grid>
 
-            <Grid xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Typography variant="h6" sx={{ fontWeight: 800 }}>
                 Programación
               </Typography>
             </Grid>
 
-            <Grid xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <TextField
                 fullWidth
                 required
@@ -1325,7 +1325,7 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <TextField
                 fullWidth
                 required
@@ -1344,7 +1344,7 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <TextField
                 fullWidth
                 type="number"
@@ -1366,7 +1366,7 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <TextField
                 fullWidth
                 type="number"
@@ -1380,7 +1380,7 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -1392,11 +1392,11 @@ const PromotionalBlocksPage = () => {
               />
             </Grid>
 
-            <Grid xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Divider />
             </Grid>
 
-            <Grid xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Stack
                 direction={{ xs: 'column', md: 'row' }}
                 sx={{ justifyContent: 'space-between' }}
@@ -1431,7 +1431,7 @@ const PromotionalBlocksPage = () => {
               </Stack>
             </Grid>
 
-            <Grid xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Box
                 sx={{
                   display: 'grid',
@@ -1477,7 +1477,7 @@ const PromotionalBlocksPage = () => {
             </Grid>
 
             {form.products.length > 0 && (
-              <Grid xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 2 }}>
                   Configuración de productos seleccionados
                 </Typography>
@@ -1490,7 +1490,7 @@ const PromotionalBlocksPage = () => {
                     return (
                       <Paper key={productId} sx={{ p: 2, borderRadius: 2 }}>
                         <Grid container spacing={2} sx={{ alignItems: 'center' }}>
-                          <Grid xs={12} md={3}>
+                          <Grid size={{ xs: 12, md: 3 }}>
                             <Typography sx={{ fontWeight: 800 }} noWrap>
                               {product?.title || `Producto ${index + 1}`}
                             </Typography>
@@ -1500,7 +1500,7 @@ const PromotionalBlocksPage = () => {
                             </Typography>
                           </Grid>
 
-                          <Grid xs={12} md={2}>
+                          <Grid size={{ xs: 12, md: 2 }}>
                             <TextField
                               fullWidth
                               size="small"
@@ -1516,7 +1516,7 @@ const PromotionalBlocksPage = () => {
                             />
                           </Grid>
 
-                          <Grid xs={12} md={3}>
+                          <Grid size={{ xs: 12, md: 3 }}>
                             <TextField
                               fullWidth
                               size="small"
@@ -1532,7 +1532,7 @@ const PromotionalBlocksPage = () => {
                             />
                           </Grid>
 
-                          <Grid xs={6} md={1.5}>
+                          <Grid size={{ xs: 6, md: 1.5 }}>
                             <TextField
                               fullWidth
                               size="small"
@@ -1553,7 +1553,7 @@ const PromotionalBlocksPage = () => {
                             />
                           </Grid>
 
-                          <Grid xs={6} md={1}>
+                          <Grid size={{ xs: 6, md: 1 }}>
                             <TextField
                               fullWidth
                               size="small"
@@ -1574,7 +1574,7 @@ const PromotionalBlocksPage = () => {
                             />
                           </Grid>
 
-                          <Grid xs={6} md={0.8}>
+                          <Grid size={{ xs: 6, md: 0.8 }}>
                             <Switch
                               checked={item.isActive !== false}
                               onChange={event =>
@@ -1587,7 +1587,7 @@ const PromotionalBlocksPage = () => {
                             />
                           </Grid>
 
-                          <Grid xs={6} md={0.7}>
+                          <Grid size={{ xs: 6, md: 0.7 }}>
                             <IconButton
                               color="error"
                               onClick={() => removeSelectedProduct(productId)}

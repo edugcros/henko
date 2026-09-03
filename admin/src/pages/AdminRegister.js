@@ -520,7 +520,7 @@ const AdminRegister = () => {
               <form onSubmit={formik.handleSubmit}>
                 <Stack spacing={3}>
                   <Grid container spacing={2}>
-                    <Grid xs={12} sm={6}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         fullWidth
                         label="Nombre"
@@ -532,7 +532,7 @@ const AdminRegister = () => {
                       />
                     </Grid>
 
-                    <Grid xs={12} sm={6}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         fullWidth
                         label="Apellido"

@@ -292,23 +292,23 @@ const AiAgentDashboardPage = () => {
         Conversaciones
       </Typography>
       <Grid container spacing={2} sx={{ mb: 3, mt: 0.5 }}>
-        <Grid xs={6} sm={4} md={2.4}>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <MetricCard label="Total" value={conv.total || 0} color="primary.main" />
         </Grid>
-        <Grid xs={6} sm={4} md={2.4}>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <MetricCard label="Abiertas" value={conv.open || 0} color="info.main" />
         </Grid>
-        <Grid xs={6} sm={4} md={2.4}>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <MetricCard
             label="Esperando humano"
             value={conv.waitingHuman || 0}
             color="warning.main"
           />
         </Grid>
-        <Grid xs={6} sm={4} md={2.4}>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <MetricCard label="Convertidas" value={conv.converted || 0} color="success.main" />
         </Grid>
-        <Grid xs={6} sm={4} md={2.4}>
+        <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
           <RateCard
             label="Tasa de conversión"
             value={conv.conversionRate || 0}
@@ -322,16 +322,16 @@ const AiAgentDashboardPage = () => {
         Leads
       </Typography>
       <Grid container spacing={2} sx={{ mb: 1, mt: 0.5 }}>
-        <Grid xs={6} sm={4} md={3}>
+        <Grid size={{ xs: 6, sm: 4, md: 3 }}>
           <MetricCard label="Total leads" value={leads.total || 0} color="primary.main" />
         </Grid>
-        <Grid xs={6} sm={4} md={3}>
+        <Grid size={{ xs: 6, sm: 4, md: 3 }}>
           <MetricCard label="Leads calientes" value={leads.hot || 0} color="error.main" />
         </Grid>
-        <Grid xs={6} sm={4} md={3}>
+        <Grid size={{ xs: 6, sm: 4, md: 3 }}>
           <MetricCard label="Ganados" value={leads.won || 0} color="success.main" />
         </Grid>
-        <Grid xs={6} sm={4} md={3}>
+        <Grid size={{ xs: 6, sm: 4, md: 3 }}>
           <MetricCard
             label="Score promedio"
             value={leads.averageScore || 0}
@@ -349,20 +349,20 @@ const AiAgentDashboardPage = () => {
         Recuperación de carritos
       </Typography>
       <Grid container spacing={2} sx={{ mb: 3, mt: 0.5 }}>
-        <Grid xs={6} sm={3}>
+        <Grid size={{ xs: 6, sm: 3 }}>
           <MetricCard label="Intentos" value={recovery.total || 0} color="primary.main" />
         </Grid>
-        <Grid xs={6} sm={3}>
+        <Grid size={{ xs: 6, sm: 3 }}>
           <MetricCard label="Convertidos" value={recovery.converted || 0} color="success.main" />
         </Grid>
-        <Grid xs={6} sm={3}>
+        <Grid size={{ xs: 6, sm: 3 }}>
           <RateCard
             label="Tasa de recupero"
             value={recovery.conversionRate || 0}
             color="success.main"
           />
         </Grid>
-        <Grid xs={6} sm={3}>
+        <Grid size={{ xs: 6, sm: 3 }}>
           <MetricCard
             label="Ingreso recuperado"
             value={formatMoney(recovery.recoveredRevenueCents)}

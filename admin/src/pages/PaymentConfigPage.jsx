@@ -236,7 +236,7 @@ const PaymentConfigPage = () => {
             <Divider />
 
             <Grid container spacing={2.5}>
-              <Grid xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <TextField
                   select
                   fullWidth
@@ -251,7 +251,7 @@ const PaymentConfigPage = () => {
                   ))}
                 </TextField>
               </Grid>
-              <Grid xs={12} sm={8}>
+              <Grid size={{ xs: 12, sm: 8 }}>
                 <TextField
                   fullWidth
                   label="Public Key"
@@ -265,7 +265,7 @@ const PaymentConfigPage = () => {
                   inputProps={{ maxLength: 300 }}
                 />
               </Grid>
-              <Grid xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   type="password"

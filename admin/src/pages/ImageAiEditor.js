@@ -402,7 +402,7 @@ const ImageAiEditor = () => {
 
       <Grid container spacing={3}>
         {/* ── Panel izquierdo ── */}
-        <Grid xs={12} md={5} lg={4}>
+        <Grid size={{ xs: 12, md: 5, lg: 4 }}>
           <Stack spacing={2.5}>
             {/* Paso 1 — Modo */}
             <Card sx={cardSx}>
@@ -843,7 +843,7 @@ const ImageAiEditor = () => {
         </Grid>
 
         {/* ── Panel derecho — Resultados ── */}
-        <Grid xs={12} md={7} lg={8}>
+        <Grid size={{ xs: 12, md: 7, lg: 8 }}>
           <Card
             sx={{
               ...cardSx,

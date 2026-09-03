@@ -1209,7 +1209,7 @@ const OrderRow = memo(
             <TableCell colSpan={8} sx={{ p: 0, bgcolor: '#FAFAFA' }}>
               <Box sx={{ p: 3 }}>
                 <Grid container spacing={3}>
-                  <Grid xs={12} lg={8}>
+                  <Grid size={{ xs: 12, lg: 8 }}>
                     <Typography
                       variant="h6"
                       sx={{
@@ -1227,7 +1227,7 @@ const OrderRow = memo(
                     ))}
                   </Grid>
 
-                  <Grid xs={12} lg={4}>
+                  <Grid size={{ xs: 12, lg: 4 }}>
                     <ShippingCard address={order.shippingAddress} />
 
                     <ShipmentCard
@@ -1398,7 +1398,7 @@ const OrderDetailDialog = memo(
         <DialogContent dividers sx={{ bgcolor: '#F7F7F7', p: 0 }}>
           <Box sx={{ p: 3 }}>
             <Grid container spacing={3}>
-              <Grid xs={12} md={8}>
+              <Grid size={{ xs: 12, md: 8 }}>
                 <Paper sx={{ p: 3, borderRadius: 1, border: '1px solid #D5D9D9' }}>
                   <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}>
                     Productos ({order.products?.length || 0})
@@ -1410,7 +1410,7 @@ const OrderDetailDialog = memo(
                 </Paper>
               </Grid>
 
-              <Grid xs={12} md={4}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <Paper
                   sx={{
                     p: 3,
@@ -2081,7 +2081,7 @@ const AdminOrdersPage = () => {
 
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2} sx={{ alignItems: 'center' }}>
-            <Grid xs={12} md={4}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <TextField
                 fullWidth
                 size="small"
@@ -2111,7 +2111,7 @@ const AdminOrdersPage = () => {
               />
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Estado orden</InputLabel>
                 <Select
@@ -2131,7 +2131,7 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Pago</InputLabel>
                 <Select
@@ -2150,7 +2150,7 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Logística</InputLabel>
                 <Select
@@ -2170,7 +2170,7 @@ const AdminOrdersPage = () => {
               </FormControl>
             </Grid>
 
-            <Grid xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                 <Button
                   variant="outlined"

@@ -65,7 +65,7 @@ const SpacingEditor = ({ value, onChange }) => {
 
       <Grid container spacing={4}>
         {spacingFields.map(({ key, label, min, max, unit, description }) => (
-          <Grid xs={12} key={key}>
+          <Grid size={{ xs: 12 }} key={key}>
             <Box sx={{ mb: 2 }}>
               <Box
                 sx={{

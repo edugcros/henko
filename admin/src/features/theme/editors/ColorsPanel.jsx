@@ -73,7 +73,7 @@ const ColorsPanel = ({ colors = {}, updateTheme, updateField, onChange, sectionM
   }, [updateTheme, onChange])
 
   const renderColorPicker = ({ key, label, appliesTo }, size = { xs: 12, sm: 6 }) => (
-    <Grid xs={size.xs} sm={size.sm} key={key}>
+    <Grid size={{ xs: size.xs, sm: size.sm }} key={key}>
       <ColorPicker
         label={label}
         value={effectiveColors[key]}

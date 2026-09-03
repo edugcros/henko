@@ -33,7 +33,7 @@ const BorderRadiusControl = ({ value, onChange }) => {
           const numericValue = getNumericValue(value?.[preset.key])
 
           return (
-            <Grid xs={12} sm={6} key={preset.key}>
+            <Grid size={{ xs: 12, sm: 6 }} key={preset.key}>
               <Box sx={{ mb: 2 }}>
                 <Box
                   sx={{

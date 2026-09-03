@@ -454,7 +454,7 @@ const AiCampaignRulesPage = () => {
             </Typography>
 
             <Grid container spacing={2}>
-              <Grid xs={6} sm={4}>
+              <Grid size={{ xs: 6, sm: 4 }}>
                 <TextField
                   label="Delay (min)"
                   type="number"
@@ -464,7 +464,7 @@ const AiCampaignRulesPage = () => {
                   inputProps={{ min: 1, max: 43200 }}
                 />
               </Grid>
-              <Grid xs={6} sm={4}>
+              <Grid size={{ xs: 6, sm: 4 }}>
                 <TextField
                   label="Max intentos"
                   type="number"
@@ -474,7 +474,7 @@ const AiCampaignRulesPage = () => {
                   inputProps={{ min: 1, max: 5 }}
                 />
               </Grid>
-              <Grid xs={6} sm={4}>
+              <Grid size={{ xs: 6, sm: 4 }}>
                 <TextField
                   label="Min horas entre contactos"
                   type="number"
@@ -486,7 +486,7 @@ const AiCampaignRulesPage = () => {
                   inputProps={{ min: 1, max: 168 }}
                 />
               </Grid>
-              <Grid xs={6} sm={4}>
+              <Grid size={{ xs: 6, sm: 4 }}>
                 <TextField
                   label="Monto mín. carrito (centavos)"
                   type="number"
@@ -496,7 +496,7 @@ const AiCampaignRulesPage = () => {
                   inputProps={{ min: 0 }}
                 />
               </Grid>
-              <Grid xs={6} sm={4}>
+              <Grid size={{ xs: 6, sm: 4 }}>
                 <TextField
                   label="Hora inicio"
                   fullWidth
@@ -505,7 +505,7 @@ const AiCampaignRulesPage = () => {
                   placeholder="09:00"
                 />
               </Grid>
-              <Grid xs={6} sm={4}>
+              <Grid size={{ xs: 6, sm: 4 }}>
                 <TextField
                   label="Hora fin"
                   fullWidth

@@ -113,7 +113,7 @@ const ConfirmDialogComponent = ({
         },
       }}
     >
-      <DialogTitle fontWeight={900}>{title}</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 900 }}>{title}</DialogTitle>
 
       <DialogContent>
         <Stack spacing={2}>
@@ -283,11 +283,11 @@ const LeadDetailPanel = ({
           }}
         >
           <Stack spacing={1}>
-            <Typography variant="h6" fontWeight={900} noWrap>
+            <Typography variant="h6" sx={{ fontWeight: 900 }} noWrap>
               {displayName}
             </Typography>
 
-            <Stack direction="row" gap={1} flexWrap="wrap">
+            <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
               <LeadStatusBadge status={lead.status} />
               <LeadScoreBadge score={lead.leadScore || lead.score} />
               <Chip size="small" label={lead.intent || 'unknown'} variant="outlined" />
@@ -298,14 +298,14 @@ const LeadDetailPanel = ({
         <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
           <Stack spacing={2.2}>
             <Box>
-              <Typography variant="subtitle2" fontWeight={800} gutterBottom>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }} gutterBottom>
                 Datos del cliente
               </Typography>
 
               <Stack spacing={0.8}>
                 <Typography variant="body2">Nombre: {customer.name || 'Sin nombre'}</Typography>
 
-                <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Stack direction="row" sx={{ alignItems: 'center' }} spacing={0.5}>
                   <Typography variant="body2" sx={{ flex: 1 }}>
                     Email: {customer.email || 'Sin email'}
                   </Typography>
@@ -319,7 +319,7 @@ const LeadDetailPanel = ({
                   )}
                 </Stack>
 
-                <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Stack direction="row" sx={{ alignItems: 'center' }} spacing={0.5}>
                   <Typography variant="body2" sx={{ flex: 1 }}>
                     Teléfono: {customer.phone || 'Sin teléfono'}
                   </Typography>
@@ -346,7 +346,7 @@ const LeadDetailPanel = ({
             <Divider />
 
             <Box>
-              <Typography variant="subtitle2" fontWeight={800} gutterBottom>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }} gutterBottom>
                 Gestión comercial
               </Typography>
 
@@ -380,7 +380,7 @@ const LeadDetailPanel = ({
                   Programar seguimiento
                 </Button>
 
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
                   <Button
                     size="small"
                     color="success"
@@ -508,12 +508,11 @@ const LeadDetailPanel = ({
             <Box>
               <Stack
                 direction="row"
-                alignItems="center"
-                justifyContent="space-between"
+
                 spacing={1}
-                sx={{ mb: 1 }}
+                sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}
               >
-                <Typography variant="subtitle2" fontWeight={800}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
                   Productos de interés
                 </Typography>
 
@@ -546,9 +545,9 @@ const LeadDetailPanel = ({
                         variant="outlined"
                         sx={{ p: 1.2, borderRadius: 2 }}
                       >
-                        <Stack direction="row" spacing={1} alignItems="flex-start">
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
                           <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Typography variant="body2" fontWeight={800} noWrap>
+                            <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap>
                               {product.title || 'Producto'}
                             </Typography>
 
@@ -593,7 +592,7 @@ const LeadDetailPanel = ({
             <Divider />
 
             <Box>
-              <Typography variant="subtitle2" fontWeight={800} gutterBottom>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }} gutterBottom>
                 Notas internas
               </Typography>
 

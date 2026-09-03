@@ -119,7 +119,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
         </Typography>
 
         <Grid container spacing={2}>
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Page Transition</InputLabel>
               <Select
@@ -135,7 +135,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Element Entrance</InputLabel>
               <Select
@@ -191,7 +191,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
         </Typography>
 
         <Grid container spacing={2}>
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Easing</InputLabel>
               <Select
@@ -207,7 +207,7 @@ const AnimationsEditor = ({ value = {}, onChange }) => {
             </FormControl>
           </Grid>
 
-          <Grid xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Typography variant="caption">Hover Scale ({animations.hoverScale ?? 1.02})</Typography>
             <Slider
               value={animations.hoverScale ?? 1.02}

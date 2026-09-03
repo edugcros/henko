@@ -468,7 +468,7 @@ const AiLearningReviewPage = () => {
 
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, mb: 3 }}>
         <Grid container spacing={2} sx={{ alignItems: 'center' }}>
-          <Grid xs={12} sm={4}>
+          <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
               select
               fullWidth
@@ -485,7 +485,7 @@ const AiLearningReviewPage = () => {
               ))}
             </TextField>
           </Grid>
-          <Grid xs={12} sm={4}>
+          <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
               select
               fullWidth
@@ -501,7 +501,7 @@ const AiLearningReviewPage = () => {
               ))}
             </TextField>
           </Grid>
-          <Grid xs={12} sm={4}>
+          <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
               fullWidth
               size="small"

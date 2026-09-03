@@ -128,7 +128,7 @@ const Customers = () => {
       ) : (
         <Grid container spacing={3}>
           {customers.map(user => (
-            <Grid xs={12} sm={6} lg={4} key={user._id}>
+            <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={user._id}>
               <Fade in={true} timeout={500}>
                 <Card
                   elevation={3}
