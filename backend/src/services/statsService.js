@@ -323,9 +323,23 @@ const getOrderStats = async (tenantId, dateRange) => {
         $group: {
           _id: null,
           totalOrders: { $sum: 1 },
+          // FIX: se agrega la condición de orderStatus. getSalesStats filtra
+          // por paymentStatus Y orderStatus; acá solo se filtraba por el
+          // primero, así que una orden aprobada pero cancelada contaba como
+          // pagada aunque su monto no entraba en revenue. El AOV salía de
+          // dividir dos universos distintos (78.5 × 4 = 314 contra revenue 302).
           paidOrders: {
             $sum: {
-              $cond: [{ $in: ['$paymentStatus', PAID_PAYMENT_STATUSES] }, 1, 0],
+              $cond: [
+                {
+                  $and: [
+                    { $in: ['$paymentStatus', PAID_PAYMENT_STATUSES] },
+                    { $in: ['$orderStatus', ACTIVE_ORDER_STATUSES] },
+                  ],
+                },
+                1,
+                0,
+              ],
             },
           },
           pendingOrders: {
@@ -333,10 +347,17 @@ const getOrderStats = async (tenantId, dateRange) => {
               $cond: [{ $eq: ['$paymentStatus', PAYMENT_STATUS.PENDING] }, 1, 0],
             },
           },
+          // Misma condición que paidOrders: el numerador y el denominador del
+          // AOV tienen que cubrir exactamente las mismas órdenes.
           paidAmount: {
             $sum: {
               $cond: [
-                { $in: ['$paymentStatus', PAID_PAYMENT_STATUSES] },
+                {
+                  $and: [
+                    { $in: ['$paymentStatus', PAID_PAYMENT_STATUSES] },
+                    { $in: ['$orderStatus', ACTIVE_ORDER_STATUSES] },
+                  ],
+                },
                 { $ifNull: ['$paymentIntent.amountCents', 0] },
                 0,
               ],
@@ -745,7 +766,7 @@ const getGA4ReportingStats = async (tenant, ga4) => {
       ga4.serviceAccountKey,
       ga4.propertyId,
     )
-    
+
     // Período configurado para métricas internas.
     const endDate = new Date().toISOString().split('T')[0]
     const ga4PeriodMs = metricsConfig.internalPeriodDays * 24 * 60 * 60 * 1000
@@ -1236,7 +1257,12 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
           },
         },
         sessions: { $addToSet: '$sessionId' },
-        value: { $sum: '$value' },
+        // FIX: era { $sum: '$value' }. En PRODUCT_VIEW / PRODUCT_CLICK /
+        // ADD_TO_CART el campo `value` es el PRECIO del producto, repetido en
+        // cada evento — sumarlo daba precio × cantidad de eventos (396.032.436
+        // en un comercio con revenue total de 302) y se confundía con ingresos.
+        // El promedio sí es interpretable: es el precio del producto.
+        averagePrice: { $avg: '$value' },
       },
     },
     {
@@ -1271,7 +1297,7 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
         clicks: 1,
         addToCart: 1,
         sessions: { $size: '$sessions' },
-        value: 1,
+        averagePrice: { $round: [{ $ifNull: ['$averagePrice', 0] }, 2] },
       },
     },
   ])
@@ -1576,6 +1602,12 @@ const getTopClickedProducts = async (
       _id: { $in: validProductObjectIds },
       tenantId: tenantObjectId,
     })
+      // FIX: sin setOptions el tenantPlugin bloquea la query y no devuelve
+      // ningún producto, así que el productMap quedaba vacío y todos los
+      // títulos caían al fallback 'Producto'. getTopVisitedProducts no tiene
+      // el problema porque resuelve el producto con $lookup dentro de un
+      // aggregate, que no pasa por el plugin.
+      .setOptions({ tenantId })
       .select('title name slug sku images price categoria category marca brand')
       .lean()
     : []
@@ -1867,16 +1899,18 @@ const getUserBehaviorStats = async (tenantId, dateRange) => {
           },
           sessions: { $addToSet: '$sessionId' },
           users: { $addToSet: '$userId' },
+          // FIX: contaba PURCHASE y PAYMENT_APPROVED, y cada orden aprobada
+          // emite los dos. Encima PURCHASE llega duplicado (cliente + server),
+          // así que una venta sumaba hasta 3 conversiones (7 con 4 órdenes
+          // pagadas). Mismo criterio que `revenue` acá abajo: solo el evento
+          // server-side, que es el único con una emisión por venta.
           conversions: {
             $sum: {
               $cond: [
                 {
-                  $in: [
-                    '$eventType',
-                    [
-                      USER_METRIC_EVENTS.PURCHASE,
-                      USER_METRIC_EVENTS.PAYMENT_APPROVED,
-                    ],
+                  $and: [
+                    { $eq: ['$eventType', USER_METRIC_EVENTS.PURCHASE] },
+                    { $eq: ['$source', 'system'] },
                   ],
                 },
                 1,

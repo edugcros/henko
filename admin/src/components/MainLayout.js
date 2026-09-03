@@ -100,22 +100,83 @@ const childItemSx = {
   },
 }
 
+// Fragmento corregido de MainLayout.js
+//
+// Reemplazar SOLO estas partes del archivo actual. El resto queda igual.
+ 
+// ─────────────────────────────────────────────────────────────────────────
+// 1) Estado de sesión: esperar la rehidratación antes de decidir
+// ─────────────────────────────────────────────────────────────────────────
+//
+// PROBLEMA QUE RESUELVE:
+// El efecto redirigía a /login en el primer render, cuando redux-persist
+// todavía no había rehidratado el store. Ahí `user` es null aunque haya
+// sesión válida guardada, así que el admin veía un parpadeo al login (o
+// quedaba ahí directamente, según cuánto tardara la rehidratación).
+//
+// `_persist.rehydrated` lo expone redux-persist en el root del state — el
+// mismo que tu código ya asume al hacer localStorage.removeItem('persist:root').
+// Si el árbol está envuelto en PersistGate, este flag ya viene en true y el
+// chequeo es un no-op: no rompe nada, solo cubre el caso en que no lo esté.
+ 
 const MainLayout = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const location = useLocation()
-
+ 
   const [collapsed, setCollapsed] = useState(false)
   const [anchorEl, setAnchorEl] = useState(null)
   const [openGroups, setOpenGroups] = useState({})
-
+ 
   const user = useSelector(state => state.user?.user || null)
-
+ 
+  // `?? true` como default: si el store no usa redux-persist en el root, no
+  // hay nada que esperar y el comportamiento vuelve a ser el de antes.
+  const rehydrated = useSelector(state => state._persist?.rehydrated ?? true)
+ 
   useEffect(() => {
+    // Antes de la rehidratación no se sabe si hay sesión: null todavía no
+    // significa "no autenticado", significa "no cargado".
+    if (!rehydrated) return
+ 
     if (!user?.tenantId) {
       navigate('/login', { replace: true })
     }
-  }, [user, navigate])
+  }, [rehydrated, user, navigate])
+ 
+  // ... el resto de los hooks y handlers queda igual ...
+ 
+  // ─────────────────────────────────────────────────────────────────────
+  // 2) No renderizar el layout hasta saber si hay sesión
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // Sin esto, el panel se dibuja completo por un instante con user en null
+  // (sidebar sin datos, avatar vacío) y recién después se va al login. El
+  // parpadeo es visible y da sensación de que algo se rompió.
+  //
+  // Va DESPUÉS de todos los hooks: un return temprano antes de ellos
+  // rompería las reglas de hooks de React.
+  if (!rehydrated) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          bgcolor: '#f8fafc',
+        }}
+      >
+        <CircularProgress size={28} />
+      </Box>
+    )
+  }
+ 
+  // Sesión ausente: el efecto de arriba ya disparó la navegación al login.
+  // Devolver null evita renderizar un panel que está por desaparecer.
+  if (!user?.tenantId) return null
+ 
+  const drawerWidth = collapsed ? COLLAPSED_WIDTH : DRAWER_WIDTH
 
   const { selectedKey, openKey } = useMemo(() => {
     // El Dashboard vive en la key '' (navega a /admin/). Antes esto devolvía

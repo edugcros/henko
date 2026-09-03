@@ -19,8 +19,29 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/favicon.png" />
 
+    <!--
+      Bootstrap y Font Awesome se importan desde src/index.js, no desde un
+      CDN.
 
-    <!-- Google Fonts -->
+      Estaban en cdnjs.cloudflare.com y empezaron a fallar con
+      ERR_CONNECTION_CLOSED (bloqueador, antivirus con inspección HTTPS o
+      firewall — depende de la máquina). El panel quedaba sin estilos y sin
+      íconos, con el agravante de que el síntoma variaba según quién lo
+      abriera, que es lo peor para diagnosticar.
+
+      Al pasar por webpack quedan dentro del bundle: funcionan sin internet,
+      no dependen de que un tercero esté accesible, y la versión queda fijada
+      en package.json en vez de en una URL.
+    -->
+
+    <!--
+      Las fuentes de Google se mantienen en CDN: si no cargan, el navegador
+      usa la fuente por defecto y la app sigue siendo usable. Bootstrap y
+      Font Awesome no tienen ese fallback — sin ellos el layout se rompe.
+
+      Si esta red también bloquea fonts.googleapis.com, se puede migrar a
+      @fontsource/roboto con el mismo criterio.
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
       rel="preconnect"
@@ -31,22 +52,6 @@
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap"
       rel="stylesheet"
     />
-
-    <!-- Bootstrap CSS (solo estilos, sin JS) -->
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.2/css/bootstrap.min.css"
-      crossorigin="anonymous"
-      referrerpolicy="no-referrer"
-    />
-
-    <!-- Font Awesome -->
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
-      crossorigin="anonymous"
-      referrerpolicy="no-referrer"
-    />
   </head>
 
   <body>
@@ -56,7 +61,7 @@
 
     <div id="root"></div>
 
-    <!-- 
+    <!--
       ⚠️ IMPORTANTE
       No scripts inline
       No CSP en HTML
