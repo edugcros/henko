@@ -176,8 +176,6 @@ const MainLayout = () => {
   // Devolver null evita renderizar un panel que está por desaparecer.
   if (!user?.tenantId) return null
  
-  const drawerWidth = collapsed ? COLLAPSED_WIDTH : DRAWER_WIDTH
-
   const { selectedKey, openKey } = useMemo(() => {
     // El Dashboard vive en la key '' (navega a /admin/). Antes esto devolvía
     // 'dashboard' cuando la ruta quedaba vacía, así que no coincidía con
