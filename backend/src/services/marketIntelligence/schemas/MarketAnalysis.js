@@ -6,8 +6,8 @@
  * para aislamiento multi-tenant (models/tenantPlugin.js).
  */
 
-import { Schema, model } from 'mongoose';
-import { tenantPlugin } from '../../../models/tenantPlugin.js';
+import { Schema, model } from 'mongoose'
+import { tenantPlugin } from '../../../models/tenantPlugin.js'
 
 const marketAnalysisSchema = new Schema(
   {
@@ -58,12 +58,12 @@ const marketAnalysisSchema = new Schema(
     generatedAt: { type: Date, required: true, default: Date.now },
     expiresAt: { type: Date, required: true, index: { expires: 0 } }, // TTL index nativo
   },
-  { timestamps: true }
-);
+  { timestamps: true },
+)
 
-marketAnalysisSchema.plugin(tenantPlugin);
+marketAnalysisSchema.plugin(tenantPlugin)
 
 // Índice compuesto para el lookup de cache en marketIntelligenceService.js
-marketAnalysisSchema.index({ tenantId: 1, normalizedQuery: 1, country: 1, scoringVersion: 1 });
+marketAnalysisSchema.index({ tenantId: 1, normalizedQuery: 1, country: 1, scoringVersion: 1 })
 
-export default model('MarketAnalysis', marketAnalysisSchema);
+export default model('MarketAnalysis', marketAnalysisSchema)

@@ -20,6 +20,22 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
   // ---------------------------------------------------
   const token = getAccessTokenFromRequest(req)
 
+  logger.debug('[AUTH] Credenciales recibidas', {
+    hasCookieToken: Boolean(req.cookies?.token),
+    hasCookieRefreshToken: Boolean(req.cookies?.refreshToken),
+    hasAuthorization: Boolean(req.headers.authorization),
+    hasXAccessToken: Boolean(req.headers['x-access-token']),
+    origin: req.headers.origin || null,
+    host: req.headers.host || null,
+    forwardedHost: req.headers['x-forwarded-host'] || null,
+    forwardedProto: req.headers['x-forwarded-proto'] || null,
+    path,
+  })
+
+  logger.debug(
+    `[AUTH] Credenciales recibidas | cookieToken=${Boolean(req.cookies?.token)} | authorization=${Boolean(req.headers.authorization)} | xAccessToken=${Boolean(req.headers['x-access-token'])}`,
+  )
+
   if (!token || token === 'undefined') {
     logger.warn(`[AUTH] ❌ Token ausente - Path: ${path}`)
     return res.status(401).json({

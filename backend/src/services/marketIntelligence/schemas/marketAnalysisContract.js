@@ -14,7 +14,7 @@
  * no de este archivo.
  */
 
-import { TREND_LABELS } from '../scoring/trendClassifier.js';
+import { TREND_LABELS } from '../scoring/trendClassifier.js'
 
 /**
  * @param {Object} doc - documento de MarketAnalysis (recién creado o cacheado)
@@ -58,26 +58,26 @@ function buildMarketAnalysisResponse(doc) {
     // representativa de su mercado.
     offers: doc.rawSignals?.shopping?.offers ?? [],
     generatedAt: doc.generatedAt,
-  };
+  }
 }
 
 function classifyDemandScore(score) {
   // null = no se pudo medir con las fuentes disponibles. Distinto de
   // "demanda baja", que es una medición real de poca demanda.
-  if (score === null || score === undefined) return 'No se pudo medir';
-  if (score >= 90) return 'Demanda excepcional';
-  if (score >= 75) return 'Demanda alta';
-  if (score >= 60) return 'Demanda moderada';
-  if (score >= 40) return 'Demanda débil o incierta';
-  return 'Demanda baja';
+  if (score === null || score === undefined) return 'No se pudo medir'
+  if (score >= 90) return 'Demanda excepcional'
+  if (score >= 75) return 'Demanda alta'
+  if (score >= 60) return 'Demanda moderada'
+  if (score >= 40) return 'Demanda débil o incierta'
+  return 'Demanda baja'
 }
 
 function buildRecommendation(demandScore, confidenceScore) {
-  if (demandScore === null || demandScore === undefined) return 'DATOS INSUFICIENTES';
-  if (confidenceScore < 40) return 'DATOS INSUFICIENTES';
-  if (demandScore >= 75) return 'RECOMENDADO';
-  if (demandScore >= 50) return 'RECOMENDADO CON CONDICIONES';
-  return 'NO RECOMENDADO';
+  if (demandScore === null || demandScore === undefined) return 'DATOS INSUFICIENTES'
+  if (confidenceScore < 40) return 'DATOS INSUFICIENTES'
+  if (demandScore >= 75) return 'RECOMENDADO'
+  if (demandScore >= 50) return 'RECOMENDADO CON CONDICIONES'
+  return 'NO RECOMENDADO'
 }
 
 // TODO: agregar un renderer separado (p.ej. marketAnalysisPresenter.js) que
@@ -85,4 +85,4 @@ function buildRecommendation(demandScore, confidenceScore) {
 // 🔥 🛒 🏆 💬 💡 ⚠️ 🎯 🚀) para consumo del WhatsApp agent o del admin panel.
 // No mezclar esa redacción con este archivo — este es el contrato de datos.
 
-export { buildMarketAnalysisResponse };
+export { buildMarketAnalysisResponse }

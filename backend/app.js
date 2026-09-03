@@ -27,6 +27,7 @@ import apiRoutes from './src/routes/index.js'
 
 const app = express()
 
+app.set('trust proxy', env.trustProxy ? 1 : false)
 // =======================================================
 // PATHS
 // =======================================================

@@ -151,9 +151,9 @@ export async function getGroundingSignals({ product, country, apiKey }) {
 function extractGroundingSources(groundingResult) {
   const chunks = groundingResult?.groundingMetadata?.groundingChunks || []
   return chunks
-    .map((chunk) => chunk?.web)
+    .map(chunk => chunk?.web)
     .filter(Boolean)
-    .map((web) => ({ url: web.uri, title: web.title || 'NO_DISPONIBLE' }))
+    .map(web => ({ url: web.uri, title: web.title || 'NO_DISPONIBLE' }))
 }
 
 function safeParseJson(text) {
