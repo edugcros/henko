@@ -1089,6 +1089,10 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
     message: 'Tokens renovados correctamente',
     token: newAccessToken,
     accessToken: newAccessToken,
+    data: {
+      token: newAccessToken,
+      accessToken: newAccessToken,
+    },
   })
 })
 
