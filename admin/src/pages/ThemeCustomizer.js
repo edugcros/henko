@@ -1,5 +1,6 @@
 // src/pages/ThemeCustomizer.jsx - Store Design admin
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Alert,
   AppBar,
@@ -163,6 +164,7 @@ const findActiveSection = id =>
   SECTION_LIBRARY.find(section => section.id === id) || SECTION_LIBRARY[0]
 
 const ThemeCustomizer = () => {
+  const navigate = useNavigate()
   const muiTheme = useMuiTheme()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
 
@@ -458,6 +460,18 @@ const ThemeCustomizer = () => {
           }}
         >
           <Toolbar sx={{ minHeight: APP_BAR_HEIGHT, gap: 1, flexWrap: 'wrap' }}>
+            <Tooltip title="Volver al panel de administración">
+              <IconButton
+                size="small"
+                edge="start"
+                color="inherit"
+                aria-label="Volver al panel de administración"
+                onClick={() => navigate('/admin')}
+              >
+                <ArrowBackIcon />
+              </IconButton>
+            </Tooltip>
+
             {isMobile && showDrawer && (
               <IconButton
                 size="small"
