@@ -186,7 +186,8 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
     orderStatusBreakdown: orderStats.statusBreakdown,
     paymentStatusBreakdown: orderStats.paymentStatusBreakdown,
     trends: {
-      daily: dailyWithCarts,
+      dailyWithCarts,
+      daily: userBehaviorStats.dailyActivity,
       dailyRevenue: salesStats.dailyBreakdown,
       dailyOrders: orderStats.dailyBreakdown,
       cartDaily: cartDailyStats,
