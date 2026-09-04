@@ -63,6 +63,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useSnackbar } from 'notistack'
+import axios from 'axios'
 
 import { analyticsAPI } from '../services/api'
 
@@ -762,6 +763,8 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [days, setDays] = useState(30)
+  const [subscriptionMetrics, setSubscriptionMetrics] = useState(null)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
 
   const fetchData = useCallback(
     async ({ silent = false } = {}) => {
@@ -799,19 +802,35 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
     [days, enqueueSnackbar],
   )
 
+  const fetchSubscriptionMetrics = useCallback(async () => {
+    try {
+      setSubscriptionLoading(true)
+      const response = await axios.get('/api/dash/subscription-metrics')
+      if (response.data?.success && response.data?.data) {
+        setSubscriptionMetrics(response.data.data)
+      }
+    } catch (err) {
+      console.error('Error cargando métricas de suscripción:', err)
+    } finally {
+      setSubscriptionLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+    fetchSubscriptionMetrics()
+  }, [fetchData, fetchSubscriptionMetrics])
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       fetchData({ silent: true })
+      fetchSubscriptionMetrics()
     }, 30000)
 
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [fetchData])
+  }, [fetchData, fetchSubscriptionMetrics])
 
   const summary = data?.summary || {}
   const userBehavior = data?.userBehavior || {}
@@ -1013,6 +1032,58 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
         <Alert severity="info" sx={{ mb: 3 }}>
           GA4 no está configurado, pero las métricas internas de Henko se muestran igual.
         </Alert>
+      )}
+
+      {subscriptionMetrics && (
+        <>
+          <DashboardSectionTitle
+            title="Estado de suscripción"
+            description="Información del plan de suscripción actual y estado de pago."
+          />
+          <Grid container spacing={2.5} sx={{ mb: 4 }}>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <KpiCard
+                title="Plan actual"
+                value={subscriptionLoading ? <Skeleton width={80} /> : (subscriptionMetrics.currentPlan === 'free' ? 'Gratis' : subscriptionMetrics.currentPlan === 'starter' ? 'Emprendedor' : 'Profesional')}
+                icon={PaymentsIcon}
+                gradient={subscriptionMetrics.isActive ? KPI_GRADIENTS.activeCarts : KPI_GRADIENTS.abandonedCarts}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <KpiCard
+                title="Estado"
+                value={subscriptionLoading ? <Skeleton width={80} /> : (
+                  subscriptionMetrics.status === 'active' ? '✓ Activa' :
+                  subscriptionMetrics.status === 'trialing' ? 'En prueba' :
+                  subscriptionMetrics.status === 'past_due' ? '⚠ Pendiente' :
+                  subscriptionMetrics.status === 'cancelled' ? 'Cancelada' : 'Ninguna'
+                )}
+                icon={CheckIcon}
+                gradient={
+                  subscriptionMetrics.status === 'active' ? KPI_GRADIENTS.activeCarts :
+                  subscriptionMetrics.status === 'past_due' ? KPI_GRADIENTS.abandonedCarts :
+                  KPI_GRADIENTS.conversion
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <KpiCard
+                title="Ingreso recurrente mensual"
+                value={subscriptionLoading ? <Skeleton width={90} /> : formatMoney(subscriptionMetrics.mrr)}
+                icon={TrendIcon}
+                gradient={KPI_GRADIENTS.revenue}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <KpiCard
+                title="Próximo pago"
+                value={subscriptionLoading ? <Skeleton width={80} /> : (subscriptionMetrics.lastPaymentAt ? new Date(subscriptionMetrics.lastPaymentAt).toLocaleDateString('es-AR') : 'No disponible')}
+                icon={PaymentsIcon}
+                gradient={KPI_GRADIENTS.metaRevenue}
+              />
+            </Grid>
+          </Grid>
+        </>
       )}
 
       <Grid container spacing={2.5} sx={{ mb: 4 }}>
