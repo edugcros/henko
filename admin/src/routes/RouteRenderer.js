@@ -22,9 +22,9 @@ import {
 // estando logueado.
 const REDIRECT_IF_AUTHENTICATED_PATHS = new Set(['/login'])
 
-// 🔁 Rutas públicas y protegidas
+// 🔁 Rutas públicas
 const renderPublicRoutes = () =>
-  [...publicRoutes, ...publicDynamicRoutes, ...protectedRoutes]
+  [...publicRoutes, ...publicDynamicRoutes]
     .map(({ path, Component: _Component }) => {
       // Validación de seguridad
       if (!_Component) {
@@ -41,6 +41,23 @@ const renderPublicRoutes = () =>
       )
 
       return <Route key={path} path={path} element={element} />
+    })
+    .filter(Boolean)
+
+// 🔐 Rutas que solo piden sesión (sin rol específico ni layout del panel).
+// Estaban entrando por renderPublicRoutes(), o sea que el array prometía
+// protección y se renderizaba igual que una ruta abierta.
+const renderProtectedRoutes = () =>
+  protectedRoutes
+    .map(({ path, Component: _Component }) => {
+      if (!_Component) {
+        console.error(
+          `🚨 ERROR: Ruta protegida "${path}" tiene Component undefined`,
+        )
+        return null
+      }
+
+      return <Route key={path} path={path} element={<_Component />} />
     })
     .filter(Boolean)
 
@@ -81,6 +98,8 @@ const RouteRenderer = ({ isLoggedIn }) => {
         <Route path="/" element={<Navigate to={isLoggedIn ? '/admin' : '/login'} replace />} />
 
         {renderPublicRoutes()}
+
+        <Route element={<PrivateRoute />}>{renderProtectedRoutes()}</Route>
 
         <Route path="/admin" element={<PrivateRoute allowedRoles={['admin']} />}>
           <Route element={<MainLayout />}>{renderAdminRoutes()}</Route>

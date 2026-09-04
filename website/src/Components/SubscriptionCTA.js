@@ -3,56 +3,7 @@
 import React, { useCallback, useMemo } from 'react'
 import { Box, Button, Chip, Container, Divider, Stack, Typography } from '@mui/material'
 
-import { env } from '../config/env'
-
-const SUBSCRIPTION_PATH = '/subscripcion'
-
-const cleanValue = value => String(value || '').trim()
-
-const removeTrailingSlash = value => cleanValue(value).replace(/\/+$/, '')
-
-const removeProtocol = value =>
-  cleanValue(value)
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/+$/, '')
-
-const hasProtocol = value => /^https?:\/\//i.test(cleanValue(value))
-
-const isLocalHostname = hostname => {
-  const cleanHostname = cleanValue(hostname).toLowerCase()
-
-  return (
-    cleanHostname === 'localhost' ||
-    cleanHostname === '127.0.0.1' ||
-    cleanHostname.endsWith('.local')
-  )
-}
-
-const buildAdminBaseUrl = () => {
-  if (typeof window === 'undefined') return ''
-
-  const { hostname, protocol, host } = window.location
-
-  if (isLocalHostname(hostname)) {
-    const adminBase = removeProtocol(env?.adminBaseDomain) || `admin.${hostname}`
-    return `${protocol}//${adminBase}:3001`
-  }
-
-  const adminBaseDomain = removeTrailingSlash(env?.adminBaseDomain)
-  const publicBaseDomain = removeTrailingSlash(env?.publicBaseDomain)
-
-  if (adminBaseDomain) {
-    return hasProtocol(adminBaseDomain)
-      ? adminBaseDomain
-      : `https://${removeProtocol(adminBaseDomain)}`
-  }
-
-  if (publicBaseDomain) {
-    return `https://admin.${removeProtocol(publicBaseDomain)}`
-  }
-
-  return `${protocol}//${host}`
-}
+import { buildAdminUrl, SUBSCRIPTION_PATH } from '@utils/adminUrl'
 
 const features = [
   'E-commerce multi-tenant listo para escalar',
@@ -80,10 +31,7 @@ const highlights = [
 ]
 
 const SubscriptionCTA = () => {
-  const subscriptionUrl = useMemo(() => {
-    const adminBaseUrl = buildAdminBaseUrl()
-    return `${adminBaseUrl}${SUBSCRIPTION_PATH}`
-  }, [])
+  const subscriptionUrl = useMemo(() => buildAdminUrl(SUBSCRIPTION_PATH), [])
 
   const handleGoToSubscription = useCallback(() => {
     if (!subscriptionUrl) return
