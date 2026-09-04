@@ -3,6 +3,7 @@
 
 import Tenant from '../models/tenantModel.js'
 import { sendTemplateEmail } from '../services/emailService.js'
+import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
 const sendResponse = (res, statusCode, success, message, data = null) => {
@@ -173,7 +174,9 @@ const handlePaymentFailed = async (tenant, data) => {
         data: {
           tenantName: updated.name,
           failureReason: data.reason || 'Razón desconocida',
-          actionUrl: `${process.env.ADMIN_BASE_URL}/admin/mi-suscripcion`,
+          // Misma razón que en subscriptionPaymentService: ADMIN_BASE_URL no
+          // existe en la config, el link del email salía "undefined/...".
+          actionUrl: `${env.adminUrl}/admin/mi-suscripcion`,
         },
       })
     }

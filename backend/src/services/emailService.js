@@ -1680,6 +1680,155 @@ export const sendOrderRefundedEmail = async (
 // DEFAULT EXPORT
 // =====================================================
 
+// =====================================================
+// Emails de suscripción
+// =====================================================
+
+const SUBSCRIPTION_PLAN_LABELS = {
+  free: 'Gratis',
+  starter: 'Emprendedor',
+  pro: 'Profesional',
+}
+
+const formatPlanLabel = plan =>
+  SUBSCRIPTION_PLAN_LABELS[String(plan || '').toLowerCase()] || sanitizeString(plan) || 'Sin plan'
+
+const formatDate = value => {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+const buildSubscriptionEmailHtml = ({ headline, intro, rows = [], ctaUrl = '', ctaLabel = '' }) => {
+  const rowsHtml = rows
+    .filter(([, value]) => value)
+    .map(
+      ([label, value]) => `
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">${escapeHtml(label)}</td>
+          <td style="padding: 8px 0; color: #0f172a; font-size: 14px; font-weight: 600; text-align: right;">${escapeHtml(String(value))}</td>
+        </tr>`,
+    )
+    .join('')
+
+  const ctaHtml =
+    ctaUrl && ctaLabel
+      ? `
+        <p style="margin: 28px 0 0;">
+          <a href="${escapeHtml(ctaUrl)}"
+             style="background: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-block;">
+            ${escapeHtml(ctaLabel)}
+          </a>
+        </p>`
+      : ''
+
+  return `
+    <div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #f1f5f9; padding: 32px 16px;">
+      <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px;">
+        <h1 style="margin: 0 0 16px; color: #0f172a; font-size: 22px; line-height: 1.3;">${escapeHtml(headline)}</h1>
+        <p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.65;">${escapeHtml(intro)}</p>
+        ${rowsHtml ? `<table style="width: 100%; margin-top: 24px; border-top: 1px solid #e2e8f0;">${rowsHtml}</table>` : ''}
+        ${ctaHtml}
+        <p style="margin: 28px 0 0; color: #94a3b8; font-size: 13px;">Henko</p>
+      </div>
+    </div>`
+}
+
+// Cada entrada recibe el objeto `data` de quien la invoca y devuelve el
+// asunto y el cuerpo ya armados.
+const SUBSCRIPTION_EMAIL_TEMPLATES = {
+  'subscription-welcome': data => {
+    const plan = formatPlanLabel(data.plan)
+    const nextPayment = formatDate(data.nextPaymentDate)
+
+    return {
+      subject: `Tu suscripción al plan ${plan} está activa`,
+      headline: '¡Tu suscripción está activa!',
+      intro: `Activamos el plan ${plan} para ${sanitizeString(data.tenantName) || 'tu comercio'}. Ya podés usar todas las funciones incluidas.`,
+      rows: [
+        ['Plan', plan],
+        ['Próximo pago', nextPayment],
+        ['ID de suscripción', sanitizeString(data.subscriptionId)],
+      ],
+    }
+  },
+
+  'subscription-payment-confirmed': data => {
+    const plan = formatPlanLabel(data.plan)
+
+    return {
+      subject: `Recibimos tu pago del plan ${plan}`,
+      headline: 'Pago confirmado',
+      intro: `Registramos el pago de la suscripción de ${sanitizeString(data.tenantName) || 'tu comercio'}. No tenés que hacer nada más.`,
+      rows: [
+        ['Plan', plan],
+        ['Fecha de pago', formatDate(data.paymentDate)],
+        ['Próximo pago', formatDate(data.nextPaymentDate)],
+      ],
+    }
+  },
+
+  'subscription-payment-failed': data => ({
+    subject: 'No pudimos procesar el pago de tu suscripción',
+    headline: 'Hubo un problema con tu pago',
+    intro: `No pudimos cobrar la suscripción de ${sanitizeString(data.tenantName) || 'tu comercio'}. Revisá los datos de tu tarjeta para no perder el acceso.`,
+    rows: [['Motivo', sanitizeString(data.failureReason)]],
+    ctaUrl: sanitizeString(data.actionUrl),
+    ctaLabel: 'Revisar mi suscripción',
+  }),
+
+  'subscription-cancelled': data => ({
+    subject: 'Tu suscripción fue cancelada',
+    headline: 'Suscripción cancelada',
+    intro: `Cancelamos la suscripción de ${sanitizeString(data.tenantName) || 'tu comercio'}. No vamos a hacerte más cobros. Podés volver a suscribirte cuando quieras.`,
+  }),
+
+  'subscription-cancelled-webhook': data => ({
+    subject: 'Tu suscripción fue cancelada',
+    headline: 'Suscripción cancelada',
+    intro: `La suscripción de ${sanitizeString(data.tenantName) || 'tu comercio'} quedó cancelada. Podés volver a suscribirte cuando quieras.`,
+    rows: [['Fecha de cancelación', formatDate(data.cancelDate)]],
+  }),
+}
+
+/**
+ * Envía un email de suscripción a partir del nombre de una plantilla.
+ *
+ * Los controllers de suscripción ya llamaban a esta función, pero no existía:
+ * el import roto tiraba el proceso al arrancar. Una plantilla desconocida
+ * devuelve un error en vez de lanzar, porque quien la llama trata el email
+ * como accesorio y no debe voltear el cobro.
+ */
+export const sendTemplateEmail = async ({ to, template, data = {}, tenantConfig = {} }) => {
+  const buildTemplate = SUBSCRIPTION_EMAIL_TEMPLATES[template]
+
+  if (!buildTemplate) {
+    logger.warn(`[EMAIL] Plantilla desconocida: ${template}`)
+    return { success: false, error: 'UNKNOWN_EMAIL_TEMPLATE', details: String(template) }
+  }
+
+  const { subject, headline, intro, rows = [], ctaUrl, ctaLabel } = buildTemplate(data)
+
+  const textLines = [
+    headline,
+    '',
+    intro,
+    ...rows.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`),
+  ]
+
+  if (ctaUrl) textLines.push('', ctaUrl)
+
+  return sendEmail({
+    to,
+    subject,
+    html: buildSubscriptionEmailHtml({ headline, intro, rows, ctaUrl, ctaLabel }),
+    text: textLines.join('\n'),
+    tenantConfig,
+    maxRetries: 2,
+  })
+}
+
 export default {
   sendEmail,
   sendOrderConfirmationEmail,
@@ -1688,4 +1837,5 @@ export default {
   sendOrderDeliveredEmail,
   sendOrderCancelledEmail,
   sendOrderRefundedEmail,
+  sendTemplateEmail,
 }

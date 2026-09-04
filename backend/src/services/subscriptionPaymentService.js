@@ -5,6 +5,7 @@
 import crypto from 'node:crypto'
 import { Money } from '../utils/money.js'
 import { normalizePlan, getPlanMonthlyPriceUsd } from './ai/aiPlanPolicy.js'
+import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
 const sanitizeString = (value, fallback = '') => {
@@ -75,7 +76,12 @@ export const buildMercadoPagoSubscriptionData = ({
           .slice(0, 20),
       },
     },
-    back_url: process.env.SUBSCRIPTION_SUCCESS_URL || `${process.env.ADMIN_BASE_URL}/subscription/success`,
+    // ADMIN_BASE_URL no existe en config/env.js: quedaba "undefined/..." y
+    // Mercado Pago rechaza una back_url inválida. env.adminUrl sí es
+    // obligatoria en producción. La ruta también estaba mal: el router del
+    // panel no tiene /subscription/success, sí /admin/mi-suscripcion.
+    back_url:
+      process.env.SUBSCRIPTION_SUCCESS_URL || `${env.adminUrl}/admin/mi-suscripcion`,
     notification_url: buildNotificationUrl(),
     metadata: {
       tenant_id: tenantId.toString(),
