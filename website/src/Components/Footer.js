@@ -261,6 +261,31 @@ const Footer = () => {
               </Stack>
             </Grid>
 
+            {/* Planes */}
+            <Grid item xs={12} sm={6} md={footerColumnSize}>
+              <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
+                Planes
+              </Typography>
+              <Stack spacing={0.5}>
+                <MuiLink
+                  component={RouterLink}
+                  to="/subscripcion"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
+                  Planes de Suscripción
+                </MuiLink>
+                <MuiLink
+                  component={RouterLink}
+                  to="/contact"
+                  underline="hover"
+                  sx={footerLinkSx}
+                >
+                  Soporte Empresarial
+                </MuiLink>
+              </Stack>
+            </Grid>
+
             {/* Enlaces rápidos */}
             <Grid item xs={12} sm={6} md={footerColumnSize}>
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
