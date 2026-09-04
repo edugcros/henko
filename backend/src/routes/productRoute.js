@@ -148,12 +148,45 @@ router.post(
         })
       }
 
-      return res.status(isProviderConfigError ? 503 : 500).json({
+      const RETRYABLE_IMAGE_ERRORS = new Set([
+        'GEMINI_TIMEOUT',
+        'EMPTY_AI_RESPONSE',
+        'IMAGE_DOWNLOAD_FAILED',
+      ])
+
+      const CLIENT_IMAGE_ERRORS = new Set([
+        'INVALID_IMAGE_BUFFER',
+        'EMPTY_IMAGE_BUFFER',
+        'EMPTY_IMAGE',
+        'IMAGE_TOO_LARGE',
+        'INVALID_IMAGE_MIME',
+        'INVALID_IMAGE_URL',
+        'INVALID_IMAGE_PROTOCOL',
+        'INVALID_IMAGE_SIGNATURE',
+        'BLOCKED_IMAGE_HOST',
+        'BLOCKED_PRIVATE_IMAGE_HOST',
+        'BLOCKED_PRIVATE_IMAGE_IP',
+        'IMAGE_HOST_RESOLUTION_FAILED',
+      ])
+
+      const code = error.code || 'AI_ANALYSIS_FAILED'
+
+      let status
+      if (isProviderConfigError) status = 503
+      else if (RETRYABLE_IMAGE_ERRORS.has(code)) status = 502
+      else if (CLIENT_IMAGE_ERRORS.has(code)) status = 400
+      else status = 500
+
+      // Antes se devolvía 'Error al analizar la imagen con IA' para todo lo
+      // que no fuera config o cuota, tirando el mensaje que buildProviderError
+      // arma con la causa real. Ahora el mensaje va tal cual para que el
+      // frontend pueda mostrarlo sin depender de mirar el log del backend.
+      return res.status(status).json({
         success: false,
-        code: error.code || 'AI_ANALYSIS_FAILED',
+        code,
         message: isProviderConfigError
           ? 'El proveedor de IA no está configurado correctamente en el servidor'
-          : 'Error al analizar la imagen con IA',
+          : error.message || 'Error al analizar la imagen con IA',
       })
     }
   }),
