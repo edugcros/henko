@@ -8,6 +8,9 @@ import {
   getSubscriptionConfig,
   processSubscriptionPayment,
   getCurrentSubscription,
+  changeSubscriptionPlan,
+  cancelSubscription,
+  getSubscriptionInvoices,
 } from '../controller/subscriptionCtrl.js'
 
 import { authMiddleware } from '../middlewares/authMiddleware.js'
@@ -105,6 +108,87 @@ router.get(
   requireTenant,
   authMiddleware,
   getCurrentSubscription,
+)
+
+/**
+ * POST /api/subscriptions/change-plan
+ * Cambiar plan de suscripción actual
+ *
+ * Body:
+ * {
+ *   newPlan: 'starter' | 'pro'
+ * }
+ *
+ * Response:
+ * {
+ *   success: true,
+ *   message: 'Plan actualizado exitosamente',
+ *   data: {
+ *     plan: 'pro',
+ *     status: 'active'
+ *   }
+ * }
+ */
+router.post(
+  '/change-plan',
+  resolveTenantByDomain,
+  requireTenant,
+  authMiddleware,
+  changeSubscriptionPlan,
+)
+
+/**
+ * POST /api/subscriptions/cancel
+ * Cancelar suscripción actual (vuelve el tenant a plan 'free')
+ *
+ * Response:
+ * {
+ *   success: true,
+ *   message: 'Suscripción cancelada exitosamente',
+ *   data: {
+ *     status: 'cancelled',
+ *     plan: 'free'
+ *   }
+ * }
+ */
+router.post(
+  '/cancel',
+  resolveTenantByDomain,
+  requireTenant,
+  authMiddleware,
+  cancelSubscription,
+)
+
+/**
+ * GET /api/subscriptions/invoices
+ * Obtener historial de pagos/facturas de la suscripción
+ *
+ * Response:
+ * {
+ *   success: true,
+ *   message: 'Facturas obtenidas',
+ *   data: {
+ *     invoices: [
+ *       {
+ *         id: '12345',
+ *         status: 'approved',
+ *         amount: 99.00,
+ *         currency: 'USD',
+ *         date: '2026-09-04T00:00:00Z',
+ *         paidDate: '2026-09-04T12:30:00Z',
+ *         reason: 'Suscripción Henko Plan pro'
+ *       }
+ *     ],
+ *     subscriptionId: '<mp_subscription_id>'
+ *   }
+ * }
+ */
+router.get(
+  '/invoices',
+  resolveTenantByDomain,
+  requireTenant,
+  authMiddleware,
+  getSubscriptionInvoices,
 )
 
 export default router

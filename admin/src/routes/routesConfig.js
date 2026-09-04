@@ -137,6 +137,13 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // 📋 Gestión de suscripción
+  {
+    path: '/admin/mi-suscripcion',
+    Component: pages.SubscriptionManagementPage,
+    allowedRoles: ['admin'],
+  },
+
   // 📊 Meta Pixel / Conversions API
   {
     path: '/admin/meta-pixel',
