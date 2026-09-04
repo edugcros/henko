@@ -165,10 +165,18 @@ const loginUser = async userData => {
       throw new Error(response?.data?.message || 'Respuesta inválida del servidor durante login')
     }
 
+    // El token viaja también en el body además de la cookie httpOnly, y
+    // authSlice lo guarda en sessionStorage para que axiosConfig lo mande
+    // como Bearer cuando la cookie no está disponible. Acá se extraía con
+    // normalizeAuthResponse y se descartaba, así que ese fallback nunca se
+    // llenaba en el login: si la cookie no llegaba, toda request posterior
+    // daba 401 "Token de acceso ausente" y el refresh que dispara el
+    // interceptor moría con 403 por no tener sesión.
     return {
       success: true,
       data: {
         user: normalized?.user,
+        token: normalized?.token,
       },
     }
   } catch (error) {
