@@ -31,9 +31,15 @@ const subscriptionPaymentLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 
+  // req.ip crudo hacía que express-rate-limit abortara la construcción del
+  // limiter con ERR_ERL_KEY_GEN_IPV6: sin normalizar, cada dirección de un
+  // mismo prefijo IPv6 /64 cuenta como un cliente distinto y el límite se
+  // esquiva cambiando de dirección dentro del mismo bloque. Mismo helper que
+  // ya usan enqRoute.js y userMetricsRoutes.js.
   keyGenerator: req => {
     const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
-    const userId = req.user?._id || req.user?.id || req.ip || 'anonymous'
+    const userId =
+      req.user?._id || req.user?.id || (req.ip ? ipKeyGenerator(req.ip) : 'anonymous')
     return `${tenantId}:${userId}`
   },
 
