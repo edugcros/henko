@@ -50,13 +50,12 @@ const subscriptionPaymentLimiter = rateLimit({
 /**
  * GET /api/subscriptions/config
  * Obtener configuración de pago (public key MP, plan actual, etc)
- * Acceso: Autenticado + Tenant resuelto
+ * Acceso: Público (Tenant resuelto por dominio)
  */
 router.get(
   '/config',
   resolveTenantByDomain,
   requireTenant,
-  authMiddleware,
   getSubscriptionConfig,
 )
 
@@ -92,7 +91,6 @@ router.post(
   '/process-payment',
   resolveTenantByDomain,
   requireTenant,
-  authMiddleware,
   subscriptionPaymentLimiter,
   processSubscriptionPayment,
 )

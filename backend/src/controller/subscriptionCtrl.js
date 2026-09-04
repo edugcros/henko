@@ -40,9 +40,15 @@ const sanitizeString = (value, fallback = '') => {
  */
 export const getSubscriptionConfig = async (req, res) => {
   try {
-    const tenant = await resolveAuthorizedTenantFromRequest(req)
+    // Para checkout público, el tenant viene resuelto por dominio
+    // No requiere autenticación del usuario
+    if (!req.tenantId) {
+      return sendResponse(res, 400, false, 'Tenant no resuelto')
+    }
+
+    const tenant = await Tenant.findById(req.tenantId).lean()
     if (!tenant) {
-      return sendResponse(res, 403, false, 'No autorizado')
+      return sendResponse(res, 404, false, 'Tenant no encontrado')
     }
 
     const mpContext = await getTenantMercadoPagoContext(tenant._id)
@@ -70,10 +76,16 @@ export const getSubscriptionConfig = async (req, res) => {
  */
 export const processSubscriptionPayment = async (req, res) => {
   const userId = getUserIdFromRequest(req)
-  const tenant = await resolveAuthorizedTenantFromRequest(req)
 
-  if (!tenant || !userId) {
-    return sendResponse(res, 403, false, 'No autorizado')
+  // Para checkout público, el tenant viene resuelto por dominio
+  // No requiere autenticación del usuario (new customer flow)
+  if (!req.tenantId) {
+    return sendResponse(res, 400, false, 'Tenant no resuelto')
+  }
+
+  const tenant = await Tenant.findById(req.tenantId).lean()
+  if (!tenant) {
+    return sendResponse(res, 404, false, 'Tenant no encontrado')
   }
 
   try {
