@@ -48,6 +48,7 @@ const AiInsightsPage = lazy(() => import('./AiInsightsPage'))
 const StoreSettingsPage = lazy(() => import('./StoreSettingsPage'))
 const VerifyEmailPage = lazy(() => import('./VerifyEmailPage'))
 const MarketIntelligencePage = lazy(() => import('./MarketIntelligencePage'))
+const SubscriptionPage = lazy(() => import('./SubscriptionPage'))
 
 const pages = {
   Dashboard,
@@ -85,6 +86,7 @@ const pages = {
   Productlist,
   CouponsPage,
   NotFound,
+  SubscriptionPage,
 }
 
 export default pages
