@@ -29,24 +29,34 @@ import logger from '../../../config/logger.js'
 /**
  * Cadena de respaldos, en orden de preferencia.
  *
- * Estado verificado contra la API (logs de producción, septiembre 2026):
- *   gemini-2.5-flash        → 404, retirado para usuarios nuevos    [ELIMINADO]
- *   gemini-flash-lite       → 404, no existe en v1beta              [ELIMINADO]
- *   gemini-2.0-flash        → 404, retirado                         [ELIMINADO]
- *   gemini-2.5-lash-lite    → typo, nunca existió (falta la "f")    [ELIMINADO]
- *   gemini-flash-lite-latest→ existe (429 = cuota, no 404)          [SE MANTIENE]
- *   gemini-3.5-flash-lite   → existe (429 = cuota, no 404)          [SE MANTIENE]
+ * IMPORTANTE — corrección de un error de nomenclatura previo:
  *
- * Un 404 confirma que el modelo no existe; un 429 confirma que SÍ existe y
- * solo falta cuota. Por eso los que dan 429 se conservan.
+ * Esta lista tenía "gemini-3.5-flash" y "gemini-3.5-flash-lite". Google no
+ * tiene una versión 3.5: la familia va 1.0 → 1.5 → 2.0 → 2.5. Esos nombres
+ * nunca existieron, probablemente por mezcla con nomenclatura de OpenAI o
+ * Anthropic. Cuando la API se le pega a un modelo inexistente en el path
+ * "generativelanguage.googleapis.com/v1beta/models/<x>:generateContent",
+ * Google no siempre devuelve 404: para algunos alias devuelve 503 "This
+ * model is currently experiencing high demand", que hace parecer una
+ * indisponibilidad temporal cuando en realidad el modelo no existe.
  *
- * TODO: revisar esta lista cada vez que Google anuncie retiros. Un modelo
- * muerto acá cuesta una request completa de latencia por llamada.
+ * Los comentarios anteriores decían que "gemini-2.5-flash está retirado"
+ * y que "gemini-3.5-flash-lite existe (429 = cuota)"; eso llevó a rearmar
+ * la cadena eliminando modelos reales y dejando nombres imaginarios. La
+ * lectura correcta: un 429 CON texto de "quota/billing/plan" es cuota
+ * (temporal, cooldown); un 429 sin ese texto puede ser cualquier cosa,
+ * incluido "no existe" — no alcanza para afirmar que un modelo exista.
+ *
+ * Modelos vigentes (septiembre 2026) que Google mantiene:
+ *   gemini-2.5-flash       → default recomendado (rápido y económico)
+ *   gemini-2.5-flash-lite  → aún más económico, misma familia
+ *   gemini-2.0-flash       → alternativo si 2.5 está saturado
+ *
+ * TODO: revisar cada vez que Google anuncie retiros o nuevas versiones.
  */
 const FALLBACK_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-flash-lite-latest',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
 ]
 
 /** Modelos retirados por Google (404). Permanente para este proceso. */
