@@ -17,7 +17,7 @@ import {
   createMercadoPagoPaymentClient,
   getTenantMercadoPagoContext,
 } from '../services/paymentTenantConfigService.js'
-import { normalizePlan } from '../services/ai/aiPlanPolicy.js'
+import { normalizePlan, getPlanMonthlyPriceUsd } from '../services/ai/aiPlanPolicy.js'
 import { sendTemplateEmail } from '../services/emailService.js'
 import logger from '../../config/logger.js'
 
@@ -293,8 +293,248 @@ export const getCurrentSubscription = async (req, res) => {
   }
 }
 
+/**
+ * POST /api/subscriptions/change-plan
+ * Cambiar el plan de suscripción actual
+ */
+export const changeSubscriptionPlan = async (req, res) => {
+  const tenant = await resolveAuthorizedTenantFromRequest(req)
+
+  if (!tenant) {
+    return sendResponse(res, 403, false, 'No autorizado')
+  }
+
+  try {
+    const { newPlan } = req.body
+
+    if (!newPlan) {
+      return sendResponse(res, 400, false, 'Nuevo plan requerido')
+    }
+
+    const normalizedNewPlan = normalizePlan(newPlan)
+    if (normalizedNewPlan === 'free' || normalizedNewPlan === 'enterprise') {
+      return sendResponse(res, 400, false, 'Plan no válido para cambio')
+    }
+
+    if (normalizedNewPlan === tenant.plan) {
+      return sendResponse(res, 400, false, 'Ya estás suscrito a este plan')
+    }
+
+    if (tenant.subscriptionStatus !== 'active' && tenant.subscriptionStatus !== 'past_due') {
+      return sendResponse(res, 400, false, 'No puedes cambiar de plan en este momento')
+    }
+
+    // Obtener cliente de MP
+    let mpClient
+    try {
+      mpClient = await createMercadoPagoPaymentClient(tenant._id)
+    } catch (mpError) {
+      logger.error('Error obteniendo cliente MP:', mpError)
+      return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
+    }
+
+    const mpSubId = tenant.integrations?.subscriptionMercadoPago?.subscriptionId
+    if (!mpSubId) {
+      return sendResponse(res, 400, false, 'Suscripción de Mercado Pago no encontrada')
+    }
+
+    // Actualizar el precio en MP
+    const newPriceUsd = getPlanMonthlyPriceUsd(normalizedNewPlan)
+    try {
+      await mpClient.subscription.update({
+        id: mpSubId,
+        body: {
+          auto_recurring: {
+            transaction_amount: newPriceUsd,
+          },
+        },
+      })
+    } catch (mpError) {
+      logger.error('Error actualizando suscripción en MP:', mpError)
+      return sendResponse(res, 503, false, 'Error actualizando en Mercado Pago')
+    }
+
+    // Actualizar tenant
+    await Tenant.findByIdAndUpdate(
+      tenant._id,
+      {
+        plan: normalizedNewPlan,
+        'integrations.subscriptionMercadoPago.planSelected': normalizedNewPlan,
+        'integrations.subscriptionMercadoPago.updatedAt': new Date(),
+      },
+      { new: true },
+    )
+
+    logger.info('Plan de suscripción actualizado', {
+      tenantId: tenant._id,
+      oldPlan: tenant.plan,
+      newPlan: normalizedNewPlan,
+    })
+
+    return sendResponse(res, 200, true, 'Plan actualizado exitosamente', {
+      plan: normalizedNewPlan,
+      status: 'active',
+    })
+  } catch (error) {
+    logger.error('Error cambiando plan:', error)
+    sendResponse(res, 500, false, 'Error al cambiar plan')
+  }
+}
+
+/**
+ * POST /api/subscriptions/cancel
+ * Cancelar suscripción actual
+ */
+export const cancelSubscription = async (req, res) => {
+  const tenant = await resolveAuthorizedTenantFromRequest(req)
+
+  if (!tenant) {
+    return sendResponse(res, 403, false, 'No autorizado')
+  }
+
+  try {
+    if (tenant.subscriptionStatus === 'cancelled') {
+      return sendResponse(res, 400, false, 'La suscripción ya fue cancelada')
+    }
+
+    if (tenant.subscriptionStatus === 'expired') {
+      return sendResponse(res, 400, false, 'La suscripción ya expiró')
+    }
+
+    const mpSubId = tenant.integrations?.subscriptionMercadoPago?.subscriptionId
+    if (!mpSubId) {
+      return sendResponse(res, 400, false, 'No hay suscripción activa')
+    }
+
+    // Obtener cliente de MP
+    let mpClient
+    try {
+      mpClient = await createMercadoPagoPaymentClient(tenant._id)
+    } catch (mpError) {
+      logger.error('Error obteniendo cliente MP:', mpError)
+      return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
+    }
+
+    // Cancelar en MP
+    try {
+      await mpClient.subscription.update({
+        id: mpSubId,
+        body: {
+          status: 'cancelled',
+        },
+      })
+    } catch (mpError) {
+      logger.error('Error cancelando suscripción en MP:', mpError)
+      return sendResponse(res, 503, false, 'Error cancelando en Mercado Pago')
+    }
+
+    // Actualizar tenant
+    await Tenant.findByIdAndUpdate(
+      tenant._id,
+      {
+        subscriptionStatus: 'cancelled',
+        plan: 'free',
+        'integrations.subscriptionMercadoPago.status': 'cancelled',
+        'integrations.subscriptionMercadoPago.cancelledAt': new Date(),
+      },
+      { new: true },
+    )
+
+    logger.info('Suscripción cancelada', {
+      tenantId: tenant._id,
+      plan: tenant.plan,
+    })
+
+    // Enviar email de cancelación
+    try {
+      const payerEmail = tenant.integrations?.subscriptionMercadoPago?.payerEmail
+      if (payerEmail) {
+        await sendTemplateEmail({
+          to: payerEmail,
+          template: 'subscription-cancelled',
+          data: {
+            tenantName: tenant.name,
+          },
+        })
+      }
+    } catch (emailError) {
+      logger.warn('Error enviando email de cancelación:', emailError)
+    }
+
+    return sendResponse(res, 200, true, 'Suscripción cancelada exitosamente', {
+      status: 'cancelled',
+      plan: 'free',
+    })
+  } catch (error) {
+    logger.error('Error cancelando suscripción:', error)
+    sendResponse(res, 500, false, 'Error al cancelar suscripción')
+  }
+}
+
+/**
+ * GET /api/subscriptions/invoices
+ * Obtener historial de pagos/facturas
+ */
+export const getSubscriptionInvoices = async (req, res) => {
+  const tenant = await resolveAuthorizedTenantFromRequest(req)
+
+  if (!tenant) {
+    return sendResponse(res, 403, false, 'No autorizado')
+  }
+
+  try {
+    const mpSubId = tenant.integrations?.subscriptionMercadoPago?.subscriptionId
+    if (!mpSubId) {
+      return sendResponse(res, 200, true, 'Sin facturas', {
+        invoices: [],
+      })
+    }
+
+    // Obtener cliente de MP
+    let mpClient
+    try {
+      mpClient = await createMercadoPagoPaymentClient(tenant._id)
+    } catch (mpError) {
+      logger.error('Error obteniendo cliente MP:', mpError)
+      return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
+    }
+
+    // Obtener detalles de suscripción (incluye pagos)
+    let mpSubscription
+    try {
+      mpSubscription = await mpClient.subscription.get({
+        id: mpSubId,
+      })
+    } catch (mpError) {
+      logger.error('Error obteniendo suscripción de MP:', mpError)
+      return sendResponse(res, 503, false, 'Error obteniendo facturación')
+    }
+
+    const invoices = (mpSubscription.invoice_list || []).map(invoice => ({
+      id: invoice.id,
+      status: invoice.status,
+      amount: invoice.amount,
+      currency: invoice.currency_id,
+      date: invoice.date_created,
+      paidDate: invoice.date_approved,
+      reason: invoice.reason,
+    }))
+
+    return sendResponse(res, 200, true, 'Facturas obtenidas', {
+      invoices: invoices.sort((a, b) => new Date(b.date) - new Date(a.date)),
+      subscriptionId: mpSubId,
+    })
+  } catch (error) {
+    logger.error('Error obteniendo facturas:', error)
+    sendResponse(res, 500, false, 'Error al obtener facturas')
+  }
+}
+
 export default {
   getSubscriptionConfig,
   processSubscriptionPayment,
   getCurrentSubscription,
+  changeSubscriptionPlan,
+  cancelSubscription,
+  getSubscriptionInvoices,
 }
