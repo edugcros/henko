@@ -429,9 +429,18 @@ const uploadImageToStorage = async ({ file, tenantId }) => {
 
   const baseUrl = getPublicBaseUrl()
   if (!baseUrl) {
-    throw new Error(
-      'PUBLIC_URL, API_PUBLIC_URL o BACKEND_PUBLIC_URL es requerido para publicar imágenes locales.',
+    // Sin código, este error caía en el comodín AI_ANALYSIS_FAILED de
+    // productRoute.js y se le presentaba al comercio como "Error al analizar
+    // la imagen con IA": el análisis puede haber salido perfecto y lo que
+    // falta es configuración de storage. Se llega acá cuando Cloudinary no
+    // está disponible (más arriba solo se loguea un warn y se cae a disco
+    // local) y encima no hay URL pública para servir ese archivo.
+    const error = new Error(
+      'Falta configurar el almacenamiento de imágenes: definí PUBLIC_URL (o API_PUBLIC_URL / BACKEND_PUBLIC_URL) para servir las imágenes locales, o configurá Cloudinary.',
     )
+    error.code = 'STORAGE_PUBLIC_URL_MISSING'
+    error.statusCode = 503
+    throw error
   }
 
   return {

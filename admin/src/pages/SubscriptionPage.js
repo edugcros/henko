@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import { Button, Card, Col, Divider, Flex, Row, Space, Tag, Typography, theme } from 'antd'
 import { CheckCircleFilled, CrownOutlined, LockOutlined, RocketOutlined } from '@ant-design/icons'
 
@@ -184,18 +185,28 @@ const PlanCard = ({ plan, onSelect }) => {
 const SubscriptionPage = () => {
   const navigate = useNavigate()
   const { token } = useToken()
+  const isAuthenticated = useSelector(state => state.user?.isAuthenticated)
 
+  // Esta pantalla es pública, así que el visitante puede no tener comercio
+  // todavía. El checkout cobra sobre un comercio ya identificado: sin sesión
+  // no hay a qué cobrarle, así que primero pasa por el alta y vuelve con el
+  // plan elegido. Con sesión va derecho a pagar.
   const handleSelectPlan = useCallback(
     planId => {
       const selectedPlan = SUBSCRIPTION_PLANS.find(plan => plan.id === planId)
 
       if (!selectedPlan) return
 
-      navigate(`/signup?plan=${encodeURIComponent(selectedPlan.id)}`, {
+      const plan = encodeURIComponent(selectedPlan.id)
+      const destination = isAuthenticated
+        ? `/checkout?plan=${plan}`
+        : `/signup?plan=${plan}`
+
+      navigate(destination, {
         state: { planId: selectedPlan.id },
       })
     },
-    [navigate],
+    [navigate, isAuthenticated],
   )
 
   return (

@@ -1,6 +1,7 @@
 import expressAsyncHandler from 'express-async-handler'
 import { getDashboardStats } from '../services/statsService.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
+import { getSubscriptionSummary } from '../services/subscriptionMetricsService.js'
 import logger from '../../config/logger.js'
 
 const normalizeTimeframe = value => {
@@ -43,6 +44,22 @@ export const getDashboardData = expressAsyncHandler(async (req, res) => {
     timeframe,
     data: stats,
     ...stats,
+  })
+})
+
+/**
+ * Obtener métricas de suscripciones para el tenant actual
+ */
+export const getSubscriptionMetrics = expressAsyncHandler(async (req, res) => {
+  const { tenantId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  })
+
+  const subscriptionMetrics = await getSubscriptionSummary(tenantId)
+
+  return res.status(200).json({
+    success: true,
+    data: subscriptionMetrics,
   })
 })
 

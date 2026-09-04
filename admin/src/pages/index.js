@@ -24,6 +24,8 @@ const Enquiries = lazy(() => import('./Enquiries'))
 const AddProduct = lazy(() => import('./AddProduct'))
 const Productlist = lazy(() => import('./Productlist'))
 const SubscriptionPage = lazy(() => import('./SubscriptionPage'))
+const CheckoutPage = lazy(() => import('./CheckoutPage'))
+const SubscriptionManagementPage = lazy(() => import('./SubscriptionManagementPage'))
 const NotFound = lazy(() => import('./NotFound'))
 const ThemeCustomizer = lazy(() => import('./ThemeCustomizer'))
 const CouponsPage = lazy(() => import('./CouponsPage'))
@@ -52,6 +54,7 @@ const pages = {
   Dashboard,
   EditProduct,
   Login,
+  CheckoutPage,
   Forgotpassword,
   Resetpassword,
   AiCommercialInboxPage,

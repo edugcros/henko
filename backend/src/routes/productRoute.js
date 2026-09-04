@@ -136,6 +136,18 @@ router.post(
         })
       }
 
+      // Config del servidor que impide completar el pedido aunque la IA
+      // haya respondido bien (por ejemplo, no hay dónde publicar la imagen
+      // analizada). El mensaje ya dice qué falta definir, así que se pasa
+      // tal cual en vez de disfrazarlo de fallo del proveedor de IA.
+      if (error.code === 'STORAGE_PUBLIC_URL_MISSING') {
+        return res.status(error.statusCode || 503).json({
+          success: false,
+          code: error.code,
+          message: error.message,
+        })
+      }
+
       return res.status(isProviderConfigError ? 503 : 500).json({
         success: false,
         code: error.code || 'AI_ANALYSIS_FAILED',

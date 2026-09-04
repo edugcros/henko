@@ -8,6 +8,8 @@ export const publicRoutes = [
   { path: '/login', Component: pages.Login },
   { path: '/forgot-password', Component: pages.Forgotpassword },
   { path: '/signup', Component: pages.AdminRegister },
+  // La pantalla de planes es pricing público: no llama a la API con datos
+  // del comercio, así que un visitante sin cuenta tiene que poder verla.
   { path: '/subscripcion', Component: pages.SubscriptionPage },
   // Destino del enlace de verificación del alta. Es público porque la cuenta
   // todavía no está verificada y por lo tanto no hay sesión posible.
@@ -26,8 +28,15 @@ export const publicDynamicRoutes = [
 ]
 
 // 🔐 Rutas protegidas (requieren login pero no rol específico)
+//
+// Se renderizan bajo PrivateRoute sin allowedRoles (ver RouteRenderer.js) y
+// fuera de MainLayout: son pantallas de sesión que no son parte del panel.
 export const protectedRoutes = [
-  // Reservado para futuro: perfil, configuraciones básicas, etc.
+  // El checkout cobra y da de alta la suscripción del comercio ya
+  // identificado, así que necesita sesión. El alta de un cliente nuevo pasa
+  // antes por /signup: la pantalla de planes lo manda ahí cuando no hay
+  // sesión, y recién después vuelve acá con el plan elegido.
+  { path: '/checkout', Component: pages.CheckoutPage },
 ]
 
 // 🔐 Rutas privadas del Admin (requieren autenticación y rol `admin`)
@@ -133,6 +142,13 @@ export const privateRoutes = [
   {
     path: '/admin/configuracion-pagos',
     Component: pages.PaymentConfigPage,
+    allowedRoles: ['admin'],
+  },
+
+  // 📋 Gestión de suscripción
+  {
+    path: '/admin/mi-suscripcion',
+    Component: pages.SubscriptionManagementPage,
     allowedRoles: ['admin'],
   },
 

@@ -1,5 +1,5 @@
 import express from 'express'
-import { getDashboardData } from '../controller/dashboardCtrl.js'
+import { getDashboardData, getSubscriptionMetrics } from '../controller/dashboardCtrl.js'
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 import {
   requireAdminDomain,
@@ -21,5 +21,6 @@ const adminContext = [
 router.get('/stats', adminContext, getDashboardData)
 router.get('/analytics', adminContext, getDashboardData)
 router.get('/analytics/dashboard', adminContext, getDashboardData)
+router.get('/subscription-metrics', adminContext, getSubscriptionMetrics)
 
 export default router
