@@ -85,11 +85,11 @@ const MENU_STRUCTURE = [
     children: [
       { key: 'AddProduct', label: 'Crear producto', icon: AutoAwesomeIcon },
       { key: 'productlist', label: 'Lista de productos', icon: Inventory2Icon },
-      {
+      /*{
         key: 'product-analysis',
         label: 'Programación de imágenes',
         icon: ScheduleIcon,
-      },
+      },*/
     ],
   },
 
