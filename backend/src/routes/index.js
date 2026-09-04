@@ -25,6 +25,7 @@ import imageAiRoutes from './imageAiRoutes.js'
 import platformRoutes from './platformRoutes.js'
 import aiInsightRoutes from './aiInsightRoutes.js'
 import marketintelligenceRoutes from './marketintelligenceRoutes.js'
+import subscriptionRoutes from './subscriptionRoutes.js'
 
 
 const router = express.Router()
@@ -74,6 +75,7 @@ router.use('/tenants', tenantRoutes)
 // 💳 PAGOS Y TRANSACCIONES
 // =======================================================
 router.use('/payments', paymentRoutes)
+router.use('/subscriptions', subscriptionRoutes)
 router.use('/payment-config', paymentConfigRoutes)
 router.use('/meta-pixel-config', metaPixelConfigRoutes)
 router.use('/image-ai', imageAiRoutes)

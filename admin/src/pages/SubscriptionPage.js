@@ -191,7 +191,7 @@ const SubscriptionPage = () => {
 
       if (!selectedPlan) return
 
-      navigate(`/signup?plan=${encodeURIComponent(selectedPlan.id)}`, {
+      navigate(`/checkout?plan=${encodeURIComponent(selectedPlan.id)}`, {
         state: { planId: selectedPlan.id },
       })
     },
