@@ -55,7 +55,6 @@ const pages = {
   EditProduct,
   Login,
   CheckoutPage,
-  SubscriptionManagementPage,
   Forgotpassword,
   Resetpassword,
   AiCommercialInboxPage,
