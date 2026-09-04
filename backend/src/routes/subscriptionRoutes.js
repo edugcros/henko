@@ -50,12 +50,17 @@ const subscriptionPaymentLimiter = rateLimit({
 /**
  * GET /api/subscriptions/config
  * Obtener configuración de pago (public key MP, plan actual, etc)
- * Acceso: Público (Tenant resuelto por dominio)
+ * Acceso: Autenticado + Tenant resuelto
+ *
+ * Devuelve el plan y el estado de suscripción del comercio, así que exige
+ * sesión: son datos del tenant, no información pública de pricing (esa vive
+ * en la pantalla de planes, que no llama a este endpoint).
  */
 router.get(
   '/config',
   resolveTenantByDomain,
   requireTenant,
+  authMiddleware,
   getSubscriptionConfig,
 )
 
@@ -87,10 +92,15 @@ router.get(
  *   }
  * }
  */
+// Exige sesión: el handler escribe plan, subscriptionStatus y los datos de
+// facturación del tenant. Sin authMiddleware cualquiera que resuelva el
+// dominio podía mutar la suscripción del comercio, y el rate limit de acá
+// arriba degradaba a IP por no tener req.user.
 router.post(
   '/process-payment',
   resolveTenantByDomain,
   requireTenant,
+  authMiddleware,
   subscriptionPaymentLimiter,
   processSubscriptionPayment,
 )

@@ -18,6 +18,7 @@ import newsletter from '@assets/images/newsletter.png'
 import { useTenant } from '../contexts/TenantContext'
 import { useSelector } from 'react-redux'
 import { getThemeColors } from '@utils/themeRuntime'
+import { buildAdminUrl, SUBSCRIPTION_PATH } from '@utils/adminUrl'
 
 const getAssetUrl = asset => {
   if (!asset) return null
@@ -34,6 +35,7 @@ const getAssetUrl = asset => {
 const isValidUrl = url => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
 
 const Footer = () => {
+  const subscriptionUrl = React.useMemo(() => buildAdminUrl(SUBSCRIPTION_PATH), [])
   const { themeConfig } = useTenant()
   const themeState = useSelector(state => state.theme) || {}
   const activeConfig =
@@ -258,31 +260,14 @@ const Footer = () => {
                 <MuiLink component={RouterLink} to="/contact" underline="hover" sx={footerLinkSx}>
                   Contacto
                 </MuiLink>
-              </Stack>
-            </Grid>
-
-            {/* Planes */}
-            <Grid item xs={12} sm={6} md={footerColumnSize}>
-              <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
-                Planes
-              </Typography>
-              <Stack spacing={0.5}>
-                <MuiLink
-                  component={RouterLink}
-                  to="/subscripcion"
-                  underline="hover"
-                  sx={footerLinkSx}
-                >
-                  Planes de Suscripción
-                </MuiLink>
-                <MuiLink
-                  component={RouterLink}
-                  to="/contact"
-                  underline="hover"
-                  sx={footerLinkSx}
-                >
-                  Soporte Empresarial
-                </MuiLink>
+                {/* El panel vive en otro dominio, así que va como href
+                    absoluto: un RouterLink navegaría dentro del sitio, a una
+                    ruta que su router no tiene. */}
+                {subscriptionUrl && (
+                  <MuiLink href={subscriptionUrl} underline="hover" sx={footerLinkSx}>
+                    Planes y Precios
+                  </MuiLink>
+                )}
               </Stack>
             </Grid>
 

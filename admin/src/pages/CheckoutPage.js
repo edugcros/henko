@@ -21,8 +21,12 @@ import {
   Divider,
   InputAdornment,
   Fade,
-  CheckCircle,
 } from '@mui/material'
+// CheckCircle es un ícono: venía importado desde '@mui/material', que no lo
+// exporta, así que llegaba undefined y React rompía al renderizar el resumen
+// del plan. CheckCircleOutline directamente no está en el barrel de íconos
+// del proyecto (ver el warning del build), por eso la pantalla de éxito usa
+// el mismo CheckCircle.
 import {
   Payment,
   CreditCard,
@@ -30,7 +34,7 @@ import {
   Email,
   Phone,
   ArrowBack,
-  CheckCircleOutline,
+  CheckCircle,
 } from '@mui/icons-material'
 import axios from 'axios'
 
@@ -223,7 +227,9 @@ const CheckoutPage = () => {
 
         // Redirigir a dashboard después de 3 segundos
         setTimeout(() => {
-          navigate('/dashboard')
+          // El panel cuelga de /admin (ver routesConfig.js); '/dashboard' no
+          // es una ruta del router y caía en el fallback 404.
+          navigate('/admin')
         }, 3000)
       } else {
         setError(response.data?.message || 'Error procesando pago')
@@ -278,7 +284,7 @@ const CheckoutPage = () => {
                 color: 'white',
               }}
             >
-              <CheckCircleOutline sx={{ fontSize: 80, mb: 2 }} />
+              <CheckCircle sx={{ fontSize: 80, mb: 2 }} />
               <Typography variant="h4" sx={{ fontWeight: 800, mb: 2 }}>
                 ¡Pago Exitoso!
               </Typography>
