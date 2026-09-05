@@ -40,14 +40,32 @@ const sanitizeString = (value, fallback = '') => {
  */
 export const getSubscriptionConfig = async (req, res) => {
   try {
-    const tenant = await resolveAuthorizedTenantFromRequest(req)
-    if (!tenant) {
-      return sendResponse(res, 403, false, 'No autorizado')
+    // resolveAuthorizedTenantFromRequest lanza si hay error; el tenantId debe
+    // estar resuelto por resolveTenantByDomain + requireTenant en la ruta.
+    const { tenantId, tenantObjectId } = await resolveAuthorizedTenantFromRequest(req)
+
+    if (!tenantId || !tenantObjectId) {
+      return sendResponse(res, 403, false, 'Tenant no resuelto')
     }
 
-    const mpContext = await getTenantMercadoPagoContext(tenant._id)
+    // Obtener credenciales MP del tenant
+    let mpContext
+    try {
+      mpContext = await getTenantMercadoPagoContext(tenantObjectId)
+    } catch (err) {
+      // getTenantMercadoPagoContext lanza si el tenant no existe o MP no está
+      // configurado. Pasarlo al catch genérico de abajo.
+      throw err
+    }
+
     if (!mpContext || !mpContext.publicKey) {
       return sendResponse(res, 503, false, 'Mercado Pago no está configurado')
+    }
+
+    // Obtener plan actual del tenant desde la BD
+    const tenant = await Tenant.findById(tenantObjectId).select('plan subscriptionStatus trialEndsAt')
+    if (!tenant) {
+      return sendResponse(res, 404, false, 'Comercio no encontrado')
     }
 
     return sendResponse(res, 200, true, 'Configuración obtenida', {
@@ -57,8 +75,10 @@ export const getSubscriptionConfig = async (req, res) => {
       trialEndsAt: tenant.trialEndsAt,
     })
   } catch (error) {
-    logger.error('Error en getSubscriptionConfig:', { error: error.message })
-    sendResponse(res, 500, false, 'Error al obtener configuración')
+    const statusCode = error?.statusCode || 500
+    const message = error?.message || 'Error al obtener configuración'
+    logger.error('Error en getSubscriptionConfig:', { error: message, statusCode, stack: error?.stack })
+    return sendResponse(res, statusCode, false, message)
   }
 }
 

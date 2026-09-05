@@ -48,15 +48,16 @@ import logger from '../../../config/logger.js'
  * incluido "no existe" — no alcanza para afirmar que un modelo exista.
  *
  * Modelos vigentes (septiembre 2026) que Google mantiene:
- *   gemini-2.5-flash       → default recomendado (rápido y económico)
- *   gemini-2.5-flash-lite  → aún más económico, misma familia
- *   gemini-2.0-flash       → alternativo si 2.5 está saturado
+ *   gemini-3.6-flash       → generación más reciente (recomendado por Google)
+ *   gemini-2.5-flash       → modelo anterior, aún disponible
+ *   gemini-2.5-flash-lite  → versión económica
  *
  * TODO: revisar cada vez que Google anuncie retiros o nuevas versiones.
  */
 const FALLBACK_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
-  'gemini-2.0-flash',
 ]
 
 /** Modelos retirados por Google (404). Permanente para este proceso. */
