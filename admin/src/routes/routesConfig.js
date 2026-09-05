@@ -14,6 +14,10 @@ export const publicRoutes = [
   // Destino del enlace de verificación del alta. Es público porque la cuenta
   // todavía no está verificada y por lo tanto no hay sesión posible.
   { path: '/verify-email', Component: pages.VerifyEmailPage },
+  // Pantalla de "permiso denegado" a la que redirige PrivateRoute cuando la
+  // sesión existe pero le falta el rol. Antes no estaba registrada y caía en
+  // el fallback (NotFound), así que un 403 se leía como "URL no existe".
+  { path: '/403', Component: pages.Forbidden },
 ]
 // ✅ Rutas públicas dinámicas (con parámetros como tokens)
 //
@@ -214,8 +218,12 @@ export const privateRoutes = [
 
 // 🧠 Conjuntos de rutas para validaciones automáticas
 export const publicRoutesSet = new Set(publicRoutes.map(route => route.path))
-export const publicDynamicRoutesSet = new Set(publicDynamicRoutes.map(route => route.path))
-export const protectedRoutesSet = new Set(protectedRoutes.map(route => route.path))
+export const publicDynamicRoutesSet = new Set(
+  publicDynamicRoutes.map(route => route.path),
+)
+export const protectedRoutesSet = new Set(
+  protectedRoutes.map(route => route.path),
+)
 export const privateRoutesSet = new Set(privateRoutes.map(route => route.path))
 
 // 🔁 Set global para validaciones si se requiere

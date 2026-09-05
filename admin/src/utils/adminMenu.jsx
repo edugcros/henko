@@ -50,6 +50,7 @@ import ArchitectureIcon from '@mui/icons-material/Architecture'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import PaymentIcon from '@mui/icons-material/Payment'
 import SettingsIcon from '@mui/icons-material/Settings'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 
 // Rutas que existen pero no van en el menú, con el motivo.
 // Un Set vacío de comentarios haría que la verificación de cobertura de abajo
@@ -157,13 +158,17 @@ const MENU_STRUCTURE = [
         icon: StorefrontIcon,
       },
       { key: 'configuracion-pagos', label: 'Pagos', icon: PaymentIcon },
+      { key: 'mi-suscripcion', label: 'Mi suscripción', icon: ReceiptLongIcon },
     ],
   },
 ]
 
 // Ruta → meta, para saber cuáles llevan el punto de "nuevo".
 const routeMetaByKey = new Map(
-  privateRoutes.map(({ path, meta }) => [path.replace('/admin/', ''), meta || {}]),
+  privateRoutes.map(({ path, meta }) => [
+    path.replace('/admin/', ''),
+    meta || {},
+  ]),
 )
 
 const isNewRoute = key => Boolean(routeMetaByKey.get(key)?.new)
@@ -225,7 +230,9 @@ if (orphanRoutes.length) {
   adminMenuItems.push(
     ...orphanRoutes.map(key => ({
       key,
-      label: key.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+      label: key
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase()),
       icon: SpaceDashboardIcon,
       isNew: isNewRoute(key),
     })),
