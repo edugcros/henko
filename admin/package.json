@@ -44,7 +44,7 @@
     "dotenv": "^16.4.7",
     "flru": "^1.0.0",
     "formik": "^2.2.9",
-    "framer-motion": "^12.34.3",
+    "framer-motion": "^13.1.1",
     "js-cookie": "^3.0.5",
     "jwt-decode": "^4.0.0",
     "lodash": "^4.17.21",
