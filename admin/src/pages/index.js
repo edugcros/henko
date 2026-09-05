@@ -29,6 +29,7 @@ const SubscriptionManagementPage = lazy(
   () => import('./SubscriptionManagementPage'),
 )
 const NotFound = lazy(() => import('./NotFound'))
+const Forbidden = lazy(() => import('./Forbidden'))
 const ThemeCustomizer = lazy(() => import('./ThemeCustomizer'))
 const CouponsPage = lazy(() => import('./CouponsPage'))
 const EditProduct = lazy(() => import('./EditProduct'))
@@ -87,6 +88,7 @@ const pages = {
   Productlist,
   CouponsPage,
   NotFound,
+  Forbidden,
   SubscriptionPage,
 }
 
