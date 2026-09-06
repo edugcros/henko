@@ -131,8 +131,7 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
       if (!token) {
         console.error('[CSRF] Backend respondió sin token', {
           status: response.status,
-          data: response.data,
-          headers: response.headers,
+          hasData: Boolean(response.data),
         })
 
         clearCsrfToken()
@@ -148,9 +147,7 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
         baseURL: env.apiBaseUrl,
         url: '/user/csrf-token',
         status: error?.response?.status ?? null,
-        code: error?.response?.data?.code ?? null,
         message: error?.response?.data?.message || error?.message || 'Unknown error',
-        responseData: error?.response?.data ?? null,
       })
 
       clearCsrfToken()
@@ -256,7 +253,7 @@ api.interceptors.response.use(
       baseURL: originalRequest?.baseURL,
       url: originalRequest?.url,
       fullURL: `${originalRequest?.baseURL || ''}${originalRequest?.url || ''}`,
-      data: error?.response?.data,
+      hasData: Boolean(error?.response?.data),
       message: error?.message,
     })
 

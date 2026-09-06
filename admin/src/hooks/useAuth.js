@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
+import jwtDecode from 'jwt-decode'
 import { fetchCsrfToken } from '@utils/axiosConfig'
 import { getMe, logoutUser, setCsrfToken } from '@features/auth/authSlice'
 
@@ -76,6 +77,18 @@ const clearLocalAuthSession = () => {
   safeSessionRemove([USER_STORAGE_KEY, CSRF_STORAGE_KEY, CSRF_FETCHED_AT_KEY])
 }
 
+const isTokenExpired = () => {
+  if (!isBrowser()) return false
+  try {
+    const token = safeSessionGet('token')
+    if (!token) return true
+    const decoded = jwtDecode(token)
+    return Date.now() >= decoded.exp * 1000
+  } catch {
+    return true
+  }
+}
+
 export const useAuth = () => {
   const dispatch = useDispatch()
 
@@ -117,6 +130,13 @@ export const useAuth = () => {
       active = false
     }
   }, [dispatch])
+
+  // Check token expiration and logout if expired
+  useEffect(() => {
+    if (isTokenExpired() && isAuthenticatedRedux) {
+      dispatch(logoutUser())
+    }
+  }, [isAuthenticatedRedux, dispatch])
 
   const fetchAndSetCsrf = useCallback(
     async ({ force = false } = {}) => {
@@ -190,6 +210,7 @@ export const useAuth = () => {
     user,
     userRole,
     isBlocked,
+    isTokenExpired,
     csrfToken: csrfTokenState || csrfTokenRedux || '',
     csrfLoading,
     csrfError,
