@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
-import jwtDecode from 'jwt-decode'
+import { jwtDecode } from 'jwt-decode'
 import { fetchCsrfToken } from '@utils/axiosConfig'
 import { getMe, logoutUser, setCsrfToken } from '@features/auth/authSlice'
 
