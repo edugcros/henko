@@ -1,10 +1,8 @@
 {
   "version": 2,
-  "projectSettings": {
-    "sourceFilesOutsideRootDirectory": true
-  },
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "root": "website",
+  "buildCommand": "cd ../website && npm run build",
+  "outputDirectory": "website/dist",
   "cleanUrls": true,
   "trailingSlash": false,
   "headers": [
