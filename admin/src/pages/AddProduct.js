@@ -3270,19 +3270,19 @@ export default function AddProduct() {
   const productReadiness = useMemo(() => {
     const checks = [
       {
-        key: 'imagenes',
+        key: 'images',
         label: 'Imagen',
         done: fileList.length > 0,
         required: true,
       },
       {
-        key: 'titulo',
+        key: 'title',
         label: 'Título',
         done: Boolean(normalizeString(watchedTitle)),
         required: true,
       },
       {
-        key: 'descripcion',
+        key: 'description',
         label: 'Descripción',
         done: Boolean(normalizeString(watchedDescription)),
         required: true,
@@ -3300,7 +3300,7 @@ export default function AddProduct() {
         required: true,
       },
       {
-        key: 'precio',
+        key: 'price',
         label: 'Precio',
         done: Number(watchedPrice || 0) > 0,
         required: true,
