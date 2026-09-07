@@ -9,7 +9,7 @@
  * La API de Gemini rechaza combinar `tools: [{ google_search: {} }]` con
  * `responseSchema` en modelos 2.5.x (400 INVALID_ARGUMENT: "controlled
  * generation is not supported with google_search tool"). El DEFAULT_MODEL
- * de aiAgentLLMService.js es gemini-3.8-flash, así que este archivo NO
+ * de aiAgentLLMService.js es gemini-3.6-flash, así que este archivo NO
  * asume que el modelo resuelto soporte ambas cosas a la vez — funciona
  * igual sin importar qué modelo gane la cadena de fallback:
  *

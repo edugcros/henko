@@ -108,7 +108,7 @@ después del primer mes, no la estimación inicial.
 
 ### Medición de referencia
 
-Agosto 2026, `gemini-3.8-flash`, catálogo vacío, un saludo de una línea:
+Agosto 2026, `gemini-3.6-flash`, catálogo vacío, un saludo de una línea:
 **2.617 tokens** por mensaje, USD 0,0024. Ese es el piso absoluto — un mensaje
 con catálogo, promociones y memoria de conversación en el prompt cuesta
 bastante más. Los topes de tokens se dimensionan como

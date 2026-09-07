@@ -19,7 +19,7 @@ const sleep = milliseconds =>
 const DEFAULT_GEMINI_API_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta'
 
-const DEFAULT_MODEL = 'gemini-3.8-flash'
+const DEFAULT_MODEL = 'gemini-3.6-flash'
 const DEFAULT_PROVIDER = 'gemini'
 
 const REPETITIVE_OPENERS = [

@@ -31,7 +31,7 @@ import logger from '../../../config/logger.js'
  *
  * IMPORTANTE — corrección de un error de nomenclatura previo:
  *
- * Esta lista tenía "gemini-3.5-flash" y "gemini-3.5-flash-lite". Google no
+ * Esta lista tenía "gemini-3.5-flash" y "gemini-3.6-flash". Google no
  * tiene una versión 3.5: la familia va 1.0 → 1.5 → 2.0 → 2.5. Esos nombres
  * nunca existieron, probablemente por mezcla con nomenclatura de OpenAI o
  * Anthropic. Cuando la API se le pega a un modelo inexistente en el path
@@ -40,8 +40,8 @@ import logger from '../../../config/logger.js'
  * model is currently experiencing high demand", que hace parecer una
  * indisponibilidad temporal cuando en realidad el modelo no existe.
  *
- * Los comentarios anteriores decían que "gemini-3.8-flash está retirado"
- * y que "gemini-3.5-flash-lite existe (429 = cuota)"; eso llevó a rearmar
+ * Los comentarios anteriores decían que "gemini-3.6-flash está retirado"
+ * y que "gemini-3.6-flash existe (429 = cuota)"; eso llevó a rearmar
  * la cadena eliminando modelos reales y dejando nombres imaginarios. La
  * lectura correcta: un 429 CON texto de "quota/billing/plan" es cuota
  * (temporal, cooldown); un 429 sin ese texto puede ser cualquier cosa,
@@ -49,15 +49,15 @@ import logger from '../../../config/logger.js'
  *
  * Modelos vigentes (septiembre 2026) que Google mantiene:
  *   gemini-3.6-flash       → generación más reciente (recomendado por Google)
- *   gemini-3.8-flash       → modelo anterior, aún disponible
- *   gemini-3.8-flash  → versión económica
+ *   gemini-3.6-flash       → modelo anterior, aún disponible
+ *   gemini-3.6-flash  → versión económica
  *
  * TODO: revisar cada vez que Google anuncie retiros o nuevas versiones.
  */
 const FALLBACK_MODELS = [
   'gemini-3.6-flash',
-  'gemini-3.8-flash',
-  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.6-flash',
 ]
 
 /** Modelos retirados por Google (404). Permanente para este proceso. */
