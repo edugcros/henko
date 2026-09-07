@@ -4,6 +4,7 @@
 import mongoose from 'mongoose'
 
 import { tenantPlugin } from './tenantPlugin.js'
+import logger from '../../config/logger.js'
 
 const { Schema } = mongoose
 
@@ -1227,6 +1228,127 @@ productSchema.statics.updateStockAtomic = async function updateStockAtomic({
 // =====================================================
 // TENANT PLUGIN
 // =====================================================
+
+// =====================================================
+// HISTORIAL DE PRECIOS
+// =====================================================
+//
+// Se engancha acá y no en cada controlador porque el precio se toca desde
+// muchos lugares (edición, IA, importación, variantes) y cualquiera que se
+// olvide de registrar deja un agujero en la historia que después no se
+// recupera. Todos esos caminos pasan por product.save(), así que un hook de
+// documento los cubre a todos.
+//
+// El contexto —quién lo cambió y por qué— lo pone el controlador en $locals
+// antes de guardar:
+//
+//   product.$locals.priceChange = { userId, source, reason }
+//
+// Sin eso el cambio igual se registra, con source 'unknown': perder el motivo
+// es aceptable, perder el cambio no.
+
+const snapshotPrices = doc => ({
+  price: doc.price,
+  cost: doc.costoUnitario,
+  variants: new Map(
+    (doc.variants || [])
+      .filter(v => v?.key)
+      .map(v => [String(v.key), { price: v.price, cost: v.costoUnitario }]),
+  ),
+})
+
+productSchema.post('init', function capturePriceSnapshot() {
+  this.$locals.priceSnapshot = snapshotPrices(this)
+})
+
+const buildEntry = ({ previous, next, cost, variantKey }) => {
+  const prev = Number(previous)
+  const now = Number(next)
+
+  // Sin precio anterior no hay cambio que registrar, solo un alta.
+  if (!Number.isFinite(prev) || !Number.isFinite(now) || prev === now) return null
+  if (prev <= 0 || now < 0) return null
+
+  const unitCost = Number.isFinite(Number(cost)) && Number(cost) > 0 ? Number(cost) : null
+
+  return {
+    variantId: variantKey || null,
+    previousPrice: prev,
+    newPrice: now,
+    changePercent: Number((((now - prev) / prev) * 100).toFixed(2)),
+    unitCostAtChange: unitCost,
+    // Margen bruto sobre el precio nuevo. Null —no cero— cuando no hay costo:
+    // un cero acá se leería como "no deja margen", que es otra afirmación.
+    marginAtChange: unitCost !== null && now > 0
+      ? Number(((now - unitCost) / now).toFixed(4))
+      : null,
+  }
+}
+
+productSchema.post('save', async function recordPriceHistory(doc) {
+  const before = doc.$locals?.priceSnapshot
+  // Producto nuevo: no hay precio anterior contra el cual comparar.
+  if (!before) return
+
+  try {
+    const entries = []
+
+    const productEntry = buildEntry({
+      previous: before.price,
+      next: doc.price,
+      cost: doc.costoUnitario,
+    })
+    if (productEntry) entries.push(productEntry)
+
+    for (const variant of doc.variants || []) {
+      if (!variant?.key) continue
+      const prevVariant = before.variants.get(String(variant.key))
+      if (!prevVariant) continue
+
+      const entry = buildEntry({
+        previous: prevVariant.price,
+        next: variant.price,
+        cost: variant.costoUnitario ?? doc.costoUnitario,
+        variantKey: String(variant.key),
+      })
+      if (entry) entries.push(entry)
+    }
+
+    if (!entries.length) return
+
+    const ctx = doc.$locals?.priceChange || {}
+    const { default: ProductPriceHistory, PRICE_CHANGE_SOURCE } = await import(
+      './productPriceHistoryModel.js'
+    )
+
+    await ProductPriceHistory.insertMany(
+      entries.map(entry => ({
+        ...entry,
+        tenantId: doc.tenantId,
+        productId: doc._id,
+        currency: doc.currency || 'ARS',
+        source: ctx.source || PRICE_CHANGE_SOURCE.UNKNOWN,
+        reason: ctx.reason || '',
+        changedBy: ctx.userId || null,
+        recommendationId: ctx.recommendationId || null,
+      })),
+    )
+
+    // El snapshot queda viejo tras guardar: sin esto, un segundo save() en la
+    // misma instancia compararía contra el precio de dos cambios atrás.
+    doc.$locals.priceSnapshot = snapshotPrices(doc)
+  } catch (error) {
+    // Nunca romper el guardado del producto por un fallo del historial: perder
+    // una fila duele menos que perder la edición del comerciante. Pero se
+    // registra con nivel error — un historial que falla en silencio es peor
+    // que no tenerlo, porque igual se confía en él.
+    logger.error('[PRICE HISTORY] No se pudo registrar el cambio de precio', {
+      productId: String(doc?._id),
+      tenantId: doc?.tenantId ? String(doc.tenantId) : undefined,
+      error: error.message,
+    })
+  }
+})
 
 productSchema.plugin(tenantPlugin, {
   addTenantField: false,

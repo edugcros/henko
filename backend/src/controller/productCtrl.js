@@ -40,6 +40,7 @@ import { generateUniqueSlug } from '../utils/slugService.js'
 import { registerVisualFeedback } from '../services/aiLearningService.js'
 
 import logger from '../../config/logger.js'
+import { PRICE_CHANGE_SOURCE } from '../models/productPriceHistoryModel.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -2326,6 +2327,22 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
     const changedFields = Object.keys(updates)
 
     Object.assign(product, updates)
+
+    // Contexto para el historial de precios. El hook de productModel registra
+    // el cambio con o sin esto; lo que se pierde sin contexto es el motivo y el
+    // autor, que es justo lo que después permite medir si una recomendación de
+    // IA sirvió. Se deriva de la misma señal que ya alimenta audit.lastSource,
+    // para no tener dos fuentes de verdad sobre el origen del cambio.
+    product.$locals.priceChange = {
+      userId: getRequestUserId(req),
+      source: (req.body.aiAutomationMode || req.body.aiSource)
+        ? PRICE_CHANGE_SOURCE.AI_RECOMMENDATION
+        : PRICE_CHANGE_SOURCE.MANUAL,
+      reason: typeof req.body.priceChangeReason === 'string'
+        ? req.body.priceChangeReason.trim().slice(0, 600)
+        : '',
+    }
+
     await product.save()
 
     await registerProductCatalogChange({
