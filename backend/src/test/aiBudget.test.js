@@ -258,7 +258,7 @@ jest.unstable_mockModule("../utils/cache.js", () => ({
   },
 }));
 
-const { reserveAiBudget, DENY_REASONS } = await import(
+const { reserveAiBudget, refundAiBudget, DENY_REASONS } = await import(
   "../services/ai/aiBudgetService.js"
 );
 
@@ -545,5 +545,93 @@ describe("aiBudgetService · reserva", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe(DENY_REASONS.NO_API_KEY);
+  });
+});
+
+// ─── Reembolso ───────────────────────────────────────────
+//
+// "Reservar antes de gastar, devolver si el proveedor falló" es una de las
+// cuatro reglas de diseño de AI_COST_CONTAINMENT.md, se usa en cuatro caminos
+// de producción (visión, editor de imágenes, agente, promociones) y no tenía
+// una sola prueba. Una caída de Google no la paga el comercio.
+
+describe("aiBudgetService · reembolso", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    cacheStore.clear();
+  });
+
+  test("devuelve la reserva descontando del contador de la métrica", async () => {
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await refundAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_MESSAGES,
+    });
+
+    const [filtro, update] = mockAiUsage.findOneAndUpdate.mock.calls[0];
+
+    expect(filtro.tenantId).toBe(TENANT_ID);
+    expect(update.$inc["counters.agentMessages"]).toBe(-1);
+  });
+
+  test("en visión también devuelve analysisCount, que es lo que lee el panel", async () => {
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await refundAiBudget({ tenantId: TENANT_ID, metric: AI_METRICS.VISION });
+
+    const [, update] = mockAiUsage.findOneAndUpdate.mock.calls[0];
+
+    expect(update.$inc["counters.vision"]).toBe(-1);
+    expect(update.$inc.analysisCount).toBe(-1);
+  });
+
+  test("no puede dejar el contador en negativo", async () => {
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable(null));
+
+    await refundAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      amount: 3,
+    });
+
+    const [filtro] = mockAiUsage.findOneAndUpdate.mock.calls[0];
+
+    // El $gte en el filtro es lo que impide devolver más de lo reservado: si
+    // el contador no llega, el documento no matchea y no se decrementa nada.
+    expect(filtro["counters.vision"]).toEqual({ $gte: 3 });
+  });
+
+  test("devuelve la cantidad pedida, no siempre uno", async () => {
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await refundAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 2500,
+    });
+
+    const [, update] = mockAiUsage.findOneAndUpdate.mock.calls[0];
+
+    expect(update.$inc["counters.agentTokens"]).toBe(-2500);
+  });
+
+  test("con métrica inválida o sin tenant no toca la base", async () => {
+    await refundAiBudget({ tenantId: TENANT_ID, metric: "inventada" });
+    await refundAiBudget({ tenantId: "", metric: AI_METRICS.VISION });
+
+    expect(mockAiUsage.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  test("si la base falla, el reembolso no propaga el error", async () => {
+    // El reembolso corre dentro del catch del fallo del proveedor. Si lanzara,
+    // taparía el error original de Gemini con uno de Mongo.
+    mockAiUsage.findOneAndUpdate.mockImplementation(() => {
+      throw new Error("mongo caído");
+    });
+
+    await expect(
+      refundAiBudget({ tenantId: TENANT_ID, metric: AI_METRICS.VISION }),
+    ).resolves.toBeUndefined();
   });
 });

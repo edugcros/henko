@@ -98,7 +98,7 @@ const askGemini = async (key, model, prompt) => {
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     if (isModelUnavailable(res.status, body)) {
-      markModelDead(model, `${res.status}: ${body.slice(0, 80)}`)
+      markModelDead(model, `${res.status}: ${body.slice(0, 80)}`, res.status)
     }
     throw new Error(`${model} → ${res.status}: ${body.slice(0, 120)}`)
   }

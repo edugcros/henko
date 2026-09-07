@@ -109,7 +109,8 @@ después del primer mes, no la estimación inicial.
 ### Medición de referencia
 
 Agosto 2026, `gemini-3.6-flash`, catálogo vacío, un saludo de una línea:
-**2.617 tokens** por mensaje, USD 0,0024. Ese es el piso absoluto — un mensaje
+**2.617 tokens** por mensaje. Aquel cálculo daba USD 0,0024 con la tarifa vieja
+de 0.9; con la corregida de 1.3 son **USD 0,0034**. Ese es el piso absoluto — un mensaje
 con catálogo, promociones y memoria de conversación en el prompt cuesta
 bastante más. Los topes de tokens se dimensionan como
 `mensajes x ~5.000` para que el tope visible (mensajes) sea el que manda y el
@@ -148,8 +149,13 @@ AI_SUBSCRIPTION_GRACE_DAYS=7      # días de gracia en past_due
 # BYOK: planes habilitados a traer su propia key
 AI_BYOK_ALLOWED_PLANS=pro,enterprise
 
-# Costo estimado para el panel (tarifa mezclada, solo visibilidad)
-AI_COST_USD_PER_1M_TOKENS=0.9
+# Costo estimado para el panel (tarifa mezclada, solo visibilidad).
+# Revisado 07/09/2026 contra los precios publicados: gemini-3.6-flash cuesta
+# USD 0.75 por 1M de entrada y 3.75 de salida. El 0.9 anterior solo daba con
+# una mezcla 95/5; la real ronda 75/25 (prompt de visión ~3.900 tokens contra
+# ~1.000 de salida), o sea ~1.3. Con 0.9 el panel subestimaba ~45%.
+# Los modelos 3.x DUPLICAN tarifa el 1/1/2027 → ese día hay que ir a ~2.6.
+AI_COST_USD_PER_1M_TOKENS=1.3
 
 # Cache del perfil de tenant (plan + suscripción + credencial)
 AI_PROFILE_CACHE_TTL_SEC=60

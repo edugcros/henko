@@ -19,6 +19,7 @@ import {
 } from './ai/aiBudgetService.js'
 import { loadTenantAiProfile } from './ai/aiCredentialsService.js'
 import {
+  extractErrorStatus,
   getModelChain,
   isModelUnavailableError,
   markModelDead,
@@ -2127,7 +2128,10 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
         if (!isModelUnavailableError(error)) throw error
 
-        markModelDead(candidate, error?.message?.slice(0, 100))
+        // El status decide pausa temporal vs descarte permanente. Sin pasarlo,
+        // un 429 (cuota) o un 503 (saturación) sacaban de la cadena a un
+        // modelo sano por lo que quedara de vida del proceso.
+        markModelDead(candidate, error?.message?.slice(0, 100), extractErrorStatus(error))
         modelError = error
       }
     }
