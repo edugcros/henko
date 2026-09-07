@@ -324,8 +324,16 @@ export const sanitizeAnalysis = analysis => {
       : [],
     descripcion: normalizeString(analysis.descripcion || analysis.description),
     description: normalizeString(analysis.description || analysis.descripcion),
-    seoTitle: normalizeString(analysis.seoTitle),
-    seoDescription: normalizeString(analysis.seoDescription),
+    // aiVisionService devuelve el SEO anidado en `seo` (metaTitle /
+    // metaDescription), nunca como claves planas: leer solo analysis.seoTitle
+    // dejaba estos dos campos siempre vacíos. Se mantiene la clave plana
+    // primero por si algún caller la pasa así.
+    // El slice respeta los maxlength del modelo (180 / 300); metaDescription
+    // admite hasta 320 en el servicio y sin recortar rompería la validación.
+    seoTitle: normalizeString(analysis.seoTitle || analysis.seo?.metaTitle).slice(0, 180),
+    seoDescription: normalizeString(
+      analysis.seoDescription || analysis.seo?.metaDescription,
+    ).slice(0, 300),
     suggestedPrice:
       typeof analysis.suggestedPrice === 'number'
         ? analysis.suggestedPrice
@@ -513,6 +521,12 @@ export const recordManualAnalysisJob = async ({
   try {
     const sanitizedAnalysis = sanitizeAnalysis(analysis)
 
+    // sanitizeAnalysis recorta variantes, ficha técnica, SEO y logística.
+    // Guardamos además la salida cruda para que import-to-add-product pueda
+    // devolverla y AddProduct autocomplete el formulario sin gastar una
+    // segunda llamada a la IA sobre una imagen ya analizada.
+    const rawAnalysis = analysis && typeof analysis === 'object' ? analysis : null
+
     // Si AddProduct está analizando un job que ya existe en la cola, hay
     // que actualizar ESE job — no crear otro. Sin esto quedaban dos
     // registros del mismo producto: el original (que la página de
@@ -524,6 +538,10 @@ export const recordManualAnalysisJob = async ({
       if (tracked && !tracked.deletedAt) {
         tracked.status = JOB_STATUS.COMPLETED
         tracked.analysis = sanitizedAnalysis
+        // analysisRaw es Mixed y select:false — sin markModified, mongoose
+        // no incluye el cambio en el $set del save().
+        tracked.analysisRaw = rawAnalysis
+        tracked.markModified('analysisRaw')
         tracked.processedAt = new Date()
         tracked.error = undefined
         tracked.failedAt = undefined
@@ -543,6 +561,8 @@ export const recordManualAnalysisJob = async ({
     if (existing) {
       existing.status = JOB_STATUS.COMPLETED
       existing.analysis = sanitizedAnalysis
+      existing.analysisRaw = rawAnalysis
+      existing.markModified('analysisRaw')
       existing.processedAt = new Date()
       existing.error = undefined
       existing.failedAt = undefined
@@ -561,6 +581,7 @@ export const recordManualAnalysisJob = async ({
       imageHash,
       status: JOB_STATUS.COMPLETED,
       analysis: sanitizedAnalysis,
+      analysisRaw: rawAnalysis,
       processedAt: new Date(),
       createdBy: userId,
       metadata: {
@@ -656,6 +677,11 @@ const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFile
 
     job.status = JOB_STATUS.COMPLETED
     job.analysis = analysis
+    // Idem recordManualAnalysisJob: la salida cruda alimenta el
+    // autocompletado de AddProduct vía import-to-add-product. Este es el
+    // camino que corre cuando el job llega por su hora programada.
+    job.analysisRaw = rawAnalysis && typeof rawAnalysis === 'object' ? rawAnalysis : null
+    job.markModified('analysisRaw')
     job.processedAt = new Date()
     job.failedAt = undefined
     job.error = undefined
