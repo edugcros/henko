@@ -24,6 +24,7 @@ import metaPixelConfigRoutes from './metaPixelConfigRoutes.js'
 import imageAiRoutes from './imageAiRoutes.js'
 import platformRoutes from './platformRoutes.js'
 import aiInsightRoutes from './aiInsightRoutes.js'
+import pricingRoutes from './pricingRoutes.js'
 import marketintelligenceRoutes from './marketintelligenceRoutes.js'
 import subscriptionRoutes from './subscriptionRoutes.js'
 import webhookRoutes from './webhookRoutes.js'
@@ -100,5 +101,6 @@ router.use('/order', orderRoute)
 // =======================================================
 router.use('/platform', platformRoutes)
 router.use('/insights', aiInsightRoutes)
+router.use('/pricing', pricingRoutes)
 
 export default router
