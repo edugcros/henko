@@ -53,7 +53,7 @@ export const AI_METRIC_LABELS = Object.freeze({
 /**
  * Topes mensuales por plan.
  *
- * MEDICIÓN REAL (agosto 2026, gemini-2.5-flash-lite, catálogo vacío, un
+ * MEDICIÓN REAL (agosto 2026, gemini-3.8-flash, catálogo vacío, un
  * saludo de una línea): **2.617 tokens** para un solo mensaje. Ese es el piso
  * absoluto — un mensaje con catálogo, promociones y memoria de conversación
  * en el prompt cuesta bastante más.
