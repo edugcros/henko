@@ -8,6 +8,7 @@
 import asyncHandler from 'express-async-handler'
 
 import { analyzeMarketDemand } from '../services/marketIntelligence/marketIntelligenceService.js'
+import { resolveProductCostInputs } from '../services/pricing/productCostService.js'
 import {
   getActorIdFromRequest,
   resolveAuthorizedTenantFromRequest,
@@ -107,7 +108,20 @@ export const analyzeProduct = asyncHandler(async (req, res) => {
 
   // Los costos son opcionales: sin ellos el análisis devuelve señales de
   // mercado, con ellos agrega el cálculo de rentabilidad.
-  const costs = parseCosts(req.body?.costs)
+  //
+  // Con productId el sistema completa lo que ya sabe —el costo cargado en la
+  // ficha y la comisión medida sobre las ventas reales— y el comerciante solo
+  // tipea lo que quiera sobrescribir. Sin productId se mantiene el
+  // comportamiento anterior: todo viene del body.
+  const productId = normalizeString(req.body?.productId) || null
+
+  const { costs, provenance } = productId
+    ? await resolveProductCostInputs({
+      tenantId,
+      productId,
+      overrides: req.body?.costs || {},
+    })
+    : { costs: parseCosts(req.body?.costs), provenance: {} }
 
   const analysis = await analyzeMarketDemand({
     tenantId,
@@ -131,6 +145,10 @@ export const analyzeProduct = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     data: analysis,
+    // De dónde salió cada costo. Un margen calculado sobre una comisión medida
+    // en 40 ventas y uno sobre un porcentaje tipeado al azar valen distinto, y
+    // el comerciante tiene que poder distinguirlos antes de decidir un precio.
+    costSources: provenance,
   })
 })
 
