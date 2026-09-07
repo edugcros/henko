@@ -85,6 +85,12 @@ export const privateRoutes = [
   },
 
   {
+    path: '/admin/precios',
+    Component: pages.PricingPage,
+    allowedRoles: ['admin'],
+  },
+
+  {
     path: '/admin/bandeja-entrada-ia-comercial',
     Component: pages.AiCommercialInboxPage,
     allowedRoles: ['admin'],

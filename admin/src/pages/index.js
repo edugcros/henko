@@ -51,6 +51,7 @@ const AiInsightsPage = lazy(() => import('./AiInsightsPage'))
 const StoreSettingsPage = lazy(() => import('./StoreSettingsPage'))
 const VerifyEmailPage = lazy(() => import('./VerifyEmailPage'))
 const MarketIntelligencePage = lazy(() => import('./MarketIntelligencePage'))
+const PricingPage = lazy(() => import('./PricingPage'))
 
 
 const pages = {
@@ -70,6 +71,7 @@ const pages = {
   MetaPixelConfigPage,
   OnboardingWizard,
   MarketIntelligencePage,
+  PricingPage,
   ImageAiEditor,
   PlatformMarginPage,
   SubscriptionManagementPage,
