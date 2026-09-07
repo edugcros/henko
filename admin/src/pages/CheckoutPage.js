@@ -36,7 +36,7 @@ import {
   ArrowBack,
   CheckCircle,
 } from '@mui/icons-material'
-import axios from 'axios'
+import api from '@utils/axiosConfig'
 
 const USD_ARS_REFERENCE_RATE = 1530
 
@@ -105,7 +105,7 @@ const CheckoutPage = () => {
     const loadMpConfig = async () => {
       try {
         setIsLoading(true)
-        const response = await axios.get('/api/subscriptions/config')
+        const response = await api.get('/subscriptions/config')
         if (response.data?.data?.mpPublicKey) {
           setMpPublicKey(response.data.data.mpPublicKey)
           // Aquí se cargaría el SDK de MP cuando esté disponible
@@ -207,7 +207,7 @@ const CheckoutPage = () => {
 
       console.log('Enviando pago con token:', simulatedToken)
 
-      const response = await axios.post('/api/subscriptions/process-payment', {
+      const response = await api.post('/subscriptions/process-payment', {
         plan: selectedPlan,
         token: simulatedToken,
         paymentMethodId: 'credit_card',

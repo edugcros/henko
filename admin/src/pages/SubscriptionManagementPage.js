@@ -28,7 +28,7 @@ import {
   DeleteOutlined,
   SwapOutlined,
 } from '@ant-design/icons'
-import axios from 'axios'
+import api from '@utils/axiosConfig'
 
 const { Paragraph, Text, Title } = Typography
 const { useToken } = theme
@@ -169,8 +169,8 @@ const SubscriptionManagementPage = () => {
         setError(null)
 
         const [subResponse, invoicesResponse] = await Promise.all([
-          axios.get('/api/subscriptions/current'),
-          axios.get('/api/subscriptions/invoices'),
+          api.get('/subscriptions/current'),
+          api.get('/subscriptions/invoices'),
         ])
 
         if (subResponse.data.success) {
@@ -209,7 +209,7 @@ const SubscriptionManagementPage = () => {
         onOk: async () => {
           try {
             setChangingPlan(true)
-            const response = await axios.post('/api/subscriptions/change-plan', {
+            const response = await api.post('/subscriptions/change-plan', {
               newPlan,
             })
 
@@ -249,7 +249,7 @@ const SubscriptionManagementPage = () => {
       onOk: async () => {
         try {
           setCancellingSubscription(true)
-          const response = await axios.post('/api/subscriptions/cancel')
+          const response = await api.post('/subscriptions/cancel')
 
           if (response.data.success) {
             message.success('Suscripción cancelada')

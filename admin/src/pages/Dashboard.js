@@ -63,7 +63,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useSnackbar } from 'notistack'
-import axios from 'axios'
+import api from '@utils/axiosConfig'
 
 import { analyticsAPI } from '../services/api'
 
@@ -888,7 +888,7 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
   const fetchSubscriptionMetrics = useCallback(async () => {
     try {
       setSubscriptionLoading(true)
-      const response = await axios.get('/api/dash/subscription-metrics')
+      const response = await api.get('/dash/subscription-metrics')
       if (response.data?.success && response.data?.data) {
         setSubscriptionMetrics(response.data.data)
       }
