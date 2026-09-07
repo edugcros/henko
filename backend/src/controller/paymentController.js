@@ -48,6 +48,7 @@ import {
 } from '../services/paymentTenantConfigService.js'
 import {
   applyMercadoPagoStatusToOrder,
+  extractMercadoPagoFees,
   createOrderFromCart,
 } from '../services/paymentOrderService.js'
 import {
@@ -556,6 +557,7 @@ export const processPayment = async (req, res) => {
       payerEmail: payer.email,
       statusDetail: mpPayment.status_detail,
       providerRawStatus: mpPayment.status,
+      ...extractMercadoPagoFees(mpPayment),
     })
 
     const normalizedPaymentStatus = order.paymentStatus
@@ -827,6 +829,7 @@ export const mpWebhook = async (req, res) => {
       payerEmail: mpInfo.payer?.email || order.paymentIntent?.payerEmail,
       statusDetail: mpInfo.status_detail,
       providerRawStatus: mpInfo.status,
+      ...extractMercadoPagoFees(mpInfo),
     })
 
     if (
@@ -993,6 +996,7 @@ export const getPaymentStatus = async (req, res) => {
               mpInfo.payer?.email || order.paymentIntent?.payerEmail,
             statusDetail,
             providerRawStatus,
+            ...extractMercadoPagoFees(mpInfo),
           })
 
           order.paymentIntent.providerRawStatus = providerRawStatus

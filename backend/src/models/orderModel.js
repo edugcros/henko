@@ -653,6 +653,27 @@ const orderSchema = new Schema(
         min: 0,
       },
 
+      // Comisión REAL que cobró el proveedor por esta venta, tomada de
+      // fee_details en la respuesta de Mercado Pago. Hasta ahora el margen se
+      // calculaba con un porcentaje cargado a mano; con esto pasa a ser el
+      // número que efectivamente se descontó. Null cuando el proveedor todavía
+      // no lo informó — nunca 0, que se leería como "no cobró comisión".
+      providerFeeCents: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+
+      // Lo que realmente entra a la cuenta del comercio, según
+      // transaction_details.net_received_amount. Se guarda además de la
+      // comisión porque no siempre es amount - fee: hay retenciones e
+      // impuestos que solo aparecen acá.
+      netReceivedCents: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+
       originalAmountCents: {
         type: Number,
         required: true,

@@ -33,7 +33,8 @@ export const PROFITABILITY_VERSION = 1
  * @typedef {Object} CostInputs
  * @property {number} unitCost          - costo de adquisición por unidad
  * @property {number} [shippingCost=0]  - logística por unidad
- * @property {number} [platformFeePercent=0] - comisión de plataforma/pago (0-100)
+ * @property {number} [platformFeePercent=0] - comisión de la plataforma (0-100)
+ * @property {number} [paymentFeePercent=0]  - comisión de la pasarela de pago (0-100)
  * @property {number} [taxPercent=0]    - carga impositiva estimada (0-100)
  * @property {number} [targetPrice]     - precio propio a evaluar; si falta se usa la mediana
  */
@@ -51,11 +52,18 @@ export function calculateProfitability(costs, priceStats) {
   if (unitCost === null) return null
 
   const shippingCost = positiveNumber(costs?.shippingCost) ?? 0
-  const feeRate = percentToRate(costs?.platformFeePercent)
+
+  // La comisión de la plataforma y la de la pasarela de pago se llevan
+  // separadas porque son dos negociaciones distintas: la de HENKO la fija el
+  // plan, la de Mercado Pago cambia por método de pago y cuotas, y ahora se
+  // conoce de verdad (paymentIntent.providerFeeCents). Tenerlas juntas en un
+  // solo porcentaje impedía reemplazar una por el dato real sin pisar la otra.
+  const platformFeeRate = percentToRate(costs?.platformFeePercent)
+  const paymentFeeRate = percentToRate(costs?.paymentFeePercent)
   const taxRate = percentToRate(costs?.taxPercent)
 
   const totalUnitCost = unitCost + shippingCost
-  const deductionRate = feeRate + taxRate
+  const deductionRate = platformFeeRate + paymentFeeRate + taxRate
 
   // Si comisiones + impuestos se llevan el 100% o más, no existe precio que
   // deje ganancia: cada peso de aumento se lo consume la deducción.

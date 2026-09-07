@@ -66,6 +66,7 @@ const parseCosts = raw => {
     unitCost,
     shippingCost: positive(raw.shippingCost),
     platformFeePercent: percent(raw.platformFeePercent),
+    paymentFeePercent: percent(raw.paymentFeePercent),
     taxPercent: percent(raw.taxPercent),
     targetPrice: positive(raw.targetPrice) || undefined,
   }
