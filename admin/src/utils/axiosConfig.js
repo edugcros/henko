@@ -23,7 +23,9 @@ const assertApiBaseUrl = () => {
   if (env.isProduction) {
     const url = String(env.apiBaseUrl)
     if (/localhost|127\.0\.0\.1|\.local(:|\/|$)/i.test(url)) {
-      throw new Error(`REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`)
+      throw new Error(
+        `REACT_APP_API_BASE_URL inválido para producción: ${env.apiBaseUrl}`,
+      )
     }
   }
 }
@@ -60,14 +62,19 @@ const getMetricSessionId = () => {
 // =====================================================
 
 const API_BASE_URL =
-  env.apiBaseUrl || process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_URL || ''
+  env.apiBaseUrl ||
+  process.env.REACT_APP_API_BASE_URL ||
+  process.env.REACT_APP_API_URL ||
+  ''
 
 if (!API_BASE_URL) {
   throw new Error('REACT_APP_API_BASE_URL no está configurado en admin')
 }
 
 if (env.adminBaseDomain && API_BASE_URL.includes(env.adminBaseDomain)) {
-  throw new Error(`API_BASE_URL apunta al admin, no al backend: ${API_BASE_URL}`)
+  throw new Error(
+    `API_BASE_URL apunta al admin, no al backend: ${API_BASE_URL}`,
+  )
 }
 
 const api = axios.create({
@@ -147,7 +154,8 @@ export const fetchCsrfToken = async ({ force = false } = {}) => {
         baseURL: env.apiBaseUrl,
         url: '/user/csrf-token',
         status: error?.response?.status ?? null,
-        message: error?.response?.data?.message || error?.message || 'Unknown error',
+        message:
+          error?.response?.data?.message || error?.message || 'Unknown error',
       })
 
       clearCsrfToken()
@@ -184,7 +192,11 @@ api.interceptors.request.use(
     // la URL como `${recurso}${endpoint}` con endpoint:'/'. Sacar la barra
     // final acá, en el único lugar por el que pasa toda request, evita tener
     // que tocar cada service que arma la URL así.
-    if (typeof config.url === 'string' && config.url.length > 1 && config.url.endsWith('/')) {
+    if (
+      typeof config.url === 'string' &&
+      config.url.length > 1 &&
+      config.url.endsWith('/')
+    ) {
       config.url = config.url.slice(0, -1)
     }
 
@@ -196,7 +208,9 @@ api.interceptors.request.use(
       }
     }
 
-    const metricSessionId = config.skipMetricSession ? null : getMetricSessionId()
+    const metricSessionId = config.skipMetricSession
+      ? null
+      : getMetricSessionId()
     if (metricSessionId) {
       config.headers['x-metric-session-id'] = metricSessionId
     }
@@ -208,8 +222,14 @@ api.interceptors.request.use(
     if (!config.headers.Authorization && !config.headers.authorization) {
       try {
         // Intenta obtener token de sessionStorage como fallback para cross-origin
-        const storedToken = typeof window !== 'undefined' && window.sessionStorage?.getItem?.('auth_token')
-        if (storedToken && typeof storedToken === 'string' && storedToken.trim()) {
+        const storedToken =
+          typeof window !== 'undefined' &&
+          window.sessionStorage?.getItem?.('auth_token')
+        if (
+          storedToken &&
+          typeof storedToken === 'string' &&
+          storedToken.trim()
+        ) {
           config.headers.Authorization = `Bearer ${storedToken}`
         }
       } catch {
@@ -224,10 +244,13 @@ api.interceptors.request.use(
         url: config.url,
         fullURL: `${config.baseURL || ''}${config.url || ''}`,
         tenant: config.headers[env.tenantHeader || 'x-tenant-domain'],
-        hasAuth: Boolean(config.headers.Authorization || config.headers.authorization),
+        hasAuth: Boolean(
+          config.headers.Authorization || config.headers.authorization,
+        ),
       })
     }
-    const isFormData = typeof FormData !== 'undefined' && config.data instanceof FormData
+    const isFormData =
+      typeof FormData !== 'undefined' && config.data instanceof FormData
 
     if (isFormData || config.isMultipart) {
       delete config.headers['Content-Type']
@@ -274,7 +297,8 @@ api.interceptors.response.use(
     // =====================================================
 
     const isCsrfError =
-      status === 403 && (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
+      status === 403 &&
+      (code === 'EBADCSRFTOKEN' || message.toLowerCase().includes('csrf'))
 
     if (isCsrfError && !originalRequest.skipCsrfRetry) {
       originalRequest._retry = true
@@ -297,7 +321,12 @@ api.interceptors.response.use(
     const isLoginRequest = originalRequest.url?.includes('/login')
     const isRefreshRequest = originalRequest.url?.includes('/refresh')
 
-    if (isAuthError && !isLoginRequest && !isRefreshRequest && !originalRequest.skipAuthRefresh) {
+    if (
+      isAuthError &&
+      !isLoginRequest &&
+      !isRefreshRequest &&
+      !originalRequest.skipAuthRefresh
+    ) {
       originalRequest._retry = true
 
       try {
@@ -315,7 +344,9 @@ api.interceptors.response.use(
             .then(refreshResponse => {
               // Guardar el token del refresh response como fallback
               // para cross-origin requests (sessionStorage fallback)
-              const token = refreshResponse?.data?.token || refreshResponse?.data?.accessToken
+              const token =
+                refreshResponse?.data?.token ||
+                refreshResponse?.data?.accessToken
               if (token && typeof window !== 'undefined') {
                 try {
                   window.sessionStorage?.setItem?.('auth_token', String(token))
@@ -330,10 +361,31 @@ api.interceptors.response.use(
             })
         }
 
-        // El refresh ya rotó y re-seteó la cookie httpOnly del access
-        // token server-side — reintentar la request original alcanza, va
-        // a viajar con la cookie nueva sola (withCredentials:true).
         await refreshTokenPromise
+
+        // Hay que soltar el Authorization viejo antes de reintentar.
+        //
+        // Este bloque asumía auth solo por cookie: el refresh rota la cookie
+        // httpOnly server-side y reintentar alcanzaba. Después se agregó el
+        // fallback por header Bearer (ver el interceptor de request), y eso
+        // rompió el supuesto sin que nadie lo notara.
+        //
+        // originalRequest ya viene con el header puesto por el primer intento,
+        // con el token que acaba de expirar. El interceptor de request no lo
+        // reemplaza porque solo lo completa `if (!config.headers.Authorization)`.
+        // Y el backend lee Bearer ANTES que la cookie
+        // (utils/authRequest.js::getAccessTokenFromRequest), así que el
+        // reintento mandaba el mismo token vencido y volvía a dar 401 —
+        // teniendo al lado una cookie nueva y válida que quedaba tapada. Con
+        // _retry ya marcado, no había tercer intento: 401 definitivo.
+        //
+        // Borrarlo deja que el interceptor lo complete con el token fresco que
+        // el refresh guardó, y si no hay ninguno la request viaja solo con la
+        // cookie, que es el camino que ya funcionaba.
+        if (originalRequest.headers) {
+          delete originalRequest.headers.Authorization
+          delete originalRequest.headers.authorization
+        }
 
         return api(originalRequest)
       } catch (refreshError) {
