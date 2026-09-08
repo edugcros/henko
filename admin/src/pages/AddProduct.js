@@ -4757,6 +4757,24 @@ export default function AddProduct() {
 
         return true
       } catch (error) {
+        // 409: el job ya no está disponible porque se aprobó o lo tomó otro
+        // flujo, y esta cola local quedó vieja. No falló la importación: ya no
+        // hay nada que importar.
+        //
+        // El refresco cada 15s existe justamente por esto (ver el useEffect del
+        // intervalo más arriba), pero deja una ventana: guardar un producto
+        // aprueba su job al instante, y actuar dentro de esos segundos choca
+        // con el estado viejo. Se refresca acá para cerrarla — y refrescar la
+        // cola entera, en vez de sacar solo esta entrada, corrige de una todas
+        // las que hayan quedado obsoletas. Si no, cada imagen ya procesada
+        // vuelve a dar su propio error, de a una.
+        if (error?.response?.status === 409) {
+          setSelectedAgentJobId(null)
+          await fetchAgentQueue({ silent: true, preserveSelection: false })
+          message.info('Esa imagen ya estaba procesada. Actualicé la lista.')
+          return false
+        }
+
         message.error(error?.response?.data?.message || 'No se pudo importar la imagen del agente')
         return false
       } finally {
@@ -4766,6 +4784,7 @@ export default function AddProduct() {
     [
       agentQueue,
       analyzeImage,
+      fetchAgentQueue,
       hydrateAnalysis,
       hasUserWorkspace,
       resetProductWorkspace,
