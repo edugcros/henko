@@ -4948,6 +4948,19 @@ export default function AddProduct() {
           })
           setAgentQueue(current => current.filter(entry => entry._id !== job._id))
         } catch (error) {
+          // 409 no es un fallo: el job dejó de estar disponible porque ya se
+          // aprobó o lo tomó otro flujo, y esta cola local quedó vieja. Pasa
+          // justo después de guardar un producto — el guardado aprueba el job
+          // y este recorrido todavía lo ve como 'pending' —, así que un error
+          // rojo acusa de fallar a una operación que salió bien. Se saca de la
+          // cola y se sigue.
+          if (error?.response?.status === 409) {
+            setAgentQueue(current =>
+              current.filter(entry => entry._id !== job._id),
+            )
+            continue
+          }
+
           autoAgentFailedJobsRef.current.add(job._id)
           message.error(
             error?.response?.data?.message ||
