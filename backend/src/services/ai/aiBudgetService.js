@@ -85,6 +85,7 @@ const writeLedgerEntry = ({
   plan = null,
   breakdown = null,
   costUsd = 0,
+  unit = 'units',
 }) => {
   AiConsumptionLedger.create({
     tenantId,
@@ -92,6 +93,7 @@ const writeLedgerEntry = ({
     event,
     metric,
     amount: Math.max(0, Math.round(Number(amount) || 0)),
+    unit,
     model,
     keySource,
     plan,
@@ -445,6 +447,7 @@ export const reserveAiBudget = async ({
       event: LEDGER_EVENT.RESERVED,
       metric: normalizedMetric,
       amount,
+      unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
       keySource: aiProfile.keySource,
       plan: aiProfile.plan,
     })
@@ -572,6 +575,7 @@ export const refundAiBudget = async ({ tenantId, metric, amount = 1 }) => {
         event: LEDGER_EVENT.REFUNDED,
         metric: normalizedMetric,
         amount,
+        unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
       })
     }
   } catch (error) {
@@ -655,6 +659,101 @@ export const recordAiConsumption = async ({
     metric: normalizedMetric,
     amount: value,
     model: isTokenMetric ? usedModel : null,
+    keySource: aiProfile.keySource,
+    plan: aiProfile.plan,
+    breakdown,
+    costUsd,
+    unit: isTokenMetric ? 'tokens' : 'units',
+  })
+}
+
+/**
+ * Tokens de una operación que al tenant ya se le cobró POR UNIDAD.
+ *
+ * Visión es el caso: al comercio se le descuenta un análisis, y los tokens que
+ * ese análisis gastó le cuestan plata a HENKO igual. Hasta acá nadie los
+ * contaba — el disyuntor de plataforma, que es el único techo duro de la
+ * factura, no veía la operación más cara por llamada de todo el sistema. Un
+ * techo que no ve el gasto más grande no es un techo.
+ *
+ * Deliberadamente NO toca ningún contador de cuota: la unidad ya se descontó en
+ * la reserva, y sumarle tokens a un contador que cuenta análisis rompería el
+ * tope del plan (50 análisis pasarían a agotarse en el primero). Sí suma el
+ * costo del período, el consumo de plataforma y el ledger.
+ *
+ * Recibe el desglose medido cuando existe —acá sí existe, Gemini lo devuelve en
+ * usageMetadata— así que este costo no es repartido: es el real.
+ */
+export const recordTokenSpend = async ({
+  tenantId,
+  metric,
+  model = null,
+  inputTokens = null,
+  outputTokens = null,
+  totalTokens = null,
+  profile = null,
+}) => {
+  const normalizedMetric = normalizeMetric(metric)
+  const id = clean(tenantId)
+
+  if (!normalizedMetric || !id) return
+
+  const breakdown = computeCostUsd({
+    model: model || DEFAULT_PRICING_MODEL,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  })
+
+  if (breakdown.totalTokens <= 0) return
+
+  const aiProfile = profile || (await loadTenantAiProfile(id))
+  const isByok = aiProfile.keySource === KEY_SOURCE.TENANT
+
+  // Con key propia el comercio le paga a Google directo: se registra para que
+  // su panel lo vea, con costo 0 y sin tocar el disyuntor, que existe para
+  // proteger la factura de HENKO y no la de él.
+  const costUsd = isByok ? 0 : breakdown.costUsd
+  const period = getCurrentPeriod()
+
+  if (costUsd > 0) {
+    try {
+      await AiUsage.findOneAndUpdate(
+        { tenantId: id, period },
+        {
+          $inc: { estimatedCostUsd: costUsd },
+          $set: { lastActivityAt: new Date() },
+        },
+        { upsert: true, setDefaultsOnInsert: true },
+      ).setOptions({ tenantId: id })
+    } catch (error) {
+      logger.warn('[AI BUDGET] No se pudo registrar el costo de tokens', {
+        tenantId: id,
+        metric: normalizedMetric,
+        error: error.message,
+      })
+    }
+  }
+
+  if (!isByok) {
+    await registerPlatformConsumption({
+      tokens: breakdown.totalTokens,
+      costUsd,
+    }).catch(error => {
+      logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma', {
+        error: error.message,
+      })
+    })
+  }
+
+  writeLedgerEntry({
+    tenantId: id,
+    period,
+    event: LEDGER_EVENT.CONSUMED,
+    metric: normalizedMetric,
+    amount: breakdown.totalTokens,
+    unit: 'tokens',
+    model: breakdown.price.model || model,
     keySource: aiProfile.keySource,
     plan: aiProfile.plan,
     breakdown,

@@ -16,6 +16,7 @@ import {
   buildBudgetDenialMessage,
   reserveAiBudget,
   refundAiBudget,
+  recordTokenSpend,
 } from './ai/aiBudgetService.js'
 import { loadTenantAiProfile } from './ai/aiCredentialsService.js'
 import {
@@ -2154,6 +2155,34 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
      */
 
     const response = await result.response
+
+    // Los tokens se registran ACÁ, antes de parsear: Google ya los cobró aunque
+    // el JSON venga roto y el análisis termine tirando error. Registrarlo
+    // después del parseo dejaría fuera de la cuenta justo las llamadas que
+    // fallan, que son las que conviene ver.
+    //
+    // Al tenant no se le descuenta nada por esto — su unidad de visión ya se
+    // reservó arriba. Lo que hace esta línea es que el gasto llegue al
+    // disyuntor de plataforma, que hasta ahora no veía visión en absoluto.
+    // Va el modelo REAL (activeModel), que puede ser uno de respaldo con otra
+    // tarifa, y el desglose medido de usageMetadata en vez de un reparto.
+    const usage = response.usageMetadata || {}
+
+    recordTokenSpend({
+      tenantId: normalizedTenantId,
+      metric: AI_METRICS.VISION,
+      model: activeModel,
+      inputTokens: usage.promptTokenCount ?? null,
+      outputTokens: usage.candidatesTokenCount ?? null,
+      totalTokens: usage.totalTokenCount ?? null,
+      profile: aiProfile,
+    }).catch(error => {
+      logger.warn('[AI VISION] No se pudo registrar el gasto de tokens', {
+        tenantId: normalizedTenantId,
+        hash,
+        error: error?.message,
+      })
+    })
 
     const rawText = response.text()
 

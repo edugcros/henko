@@ -54,9 +54,18 @@ const aiConsumptionLedgerSchema = new mongoose.Schema(
 
     metric: { type: String, required: true, trim: true, index: true },
 
-    // Unidades para las métricas contables (una visión, un mensaje) y tokens
-    // para las de consumo. La métrica dice cuál de las dos es.
     amount: { type: Number, required: true, min: 0 },
+
+    // Qué mide `amount`. No se deduce de la métrica: 'vision' tiene filas de
+    // las dos clases —una unidad reservada al tenant, y los tokens que esa
+    // unidad gastó— y sumar las dos juntas daría un número sin sentido. Cada
+    // fila dice qué es, que es la propiedad de la que depende todo el diseño.
+    unit: {
+      type: String,
+      enum: ['units', 'tokens'],
+      required: true,
+      default: 'units',
+    },
 
     model: { type: String, trim: true, default: null, index: true },
 

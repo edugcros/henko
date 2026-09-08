@@ -269,9 +269,13 @@ jest.unstable_mockModule("../utils/cache.js", () => ({
   },
 }));
 
-const { reserveAiBudget, refundAiBudget, recordAiConsumption, DENY_REASONS } = await import(
-  "../services/ai/aiBudgetService.js"
-);
+const {
+  reserveAiBudget,
+  refundAiBudget,
+  recordAiConsumption,
+  recordTokenSpend,
+  DENY_REASONS,
+} = await import("../services/ai/aiBudgetService.js");
 
 const TENANT_ID = "64b7f0000000000000000001";
 
@@ -479,6 +483,35 @@ describe("aiBudgetService · reserva", () => {
     const result = await reserveAiBudget({
       tenantId: TENANT_ID,
       metric: AI_METRICS.AGENT_TOKENS,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.unlimited).toBe(false);
+    expect(result.limit).toBe(10_000_000);
+
+    delete process.env.AI_PLATFORM_PER_TENANT_SHARE;
+  });
+
+  test("el techo por tenant también aplica a los tokens de mercado", async () => {
+    // Regresión: getSharedKeyTenantCap declaraba las dos métricas en un array
+    // y después dejaba viva la guarda vieja que comparaba solo contra
+    // AGENT_TOKENS, así que market intelligence pasaba de largo sin techo.
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
+    process.env.AI_PLATFORM_PER_TENANT_SHARE = "0.5";
+
+    mockProfile.mockResolvedValue(
+      platformProfile({ plan: "enterprise", keySource: "platform" }),
+    );
+    mockPlatformUsage.findOne.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { marketTokens: 10 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.MARKET_TOKENS,
     });
 
     expect(result.allowed).toBe(true);
@@ -785,5 +818,134 @@ describe("aiBudgetService · ledger", () => {
     });
 
     expect(result.allowed).toBe(true);
+  });
+});
+
+// ─── Gasto de tokens de operaciones por unidad ────────────
+//
+// Visión se le cobra al comercio como una unidad, pero los tokens que gasta le
+// cuestan plata a HENKO igual. Nadie los contaba: el disyuntor, que es el único
+// techo duro de la factura, no veía la operación más cara por llamada.
+
+describe("aiBudgetService · recordTokenSpend", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLedger.create.mockResolvedValue({});
+    cacheStore.clear();
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 5000 }),
+    });
+    delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
+  });
+
+  const entry = () => mockLedger.create.mock.calls[0][0];
+
+  test("los tokens de visión llegan al disyuntor de plataforma", async () => {
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await recordTokenSpend({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      model: "gemini-3.6-flash",
+      inputTokens: 3900,
+      outputTokens: 1000,
+    });
+
+    expect(mockPlatformUsage.findOneAndUpdate).toHaveBeenCalled();
+
+    const [, update] = mockPlatformUsage.findOneAndUpdate.mock.calls[0];
+    expect(update.$inc.tokens).toBe(4900);
+    expect(update.$inc.estimatedCostUsd).toBeGreaterThan(0);
+  });
+
+  test("NO toca el contador de cuota del tenant", async () => {
+    // Su unidad ya se descontó en la reserva. Sumarle 4.900 a un contador que
+    // cuenta análisis agotaría un plan de 50 en el primero.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await recordTokenSpend({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      inputTokens: 3900,
+      outputTokens: 1000,
+    });
+
+    const [, update] = mockAiUsage.findOneAndUpdate.mock.calls[0];
+
+    expect(update.$inc.estimatedCostUsd).toBeGreaterThan(0);
+    expect(Object.keys(update.$inc)).toEqual(["estimatedCostUsd"]);
+  });
+
+  test("con el desglose medido el costo NO es estimado", async () => {
+    // Es el único lugar del sistema donde tenemos usageMetadata real, así que
+    // el costo de visión es exacto y no un reparto 80/20.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await recordTokenSpend({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      model: "gemini-3.6-flash",
+      inputTokens: 3900,
+      outputTokens: 1000,
+      totalTokens: 4900,
+    });
+
+    const row = entry();
+
+    expect(row.costEstimated).toBe(false);
+    expect(row.unit).toBe("tokens");
+    expect(row.inputTokens).toBe(3900);
+    expect(row.outputTokens).toBe(1000);
+    // 3900 × 0,75/1M + 1000 × 3,75/1M
+    expect(row.costUsd).toBeCloseTo(0.006675, 6);
+  });
+
+  test("registra el modelo de respaldo, que puede tener otra tarifa", async () => {
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await recordTokenSpend({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      model: "gemini-3.1-flash-lite",
+      inputTokens: 3900,
+      outputTokens: 1000,
+    });
+
+    expect(entry().model).toBe("gemini-3.1-flash-lite");
+    expect(entry().priceInputPerMillion).toBe(0.25);
+  });
+
+  test("con key propia no toca el disyuntor: no es la factura de HENKO", async () => {
+    mockProfile.mockResolvedValue(platformProfile({ keySource: "tenant" }));
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await recordTokenSpend({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      inputTokens: 3900,
+      outputTokens: 1000,
+    });
+
+    expect(mockPlatformUsage.findOneAndUpdate).not.toHaveBeenCalled();
+    // Pero sí queda registrado, para que su panel lo vea.
+    expect(entry().costUsd).toBe(0);
+    expect(entry().unit).toBe("tokens");
+  });
+
+  test("sin tokens no se registra nada", async () => {
+    mockProfile.mockResolvedValue(platformProfile());
+
+    await recordTokenSpend({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      totalTokens: 0,
+    });
+
+    expect(mockLedger.create).not.toHaveBeenCalled();
+    expect(mockPlatformUsage.findOneAndUpdate).not.toHaveBeenCalled();
   });
 });

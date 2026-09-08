@@ -470,9 +470,12 @@ export const getPlatformMonthlyTokenBudget = () => {
  * de un plan no se tocan — son deliberados.
  */
 export const getSharedKeyTenantCap = metric => {
+  // La guarda vieja comparaba solo contra AGENT_TOKENS y quedó viva debajo de
+  // la nueva cuando se agregó MARKET_TOKENS: el array declaraba las dos
+  // métricas y la línea siguiente dejaba pasar de largo a la segunda, así que
+  // el análisis de mercado no tenía techo por tenant sobre la key compartida.
   const TOKEN_METRICS = [AI_METRICS.AGENT_TOKENS, AI_METRICS.MARKET_TOKENS]
   if (!TOKEN_METRICS.includes(normalizeMetric(metric))) return UNLIMITED
-  if (normalizeMetric(metric) !== AI_METRICS.AGENT_TOKENS) return UNLIMITED
 
   const budget = getPlatformMonthlyTokenBudget()
   if (budget === UNLIMITED) return UNLIMITED
