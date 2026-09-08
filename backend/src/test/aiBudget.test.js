@@ -236,6 +236,17 @@ jest.unstable_mockModule("../models/aiPlatformUsageModel.js", () => ({
   default: mockPlatformUsage,
 }));
 
+const mockLedger = { create: jest.fn() };
+
+jest.unstable_mockModule("../models/aiConsumptionLedgerModel.js", () => ({
+  default: mockLedger,
+  LEDGER_EVENT: {
+    RESERVED: "reserved",
+    CONSUMED: "consumed",
+    REFUNDED: "refunded",
+  },
+}));
+
 jest.unstable_mockModule("../services/ai/aiCredentialsService.js", () => ({
   KEY_SOURCE: { TENANT: "tenant", PLATFORM: "platform", NONE: "none" },
   loadTenantAiProfile: mockProfile,
@@ -258,7 +269,7 @@ jest.unstable_mockModule("../utils/cache.js", () => ({
   },
 }));
 
-const { reserveAiBudget, refundAiBudget, DENY_REASONS } = await import(
+const { reserveAiBudget, refundAiBudget, recordAiConsumption, DENY_REASONS } = await import(
   "../services/ai/aiBudgetService.js"
 );
 
@@ -286,6 +297,7 @@ const platformProfile = (overrides = {}) => ({
 describe("aiBudgetService · reserva", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLedger.create.mockResolvedValue({});
     cacheStore.clear();
     delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
     delete process.env.AI_PLATFORM_PER_TENANT_SHARE;
@@ -558,6 +570,7 @@ describe("aiBudgetService · reserva", () => {
 describe("aiBudgetService · reembolso", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLedger.create.mockResolvedValue({});
     cacheStore.clear();
   });
 
@@ -633,5 +646,144 @@ describe("aiBudgetService · reembolso", () => {
     await expect(
       refundAiBudget({ tenantId: TENANT_ID, metric: AI_METRICS.VISION }),
     ).resolves.toBeUndefined();
+  });
+});
+
+// ─── Ledger ──────────────────────────────────────────────
+//
+// AiUsage responde "¿cuánto le queda?". El ledger responde "¿cuánto costó,
+// con qué modelo y cuándo?". Lo que se prueba acá es que ninguna operación de
+// presupuesto pase sin dejar rastro, y que un fallo del libro no tumbe una
+// operación que salió bien.
+
+describe("aiBudgetService · ledger", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockLedger.create.mockResolvedValue({});
+    cacheStore.clear();
+    delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
+    delete process.env.AI_ENFORCE_SUBSCRIPTION;
+  });
+
+  const entry = () => mockLedger.create.mock.calls[0][0];
+
+  test("una reserva concedida deja su rastro", async () => {
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 1 } }),
+    );
+
+    await reserveAiBudget({ tenantId: TENANT_ID, metric: AI_METRICS.VISION });
+
+    expect(entry().event).toBe("reserved");
+    expect(entry().metric).toBe("vision");
+    expect(entry().plan).toBe("free");
+  });
+
+  test("una reserva denegada no deja rastro: no hubo movimiento", async () => {
+    mockProfile.mockResolvedValue(platformProfile({ keySource: "none", apiKey: "" }));
+
+    await reserveAiBudget({ tenantId: TENANT_ID, metric: AI_METRICS.VISION });
+
+    expect(mockLedger.create).not.toHaveBeenCalled();
+  });
+
+  test("el consumo guarda costo, modelo y el precio del momento", async () => {
+    // Congelar el precio es el punto: los modelos 3.x duplican tarifa el
+    // 1/1/2027, y sin esto una operación vieja cambiaría de costo sola.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 1000 }),
+    });
+
+    await recordAiConsumption({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 10000,
+      model: "gemini-3.6-flash",
+    });
+
+    const row = entry();
+
+    expect(row.event).toBe("consumed");
+    expect(row.model).toBe("gemini-3.6-flash");
+    expect(row.priceInputPerMillion).toBe(0.75);
+    expect(row.priceOutputPerMillion).toBe(3.75);
+    expect(row.costUsd).toBeGreaterThan(0);
+    // 8000 entrada + 2000 salida con la proporción asumida.
+    expect(row.inputTokens + row.outputTokens).toBe(10000);
+    // El reparto se supuso a partir del total: queda declarado.
+    expect(row.costEstimated).toBe(true);
+  });
+
+  test("un consumo BYOK se registra con costo cero: no lo paga HENKO", async () => {
+    mockProfile.mockResolvedValue(platformProfile({ keySource: "tenant" }));
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    await recordAiConsumption({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 10000,
+    });
+
+    expect(entry().costUsd).toBe(0);
+    expect(entry().keySource).toBe("tenant");
+  });
+
+  test("los tokens de análisis de mercado también cuestan", async () => {
+    // Regresión: isTokenMetric comparaba solo contra AGENT_TOKENS, así que el
+    // consumo de market intelligence no sumaba costo ni llegaba al disyuntor
+    // de plataforma — el techo duro de gasto no veía esa vía entera.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 1000 }),
+    });
+
+    await recordAiConsumption({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.MARKET_TOKENS,
+      amount: 10000,
+    });
+
+    expect(entry().costUsd).toBeGreaterThan(0);
+    // Y llega al contador de plataforma, que es lo que alimenta el disyuntor.
+    expect(mockPlatformUsage.findOneAndUpdate).toHaveBeenCalled();
+  });
+
+  test("un reembolso que no descontó nada no se anota", async () => {
+    // El filtro lleva un $gte que puede no matchear. Anotar igual metería una
+    // devolución que nunca pasó, y el gasto real se calcula restando refunded.
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable(null));
+
+    await refundAiBudget({ tenantId: TENANT_ID, metric: AI_METRICS.VISION });
+
+    expect(mockLedger.create).not.toHaveBeenCalled();
+  });
+
+  test("un reembolso efectivo sí se anota", async () => {
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({ counters: {} }));
+
+    await refundAiBudget({ tenantId: TENANT_ID, metric: AI_METRICS.VISION });
+
+    expect(entry().event).toBe("refunded");
+  });
+
+  test("si el ledger falla, la operación sigue adelante", async () => {
+    // El libro registra lo que YA pasó: su fallo no puede tumbar una operación
+    // que salió bien.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 1 } }),
+    );
+    mockLedger.create.mockRejectedValue(new Error("mongo caído"));
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+    });
+
+    expect(result.allowed).toBe(true);
   });
 });

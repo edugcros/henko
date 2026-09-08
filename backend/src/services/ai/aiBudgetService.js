@@ -26,7 +26,6 @@ import {
   AI_METRIC_LABELS,
   AI_METRIC_LIST,
   UNLIMITED,
-  estimateCostUsd,
   estimateImageCostUsd,
   getPlanLimit,
   getPlatformMonthlyTokenBudget,
@@ -35,6 +34,8 @@ import {
   normalizeMetric,
 } from './aiPlanPolicy.js'
 import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
+import { computeCostUsd } from './aiModelPricing.js'
+import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 
 // Se reexportan para que quien mide consumo tenga un único import: el medidor
 // es la puerta de entrada, la política es un detalle de implementación suyo.
@@ -44,6 +45,73 @@ const clean = value => String(value || '').trim()
 
 const BREAKER_CACHE_KEY = 'ai:platform:breaker'
 const BREAKER_CACHE_TTL_SEC = 30
+
+/**
+ * Las métricas que se miden en tokens y por lo tanto cuestan plata.
+ *
+ * Antes esto era una comparación contra AGENT_TOKENS solamente, y MARKET_TOKENS
+ * quedaba afuera: el consumo de los análisis de mercado no sumaba costo ni
+ * llegaba a registerPlatformConsumption, o sea que era invisible para el
+ * disyuntor de plataforma — el único techo duro de gasto no veía esa vía
+ * entera. Como conjunto, agregar una métrica de tokens nueva no vuelve a
+ * requerir acordarse de este lugar.
+ */
+const TOKEN_METRICS = new Set([AI_METRICS.AGENT_TOKENS, AI_METRICS.MARKET_TOKENS])
+
+/**
+ * Modelo asumido cuando el llamador no informa cuál usó. Es el mismo que
+ * resuelve aiVisionService, así que hoy coincide con el que corre todo.
+ */
+const DEFAULT_PRICING_MODEL = clean(
+  process.env.GEMINI_MODEL || process.env.GOOGLE_IMAGE_MODEL || 'gemini-3.6-flash',
+).replace(/^models\//, '')
+
+/**
+ * Escribe una fila del ledger. Nunca lanza.
+ *
+ * El ledger registra lo que YA pasó, así que un fallo suyo no puede tumbar una
+ * operación de IA que salió bien. Se loguea con nivel error y no warn: un libro
+ * contable que falla en silencio es peor que no tenerlo, porque igual se confía
+ * en él para decir cuánto se gastó.
+ */
+const writeLedgerEntry = ({
+  tenantId,
+  period,
+  event,
+  metric,
+  amount,
+  model = null,
+  keySource = null,
+  plan = null,
+  breakdown = null,
+  costUsd = 0,
+}) => {
+  AiConsumptionLedger.create({
+    tenantId,
+    period,
+    event,
+    metric,
+    amount: Math.max(0, Math.round(Number(amount) || 0)),
+    model,
+    keySource,
+    plan,
+    inputTokens: breakdown?.inputTokens ?? null,
+    outputTokens: breakdown?.outputTokens ?? null,
+    totalTokens: breakdown?.totalTokens ?? null,
+    costUsd: Number(costUsd) || 0,
+    priceInputPerMillion: breakdown?.price?.input ?? null,
+    priceOutputPerMillion: breakdown?.price?.output ?? null,
+    costEstimated: Boolean(breakdown?.estimated),
+    priceFallback: Boolean(breakdown?.price?.fallback),
+  }).catch(error => {
+    logger.error('[AI LEDGER] No se pudo registrar el movimiento', {
+      tenantId: String(tenantId),
+      event,
+      metric,
+      error: error.message,
+    })
+  })
+}
 
 export const DENY_REASONS = Object.freeze({
   SUBSCRIPTION: 'subscription_inactive',
@@ -366,6 +434,21 @@ export const reserveAiBudget = async ({
 
     const used = readCounter(updated, normalizedMetric)
 
+    // La reserva se anota sin costo: acá todavía no se sabe cuántos tokens va
+    // a gastar la operación. El costo llega con el 'consumed' correspondiente,
+    // y si el proveedor falla llega un 'refunded'. El gasto real de un comercio
+    // es la suma de sus consumed menos sus refunded — las reservas quedan como
+    // rastro de intención, útil para ver cuánto se pidió contra cuánto se usó.
+    writeLedgerEntry({
+      tenantId: id,
+      period,
+      event: LEDGER_EVENT.RESERVED,
+      metric: normalizedMetric,
+      amount,
+      keySource: aiProfile.keySource,
+      plan: aiProfile.plan,
+    })
+
     return {
       allowed: true,
       metric: normalizedMetric,
@@ -460,7 +543,7 @@ export const refundAiBudget = async ({ tenantId, metric, amount = 1 }) => {
   const period = getCurrentPeriod()
 
   try {
-    await AiUsage.findOneAndUpdate(
+    const refunded = await AiUsage.findOneAndUpdate(
       {
         tenantId: id,
         period,
@@ -475,6 +558,22 @@ export const refundAiBudget = async ({ tenantId, metric, amount = 1 }) => {
         },
       },
     ).setOptions({ tenantId: id })
+
+    // Solo se anota si el descuento OCURRIÓ. El filtro lleva un $gte que puede
+    // no matchear —contador ya en cero, período distinto—, y en ese caso
+    // findOneAndUpdate devuelve null sin tocar nada. Registrar igual metería en
+    // el libro una devolución que nunca pasó, y el gasto real se calcula
+    // restando los refunded: una fila de más deja la cuenta por debajo de la
+    // verdad, que es el error caro de los dos.
+    if (refunded) {
+      writeLedgerEntry({
+        tenantId: id,
+        period,
+        event: LEDGER_EVENT.REFUNDED,
+        metric: normalizedMetric,
+        amount,
+      })
+    }
   } catch (error) {
     logger.warn('[AI BUDGET] No se pudo devolver la reserva', {
       tenantId: id,
@@ -494,6 +593,9 @@ export const recordAiConsumption = async ({
   metric,
   amount = 0,
   profile = null,
+  // Modelo que produjo el consumo. Opcional para no tocar los call sites
+  // existentes: sin él se asume el configurado, que es el que corren todos hoy.
+  model = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -504,8 +606,17 @@ export const recordAiConsumption = async ({
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const isByok = aiProfile.keySource === KEY_SOURCE.TENANT
-  const isTokenMetric = normalizedMetric === AI_METRICS.AGENT_TOKENS
-  const costUsd = isTokenMetric && !isByok ? estimateCostUsd(value) : 0
+  const isTokenMetric = TOKEN_METRICS.has(normalizedMetric)
+  const usedModel = model || DEFAULT_PRICING_MODEL
+
+  // El costo sale del catálogo por modelo en vez de una tarifa mezclada: la
+  // salida cuesta cinco veces la entrada, así que un promedio único se
+  // equivoca en cuanto cambia la proporción entre una operación y otra.
+  const breakdown = isTokenMetric && !isByok
+    ? computeCostUsd({ model: usedModel, totalTokens: value })
+    : null
+
+  const costUsd = breakdown?.costUsd || 0
   const period = getCurrentPeriod()
 
   try {
@@ -536,6 +647,19 @@ export const recordAiConsumption = async ({
       })
     })
   }
+
+  writeLedgerEntry({
+    tenantId: id,
+    period,
+    event: LEDGER_EVENT.CONSUMED,
+    metric: normalizedMetric,
+    amount: value,
+    model: isTokenMetric ? usedModel : null,
+    keySource: aiProfile.keySource,
+    plan: aiProfile.plan,
+    breakdown,
+    costUsd,
+  })
 }
 
 /**
