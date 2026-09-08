@@ -312,13 +312,20 @@ const PricingPage = () => {
                 {...params}
                 label="Producto"
                 placeholder="Buscá por nombre"
+                // MUI v9 entrega params.slotProps, no params.InputProps. Leer
+                // params.InputProps.endAdornment rompía el render con un
+                // TypeError sobre undefined. Mismo patrón que
+                // MarketIntelligencePage, con optional chaining en cada nivel.
                 slotProps={{
+                  ...params.slotProps,
                   input: {
-                    ...params.InputProps,
+                    ...(params.slotProps?.input || {}),
                     endAdornment: (
                       <>
-                        {optionsLoading ? <CircularProgress size={18} /> : null}
-                        {params.InputProps.endAdornment}
+                        {optionsLoading && (
+                          <CircularProgress size={18} sx={{ mr: 1 }} />
+                        )}
+                        {params.slotProps?.input?.endAdornment}
                       </>
                     ),
                   },
@@ -490,8 +497,9 @@ const PricingPage = () => {
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
                   spacing={2}
-                  alignItems={{ sm: 'center' }}
-                  sx={{ mb: 2 }}
+                  // alignItems responsive va por sx: como prop suelto, Stack lo
+                  // reenvía al DOM y React avisa que no lo conoce.
+                  sx={{ mb: 2, alignItems: { sm: 'center' } }}
                 >
                   <Typography variant="h5" fontWeight={700}>
                     {money(decision.currentPrice ?? signals.price)} →{' '}
@@ -588,173 +596,186 @@ const PricingPage = () => {
       </Paper>
 
       {/* ── Política ────────────────────────────────────── */}
-      <Accordion variant="outlined" component={Paper}>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Stack>
-            <Typography variant="h6" fontWeight={600}>
-              Tus reglas de precio
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Los límites que la IA no puede cruzar.
-            </Typography>
-          </Stack>
-        </AccordionSummary>
+      {/* Accordion sin component={Paper}: su raíz YA es un Paper, y pasarle
+          Paper como componente lo anida en sí mismo. Mismo tratamiento que
+          MarketIntelligencePage: el borde lo pone el Paper de afuera. */}
+      <Paper variant="outlined">
+        <Accordion
+          elevation={0}
+          disableGutters
+          sx={{ '&:before': { display: 'none' } }}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack>
+              <Typography variant="h6" fontWeight={600}>
+                Tus reglas de precio
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Los límites que la IA no puede cruzar.
+              </Typography>
+            </Stack>
+          </AccordionSummary>
 
-        <AccordionDetails>
-          {policyLoading ? (
-            <CircularProgress size={24} />
-          ) : policy ? (
-            <Stack spacing={3}>
-              {policy.isDefault && (
-                <Alert severity="info">
-                  Todavía no configuraste nada: estos son los valores de
-                  fábrica.
-                </Alert>
-              )}
+          <AccordionDetails>
+            {policyLoading ? (
+              <CircularProgress size={24} />
+            ) : policy ? (
+              <Stack spacing={3}>
+                {policy.isDefault && (
+                  <Alert severity="info">
+                    Todavía no configuraste nada: estos son los valores de
+                    fábrica.
+                  </Alert>
+                )}
 
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    select
-                    fullWidth
-                    label="Estrategia"
-                    value={policy.strategy || 'margin'}
-                    onChange={e => setField('strategy', e.target.value)}
-                  >
-                    {STRATEGIES.map(s => (
-                      <MenuItem key={s.value} value={s.value}>
-                        {s.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Estrategia"
+                      value={policy.strategy || 'margin'}
+                      onChange={e => setField('strategy', e.target.value)}
+                    >
+                      {STRATEGIES.map(s => (
+                        <MenuItem key={s.value} value={s.value}>
+                          {s.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
 
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    select
-                    fullWidth
-                    label="Quién aplica los cambios"
-                    value={policy.mode || 'manual'}
-                    onChange={e => setField('mode', e.target.value)}
-                    helperText={
-                      policy.mode === 'autopilot'
-                        ? 'Los precios se van a mover solos dentro de estos límites.'
-                        : ' '
-                    }
-                  >
-                    {MODES.map(m => (
-                      <MenuItem key={m.value} value={m.value}>
-                        {m.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      select
+                      fullWidth
+                      label="Quién aplica los cambios"
+                      value={policy.mode || 'manual'}
+                      onChange={e => setField('mode', e.target.value)}
+                      helperText={
+                        policy.mode === 'autopilot'
+                          ? 'Los precios se van a mover solos dentro de estos límites.'
+                          : ' '
+                      }
+                    >
+                      {MODES.map(m => (
+                        <MenuItem key={m.value} value={m.value}>
+                          {m.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
 
-                {[
-                  [
-                    'minMarginPercent',
-                    'Margen mínimo (%)',
-                    'Ninguna recomendación puede dejar el margen por debajo.',
-                  ],
-                  ['targetMarginPercent', 'Margen objetivo (%)', ' '],
-                  ['maxChangePercent', 'Variación máxima por ajuste (%)', ' '],
-                  [
-                    'autoApplyMaxPercent',
-                    'Aplicar solo hasta (%)',
-                    'Solo en modo semiautomático.',
-                  ],
-                ].map(([key, label, helper]) => (
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }} key={key}>
+                  {[
+                    [
+                      'minMarginPercent',
+                      'Margen mínimo (%)',
+                      'Ninguna recomendación puede dejar el margen por debajo.',
+                    ],
+                    ['targetMarginPercent', 'Margen objetivo (%)', ' '],
+                    [
+                      'maxChangePercent',
+                      'Variación máxima por ajuste (%)',
+                      ' ',
+                    ],
+                    [
+                      'autoApplyMaxPercent',
+                      'Aplicar solo hasta (%)',
+                      'Solo en modo semiautomático.',
+                    ],
+                  ].map(([key, label, helper]) => (
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }} key={key}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label={label}
+                        helperText={helper}
+                        value={policy[key] ?? ''}
+                        onChange={e =>
+                          setField(
+                            key,
+                            e.target.value === '' ? '' : Number(e.target.value),
+                          )
+                        }
+                      />
+                    </Grid>
+                  ))}
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
                       fullWidth
                       type="number"
-                      label={label}
-                      helperText={helper}
-                      value={policy[key] ?? ''}
+                      label="Precio mínimo (opcional)"
+                      value={policy.priceFloor ?? ''}
                       onChange={e =>
                         setField(
-                          key,
-                          e.target.value === '' ? '' : Number(e.target.value),
+                          'priceFloor',
+                          e.target.value === '' ? null : Number(e.target.value),
                         )
                       }
                     />
                   </Grid>
-                ))}
 
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="Precio mínimo (opcional)"
-                    value={policy.priceFloor ?? ''}
-                    onChange={e =>
-                      setField(
-                        'priceFloor',
-                        e.target.value === '' ? null : Number(e.target.value),
-                      )
-                    }
-                  />
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Precio máximo (opcional)"
+                      value={policy.priceCeiling ?? ''}
+                      onChange={e =>
+                        setField(
+                          'priceCeiling',
+                          e.target.value === '' ? null : Number(e.target.value),
+                        )
+                      }
+                    />
+                  </Grid>
                 </Grid>
 
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="Precio máximo (opcional)"
-                    value={policy.priceCeiling ?? ''}
-                    onChange={e =>
-                      setField(
-                        'priceCeiling',
-                        e.target.value === '' ? null : Number(e.target.value),
-                      )
-                    }
-                  />
-                </Grid>
-              </Grid>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={Boolean(policy.rounding?.enabled)}
+                      onChange={e =>
+                        setField('rounding', {
+                          ...(policy.rounding || {}),
+                          enabled: e.target.checked,
+                          endings: policy.rounding?.endings?.length
+                            ? policy.rounding.endings
+                            : [990],
+                        })
+                      }
+                    />
+                  }
+                  label="Redondear a precios terminados en 990"
+                />
 
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={Boolean(policy.rounding?.enabled)}
-                    onChange={e =>
-                      setField('rounding', {
-                        ...(policy.rounding || {}),
-                        enabled: e.target.checked,
-                        endings: policy.rounding?.endings?.length
-                          ? policy.rounding.endings
-                          : [990],
-                      })
-                    }
-                  />
-                }
-                label="Redondear a precios terminados en 990"
-              />
+                {policyMessage && (
+                  <Alert severity={policyMessage.severity}>
+                    {policyMessage.text}
+                  </Alert>
+                )}
 
-              {policyMessage && (
-                <Alert severity={policyMessage.severity}>
-                  {policyMessage.text}
-                </Alert>
-              )}
-
-              <Box>
-                <Button
-                  variant="contained"
-                  onClick={savePolicy}
-                  disabled={policySaving}
-                >
-                  {policySaving ? (
-                    <CircularProgress size={22} color="inherit" />
-                  ) : (
-                    'Guardar reglas'
-                  )}
-                </Button>
-              </Box>
-            </Stack>
-          ) : (
-            <Alert severity="error">No se pudo cargar la política.</Alert>
-          )}
-        </AccordionDetails>
-      </Accordion>
+                <Box>
+                  <Button
+                    variant="contained"
+                    onClick={savePolicy}
+                    disabled={policySaving}
+                  >
+                    {policySaving ? (
+                      <CircularProgress size={22} color="inherit" />
+                    ) : (
+                      'Guardar reglas'
+                    )}
+                  </Button>
+                </Box>
+              </Stack>
+            ) : (
+              <Alert severity="error">No se pudo cargar la política.</Alert>
+            )}
+          </AccordionDetails>
+        </Accordion>
+      </Paper>
     </Box>
   )
 }
