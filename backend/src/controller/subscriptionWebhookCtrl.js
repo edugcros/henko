@@ -50,24 +50,24 @@ export const handleSubscriptionWebhook = async (req, res) => {
 
     // Procesar según el tipo de evento
     switch (type) {
-      case 'subscription_update':
-        await handleSubscriptionUpdate(tenant, data)
-        break
+    case 'subscription_update':
+      await handleSubscriptionUpdate(tenant, data)
+      break
 
-      case 'subscription_authorized':
-        await handlePaymentAuthorized(tenant, data)
-        break
+    case 'subscription_authorized':
+      await handlePaymentAuthorized(tenant, data)
+      break
 
-      case 'subscription_failed':
-        await handlePaymentFailed(tenant, data)
-        break
+    case 'subscription_failed':
+      await handlePaymentFailed(tenant, data)
+      break
 
-      case 'subscription_canceled':
-        await handleSubscriptionCanceled(tenant, data)
-        break
+    case 'subscription_canceled':
+      await handleSubscriptionCanceled(tenant, data)
+      break
 
-      default:
-        logger.info('Tipo de evento no procesado', { type })
+    default:
+      logger.info('Tipo de evento no procesado', { type })
     }
 
     sendResponse(res, 200, true, 'Webhook procesado exitosamente')
