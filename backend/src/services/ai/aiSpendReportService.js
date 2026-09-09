@@ -20,7 +20,12 @@
 
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
-import { getPlatformMonthlyTokenBudget, UNLIMITED } from './aiPlanPolicy.js'
+import {
+  getPlatformMonthlyTokenBudget,
+  getPlatformBudgetSource,
+  UNLIMITED,
+} from './aiPlanPolicy.js'
+import { getPlatformAiSettingHistory } from './platformAiSettingService.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 
 // `amount` mide unidades o tokens según la fila; sumar las dos juntas daría un
@@ -154,11 +159,12 @@ const getPeriodQuality = async period => {
 export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
   const budget = getPlatformMonthlyTokenBudget()
 
-  const [usage, byMetric, byModel, quality] = await Promise.all([
+  const [usage, byMetric, byModel, quality, settingHistory] = await Promise.all([
     AiPlatformUsage.findOne({ period }).lean(),
     getPeriodSpendByMetric(period),
     getPeriodSpendByModel(period),
     getPeriodQuality(period),
+    getPlatformAiSettingHistory(10).catch(() => []),
   ])
 
   const tokens = Number(usage?.tokens || 0)
@@ -171,6 +177,11 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       // "el techo es cero", y la pantalla las tiene que mostrar distinto.
       tokens: hasBudget ? budget : null,
       configured: hasBudget,
+      // De dónde sale el valor vigente: 'panel' si lo cambió alguien desde acá,
+      // 'env' si manda la variable de entorno, 'none' si no hay techo. Se
+      // informa porque un override que gana en silencio sobre la variable
+      // convierte "ya lo cambié en Render y no pasa nada" en un misterio.
+      source: getPlatformBudgetSource(),
       // Los avisos viven en el mismo objeto que el techo porque se leen juntos:
       // un 47% no dice nada sin saber que el próximo escalón es 50.
       alertedThreshold: Number(usage?.alertedThreshold || 0),
@@ -190,6 +201,9 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     byMetric,
     byModel,
     quality,
+    // Quién movió el techo, cuándo y por qué. Va en el mismo reporte porque un
+    // salto en el consumo y un cambio de límite se leen juntos o no se leen.
+    settingHistory,
   }
 }
 

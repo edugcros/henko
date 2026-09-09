@@ -14,8 +14,13 @@ import React, { useCallback, useEffect, useState } from 'react'
 import {
   Alert,
   Box,
+  Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   LinearProgress,
   Paper,
   Stack,
@@ -25,10 +30,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material'
-import { getPlatformAiSpend } from '../services/platformService'
+import {
+  getPlatformAiSpend,
+  updatePlatformAiBudget,
+} from '../services/platformService'
 
 const formatUsd = value =>
   new Intl.NumberFormat('en-US', {
@@ -65,11 +74,128 @@ const usageColor = percent => {
   return 'success'
 }
 
+// De dónde sale el techo vigente. Se muestra porque un override que le gana en
+// silencio a la variable de entorno convierte "ya lo cambié en Render y no pasa
+// nada" en un misterio que cuesta media hora.
+const BUDGET_SOURCE_LABEL = {
+  panel: 'techo fijado desde el panel',
+  env: 'techo tomado de la variable de entorno',
+  none: 'sin techo configurado',
+}
+
+/**
+ * Cambiar el techo mueve un límite de seguridad, así que no es un campo suelto
+ * en la pantalla: es un diálogo que pide el motivo y muestra qué implica.
+ */
+function BudgetDialog({ open, budget, onClose, onSaved }) {
+  const [tokens, setTokens] = useState('')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setTokens(budget.tokens === null ? '' : String(budget.tokens))
+    setReason('')
+    setError('')
+  }, [open, budget.tokens])
+
+  const submit = async ({ remove = false } = {}) => {
+    setSaving(true)
+    setError('')
+
+    try {
+      const data = await updatePlatformAiBudget({
+        tokens: remove ? null : Number(tokens),
+        reason,
+      })
+      onSaved(data)
+      onClose()
+    } catch (err) {
+      setError(err?.response?.data?.message || 'No se pudo cambiar el techo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // El motivo es obligatorio del lado del servidor también; acá solo evita el
+  // viaje de ida y vuelta.
+  const canSubmit = reason.trim().length > 0 && !saving
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>Cambiar el techo de gasto</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          El valor rige de inmediato y no necesita reiniciar el servicio. Queda
+          registrado con tu email y el motivo.
+        </Typography>
+
+        <TextField
+          label="Techo en tokens"
+          type="number"
+          fullWidth
+          value={tokens}
+          onChange={event => setTokens(event.target.value)}
+          sx={{ mb: 2 }}
+          helperText="A tarifa de 2026, 200.000.000 de tokens son unos USD 270."
+        />
+
+        <TextField
+          label="Motivo"
+          fullWidth
+          multiline
+          minRows={2}
+          value={reason}
+          onChange={event => setReason(event.target.value)}
+          placeholder="Ej.: cortó a las 3am por un bulk import de 4.000 imágenes"
+          helperText="Obligatorio. Dentro de tres meses el número solo no explica nada."
+        />
+
+        {budget.source === 'panel' && (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            Hoy manda un valor fijado desde el panel, así que cambiar la
+            variable de entorno en Render no tiene efecto. Podés devolverle el
+            mando con «Volver a la variable».
+          </Alert>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>
+          Cancelar
+        </Button>
+        {budget.source === 'panel' && (
+          <Button
+            onClick={() => submit({ remove: true })}
+            disabled={!canSubmit}
+          >
+            Volver a la variable
+          </Button>
+        )}
+        <Button
+          variant="contained"
+          onClick={() => submit()}
+          disabled={!canSubmit}
+        >
+          Guardar
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
 export default function PlatformAiSpendPage() {
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState(null)
+  const [editing, setEditing] = useState(false)
 
   const load = useCallback(async ({ signal } = {}) => {
     setLoading(true)
@@ -128,7 +254,15 @@ export default function PlatformAiSpendPage() {
 
   if (!report) return null
 
-  const { budget, consumption, breaker, byMetric, byModel, quality } = report
+  const {
+    budget,
+    consumption,
+    breaker,
+    byMetric,
+    byModel,
+    quality,
+    settingHistory,
+  } = report
   const percent = consumption.percentUsed
 
   return (
@@ -208,14 +342,31 @@ export default function PlatformAiSpendPage() {
           </Box>
         )}
 
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: 'block', mt: 2 }}
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+          flexWrap="wrap"
+          useFlexGap
+          sx={{ mt: 2 }}
         >
-          Última actividad: {formatDate(consumption.lastActivityAt)}
-        </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Última actividad: {formatDate(consumption.lastActivityAt)}
+            {' · '}
+            {BUDGET_SOURCE_LABEL[budget.source] || budget.source}
+          </Typography>
+          <Button size="small" onClick={() => setEditing(true)}>
+            Cambiar techo
+          </Button>
+        </Stack>
       </Paper>
+
+      <BudgetDialog
+        open={editing}
+        budget={budget}
+        onClose={() => setEditing(false)}
+        onSaved={setReport}
+      />
 
       <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
         Qué lo consume
@@ -341,14 +492,56 @@ export default function PlatformAiSpendPage() {
         </Typography>
       </Paper>
 
+      {settingHistory?.length > 0 && (
+        <>
+          <Typography
+            variant="subtitle1"
+            sx={{ fontWeight: 600, mt: 3, mb: 1 }}
+          >
+            Cambios de límites
+          </Typography>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Cuándo</TableCell>
+                  <TableCell>Quién</TableCell>
+                  <TableCell>Cambio</TableCell>
+                  <TableCell>Motivo</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {settingHistory.map(row => (
+                  <TableRow key={`${row.setting}-${row.createdAt}`}>
+                    <TableCell>{formatDate(row.createdAt)}</TableCell>
+                    <TableCell>{row.changedByEmail}</TableCell>
+                    <TableCell>
+                      {row.previousValue === null
+                        ? 'variable de entorno'
+                        : formatTokens(row.previousValue)}
+                      {' → '}
+                      {row.value === null
+                        ? 'variable de entorno'
+                        : formatTokens(row.value)}
+                    </TableCell>
+                    <TableCell>{row.reason}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
+      )}
+
       <Typography
         variant="caption"
         color="text.secondary"
         sx={{ display: 'block', mt: 3 }}
       >
-        El techo y los límites por plan se configuran por variables de entorno
-        en Render y requieren reiniciar el servicio. Esta pantalla es de
-        lectura.
+        El techo se cambia desde acá y rige de inmediato. Los límites por plan y
+        la fracción por comercio siguen en variables de entorno de Render, que
+        requieren reiniciar el servicio — son decisiones de producto, no
+        maniobras de urgencia.
       </Typography>
     </Box>
   )

@@ -22,6 +22,11 @@
 //
 // Convención heredada de aiUsageService: 0 = ilimitado.
 
+import {
+  getPlatformAiOverride,
+  PLATFORM_AI_SETTINGS,
+} from './platformAiSettingService.js'
+
 const clean = value => String(value || '').trim()
 
 export const AI_METRICS = Object.freeze({
@@ -426,8 +431,30 @@ export const getWhatsappCostPerSendUsd = () =>
  * 0 = sin disyuntor (no recomendado en producción).
  */
 export const getPlatformMonthlyTokenBudget = () => {
+  // El override del panel gana sobre la variable de entorno. La variable no
+  // deja de ser la configuración base —es lo que vale mientras nadie tocó
+  // nada— pero cambiarla exige reiniciar el servicio, y el momento en que este
+  // número importa de verdad es cuando el disyuntor ya cortó y hay que moverlo
+  // sin esperar un deploy.
+  //
+  // Para que esto no se vuelva un misterio, la pantalla muestra las dos cosas:
+  // el valor vigente y de dónde salió.
+  const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET)
+
+  if (override !== null && Number.isFinite(override)) {
+    return Math.floor(override)
+  }
+
   const budget = readEnvNumber('AI_PLATFORM_MONTHLY_TOKEN_BUDGET')
   return budget === null ? UNLIMITED : Math.floor(budget)
+}
+
+/** De dónde sale el techo vigente. Solo para mostrarlo, no para decidir. */
+export const getPlatformBudgetSource = () => {
+  const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET)
+
+  if (override !== null && Number.isFinite(override)) return 'panel'
+  return readEnvNumber('AI_PLATFORM_MONTHLY_TOKEN_BUDGET') === null ? 'none' : 'env'
 }
 
 /**
@@ -487,7 +514,11 @@ export const getSharedKeyTenantCap = metric => {
   const budget = getPlatformMonthlyTokenBudget()
   if (budget === UNLIMITED) return UNLIMITED
 
-  const rawShare = readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5
+  const shareOverride = getPlatformAiOverride(PLATFORM_AI_SETTINGS.PER_TENANT_SHARE)
+  const rawShare =
+    shareOverride !== null && Number.isFinite(shareOverride)
+      ? shareOverride
+      : readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5
   const share = Math.min(Math.max(rawShare, 0.01), 1)
   const tokenCap = Math.floor(budget * share)
 

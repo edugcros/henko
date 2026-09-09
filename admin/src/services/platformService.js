@@ -18,4 +18,21 @@ export const getPlatformAiSpend = async period => {
   return unwrap(response)
 }
 
-export default { getPlatformMarginReport, getPlatformAiSpend }
+/**
+ * Mueve el techo de gasto. `tokens: null` quita el override y devuelve el mando
+ * a la variable de entorno. Responde con el reporte ya actualizado.
+ */
+export const updatePlatformAiBudget = async ({ tokens, reason }) => {
+  const response = await api.put('/platform/ai-spend/budget', {
+    tokens,
+    reason,
+  })
+
+  return unwrap(response)
+}
+
+export default {
+  getPlatformMarginReport,
+  getPlatformAiSpend,
+  updatePlatformAiBudget,
+}

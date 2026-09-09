@@ -10,7 +10,11 @@
 import express from 'express'
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 import { requirePlatformOwner } from '../middlewares/platformOwnerMiddleware.js'
-import { getMarginReport, getAiSpendReport } from '../controller/platformCtrl.js'
+import {
+  getMarginReport,
+  getAiSpendReport,
+  updateAiBudget,
+} from '../controller/platformCtrl.js'
 
 const router = express.Router()
 
@@ -18,5 +22,9 @@ router.use(authMiddleware, isAdmin, requirePlatformOwner)
 
 router.get('/margin', getMarginReport)
 router.get('/ai-spend', getAiSpendReport)
+
+// La única escritura de esta ruta. Mueve un límite de seguridad, así que queda
+// registrada con autor y motivo (ver models/platformAiSettingModel.js).
+router.put('/ai-spend/budget', updateAiBudget)
 
 export default router

@@ -9,6 +9,7 @@
 
 import { jest } from "@jest/globals";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // config/env.js valida esto al cargarse y aborta sin ella. La cadena llega acá
 // por platformService → axiosConfig, así que hay que darle un valor antes de
@@ -16,9 +17,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 process.env.REACT_APP_API_BASE_URL = "http://localhost:5000/api";
 
 const mockGetAiSpend = jest.fn();
+const mockUpdateBudget = jest.fn();
 
 jest.unstable_mockModule("../services/platformService", () => ({
   getPlatformAiSpend: mockGetAiSpend,
+  updatePlatformAiBudget: mockUpdateBudget,
   getPlatformMarginReport: jest.fn(),
   default: {},
 }));
@@ -27,7 +30,13 @@ const { default: PlatformAiSpendPage } = await import("./PlatformAiSpendPage.jsx
 
 const REPORT = {
   period: "2026-09",
-  budget: { tokens: 200_000_000, configured: true, alertedThreshold: 0 },
+  budget: {
+    tokens: 200_000_000,
+    configured: true,
+    alertedThreshold: 0,
+    source: "env",
+  },
+  settingHistory: [],
   consumption: {
     tokens: 24_500_000,
     percentUsed: 12.3,
@@ -118,6 +127,90 @@ test("un período sin consumo no rompe la pantalla", async () => {
   await waitFor(() =>
     expect(screen.getByText(/Todavía no hay consumo registrado/i)).toBeInTheDocument(),
   );
+});
+
+test("no deja guardar un techo nuevo sin motivo", async () => {
+  // El motivo también es obligatorio en el servidor; acá evita el viaje. Y el
+  // punto de fondo es que dentro de tres meses el número solo no explica por
+  // qué alguien duplicó el techo un martes a las 3 de la mañana.
+  const user = userEvent.setup();
+  load();
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /cambiar techo/i }));
+
+  expect(screen.getByRole("button", { name: /^guardar$/i })).toBeDisabled();
+
+  await user.type(screen.getByLabelText(/motivo/i), "cortó por un bulk import");
+
+  expect(screen.getByRole("button", { name: /^guardar$/i })).toBeEnabled();
+});
+
+test("guarda el techo con el motivo y muestra el reporte actualizado", async () => {
+  const user = userEvent.setup();
+  mockUpdateBudget.mockResolvedValue({
+    ...REPORT,
+    budget: { ...REPORT.budget, tokens: 400_000_000, source: "panel" },
+    consumption: { ...REPORT.consumption, percentUsed: 6.1 },
+  });
+  load();
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /cambiar techo/i }));
+  await user.type(screen.getByLabelText(/motivo/i), "cortó por un bulk import");
+  await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+  await waitFor(() =>
+    expect(mockUpdateBudget).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "cortó por un bulk import" }),
+    ),
+  );
+
+  // La respuesta del PUT ya trae el reporte nuevo: la pantalla no vuelve a
+  // pedirlo, así que no puede quedar mostrando lo viejo si esa segunda vuelta
+  // fallara.
+  await waitFor(() =>
+    expect(screen.getByText(/techo fijado desde el panel/i)).toBeInTheDocument(),
+  );
+  expect(mockGetAiSpend).toHaveBeenCalledTimes(1);
+});
+
+test("avisa que la variable de entorno no manda cuando hay override", async () => {
+  // Sin esto, "ya lo cambié en Render y no pasa nada" es media hora perdida.
+  const user = userEvent.setup();
+  load({ budget: { ...REPORT.budget, source: "panel" } });
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /cambiar techo/i }));
+
+  expect(
+    screen.getByText(/cambiar la variable de entorno en Render no tiene efecto/i),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /volver a la variable/i }),
+  ).toBeInTheDocument();
+});
+
+test("muestra quién movió el techo y por qué", async () => {
+  load({
+    settingHistory: [
+      {
+        setting: "monthlyTokenBudget",
+        value: 400_000_000,
+        previousValue: 200_000_000,
+        changedByEmail: "dueño@henko.com",
+        reason: "cortó a las 3am por un bulk import",
+        createdAt: "2026-09-20T06:00:00.000Z",
+      },
+    ],
+  });
+
+  await waitFor(() =>
+    expect(screen.getByText("dueño@henko.com")).toBeInTheDocument(),
+  );
+  expect(
+    screen.getByText(/cortó a las 3am por un bulk import/i),
+  ).toBeInTheDocument();
 });
 
 test("un 403 explica que no tenés acceso en vez de tirar un error", async () => {
