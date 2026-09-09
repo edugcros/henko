@@ -453,6 +453,23 @@ export const getPlatformMonthlyTokenBudget = () => {
 }
 
 /**
+ * Tokens que consume un análisis de visión.
+ *
+ * MEDICIÓN (agosto 2026, gemini-3.6-flash): ~3.900 tokens de entrada más la
+ * imagen contra ~1.000 de salida. Se usa solo para convertir el techo del
+ * presupuesto —que está en tokens— a la unidad en que se mide visión, que son
+ * análisis. No interviene en ningún costo: el costo de visión se calcula con
+ * el usageMetadata real que devuelve Gemini.
+ *
+ * El promedio se va a mover cuando cambie el prompt. Desde que existe el
+ * ledger ese número se puede MEDIR en vez de estimar: el promedio de
+ * totalTokens de las filas de visión del período lo dice. Cuando el panel de
+ * costos exista, conviene contrastarlo y ajustar por entorno.
+ */
+const getVisionTokensPerCall = () =>
+  Math.max(1, readEnvNumber('AI_VISION_TOKENS_PER_CALL') ?? 4900)
+
+/**
  * Techo por tenant sobre la key COMPARTIDA de la plataforma.
  *
  * "Ilimitado" es una entitlement coherente cuando el comercio paga su propio
@@ -466,24 +483,49 @@ export const getPlatformMonthlyTokenBudget = () => {
  * compartida puede pasarse de una fracción del presupuesto de la plataforma.
  * Con el disyuntor apagado no hay fracción que calcular y no se aplica.
  *
- * Solo toca los tokens: es la métrica que traduce a dinero. Los topes finitos
- * de un plan no se tocan — son deliberados.
+ * Solo toca las métricas que traducen a dinero contra el presupuesto de la
+ * plataforma: los tokens, y visión, que se mide en unidades pero gasta tokens
+ * igual. Los topes finitos de un plan no se tocan — son deliberados; esto
+ * aplica únicamente donde el plan dice "ilimitado".
+ *
+ * Lo que queda deliberadamente afuera: las ediciones de imagen se pagan por
+ * imagen a otro proveedor y no consumen tokens, así que derivarles un techo de
+ * un presupuesto medido en tokens no significaría nada. Su freno son las
+ * cuotas por plan.
  */
 export const getSharedKeyTenantCap = metric => {
+  const normalizedMetric = normalizeMetric(metric)
+
   // La guarda vieja comparaba solo contra AGENT_TOKENS y quedó viva debajo de
   // la nueva cuando se agregó MARKET_TOKENS: el array declaraba las dos
   // métricas y la línea siguiente dejaba pasar de largo a la segunda, así que
   // el análisis de mercado no tenía techo por tenant sobre la key compartida.
   const TOKEN_METRICS = [AI_METRICS.AGENT_TOKENS, AI_METRICS.MARKET_TOKENS]
-  if (!TOKEN_METRICS.includes(normalizeMetric(metric))) return UNLIMITED
+  const isTokenMetric = TOKEN_METRICS.includes(normalizedMetric)
+  const isVision = normalizedMetric === AI_METRICS.VISION
+
+  if (!isTokenMetric && !isVision) return UNLIMITED
 
   const budget = getPlatformMonthlyTokenBudget()
   if (budget === UNLIMITED) return UNLIMITED
 
   const rawShare = readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5
   const share = Math.min(Math.max(rawShare, 0.01), 1)
+  const tokenCap = Math.floor(budget * share)
 
-  return Math.floor(budget * share)
+  if (isTokenMetric) return tokenCap
+
+  // Visión se mide en unidades, no en tokens, y por eso quedaba fuera de esta
+  // regla: era el ÚNICO gasto sin techo por tenant sobre la key compartida. Un
+  // enterprise sin key propia tiene visión ilimitada, y desde que visión
+  // reporta sus tokens (ver recordTokenSpend) esos tokens pegan contra el
+  // disyuntor — o sea que un solo comercio podía llevarse el presupuesto
+  // entero y dejar sin IA a todos los demás.
+  //
+  // No hace falta una regla nueva: alcanza con expresar la misma fracción en
+  // la unidad que esta métrica usa, convirtiéndola por lo que cuesta un
+  // análisis.
+  return Math.max(1, Math.floor(tokenCap / getVisionTokensPerCall()))
 }
 
 export default {

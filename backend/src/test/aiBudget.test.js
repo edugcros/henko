@@ -515,6 +515,100 @@ describe("aiBudgetService · reserva", () => {
     delete process.env.AI_PLATFORM_PER_TENANT_SHARE;
   });
 
+  test("visión sobre la key compartida deja de ser ilimitada", async () => {
+    // Era el único gasto sin techo por tenant: se mide en unidades, así que
+    // quedaba fuera de la regla de los tokens. Y desde que visión reporta sus
+    // tokens, esos tokens pegan contra el disyuntor — un solo enterprise podía
+    // llevarse el presupuesto entero y dejar sin IA a todos los demás.
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
+    process.env.AI_PLATFORM_PER_TENANT_SHARE = "0.5";
+    process.env.AI_VISION_TOKENS_PER_CALL = "5000";
+
+    mockProfile.mockResolvedValue(
+      platformProfile({ plan: "enterprise", keySource: "platform" }),
+    );
+    mockPlatformUsage.findOne.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 3 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.unlimited).toBe(false);
+    // La misma mitad del presupuesto, expresada en análisis: 10M / 5.000.
+    expect(result.limit).toBe(2000);
+
+    delete process.env.AI_PLATFORM_PER_TENANT_SHARE;
+    delete process.env.AI_VISION_TOKENS_PER_CALL;
+  });
+
+  test("con key propia la visión sigue siendo ilimitada de verdad", async () => {
+    // El techo existe porque el gasto es de otro. Si el comercio paga su
+    // propia key, no hay presupuesto de plataforma que racionar.
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
+
+    mockProfile.mockResolvedValue(
+      platformProfile({ plan: "enterprise", keySource: "tenant" }),
+    );
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.unlimited).toBe(true);
+  });
+
+  test("el techo derivado no pisa la cuota finita de visión de un plan", async () => {
+    // 50 análisis para un free es una decisión de producto, no un accidente:
+    // el techo derivado solo aparece donde el plan dice "ilimitado".
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
+
+    mockProfile.mockResolvedValue(platformProfile({ plan: "free" }));
+    mockPlatformUsage.findOne.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 1 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+    });
+
+    expect(result.limit).toBe(50);
+  });
+
+  test("las ediciones de imagen quedan afuera a propósito", async () => {
+    // Se pagan por imagen a otro proveedor y no consumen tokens: derivarles un
+    // techo de un presupuesto medido en tokens no significaría nada.
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
+
+    mockProfile.mockResolvedValue(
+      platformProfile({ plan: "enterprise", keySource: "platform" }),
+    );
+    mockPlatformUsage.findOne.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+    });
+
+    expect(result.unlimited).toBe(true);
+  });
+
   test("el techo por tenant también aplica a los tokens de mercado", async () => {
     // Regresión: getSharedKeyTenantCap declaraba las dos métricas en un array
     // y después dejaba viva la guarda vieja que comparaba solo contra

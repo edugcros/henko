@@ -92,8 +92,22 @@ consumo, y una contradicción cuando corre sobre la key de todos. Por eso, sobre
 la key compartida, un plan sin tope pasa a tener uno derivado del presupuesto:
 `AI_PLATFORM_PER_TENANT_SHARE` (0.5 por defecto, o sea la mitad).
 
-Solo aplica a los tokens — es la métrica que traduce a dinero — y solo cuando
-el tope del plan es ilimitado. Los topes finitos son deliberados y no se tocan.
+Aplica a las métricas que traducen a dinero contra el presupuesto, y solo
+cuando el tope del plan es ilimitado. Los topes finitos son deliberados y no se
+tocan.
+
+Esas métricas son las de tokens (`agentTokens`, `marketTokens`) y **visión**.
+Visión se mide en unidades, así que estuvo fuera de esta regla hasta el
+09/09/2026 — era el único gasto sin techo por tenant, y desde que reporta sus
+tokens (`recordTokenSpend`) esos tokens pegan contra el disyuntor: un solo
+enterprise sobre la key compartida podía llevarse el presupuesto entero. Su
+techo es la misma fracción convertida a análisis, dividiendo por
+`AI_VISION_TOKENS_PER_CALL` (4.900 por defecto, medido).
+
+Las **ediciones de imagen** quedan afuera a propósito: se pagan por imagen a
+otro proveedor y no consumen tokens, así que derivarles un techo de un
+presupuesto medido en tokens no significaría nada. Su freno son las cuotas por
+plan.
 
 **Cómo dimensionar el presupuesto:** por encima de la suma esperada de las
 cuotas de los tenants activos, no por debajo. Un disyuntor por debajo de esa
