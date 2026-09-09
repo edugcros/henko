@@ -275,8 +275,15 @@ const announceBudgetPressure = async ({ period, usage, budget }) => {
     // previo: con varias instancias corriendo, leer-y-después-escribir emite el
     // mismo aviso una vez por instancia.
     const claimed = await AiPlatformUsage.findOneAndUpdate(
-      { period, alertedThreshold: { $lt: reached } },
+      {
+        period,
+        $or: [
+          { alertedThreshold: { $exists: false } },
+          { alertedThreshold: { $lt: reached } },
+        ],
+      },
       { $set: { alertedThreshold: reached } },
+      { new: true },
     ).lean()
 
     if (!claimed) return
@@ -318,18 +325,25 @@ const announceBudgetPressure = async ({ period, usage, budget }) => {
   }
 }
 
-const registerPlatformConsumption = async ({ tokens, costUsd }) => {
-  const period = getCurrentPeriod()
+const registerPlatformConsumption = async ({
+  tokens,
+  costUsd,
+  period: requestedPeriod = null,
+}) => {
+  const period = requestedPeriod || getCurrentPeriod()
   const budget = getPlatformMonthlyTokenBudget()
+  const normalizedTokens = Math.max(0, Math.round(Number(tokens) || 0))
+  const normalizedCost = Math.max(0, Number(costUsd) || 0)
 
   const updated = await AiPlatformUsage.findOneAndUpdate(
     { period },
     {
       $inc: {
-        tokens: Math.max(0, Math.round(tokens || 0)),
-        estimatedCostUsd: Math.max(0, costUsd || 0),
+        tokens: normalizedTokens,
+        estimatedCostUsd: normalizedCost,
       },
       $set: { lastActivityAt: new Date() },
+      $setOnInsert: { period },
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   ).lean()
@@ -338,77 +352,191 @@ const registerPlatformConsumption = async ({ tokens, costUsd }) => {
 
   await announceBudgetPressure({ period, usage: updated, budget })
 
+  // Solo una instancia puede reclamar el disparo. Se tolera tanto null como
+  // campo ausente porque convivimos con documentos creados por versiones viejas.
   if (updated.tokens >= budget && !updated.breakerTrippedAt) {
-    await AiPlatformUsage.updateOne(
-      { period, breakerTrippedAt: null },
+    const claimed = await AiPlatformUsage.findOneAndUpdate(
+      {
+        period,
+        $or: [
+          { breakerTrippedAt: null },
+          { breakerTrippedAt: { $exists: false } },
+        ],
+      },
       { $set: { breakerTrippedAt: new Date() } },
-    )
+      { new: true },
+    ).lean()
 
-    logger.error('[AI BUDGET] Disyuntor de plataforma activado', {
-      period,
-      tokens: updated.tokens,
-      budget,
-      estimatedCostUsd: Number(updated.estimatedCostUsd || 0).toFixed(2),
-    })
+    if (claimed) {
+      logger.error('[AI BUDGET] Disyuntor de plataforma activado', {
+        period,
+        tokens: claimed.tokens,
+        budget,
+        estimatedCostUsd: Number(claimed.estimatedCostUsd || 0).toFixed(2),
+      })
 
-    // El corte deja sin IA a todos los comercios sobre la key compartida. Es el
-    // único evento de este archivo que amerita interrumpir a alguien.
-    const topSpend = await getPeriodSpendByMetric(period).catch(() => [])
+      const topSpend = await getPeriodSpendByMetric(period).catch(() => [])
 
-    await notifyBudgetPressure({
-      period,
-      percent: '100',
-      tokens: updated.tokens,
-      budget,
-      estimatedCostUsd: Number(updated.estimatedCostUsd || 0),
-      topSpend: topSpend.slice(0, 3),
-      tripped: true,
-    }).catch(() => undefined)
+      await notifyBudgetPressure({
+        period,
+        percent: '100',
+        tokens: claimed.tokens,
+        budget,
+        estimatedCostUsd: Number(claimed.estimatedCostUsd || 0),
+        topSpend: topSpend.slice(0, 3),
+        tripped: true,
+      }).catch(() => undefined)
+    }
   }
 
-  // El cache del disyuntor quedó viejo en el momento en que cruzamos el tope.
   if (updated.tokens >= budget) await cacheDel(`${BREAKER_CACHE_KEY}:${period}`)
 
   return updated
 }
 
-// ─── Reserva ─────────────────────────────────────────────
+// ─── Reserva y cuota ──────────────────────────────────────
 
-const applyReservation = async ({ tenantId, period, metric, amount, conditions }) => {
-  const now = new Date()
+const normalizeAmount = (value, fallback = 1) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback
+  return Math.max(1, Math.floor(numeric))
+}
 
+
+/**
+ * Inicializa el documento del período sin intentar reservar en el mismo upsert.
+ * Separar "crear documento" de "incrementar contador" evita que un filtro de
+ * cuota que no matchee termine en un upsert que cree un documento sin respetar
+ * el límite.
+ */
+const ensureUsageDocument = async ({ tenantId, period }) => {
+  await AiUsage.updateOne(
+    { tenantId, period },
+    {
+      $setOnInsert: {
+        tenantId,
+        period,
+      },
+    },
+    { upsert: true, setDefaultsOnInsert: true },
+  ).setOptions({ tenantId })
+}
+
+/**
+ * Migra contadores creados por versiones anteriores del servicio.
+ *
+ * La visión históricamente usaba `analysisCount`. Para las demás métricas un
+ * contador ausente significa cero. La inicialización es atómica mediante un
+ * update pipeline y solo afecta el campo cuando todavía no existe.
+ */
+const ensureCounter = async ({ tenantId, period, metric }) => {
+  const path = counterPath(metric)
+  const valueExpression = metric === AI_METRICS.VISION
+    ? { $ifNull: ['$analysisCount', 0] }
+    : 0
+
+  await AiUsage.updateOne(
+    {
+      tenantId,
+      period,
+      [path]: { $exists: false },
+    },
+    [
+      {
+        $set: {
+          [path]: valueExpression,
+        },
+      },
+    ],
+  ).setOptions({ tenantId })
+}
+
+const buildQuotaExpression = ({ metric, limit, amount }) => {
+  if (limit === UNLIMITED) return null
+
+  const path = `$${counterPath(metric)}`
+  return {
+    $lte: [
+      {
+        $add: [
+          { $ifNull: [path, 0] },
+          amount,
+        ],
+      },
+      limit,
+    ],
+  }
+}
+
+const buildGuardExpression = ({ metric, limit }) => {
+  if (limit === UNLIMITED) return null
+
+  return {
+    $lt: [
+      { $ifNull: [`$${counterPath(metric)}`, 0] },
+      limit,
+    ],
+  }
+}
+
+const buildAtomicReservationFilter = ({ tenantId, period, metric, limit, amount, guardLimits }) => {
+  const expressions = []
+  const quotaExpression = buildQuotaExpression({ metric, limit, amount })
+  if (quotaExpression) expressions.push(quotaExpression)
+
+  for (const guard of guardLimits) {
+    const expression = buildGuardExpression(guard)
+    if (expression) expressions.push(expression)
+  }
+
+  return {
+    tenantId,
+    period,
+    ...(expressions.length > 0 ? { $expr: { $and: expressions } } : {}),
+  }
+}
+
+/**
+ * Reserva de forma estrictamente atómica.
+ *
+ * IMPORTANTE: no usa `upsert:true` con el filtro de cuota. Primero garantiza la
+ * existencia del documento y después ejecuta un findOneAndUpdate sin upsert.
+ * Así, cuando `used + amount > limit`, la operación simplemente no matchea y
+ * jamás crea un documento saltándose el límite.
+ */
+const applyReservation = async ({ tenantId, period, metric, amount, limit, guardLimits }) => {
   const increment = {
     [counterPath(metric)]: amount,
-    // analysisCount se mantiene sincronizado con counters.vision porque el
-    // panel de análisis y los snapshots viejos lo leen por ese nombre.
     ...(metric === AI_METRICS.VISION ? { analysisCount: amount } : {}),
   }
 
+  await ensureUsageDocument({ tenantId, period })
+  await ensureCounter({ tenantId, period, metric })
+
   return AiUsage.findOneAndUpdate(
-    { tenantId, period, ...conditions },
+    buildAtomicReservationFilter({
+      tenantId,
+      period,
+      metric,
+      limit,
+      amount,
+      guardLimits,
+    }),
     {
       $inc: increment,
       $set: {
-        lastActivityAt: now,
-        ...(metric === AI_METRICS.VISION ? { lastAnalysisAt: now } : {}),
+        lastActivityAt: new Date(),
+        ...(metric === AI_METRICS.VISION ? { lastAnalysisAt: new Date() } : {}),
       },
     },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    { new: true, setDefaultsOnInsert: true },
   ).setOptions({ tenantId })
 }
 
 /**
  * Autolímite del comercio. Solo puede APRETAR el tope del plan, nunca
  * aflojarlo: si se aceptara un valor más alto, cualquier admin de tenant se
- * subiría la cuota desde su propio panel, que es exactamente el agujero que
- * este refactor viene a cerrar.
- */
-/**
- * Tope efectivo de una métrica: el del plan, salvo que el plan diga
- * "ilimitado" y el comercio esté corriendo sobre la key compartida. Ahí manda
- * el techo por tenant de aiPlanPolicy, porque ilimitado-sobre-la-key-de-todos
- * significa que un solo comercio puede hacer saltar el disyuntor y dejar sin
- * asistente a los demás.
+ * subiría la cuota desde su propio panel.
  */
 const resolveEffectiveLimit = ({ plan, metric, keySource }) => {
   const planLimit = getPlanLimit(plan, metric)
@@ -426,15 +554,31 @@ const applyLimitOverride = (planLimit, override) => {
   return Math.min(planLimit, Math.floor(value))
 }
 
+const buildAllowedResult = ({ metric, limit, used, profile, reason = 'ok', byok = false }) => ({
+  allowed: true,
+  metric,
+  limit,
+  used,
+  remaining: limit === UNLIMITED ? null : Math.max(0, limit - used),
+  unlimited: limit === UNLIMITED,
+  byok,
+  reason,
+  keySource: profile.keySource,
+  plan: profile.plan,
+  label: AI_METRIC_LABELS[metric],
+})
+
 /**
  * Reserva consumo para un tenant.
  *
- * @param guards         Métricas que además deben NO estar agotadas para
- *                       permitir la operación (el caso real: no contestar un
- *                       mensaje más si ya se pasó del tope de tokens del mes).
- *                       Se evalúan dentro del mismo filtro para que sigan
- *                       siendo atómicas.
+ * Los nombres y el contrato de la función pública se conservan. Se agregan
+ * solo parámetros opcionales (`period`) para poder corregir refunds de
+ * operaciones que crucen el cambio de mes sin romper callers existentes.
+ *
+ * @param guards         Métricas que deben seguir por debajo del límite.
  * @param limitOverride  Autolímite del comercio, siempre hacia abajo.
+ * @param period         Período explícito para operaciones controladas. Si no
+ *                       viene, se usa el período actual como antes.
  */
 export const reserveAiBudget = async ({
   tenantId,
@@ -443,9 +587,11 @@ export const reserveAiBudget = async ({
   guards = [],
   profile = null,
   limitOverride = null,
+  period: requestedPeriod = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
+  const reservationAmount = normalizeAmount(amount)
 
   if (!normalizedMetric) throw new Error(`Métrica de IA desconocida: ${metric}`)
   if (!id) throw new Error('reserveAiBudget requiere tenantId')
@@ -482,29 +628,25 @@ export const reserveAiBudget = async ({
     })
   }
 
-  // Con key propia el gasto no toca la factura de la plataforma: se registra
-  // (para poder dimensionar el plan del comercio) pero no se cobra cuota.
+  // BYOK no consume presupuesto de infraestructura de HENKO. Conservamos el
+  // registro de uso porque el panel necesita visibilidad del consumo del tenant.
   if (aiProfile.keySource === KEY_SOURCE.TENANT) {
     await recordAiConsumption({
       tenantId: id,
       metric: normalizedMetric,
-      amount,
+      amount: reservationAmount,
       profile: aiProfile,
+      period: requestedPeriod || undefined,
     })
 
-    return {
-      allowed: true,
+    return buildAllowedResult({
       metric: normalizedMetric,
       limit: UNLIMITED,
       used: 0,
-      remaining: null,
-      unlimited: true,
-      byok: true,
+      profile: aiProfile,
       reason: 'byok',
-      keySource: aiProfile.keySource,
-      plan: aiProfile.plan,
-      label: AI_METRIC_LABELS[normalizedMetric],
-    }
+      byok: true,
+    })
   }
 
   if (await isPlatformBudgetExhausted()) {
@@ -517,11 +659,10 @@ export const reserveAiBudget = async ({
     })
   }
 
-  const period = getCurrentPeriod()
-
-  const guardLimits = (guards || [])
-    .map(normalizeMetric)
-    .filter(Boolean)
+  const period = requestedPeriod || getCurrentPeriod()
+  const uniqueGuardMetrics = [...new Set((guards || []).map(normalizeMetric).filter(Boolean))]
+  const guardLimits = uniqueGuardMetrics
+    .filter(guardMetric => guardMetric !== normalizedMetric)
     .map(guardMetric => ({
       metric: guardMetric,
       limit: resolveEffectiveLimit({
@@ -532,70 +673,20 @@ export const reserveAiBudget = async ({
     }))
     .filter(guard => guard.limit !== UNLIMITED)
 
-  const conditions = {
-    ...(limit === UNLIMITED
-      ? {}
-      : { [counterPath(normalizedMetric)]: { $lt: limit } }),
-    ...guardLimits.reduce((acc, guard) => {
-      acc[counterPath(guard.metric)] = { $lt: guard.limit }
-      return acc
-    }, {}),
-  }
+  const updated = await applyReservation({
+    tenantId: id,
+    period,
+    metric: normalizedMetric,
+    amount: reservationAmount,
+    limit,
+    guardLimits,
+  })
 
-  try {
-    const updated = await applyReservation({
-      tenantId: id,
-      period,
-      metric: normalizedMetric,
-      amount,
-      conditions,
-    })
-
-    const used = readCounter(updated, normalizedMetric)
-
-    // La reserva se anota sin costo: acá todavía no se sabe cuántos tokens va
-    // a gastar la operación. El costo llega con el 'consumed' correspondiente,
-    // y si el proveedor falla llega un 'refunded'. El gasto real de un comercio
-    // es la suma de sus consumed menos sus refunded — las reservas quedan como
-    // rastro de intención, útil para ver cuánto se pidió contra cuánto se usó.
-    writeLedgerEntry({
-      tenantId: id,
-      period,
-      event: LEDGER_EVENT.RESERVED,
-      metric: normalizedMetric,
-      amount,
-      unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
-      keySource: aiProfile.keySource,
-      plan: aiProfile.plan,
-    })
-
-    return {
-      allowed: true,
-      metric: normalizedMetric,
-      limit,
-      used,
-      remaining: limit === UNLIMITED ? null : Math.max(0, limit - used),
-      unlimited: limit === UNLIMITED,
-      byok: false,
-      reason: 'ok',
-      keySource: aiProfile.keySource,
-      plan: aiProfile.plan,
-      label: AI_METRIC_LABELS[normalizedMetric],
-    }
-  } catch (error) {
-    if (error?.code !== 11000) throw error
-
-    // E11000 significa que el filtro no matcheó (el documento del período ya
-    // existe) y el upsert chocó contra el índice único {tenantId, period}.
-    // Casi siempre es "sin cupo", pero también puede ser un documento viejo
-    // sin el campo counters.<metric> todavía creado. Hay que distinguirlos:
-    // tratar lo segundo como "sin cupo" dejaría al tenant bloqueado para
-    // siempre en una métrica que nunca usó.
+  if (!updated) {
     const usage = await AiUsage.findOne({ tenantId: id, period })
       .setOptions({ tenantId: id })
       .lean()
 
-    const used = readCounter(usage, normalizedMetric)
     const exhaustedGuard = guardLimits.find(
       guard => readCounter(usage, guard.metric) >= guard.limit,
     )
@@ -611,7 +702,8 @@ export const reserveAiBudget = async ({
       })
     }
 
-    if (limit !== UNLIMITED && used >= limit) {
+    const used = readCounter(usage, normalizedMetric)
+    if (limit !== UNLIMITED && used + reservationAmount > limit) {
       return buildDeniedResult({
         metric: normalizedMetric,
         limit,
@@ -621,77 +713,91 @@ export const reserveAiBudget = async ({
       })
     }
 
-    // Documento preexistente al que le faltaba el contador: lo creamos y
-    // seguimos. La ventana de carrera acá es de una unidad y solo puede pasar
-    // una vez por tenant y métrica, la primera vez después del deploy.
-    const healed = await applyReservation({
+    // El rechazo no debería llegar acá salvo que otra condición cambie entre
+    // lecturas o que Mongo/Mongoose rechace la expresión de forma transitoria.
+    // No reintentamos sin condición porque eso podría convertir un error de
+    // concurrencia en una sobrerreserva.
+    const error = new Error('No se pudo confirmar la reserva atómica de IA')
+    error.code = 'AI_RESERVATION_NOT_CONFIRMED'
+    error.details = {
       tenantId: id,
       period,
       metric: normalizedMetric,
-      amount,
-      conditions: {},
-    })
-
-    const healedUsed = readCounter(healed, normalizedMetric)
-
-    return {
-      allowed: true,
-      metric: normalizedMetric,
-      limit,
-      used: healedUsed,
-      remaining: limit === UNLIMITED ? null : Math.max(0, limit - healedUsed),
-      unlimited: limit === UNLIMITED,
-      byok: false,
-      reason: 'ok_backfilled',
-      keySource: aiProfile.keySource,
-      plan: aiProfile.plan,
-      label: AI_METRIC_LABELS[normalizedMetric],
+      amount: reservationAmount,
     }
+    throw error
   }
+
+  const used = readCounter(updated, normalizedMetric)
+
+  writeLedgerEntry({
+    tenantId: id,
+    period,
+    event: LEDGER_EVENT.RESERVED,
+    metric: normalizedMetric,
+    amount: reservationAmount,
+    unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
+    keySource: aiProfile.keySource,
+    plan: aiProfile.plan,
+  })
+
+  return buildAllowedResult({
+    metric: normalizedMetric,
+    limit,
+    used,
+    profile: aiProfile,
+  })
 }
 
 /**
- * Devuelve una reserva cuando el proveedor falló. No es culpa del comercio,
- * así que no le puede contar contra el cupo.
+ * Devuelve una reserva cuando el proveedor falló. El período ahora puede ser
+ * enviado por el caller; sin él se conserva el comportamiento histórico.
  */
-export const refundAiBudget = async ({ tenantId, metric, amount = 1 }) => {
+export const refundAiBudget = async ({
+  tenantId,
+  metric,
+  amount = 1,
+  period: requestedPeriod = null,
+}) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
+  const refundAmount = normalizeAmount(amount)
 
   if (!normalizedMetric || !id) return
 
-  const period = getCurrentPeriod()
+  const period = requestedPeriod || getCurrentPeriod()
 
   try {
     const refunded = await AiUsage.findOneAndUpdate(
       {
         tenantId: id,
         period,
-        [counterPath(normalizedMetric)]: { $gte: amount },
+        $expr: {
+          $gte: [
+            { $ifNull: [`$${counterPath(normalizedMetric)}`, 0] },
+            refundAmount,
+          ],
+        },
       },
       {
         $inc: {
-          [counterPath(normalizedMetric)]: -amount,
+          [counterPath(normalizedMetric)]: -refundAmount,
           ...(normalizedMetric === AI_METRICS.VISION
-            ? { analysisCount: -amount }
+            ? { analysisCount: -refundAmount }
             : {}),
         },
+        $set: { lastActivityAt: new Date() },
       },
+      { new: true },
     ).setOptions({ tenantId: id })
 
-    // Solo se anota si el descuento OCURRIÓ. El filtro lleva un $gte que puede
-    // no matchear —contador ya en cero, período distinto—, y en ese caso
-    // findOneAndUpdate devuelve null sin tocar nada. Registrar igual metería en
-    // el libro una devolución que nunca pasó, y el gasto real se calcula
-    // restando los refunded: una fila de más deja la cuenta por debajo de la
-    // verdad, que es el error caro de los dos.
     if (refunded) {
       writeLedgerEntry({
         tenantId: id,
         period,
         event: LEDGER_EVENT.REFUNDED,
         metric: normalizedMetric,
-        amount,
+        amount: refundAmount,
         unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
       })
     }
@@ -699,31 +805,28 @@ export const refundAiBudget = async ({ tenantId, metric, amount = 1 }) => {
     logger.warn('[AI BUDGET] No se pudo devolver la reserva', {
       tenantId: id,
       metric: normalizedMetric,
+      period,
       error: error.message,
     })
   }
 }
 
 /**
- * Registra consumo ya ocurrido (tokens, o el consumo de un tenant BYOK).
- * Nunca bloquea: lo que ya se gastó, se gastó; el efecto es sobre la próxima
- * operación, que sí encuentra el contador arriba del tope.
+ * Registra consumo ya ocurrido (tokens, o consumo de un tenant BYOK).
+ *
+ * `period` es opcional y mantiene compatibilidad con callers actuales. Cuando
+ * el caller conoce el período de la operación, debe enviarlo para que la
+ * contabilización no cruce de mes.
  */
 export const recordAiConsumption = async ({
   tenantId,
   metric,
   amount = 0,
   profile = null,
-  // Modelo que produjo el consumo. Opcional, pero el que lo sabe debería
-  // pasarlo: con la cadena de respaldo, el modelo que corrió puede no ser el
-  // configurado y las tarifas difieren hasta 5x.
   model = null,
-  // Desglose medido, cuando el proveedor lo devuelve (usageMetadata trae
-  // promptTokenCount y candidatesTokenCount). Sin él el costo se reparte con
-  // una proporción supuesta, y la salida cuesta cinco veces la entrada — o sea
-  // que el reparto es justo donde más se equivoca uno.
   inputTokens = null,
   outputTokens = null,
+  period: requestedPeriod = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -732,45 +835,47 @@ export const recordAiConsumption = async ({
   if (!normalizedMetric || !id) return
   if (!Number.isFinite(value) || value <= 0) return
 
+  const normalizedAmount = normalizeAmount(value)
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const isByok = aiProfile.keySource === KEY_SOURCE.TENANT
   const isTokenMetric = TOKEN_METRICS.has(normalizedMetric)
   const usedModel = normalizeModelName(model || getDefaultPricingModel())
 
-  // El costo sale del catálogo por modelo en vez de una tarifa mezclada: la
-  // salida cuesta cinco veces la entrada, así que un promedio único se
-  // equivoca en cuanto cambia la proporción entre una operación y otra.
   const breakdown = isTokenMetric && !isByok
-    ? computeCostUsd({ model: usedModel, inputTokens, outputTokens, totalTokens: value })
+    ? computeCostUsd({ model: usedModel, inputTokens, outputTokens, totalTokens: normalizedAmount })
     : null
 
   const costUsd = breakdown?.costUsd || 0
-  const period = getCurrentPeriod()
+  const period = requestedPeriod || getCurrentPeriod()
 
   try {
-    await AiUsage.findOneAndUpdate(
+    await ensureUsageDocument({ tenantId: id, period })
+    await AiUsage.updateOne(
       { tenantId: id, period },
       {
         $inc: {
-          [counterPath(normalizedMetric)]: Math.round(value),
-          ...(isTokenMetric && isByok ? { byokTokens: Math.round(value) } : {}),
+          [counterPath(normalizedMetric)]: normalizedAmount,
+          ...(isTokenMetric && isByok ? { byokTokens: normalizedAmount } : {}),
           ...(costUsd > 0 ? { estimatedCostUsd: costUsd } : {}),
         },
         $set: { lastActivityAt: new Date() },
       },
-      { upsert: true, setDefaultsOnInsert: true },
     ).setOptions({ tenantId: id })
   } catch (error) {
     logger.warn('[AI BUDGET] No se pudo registrar consumo', {
       tenantId: id,
       metric: normalizedMetric,
+      period,
       error: error.message,
     })
   }
 
   if (isTokenMetric && !isByok) {
-    await registerPlatformConsumption({ tokens: value, costUsd }).catch(error => {
+    await registerPlatformConsumption({ tokens: normalizedAmount, costUsd, period }).catch(error => {
       logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma', {
+        tenantId: id,
+        metric: normalizedMetric,
+        period,
         error: error.message,
       })
     })
@@ -781,7 +886,7 @@ export const recordAiConsumption = async ({
     period,
     event: LEDGER_EVENT.CONSUMED,
     metric: normalizedMetric,
-    amount: value,
+    amount: normalizedAmount,
     model: isTokenMetric ? usedModel : null,
     keySource: aiProfile.keySource,
     plan: aiProfile.plan,
@@ -794,19 +899,9 @@ export const recordAiConsumption = async ({
 /**
  * Tokens de una operación que al tenant ya se le cobró POR UNIDAD.
  *
- * Visión es el caso: al comercio se le descuenta un análisis, y los tokens que
- * ese análisis gastó le cuestan plata a HENKO igual. Hasta acá nadie los
- * contaba — el disyuntor de plataforma, que es el único techo duro de la
- * factura, no veía la operación más cara por llamada de todo el sistema. Un
- * techo que no ve el gasto más grande no es un techo.
- *
- * Deliberadamente NO toca ningún contador de cuota: la unidad ya se descontó en
- * la reserva, y sumarle tokens a un contador que cuenta análisis rompería el
- * tope del plan (50 análisis pasarían a agotarse en el primero). Sí suma el
- * costo del período, el consumo de plataforma y el ledger.
- *
- * Recibe el desglose medido cuando existe —acá sí existe, Gemini lo devuelve en
- * usageMetadata— así que este costo no es repartido: es el real.
+ * Esta función no toca counters de cuota: la unidad (por ejemplo, un análisis
+ * de visión) ya fue descontada por reserveAiBudget. Solo registra costo,
+ * consumo de plataforma y ledger.
  */
 export const recordTokenSpend = async ({
   tenantId,
@@ -816,6 +911,7 @@ export const recordTokenSpend = async ({
   outputTokens = null,
   totalTokens = null,
   profile = null,
+  period: requestedPeriod = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -833,27 +929,24 @@ export const recordTokenSpend = async ({
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const isByok = aiProfile.keySource === KEY_SOURCE.TENANT
-
-  // Con key propia el comercio le paga a Google directo: se registra para que
-  // su panel lo vea, con costo 0 y sin tocar el disyuntor, que existe para
-  // proteger la factura de HENKO y no la de él.
   const costUsd = isByok ? 0 : breakdown.costUsd
-  const period = getCurrentPeriod()
+  const period = requestedPeriod || getCurrentPeriod()
 
   if (costUsd > 0) {
     try {
-      await AiUsage.findOneAndUpdate(
+      await ensureUsageDocument({ tenantId: id, period })
+      await AiUsage.updateOne(
         { tenantId: id, period },
         {
           $inc: { estimatedCostUsd: costUsd },
           $set: { lastActivityAt: new Date() },
         },
-        { upsert: true, setDefaultsOnInsert: true },
       ).setOptions({ tenantId: id })
     } catch (error) {
       logger.warn('[AI BUDGET] No se pudo registrar el costo de tokens', {
         tenantId: id,
         metric: normalizedMetric,
+        period,
         error: error.message,
       })
     }
@@ -863,8 +956,12 @@ export const recordTokenSpend = async ({
     await registerPlatformConsumption({
       tokens: breakdown.totalTokens,
       costUsd,
+      period,
     }).catch(error => {
       logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma', {
+        tenantId: id,
+        metric: normalizedMetric,
+        period,
         error: error.message,
       })
     })
@@ -886,42 +983,48 @@ export const recordTokenSpend = async ({
 }
 
 /**
- * Costo de una generación de imagen (Replicate/HuggingFace) — separado de
- * recordAiConsumption porque reserveAiBudget para IMAGE_EDITS ya incrementa
- * el contador de cuota por su cuenta (applyReservation); esta función solo
- * toca estimatedCostUsd, nunca counters.imageEdits, para no duplicar el
- * conteo de cuota.
+ * Costo de una generación de imagen (Replicate/HuggingFace).
+ * No toca counters.imageEdits porque la cuota por unidad ya fue reservada.
  */
-export const recordImageGenerationCost = async ({ tenantId, profile = null, count = 1 }) => {
+export const recordImageGenerationCost = async ({
+  tenantId,
+  profile = null,
+  count = 1,
+  period: requestedPeriod = null,
+}) => {
   const id = clean(tenantId)
   if (!id) return
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
-  if (aiProfile.keySource === KEY_SOURCE.TENANT) return // BYOK: no le cuesta a la plataforma
+  if (aiProfile.keySource === KEY_SOURCE.TENANT) return
 
-  const costUsd = estimateImageCostUsd(count)
+  const imageCount = normalizeAmount(count)
+  const costUsd = estimateImageCostUsd(imageCount)
   if (costUsd <= 0) return
 
-  const period = getCurrentPeriod()
+  const period = requestedPeriod || getCurrentPeriod()
 
   try {
-    await AiUsage.findOneAndUpdate(
+    await ensureUsageDocument({ tenantId: id, period })
+    await AiUsage.updateOne(
       { tenantId: id, period },
       {
         $inc: { estimatedCostUsd: costUsd },
         $set: { lastActivityAt: new Date() },
       },
-      { upsert: true, setDefaultsOnInsert: true },
     ).setOptions({ tenantId: id })
   } catch (error) {
     logger.warn('[AI BUDGET] No se pudo registrar costo de imagen', {
       tenantId: id,
+      period,
       error: error.message,
     })
   }
 
-  await registerPlatformConsumption({ tokens: 0, costUsd }).catch(error => {
+  await registerPlatformConsumption({ tokens: 0, costUsd, period }).catch(error => {
     logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma (imagen)', {
+      tenantId: id,
+      period,
       error: error.message,
     })
   })
