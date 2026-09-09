@@ -21,7 +21,10 @@
     "migrate:tenant-secrets:prod": "cross-env NODE_ENV=production node src/scripts/migrateTenantSecrets.js --apply",
     "lint": "eslint . --ext .js",
     "fix": "eslint . --ext .js --fix",
-    "test": "cross-env NODE_ENV=test node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand"
+    "test": "cross-env NODE_ENV=test node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand",
+    "migrate:ledger-unit": "cross-env NODE_ENV=development node src/scripts/backfillLedgerUnit.js",
+    "migrate:ledger-unit:apply": "cross-env NODE_ENV=development node src/scripts/backfillLedgerUnit.js --apply",
+    "migrate:ledger-unit:prod": "cross-env NODE_ENV=production node src/scripts/backfillLedgerUnit.js --apply"
   },
   "jest": {
     "testTimeout": 30000
