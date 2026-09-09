@@ -9,7 +9,6 @@ process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString(
 const {
   AI_METRICS,
   UNLIMITED,
-  estimateCostUsd,
   getPlanLimit,
   getSubscriptionState,
   isByokAllowedForPlan,
@@ -201,14 +200,8 @@ describe("aiPlanPolicy · suscripción", () => {
   });
 });
 
-describe("aiPlanPolicy · costo estimado", () => {
-  test("convierte tokens a dólares y no devuelve negativos", () => {
-    expect(estimateCostUsd(0)).toBe(0);
-    expect(estimateCostUsd(-100)).toBe(0);
-    expect(estimateCostUsd("no es un número")).toBe(0);
-    expect(estimateCostUsd(1_000_000)).toBeGreaterThan(0);
-  });
-});
+// La cobertura de costeo se mudó a aiModelPricing.test.js junto con la
+// función: acá probaba la tarifa mezclada única que el catálogo reemplazó.
 
 // ─── Medidor ─────────────────────────────────────────────
 //
@@ -865,6 +858,76 @@ describe("aiBudgetService · ledger", () => {
     expect(row.inputTokens + row.outputTokens).toBe(10000);
     // El reparto se supuso a partir del total: queda declarado.
     expect(row.costEstimated).toBe(true);
+  });
+
+  test("si el llamador mide entrada y salida, el costo NO se reparte", async () => {
+    // usageMetadata trae promptTokenCount y candidatesTokenCount. Descartarlos
+    // y repartir 80/20 teniendo el dato al lado es inventar un número.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 1000 }),
+    });
+
+    await recordAiConsumption({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 5000,
+      model: "gemini-3.6-flash",
+      inputTokens: 4500,
+      outputTokens: 500,
+    });
+
+    const row = entry();
+
+    expect(row.costEstimated).toBe(false);
+    expect(row.inputTokens).toBe(4500);
+    expect(row.outputTokens).toBe(500);
+    // 4500 × 0,75/1M + 500 × 3,75/1M — bastante menos que el reparto 80/20.
+    expect(row.costUsd).toBeCloseTo(0.005250, 6);
+  });
+
+  test("el modelo se guarda en forma canónica", async () => {
+    // El nombre viaja al catálogo y al ledger. Con dos criterios distintos,
+    // 'models/Gemini-3.6-Flash' y 'gemini-3.6-flash' quedan como dos gastos
+    // separados en el reporte por modelo.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 1000 }),
+    });
+
+    await recordAiConsumption({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 5000,
+      model: "models/Gemini-3.6-Flash",
+    });
+
+    expect(entry().model).toBe("gemini-3.6-flash");
+    // Y se cobra a la tarifa correcta, no a la conservadora de desconocido.
+    expect(entry().priceInputPerMillion).toBe(0.75);
+  });
+
+  test("un modelo de respaldo se cobra a SU tarifa, no a la del configurado", async () => {
+    // Es la razón de que el modelo se pase: la cadena de respaldo cruza
+    // tarifas que difieren hasta 5x, y un costo con el modelo equivocado sale
+    // plausible y no se nota en ningún lado.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 1000 }),
+    });
+
+    await recordAiConsumption({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 10000,
+      model: "gemini-3.1-flash-lite",
+    });
+
+    expect(entry().priceInputPerMillion).toBe(0.25);
+    expect(entry().priceOutputPerMillion).toBe(1.5);
   });
 
   test("un consumo BYOK se registra con costo cero: no lo paga HENKO", async () => {

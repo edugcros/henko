@@ -34,7 +34,7 @@ import {
   normalizeMetric,
 } from './aiPlanPolicy.js'
 import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
-import { computeCostUsd } from './aiModelPricing.js'
+import { computeCostUsd, normalizeModelName } from './aiModelPricing.js'
 import { getPeriodSpendByMetric } from './aiSpendReportService.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 
@@ -60,12 +60,29 @@ const BREAKER_CACHE_TTL_SEC = 30
 const TOKEN_METRICS = new Set([AI_METRICS.AGENT_TOKENS, AI_METRICS.MARKET_TOKENS])
 
 /**
- * Modelo asumido cuando el llamador no informa cuál usó. Es el mismo que
- * resuelve aiVisionService, así que hoy coincide con el que corre todo.
+ * Último recurso cuando el llamador no informa qué modelo usó.
+ *
+ * Es un supuesto, no una verdad, y por eso conviene que casi nunca se use: el
+ * que corrió la llamada es el único que sabe si hubo respaldo, y la cadena de
+ * respaldo cruza tarifas que difieren hasta 5x (3.6-flash 0,75/3,75 contra
+ * 3.1-flash-lite 0,25/1,50). Un costo calculado con el modelo equivocado no se
+ * nota en ningún lado: sale un número plausible. Hoy visión y el agente pasan
+ * el modelo real; esto queda para lo que no lo haga.
+ *
+ * Se lee en cada llamada, no una vez al arrancar, por la misma razón que el
+ * resto de la política (getPlatformMonthlyTokenBudget, getPlanLimit): un valor
+ * congelado en el import no se puede corregir ni testear sin recargar el
+ * módulo, y es una asimetría que sorprende al que lee el archivo.
+ *
+ * El orden de precedencia replica el de aiVisionService::MODEL_NAME.
  */
-const DEFAULT_PRICING_MODEL = clean(
-  process.env.GEMINI_MODEL || process.env.GOOGLE_IMAGE_MODEL || 'gemini-3.6-flash',
-).replace(/^models\//, '')
+const getDefaultPricingModel = () =>
+  normalizeModelName(
+    process.env.GEMINI_IMAGE_MODEL ||
+      process.env.GOOGLE_IMAGE_MODEL ||
+      process.env.GEMINI_MODEL ||
+      'gemini-3.6-flash',
+  )
 
 /**
  * Escribe una fila del ledger. Nunca lanza.
@@ -668,9 +685,16 @@ export const recordAiConsumption = async ({
   metric,
   amount = 0,
   profile = null,
-  // Modelo que produjo el consumo. Opcional para no tocar los call sites
-  // existentes: sin él se asume el configurado, que es el que corren todos hoy.
+  // Modelo que produjo el consumo. Opcional, pero el que lo sabe debería
+  // pasarlo: con la cadena de respaldo, el modelo que corrió puede no ser el
+  // configurado y las tarifas difieren hasta 5x.
   model = null,
+  // Desglose medido, cuando el proveedor lo devuelve (usageMetadata trae
+  // promptTokenCount y candidatesTokenCount). Sin él el costo se reparte con
+  // una proporción supuesta, y la salida cuesta cinco veces la entrada — o sea
+  // que el reparto es justo donde más se equivoca uno.
+  inputTokens = null,
+  outputTokens = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -682,13 +706,13 @@ export const recordAiConsumption = async ({
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const isByok = aiProfile.keySource === KEY_SOURCE.TENANT
   const isTokenMetric = TOKEN_METRICS.has(normalizedMetric)
-  const usedModel = model || DEFAULT_PRICING_MODEL
+  const usedModel = normalizeModelName(model || getDefaultPricingModel())
 
   // El costo sale del catálogo por modelo en vez de una tarifa mezclada: la
   // salida cuesta cinco veces la entrada, así que un promedio único se
   // equivoca en cuanto cambia la proporción entre una operación y otra.
   const breakdown = isTokenMetric && !isByok
-    ? computeCostUsd({ model: usedModel, totalTokens: value })
+    ? computeCostUsd({ model: usedModel, inputTokens, outputTokens, totalTokens: value })
     : null
 
   const costUsd = breakdown?.costUsd || 0
@@ -770,7 +794,7 @@ export const recordTokenSpend = async ({
   if (!normalizedMetric || !id) return
 
   const breakdown = computeCostUsd({
-    model: model || DEFAULT_PRICING_MODEL,
+    model: model || getDefaultPricingModel(),
     inputTokens,
     outputTokens,
     totalTokens,

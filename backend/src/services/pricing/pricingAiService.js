@@ -194,6 +194,11 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
         metric: AI_METRICS.MARKET_TOKENS,
         amount: tokensUsed,
         profile,
+        // El modelo real y el desglose medido están acá: sin pasarlos, el costo
+        // se calcula con el modelo supuesto y una proporción inventada.
+        model: result?.model,
+        inputTokens: result?.usageMetadata?.promptTokenCount ?? null,
+        outputTokens: result?.usageMetadata?.candidatesTokenCount ?? null,
       }).catch(error => {
         logger.warn('[PRICING AI] No se pudo registrar el consumo de tokens', {
           tenantId: String(tenantId),

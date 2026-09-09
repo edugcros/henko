@@ -61,11 +61,22 @@ const CATALOG = [
  */
 const FALLBACK = { input: 1.5, output: 9.0, fallback: true }
 
-const normalize = model =>
+/**
+ * Forma canónica del nombre de un modelo.
+ *
+ * Se exporta porque el nombre viaja a dos lados —al catálogo para buscar el
+ * precio, y al ledger como dato del movimiento— y tienen que coincidir. Con
+ * dos criterios distintos, 'models/Gemini-3.6-Flash' y 'gemini-3.6-flash'
+ * quedan como dos filas del mismo modelo y el reporte por modelo los muestra
+ * como dos gastos separados.
+ */
+export const normalizeModelName = model =>
   String(model || '')
     .trim()
     .replace(/^models\//, '')
     .toLowerCase()
+
+const normalize = normalizeModelName
 
 const inWindow = (entry, at) => {
   const t = at.getTime()

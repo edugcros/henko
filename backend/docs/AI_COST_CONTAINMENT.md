@@ -227,9 +227,14 @@ configurada.
   así que no lo mide este medidor.
 - **Replicate.** `AI_METRICS.IMAGE_EDITS` cuenta generaciones, no distingue si
   las resolvió Replicate (pago) o HuggingFace (gratis).
-- **Facturación real.** `estimateCostUsd` usa una tarifa mezclada: sirve para
-  ver quién quema la factura, no para cobrarle a nadie. Si algún día se factura
-  de verdad, hay que separar `promptTokenCount` de `candidatesTokenCount`.
+- **Facturación real.** El costo ya se calcula por modelo separando entrada de
+  salida (`services/ai/aiModelPricing.js`), y las rutas de visión, agente y
+  pricing pasan el desglose medido de `usageMetadata`. Las que todavía no
+  —market intelligence, insights, recuperación de carrito— colapsan a un total
+  antes de registrar, así que su costo se reparte con una proporción supuesta.
+  No hay que adivinar cuáles son: las filas del ledger lo declaran en
+  `costEstimated`, y `priceFallback` marca las que se cobraron con la tarifa
+  conservadora por no tener el modelo en el catálogo.
 
 ## Checklist de deploy
 

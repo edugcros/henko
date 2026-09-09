@@ -303,39 +303,17 @@ export const getSubscriptionState = (tenant = {}) => {
 
 // ─── Costo estimado ──────────────────────────────────────
 
-/**
- * Costo aproximado en USD de una cantidad de tokens.
- *
- * Es una tarifa mezclada (entrada + salida) a propósito: sirve para responder
- * "¿quién me está quemando la factura?" en el panel, no para facturarle a
- * nadie. La tarifa real de Google cambia por modelo y por proporción
- * entrada/salida; si algún día se factura de verdad, esto se reemplaza por el
- * detalle de usageMetadata (promptTokenCount vs candidatesTokenCount).
- *
- * DE DÓNDE SALE EL 1.3 (revisado 07/09/2026 contra los precios publicados):
- *
- * gemini-3.6-flash cuesta USD 0.75 por 1M de entrada y 3.75 de salida. El
- * default anterior, 0.9, solo sería correcto con una mezcla de 95% entrada y
- * 5% salida. La real no se le parece: el prompt de visión mide ~3.900 tokens
- * de entrada más la imagen, contra un JSON de salida de ~1.000 — cerca de
- * 75/25, que da un mezclado de ~1.3. Con 0.9 el panel venía subestimando el
- * gasto de visión alrededor de un 45%.
- *
- * OJO: los modelos 3.x duplican tarifa el 1/1/2027 (0.75/3.75 → 1.50/7.50).
- * Ese día este default queda corto por más del doble y hay que llevarlo a
- * ~2.6, o mejor, reemplazar la mezcla por el detalle de usageMetadata.
- *
- * Esto NO cambia cuándo salta el disyuntor: ese cuenta tokens, no dólares.
- * Cambia el número que se muestra y con el que se dimensiona el presupuesto.
- */
-export const estimateCostUsd = tokens => {
-  const amount = Number(tokens)
-  if (!Number.isFinite(amount) || amount <= 0) return 0
-
-  const rate = readEnvNumber('AI_COST_USD_PER_1M_TOKENS') ?? 1.3
-
-  return (amount / 1_000_000) * rate
-}
+// estimateCostUsd vivía acá: una tarifa mezclada única (AI_COST_USD_PER_1M_TOKENS,
+// 1,3 por defecto) para convertir tokens a dólares. La reemplazó
+// services/ai/aiModelPricing.js, que cobra por modelo, separa entrada de salida
+// —la salida cuesta 5x— y fecha las tarifas para que la duplicación anunciada
+// del 1/1/2027 no repricee la historia.
+//
+// Se borra en vez de dejarla deprecada porque quedó sin un solo llamador y
+// porque dos funciones de costeo que dan números distintos por los mismos
+// tokens no conviven: la que sobra se usa por accidente y nadie nota la
+// diferencia, que es exactamente el problema que el catálogo vino a resolver.
+// AI_COST_USD_PER_1M_TOKENS ya no se lee en ningún lado.
 
 /**
  * Costo aproximado en USD de N generaciones de imagen (Replicate/HuggingFace,
@@ -540,7 +518,6 @@ export default {
   getPlanLimits,
   isByokAllowedForPlan,
   getSubscriptionState,
-  estimateCostUsd,
   estimateImageCostUsd,
   getPlanMonthlyPriceUsd,
   getPlatformMonthlyTokenBudget,

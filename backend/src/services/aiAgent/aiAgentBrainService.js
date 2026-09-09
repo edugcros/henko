@@ -473,6 +473,9 @@ const repairAiResponseIfNeeded = async ({
         metric: AI_METRICS.AGENT_TOKENS,
         amount: Number(repaired?.usageMetadata?.totalTokenCount || 0),
         profile,
+        model: repaired?.model,
+        inputTokens: repaired?.usageMetadata?.promptTokenCount ?? null,
+        outputTokens: repaired?.usageMetadata?.candidatesTokenCount ?? null,
       }).catch(() => null)
     }
 
@@ -543,7 +546,7 @@ const reserveAgentMessageQuota = async ({ tenantId, agent, profile }) => {
  * respuesta, así que toda respuesta que había que regenerar viajaba gratis en
  * la contabilidad y cara en la factura.
  */
-const registerTokenUsage = async ({ tenantId, usageMetadata, profile }) => {
+const registerTokenUsage = async ({ tenantId, usageMetadata, profile, model = null }) => {
   const tokens = Number(usageMetadata?.totalTokenCount || 0)
   if (!Number.isFinite(tokens) || tokens <= 0) return
 
@@ -552,6 +555,13 @@ const registerTokenUsage = async ({ tenantId, usageMetadata, profile }) => {
     metric: AI_METRICS.AGENT_TOKENS,
     amount: tokens,
     profile,
+    // El modelo REAL: con la cadena de respaldo puede no ser el configurado, y
+    // entre 3.6-flash y 3.1-flash-lite hay 5x de diferencia de tarifa.
+    model,
+    // El desglose viene medido en usageMetadata. Sin pasarlo, el costo se
+    // reparte con una proporción supuesta teniendo el dato real al lado.
+    inputTokens: usageMetadata?.promptTokenCount ?? null,
+    outputTokens: usageMetadata?.candidatesTokenCount ?? null,
   })
 }
 
@@ -1061,6 +1071,7 @@ export const processAgentMessage = async ({
     tenantId,
     usageMetadata: aiResult.usageMetadata,
     profile: aiProfile,
+    model: aiResult.model,
   }).catch(() => null)
 
   let validation = validateAgentCommerceResponse({
