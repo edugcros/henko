@@ -44,6 +44,22 @@ const aiPlatformUsageSchema = new Schema(
       default: null,
     },
 
+    // El escalón de aviso más alto ya anunciado este mes (0 = ninguno).
+    //
+    // El corte avisaba recién al saltar, o sea cuando el servicio ya se cayó
+    // para todos los que comparten la key. Los avisos previos necesitan
+    // recordar cuál ya se dio: sin esto, cada request pasado el 50% escribiría
+    // la misma línea, y un aviso que aparece diez mil veces no es un aviso.
+    //
+    // Es también la marca que hace la carrera segura entre procesos: se avanza
+    // con un findOneAndUpdate condicionado a que siga por debajo del escalón,
+    // así solo uno gana y avisa una vez.
+    alertedThreshold: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     lastActivityAt: {
       type: Date,
       default: null,

@@ -35,6 +35,7 @@ import {
 } from './aiPlanPolicy.js'
 import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
 import { computeCostUsd } from './aiModelPricing.js'
+import { getPeriodSpendByMetric } from './aiSpendReportService.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 
 // Se reexportan para que quien mide consumo tenga un único import: el medidor
@@ -217,6 +218,74 @@ const isPlatformBudgetExhausted = async () => {
   return exhausted
 }
 
+/**
+ * Escalones de aviso, en porcentaje del presupuesto del mes.
+ *
+ * El disyuntor avisaba recién al cortar, que es cuando el asistente ya dejó de
+ * contestar para TODOS los comercios que comparten la key. El primer síntoma
+ * era un cliente escribiendo. Estos avisos existen para que haya margen de
+ * reacción: mover el techo o apagar una función cuesta minutos, enterarse
+ * tarde cuesta una caída.
+ *
+ * Dos escalones y no cinco: cada uno tiene que significar algo. El 50% a mitad
+ * de mes es normal; el 50% el día 8 no lo es, y esa lectura la hace quien lo
+ * recibe con la fecha delante.
+ */
+const ALERT_THRESHOLDS = Object.freeze([50, 80])
+
+/**
+ * Avisa una sola vez por escalón y por mes.
+ *
+ * No lanza nunca: es un aviso sobre un consumo que ya se registró, así que su
+ * fallo no puede voltear la operación que lo disparó.
+ */
+const announceBudgetPressure = async ({ period, usage, budget }) => {
+  try {
+    const tokens = Number(usage?.tokens || 0)
+    const percent = (tokens / budget) * 100
+
+    // El escalón más alto alcanzado. Si un consumo grande cruza los dos de una,
+    // se anuncia el 80 y no se emite después un 50 que ya quedó viejo.
+    const reached = ALERT_THRESHOLDS.filter(threshold => percent >= threshold).pop()
+
+    if (!reached) return
+    // Salida barata: la enorme mayoría de los requests del mes muere acá, sin
+    // tocar la base.
+    if (Number(usage?.alertedThreshold || 0) >= reached) return
+
+    // Solo un proceso gana. La condición va en el filtro, no en un chequeo
+    // previo: con varias instancias corriendo, leer-y-después-escribir emite el
+    // mismo aviso una vez por instancia.
+    const claimed = await AiPlatformUsage.findOneAndUpdate(
+      { period, alertedThreshold: { $lt: reached } },
+      { $set: { alertedThreshold: reached } },
+    ).lean()
+
+    if (!claimed) return
+
+    // Con el desglose el aviso ya trae la respuesta en vez de abrir una
+    // investigación. Si la consulta falla, se avisa igual: el número solo vale
+    // más que ningún aviso.
+    const byMetric = await getPeriodSpendByMetric(period).catch(() => [])
+
+    const level = reached >= 80 ? 'error' : 'warn'
+
+    logger[level](`[AI BUDGET] Presupuesto de plataforma al ${reached}%`, {
+      period,
+      percent: percent.toFixed(1),
+      tokens,
+      budget,
+      estimatedCostUsd: Number(usage?.estimatedCostUsd || 0).toFixed(2),
+      topSpend: byMetric.slice(0, 3),
+    })
+  } catch (error) {
+    logger.warn('[AI BUDGET] No se pudo emitir el aviso de presupuesto', {
+      period,
+      error: error.message,
+    })
+  }
+}
+
 const registerPlatformConsumption = async ({ tokens, costUsd }) => {
   const period = getCurrentPeriod()
   const budget = getPlatformMonthlyTokenBudget()
@@ -234,6 +303,8 @@ const registerPlatformConsumption = async ({ tokens, costUsd }) => {
   ).lean()
 
   if (budget === UNLIMITED) return updated
+
+  await announceBudgetPressure({ period, usage: updated, budget })
 
   if (updated.tokens >= budget && !updated.breakerTrippedAt) {
     await AiPlatformUsage.updateOne(

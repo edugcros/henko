@@ -252,6 +252,29 @@ jest.unstable_mockModule("../services/ai/aiCredentialsService.js", () => ({
   loadTenantAiProfile: mockProfile,
 }));
 
+// El desglose del aviso hace un aggregate real sobre el ledger. Acá interesa
+// que el aviso se emita una sola vez y con los datos correctos, no que Mongo
+// sepa agrupar.
+const mockSpendByMetric = jest.fn();
+
+jest.unstable_mockModule("../services/ai/aiSpendReportService.js", () => ({
+  getPeriodSpendByMetric: mockSpendByMetric,
+  getPeriodSpendByModel: jest.fn(),
+}));
+
+// El aviso de presupuesto ES una línea de log: si no se puede afirmar qué se
+// logueó y con qué nivel, no se está probando la funcionalidad.
+const mockLogger = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+};
+
+jest.unstable_mockModule("../../config/logger.js", () => ({
+  default: mockLogger,
+}));
+
 // El cache del disyuntor es un Map de módulo con TTL de 30 s. Sin aislarlo,
 // el resultado de un test sobrevive al siguiente y la suite pasa o falla
 // según el orden en que corran.
@@ -947,5 +970,170 @@ describe("aiBudgetService · recordTokenSpend", () => {
 
     expect(mockLedger.create).not.toHaveBeenCalled();
     expect(mockPlatformUsage.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Aviso anticipado de presupuesto ─────────────────────
+//
+// El disyuntor avisaba recién al cortar, o sea cuando el asistente ya dejó de
+// contestar para todos los que comparten la key. Estos avisos existen para que
+// haya margen de reacción antes de eso.
+
+describe("aiBudgetService · aviso de presupuesto", () => {
+  // El $inc devuelve el estado del período; el segundo findOneAndUpdate es el
+  // que reclama el escalón. Se encadenan con mockReturnValueOnce en ese orden.
+  const platformState = ({ tokens, alertedThreshold = 0, costUsd = 0 }) => {
+    mockPlatformUsage.findOneAndUpdate
+      .mockReturnValueOnce({
+        lean: () =>
+          Promise.resolve({
+            tokens,
+            alertedThreshold,
+            estimatedCostUsd: costUsd,
+            breakerTrippedAt: null,
+          }),
+      })
+      .mockReturnValueOnce({
+        // El reclamo del escalón: null = otro proceso llegó primero.
+        lean: () => Promise.resolve({ period: "2026-09" }),
+      });
+  };
+
+  const consume = tokens =>
+    recordAiConsumption({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: tokens,
+    });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // clearAllMocks NO vacía las colas de mockReturnValueOnce. Los tests que no
+    // llegan a reclamar el escalón consumen un solo valor de los dos que encola
+    // platformState, y el sobrante se lo comía el test siguiente: pasaban de a
+    // uno y fallaban en conjunto. mockReset sí las vacía.
+    mockPlatformUsage.findOneAndUpdate.mockReset();
+    mockPlatformUsage.findOne.mockReset();
+    mockLedger.create.mockResolvedValue({});
+    mockSpendByMetric.mockResolvedValue([]);
+    cacheStore.clear();
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "1000";
+  });
+
+  afterEach(() => {
+    delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
+  });
+
+  test("por debajo del primer escalón no avisa nada", async () => {
+    platformState({ tokens: 400 });
+
+    await consume(100);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  test("al 50% avisa como advertencia", async () => {
+    platformState({ tokens: 520 });
+
+    await consume(100);
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("50%"),
+      expect.objectContaining({ tokens: 520, budget: 1000 }),
+    );
+  });
+
+  test("al 80% sube a error: ya queda poco margen", async () => {
+    platformState({ tokens: 850 });
+
+    await consume(100);
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining("80%"),
+      expect.anything(),
+    );
+  });
+
+  test("un salto grande anuncia el 80 y no el 50 que quedó viejo", async () => {
+    platformState({ tokens: 900, alertedThreshold: 0 });
+
+    await consume(900);
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining("80%"),
+      expect.anything(),
+    );
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
+  test("un escalón ya anunciado no se repite", async () => {
+    // Sin esto, cada request del resto del mes escribiría la misma línea, y un
+    // aviso que aparece diez mil veces deja de ser un aviso.
+    platformState({ tokens: 600, alertedThreshold: 50 });
+
+    await consume(100);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    // Y ni siquiera intenta reclamarlo: la salida barata evita ir a la base.
+    expect(mockPlatformUsage.findOneAndUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  test("si otro proceso ya reclamó el escalón, este no duplica el aviso", async () => {
+    mockPlatformUsage.findOneAndUpdate
+      .mockReturnValueOnce({
+        lean: () =>
+          Promise.resolve({ tokens: 520, alertedThreshold: 0, breakerTrippedAt: null }),
+      })
+      .mockReturnValueOnce({
+        // El filtro condicionado no matcheó: otra instancia ganó la carrera.
+        lean: () => Promise.resolve(null),
+      });
+
+    await consume(100);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
+  test("el aviso trae el desglose de qué se lo está comiendo", async () => {
+    // Un aviso que dice "vas por el 80%" abre una investigación; uno que dice
+    // además "el 70% es visión" ya trae la respuesta.
+    mockSpendByMetric.mockResolvedValue([
+      { metric: "vision", costUsd: 18.4, tokens: 2_400_000, operations: 500 },
+      { metric: "agentTokens", costUsd: 3.1, tokens: 900_000, operations: 1200 },
+    ]);
+    platformState({ tokens: 850 });
+
+    await consume(100);
+
+    const [, payload] = mockLogger.error.mock.calls[0];
+
+    expect(payload.topSpend[0].metric).toBe("vision");
+    expect(payload.topSpend[0].costUsd).toBe(18.4);
+  });
+
+  test("si el desglose falla, el aviso sale igual", async () => {
+    // El número solo vale más que ningún aviso.
+    mockSpendByMetric.mockRejectedValue(new Error("mongo caído"));
+    platformState({ tokens: 850 });
+
+    await consume(100);
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining("80%"),
+      expect.objectContaining({ topSpend: [] }),
+    );
+  });
+
+  test("sin disyuntor configurado no hay porcentaje que avisar", async () => {
+    delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
+    platformState({ tokens: 999_999 });
+
+    await consume(100);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 });
