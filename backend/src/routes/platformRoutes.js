@@ -10,12 +10,13 @@
 import express from 'express'
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 import { requirePlatformOwner } from '../middlewares/platformOwnerMiddleware.js'
-import { getMarginReport } from '../controller/platformCtrl.js'
+import { getMarginReport, getAiSpendReport } from '../controller/platformCtrl.js'
 
 const router = express.Router()
 
 router.use(authMiddleware, isAdmin, requirePlatformOwner)
 
 router.get('/margin', getMarginReport)
+router.get('/ai-spend', getAiSpendReport)
 
 export default router

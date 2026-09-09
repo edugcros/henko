@@ -255,6 +255,13 @@ jest.unstable_mockModule("../services/ai/aiSpendReportService.js", () => ({
   getPeriodSpendByModel: jest.fn(),
 }));
 
+const mockNotify = jest.fn();
+
+jest.unstable_mockModule("../services/ai/aiBudgetNotifier.js", () => ({
+  notifyBudgetPressure: mockNotify,
+  EMAIL_THRESHOLD: 80,
+}));
+
 // El aviso de presupuesto ES una línea de log: si no se puede afirmar qué se
 // logueó y con qué nivel, no se está probando la funcionalidad.
 const mockLogger = {
@@ -1173,6 +1180,7 @@ describe("aiBudgetService · aviso de presupuesto", () => {
     mockPlatformUsage.findOne.mockReset();
     mockLedger.create.mockResolvedValue({});
     mockSpendByMetric.mockResolvedValue([]);
+    mockNotify.mockResolvedValue({ sent: true });
     cacheStore.clear();
     mockProfile.mockResolvedValue(platformProfile());
     mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
@@ -1292,5 +1300,65 @@ describe("aiBudgetService · aviso de presupuesto", () => {
 
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  test("el 50% NO manda mail: un aviso mensual normal enseña a ignorarlos", async () => {
+    platformState({ tokens: 520 });
+
+    await consume(100);
+
+    expect(mockLogger.warn).toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  test("el 80% sí manda mail, con el desglose adentro", async () => {
+    mockSpendByMetric.mockResolvedValue([
+      { metric: "vision", costUsd: 18.4, tokens: 2_400_000, operations: 500 },
+    ]);
+    platformState({ tokens: 850, costUsd: 21.5 });
+
+    await consume(100);
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tokens: 850,
+        budget: 1000,
+        estimatedCostUsd: 21.5,
+        topSpend: [expect.objectContaining({ metric: "vision" })],
+      }),
+    );
+  });
+
+  test("si el mail falla, el consumo se registra igual", async () => {
+    // El aviso es sobre un consumo que YA ocurrió: su fallo no puede voltear la
+    // operación que lo disparó.
+    mockNotify.mockRejectedValue(new Error("SMTP caído"));
+    platformState({ tokens: 850 });
+
+    await expect(consume(100)).resolves.toBeUndefined();
+    expect(mockPlatformUsage.findOneAndUpdate).toHaveBeenCalled();
+  });
+
+  test("cuando el disyuntor corta, el aviso sale marcado como corte", async () => {
+    // Es el único evento que deja sin IA a todos los comercios de la key
+    // compartida, y el mail tiene que decir eso y no un porcentaje más.
+    mockPlatformUsage.findOneAndUpdate
+      .mockReturnValueOnce({
+        lean: () =>
+          Promise.resolve({
+            tokens: 1200,
+            alertedThreshold: 80,
+            estimatedCostUsd: 30,
+            breakerTrippedAt: null,
+          }),
+      })
+      .mockReturnValueOnce({ lean: () => Promise.resolve({}) });
+    mockPlatformUsage.updateOne = jest.fn().mockResolvedValue({});
+
+    await consume(100);
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ tripped: true, percent: "100" }),
+    );
   });
 });

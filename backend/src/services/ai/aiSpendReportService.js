@@ -19,6 +19,9 @@
 // archivo debe servirse a un comercio — es información de la plataforma.
 
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
+import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
+import { getPlatformMonthlyTokenBudget, UNLIMITED } from './aiPlanPolicy.js'
+import { getCurrentPeriod } from './aiPeriod.js'
 
 // `amount` mide unidades o tokens según la fila; sumar las dos juntas daría un
 // número sin sentido. El campo `unit` es el que lo dice.
@@ -100,4 +103,98 @@ export const getPeriodSpendByModel = async period => {
   }))
 }
 
-export default { getPeriodSpendByMetric, getPeriodSpendByModel }
+/**
+ * Cuánta de la contabilidad del período es medida y cuánta supuesta.
+ *
+ * Va en el reporte y no en una nota al pie porque cambia cómo hay que leer el
+ * total. Un costo repartido con una proporción asumida y uno calculado con el
+ * usageMetadata real no son la misma clase de dato, y quien mira el número para
+ * decidir algo tiene que saber cuál está mirando.
+ *
+ * `fallbackRows` es distinto y más urgente: son filas cobradas con la tarifa
+ * conservadora porque el modelo no estaba en el catálogo. Si eso crece, el
+ * catálogo quedó viejo y el total está inflado.
+ */
+const getPeriodQuality = async period => {
+  const [row] = await AiConsumptionLedger.aggregate([
+    { $match: { period, event: LEDGER_EVENT.CONSUMED } },
+    {
+      $group: {
+        _id: null,
+        rows: { $sum: 1 },
+        estimatedRows: { $sum: { $cond: ['$costEstimated', 1, 0] } },
+        fallbackRows: { $sum: { $cond: ['$priceFallback', 1, 0] } },
+      },
+    },
+  ]).option({ ignoreTenant: true })
+
+  return {
+    rows: row?.rows || 0,
+    estimatedRows: row?.estimatedRows || 0,
+    fallbackRows: row?.fallbackRows || 0,
+  }
+}
+
+/**
+ * Todo lo que hace falta para contestar "¿cuánto va a pagar HENKO este mes y
+ * en qué?" en una sola lectura.
+ *
+ * Junta las dos fuentes a propósito, porque miden cosas distintas y verlas
+ * juntas es el control:
+ *
+ *  - AiPlatformUsage.tokens es lo que el DISYUNTOR cuenta. Es la cifra que
+ *    decide si se corta, y la única que importa para saber cuánto falta.
+ *  - El ledger explica ese número: qué función y qué modelo lo consumieron.
+ *
+ * Pueden no coincidir, y eso no es un error: el consumo de los comercios con
+ * key propia entra al ledger con costo 0 y NO al contador de plataforma,
+ * porque no lo paga HENKO. Por eso el desglose se informa aparte del total
+ * contra el techo en vez de mezclarlos en un solo número.
+ */
+export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
+  const budget = getPlatformMonthlyTokenBudget()
+
+  const [usage, byMetric, byModel, quality] = await Promise.all([
+    AiPlatformUsage.findOne({ period }).lean(),
+    getPeriodSpendByMetric(period),
+    getPeriodSpendByModel(period),
+    getPeriodQuality(period),
+  ])
+
+  const tokens = Number(usage?.tokens || 0)
+  const hasBudget = budget !== UNLIMITED
+
+  return {
+    period,
+    budget: {
+      // null y no 0: "sin disyuntor configurado" es una situación distinta de
+      // "el techo es cero", y la pantalla las tiene que mostrar distinto.
+      tokens: hasBudget ? budget : null,
+      configured: hasBudget,
+      // Los avisos viven en el mismo objeto que el techo porque se leen juntos:
+      // un 47% no dice nada sin saber que el próximo escalón es 50.
+      alertedThreshold: Number(usage?.alertedThreshold || 0),
+    },
+    consumption: {
+      tokens,
+      percentUsed: hasBudget && budget > 0 ? round((tokens / budget) * 100, 1) : null,
+      remainingTokens: hasBudget ? Math.max(0, budget - tokens) : null,
+      // El costo del contador de plataforma, que es el que HENKO paga.
+      estimatedCostUsd: round(usage?.estimatedCostUsd || 0, 2),
+      lastActivityAt: usage?.lastActivityAt || null,
+    },
+    breaker: {
+      trippedAt: usage?.breakerTrippedAt || null,
+      tripped: Boolean(usage?.breakerTrippedAt),
+    },
+    byMetric,
+    byModel,
+    quality,
+  }
+}
+
+export default {
+  getPeriodSpendByMetric,
+  getPeriodSpendByModel,
+  getPlatformSpendSnapshot,
+}

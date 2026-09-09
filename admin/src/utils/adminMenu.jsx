@@ -64,6 +64,22 @@ const HIDDEN_ROUTES = new Map([
   // esta entrada, la verificación de cobertura la trataría como ruta huérfana
   // y la agregaría al menú con un ':productId' en la etiqueta.
   ['edit-product/:productId', 'se llega desde la lista de productos'],
+
+  // Reportes de plataforma: cruzan todos los comercios y el gate real es
+  // server-side (requirePlatformOwner, allowlist de email). routesConfig.js
+  // dice que van "deliberadamente sin entrada en el menú", y no era cierto:
+  // sin declararlas acá, la verificación de cobertura las trataba como
+  // huérfanas y las agregaba sola al final del menú — o sea que el admin de
+  // cualquier comercio veía un ítem a un reporte financiero cruzado que solo
+  // le iba a devolver 403.
+  [
+    'plataforma/margen',
+    'reporte de plataforma, no va en el menú de un comercio',
+  ],
+  [
+    'plataforma/gasto-ia',
+    'reporte de plataforma, no va en el menú de un comercio',
+  ],
 ])
 
 /**

@@ -10,4 +10,12 @@ export const getPlatformMarginReport = async period => {
   return unwrap(response)
 }
 
-export default { getPlatformMarginReport }
+export const getPlatformAiSpend = async period => {
+  const response = await api.get('/platform/ai-spend', {
+    params: period ? { period } : undefined,
+  })
+
+  return unwrap(response)
+}
+
+export default { getPlatformMarginReport, getPlatformAiSpend }

@@ -189,6 +189,15 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // 🔌 Gasto de IA de la plataforma — mismo criterio que el de margen: fuera
+  // del menú, con el gate real en el servidor. Es la única forma de ver el
+  // consumo contra el techo sin entrar a la base de datos.
+  {
+    path: '/admin/plataforma/gasto-ia',
+    Component: pages.PlatformAiSpendPage,
+    allowedRoles: ['admin'],
+  },
+
   // 📦 Catálogo
   {
     path: '/admin/AddProduct',

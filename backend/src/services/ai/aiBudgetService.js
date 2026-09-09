@@ -36,6 +36,8 @@ import {
 import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
 import { computeCostUsd, normalizeModelName } from './aiModelPricing.js'
 import { getPeriodSpendByMetric } from './aiSpendReportService.js'
+import { getCurrentPeriod } from './aiPeriod.js'
+import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 
 // Se reexportan para que quien mide consumo tenga un único import: el medidor
@@ -170,10 +172,9 @@ export const buildBudgetDenialMessage = (result = {}) => {
   }
 }
 
-export const getCurrentPeriod = () => {
-  const now = new Date()
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
-}
+// Se sigue reexportando desde acá: era el origen del dato y hay call sites
+// —platformMarginService, entre otros— que lo importan de este módulo.
+export { getCurrentPeriod }
 
 const counterPath = metric => `counters.${metric}`
 
@@ -285,7 +286,8 @@ const announceBudgetPressure = async ({ period, usage, budget }) => {
     // más que ningún aviso.
     const byMetric = await getPeriodSpendByMetric(period).catch(() => [])
 
-    const level = reached >= 80 ? 'error' : 'warn'
+    const level = reached >= EMAIL_THRESHOLD ? 'error' : 'warn'
+    const topSpend = byMetric.slice(0, 3)
 
     logger[level](`[AI BUDGET] Presupuesto de plataforma al ${reached}%`, {
       period,
@@ -293,8 +295,21 @@ const announceBudgetPressure = async ({ period, usage, budget }) => {
       tokens,
       budget,
       estimatedCostUsd: Number(usage?.estimatedCostUsd || 0).toFixed(2),
-      topSpend: byMetric.slice(0, 3),
+      topSpend,
     })
+
+    // El log alcanza para el escalón informativo. Desde el 80% el aviso tiene
+    // que salir a buscar a alguien, porque a partir de ahí hay que decidir algo.
+    if (reached >= EMAIL_THRESHOLD) {
+      await notifyBudgetPressure({
+        period,
+        percent: percent.toFixed(1),
+        tokens,
+        budget,
+        estimatedCostUsd: Number(usage?.estimatedCostUsd || 0),
+        topSpend,
+      })
+    }
   } catch (error) {
     logger.warn('[AI BUDGET] No se pudo emitir el aviso de presupuesto', {
       period,
@@ -335,6 +350,20 @@ const registerPlatformConsumption = async ({ tokens, costUsd }) => {
       budget,
       estimatedCostUsd: Number(updated.estimatedCostUsd || 0).toFixed(2),
     })
+
+    // El corte deja sin IA a todos los comercios sobre la key compartida. Es el
+    // único evento de este archivo que amerita interrumpir a alguien.
+    const topSpend = await getPeriodSpendByMetric(period).catch(() => [])
+
+    await notifyBudgetPressure({
+      period,
+      percent: '100',
+      tokens: updated.tokens,
+      budget,
+      estimatedCostUsd: Number(updated.estimatedCostUsd || 0),
+      topSpend: topSpend.slice(0, 3),
+      tripped: true,
+    }).catch(() => undefined)
   }
 
   // El cache del disyuntor quedó viejo en el momento en que cruzamos el tope.

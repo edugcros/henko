@@ -19,6 +19,21 @@ export default {
 
   testMatch: ['<rootDir>/src/**/*.test.js', '<rootDir>/src/**/*.test.jsx'],
 
+  // package.json declara "type": "module", lo que vuelve ESM a los .js — pero
+  // ese campo no dice nada de los .jsx, así que Jest los trataba como CommonJS
+  // y el default de una página .jsx llegaba envuelto dos veces
+  // ({ default: { default: Componente } }). El síntoma es opaco: React tira
+  // "Element type is invalid... but got: object" señalando al render, no al
+  // import. Vale para todas las páginas .jsx, no solo la que lo destapó.
+  extensionsToTreatAsEsm: ['.jsx'],
+
+  // @testing-library/jest-dom ya estaba instalado y sin enganchar, así que el
+  // primer test tuvo que afirmar con toBeDefined(): getByText ya lanza si no
+  // encuentra, con lo cual esa aserción no agrega nada y el mensaje de error
+  // que queda es peor. Con esto vuelven a estar disponibles toBeInTheDocument y
+  // el resto de los matchers de DOM.
+  setupFilesAfterEnv: ['@testing-library/jest-dom'],
+
   // Los assets y el CSS ya están mapeados arriba; el resto pasa por babel-jest,
   // que toma babel.config.cjs.
   transform: {
