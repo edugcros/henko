@@ -290,9 +290,5 @@ export const cacheIncr = async (key, ttlSec = 3600) => {
   return current
 }
 
-/** Solo para los tests: vacía la memoria local sin tocar Redis. */
-export const __clearMemoryCache = () => {
-  memoryCache.clear()
-}
 
 export default { cacheSet, cacheGet, cacheDel, cacheIncr }

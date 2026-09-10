@@ -12,7 +12,3 @@ export const runWithTenantContext = (context, callback) => {
 export const getTenantContext = () => {
   return tenantAsyncStorage.getStore() || null
 }
-
-export const hasTenantContext = () => {
-  return Boolean(getTenantContext()?.tenantId)
-}

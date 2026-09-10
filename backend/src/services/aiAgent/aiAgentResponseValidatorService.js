@@ -1019,39 +1019,4 @@ export const buildSafeFallbackResponse = ({
   ].join('\n')
 }
 
-export const buildAgentLearningCandidatesFromValidation = validation => {
-  return safeArray(validation?.learningSignals).map(signal => ({
-    type: signal.type,
-    status: 'pending_review',
-    title: signal.title,
-    question: signal.question,
-    suggestedAnswer: '',
-    normalizedQuestion: normalizeText(signal.question),
-    confidence: 0.45,
-    priority: signal.priority || 'medium',
-    tags: signal.tags || [],
-    metadata: {
-      ...(signal.metadata || {}),
-      source: 'ai_agent_response_validator',
-      riskLevel: validation?.riskLevel || 'unknown',
-      warnings: validation?.warnings || [],
-      blockedReasons: validation?.blockedReasons || [],
-    },
-  }))
-}
 
-export const buildRegenerationPromptFromValidation = validation => {
-  const repair = validation?.repairInstruction || {}
-
-  return [
-    'La respuesta anterior no pasó la validación comercial.',
-    `Motivos: ${safeArray(repair.blockedReasons).concat(safeArray(repair.warnings)).join(', ') || 'calidad insuficiente'}.`,
-    '',
-    'Instrucciones para regenerar:',
-    ...safeArray(repair.instructions).map(item => `- ${item}`),
-    '',
-    repair.userMessage ? `Mensaje del cliente: ${repair.userMessage}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n')
-}

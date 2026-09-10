@@ -8,44 +8,6 @@ const getSafeErrorMessage = error => {
   return error?.message || 'Error inesperado'
 }
 
-export const validateCartBelongsToTenant = async (cartId, userId, tenantId) => {
-  const cart = await Cart.findOne({
-    _id: toObjectId(cartId),
-    userId: toObjectId(userId),
-    tenantId: toObjectId(tenantId),
-    isDeleted: false,
-  }).populate('products.productId', 'tenantId title price images currency quantity stock')
-
-  if (!cart) {
-    throw new Error('CARRITO_NO_ENCONTRADO')
-  }
-
-  if (!cart.products?.length) {
-    throw new Error('CARRITO_VACIO')
-  }
-
-  for (const item of cart.products) {
-    const product = item.productId
-
-    if (!product) {
-      throw new Error(`PRODUCTO_NO_ENCONTRADO: ${item.productId}`)
-    }
-
-    const productTenantId = product.tenantId || item.tenantId
-
-    if (productTenantId && String(productTenantId) !== String(tenantId)) {
-      logger.error('🚨 PRODUCTO_CROSS_TENANT', {
-        productId: product._id?.toString?.(),
-        productTenantId: String(productTenantId),
-        cartTenantId: String(tenantId),
-      })
-
-      throw new Error('PRODUCTO_INVALIDO: Producto no pertenece a este comercio')
-    }
-  }
-
-  return cart
-}
 
 // Reserva stock descontando `stock`/`variants[].stock` (el modelo canónico de
 // inventario, el mismo que usa orderInventoryService.js para el flujo COD).

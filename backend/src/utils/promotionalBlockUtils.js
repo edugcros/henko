@@ -86,14 +86,6 @@ export const normalizePriority = value => {
   })
 }
 
-export const normalizeMaxItems = value => {
-  return clampInteger({
-    value,
-    min: 1,
-    max: MAX_PRODUCTS,
-    fallback: 5,
-  })
-}
 
 export const normalizePromotionalProducts = products => {
   if (!Array.isArray(products)) return []

@@ -485,13 +485,7 @@ export const getTenantIdFromRequest = req => {
   return toObjectId(tenantId)
 }
 
-export const invalidateTenantCache = domain => {
-  deleteCacheByDomain(domain)
-}
 
-export const clearAllTenantCache = () => {
-  tenantCache.clear()
-}
 
 export const cleanupTenantCache = () => {
   const now = Date.now()

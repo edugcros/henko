@@ -319,12 +319,3 @@ export const tenantPlugin = (schema, options = {}) => {
 // Query helper explícito
 // =====================================================
 
-export const withTenant = (query, tenantId) => {
-  const normalizedTenantId = ensureObjectId(tenantId)
-
-  if (!normalizedTenantId) {
-    throw new Error('Invalid tenantId format')
-  }
-
-  return query.setOptions({ tenantId: normalizedTenantId })
-}

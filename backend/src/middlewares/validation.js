@@ -14,16 +14,3 @@ export const validateCouponCreation = [
     next()
   },
 ]
-
-export const validateCouponApplication = [
-  body('code').notEmpty().withMessage('El código de cupón es requerido'),
-  body('cartItems').isArray({ min: 1 }).withMessage('Se requieren items en el carrito'),
-  body('subtotal').isFloat({ min: 0 }).withMessage('Subtotal inválido'),
-  (req, res, next) => {
-    const errors = validationResult(req)
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() })
-    }
-    next()
-  },
-]

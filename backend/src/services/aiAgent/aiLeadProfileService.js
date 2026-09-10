@@ -192,27 +192,3 @@ export const extractLeadPreferences = (input, options = {}) => {
   }
 }
 
-export const mergeLeadPreferences = (current = {}, next = {}) => {
-  const currentBudget = normalizeBudget(current.budgetMax)
-  const nextBudget = normalizeBudget(next.budgetMax)
-
-  return {
-    colors: unique([
-      ...normalizePreferenceArray(current.colors),
-      ...normalizePreferenceArray(next.colors),
-    ]),
-    sizes: unique([
-      ...normalizePreferenceArray(current.sizes),
-      ...normalizePreferenceArray(next.sizes),
-    ]),
-    categories: unique([
-      ...normalizePreferenceArray(current.categories),
-      ...normalizePreferenceArray(next.categories),
-    ]),
-    intents: unique([
-      ...normalizePreferenceArray(current.intents),
-      ...normalizePreferenceArray(next.intents),
-    ]),
-    budgetMax: nextBudget ?? currentBudget ?? null,
-  }
-}

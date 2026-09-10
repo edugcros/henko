@@ -691,55 +691,6 @@ export const getSalesChartDataInternal = async (tenantId, days = metricsConfig.i
  * Obtiene estadísticas unificadas de marketing (GA4 + datos propios)
  * Usado en adminController.getDashboardData
  */
-// `ga4.serviceAccountKey` está cifrado en reposo y solo se desencripta vía el
-// getter del schema (backend/src/models/tenantModel.js) — el `tenant` recibido
-// acá debe ser un documento de Mongoose obtenido sin `.lean()`.
-export const getUnifiedMarketingStats = async tenant => {
-  const ga4 = tenant.integrations?.ga4
-
-  // Si no está configurado GA4, retornar solo datos internos
-  if (!ga4?.isEnabled || !ga4?.measurementId) {
-    return {
-      analytics: null,
-      status: 'not_configured',
-      message: 'Google Analytics no configurado para este tenant',
-      internal: await getInternalMarketingStats(tenant._id),
-    }
-  }
-
-  try {
-    // Si tiene Service Account, obtener datos de Reporting API
-    if (ga4.serviceAccountKey) {
-      return await getGA4ReportingStats(tenant, ga4)
-    }
-
-    // Si solo tiene Measurement ID, retornar configuración básica
-    return {
-      analytics: {
-        configured: true,
-        measurementId: ga4.measurementId,
-        hasReportingAccess: false,
-        message: 'Configurado para tracking. Agrega Service Account para métricas detalladas.',
-      },
-      status: 'partially_configured',
-      internal: await getInternalMarketingStats(tenant._id),
-    }
-
-  } catch (error) {
-    logger.error('[GA4 Unified Stats Error]', {
-      message: error?.message || 'Error desconocido',
-    })
-    return {
-      analytics: {
-        configured: true,
-        error: error.message,
-        hasReportingAccess: false,
-      },
-      status: 'error',
-      internal: await getInternalMarketingStats(tenant._id),
-    }
-  }
-}
 
 /**
  * Obtiene estadísticas completas de GA4 Reporting API
@@ -1016,54 +967,7 @@ const fillMissingDays = (data, startDate, endDate) => {
 // 9. EXPORTACIONES ADICIONALES (para uso en otros controller)
 // ============================================================================
 
-/**
- * Obtiene métricas específicas para el dashboard de admin
- * Versión simplificada usada por adminController
- */
-export const getAdminDashboardMetrics = async (tenantId, options = {}) => {
-  const { days = metricsConfig.internalPeriodDays } = options
 
-  const [basicStats, chartData] = await Promise.all([
-    getDashboardStats(tenantId, `${days}d`),
-    getSalesChartDataInternal(tenantId, days),
-  ])
-
-  return {
-    ...basicStats,
-    chart: chartData,
-  }
-}
-
-/**
- * Estadísticas para exportar (CSV, PDF, etc.)
- */
-export const getExportableStats = async (tenantId, startDate, endDate) => {
-  const matchStage = {
-    tenantId: new mongoose.Types.ObjectId(tenantId),
-    isDeleted: false,
-    paymentStatus: { $in: PAID_PAYMENT_STATUSES },
-    orderStatus: { $in: ACTIVE_ORDER_STATUSES },
-    createdAt: {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate),
-    },
-  }
-
-  const orders = await Order.find(matchStage)
-    .select('orderId createdAt paymentIntent products orderStatus customer')
-    .sort({ createdAt: -1 })
-    .lean()
-
-  return orders.map(o => ({
-    orderId: o.orderId,
-    date: o.createdAt,
-    customer: o.customer?.email || 'N/A',
-    status: o.orderStatus,
-    items: o.products?.length || 0,
-    subtotal: Money.toDecimal(o.paymentIntent?.amountCents || 0),
-    total: Money.toDecimal(o.paymentIntent?.amountCents || 0),
-  }))
-}
 
 
 const getCartValueExpression = () => ({

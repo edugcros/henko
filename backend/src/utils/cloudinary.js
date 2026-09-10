@@ -347,75 +347,12 @@ export const cloudinaryDeleteVideo = async publicId => {
   }
 }
 
-/**
- * Eliminar múltiples imágenes (batch)
- * @param {string[]} publicIds - Array de public_ids
- */
-export const cloudinaryDeleteMultiple = async publicIds => {
-  try {
-    if (!Array.isArray(publicIds) || publicIds.length === 0) {
-      return { success: true, deleted: [] }
-    }
-
-    const results = await Promise.allSettled(
-      publicIds.map(id => cloudinaryDeleteImg(id)),
-    )
-
-    const successful = results
-      .filter(r => r.status === 'fulfilled' && r.value.success)
-      .map(r => r.value)
-
-    const failed = results
-      .filter(r => r.status === 'rejected' || !r.value.success)
-      .map((r, i) => ({ publicId: publicIds[i], error: r.reason || r.value }))
-
-    logger.info(`🗑️ Batch delete: ${successful.length} éxitos, ${failed.length} fallos`)
-
-    return {
-      success: failed.length === 0,
-      deleted: successful.length,
-      failed: failed.length > 0 ? failed : undefined,
-    }
-  } catch (error) {
-    logger.error('❌ Error en batch delete:', error)
-    throw error
-  }
-}
 
 // ==========================================
 // FUNCIONES ADICIONALES ÚTILES
 // ==========================================
 
-/**
- * Obtener URL transformada de Cloudinary
- */
-export const getTransformedUrl = (publicId, options = {}) => {
-  const { width, height, crop = 'fill', quality = 'auto' } = options
 
-  return cloudinary.url(publicId, {
-    width,
-    height,
-    crop,
-    quality,
-    fetch_format: 'auto',
-    secure: true,
-  })
-}
-
-/**
- * Verificar si una imagen existe en Cloudinary
- */
-export const checkImageExists = async publicId => {
-  try {
-    const result = await cloudinary.api.resource(publicId, { resource_type: 'image' })
-    return { exists: true, data: result }
-  } catch (error) {
-    if (error.error?.http_code === 404) {
-      return { exists: false }
-    }
-    throw error
-  }
-}
 
 // ==========================================
 // EXPORT DEFAULT

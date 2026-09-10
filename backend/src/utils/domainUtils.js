@@ -189,16 +189,6 @@ export const getDomainHostname = domain => {
   return normalizeDomainValue(domain.hostname || domain.normalizedHostname || '')
 }
 
-export const isActiveDomain = domain => {
-  if (!domain) return false
-
-  if (typeof domain === 'string') {
-    // Legacy domains no tenían estado; se consideran activos mientras existan.
-    return true
-  }
-
-  return domain.status === 'active'
-}
 
 export const buildDomainKeys = ({ domains = [], adminDomains = [] } = {}) => {
   return [...new Set(

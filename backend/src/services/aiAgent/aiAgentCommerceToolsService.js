@@ -578,30 +578,6 @@ export const searchProductsTool = async ({
   return normalizedProducts
 }
 
-export const getProductDetailsTool = async ({
-  tenantId,
-  productId,
-  slug,
-} = {}) => {
-  if (!tenantId || (!productId && !slug)) return null
-
-  const baseQuery = buildBaseProductQuery(tenantId)
-
-  const query = {
-    ...baseQuery,
-    $and: [...baseQuery.$and],
-  }
-
-  if (productId) {
-    if (!isValidObjectId(productId)) return null
-    query._id = productId
-  }
-  if (slug) query.slug = slug
-
-  const product = await Product.findOne(query).setOptions({ tenantId }).lean()
-
-  return product ? normalizeProductForAgentTool(product) : null
-}
 
 export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
   if (!tenantId) return []

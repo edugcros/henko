@@ -11,12 +11,3 @@ export const generateCouponCode = (prefix = '', length = 8) => {
   
   return result
 }
-
-export const generateUniqueCode = async (model, prefix = '', length = 8, maxAttempts = 10) => {
-  for (let i = 0; i < maxAttempts; i++) {
-    const code = generateCouponCode(prefix, length)
-    const exists = await model.findOne({ code })
-    if (!exists) return code
-  }
-  throw new Error('No se pudo generar un código único después de varios intentos')
-}
