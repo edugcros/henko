@@ -321,7 +321,6 @@ const {
   refundAiBudget,
   recordAiConsumption,
   recordTokenSpend,
-  recordImageGenerationCost,
   getAiBudgetSnapshot,
   DENY_REASONS,
 } = await import("../services/ai/aiBudgetService.js");
@@ -1354,19 +1353,29 @@ describe("aiBudgetService · recordTokenSpend", () => {
     expect(entry().unit).toBe("tokens");
   });
 
-  test("el costo de imagen deja fila en el ledger, no solo en el contador", async () => {
-    // Entraba a los dos contadores y no al ledger. Como el total del panel sale
-    // del contador y el desglose sale del ledger, la diferencia entre ambos era
-    // exactamente lo gastado en imágenes: el total no cerraba con sus partes.
+  test("la edición de imagen deja fila de consumo en el ledger", async () => {
+    // El costo entraba a los contadores y no al ledger. Como el total del panel
+    // sale del contador y el desglose sale del ledger, la diferencia entre
+    // ambos era exactamente lo gastado en imágenes.
     mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { imageEdits: 3 } }),
+    );
     mockPlatformUsage.findOneAndUpdate.mockReturnValue({
       lean: () => Promise.resolve({ tokens: 0 }),
     });
 
-    await recordImageGenerationCost({ tenantId: TENANT_ID, count: 3 });
+    await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+      amount: 3,
+    });
 
     const row = mockLedger.create.mock.calls[0][0];
 
+    // 'consumed' y no 'reserved': con tarifa plana, reservar y gastar son el
+    // mismo acto, y el reporte suma los consumos.
+    expect(row.event).toBe("consumed");
     expect(row.metric).toBe("imageEdits");
     expect(row.unit).toBe("units");
     expect(row.amount).toBe(3);
@@ -1376,13 +1385,21 @@ describe("aiBudgetService · recordTokenSpend", () => {
     expect(row.costEstimated).toBe(true);
   });
 
-  test("con key propia no se registra costo de imagen", async () => {
+  test("con key propia la edición no cuesta nada a la plataforma", async () => {
     mockProfile.mockResolvedValue(platformProfile({ keySource: "tenant" }));
 
-    await recordImageGenerationCost({ tenantId: TENANT_ID, count: 3 });
+    await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+      amount: 3,
+    });
 
-    expect(mockLedger.create).not.toHaveBeenCalled();
+    // El gasto lo paga el comercio contra su propio proveedor.
     expect(mockPlatformUsage.findOneAndUpdate).not.toHaveBeenCalled();
+    const cobros = mockLedger.create.mock.calls.filter(
+      ([row]) => Number(row.costUsd) > 0,
+    );
+    expect(cobros).toHaveLength(0);
   });
 
   test("sin tokens no se registra nada", async () => {
@@ -1723,5 +1740,149 @@ describe("aiBudgetService · snapshot", () => {
     );
     // Y el restante se cuenta contra el tope real, no contra el del plan.
     expect(metrica.remaining).toBe(2000 - 3);
+  });
+});
+
+// ─── Atomicidad del cobro por adelantado ─────────────────
+//
+// El contador de cuota y el de plata viven los dos en el documento de AiUsage.
+// Mientras se escribieron por separado podían separarse, y se separaron: en
+// datos reales quedó el contador en 3 y el dinero en 2, sin nada que dijera
+// cuál de las tres ediciones faltaba.
+//
+// Un $inc sobre un solo documento es atómico en Mongo. Lo que estos tests fijan
+// es que las dos cifras viajen ahí y no en dos llamadas.
+
+describe("aiBudgetService · cuota y plata en un solo movimiento", () => {
+  const incDeLaReserva = () => mockAiUsage.findOneAndUpdate.mock.calls[0][1].$inc;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockProfile.mockResolvedValue(platformProfile({ plan: "pro" }));
+    // Sin esto el bloque depende de que otro describe haya dejado puesta la
+    // implementación: clearAllMocks borra las llamadas, no las implementaciones,
+    // así que el test pasaba de a uno pero solo por orden de ejecución.
+    mockLedger.create.mockResolvedValue({});
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+  });
+
+  test("reservar una edición mueve cuota y costo en el mismo $inc", async () => {
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { imageEdits: 1 } }),
+    );
+
+    await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+    });
+
+    const inc = incDeLaReserva();
+
+    // La afirmación es sobre el MISMO objeto: no que las dos cosas ocurran,
+    // sino que ocurran juntas. Dos $inc separados pasarían un test que solo
+    // mirara los valores finales.
+    expect(inc).toEqual(
+      expect.objectContaining({
+        "counters.imageEdits": 1,
+        estimatedCostUsd: expect.any(Number),
+      }),
+    );
+    expect(inc.estimatedCostUsd).toBeGreaterThan(0);
+  });
+
+  test("devolverla revierte las dos en el mismo $inc", async () => {
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { imageEdits: 0 } }),
+    );
+
+    await refundAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+    });
+
+    const inc = mockAiUsage.findOneAndUpdate.mock.calls[0][1].$inc;
+
+    expect(inc["counters.imageEdits"]).toBe(-1);
+    expect(inc.estimatedCostUsd).toBeLessThan(0);
+  });
+
+  test("reservar y devolver deja las dos cifras en cero", async () => {
+    // La invariante completa: lo que entra por un lado sale por el otro, en la
+    // misma proporción. Si alguien cambia una de las dos ramas y no la otra,
+    // esto falla.
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { imageEdits: 1 } }),
+    );
+
+    await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+      amount: 4,
+    });
+    await refundAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+      amount: 4,
+    });
+
+    const [reserva, devolucion] = mockAiUsage.findOneAndUpdate.mock.calls.map(
+      call => call[1].$inc,
+    );
+
+    expect(reserva["counters.imageEdits"] + devolucion["counters.imageEdits"]).toBe(0);
+    expect(reserva.estimatedCostUsd + devolucion.estimatedCostUsd).toBe(0);
+  });
+
+  test("las métricas de tokens NO se cobran por adelantado", async () => {
+    // Su costo se mide después, con el usageMetadata que devuelve Google.
+    // Cobrarlas al reservar sería inventar el número.
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { agentMessages: 1 } }),
+    );
+
+    await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_MESSAGES,
+    });
+
+    expect(incDeLaReserva()).not.toHaveProperty("estimatedCostUsd");
+  });
+
+  test("la reserva de una edición también carga el costo a la plataforma", async () => {
+    // Es el disyuntor: si el gasto de imágenes no llega acá, el techo duro no
+    // lo ve.
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { imageEdits: 1 } }),
+    );
+
+    await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+    });
+
+    const [, update] = mockPlatformUsage.findOneAndUpdate.mock.calls[0];
+
+    expect(update.$inc.estimatedCostUsd).toBeGreaterThan(0);
+    // Cero tokens: Replicate no cobra por token y el disyuntor se mide en tokens.
+    expect(update.$inc.tokens).toBe(0);
+  });
+
+  test("la devolución revierte también el costo de plataforma", async () => {
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { imageEdits: 0 } }),
+    );
+
+    await refundAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.IMAGE_EDITS,
+    });
+
+    const [, update] = mockPlatformUsage.findOneAndUpdate.mock.calls[0];
+
+    expect(update.$inc.estimatedCostUsd).toBeLessThan(0);
+    // Los tokens no se devuelven nunca: ya se gastaron contra Google.
+    expect(update.$inc.tokens).toBe(0);
   });
 });

@@ -354,7 +354,11 @@ const registerPlatformConsumption = async ({
   const period = requestedPeriod || getCurrentPeriod()
   const budget = getPlatformMonthlyTokenBudget()
   const normalizedTokens = Math.max(0, Math.round(Number(tokens) || 0))
-  const normalizedCost = Math.max(0, Number(costUsd) || 0)
+  // El costo admite negativo y los tokens no. Un refund de un gasto cobrado por
+  // adelantado tiene que poder revertir la plata; los tokens, en cambio, ya se
+  // consumieron contra Google pase lo que pase y el disyuntor se mide con ellos,
+  // así que devolverlos volvería el techo mentiroso.
+  const normalizedCost = Number(costUsd) || 0
 
   const updated = await AiPlatformUsage.findOneAndUpdate(
     { period },
@@ -525,10 +529,23 @@ const buildAtomicReservationFilter = ({ tenantId, period, metric, limit, amount,
  * Así, cuando `used + amount > limit`, la operación simplemente no matchea y
  * jamás crea un documento saltándose el límite.
  */
-const applyReservation = async ({ tenantId, period, metric, amount, limit, guardLimits }) => {
+const applyReservation = async ({
+  tenantId,
+  period,
+  metric,
+  amount,
+  limit,
+  guardLimits,
+  costUsd = 0,
+}) => {
   const increment = {
     [counterPath(metric)]: amount,
     ...(metric === AI_METRICS.VISION ? { analysisCount: amount } : {}),
+    // La plata entra en el MISMO $inc que la cuota. Es la única forma de que
+    // no se separen: un solo documento, un solo operador, atómico por
+    // definición en Mongo. Cuando eran dos escrituras, el contador decía 3 y
+    // el dinero decía 2 y nada permitía saber cuál de las tres faltaba.
+    ...(costUsd > 0 ? { estimatedCostUsd: costUsd } : {}),
   }
 
   await ensureUsageDocument({ tenantId, period })
@@ -567,6 +584,23 @@ const resolveEffectiveLimit = ({ plan, metric, keySource }) => {
 
   return getSharedKeyTenantCap(metric)
 }
+
+/**
+ * Costo que se puede cobrar POR ADELANTADO, en el mismo movimiento que reserva
+ * la cuota.
+ *
+ * La condición es una sola: que el precio sea una tarifa plana por unidad,
+ * conocida antes de hacer el trabajo. Las ediciones de imagen la cumplen —
+ * Replicate cobra por imagen, no por token, y el número sale de
+ * AI_COST_USD_PER_IMAGE_EDIT. Las métricas de tokens NO la cumplen: su costo se
+ * mide después, con el usageMetadata que devuelve Google, y cobrarlas por
+ * adelantado sería inventar el número.
+ *
+ * Todo lo que devuelve algo mayor a cero acá queda contabilizado de forma
+ * atómica con su cuota, y se revierte igual de atómicamente en el refund.
+ */
+const getUpfrontCostUsd = (metric, amount) =>
+  metric === AI_METRICS.IMAGE_EDITS ? estimateImageCostUsd(amount) : 0
 
 const applyLimitOverride = (planLimit, override) => {
   const value = Number(override)
@@ -752,6 +786,8 @@ export const reserveAiBudget = async ({
     }))
     .filter(guard => guard.limit !== UNLIMITED)
 
+  const upfrontCostUsd = getUpfrontCostUsd(normalizedMetric, reservationAmount)
+
   const updated = await applyReservation({
     tenantId: id,
     period,
@@ -759,6 +795,7 @@ export const reserveAiBudget = async ({
     amount: reservationAmount,
     limit,
     guardLimits,
+    costUsd: upfrontCostUsd,
   })
 
   if (!updated) {
@@ -809,16 +846,42 @@ export const reserveAiBudget = async ({
 
   const used = readCounter(updated, normalizedMetric)
 
+  if (upfrontCostUsd > 0) {
+    await registerPlatformConsumption({
+      tokens: 0,
+      costUsd: upfrontCostUsd,
+      period,
+    }).catch(error => {
+      logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma (adelantado)', {
+        tenantId: id,
+        metric: normalizedMetric,
+        period,
+        error: error.message,
+      })
+    })
+  }
+
   writeLedgerEntry({
     tenantId: id,
     period,
-    event: LEDGER_EVENT.RESERVED,
+    // Cuando el costo se cobra por adelantado, reservar Y gastar son el mismo
+    // acto: no hay una medición posterior que pueda cambiar el número. Marcarlo
+    // 'reserved' dejaría el gasto de imágenes fuera del reporte, que suma
+    // 'consumed'; y dejaría abierta la pregunta "¿esta reserva llegó a
+    // consumirse?" para un caso donde no puede no haberse consumido.
+    event: upfrontCostUsd > 0 ? LEDGER_EVENT.CONSUMED : LEDGER_EVENT.RESERVED,
     operationId,
     metric: normalizedMetric,
     amount: reservationAmount,
     unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
     keySource: aiProfile.keySource,
     plan: aiProfile.plan,
+    costUsd: upfrontCostUsd,
+    // `model` queda nulo: esto no lo cobra Google por token sino Replicate o
+    // Stability por imagen, así que no hay tarifa del catálogo que congelar. Y
+    // va marcado como estimado porque el costo por imagen es un supuesto
+    // configurable (AI_COST_USD_PER_IMAGE_EDIT), no una factura.
+    ...(upfrontCostUsd > 0 ? { breakdown: { estimated: true } } : {}),
   })
 
   return buildAllowedResult({
@@ -852,6 +915,11 @@ export const refundAiBudget = async ({
 
   const period = requestedPeriod || getCurrentPeriod()
 
+  // Lo que se cobró por adelantado se devuelve por adelantado, en el mismo
+  // movimiento. La simetría no es estética: es lo que garantiza que cuota y
+  // dinero no puedan quedar desalineados en ninguna rama.
+  const upfrontCostUsd = getUpfrontCostUsd(normalizedMetric, refundAmount)
+
   try {
     const refunded = await AiUsage.findOneAndUpdate(
       {
@@ -870,6 +938,7 @@ export const refundAiBudget = async ({
           ...(normalizedMetric === AI_METRICS.VISION
             ? { analysisCount: -refundAmount }
             : {}),
+          ...(upfrontCostUsd > 0 ? { estimatedCostUsd: -upfrontCostUsd } : {}),
         },
         $set: { lastActivityAt: new Date() },
       },
@@ -877,6 +946,21 @@ export const refundAiBudget = async ({
     ).setOptions({ tenantId: id })
 
     if (refunded) {
+      if (upfrontCostUsd > 0) {
+        await registerPlatformConsumption({
+          tokens: 0,
+          costUsd: -upfrontCostUsd,
+          period,
+        }).catch(platformError => {
+          logger.warn('[AI BUDGET] No se pudo revertir consumo de plataforma', {
+            tenantId: id,
+            metric: normalizedMetric,
+            period,
+            error: platformError.message,
+          })
+        })
+      }
+
       writeLedgerEntry({
         tenantId: id,
         period,
@@ -885,6 +969,9 @@ export const refundAiBudget = async ({
         metric: normalizedMetric,
         amount: refundAmount,
         unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
+        // El reporte resta los refunds, así que esta fila tiene que llevar lo
+        // mismo que llevó la de consumo o el gasto quedaría inflado.
+        costUsd: upfrontCostUsd,
       })
     }
   } catch (error) {
@@ -1079,81 +1166,6 @@ export const recordTokenSpend = async ({
 }
 
 /**
- * Costo de una generación de imagen (Replicate/HuggingFace).
- * No toca counters.imageEdits porque la cuota por unidad ya fue reservada.
- */
-export const recordImageGenerationCost = async ({
-  tenantId,
-  profile = null,
-  count = 1,
-  period: requestedPeriod = null,
-  // La misma clave que devolvió reserveAiBudget. El evento distingue la fila,
-  // así que reserva y consumo de una operación conviven; dos consumos de la
-  // misma operación son un reintento y el índice los descarta.
-  operationId = null,
-}) => {
-  const id = clean(tenantId)
-  if (!id) return
-
-  const aiProfile = profile || (await loadTenantAiProfile(id))
-  if (aiProfile.keySource === KEY_SOURCE.TENANT) return
-
-  const imageCount = normalizeAmount(count)
-  const costUsd = estimateImageCostUsd(imageCount)
-  if (costUsd <= 0) return
-
-  const period = requestedPeriod || getCurrentPeriod()
-
-  try {
-    await ensureUsageDocument({ tenantId: id, period })
-    await AiUsage.updateOne(
-      { tenantId: id, period },
-      {
-        $inc: { estimatedCostUsd: costUsd },
-        $set: { lastActivityAt: new Date() },
-      },
-    ).setOptions({ tenantId: id })
-  } catch (error) {
-    logger.warn('[AI BUDGET] No se pudo registrar costo de imagen', {
-      tenantId: id,
-      period,
-      error: error.message,
-    })
-  }
-
-  await registerPlatformConsumption({ tokens: 0, costUsd, period }).catch(error => {
-    logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma (imagen)', {
-      tenantId: id,
-      period,
-      error: error.message,
-    })
-  })
-
-  // El costo entraba a los dos contadores y no al ledger. Como el total del
-  // panel sale del contador y el desglose sale del ledger, la diferencia entre
-  // los dos era exactamente lo gastado en imágenes: el total no cerraba con sus
-  // partes y no había forma de saber por qué.
-  //
-  // `model` va nulo a propósito: esto no lo cobra Google por token sino
-  // Replicate o Stability por imagen, así que no hay tarifa del catálogo que
-  // congelar. Y va marcado como estimado porque el costo por imagen es un
-  // supuesto configurable (AI_COST_USD_PER_IMAGE_EDIT), no una factura.
-  writeLedgerEntry({
-    tenantId: id,
-    period,
-    event: LEDGER_EVENT.CONSUMED,
-    operationId,
-    metric: AI_METRICS.IMAGE_EDITS,
-    amount: imageCount,
-    unit: 'units',
-    keySource: aiProfile.keySource,
-    plan: aiProfile.plan,
-    costUsd,
-    breakdown: { estimated: true },
-  })
-}
-
-/**
  * Chequeo sin reservar, para el middleware de ruta: corta temprano al que ya
  * está sin cupo o sin suscripción, sin duplicar el contador que después
  * incrementa el servicio.
@@ -1329,7 +1341,12 @@ export const getAiBudgetSnapshot = async tenantId => {
       hasTenantKey: profile.hasTenantKey,
     },
     metrics,
-    estimatedCostUsd: Number(usage?.estimatedCostUsd || 0),
+    // Se acota a cero por el cruce del despliegue: una edición reservada por la
+    // versión vieja (que no cobraba al reservar) y devuelta por la nueva (que
+    // sí descuenta) resta una plata que nunca se sumó. Son centavos y una
+    // ventana de minutos, pero un total negativo en el panel se lee como un
+    // error de la plataforma, no como el redondeo que es.
+    estimatedCostUsd: Math.max(0, Number(usage?.estimatedCostUsd || 0)),
     byokTokens: Number(usage?.byokTokens || 0),
     lastActivityAt: usage?.lastActivityAt || null,
   }
@@ -1363,7 +1380,6 @@ export default {
   reserveAiBudget,
   refundAiBudget,
   recordAiConsumption,
-  recordImageGenerationCost,
   checkAiEntitlement,
   getAiBudgetSnapshot,
   getAiUsageSnapshot,

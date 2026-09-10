@@ -43,9 +43,18 @@ const round = (value, decimals = 4) => {
 /**
  * Gasto del período agrupado por métrica, de lo más caro a lo más barato.
  *
- * Solo mira los 'consumed': las reservas son intención y las devoluciones ya
- * están descontadas de lo que se consumió. Lo que se busca acá es plata
- * efectivamente gastada.
+ * Mira los 'consumed' y RESTA los 'refunded'. Las reservas quedan afuera:
+ * siguen siendo intención.
+ *
+ * La resta es nueva y hace falta desde que el costo de tarifa plana se cobra en
+ * el mismo movimiento que la cuota. Antes un 'consumed' solo se escribía cuando
+ * la operación ya había salido bien, así que la devolución no tenía nada que
+ * descontar; ahora la edición de imagen se cobra al reservar y se devuelve si
+ * el proveedor falla, y sin esta resta el reporte contaría un gasto que se
+ * revirtió.
+ *
+ * Para las métricas de tokens no cambia nada: sus filas de devolución llevan
+ * costo cero, porque esos tokens sí se gastaron contra Google.
  *
  * @param {string} period
  * @returns {Promise<Array<{metric:string, costUsd:number, tokens:number, operations:number}>>}
@@ -53,14 +62,24 @@ const round = (value, decimals = 4) => {
 export const getPeriodSpendByMetric = async period => {
   if (!period) return []
 
+  const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
+  const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
+
   const rows = await AiConsumptionLedger.aggregate([
-    { $match: { period, event: LEDGER_EVENT.CONSUMED } },
+    {
+      $match: {
+        period,
+        event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.REFUNDED] },
+      },
+    },
     {
       $group: {
         _id: '$metric',
-        costUsd: { $sum: '$costUsd' },
-        tokens: sumTokens,
-        operations: { $sum: 1 },
+        costUsd: { $sum: conSigno('$costUsd') },
+        tokens: {
+          $sum: conSigno({ $cond: [{ $eq: ['$unit', 'tokens'] }, '$amount', 0] }),
+        },
+        operations: { $sum: conSigno(1) },
       },
     },
     { $sort: { costUsd: -1 } },

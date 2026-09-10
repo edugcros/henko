@@ -4,7 +4,6 @@ import { getBackgroundRemovalStatus } from '../services/ai/backgroundRemoval.js'
 import {
   AI_METRICS,
   buildBudgetDenialMessage,
-  recordImageGenerationCost,
   refundAiBudget,
   reserveAiBudget,
 } from '../services/ai/aiBudgetService.js'
@@ -71,6 +70,12 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
   // Generar un fondo cuesta plata en tres lugares a la vez (Gemini optimiza
   // el prompt, Replicate o HuggingFace generan la imagen). Es la única de las
   // tres vías de IA que hasta este refactor no tenía ningún medidor.
+  //
+  // La reserva cobra la cuota Y el costo en el mismo movimiento: el precio por
+  // imagen es una tarifa plana, o sea que ya se conoce acá. Antes el costo se
+  // registraba después, en una segunda llamada, y si esa llamada no llegaba a
+  // ejecutarse el cupo quedaba consumido sin su plata. El refund de más abajo
+  // devuelve las dos cosas juntas.
   const reservation = await reserveAiBudget({
     tenantId,
     metric: AI_METRICS.IMAGE_EDITS,
@@ -103,21 +108,6 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
     })
     throw error
   }
-
-  // El costo se registra separado de la reserva de cupo (esta ya incrementó
-  // counters.imageEdits) — solo suma a estimatedCostUsd, nunca duplica el
-  // conteo de cuota. Ver aiBudgetService.js::recordImageGenerationCost.
-  //
-  // La clave de la reserva viaja a los tres movimientos. Las dos funciones la
-  // aceptan y documentan que sin ella un reintento cuenta dos veces, y este
-  // llamador no la pasaba: las filas quedaban con operationId nulo, sin forma
-  // de unir la reserva con su consumo. Por eso una edición que reservó cupo y
-  // no llegó a registrar costo era invisible — el contador decía 3 y el dinero
-  // decía 2, sin nada que explicara cuál de las tres faltaba.
-  await recordImageGenerationCost({
-    tenantId,
-    operationId: reservation.operationId,
-  })
 
   const base64 = result.buffer.toString('base64')
 

@@ -1,24 +1,21 @@
-// La clave de la reserva tiene que llegar a los tres movimientos.
+// El controlador de edición de imagen frente al medidor.
 //
 // POR QUÉ EXISTE
 //
-// `reserveAiBudget` devuelve un `operationId`, y tanto `refundAiBudget` como
-// `recordImageGenerationCost` lo aceptan y documentan que sin él un reintento
-// cuenta dos veces. Este controlador no lo pasaba a ninguno de los dos.
+// Este controlador cobraba en dos pasos: `reserveAiBudget` subía el contador de
+// cuota y, después de generar la imagen, una segunda llamada sumaba el costo.
+// Entre los dos pasos había una ida y vuelta al proveedor, y la segunda llamada
+// se tragaba sus propios errores. Si no llegaba a ejecutarse, el cupo quedaba
+// consumido sin su plata.
 //
-// La consecuencia se vio en datos reales: en el ledger había 9 reservas de
-// edición de imagen, 6 devoluciones y solo 2 consumos, con el contador de cuota
-// en 3. O sea, una edición ocupó cupo y nunca registró su costo — y como todas
-// las filas tenían operationId nulo, no había forma de saber cuál. El panel
-// mostraba un total en dólares que no se correspondía con la cantidad de
-// generaciones, sin nada que explicara la diferencia.
+// Se vio en datos reales: 9 reservas de edición, 6 devoluciones y 2 consumos,
+// con el contador de cuota en 3. Una edición ocupó cupo y nunca registró costo,
+// y como ningún movimiento llevaba `operationId` no había forma de saber cuál.
 //
-// Pasar la clave no evita que un registro se pierda; lo vuelve VISIBLE (una
-// reserva sin su consumo se puede encontrar) e impide que un reintento cobre
-// dos veces, porque el índice único del ledger es (tenant, operación, evento).
-//
-// Se prueba en el controlador y no en el servicio a propósito: el servicio
-// siempre supo recibir la clave, el que no la mandaba era este.
+// Hoy el costo viaja dentro de la reserva (es tarifa plana: ya se conoce ahí) y
+// la devolución revierte las dos cosas. Lo que este test fija es lo que le toca
+// al controlador: que no exista un segundo paso que cobre, y que la devolución
+// use la clave de la reserva que anula.
 
 import { jest } from "@jest/globals";
 
@@ -27,13 +24,11 @@ const TENANT_ID = "64b7f0000000000000000001";
 
 const mockReserve = jest.fn();
 const mockRefund = jest.fn();
-const mockRecordCost = jest.fn();
 const mockGenerate = jest.fn();
 
 jest.unstable_mockModule("../services/ai/aiBudgetService.js", () => ({
   AI_METRICS: { IMAGE_EDITS: "imageEdits" },
   buildBudgetDenialMessage: () => "sin cupo",
-  recordImageGenerationCost: mockRecordCost,
   refundAiBudget: mockRefund,
   reserveAiBudget: mockReserve,
 }));
@@ -61,21 +56,18 @@ const pedido = () => ({
   user: { tenantId: TENANT_ID },
 });
 
-const respuesta = () => {
-  const res = {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload) {
-      this.body = payload;
-      return this;
-    },
-  };
-  return res;
-};
+const respuesta = () => ({
+  statusCode: 200,
+  body: null,
+  status(code) {
+    this.statusCode = code;
+    return this;
+  },
+  json(payload) {
+    this.body = payload;
+    return this;
+  },
+});
 
 const correr = async () => {
   const res = respuesta();
@@ -94,52 +86,50 @@ beforeEach(() => {
   });
 });
 
-describe("imageAiCtrl · trazabilidad de la operación", () => {
-  test("el costo se registra con la clave de la reserva", async () => {
+describe("imageAiCtrl · cobro de la edición", () => {
+  test("una generación exitosa cobra en un solo movimiento", async () => {
     mockGenerate.mockResolvedValue({
       buffer: Buffer.from("resultado"),
       contentType: "image/png",
     });
 
-    await correr();
+    const res = await correr();
 
-    expect(mockRecordCost).toHaveBeenCalledWith(
-      expect.objectContaining({ operationId: OPERATION_ID }),
-    );
+    expect(res.body.success).toBe(true);
+    // Toda la contabilidad de una edición que salió bien es la reserva. Un
+    // segundo paso que cobre es exactamente lo que se podía perder.
+    expect(mockReserve).toHaveBeenCalledTimes(1);
+    expect(mockRefund).not.toHaveBeenCalled();
   });
 
-  test("la devolución también usa la clave de la reserva", async () => {
-    // El proveedor falla: se devuelve el cupo, y esa devolución tiene que poder
-    // unirse con la reserva que anula.
+  test("si el proveedor falla se devuelve con la clave de la reserva", async () => {
+    // La devolución tiene que poder unirse con lo que anula: sin la clave son
+    // dos filas sueltas, y un reintento del refund descuenta dos veces.
     mockGenerate.mockRejectedValue(new Error("replicate caído"));
 
     await expect(correr()).rejects.toThrow("replicate caído");
 
     expect(mockRefund).toHaveBeenCalledWith(
-      expect.objectContaining({ operationId: OPERATION_ID }),
+      expect.objectContaining({
+        metric: "imageEdits",
+        operationId: OPERATION_ID,
+      }),
     );
   });
 
-  test("los tres movimientos comparten la misma clave", async () => {
-    // La invariante que hace útil al ledger: sin una clave común, reserva,
-    // consumo y devolución son tres filas sueltas que no se pueden cruzar.
-    mockGenerate.mockResolvedValue({
-      buffer: Buffer.from("resultado"),
-      contentType: "image/png",
-    });
+  test("el controlador no inventa la clave, usa la que le devuelven", async () => {
+    mockGenerate.mockRejectedValue(new Error("replicate caído"));
 
-    await correr();
+    await expect(correr()).rejects.toThrow();
 
     const [[reserva]] = mockReserve.mock.calls;
-    const [[costo]] = mockRecordCost.mock.calls;
+    const [[devolucion]] = mockRefund.mock.calls;
 
-    // La reserva no la genera el controlador: la pide sin clave y usa la que
-    // le devuelven, que es lo que garantiza que sea la misma.
     expect(reserva.operationId).toBeUndefined();
-    expect(costo.operationId).toBe(OPERATION_ID);
+    expect(devolucion.operationId).toBe(OPERATION_ID);
   });
 
-  test("sin cupo no se registra ningún costo", async () => {
+  test("sin cupo no se llama al proveedor ni se devuelve nada", async () => {
     mockReserve.mockResolvedValue({
       allowed: false,
       reason: "limit_reached",
@@ -150,6 +140,7 @@ describe("imageAiCtrl · trazabilidad de la operación", () => {
 
     expect(res.statusCode).toBe(402);
     expect(mockGenerate).not.toHaveBeenCalled();
-    expect(mockRecordCost).not.toHaveBeenCalled();
+    // No se reservó nada, así que no hay nada que devolver.
+    expect(mockRefund).not.toHaveBeenCalled();
   });
 });
