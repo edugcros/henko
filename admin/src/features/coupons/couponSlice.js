@@ -585,7 +585,5 @@ export const {
 
 // Exportar selectors útiles
 export const selectCouponError = state => state.coupon.error
-export const selectIsDuplicateError = state => state.coupon.error?.code === 'DUPLICATE_CODE'
-export const selectErrorField = state => state.coupon.error?.field
 
 export default couponSlice.reducer

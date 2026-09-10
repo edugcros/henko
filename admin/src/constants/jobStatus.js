@@ -15,12 +15,14 @@ export const STATUS_META = {
   scheduled: {
     label: 'Programado',
     color: 'info',
-    description: 'Imagen programada para una hora específica. Aún no en análisis.',
+    description:
+      'Imagen programada para una hora específica. Aún no en análisis.',
   },
   imported: {
     label: 'En AddProduct',
     color: 'primary',
-    description: 'Admin abrió AddProduct con esta imagen. Preparando análisis IA.',
+    description:
+      'Admin abrió AddProduct con esta imagen. Preparando análisis IA.',
   },
   processing: {
     label: 'Procesando',
@@ -30,7 +32,8 @@ export const STATUS_META = {
   completed: {
     label: 'Analizado',
     color: 'success',
-    description: 'IA terminó análisis. Datos listos. Pendiente aprobación del admin.',
+    description:
+      'IA terminó análisis. Datos listos. Pendiente aprobación del admin.',
   },
   failed: {
     label: 'Fallido',
@@ -57,25 +60,5 @@ export const STATUS_FILTER_OPTIONS = [
     label: meta.label,
   })),
 ]
-
-// Estados agrupados por etapa del ciclo de vida
-export const STATUS_GROUPS = {
-  queued: ['pending', 'scheduled'], // Esperando ser procesadas
-  processing: ['imported', 'processing'], // En progreso
-  completed: ['completed', 'approved', 'rejected'], // Terminadas (éxito o rechazo)
-  failed: ['failed'], // Error
-}
-
-// Transiciones válidas de estado
-export const STATE_TRANSITIONS = {
-  pending: ['scheduled', 'imported', 'processing', 'completed', 'failed'],
-  scheduled: ['pending', 'imported', 'processing', 'completed', 'failed'],
-  imported: ['processing', 'failed'],
-  processing: ['completed', 'failed'],
-  completed: ['approved', 'rejected'],
-  failed: ['pending', 'processing'],
-  approved: [],
-  rejected: ['pending'],
-}
 
 export default STATUS_META

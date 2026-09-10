@@ -241,13 +241,5 @@ export const protectedRoutesSet = new Set(
 )
 export const privateRoutesSet = new Set(privateRoutes.map(route => route.path))
 
-// 🔁 Set global para validaciones si se requiere
-export const allRoutesSet = new Set([
-  ...publicRoutesSet,
-  ...publicDynamicRoutesSet,
-  ...protectedRoutesSet,
-  ...privateRoutesSet,
-])
-
 // 🔚 Fallback en rutas no encontradas
 export const fallbackRoute = { path: '*', Component: pages.NotFound }

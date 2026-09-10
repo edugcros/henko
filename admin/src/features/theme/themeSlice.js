@@ -370,7 +370,6 @@ const themeSlice = createSlice({
 
 export const selectTheme = state => state.theme.config
 export const selectOriginalTheme = state => state.theme.originalConfig
-export const selectPreviewTheme = state => state.theme.previewConfig
 export const selectActiveTheme = state =>
   state.theme.previewMode ? state.theme.previewConfig : state.theme.config
 

@@ -29,12 +29,6 @@ export const getTenantId = (source = {}) => {
   return null
 }
 
-export const toObjectId = id => {
-  if (!id) return null
-  const normalized = String(id)
-  return /^[a-f\d]{24}$/i.test(normalized) ? normalized : null
-}
-
 // ======================================================
 // HEADERS
 // ======================================================

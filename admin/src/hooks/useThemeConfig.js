@@ -333,37 +333,3 @@ export const useTheme = () => {
 // ==========================================
 // HOOK ESPECIALIZADOS
 // ==========================================
-
-export const useThemeSection = sectionName => {
-  const dispatch = useDispatch()
-  const section = useSelector(selectThemeSection(sectionName))
-  const theme = useSelector(selectTheme)
-
-  const update = useCallback(
-    data => {
-      dispatch(updateSectionAction({ section: sectionName, data }))
-    },
-    [dispatch, sectionName],
-  )
-
-  const updateField = useCallback(
-    (field, value) => {
-      dispatch(
-        updateFieldAction({
-          path: `${sectionName}.${field}`,
-          value,
-        }),
-      )
-    },
-    [dispatch, sectionName],
-  )
-
-  return {
-    data: section || {},
-    theme,
-    update,
-    updateField,
-  }
-}
-
-export const useThemeStatus = () => useSelector(selectThemeStatus)
