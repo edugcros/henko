@@ -1043,6 +1043,116 @@ describe("aiBudgetService · ledger", () => {
     expect(entry().event).toBe("refunded");
   });
 
+  test("la reserva devuelve la clave de la operación", async () => {
+    // Es lo que permite que el consumo y la devolución usen la MISMA: sin
+    // devolverla, cada paso generaría la suya y las tres filas quedarían sin
+    // relación entre sí.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 1 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+    });
+
+    expect(result.operationId).toEqual(expect.any(String));
+    expect(entry().operationId).toBe(result.operationId);
+  });
+
+  test("una clave provista por el llamador se respeta", async () => {
+    // Los llamadores que pueden derivar una clave estable —el hash de una
+    // imagen, el id de un job— la pasan, y esa es la que hace idempotente el
+    // reintento. Generar una nueva acá lo rompería.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 1 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      operationId: "vision:tenant:hash-abc:2026-09",
+    });
+
+    expect(result.operationId).toBe("vision:tenant:hash-abc:2026-09");
+    expect(entry().operationId).toBe("vision:tenant:hash-abc:2026-09");
+  });
+
+  test("un movimiento repetido se descarta en silencio, no como error", async () => {
+    // El índice único de (comercio, operación, evento) rechaza el duplicado con
+    // un 11000. Eso NO es un fallo: es la respuesta correcta a un reintento, y
+    // la primera fila —la que vale— queda intacta. Loguearlo como error
+    // entrenaría a ignorar el log justo donde hay que mirarlo.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 1 } }),
+    );
+    mockLedger.create.mockRejectedValue(
+      Object.assign(new Error("E11000 duplicate key"), { code: 11000 }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.VISION,
+      operationId: "repetida",
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      expect.stringContaining("repetido"),
+      expect.objectContaining({ operationId: "repetida" }),
+    );
+  });
+
+  test("un fallo real del ledger sí se registra como error", async () => {
+    // La contracara: descartar el duplicado no puede volverse un silenciador
+    // general. Un libro contable que falla callado es peor que no tenerlo.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 1 } }),
+    );
+    mockLedger.create.mockRejectedValue(new Error("mongo caído"));
+
+    await reserveAiBudget({ tenantId: TENANT_ID, metric: AI_METRICS.VISION });
+
+    expect(mockLogger.error).toHaveBeenCalled();
+  });
+
+  test("reserva y consumo de una misma operación conviven", async () => {
+    // El evento entra en la clave única porque una operación produce
+    // legítimamente las dos filas. Lo que no puede haber son dos consumos.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
+    mockAiUsage.updateOne.mockReturnValue({
+      setOptions: () => Promise.resolve({}),
+    });
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+
+    await recordAiConsumption({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1000,
+      operationId: "misma-operacion",
+    });
+
+    await refundAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      operationId: "misma-operacion",
+    });
+
+    const eventos = mockLedger.create.mock.calls.map(([row]) => row.event);
+    const claves = mockLedger.create.mock.calls.map(([row]) => row.operationId);
+
+    expect(eventos).toEqual(["consumed", "refunded"]);
+    expect(new Set(claves)).toEqual(new Set(["misma-operacion"]));
+  });
+
   test("si el ledger falla, la operación sigue adelante", async () => {
     // El libro registra lo que YA pasó: su fallo no puede tumbar una operación
     // que salió bien.

@@ -17,6 +17,8 @@
 //  - Si el tenant trae su propia key, no se cobra contra ningún tope de la
 //    plataforma, pero se registra igual para poder dimensionar su plan.
 
+import { randomUUID } from 'node:crypto'
+
 import AiUsage from '../../models/aiUsageModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import logger from '../../../config/logger.js'
@@ -106,6 +108,7 @@ const writeLedgerEntry = ({
   breakdown = null,
   costUsd = 0,
   unit = 'units',
+  operationId = null,
 }) => {
   AiConsumptionLedger.create({
     tenantId,
@@ -114,6 +117,7 @@ const writeLedgerEntry = ({
     metric,
     amount: Math.max(0, Math.round(Number(amount) || 0)),
     unit,
+    operationId,
     model,
     keySource,
     plan,
@@ -126,6 +130,22 @@ const writeLedgerEntry = ({
     costEstimated: Boolean(breakdown?.estimated),
     priceFallback: Boolean(breakdown?.price?.fallback),
   }).catch(error => {
+    // 11000 es la violación del índice único de (tenant, operación, evento).
+    // No es un fallo: es que este movimiento ya estaba registrado y alguien
+    // reintentó. Descartarlo en silencio ES el comportamiento correcto — la
+    // primera fila queda, que es la que vale. Se registra en info y no en
+    // error, porque un reintento tratado como error entrena a ignorar el log
+    // justo donde hay que mirarlo.
+    if (error?.code === 11000) {
+      logger.info('[AI LEDGER] Movimiento repetido descartado', {
+        tenantId: String(tenantId),
+        operationId,
+        event,
+        metric,
+      })
+      return
+    }
+
     logger.error('[AI LEDGER] No se pudo registrar el movimiento', {
       tenantId: String(tenantId),
       event,
@@ -554,7 +574,15 @@ const applyLimitOverride = (planLimit, override) => {
   return Math.min(planLimit, Math.floor(value))
 }
 
-const buildAllowedResult = ({ metric, limit, used, profile, reason = 'ok', byok = false }) => ({
+const buildAllowedResult = ({
+  metric,
+  limit,
+  used,
+  profile,
+  reason = 'ok',
+  byok = false,
+  operationId = null,
+}) => ({
   allowed: true,
   metric,
   limit,
@@ -566,6 +594,10 @@ const buildAllowedResult = ({ metric, limit, used, profile, reason = 'ok', byok 
   keySource: profile.keySource,
   plan: profile.plan,
   label: AI_METRIC_LABELS[metric],
+  // Se devuelve para que quien reservó pase la MISMA clave al registrar el
+  // consumo o al devolver la reserva. Sin esto cada paso generaría la suya y
+  // las tres filas quedarían sin relación entre sí.
+  operationId,
 })
 
 /**
@@ -588,9 +620,15 @@ export const reserveAiBudget = async ({
   profile = null,
   limitOverride = null,
   period: requestedPeriod = null,
+  // Clave de idempotencia de la operación. La provee quien llama cuando puede
+  // derivar una estable —el id de un job, el hash de una imagen— y si no, se
+  // genera acá y se devuelve en el resultado para que los pasos siguientes
+  // usen la misma.
+  operationId: requestedOperationId = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
+  const operationId = clean(requestedOperationId) || randomUUID()
   const reservationAmount = normalizeAmount(amount)
 
   if (!normalizedMetric) throw new Error(`Métrica de IA desconocida: ${metric}`)
@@ -646,6 +684,7 @@ export const reserveAiBudget = async ({
       profile: aiProfile,
       reason: 'byok',
       byok: true,
+      operationId,
     })
   }
 
@@ -734,6 +773,7 @@ export const reserveAiBudget = async ({
     tenantId: id,
     period,
     event: LEDGER_EVENT.RESERVED,
+    operationId,
     metric: normalizedMetric,
     amount: reservationAmount,
     unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
@@ -746,6 +786,7 @@ export const reserveAiBudget = async ({
     limit,
     used,
     profile: aiProfile,
+    operationId,
   })
 }
 
@@ -758,6 +799,10 @@ export const refundAiBudget = async ({
   metric,
   amount = 1,
   period: requestedPeriod = null,
+  // La MISMA clave que devolvió reserveAiBudget. Sin ella la devolución queda
+  // sin relación con lo que devuelve, y un reintento del refund descuenta dos
+  // veces.
+  operationId = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -796,6 +841,7 @@ export const refundAiBudget = async ({
         tenantId: id,
         period,
         event: LEDGER_EVENT.REFUNDED,
+        operationId,
         metric: normalizedMetric,
         amount: refundAmount,
         unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
@@ -827,6 +873,10 @@ export const recordAiConsumption = async ({
   inputTokens = null,
   outputTokens = null,
   period: requestedPeriod = null,
+  // La misma clave que devolvió reserveAiBudget. El evento distingue la fila,
+  // así que reserva y consumo de una operación conviven; dos consumos de la
+  // misma operación son un reintento y el índice los descarta.
+  operationId = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -885,6 +935,7 @@ export const recordAiConsumption = async ({
     tenantId: id,
     period,
     event: LEDGER_EVENT.CONSUMED,
+    operationId,
     metric: normalizedMetric,
     amount: normalizedAmount,
     model: isTokenMetric ? usedModel : null,
@@ -912,6 +963,10 @@ export const recordTokenSpend = async ({
   totalTokens = null,
   profile = null,
   period: requestedPeriod = null,
+  // La misma clave que devolvió reserveAiBudget. El evento distingue la fila,
+  // así que reserva y consumo de una operación conviven; dos consumos de la
+  // misma operación son un reintento y el índice los descarta.
+  operationId = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -971,6 +1026,7 @@ export const recordTokenSpend = async ({
     tenantId: id,
     period,
     event: LEDGER_EVENT.CONSUMED,
+    operationId,
     metric: normalizedMetric,
     amount: breakdown.totalTokens,
     unit: 'tokens',
@@ -991,6 +1047,10 @@ export const recordImageGenerationCost = async ({
   profile = null,
   count = 1,
   period: requestedPeriod = null,
+  // La misma clave que devolvió reserveAiBudget. El evento distingue la fila,
+  // así que reserva y consumo de una operación conviven; dos consumos de la
+  // misma operación son un reintento y el índice los descarta.
+  operationId = null,
 }) => {
   const id = clean(tenantId)
   if (!id) return
@@ -1042,6 +1102,7 @@ export const recordImageGenerationCost = async ({
     tenantId: id,
     period,
     event: LEDGER_EVENT.CONSUMED,
+    operationId,
     metric: AI_METRICS.IMAGE_EDITS,
     amount: imageCount,
     unit: 'units',

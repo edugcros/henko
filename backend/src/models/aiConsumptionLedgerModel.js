@@ -54,6 +54,20 @@ const aiConsumptionLedgerSchema = new mongoose.Schema(
 
     metric: { type: String, required: true, trim: true, index: true },
 
+    // Identifica la OPERACIÓN, no la fila. Una misma operación produce hasta
+    // tres filas —reserva, consumo, devolución— y todas comparten este valor.
+    //
+    // Es la pieza que permite que un reintento no cuente dos veces. Sigue el
+    // patrón que usan las plataformas de pago (Stripe y quienes lo copiaron):
+    // la unicidad la impone la base con un índice, no una comprobación previa
+    // en el código, porque "¿ya existe?" seguido de "insertá" es la misma
+    // carrera que uno está tratando de evitar, un nivel más arriba.
+    //
+    // Nulo cuando el llamador no informa ninguna: las filas sin clave quedan
+    // fuera del índice parcial, así que esto se puede desplegar sobre los datos
+    // que ya existen sin migrarlos ni romper nada.
+    operationId: { type: String, trim: true, default: null },
+
     amount: { type: Number, required: true, min: 0 },
 
     // Qué mide `amount`. No se deduce de la métrica: 'vision' tiene filas de
@@ -113,6 +127,29 @@ aiConsumptionLedgerSchema.index({ tenantId: 1, period: 1, metric: 1 })
 // Costo de plataforma por modelo: "¿cuánto nos costó 3.6-flash este mes?".
 // No lleva tenantId porque es justamente la pregunta cross-tenant.
 aiConsumptionLedgerSchema.index({ period: 1, model: 1 })
+
+/**
+ * Idempotencia: una operación no puede dejar dos veces el mismo movimiento.
+ *
+ * El evento entra en la clave porque una misma operación produce legítimamente
+ * una reserva, un consumo y quizá una devolución. Lo que no puede haber son dos
+ * consumos de la misma operación — eso es un reintento contado dos veces.
+ *
+ * PARCIAL, y es lo que hace seguro desplegarlo: solo entran al índice las filas
+ * que tienen operationId. Todo lo escrito hasta hoy lo tiene en null y queda
+ * afuera, así que el índice se construye sobre datos existentes sin colisiones
+ * y sin migración previa.
+ *
+ * La violación de este índice NO es un error: es la respuesta correcta a un
+ * reintento, y writeLedgerEntry la trata como tal.
+ */
+aiConsumptionLedgerSchema.index(
+  { tenantId: 1, operationId: 1, event: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { operationId: { $type: 'string' } },
+  },
+)
 
 aiConsumptionLedgerSchema.plugin(tenantPlugin)
 

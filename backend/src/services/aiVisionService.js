@@ -19,6 +19,7 @@ import {
   recordTokenSpend,
 } from './ai/aiBudgetService.js'
 import { loadTenantAiProfile } from './ai/aiCredentialsService.js'
+import { getCurrentPeriod } from './ai/aiPeriod.js'
 import {
   extractErrorStatus,
   getModelChain,
@@ -1873,10 +1874,21 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
   const aiProfile = await loadTenantAiProfile(normalizedTenantId)
 
+  // Clave de idempotencia derivada, no generada: el hash de la imagen ya
+  // identifica de forma estable "analizar ESTA imagen para ESTE comercio en
+  // este mes". Si el mismo análisis se reintenta —el navegador reenvía, un job
+  // se vuelve a tomar— los movimientos que deja son los mismos y el índice
+  // único del ledger descarta el repetido sin que nadie tenga que acordarse.
+  //
+  // El período entra en la clave para que el mismo producto reanalizado el mes
+  // siguiente sea una operación distinta, que es lo que es.
+  const operationId = `vision:${normalizedTenantId}:${hash}:${getCurrentPeriod()}`
+
   const usageReservation = await reserveAiBudget({
     tenantId: normalizedTenantId,
     metric: AI_METRICS.VISION,
     profile: aiProfile,
+    operationId,
   })
 
   if (!usageReservation.allowed) {
@@ -2171,6 +2183,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     recordTokenSpend({
       tenantId: normalizedTenantId,
       metric: AI_METRICS.VISION,
+      operationId,
       model: activeModel,
       inputTokens: usage.promptTokenCount ?? null,
       outputTokens: usage.candidatesTokenCount ?? null,
@@ -2275,6 +2288,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     refundAiBudget({
       tenantId: normalizedTenantId,
       metric: AI_METRICS.VISION,
+      operationId,
     }).catch(() => undefined)
 
     throw buildProviderError(error)
