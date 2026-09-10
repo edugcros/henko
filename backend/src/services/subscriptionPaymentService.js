@@ -203,6 +203,43 @@ const buildNotificationUrl = () => {
 }
 
 /**
+ * Fecha del proveedor, o null. Nunca una inventada.
+ *
+ * Un valor nulo dice "Mercado Pago todavía no lo informó", y eso es un dato:
+ * quien lo lee sabe que no sabe. La versión anterior escribía
+ * `Date.now() + 30 días` y producía una fecha que se ve exactamente igual de
+ * confiable que una real — el comercio veía "próximo cobro: 15/10" con la misma
+ * tipografía viniera de donde viniera, y nadie podía distinguir el dato del
+ * supuesto.
+ */
+const providerDate = value => {
+  if (!value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+/**
+ * Ciclo de facturación tal como lo informa Mercado Pago.
+ *
+ * `next_payment_date` y `auto_recurring.start_date` son campos del proveedor.
+ * `currentPeriodEnd` se deriva del primero y no de un calendario nuestro: en una
+ * suscripción que cobra al inicio de cada período, el período vigente termina
+ * cuando llega el próximo cobro. Es una definición, no una estimación — y si el
+ * proveedor no informó el próximo cobro, queda nula como todo lo demás.
+ */
+export const readProviderBillingDates = (mpSubscription = {}) => {
+  const nextBillingAt = providerDate(mpSubscription?.next_payment_date)
+
+  return {
+    currentPeriodStart:
+      providerDate(mpSubscription?.summarized?.last_charged_date) ||
+      providerDate(mpSubscription?.auto_recurring?.start_date),
+    currentPeriodEnd: nextBillingAt,
+    nextBillingAt,
+  }
+}
+
+/**
  * Mapear estado de suscripción MP a nuestro domain
  */
 export const mapMercadoPagoSubscriptionStatus = (mpStatus, mpReason) => {

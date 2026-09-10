@@ -7,6 +7,7 @@ import SubscriptionWebhookEvent, {
 } from '../models/subscriptionWebhookEventModel.js'
 import { sendTemplateEmail } from '../services/emailService.js'
 import { verifyMercadoPagoWebhookSignature } from '../services/paymentWebhookService.js'
+import { readProviderBillingDates } from '../services/subscriptionPaymentService.js'
 import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
@@ -220,6 +221,11 @@ const handlePaymentAuthorized = async (tenant, data) => {
     mpSubscriptionId: data.id,
   })
 
+  // Las fechas salen de lo que informó el proveedor. Si el evento no las trae,
+  // quedan nulas: es preferible no saber la fecha del próximo cobro a mostrar
+  // una inventada, que se lee igual de segura y no lo es.
+  const ciclo = readProviderBillingDates(data)
+
   const updated = await Tenant.findByIdAndUpdate(
     tenant._id,
     {
@@ -227,6 +233,19 @@ const handlePaymentAuthorized = async (tenant, data) => {
       subscriptionPastDueAt: null,
       'integrations.subscriptionMercadoPago.status': data.status,
       'integrations.subscriptionMercadoPago.lastPaymentAt': new Date(),
+      'integrations.subscriptionMercadoPago.updatedAt': new Date(),
+      ...(ciclo.nextBillingAt
+        ? {
+          'integrations.subscriptionMercadoPago.nextBillingAt': ciclo.nextBillingAt,
+          'integrations.subscriptionMercadoPago.currentPeriodEnd': ciclo.currentPeriodEnd,
+        }
+        : {}),
+      ...(ciclo.currentPeriodStart
+        ? {
+          'integrations.subscriptionMercadoPago.currentPeriodStart':
+              ciclo.currentPeriodStart,
+        }
+        : {}),
     },
     { new: true },
   )
@@ -243,7 +262,7 @@ const handlePaymentAuthorized = async (tenant, data) => {
           tenantName: updated.name,
           plan,
           paymentDate: new Date(),
-          nextPaymentDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          nextPaymentDate: ciclo.nextBillingAt,
         },
       })
     }

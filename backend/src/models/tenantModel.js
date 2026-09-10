@@ -447,6 +447,51 @@ const tenantSchema = new Schema(
           default: null,
         },
       },
+
+      /**
+       * Suscripción del comercio A HENKO (no la de sus compradores).
+       *
+       * ESTOS CAMPOS NO ESTABAN DECLARADOS.
+       *
+       * El controlador y el webhook escribían en `integrations.
+       * subscriptionMercadoPago.*` desde siempre, y el schema es estricto: cada
+       * una de esas escrituras se descartaba en silencio. El `subscriptionId`
+       * nunca se guardó, así que el webhook no tenía cómo encontrar al comercio.
+       *
+       * Y era peor que "no lo encuentra": Mongoose 6 trae `strictQuery` en true,
+       * que borra del FILTRO las rutas no declaradas. `findOne({'integrations.
+       * subscriptionMercadoPago.subscriptionId': x})` se convertía en
+       * `findOne({})` y devolvía un tenant cualquiera — el primero de la
+       * colección. Un evento de cancelación de una suscripción inexistente
+       * cancelaba al comercio equivocado.
+       *
+       * FECHAS: las escribe el proveedor, no nosotros. Un valor nulo significa
+       * "Mercado Pago todavía no lo dijo", que es un dato honesto; inventarlo
+       * con hoy+30 producía una fecha que se muestra igual de segura y es falsa.
+       */
+      subscriptionMercadoPago: {
+        subscriptionId: { type: String, default: null, trim: true, index: true },
+        status: { type: String, default: null, trim: true },
+        payerEmail: { type: String, default: null, trim: true, lowercase: true },
+        planSelected: { type: String, default: null, trim: true },
+
+        // Ciclo de facturación, tal como lo informa Mercado Pago.
+        currentPeriodStart: { type: Date, default: null },
+        currentPeriodEnd: { type: Date, default: null },
+        nextBillingAt: { type: Date, default: null },
+
+        // Cancelación: pedida y efectiva son cosas distintas — se puede pedir
+        // hoy una baja que recién corre al final del período pago.
+        cancelAt: { type: Date, default: null },
+        cancelledAt: { type: Date, default: null },
+
+        lastPaymentAt: { type: Date, default: null },
+        lastFailureAt: { type: Date, default: null },
+        failureReason: { type: String, default: null, trim: true },
+
+        subscribedAt: { type: Date, default: null },
+        updatedAt: { type: Date, default: null },
+      },
     },
 
     settings: {

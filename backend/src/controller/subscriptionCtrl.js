@@ -12,6 +12,7 @@ import {
   buildMercadoPagoSubscriptionData,
   mapMercadoPagoSubscriptionError,
   mapMercadoPagoSubscriptionStatus,
+  readProviderBillingDates,
 } from '../services/subscriptionPaymentService.js'
 import {
   createMercadoPagoPaymentClient,
@@ -204,14 +205,18 @@ export const processSubscriptionPayment = async (req, res) => {
           plan: normalizedPlan,
           subscriptionStatus: 'active',
           subscriptionPastDueAt: null,
-          // Próxima renovación: 30 días desde hoy
-          trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          // trialEndsAt ya no se mueve acá. Es la fecha de fin de PRUEBA y esto
+          // es un alta paga: escribirle hoy+30 la convertía en "próximo cobro",
+          // que es otro concepto y vive en nextBillingAt. Con el corte por
+          // suscripción encendido, ese valor decidiría cuándo se le apaga la IA
+          // a un comercio que está pagando.
           'integrations.subscriptionMercadoPago': {
             subscriptionId: mpSubscription.id,
             status: mpSubscription.status,
             payerEmail: payer.email,
             planSelected: normalizedPlan,
             subscribedAt: new Date(),
+            ...readProviderBillingDates(mpSubscription),
           },
         },
         { new: true },
@@ -231,7 +236,9 @@ export const processSubscriptionPayment = async (req, res) => {
             tenantName: tenant.name,
             plan: normalizedPlan,
             subscriptionId: mpSubscription.id,
-            nextPaymentDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            // La que informó Mercado Pago, o ninguna. Un email que promete un
+            // cobro para una fecha inventada es peor que uno que no la menciona.
+            nextPaymentDate: readProviderBillingDates(mpSubscription).nextBillingAt,
           },
         })
       } catch (emailError) {
@@ -256,7 +263,12 @@ export const processSubscriptionPayment = async (req, res) => {
             status: mpSubscription.status,
             payerEmail: payer.email,
             planSelected: normalizedPlan,
-            createdAt: new Date(),
+            // `createdAt` no está en el schema y se descartaba; el campo que
+            // corresponde es subscribedAt. Guardar el id es lo que importa acá:
+            // es lo único que le permite al webhook encontrar a este comercio
+            // cuando Mercado Pago resuelva el pago pendiente.
+            subscribedAt: new Date(),
+            ...readProviderBillingDates(mpSubscription),
           },
         },
       )

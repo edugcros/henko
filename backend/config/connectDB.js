@@ -5,7 +5,20 @@ import { env } from './env.js'
 import dns from 'node:dns'
 // import { tenantPlugin } from '../src/models/tenantPlugin.js'
 
-mongoose.set('strictQuery', true)
+/**
+ * `strictQuery` en false, que además es el default de Mongoose 7.
+ *
+ * En true, Mongoose BORRA del filtro las rutas que el schema no declara. Un
+ * `findOne({'integrations.subscriptionMercadoPago.subscriptionId': x})` sobre un
+ * campo no declarado se convertía en `findOne({})` y devolvía el primer
+ * documento de la colección. Buscar por un identificador y recibir a otro es la
+ * peor forma de fallar que tiene una consulta: no lanza, no avisa, y el código
+ * de arriba actúa sobre el registro equivocado.
+ *
+ * En false la ruta viaja a Mongo tal cual y la consulta no encuentra nada, que
+ * es el resultado correcto cuando se busca algo que no existe.
+ */
+mongoose.set('strictQuery', false)
 
 
 
