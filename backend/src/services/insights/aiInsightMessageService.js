@@ -8,6 +8,7 @@
 // antes de mandar (ver aiInsightActionService.js).
 
 import { callAgentLLM } from '../aiAgent/aiAgentLLMService.js'
+import { readUsage } from '../ai/aiUsageMetadata.js'
 
 const clean = value => String(value ?? '').trim()
 
@@ -129,6 +130,10 @@ export const generateReactivationMessageText = async ({ values, apiKey }) => {
   return {
     message,
     tokensUsed: Number(result.usageMetadata?.totalTokenCount || 0),
+    // El desglose medido viaja al lado del total: quien registra el consumo
+    // calcula el costo con entrada y salida reales en vez de repartirlo con
+    // una proporción supuesta.
+    usage: readUsage(result),
   }
 }
 

@@ -26,6 +26,7 @@
  */
 
 import { callAgentLLM } from '../../aiAgent/aiAgentLLMService.js'
+import { readUsage, sumUsage } from '../../ai/aiUsageMetadata.js'
 import { buildGroundingPrompt, buildExtractionPrompt } from '../prompts/groundingPrompt.js'
 
 const GROUNDING_RESPONSE_SCHEMA = {
@@ -99,12 +100,14 @@ export async function getGroundingSignals({ product, country, apiKey }) {
   // Los tokens del paso 1 se contabilizan aunque el paso 2 falle: ya se
   // gastaron contra la API de Google.
   const step1Tokens = Number(groundingResult?.usageMetadata?.totalTokenCount || 0)
+  const step1Usage = readUsage(groundingResult)
 
   if (groundingResult.fallback || !groundingResult.content) {
     return {
       available: false,
       reason: `NO_DISPONIBLE: ${groundingResult.error || 'sin respuesta del modelo'}`,
       tokensUsed: step1Tokens,
+      usage: step1Usage,
     }
   }
 
@@ -124,16 +127,21 @@ export async function getGroundingSignals({ product, country, apiKey }) {
   const step2Tokens = Number(extractionResult?.usageMetadata?.totalTokenCount || 0)
   const tokensUsed = step1Tokens + step2Tokens
 
+  // Los dos pasos se suman con su desglose, no solo con el total: son dos
+  // llamadas pagadas y el consumo se registra una sola vez al final.
+  const usage = sumUsage(step1Usage, readUsage(extractionResult))
+
   const parsed = safeParseJson(extractionResult.content)
   if (!parsed) {
     return {
       available: false,
       reason: 'NO_DISPONIBLE: no se pudo estructurar la respuesta grounded en JSON válido',
       tokensUsed,
+      usage,
     }
   }
 
-  return { available: true, ...parsed, sources, tokensUsed }
+  return { available: true, ...parsed, sources, tokensUsed, usage }
 }
 
 /**

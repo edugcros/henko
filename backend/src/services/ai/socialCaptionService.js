@@ -9,6 +9,7 @@
 // controlar del todo — acá se evita el mismo problema de raíz.
 
 import { callAgentLLM } from '../aiAgent/aiAgentLLMService.js'
+import { readUsage } from './aiUsageMetadata.js'
 
 const clean = value => String(value ?? '').trim()
 
@@ -187,6 +188,8 @@ export const generateSocialCaption = async (product, { apiKey, storeName } = {})
     hashtags,
     tokensUsed: Number(result.usageMetadata?.totalTokenCount || 0),
     model: result.model,
+    // Este era el único que ya informaba el modelo y le faltaba el desglose.
+    usage: readUsage(result),
   }
 }
 

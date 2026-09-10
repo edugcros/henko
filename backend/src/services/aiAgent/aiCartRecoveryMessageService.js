@@ -6,6 +6,7 @@
 // respuesta forzada a JSON, tolerante a fences de markdown.
 
 import { callAgentLLM } from './aiAgentLLMService.js'
+import { readUsage } from '../ai/aiUsageMetadata.js'
 
 const clean = value => String(value ?? '').trim()
 
@@ -138,6 +139,9 @@ export const generatePersonalizedRecoveryMessage = async ({ values, apiKey }) =>
   return {
     message,
     tokensUsed: Number(result.usageMetadata?.totalTokenCount || 0),
+    // Idem el resto de los generadores: el desglose medido viaja junto al
+    // total para que el costo no se reparta con una proporción supuesta.
+    usage: readUsage(result),
   }
 }
 

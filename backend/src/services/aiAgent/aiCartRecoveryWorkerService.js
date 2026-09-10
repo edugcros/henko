@@ -172,6 +172,11 @@ export const tryPersonalizeMessage = async ({ tenantId, values }) => {
         tenantId,
         metric: AI_METRICS.AGENT_TOKENS,
         amount: result.tokensUsed,
+        // El desglose medido y el modelo real que informa el generador. Sin
+        // ellos el costo se reparte con una proporción supuesta.
+        model: result.usage?.model,
+        inputTokens: result.usage?.inputTokens ?? null,
+        outputTokens: result.usage?.outputTokens ?? null,
       })
     }
 

@@ -155,6 +155,7 @@ export async function analyzeMarketDemand({
   // Van a MARKET_TOKENS, no a AGENT_TOKENS: mezclarlos hacía que el panel
   // atribuyera al bot de WhatsApp un consumo que gastó esta herramienta.
   const tokensUsed = Number(rawSignals.gemini?.tokensUsed || 0)
+  const usage = rawSignals.gemini?.usage || null
 
   if (tokensUsed > 0) {
     await recordAiConsumption({
@@ -162,6 +163,13 @@ export async function analyzeMarketDemand({
       metric: AI_METRICS.MARKET_TOKENS,
       amount: tokensUsed,
       profile,
+      // El desglose medido y el modelo real, cuando la fuente los informa. Sin
+      // ellos el costo se reparte con una proporción supuesta, y como la salida
+      // cuesta cinco veces la entrada, ese reparto es justo donde más se
+      // equivoca uno.
+      model: usage?.model,
+      inputTokens: usage?.inputTokens ?? null,
+      outputTokens: usage?.outputTokens ?? null,
     })
   }
 
