@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
+import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import logger from '../../../config/logger.js'
 
@@ -32,7 +33,32 @@ import logger from '../../../config/logger.js'
  *    activaciones, así que dos en paralelo duplican el pico.
  */
 
-const MODEL_URL = 'https://huggingface.co/tomjackson2023/rembg/resolve/main/u2netp.onnx'
+/**
+ * De dónde sale el modelo y cómo se comprueba que sea el que esperamos.
+ *
+ * Antes se bajaba de una sola URL: una cuenta personal de HuggingFace, sin
+ * verificar nada. Quien controlara esa cuenta controlaba un archivo que este
+ * servidor descarga y carga en memoria — el único punto del sistema donde
+ * alguien ajeno decide algo que corre acá adentro.
+ *
+ * El hash se verificó contra DOS fuentes independientes el 10/09/2026: el
+ * release oficial del proyecto rembg en GitHub y el mirror de HuggingFace
+ * devuelven exactamente el mismo archivo, byte por byte. Que coincidan es lo
+ * que permite fijarlo con confianza en vez de simplemente congelar lo que un
+ * tercero servía ese día.
+ *
+ * El orden importa: primero la fuente oficial, el mirror solo si la primera no
+ * responde. Si ninguna entrega el archivo esperado, no se usa ninguno — un
+ * modelo que no es el que se pidió no se carga "por las dudas".
+ */
+const MODEL_SOURCES = [
+  'https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx',
+  'https://huggingface.co/tomjackson2023/rembg/resolve/main/u2netp.onnx',
+]
+
+const MODEL_SHA256 =
+  process.env.RMBG_MODEL_SHA256 ||
+  '309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8'
 
 // ~4.5 MB. Si el archivo en disco es mucho más chico, quedó una descarga a medias.
 const MIN_MODEL_BYTES = 3 * 1024 * 1024
@@ -152,50 +178,104 @@ const assertEnoughMemory = () => {
 
 // ─── Modelo ──────────────────────────────────────────────
 
+const sha256 = buffer => createHash('sha256').update(buffer).digest('hex')
+
 const downloadModel = async destination => {
   await fsp.mkdir(path.dirname(destination), { recursive: true })
 
-  logger.info('[RMBG] Descargando modelo', { url: MODEL_URL, destination })
-  const started = Date.now()
+  const errores = []
 
-  const response = await fetch(MODEL_URL)
-  if (!response.ok) {
-    throw new Error(`No se pudo descargar el modelo RMBG (${response.status})`)
+  for (const url of MODEL_SOURCES) {
+    const started = Date.now()
+    logger.info('[RMBG] Descargando modelo', { url, destination })
+
+    try {
+      const response = await fetch(url)
+      if (!response.ok) {
+        errores.push(`${url}: HTTP ${response.status}`)
+        continue
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer())
+
+      if (buffer.length < MIN_MODEL_BYTES) {
+        errores.push(`${url}: descarga incompleta (${buffer.length} bytes)`)
+        continue
+      }
+
+      const digest = sha256(buffer)
+
+      if (digest !== MODEL_SHA256) {
+        // No es un fallo de red: alguien está sirviendo otro archivo. Se
+        // registra con nivel error porque es exactamente el evento que este
+        // control existe para detectar, y se prueba la fuente siguiente en vez
+        // de usar lo que llegó.
+        logger.error('[RMBG] El modelo descargado NO es el esperado, se descarta', {
+          url,
+          esperado: MODEL_SHA256,
+          recibido: digest,
+        })
+        errores.push(`${url}: hash distinto (${digest})`)
+        continue
+      }
+
+      // Se escribe a un temporal y se renombra: si el proceso muere a mitad de
+      // la escritura, no queda un .onnx corrupto que rompa todos los arranques
+      // siguientes. El renombrado es atómico, así que lo que quede en destino
+      // ya está verificado.
+      const temporary = `${destination}.${process.pid}.part`
+      await fsp.writeFile(temporary, buffer)
+      await fsp.rename(temporary, destination)
+
+      logger.info('[RMBG] Modelo descargado y verificado', {
+        url,
+        bytes: buffer.length,
+        ms: Date.now() - started,
+      })
+
+      return
+    } catch (error) {
+      errores.push(`${url}: ${error.message}`)
+    }
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer())
-  if (buffer.length < MIN_MODEL_BYTES) {
-    throw new Error(`Descarga incompleta del modelo RMBG (${buffer.length} bytes)`)
-  }
-
-  // Escribimos a un temporal y renombramos: si el proceso muere a mitad de la
-  // descarga, no queda un .onnx corrupto que rompa todos los arranques siguientes.
-  const temporary = `${destination}.${process.pid}.part`
-  await fsp.writeFile(temporary, buffer)
-  await fsp.rename(temporary, destination)
-
-  logger.info('[RMBG] Modelo descargado', {
-    bytes: buffer.length,
-    ms: Date.now() - started,
-  })
+  // Ninguna fuente entregó el archivo esperado. Se falla en vez de seguir con
+  // lo que haya: quitar el fondo es una función accesoria, y usar un modelo que
+  // no es el que se pidió no vale el riesgo de que lo sea.
+  throw new Error(`No se pudo obtener un modelo RMBG verificado — ${errores.join(' | ')}`)
 }
+
+// El archivo en disco se verifica una vez por proceso. Hacerlo en cada llamada
+// costaría leer y hashear 4,5 MB por imagen; no hacerlo nunca dejaría el
+// control al alcance de cualquiera que pueda escribir en el directorio temporal.
+let verifiedPath = null
 
 const ensureModel = async () => {
   const destination = modelPath()
 
-  try {
-    const stat = await fsp.stat(destination)
-    if (stat.size >= MIN_MODEL_BYTES) return destination
+  if (verifiedPath === destination) return destination
 
-    logger.warn('[RMBG] Modelo en cache incompleto, se vuelve a descargar', {
-      bytes: stat.size,
+  try {
+    const cached = await fsp.readFile(destination)
+
+    if (cached.length >= MIN_MODEL_BYTES && sha256(cached) === MODEL_SHA256) {
+      verifiedPath = destination
+      return destination
+    }
+
+    // Verificar la descarga y no lo que quedó en disco dejaría el control a
+    // medias: alcanzaría con escribir el archivo una vez para saltearlo.
+    logger.warn('[RMBG] El modelo en cache no coincide con el esperado, se descarta', {
+      bytes: cached.length,
     })
     await fsp.rm(destination, { force: true })
   } catch {
-    // no existe todavía
+    // no existe todavía, o no se pudo leer
   }
 
   await downloadModel(destination)
+  verifiedPath = destination
+
   return destination
 }
 
