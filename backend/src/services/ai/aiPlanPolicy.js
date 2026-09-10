@@ -458,6 +458,26 @@ export const getPlatformBudgetSource = () => {
 }
 
 /**
+ * Cuántos caracteres del mensaje entrante llegan al modelo.
+ *
+ * La salida de una llamada está acotada en varios lugares —8192 tokens como
+ * techo duro en aiAgentLLMService— y el prompt de sistema tiene su propio
+ * límite. La ENTRADA que manda el cliente no tenía ninguno: el body admite
+ * 1 MB en producción, o sea unos 250.000 tokens en un solo mensaje. A tarifa de
+ * entrada eso son ~USD 0,19 por mensaje, y le vacía la cuota mensual a un
+ * comercio free en seis.
+ *
+ * Se recorta en vez de rechazar: el visitante escribió algo y merece una
+ * respuesta aunque haya pegado media página. Rechazar convertiría un tope de
+ * costo en una falla visible para alguien que no hizo nada malo.
+ *
+ * 2.000 caracteres es holgado para un mensaje de chat — nadie legítimo se
+ * acerca — así que el tope es invisible en el uso real.
+ */
+export const getMaxInboundMessageChars = () =>
+  Math.min(Math.max(readEnvNumber('AI_AGENT_MAX_INBOUND_CHARS') ?? 2000, 200), 20000)
+
+/**
  * Tokens que consume un análisis de visión.
  *
  * MEDICIÓN (agosto 2026, gemini-3.6-flash): ~3.900 tokens de entrada más la

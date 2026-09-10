@@ -11,6 +11,7 @@ import {
   refundAiBudget,
   reserveAiBudget,
 } from '../ai/aiBudgetService.js'
+import { getMaxInboundMessageChars } from '../ai/aiPlanPolicy.js'
 import { loadTenantAiProfile } from '../ai/aiCredentialsService.js'
 import { searchRelevantKnowledgeForAgent } from './aiAgentToolService.js'
 import { runAgentCommerceTools } from './aiAgentCommerceToolsService.js'
@@ -642,7 +643,20 @@ export const processAgentMessage = async ({
   text,
   externalMessageId = '',
 }) => {
-  const cleanText = clean(text)
+  // Tope de longitud del mensaje entrante.
+  //
+  // La salida de una llamada está acotada en varios lugares —8192 tokens como
+  // techo duro en aiAgentLLMService— y el prompt de sistema tiene su propio
+  // límite. La ENTRADA que manda el cliente no tenía ninguno: el body admite
+  // 1 MB en producción, o sea unos 250.000 tokens en un solo mensaje. A tarifa
+  // de entrada eso son ~USD 0,19 por mensaje, y le vacía la cuota mensual a un
+  // comercio free en seis.
+  //
+  // Va acá y no en los controladores porque hay tres puertas al agente —el chat
+  // público, la prueba del panel y el webhook de WhatsApp— y tres topes
+  // separados terminan desincronizados. Un mensaje de chat legítimo entra
+  // cómodo en 2.000 caracteres.
+  const cleanText = clean(text).slice(0, getMaxInboundMessageChars())
   channel = normalizeChannel(channel)
   externalUserId = clean(externalUserId)
 
