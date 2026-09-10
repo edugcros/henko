@@ -36,11 +36,29 @@ const getQueryOptions = context => {
   return context?.getOptions?.() || context?.options || {}
 }
 
+/**
+ * El aislamiento solo se saltea cuando alguien lo pide EXPLÍCITAMENTE en la
+ * consulta.
+ *
+ * Acá vivía además `process.env.NODE_ENV === 'test'`, que apagaba el plugin
+ * entero durante los tests. El efecto no era un bug: era peor. Volvía
+ * indetectable una clase completa de fallo — ninguna prueba de este proyecto
+ * podía descubrir una fuga entre comercios, que es la propiedad sobre la que
+ * descansa todo el modelo multi-tenant. Y encima un test que INTENTARA
+ * verificar el aislamiento fallaba contra código correcto, lo que invita a
+ * "arreglar" algo que nunca estuvo roto.
+ *
+ * Se sacó después de medirlo: los 332 tests pasan igual sin ese atajo. No lo
+ * necesitaba ninguno; solo quitaba seguridad.
+ *
+ * La salida explícita —`ignoreTenant` / `skipTenant` en las opciones de la
+ * consulta— sigue estando, y es la que corresponde: un reporte de plataforma
+ * que cruza comercios lo declara en el lugar donde lo hace, y se lee.
+ */
 const shouldIgnoreTenant = context => {
   const options = getQueryOptions(context)
 
   return Boolean(
-    process.env.NODE_ENV === 'test' ||
     options.ignoreTenant ||
     options.skipTenant ||
     context?._mongooseOptions?.ignoreTenant,
