@@ -619,6 +619,9 @@ export const reserveAiBudget = async ({
   guards = [],
   profile = null,
   limitOverride = null,
+  // Autolímites del comercio para las métricas de GUARDA, por métrica. Mismo
+  // criterio que limitOverride: solo pueden apretar.
+  guardOverrides = null,
   period: requestedPeriod = null,
   // Clave de idempotencia de la operación. La provee quien llama cuando puede
   // derivar una estable —el id de un job, el hash de una imagen— y si no, se
@@ -704,11 +707,22 @@ export const reserveAiBudget = async ({
     .filter(guardMetric => guardMetric !== normalizedMetric)
     .map(guardMetric => ({
       metric: guardMetric,
-      limit: resolveEffectiveLimit({
-        plan: aiProfile.plan,
-        metric: guardMetric,
-        keySource: aiProfile.keySource,
-      }),
+      // El autolímite del comercio también aprieta las métricas de guarda, no
+      // solo la que se reserva. Sin esto, el tope de tokens que el comercio
+      // configura en su panel se guardaba y no lo leía nadie: un control que
+      // se puede tocar y no hace nada es peor que no ofrecerlo, porque el
+      // comercio cree que puso un freno.
+      //
+      // applyLimitOverride solo permite APRETAR, igual que en la métrica
+      // principal: nadie se amplía la cuota desde su propio panel.
+      limit: applyLimitOverride(
+        resolveEffectiveLimit({
+          plan: aiProfile.plan,
+          metric: guardMetric,
+          keySource: aiProfile.keySource,
+        }),
+        guardOverrides?.[guardMetric] ?? null,
+      ),
     }))
     .filter(guard => guard.limit !== UNLIMITED)
 

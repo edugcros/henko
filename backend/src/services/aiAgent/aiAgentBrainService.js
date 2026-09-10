@@ -531,6 +531,23 @@ const getAgentSelfLimit = agent => {
   return Number.isFinite(limit) && limit > 0 ? limit : null
 }
 
+/**
+ * El otro autolímite que el comercio configura en su panel: tokens por mes.
+ *
+ * Se guardaba y no lo leía nadie. El campo estaba en el formulario, viajaba al
+ * backend y se validaba, y a la hora de cobrar no participaba — el comercio
+ * ponía un freno y el freno no existía. Un control que se puede tocar y no hace
+ * nada es peor que no ofrecerlo.
+ *
+ * Va como override de la métrica de GUARDA porque los tokens no se reservan:
+ * se conocen después de responder, así que el freno se aplica sobre el mensaje
+ * siguiente. Igual que el de mensajes, solo puede apretar.
+ */
+const getAgentTokenSelfLimit = agent => {
+  const limit = Number(agent?.quotas?.monthlyAiTokenLimit || 0)
+  return Number.isFinite(limit) && limit > 0 ? limit : null
+}
+
 const reserveAgentMessageQuota = async ({ tenantId, agent, profile, operationId }) => {
   return reserveAiBudget({
     tenantId,
@@ -541,6 +558,9 @@ const reserveAgentMessageQuota = async ({ tenantId, agent, profile, operationId 
     // freno posible es el mensaje siguiente.
     guards: [AI_METRICS.AGENT_TOKENS],
     limitOverride: getAgentSelfLimit(agent),
+    guardOverrides: {
+      [AI_METRICS.AGENT_TOKENS]: getAgentTokenSelfLimit(agent),
+    },
     profile,
   })
 }

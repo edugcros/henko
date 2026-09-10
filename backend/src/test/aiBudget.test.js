@@ -401,6 +401,57 @@ describe("aiBudgetService · reserva", () => {
     expect(result.limit).toBe(getPlanLimit("free", AI_METRICS.AGENT_MESSAGES));
   });
 
+  test("el autolímite del comercio también aprieta la métrica de guarda", async () => {
+    // El comercio configura DOS autolímites en su panel: mensajes y tokens. El
+    // de tokens se guardaba y no lo leía nadie a la hora de cobrar — un control
+    // que se puede tocar y no hace nada es peor que no ofrecerlo, porque el
+    // comercio cree que puso un freno.
+    mockProfile.mockResolvedValue(platformProfile({ plan: "pro" }));
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable(null));
+    mockAiUsage.findOne.mockReturnValue(
+      chainableLean({ counters: { agentMessages: 0, agentTokens: 5000 } }),
+    );
+
+    const result = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      guards: [AI_METRICS.AGENT_TOKENS],
+      guardOverrides: { [AI_METRICS.AGENT_TOKENS]: 4000 },
+    });
+
+    // Con el tope del plan pro (50M) habría pasado; con el autolímite de 4.000
+    // y 5.000 ya gastados, no.
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe(DENY_REASONS.GUARD_LIMIT);
+    expect(result.limit).toBe(4000);
+  });
+
+  test("el autolímite de guarda solo aprieta, nunca afloja", async () => {
+    // Misma regla que el de la métrica principal: nadie se amplía la cuota
+    // desde su propio panel.
+    mockProfile.mockResolvedValue(platformProfile({ plan: "free" }));
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { agentMessages: 1 } }),
+    );
+
+    await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      guards: [AI_METRICS.AGENT_TOKENS],
+      guardOverrides: { [AI_METRICS.AGENT_TOKENS]: 999_000_000 },
+    });
+
+    const [filtro] = mockAiUsage.findOneAndUpdate.mock.calls[0];
+    const guarda = filtro.$expr.$and.find(e =>
+      JSON.stringify(e).includes("agentTokens"),
+    );
+
+    // El tope del plan free, no el número inflado que mandó el comercio.
+    expect(JSON.stringify(guarda)).toContain(
+      String(getPlanLimit("free", AI_METRICS.AGENT_TOKENS)),
+    );
+  });
+
   test("el autolímite hacia abajo sí se respeta", async () => {
     mockProfile.mockResolvedValue(platformProfile());
     mockAiUsage.findOneAndUpdate.mockReturnValue(
