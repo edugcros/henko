@@ -6,6 +6,7 @@ import crypto from 'node:crypto'
 import { Money } from '../utils/money.js'
 import { normalizePlan, getPlanMonthlyPriceUsd } from './ai/aiPlanPolicy.js'
 import { env } from '../../config/env.js'
+import { getWebhookUrl } from '../config/subscriptionConfig.js'
 import logger from '../../config/logger.js'
 
 const sanitizeString = (value, fallback = '') => {
@@ -187,21 +188,18 @@ export const mapMercadoPagoSubscriptionError = error => {
  * Construir URL de notificación para webhooks de Mercado Pago
  */
 const buildNotificationUrl = () => {
-  const publicBackendUrl = sanitizeString(
-    process.env.PUBLIC_BACKEND_URL || process.env.BACKEND_URL,
-  ).replace(/\/+$/, '')
+  // La URL la arma subscriptionConfig, que es donde vive la ruta real. Acá se
+  // armaba una segunda vez, apuntando a `/subscriptions/webhook/mercadopago`:
+  // una ruta que no existe en ningún router. Cada suscripción creada quedaba
+  // registrada contra un 404 y ningún evento de Mercado Pago llegaba nunca.
+  const url = getWebhookUrl()
 
-  if (!publicBackendUrl || !publicBackendUrl.startsWith('https://')) {
+  if (!url) {
     logger.warn('⚠️ notification_url omitida: falta PUBLIC_BACKEND_URL HTTPS pública')
     return null
   }
 
-  const apiPrefix = `/${sanitizeString(process.env.API_PREFIX, 'api').replace(
-    /^\/+|\/+$/g,
-    '',
-  )}`
-
-  return `${publicBackendUrl}${apiPrefix}/subscriptions/webhook/mercadopago`
+  return url
 }
 
 /**

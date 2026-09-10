@@ -3,6 +3,7 @@
 
 import express from 'express'
 import { handleSubscriptionWebhook } from '../controller/subscriptionWebhookCtrl.js'
+import { SUBSCRIPTION_WEBHOOK_ROUTE } from '../config/subscriptionConfig.js'
 
 const router = express.Router()
 
@@ -26,6 +27,9 @@ const router = express.Router()
  *   }
  * }
  */
-router.post('/mercadopago/subscription', handleSubscriptionWebhook)
+// La ruta viene de subscriptionConfig, que es la misma fuente que usa la URL
+// declarada a Mercado Pago. Escribirla literal acá es lo que permitió que las
+// dos divergieran sin que nada avisara.
+router.post(SUBSCRIPTION_WEBHOOK_ROUTE, handleSubscriptionWebhook)
 
 export default router

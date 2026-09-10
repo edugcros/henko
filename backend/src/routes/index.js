@@ -28,6 +28,7 @@ import pricingRoutes from './pricingRoutes.js'
 import marketintelligenceRoutes from './marketintelligenceRoutes.js'
 import subscriptionRoutes from './subscriptionRoutes.js'
 import webhookRoutes from './webhookRoutes.js'
+import { SUBSCRIPTION_WEBHOOK_MOUNT } from '../config/subscriptionConfig.js'
 
 
 const router = express.Router()
@@ -81,7 +82,7 @@ router.use('/subscriptions', subscriptionRoutes)
 router.use('/payment-config', paymentConfigRoutes)
 router.use('/meta-pixel-config', metaPixelConfigRoutes)
 router.use('/image-ai', imageAiRoutes)
-router.use('/webhooks', webhookRoutes)
+router.use(SUBSCRIPTION_WEBHOOK_MOUNT, webhookRoutes)
 
 
 router.use('/promotional-blocks', promotionalBlockRoute) 

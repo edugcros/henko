@@ -2,7 +2,11 @@
 // Webhook controller para eventos de Mercado Pago (suscripciones)
 
 import Tenant from '../models/tenantModel.js'
+import SubscriptionWebhookEvent, {
+  WEBHOOK_EVENT_STATUS,
+} from '../models/subscriptionWebhookEventModel.js'
 import { sendTemplateEmail } from '../services/emailService.js'
+import { verifyMercadoPagoWebhookSignature } from '../services/paymentWebhookService.js'
 import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
@@ -13,6 +17,20 @@ const sendResponse = (res, statusCode, success, message, data = null) => {
     ...(data && { data }),
   })
 }
+
+/**
+ * Clave de deduplicación del evento.
+ *
+ * Mercado Pago no manda un id de evento propio en el body de suscripciones, así
+ * que se compone con lo que sí identifica al hecho: el tipo y el recurso. Dos
+ * entregas del mismo evento producen la misma clave; un cobro aprobado y una
+ * cancelación de la misma suscripción producen claves distintas.
+ *
+ * `x-request-id` NO sirve: cambia en cada reintento, que es precisamente el
+ * caso que hay que deduplicar.
+ */
+const buildEventId = ({ type, data }) =>
+  `${String(type || '').trim()}:${String(data?.id || '').trim()}`
 
 /**
  * POST /api/webhooks/mercadopago/subscription
@@ -26,29 +44,96 @@ const sendResponse = (res, statusCode, success, message, data = null) => {
  * - subscription_canceled: suscripción cancelada
  */
 export const handleSubscriptionWebhook = async (req, res) => {
-  try {
-    const { type, data } = req.body
+  // 1. FIRMA. El webhook de pagos ya la verificaba; este procesaba req.body
+  // directo, o sea que cualquiera con la URL podía cancelar la suscripción de
+  // un comercio o marcarla como pagada. Se usa la misma función, para que haya
+  // un solo lugar donde esté escrito cómo se valida a Mercado Pago.
+  if (!verifyMercadoPagoWebhookSignature(req)) {
+    logger.error('🔴 Webhook de suscripción con firma inválida', {
+      path: req.originalUrl,
+      hasSignature: Boolean(req.headers['x-signature']),
+    })
+    return sendResponse(res, 401, false, 'Firma inválida')
+  }
 
-    if (!type || !data) {
-      return sendResponse(res, 400, false, 'Webhook inválido')
+  const { type, data } = req.body || {}
+
+  if (!type || !data?.id) {
+    return sendResponse(res, 400, false, 'Webhook inválido')
+  }
+
+  const eventId = buildEventId({ type, data })
+
+  // 2. IDEMPOTENCIA. La unicidad la impone el índice, no un `if`: dos entregas
+  // simultáneas del mismo evento pasarían las dos por una comprobación previa
+  // antes de que ninguna escriba.
+  let event
+
+  try {
+    event = await SubscriptionWebhookEvent.create({
+      provider: 'mercadopago',
+      eventId,
+      eventType: type,
+      subscriptionId: String(data.id),
+    })
+  } catch (error) {
+    if (error?.code !== 11000) {
+      // No se pudo ni registrar el evento: es un fallo de infraestructura, y
+      // decirle 200 a Mercado Pago sería perderlo. Que reintente.
+      logger.error('Error registrando evento de suscripción', {
+        eventId,
+        error: error.message,
+      })
+      return sendResponse(res, 500, false, 'Error temporal')
     }
 
-    logger.info('Webhook de suscripción recibido', { type, dataId: data.id })
+    const previo = await SubscriptionWebhookEvent.findOne({
+      provider: 'mercadopago',
+      eventId,
+    })
 
-    // Obtener la suscripción por ID de Mercado Pago
+    if (previo?.status === WEBHOOK_EVENT_STATUS.PROCESSED) {
+      logger.info('Evento de suscripción duplicado, ya procesado', { eventId })
+      return sendResponse(res, 200, true, 'Evento ya procesado')
+    }
+
+    if (previo?.status === WEBHOOK_EVENT_STATUS.PROCESSING) {
+      // Otra instancia lo tiene en la mano. No se reprocesa —el objetivo es no
+      // aplicar dos veces la misma transición— y se contesta 200 para no
+      // provocar una tormenta de reintentos sobre algo que ya está en curso.
+      logger.warn('Evento de suscripción en curso en otra instancia', { eventId })
+      return sendResponse(res, 200, true, 'Evento en proceso')
+    }
+
+    // Quedó en 'failed': este ES el reintento que se pidió devolviendo 500.
+    event = previo
+    await SubscriptionWebhookEvent.updateOne(
+      { _id: previo._id },
+      { $set: { status: WEBHOOK_EVENT_STATUS.PROCESSING, error: null } },
+    )
+  }
+
+  try {
+    logger.info('Webhook de suscripción recibido', { type, dataId: data.id, eventId })
+
     const tenant = await Tenant.findOne({
       'integrations.subscriptionMercadoPago.subscriptionId': data.id,
     })
 
     if (!tenant) {
+      // Sin tenant no hay nada que aplicar, y reintentar no lo va a encontrar.
+      // Se cierra el evento como procesado para que un reintento no repita la
+      // búsqueda, pero se registra en warn: si esto aparece seguido, la
+      // suscripción se creó sin guardar su id y eso sí es un problema.
       logger.warn('Tenant no encontrado para suscripción de MP', {
         mpSubscriptionId: data.id,
+        eventId,
       })
-      // Devolvemos 200 para que MP no reintente
-      return sendResponse(res, 200, true, 'Webhook procesado')
+
+      await marcarProcesado(event._id)
+      return sendResponse(res, 200, true, 'Sin tenant asociado')
     }
 
-    // Procesar según el tipo de evento
     switch (type) {
     case 'subscription_update':
       await handleSubscriptionUpdate(tenant, data)
@@ -70,16 +155,41 @@ export const handleSubscriptionWebhook = async (req, res) => {
       logger.info('Tipo de evento no procesado', { type })
     }
 
-    sendResponse(res, 200, true, 'Webhook procesado exitosamente')
+    await marcarProcesado(event._id, tenant._id)
+
+    return sendResponse(res, 200, true, 'Webhook procesado exitosamente')
   } catch (error) {
-    logger.error('Error procesando webhook de suscripción:', {
+    // 3. CÓDIGO HTTP. Antes esto devolvía 200 con el comentario "para que MP no
+    // reintente indefinidamente". El efecto real era decirle al proveedor que
+    // un cobro se aplicó cuando no se había aplicado: la suscripción quedaba
+    // sin actualizar y nadie se enteraba. Un 500 pide el reintento que hace
+    // falta, y la idempotencia de arriba es lo que vuelve seguro pedirlo.
+    logger.error('Error procesando webhook de suscripción', {
+      eventId,
       error: error.message,
       stack: error.stack,
     })
-    // Devolvemos 200 igual para que MP no reintente indefinidamente
-    sendResponse(res, 200, true, 'Webhook recibido')
+
+    await SubscriptionWebhookEvent.updateOne(
+      { _id: event._id },
+      { $set: { status: WEBHOOK_EVENT_STATUS.FAILED, error: error.message } },
+    ).catch(() => undefined)
+
+    return sendResponse(res, 500, false, 'Error procesando el evento')
   }
 }
+
+const marcarProcesado = (id, tenantId = null) =>
+  SubscriptionWebhookEvent.updateOne(
+    { _id: id },
+    {
+      $set: {
+        status: WEBHOOK_EVENT_STATUS.PROCESSED,
+        processedAt: new Date(),
+        ...(tenantId ? { tenantId } : {}),
+      },
+    },
+  )
 
 /**
  * Manejar actualización de suscripción (cambio de plan, etc)
