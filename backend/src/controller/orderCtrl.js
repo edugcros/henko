@@ -60,6 +60,7 @@ import {
 } from '../services/orderAdminMutationService.js'
 
 import logger from '../../config/logger.js'
+import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 
 // =====================================================
 // CONSTANTES
@@ -76,6 +77,27 @@ export const LEGACY_ORDER_STATUS = {
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
+ * Manda el mail de cambio de estado sin bloquear la respuesta, y deja rastro si
+ * falla.
+ *
+ * Los cinco envíos de este archivo terminaban en `.catch(() => {})`. Que no
+ * tumben la operación está bien: el cambio de estado ya se guardó y no se
+ * revierte porque el correo no salga. Pero tragarlo sin registrar significa que
+ * un cliente no recibe su "tu pedido salió" y nadie se entera nunca — ni el
+ * comercio, que atiende el reclamo a ciegas.
+ */
+const notificarCambioDeEstado = ({ order, status, reason }) => {
+  dispatchOrderStatusEmail({ order, status, reason }).catch(error => {
+    logger.warn('[ORDEN] No se pudo enviar el aviso de cambio de estado', {
+      orderId: order?._id?.toString?.(),
+      tenantId: order?.tenantId?.toString?.(),
+      status,
+      error: error.message,
+    })
+  })
+}
 
 const LEGACY_TO_ORDER_STATUS = {
   [LEGACY_ORDER_STATUS.PAYMENT_PENDING]: ORDER_STATUS.OPEN,
@@ -206,6 +228,9 @@ const assertPaymentApprovedForFulfillment = order => {
 export const orderWriteLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: req => (['admin', 'manager'].includes(req.user?.role) ? 100 : 30),
+  // Compartido entre instancias, igual que los demás limitadores: con el
+  // almacén por defecto este techo se multiplicaba por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: req => {
@@ -984,7 +1009,7 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
     await order.save({ tenantId })
 
     if (nextStatus === ORDER_STATUS.SHIPPED || nextStatus === ORDER_STATUS.DELIVERED) {
-      dispatchOrderStatusEmail({ order, status: nextStatus }).catch(() => {})
+      notificarCambioDeEstado({ order, status: nextStatus })
     }
 
     return res.status(200).json({
@@ -1125,11 +1150,11 @@ export const updateOrderFulfillmentStatus = expressAsyncHandler(async (req, res)
     })
 
     if (nextFulfillmentStatus === FULFILLMENT_STATUS.SHIPPED) {
-      dispatchOrderStatusEmail({ order, status: 'shipped' }).catch(() => {})
+      notificarCambioDeEstado({ order, status: 'shipped' })
     }
 
     if (nextFulfillmentStatus === FULFILLMENT_STATUS.DELIVERED) {
-      dispatchOrderStatusEmail({ order, status: 'delivered' }).catch(() => {})
+      notificarCambioDeEstado({ order, status: 'delivered' })
     }
 
     return res.status(200).json({
@@ -1352,7 +1377,7 @@ export const cancelOrder = expressAsyncHandler(async (req, res) => {
       })
     })
 
-    dispatchOrderStatusEmail({ order, status: 'cancelled', reason }).catch(() => {})
+    notificarCambioDeEstado({ order, status: 'cancelled', reason })
 
     return res.status(200).json({
       success: true,
@@ -1394,7 +1419,7 @@ export const refundOrder = expressAsyncHandler(async (req, res) => {
       })
     })
 
-    dispatchOrderStatusEmail({ order, status: 'refunded', reason }).catch(() => {})
+    notificarCambioDeEstado({ order, status: 'refunded', reason })
 
     return res.status(200).json({
       success: true,

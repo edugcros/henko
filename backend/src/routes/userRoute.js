@@ -1,6 +1,7 @@
 // 📁 src/routes/userRoute.js
 import express from 'express'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 
 import {
   createUser,
@@ -61,6 +62,9 @@ const adminContext = [
 // ======================================================
 
 const authLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
@@ -110,6 +114,9 @@ router.get('/csrf-token', (req, res) => {
 })
 
 const registerAdminLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,

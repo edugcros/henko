@@ -3,6 +3,7 @@
 
 import express from 'express'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 
 import {
   getPaymentPublicConfig,
@@ -25,6 +26,9 @@ const router = express.Router()
 // =====================================================
 
 const paymentWriteLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
@@ -52,6 +56,9 @@ const paymentWriteLimiter = rateLimit({
 })
 
 const mpWebhookLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 60 * 1000,
   max: 120,
   standardHeaders: true,

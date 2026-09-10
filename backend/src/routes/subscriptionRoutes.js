@@ -3,6 +3,7 @@
 
 import express from 'express'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 
 import {
   getSubscriptionConfig,
@@ -26,6 +27,9 @@ const router = express.Router()
 // =====================================================
 
 const subscriptionPaymentLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 60 * 60 * 1000,  // 1 hora
   max: 10,                    // 10 intentos por hora
   standardHeaders: true,

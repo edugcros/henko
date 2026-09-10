@@ -3,6 +3,7 @@ import express from 'express'
 import multer from 'multer'
 import crypto from 'crypto'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 import sharp from 'sharp'
 
 import {
@@ -152,6 +153,9 @@ const agentOrAdminAuth = (req, res, next) => {
 }
 
 const analysisWriteLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: Number(
     process.env.PRODUCT_ANALYSIS_RATE_LIMIT_WINDOW_MS ||
       15 * 60 * 1000,

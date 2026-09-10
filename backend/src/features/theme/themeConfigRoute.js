@@ -3,6 +3,7 @@
 
 import express from 'express'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { SharedRateLimitStore } from '../../middlewares/sharedRateLimitStore.js'
 import multer from 'multer'
 
 import {
@@ -131,6 +132,9 @@ const createRateLimitHandler = message => {
 }
 
 const strictLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
@@ -141,6 +145,9 @@ const strictLimiter = rateLimit({
 })
 
 const patchLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 5 * 60 * 1000,
   max: 240,
   standardHeaders: true,
@@ -153,6 +160,9 @@ const patchLimiter = rateLimit({
 })
 
 const publicLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 5 * 60 * 1000,
   max: 200,
   standardHeaders: true,
@@ -164,6 +174,9 @@ const publicLimiter = rateLimit({
 })
 
 const cssLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 60 * 1000,
   max: 100,
   standardHeaders: true,

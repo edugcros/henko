@@ -37,6 +37,7 @@ import {
 import expressAsyncHandler from 'express-async-handler'
 import { body, validationResult } from 'express-validator'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import process from 'process'
@@ -1167,6 +1168,9 @@ export const updatePassword = expressAsyncHandler(async (req, res) => {
 })
 
 export const resendVerificationLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 15 * 60 * 1000,
   max: 5,
   standardHeaders: true,
@@ -1239,6 +1243,9 @@ export const resendVerificationEmail = expressAsyncHandler(async (req, res) => {
 })
 
 export const forgotPasswordLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 15 * 60 * 1000,
   max: 5,
   standardHeaders: true,

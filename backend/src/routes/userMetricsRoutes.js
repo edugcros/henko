@@ -1,6 +1,7 @@
 // 📁 src/routes/userMetricsRoutes.js
 import express from 'express'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 
 import { trackUserMetricEvent } from '../controller/userMetricsCtrl.js'
 import {
@@ -34,6 +35,9 @@ const getTenantKey = req => {
 }
 
 const metricsRateLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 60 * 1000,
   max: 180,
   standardHeaders: true,

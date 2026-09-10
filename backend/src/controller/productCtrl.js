@@ -19,6 +19,7 @@ import { registerAiCatalogChangedEvent } from '../services/aiAgent/aiCatalogEven
 
 import expressAsyncHandler from 'express-async-handler'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -3337,6 +3338,9 @@ const productRateLimitHandler = message => (req, res, _next, options) => {
 }
 
 export const productPublicReadLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 5 * 60 * 1000,
   max: 600,
   standardHeaders: true,
@@ -3348,6 +3352,9 @@ export const productPublicReadLimiter = rateLimit({
 })
 
 export const rateLimiter = rateLimit({
+  // Compartido entre instancias: con el almacén por defecto, que vive en la
+  // memoria del proceso, este techo se multiplica por la cantidad de procesos.
+  store: new SharedRateLimitStore(),
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
