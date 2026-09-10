@@ -20,6 +20,7 @@ import logger from './config/logger.js'
 
 import { notFound, errorHandler } from './src/middlewares/errorHandler.js'
 import { globalApiLimiter } from './src/middlewares/globalApiLimiter.js'
+import { requestId } from './src/middlewares/requestId.js'
 import apiRoutes from './src/routes/index.js'
 
 // =======================================================
@@ -108,6 +109,10 @@ app.use(
 
 app.use(cookieParser(env.cookieSecret))
 app.use(mongoSanitize())
+
+// Antes de las rutas y antes del rate limiter: si una request se rechaza por
+// cuota, ese rechazo también tiene que poder rastrearse.
+app.use(requestId)
 
 // =======================================================
 // STATIC FILES

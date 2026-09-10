@@ -37,6 +37,7 @@ export const errorHandler = (err, req, res, next) => {
   // real en producción no deja ningún rastro server-side, solo lo que el
   // cliente reporte. Siempre corre, independiente de NODE_ENV.
   logger.error(err.message || 'Error sin mensaje', {
+    requestId: req.id,
     stack: err.stack,
     name: err.name,
     code: err.code,
@@ -47,47 +48,83 @@ export const errorHandler = (err, req, res, next) => {
     userId: req.user?._id ? String(req.user._id) : undefined,
   })
 
+  // El identificador va en TODA respuesta de error, no solo en las genéricas:
+  // es lo que le permite a un comercio reportar "me falló esto" con algo que
+  // se puede buscar en el log.
+  const conTraza = payload => ({ ...payload, requestId: req.id })
+
   // 1. Mongoose Validation
   if (err.name === 'ValidationError') {
     const messages = Object.values(err.errors).map(e => e.message)
-    return res.status(400).json({
-      success: false,
-      error: 'Error de validación',
-      messages,
-    })
+    return res.status(400).json(
+      conTraza({
+        success: false,
+        error: 'Error de validación',
+        messages,
+      }),
+    )
   }
 
   // 2. Mongoose CastError (ID inválido)
   if (err.name === 'CastError') {
-    return res.status(400).json({
-      success: false,
-      error: 'ID inválido',
-      message: `El recurso con id '${err.value}' no es válido.`,
-    })
+    return res.status(400).json(
+      conTraza({
+        success: false,
+        error: 'ID inválido',
+        // err.value es lo que mandó el propio cliente: devolvérselo no revela
+        // nada que no supiera.
+        message: `El recurso con id '${err.value}' no es válido.`,
+      }),
+    )
   }
 
   // 3. Conflicto por índice único
   if (err.code === 11000) {
-    return res.status(409).json({
-      success: false,
-      error: 'Recurso duplicado',
-      message: 'Ya existe un recurso con esos datos únicos.',
-    })
+    return res.status(409).json(
+      conTraza({
+        success: false,
+        error: 'Recurso duplicado',
+        message: 'Ya existe un recurso con esos datos únicos.',
+      }),
+    )
   }
 
   // 4. CSRF (EBADCSRFTOKEN)
   if (err.code === 'EBADCSRFTOKEN') {
-    return res.status(403).json({
-      success: false,
-      error: 'Token CSRF inválido',
-      message: 'La sesión de seguridad es inválida. Recarga la página.',
-    })
+    return res.status(403).json(
+      conTraza({
+        success: false,
+        error: 'Token CSRF inválido',
+        message: 'La sesión de seguridad es inválida. Recarga la página.',
+      }),
+    )
   }
 
-  res.status(statusCode).json({
-    success: false,
-    error: err.name || 'Error del servidor',
-    message: err.message || 'Algo salió mal',
-    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
-  })
+  // 5. Todo lo demás.
+  //
+  // La distinción es 4xx contra 5xx, y no "producción contra desarrollo".
+  //
+  // Un 4xx lo lanza nuestro propio código con un mensaje escrito PARA el
+  // cliente: "el plan no tiene precio definido", "el email no es válido". Taparlo
+  // convertiría la API en inusable y no protege nada — el que lo escribió ya
+  // decidió que era publicable.
+  //
+  // Un 5xx es un fallo que nadie redactó: llega el `err.message` de Mongo, del
+  // driver o del sistema de archivos, con el host del clúster, una ruta interna
+  // o un fragmento de consulta adentro. Eso no sale nunca en producción. Y
+  // tampoco sale `err.name`, que dice qué biblioteca falló.
+  const esFalloInterno = statusCode >= 500
+  const ocultar = esFalloInterno && process.env.NODE_ENV === 'production'
+
+  return res.status(statusCode).json(
+    conTraza({
+      success: false,
+      code: esFalloInterno ? 'INTERNAL_SERVER_ERROR' : err.code || undefined,
+      error: ocultar ? 'Error del servidor' : err.name || 'Error del servidor',
+      message: ocultar
+        ? 'Ocurrió un error interno. Si vuelve a pasar, pasanos el identificador de esta respuesta.'
+        : err.message || 'Algo salió mal',
+      stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+    }),
+  )
 }
