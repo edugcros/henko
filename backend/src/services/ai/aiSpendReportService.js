@@ -83,7 +83,7 @@ export const getPeriodSpendByMetric = async period => {
       },
     },
     { $sort: { costUsd: -1 } },
-  ]).option({ ignoreTenant: true })
+  ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
 
   return rows.map(row => ({
     metric: row._id,
@@ -116,7 +116,7 @@ export const getPeriodSpendByModel = async period => {
       },
     },
     { $sort: { costUsd: -1 } },
-  ]).option({ ignoreTenant: true })
+  ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
 
   return rows.map(row => ({
     model: row._id,
@@ -150,7 +150,7 @@ const getPeriodQuality = async period => {
         fallbackRows: { $sum: { $cond: ['$priceFallback', 1, 0] } },
       },
     },
-  ]).option({ ignoreTenant: true })
+  ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
 
   return {
     rows: row?.rows || 0,

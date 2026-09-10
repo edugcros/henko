@@ -854,7 +854,11 @@ const processDueScheduledJobs = async ({ tenantId = null, limit = 10 } = {}) => 
   const jobs = await ProductAnalysisJob.find(buildDueFilter({ tenantId }))
     .sort({ scheduledAt: 1 })
     .limit(limit)
-    .setOptions(tenantId ? {} : { ignoreTenant: true })
+    .setOptions(
+      tenantId
+        ? {}
+        : { ignoreTenant: true, platformScope: 'platform:barrido-de-analisis' },
+    )
 
   // Fire-and-forget con concurrencia acotada: no bloquea al caller (ni el
   // setInterval del scheduler, ni el botón "Ejecutar barrido ahora")

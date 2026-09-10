@@ -220,7 +220,7 @@ export const remeasureDueInsights = async (limit = 50) => {
     'measurement.measureAfterDate': { $lte: new Date() },
   })
     .limit(limit)
-    .setOptions({ ignoreTenant: true })
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:barrido-de-insights' })
 
   const results = []
 

@@ -66,7 +66,7 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     AiUsage.aggregate([
       { $match: { period } },
       { $project: { tenantId: 1, estimatedCostUsd: 1, byokTokens: 1 } },
-    ]).option({ ignoreTenant: true }),
+    ]).option({ ignoreTenant: true, platformScope: 'platform:margen' }),
     // Emails de confirmación de compra — no cubre recuperación de carrito por
     // email, esa se cuenta aparte vía AiCartRecovery (mismo criterio: cada
     // envío real, no un estimado).
@@ -74,13 +74,13 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       ? Order.aggregate([
         { $match: { emailSent: true, createdAt: { $gte: range.start, $lt: range.end } } },
         { $group: { _id: '$tenantId', count: { $sum: 1 } } },
-      ]).option({ ignoreTenant: true })
+      ]).option({ ignoreTenant: true, platformScope: 'platform:margen' })
       : Promise.resolve([]),
     range
       ? AiCartRecovery.aggregate([
         { $match: { sentAt: { $gte: range.start, $lt: range.end } } },
         { $group: { _id: { tenantId: '$tenantId', channel: '$channel' }, count: { $sum: 1 } } },
-      ]).option({ ignoreTenant: true })
+      ]).option({ ignoreTenant: true, platformScope: 'platform:margen' })
       : Promise.resolve([]),
   ])
 

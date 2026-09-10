@@ -4,6 +4,7 @@
 import mongoose from 'mongoose'
 
 import { getTenantContext } from '../utils/tenantRequestContext.js'
+import logger from '../../config/logger.js'
 
 const { Types } = mongoose
 
@@ -63,6 +64,52 @@ const shouldIgnoreTenant = context => {
     options.skipTenant ||
     context?._mongooseOptions?.ignoreTenant,
   )
+}
+
+/**
+ * Deja rastro cuando alguien escapa el aislamiento desde adentro de una request
+ * que YA tiene tenant.
+ *
+ * POR QUÉ ESA CONDICIÓN Y NO OTRA
+ *
+ * `ignoreTenant` no se puede prohibir: hay operaciones que cruzan comercios por
+ * definición —el gasto de IA de la plataforma, el worker de recuperación de
+ * carritos, buscar un usuario por email antes de saber a qué comercio
+ * pertenece— y sin la salida habría que reimplementarlas peor.
+ *
+ * Pero esos casos comparten algo: NO hay tenant en el contexto. Un worker, un
+ * script y una request pre-login corren sin contexto. Cuando sí lo hay, el
+ * comercio de esa request ya está determinado, y saltear el filtro significa ir
+ * a buscar datos fuera de él. Ese es el único caso que hay que mirar, y por eso
+ * la guarda no hace ruido en los 20 y pico de usos legítimos que ya existen.
+ *
+ * QUÉ HACE Y QUÉ NO
+ *
+ * Registra, no bloquea. Bloquear en runtime convertiría un uso legítimo que no
+ * anticipé en una caída de producción; el objetivo acá es que un escape nuevo y
+ * descuidado sea imposible de no ver, no atajarlo a ciegas.
+ *
+ * `platformScope` es la forma de declarar que el cruce es a propósito: se
+ * escribe el motivo en el mismo lugar donde se saltea, que es exactamente lo
+ * que se quiere poder leer en una revisión.
+ */
+const auditTenantBypass = (context, { modelName, operation }) => {
+  const requestContext = getTenantContext()
+  const contextTenantId = requestContext?.tenantId
+
+  if (!contextTenantId) return
+
+  const options = getQueryOptions(context)
+  const scope = String(options.platformScope || '').trim()
+
+  if (scope) return
+
+  logger.error('[Tenant] Aislamiento salteado dentro de una request con tenant', {
+    model: modelName,
+    operation,
+    tenantEnContexto: String(contextTenantId),
+    comoDeclararlo: 'setOptions({ ignoreTenant: true, platformScope: "<motivo>" })',
+  })
 }
 
 const getTenantIdFromQueryContext = context => {
@@ -216,7 +263,13 @@ export const tenantPlugin = (schema, options = {}) => {
   }
 
   function applyTenantFilter(next) {
-    if (shouldIgnoreTenant(this)) return next()
+    if (shouldIgnoreTenant(this)) {
+      auditTenantBypass(this, {
+        modelName: this.model?.modelName,
+        operation: this.op || 'find',
+      })
+      return next()
+    }
 
     try {
       addTenantFilter({
@@ -232,7 +285,13 @@ export const tenantPlugin = (schema, options = {}) => {
   }
 
   function applyTenantUpdateGuard(next) {
-    if (shouldIgnoreTenant(this)) return next()
+    if (shouldIgnoreTenant(this)) {
+      auditTenantBypass(this, {
+        modelName: this.model?.modelName,
+        operation: this.op || 'update',
+      })
+      return next()
+    }
 
     try {
       const update = this.getUpdate?.() || {}
@@ -289,7 +348,15 @@ export const tenantPlugin = (schema, options = {}) => {
 
   schema.pre('aggregate', function applyTenantAggregation(next) {
     const options = this.options || {}
-    if (options.ignoreTenant || options.skipTenant) return next()
+    if (options.ignoreTenant || options.skipTenant) {
+      // Es la vía que más cruza comercios: los reportes de plataforma son
+      // agregaciones. Justamente por eso también se audita.
+      auditTenantBypass(this, {
+        modelName: this._model?.modelName || this.model?.()?.modelName,
+        operation: 'aggregate',
+      })
+      return next()
+    }
 
     const requestContext = getTenantContext()
     const pipeline = this.pipeline()
