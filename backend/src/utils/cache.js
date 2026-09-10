@@ -250,9 +250,49 @@ export const cacheDel = async key => {
   return true
 }
 
+/**
+ * Incrementa un contador y devuelve el valor resultante. El TTL se fija en el
+ * primer incremento, así que la ventana empieza a correr con el primer uso.
+ *
+ * Existe para los topes que hay que contar sin poder reservar: un límite diario
+ * de mensajes, por ejemplo. Un `cacheGet` seguido de un `cacheSet` no sirve —
+ * entre las dos operaciones entran las demás peticiones y el tope se pasa por
+ * la cantidad de peticiones concurrentes, que es exactamente el escenario del
+ * que uno se quiere proteger.
+ *
+ * Con Redis el conteo es exacto entre instancias. Sin Redis cuenta por proceso,
+ * y entonces el tope efectivo se multiplica por la cantidad de instancias: es
+ * una degradación real, no una equivalencia, y por eso el módulo avisa cuando
+ * Redis se cae.
+ */
+export const cacheIncr = async (key, ttlSec = 3600) => {
+  const ttl = Math.max(1, Math.floor(Number(ttlSec) || 1))
+  const redis = await getClient()
+
+  if (redis) {
+    const value = await withTimeout(async () => {
+      const next = await redis.incr(namespaced(key))
+      // Solo en el primero: volver a fijarlo en cada incremento correría la
+      // ventana hacia adelante y el contador no vencería nunca mientras haya
+      // tráfico.
+      if (next === 1) await redis.expire(namespaced(key), ttl)
+      return next
+    })
+
+    if (value !== FAILED) return Number(value)
+
+    warnDegraded('incr agotó el tiempo')
+  }
+
+  const current = Number(memoryGet(key) || 0) + 1
+  memorySet(key, current, ttl)
+
+  return current
+}
+
 /** Solo para los tests: vacía la memoria local sin tocar Redis. */
 export const __clearMemoryCache = () => {
   memoryCache.clear()
 }
 
-export default { cacheSet, cacheGet, cacheDel }
+export default { cacheSet, cacheGet, cacheDel, cacheIncr }

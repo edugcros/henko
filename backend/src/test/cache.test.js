@@ -164,6 +164,44 @@ describe("con Redis configurado", () => {
   });
 });
 
+describe("cacheIncr", () => {
+  test("en memoria cuenta desde uno y acumula", async () => {
+    const { cacheIncr } = await loadCache();
+
+    expect(await cacheIncr("contador", 60)).toBe(1);
+    expect(await cacheIncr("contador", 60)).toBe(2);
+    expect(await cacheIncr("contador", 60)).toBe(3);
+  });
+
+  test("con Redis usa INCR y fija el TTL solo en el primero", async () => {
+    // Refijarlo en cada incremento correría la ventana hacia adelante y el
+    // contador no vencería nunca mientras hubiera tráfico — justo lo contrario
+    // de lo que un tope diario necesita.
+    redisClient.incr = jest.fn().mockResolvedValue(1);
+    redisClient.expire = jest.fn().mockResolvedValue(1);
+
+    const { cacheIncr } = await loadCache({ redisUrl: "redis://x" });
+
+    await cacheIncr("contador", 3600);
+    expect(redisClient.expire).toHaveBeenCalledTimes(1);
+
+    redisClient.incr.mockResolvedValue(2);
+    await cacheIncr("contador", 3600);
+
+    expect(redisClient.incr).toHaveBeenCalledTimes(2);
+    expect(redisClient.expire).toHaveBeenCalledTimes(1);
+  });
+
+  test("si Redis falla sigue contando en memoria", async () => {
+    redisClient.connect.mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const { cacheIncr } = await loadCache({ redisUrl: "redis://x" });
+
+    expect(await cacheIncr("contador", 60)).toBe(1);
+    expect(await cacheIncr("contador", 60)).toBe(2);
+  });
+});
+
 describe("cuando Redis falla", () => {
   test("si no conecta, sigue funcionando con memoria", async () => {
     redisClient.connect.mockRejectedValue(new Error("ECONNREFUSED"));
