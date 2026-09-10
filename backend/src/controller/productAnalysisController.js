@@ -7,6 +7,11 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
+import {
+  buildClaimFilter,
+  buildDueFilter,
+  getProcessingLeaseMs,
+} from '../services/productAnalysisLease.js'
 import Product from '../models/productModel.js'
 import AgentHeartbeat from '../models/agentHeartbeatModel.js'
 import {
@@ -54,6 +59,7 @@ const ALLOWED_SOURCES = new Set(Object.values(JOB_SOURCE))
 
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
+
 export const AUTO_PUBLISH_MIN_CONFIDENCE = Math.min(
   Math.max(Number(process.env.AI_AUTO_PUBLISH_MIN_CONFIDENCE || 0.9), 0),
   1,
@@ -602,26 +608,15 @@ export const recordManualAnalysisJob = async ({
 }
 
 const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFilename = '' }) => {
+  const now = new Date()
+
   let job = await ProductAnalysisJob.findOneAndUpdate(
-    {
-      _id: jobId,
-      tenantId,
-      status: {
-        $in: [
-          JOB_STATUS.PENDING,
-          JOB_STATUS.SCHEDULED,
-          JOB_STATUS.FAILED,
-        ],
-      },
-      $or: [
-        { deletedAt: { $exists: false } },
-        { deletedAt: null },
-      ],
-    },
+    buildClaimFilter({ jobId, tenantId, now }),
     {
       $set: {
         status: JOB_STATUS.PROCESSING,
-        startedAt: new Date(),
+        startedAt: now,
+        processingLeaseExpiresAt: new Date(now.getTime() + getProcessingLeaseMs()),
       },
       $unset: {
         error: 1,
@@ -685,6 +680,9 @@ const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFile
     job.processedAt = new Date()
     job.failedAt = undefined
     job.error = undefined
+    // El permiso se libera al llegar a un estado terminal: dejarlo puesto haría
+    // que un job ya resuelto siguiera figurando como reclamable al vencer.
+    job.processingLeaseExpiresAt = null
 
     await job.save()
 
@@ -726,6 +724,7 @@ const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFile
       retryable: error.retryable === true,
     }
     job.failedAt = new Date()
+    job.processingLeaseExpiresAt = null
 
     await job.save()
 
@@ -852,18 +851,7 @@ const processJobsWithBoundedConcurrency = async jobs => {
 }
 
 const processDueScheduledJobs = async ({ tenantId = null, limit = 10 } = {}) => {
-  const filter = {
-    status: JOB_STATUS.SCHEDULED,
-    scheduledAt: { $lte: new Date() },
-    $or: [
-      { deletedAt: { $exists: false } },
-      { deletedAt: null },
-    ],
-  }
-
-  if (tenantId) filter.tenantId = tenantId
-
-  const jobs = await ProductAnalysisJob.find(filter)
+  const jobs = await ProductAnalysisJob.find(buildDueFilter({ tenantId }))
     .sort({ scheduledAt: 1 })
     .limit(limit)
     .setOptions(tenantId ? {} : { ignoreTenant: true })
