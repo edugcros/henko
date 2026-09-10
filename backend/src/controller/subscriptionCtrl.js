@@ -13,9 +13,9 @@ import {
   mapMercadoPagoSubscriptionError,
   mapMercadoPagoSubscriptionStatus,
   readProviderBillingDates,
+  createSubscriptionClient,
 } from '../services/subscriptionPaymentService.js'
 import {
-  createMercadoPagoPaymentClient,
   getTenantMercadoPagoContext,
 } from '../services/paymentTenantConfigService.js'
 import { normalizePlan, getPlanMonthlyPriceUsd } from '../services/ai/aiPlanPolicy.js'
@@ -154,7 +154,7 @@ export const processSubscriptionPayment = async (req, res) => {
     // Obtener cliente de Mercado Pago
     let mpClient
     try {
-      mpClient = await createMercadoPagoPaymentClient(tenant._id)
+      mpClient = createSubscriptionClient()
     } catch (mpError) {
       logger.error('Error obteniendo cliente MP:', mpError)
       return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
@@ -163,7 +163,7 @@ export const processSubscriptionPayment = async (req, res) => {
     // Crear suscripción en Mercado Pago
     let mpSubscription
     try {
-      mpSubscription = await mpClient.subscription.create({
+      mpSubscription = await mpClient.create({
         body: subscriptionPaymentData,
       })
     } catch (mpError) {
@@ -359,7 +359,7 @@ export const changeSubscriptionPlan = async (req, res) => {
     // Obtener cliente de MP
     let mpClient
     try {
-      mpClient = await createMercadoPagoPaymentClient(tenant._id)
+      mpClient = createSubscriptionClient()
     } catch (mpError) {
       logger.error('Error obteniendo cliente MP:', mpError)
       return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
@@ -373,7 +373,7 @@ export const changeSubscriptionPlan = async (req, res) => {
     // Actualizar el precio en MP
     const newPriceUsd = getPlanMonthlyPriceUsd(normalizedNewPlan)
     try {
-      await mpClient.subscription.update({
+      await mpClient.update({
         id: mpSubId,
         body: {
           auto_recurring: {
@@ -441,7 +441,7 @@ export const cancelSubscription = async (req, res) => {
     // Obtener cliente de MP
     let mpClient
     try {
-      mpClient = await createMercadoPagoPaymentClient(tenant._id)
+      mpClient = createSubscriptionClient()
     } catch (mpError) {
       logger.error('Error obteniendo cliente MP:', mpError)
       return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
@@ -449,7 +449,7 @@ export const cancelSubscription = async (req, res) => {
 
     // Cancelar en MP
     try {
-      await mpClient.subscription.update({
+      await mpClient.update({
         id: mpSubId,
         body: {
           status: 'cancelled',
@@ -525,7 +525,7 @@ export const getSubscriptionInvoices = async (req, res) => {
     // Obtener cliente de MP
     let mpClient
     try {
-      mpClient = await createMercadoPagoPaymentClient(tenant._id)
+      mpClient = createSubscriptionClient()
     } catch (mpError) {
       logger.error('Error obteniendo cliente MP:', mpError)
       return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
@@ -534,7 +534,7 @@ export const getSubscriptionInvoices = async (req, res) => {
     // Obtener detalles de suscripción (incluye pagos)
     let mpSubscription
     try {
-      mpSubscription = await mpClient.subscription.get({
+      mpSubscription = await mpClient.get({
         id: mpSubId,
       })
     } catch (mpError) {

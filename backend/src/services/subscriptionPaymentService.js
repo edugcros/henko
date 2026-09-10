@@ -5,9 +5,56 @@
 import crypto from 'node:crypto'
 import { Money } from '../utils/money.js'
 import { normalizePlan, getPlanMonthlyPriceUsd } from './ai/aiPlanPolicy.js'
+import { MercadoPagoConfig, PreApproval } from 'mercadopago'
+
 import { env } from '../../config/env.js'
 import { getWebhookUrl } from '../config/subscriptionConfig.js'
 import logger from '../../config/logger.js'
+
+/**
+ * Cliente de SUSCRIPCIONES de Mercado Pago.
+ *
+ * QUÉ ESTABA MAL
+ *
+ * subscriptionCtrl construía su cliente con
+ * `createMercadoPagoPaymentClient(tenant._id)`, y eso fallaba de tres formas a
+ * la vez:
+ *
+ *   1. Esa función espera un TOKEN DE ACCESO y valida que empiece con
+ *      `APP_USR-` o `TEST-`. Le pasaban el id del comercio, así que lanzaba
+ *      MP_ACCESS_TOKEN_INVALID y el controlador devolvía 503 antes de tocar
+ *      Mercado Pago.
+ *   2. Devuelve un cliente de PAGOS. Las suscripciones son otro recurso.
+ *   3. El código llamaba `mpClient.subscription.create(...)`, un método que el
+ *      cliente de pagos no tiene.
+ *
+ * O sea que el alta de suscripciones nunca llegó a ejecutarse. No es que se
+ * perdían: no se creaba ninguna.
+ *
+ * DE QUIÉN SON LAS CREDENCIALES
+ *
+ * De HENKO, no del comercio. Acá el comercio le paga a la plataforma, así que
+ * la plata entra a la cuenta de la plataforma. Pasar `tenant._id` sugiere que
+ * la intención original era usar las credenciales del propio comercio — eso
+ * sería el comercio cobrándose a sí mismo, y además el token de un comercio no
+ * puede crear una suscripción a favor de otro.
+ */
+export const createSubscriptionClient = () => {
+  const accessToken = String(env.mercadoPago?.accessToken || '').trim()
+
+  // Mismo criterio que paymentTenantConfigService: si no tiene forma de
+  // credencial de Mercado Pago, no se intenta la llamada.
+  if (!accessToken.startsWith('APP_USR-') && !accessToken.startsWith('TEST-')) {
+    const error = new Error('MP_ACCESS_TOKEN_INVALID')
+    error.statusCode = 500
+    error.details = 'MP_ACCESS_TOKEN de plataforma ausente o con formato inválido'
+    throw error
+  }
+
+  return new PreApproval(
+    new MercadoPagoConfig({ accessToken, options: { timeout: 15000 } }),
+  )
+}
 
 const sanitizeString = (value, fallback = '') => {
   if (typeof value !== 'string') return fallback
