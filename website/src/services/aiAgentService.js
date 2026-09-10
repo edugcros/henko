@@ -319,8 +319,23 @@ export const sendAiWebchatMessage = async ({
     },
   })
 
+  // Identifica ESTE mensaje, no este envío.
+  //
+  // Es la clave de idempotencia del backend: si el navegador reintenta —doble
+  // clic en enviar, o una conexión mala que reintenta sola— llega la misma y el
+  // consumo se registra una sola vez. Sin ella, cada intento cuenta como una
+  // operación distinta y el gasto se contabiliza dos veces.
+  //
+  // Se genera acá y no en el servidor a propósito: el servidor no puede
+  // distinguir un reintento de una pregunta repetida, y confundirlos haría que
+  // el gasto se cuente de menos, que es peor que contarlo de más.
+  // createId ya contempla el navegador sin crypto.randomUUID; usarlo directo
+  // rompería en los que no lo tienen.
+  const messageId = createId('msg')
+
   const { data } = await api.post('/ai-webchat/message', {
     message: cleanMessage,
+    messageId,
     sessionId,
     visitorId,
     externalUserId: visitorId,

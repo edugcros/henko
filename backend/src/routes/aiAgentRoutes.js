@@ -16,11 +16,7 @@ import {
 } from '../controller/aiAgentCtrl.js'
 
 import {
-  getAiConversationById,
-  updateAiConversationStatus,
-  deleteAiConversation,
   permanentlyDeleteAiConversation,
-  listAiConversation,
   getAiAgentMetrics,
 } from '../controller/aiAgentAdminCtrl.js'
 
@@ -77,11 +73,7 @@ router.put('/campaign-rules', upsertCampaignRule)
 router.put('/campaign-rules/:id', upsertCampaignRule)
 router.delete('/campaign-rules/:id', deleteCampaignRule)
 
-router.get('/conversations', listAiConversation)
-router.get('/conversations/:id', getAiConversationById)
-router.patch('/conversations/:id/status', updateAiConversationStatus)
 router.delete('/conversations/:id/permanent', permanentlyDeleteAiConversation)
-router.delete('/conversations/:id', deleteAiConversation)
 
 router.get('/learning-suggestions', listAiLearningSuggestions)
 router.get('/learning-suggestions/:id', getAiLearningSuggestionById)

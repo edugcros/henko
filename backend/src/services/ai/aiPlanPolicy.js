@@ -22,6 +22,7 @@
 //
 // Convención heredada de aiUsageService: 0 = ilimitado.
 
+import logger from '../../../config/logger.js'
 import {
   getPlatformAiOverride,
   PLATFORM_AI_SETTINGS,
@@ -339,25 +340,81 @@ export const estimateImageCostUsd = count => {
 }
 
 // ─── Precio de plan ──────────────────────────────────────
+//
+// EL PROBLEMA QUE ESTO RESUELVE
+//
+// El precio del starter estaba guardado como 26,14 USD: el resultado de dividir
+// 40.000 ARS por el dólar del 24/08/2026. Guardar el resultado y no el hecho
+// tiene una consecuencia que no se nota: el comercio sigue pagando 40.000 pesos
+// y el motor de margen —que opera en USD— sigue creyendo que cobra 26,14
+// dólares. En Argentina esas dos cosas se separan en semanas, y el margen por
+// comercio que muestra el panel se va corriendo sin que nada avise.
+//
+// Ahora se guarda lo que es cierto —el precio en su moneda de origen— y la
+// conversión pasa a ser un dato con fecha. Actualizar el tipo de cambio mueve
+// todos los precios en pesos a la vez, que es lo que uno espera.
 
-// starter: decisión de negocio del usuario — $40.000 ARS/mes, convertido a
-// USD porque todo este motor de margen ya opera en USD (evita un refactor
-// de moneda para un solo número). Conversión al dólar oficial VENTA, Banco
-// Nación, cierre del 24/08/2026 ($1.530 ARS/USD — El Cronista/La Nación/
-// Infobae, mismo tipo de cambio usado en admin/src/pages/SubscriptionPage.js
-// para no tener dos referencias distintas): 40000 / 1530 ≈ 26.14.
-// PLAN_PRICE_USD_STARTER sobrescribe esto el día que haga falta ajustar por
-// inflación/tipo de cambio sin tocar código.
-// pro/$99 sigue siendo el placeholder visual de SubscriptionPage.js — no
-// hubo una decisión de negocio para ese plan todavía.
-// `enterprise` es precio a medida: null a propósito, no 0 — un 0 numérico
-// se leería como margen falso en cualquier reporte que lo use.
-const DEFAULT_PLAN_PRICE_USD = Object.freeze({
-  free: 0,
-  starter: 26.14,
-  pro: 99,
-  enterprise: null,
+/**
+ * Tipo de cambio ARS/USD y cuándo se tomó.
+ *
+ * La fecha no es documentación: es lo que permite avisar cuando el número está
+ * viejo. Un tipo de cambio sin fecha es indistinguible de uno actualizado, y
+ * esa ambigüedad es exactamente la que hacía que el margen mintiera en silencio.
+ *
+ * Dólar oficial VENTA, Banco Nación. El mismo que usa
+ * admin/src/pages/SubscriptionPage.js, para no tener dos referencias distintas.
+ */
+const getArsPerUsd = () => ({
+  rate: readEnvNumber('USD_ARS_RATE') ?? 1530,
+  takenAt: String(process.env.USD_ARS_RATE_DATE || '2026-08-24').trim(),
 })
+
+/** A partir de cuántos días un tipo de cambio deja de merecer confianza. */
+const FX_STALE_DAYS = 45
+
+/**
+ * Precios expresados en la moneda en que se decidieron.
+ *
+ * starter: decisión de negocio del usuario, 40.000 ARS/mes.
+ * pro: placeholder visual de SubscriptionPage.js — no hubo decisión de negocio
+ *   para ese plan todavía, y por eso queda en USD: no hay un precio en pesos
+ *   que convertir.
+ * enterprise: precio a medida. null a propósito y no 0 — un 0 numérico se
+ *   leería como margen falso en cualquier reporte que lo use.
+ */
+const DEFAULT_PLAN_PRICE = Object.freeze({
+  free: { amount: 0, currency: 'USD' },
+  starter: { amount: 40000, currency: 'ARS' },
+  pro: { amount: 99, currency: 'USD' },
+  enterprise: { amount: null, currency: 'USD' },
+})
+
+const fxWarned = new Set()
+
+/**
+ * Avisa una vez por proceso y por valor cuando el tipo de cambio quedó viejo.
+ *
+ * Una advertencia por request volvería ilegible el log; una sola por proceso se
+ * ve en cada despliegue, que es la frecuencia con la que alguien puede actuar.
+ */
+const warnIfStale = ({ rate, takenAt }) => {
+  const tomado = Date.parse(takenAt)
+  if (!Number.isFinite(tomado)) return
+
+  const dias = Math.floor((Date.now() - tomado) / 86_400_000)
+  if (dias < FX_STALE_DAYS) return
+
+  const clave = `${rate}:${takenAt}`
+  if (fxWarned.has(clave)) return
+  fxWarned.add(clave)
+
+  logger.warn('[PRECIOS] El tipo de cambio está viejo y el margen se calcula con él', {
+    rate,
+    takenAt,
+    dias,
+    corregirCon: 'USD_ARS_RATE y USD_ARS_RATE_DATE',
+  })
+}
 
 /**
  * Precio nominal mensual del plan, en USD. `null` significa precio a medida
@@ -365,13 +422,55 @@ const DEFAULT_PLAN_PRICE_USD = Object.freeze({
  * cualquier cálculo de margen que use este valor.
  *
  * Se puede sobrescribir por entorno sin tocar código:
- *   PLAN_PRICE_USD_STARTER=35
+ *   PLAN_PRICE_USD_STARTER=35     fija el precio en dólares y saltea el cambio
+ *   USD_ARS_RATE=1800             mueve todos los precios en pesos a la vez
  */
 export const getPlanMonthlyPriceUsd = plan => {
   const normalizedPlan = normalizePlan(plan)
+
+  // Un precio fijado en dólares por entorno gana sobre todo lo demás: es la
+  // salida para el día que se quiera un número exacto sin depender del cambio.
   const envPrice = readEnvNumber(`PLAN_PRICE_USD_${normalizedPlan.toUpperCase()}`)
   if (envPrice !== null) return envPrice
-  return DEFAULT_PLAN_PRICE_USD[normalizedPlan]
+
+  const { amount, currency } = DEFAULT_PLAN_PRICE[normalizedPlan]
+  if (amount === null || amount === 0) return amount
+
+  if (currency === 'USD') return amount
+
+  const fx = getArsPerUsd()
+  warnIfStale(fx)
+
+  return Number((amount / fx.rate).toFixed(2))
+}
+
+/**
+ * De dónde sale el precio de un plan. Solo para mostrarlo — un margen calculado
+ * con un tipo de cambio de hace tres meses no es incorrecto, pero se lee
+ * distinto si uno sabe con qué se calculó.
+ */
+export const getPlanPriceSource = plan => {
+  const normalizedPlan = normalizePlan(plan)
+
+  if (readEnvNumber(`PLAN_PRICE_USD_${normalizedPlan.toUpperCase()}`) !== null) {
+    return { origin: 'env', currency: 'USD' }
+  }
+
+  const { amount, currency } = DEFAULT_PLAN_PRICE[normalizedPlan]
+  if (currency === 'USD') return { origin: 'fixed', currency: 'USD' }
+
+  const fx = getArsPerUsd()
+  const dias = Math.floor((Date.now() - Date.parse(fx.takenAt)) / 86_400_000)
+
+  return {
+    origin: 'converted',
+    currency,
+    amount,
+    fxRate: fx.rate,
+    fxTakenAt: fx.takenAt,
+    fxAgeDays: Number.isFinite(dias) ? dias : null,
+    fxStale: Number.isFinite(dias) && dias >= FX_STALE_DAYS,
+  }
 }
 
 // ─── Costos operativos de HENKO (Bloque 8.10) ────────────

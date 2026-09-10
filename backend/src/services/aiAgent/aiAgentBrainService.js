@@ -435,6 +435,7 @@ const repairAiResponseIfNeeded = async ({
   conversationMemory,
   tenantId,
   profile,
+  operationId = null,
 }) => {
   if (!shouldRepairResponse(validation)) {
     return { aiResult, validation }
@@ -477,6 +478,10 @@ const repairAiResponseIfNeeded = async ({
         model: repaired?.model,
         inputTokens: repaired?.usageMetadata?.promptTokenCount ?? null,
         outputTokens: repaired?.usageMetadata?.candidatesTokenCount ?? null,
+        // Sufijo propio: la reparación es una segunda llamada pagada, así que
+        // su consumo es un movimiento distinto del de la primera respuesta y
+        // no puede compartir clave con ella.
+        operationId: operationId ? `${operationId}:repair` : null,
       }).catch(() => null)
     }
 
@@ -526,10 +531,11 @@ const getAgentSelfLimit = agent => {
   return Number.isFinite(limit) && limit > 0 ? limit : null
 }
 
-const reserveAgentMessageQuota = async ({ tenantId, agent, profile }) => {
+const reserveAgentMessageQuota = async ({ tenantId, agent, profile, operationId }) => {
   return reserveAiBudget({
     tenantId,
     metric: AI_METRICS.AGENT_MESSAGES,
+    operationId,
     // Si ya se pasó del tope de tokens del mes no se contesta un mensaje más:
     // los tokens recién se conocen después de responder, así que el único
     // freno posible es el mensaje siguiente.
@@ -547,7 +553,13 @@ const reserveAgentMessageQuota = async ({ tenantId, agent, profile }) => {
  * respuesta, así que toda respuesta que había que regenerar viajaba gratis en
  * la contabilidad y cara en la factura.
  */
-const registerTokenUsage = async ({ tenantId, usageMetadata, profile, model = null }) => {
+const registerTokenUsage = async ({
+  tenantId,
+  usageMetadata,
+  profile,
+  model = null,
+  operationId = null,
+}) => {
   const tokens = Number(usageMetadata?.totalTokenCount || 0)
   if (!Number.isFinite(tokens) || tokens <= 0) return
 
@@ -556,6 +568,7 @@ const registerTokenUsage = async ({ tenantId, usageMetadata, profile, model = nu
     metric: AI_METRICS.AGENT_TOKENS,
     amount: tokens,
     profile,
+    operationId,
     // El modelo REAL: con la cadena de respaldo puede no ser el configurado, y
     // entre 3.6-flash y 3.1-flash-lite hay 5x de diferencia de tarifa.
     model,
@@ -659,6 +672,22 @@ export const processAgentMessage = async ({
   const cleanText = clean(text).slice(0, getMaxInboundMessageChars())
   channel = normalizeChannel(channel)
   externalUserId = clean(externalUserId)
+
+  // Clave de idempotencia de este turno de conversación.
+  //
+  // Sale del identificador que manda el cliente con el mensaje. Si el navegador
+  // reintenta —doble clic en enviar, o una conexión mala que reintenta sola—
+  // llega el mismo y el consumo se registra una sola vez.
+  //
+  // Y si NO viene, queda en null en vez de inventar una acá. Es deliberado: el
+  // servidor no puede distinguir un reintento de alguien que repite la misma
+  // pregunta, y una clave derivada del texto colapsaría las dos. Ese error
+  // contaría el gasto de MENOS, que es peor que contarlo de más — es
+  // exactamente lo que el ledger existe para evitar. Sin clave el
+  // comportamiento es el de antes: cada operación cuenta por separado.
+  const operationId = clean(externalMessageId)
+    ? `agent:${clean(tenantId)}:${clean(externalMessageId)}`
+    : null
 
   const resolvedCustomer = resolveCustomerData({
     text: cleanText,
@@ -860,7 +889,12 @@ export const processAgentMessage = async ({
   }
 
   const aiProfile = await loadTenantAiProfile(tenantId)
-  const reservation = await reserveAgentMessageQuota({ tenantId, agent, profile: aiProfile })
+  const reservation = await reserveAgentMessageQuota({
+    tenantId,
+    agent,
+    profile: aiProfile,
+    operationId,
+  })
 
   if (!reservation.allowed) {
     logger.warn('[AI_AGENT_BUDGET_DENIED]', {
@@ -1067,6 +1101,7 @@ export const processAgentMessage = async ({
     await refundAiBudget({
       tenantId,
       metric: AI_METRICS.AGENT_MESSAGES,
+      operationId,
     }).catch(() => null)
 
     aiResult = {
@@ -1086,6 +1121,7 @@ export const processAgentMessage = async ({
     usageMetadata: aiResult.usageMetadata,
     profile: aiProfile,
     model: aiResult.model,
+    operationId,
   }).catch(() => null)
 
   let validation = validateAgentCommerceResponse({
@@ -1108,6 +1144,7 @@ export const processAgentMessage = async ({
       conversationMemory,
       tenantId,
       profile: aiProfile,
+      operationId,
     })
 
     aiResult = repaired.aiResult
