@@ -3,6 +3,8 @@ import asyncHandler from 'express-async-handler'
 import UserMetricEvent, {
   USER_METRIC_EVENTS,
 } from '../models/userMetricEventModel.js'
+import Product from '../models/productModel.js'
+import Order from '../models/orderModel.js'
 import { getOptionalUserFromAccessToken } from '../utils/authRequest.js'
 import {
   getTenantIdFromRequest,
@@ -139,22 +141,64 @@ const sanitizeItems = items => {
   })
 }
 
+/**
+ * Fuentes que un cliente puede declarar por HTTP.
+ *
+ * Todas significan lo mismo: "esto lo reportó un navegador". Es analítica de
+ * cliente y se lee como tal.
+ */
+const CLIENT_SOURCES = new Set([
+  'storefront',
+  'website',
+  'webchat',
+  'whatsapp',
+  // 'agent' NO está reservada, aunque suene a backend.
+  //
+  // La manda el navegador: AiCartActionBridge marca con ella el agregado al
+  // carrito que originó el chat, y es el único rastro que después usa
+  // markOrderAiInfluenced para saber que una compra la influyó la IA.
+  // Reservarla rompería esa atribución entera.
+  //
+  // El riesgo que queda es acotado y vale nombrarlo: un cliente puede afirmar
+  // que un agregado suyo vino de la IA. Eso marca una orden como influida, no
+  // mueve plata — los totales salen de los PURCHASE con `source: 'system'`, que
+  // sí está reservada. Y markOrderAiInfluenced exige además que el evento sea
+  // del mismo usuario que hizo la compra.
+  'agent',
+  'unknown',
+])
+
+/**
+ * Fuentes RESERVADAS. Ningún request las puede reclamar.
+ *
+ * ESTE ES EL LÍMITE DE CONFIANZA DEL SISTEMA DE MÉTRICAS, y estaba abierto.
+ *
+ * Los números que importan no filtran por tipo de evento sino por
+ * `source: 'system'`: la facturación atribuida a la IA
+ * (aiAgentRevenueInsightsService) y las señales de venta de
+ * aiInsightDetectionService suman `$value` de los PURCHASE con esa fuente. Como
+ * este endpoint es público y aceptaba `source` del cuerpo, cualquiera con la
+ * URL podía mandar
+ *
+ *   { eventType: 'purchase', source: 'system', value: 999999,
+ *     metadata: { aiInfluenced: true } }
+ *
+ * y ese número entraba directo al tablero económico.
+ *
+ * Lo que escribe el backend —userCtrl para login/logout, orderModel para la
+ * compra confirmada— no pasa por acá: usa el modelo directamente. Así que
+ * reservarlas no le quita nada a nadie.
+ */
+const RESERVED_SOURCES = new Set(['system', 'admin'])
+
 const normalizeSource = value => {
   const source = cleanLower(value || 'storefront', 40)
 
-  const allowed = new Set([
-    'storefront',
-    'website',
-    'admin',
-    'agent',
-    'system',
-    'webchat',
-    'whatsapp',
-    'unknown',
-  ])
-
-  return allowed.has(source) ? source : 'unknown'
+  return CLIENT_SOURCES.has(source) ? source : 'unknown'
 }
+
+const claimsReservedSource = rawEvent =>
+  RESERVED_SOURCES.has(cleanLower(rawEvent?.source, 40))
 
 const normalizeOccurredAt = value => {
   const date = value ? new Date(value) : new Date()
@@ -261,6 +305,90 @@ const normalizeEventPayload = ({ req, rawEvent, tenantId, user }) => {
   }
 }
 
+/**
+ * Deja pasar solo las referencias que de verdad pertenecen al tenant.
+ *
+ * Un evento llega con `productId` y `orderId` elegidos por el cliente. Sin
+ * comprobarlos, el de un comercio puede citar el producto o la orden de otro:
+ * la analítica del primero atribuye actividad a algo que no le pertenece y los
+ * identificadores del segundo terminan guardados en la colección del primero.
+ *
+ * Se consulta por LOTE y no por evento —dos consultas para un envío de hasta 50—
+ * porque este endpoint es público, admite lotes y tiene un techo de 180 por
+ * minuto: una consulta por referencia serían miles por minuto contra la base.
+ *
+ * Se usa el driver crudo a propósito. El filtro por tenant de esta consulta es
+ * exactamente lo que se está comprobando, así que tiene que estar escrito acá y
+ * verse, en vez de depender de que el plugin lo agregue.
+ */
+const filterReferencesByTenant = async (events, tenantId) => {
+  const tenantObjectId = toObjectId(tenantId)
+
+  const idsDe = campo =>
+    [...new Set(events.map(e => e[campo]).filter(Boolean).map(String))]
+
+  const productIds = idsDe('productId')
+  const orderIds = idsDe('orderObjectId')
+
+  const [productosPropios, ordenesPropias] = await Promise.all([
+    productIds.length
+      ? Product.collection
+        .find(
+          { _id: { $in: productIds.map(toObjectId) }, tenantId: tenantObjectId },
+          { projection: { _id: 1 } },
+        )
+        .toArray()
+      : [],
+    orderIds.length
+      ? Order.collection
+        .find(
+          { _id: { $in: orderIds.map(toObjectId) }, tenantId: tenantObjectId },
+          { projection: { _id: 1 } },
+        )
+        .toArray()
+      : [],
+  ])
+
+  const productosOk = new Set(productosPropios.map(d => String(d._id)))
+  const ordenesOk = new Set(ordenesPropias.map(d => String(d._id)))
+
+  let descartadas = 0
+
+  const limpios = events.map(event => {
+    const productoAjeno = event.productId && !productosOk.has(String(event.productId))
+    const ordenAjena = event.orderObjectId && !ordenesOk.has(String(event.orderObjectId))
+
+    if (!productoAjeno && !ordenAjena) return event
+
+    descartadas += 1
+
+    // Se anula la referencia y se conserva el evento. Un producto borrado entre
+    // la visita y el envío del evento no es un ataque, y tirar el evento entero
+    // perdería analítica legítima. Lo que no puede quedar guardado es el
+    // vínculo con algo que no es del comercio.
+    //
+    // Hay que limpiar LAS DOS FORMAS de cada referencia. El modelo tiene un
+    // hook de normalización que reconstruye `orderObjectId` a partir del string
+    // `orderId` cuando el primero viene vacío, así que anular solo el ObjectId
+    // no sirve de nada: vuelve solo antes de guardar. Con `productRef` pasa lo
+    // simétrico — es la copia en texto del id y sobrevive igual.
+    return {
+      ...event,
+      ...(productoAjeno ? { productId: null, productRef: '' } : {}),
+      ...(ordenAjena ? { orderObjectId: null, orderId: '' } : {}),
+    }
+  })
+
+  if (descartadas > 0) {
+    logger.warn('[Metrics] Referencias que no pertenecen al tenant, descartadas', {
+      tenantId: String(tenantId),
+      eventos: descartadas,
+    })
+  }
+
+  return limpios
+}
+
 export const trackUserMetricEvent = asyncHandler(async (req, res) => {
   const tenantId = getTenantIdFromRequest(req)
 
@@ -276,6 +404,23 @@ export const trackUserMetricEvent = asyncHandler(async (req, res) => {
   const rawEvents = Array.isArray(req.body?.events)
     ? req.body.events.slice(0, MAX_BATCH_SIZE)
     : [req.body]
+
+  // Reclamar una fuente reservada se rechaza, no se corrige en silencio: nadie
+  // legítimo manda 'system' por HTTP, así que si aparece es alguien probando
+  // hasta dónde llega — y bajarle la fuente sin decir nada deja ese intento sin
+  // rastro. Se rechaza el envío entero: un lote con un evento forjado no es un
+  // lote del que convenga quedarse con el resto.
+  if (rawEvents.some(claimsReservedSource)) {
+    logger.warn('[Metrics] Rechazado: un evento reclamó una fuente reservada', {
+      tenantId: String(tenantId),
+      ip: getClientIp(req),
+    })
+
+    return res.status(400).json({
+      success: false,
+      message: 'Evento inválido',
+    })
+  }
 
   const events = rawEvents
     .map(rawEvent =>
@@ -295,8 +440,10 @@ export const trackUserMetricEvent = asyncHandler(async (req, res) => {
     })
   }
 
+  const eventosVerificados = await filterReferencesByTenant(events, tenantId)
+
   try {
-    const inserted = await UserMetricEvent.insertMany(events, {
+    const inserted = await UserMetricEvent.insertMany(eventosVerificados, {
       ordered: false,
       rawResult: false,
     })
