@@ -313,6 +313,7 @@ const {
   refundAiBudget,
   recordAiConsumption,
   recordTokenSpend,
+  recordImageGenerationCost,
   DENY_REASONS,
 } = await import("../services/ai/aiBudgetService.js");
 
@@ -1181,6 +1182,37 @@ describe("aiBudgetService · recordTokenSpend", () => {
     // Pero sí queda registrado, para que su panel lo vea.
     expect(entry().costUsd).toBe(0);
     expect(entry().unit).toBe("tokens");
+  });
+
+  test("el costo de imagen deja fila en el ledger, no solo en el contador", async () => {
+    // Entraba a los dos contadores y no al ledger. Como el total del panel sale
+    // del contador y el desglose sale del ledger, la diferencia entre ambos era
+    // exactamente lo gastado en imágenes: el total no cerraba con sus partes.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockPlatformUsage.findOneAndUpdate.mockReturnValue({
+      lean: () => Promise.resolve({ tokens: 0 }),
+    });
+
+    await recordImageGenerationCost({ tenantId: TENANT_ID, count: 3 });
+
+    const row = mockLedger.create.mock.calls[0][0];
+
+    expect(row.metric).toBe("imageEdits");
+    expect(row.unit).toBe("units");
+    expect(row.amount).toBe(3);
+    expect(row.costUsd).toBeGreaterThan(0);
+    // No lo cobra Google por token: no hay tarifa del catálogo que congelar.
+    expect(row.model).toBeNull();
+    expect(row.costEstimated).toBe(true);
+  });
+
+  test("con key propia no se registra costo de imagen", async () => {
+    mockProfile.mockResolvedValue(platformProfile({ keySource: "tenant" }));
+
+    await recordImageGenerationCost({ tenantId: TENANT_ID, count: 3 });
+
+    expect(mockLedger.create).not.toHaveBeenCalled();
+    expect(mockPlatformUsage.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
   test("sin tokens no se registra nada", async () => {

@@ -1028,6 +1028,28 @@ export const recordImageGenerationCost = async ({
       error: error.message,
     })
   })
+
+  // El costo entraba a los dos contadores y no al ledger. Como el total del
+  // panel sale del contador y el desglose sale del ledger, la diferencia entre
+  // los dos era exactamente lo gastado en imágenes: el total no cerraba con sus
+  // partes y no había forma de saber por qué.
+  //
+  // `model` va nulo a propósito: esto no lo cobra Google por token sino
+  // Replicate o Stability por imagen, así que no hay tarifa del catálogo que
+  // congelar. Y va marcado como estimado porque el costo por imagen es un
+  // supuesto configurable (AI_COST_USD_PER_IMAGE_EDIT), no una factura.
+  writeLedgerEntry({
+    tenantId: id,
+    period,
+    event: LEDGER_EVENT.CONSUMED,
+    metric: AI_METRICS.IMAGE_EDITS,
+    amount: imageCount,
+    unit: 'units',
+    keySource: aiProfile.keySource,
+    plan: aiProfile.plan,
+    costUsd,
+    breakdown: { estimated: true },
+  })
 }
 
 /**
