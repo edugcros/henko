@@ -90,8 +90,34 @@ afterEach(() => {
   jest.restoreAllMocks()
 })
 
-describe('interceptor de auth · reintento tras refrescar', () => {
-  test('el reintento NO manda el token vencido', async () => {
+describe('interceptor de auth · el JWT no vive en el navegador', () => {
+  test('un token dejado por una sesión vieja NO se manda', async () => {
+    // El beforeEach siembra sessionStorage como lo hacía la versión anterior.
+    // Que esté ahí ya no significa nada: el interceptor no lo lee.
+    api.defaults.adapter = makeAdapter()
+
+    await api.get('/protected')
+
+    const aProtegido = calls.filter(c => c.url.includes('/protected'))
+
+    expect(aProtegido[0].authorization).toBeFalsy()
+    expect(aProtegido[1].authorization).toBeFalsy()
+  })
+
+  test('el token que devuelve el refresh no se guarda', async () => {
+    // Guardarlo era lo que devolvía el JWT al alcance de cualquier script,
+    // request tras request, anulando la cookie httpOnly.
+    api.defaults.adapter = makeAdapter()
+
+    await api.get('/protected')
+
+    expect(window.sessionStorage.getItem('auth_token')).not.toBe(NUEVO)
+  })
+
+  test('el reintento tras refrescar tampoco lleva header', async () => {
+    // El bug que originó este archivo era un Bearer vencido que sobrevivía al
+    // refresh y tapaba la cookie nueva. Sin header, esa clase de fallo no tiene
+    // dónde ocurrir: no hay nada que quede viejo.
     api.defaults.adapter = makeAdapter()
 
     await api.get('/protected')
@@ -99,20 +125,12 @@ describe('interceptor de auth · reintento tras refrescar', () => {
     const aProtegido = calls.filter(c => c.url.includes('/protected'))
 
     expect(aProtegido).toHaveLength(2)
-    expect(aProtegido[0].authorization).toBe(`Bearer ${VIEJO}`)
-    // El corazón del arreglo: sin soltar el header, acá volvía el vencido y el
-    // backend —que lee Bearer antes que la cookie— respondía 401 de nuevo.
-    expect(aProtegido[1].authorization).not.toBe(`Bearer ${VIEJO}`)
+    expect(aProtegido.every(c => !c.authorization)).toBe(true)
   })
 
-  test('el reintento usa el token que dejó el refresh', async () => {
-    api.defaults.adapter = makeAdapter()
-
-    await api.get('/protected')
-
-    const aProtegido = calls.filter(c => c.url.includes('/protected'))
-
-    expect(aProtegido[1].authorization).toBe(`Bearer ${NUEVO}`)
+  test('las requests van con credenciales, que es lo que manda la cookie', async () => {
+    // Sin esto la cookie httpOnly no viaja y no habría sesión de ninguna forma.
+    expect(api.defaults.withCredentials).toBe(true)
   })
 
   test('sin token guardado el reintento viaja solo con la cookie', async () => {

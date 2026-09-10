@@ -25,23 +25,22 @@ const safeStorage = {
       return null
     }
   },
-  setToken: token => {
-    if (typeof window === 'undefined' || !token) return
-    try {
-      sessionStorage.setItem('auth_token', String(token))
-    } catch {
-      sessionStorage.removeItem('auth_token')
-    }
-  },
-  getToken: () => {
-    if (typeof window === 'undefined') return null
-    try {
-      const token = sessionStorage.getItem('auth_token')
-      return token && String(token).trim() ? token : null
-    } catch {
-      return null
-    }
-  },
+  // setToken / getToken se eliminaron: el access token ya no se guarda.
+  //
+  // Vivía en sessionStorage como respaldo "para cross-origin requests, cuando
+  // las cookies httpOnly no estén disponibles". Ese escenario no existe: el
+  // vercel.json del panel reescribe /api/* al backend, así que para el
+  // navegador todas las llamadas son del mismo origen y la cookie es de primera
+  // parte. Verificado contra producción — la respuesta trae
+  // `HttpOnly; Secure; SameSite=None` y ningún atributo Domain, o sea que queda
+  // scopeada al host del panel.
+  //
+  // Mientras el token estuvo en sessionStorage, cualquier XSS podía leerlo y
+  // usarlo hasta que venciera. El backend sigue aceptando Bearer para otros
+  // clientes; lo que se saca es que el panel lo guarde y lo mande.
+  //
+  // removeToken se conserva por una razón concreta: limpiar lo que dejó la
+  // versión anterior en el navegador de quien ya inició sesión.
   removeToken: () => {
     if (typeof window === 'undefined') return
     sessionStorage.removeItem('auth_token')
@@ -53,10 +52,8 @@ const safeStorage = {
     sessionStorage.removeItem('csrfToken')
     safeStorage.removeToken()
   },
-  // El access token vive en una cookie httpOnly desde el backend (fase 1
-  // del refactor de JWT) — JS no puede leerla ni removerla, pero también
-  // se guarda en sessionStorage como fallback para cross-origin requests.
-  // El logout server-side limpia la cookie; removeAuth limpia el storage local.
+  // El access token vive en una cookie httpOnly. JS no puede leerla ni
+  // removerla: el logout server-side la limpia, y removeAuth limpia lo local.
   removeAuth: () => {
     safeStorage.removeUser()
   },
@@ -111,8 +108,8 @@ export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
     // Normalizamos: la data suele venir en response.data
     const data = response.data || response
     if (data.user) safeStorage.setUser(data.user)
-    // Si el refresh devolvió un token, guardarlo como fallback
-    if (data.token) safeStorage.setToken(data.token)
+    // El token que venga en el cuerpo se ignora: el que vale viaja en la cookie
+    // httpOnly que el backend puso en esta misma respuesta.
     return data
   } catch (error) {
     return thunkAPI.rejectWithValue(error.response?.data || 'Error al obtener perfil')
@@ -138,11 +135,10 @@ export const loginUser = createAsyncThunk(
 
       safeStorage.setUser(user)
 
-      // Guardar el token como fallback para cross-origin requests
-      // (cuando las cookies httpOnly no estén disponibles)
-      if (token) {
-        safeStorage.setToken(token)
-      }
+      // Un login viejo pudo haber dejado un token acá. Se limpia al entrar para
+      // que nadie quede con un JWT legible en el navegador por haber iniciado
+      // sesión antes de este cambio.
+      safeStorage.removeToken()
 
       return { user, token }
     } catch (err) {

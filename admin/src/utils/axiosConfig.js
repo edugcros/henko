@@ -215,27 +215,23 @@ api.interceptors.request.use(
       config.headers['x-metric-session-id'] = metricSessionId
     }
 
-    // Access token fallback: intenta viajar en cookie httpOnly (withCredentials:true),
-    // pero si las cookies no están disponibles (cross-origin, different domain),
-    // intenta usar Authorization header como fallback.
-    // El backend acepta ambos: getAccessTokenFromRequest() chequea Bearer header primero.
-    if (!config.headers.Authorization && !config.headers.authorization) {
-      try {
-        // Intenta obtener token de sessionStorage como fallback para cross-origin
-        const storedToken =
-          typeof window !== 'undefined' &&
-          window.sessionStorage?.getItem?.('auth_token')
-        if (
-          storedToken &&
-          typeof storedToken === 'string' &&
-          storedToken.trim()
-        ) {
-          config.headers.Authorization = `Bearer ${storedToken}`
-        }
-      } catch {
-        // sessionStorage might be unavailable (private browsing, etc)
-      }
-    }
+    // El access token viaja en la cookie httpOnly, que withCredentials:true ya
+    // manda. Acá se leía además de sessionStorage y se mandaba como Bearer.
+    //
+    // El comentario que justificaba ese respaldo decía "si las cookies no están
+    // disponibles (cross-origin, different domain)". No es el caso: el
+    // vercel.json del panel reescribe /api/* al backend, así que el navegador ve
+    // todas las llamadas contra su propio origen. Comprobado contra producción:
+    // la respuesta de /api/user/csrf-token trae Set-Cookie con
+    // `HttpOnly; Secure; SameSite=None` y sin Domain, o sea que la cookie queda
+    // en el host del panel y se manda sola.
+    //
+    // Mientras el respaldo existió, el token estaba en sessionStorage y llegaba
+    // primero —getAccessTokenFromRequest mira Bearer antes que la cookie—, así
+    // que la cookie httpOnly no protegía nada: bastaba un XSS para leer el JWT
+    // y usarlo hasta que venciera.
+    //
+    // Si alguien pone Authorization explícitamente en una request, se respeta.
 
     if (env.debugApi || process.env.REACT_APP_DEBUG_API === 'true') {
       console.log('[ADMIN API REQUEST]', {
@@ -341,21 +337,10 @@ api.interceptors.response.use(
                 skipCsrfRetry: true,
               },
             )
-            .then(refreshResponse => {
-              // Guardar el token del refresh response como fallback
-              // para cross-origin requests (sessionStorage fallback)
-              const token =
-                refreshResponse?.data?.token ||
-                refreshResponse?.data?.accessToken
-              if (token && typeof window !== 'undefined') {
-                try {
-                  window.sessionStorage?.setItem?.('auth_token', String(token))
-                } catch {
-                  // sessionStorage might be unavailable
-                }
-              }
-              return refreshResponse
-            })
+            // El refresh renueva la cookie httpOnly del access token en su
+            // propia respuesta. El token que viene en el cuerpo no se guarda:
+            // guardarlo era lo que devolvía el JWT al alcance de cualquier
+            // script, request tras request, anulando la cookie.
             .finally(() => {
               refreshTokenPromise = null
             })
