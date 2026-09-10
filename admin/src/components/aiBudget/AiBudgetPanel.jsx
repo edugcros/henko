@@ -147,6 +147,16 @@ const MetricMeter = ({ metric, data }) => {
           </Typography>
         </Stack>
       )}
+
+      {/* Un tope MÁS BAJO que el contratado se lee como un error de
+          facturación si no se dice de dónde sale. Es el propio comercio el que
+          lo puso, así que se nombra el control con el que se saca. */}
+      {data?.selfLimited && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+          Autolímite tuyo. Tu plan permite {formatNumber(data.planLimit)} — se cambia más abajo, en
+          Cuotas.
+        </Typography>
+      )}
     </Box>
   )
 }

@@ -20,6 +20,7 @@
 import { randomUUID } from 'node:crypto'
 
 import AiUsage from '../../models/aiUsageModel.js'
+import AiAgent from '../../models/aiAgentModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import logger from '../../../config/logger.js'
 import { cacheGet, cacheSet, cacheDel } from '../../utils/cache.js'
@@ -572,6 +573,31 @@ const applyLimitOverride = (planLimit, override) => {
   if (!Number.isFinite(value) || value <= 0) return planLimit
   if (planLimit === UNLIMITED) return Math.floor(value)
   return Math.min(planLimit, Math.floor(value))
+}
+
+/**
+ * Autolímites que el comercio configuró en su propio panel, en la forma que
+ * espera applyLimitOverride (número o null).
+ *
+ * Solo lo usa el SNAPSHOT. El cobro no lee de acá a propósito: el cerebro del
+ * agente ya tiene el documento en la mano cuando reserva, y agregarle una
+ * consulta más a cada mensaje para releer lo mismo sería pagar dos veces por
+ * el mismo dato.
+ *
+ * Un error acá no se traga: si la base no responde, el snapshot entero falla
+ * igual por la lectura de AiUsage, y devolver los topes del plan como si nada
+ * recrearía en silencio la misma mentira que esto vino a arreglar.
+ */
+const loadAgentSelfLimits = async tenantId => {
+  const agent = await AiAgent.findOne({ tenantId })
+    .select('quotas.monthlyMessageLimit quotas.monthlyAiTokenLimit')
+    .setOptions({ tenantId })
+    .lean()
+
+  return {
+    [AI_METRICS.AGENT_MESSAGES]: agent?.quotas?.monthlyMessageLimit || null,
+    [AI_METRICS.AGENT_TOKENS]: agent?.quotas?.monthlyAiTokenLimit || null,
+  }
 }
 
 const buildAllowedResult = ({
@@ -1245,6 +1271,7 @@ export const getAiBudgetSnapshot = async tenantId => {
   const usage = await AiUsage.findOne({ tenantId: id, period })
     .setOptions({ tenantId: id })
     .lean()
+  const selfLimits = await loadAgentSelfLimits(id)
 
   // Los topes del snapshot pasan por la misma resolución que el cobro: si el
   // panel mostrara "sin límite" y el medidor cortara igual, el comercio no
@@ -1260,7 +1287,14 @@ export const getAiBudgetSnapshot = async tenantId => {
   const subscription = getSubscriptionState(profile)
 
   const metrics = AI_METRIC_LIST.reduce((acc, metric) => {
-    const limit = limits[metric]
+    const planLimit = limits[metric]
+
+    // ...y por el mismo autolímite. Esta línea faltaba: el cobro aplicaba el
+    // autolímite del comercio (reserveAiBudget → applyLimitOverride) y el
+    // panel seguía mostrando el tope del plan, así que quien se ponía un
+    // freno de 2.000 mensajes veía "10K" y se quedaba sin asistente en 2.000
+    // sin ninguna explicación a la vista.
+    const limit = applyLimitOverride(planLimit, selfLimits[metric] ?? null)
     const used = readCounter(usage, metric)
 
     acc[metric] = {
@@ -1269,6 +1303,11 @@ export const getAiBudgetSnapshot = async tenantId => {
       limit,
       unlimited: limit === UNLIMITED,
       remaining: limit === UNLIMITED ? null : Math.max(0, limit - used),
+      // El tope del plan viaja aparte para que el panel pueda decir de dónde
+      // sale el recorte. Sin esto, un tope más bajo que el contratado se lee
+      // como un error de facturación.
+      planLimit,
+      selfLimited: limit !== planLimit,
     }
 
     return acc

@@ -245,6 +245,14 @@ jest.unstable_mockModule("../models/aiPlatformUsageModel.js", () => ({
   default: mockPlatformUsage,
 }));
 
+// El snapshot lee los autolímites que el comercio configuró en su panel, para
+// mostrar el MISMO tope que después cobra el medidor.
+const mockAiAgent = { findOne: jest.fn() };
+
+jest.unstable_mockModule("../models/aiAgentModel.js", () => ({
+  default: mockAiAgent,
+}));
+
 const mockLedger = { create: jest.fn() };
 
 jest.unstable_mockModule("../models/aiConsumptionLedgerModel.js", () => ({
@@ -314,6 +322,7 @@ const {
   recordAiConsumption,
   recordTokenSpend,
   recordImageGenerationCost,
+  getAiBudgetSnapshot,
   DENY_REASONS,
 } = await import("../services/ai/aiBudgetService.js");
 
@@ -1613,5 +1622,106 @@ describe("aiBudgetService · aviso de presupuesto", () => {
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ tripped: true, percent: "100" }),
     );
+  });
+});
+
+// ─── Snapshot del panel ──────────────────────────────────
+//
+// El panel del comercio y el medidor tienen que decir el mismo número. Cuando
+// no coinciden, el comercio ve "10K" y se queda sin asistente en 2.000 sin
+// ninguna explicación — y el que atiende el reclamo tampoco la tiene.
+
+const chainableSelectLean = result => ({
+  select: () => ({
+    setOptions: () => ({ lean: () => Promise.resolve(result) }),
+  }),
+});
+
+describe("aiBudgetService · snapshot", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockProfile.mockResolvedValue(platformProfile({ plan: "pro" }));
+    mockAiUsage.findOne.mockReturnValue(
+      chainableLean({ counters: { agentMessages: 3, agentTokens: 27000 } }),
+    );
+    mockAiAgent.findOne.mockReturnValue(chainableSelectLean(null));
+  });
+
+  test("sin autolímite muestra el tope del plan", async () => {
+    const snapshot = await getAiBudgetSnapshot(TENANT_ID);
+
+    expect(snapshot.metrics.agentMessages.limit).toBe(
+      getPlanLimit("pro", AI_METRICS.AGENT_MESSAGES),
+    );
+    expect(snapshot.metrics.agentMessages.selfLimited).toBe(false);
+  });
+
+  test("con autolímite muestra el tope que de verdad se cobra", async () => {
+    // Este es el bug: el comercio se pone 2.000 mensajes, reserveAiBudget corta
+    // en 2.000 y el panel seguía mostrando los 10.000 del plan.
+    mockAiAgent.findOne.mockReturnValue(
+      chainableSelectLean({
+        quotas: { monthlyMessageLimit: 2000, monthlyAiTokenLimit: 3_000_000 },
+      }),
+    );
+
+    const snapshot = await getAiBudgetSnapshot(TENANT_ID);
+
+    expect(snapshot.metrics.agentMessages.limit).toBe(2000);
+    expect(snapshot.metrics.agentTokens.limit).toBe(3_000_000);
+  });
+
+  test("el tope mostrado es el mismo que aplica la reserva", async () => {
+    // La invariante, comprobada contra el otro camino en vez de contra un
+    // número escrito a mano: si mañana cambia la regla de los autolímites y
+    // solo se toca uno de los dos lados, esto falla.
+    const AUTOLIMITE = 2000;
+
+    mockAiAgent.findOne.mockReturnValue(
+      chainableSelectLean({ quotas: { monthlyMessageLimit: AUTOLIMITE } }),
+    );
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { agentMessages: 1 } }),
+    );
+
+    const snapshot = await getAiBudgetSnapshot(TENANT_ID);
+    const reserva = await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      limitOverride: AUTOLIMITE,
+    });
+
+    expect(snapshot.metrics.agentMessages.limit).toBe(reserva.limit);
+  });
+
+  test("el autolímite no puede aflojar el tope del plan tampoco en el panel", async () => {
+    // Si el snapshot no aplicara la misma regla, el panel sería la forma de
+    // averiguar que el número inflado "funcionó" — no funciona.
+    mockAiAgent.findOne.mockReturnValue(
+      chainableSelectLean({ quotas: { monthlyMessageLimit: 999_999 } }),
+    );
+
+    const snapshot = await getAiBudgetSnapshot(TENANT_ID);
+
+    expect(snapshot.metrics.agentMessages.limit).toBe(
+      getPlanLimit("pro", AI_METRICS.AGENT_MESSAGES),
+    );
+    expect(snapshot.metrics.agentMessages.selfLimited).toBe(false);
+  });
+
+  test("el panel puede explicar de dónde sale el recorte", async () => {
+    mockAiAgent.findOne.mockReturnValue(
+      chainableSelectLean({ quotas: { monthlyMessageLimit: 2000 } }),
+    );
+
+    const metrica = (await getAiBudgetSnapshot(TENANT_ID)).metrics
+      .agentMessages;
+
+    expect(metrica.selfLimited).toBe(true);
+    expect(metrica.planLimit).toBe(
+      getPlanLimit("pro", AI_METRICS.AGENT_MESSAGES),
+    );
+    // Y el restante se cuenta contra el tope real, no contra el del plan.
+    expect(metrica.remaining).toBe(2000 - 3);
   });
 });
