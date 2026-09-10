@@ -19,6 +19,7 @@ import { corsOptions } from './config/corsOptions.js'
 import logger from './config/logger.js'
 
 import { notFound, errorHandler } from './src/middlewares/errorHandler.js'
+import { globalApiLimiter } from './src/middlewares/globalApiLimiter.js'
 import apiRoutes from './src/routes/index.js'
 
 // =======================================================
@@ -325,6 +326,24 @@ if (env.csrfEnabled) {
     return csrfProtectionDynamic(req, res, next)
   })
 }
+
+// =======================================================
+// LÍMITE DE TASA GLOBAL
+// =======================================================
+//
+// env.rateLimit existía con sus dos valores desde hacía tiempo y no lo consumía
+// nadie: configuración que PARECE protección cuando uno lee el .env y no lo es.
+// O se monta o se borra; dejarla ahí es lo peor de las dos opciones.
+//
+// El login ya tiene bloqueo por intentos, así que la fuerza bruta estaba
+// cubierta. Lo que quedaba sin techo era todo lo demás: alta de cuentas,
+// recuperación de contraseña, y cualquier endpoint autenticado.
+//
+// Es un piso, no un reemplazo: los límites finos siguen donde estaban —el chat
+// de IA, las consultas, los pagos— porque cada uno protege otra cosa y con otro
+// número.
+
+app.use(env.apiPrefix, globalApiLimiter)
 
 // =======================================================
 // API ROUTES

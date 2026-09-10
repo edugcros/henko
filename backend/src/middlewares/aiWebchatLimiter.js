@@ -1,6 +1,8 @@
 // 📁 src/middlewares/aiWebchatLimiter.js
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 
+import { SharedRateLimitStore } from './sharedRateLimitStore.js'
+
 const clean = value => String(value || '').trim()
 
 // req.ip ya resuelve la IP real del cliente respetando la config de
@@ -13,6 +15,11 @@ const getClientIp = req =>
 export const aiWebchatLimiter = rateLimit({
   windowMs: Number(process.env.AI_WEBCHAT_RATE_LIMIT_WINDOW_MS || 60 * 1000),
   max: Number(process.env.AI_WEBCHAT_RATE_LIMIT_MAX || 20),
+
+  // Compartido entre instancias. Con el almacén por defecto —memoria del
+  // proceso— este límite se multiplicaba por la cantidad de instancias, o sea
+  // que aflojaba justo cuando la plataforma crece.
+  store: new SharedRateLimitStore(),
   // La clave se ancla SOLO en tenant+IP. visitorId/sessionId los define
   // el cliente sin ninguna firma que los respalde — usarlos como parte
   // (u override) de la clave permitía evadir el límite por completo
