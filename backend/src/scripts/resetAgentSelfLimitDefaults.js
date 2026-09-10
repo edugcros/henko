@@ -42,6 +42,14 @@
 //   npm run migrate:agent-self-limits
 //   npm run migrate:agent-self-limits:apply
 //   npm run migrate:agent-self-limits:prod
+//
+// OJO CON A QUÉ BASE SE CONECTA
+//
+// config/env.js resuelve la conexión con getFirstValue(MONGODB_URL, MONGO_URI):
+// MONGODB_URL gana. Los archivos .env.<entorno> lo definen, así que exportar
+// MONGO_URI para apuntar el script a otra base NO funciona — se conecta igual a
+// la del .env y escribe ahí. Para dirigirlo a mano hay que pisar MONGODB_URL.
+// Vale para todos los scripts de esta carpeta, no solo para este.
 
 import mongoose from 'mongoose'
 
