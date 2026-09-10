@@ -25,6 +25,9 @@
     "migrate:ledger-unit": "cross-env NODE_ENV=development node src/scripts/backfillLedgerUnit.js",
     "migrate:ledger-unit:apply": "cross-env NODE_ENV=development node src/scripts/backfillLedgerUnit.js --apply",
     "migrate:ledger-unit:prod": "cross-env NODE_ENV=production node src/scripts/backfillLedgerUnit.js --apply",
+    "migrate:agent-self-limits": "cross-env NODE_ENV=development node src/scripts/resetAgentSelfLimitDefaults.js",
+    "migrate:agent-self-limits:apply": "cross-env NODE_ENV=development node src/scripts/resetAgentSelfLimitDefaults.js --apply",
+    "migrate:agent-self-limits:prod": "cross-env NODE_ENV=production node src/scripts/resetAgentSelfLimitDefaults.js --apply",
     "prune:ai-ledger": "cross-env NODE_ENV=development node src/scripts/pruneAiLedger.js",
     "prune:ai-ledger:prod": "cross-env NODE_ENV=production node src/scripts/pruneAiLedger.js"
   },

@@ -107,8 +107,11 @@ const toForm = agent => {
     learningEnabled: a.learning?.enabled !== false,
     learningRequireApproval: a.learning?.requireApproval !== false,
 
-    monthlyMessageLimit: Number(a.quotas?.monthlyMessageLimit ?? 3000),
-    monthlyAiTokenLimit: Number(a.quotas?.monthlyAiTokenLimit ?? 1000000),
+    // 0 = sin autolímite, que es lo que dicen los dos campos del formulario.
+    // El fallback viejo (3000 / 1M) reescribía un autolímite que el comercio
+    // nunca pidió cada vez que guardaba cualquier otra cosa de esta pantalla.
+    monthlyMessageLimit: Number(a.quotas?.monthlyMessageLimit ?? 0),
+    monthlyAiTokenLimit: Number(a.quotas?.monthlyAiTokenLimit ?? 0),
   }
 }
 

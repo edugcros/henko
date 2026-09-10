@@ -158,11 +158,19 @@ const aiAgentSchema = new Schema(
     // Hoy el tope lo fija el plan y lo cobra services/ai/aiBudgetService.js.
     // Lo de acá solo puede apretar ese tope, nunca aflojarlo.
     //
+    // Por eso el default es 0 = "sin autolímite", y no los 3000/1M viejos.
+    // Dejarlos puestos reintroducía el mismo problema por la puerta de
+    // atrás: `reserveAiBudget` no puede distinguir un autolímite que
+    // el comercio eligió de uno que le puso el schema, así que un Pro al que
+    // se le venden 10.000 mensajes y 50M de tokens cobraba contra 3.000 y 1M
+    // mientras el panel le mostraba los del plan. Un valor acá tiene que
+    // significar que alguien lo escribió.
+    //
     // Los contadores *Used quedan por compatibilidad de lectura; el consumo
     // real vive en el modelo AiUsage, por período y por métrica.
     quotas: {
-      monthlyMessageLimit: { type: Number, default: 3000, min: 0 },
-      monthlyAiTokenLimit: { type: Number, default: 1000000, min: 0 },
+      monthlyMessageLimit: { type: Number, default: 0, min: 0 },
+      monthlyAiTokenLimit: { type: Number, default: 0, min: 0 },
       monthlyMessagesUsed: { type: Number, default: 0, min: 0 },
       monthlyAiTokensUsed: { type: Number, default: 0, min: 0 },
       quotaPeriod: { type: String, default: '', trim: true },
