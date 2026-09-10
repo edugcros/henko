@@ -55,10 +55,29 @@ const METRIC_TITLES = {
   imageEdits: 'Fondos generados con IA',
 }
 
+/**
+ * Un solo sistema hasta el millón: separador de miles argentino.
+ *
+ * Antes convivían dos. La escala corta arrancaba en 10.000, así que un tope de
+ * 1.500 caía del otro lado y la misma pantalla mostraba "1.500" al lado de
+ * "10K" y "50.0M" sin ninguna regla visible que explicara por qué. Peor: para
+ * quien viene leyendo abreviaturas, "1.500" se lee como uno y medio.
+ *
+ * El escalón de miles se elimina —es el único que colisionaba— y el de millones
+ * queda porque "50 M" no se puede confundir con nada, y porque es el único
+ * rango donde el número completo (50.000.000) estorba más de lo que informa.
+ */
 const formatNumber = value => {
   const number = Number(value || 0)
-  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)}M`
-  if (number >= 10_000) return `${Math.round(number / 1000)}K`
+
+  if (number >= 1_000_000) {
+    // Sin decimal cuando es redondo: "50 M", no "50,0 M".
+    const millones = (number / 1_000_000).toLocaleString('es-AR', {
+      maximumFractionDigits: 1,
+    })
+    return `${millones} M`
+  }
+
   return number.toLocaleString('es-AR')
 }
 

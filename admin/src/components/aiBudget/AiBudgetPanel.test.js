@@ -70,7 +70,7 @@ describe("AiBudgetPanel · tope mostrado", () => {
 
     render(<AiBudgetPanel />);
 
-    expect(await screen.findByText("3 / 10K")).toBeInTheDocument();
+    expect(await screen.findByText("3 / 10.000")).toBeInTheDocument();
     expect(screen.queryByText(/Autolímite tuyo/)).not.toBeInTheDocument();
   });
 
@@ -86,7 +86,7 @@ describe("AiBudgetPanel · tope mostrado", () => {
     // El número que se cobra.
     expect(await screen.findByText("3 / 2.000")).toBeInTheDocument();
     // Y el del plan NO aparece como si fuera el tope.
-    expect(screen.queryByText("3 / 10K")).not.toBeInTheDocument();
+    expect(screen.queryByText("3 / 10.000")).not.toBeInTheDocument();
   });
 
   test("explica de dónde sale el recorte y cuánto da el plan", async () => {
@@ -103,7 +103,7 @@ describe("AiBudgetPanel · tope mostrado", () => {
     await waitFor(() =>
       expect(screen.getByText(/Autolímite tuyo/)).toBeInTheDocument(),
     );
-    expect(screen.getByText(/Tu plan permite 10K/)).toBeInTheDocument();
+    expect(screen.getByText(/Tu plan permite 10.000/)).toBeInTheDocument();
   });
 
   test("la barra se llena contra el tope real", async () => {
@@ -121,5 +121,44 @@ describe("AiBudgetPanel · tope mostrado", () => {
     render(<AiBudgetPanel />);
 
     expect(await screen.findByText("Por agotarse")).toBeInTheDocument();
+  });
+});
+
+describe("AiBudgetPanel · formato de números", () => {
+  test("no mezcla dos sistemas en la misma pantalla", async () => {
+    // El bug: la escala corta arrancaba en 10.000, así que el tope de visión
+    // (1.500) caía del otro lado y quedaba "1.500" al lado de "10K" y "50.0M".
+    // Para alguien que viene leyendo abreviaturas, "1.500" es uno y medio.
+    mockGetAiBudget.mockResolvedValue(SNAPSHOT);
+
+    render(<AiBudgetPanel />);
+
+    await screen.findByText("3 / 10.000");
+
+    // Ningún medidor abrevia en miles.
+    expect(screen.queryByText(/\d+K/)).not.toBeInTheDocument();
+    expect(screen.getByText("1 / 1.500")).toBeInTheDocument();
+    expect(screen.getByText("8 / 500")).toBeInTheDocument();
+  });
+
+  test("el millón sí se abrevia, y sin decimal cuando es redondo", async () => {
+    // 50.000.000 completo estorba más de lo que informa, y "50 M" no se puede
+    // confundir con un número con separador de miles.
+    mockGetAiBudget.mockResolvedValue(SNAPSHOT);
+
+    render(<AiBudgetPanel />);
+
+    expect(await screen.findByText("27.000 / 50 M")).toBeInTheDocument();
+  });
+
+  test("un valor de millones no redondo conserva un decimal", async () => {
+    mockGetAiBudget.mockResolvedValue(
+      snapshotCon({ agentTokens: metrica(1_500_000, 50_000_000) }),
+    );
+
+    render(<AiBudgetPanel />);
+
+    // Coma decimal, que es la argentina: "1,5 M", no "1.5 M".
+    expect(await screen.findByText("1,5 M / 50 M")).toBeInTheDocument();
   });
 });
