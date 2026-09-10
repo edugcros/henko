@@ -212,12 +212,28 @@ describe("aiPlanPolicy · suscripción", () => {
 const mockAiUsage = {
   findOneAndUpdate: jest.fn(),
   findOne: jest.fn(),
+  // El servicio separa "crear el documento del período" e "inicializar el
+  // contador" del incremento que reserva: así un filtro de cuota que no
+  // matchea no termina en un upsert que crea el documento salteándose el
+  // límite. Los dos pasos usan updateOne y ninguno devuelve nada que se lea.
+  updateOne: jest.fn(),
 };
 
 const mockPlatformUsage = {
   findOneAndUpdate: jest.fn(),
   findOne: jest.fn(),
+  updateOne: jest.fn(),
 };
+
+// Los dos `ensure*` no leen el resultado, pero encadenan .setOptions(), así que
+// necesitan algo que resuelva. Se define una sola vez: jest.clearAllMocks()
+// limpia las llamadas registradas, no las implementaciones.
+mockAiUsage.updateOne.mockImplementation(() => ({
+  setOptions: () => Promise.resolve({ acknowledged: true }),
+}));
+mockPlatformUsage.updateOne.mockImplementation(() =>
+  Promise.resolve({ acknowledged: true }),
+);
 
 const mockProfile = jest.fn();
 
@@ -400,14 +416,16 @@ describe("aiBudgetService · reserva", () => {
   });
 
   test("sin cupo devuelve el motivo correcto y no incrementa", async () => {
+    // El rechazo llega como un findOneAndUpdate que no matchea: la condición
+    // de cuota vive en el filtro, así que sin cupo simplemente no hay
+    // documento que actualizar y devuelve null. Antes esto se detectaba por un
+    // E11000, porque la operación llevaba upsert y Mongo chocaba con el índice
+    // único; separar la creación del documento del incremento eliminó ese
+    // camino, y con él la posibilidad de crear un documento salteándose el
+    // límite.
     mockProfile.mockResolvedValue(platformProfile());
 
-    const duplicateKeyError = Object.assign(new Error("E11000"), {
-      code: 11000,
-    });
-    mockAiUsage.findOneAndUpdate.mockImplementation(() => ({
-      setOptions: () => Promise.reject(duplicateKeyError),
-    }));
+    mockAiUsage.findOneAndUpdate.mockReturnValue(chainable(null));
 
     const limit = getPlanLimit("free", AI_METRICS.AGENT_MESSAGES);
     mockAiUsage.findOne.mockReturnValue(
@@ -421,36 +439,65 @@ describe("aiBudgetService · reserva", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe(DENY_REASONS.METRIC_LIMIT);
+    expect(result.used).toBe(limit);
+  });
+
+  test("la condición de cuota exige que ENTRE la cantidad pedida, no solo que sobre lugar", async () => {
+    // La versión anterior filtraba con { contador: { $lt: limite } }, que solo
+    // es correcto reservando de a uno: con amount = N, un contador en
+    // limite - 1 pasaba el filtro y terminaba en limite + N - 1. Ahora la
+    // condición compara used + amount contra el límite.
+    mockProfile.mockResolvedValue(platformProfile());
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { agentMessages: 3 } }),
+    );
+
+    await reserveAiBudget({
+      tenantId: TENANT_ID,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      amount: 3,
+    });
+
+    const [filtro] = mockAiUsage.findOneAndUpdate.mock.calls[0];
+    const [comparacion] = filtro.$expr.$and;
+
+    // $lte: [ { $add: [ contador, amount ] }, limite ]
+    expect(comparacion.$lte[0].$add[1]).toBe(3);
+    expect(comparacion.$lte[1]).toBe(
+      getPlanLimit("free", AI_METRICS.AGENT_MESSAGES),
+    );
   });
 
   test("un documento viejo sin el contador no bloquea al tenant para siempre", async () => {
-    // Los documentos creados antes de este refactor solo tienen analysisCount.
-    // Si el E11000 se interpretara siempre como "sin cupo", el comercio
-    // quedaría bloqueado en una métrica que nunca usó.
+    // Los documentos creados antes del refactor de contadores solo tienen
+    // analysisCount. Antes esto se resolvía interpretando un E11000 y
+    // reintentando; ahora el contador se inicializa antes de reservar, con un
+    // update condicionado a que el campo NO exista, así que la migración es
+    // idempotente y no pisa un valor real.
     mockProfile.mockResolvedValue(platformProfile());
-
-    const duplicateKeyError = Object.assign(new Error("E11000"), {
-      code: 11000,
-    });
-
-    let call = 0;
-    mockAiUsage.findOneAndUpdate.mockImplementation(() => ({
-      setOptions: () => {
-        call += 1;
-        if (call === 1) return Promise.reject(duplicateKeyError);
-        return Promise.resolve({ counters: { agentMessages: 1 } });
-      },
-    }));
-
-    mockAiUsage.findOne.mockReturnValue(chainableLean({ analysisCount: 3 }));
+    mockAiUsage.findOneAndUpdate.mockReturnValue(
+      chainable({ counters: { vision: 1 } }),
+    );
 
     const result = await reserveAiBudget({
       tenantId: TENANT_ID,
-      metric: AI_METRICS.AGENT_MESSAGES,
+      metric: AI_METRICS.VISION,
     });
 
     expect(result.allowed).toBe(true);
-    expect(result.reason).toBe("ok_backfilled");
+
+    const inicializacion = mockAiUsage.updateOne.mock.calls.find(
+      ([filtro]) => filtro["counters.vision"]?.$exists === false,
+    );
+
+    expect(inicializacion).toBeDefined();
+
+    // Y arrastra el valor histórico en vez de arrancar de cero: un comercio
+    // que ya gastó 40 análisis no vuelve a tener el cupo entero.
+    const [, pipeline] = inicializacion;
+    expect(pipeline[0].$set["counters.vision"]).toEqual({
+      $ifNull: ["$analysisCount", 0],
+    });
   });
 
   test("con key propia del comercio no se aplica el tope del plan", async () => {
@@ -762,7 +809,12 @@ describe("aiBudgetService · reembolso", () => {
 
     // El $gte en el filtro es lo que impide devolver más de lo reservado: si
     // el contador no llega, el documento no matchea y no se decrementa nada.
-    expect(filtro["counters.vision"]).toEqual({ $gte: 3 });
+    // Ahora va como $expr con $ifNull, que además trata un contador ausente
+    // como cero en vez de no matchear.
+    expect(filtro.$expr.$gte).toEqual([
+      { $ifNull: ["$counters.vision", 0] },
+      3,
+    ]);
   });
 
   test("devuelve la cantidad pedida, no siempre uno", async () => {
@@ -1059,7 +1111,15 @@ describe("aiBudgetService · recordTokenSpend", () => {
       outputTokens: 1000,
     });
 
-    const [, update] = mockAiUsage.findOneAndUpdate.mock.calls[0];
+    // El costo se suma con updateOne, después de garantizar el documento del
+    // período; lo que importa es que el único $inc sea el del costo.
+    const escrituras = mockAiUsage.updateOne.mock.calls.filter(
+      ([, update]) => update?.$inc,
+    );
+
+    expect(escrituras).toHaveLength(1);
+
+    const [, update] = escrituras[0];
 
     expect(update.$inc.estimatedCostUsd).toBeGreaterThan(0);
     expect(Object.keys(update.$inc)).toEqual(["estimatedCostUsd"]);
