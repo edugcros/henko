@@ -68,7 +68,11 @@ export const generateProductSocialContent = expressAsyncHandler(async (req, res)
     })
   } catch (error) {
     // El proveedor no entregó nada: no se cobra el mensaje reservado.
-    await refundAiBudget({ tenantId, metric: AI_METRICS.AGENT_MESSAGES })
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      operationId: reservation.operationId,
+    })
 
     logger.error('❌ Error generando contenido social', {
       tenantId,

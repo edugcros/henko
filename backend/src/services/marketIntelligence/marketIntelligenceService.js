@@ -191,7 +191,12 @@ export async function analyzeMarketDemand({
   const producedNothing = breakdown.total === null
 
   if (producedNothing) {
-    await refundAiBudget({ tenantId, metric: AI_METRICS.MARKET_ANALYSES, amount: 1 })
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.MARKET_ANALYSES,
+      amount: 1,
+      operationId: budget.operationId,
+    })
 
     logger.warn('[marketIntelligence] cobertura insuficiente, reserva devuelta', {
       tenantId: String(tenantId),

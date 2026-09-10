@@ -125,7 +125,11 @@ export const generateReactivationMessage = async ({ tenantId, insight }) => {
 
     return { message: result.message, aiGenerated: true }
   } catch (error) {
-    await refundAiBudget({ tenantId, metric: AI_METRICS.AGENT_MESSAGES })
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      operationId: reservation.operationId,
+    })
     logger.warn('⚠️ No se pudo generar el mensaje de reactivación con IA, se usa la plantilla', {
       tenantId: String(tenantId),
       message: error?.message,

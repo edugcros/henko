@@ -96,14 +96,28 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
     })
   } catch (error) {
     // El proveedor falló: la generación no se entregó, así que no se cobra.
-    await refundAiBudget({ tenantId, metric: AI_METRICS.IMAGE_EDITS })
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.IMAGE_EDITS,
+      operationId: reservation.operationId,
+    })
     throw error
   }
 
   // El costo se registra separado de la reserva de cupo (esta ya incrementó
   // counters.imageEdits) — solo suma a estimatedCostUsd, nunca duplica el
   // conteo de cuota. Ver aiBudgetService.js::recordImageGenerationCost.
-  await recordImageGenerationCost({ tenantId })
+  //
+  // La clave de la reserva viaja a los tres movimientos. Las dos funciones la
+  // aceptan y documentan que sin ella un reintento cuenta dos veces, y este
+  // llamador no la pasaba: las filas quedaban con operationId nulo, sin forma
+  // de unir la reserva con su consumo. Por eso una edición que reservó cupo y
+  // no llegó a registrar costo era invisible — el contador decía 3 y el dinero
+  // decía 2, sin nada que explicara cuál de las tres faltaba.
+  await recordImageGenerationCost({
+    tenantId,
+    operationId: reservation.operationId,
+  })
 
   const base64 = result.buffer.toString('base64')
 

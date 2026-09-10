@@ -182,7 +182,11 @@ export const tryPersonalizeMessage = async ({ tenantId, values }) => {
 
     return result.message
   } catch (error) {
-    await refundAiBudget({ tenantId, metric: AI_METRICS.AGENT_MESSAGES })
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      operationId: reservation.operationId,
+    })
     logger.warn('⚠️ No se pudo personalizar el mensaje de recuperación con IA, se usa la plantilla', {
       tenantId: String(tenantId),
       message: error?.message,

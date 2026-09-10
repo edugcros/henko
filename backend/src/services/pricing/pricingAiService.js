@@ -208,14 +208,24 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
     }
 
     if (result?.fallback || !result?.content) {
-      await refundAiBudget({ tenantId, metric: AI_METRICS.MARKET_ANALYSES, amount: 1 })
+      await refundAiBudget({
+        tenantId,
+        metric: AI_METRICS.MARKET_ANALYSES,
+        amount: 1,
+        operationId: budget.operationId,
+      })
       return { available: false, reason: result?.error || 'sin respuesta del modelo' }
     }
 
     const parsed = parseRecommendation(result.content)
 
     if (!parsed) {
-      await refundAiBudget({ tenantId, metric: AI_METRICS.MARKET_ANALYSES, amount: 1 })
+      await refundAiBudget({
+        tenantId,
+        metric: AI_METRICS.MARKET_ANALYSES,
+        amount: 1,
+        operationId: budget.operationId,
+      })
       return { available: false, reason: 'respuesta ilegible del modelo' }
     }
 
@@ -223,9 +233,12 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
   } catch (error) {
     // El proveedor falló después de reservarle cuota al comercio: no se le
     // cobra un análisis que no recibió.
-    await refundAiBudget({ tenantId, metric: AI_METRICS.MARKET_ANALYSES, amount: 1 }).catch(
-      () => undefined,
-    )
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.MARKET_ANALYSES,
+      amount: 1,
+      operationId: budget.operationId,
+    }).catch(() => undefined)
 
     logger.error('[PRICING AI] Falló el análisis de precio', {
       tenantId: String(tenantId),
