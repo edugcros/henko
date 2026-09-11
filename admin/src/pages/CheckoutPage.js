@@ -349,9 +349,6 @@ const CheckoutPage = () => {
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 800 }}>
                           {formatArs(precioArs)}
-)
-                            </Typography>
-                          )}
                         </Typography>
                       </Box>
 

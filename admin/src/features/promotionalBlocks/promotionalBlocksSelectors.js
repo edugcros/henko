@@ -1,14 +1,19 @@
 // 📁 src/features/promotionalBlocks/promotionalBlocksSelectors.js
+//
+// Este archivo tenía siete expresiones sueltas a nivel de módulo —restos de
+// selectores que perdieron su `export const ... = state =>`— que referenciaban
+// un `state` inexistente. Importarlo lanzaba ReferenceError, así que
+// PromotionalBlocksPage no abría.
+//
+// Se borran en vez de restaurarlas: ninguna estaba exportada ni la importaba
+// nadie. Inventarles un nombre sería agregar exports que nadie usa para
+// justificar código que ya no existía.
 
 export const selectPromotionalBlocksState = state =>
   state.promotionalBlocks || {}
 
 export const selectPromotionalBlocks = state =>
   selectPromotionalBlocksState(state).blocks || []
-
-selectPromotionalBlocksState(state).publicBlocks || []
-
-selectPromotionalBlocksState(state).selectedBlock || null
 
 export const selectPromotionalBlocksMeta = state =>
   selectPromotionalBlocksState(state).meta || {
@@ -21,21 +26,11 @@ export const selectPromotionalBlocksMeta = state =>
 export const selectPromotionalBlocksError = state =>
   selectPromotionalBlocksState(state).error || null
 
-selectPromotionalBlocksState(state).publicError || null
-
 export const selectPromotionalBlocksSuccess = state =>
   selectPromotionalBlocksState(state).successMessage || null
 
 export const selectPromotionalBlocksIsFetching = state =>
   Boolean(selectPromotionalBlocksState(state).isFetching)
-
-Boolean(selectPromotionalBlocksState(state).isFetchingOne)
-
-Boolean(selectPromotionalBlocksState(state).isFetchingPublic)
-
-Boolean(selectPromotionalBlocksState(state).isCreating)
-
-Boolean(selectPromotionalBlocksState(state).isUpdating)
 
 export const selectPromotionalBlocksIsDeleting = state =>
   Boolean(selectPromotionalBlocksState(state).isDeleting)
