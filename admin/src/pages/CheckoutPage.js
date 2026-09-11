@@ -129,6 +129,7 @@ const CheckoutPage = () => {
       try {
         setIsLoading(true)
         const response = await api.get('/subscriptions/config')
+        console.log('Config MP cargada:', response.data)
         if (response.data?.data?.mpPublicKey) {
           setMpPublicKey(response.data.data.mpPublicKey)
           // Aquí se cargaría el SDK de MP cuando esté disponible
@@ -155,7 +156,10 @@ const CheckoutPage = () => {
     // Formatear según el campo
     let formatted = value
     if (name === 'cardNumber') {
-      formatted = value.replace(/\D/g, '').slice(0, 16)
+      // 19 y no 16. Visa y Mastercard tienen 16, pero American Express tiene 15
+      // y varias emisoras locales llegan a 19. Cortar en 16 hacía imposible
+      // terminar de escribir una Amex, y la validación de abajo la rechazaba.
+      formatted = value.replace(/\D/g, '').slice(0, 19)
     } else if (name === 'expiryMonth') {
       formatted = value.replace(/\D/g, '').slice(0, 2)
       if (formatted.length === 1 && parseInt(formatted) > 1) {
@@ -186,13 +190,26 @@ const CheckoutPage = () => {
       return false
     }
 
-    if (!cardData.cardNumber || cardData.cardNumber.length !== 16) {
-      setError('Número de tarjeta válido requerido (16 dígitos)')
+    // El rango real de un número de tarjeta (ISO/IEC 7812) es 13 a 19 dígitos.
+    // Exigir exactamente 16 rechazaba Amex (15) y cualquier emisora de 17 a 19,
+    // con un mensaje que además afirmaba que 16 era el único largo válido.
+    //
+    // La validación fina la hace Mercado Pago al tokenizar: acá solo se atajan
+    // los errores obvios para no gastar una llamada.
+    if (!cardData.cardNumber || cardData.cardNumber.length < 13 || cardData.cardNumber.length > 19) {
+      setError('Número de tarjeta inválido')
       return false
     }
 
     if (!cardData.expiryMonth || !cardData.expiryYear) {
       setError('Fecha de vencimiento requerida')
+      return false
+    }
+
+    const mes = Number(cardData.expiryMonth)
+
+    if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
+      setError('El mes de vencimiento tiene que estar entre 01 y 12')
       return false
     }
 
@@ -478,9 +495,16 @@ const CheckoutPage = () => {
                                 SelectProps={{ native: true }}
                                 sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                               >
+                                {/* Los que acepta Mercado Pago Argentina, según
+                                    su propia API (GET /v1/identification_types).
+                                    Antes decía PASSPORT y CUIT: ninguno de los
+                                    dos existe para MLA, así que elegirlos hacía
+                                    fallar la tokenización de la tarjeta. */}
                                 <option value="DNI">DNI</option>
-                                <option value="PASSPORT">Pasaporte</option>
-                                <option value="CUIT">CUIT</option>
+                                <option value="CI">Cédula</option>
+                                <option value="LC">L.C.</option>
+                                <option value="LE">L.E.</option>
+                                <option value="Otro">Otro</option>
                               </TextField>
                             </Grid>
                             <Grid item xs={12} sm={6}>
@@ -532,7 +556,11 @@ const CheckoutPage = () => {
                             required
                             placeholder="1234 5678 9012 3456"
                             inputProps={{
-                              maxLength: 16,
+                              // 19: el largo máximo de un número de tarjeta. Con
+                              // 16 el campo no dejaba terminar de escribir una
+                              // de 17 a 19 dígitos, y el usuario no tenía forma
+                              // de saber por qué se le cortaba.
+                              maxLength: 19,
                               inputMode: 'numeric',
                             }}
                             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}

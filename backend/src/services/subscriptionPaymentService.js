@@ -104,9 +104,30 @@ export const buildMercadoPagoSubscriptionData = ({
     throw error
   }
 
+  // EL CONTRATO REAL DE /preapproval
+  //
+  // Verificado contra los tipos del SDK (PreApprovalRequest en
+  // clients/preApproval/commonTypes.d.ts). Acepta exactamente:
+  // auto_recurring, back_url, card_token_id, external_reference, payer_email,
+  // preapproval_plan_id, reason y status. Nada más.
+  //
+  // Lo que había acá mandaba `payer: { email, name, identification }`. El SDK
+  // serializa el body con JSON.stringify tal cual, así que ese objeto viajaba y
+  // Mercado Pago lo ignoraba: **el email del suscriptor nunca llegaba**, y es el
+  // campo con el que identifica a quién le cobra.
+  //
+  // Faltaba también `status`. Sin él, Mercado Pago crea la suscripción en
+  // 'pending' y devuelve un init_point para que el comprador la autorice a mano.
+  // Con un card_token_id y status 'authorized' cobra en el acto, que es lo que
+  // este checkout promete.
+  //
+  // `metadata` e `issuer_id` no son parte del contrato y se van: la correlación
+  // con el comercio y el usuario viaja en external_reference, que sí lo es.
   const subscriptionData = {
     reason: `Suscripción Henko Plan ${normalizedPlan}`,
-    external_reference: `sub:${tenantId}:${Date.now()}`,
+    external_reference: `sub:${tenantId}:${userId}:${Date.now()}`,
+    payer_email: payerEmail,
+    status: 'authorized',
     auto_recurring: {
       frequency: 1,
       frequency_type: 'months',
@@ -117,48 +138,23 @@ export const buildMercadoPagoSubscriptionData = ({
       currency_id: 'ARS',
       start_date: new Date().toISOString(),
     },
-    payer: {
-      email: payerEmail,
-      name: payer?.name || 'Cliente Henko',
-      identification: {
-        type: sanitizeString(payer?.identification?.type, 'DNI'),
-        number: String(payer?.identification?.number || '')
-          .replace(/\D/g, '')
-          .slice(0, 20),
-      },
-    },
     // ADMIN_BASE_URL no existe en config/env.js: quedaba "undefined/..." y
     // Mercado Pago rechaza una back_url inválida. env.adminUrl sí es
     // obligatoria en producción. La ruta también estaba mal: el router del
     // panel no tiene /subscription/success, sí /admin/mi-suscripcion.
     back_url:
       process.env.SUBSCRIPTION_SUCCESS_URL || `${env.adminUrl}/admin/mi-suscripcion`,
+    // notification_url NO está en PreApprovalRequest. Se sigue mandando porque
+    // el SDK pasa el body tal cual y no cuesta nada si lo ignoran, pero la vía
+    // confiable para los webhooks de suscripción es configurar la URL en el
+    // panel de Mercado Pago (Tus integraciones → Webhooks). Ver getWebhookUrl.
     notification_url: buildNotificationUrl(),
-    metadata: {
-      tenant_id: tenantId.toString(),
-      user_id: userId.toString(),
-      plan: normalizedPlan,
-      payment_type: 'subscription',
-    },
   }
 
-  if (paymentMethodId === 'account_money') {
-    // Para billetera de MP, usar card_token si aplica
+  // Las dos ramas que había acá ponían el mismo card_token_id, así que el
+  // paymentMethodId no decidía nada. Se cobra con el token o no se cobra.
+  if (token && token !== 'undefined') {
     subscriptionData.card_token_id = token
-  } else if (token && token !== 'undefined') {
-    subscriptionData.card_token_id = token
-  }
-
-  // Emisor de tarjeta (si se proporciona)
-  const issuerNum = Number(issuerId)
-  if (
-    issuerId &&
-    issuerId !== 'undefined' &&
-    issuerId !== 'null' &&
-    Number.isFinite(issuerNum) &&
-    issuerNum > 0
-  ) {
-    subscriptionData.issuer_id = issuerNum
   }
 
   return {
