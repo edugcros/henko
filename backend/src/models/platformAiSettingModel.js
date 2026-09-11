@@ -30,6 +30,22 @@ import mongoose from 'mongoose'
 export const PLATFORM_AI_SETTINGS = Object.freeze({
   MONTHLY_TOKEN_BUDGET: 'monthlyTokenBudget',
   PER_TENANT_SHARE: 'perTenantShare',
+
+  // Precio mensual de cada plan, EN PESOS.
+  //
+  // Viven acá y no en una colección propia porque esto ya es lo que el dueño de
+  // la plataforma edita en caliente, con historial de quién cambió qué y por
+  // qué. Un precio necesita exactamente eso: dentro de tres meses, "¿por qué el
+  // starter pasó de 40.000 a 52.000?" se contesta con la fila, no con la
+  // memoria de nadie.
+  //
+  // El nombre del modelo dice "AiSetting" y estos no son de IA: es deuda de
+  // nombre que no justifica duplicar el mecanismo entero ni migrar la colección.
+  //
+  // free no está: es gratis y no hay nada que configurar. enterprise tampoco:
+  // es precio a medida, y un número fijo ahí sería mentira.
+  PLAN_PRICE_STARTER: 'planPriceStarterArs',
+  PLAN_PRICE_PRO: 'planPriceProArs',
 })
 
 const platformAiSettingSchema = new mongoose.Schema(

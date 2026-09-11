@@ -18,7 +18,11 @@ import {
 import {
   getTenantMercadoPagoContext,
 } from '../services/paymentTenantConfigService.js'
-import { normalizePlan, getPlanMonthlyPriceUsd } from '../services/ai/aiPlanPolicy.js'
+import {
+  normalizePlan,
+  getPlanMonthlyPriceArs,
+  getPlanCatalog,
+} from '../services/ai/aiPlanPolicy.js'
 import { sendTemplateEmail } from '../services/emailService.js'
 import logger from '../../config/logger.js'
 
@@ -72,6 +76,26 @@ const loadTenantFromRequest = async req => {
 
     return null
   }
+}
+
+/**
+ * GET /api/subscriptions/plans
+ *
+ * El catálogo de precios, que es LA fuente para el panel.
+ *
+ * Existe para que las pantallas dejen de tener los precios escritos a mano.
+ * Estaban en tres archivos del panel, cada uno con su propia copia del tipo de
+ * cambio, y uno de ellos mostraba 26,14 USD —el resultado congelado de una
+ * división vieja— mientras el cobro salía de otro número.
+ *
+ * No exige plan ni suscripción: es una lista de precios. Sí exige sesión, como
+ * el resto de este router.
+ */
+export const getSubscriptionPlans = async (req, res) => {
+  return sendResponse(res, 200, true, 'Planes obtenidos', {
+    plans: getPlanCatalog(),
+    currency: 'ARS',
+  })
 }
 
 /**
@@ -410,13 +434,14 @@ export const changeSubscriptionPlan = async (req, res) => {
     }
 
     // Actualizar el precio en MP
-    const newPriceUsd = getPlanMonthlyPriceUsd(normalizedNewPlan)
+    const newPriceArs = getPlanMonthlyPriceArs(normalizedNewPlan)
     try {
       await mpClient.update({
         id: mpSubId,
         body: {
           auto_recurring: {
-            transaction_amount: newPriceUsd,
+            transaction_amount: newPriceArs,
+            currency_id: 'ARS',
           },
         },
       })

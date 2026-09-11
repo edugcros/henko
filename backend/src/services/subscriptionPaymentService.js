@@ -4,7 +4,7 @@
 
 import crypto from 'node:crypto'
 import { Money } from '../utils/money.js'
-import { normalizePlan, getPlanMonthlyPriceUsd } from './ai/aiPlanPolicy.js'
+import { normalizePlan, getPlanMonthlyPriceArs } from './ai/aiPlanPolicy.js'
 import { MercadoPagoConfig, PreApproval } from 'mercadopago'
 
 import { env } from '../../config/env.js'
@@ -85,17 +85,17 @@ export const buildMercadoPagoSubscriptionData = ({
   autoRenew = true,
 }) => {
   const normalizedPlan = normalizePlan(plan)
-  const priceUsd = getPlanMonthlyPriceUsd(normalizedPlan)
+  const priceArs = getPlanMonthlyPriceArs(normalizedPlan)
 
   // Validar que el plan tenga precio definido
-  if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
+  if (!Number.isFinite(priceArs) || priceArs <= 0) {
     const error = new Error('SUBSCRIPTION_PLAN_INVALID')
     error.statusCode = 400
     error.details = `Plan ${normalizedPlan} no tiene precio definido`
     throw error
   }
 
-  const amountCents = Math.round(priceUsd * 100)
+  const amountCents = Math.round(priceArs * 100)
   const payerEmail = normalizeEmail(email)
 
   if (!payerEmail || !isValidEmail(payerEmail)) {
@@ -110,8 +110,11 @@ export const buildMercadoPagoSubscriptionData = ({
     auto_recurring: {
       frequency: 1,
       frequency_type: 'months',
-      transaction_amount: Number((priceUsd).toFixed(2)),
-      currency_id: 'USD',
+      // En PESOS, que es lo que cobra HENKO y lo único que admite una
+      // suscripción de una cuenta de Mercado Pago argentina. Mandarle USD a una
+      // cuenta MLA es un rechazo asegurado, y era lo que estaba escrito.
+      transaction_amount: priceArs,
+      currency_id: 'ARS',
       start_date: new Date().toISOString(),
     },
     payer: {
@@ -160,7 +163,7 @@ export const buildMercadoPagoSubscriptionData = ({
 
   return {
     subscriptionData,
-    planPrice: priceUsd,
+    planPrice: priceArs,
     amountCents,
   }
 }

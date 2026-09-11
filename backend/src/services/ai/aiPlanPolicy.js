@@ -22,7 +22,6 @@
 //
 // Convención heredada de aiUsageService: 0 = ilimitado.
 
-import logger from '../../../config/logger.js'
 import {
   getPlatformAiOverride,
   PLATFORM_AI_SETTINGS,
@@ -341,139 +340,133 @@ export const estimateImageCostUsd = count => {
 
 // ─── Precio de plan ──────────────────────────────────────
 //
-// EL PROBLEMA QUE ESTO RESUELVE
+// UN SOLO LUGAR, Y EN PESOS.
 //
-// El precio del starter estaba guardado como 26,14 USD: el resultado de dividir
-// 40.000 ARS por el dólar del 24/08/2026. Guardar el resultado y no el hecho
-// tiene una consecuencia que no se nota: el comercio sigue pagando 40.000 pesos
-// y el motor de margen —que opera en USD— sigue creyendo que cobra 26,14
-// dólares. En Argentina esas dos cosas se separan en semanas, y el margen por
-// comercio que muestra el panel se va corriendo sin que nada avise.
+// Antes el precio vivía en cuatro: acá, en SubscriptionPage, en
+// SubscriptionManagementPage y en CheckoutPage, cada uno con su propia copia del
+// tipo de cambio. El del panel decía 26,14 USD — el resultado de dividir 40.000
+// pesos por el dólar del 24/08/2026, congelado. Cuatro copias de un número que
+// cambia es una garantía de que en algún momento muestran cosas distintas, y no
+// hay forma de saber cuál es la buena.
 //
-// Ahora se guarda lo que es cierto —el precio en su moneda de origen— y la
-// conversión pasa a ser un dato con fecha. Actualizar el tipo de cambio mueve
-// todos los precios en pesos a la vez, que es lo que uno espera.
+// Y no hay precio en dólares. HENKO cobra en pesos, a través de una cuenta de
+// Mercado Pago argentina —que además solo admite ARS en una suscripción—, así
+// que el dólar nunca fue el precio: era una traducción para mostrar. Guardar la
+// traducción y no el hecho es lo que hacía que el margen se corriera solo.
+//
+// El dueño lo cambia desde el panel y vale en todos lados. La precedencia es:
+// override del panel → variable de entorno → default de acá.
 
 /**
- * Tipo de cambio ARS/USD y cuándo se tomó.
+ * Precio mensual por plan, en PESOS.
  *
- * La fecha no es documentación: es lo que permite avisar cuando el número está
- * viejo. Un tipo de cambio sin fecha es indistinguible de uno actualizado, y
- * esa ambigüedad es exactamente la que hacía que el margen mintiera en silencio.
- *
- * Dólar oficial VENTA, Banco Nación. El mismo que usa
- * admin/src/pages/SubscriptionPage.js, para no tener dos referencias distintas.
- */
-const getArsPerUsd = () => ({
-  rate: readEnvNumber('USD_ARS_RATE') ?? 1530,
-  takenAt: String(process.env.USD_ARS_RATE_DATE || '2026-08-24').trim(),
-})
-
-/** A partir de cuántos días un tipo de cambio deja de merecer confianza. */
-const FX_STALE_DAYS = 45
-
-/**
- * Precios expresados en la moneda en que se decidieron.
- *
- * starter: decisión de negocio del usuario, 40.000 ARS/mes.
- * pro: placeholder visual de SubscriptionPage.js — no hubo decisión de negocio
- *   para ese plan todavía, y por eso queda en USD: no hay un precio en pesos
- *   que convertir.
+ * starter: decisión de negocio, 40.000 ARS/mes.
+ * pro: 151.470 ARS. Es exactamente lo que valían los 99 USD anteriores al tipo
+ *   de cambio que el propio código usaba (1.530). NO es una decisión de precio
+ *   nueva — se arrastra el valor equivalente para no inventar uno, y queda a un
+ *   click de cambiarse desde el panel.
  * enterprise: precio a medida. null a propósito y no 0 — un 0 numérico se
  *   leería como margen falso en cualquier reporte que lo use.
  */
-const DEFAULT_PLAN_PRICE = Object.freeze({
-  free: { amount: 0, currency: 'USD' },
-  starter: { amount: 40000, currency: 'ARS' },
-  pro: { amount: 99, currency: 'USD' },
-  enterprise: { amount: null, currency: 'USD' },
+const DEFAULT_PLAN_PRICE_ARS = Object.freeze({
+  free: 0,
+  starter: 40000,
+  pro: 151470,
+  enterprise: null,
 })
 
-const fxWarned = new Set()
+/** El ajuste de plataforma que le corresponde a cada plan, si existe. */
+const PLAN_PRICE_SETTING = Object.freeze({
+  starter: PLATFORM_AI_SETTINGS.PLAN_PRICE_STARTER,
+  pro: PLATFORM_AI_SETTINGS.PLAN_PRICE_PRO,
+})
 
 /**
- * Avisa una vez por proceso y por valor cuando el tipo de cambio quedó viejo.
+ * Precio mensual del plan, en pesos. `null` significa precio a medida (no hay
+ * un número fijo que asumir) — distinguirlo de 0 importa para cualquier cálculo
+ * de margen que use este valor.
  *
- * Una advertencia por request volvería ilegible el log; una sola por proceso se
- * ve en cada despliegue, que es la frecuencia con la que alguien puede actuar.
+ * Se puede sobrescribir sin tocar código, en este orden:
+ *   1. El panel de plataforma (queda con autor, fecha y motivo).
+ *   2. PLAN_PRICE_ARS_STARTER=45000
  */
-const warnIfStale = ({ rate, takenAt }) => {
-  const tomado = Date.parse(takenAt)
-  if (!Number.isFinite(tomado)) return
-
-  const dias = Math.floor((Date.now() - tomado) / 86_400_000)
-  if (dias < FX_STALE_DAYS) return
-
-  const clave = `${rate}:${takenAt}`
-  if (fxWarned.has(clave)) return
-  fxWarned.add(clave)
-
-  logger.warn('[PRECIOS] El tipo de cambio está viejo y el margen se calcula con él', {
-    rate,
-    takenAt,
-    dias,
-    corregirCon: 'USD_ARS_RATE y USD_ARS_RATE_DATE',
-  })
-}
-
-/**
- * Precio nominal mensual del plan, en USD. `null` significa precio a medida
- * (no hay un número fijo que asumir) — distinguirlo de 0 importa para
- * cualquier cálculo de margen que use este valor.
- *
- * Se puede sobrescribir por entorno sin tocar código:
- *   PLAN_PRICE_USD_STARTER=35     fija el precio en dólares y saltea el cambio
- *   USD_ARS_RATE=1800             mueve todos los precios en pesos a la vez
- */
-export const getPlanMonthlyPriceUsd = plan => {
+export const getPlanMonthlyPriceArs = plan => {
   const normalizedPlan = normalizePlan(plan)
 
-  // Un precio fijado en dólares por entorno gana sobre todo lo demás: es la
-  // salida para el día que se quiera un número exacto sin depender del cambio.
-  const envPrice = readEnvNumber(`PLAN_PRICE_USD_${normalizedPlan.toUpperCase()}`)
-  if (envPrice !== null) return envPrice
+  const setting = PLAN_PRICE_SETTING[normalizedPlan]
+  if (setting) {
+    const override = getPlatformAiOverride(setting)
+    if (override !== null && Number.isFinite(override) && override >= 0) {
+      return Math.round(override)
+    }
+  }
 
-  const { amount, currency } = DEFAULT_PLAN_PRICE[normalizedPlan]
-  if (amount === null || amount === 0) return amount
+  const envPrice = readEnvNumber(`PLAN_PRICE_ARS_${normalizedPlan.toUpperCase()}`)
+  if (envPrice !== null) return Math.round(envPrice)
 
-  if (currency === 'USD') return amount
-
-  const fx = getArsPerUsd()
-  warnIfStale(fx)
-
-  return Number((amount / fx.rate).toFixed(2))
+  return DEFAULT_PLAN_PRICE_ARS[normalizedPlan]
 }
 
 /**
- * De dónde sale el precio de un plan. Solo para mostrarlo — un margen calculado
- * con un tipo de cambio de hace tres meses no es incorrecto, pero se lee
- * distinto si uno sabe con qué se calculó.
+ * De dónde sale el precio vigente. Solo para mostrarlo: quien mira un precio en
+ * el panel tiene que poder distinguir el que alguien decidió del que quedó por
+ * defecto.
  */
 export const getPlanPriceSource = plan => {
   const normalizedPlan = normalizePlan(plan)
 
-  if (readEnvNumber(`PLAN_PRICE_USD_${normalizedPlan.toUpperCase()}`) !== null) {
-    return { origin: 'env', currency: 'USD' }
+  const setting = PLAN_PRICE_SETTING[normalizedPlan]
+  if (setting) {
+    const override = getPlatformAiOverride(setting)
+    if (override !== null && Number.isFinite(override)) return 'panel'
   }
 
-  const { amount, currency } = DEFAULT_PLAN_PRICE[normalizedPlan]
-  if (currency === 'USD') return { origin: 'fixed', currency: 'USD' }
-
-  const fx = getArsPerUsd()
-  const dias = Math.floor((Date.now() - Date.parse(fx.takenAt)) / 86_400_000)
-
-  return {
-    origin: 'converted',
-    currency,
-    amount,
-    fxRate: fx.rate,
-    fxTakenAt: fx.takenAt,
-    fxAgeDays: Number.isFinite(dias) ? dias : null,
-    fxStale: Number.isFinite(dias) && dias >= FX_STALE_DAYS,
+  if (readEnvNumber(`PLAN_PRICE_ARS_${normalizedPlan.toUpperCase()}`) !== null) {
+    return 'env'
   }
+
+  return 'default'
 }
 
+/**
+ * El catálogo completo, que es lo que consume el panel para dejar de tener los
+ * precios escritos a mano.
+ */
+export const getPlanCatalog = () =>
+  AI_PLANS.map(plan => ({
+    plan,
+    monthlyPriceArs: getPlanMonthlyPriceArs(plan),
+    currency: 'ARS',
+    source: getPlanPriceSource(plan),
+  }))
+
 // ─── Costos operativos de HENKO (Bloque 8.10) ────────────
+//
+// ESTOS SÍ ESTÁN EN DÓLARES, Y NO ES UNA INCOHERENCIA.
+//
+// HENKO cobra en pesos y le paga a Google, Replicate, SendGrid y Meta en
+// dólares. El precio de un plan es una decisión y se toma en pesos; un costo es
+// un hecho y llega en la moneda en que lo facturan. Convertir el precio a
+// dólares para "emparejar" es lo que hacía que el margen se corriera solo
+// cuando se movía el cambio.
+//
+// El único lugar donde el cruce es inevitable es el reporte de margen, que
+// resta costos de ingresos. Ese reporte trabaja en pesos —la moneda del
+// negocio— y para eso convierte los COSTOS, con el tipo de cambio de acá abajo.
+//
+
+/**
+ * Pesos por dólar, para expresar en pesos los costos que llegan en dólares.
+ *
+ * NO es un precio ni interviene en ninguno: los planes se cotizan en pesos y
+ * nada los convierte. Sirve solo para que el reporte de margen pueda restar
+ * costos a ingresos sin mezclar unidades.
+ *
+ * Si está viejo, el margen se ve mejor o peor de lo que es. Por eso vale
+ * mantenerlo, y por eso el reporte informa con qué valor se calculó.
+ */
+export const getUsdToArsRate = () =>
+  Math.max(1, readEnvNumber('USD_ARS_RATE') ?? 1530)
 //
 // A diferencia de la primera versión de esto (que quedaba en 0 porque no
 // había números reales a mano), estos defaults salen de una búsqueda de
@@ -669,7 +662,8 @@ export default {
   isByokAllowedForPlan,
   getSubscriptionState,
   estimateImageCostUsd,
-  getPlanMonthlyPriceUsd,
+  getPlanMonthlyPriceArs,
+  getPlanCatalog,
   getPlatformMonthlyTokenBudget,
   getSharedKeyTenantCap,
   getPlatformMonthlyInfraCostUsd,

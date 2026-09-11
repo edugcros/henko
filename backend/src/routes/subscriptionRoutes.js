@@ -6,6 +6,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 
 import {
+  getSubscriptionPlans,
   getSubscriptionConfig,
   processSubscriptionPayment,
   getCurrentSubscription,
@@ -66,6 +67,9 @@ const subscriptionPaymentLimiter = rateLimit({
  * sesión: son datos del tenant, no información pública de pricing (esa vive
  * en la pantalla de planes, que no llama a este endpoint).
  */
+// Lista de precios. Sin resolución de tenant: no depende del comercio.
+router.get('/plans', authMiddleware, getSubscriptionPlans)
+
 router.get(
   '/config',
   resolveTenantByDomain,

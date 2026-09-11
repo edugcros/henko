@@ -24,13 +24,13 @@ import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
 import { getCurrentPeriod } from '../ai/aiBudgetService.js'
 import {
   getEmailCostPerSendUsd,
-  getPlanMonthlyPriceUsd,
+  getPlanMonthlyPriceArs,
+  getUsdToArsRate,
   getPlatformMonthlyInfraCostUsd,
   getPlatformMonthlyStorageCostUsd,
   getWhatsappCostPerSendUsd,
 } from '../ai/aiPlanPolicy.js'
 
-const round2 = value => Math.round(value * 100) / 100
 // Comunicaciones se calcula con tarifas por envío que suelen ser fracciones
 // de centavo (ej. $0.001/email) — redondear a 2 decimales antes de sumar
 // volumen puede colapsar el resultado a $0 incluso con volumen real
@@ -111,9 +111,17 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   const emailCostPerSend = getEmailCostPerSendUsd()
   const whatsappCostPerSend = getWhatsappCostPerSendUsd()
 
+  // El reporte trabaja en PESOS, que es la moneda del negocio: HENKO cobra en
+  // pesos. Los costos llegan en dólares (Google, Replicate, SendGrid, Meta) y se
+  // convierten acá. Antes pasaba al revés —el precio del plan se convertía a
+  // dólares— y por eso el margen se corría solo cada vez que se movía el cambio,
+  // sin que nada avisara.
+  const usdToArs = getUsdToArsRate()
+  const aArs = usd => Math.round(usd * usdToArs)
+
   const tenantRows = tenants.map(tenant => {
     const tenantKey = String(tenant._id)
-    const planPriceUsd = getPlanMonthlyPriceUsd(tenant.plan)
+    const planPriceArs = getPlanMonthlyPriceArs(tenant.plan)
     const aiCostUsd = costByTenant.get(tenantKey) || 0
 
     const emailSends =
@@ -123,8 +131,10 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       emailSends * emailCostPerSend + whatsappSends * whatsappCostPerSend,
     )
 
-    const estimatedMarginUsd =
-      planPriceUsd === null ? null : round2(planPriceUsd - aiCostUsd - communicationsCostUsd)
+    const estimatedMarginArs =
+      planPriceArs === null
+        ? null
+        : planPriceArs - aArs(aiCostUsd) - aArs(communicationsCostUsd)
 
     return {
       tenantId: tenant._id,
@@ -132,33 +142,34 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       plan: tenant.plan,
       status: tenant.status,
       subscriptionStatus: tenant.subscriptionStatus,
-      planPriceUsd,
-      aiCostUsd: round2(aiCostUsd),
+      planPriceArs,
+      aiCostArs: aArs(aiCostUsd),
       emailSends,
       whatsappSends,
-      communicationsCostUsd,
-      estimatedMarginUsd,
+      communicationsCostArs: aArs(communicationsCostUsd),
+      estimatedMarginArs,
     }
   })
 
-  const billable = tenantRows.filter(row => row.planPriceUsd !== null)
+  const billable = tenantRows.filter(row => row.planPriceArs !== null)
 
   const byPlan = tenantRows.reduce((acc, row) => {
     const key = row.plan
-    if (!acc[key]) acc[key] = { count: 0, aiCostUsd: 0, communicationsCostUsd: 0, planRevenueUsd: 0 }
+    if (!acc[key]) acc[key] = { count: 0, aiCostArs: 0, communicationsCostArs: 0, planRevenueArs: 0 }
     acc[key].count += 1
-    acc[key].aiCostUsd = round2(acc[key].aiCostUsd + row.aiCostUsd)
-    acc[key].communicationsCostUsd = round4(acc[key].communicationsCostUsd + row.communicationsCostUsd)
-    if (row.planPriceUsd !== null) {
-      acc[key].planRevenueUsd = round2(acc[key].planRevenueUsd + row.planPriceUsd)
+    acc[key].aiCostArs += row.aiCostArs
+    acc[key].communicationsCostArs += row.communicationsCostArs
+    if (row.planPriceArs !== null) {
+      acc[key].planRevenueArs += row.planPriceArs
     }
     return acc
   }, {})
 
   const infraCostUsd = getPlatformMonthlyInfraCostUsd()
   const storageCostUsd = getPlatformMonthlyStorageCostUsd()
-  const totalCommunicationsCostUsd = round4(
-    tenantRows.reduce((sum, row) => sum + row.communicationsCostUsd, 0),
+  const totalCommunicationsCostArs = tenantRows.reduce(
+    (sum, row) => sum + row.communicationsCostArs,
+    0,
   )
 
   // Ciclo de vida de comercios — separado del cálculo de margen porque usa
@@ -201,15 +212,20 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   const totals = {
     tenantCount: tenantRows.length,
     customPricingCount: tenantRows.length - billable.length,
-    totalPlanRevenueUsd: round2(billable.reduce((sum, row) => sum + row.planPriceUsd, 0)),
-    totalAiCostUsd: round2(tenantRows.reduce((sum, row) => sum + row.aiCostUsd, 0)),
-    totalCommunicationsCostUsd,
+    totalPlanRevenueArs: billable.reduce((sum, row) => sum + row.planPriceArs, 0),
+    totalAiCostArs: tenantRows.reduce((sum, row) => sum + row.aiCostArs, 0),
+    totalCommunicationsCostArs,
     // Costos fijos de la plataforma entera — no prorrateados, ver nota.
-    infraCostUsd: round2(infraCostUsd),
-    storageCostUsd: round2(storageCostUsd),
-    totalEstimatedMarginUsd: round2(
-      billable.reduce((sum, row) => sum + row.estimatedMarginUsd, 0) - infraCostUsd - storageCostUsd,
-    ),
+    infraCostArs: aArs(infraCostUsd),
+    storageCostArs: aArs(storageCostUsd),
+    totalEstimatedMarginArs:
+      billable.reduce((sum, row) => sum + row.estimatedMarginArs, 0) -
+      aArs(infraCostUsd) -
+      aArs(storageCostUsd),
+    // Con qué se pasaron a pesos los costos que llegan en dólares. Va en la
+    // respuesta y no en una nota al pie: un margen calculado con un cambio
+    // viejo no es incorrecto, pero se lee distinto sabiendo cuál se usó.
+    usdToArsRate: usdToArs,
     byPlan,
   }
 
@@ -219,10 +235,10 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     totals,
     lifecycle,
     notes: [
-      'estimatedMarginUsd por comercio es precio del plan menos costo de IA y de comunicaciones de ESE comercio — no incluye la porción de infraestructura/storage (ver los dos puntos siguientes).',
-      'infraCostUsd y storageCostUsd son costos totales de la plataforma, no prorrateados por comercio — dividirlos individualmente inventaría una precisión que no existe hoy. Se restan una sola vez en totals.totalEstimatedMarginUsd. Default estimado por investigación de precios públicos de Render/MongoDB Atlas/Cloudinary (ver aiPlanPolicy.js) — no es la factura real de HENKO, sobrescribible con PLATFORM_INFRA_MONTHLY_COST_USD / PLATFORM_STORAGE_MONTHLY_COST_USD en cuanto haya una factura real para comparar.',
-      'communicationsCostUsd por comercio sí es medible (volumen real de envíos de email/WhatsApp). La tarifa por envío también es una estimación de precios públicos de SendGrid/Meta WhatsApp (ver aiPlanPolicy.js), configurable con EMAIL_COST_USD_PER_SEND / WHATSAPP_COST_USD_PER_SEND.',
-      'planPriceUsd null significa precio a medida (enterprise) — no se estima automáticamente.',
+      'estimatedMarginArs por comercio es precio del plan menos costo de IA y de comunicaciones de ESE comercio — no incluye la porción de infraestructura/storage (ver los dos puntos siguientes).',
+      'infraCostArs y storageCostArs son costos totales de la plataforma, no prorrateados por comercio — dividirlos individualmente inventaría una precisión que no existe hoy. Se restan una sola vez en totals.totalEstimatedMarginArs. Default estimado por investigación de precios públicos de Render/MongoDB Atlas/Cloudinary (ver aiPlanPolicy.js) — no es la factura real de HENKO, sobrescribible con PLATFORM_INFRA_MONTHLY_COST_USD / PLATFORM_STORAGE_MONTHLY_COST_USD en cuanto haya una factura real para comparar.',
+      'communicationsCostArs por comercio sí es medible (volumen real de envíos de email/WhatsApp). La tarifa por envío también es una estimación de precios públicos de SendGrid/Meta WhatsApp (ver aiPlanPolicy.js), configurable con EMAIL_COST_USD_PER_SEND / WHATSAPP_COST_USD_PER_SEND.',
+      'planPriceArs null significa precio a medida (enterprise) — no se estima automáticamente.',
       'subscriptionStatus no refleja cobro real todavía — no existe flujo de facturación (ver aiPlanPolicy.js).',
       'lifecycle.deletedInPeriodApprox es una aproximación (no hay campo deletedAt, se infiere de updatedAt) — no un dato exacto.',
       'No existe hoy un concepto real de "cancelación de suscripción" ni de "comercio que paga": no hay flujo de cobro ni un campo que se actualice al cancelar. lifecycle.nonFreePlanTenantsCount cuenta comercios en un plan pago asignado a mano, no comercios efectivamente facturados.',
