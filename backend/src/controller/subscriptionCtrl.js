@@ -24,6 +24,7 @@ import {
   getPlanCatalog,
 } from '../services/ai/aiPlanPolicy.js'
 import { sendTemplateEmail } from '../services/emailService.js'
+import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
 const sendResponse = (res, statusCode, success, message, data = null) => {
@@ -134,6 +135,23 @@ export const getSubscriptionConfig = async (req, res) => {
       return sendResponse(res, 503, false, 'Mercado Pago no está configurado')
     }
 
+    // La clave pública que se devuelve es la de HENKO, no la del comercio.
+    //
+    // El token de tarjeta lo tiene que crear la MISMA cuenta que después lo
+    // consume, y esta suscripción la cobra la plataforma con su propio access
+    // token (ver subscriptionPaymentService::createSubscriptionClient). Devolver
+    // la del comercio produce un token que la cuenta de HENKO no puede usar, y
+    // el rechazo de Mercado Pago no dice eso: dice que el token está mal.
+    //
+    // mpContext se sigue consultando arriba a propósito: si el comercio no tiene
+    // Mercado Pago configurado, tampoco puede operar, y conviene decirlo acá.
+    const platformPublicKey = String(env.mercadoPago?.publicKey || '').trim()
+
+    if (!platformPublicKey) {
+      logger.error('MP_PUBLIC_KEY de plataforma ausente: no se puede tokenizar la tarjeta')
+      return sendResponse(res, 503, false, 'Mercado Pago no está configurado')
+    }
+
     // Obtener plan actual del tenant desde la BD
     const tenant = await Tenant.findById(tenantObjectId).select('plan subscriptionStatus trialEndsAt')
     if (!tenant) {
@@ -141,7 +159,7 @@ export const getSubscriptionConfig = async (req, res) => {
     }
 
     return sendResponse(res, 200, true, 'Configuración obtenida', {
-      mpPublicKey: mpContext.publicKey,
+      mpPublicKey: platformPublicKey,
       currentPlan: tenant.plan || 'free',
       subscriptionStatus: tenant.subscriptionStatus || 'trialing',
       trialEndsAt: tenant.trialEndsAt,

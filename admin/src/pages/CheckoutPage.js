@@ -39,6 +39,7 @@ import {
 import api from '@utils/axiosConfig'
 import { PLAN_PRESENTATION, formatArs } from '../constants/plans.js'
 import { getPlanCatalog, findPlanPrice } from '../services/subscriptionPlansService.js'
+import { createCardToken } from '../utils/mercadoPagoTokenizer.js'
 
 // El precio NO está acá. Lo trae /subscriptions/plans, que es de donde sale el
 // cobro. Esta pantalla tenía su propia tabla con `priceUsd: 26.14` y el botón
@@ -217,21 +218,27 @@ const CheckoutPage = () => {
     try {
       setIsProcessing(true)
 
-      // NOTA: En producción, aquí se llamaría a la API de Mercado Pago
-      // para crear el card token. Por ahora, simulamos el flujo.
+      // La tarjeta se tokeniza contra Mercado Pago desde el navegador: el número
+      // va del navegador a ellos y vuelve como un token de un solo uso. HENKO
+      // nunca lo ve.
       //
-      // En una implementación real con MP.js:
-      // const cardtoken = await MP.checkout.tokenize(cardData)
-      // const token = cardtoken.id
-
-      // Por ahora, usar un token simulado para demostración
-      const simulatedToken = `simulated_token_${Date.now()}`
-
-      console.log('Enviando pago con token:', simulatedToken)
+      // Acá se mandaba `simulated_token_${Date.now()}` — un string inventado —
+      // con un comentario que decía que en producción habría que llamar a la
+      // API de verdad. Mercado Pago contestaba "Card token service bad request",
+      // que era exactamente cierto.
+      const token = await createCardToken({
+        publicKey: mpPublicKey,
+        card: cardData,
+        holder: {
+          cardholderName: formData.cardholderName,
+          identificationType: formData.identityType,
+          identificationNumber: formData.identityNumber,
+        },
+      })
 
       const response = await api.post('/subscriptions/process-payment', {
         plan: selectedPlan,
-        token: simulatedToken,
+        token,
         paymentMethodId: 'credit_card',
         payer: {
           name: formData.name,
