@@ -32,7 +32,10 @@ export default {
   // encuentra, con lo cual esa aserción no agrega nada y el mensaje de error
   // que queda es peor. Con esto vuelven a estar disponibles toBeInTheDocument y
   // el resto de los matchers de DOM.
-  setupFilesAfterEnv: ['@testing-library/jest-dom'],
+  setupFilesAfterEnv: [
+    '@testing-library/jest-dom',
+    '<rootDir>/src/test/setupTests.js',
+  ],
 
   // Los assets y el CSS ya están mapeados arriba; el resto pasa por babel-jest,
   // que toma babel.config.cjs.

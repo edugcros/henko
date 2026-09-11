@@ -201,6 +201,19 @@ const SubscriptionManagementPage = () => {
         return
       }
 
+      // Sin suscripción en Mercado Pago no hay nada que cambiar: hay que crear
+      // la primera, y eso se hace en el checkout.
+      //
+      // Antes este botón llamaba igual a /subscriptions/change-plan, que le
+      // pide a Mercado Pago modificar el monto de una suscripción existente.
+      // Para un comercio que todavía no tiene ninguna, la única respuesta
+      // posible era "Suscripción de Mercado Pago no encontrada" — un mensaje
+      // correcto que no dice qué hacer, sobre un botón que no podía funcionar.
+      if (!subscription?.mercadoPago?.subscriptionId) {
+        navigate(`/checkout?plan=${encodeURIComponent(newPlan)}`)
+        return
+      }
+
       Modal.confirm({
         title: 'Cambiar plan de suscripción',
         content: `¿Estás seguro que querés cambiar a ${PLAN_DETAILS[newPlan].name}? El cambio se aplicará inmediatamente.`,
@@ -235,7 +248,7 @@ const SubscriptionManagementPage = () => {
         },
       })
     },
-    [subscription?.plan],
+    [subscription?.plan, subscription?.mercadoPago?.subscriptionId, navigate],
   )
 
   const handleCancelSubscription = useCallback(() => {
@@ -321,6 +334,13 @@ const SubscriptionManagementPage = () => {
   const StatusIcon = statusConfig.icon
   const isActive = subscription.subscriptionStatus === 'active'
   const canChangeOrCancel = isActive || subscription.subscriptionStatus === 'past_due'
+
+  // Cancelar exige una suscripción real en Mercado Pago. El estado del comercio
+  // puede decir 'active' sin que exista ninguna —es el caso de un plan puesto a
+  // mano—, y ahí el botón de cancelar solo puede devolver un error.
+  const tieneSuscripcionEnMercadoPago = Boolean(
+    subscription.mercadoPago?.subscriptionId,
+  )
   const trialEndsIn = subscription.trialEndsAt
     ? Math.ceil(
         (new Date(subscription.trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24),
@@ -494,7 +514,7 @@ const SubscriptionManagementPage = () => {
         )}
 
         {/* Cancelar suscripción */}
-        {canChangeOrCancel && (
+        {canChangeOrCancel && tieneSuscripcionEnMercadoPago && (
           <Card
             style={{
               borderRadius: token.borderRadiusLG,
