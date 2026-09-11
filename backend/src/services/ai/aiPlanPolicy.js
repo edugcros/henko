@@ -369,10 +369,24 @@ export const estimateImageCostUsd = count => {
  *   leería como margen falso en cualquier reporte que lo use.
  */
 const DEFAULT_PLAN_PRICE_ARS = Object.freeze({
+  // Estos dos no son decisiones de precio y por eso sí están acá: `free` es
+  // gratis por definición y `enterprise` se cotiza caso por caso.
   free: 0,
-  starter: 40000,
-  pro: 151470,
   enterprise: null,
+
+  // starter y pro NO tienen precio por defecto, a propósito.
+  //
+  // Tenían 40.000 y 151.470 escritos acá. Un número puesto en el código meses
+  // atrás y que después alguien cobra de verdad es exactamente lo que este
+  // trabajo vino a sacar: el precio es una decisión del dueño y su lugar es el
+  // panel, donde queda con autor, fecha y motivo.
+  //
+  // `null` significa "no configurado", y un plan sin precio NO SE VENDE:
+  // buildMercadoPagoSubscriptionData lo rechaza y la pantalla de planes no
+  // ofrece contratarlo. Es preferible que un plan no se pueda contratar a que
+  // se cobre un número que nadie eligió.
+  starter: null,
+  pro: null,
 })
 
 /** El ajuste de plataforma que le corresponde a cada plan, si existe. */
@@ -423,6 +437,14 @@ export const getPlanPriceSource = plan => {
 
   if (readEnvNumber(`PLAN_PRICE_ARS_${normalizedPlan.toUpperCase()}`) !== null) {
     return 'env'
+  }
+
+  // Distinguir "no configurado" de "por defecto" importa: el primero es un plan
+  // que todavía no se puede vender y hay que decirlo, el segundo sería un precio
+  // que alguien tiene que revisar. Desde que starter y pro no traen default, el
+  // único 'default' posible es free (gratis) o enterprise (a medida).
+  if (DEFAULT_PLAN_PRICE_ARS[normalizedPlan] === null && normalizedPlan !== 'enterprise') {
+    return 'unset'
   }
 
   return 'default'

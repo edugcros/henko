@@ -3,7 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { Alert, Button, Card, Col, Divider, Flex, Row, Skeleton, Space, Tag, Typography, theme } from 'antd'
 import { CheckCircleFilled, LockOutlined } from '@ant-design/icons'
-import { PLAN_PRESENTATION, SELLABLE_PLANS, formatArs } from '../constants/plans.js'
+import {
+  PLAN_PRESENTATION,
+  SELLABLE_PLANS,
+  formatArs,
+  isPlanContratable,
+} from '../constants/plans.js'
 import { getPlanCatalog } from '../services/subscriptionPlansService.js'
 
 const { Paragraph, Text, Title } = Typography
@@ -80,7 +85,7 @@ const PlanCard = ({ planId, priceArs, onSelect }) => {
               lineHeight: 1.1,
             }}
           >
-            {formatArs(priceArs)}
+            {formatArs(priceArs, { sinPrecio: 'A definir' })}
           </Text>
           <Text type="secondary">por mes</Text>
         </Flex>
@@ -109,10 +114,11 @@ const PlanCard = ({ planId, priceArs, onSelect }) => {
         size="large"
         block
         onClick={() => onSelect(planId)}
+        disabled={!isPlanContratable(priceArs)}
         aria-label={`${plan.actionLabel}, ${formatArs(priceArs)} por mes`}
         style={{ height: 48, fontWeight: 600 }}
       >
-        {plan.actionLabel}
+        {isPlanContratable(priceArs) ? plan.actionLabel : 'Precio a definir'}
       </Button>
     </Card>
   )

@@ -29,7 +29,12 @@ import {
   SwapOutlined,
 } from '@ant-design/icons'
 import api from '@utils/axiosConfig'
-import { PLAN_PRESENTATION, SELLABLE_PLANS, formatArs } from '../constants/plans.js'
+import {
+  PLAN_PRESENTATION,
+  SELLABLE_PLANS,
+  formatArs,
+  isPlanContratable,
+} from '../constants/plans.js'
 
 const { Paragraph, Text, Title } = Typography
 const { useToken } = theme
@@ -115,7 +120,7 @@ const PlanCard = ({ plan, priceArs, current, onSelectPlan }) => {
             </Text>
           </Flex>
           <Text strong style={{ fontSize: 24, color: token.colorTextHeading }}>
-            {formatArs(priceArs)}
+            {formatArs(priceArs, { sinPrecio: 'A definir' })}
             <Text style={{ fontSize: 12, marginLeft: 4 }}>/ mes</Text>
           </Text>
         </Flex>
@@ -133,8 +138,9 @@ const PlanCard = ({ plan, priceArs, current, onSelectPlan }) => {
           style={{ marginTop: 16 }}
           onClick={() => onSelectPlan(plan)}
           icon={<SwapOutlined />}
+          disabled={!isPlanContratable(priceArs)}
         >
-          Cambiar a este plan
+          {isPlanContratable(priceArs) ? 'Cambiar a este plan' : 'Precio a definir'}
         </Button>
       )}
     </Card>

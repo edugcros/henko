@@ -39,7 +39,7 @@ import {
 import api from '@utils/axiosConfig'
 import { PLAN_PRESENTATION, formatArs } from '../constants/plans.js'
 import { getPlanCatalog, findPlanPrice } from '../services/subscriptionPlansService.js'
-import { createCardToken } from '../utils/mercadoPagoTokenizer.js'
+import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 
 // El precio NO está acá. Lo trae /subscriptions/plans, que es de donde sale el
 // cobro. Esta pantalla tenía su propia tabla con `priceUsd: 26.14` y el botón
@@ -97,173 +97,42 @@ const CheckoutPage = () => {
   }, [selectedPlan])
 
   // Estados del formulario
-  const [formData, setFormData] = useState({
-    name: user?.firstname && user?.lastname
-      ? `${user.firstname} ${user.lastname}`
-      : '',
-    email: user?.email || '',
-    phone: '',
-    identityType: 'DNI',
-    identityNumber: '',
-    cardholderName: '',
-  })
+  // El formulario propio —datos del titular, tarjeta y su validación— lo
+  // reemplaza el Brick de Mercado Pago. Mantener esos campos acá significaba
+  // mantener también sus reglas: el largo de la tarjeta, los tipos de documento
+  // válidos por país, el formato del vencimiento. Cada una de esas reglas ya
+  // había fallado al menos una vez.
 
-  const [cardData, setCardData] = useState({
-    cardNumber: '',
-    expiryMonth: '',
-    expiryYear: '',
-    cvv: '',
-  })
-
-  const [isLoading, setIsLoading] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [mpPublicKey, setMpPublicKey] = useState(null)
-  const [mpToken, setMpToken] = useState(null)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(false)
-  const [subscriptionId, setSubscriptionId] = useState(null)
-
-  // Cargar configuración de Mercado Pago
-  useEffect(() => {
-    const loadMpConfig = async () => {
-      try {
-        setIsLoading(true)
-        const response = await api.get('/subscriptions/config')
-        console.log('Config MP cargada:', response.data)
-        if (response.data?.data?.mpPublicKey) {
-          setMpPublicKey(response.data.data.mpPublicKey)
-          // Aquí se cargaría el SDK de MP cuando esté disponible
-        }
-      } catch (err) {
-        console.error('Error cargando config MP:', err)
-        setError('No se pudo cargar la configuración de pago')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadMpConfig()
-  }, [])
-
-  const handleFormChange = e => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-  }
-
-  const handleCardChange = e => {
-    const { name, value } = e.target
-
-    // Formatear según el campo
-    let formatted = value
-    if (name === 'cardNumber') {
-      // 19 y no 16. Visa y Mastercard tienen 16, pero American Express tiene 15
-      // y varias emisoras locales llegan a 19. Cortar en 16 hacía imposible
-      // terminar de escribir una Amex, y la validación de abajo la rechazaba.
-      formatted = value.replace(/\D/g, '').slice(0, 19)
-    } else if (name === 'expiryMonth') {
-      formatted = value.replace(/\D/g, '').slice(0, 2)
-      if (formatted.length === 1 && parseInt(formatted) > 1) {
-        formatted = `0${formatted}`
-      }
-    } else if (name === 'expiryYear') {
-      formatted = value.replace(/\D/g, '').slice(0, 2)
-    } else if (name === 'cvv') {
-      formatted = value.replace(/\D/g, '').slice(0, 4)
-    }
-
-    setCardData(prev => ({ ...prev, [name]: formatted }))
-  }
-
-  const validateForm = () => {
-    if (!formData.name || formData.name.trim().length < 3) {
-      setError('Nombre completo requerido (mínimo 3 caracteres)')
-      return false
-    }
-
-    if (!formData.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      setError('Email válido requerido')
-      return false
-    }
-
-    if (!formData.identityNumber || formData.identityNumber.length < 6) {
-      setError('Número de documento válido requerido')
-      return false
-    }
-
-    // El rango real de un número de tarjeta (ISO/IEC 7812) es 13 a 19 dígitos.
-    // Exigir exactamente 16 rechazaba Amex (15) y cualquier emisora de 17 a 19,
-    // con un mensaje que además afirmaba que 16 era el único largo válido.
-    //
-    // La validación fina la hace Mercado Pago al tokenizar: acá solo se atajan
-    // los errores obvios para no gastar una llamada.
-    if (!cardData.cardNumber || cardData.cardNumber.length < 13 || cardData.cardNumber.length > 19) {
-      setError('Número de tarjeta inválido')
-      return false
-    }
-
-    if (!cardData.expiryMonth || !cardData.expiryYear) {
-      setError('Fecha de vencimiento requerida')
-      return false
-    }
-
-    const mes = Number(cardData.expiryMonth)
-
-    if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
-      setError('El mes de vencimiento tiene que estar entre 01 y 12')
-      return false
-    }
-
-    if (!cardData.cvv || cardData.cvv.length < 3) {
-      setError('Código de seguridad válido requerido')
-      return false
-    }
-
-    if (!formData.cardholderName || formData.cardholderName.trim().length < 3) {
-      setError('Nombre del titular de tarjeta requerido')
-      return false
-    }
-
-    return true
-  }
-
-  const handleSubmit = async e => {
-    e.preventDefault()
+  /**
+   * Lo dispara el Brick de Mercado Pago con la tarjeta YA tokenizada.
+   *
+   * Antes acá había un formulario propio: se pedían los datos de la tarjeta en
+   * campos nuestros, se validaban a mano y se tokenizaban aparte. Eso trajo
+   * exactamente los problemas que trae hacerlo a mano — largo de tarjeta fijado
+   * en 16 (una Amex tiene 15), una lista de tipos de documento con dos valores
+   * que Mercado Pago no acepta, y antes de eso un token inventado.
+   *
+   * El Brick es el mismo componente que ya usa el checkout de la tienda, que
+   * funciona en producción. Dibuja los campos de tarjeta en un iframe propio de
+   * Mercado Pago: el número no pasa nunca por nuestro DOM, ni por nuestro
+   * estado, ni por nuestros logs. Y trae la detección de medio de pago, las
+   * cuotas, el emisor y los tipos de documento correctos sin que haya que
+   * mantener nada de eso.
+   */
+  const onPaymentSubmit = async formData => {
     setError(null)
-
-    if (!validateForm()) return
+    setIsProcessing(true)
 
     try {
-      setIsProcessing(true)
-
-      // La tarjeta se tokeniza contra Mercado Pago desde el navegador: el número
-      // va del navegador a ellos y vuelve como un token de un solo uso. HENKO
-      // nunca lo ve.
-      //
-      // Acá se mandaba `simulated_token_${Date.now()}` — un string inventado —
-      // con un comentario que decía que en producción habría que llamar a la
-      // API de verdad. Mercado Pago contestaba "Card token service bad request",
-      // que era exactamente cierto.
-      const token = await createCardToken({
-        publicKey: mpPublicKey,
-        card: cardData,
-        holder: {
-          cardholderName: formData.cardholderName,
-          identificationType: formData.identityType,
-          identificationNumber: formData.identityNumber,
-        },
-      })
-
       const response = await api.post('/subscriptions/process-payment', {
         plan: selectedPlan,
-        token,
-        paymentMethodId: 'credit_card',
+        // El Brick ya tokenizó la tarjeta.
+        token: formData.token,
+        paymentMethodId: formData.payment_method_id,
+        issuerId: formData.issuer_id,
         payer: {
-          name: formData.name,
-          email: formData.email,
-          identification: {
-            type: formData.identityType,
-            number: formData.identityNumber,
-          },
+          email: formData.payer?.email || user?.email,
+          identification: formData.payer?.identification,
         },
       })
 
@@ -271,7 +140,6 @@ const CheckoutPage = () => {
         setSuccess(true)
         setSubscriptionId(response.data?.data?.subscriptionId)
 
-        // Redirigir a dashboard después de 3 segundos
         setTimeout(() => {
           // El panel cuelga de /admin (ver routesConfig.js); '/dashboard' no
           // es una ruta del router y caía en el fallback 404.
@@ -284,8 +152,8 @@ const CheckoutPage = () => {
       console.error('Error en checkout:', err)
       setError(
         err.response?.data?.message ||
-        err.response?.data?.details ||
-        'Error procesando pago. Intenta nuevamente.'
+        err.response?.data?.data?.details ||
+        'Error procesando pago. Intenta nuevamente.',
       )
     } finally {
       setIsProcessing(false)
@@ -438,202 +306,48 @@ const CheckoutPage = () => {
                     </Alert>
                   )}
 
-                  <form onSubmit={handleSubmit}>
-                    <Stack spacing={4}>
-                      {/* Sección: Datos Personales */}
-                      <Box>
-                        <Typography
-                          variant="h6"
-                          sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}
-                        >
-                          <Person sx={{ color: 'primary.main' }} />
-                          Datos Personales
-                        </Typography>
+                  {!mpReady ? (
+                    <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                      {mpError || 'Preparando el formulario de pago...'}
+                    </Alert>
+                  ) : precioArs === null ? (
+                    <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                      Este plan todavía no tiene precio configurado, así que no se
+                      puede contratar.
+                    </Alert>
+                  ) : (
+                    <CardPayment
+                      initialization={{ amount: Number(precioArs) }}
+                      onSubmit={onPaymentSubmit}
+                      onError={brickError => {
+                        // El Brick también dispara onError para eventos no
+                        // críticos —por ejemplo, que todavía no pueda calcular
+                        // las cuotas mientras se tipea el número—, que son parte
+                        // normal de completar el formulario. Mostrar todos
+                        // llenaría la pantalla de errores que no lo son.
+                        if (brickError?.type === 'critical') {
+                          setError(brickError?.message || 'Error en el formulario de pago')
+                        }
+                      }}
+                      customization={{
+                        visual: {
+                          style: { theme: 'flat' },
+                          texts: {
+                            formTitle: 'Datos de tu tarjeta',
+                            formSubmit: `Pagar ${formatArs(precioArs)}`,
+                          },
+                        },
+                      }}
+                    />
+                  )}
 
-                        <Stack spacing={2}>
-                          <TextField
-                            fullWidth
-                            label="Nombre Completo"
-                            name="name"
-                            value={formData.name}
-                            onChange={handleFormChange}
-                            required
-                            placeholder="Juan Pérez"
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                          />
-
-                          <TextField
-                            fullWidth
-                            label="Email"
-                            name="email"
-                            type="email"
-                            value={formData.email}
-                            onChange={handleFormChange}
-                            required
-                            placeholder="juan@example.com"
-                            slotProps={{
-                              input: {
-                                startAdornment: (
-                                  <InputAdornment position="start">
-                                    <Email sx={{ color: 'action.active' }} />
-                                  </InputAdornment>
-                                ),
-                              },
-                            }}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                          />
-
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                select
-                                label="Tipo de Documento"
-                                name="identityType"
-                                value={formData.identityType}
-                                onChange={handleFormChange}
-                                SelectProps={{ native: true }}
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                              >
-                                {/* Los que acepta Mercado Pago Argentina, según
-                                    su propia API (GET /v1/identification_types).
-                                    Antes decía PASSPORT y CUIT: ninguno de los
-                                    dos existe para MLA, así que elegirlos hacía
-                                    fallar la tokenización de la tarjeta. */}
-                                <option value="DNI">DNI</option>
-                                <option value="CI">Cédula</option>
-                                <option value="LC">L.C.</option>
-                                <option value="LE">L.E.</option>
-                                <option value="Otro">Otro</option>
-                              </TextField>
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Número de Documento"
-                                name="identityNumber"
-                                value={formData.identityNumber}
-                                onChange={handleFormChange}
-                                required
-                                placeholder="12345678"
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </Stack>
-                      </Box>
-
-                      <Divider />
-
-                      {/* Sección: Datos de Tarjeta */}
-                      <Box>
-                        <Typography
-                          variant="h6"
-                          sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}
-                        >
-                          <CreditCard sx={{ color: 'primary.main' }} />
-                          Datos de Tarjeta
-                        </Typography>
-
-                        <Stack spacing={2}>
-                          <TextField
-                            fullWidth
-                            label="Nombre del Titular"
-                            name="cardholderName"
-                            value={formData.cardholderName}
-                            onChange={handleFormChange}
-                            required
-                            placeholder="JUAN PEREZ"
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                          />
-
-                          <TextField
-                            fullWidth
-                            label="Número de Tarjeta"
-                            name="cardNumber"
-                            value={cardData.cardNumber}
-                            onChange={handleCardChange}
-                            required
-                            placeholder="1234 5678 9012 3456"
-                            inputProps={{
-                              // 19: el largo máximo de un número de tarjeta. Con
-                              // 16 el campo no dejaba terminar de escribir una
-                              // de 17 a 19 dígitos, y el usuario no tenía forma
-                              // de saber por qué se le cortaba.
-                              maxLength: 19,
-                              inputMode: 'numeric',
-                            }}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                          />
-
-                          <Grid container spacing={2}>
-                            <Grid item xs={6}>
-                              <TextField
-                                fullWidth
-                                label="Mes (MM)"
-                                name="expiryMonth"
-                                value={cardData.expiryMonth}
-                                onChange={handleCardChange}
-                                required
-                                placeholder="12"
-                                inputProps={{ maxLength: 2, inputMode: 'numeric' }}
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                              />
-                            </Grid>
-                            <Grid item xs={6}>
-                              <TextField
-                                fullWidth
-                                label="Año (YY)"
-                                name="expiryYear"
-                                value={cardData.expiryYear}
-                                onChange={handleCardChange}
-                                required
-                                placeholder="25"
-                                inputProps={{ maxLength: 2, inputMode: 'numeric' }}
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                              />
-                            </Grid>
-                          </Grid>
-
-                          <TextField
-                            fullWidth
-                            label="Código de Seguridad (CVV)"
-                            name="cvv"
-                            value={cardData.cvv}
-                            onChange={handleCardChange}
-                            required
-                            placeholder="123"
-                            type="password"
-                            inputProps={{ maxLength: 4, inputMode: 'numeric' }}
-                            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                          />
-                        </Stack>
-                      </Box>
-
-                      {/* Botón de Submit */}
-                      <Button
-                        type="submit"
-                        fullWidth
-                        variant="contained"
-                        size="large"
-                        disabled={isProcessing}
-                        startIcon={isProcessing ? <CircularProgress size={20} /> : <Payment />}
-                        sx={{
-                          py: 2.5,
-                          borderRadius: 2,
-                          fontWeight: 800,
-                          fontSize: '1rem',
-                          textTransform: 'none',
-                        }}
-                      >
-                        {isProcessing ? 'Procesando Pago...' : `Pagar ${formatArs(precioArs)}`}
-                      </Button>
-
-                      <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        Tu pago es seguro y está encriptado con SSL
-                      </Typography>
-                    </Stack>
-                  </form>
+                  <Typography
+                    variant="caption"
+                    sx={{ display: 'block', textAlign: 'center', color: 'text.secondary', mt: 2 }}
+                  >
+                    Los datos de tu tarjeta los procesa Mercado Pago directamente.
+                    HENKO no los recibe ni los guarda.
+                  </Typography>
                 </Paper>
               </Fade>
             </Grid>

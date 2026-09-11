@@ -64,11 +64,21 @@ export const SELLABLE_PLANS = Object.freeze(['starter', 'pro'])
 export const getPlanName = plan => PLAN_PRESENTATION[plan]?.name || 'Desconocido'
 
 /**
+ * Un plan sin precio configurado no se puede contratar.
+ *
+ * Desde que los precios no viven en el código, `null` en un plan vendible
+ * significa "el dueño todavía no lo definió" — no "es gratis" y no "es a
+ * medida". Ofrecer el botón igual llevaría a un checkout que no puede cobrar.
+ */
+export const isPlanContratable = priceArs =>
+  typeof priceArs === 'number' && priceArs > 0
+
+/**
  * Pesos, siempre. HENKO cobra en pesos y no hay precio en dólares en ningún
  * lado: el que se mostraba era una traducción congelada de una división vieja.
  */
-export const formatArs = value => {
-  if (value === null || value === undefined) return 'A medida'
+export const formatArs = (value, { sinPrecio = 'A medida' } = {}) => {
+  if (value === null || value === undefined) return sinPrecio
 
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',

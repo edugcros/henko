@@ -55,22 +55,30 @@ afterAll(() => {
 });
 
 describe("precio de plan · en pesos y sin conversión", () => {
-  test("el starter vale lo que se decidió: 40.000 pesos", () => {
-    expect(getPlanMonthlyPriceArs("starter")).toBe(40000);
+  test("sin configurar, un plan vendible NO tiene precio", () => {
+    // Tenían 40.000 y 151.470 escritos en el código. Un número puesto ahí meses
+    // atrás y que después alguien cobra de verdad es lo que este trabajo vino a
+    // sacar: el precio es una decisión del dueño y su lugar es el panel.
+    expect(getPlanMonthlyPriceArs("starter")).toBeNull();
+    expect(getPlanMonthlyPriceArs("pro")).toBeNull();
   });
 
-  test("el pro también está en pesos", () => {
-    // 151.470 es exactamente lo que valían los 99 USD anteriores al cambio que
-    // el propio código usaba. No es una decisión de precio nueva: es el
-    // equivalente arrastrado para no inventar uno.
-    expect(getPlanMonthlyPriceArs("pro")).toBe(151470);
-  });
+  test("un plan sin precio no se puede vender", async () => {
+    // Es la consecuencia que hace seguro no tener default: en vez de cobrar un
+    // número que nadie eligió, no se cobra nada.
+    const { buildMercadoPagoSubscriptionData } = await import(
+      "../services/subscriptionPaymentService.js"
+    );
 
-  test("free es cero y enterprise es null, no cero", () => {
-    // Un 0 en enterprise se leería como margen cero en cualquier reporte; null
-    // dice "precio a medida", que es la verdad.
-    expect(getPlanMonthlyPriceArs("free")).toBe(0);
-    expect(getPlanMonthlyPriceArs("enterprise")).toBeNull();
+    expect(() =>
+      buildMercadoPagoSubscriptionData({
+        plan: "starter",
+        tenantId: "64b7f0000000000000000001",
+        userId: "64b7f0000000000000000009",
+        email: "duenio@comercio.com",
+        token: "tok",
+      }),
+    ).toThrow("SUBSCRIPTION_PLAN_INVALID");
   });
 
   test("no existe ninguna función que devuelva un precio en dólares", async () => {
@@ -82,6 +90,7 @@ describe("precio de plan · en pesos y sin conversión", () => {
   test("mover el tipo de cambio NO mueve ningún precio", async () => {
     // Era el comportamiento anterior y el origen del problema: el precio se
     // derivaba del dólar, así que cambiaba solo.
+    process.env.PLAN_PRICE_ARS_STARTER = "40000";
     const antes = getPlanMonthlyPriceArs("starter");
 
     process.env.USD_ARS_RATE = "3000";
@@ -108,9 +117,16 @@ describe("precio de plan · quién manda", () => {
     expect(getPlanPriceSource("starter")).toBe("env");
   });
 
-  test("sin nada, el default, y se puede distinguir", () => {
-    // Importa poder decir "esto lo decidió alguien" de "esto quedó así".
-    expect(getPlanPriceSource("starter")).toBe("default");
+  test("sin nada configurado, el origen lo dice: 'unset'", () => {
+    // Distinguir "nadie lo configuró todavía" de "quedó el valor por defecto"
+    // importa: el primero es un plan que no se puede vender y hay que decirlo.
+    expect(getPlanPriceSource("starter")).toBe("unset");
+  });
+
+  test("free y enterprise no son 'unset': uno es gratis, el otro a medida", () => {
+    expect(getPlanMonthlyPriceArs("free")).toBe(0);
+    expect(getPlanMonthlyPriceArs("enterprise")).toBeNull();
+    expect(getPlanPriceSource("enterprise")).toBe("default");
   });
 
   test("un override de cero se respeta: un plan puede volverse gratis", () => {
@@ -135,7 +151,7 @@ describe("catálogo de planes", () => {
       "enterprise",
     ]);
     expect(catalogo.every(p => p.currency === "ARS")).toBe(true);
-    expect(catalogo.find(p => p.plan === "starter").monthlyPriceArs).toBe(40000);
+    expect(catalogo.find(p => p.plan === "starter").monthlyPriceArs).toBeNull();
   });
 
   test("es lo que consume el panel, así que refleja el override", () => {

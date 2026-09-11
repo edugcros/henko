@@ -40,7 +40,7 @@ import { getPlanPrices, updatePlanPrice } from '../services/platformService.js'
 import { PLAN_PRESENTATION } from '../constants/plans.js'
 
 const formatArs = value => {
-  if (value === null || value === undefined) return 'A medida'
+  if (value === null || value === undefined) return 'Sin configurar'
 
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
@@ -56,6 +56,10 @@ const formatDate = value =>
 const SOURCE_LABEL = {
   panel: { text: 'Definido acá', color: 'primary' },
   env: { text: 'Variable de entorno', color: 'warning' },
+  // El caso que importa: nadie lo configuró todavía, y hasta que alguien lo haga
+  // el plan no se puede contratar. Antes esto no existía porque el precio venía
+  // escrito en el código.
+  unset: { text: 'Sin configurar', color: 'error' },
   default: { text: 'Por defecto', color: 'default' },
 }
 
@@ -70,9 +74,9 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
     setError('')
 
     try {
-      // Vacío significa "volver al valor por defecto", no "gratis". Para poner
-      // un plan en cero hay que escribir 0, que es una decisión distinta y se
-      // toma a propósito.
+      // Vacío deja el plan SIN PRECIO, y sin precio no se puede contratar.
+      // No es lo mismo que cero: cero es gratis, y hay que escribirlo a
+      // propósito.
       const trimmed = price.trim()
       const parsed = trimmed === '' ? null : Number(trimmed)
 
@@ -105,7 +109,7 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
             onChange={event => setPrice(event.target.value)}
             type="number"
             fullWidth
-            helperText="Vacío vuelve al valor por defecto. 0 hace el plan gratis."
+            helperText="Vacío deja el plan sin precio y no se puede contratar. 0 lo hace gratis."
           />
 
           <TextField
@@ -119,6 +123,11 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
           />
 
           <Alert severity="info" variant="outlined">
+            Los planes no traen precio de fábrica: hasta que definas uno acá, no
+            se pueden contratar. Es a propósito — un número escrito en el código
+            que después alguien cobra de verdad es lo que esto vino a evitar.
+            <br />
+            <br />
             El precio nuevo vale para las suscripciones que se creen de ahora en
             adelante. Las que ya existen siguen con el monto que tienen en Mercado
             Pago hasta que se les cambie el plan.

@@ -27,6 +27,17 @@ const { buildMercadoPagoSubscriptionData } = await import(
   "../services/subscriptionPaymentService.js"
 );
 
+// Los planes ya no traen precio en el código: el dueño lo configura. Para probar
+// el cuerpo hay que fijar uno, igual que en producción hay que configurarlo
+// antes de poder vender.
+beforeEach(() => {
+  process.env.PLAN_PRICE_ARS_STARTER = "40000";
+});
+
+afterAll(() => {
+  delete process.env.PLAN_PRICE_ARS_STARTER;
+});
+
 const armar = (extra = {}) =>
   buildMercadoPagoSubscriptionData({
     plan: "starter",
