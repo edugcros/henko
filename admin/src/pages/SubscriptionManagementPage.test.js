@@ -43,11 +43,31 @@ const suscripcion = (mercadoPago = null) => ({
 });
 
 const montar = async mercadoPago => {
-  mockGet.mockImplementation(url =>
-    url.includes("invoices")
-      ? Promise.resolve({ data: { success: true, data: { invoices: [] } } })
-      : Promise.resolve({ data: { success: true, data: suscripcion(mercadoPago) } }),
-  );
+  mockGet.mockImplementation(url => {
+    if (url.includes("invoices")) {
+      return Promise.resolve({ data: { success: true, data: { invoices: [] } } });
+    }
+
+    // Los precios ya no están en la pantalla: los sirve el backend.
+    if (url.includes("plans")) {
+      return Promise.resolve({
+        data: {
+          success: true,
+          data: {
+            currency: "ARS",
+            plans: [
+              { plan: "starter", monthlyPriceArs: 40000, currency: "ARS" },
+              { plan: "pro", monthlyPriceArs: 151470, currency: "ARS" },
+            ],
+          },
+        },
+      });
+    }
+
+    return Promise.resolve({
+      data: { success: true, data: suscripcion(mercadoPago) },
+    });
+  });
 
   render(<SubscriptionManagementPage />);
 
@@ -96,5 +116,43 @@ describe("Mi suscripción · con suscripción real", () => {
     await montar({ subscriptionId: "mp-sub-1", status: "authorized" });
 
     expect(await screen.findByText(/Zona de peligro/i)).toBeInTheDocument();
+  });
+});
+
+describe("Mi suscripción · el precio lo sirve el backend", () => {
+  test("muestra el del catálogo, no uno escrito en la pantalla", async () => {
+    // La pantalla tenía 26,14 USD para el starter — el resultado congelado de
+    // dividir 40.000 pesos por el dólar del 24/08/2026 — mientras el cobro salía
+    // de otro número. Si alguien vuelve a escribir un precio acá, esto falla.
+    await montar(null);
+
+    expect(await screen.findByText(/\$\s?40\.000/)).toBeInTheDocument();
+    expect(screen.queryByText(/26[.,]14/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/US\$|USD/)).not.toBeInTheDocument();
+  });
+
+  test("si el catálogo cambia el precio, la pantalla lo sigue", async () => {
+    // Es la prueba de que no hay copia local: el número sale de la respuesta.
+    mockGet.mockImplementation(url => {
+      if (url.includes("invoices")) {
+        return Promise.resolve({ data: { success: true, data: { invoices: [] } } });
+      }
+      if (url.includes("plans")) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              currency: "ARS",
+              plans: [{ plan: "starter", monthlyPriceArs: 52000, currency: "ARS" }],
+            },
+          },
+        });
+      }
+      return Promise.resolve({ data: { success: true, data: suscripcion(null) } });
+    });
+
+    render(<SubscriptionManagementPage />);
+
+    expect(await screen.findByText(/\$\s?52\.000/)).toBeInTheDocument();
   });
 });

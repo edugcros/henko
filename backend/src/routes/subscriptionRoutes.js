@@ -67,8 +67,10 @@ const subscriptionPaymentLimiter = rateLimit({
  * sesión: son datos del tenant, no información pública de pricing (esa vive
  * en la pantalla de planes, que no llama a este endpoint).
  */
-// Lista de precios. Sin resolución de tenant: no depende del comercio.
-router.get('/plans', authMiddleware, getSubscriptionPlans)
+// Lista de precios. PÚBLICA y sin resolución de tenant: la pantalla de planes
+// la ve un visitante que todavía no tiene comercio ni sesión, y lo que devuelve
+// son los precios de venta — información de vidriera.
+router.get('/plans', getSubscriptionPlans)
 
 router.get(
   '/config',

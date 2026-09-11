@@ -48,6 +48,7 @@ const OnboardingWizard = lazy(() => import('./OnboardingWizard'))
 const ImageAiEditor = lazy(() => import('./ImageAiEditor'))
 const PlatformMarginPage = lazy(() => import('./PlatformMarginPage'))
 const PlatformAiSpendPage = lazy(() => import('./PlatformAiSpendPage'))
+const PlatformPlanPricesPage = lazy(() => import('./PlatformPlanPricesPage'))
 const AiInsightsPage = lazy(() => import('./AiInsightsPage'))
 const StoreSettingsPage = lazy(() => import('./StoreSettingsPage'))
 const VerifyEmailPage = lazy(() => import('./VerifyEmailPage'))
@@ -76,6 +77,7 @@ const pages = {
   ImageAiEditor,
   PlatformMarginPage,
   PlatformAiSpendPage,
+  PlatformPlanPricesPage,
   SubscriptionManagementPage,
   AiInsightsPage,
   StoreSettingsPage,

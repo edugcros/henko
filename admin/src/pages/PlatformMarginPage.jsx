@@ -23,11 +23,16 @@ import {
 } from '@mui/material'
 import { getPlatformMarginReport } from '../services/platformService'
 
-const formatUsd = value => {
+// El reporte pasó a pesos: HENKO cobra en pesos, y convertir el precio a
+// dólares para emparejarlo con los costos era lo que hacía que el margen se
+// corriera solo cada vez que se movía el cambio. Ahora se convierten los
+// COSTOS, que sí llegan en dólares, y el tipo de cambio usado viene en la
+// respuesta.
+const formatArs = value => {
   if (value === null || value === undefined) return 'A medida'
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'ARS',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value) || 0)
@@ -126,7 +131,7 @@ export default function PlatformMarginPage() {
             Ingreso por planes
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {formatUsd(totals.totalPlanRevenueUsd)}
+            {formatArs(totals.totalPlanRevenueArs)}
           </Typography>
         </Paper>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
@@ -134,7 +139,7 @@ export default function PlatformMarginPage() {
             Costo de IA
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {formatUsd(totals.totalAiCostUsd)}
+            {formatArs(totals.totalAiCostArs)}
           </Typography>
         </Paper>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
@@ -142,7 +147,7 @@ export default function PlatformMarginPage() {
             Comunicaciones
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {formatUsd(totals.totalCommunicationsCostUsd)}
+            {formatArs(totals.totalCommunicationsCostArs)}
           </Typography>
         </Paper>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
@@ -150,7 +155,7 @@ export default function PlatformMarginPage() {
             Infra + storage (plataforma)
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {formatUsd((totals.infraCostUsd || 0) + (totals.storageCostUsd || 0))}
+            {formatArs((totals.infraCostArs || 0) + (totals.storageCostArs || 0))}
           </Typography>
         </Paper>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
@@ -158,7 +163,7 @@ export default function PlatformMarginPage() {
             Margen estimado
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {formatUsd(totals.totalEstimatedMarginUsd)}
+            {formatArs(totals.totalEstimatedMarginArs)}
           </Typography>
         </Paper>
       </Stack>
@@ -235,10 +240,10 @@ export default function PlatformMarginPage() {
                     sx={{ textTransform: 'capitalize' }}
                   />
                 </TableCell>
-                <TableCell align="right">{formatUsd(tenant.planPriceUsd)}</TableCell>
-                <TableCell align="right">{formatUsd(tenant.aiCostUsd)}</TableCell>
-                <TableCell align="right">{formatUsd(tenant.communicationsCostUsd)}</TableCell>
-                <TableCell align="right">{formatUsd(tenant.estimatedMarginUsd)}</TableCell>
+                <TableCell align="right">{formatArs(tenant.planPriceArs)}</TableCell>
+                <TableCell align="right">{formatArs(tenant.aiCostArs)}</TableCell>
+                <TableCell align="right">{formatArs(tenant.communicationsCostArs)}</TableCell>
+                <TableCell align="right">{formatArs(tenant.estimatedMarginArs)}</TableCell>
               </TableRow>
             ))}
             {!tenants.length && (

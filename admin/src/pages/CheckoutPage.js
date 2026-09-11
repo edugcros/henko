@@ -37,32 +37,31 @@ import {
   CheckCircle,
 } from '@mui/icons-material'
 import api from '@utils/axiosConfig'
+import { PLAN_PRESENTATION, formatArs } from '../constants/plans.js'
+import { getPlanCatalog, findPlanPrice } from '../services/subscriptionPlansService.js'
 
-const USD_ARS_REFERENCE_RATE = 1530
-
-const PLAN_DETAILS = {
-  starter: {
-    name: 'Plan Emprendedor',
-    priceUsd: 26.14,
-    priceArs: 40000,
-    features: [
-      '300 análisis de imágenes/mes',
-      '2.000 mensajes del asistente/mes',
-      '100 generaciones de fondo con IA/mes',
-      '50 análisis de demanda/mes',
-    ],
-  },
-  pro: {
-    name: 'Plan Profesional',
-    priceUsd: 99,
-    priceArs: null,
-    features: [
-      '1.500 análisis de imágenes/mes',
-      '10.000 mensajes del asistente/mes',
-      '500 generaciones de fondo con IA/mes',
-      '250 análisis de demanda/mes',
-    ],
-  },
+// El precio NO está acá. Lo trae /subscriptions/plans, que es de donde sale el
+// cobro. Esta pantalla tenía su propia tabla con `priceUsd: 26.14` y el botón
+// decía literalmente "Pagar USD 26.14" mientras el backend cobraba 40.000 pesos:
+// el número y la moneda del botón estaban los dos mal.
+//
+// Las cuotas de cada plan siguen escritas acá porque son texto de producto. Son
+// las mismas que DEFAULT_PLAN_LIMITS del backend, así que si alguien mueve un
+// tope por variable de entorno esta lista queda vieja — es una copia menos grave
+// que la del precio, pero es una copia.
+const PLAN_FEATURES = {
+  starter: [
+    '300 análisis de imágenes/mes',
+    '2.000 mensajes del asistente/mes',
+    '100 generaciones de fondo con IA/mes',
+    '50 análisis de demanda/mes',
+  ],
+  pro: [
+    '1.500 análisis de imágenes/mes',
+    '10.000 mensajes del asistente/mes',
+    '500 generaciones de fondo con IA/mes',
+    '250 análisis de demanda/mes',
+  ],
 }
 
 const CheckoutPage = () => {
@@ -71,7 +70,30 @@ const CheckoutPage = () => {
   const { user } = useSelector(state => state.user || {})
 
   const selectedPlan = searchParams.get('plan') || 'starter'
-  const planDetails = PLAN_DETAILS[selectedPlan] || PLAN_DETAILS.starter
+  const [precioArs, setPrecioArs] = useState(null)
+
+  const planDetails = {
+    name: PLAN_PRESENTATION[selectedPlan]?.name || PLAN_PRESENTATION.starter.name,
+    features: PLAN_FEATURES[selectedPlan] || PLAN_FEATURES.starter,
+  }
+
+  useEffect(() => {
+    let vigente = true
+
+    getPlanCatalog()
+      .then(catalogo => {
+        if (vigente) setPrecioArs(findPlanPrice(catalogo, selectedPlan))
+      })
+      .catch(() => {
+        // Sin precio no se muestra ninguno. Un respaldo escrito acá sería
+        // exactamente el problema que esto vino a sacar.
+        if (vigente) setPrecioArs(null)
+      })
+
+    return () => {
+      vigente = false
+    }
+  }, [selectedPlan])
 
   // Estados del formulario
   const [formData, setFormData] = useState({
@@ -326,14 +348,8 @@ const CheckoutPage = () => {
                           Precio mensual
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                          USD {planDetails.priceUsd}
-                          {planDetails.priceArs && (
-                            <Typography
-                              component="span"
-                              variant="caption"
-                              sx={{ display: 'block', color: 'text.secondary', fontWeight: 400 }}
-                            >
-                              (~ARS {planDetails.priceArs.toLocaleString()})
+                          {formatArs(precioArs)}
+)
                             </Typography>
                           )}
                         </Typography>
@@ -578,7 +594,7 @@ const CheckoutPage = () => {
                           textTransform: 'none',
                         }}
                       >
-                        {isProcessing ? 'Procesando Pago...' : `Pagar USD ${planDetails.priceUsd}`}
+                        {isProcessing ? 'Procesando Pago...' : `Pagar ${formatArs(precioArs)}`}
                       </Button>
 
                       <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.secondary' }}>

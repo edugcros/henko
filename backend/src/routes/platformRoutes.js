@@ -14,6 +14,8 @@ import {
   getMarginReport,
   getAiSpendReport,
   updateAiBudget,
+  getPlanPrices,
+  updatePlanPrice,
 } from '../controller/platformCtrl.js'
 
 const router = express.Router()
@@ -26,5 +28,10 @@ router.get('/ai-spend', getAiSpendReport)
 // La única escritura de esta ruta. Mueve un límite de seguridad, así que queda
 // registrada con autor y motivo (ver models/platformAiSettingModel.js).
 router.put('/ai-spend/budget', updateAiBudget)
+
+// Precios de los planes. Misma clase de escritura que el techo: cambia lo que
+// se le cobra a un comercio, así que queda con autor y motivo.
+router.get('/plan-prices', getPlanPrices)
+router.put('/plan-prices', updatePlanPrice)
 
 export default router

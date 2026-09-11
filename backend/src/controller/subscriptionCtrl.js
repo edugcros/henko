@@ -88,13 +88,21 @@ const loadTenantFromRequest = async req => {
  * cambio, y uno de ellos mostraba 26,14 USD —el resultado congelado de una
  * división vieja— mientras el cobro salía de otro número.
  *
- * No exige plan ni suscripción: es una lista de precios. Sí exige sesión, como
- * el resto de este router.
+ * Es pública: la ve un visitante que todavía no tiene comercio. Lo que devuelve
+ * son los precios de venta, o sea información de vidriera.
+ *
+ * `source` (panel/env/default) se saca acá: a quien mira precios no le dice
+ * nada, y de dónde salió cada número es asunto del dueño de la plataforma. Eso
+ * viaja en /platform/plan-prices, que sí está protegido.
  */
 export const getSubscriptionPlans = async (req, res) => {
   return sendResponse(res, 200, true, 'Planes obtenidos', {
-    plans: getPlanCatalog(),
     currency: 'ARS',
+    plans: getPlanCatalog().map(({ plan, monthlyPriceArs, currency }) => ({
+      plan,
+      monthlyPriceArs,
+      currency,
+    })),
   })
 }
 

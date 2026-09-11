@@ -1,87 +1,26 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { Button, Card, Col, Divider, Flex, Row, Space, Tag, Typography, theme } from 'antd'
-import { CheckCircleFilled, CrownOutlined, LockOutlined, RocketOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, Divider, Flex, Row, Skeleton, Space, Tag, Typography, theme } from 'antd'
+import { CheckCircleFilled, LockOutlined } from '@ant-design/icons'
+import { PLAN_PRESENTATION, SELLABLE_PLANS, formatArs } from '../constants/plans.js'
+import { getPlanCatalog } from '../services/subscriptionPlansService.js'
 
 const { Paragraph, Text, Title } = Typography
 const { useToken } = theme
 
-// Tipo de cambio de referencia: dólar oficial VENTA, Banco Nación, cierre
-// del 24/08/2026 (El Cronista / La Nación / Infobae) — mismo tipo de cambio
-// usado en backend/src/services/ai/aiPlanPolicy.js para el precio real de
-// "starter", así no hay dos referencias distintas para la misma conversión.
-// Es un valor de referencia fijado a mano, no una integración en vivo — se
-// actualiza acá (y en aiPlanPolicy.js) cuando haga falta.
-const USD_ARS_REFERENCE_RATE = 1530
+// Los precios NO están acá. Vienen de /subscriptions/plans, que es la misma
+// fuente con la que el backend cobra. Antes esta pantalla tenía su propia lista
+// con 40.000 ARS para el starter y 99 USD para el pro, y SubscriptionManagement
+// tenía otra que decía 26,14 USD para el mismo starter — el resultado congelado
+// de dividir esos 40.000 por el dólar de un día de agosto. Dos pantallas del
+// mismo panel mostrando dos precios distintos para lo mismo.
 
-const SUBSCRIPTION_PLANS = Object.freeze([
-  {
-    id: 'starter',
-    name: 'Emprendedor',
-    description: 'Las herramientas esenciales para poner en marcha una tienda.',
-    // Decisión de negocio real: $40.000 ARS/mes. El USD que se muestra al
-    // lado es derivado del tipo de cambio de referencia de arriba, no un
-    // precio en dólares fijado aparte.
-    monthlyPriceArs: 40000,
-    icon: RocketOutlined,
-    features: [
-      'Hasta 100 productos',
-      'Dominio personalizado',
-      'Panel de estadísticas esencial',
-      'Soporte por correo electrónico',
-    ],
-    actionLabel: 'Elegir Emprendedor',
-    featured: false,
-  },
-  {
-    id: 'pro',
-    name: 'Profesional',
-    description: 'Automatización y capacidad para una operación en crecimiento.',
-    // Sin decisión de negocio todavía — sigue siendo el placeholder visual
-    // de siempre ($99 USD). El ARS que se muestra al lado es derivado del
-    // tipo de cambio de referencia, no una decisión de precio en pesos.
-    monthlyPriceUsd: 99,
-    icon: CrownOutlined,
-    features: [
-      'Productos ilimitados',
-      'Analizador de productos con IA',
-      'Múltiples administradores',
-      'Reportes avanzados',
-      'Soporte prioritario',
-    ],
-    actionLabel: 'Elegir Profesional',
-    featured: true,
-  },
-])
-
-const getPlanPrices = plan => {
-  const ars = plan.monthlyPriceArs ?? Math.round(plan.monthlyPriceUsd * USD_ARS_REFERENCE_RATE)
-  const usd = plan.monthlyPriceUsd ?? plan.monthlyPriceArs / USD_ARS_REFERENCE_RATE
-
-  return { ars, usd }
-}
-
-const formatArs = value =>
-  new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(value)
-
-const formatUsd = value =>
-  new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
-
-const PlanCard = ({ plan, onSelect }) => {
+const PlanCard = ({ planId, priceArs, onSelect }) => {
   const { token } = useToken()
+  const plan = PLAN_PRESENTATION[planId]
   const PlanIcon = plan.icon
   const accentColor = plan.featured ? token.colorPrimary : token.colorInfo
-  const { ars, usd } = getPlanPrices(plan)
 
   return (
     <Card
@@ -141,13 +80,10 @@ const PlanCard = ({ plan, onSelect }) => {
               lineHeight: 1.1,
             }}
           >
-            {formatArs(ars)}
+            {formatArs(priceArs)}
           </Text>
           <Text type="secondary">por mes</Text>
         </Flex>
-        <Text type="secondary" style={{ fontSize: 15 }}>
-          ≈ {formatUsd(usd)} USD
-        </Text>
       </Flex>
 
       <Divider style={{ margin: '24px 0 18px' }} />
@@ -172,8 +108,8 @@ const PlanCard = ({ plan, onSelect }) => {
         type={plan.featured ? 'primary' : 'default'}
         size="large"
         block
-        onClick={() => onSelect(plan.id)}
-        aria-label={`${plan.actionLabel}, ${formatArs(ars)} por mes (aproximadamente ${formatUsd(usd)} USD)`}
+        onClick={() => onSelect(planId)}
+        aria-label={`${plan.actionLabel}, ${formatArs(priceArs)} por mes`}
         style={{ height: 48, fontWeight: 600 }}
       >
         {plan.actionLabel}
@@ -187,23 +123,55 @@ const SubscriptionPage = () => {
   const { token } = useToken()
   const isAuthenticated = useSelector(state => state.user?.isAuthenticated)
 
+  const [precios, setPrecios] = useState({})
+  const [cargando, setCargando] = useState(true)
+  const [errorPrecios, setErrorPrecios] = useState('')
+
+  useEffect(() => {
+    let vigente = true
+
+    getPlanCatalog()
+      .then(catalogo => {
+        if (!vigente) return
+
+        setPrecios(
+          Object.fromEntries(
+            (catalogo?.plans || []).map(p => [p.plan, p.monthlyPriceArs]),
+          ),
+        )
+      })
+      .catch(() => {
+        if (!vigente) return
+
+        // Sin precios no se muestran precios. Inventar uno de respaldo sería
+        // volver al problema: una pantalla afirmando un número que el cobro no
+        // va a respetar.
+        setErrorPrecios('No se pudieron cargar los precios. Volvé a intentar en un momento.')
+      })
+      .finally(() => {
+        if (vigente) setCargando(false)
+      })
+
+    return () => {
+      vigente = false
+    }
+  }, [])
+
   // Esta pantalla es pública, así que el visitante puede no tener comercio
   // todavía. El checkout cobra sobre un comercio ya identificado: sin sesión
   // no hay a qué cobrarle, así que primero pasa por el alta y vuelve con el
   // plan elegido. Con sesión va derecho a pagar.
   const handleSelectPlan = useCallback(
     planId => {
-      const selectedPlan = SUBSCRIPTION_PLANS.find(plan => plan.id === planId)
+      if (!PLAN_PRESENTATION[planId]) return
 
-      if (!selectedPlan) return
-
-      const plan = encodeURIComponent(selectedPlan.id)
+      const plan = encodeURIComponent(planId)
       const destination = isAuthenticated
         ? `/checkout?plan=${plan}`
         : `/signup?plan=${plan}`
 
       navigate(destination, {
-        state: { planId: selectedPlan.id },
+        state: { planId },
       })
     },
     [navigate, isAuthenticated],
@@ -247,12 +215,31 @@ const SubscriptionPage = () => {
           </Paragraph>
         </header>
 
+        {errorPrecios && (
+          <Alert
+            type="warning"
+            showIcon
+            message={errorPrecios}
+            style={{ marginBottom: 20, borderRadius: 8 }}
+          />
+        )}
+
         <Row gutter={[20, 20]} justify="center" align="stretch">
-          {SUBSCRIPTION_PLANS.map(plan => (
-            <Col xs={24} md={12} key={plan.id}>
-              <PlanCard plan={plan} onSelect={handleSelectPlan} />
-            </Col>
-          ))}
+          {cargando
+            ? SELLABLE_PLANS.map(planId => (
+              <Col xs={24} md={12} key={planId}>
+                <Card><Skeleton active paragraph={{ rows: 6 }} /></Card>
+              </Col>
+            ))
+            : SELLABLE_PLANS.map(planId => (
+              <Col xs={24} md={12} key={planId}>
+                <PlanCard
+                  planId={planId}
+                  priceArs={precios[planId]}
+                  onSelect={handleSelectPlan}
+                />
+              </Col>
+            ))}
         </Row>
 
         <Flex

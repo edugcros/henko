@@ -198,6 +198,15 @@ export const privateRoutes = [
     allowedRoles: ['admin'],
   },
 
+  // 🏷️ Precios de los planes — mismo criterio que las dos de arriba. Es el
+  // único lugar donde se define cuánto sale cada plan: lo que se pone acá es lo
+  // que muestran la pantalla de planes y el checkout, y lo que se cobra.
+  {
+    path: '/admin/plataforma/precios',
+    Component: pages.PlatformPlanPricesPage,
+    allowedRoles: ['admin'],
+  },
+
   // 📦 Catálogo
   {
     path: '/admin/AddProduct',

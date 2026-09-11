@@ -10,8 +10,17 @@ import { getPlatformSpendSnapshot } from '../services/ai/aiSpendReportService.js
 import { isValidPeriod } from '../services/ai/aiPeriod.js'
 import {
   setPlatformAiOverride,
+  getPlatformAiSettingHistory,
   PLATFORM_AI_SETTINGS,
 } from '../services/ai/platformAiSettingService.js'
+import { getPlanCatalog, normalizePlan } from '../services/ai/aiPlanPolicy.js'
+
+// Qué plan se puede cotizar. free es gratis y enterprise es a medida: ponerles
+// un número acá sería inventar un precio que después alguien cobra.
+const PLANES_CON_PRECIO = Object.freeze({
+  starter: PLATFORM_AI_SETTINGS.PLAN_PRICE_STARTER,
+  pro: PLATFORM_AI_SETTINGS.PLAN_PRICE_PRO,
+})
 
 export const getMarginReport = expressAsyncHandler(async (req, res) => {
   const period = String(req.query.period || '').trim() || undefined
@@ -97,4 +106,101 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, data: report })
 })
 
-export default { getMarginReport, getAiSpendReport, updateAiBudget }
+/**
+ * GET /api/platform/plan-prices
+ *
+ * Los precios vigentes y de dónde sale cada uno. El historial viene con ellos:
+ * un precio sin su historia es un número, y lo que hace falta para decidir el
+ * próximo es ver el anterior y por qué se cambió.
+ */
+export const getPlanPrices = expressAsyncHandler(async (req, res) => {
+  const [plans, history] = await Promise.all([
+    Promise.resolve(getPlanCatalog()),
+    getPlatformAiSettingHistory(30),
+  ])
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      currency: 'ARS',
+      plans,
+      // Solo el historial de precios: el mismo registro guarda también los
+      // cambios del techo de IA, que en esta pantalla son ruido.
+      history: history.filter(row =>
+        Object.values(PLANES_CON_PRECIO).includes(row.setting),
+      ),
+    },
+  })
+})
+
+/**
+ * PUT /api/platform/plan-prices
+ *
+ * Cambia el precio de un plan, en pesos. `priceArs: null` quita el override y
+ * devuelve el mando a la variable de entorno o al default.
+ */
+export const updatePlanPrice = expressAsyncHandler(async (req, res) => {
+  const { plan, priceArs, reason } = req.body || {}
+
+  const normalizedPlan = normalizePlan(plan)
+  const setting = PLANES_CON_PRECIO[normalizedPlan]
+
+  if (!setting) {
+    return res.status(400).json({
+      success: false,
+      message: 'Solo se puede cotizar starter y pro. free es gratis y enterprise es a medida.',
+    })
+  }
+
+  const isRemoval = priceArs === null
+  const value = isRemoval ? null : Number(priceArs)
+
+  // Se admite el cero: un plan puede volverse gratis, y eso es una decisión
+  // válida que hay que poder tomar desde acá.
+  if (!isRemoval && (!Number.isFinite(value) || value < 0)) {
+    return res.status(400).json({
+      success: false,
+      message: 'El precio debe ser un número de pesos no negativo, o null para volver al valor por defecto.',
+    })
+  }
+
+  // Mismo criterio que el techo de gasto: dentro de tres meses el número solo
+  // no explica por qué alguien subió el starter un 30%.
+  const cleanReason = String(reason || '').trim()
+
+  if (!cleanReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá por qué se cambia el precio.',
+    })
+  }
+
+  await setPlatformAiOverride({
+    setting,
+    value: isRemoval ? null : Math.round(value),
+    changedByEmail: req.user?.email,
+    changedByUserId: req.user?._id || null,
+    reason: cleanReason.slice(0, 500),
+  })
+
+  const history = await getPlatformAiSettingHistory(30)
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      currency: 'ARS',
+      plans: getPlanCatalog(),
+      history: history.filter(row =>
+        Object.values(PLANES_CON_PRECIO).includes(row.setting),
+      ),
+    },
+  })
+})
+
+export default {
+  getMarginReport,
+  getAiSpendReport,
+  updateAiBudget,
+  getPlanPrices,
+  updatePlanPrice,
+}

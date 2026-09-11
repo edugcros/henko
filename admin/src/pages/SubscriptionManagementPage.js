@@ -29,24 +29,16 @@ import {
   SwapOutlined,
 } from '@ant-design/icons'
 import api from '@utils/axiosConfig'
+import { PLAN_PRESENTATION, SELLABLE_PLANS, formatArs } from '../constants/plans.js'
 
 const { Paragraph, Text, Title } = Typography
 const { useToken } = theme
 
-const PLAN_DETAILS = {
-  starter: {
-    name: 'Emprendedor',
-    price: 26.14,
-    currency: 'USD',
-    icon: RocketOutlined,
-  },
-  pro: {
-    name: 'Profesional',
-    price: 99,
-    currency: 'USD',
-    icon: CrownOutlined,
-  },
-}
+// PLAN_DETAILS vivía acá con los precios adentro: 26,14 USD el starter y 99 USD
+// el pro. Ese 26,14 era el resultado congelado de dividir 40.000 pesos por el
+// dólar del 24/08/2026 — o sea que esta pantalla mostraba un número y el cobro
+// salía de otro. El nombre y el ícono se mudaron a constants/plans.js y el
+// precio lo trae el backend, que es quien cobra.
 
 const STATUS_CONFIG = {
   active: {
@@ -85,18 +77,17 @@ const formatDate = date => {
   })
 }
 
-const formatCurrency = (amount, currency = 'USD') => {
-  return new Intl.NumberFormat('en-US', {
+// Las facturas de Mercado Pago traen su propia moneda; el resto es pesos.
+const formatCurrency = (amount, currency = 'ARS') =>
+  new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)
-}
 
-const PlanCard = ({ plan, current, onSelectPlan }) => {
+const PlanCard = ({ plan, priceArs, current, onSelectPlan }) => {
   const { token } = useToken()
-  const PlanDetail = PLAN_DETAILS[plan]
+  const PlanDetail = PLAN_PRESENTATION[plan]
   if (!PlanDetail) return null
 
   const PlanIcon = PlanDetail.icon
@@ -124,7 +115,7 @@ const PlanCard = ({ plan, current, onSelectPlan }) => {
             </Text>
           </Flex>
           <Text strong style={{ fontSize: 24, color: token.colorTextHeading }}>
-            {formatCurrency(PlanDetail.price)}
+            {formatArs(priceArs)}
             <Text style={{ fontSize: 12, marginLeft: 4 }}>/ mes</Text>
           </Text>
         </Flex>
@@ -160,6 +151,9 @@ const SubscriptionManagementPage = () => {
   const [cancellingSubscription, setCancellingSubscription] = useState(false)
   const [error, setError] = useState(null)
   const [selectedPlan, setSelectedPlan] = useState(null)
+  // Los precios los sirve el backend. Esta pantalla los tenía escritos a mano y
+  // no coincidían con los de la pantalla de planes ni con lo que se cobra.
+  const [precios, setPrecios] = useState({})
 
   // Cargar datos de suscripción
   useEffect(() => {
@@ -168,10 +162,16 @@ const SubscriptionManagementPage = () => {
         setLoading(true)
         setError(null)
 
-        const [subResponse, invoicesResponse] = await Promise.all([
+        const [subResponse, invoicesResponse, plansResponse] = await Promise.all([
           api.get('/subscriptions/current'),
           api.get('/subscriptions/invoices'),
+          api.get('/subscriptions/plans'),
         ])
+
+        const catalogo = plansResponse?.data?.data?.plans || []
+        setPrecios(
+          Object.fromEntries(catalogo.map(p => [p.plan, p.monthlyPriceArs])),
+        )
 
         if (subResponse.data.success) {
           setSubscription(subResponse.data.data)
@@ -216,7 +216,7 @@ const SubscriptionManagementPage = () => {
 
       Modal.confirm({
         title: 'Cambiar plan de suscripción',
-        content: `¿Estás seguro que querés cambiar a ${PLAN_DETAILS[newPlan].name}? El cambio se aplicará inmediatamente.`,
+        content: `¿Estás seguro que querés cambiar a ${PLAN_PRESENTATION[newPlan].name}? El cambio se aplicará inmediatamente.`,
         okText: 'Sí, cambiar',
         cancelText: 'Cancelar',
         onOk: async () => {
@@ -421,7 +421,7 @@ const SubscriptionManagementPage = () => {
             <Col xs={24} sm={12} md={6}>
               <Statistic
                 title="Plan actual"
-                value={PLAN_DETAILS[subscription.plan]?.name || 'Desconocido'}
+                value={PLAN_PRESENTATION[subscription.plan]?.name || 'Desconocido'}
                 valueStyle={{ color: token.colorPrimary }}
               />
             </Col>
@@ -439,7 +439,7 @@ const SubscriptionManagementPage = () => {
             <Col xs={24} sm={12} md={6}>
               <Statistic
                 title="Precio mensual"
-                value={formatCurrency(PLAN_DETAILS[subscription.plan]?.price || 0)}
+                value={formatArs(precios[subscription.plan] ?? null)}
               />
             </Col>
             <Col xs={24} sm={12} md={6}>
@@ -478,10 +478,11 @@ const SubscriptionManagementPage = () => {
               Cambiar de plan
             </Title>
             <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
-              {['starter', 'pro'].map(planId => (
+              {SELLABLE_PLANS.map(planId => (
                 <Col xs={24} sm={12} key={planId}>
                   <PlanCard
                     plan={planId}
+                    priceArs={precios[planId] ?? null}
                     current={subscription.plan}
                     onSelectPlan={handleChangePlan}
                   />
