@@ -36,6 +36,45 @@ const sanitizeString = (value, fallback = '') => {
 }
 
 /**
+ * El comercio, cargado de la base.
+ *
+ * `resolveAuthorizedTenantFromRequest` NO devuelve un documento: devuelve
+ * `{ tenantId, tenantObjectId, userTenantId, source }`. Cinco handlers de este
+ * archivo guardaban ese objeto en una variable llamada `tenant` y después leían
+ * `tenant._id`, `tenant.plan`, `tenant.name`, `tenant.subscriptionStatus` y
+ * `tenant.integrations` — todos undefined.
+ *
+ * El síntoma era un 400 con "Cannot read properties of undefined (reading
+ * 'toString')": el alta arma el metadata de Mercado Pago con
+ * `tenantId.toString()`, y ese tenantId era `tenant._id`. Los otros cuatro
+ * fallaban más callados: `getCurrentSubscription` devolvía plan y estado en
+ * undefined, y `changePlan` y `cancelSubscription` cortaban con "Suscripción de
+ * Mercado Pago no encontrada" porque leían el id de una propiedad que no existe.
+ *
+ * getSubscriptionConfig ya lo hacía bien —resuelve el id y después busca el
+ * documento— y es el patrón que se replica acá.
+ *
+ * Devuelve null en vez de propagar el error a propósito: los handlers ya tienen
+ * su `if (!tenant) return 403`, y la resolución se llamaba FUERA del try, así
+ * que una excepción suya terminaba en un rechazo sin capturar.
+ */
+const loadTenantFromRequest = async req => {
+  try {
+    const { tenantObjectId } = await resolveAuthorizedTenantFromRequest(req)
+
+    if (!tenantObjectId) return null
+
+    return await Tenant.findById(tenantObjectId)
+  } catch (error) {
+    logger.warn('No se pudo resolver el comercio de la request de suscripción', {
+      error: error.message,
+    })
+
+    return null
+  }
+}
+
+/**
  * GET /api/subscriptions/config
  * Retornar información de configuración de pago para un tenant
  */
@@ -91,7 +130,7 @@ export const getSubscriptionConfig = async (req, res) => {
  */
 export const processSubscriptionPayment = async (req, res) => {
   const userId = getUserIdFromRequest(req)
-  const tenant = await resolveAuthorizedTenantFromRequest(req)
+  const tenant = await loadTenantFromRequest(req)
 
   if (!tenant || !userId) {
     return sendResponse(res, 403, false, 'No autorizado')
@@ -307,7 +346,7 @@ export const processSubscriptionPayment = async (req, res) => {
  */
 export const getCurrentSubscription = async (req, res) => {
   try {
-    const tenant = await resolveAuthorizedTenantFromRequest(req)
+    const tenant = await loadTenantFromRequest(req)
     if (!tenant) {
       return sendResponse(res, 403, false, 'No autorizado')
     }
@@ -330,7 +369,7 @@ export const getCurrentSubscription = async (req, res) => {
  * Cambiar el plan de suscripción actual
  */
 export const changeSubscriptionPlan = async (req, res) => {
-  const tenant = await resolveAuthorizedTenantFromRequest(req)
+  const tenant = await loadTenantFromRequest(req)
 
   if (!tenant) {
     return sendResponse(res, 403, false, 'No autorizado')
@@ -418,7 +457,7 @@ export const changeSubscriptionPlan = async (req, res) => {
  * Cancelar suscripción actual
  */
 export const cancelSubscription = async (req, res) => {
-  const tenant = await resolveAuthorizedTenantFromRequest(req)
+  const tenant = await loadTenantFromRequest(req)
 
   if (!tenant) {
     return sendResponse(res, 403, false, 'No autorizado')
@@ -508,7 +547,7 @@ export const cancelSubscription = async (req, res) => {
  * Obtener historial de pagos/facturas
  */
 export const getSubscriptionInvoices = async (req, res) => {
-  const tenant = await resolveAuthorizedTenantFromRequest(req)
+  const tenant = await loadTenantFromRequest(req)
 
   if (!tenant) {
     return sendResponse(res, 403, false, 'No autorizado')

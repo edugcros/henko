@@ -30,8 +30,14 @@ const mockTenantUpdate = jest.fn();
 const mockSendEmail = jest.fn();
 const mockResolveTenant = jest.fn();
 
+const mockTenantFindById = jest.fn();
+
 jest.unstable_mockModule("../models/tenantModel.js", () => ({
-  default: { findByIdAndUpdate: mockTenantUpdate, findOne: jest.fn() },
+  default: {
+    findByIdAndUpdate: mockTenantUpdate,
+    findById: mockTenantFindById,
+    findOne: jest.fn(),
+  },
 }));
 
 jest.unstable_mockModule("../services/emailService.js", () => ({
@@ -42,6 +48,9 @@ jest.unstable_mockModule("../../config/logger.js", () => ({
   default: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
+// La forma REAL de lo que devuelve: no es el documento del comercio, es el
+// resultado de resolver a quién pertenece la request. Mockearlo devolviendo un
+// Tenant sería reproducir el malentendido que causó el bug.
 jest.unstable_mockModule("../utils/requestContext.js", () => ({
   resolveAuthorizedTenantFromRequest: mockResolveTenant,
   getUserIdFromRequest: () => USER_ID,
@@ -156,7 +165,13 @@ describe("subscriptionCtrl · el alta llega a Mercado Pago", () => {
     }));
 
     mockCreate.mockResolvedValue({ id: "mp-sub-1", status: "authorized" });
-    mockResolveTenant.mockResolvedValue(TENANT);
+    // Lo que devuelve de verdad: la resolución, no el documento.
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: "user",
+    });
+    mockTenantFindById.mockResolvedValue(TENANT);
     mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} });
     mockSendEmail.mockResolvedValue({});
 
@@ -169,5 +184,60 @@ describe("subscriptionCtrl · el alta llega a Mercado Pago", () => {
 
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(res.statusCode).not.toBe(503);
+  });
+
+  test("el alta no muere con 'Cannot read properties of undefined'", async () => {
+    // El error exacto que devolvía producción, con su 400.
+    //
+    // resolveAuthorizedTenantFromRequest devuelve
+    // { tenantId, tenantObjectId, userTenantId, source }, y el handler lo
+    // guardaba en una variable llamada `tenant` para después leer `tenant._id`.
+    // Ese undefined llegaba a `tenantId.toString()` al armar el metadata de
+    // Mercado Pago.
+    jest.resetModules();
+
+    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
+      createSubscriptionClient: () => ({ create: mockCreate }),
+      // El builder REAL hace tenantId.toString(); replicarlo es lo que hace que
+      // este test valga.
+      buildMercadoPagoSubscriptionData: ({ tenantId, userId }) => ({
+        subscriptionData: {
+          metadata: { tenant_id: tenantId.toString(), user_id: userId.toString() },
+        },
+      }),
+      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
+      mapMercadoPagoSubscriptionStatus: () => "active",
+      readProviderBillingDates: () => ({
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        nextBillingAt: null,
+      }),
+    }));
+
+    mockCreate.mockResolvedValue({ id: "mp-sub-1", status: "authorized" });
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: "user",
+    });
+    mockTenantFindById.mockResolvedValue(TENANT);
+    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} });
+    mockSendEmail.mockResolvedValue({});
+
+    const { processSubscriptionPayment } = await import(
+      "../controller/subscriptionCtrl.js"
+    );
+
+    const res = respuesta();
+    await processSubscriptionPayment(pedido(), res);
+
+    expect(String(res.body?.message || "")).not.toContain(
+      "Cannot read properties of undefined",
+    );
+    expect(res.statusCode).not.toBe(400);
+
+    // Y el id que viajó a Mercado Pago es el del comercio, no undefined.
+    const [[{ body }]] = mockCreate.mock.calls;
+    expect(body.metadata.tenant_id).toBe(TENANT._id);
   });
 });
