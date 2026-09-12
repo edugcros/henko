@@ -8,6 +8,7 @@ process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString(
 
 const {
   AI_METRICS,
+  AI_PLANS,
   UNLIMITED,
   getPlanLimit,
   getSubscriptionState,
@@ -35,15 +36,20 @@ describe("aiPlanPolicy · topes por plan", () => {
     }
   });
 
-  test("un plan free NO tiene el mismo derecho a gastar que uno enterprise", () => {
-    // Esta era exactamente la falla: la cuota del agente salía del default del
-    // schema, así que ambos planes valían 3000 mensajes contra la key propia.
-    const free = getPlanLimit("free", AI_METRICS.AGENT_MESSAGES);
-    const enterprise = getPlanLimit("enterprise", AI_METRICS.AGENT_MESSAGES);
+  test("solo existen starter y pro, y ninguno es ilimitado", () => {
+    // Eran cuatro. `free` y `enterprise` se sacaron: los dos que quedan se
+    // pagan, y quien no paga se distingue por subscriptionStatus, no por tener
+    // un plan gratuito con cuota propia.
+    //
+    // Que ninguno sea UNLIMITED importa: enterprise lo era, y un plan sin techo
+    // sobre la key de la plataforma puede llevarse el presupuesto entero.
+    expect(AI_PLANS).toEqual(["starter", "pro"]);
 
-    expect(free).toBeGreaterThan(0);
-    expect(free).toBeLessThan(3000);
-    expect(enterprise).toBe(UNLIMITED);
+    for (const plan of AI_PLANS) {
+      for (const metric of Object.values(AI_METRICS)) {
+        expect(getPlanLimit(plan, metric)).toBeGreaterThan(0);
+      }
+    }
   });
 
   test("el tope de tokens alcanza para los mensajes que promete el plan", () => {
@@ -52,7 +58,7 @@ describe("aiPlanPolicy · topes por plan", () => {
     // el panel promete una cantidad de mensajes que el medidor no entrega.
     const PISO_TOKENS_POR_MENSAJE = 2617;
 
-    for (const plan of ["free", "starter", "pro"]) {
+    for (const plan of AI_PLANS) {
       const mensajes = getPlanLimit(plan, AI_METRICS.AGENT_MESSAGES);
       const tokens = getPlanLimit(plan, AI_METRICS.AGENT_TOKENS);
 
@@ -62,37 +68,37 @@ describe("aiPlanPolicy · topes por plan", () => {
 
   test("los topes crecen de forma monótona con el plan", () => {
     for (const metric of Object.values(AI_METRICS)) {
-      const free = getPlanLimit("free", metric);
       const starter = getPlanLimit("starter", metric);
       const pro = getPlanLimit("pro", metric);
 
-      expect(starter).toBeGreaterThan(free);
       expect(pro).toBeGreaterThan(starter);
     }
   });
 
-  test("un plan desconocido cae a free y no a ilimitado", () => {
-    expect(normalizePlan("platinum-deluxe")).toBe("free");
+  test("un plan desconocido cae al MÁS CHICO, no al mayor", () => {
+    // Con dos planes pagos, el fallback ya no puede ser un gratuito. Tiene que
+    // ser el de menor cuota: un valor raro no puede terminar regalando pro.
+    expect(normalizePlan("platinum-deluxe")).toBe("starter");
     expect(getPlanLimit(undefined, AI_METRICS.AGENT_MESSAGES)).toBe(
-      getPlanLimit("free", AI_METRICS.AGENT_MESSAGES),
+      getPlanLimit("starter", AI_METRICS.AGENT_MESSAGES),
     );
   });
 
   test("respeta las variables de entorno viejas de la cuota de visión", () => {
     // Si el deploy actual las tiene puestas, el refactor no le puede cambiar
     // los límites a nadie por la ventana.
-    setEnv("AI_MONTHLY_LIMIT_FREE", "17");
-    expect(getPlanLimit("free", AI_METRICS.VISION)).toBe(17);
+    setEnv("AI_MONTHLY_LIMIT_STARTER", "17");
+    expect(getPlanLimit("starter", AI_METRICS.VISION)).toBe(17);
   });
 
   test("la variable nueva le gana a la vieja", () => {
-    setEnv("AI_MONTHLY_LIMIT_FREE", "17");
-    setEnv("AI_LIMIT_FREE_VISION", "42");
-    expect(getPlanLimit("free", AI_METRICS.VISION)).toBe(42);
+    setEnv("AI_MONTHLY_LIMIT_STARTER", "17");
+    setEnv("AI_LIMIT_STARTER_VISION", "42");
+    expect(getPlanLimit("starter", AI_METRICS.VISION)).toBe(42);
   });
 
   test("BYOK no está disponible en los planes bajos por defecto", () => {
-    expect(isByokAllowedForPlan("free")).toBe(false);
+    expect(isByokAllowedForPlan("starter")).toBe(false);
     expect(isByokAllowedForPlan("pro")).toBe(true);
   });
 });
@@ -123,11 +129,17 @@ describe("aiPlanPolicy · suscripción", () => {
     expect(state.entitled).toBe(true);
   });
 
-  test("por defecto el corte está APAGADO", () => {
-    // userCtrl da de alta con trialEndsAt a 14 días y nada en el backend pasa
-    // nunca subscriptionStatus a 'active': no hay facturación todavía. Con el
-    // corte encendido por defecto, todo comercio nuevo perdía la IA a los 14
-    // días sin forma de recuperarla. Se enciende cuando exista cobranza.
+  test("por defecto el corte está ENCENDIDO", () => {
+    // Estuvo apagado a propósito mientras no existía cobranza: nada pasaba
+    // nunca subscriptionStatus a 'active', así que cortar por vencimiento
+    // dejaba sin IA a todo comercio nuevo a los 14 días sin forma de
+    // recuperarla.
+    //
+    // Ahora se cobra —Mercado Pago autoriza la suscripción y el webhook la
+    // pone en 'active'— y con el catálogo en starter y pro no hay plan
+    // gratuito: quien no paga se distingue por el estado de la suscripción, y
+    // este corte es lo único que lo hace valer. Sin él, dar de baja no tendría
+    // ninguna consecuencia.
     restoreEnv("AI_ENFORCE_SUBSCRIPTION", undefined);
 
     const vencido = getSubscriptionState({
@@ -136,8 +148,8 @@ describe("aiPlanPolicy · suscripción", () => {
     });
     const cancelado = getSubscriptionState({ subscriptionStatus: "cancelled" });
 
-    expect(vencido.entitled).toBe(true);
-    expect(cancelado.entitled).toBe(true);
+    expect(vencido.entitled).toBe(false);
+    expect(cancelado.entitled).toBe(false);
   });
 
   test("un trial vencido pierde el derecho a la IA", () => {
@@ -338,13 +350,52 @@ const chainableLean = result => ({
 
 const platformProfile = (overrides = {}) => ({
   tenantId: TENANT_ID,
-  plan: "free",
+  plan: "starter",
   subscriptionStatus: "active",
   trialEndsAt: null,
   keySource: "platform",
   apiKey: "AIzaTEST",
   ...overrides,
 });
+
+/**
+ * Un plan con una métrica en ILIMITADO, que es la condición del techo derivado.
+ *
+ * Estos tests decían `plan: "enterprise"`. Ese plan ya no existe, y como
+ * normalizePlan cae al más chico, seguían pasando midiendo los topes de
+ * starter: probaban otra cosa de la que decían probar, y alguno directamente
+ * fallaba. El catálogo quedó en starter y pro, y los dos declaran todos sus
+ * topes.
+ *
+ * El techo derivado no se murió con enterprise: sigue siendo la regla que
+ * impide que un comercio sin key propia se lleve el presupuesto compartido, y
+ * se activa donde el tope diga "ilimitado". Hoy la forma de llegar ahí es el
+ * override por entorno (0 = ilimitado), así que es la que se usa acá — el
+ * escenario que se prueba es el mismo, expresado por la puerta que sigue
+ * abierta.
+ */
+const UNLIMITED_ENV_KEYS = [];
+
+const planConMetricaIlimitada = (metric, overrides = {}) => {
+  const suffix = {
+    [AI_METRICS.VISION]: "VISION",
+    [AI_METRICS.AGENT_MESSAGES]: "AGENT_MESSAGES",
+    [AI_METRICS.AGENT_TOKENS]: "AGENT_TOKENS",
+    [AI_METRICS.IMAGE_EDITS]: "IMAGE_EDITS",
+    [AI_METRICS.MARKET_ANALYSES]: "MARKET_ANALYSES",
+    [AI_METRICS.MARKET_TOKENS]: "MARKET_TOKENS",
+  }[metric];
+
+  const name = `AI_LIMIT_PRO_${suffix}`;
+  process.env[name] = "0";
+  UNLIMITED_ENV_KEYS.push(name);
+
+  return platformProfile({ plan: "pro", keySource: "platform", ...overrides });
+};
+
+const limpiarIlimitadosPorEntorno = () => {
+  while (UNLIMITED_ENV_KEYS.length) delete process.env[UNLIMITED_ENV_KEYS.pop()];
+};
 
 describe("aiBudgetService · reserva", () => {
   beforeEach(() => {
@@ -354,6 +405,7 @@ describe("aiBudgetService · reserva", () => {
     delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
     delete process.env.AI_PLATFORM_PER_TENANT_SHARE;
     delete process.env.AI_ENFORCE_SUBSCRIPTION;
+    limpiarIlimitadosPorEntorno();
   });
 
   test("cobra el consumo y devuelve cuánto queda", async () => {
@@ -370,7 +422,7 @@ describe("aiBudgetService · reserva", () => {
     expect(result.allowed).toBe(true);
     expect(result.used).toBe(5);
     expect(result.remaining).toBe(
-      getPlanLimit("free", AI_METRICS.AGENT_MESSAGES) - 5,
+      getPlanLimit("starter", AI_METRICS.AGENT_MESSAGES) - 5,
     );
   });
 
@@ -406,7 +458,7 @@ describe("aiBudgetService · reserva", () => {
       limitOverride: 999_999,
     });
 
-    expect(result.limit).toBe(getPlanLimit("free", AI_METRICS.AGENT_MESSAGES));
+    expect(result.limit).toBe(getPlanLimit("starter", AI_METRICS.AGENT_MESSAGES));
   });
 
   test("el autolímite del comercio también aprieta la métrica de guarda", async () => {
@@ -437,7 +489,7 @@ describe("aiBudgetService · reserva", () => {
   test("el autolímite de guarda solo aprieta, nunca afloja", async () => {
     // Misma regla que el de la métrica principal: nadie se amplía la cuota
     // desde su propio panel.
-    mockProfile.mockResolvedValue(platformProfile({ plan: "free" }));
+    mockProfile.mockResolvedValue(platformProfile({ plan: "starter" }));
     mockAiUsage.findOneAndUpdate.mockReturnValue(
       chainable({ counters: { agentMessages: 1 } }),
     );
@@ -454,9 +506,9 @@ describe("aiBudgetService · reserva", () => {
       JSON.stringify(e).includes("agentTokens"),
     );
 
-    // El tope del plan free, no el número inflado que mandó el comercio.
+    // El tope del plan starter, no el número inflado que mandó el comercio.
     expect(JSON.stringify(guarda)).toContain(
-      String(getPlanLimit("free", AI_METRICS.AGENT_TOKENS)),
+      String(getPlanLimit("starter", AI_METRICS.AGENT_TOKENS)),
     );
   });
 
@@ -487,7 +539,7 @@ describe("aiBudgetService · reserva", () => {
 
     mockAiUsage.findOneAndUpdate.mockReturnValue(chainable(null));
 
-    const limit = getPlanLimit("free", AI_METRICS.AGENT_MESSAGES);
+    const limit = getPlanLimit("starter", AI_METRICS.AGENT_MESSAGES);
     mockAiUsage.findOne.mockReturnValue(
       chainableLean({ counters: { agentMessages: limit } }),
     );
@@ -524,7 +576,7 @@ describe("aiBudgetService · reserva", () => {
     // $lte: [ { $add: [ contador, amount ] }, limite ]
     expect(comparacion.$lte[0].$add[1]).toBe(3);
     expect(comparacion.$lte[1]).toBe(
-      getPlanLimit("free", AI_METRICS.AGENT_MESSAGES),
+      getPlanLimit("starter", AI_METRICS.AGENT_MESSAGES),
     );
   });
 
@@ -579,7 +631,7 @@ describe("aiBudgetService · reserva", () => {
   test("el disyuntor global corta aunque al tenant le sobre cupo", async () => {
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "1000";
 
-    mockProfile.mockResolvedValue(platformProfile({ plan: "enterprise" }));
+    mockProfile.mockResolvedValue(platformProfile({ plan: "pro" }));
     mockPlatformUsage.findOne.mockReturnValue({
       lean: () => Promise.resolve({ tokens: 5000 }),
     });
@@ -594,14 +646,15 @@ describe("aiBudgetService · reserva", () => {
   });
 
   test("un tenant ilimitado sobre la key compartida NO es realmente ilimitado", async () => {
-    // Un enterprise sin key propia podía consumir el presupuesto entero y
-    // hacer saltar el disyuntor, que corta para todos los que comparten esa
-    // key: el grande no perdía nada y los chicos se quedaban sin asistente.
+    // Un tenant con el tope en ilimitado y sin key propia podía consumir el
+    // presupuesto entero y hacer saltar el disyuntor, que corta para todos los
+    // que comparten esa key: el grande no perdía nada y los chicos se quedaban
+    // sin asistente.
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
     process.env.AI_PLATFORM_PER_TENANT_SHARE = "0.5";
 
     mockProfile.mockResolvedValue(
-      platformProfile({ plan: "enterprise", keySource: "platform" }),
+      planConMetricaIlimitada(AI_METRICS.AGENT_TOKENS),
     );
     mockPlatformUsage.findOne.mockReturnValue({
       lean: () => Promise.resolve({ tokens: 0 }),
@@ -625,15 +678,13 @@ describe("aiBudgetService · reserva", () => {
   test("visión sobre la key compartida deja de ser ilimitada", async () => {
     // Era el único gasto sin techo por tenant: se mide en unidades, así que
     // quedaba fuera de la regla de los tokens. Y desde que visión reporta sus
-    // tokens, esos tokens pegan contra el disyuntor — un solo enterprise podía
+    // tokens, esos tokens pegan contra el disyuntor — un solo comercio podía
     // llevarse el presupuesto entero y dejar sin IA a todos los demás.
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
     process.env.AI_PLATFORM_PER_TENANT_SHARE = "0.5";
     process.env.AI_VISION_TOKENS_PER_CALL = "5000";
 
-    mockProfile.mockResolvedValue(
-      platformProfile({ plan: "enterprise", keySource: "platform" }),
-    );
+    mockProfile.mockResolvedValue(planConMetricaIlimitada(AI_METRICS.VISION));
     mockPlatformUsage.findOne.mockReturnValue({
       lean: () => Promise.resolve({ tokens: 0 }),
     });
@@ -661,7 +712,7 @@ describe("aiBudgetService · reserva", () => {
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
 
     mockProfile.mockResolvedValue(
-      platformProfile({ plan: "enterprise", keySource: "tenant" }),
+      planConMetricaIlimitada(AI_METRICS.VISION, { keySource: "tenant" }),
     );
     mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
 
@@ -675,11 +726,12 @@ describe("aiBudgetService · reserva", () => {
   });
 
   test("el techo derivado no pisa la cuota finita de visión de un plan", async () => {
-    // 50 análisis para un free es una decisión de producto, no un accidente:
-    // el techo derivado solo aparece donde el plan dice "ilimitado".
+    // Los 300 análisis del starter son una decisión de producto, no un
+    // accidente: el techo derivado solo aparece donde el plan dice
+    // "ilimitado".
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
 
-    mockProfile.mockResolvedValue(platformProfile({ plan: "free" }));
+    mockProfile.mockResolvedValue(platformProfile({ plan: "starter" }));
     mockPlatformUsage.findOne.mockReturnValue({
       lean: () => Promise.resolve({ tokens: 0 }),
     });
@@ -692,7 +744,7 @@ describe("aiBudgetService · reserva", () => {
       metric: AI_METRICS.VISION,
     });
 
-    expect(result.limit).toBe(50);
+    expect(result.limit).toBe(getPlanLimit("starter", AI_METRICS.VISION));
   });
 
   test("las ediciones de imagen quedan afuera a propósito", async () => {
@@ -701,7 +753,7 @@ describe("aiBudgetService · reserva", () => {
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
 
     mockProfile.mockResolvedValue(
-      platformProfile({ plan: "enterprise", keySource: "platform" }),
+      planConMetricaIlimitada(AI_METRICS.IMAGE_EDITS),
     );
     mockPlatformUsage.findOne.mockReturnValue({
       lean: () => Promise.resolve({ tokens: 0 }),
@@ -724,7 +776,7 @@ describe("aiBudgetService · reserva", () => {
     process.env.AI_PLATFORM_PER_TENANT_SHARE = "0.5";
 
     mockProfile.mockResolvedValue(
-      platformProfile({ plan: "enterprise", keySource: "platform" }),
+      planConMetricaIlimitada(AI_METRICS.MARKET_TOKENS),
     );
     mockPlatformUsage.findOne.mockReturnValue({
       lean: () => Promise.resolve({ tokens: 0 }),
@@ -751,7 +803,7 @@ describe("aiBudgetService · reserva", () => {
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
 
     mockProfile.mockResolvedValue(
-      platformProfile({ plan: "enterprise", keySource: "tenant" }),
+      planConMetricaIlimitada(AI_METRICS.AGENT_TOKENS, { keySource: "tenant" }),
     );
     mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
 
@@ -768,7 +820,7 @@ describe("aiBudgetService · reserva", () => {
     delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET;
 
     mockProfile.mockResolvedValue(
-      platformProfile({ plan: "enterprise", keySource: "platform" }),
+      planConMetricaIlimitada(AI_METRICS.AGENT_TOKENS),
     );
     mockAiUsage.findOneAndUpdate.mockReturnValue(
       chainable({ counters: { agentTokens: 1 } }),
@@ -786,7 +838,7 @@ describe("aiBudgetService · reserva", () => {
   test("el techo compartido no toca los topes finitos de un plan", async () => {
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = "20000000";
 
-    mockProfile.mockResolvedValue(platformProfile({ plan: "free" }));
+    mockProfile.mockResolvedValue(platformProfile({ plan: "starter" }));
     mockPlatformUsage.findOne.mockReturnValue({
       lean: () => Promise.resolve({ tokens: 0 }),
     });
@@ -799,7 +851,7 @@ describe("aiBudgetService · reserva", () => {
       metric: AI_METRICS.AGENT_TOKENS,
     });
 
-    expect(result.limit).toBe(getPlanLimit("free", AI_METRICS.AGENT_TOKENS));
+    expect(result.limit).toBe(getPlanLimit("starter", AI_METRICS.AGENT_TOKENS));
   });
 
   test("sin ninguna API key configurada no se intenta llamar al proveedor", async () => {
@@ -939,7 +991,7 @@ describe("aiBudgetService · ledger", () => {
 
     expect(entry().event).toBe("reserved");
     expect(entry().metric).toBe("vision");
-    expect(entry().plan).toBe("free");
+    expect(entry().plan).toBe("starter");
   });
 
   test("una reserva denegada no deja rastro: no hubo movimiento", async () => {

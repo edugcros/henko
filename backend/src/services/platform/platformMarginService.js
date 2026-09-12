@@ -204,9 +204,12 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     activeTenantsCount: allTenants.filter(tenant => tenant.status === 'active').length,
     suspendedTenantsCount: allTenants.filter(tenant => tenant.status === 'suspended').length,
     deletedTenantsCount: allTenants.filter(tenant => tenant.status === 'deleted').length,
-    // Plan pago NOMINAL (asignado a mano en el tenant), no comercios que
-    // efectivamente estén pagando — ver nota, no existe flujo de cobro.
-    nonFreePlanTenantsCount: tenants.filter(tenant => tenant.plan !== 'free').length,
+    // Comercios con una suscripción efectivamente activa. Antes esto contaba
+    // "plan distinto de free", que desde que no existe el plan gratuito sería
+    // todos. Quien paga se distingue por el estado, no por el plan.
+    activeSubscriptionCount: tenants.filter(
+      tenant => tenant.subscriptionStatus === 'active',
+    ).length,
   }
 
   const totals = {
@@ -238,10 +241,10 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       'estimatedMarginArs por comercio es precio del plan menos costo de IA y de comunicaciones de ESE comercio — no incluye la porción de infraestructura/storage (ver los dos puntos siguientes).',
       'infraCostArs y storageCostArs son costos totales de la plataforma, no prorrateados por comercio — dividirlos individualmente inventaría una precisión que no existe hoy. Se restan una sola vez en totals.totalEstimatedMarginArs. Default estimado por investigación de precios públicos de Render/MongoDB Atlas/Cloudinary (ver aiPlanPolicy.js) — no es la factura real de HENKO, sobrescribible con PLATFORM_INFRA_MONTHLY_COST_USD / PLATFORM_STORAGE_MONTHLY_COST_USD en cuanto haya una factura real para comparar.',
       'communicationsCostArs por comercio sí es medible (volumen real de envíos de email/WhatsApp). La tarifa por envío también es una estimación de precios públicos de SendGrid/Meta WhatsApp (ver aiPlanPolicy.js), configurable con EMAIL_COST_USD_PER_SEND / WHATSAPP_COST_USD_PER_SEND.',
-      'planPriceArs null significa precio a medida (enterprise) — no se estima automáticamente.',
-      'subscriptionStatus no refleja cobro real todavía — no existe flujo de facturación (ver aiPlanPolicy.js).',
+      'planPriceArs null significa que ese plan todavía no tiene precio cargado en el panel — no se estima uno automáticamente, y mientras esté así el plan no se puede contratar.',
+      'subscriptionStatus sí refleja cobro real: el alta cobra contra Mercado Pago y el webhook actualiza el estado en cada renovación, falla o baja.',
       'lifecycle.deletedInPeriodApprox es una aproximación (no hay campo deletedAt, se infiere de updatedAt) — no un dato exacto.',
-      'No existe hoy un concepto real de "cancelación de suscripción" ni de "comercio que paga": no hay flujo de cobro ni un campo que se actualice al cancelar. lifecycle.nonFreePlanTenantsCount cuenta comercios en un plan pago asignado a mano, no comercios efectivamente facturados.',
+      'lifecycle.activeSubscriptionCount cuenta comercios con subscriptionStatus active. Esa nota decía que no existía cobro real ni un campo que se actualizara al cancelar: hoy el alta cobra contra Mercado Pago y deja el estado en active, y el webhook lo mantiene cuando el cobro se renueva, falla o se cancela.',
     ],
   }
 }

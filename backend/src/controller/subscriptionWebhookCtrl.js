@@ -327,7 +327,8 @@ const handleSubscriptionCanceled = async (tenant, data) => {
     tenant._id,
     {
       subscriptionStatus: 'cancelled',
-      plan: 'free',
+      // El plan no se toca: ver el comentario del mismo caso en
+      // subscriptionCtrl::cancelSubscription.
       'integrations.subscriptionMercadoPago.status': 'cancelled',
       'integrations.subscriptionMercadoPago.cancelledAt': new Date(),
     },

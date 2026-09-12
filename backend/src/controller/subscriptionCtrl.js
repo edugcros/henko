@@ -19,6 +19,7 @@ import {
   getTenantMercadoPagoContext,
 } from '../services/paymentTenantConfigService.js'
 import {
+  AI_PLANS,
   normalizePlan,
   getPlanMonthlyPriceArs,
   getPlanCatalog,
@@ -164,7 +165,7 @@ export const getSubscriptionConfig = async (req, res) => {
 
     return sendResponse(res, 200, true, 'Configuración obtenida', {
       mpPublicKey: platformPublicKey,
-      currentPlan: tenant.plan || 'free',
+      currentPlan: tenant.plan,
       subscriptionStatus: tenant.subscriptionStatus || 'trialing',
       trialEndsAt: tenant.trialEndsAt,
     })
@@ -196,11 +197,18 @@ export const processSubscriptionPayment = async (req, res) => {
     // token. Se dejan fuera del destructuring para que no parezca que se usan.
     const { plan, token, payer } = req.body
 
-    // Validar plan
-    const normalizedPlan = normalizePlan(plan)
-    if (normalizedPlan === 'free' || normalizedPlan === 'enterprise') {
+    // Se valida el valor CRUDO contra la lista, no el normalizado.
+    //
+    // normalizePlan convierte cualquier cosa desconocida en el plan más chico,
+    // así que validar después de normalizar aceptaría "gratis", "free" o un
+    // typo y cobraría un starter que el comercio no pidió. Antes se rechazaban
+    // 'free' y 'enterprise' por nombre; ahora esos no existen y la lista es la
+    // que manda.
+    if (!AI_PLANS.includes(String(plan || '').trim().toLowerCase())) {
       return sendResponse(res, 400, false, 'Plan no válido para suscripción')
     }
+
+    const normalizedPlan = normalizePlan(plan)
 
     // El email del pagador es lo único que Mercado Pago necesita del comprador:
     // es el campo con el que identifica a quién le cobra.
@@ -438,7 +446,7 @@ export const changeSubscriptionPlan = async (req, res) => {
     }
 
     const normalizedNewPlan = normalizePlan(newPlan)
-    if (normalizedNewPlan === 'free' || normalizedNewPlan === 'enterprise') {
+    if (!AI_PLANS.includes(String(newPlan || '').trim().toLowerCase())) {
       return sendResponse(res, 400, false, 'Plan no válido para cambio')
     }
 
@@ -560,7 +568,10 @@ export const cancelSubscription = async (req, res) => {
       tenant._id,
       {
         subscriptionStatus: 'cancelled',
-        plan: 'free',
+        // El plan NO se toca al cancelar. Antes se bajaba a 'free', que ya no
+        // existe: quien deja de pagar conserva el plan que tenía y lo pierde
+        // por el estado, que es lo que getSubscriptionState mira. Guardar cuál
+        // era además permite reactivarlo sin volver a elegirlo.
         'integrations.subscriptionMercadoPago.status': 'cancelled',
         'integrations.subscriptionMercadoPago.cancelledAt': new Date(),
       },
@@ -590,7 +601,9 @@ export const cancelSubscription = async (req, res) => {
 
     return sendResponse(res, 200, true, 'Suscripción cancelada exitosamente', {
       status: 'cancelled',
-      plan: 'free',
+      // Se devuelve el plan que el comercio conserva, no uno inventado: cancelar
+      // ya no cambia de plan, cambia el estado.
+      plan: tenant.plan,
     })
   } catch (error) {
     logger.error('Error cancelando suscripción:', error)

@@ -42,8 +42,8 @@ export const PLATFORM_AI_SETTINGS = Object.freeze({
   // El nombre del modelo dice "AiSetting" y estos no son de IA: es deuda de
   // nombre que no justifica duplicar el mecanismo entero ni migrar la colección.
   //
-  // free no está: es gratis y no hay nada que configurar. enterprise tampoco:
-  // es precio a medida, y un número fijo ahí sería mentira.
+  // Están los dos planes del catálogo y nada más: los dos se pagan, así que
+  // los dos tienen precio que el dueño puede mover desde el panel.
   PLAN_PRICE_STARTER: 'planPriceStarterArs',
   PLAN_PRICE_PRO: 'planPriceProArs',
 })

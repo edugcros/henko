@@ -19,7 +19,7 @@
 import Tenant from '../../models/tenantModel.js'
 import logger from '../../../config/logger.js'
 import { cacheGet, cacheSet, cacheDel } from '../../utils/cache.js'
-import { isByokAllowedForPlan, normalizePlan } from './aiPlanPolicy.js'
+import { AI_PLANS, isByokAllowedForPlan, normalizePlan } from './aiPlanPolicy.js'
 
 const clean = value => String(value || '').trim()
 
@@ -86,9 +86,12 @@ const buildProfile = ({ tenant, tenantId }) => {
   }
 }
 
+// Perfil de un tenant que no se pudo leer. El plan es el más chico de la lista
+// y no un gratuito: 'free' ya no existe, y suponer el mayor le regalaría cuota
+// a un comercio que ni siquiera se pudo cargar.
 const emptyProfile = tenantId => ({
   tenantId: String(tenantId || ''),
-  plan: 'free',
+  plan: AI_PLANS[0],
   subscriptionStatus: 'trialing',
   trialEndsAt: null,
   subscriptionPastDueAt: null,

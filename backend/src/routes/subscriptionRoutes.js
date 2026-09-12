@@ -163,7 +163,7 @@ router.post(
 
 /**
  * POST /api/subscriptions/cancel
- * Cancelar suscripción actual (vuelve el tenant a plan 'free')
+ * Cancelar suscripción actual (el plan se conserva; cambia el estado)
  *
  * Response:
  * {
@@ -171,7 +171,6 @@ router.post(
  *   message: 'Suscripción cancelada exitosamente',
  *   data: {
  *     status: 'cancelled',
- *     plan: 'free'
  *   }
  * }
  */

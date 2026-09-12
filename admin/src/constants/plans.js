@@ -12,15 +12,14 @@
 
 import { CrownOutlined, RocketOutlined } from '@ant-design/icons'
 
+// Los dos planes del catálogo, y nada más.
+//
+// Estaban también 'free' y 'enterprise'. Se sacaron del catálogo del backend
+// (ver AI_PLANS en aiPlanPolicy.js) y dejarlos acá no era inofensivo: cualquier
+// pantalla que mostrara el plan de un comercio los seguía sabiendo dibujar, así
+// que un valor viejo en la base se veía como un plan normal en vez de saltar a
+// la vista.
 export const PLAN_PRESENTATION = Object.freeze({
-  free: {
-    name: 'Gratis',
-    description: 'Para probar la plataforma sin compromiso.',
-    icon: RocketOutlined,
-    features: ['Hasta 20 productos', 'Tienda pública', 'Soporte por comunidad'],
-    actionLabel: 'Plan actual',
-    featured: false,
-  },
   starter: {
     name: 'Emprendedor',
     description: 'Las herramientas esenciales para poner en marcha una tienda.',
@@ -48,14 +47,6 @@ export const PLAN_PRESENTATION = Object.freeze({
     actionLabel: 'Elegir Profesional',
     featured: true,
   },
-  enterprise: {
-    name: 'Enterprise',
-    description: 'Capacidad a medida para operaciones grandes.',
-    icon: CrownOutlined,
-    features: ['Todo lo del plan Profesional', 'Cuotas a medida', 'Acompañamiento dedicado'],
-    actionLabel: 'Hablar con ventas',
-    featured: false,
-  },
 })
 
 /** Los que se pueden contratar desde el panel, en el orden en que se muestran. */
@@ -77,7 +68,7 @@ export const isPlanContratable = priceArs =>
  * Pesos, siempre. HENKO cobra en pesos y no hay precio en dólares en ningún
  * lado: el que se mostraba era una traducción congelada de una división vieja.
  */
-export const formatArs = (value, { sinPrecio = 'A medida' } = {}) => {
+export const formatArs = (value, { sinPrecio = 'A definir' } = {}) => {
   if (value === null || value === undefined) return sinPrecio
 
   return new Intl.NumberFormat('es-AR', {

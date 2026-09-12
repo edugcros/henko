@@ -272,10 +272,13 @@ const SubscriptionManagementPage = () => {
 
           if (response.data.success) {
             message.success('Suscripción cancelada')
+            // El plan NO cambia al cancelar: cambia el ESTADO. Acá se bajaba
+            // a 'free', que ya no existe — y hacía que la pantalla mostrara un
+            // plan distinto del que el backend guarda, que sigue siendo el
+            // contratado con la suscripción dada de baja.
             setSubscription(prev => ({
               ...prev,
               subscriptionStatus: 'cancelled',
-              plan: 'free',
             }))
           } else {
             message.error(response.data.message || 'Error al cancelar')

@@ -94,9 +94,12 @@ describe("payload de suscripción · el contrato", () => {
     expect(() => armar({ email: "no-es-un-email" })).toThrow("PAYER_EMAIL_INVALID");
   });
 
-  test("un plan sin precio se rechaza", () => {
-    // enterprise es a medida: no hay monto que cobrar.
-    expect(() => armar({ plan: "enterprise" })).toThrow("SUBSCRIPTION_PLAN_INVALID");
+  test("un plan sin precio configurado se rechaza", () => {
+    // No hay monto que cobrar, y un plan sin precio no se vende. Antes este
+    // caso se producía con 'enterprise', que era a medida por definición; ese
+    // plan ya no existe, así que ahora se produce como se produce de verdad:
+    // un plan del catálogo al que todavía nadie le puso precio.
+    expect(() => armar({ plan: "pro" })).toThrow("SUBSCRIPTION_PLAN_INVALID");
   });
 });
 

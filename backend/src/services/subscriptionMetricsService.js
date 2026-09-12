@@ -17,7 +17,7 @@ export const getSubscriptionSummary = async tenantId => {
 
     if (!tenant) {
       return {
-        currentPlan: 'free',
+        currentPlan: null,
         status: 'none',
         isActive: false,
         mrr: 0,
@@ -35,7 +35,7 @@ export const getSubscriptionSummary = async tenantId => {
     const mrr = isActive ? planPrices[tenant.plan] || 0 : 0
 
     return {
-      currentPlan: tenant.plan || 'free',
+      currentPlan: tenant.plan || null,
       status: tenant.subscriptionStatus || 'none',
       isActive,
       mrr,
@@ -48,7 +48,7 @@ export const getSubscriptionSummary = async tenantId => {
       error: error.message,
     })
     return {
-      currentPlan: 'free',
+      currentPlan: null,
       status: 'none',
       isActive: false,
       mrr: 0,
@@ -192,7 +192,7 @@ export const getRevenueByPlan = async () => {
     ])
 
     return revenue.map(item => ({
-      plan: item._id || 'free',
+      plan: item._id || null,
       subscriptions: item.count,
       mrr: Number(item.revenue.toFixed(2)),
     }))
@@ -218,7 +218,7 @@ export const getSubscriptionHistory = async (tenantId, days = 30) => {
 
     if (!tenant) {
       return {
-        currentPlan: 'free',
+        currentPlan: null,
         previousPlans: [],
         statusChanges: [],
       }
@@ -226,7 +226,7 @@ export const getSubscriptionHistory = async (tenantId, days = 30) => {
 
     // TODO: Implementar log de cambios de suscripción cuando se agregue auditoría
     return {
-      currentPlan: tenant.plan || 'free',
+      currentPlan: tenant.plan || null,
       previousPlans: [],
       statusChanges: [],
     }
@@ -236,7 +236,7 @@ export const getSubscriptionHistory = async (tenantId, days = 30) => {
       error: error.message,
     })
     return {
-      currentPlan: 'free',
+      currentPlan: null,
       previousPlans: [],
       statusChanges: [],
     }

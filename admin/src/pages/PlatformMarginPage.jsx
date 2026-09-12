@@ -206,10 +206,10 @@ export default function PlatformMarginPage() {
         </Paper>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
           <Typography variant="caption" color="text.secondary">
-            En plan pago (nominal)
+            Con suscripción activa
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {lifecycle.nonFreePlanTenantsCount ?? 0}
+            {lifecycle.activeSubscriptionCount ?? 0}
           </Typography>
         </Paper>
       </Stack>

@@ -40,7 +40,20 @@ export const AI_METRICS = Object.freeze({
 
 export const AI_METRIC_LIST = Object.freeze(Object.values(AI_METRICS))
 
-export const AI_PLANS = Object.freeze(['free', 'starter', 'pro', 'enterprise'])
+/**
+ * Los planes que existen. Dos, y los dos se pagan.
+ *
+ * Había cuatro. `free` y `enterprise` se sacaron por decisión de negocio, y
+ * `free` hacía además tres trabajos que no eran "ser un plan": era el default
+ * del tenant, el destino de una baja y el fallback de un plan desconocido. Cada
+ * uno se resolvió aparte —ver normalizePlan acá abajo, el default en
+ * tenantModel y las bajas en subscriptionCtrl— porque mezclarlos en un plan
+ * gratuito es lo que hacía que un comercio sin pagar tuviera cuota de IA.
+ *
+ * Quién no paga ya no se distingue por el plan sino por subscriptionStatus, y
+ * eso lo hace cumplir getSubscriptionState.
+ */
+export const AI_PLANS = Object.freeze(['starter', 'pro'])
 
 export const UNLIMITED = 0
 
@@ -74,17 +87,9 @@ export const AI_METRIC_LABELS = Object.freeze({
  * conversaciones anormalmente caras, no como el límite de todos los días.
  *
  * Cualquiera se puede sobrescribir por entorno sin tocar código:
- *   AI_LIMIT_FREE_AGENT_MESSAGES=500
+ *   AI_LIMIT_STARTER_AGENT_MESSAGES=500
  */
 const DEFAULT_PLAN_LIMITS = Object.freeze({
-  free: {
-    [AI_METRICS.VISION]: 50,
-    [AI_METRICS.AGENT_MESSAGES]: 300,
-    [AI_METRICS.AGENT_TOKENS]: 1_500_000,
-    [AI_METRICS.IMAGE_EDITS]: 10,
-    [AI_METRICS.MARKET_ANALYSES]: 10,
-    [AI_METRICS.MARKET_TOKENS]: 250_000,
-  },
   starter: {
     [AI_METRICS.VISION]: 300,
     [AI_METRICS.AGENT_MESSAGES]: 2_000,
@@ -100,14 +105,6 @@ const DEFAULT_PLAN_LIMITS = Object.freeze({
     [AI_METRICS.IMAGE_EDITS]: 500,
     [AI_METRICS.MARKET_ANALYSES]: 250,
     [AI_METRICS.MARKET_TOKENS]: 6_250_000,
-  },
-  enterprise: {
-    [AI_METRICS.VISION]: UNLIMITED,
-    [AI_METRICS.AGENT_MESSAGES]: UNLIMITED,
-    [AI_METRICS.AGENT_TOKENS]: UNLIMITED,
-    [AI_METRICS.IMAGE_EDITS]: UNLIMITED,
-    [AI_METRICS.MARKET_ANALYSES]: UNLIMITED,
-    [AI_METRICS.MARKET_TOKENS]: UNLIMITED,
   },
 })
 
@@ -127,15 +124,25 @@ const METRIC_ENV_SUFFIX = Object.freeze({
 // deploy actual las tiene seteadas, mandan ellas: este refactor no debe
 // cambiarle los límites a nadie sin que se entere.
 const LEGACY_VISION_ENV = Object.freeze({
-  free: 'AI_MONTHLY_LIMIT_FREE',
   starter: 'AI_MONTHLY_LIMIT_STARTER',
   pro: 'AI_MONTHLY_LIMIT_PRO',
-  enterprise: 'AI_MONTHLY_LIMIT_ENTERPRISE',
 })
 
+/**
+ * El plan, normalizado. Un valor desconocido cae al MÁS CHICO.
+ *
+ * Antes caía a 'free', que no cobraba nada. Ahora que los dos planes se pagan,
+ * el fallback tiene que ser el de menor cuota: un valor raro no puede terminar
+ * regalando las cuotas del pro.
+ *
+ * Ojo: esto normaliza, no autoriza. Quien recibe un plan del exterior —el alta
+ * de suscripción, el cambio de plan— tiene que validar el valor CRUDO contra
+ * AI_PLANS antes de normalizarlo, o "cualquier cosa" se convierte en starter y
+ * se cobra.
+ */
 export const normalizePlan = plan => {
   const value = clean(plan).toLowerCase()
-  return AI_PLANS.includes(value) ? value : 'free'
+  return AI_PLANS.includes(value) ? value : AI_PLANS[0]
 }
 
 export const normalizeMetric = metric => {
@@ -198,7 +205,7 @@ export const isByokAllowedForPlan = plan => {
   const normalizedPlan = normalizePlan(plan)
   const raw = clean(process.env.AI_BYOK_ALLOWED_PLANS)
 
-  if (!raw) return normalizedPlan === 'pro' || normalizedPlan === 'enterprise'
+  if (!raw) return normalizedPlan === 'pro'
 
   return raw
     .split(',')
@@ -229,23 +236,29 @@ const readEnvNumber = (name, { min = 0 } = {}) => {
 const getGraceDays = () => readEnvNumber('AI_SUBSCRIPTION_GRACE_DAYS') ?? 7
 
 /**
- * El corte por suscripción viene APAGADO por defecto, y no es una omisión.
+ * El corte por suscripción viene ENCENDIDO, y hasta hace poco no podía estarlo.
  *
- * El alta (userCtrl) crea el tenant con subscriptionStatus 'trialing' y
- * trialEndsAt a 14 días, y no hay un solo lugar en el backend que después lo
- * pase a 'active' — no existe todavía un flujo de facturación. Con el corte
- * activado por defecto, todo comercio que se registre pierde la IA a los 14
- * días sin forma de recuperarla salvo editando la base a mano.
+ * Venía apagado por una razón concreta: el alta creaba el tenant en 'trialing'
+ * y nada en el backend lo pasaba nunca a 'active', porque no existía flujo de
+ * cobro. Con el corte encendido, todo comercio perdía la IA a los 14 días sin
+ * forma de recuperarla salvo editando la base a mano. Una regla que nada puede
+ * satisfacer no es una regla, es una trampa.
  *
- * Una regla que nada puede satisfacer no es una regla, es una trampa. La
- * maquinaria queda escrita y probada; se enciende con
- * AI_ENFORCE_SUBSCRIPTION=true el día que exista cobranza que mantenga el
- * campo.
+ * Esa razón se terminó: hoy el alta cobra de verdad contra Mercado Pago y deja
+ * el tenant en 'active', y el webhook mantiene el campo cuando el cobro se
+ * renueva, falla o se cancela. Ya hay algo que satisface la regla.
+ *
+ * Y ahora hace falta. Al sacar el plan gratuito, el plan dejó de distinguir a
+ * quien paga de quien no: los dos que quedan se cobran. Esa distinción vive
+ * enteramente en subscriptionStatus, y sin este corte no la hace cumplir nadie
+ * — cualquiera que se registre tendría cuota de IA sin pagar.
+ *
+ * Se apaga con AI_ENFORCE_SUBSCRIPTION=false si hace falta desactivarlo rápido.
  */
 const isEnforcementEnabled = () => {
   const raw = clean(process.env.AI_ENFORCE_SUBSCRIPTION).toLowerCase()
-  if (!raw) return false
-  return ['true', '1', 'yes', 'si', 'sí', 'on'].includes(raw)
+  if (!raw) return true
+  return !['false', '0', 'no', 'off'].includes(raw)
 }
 
 const daysSince = date => {
@@ -358,23 +371,13 @@ export const estimateImageCostUsd = count => {
 // override del panel → variable de entorno → default de acá.
 
 /**
- * Precio mensual por plan, en PESOS.
+ * Precio mensual por plan, en PESOS. Sin default: el motivo está adentro.
  *
- * starter: decisión de negocio, 40.000 ARS/mes.
- * pro: 151.470 ARS. Es exactamente lo que valían los 99 USD anteriores al tipo
- *   de cambio que el propio código usaba (1.530). NO es una decisión de precio
- *   nueva — se arrastra el valor equivalente para no inventar uno, y queda a un
- *   click de cambiarse desde el panel.
- * enterprise: precio a medida. null a propósito y no 0 — un 0 numérico se
- *   leería como margen falso en cualquier reporte que lo use.
+ * El docblock que estaba acá seguía documentando los 40.000 del starter y los
+ * 151.470 del pro cuando el objeto de abajo ya no traía ninguno de los dos.
  */
 const DEFAULT_PLAN_PRICE_ARS = Object.freeze({
-  // Estos dos no son decisiones de precio y por eso sí están acá: `free` es
-  // gratis por definición y `enterprise` se cotiza caso por caso.
-  free: 0,
-  enterprise: null,
-
-  // starter y pro NO tienen precio por defecto, a propósito.
+  // Ninguno tiene precio por defecto, a propósito.
   //
   // Tenían 40.000 y 151.470 escritos acá. Un número puesto en el código meses
   // atrás y que después alguien cobra de verdad es exactamente lo que este
@@ -441,13 +444,10 @@ export const getPlanPriceSource = plan => {
 
   // Distinguir "no configurado" de "por defecto" importa: el primero es un plan
   // que todavía no se puede vender y hay que decirlo, el segundo sería un precio
-  // que alguien tiene que revisar. Desde que starter y pro no traen default, el
-  // único 'default' posible es free (gratis) o enterprise (a medida).
-  if (DEFAULT_PLAN_PRICE_ARS[normalizedPlan] === null && normalizedPlan !== 'enterprise') {
-    return 'unset'
-  }
-
-  return 'default'
+  // que alguien tiene que revisar. Desde que ningún plan del catálogo trae
+  // default, hoy siempre da 'unset' — la rama queda porque es la que avisaría si
+  // alguien vuelve a escribir un precio en el código.
+  return DEFAULT_PLAN_PRICE_ARS[normalizedPlan] === null ? 'unset' : 'default'
 }
 
 /**
@@ -545,7 +545,7 @@ export const getWhatsappCostPerSendUsd = () =>
 /**
  * Tope global de tokens de la plataforma para el mes, contra la key propia.
  * Es el disyuntor: aunque la suma de las cuotas por tenant se dispare (por
- * un plan mal cargado, un bug o un tenant enterprise), la factura tiene un
+ * un plan mal cargado, un bug o un tope puesto en ilimitado), la factura tiene un
  * techo duro que no depende de que ninguna otra cuenta esté bien puesta.
  *
  * 0 = sin disyuntor (no recomendado en producción).
@@ -619,8 +619,8 @@ const getVisionTokensPerCall = () =>
  *
  * "Ilimitado" es una entitlement coherente cuando el comercio paga su propio
  * consumo (BYOK), y una contradicción cuando corre sobre la key de todos: un
- * único tenant enterprise sin key propia podía consumir el presupuesto
- * mensual entero y hacer saltar el disyuntor, que corta para TODOS los que
+ * único tenant con el tope en ilimitado y sin key propia podía consumir el
+ * presupuesto mensual entero y hacer saltar el disyuntor, que corta para TODOS los que
  * comparten esa key. El tenant grande no pierde nada y los chicos se quedan
  * sin asistente.
  *
@@ -666,7 +666,7 @@ export const getSharedKeyTenantCap = metric => {
 
   // Visión se mide en unidades, no en tokens, y por eso quedaba fuera de esta
   // regla: era el ÚNICO gasto sin techo por tenant sobre la key compartida. Un
-  // enterprise sin key propia tiene visión ilimitada, y desde que visión
+  // comercio con visión ilimitada y sin key propia la gastaba entera, y desde que visión
   // reporta sus tokens (ver recordTokenSpend) esos tokens pegan contra el
   // disyuntor — o sea que un solo comercio podía llevarse el presupuesto
   // entero y dejar sin IA a todos los demás.

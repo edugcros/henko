@@ -37,7 +37,7 @@ import {
 } from '@mui/material'
 
 import { getPlanPrices, updatePlanPrice } from '../services/platformService.js'
-import { PLAN_PRESENTATION } from '../constants/plans.js'
+import { PLAN_PRESENTATION, SELLABLE_PLANS } from '../constants/plans.js'
 
 const formatArs = value => {
   if (value === null || value === undefined) return 'Sin configurar'
@@ -186,9 +186,13 @@ const PlatformPlanPricesPage = () => {
     )
   }
 
-  // free y enterprise no se cotizan: uno es gratis y el otro es a medida.
-  // Ponerles un número acá sería inventar un precio que después alguien cobra.
-  const editable = (data?.plans || []).filter(row => row.plan === 'starter' || row.plan === 'pro')
+  // El catálogo ya son estos dos planes y los dos se cotizan. El filtro queda
+  // porque esta pantalla escribe precios: si el backend algún día devuelve un
+  // plan que acá no se sabe editar, es preferible no mostrarlo a ofrecer un
+  // formulario que no tiene dónde guardar.
+  const editable = (data?.plans || []).filter(row =>
+    SELLABLE_PLANS.includes(row.plan),
+  )
 
   return (
     <Box sx={{ p: 3 }}>

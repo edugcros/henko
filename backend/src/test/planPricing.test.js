@@ -123,10 +123,16 @@ describe("precio de plan · quién manda", () => {
     expect(getPlanPriceSource("starter")).toBe("unset");
   });
 
-  test("free y enterprise no son 'unset': uno es gratis, el otro a medida", () => {
-    expect(getPlanMonthlyPriceArs("free")).toBe(0);
-    expect(getPlanMonthlyPriceArs("enterprise")).toBeNull();
-    expect(getPlanPriceSource("enterprise")).toBe("default");
+  test("un plan que no existe se cotiza como el más chico, no como gratis", () => {
+    // El catálogo quedó en starter y pro. Antes 'free' devolvía 0 y
+    // 'enterprise' null; hoy cualquier valor ajeno normaliza al plan más chico,
+    // que es lo contrario de regalar: quien reciba un plan del exterior tiene
+    // que validarlo CRUDO contra AI_PLANS antes de llegar acá.
+    process.env.PLAN_PRICE_ARS_STARTER = "40000";
+
+    expect(getPlanMonthlyPriceArs("free")).toBe(40000);
+    expect(getPlanMonthlyPriceArs("enterprise")).toBe(40000);
+    expect(getPlanPriceSource("cualquier-cosa")).toBe("env");
   });
 
   test("un override de cero se respeta: un plan puede volverse gratis", () => {
@@ -141,15 +147,10 @@ describe("precio de plan · quién manda", () => {
 });
 
 describe("catálogo de planes", () => {
-  test("trae los cuatro planes, en pesos, con su procedencia", () => {
+  test("trae los dos planes, en pesos, con su procedencia", () => {
     const catalogo = getPlanCatalog();
 
-    expect(catalogo.map(p => p.plan)).toEqual([
-      "free",
-      "starter",
-      "pro",
-      "enterprise",
-    ]);
+    expect(catalogo.map(p => p.plan)).toEqual(["starter", "pro"]);
     expect(catalogo.every(p => p.currency === "ARS")).toBe(true);
     expect(catalogo.find(p => p.plan === "starter").monthlyPriceArs).toBeNull();
   });

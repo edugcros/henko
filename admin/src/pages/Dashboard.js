@@ -1168,9 +1168,9 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                     <Skeleton width={80} />
                   ) : (
                     // El nombre sale de constants/plans.js. Acá había una
-                    // cadena de ternarios que además mentía: cualquier plan que
-                    // no fuera free o starter caía en 'Profesional', así que un
-                    // enterprise se mostraba como Pro.
+                    // cadena de ternarios que además mentía: cualquier plan
+                    // desconocido caía en 'Profesional', así que se mostraba
+                    // como Pro algo que no lo era.
                     getPlanName(subscriptionMetrics.currentPlan)
                   )
                 }

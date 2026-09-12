@@ -35,6 +35,7 @@ import {
   getSharedKeyTenantCap,
   getSubscriptionState,
   normalizeMetric,
+  normalizePlan,
 } from './aiPlanPolicy.js'
 import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
 import { computeCostUsd, normalizeModelName } from './aiModelPricing.js'
@@ -222,7 +223,7 @@ const buildDeniedResult = ({ metric, limit, used, reason, detail, profile }) => 
   reason,
   detail: detail || null,
   keySource: profile?.keySource || KEY_SOURCE.NONE,
-  plan: profile?.plan || 'free',
+  plan: normalizePlan(profile?.plan),
   label: AI_METRIC_LABELS[metric] || metric,
 })
 

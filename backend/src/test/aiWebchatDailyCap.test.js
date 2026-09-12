@@ -34,7 +34,7 @@ const { aiWebchatDailyCap, resolveDailyCap } = await import(
 
 const TENANT_ID = "64b7f0000000000000000001";
 
-const run = async ({ used = 1, plan = "free", keySource = "platform" } = {}) => {
+const run = async ({ used = 1, plan = "starter", keySource = "platform" } = {}) => {
   mockProfile.mockResolvedValue({ plan, keySource });
   mockCacheIncr.mockResolvedValue(used);
 
@@ -66,30 +66,36 @@ beforeEach(() => {
 });
 
 describe("de dónde sale el tope", () => {
-  test("un free no puede vaciar su mes en menos de diez días", async () => {
-    // 300 mensajes al mes, factor 3 sobre el promedio diario: 30 por día.
-    // Es la garantía que motiva todo el middleware.
-    expect(resolveDailyCap("free")).toBe(30);
+  test("el plan más chico no puede vaciar su mes en menos de diez días", async () => {
+    // 2.000 mensajes al mes, factor 3 sobre el promedio diario: 200 por día.
+    // Es la garantía que motiva todo el middleware, y sale del tope del plan:
+    // no hay un número escrito acá que se pueda desincronizar.
+    expect(resolveDailyCap("starter")).toBe(200);
   });
 
   test("escala con el plan sin una tabla nueva que mantener", async () => {
     // Sale de getPlanLimit, así que cambiar la cuota de un plan mueve el tope
     // diario solo. Dos números que hay que acordarse de sincronizar terminan
     // desincronizados.
-    expect(resolveDailyCap("starter")).toBeGreaterThan(resolveDailyCap("free"));
     expect(resolveDailyCap("pro")).toBeGreaterThan(resolveDailyCap("starter"));
   });
 
   test("un plan con mensajes ilimitados igual tiene techo diario", async () => {
     // No hay de dónde derivarlo, y dejarlo sin tope sería el agujero que esto
-    // vino a tapar, solo que en el plan que más gasta.
-    expect(resolveDailyCap("enterprise")).toBe(500);
+    // vino a tapar, solo que en el plan que más gasta. Ningún plan del catálogo
+    // viene ilimitado, así que el caso se produce como se produce en la
+    // realidad: con el tope puesto en 0 por entorno.
+    process.env.AI_LIMIT_PRO_AGENT_MESSAGES = "0";
+
+    expect(resolveDailyCap("pro")).toBe(500);
+
+    delete process.env.AI_LIMIT_PRO_AGENT_MESSAGES;
   });
 
   test("un plan chico no queda con un tope inusable", async () => {
     process.env.AI_WEBCHAT_DAILY_BURST_FACTOR = "0.1";
 
-    expect(resolveDailyCap("free")).toBe(10);
+    expect(resolveDailyCap("starter")).toBe(10);
   });
 });
 
@@ -102,14 +108,14 @@ describe("qué hace en cada caso", () => {
   });
 
   test("justo en el tope todavía pasa", async () => {
-    // El límite es "hasta 30", no "menos de 30": el mensaje 30 es legítimo.
-    const { next } = await run({ used: 30 });
+    // El límite es "hasta 200", no "menos de 200": el mensaje 200 es legítimo.
+    const { next } = await run({ used: 200 });
 
     expect(next).toHaveBeenCalled();
   });
 
   test("pasado el tope corta con 429 y un mensaje que se puede mostrar", async () => {
-    const { next, res } = await run({ used: 31 });
+    const { next, res } = await run({ used: 201 });
 
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(429);
@@ -142,7 +148,7 @@ describe("qué hace en cada caso", () => {
     // Un freno que se rompe hacia el lado de negar deja sin asistente a un
     // comercio que no hizo nada. Por debajo siguen el limitador por minuto y
     // la cuota mensual, que es el freno duro.
-    mockProfile.mockResolvedValue({ plan: "free", keySource: "platform" });
+    mockProfile.mockResolvedValue({ plan: "starter", keySource: "platform" });
     mockCacheIncr.mockRejectedValue(new Error("redis caído"));
 
     const req = { tenantId: TENANT_ID };

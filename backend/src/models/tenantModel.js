@@ -171,8 +171,15 @@ const tenantSchema = new Schema(
 
     plan: {
       type: String,
-      enum: ['free', 'starter', 'pro', 'enterprise'],
-      default: 'free',
+      // Solo dos planes, y los dos se pagan. `free` y `enterprise` se sacaron.
+      //
+      // El default es el más chico: un tenant nuevo arranca en starter con
+      // subscriptionStatus 'trialing', y a los 14 días el corte por suscripción
+      // decide si sigue. Antes el default era 'free' y eso alcanzaba para no
+      // regalar cuota; ahora quien no paga se distingue por el estado, no por
+      // el plan (ver getSubscriptionState).
+      enum: ['starter', 'pro'],
+      default: 'starter',
       index: true,
     },
 

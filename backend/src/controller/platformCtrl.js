@@ -13,10 +13,12 @@ import {
   getPlatformAiSettingHistory,
   PLATFORM_AI_SETTINGS,
 } from '../services/ai/platformAiSettingService.js'
-import { getPlanCatalog, normalizePlan } from '../services/ai/aiPlanPolicy.js'
+import { AI_PLANS, getPlanCatalog, normalizePlan } from '../services/ai/aiPlanPolicy.js'
 
-// Qué plan se puede cotizar. free es gratis y enterprise es a medida: ponerles
-// un número acá sería inventar un precio que después alguien cobra.
+// Qué plan se puede cotizar: los dos del catálogo, porque los dos se pagan.
+// El mapa se mantiene igual —y no se deriva de AI_PLANS— porque cada plan
+// necesita su propia clave de ajuste, y agregar un plan sin decidir dónde se
+// guarda su precio tiene que ser un error visible, no un precio que se pierde.
 const PLANES_CON_PRECIO = Object.freeze({
   starter: PLATFORM_AI_SETTINGS.PLAN_PRICE_STARTER,
   pro: PLATFORM_AI_SETTINGS.PLAN_PRICE_PRO,
@@ -142,13 +144,27 @@ export const getPlanPrices = expressAsyncHandler(async (req, res) => {
 export const updatePlanPrice = expressAsyncHandler(async (req, res) => {
   const { plan, priceArs, reason } = req.body || {}
 
-  const normalizedPlan = normalizePlan(plan)
+  // Se valida el valor CRUDO, no el normalizado. normalizePlan cae al plan más
+  // chico ante cualquier cosa, así que validar después de normalizar aceptaría
+  // "gratis", "" o un typo y le pondría el precio al starter sin que nadie se
+  // entere. La guarda de abajo dejó de ser alcanzable el día que el catálogo
+  // quedó en dos planes y ambos tienen clave de precio.
+  const rawPlan = String(plan || '').trim().toLowerCase()
+
+  if (!AI_PLANS.includes(rawPlan)) {
+    return res.status(400).json({
+      success: false,
+      message: `Plan inválido. Los planes con precio son: ${AI_PLANS.join(', ')}.`,
+    })
+  }
+
+  const normalizedPlan = normalizePlan(rawPlan)
   const setting = PLANES_CON_PRECIO[normalizedPlan]
 
   if (!setting) {
     return res.status(400).json({
       success: false,
-      message: 'Solo se puede cotizar starter y pro. free es gratis y enterprise es a medida.',
+      message: `El plan ${normalizedPlan} no tiene dónde guardar su precio.`,
     })
   }
 
