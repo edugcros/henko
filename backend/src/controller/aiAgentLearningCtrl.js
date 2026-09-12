@@ -80,16 +80,32 @@ export const listAiLearningSuggestions = asyncHandler(async (req, res) => {
   }
 
   const [items, total, counters] = await Promise.all([
-    AiLearningSuggestion.find(query)
-      .sort({
-        priority: -1,
-        confidence: -1,
-        updatedAt: -1,
-      })
-      .skip(skip)
-      .limit(limit)
-      .setOptions({ tenantId })
-      .lean(),
+    // Mismo problema que tenía Diagnóstico: `priority` es TEXTO
+    // ('low' | 'medium' | 'high' | 'critical') y se ordenaba con -1, o sea
+    // alfabéticamente al revés: medium, low, high, critical. La cola de
+    // revisión mostraba lo crítico ÚLTIMO, que es exactamente lo contrario de
+    // para lo que existe.
+    AiLearningSuggestion.aggregate([
+      { $match: { ...query, tenantId: tenantObjectId } },
+      {
+        $addFields: {
+          priorityRank: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$priority', 'critical'] }, then: 4 },
+                { case: { $eq: ['$priority', 'high'] }, then: 3 },
+                { case: { $eq: ['$priority', 'medium'] }, then: 2 },
+              ],
+              default: 1,
+            },
+          },
+        },
+      },
+      { $sort: { priorityRank: -1, confidence: -1, updatedAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      { $project: { priorityRank: 0 } },
+    ]).option({ tenantId }),
 
     AiLearningSuggestion.countDocuments(query).setOptions({ tenantId }),
 

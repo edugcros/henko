@@ -68,12 +68,37 @@ export const listAiInsights = asyncHandler(async (req, res) => {
   if (type && type !== 'all' && allowedTypes.has(type)) query.type = type
 
   const [items, total, counters] = await Promise.all([
-    AiInsight.find(query)
-      .sort({ priority: -1, updatedAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .setOptions({ tenantId })
-      .lean(),
+    // ORDENAR POR PRIORIDAD, NO POR ALFABETO.
+    //
+    // Era `.sort({ priority: -1 })` sobre un campo de TEXTO con valores
+    // 'low' | 'medium' | 'high'. Descendente y alfabético da: medium, low,
+    // high. O sea que la pantalla que existe para decir "atendé esto primero"
+    // mostraba lo urgente al final, y con más de una página de resultados
+    // podía no mostrarlo.
+    //
+    // Se traduce a número para ordenar. Va en agregación porque el orden es
+    // derivado; el $match usa el ObjectId del comercio porque acá no hay
+    // casteo de schema que convierta el string.
+    AiInsight.aggregate([
+      { $match: { ...query, tenantId: tenantObjectId } },
+      {
+        $addFields: {
+          priorityRank: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$priority', 'high'] }, then: 3 },
+                { case: { $eq: ['$priority', 'medium'] }, then: 2 },
+              ],
+              default: 1,
+            },
+          },
+        },
+      },
+      { $sort: { priorityRank: -1, updatedAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      { $project: { priorityRank: 0 } },
+    ]).option({ tenantId }),
 
     AiInsight.countDocuments(query).setOptions({ tenantId }),
 
