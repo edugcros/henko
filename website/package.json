@@ -31,7 +31,7 @@
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@mercadopago/sdk-react": "^1.0.7",
-    "@mui/icons-material": "^5.18.0",
+    "@mui/icons-material": "^9.4.0",
     "@mui/material": "^5.18.0",
     "@reduxjs/toolkit": "^2.5.1",
     "@sentry/browser": "^10.73.0",
