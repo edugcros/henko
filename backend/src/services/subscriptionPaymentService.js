@@ -6,8 +6,6 @@ import { normalizePlan, getPlanMonthlyPriceArs } from './ai/aiPlanPolicy.js'
 import { MercadoPagoConfig, PreApproval } from 'mercadopago'
 
 import { env } from '../../config/env.js'
-import { getWebhookUrl } from '../config/subscriptionConfig.js'
-import logger from '../../config/logger.js'
 
 /**
  * Cliente de SUSCRIPCIONES de Mercado Pago.
@@ -64,14 +62,8 @@ const normalizeEmail = value => sanitizeString(value).toLowerCase()
 const isValidEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value))
 
 /**
- * Construir datos de pago recurrente para Mercado Pago.
+ * Construir la suscripción recurrente de Mercado Pago.
  *
- * La suscripción en MP se crea con:
- * - Pago inicial (si aplica)
- * - Cobro automático mensual
- * - Reintentos en caso de fallo
- */
-/**
  * Los parámetros son los que /preapproval realmente usa.
  *
  * Antes recibía además paymentMethodId, issuerId, payer y autoRenew. Ninguno
@@ -157,11 +149,15 @@ export const buildMercadoPagoSubscriptionData = ({
     // panel no tiene /subscription/success, sí /admin/mi-suscripcion.
     back_url:
       process.env.SUBSCRIPTION_SUCCESS_URL || `${env.adminUrl}/admin/mi-suscripcion`,
-    // notification_url NO está en PreApprovalRequest. Se sigue mandando porque
-    // el SDK pasa el body tal cual y no cuesta nada si lo ignoran, pero la vía
-    // confiable para los webhooks de suscripción es configurar la URL en el
-    // panel de Mercado Pago (Tus integraciones → Webhooks). Ver getWebhookUrl.
-    notification_url: buildNotificationUrl(),
+    // notification_url NO se manda, y ahora hay prueba de por qué.
+    //
+    // No está en PreApprovalRequest, y se comprobó contra una suscripción real:
+    // al consultar /preapproval/<id> después de crearla, Mercado Pago devuelve
+    // back_url pero NO notification_url. Lo descarta.
+    //
+    // Los webhooks de suscripción se configuran en el panel de Mercado Pago
+    // (Tus integraciones → Webhooks), apuntando a getWebhookUrl(). Mandarlo acá
+    // daba la impresión de que el aviso estaba resuelto cuando no lo estaba.
   }
 
   // Las dos ramas que había acá ponían el mismo card_token_id, así que el
@@ -237,24 +233,6 @@ export const mapMercadoPagoSubscriptionError = error => {
     message: 'No se pudo procesar el pago de suscripción',
     details: error?.message || 'Error desconocido',
   }
-}
-
-/**
- * Construir URL de notificación para webhooks de Mercado Pago
- */
-const buildNotificationUrl = () => {
-  // La URL la arma subscriptionConfig, que es donde vive la ruta real. Acá se
-  // armaba una segunda vez, apuntando a `/subscriptions/webhook/mercadopago`:
-  // una ruta que no existe en ningún router. Cada suscripción creada quedaba
-  // registrada contra un 404 y ningún evento de Mercado Pago llegaba nunca.
-  const url = getWebhookUrl()
-
-  if (!url) {
-    logger.warn('⚠️ notification_url omitida: falta PUBLIC_BACKEND_URL HTTPS pública')
-    return null
-  }
-
-  return url
 }
 
 /**
