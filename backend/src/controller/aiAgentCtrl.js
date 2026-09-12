@@ -5,6 +5,8 @@ import AiKnowledge from '../models/aiKnowledgeModel.js'
 import AiCartRecovery from '../models/aiCartRecoveryModel.js'
 import AiCampaignRule from '../models/aiCampaignRuleModel.js'
 import { getCartRecoveryReadiness } from '../services/aiAgent/aiCartRecoveryService.js'
+import { checkWhatsappConnection } from '../services/aiAgent/whatsappService.js'
+import { buildWebhookVerifyToken } from './whatsappWebhookCtrl.js'
 import { processAgentMessage } from '../services/aiAgent/aiAgentBrainService.js'
 import {
   getOrCreateAiAgentForTenant,
@@ -255,6 +257,54 @@ export const upsertAiAgentConfig = asyncHandler(async (req, res) => {
   })
 
   return res.status(200).json({ success: true, data: agent })
+})
+
+/**
+ * GET /api/ai-agent/whatsapp/check
+ *
+ * Le pregunta a Meta si la conexión de WhatsApp de este comercio funciona.
+ * No manda ningún mensaje: solo lee el número y la suscripción del webhook.
+ *
+ * Existe porque los cuatro datos que hay que pegar salen de tres pantallas
+ * distintas del panel de Meta y, si uno queda mal, el síntoma es que "el
+ * asistente no contesta" — sin ninguna pista de cuál de los cuatro fue.
+ */
+export const checkWhatsappConnectionCtrl = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+
+  const agent = await AiAgent.findOne({ tenantId })
+    .select(
+      '+channels.whatsapp.accessToken +channels.whatsapp.appSecret channels.whatsapp.phoneNumberId channels.whatsapp.businessAccountId channels.whatsapp.enabled',
+    )
+    .setOptions({ tenantId })
+
+  if (!agent) {
+    return res.status(404).json({
+      success: false,
+      message: 'Todavía no hay un asistente configurado para esta tienda',
+    })
+  }
+
+  const whatsapp = agent.channels?.whatsapp || {}
+
+  const result = await checkWhatsappConnection({
+    phoneNumberId: whatsapp.phoneNumberId,
+    accessToken: whatsapp.accessToken,
+    businessAccountId: whatsapp.businessAccountId,
+    appSecret: whatsapp.appSecret,
+  })
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      ...result,
+      channelEnabled: Boolean(whatsapp.enabled),
+      // Lo que hay que pegar en Meta al dar de alta el webhook. Se deriva del
+      // id del comercio, así que se puede mostrar sin compartir un secreto
+      // entre comercios.
+      verifyToken: buildWebhookVerifyToken(tenantId),
+    },
+  })
 })
 
 export const testAiAgentMessage = asyncHandler(async (req, res) => {

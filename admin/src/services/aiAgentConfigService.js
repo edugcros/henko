@@ -15,4 +15,13 @@ export const updateAiAgentConfig = async payload => {
   return unwrap(response)
 }
 
-export default { getAiAgentConfig, updateAiAgentConfig }
+/**
+ * Le pregunta al backend —y el backend a Meta— si la conexión de WhatsApp
+ * funciona. No envía ningún mensaje.
+ */
+export const checkWhatsappConnection = async () => {
+  const response = await api.get('/ai-agent/whatsapp/check')
+  return unwrap(response)
+}
+
+export default { getAiAgentConfig, updateAiAgentConfig, checkWhatsappConnection }

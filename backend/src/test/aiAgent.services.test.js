@@ -486,3 +486,69 @@ describe("recuperación de carritos · por qué no corre", () => {
     });
   });
 });
+
+// ─── El token de verificación del webhook ────────────────────────────────────
+//
+// Meta lo pide una sola vez, al dar de alta el webhook. Antes había uno solo
+// para toda la plataforma —así que todos los comercios tenían que pegar el
+// mismo secreto— y el campo que la pantalla les pedía completar no lo leía
+// nadie. Ahora cada comercio tiene el suyo, derivado de su id.
+
+describe("webhook de WhatsApp · token por comercio", () => {
+  const A = "6a4dcc911161615f76a8131f";
+  const B = "6aa4dcc911161615f76a8131";
+
+  let buildWebhookVerifyToken;
+  let verifyWhatsappWebhook;
+  let anterior;
+
+  beforeAll(async () => {
+    anterior = process.env.WHATSAPP_VERIFY_TOKEN;
+    process.env.WHATSAPP_VERIFY_TOKEN = "secreto-de-plataforma";
+    ({ buildWebhookVerifyToken, verifyWhatsappWebhook } = await import(
+      "../controller/whatsappWebhookCtrl.js"
+    ));
+  });
+
+  afterAll(() => {
+    if (anterior === undefined) delete process.env.WHATSAPP_VERIFY_TOKEN;
+    else process.env.WHATSAPP_VERIFY_TOKEN = anterior;
+  });
+
+  const verificar = async token => {
+    const req = { query: { "hub.mode": "subscribe", "hub.verify_token": token, "hub.challenge": "1234" } };
+    const res = {
+      statusCode: null,
+      body: null,
+      status(code) { this.statusCode = code; return this },
+      send(payload) { this.body = payload; return this },
+      json(payload) { this.body = payload; return this },
+    };
+    await verifyWhatsappWebhook(req, res);
+    return res;
+  };
+
+  test("cada comercio tiene un token distinto", () => {
+    expect(buildWebhookVerifyToken(A)).not.toBe(buildWebhookVerifyToken(B));
+    expect(buildWebhookVerifyToken(A)).toContain(A);
+  });
+
+  test("el token del comercio verifica el webhook", async () => {
+    const res = await verificar(buildWebhookVerifyToken(A));
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe("1234");
+  });
+
+  test("el token global sigue sirviendo: no rompe una integración ya dada de alta", async () => {
+    const res = await verificar("secreto-de-plataforma");
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  test("un token inventado se rechaza", async () => {
+    expect((await verificar(`${A}.0000000000000000000000000000cafe`)).statusCode).toBe(403);
+    expect((await verificar("cualquier-cosa")).statusCode).toBe(403);
+    expect((await verificar("")).statusCode).toBe(403);
+  });
+});

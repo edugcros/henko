@@ -10,6 +10,7 @@ import {
   listCartRecoveries,
   listKnowledge,
   testAiAgentMessage,
+  checkWhatsappConnectionCtrl,
   updateKnowledgeItem,
   upsertAiAgentConfig,
   upsertCampaignRule,
@@ -46,6 +47,9 @@ router.use(isAdmin)
 router.get('/config', getAiAgentConfig)
 router.put('/config', upsertAiAgentConfig)
 router.post('/test-message', testAiAgentMessage)
+
+// Diagnóstico de la conexión de WhatsApp: le pregunta a Meta, no manda nada.
+router.get('/whatsapp/check', checkWhatsappConnectionCtrl)
 
 router.get('/metrics', getAiAgentMetrics)
 

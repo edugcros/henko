@@ -1,4 +1,6 @@
 // 📁 src/controller/whatsappWebhookCtrl.js
+import crypto from 'node:crypto'
+
 import AiAgent from '../models/aiAgentModel.js'
 import Tenant from '../models/tenantModel.js'
 import { processAgentMessage } from '../services/aiAgent/aiAgentBrainService.js'
@@ -12,13 +14,58 @@ import logger from '../../config/logger.js'
 
 const clean = value => String(value || '').trim()
 
+/**
+ * El token de verificación de ESTE comercio.
+ *
+ * Meta pide un "verify token" al dar de alta el webhook: lo manda una sola vez
+ * y espera que le devolvamos el challenge. Antes había uno solo para toda la
+ * plataforma, así que todos los comercios tenían que pegar el mismo secreto —
+ * y el campo que la pantalla les pedía completar no lo leía nadie.
+ *
+ * Ahora cada comercio tiene el suyo, derivado de su id con HMAC. No se guarda
+ * en ningún lado: se recalcula y se compara. Así se le puede mostrar en el
+ * panel sin compartir un secreto entre comercios, y sin una tabla más.
+ */
+export const buildWebhookVerifyToken = tenantId => {
+  const secret = clean(process.env.WHATSAPP_VERIFY_TOKEN)
+  const id = clean(tenantId)
+
+  if (!secret || !id) return ''
+
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(id)
+    .digest('hex')
+    .slice(0, 32)
+
+  return `${id}.${signature}`
+}
+
+const isValidTenantVerifyToken = token => {
+  const [tenantId] = clean(token).split('.')
+  const expected = buildWebhookVerifyToken(tenantId)
+
+  if (!expected || expected.length !== clean(token).length) return false
+
+  return crypto.timingSafeEqual(Buffer.from(clean(token)), Buffer.from(expected))
+}
+
 export const verifyWhatsappWebhook = async (req, res) => {
   const mode = req.query['hub.mode']
-  const token = req.query['hub.verify_token']
+  const token = clean(req.query['hub.verify_token'])
   const challenge = req.query['hub.challenge']
   const globalVerifyToken = clean(process.env.WHATSAPP_VERIFY_TOKEN)
-  if (mode === 'subscribe' && token && token === globalVerifyToken)
-    return res.status(200).send(challenge)
+
+  // Se aceptan los dos: el token por comercio (el que muestra el panel) y el
+  // global de siempre, para no romper una integración ya dada de alta con él.
+  const accepted =
+    mode === 'subscribe' &&
+    token &&
+    ((globalVerifyToken && token === globalVerifyToken) ||
+      isValidTenantVerifyToken(token))
+
+  if (accepted) return res.status(200).send(challenge)
+
   return res
     .status(403)
     .json({ success: false, message: 'Webhook verification failed' })

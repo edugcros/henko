@@ -30,25 +30,40 @@ import {
   Snackbar,
   Stack,
   IconButton,
+  Link,
   Switch,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material'
 import {
+  CheckCircle as CheckIcon,
   ContentCopy as CopyIcon,
   Insights as InsightsIcon,
+  ReportProblem as WarningIcon,
   Save as SaveIcon,
   SmartToy as SmartToyIcon,
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material'
 import { env } from '../config/env.js'
-import { getAiAgentConfig, updateAiAgentConfig } from '../services/aiAgentConfigService.js'
+import {
+  checkWhatsappConnection,
+  getAiAgentConfig,
+  updateAiAgentConfig,
+} from '../services/aiAgentConfigService.js'
 import AiBudgetPanel from '../components/aiBudget/AiBudgetPanel.jsx'
 
 // La URL que hay que pegar en Meta. Sale de la misma base con la que el panel
 // le habla al backend, así que no puede quedar desactualizada respecto del
 // deploy que estás mirando.
+// Lo que se revisa al probar la conexión, en el orden en que se rompe.
+const CONNECTION_ITEMS = [
+  { key: 'accessToken', label: 'Access Token' },
+  { key: 'phoneNumberId', label: 'Número de WhatsApp' },
+  { key: 'appSecret', label: 'App Secret (para recibir mensajes)' },
+  { key: 'webhook', label: 'Webhook suscripto en Meta' },
+]
+
 const WEBHOOK_URL = `${String(env.apiBaseUrl || '').replace(/\/+$/, '')}/whatsapp/webhook`
 
 const TONE_OPTIONS = [
@@ -260,16 +275,38 @@ const AiAgentConfigPage = () => {
     }
   }, [form])
 
-  const [webhookCopied, setWebhookCopied] = useState(false)
+  const [copied, setCopied] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [connection, setConnection] = useState(null)
 
-  const copyWebhookUrl = useCallback(async () => {
+  const copyValue = useCallback(async (key, value) => {
+    if (!value) return
+
     try {
-      await navigator.clipboard.writeText(WEBHOOK_URL)
-      setWebhookCopied(true)
-      window.setTimeout(() => setWebhookCopied(false), 2000)
+      await navigator.clipboard.writeText(value)
+      setCopied(key)
+      window.setTimeout(() => setCopied(''), 2000)
     } catch {
       // Sin permiso de portapapeles el campo igual se puede seleccionar y
       // copiar a mano: no vale la pena molestar con un error por esto.
+    }
+  }, [])
+
+  // Le pregunta a Meta si los datos guardados sirven. No manda mensajes: solo
+  // lee el número y la suscripción del webhook, y traduce lo que responde.
+  const runConnectionCheck = useCallback(async () => {
+    setChecking(true)
+
+    try {
+      setConnection(await checkWhatsappConnection())
+    } catch (err) {
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          'No se pudo verificar la conexión de WhatsApp.',
+      )
+    } finally {
+      setChecking(false)
     }
   }, [])
 
@@ -390,89 +427,208 @@ const AiAgentConfigPage = () => {
             />
 
             {/*
-              Cómo se conecta WhatsApp. Antes esto no estaba en ningún lado:
-              la URL del webhook, cuáles credenciales son obligatorias y por
-              qué, solo vivían en el código.
+              Los seis pasos, escritos para quien nunca abrió el panel de Meta.
+              Antes no había nada: ni la URL del webhook, ni qué campo sale de
+              dónde, ni qué pasa si falta uno. Todo eso vivía en el código.
             */}
             <Paper
               variant="outlined"
-              sx={{ p: 2, borderRadius: 2, bgcolor: 'action.hover' }}
+              sx={{ p: 2.5, borderRadius: 2, bgcolor: 'action.hover' }}
             >
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                Cómo conectar WhatsApp
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Conectar WhatsApp: se hace una sola vez
               </Typography>
 
               <Typography
                 variant="body2"
                 color="text.secondary"
-                sx={{ mb: 1.5 }}
+                sx={{ mt: 0.5, mb: 2 }}
               >
-                Hace falta una app de Meta con WhatsApp Business y un número
-                dedicado: no puede ser un número que ya esté en la app común de
-                WhatsApp.
+                Vas a necesitar un número de celular que <strong>no</strong>{' '}
+                esté usando WhatsApp (ni el común ni el Business) y una cuenta
+                de Facebook. Todo lo que sigue se hace en el sitio de Meta, y
+                después se pega en los campos de abajo.
               </Typography>
+
+              <Box component="ol" sx={{ pl: 2.5, m: 0, '& li': { mb: 1.25 } }}>
+                <li>
+                  <Typography variant="body2">
+                    Entrá a{' '}
+                    <Link
+                      href="https://developers.facebook.com/apps"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      developers.facebook.com/apps
+                    </Link>{' '}
+                    y creá una aplicación. Cuando pregunte de qué tipo, elegí{' '}
+                    <strong>Empresa</strong>.
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    Dentro de la aplicación agregá el producto{' '}
+                    <strong>WhatsApp</strong>. Meta va a pedirte asociar una
+                    cuenta de empresa: creala ahí mismo si no tenés.
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    En <strong>WhatsApp → Configuración de la API</strong> están
+                    el <strong>Phone Number ID</strong> y el{' '}
+                    <strong>Business Account ID</strong>. Copialos abajo. Ojo:
+                    es el identificador del número, no el número de teléfono.
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    En esa misma pantalla hay un <strong>Access Token</strong>{' '}
+                    temporal. Sirve para probar hoy, pero{' '}
+                    <strong>vence en 24 horas</strong>: para que no se corte,
+                    generá uno permanente en{' '}
+                    <em>Configuración del negocio → Usuarios del sistema</em>.
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    El <strong>App Secret</strong> está en{' '}
+                    <em>Configuración de la app → Básico</em>, botón "Mostrar".
+                    Sin este dato <strong>no entra ningún mensaje</strong>: es
+                    con lo que se comprueba que lo que llega viene de Meta y no
+                    de un tercero.
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Por último el webhook: en{' '}
+                    <em>WhatsApp → Configuración → Editar</em>, pegá estos dos
+                    valores y marcá la casilla <strong>messages</strong>.
+                  </Typography>
+
+                  <Stack spacing={1}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{ alignItems: 'center' }}
+                    >
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="URL de devolución de llamada"
+                        value={WEBHOOK_URL}
+                        InputProps={{ readOnly: true }}
+                        onFocus={event => event.target.select()}
+                      />
+                      <Tooltip title={copied === 'url' ? 'Copiada' : 'Copiar'}>
+                        <IconButton
+                          onClick={() => copyValue('url', WEBHOOK_URL)}
+                          color={copied === 'url' ? 'success' : 'default'}
+                          aria-label="Copiar la URL del webhook"
+                        >
+                          <CopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{ alignItems: 'center' }}
+                    >
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Token de verificación"
+                        value={
+                          connection?.verifyToken ||
+                          'Tocá "Probar la conexión" para generarlo'
+                        }
+                        InputProps={{ readOnly: true }}
+                        onFocus={event => event.target.select()}
+                      />
+                      <Tooltip
+                        title={copied === 'token' ? 'Copiado' : 'Copiar'}
+                      >
+                        <span>
+                          <IconButton
+                            disabled={!connection?.verifyToken}
+                            onClick={() =>
+                              copyValue('token', connection?.verifyToken)
+                            }
+                            color={copied === 'token' ? 'success' : 'default'}
+                            aria-label="Copiar el token de verificación"
+                          >
+                            <CopyIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                </li>
+              </Box>
+
+              <Divider sx={{ my: 2 }} />
 
               <Stack
-                direction="row"
-                spacing={1}
-                sx={{ alignItems: 'center', mb: 1.5 }}
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1.5}
+                sx={{ alignItems: { sm: 'center' } }}
               >
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="URL del webhook (pegala en Meta)"
-                  value={WEBHOOK_URL}
-                  InputProps={{ readOnly: true }}
-                  onFocus={event => event.target.select()}
-                />
-                <Tooltip title={webhookCopied ? 'Copiada' : 'Copiar'}>
-                  <IconButton
-                    onClick={copyWebhookUrl}
-                    color={webhookCopied ? 'success' : 'default'}
-                    aria-label="Copiar la URL del webhook"
-                  >
-                    <CopyIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                <Button
+                  variant="outlined"
+                  onClick={runConnectionCheck}
+                  disabled={checking}
+                  startIcon={
+                    checking ? (
+                      <CircularProgress size={16} color="inherit" />
+                    ) : (
+                      <WhatsAppIcon />
+                    )
+                  }
+                >
+                  {checking ? 'Revisando…' : 'Probar la conexión'}
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  Le pregunta a Meta si los datos sirven. No envía ningún
+                  mensaje.
+                </Typography>
               </Stack>
 
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                component="div"
-              >
-                En Meta, suscribí el webhook al campo <strong>messages</strong>.
-                Después:
-                <Box component="ul" sx={{ pl: 2.5, mt: 0.5, mb: 0 }}>
-                  <li>
-                    <strong>Phone Number ID</strong>: identifica a tu tienda en
-                    cada mensaje que entra. Sin esto no se sabe a qué comercio
-                    contestar.
-                  </li>
-                  <li>
-                    <strong>Access Token</strong>: permanente, de usuario de
-                    sistema. El temporal del panel de Meta vence a las 24 horas
-                    y los envíos empiezan a fallar.
-                  </li>
-                  <li>
-                    <strong>App Secret</strong>: obligatorio. Con él se valida
-                    la firma de cada webhook, y si falta{' '}
-                    <strong>no entra ningún mensaje</strong> — se descartan
-                    todos.
-                  </li>
-                </Box>
-              </Typography>
+              {connection?.checks && (
+                <Stack spacing={0.75} sx={{ mt: 2 }}>
+                  {CONNECTION_ITEMS.map(item => {
+                    const check = connection.checks[item.key] || {}
 
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ mt: 1.5 }}
-              >
-                Una vez conectado, podés responder con texto libre a quien te
-                escribió en las últimas 24 horas. Fuera de esa ventana, Meta
-                solo acepta plantillas aprobadas: la recuperación de carritos
-                necesita una cargada en la regla de campaña.
-              </Typography>
+                    return (
+                      <Stack
+                        key={item.key}
+                        direction="row"
+                        spacing={1}
+                        sx={{ alignItems: 'flex-start' }}
+                      >
+                        {check.ok ? (
+                          <CheckIcon color="success" fontSize="small" />
+                        ) : (
+                          <WarningIcon color="warning" fontSize="small" />
+                        )}
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {item.label}
+                          </Typography>
+                          {check.detail && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {check.detail}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Stack>
+                    )
+                  })}
+                </Stack>
+              )}
             </Paper>
 
             <Grid container spacing={2.5}>

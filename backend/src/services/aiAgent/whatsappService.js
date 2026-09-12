@@ -299,6 +299,158 @@ const extractMessageText = message => {
   return ''
 }
 
+/**
+ * Le pregunta a Meta si esta conexión sirve, y traduce la respuesta.
+ *
+ * POR QUÉ EXISTE
+ *
+ * Conectar WhatsApp exige cuatro datos que se sacan de tres pantallas
+ * distintas del panel de Meta. Quien los pega no tiene forma de saber si
+ * quedaron bien: el asistente simplemente no contesta, o los envíos fallan
+ * horas después. Y cada dato falla distinto — un token vencido no se parece
+ * en nada a un número mal copiado.
+ *
+ * Esto hace dos preguntas concretas a la API de Meta con lo que hay guardado y
+ * devuelve el diagnóstico campo por campo. No envía ningún mensaje.
+ */
+export const checkWhatsappConnection = async ({
+  phoneNumberId,
+  accessToken,
+  businessAccountId,
+  appSecret,
+} = {}) => {
+  const cleanPhoneNumberId = clean(phoneNumberId)
+  const cleanAccessToken = clean(accessToken)
+  const cleanBusinessAccountId = clean(businessAccountId)
+
+  const checks = {
+    phoneNumberId: { ok: false, detail: '' },
+    accessToken: { ok: false, detail: '' },
+    appSecret: { ok: Boolean(clean(appSecret)), detail: '' },
+    webhook: { ok: false, detail: '' },
+  }
+
+  if (!clean(appSecret)) {
+    checks.appSecret.detail =
+      'Falta el App Secret. Sin él se descarta todo lo que entra: el asistente no va a contestar ni un mensaje.'
+  }
+
+  if (!cleanPhoneNumberId) {
+    checks.phoneNumberId.detail = 'Falta el Phone Number ID.'
+  }
+
+  if (!cleanAccessToken) {
+    checks.accessToken.detail = 'Falta el Access Token.'
+  }
+
+  if (!cleanPhoneNumberId || !cleanAccessToken) {
+    return { connected: false, checks, number: null }
+  }
+
+  const timeoutMs = Math.min(
+    Math.max(toNumber(process.env.WHATSAPP_API_TIMEOUT_MS, 15000), 1000),
+    60000,
+  )
+
+  const ask = async path => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${GRAPH_API_VERSION}/${path}`,
+        {
+          headers: { Authorization: `Bearer ${cleanAccessToken}` },
+          signal: controller.signal,
+        },
+      )
+
+      return { status: response.status, data: await response.json().catch(() => null) }
+    } catch (error) {
+      return { status: 0, data: null, networkError: error?.message || 'sin respuesta' }
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  // 1) El número. Si el token no sirve, Meta responde acá y con su propio
+  //    código de error, que es más preciso que cualquier suposición nuestra.
+  const numberResponse = await ask(
+    `${encodeURIComponent(cleanPhoneNumberId)}?fields=display_phone_number,verified_name,quality_rating`,
+  )
+
+  const providerError = numberResponse.data?.error || null
+  const providerCode = Number(providerError?.code || 0)
+
+  if (numberResponse.networkError) {
+    checks.accessToken.detail = `No se pudo hablar con Meta: ${numberResponse.networkError}`
+    return { connected: false, checks, number: null }
+  }
+
+  if (numberResponse.status === 200) {
+    checks.accessToken.ok = true
+    checks.phoneNumberId.ok = true
+    checks.accessToken.detail = 'El token funciona.'
+    checks.phoneNumberId.detail = clean(numberResponse.data?.display_phone_number)
+      ? `Número ${numberResponse.data.display_phone_number} (${clean(numberResponse.data.verified_name) || 'sin nombre verificado'}).`
+      : 'El número responde.'
+  } else if (providerCode === 190) {
+    // 190 es el código de Meta para token inválido o vencido. Es EL error del
+    // token temporal, que dura 24 horas y después deja de andar sin avisar.
+    checks.accessToken.detail =
+      'El token no sirve o venció. Si copiaste el temporal del panel de Meta, dura 24 horas: hace falta uno permanente, de usuario de sistema.'
+  } else if (numberResponse.status === 404 || providerCode === 100) {
+    checks.accessToken.ok = true
+    checks.phoneNumberId.detail =
+      'Meta no encuentra ese Phone Number ID con este token. Revisá que sea el ID del número (no el número en sí) y que pertenezca a esta cuenta.'
+  } else {
+    checks.accessToken.detail =
+      clean(providerError?.message) || `Meta respondió ${numberResponse.status}.`
+  }
+
+  // 2) El webhook. Meta dice qué apps están suscriptas a esta cuenta de
+  //    WhatsApp: si la lista viene vacía, los mensajes entrantes no llegan a
+  //    ningún lado por más que el número y el token estén perfectos.
+  if (!cleanBusinessAccountId) {
+    checks.webhook.detail =
+      'Cargá el Business Account ID para poder verificar el webhook desde acá.'
+  } else if (checks.accessToken.ok) {
+    const subscribed = await ask(
+      `${encodeURIComponent(cleanBusinessAccountId)}/subscribed_apps`,
+    )
+
+    const apps = Array.isArray(subscribed.data?.data) ? subscribed.data.data : []
+
+    if (subscribed.status === 200 && apps.length > 0) {
+      checks.webhook.ok = true
+      checks.webhook.detail = 'La app está suscripta: los mensajes entrantes llegan.'
+    } else if (subscribed.status === 200) {
+      checks.webhook.detail =
+        'No hay ninguna app suscripta a esta cuenta de WhatsApp: los mensajes que te escriban no van a llegar. Falta configurar el webhook en Meta.'
+    } else {
+      checks.webhook.detail =
+        clean(subscribed.data?.error?.message) ||
+        `No se pudo consultar la suscripción (Meta respondió ${subscribed.status}).`
+    }
+  }
+
+  const connected =
+    checks.phoneNumberId.ok && checks.accessToken.ok && checks.appSecret.ok
+
+  return {
+    connected,
+    checks,
+    number:
+      numberResponse.status === 200
+        ? {
+          displayPhoneNumber: clean(numberResponse.data?.display_phone_number),
+          verifiedName: clean(numberResponse.data?.verified_name),
+          qualityRating: clean(numberResponse.data?.quality_rating),
+        }
+        : null,
+  }
+}
+
 export const extractWhatsappMessages = body => {
   const messages = []
 
