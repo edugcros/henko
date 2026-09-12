@@ -45,6 +45,29 @@ const PERIOD_OPTIONS = [
   { value: 'all', label: 'Todo el tiempo' },
 ]
 
+// Por qué una recuperación no llegó a enviarse. Los códigos los escribe el
+// worker en metadata.cancelledReason / metadata.lastError.
+const RECOVERY_REASONS = {
+  missing_marketing_consent:
+    'El cliente no dio consentimiento para recibir mensajes y no escribió en las últimas 24 h.',
+  customer_opted_out: 'El cliente pidió no recibir más mensajes.',
+  contact_too_recent: 'Se le escribió hace muy poco; la regla exige esperar.',
+  daily_contact_limit_reached: 'Llegó al tope de contactos en 24 h.',
+  missing_whatsapp_credentials:
+    'Falta el token de acceso de WhatsApp en la configuración del asistente.',
+  whatsapp_template_required:
+    'Pasaron 24 h desde el último mensaje del cliente: Meta solo acepta una plantilla aprobada.',
+  missing_checkout_url: 'No se pudo armar el link al checkout.',
+  tenant_not_active: 'La tienda no está activa.',
+  missing_contact_data: 'Falta el dato de contacto del cliente.',
+}
+
+const recoveryReason = item => {
+  const code = item?.metadata?.cancelledReason || item?.metadata?.lastError
+  if (!code) return ''
+  return RECOVERY_REASONS[code] || code
+}
+
 const RECOVERY_STATUS_META = {
   pending: { label: 'Pendiente', color: 'default' },
   scheduled: { label: 'Programado', color: 'info' },
@@ -515,6 +538,22 @@ const AiAgentDashboardPage = () => {
                     </TableCell>
                     <TableCell>
                       <Chip size="small" label={statusMeta.label} color={statusMeta.color} />
+                      {/*
+                        El porqué, al lado del estado. Una recuperación
+                        cancelada o fallida se veía solo como una etiqueta gris:
+                        el motivo estaba guardado en el documento y no lo
+                        mostraba nadie, así que la pantalla no explicaba por qué
+                        no se le escribió a ese cliente.
+                      */}
+                      {recoveryReason(item) && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: 'block', mt: 0.5 }}
+                        >
+                          {recoveryReason(item)}
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell align="center">{item.attempts ?? 0}</TableCell>
                     <TableCell>
