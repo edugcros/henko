@@ -266,7 +266,11 @@ const getSalesStats = async (tenantId, dateRange) => {
           ...matchStage,
           createdAt: {
             $gte: new Date(dateRange.start.getTime() - (dateRange.end - dateRange.start)),
-            $lte: dateRange.start,
+            // $lt, no $lte: el período actual arranca en dateRange.start con
+            // $gte, así que una orden en ese instante exacto se contaba en los
+            // dos y el crecimiento se comparaba contra sí mismo. El de órdenes
+            // ya estaba bien; este quedó distinto.
+            $lt: dateRange.start,
           },
         },
       },
