@@ -10,7 +10,7 @@
 // así que quedaron reetiquetados como autolímites — solo sirven para gastar
 // menos que el plan. Ver backend/docs/AI_COST_CONTAINMENT.md.
 //
-// Secretos de WhatsApp (accessToken, appSecret, verifyToken): el backend
+// Secretos de WhatsApp (accessToken, appSecret): el backend
 // NUNCA los devuelve (son select:false). Por eso los campos arrancan vacíos
 // y solo se envían si el admin escribe uno nuevo — enviar '' los borraría.
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
@@ -29,18 +29,27 @@ import {
   Paper,
   Snackbar,
   Stack,
+  IconButton,
   Switch,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import {
+  ContentCopy as CopyIcon,
   Insights as InsightsIcon,
   Save as SaveIcon,
   SmartToy as SmartToyIcon,
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material'
+import { env } from '../config/env.js'
 import { getAiAgentConfig, updateAiAgentConfig } from '../services/aiAgentConfigService.js'
 import AiBudgetPanel from '../components/aiBudget/AiBudgetPanel.jsx'
+
+// La URL que hay que pegar en Meta. Sale de la misma base con la que el panel
+// le habla al backend, así que no puede quedar desactualizada respecto del
+// deploy que estás mirando.
+const WEBHOOK_URL = `${String(env.apiBaseUrl || '').replace(/\/+$/, '')}/whatsapp/webhook`
 
 const TONE_OPTIONS = [
   { value: 'friendly', label: 'Cercano' },
@@ -79,7 +88,6 @@ const toForm = agent => {
     // Secretos: siempre vacíos (el backend no los envía).
     accessToken: '',
     appSecret: '',
-    verifyToken: '',
 
     tone: a.personality?.tone || 'friendly',
     language: a.personality?.language || 'es-AR',
@@ -125,7 +133,6 @@ const toPayload = form => {
   }
   if (clean(form.accessToken)) whatsapp.accessToken = clean(form.accessToken)
   if (clean(form.appSecret)) whatsapp.appSecret = clean(form.appSecret)
-  if (clean(form.verifyToken)) whatsapp.verifyToken = clean(form.verifyToken)
 
   return {
     name: clean(form.name),
@@ -253,6 +260,19 @@ const AiAgentConfigPage = () => {
     }
   }, [form])
 
+  const [webhookCopied, setWebhookCopied] = useState(false)
+
+  const copyWebhookUrl = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(WEBHOOK_URL)
+      setWebhookCopied(true)
+      window.setTimeout(() => setWebhookCopied(false), 2000)
+    } catch {
+      // Sin permiso de portapapeles el campo igual se puede seleccionar y
+      // copiar a mano: no vale la pena molestar con un error por esto.
+    }
+  }, [])
+
   const whatsappSecretHelp = useMemo(
     () => (form?.phoneNumberId ? 'Dejá en blanco para no cambiar el valor guardado.' : ''),
     [form?.phoneNumberId],
@@ -369,6 +389,92 @@ const AiAgentConfigPage = () => {
               label="WhatsApp"
             />
 
+            {/*
+              Cómo se conecta WhatsApp. Antes esto no estaba en ningún lado:
+              la URL del webhook, cuáles credenciales son obligatorias y por
+              qué, solo vivían en el código.
+            */}
+            <Paper
+              variant="outlined"
+              sx={{ p: 2, borderRadius: 2, bgcolor: 'action.hover' }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                Cómo conectar WhatsApp
+              </Typography>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mb: 1.5 }}
+              >
+                Hace falta una app de Meta con WhatsApp Business y un número
+                dedicado: no puede ser un número que ya esté en la app común de
+                WhatsApp.
+              </Typography>
+
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ alignItems: 'center', mb: 1.5 }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="URL del webhook (pegala en Meta)"
+                  value={WEBHOOK_URL}
+                  InputProps={{ readOnly: true }}
+                  onFocus={event => event.target.select()}
+                />
+                <Tooltip title={webhookCopied ? 'Copiada' : 'Copiar'}>
+                  <IconButton
+                    onClick={copyWebhookUrl}
+                    color={webhookCopied ? 'success' : 'default'}
+                    aria-label="Copiar la URL del webhook"
+                  >
+                    <CopyIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                component="div"
+              >
+                En Meta, suscribí el webhook al campo <strong>messages</strong>.
+                Después:
+                <Box component="ul" sx={{ pl: 2.5, mt: 0.5, mb: 0 }}>
+                  <li>
+                    <strong>Phone Number ID</strong>: identifica a tu tienda en
+                    cada mensaje que entra. Sin esto no se sabe a qué comercio
+                    contestar.
+                  </li>
+                  <li>
+                    <strong>Access Token</strong>: permanente, de usuario de
+                    sistema. El temporal del panel de Meta vence a las 24 horas
+                    y los envíos empiezan a fallar.
+                  </li>
+                  <li>
+                    <strong>App Secret</strong>: obligatorio. Con él se valida
+                    la firma de cada webhook, y si falta{' '}
+                    <strong>no entra ningún mensaje</strong> — se descartan
+                    todos.
+                  </li>
+                </Box>
+              </Typography>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1.5 }}
+              >
+                Una vez conectado, podés responder con texto libre a quien te
+                escribió en las últimas 24 horas. Fuera de esa ventana, Meta
+                solo acepta plantillas aprobadas: la recuperación de carritos
+                necesita una cargada en la regla de campaña.
+              </Typography>
+            </Paper>
+
             <Grid container spacing={2.5}>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
@@ -407,18 +513,6 @@ const AiAgentConfigPage = () => {
                   label="App Secret"
                   value={form.appSecret}
                   onChange={e => setField('appSecret', e.target.value)}
-                  placeholder="••••••••"
-                  helperText={whatsappSecretHelp}
-                  autoComplete="new-password"
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  fullWidth
-                  type="password"
-                  label="Verify Token"
-                  value={form.verifyToken}
-                  onChange={e => setField('verifyToken', e.target.value)}
                   placeholder="••••••••"
                   helperText={whatsappSecretHelp}
                   autoComplete="new-password"

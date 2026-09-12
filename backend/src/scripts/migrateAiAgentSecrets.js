@@ -8,7 +8,6 @@ import { encryptSecret } from '../services/aiAgent/secretCryptoService.js'
 const SECRET_PATHS = [
   'channels.whatsapp.accessToken',
   'channels.whatsapp.appSecret',
-  'channels.whatsapp.verifyToken',
 ]
 
 const isEncrypted = value => String(value || '').startsWith('v1.')
@@ -29,7 +28,6 @@ const run = async () => {
           tenantId: 1,
           'channels.whatsapp.accessToken': 1,
           'channels.whatsapp.appSecret': 1,
-          'channels.whatsapp.verifyToken': 1,
         },
       },
     )

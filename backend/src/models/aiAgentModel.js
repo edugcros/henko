@@ -53,13 +53,11 @@ const aiAgentSchema = new Schema(
           set: value => (value ? encryptSecret(value) : ''),
           get: value => (value ? decryptSecret(value) : ''),
         },
-        verifyToken: {
-          type: String,
-          default: '',
-          select: false,
-          set: value => (value ? encryptSecret(value) : ''),
-          get: value => (value ? decryptSecret(value) : ''),
-        },
+        // Acá había un `verifyToken` por comercio. No lo leía nadie: la
+        // verificación del webhook compara contra WHATSAPP_VERIFY_TOKEN, una
+        // variable del servidor, y así tiene que ser — hay UNA sola URL de
+        // webhook para toda la plataforma, y Meta la verifica contra un único
+        // valor. El campo pedía un secreto por comercio que nunca se usaba.
       },
       webchat: {
         enabled: { type: Boolean, default: true },

@@ -105,7 +105,6 @@ const buildAgentConfigUpdate = body => {
       'webchatUrl',
       'accessToken',
       'appSecret',
-      'verifyToken',
     ]) {
       if (
         whatsapp[field] !== undefined &&

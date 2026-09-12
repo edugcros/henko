@@ -7,7 +7,9 @@ import AiInsight from '../models/aiInsightModel.js'
 import AiLearningSuggestion from '../models/aiLearningSuggestionModel.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
-import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
+import { MongoMemoryServer } from 'mongodb-memory-server'
+import mongoose from 'mongoose'
+
 import { authHeaders, createTestTenant, createTestUser } from './testSetup.js'
 
 describe('AI agent route security', () => {
@@ -63,10 +65,17 @@ describe('AI agent route security', () => {
 describe('colas de revisión · primero lo urgente', () => {
   let tenantContext
   let adminSession
+  let mongod
 
   beforeAll(async () => {
-    await connectTestDB()
-    await resetCollections(AiInsight, AiLearningSuggestion, User, Tenant)
+    // Servidor propio en memoria, no la base de pruebas compartida.
+    //
+    // Con la compartida estos dos tests fallaban de vez en cuando: las filas
+    // se insertan en el beforeAll y otra suite puede dropear la base entre
+    // medio. Un test que falla una de cada tres corridas no dice nada sobre el
+    // código, y enseña a ignorar el rojo.
+    mongod = await MongoMemoryServer.create()
+    await mongoose.connect(mongod.getUri())
 
     tenantContext = await createTestTenant()
     adminSession = await createTestUser({
@@ -95,7 +104,8 @@ describe('colas de revisión · primero lo urgente', () => {
   })
 
   afterAll(async () => {
-    await disconnectTestDB()
+    await mongoose.disconnect()
+    await mongod?.stop()
   })
 
   test('Diagnóstico devuelve primero la prioridad alta', async () => {
