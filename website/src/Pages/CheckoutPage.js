@@ -43,7 +43,6 @@ import {
 import { useDispatch, useSelector } from 'react-redux'
 import { Link, useNavigate } from 'react-router-dom'
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
-import ReactGA from 'react-ga4'
 import { trackMetaEvent } from '@utils/metaPixel'
 
 import { applyCoupon, resetCouponState } from '@features/coupon/couponSlice'
@@ -1134,19 +1133,6 @@ const CheckoutPage = () => {
 
       setActiveStep(3)
       scrollToTop()
-
-      ReactGA.event('purchase', {
-        transaction_id: getPaymentDisplayId(normalizedReduxPayment),
-        value: toNumber(confirmationSnapshot.totals.total, 0),
-        currency: 'ARS',
-        coupon: confirmationSnapshot.coupon?.code || null,
-        items: confirmationSnapshot.items.map(item => ({
-          item_id: item.productId,
-          item_name: item.title,
-          price: item.unitPrice,
-          quantity: item.quantity,
-        })),
-      })
 
       // event_id compartido con el Purchase que manda el backend por
       // Conversions API (mismo order._id) — así Meta deduplica un solo

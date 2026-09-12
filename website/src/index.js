@@ -1,7 +1,6 @@
 // 📁 website/src/index.js - VERSIÓN CORREGIDA
 
 import React, { StrictMode, useEffect, useState } from 'react'
-import ReactGA from 'react-ga4'
 import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
@@ -19,7 +18,6 @@ const AppInitializer = () => {
 
   useEffect(() => {
     const initializeApp = async () => {
-      ReactGA.initialize('G-XXXXXXXXXX')
       setApiStore(store)
 
       const isThemePreviewRoute = window.location.pathname === '/theme-preview'

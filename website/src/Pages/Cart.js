@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback, memo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
-import ReactGA from 'react-ga4'
 import { getCart, addOrUpdateCartItem, removeCartItem, emptyCart } from '@features/cart/cartSlice'
 import { trackMetaEvent } from '@utils/metaPixel'
 import {
@@ -511,22 +510,6 @@ const Cart = () => {
     }
   }, [cartItems, quantities])
 
-  const trackViewCart = useCallback(items => {
-    if (items.length > 0 && typeof ReactGA !== 'undefined') {
-      ReactGA.event('view_cart', {
-        currency: CURRENCY,
-        value: items.reduce((acc, item) => acc + item.price * item.quantity, 0),
-        items: items.map(item => ({
-          item_id: getItemProductId(item),
-          item_name: item.title,
-          item_variant: getVariantLabel(item) || undefined,
-          price: item.price,
-          quantity: item.quantity,
-        })),
-      })
-    }
-  }, [])
-
   useEffect(() => {
     let isMounted = true
 
@@ -541,8 +524,6 @@ const Cart = () => {
           : Array.isArray(action)
             ? action
             : []
-
-        trackViewCart(data)
 
         const qts = {}
         data.forEach(item => {
@@ -567,7 +548,7 @@ const Cart = () => {
     return () => {
       isMounted = false
     }
-  }, [dispatch, trackViewCart])
+  }, [dispatch])
 
   useEffect(() => {
     if (cartItems.length === 0) {
@@ -684,22 +665,6 @@ const Cart = () => {
       setUpdatingItems(prev => new Set(prev).add(lineId))
 
       try {
-        if (typeof ReactGA !== 'undefined') {
-          ReactGA.event('remove_from_cart', {
-            currency: CURRENCY,
-            value: item.price * item.quantity,
-            items: [
-              {
-                item_id: productId,
-                item_name: item.title,
-                item_variant: getVariantLabel(item) || undefined,
-                price: item.price,
-                quantity: item.quantity,
-              },
-            ],
-          })
-        }
-
         await dispatch(
           removeCartItem({
             productId,
@@ -767,23 +732,6 @@ const Cart = () => {
         itemId: null,
       })
       return
-    }
-
-    if (typeof ReactGA !== 'undefined') {
-      ReactGA.event('begin_checkout', {
-        currency: CURRENCY,
-        value: totalAmount,
-        items: cartItems.map(item => {
-          const lineId = getItemLineId(item)
-          return {
-            item_id: getItemProductId(item),
-            item_name: item.title,
-            item_variant: getVariantLabel(item) || undefined,
-            price: item.price,
-            quantity: quantities[lineId] ?? item.quantity,
-          }
-        }),
-      })
     }
 
     trackMetaEvent('InitiateCheckout', {

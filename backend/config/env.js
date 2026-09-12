@@ -381,16 +381,6 @@ export const env = {
     ),
   },
 
-  // Google Analytics Server
-  googleAnalytics: {
-    propertyId: process.env.GA_PROPERTY_ID,
-    projectId: process.env.GA_PROJECT_ID,
-    clientEmail: process.env.GA_CLIENT_EMAIL,
-    privateKey: process.env.GA_PRIVATE_KEY
-      ? process.env.GA_PRIVATE_KEY.replace(/\\n/g, '\n')
-      : undefined,
-  },
-
   metrics: {
     abandonedCartMinutes: optionalNumber('METRICS_ABANDONED_CART_MINUTES', 60),
     lowStockThreshold: optionalNumber('METRICS_LOW_STOCK_THRESHOLD', 5),
@@ -408,10 +398,6 @@ export const env = {
     trafficSourcesLimit: optionalNumber('METRICS_TRAFFIC_SOURCES_LIMIT', 10),
     eventBatchMax: optionalNumber('METRICS_EVENT_BATCH_MAX', 50),
     internalPeriodDays: optionalNumber('METRICS_INTERNAL_PERIOD_DAYS', 30),
-    ga4ProductPerformanceLimit: optionalNumber(
-      'METRICS_GA4_PRODUCT_PERFORMANCE_LIMIT',
-      10,
-    ),
     realtimeWindowMinutes: optionalNumber('METRICS_REALTIME_WINDOW_MINUTES', 5),
   },
 

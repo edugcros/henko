@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import PropTypes from 'prop-types'
 import ReactStars from 'react-stars'
-import ReactGA from 'react-ga4'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
@@ -210,7 +209,7 @@ const stopCardEvent = event => {
  * - vista rápida
  * - carrito rápido opcional
  * - promociones
- * - ReactGA add_to_cart
+ * - add_to_cart en las métricas propias y en Meta Pixel
  * - accesibilidad por teclado
  *
  * Compatible con props antiguas:
@@ -347,21 +346,6 @@ const HomeProductCard = React.memo(
       product => {
         try {
           const finalPrice = Number(product?.finalPrice ?? product?.price) || 0
-
-          ReactGA.event('add_to_cart', {
-            currency: commerceSettings.currency,
-            value: finalPrice,
-            items: [
-              {
-                item_id: product?._id || product?.id,
-                item_name: getProductTitle(product),
-                item_brand: getProductBrand(product),
-                item_category: getProductCategory(product),
-                price: finalPrice,
-                quantity: 1,
-              },
-            ],
-          })
 
           trackMetaEvent('AddToCart', {
             currency: commerceSettings.currency,

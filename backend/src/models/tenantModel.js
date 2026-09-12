@@ -344,51 +344,6 @@ const tenantSchema = new Schema(
     },
 
     integrations: {
-      ga4: {
-        measurementId: {
-          type: String,
-          default: null,
-          trim: true,
-        },
-
-        propertyId: {
-          type: String,
-          default: null,
-          trim: true,
-        },
-
-        apiSecret: {
-          type: String,
-          default: null,
-          select: false,
-          set: value => (value ? encryptSecret(value) : value),
-          get: value => (value ? decryptSecret(value) : value),
-        },
-
-        serviceAccountKey: {
-          type: String,
-          default: null,
-          select: false,
-          set: value => (value ? encryptSecret(value) : value),
-          get: value => (value ? decryptSecret(value) : value),
-        },
-
-        isEnabled: {
-          type: Boolean,
-          default: false,
-        },
-
-        connectedAt: {
-          type: Date,
-          default: null,
-        },
-
-        updatedAt: {
-          type: Date,
-          default: null,
-        },
-      },
-
       meta: {
         pixelId: {
           type: String,

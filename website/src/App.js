@@ -2,7 +2,6 @@
 
 import React, { useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
-import ReactGA from 'react-ga4'
 
 import {
   publicRoutes,
@@ -44,11 +43,6 @@ const App = () => {
   }
 
   useEffect(() => {
-    ReactGA.send({
-      hitType: 'pageview',
-      page: location.pathname + location.search,
-      title: document.title,
-    })
     trackMetaEvent('PageView')
   }, [location])
 

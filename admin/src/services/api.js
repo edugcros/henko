@@ -70,19 +70,19 @@ export const userAPI = {
 // Analytics API
 // ============================================================================
 
+// Las métricas del panel salen de /dash/stats y nada más.
+//
+// Había cuatro métodos más acá. Tres apuntaban a rutas que no existen en el
+// backend —/analytics/config, /analytics/realtime y /analytics/track: no hay
+// router montado en /analytics— así que cualquiera devolvía 404; el cuarto
+// (getStatus) pedía el tablero entero para leer un measurementId que esa
+// respuesta nunca trajo. Los usaba la pantalla de configuración de GA4, que se
+// quitó junto con la integración.
 export const analyticsAPI = {
-  getStatus: () => api.get('/dash/stats'),
-
-  configure: data => api.post('/analytics/config', data),
-
   getDashboard: params =>
     api.get('/dash/stats', {
       params,
     }),
-
-  getRealtime: () => api.get('/analytics/realtime'),
-
-  trackEvent: data => api.post('/analytics/track', data),
 }
 
 // ============================================================================

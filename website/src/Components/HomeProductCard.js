@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import PropTypes from 'prop-types'
 import ReactStars from 'react-stars'
-import ReactGA from 'react-ga4'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
@@ -201,7 +200,7 @@ const hasProductVariants = item =>
  * - Tracking de impresiones y clicks
  * - Favoritos, comparación, vista rápida
  * - Carrito rápido con descuentos y promociones
- * - Analytics con ReactGA
+ * - Métricas propias (trackUserMetric) y Meta Pixel
  * - Accesibilidad completa (teclado, ARIA)
  * - Compatible con props antiguas: data={product} o item={product}
  *
@@ -371,21 +370,6 @@ const HomeProductCard = React.memo(
       product => {
         try {
           const finalPrice = Number(product?.finalPrice ?? product?.price) || 0
-
-          ReactGA.event('add_to_cart', {
-            currency: commerceSettings.currency,
-            value: finalPrice,
-            items: [
-              {
-                item_id: product?._id || product?.id,
-                item_name: getProductTitle(product),
-                item_brand: getProductBrand(product),
-                item_category: getProductCategory(product),
-                price: finalPrice,
-                quantity: 1,
-              },
-            ],
-          })
 
           trackMetaEvent('AddToCart', {
             currency: commerceSettings.currency,

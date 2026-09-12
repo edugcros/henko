@@ -11,7 +11,6 @@ import UserMetricEvent, { USER_METRIC_EVENTS } from '../models/userMetricEventMo
 import { Money } from '../utils/money.js'
 import mongoose from 'mongoose'
 import { env } from '../../config/env.js'
-import logger from '../../config/logger.js'
 import {
   getCartRecoveryRevenue,
   getAiInfluencedSalesStats,
@@ -36,22 +35,9 @@ const metricsConfig = {
   latestAbandonedCartsLimit: 10,
   abandonedCartProductPreviewLimit: 3,
   realtimeWindowMinutes: 5,
-  ga4ProductPerformanceLimit: 10,
   ...(env?.metrics || {}),
 }
 
-const loadGA4ReportingService = async () => {
-  try {
-    const module = await import('./analytics/ga4Reporting.service.js')
-    return module.GA4ReportingService || module.default || null
-  } catch (error) {
-    if (error?.code !== 'ERR_MODULE_NOT_FOUND') {
-      throw error
-    }
-
-    return null
-  }
-}
 
 // ============================================================================
 // 1. MÉTRICAS PRINCIPALES DEL DASHBOARD (KPIs)
@@ -699,194 +685,23 @@ export const getSalesChartDataInternal = async (tenantId, days = metricsConfig.i
 }
 
 // ============================================================================
-// 7. GOOGLE ANALYTICS 4 - INTEGRACIÓN
+// 7. HELPERS Y UTILIDADES
 // ============================================================================
+//
+// Acá vivía la integración con Google Analytics 4: getGA4ReportingStats, que
+// leía los reportes de GA4 y los cruzaba contra las métricas propias, y
+// getInternalMarketingStats, que solo existía para alimentar esa comparación.
+//
+// Se fueron enteras porque la integración no estaba conectada por ningún lado:
+// a getGA4ReportingStats no la llamaba nadie (el linter lo venía avisando), el
+// panel tenía una pestaña "Configuración GA4" cuyo formulario posteaba a una
+// ruta inexistente, y la tienda inicializaba ReactGA con el placeholder
+// 'G-XXXXXXXXXX', así que ningún evento llegó nunca a Google.
+//
+// Las métricas del panel son propias y salen de UserMetricEvent y de las
+// órdenes: eso es lo que se muestra y lo que se mantiene. Si algún día hace
+// falta GA4, se hace completo y andando en vez de dejar el esqueleto puesto.
 
-/**
- * Obtiene estadísticas unificadas de marketing (GA4 + datos propios)
- * Usado en adminController.getDashboardData
- */
-
-/**
- * Obtiene estadísticas completas de GA4 Reporting API
- */
-const getGA4ReportingStats = async (tenant, ga4) => {
-  try {
-    const GA4ReportingService = await loadGA4ReportingService()
-
-    if (!GA4ReportingService) {
-      const internalStats = await getInternalMarketingStats(tenant._id)
-
-      return {
-        analytics: {
-          configured: true,
-          measurementId: ga4.measurementId,
-          hasReportingAccess: false,
-          message: 'GA4 Reporting no está instalado. Se muestran métricas internas.',
-        },
-        status: 'partially_configured',
-        internal: internalStats,
-      }
-    }
-
-    const service = new GA4ReportingService(
-      ga4.serviceAccountKey,
-      ga4.propertyId,
-    )
-
-    // Período configurado para métricas internas.
-    const endDate = new Date().toISOString().split('T')[0]
-    const ga4PeriodMs = metricsConfig.internalPeriodDays * 24 * 60 * 60 * 1000
-    const startDate = new Date(Date.now() - ga4PeriodMs)
-      .toISOString().split('T')[0]
-
-    // Obtener datos en paralelo
-    const [metrics, funnel, products, sources, realtime] = await Promise.all([
-      service.getDashboardMetrics(startDate, endDate).catch(() => null),
-      service.getEcommerceFunnel(startDate, endDate).catch(() => null),
-      service.getProductPerformance(
-        startDate,
-        endDate,
-        metricsConfig.ga4ProductPerformanceLimit,
-      ).catch(() => null),
-      service.getTrafficSources(startDate, endDate).catch(() => null),
-      service.getRealtimeMetrics().catch(() => null),
-    ])
-
-    // Calcular métricas de conversión internas vs GA4
-    const internalStats = await getInternalMarketingStats(tenant._id)
-
-    return {
-      analytics: {
-        configured: true,
-        measurementId: ga4.measurementId,
-        hasReportingAccess: true,
-        period: { startDate, endDate },
-        summary: metrics ? {
-          sessions: parseInt(metrics.totals?.sessions || 0),
-          users: parseInt(metrics.totals?.totalUsers || 0),
-          newUsers: parseInt(metrics.totals?.newUsers || 0),
-          pageViews: parseInt(metrics.totals?.screenPageViews || 0),
-          avgSessionDuration: parseFloat(metrics.totals?.averageSessionDuration || 0),
-          bounceRate: parseFloat(metrics.totals?.bounceRate || 0),
-          conversions: parseInt(metrics.totals?.conversions || 0),
-          ga4Revenue: parseFloat(metrics.totals?.eventValue || 0),
-        } : null,
-        dailyTrend: metrics?.data || [],
-        ecommerceFunnel: funnel,
-        products: products || { topSelling: [], topViewed: [] },
-        trafficSources: sources?.data?.map(s => ({
-          channel: s.sessionDefaultChannelGroup,
-          sessions: parseInt(s.sessions || 0),
-          users: parseInt(s.totalUsers || 0),
-          conversions: parseInt(s.conversions || 0),
-          revenue: parseFloat(s.eventValue || 0),
-        })) || [],
-        realtime: realtime || null,
-      },
-      status: 'connected',
-      internal: internalStats,
-      comparison: metrics ? {
-        // Comparar revenue interno vs GA4 (diferencia por refunds, etc.)
-        internalRevenue: internalStats.revenue,
-        ga4Revenue: parseFloat(metrics.totals?.eventValue || 0),
-        discrepancy: internalStats.revenue - parseFloat(metrics.totals?.eventValue || 0),
-      } : null,
-    }
-
-  } catch (error) {
-    logger.error('[GA4 Reporting Stats Error]', {
-      message: error?.message || 'Error desconocido',
-    })
-    throw error
-  }
-}
-
-/**
- * Estadísticas de marketing internas (sin GA4)
- */
-const getInternalMarketingStats = async tenantId => {
-  const internalPeriodMs = metricsConfig.internalPeriodDays * 24 * 60 * 60 * 1000
-  const periodStart = new Date(Date.now() - internalPeriodMs)
-
-  const dateRange = {
-    start: periodStart,
-    end: new Date(),
-  }
-
-  const [orders, activeCarts, abandonedCarts, topProducts, topVisitedProducts] = await Promise.all([
-    // Órdenes completadas
-    Order.aggregate([
-      {
-        $match: {
-          tenantId: new mongoose.Types.ObjectId(tenantId),
-          paymentStatus: { $in: PAID_PAYMENT_STATUSES },
-          orderStatus: { $in: ACTIVE_ORDER_STATUSES },
-          createdAt: { $gte: periodStart },
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          count: { $sum: 1 },
-          revenue: { $sum: '$paymentIntent.amountCents' },
-          avgOrderValue: { $avg: '$paymentIntent.amountCents' },
-        },
-      },
-    ]),
-
-    getActiveCartStats(tenantId, dateRange),
-    getAbandonedCartStats(tenantId, dateRange),
-
-    // Top productos vendidos
-    Order.aggregate([
-      {
-        $match: {
-          tenantId: new mongoose.Types.ObjectId(tenantId),
-          paymentStatus: { $in: PAID_PAYMENT_STATUSES },
-          orderStatus: { $in: ACTIVE_ORDER_STATUSES },
-          createdAt: { $gte: periodStart },
-        },
-      },
-      { $unwind: '$products' },
-      {
-        $group: {
-          _id: '$products.product',
-          name: { $first: '$products.titleSnapshot' },
-          quantity: { $sum: '$products.count' },
-          revenue: { $sum: '$products.subtotalCents' },
-        },
-      },
-      { $sort: { revenue: -1 } },
-      { $limit: metricsConfig.topProductsLimit },
-    ]),
-
-    getTopVisitedProducts(tenantId, dateRange, metricsConfig.topProductsLimit),
-  ])
-
-  const orderStats = orders[0] || { count: 0, revenue: 0, avgOrderValue: 0 }
-
-  return {
-    orders: orderStats.count,
-    revenue: Money.toDecimal(orderStats.revenue),
-    averageOrderValue: Money.toDecimal(orderStats.avgOrderValue || 0),
-    activeCarts: activeCarts.count,
-    activeCartValue: activeCarts.value,
-    abandonedCarts: abandonedCarts.count,
-    conversionRate: calculateRate(orderStats.count, abandonedCarts.count + orderStats.count),
-    topVisitedProducts,
-    topProducts: topProducts.map(p => ({
-      productId: p._id,
-      name: p.name,
-      quantity: p.quantity,
-      revenue: Money.toDecimal(p.revenue),
-    })),
-  }
-}
-
-// ============================================================================
-// 8. HELPERS Y UTILIDADES
-// ============================================================================
 
 /**
  * Calcula rango de fechas según timeframe

@@ -7,8 +7,6 @@ import { encryptSecret } from '../services/aiAgent/secretCryptoService.js'
 
 const SECRET_PATHS = [
   'integrations.mercadopago.accessToken',
-  'integrations.ga4.apiSecret',
-  'integrations.ga4.serviceAccountKey',
   'integrations.meta.accessToken',
 ]
 
@@ -29,8 +27,6 @@ const run = async () => {
         projection: {
           slug: 1,
           'integrations.mercadopago.accessToken': 1,
-          'integrations.ga4.apiSecret': 1,
-          'integrations.ga4.serviceAccountKey': 1,
           'integrations.meta.accessToken': 1,
         },
       },
