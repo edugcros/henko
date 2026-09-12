@@ -350,6 +350,14 @@ const SubscriptionManagementPage = () => {
   const tieneSuscripcionEnMercadoPago = Boolean(
     subscription.mercadoPago?.subscriptionId,
   )
+  // El próximo cobro sale del proveedor. currentPeriodEnd es el respaldo:
+  // en una suscripción que cobra al inicio de cada período, el período vigente
+  // termina justo cuando llega el cobro siguiente.
+  const nextPaymentAt =
+    subscription.mercadoPago?.nextBillingAt ||
+    subscription.mercadoPago?.currentPeriodEnd ||
+    null
+
   const trialEndsIn = subscription.trialEndsAt
     ? Math.ceil(
         (new Date(subscription.trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24),
@@ -454,9 +462,18 @@ const SubscriptionManagementPage = () => {
             <Col xs={24} sm={12} md={6}>
               <Flex direction="vertical" gap={4}>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  Próximo pago
+                  {nextPaymentAt ? 'Próximo pago' : 'Fin de la prueba'}
                 </Text>
-                <Text strong>{formatDate(subscription.trialEndsAt)}</Text>
+                {/*
+                  Decía "Próximo pago" y mostraba trialEndsAt: el fin del
+                  período de prueba, que en un comercio que ya paga es una
+                  fecha vieja y no tiene nada que ver con el próximo cobro.
+                  El dato correcto lo informa Mercado Pago y el endpoint ya lo
+                  devolvía dentro de mercadoPago; solo que nadie lo leía.
+                */}
+                <Text strong>
+                  {formatDate(nextPaymentAt || subscription.trialEndsAt)}
+                </Text>
               </Flex>
             </Col>
           </Row>

@@ -156,3 +156,31 @@ describe("Mi suscripción · el precio lo sirve el backend", () => {
     expect(await screen.findByText(/\$\s?52\.000/)).toBeInTheDocument();
   });
 });
+
+// ─── La fecha del próximo cobro ──────────────────────────────────────────────
+//
+// La tarjeta decía "Próximo pago" y mostraba trialEndsAt: el fin del período
+// de prueba. En un comercio que ya paga eso es una fecha vieja que no tiene
+// nada que ver con el próximo cobro, y el dato bueno venía en la respuesta sin
+// que nadie lo leyera.
+
+describe("Mi suscripción · próximo cobro", () => {
+  test("muestra la fecha que informa Mercado Pago, no el fin de la prueba", async () => {
+    await montar({
+      subscriptionId: "mp-1",
+      status: "authorized",
+      nextBillingAt: "2026-10-15T10:00:00.000Z",
+    });
+
+    expect(await screen.findByText(/Próximo pago/i)).toBeInTheDocument();
+    // formatDate usa mes en palabras (es-AR).
+    expect(screen.getByText(/15 de octubre de 2026/i)).toBeInTheDocument();
+  });
+
+  test("sin suscripción, la tarjeta dice de qué fecha habla", async () => {
+    await montar(null);
+
+    expect(screen.queryByText(/Próximo pago/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Fin de la prueba/i)).toBeInTheDocument();
+  });
+});
