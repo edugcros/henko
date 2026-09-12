@@ -775,6 +775,24 @@ const productSchema = new Schema(
       trim: true,
       maxlength: 5000,
     },
+
+    /**
+     * La ficha ampliada: estructura, materialidad, terminación.
+     *
+     * El alta tiene un textarea de siete filas llamado "Descripción técnica
+     * precisa" y la tienda la muestra en su propia pestaña. Faltaba el pedazo
+     * del medio: no estaba declarada, así que se descartaba al guardar.
+     *
+     * Se salvaba de casualidad cuando la escribía la IA, porque el storefront
+     * la busca de rebote dentro de aiOriginalOutput —el JSON crudo del análisis,
+     * que sí se guarda—. Lo que escribía una persona a mano no volvía nunca.
+     */
+    technicalDescription: {
+      type: String,
+      trim: true,
+      maxlength: 5000,
+      default: '',
+    },
     tags: {
       type: [String],
       default: [],

@@ -122,6 +122,7 @@ describe('product controller', () => {
         seoContentAngle: 'Destacar autonomía y confort',
         seoFaq: ['¿Qué motor tiene?', '¿Para qué uso sirve?'],
         seoContentPillars: ['motocicleta', 'adventure', 'ruta'],
+        descripcionTecnica: 'Motor bicilíndrico, chasis de acero, tablero digital.',
       })
 
     expect(res.statusCode).toBe(201)
@@ -139,6 +140,11 @@ describe('product controller', () => {
     expect(guardado.seo.faq).toEqual(['¿Qué motor tiene?', '¿Para qué uso sirve?'])
     expect(guardado.seo.contentPillars).toEqual(['motocicleta', 'adventure', 'ruta'])
 
+    // La ficha técnica que escribe una persona: la tienda la muestra en su
+    // propia pestaña y hasta ahora solo sobrevivía si la había escrito la IA,
+    // de rebote, dentro del JSON crudo del análisis.
+    expect(guardado.technicalDescription).toContain('Motor bicilíndrico')
+
     // Y editar el producto desde una pantalla que NO muestra estos campos no
     // puede borrarlos.
     const editado = await request(app)
@@ -155,6 +161,7 @@ describe('product controller', () => {
     expect(editado.body.data.seo.metaTitle).toBe('Otro título para buscadores')
     expect(editado.body.data.seo.focusKeyword).toBe('motocicleta adventure')
     expect(editado.body.data.seo.faq).toHaveLength(2)
+    expect(editado.body.data.technicalDescription).toContain('Motor bicilíndrico')
   })
 
   test('deletes a product as tenant admin', async () => {

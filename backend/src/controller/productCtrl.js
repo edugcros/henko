@@ -1056,6 +1056,13 @@ const findVariantIndex = (variants = [], variantId) => {
 const sanitizeCreateProductInput = body => ({
   title: normalizeText(body.title, ''),
   description: normalizeText(body.description, ''),
+  // El panel manda las dos formas del mismo campo: `descripcionTecnica` es el
+  // nombre del formulario y `technicalDescription` el del payload de la IA.
+  technicalDescription: truncateText(
+    body.descripcionTecnica || body.technicalDescription,
+    5000,
+    '',
+  ),
   marca: normalizeText(body.marca, ''),
   categoria: normalizeText(body.categoria, ''),
   subcategoria: normalizeText(body.subcategoria, ''),
@@ -1082,6 +1089,14 @@ const sanitizeUpdateProductInput = body => {
 
   if (body.title !== undefined) updates.title = normalizeOptionalText(body.title)
   if (body.description !== undefined) updates.description = normalizeOptionalText(body.description)
+  // Solo si viene: una pantalla que no la muestra no puede borrarla.
+  if (body.descripcionTecnica !== undefined || body.technicalDescription !== undefined) {
+    updates.technicalDescription = truncateText(
+      body.descripcionTecnica ?? body.technicalDescription,
+      5000,
+      '',
+    )
+  }
   if (body.marca !== undefined) updates.marca = normalizeOptionalText(body.marca)
   if (body.categoria !== undefined) updates.categoria = normalizeOptionalText(body.categoria)
   if (body.subcategoria !== undefined) updates.subcategoria = normalizeOptionalText(body.subcategoria)
