@@ -488,12 +488,24 @@ const AiCampaignRulesPage = () => {
               </Grid>
               <Grid size={{ xs: 6, sm: 4 }}>
                 <TextField
-                  label="Monto mín. carrito (centavos)"
+                  // Se pedía en CENTAVOS. Quien administra la tienda piensa en
+                  // pesos: escribir "5000" queriendo decir cinco mil dejaba la
+                  // regla disparando desde los cincuenta, o sea en la práctica
+                  // para cualquier carrito. El campo se guarda igual —el
+                  // backend y el modelo siguen en centavos— pero se pide y se
+                  // muestra en pesos.
+                  label="Monto mín. carrito ($)"
                   type="number"
                   fullWidth
-                  value={formData.trigger.minCartAmountCents}
-                  onChange={e => setField('trigger.minCartAmountCents', Number(e.target.value))}
+                  value={Math.round((formData.trigger.minCartAmountCents || 0) / 100)}
+                  onChange={e =>
+                    setField(
+                      'trigger.minCartAmountCents',
+                      Math.max(0, Math.round(Number(e.target.value) * 100)),
+                    )
+                  }
                   inputProps={{ min: 0 }}
+                  helperText="0 = sin mínimo"
                 />
               </Grid>
               <Grid size={{ xs: 6, sm: 4 }}>

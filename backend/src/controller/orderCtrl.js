@@ -1460,7 +1460,7 @@ export const getAllOrders = expressAsyncHandler(async (req, res) => {
       money: Money,
     })
 
-    const [orders, total] = await Promise.all([
+    const [orders, total, summaryRows] = await Promise.all([
       Order.find(query)
         .sort({ [sorting.field]: sorting.direction === 'asc' ? 1 : -1 })
         .skip(skip)
@@ -1469,7 +1469,69 @@ export const getAllOrders = expressAsyncHandler(async (req, res) => {
         .setOptions({ tenantId }),
 
       Order.countDocuments(query).setOptions({ tenantId }),
+
+      // El resumen se calcula sobre TODO lo filtrado, no sobre la página.
+      //
+      // El panel lo armaba sumando las órdenes que tenía cargadas —diez— y lo
+      // mostraba al lado del total real: "250 pedidos • $12.340 en ventas",
+      // donde los 250 eran todos y los $12.340 solo la página que estabas
+      // mirando. Los contadores por estado tenían el mismo problema, y los tres
+      // números cambiaban al pasar de página.
+      //
+      // El importe por orden replica el de enrichOrderForResponse: lo que cobró
+      // el pago si existe y, si no, subtotal de los productos menos descuento.
+      Order.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: '$orderStatus',
+            count: { $sum: 1 },
+            totalCents: {
+              $sum: {
+                $cond: [
+                  { $gt: [{ $ifNull: ['$paymentIntent.amountCents', 0] }, 0] },
+                  '$paymentIntent.amountCents',
+                  {
+                    $max: [
+                      0,
+                      {
+                        $subtract: [
+                          {
+                            $reduce: {
+                              input: { $ifNull: ['$products', []] },
+                              initialValue: 0,
+                              in: {
+                                $add: [
+                                  '$$value',
+                                  { $ifNull: ['$$this.subtotalCents', 0] },
+                                ],
+                              },
+                            },
+                          },
+                          { $ifNull: ['$paymentIntent.discountAmountCents', 0] },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ]).option({ tenantId }),
     ])
+
+    const summary = summaryRows.reduce(
+      (acc, row) => {
+        acc.totalCents += row.totalCents || 0
+        acc.count += row.count || 0
+        // Por estado CRUDO: la traducción a los estados que muestra el panel
+        // vive en el panel, y duplicarla acá sería tener dos verdades.
+        acc.byStatus[row._id || 'unknown'] = row.count || 0
+        return acc
+      },
+      { totalCents: 0, count: 0, byStatus: {} },
+    )
 
     return res.status(200).json({
       success: true,
@@ -1482,6 +1544,10 @@ export const getAllOrders = expressAsyncHandler(async (req, res) => {
         page,
         pages: Math.ceil(total / limit),
         limit,
+      },
+      summary: {
+        ...summary,
+        total: Money.toDecimal(summary.totalCents),
       },
       meta: {
         filters,

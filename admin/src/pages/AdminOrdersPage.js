@@ -1508,6 +1508,12 @@ const AdminOrdersPage = () => {
     limit: CONFIG.DEFAULT_PAGE_SIZE,
   }
 
+  // El resumen lo calcula el backend sobre TODO lo filtrado. Acá se sumaban las
+  // órdenes cargadas —diez— y el resultado se mostraba al lado del total real:
+  // "250 pedidos • $12.340 en ventas", con los $12.340 correspondiendo solo a
+  // la página que estabas mirando. Y cambiaban al pasar de página.
+  const summary = responseData?.summary || null
+
   const [expandedOrder, setExpandedOrder] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -1911,22 +1917,34 @@ const AdminOrdersPage = () => {
   const stats = useMemo(() => {
     const total = pagination.total
 
-    const open = orders.filter(
-      order => normalizeOrderStatusForUI(order.orderStatus) === ORDER_STATUSES.OPEN,
-    ).length
+    // El backend agrupa por estado CRUDO y la traducción a los tres estados que
+    // muestra esta pantalla vive acá, que es donde está definida.
+    const countByUiStatus = uiStatus => {
+      if (summary?.byStatus) {
+        return Object.entries(summary.byStatus).reduce(
+          (sum, [rawStatus, count]) =>
+            normalizeOrderStatusForUI(rawStatus) === uiStatus ? sum + count : sum,
+          0,
+        )
+      }
 
-    const processing = orders.filter(
-      order => normalizeOrderStatusForUI(order.orderStatus) === ORDER_STATUSES.PROCESSING,
-    ).length
+      return orders.filter(
+        order => normalizeOrderStatusForUI(order.orderStatus) === uiStatus,
+      ).length
+    }
 
-    const delivered = orders.filter(
-      order => normalizeOrderStatusForUI(order.orderStatus) === ORDER_STATUSES.DELIVERED,
-    ).length
+    const totalRevenue = summary
+      ? normalizeValue(summary.total)
+      : orders.reduce((sum, order) => sum + normalizeValue(order.totals?.total), 0)
 
-    const totalRevenue = orders.reduce((sum, order) => sum + normalizeValue(order.totals?.total), 0)
-
-    return { total, open, processing, delivered, totalRevenue }
-  }, [orders, pagination.total])
+    return {
+      total,
+      open: countByUiStatus(ORDER_STATUSES.OPEN),
+      processing: countByUiStatus(ORDER_STATUSES.PROCESSING),
+      delivered: countByUiStatus(ORDER_STATUSES.DELIVERED),
+      totalRevenue,
+    }
+  }, [orders, pagination.total, summary])
 
   const confirmDialogTitle = useMemo(() => {
     if (

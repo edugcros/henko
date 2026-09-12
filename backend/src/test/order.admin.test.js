@@ -56,7 +56,27 @@ describe('orders - admin routes', () => {
         quantity: 1,
       })
 
-    const orderRes = await request(app)
+    const orderRes = await createTestOrder()
+
+    orderId = orderRes.body.data._id
+  })
+
+  // Carga el carrito y confirma la orden, que es como nacen las órdenes reales.
+  async function createTestOrder() {
+    await request(app)
+      .post('/api/user/cart')
+      .set(authHeaders({
+        token: buyerSession.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: buyerSession.csrfToken,
+        csrfCookie: buyerSession.csrfCookie,
+      }))
+      .send({
+        productId: product._id,
+        quantity: 1,
+      })
+
+    return request(app)
       .post('/api/order/create')
       .set(authHeaders({
         token: buyerSession.token,
@@ -77,9 +97,7 @@ describe('orders - admin routes', () => {
           country: 'AR',
         },
       })
-
-    orderId = orderRes.body.data._id
-  })
+  }
 
   afterAll(async () => {
     await disconnectTestDB()
@@ -96,6 +114,43 @@ describe('orders - admin routes', () => {
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
     expect(res.body.data.length).toBeGreaterThan(0)
+  })
+
+  test('el resumen abarca TODO lo filtrado, no la página que se está viendo', async () => {
+    // La cabecera del panel mostraba el total de pedidos al lado de un importe
+    // sumado solo sobre las órdenes cargadas: "250 pedidos • $12.340 en
+    // ventas", donde los $12.340 eran los de esa página. Cambiaban al pasar de
+    // página, y los contadores por estado también.
+    //
+    // Se piden 1 por página teniendo más de una orden: si el resumen se armara
+    // con lo devuelto, daría el importe de una sola.
+    await createTestOrder()
+
+    const res = await request(app)
+      .get('/api/order/getAll?limit=1')
+      .set(authHeaders({
+        token: adminSession.token,
+        domain: tenantContext.adminDomain,
+      }))
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.data).toHaveLength(1)
+    expect(res.body.pagination.total).toBeGreaterThan(1)
+
+    const sumaDeLaPagina = res.body.data.reduce(
+      (sum, order) => sum + Number(order.totals?.total || 0),
+      0,
+    )
+
+    expect(res.body.summary.count).toBe(res.body.pagination.total)
+    expect(res.body.summary.total).toBeGreaterThan(sumaDeLaPagina)
+
+    // Los contadores por estado también salen del total, no de la página.
+    const contados = Object.values(res.body.summary.byStatus).reduce(
+      (sum, count) => sum + count,
+      0,
+    )
+    expect(contados).toBe(res.body.pagination.total)
   })
 
   test('updates fulfillment status from the admin domain', async () => {

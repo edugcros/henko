@@ -1,83 +1,24 @@
 // 📁 src/services/api.js
-import api from '@utils/axiosConfig'
-import { env } from '../config/env.js'
-
-// ============================================================================
-// Config pública
-// ============================================================================
-
-export const API_BASE_URL = env.apiBaseUrl
-
-// ============================================================================
-// Runtime guard
-// ============================================================================
-
-if (!API_BASE_URL) {
-  throw new Error('REACT_APP_API_BASE_URL no está configurado en admin')
-}
-
-// ============================================================================
-// Store bridge opcional
-// ============================================================================
-
-let _store = null
-
-export const setApiStore = store => {
-  _store = store
-}
-
-export const getApiStore = () => _store
-
-// ============================================================================
-// Auth API
-// ============================================================================
-
-export const userAPI = {
-  login: credentials =>
-    api.post('/user/login', credentials, {
-      skipCsrf: true,
-    }),
-
-  adminLogin: credentials =>
-    api.post('/user/admin-login', credentials, {
-      skipCsrf: true,
-    }),
-
-  registerAdmin: data =>
-    api.post('/user/register-admin', data, {
-      skipCsrf: true,
-    }),
-
-  getProfile: () => api.get('/user/profile'),
-
-  getMe: () => api.get('/user/me'),
-
-  refresh: () =>
-    api.post(
-      '/user/refresh',
-      {},
-      {
-        withCredentials: true,
-        skipAuthRefresh: true,
-        skipCsrfRetry: true,
-      },
-    ),
-
-  logout: () => api.post('/user/logout'),
-}
-
-// ============================================================================
-// Analytics API
-// ============================================================================
-
-// Las métricas del panel salen de /dash/stats y nada más.
 //
-// Había cuatro métodos más acá. Tres apuntaban a rutas que no existen en el
-// backend —/analytics/config, /analytics/realtime y /analytics/track: no hay
-// router montado en /analytics— así que cualquiera devolvía 404; el cuarto
-// (getStatus) pedía el tablero entero para leer un measurementId que esa
-// respuesta nunca trajo. Los usaba la pantalla de configuración de GA4, que se
-// quitó junto con la integración.
+// Las métricas del tablero. Nada más.
+//
+// QUÉ HABÍA ACÁ
+//
+// Cinco "APIs" agrupadas por tema —userAPI, tenantAPI, productAPI, orderAPI y
+// analyticsAPI— más un objeto por defecto con alias "para compatibilidad con
+// código viejo". De todo eso, el panel importaba exactamente una función:
+// analyticsAPI.getDashboard, desde Dashboard.js. El resto no lo llamaba nadie:
+// el login vive en el slice de usuario, los productos en productSlice, las
+// órdenes en orderSlice.
+//
+// No era código muerto inofensivo. Tres de esas rutas NO EXISTEN en el backend
+// —GET /user/profile, GET /tenants/current y GET /order/:id— así que cualquiera
+// que hubiera "reusado" el helper se habría comido un 404 con un nombre de
+// función que prometía lo contrario. Y el setApiStore de este archivo duplicaba
+// en nombre al de utils/axiosConfig, que es el que el arranque usa de verdad.
+
+import api from '@utils/axiosConfig'
+
 export const analyticsAPI = {
   getDashboard: params =>
     api.get('/dash/stats', {
@@ -85,69 +26,4 @@ export const analyticsAPI = {
     }),
 }
 
-// ============================================================================
-// Tenant API
-// ============================================================================
-
-export const tenantAPI = {
-  resolve: params =>
-    api.get('/tenants/resolve', {
-      params,
-      skipAuthRefresh: true,
-      skipCsrfRetry: true,
-    }),
-
-  getCurrent: () => api.get('/tenants/current'),
-}
-
-// ============================================================================
-// Products API
-// ============================================================================
-
-export const productAPI = {
-  getAll: params => api.get('/product', { params }),
-
-  getById: id => api.get(`/product/${id}`),
-
-  create: data => api.post('/product', data),
-
-  update: (id, data) => api.put(`/product/${id}`, data),
-
-  delete: id => api.delete(`/product/${id}`),
-}
-
-// ============================================================================
-// Orders API
-// ============================================================================
-
-export const orderAPI = {
-  getAll: params => api.get('/order/getAll', { params }),
-
-  getById: id => api.get(`/order/${id}`),
-
-  updateStatus: (id, status) => api.put(`/order/${id}/status`, { status }),
-
-  delete: id => api.delete(`/order/${id}`),
-}
-
-// ============================================================================
-// Export principal
-// ============================================================================
-
-const apiService = {
-  user: userAPI,
-  analytics: analyticsAPI,
-  tenant: tenantAPI,
-  product: productAPI,
-  order: orderAPI,
-
-  // Compatibilidad con código viejo
-  login: userAPI.login,
-  adminLogin: userAPI.adminLogin,
-  registerAdmin: userAPI.registerAdmin,
-  getMe: userAPI.getMe,
-  logout: userAPI.logout,
-  refresh: userAPI.refresh,
-}
-
-export default apiService
+export default { analytics: analyticsAPI }
