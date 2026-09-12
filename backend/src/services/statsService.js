@@ -162,13 +162,28 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
       metaRevenue: (userBehaviorStats.sources || [])
         .filter(source => source.channel !== 'direct')
         .reduce((sum, source) => sum + (source.revenue || 0), 0),
+      // OJO CON LAS UNIDADES: estas tres cifras vienen de dos lugares que
+      // guardan la plata distinto, y la conversión estaba puesta en el lugar
+      // equivocado.
+      //
+      //   - La recuperación de carritos suma cartSnapshot.subtotalCents, que
+      //     son CENTAVOS: se convierte, y el nombre del campo lo dice.
+      //   - aiInfluencedRevenue y totalGeneratedValue suman UserMetricEvent.value,
+      //     que se escribe ya en PESOS (commerceEventService hace el
+      //     Money.toDecimal al registrar la compra). Convertirlos de nuevo los
+      //     dividía por cien: una venta de $150.000 influenciada por IA se
+      //     mostraba como $1.500, y el "Valor total generado por HENKO" —la
+      //     tarjeta grande del panel— con el mismo error.
+      //
+      // Hoy los tres dan 0 en producción, así que el error no se ve. Se veía el
+      // día que entrara la primera venta con campaña o con IA.
       recoveredRevenue: Money.toDecimal(cartRecoveryRevenue.recoveredRevenueCents || 0),
-      aiInfluencedRevenue: Money.toDecimal(aiInfluencedSales.aiInfluencedRevenue || 0),
+      aiInfluencedRevenue: aiInfluencedSales.aiInfluencedRevenue || 0,
       // No es metaRevenue + recoveredRevenue + aiInfluencedRevenue — esas tres
       // pueden solaparse (una orden puede cumplir más de una condición a la
       // vez). Este número cuenta cada orden una sola vez, ver
       // aiAgentRevenueInsightsService.js::getTotalGeneratedValue.
-      totalGeneratedValue: Money.toDecimal(totalGeneratedValueStats.totalGeneratedValue || 0),
+      totalGeneratedValue: totalGeneratedValueStats.totalGeneratedValue || 0,
       conversionRate,
       productClickThroughRate: calculateRate(userBehaviorStats.productClicks, userBehaviorStats.productImpressions),
       productViewRate: calculateRate(userBehaviorStats.productViewSessions, userBehaviorStats.sessions),
@@ -1752,6 +1767,19 @@ const getUserBehaviorStats = async (tenantId, dateRange) => {
   const matchStage = {
     tenantId: tenantObjectId,
     occurredAt: { $gte: dateRange.start, $lte: dateRange.end },
+    // ESTO MIDE LA TIENDA, NO EL PANEL.
+    //
+    // El panel de administración también escribe UserMetricEvent —cada login
+    // del dueño es uno— y acá no había filtro. En producción eso ya se ve: 39
+    // de los 46 "logins" del último mes son entradas al panel, y la sesión del
+    // dueño se cuenta como una sesión de la tienda, que es el divisor de la
+    // conversión y de la mitad de las tasas de este bloque.
+    //
+    // Se excluye 'admin' por nombre en vez de listar los permitidos: si mañana
+    // aparece una fuente nueva del lado del comprador (otro canal de chat, una
+    // app), tiene que entrar sola. La que no puede entrar sola es la del
+    // negocio mirándose a sí mismo.
+    source: { $ne: 'admin' },
   }
 
   const [
@@ -1770,6 +1798,17 @@ const getUserBehaviorStats = async (tenantId, dateRange) => {
         $group: {
           _id: '$eventType',
           count: { $sum: 1 },
+          // Una compra deja DOS eventos: el del navegador (source storefront) y
+          // el que escribe el backend al aprobar el pago (source system). Para
+          // todo lo demás contar los dos está bien —son interacciones— pero una
+          // venta no ocurrió dos veces. El embudo del panel mostraba 6 compras
+          // sobre 3 órdenes pagadas, con la tarjeta de al lado diciendo 3.
+          //
+          // El evento server-side es el que tiene una emisión por venta, y es
+          // el mismo criterio que ya usaba el rollup de ingresos por fuente.
+          systemCount: {
+            $sum: { $cond: [{ $eq: ['$source', 'system'] }, 1, 0] },
+          },
         },
       },
     ]),
@@ -1999,6 +2038,12 @@ const getUserBehaviorStats = async (tenantId, dateRange) => {
     return acc
   }, {})
 
+  // Compras contadas una sola vez por venta (ver el $group de arriba).
+  const systemCounterMap = counters.reduce((acc, item) => {
+    acc[item._id] = item.systemCount || 0
+    return acc
+  }, {})
+
   const sessionEventMap = funnelRows.reduce((acc, item) => {
     acc[item.eventType] = item.sessions
     return acc
@@ -2031,7 +2076,7 @@ const getUserBehaviorStats = async (tenantId, dateRange) => {
     paymentAttempts: counterMap[USER_METRIC_EVENTS.PAYMENT_ATTEMPT] || 0,
     paymentApproved: counterMap[USER_METRIC_EVENTS.PAYMENT_APPROVED] || 0,
     paymentRejected: counterMap[USER_METRIC_EVENTS.PAYMENT_REJECTED] || 0,
-    purchases: counterMap[USER_METRIC_EVENTS.PURCHASE] || 0,
+    purchases: systemCounterMap[USER_METRIC_EVENTS.PURCHASE] || 0,
     productImpressionSessions: sessionEventMap[USER_METRIC_EVENTS.PRODUCT_IMPRESSION] || 0,
     productClickSessions: sessionEventMap[USER_METRIC_EVENTS.PRODUCT_CLICK] || 0,
     productViewSessions: sessionEventMap[USER_METRIC_EVENTS.PRODUCT_VIEW] || 0,

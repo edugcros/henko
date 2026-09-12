@@ -249,3 +249,125 @@ describe("métricas · referencias de otro comercio", () => {
     });
   });
 });
+
+// ─── Lo que el tablero cuenta como actividad de la tienda ────────────────────
+//
+// Dos números del dashboard salían mal de acá, y ninguno se ve leyendo el
+// código de a una función: hay que mirar qué hay guardado.
+//
+//  1. El panel de administración también escribe UserMetricEvent —cada login
+//     del dueño es uno—, y el bloque de comportamiento no filtraba por fuente.
+//     En producción eran 39 de 46 "logins", más la sesión del dueño contada
+//     como sesión de la tienda: el divisor de la conversión.
+//
+//  2. Una venta deja DOS eventos purchase, el del navegador y el del backend.
+//     El embudo mostraba 6 compras sobre 3 órdenes pagadas.
+
+describe("métricas · actividad de la tienda vs. del panel", () => {
+  const TENANT_STATS = new mongoose.Types.ObjectId();
+
+  let getDashboardStats;
+
+  const guardarEventos = async eventos => {
+    const ahora = new Date();
+
+    await UserMetricEvent.collection.insertMany(
+      eventos.map((e, i) => ({
+        tenantId: TENANT_STATS,
+        eventType: e.eventType,
+        source: e.source,
+        sessionId: e.sessionId,
+        occurredAt: ahora,
+        createdAt: ahora,
+        // En PESOS, como lo escribe commerceEventService al registrar una
+        // compra: hace Money.toDecimal(amountCents) antes de guardar.
+        value: e.value || 0,
+        attribution: e.attribution || {},
+        metadata: e.metadata || {},
+        path: "/",
+        eventIndex: i,
+      })),
+    );
+  };
+
+  beforeAll(async () => {
+    ({ getDashboardStats } = await import("../services/statsService.js"));
+  });
+
+  afterEach(async () => {
+    await UserMetricEvent.collection.deleteMany({ tenantId: TENANT_STATS });
+  });
+
+  test("los eventos del panel no cuentan como actividad de la tienda", async () => {
+    await guardarEventos([
+      { eventType: "login", source: "admin", sessionId: "sesion-del-duenio" },
+      { eventType: "login", source: "admin", sessionId: "sesion-del-duenio" },
+      { eventType: "login", source: "storefront", sessionId: "sesion-de-un-cliente" },
+      { eventType: "page_view", source: "storefront", sessionId: "sesion-de-un-cliente" },
+    ]);
+
+    const { summary } = await getDashboardStats(String(TENANT_STATS), "30d");
+
+    // Antes: 3 logins y 2 sesiones. El dueño entrando a su propio panel movía
+    // la conversión de su tienda.
+    expect(summary.logins).toBe(1);
+    expect(summary.sessions).toBe(1);
+  });
+
+  test("una venta es una compra, aunque deje dos eventos", async () => {
+    await guardarEventos([
+      { eventType: "purchase", source: "storefront", sessionId: "sesion-de-un-cliente", value: 1000 },
+      { eventType: "purchase", source: "system", sessionId: "sesion-de-un-cliente", value: 1000 },
+    ]);
+
+    const { summary } = await getDashboardStats(String(TENANT_STATS), "30d");
+
+    // El evento server-side es el único con una emisión por venta.
+    expect(summary.purchaseEvents).toBe(1);
+  });
+});
+
+// ─── Unidades: pesos y centavos no son lo mismo ──────────────────────────────
+//
+// El valor de UserMetricEvent se guarda en PESOS. statsService le aplicaba
+// Money.toDecimal —que convierte de centavos— a dos de las cifras del bloque
+// "Valor generado por HENKO", así que las dividía por cien.
+
+describe("métricas · el valor generado se informa en pesos", () => {
+  const TENANT_PESOS = new mongoose.Types.ObjectId();
+
+  let getDashboardStats;
+
+  beforeAll(async () => {
+    ({ getDashboardStats } = await import("../services/statsService.js"));
+  });
+
+  afterEach(async () => {
+    await UserMetricEvent.collection.deleteMany({ tenantId: TENANT_PESOS });
+  });
+
+  test("una venta de $150.000 influenciada por IA no se muestra como $1.500", async () => {
+    const ahora = new Date();
+
+    await UserMetricEvent.collection.insertMany([
+      {
+        tenantId: TENANT_PESOS,
+        eventType: "purchase",
+        source: "system",
+        sessionId: "sesion-de-la-venta",
+        occurredAt: ahora,
+        createdAt: ahora,
+        value: 150000,
+        attribution: { utmCampaign: "primavera" },
+        metadata: { aiInfluenced: true },
+        path: "/",
+      },
+    ]);
+
+    const { summary } = await getDashboardStats(String(TENANT_PESOS), "30d");
+
+    expect(summary.aiInfluencedRevenue).toBe(150000);
+    // Misma venta, contada una sola vez: es la tarjeta grande del panel.
+    expect(summary.totalGeneratedValue).toBe(150000);
+  });
+});

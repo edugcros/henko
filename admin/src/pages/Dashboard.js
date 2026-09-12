@@ -606,9 +606,17 @@ const buildFunnelChartData = (
       description: 'Intentos de pago registrados.',
     },
     {
+      // Órdenes pagadas, la MISMA cifra que la tarjeta "Órdenes pagadas" de
+      // arriba. Acá se leía userBehavior.purchases, que cuenta eventos: cada
+      // venta deja uno del navegador y otro del backend, así que el último
+      // escalón del embudo mostraba el doble de compras que órdenes hubo —6
+      // contra 3 en producción— y una conversión de pago del 200%.
+      //
+      // El conteo de eventos quedó como respaldo por si el resumen no trae
+      // órdenes, no como preferencia.
       name: 'Compra',
-      value: toNumber(userBehavior.purchases ?? getPaidOrders(summary)),
-      description: 'Compras aprobadas.',
+      value: toNumber(summary.paidOrders ?? summary.orders ?? userBehavior.purchases),
+      description: 'Órdenes pagadas en el período.',
     },
   ]
 
@@ -1230,9 +1238,13 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 value={
                   subscriptionLoading ? (
                     <Skeleton width={80} />
-                  ) : subscriptionMetrics.lastPaymentAt ? (
+                  ) : subscriptionMetrics.nextBillingAt ? (
+                    // Mostraba lastPaymentAt: el título prometía una fecha
+                    // futura y el número era la del último cobro. El próximo
+                    // cobro lo informa Mercado Pago y el backend lo guarda; lo
+                    // que faltaba era servirlo y leerlo.
                     new Date(
-                      subscriptionMetrics.lastPaymentAt,
+                      subscriptionMetrics.nextBillingAt,
                     ).toLocaleDateString('es-AR')
                   ) : (
                     'No disponible'

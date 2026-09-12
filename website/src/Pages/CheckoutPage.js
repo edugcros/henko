@@ -595,6 +595,7 @@ const CheckoutPage = () => {
   const { themeConfig } = useTenant()
   const purchaseTrackedRef = useRef(false)
   const gaPurchaseTrackedRef = useRef(false)
+  const checkoutStartTrackedRef = useRef(false)
 
   const [activeStep, setActiveStep] = useState(0)
   const [availableCoupons, setAvailableCoupons] = useState([])
@@ -950,6 +951,41 @@ const CheckoutPage = () => {
       setMpInitError('No se pudo inicializar Mercado Pago.')
     }
   }, [themeConfig?.paymentMethods?.mercadopago])
+
+  // ======================================================
+  // INICIO DE CHECKOUT
+  // ======================================================
+  //
+  // Nadie emitía checkout_start. La pantalla registra tres checkout_step —al
+  // enviar el envío, al crear la orden y al quedar el pago pendiente— pero el
+  // paso de ENTRAR al checkout no existía, así que el embudo del panel tenía
+  // ese escalón en cero por construcción: mostraba "Carrito 2 → Checkout 0 →
+  // Pago 3", con la tasa de inicio de checkout clavada en 0% pasara lo que
+  // pasara. Un número que no puede subir no es una métrica.
+  //
+  // Se emite una sola vez por visita a la pantalla, en cuanto hay carrito: es
+  // lo que significa begin_checkout, y es el evento que el backend ya sabía
+  // contar (USER_METRIC_EVENTS.CHECKOUT_START).
+
+  useEffect(() => {
+    if (checkoutStartTrackedRef.current) return
+    if (cartItems.length === 0) return
+
+    checkoutStartTrackedRef.current = true
+
+    trackUserMetric({
+      eventType: USER_METRIC_EVENTS.CHECKOUT_START,
+      value: toNumber(total, 0),
+      currency: METRIC_CURRENCY,
+      quantity: itemCount,
+      items: buildMetricItems(cartItems),
+      commerce: {
+        cartValue: toNumber(subtotal, 0),
+        orderValue: toNumber(total, 0),
+        itemsCount: itemCount,
+      },
+    })
+  }, [cartItems, itemCount, subtotal, total])
 
   // ======================================================
   // DETECTAR CUPONES DISPONIBLES

@@ -27,6 +27,7 @@ process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString(
 let mongod;
 let Tenant;
 let readProviderBillingDates;
+let getSubscriptionSummary;
 
 const crearTenant = (nombre, extra = {}) =>
   Tenant.create({ name: nombre, slug: `${nombre.toLowerCase()}-${Date.now()}`, ...extra });
@@ -38,6 +39,9 @@ beforeAll(async () => {
   Tenant = (await import("../models/tenantModel.js")).default;
   ({ readProviderBillingDates } = await import(
     "../services/subscriptionPaymentService.js"
+  ));
+  ({ getSubscriptionSummary } = await import(
+    "../services/subscriptionMetricsService.js"
   ));
 }, 60_000);
 
@@ -169,5 +173,106 @@ describe("suscripción · las fechas salen del proveedor", () => {
     const ciclo = readProviderBillingDates({ next_payment_date: "no es una fecha" });
 
     expect(ciclo.nextBillingAt).toBeNull();
+  });
+});
+
+// ─── Lo que el panel muestra de la suscripción ───────────
+//
+// Las tres tarjetas de "Estado de suscripción" del dashboard salen de acá, y
+// dos mentían: el ingreso recurrente venía de una tabla de precios en DÓLARES
+// escrita en el servicio (26,14 y 99) que el panel formateaba con signo pesos,
+// y "Próximo pago" mostraba la fecha del ÚLTIMO cobro.
+
+describe("resumen de suscripción · lo que ve el panel", () => {
+  const originales = {};
+
+  const setEnv = (name, value) => {
+    if (!(name in originales)) originales[name] = process.env[name];
+    process.env[name] = value;
+  };
+
+  afterEach(() => {
+    for (const [name, value] of Object.entries(originales)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+      delete originales[name];
+    }
+  });
+
+  test("el ingreso recurrente es el precio vigente del plan, en pesos", async () => {
+    setEnv("PLAN_PRICE_ARS_STARTER", "40000");
+
+    const tenant = await crearTenant("ComercioPago", {
+      plan: "starter",
+      subscriptionStatus: "active",
+    });
+
+    const resumen = await getSubscriptionSummary(tenant._id);
+
+    // 26.14 era el valor viejo: el precio en dólares de una lista que ya no
+    // existe. Si alguien vuelve a escribir un número en el servicio, este test
+    // lo agarra.
+    expect(resumen.mrr).toBe(40000);
+    expect(resumen.currency).toBe("ARS");
+  });
+
+  test("sin cobro activo no hay ingreso recurrente", async () => {
+    setEnv("PLAN_PRICE_ARS_STARTER", "40000");
+
+    const tenant = await crearTenant("ComercioBaja", {
+      plan: "starter",
+      subscriptionStatus: "cancelled",
+    });
+
+    const resumen = await getSubscriptionSummary(tenant._id);
+
+    expect(resumen.mrr).toBe(0);
+    // El plan se conserva al dar de baja: lo que cambia es el estado.
+    expect(resumen.currentPlan).toBe("starter");
+  });
+
+  test("un plan sin precio configurado no inventa un ingreso", async () => {
+    const tenant = await crearTenant("ComercioSinPrecio", {
+      plan: "pro",
+      subscriptionStatus: "active",
+    });
+
+    const resumen = await getSubscriptionSummary(tenant._id);
+
+    expect(resumen.mrr).toBe(0);
+  });
+
+  test("el próximo cobro es el del proveedor, no el último pago", async () => {
+    const tenant = await crearTenant("ComercioFechas", {
+      plan: "starter",
+      subscriptionStatus: "active",
+    });
+
+    await Tenant.findByIdAndUpdate(tenant._id, {
+      "integrations.subscriptionMercadoPago.lastPaymentAt": new Date("2026-09-01T00:00:00.000Z"),
+      "integrations.subscriptionMercadoPago.nextBillingAt": new Date("2026-10-01T00:00:00.000Z"),
+    });
+
+    const resumen = await getSubscriptionSummary(tenant._id);
+
+    expect(new Date(resumen.nextBillingAt).toISOString()).toBe("2026-10-01T00:00:00.000Z");
+    expect(new Date(resumen.lastPaymentAt).toISOString()).toBe("2026-09-01T00:00:00.000Z");
+  });
+
+  test("un comercio inexistente devuelve la misma forma, no otra", async () => {
+    // Los caminos de error devolvían `nextBillingDate`, una clave que ninguna
+    // otra salida producía: el panel leía undefined justo cuando algo falló.
+    const resumen = await getSubscriptionSummary(new mongoose.Types.ObjectId());
+
+    expect(Object.keys(resumen).sort()).toEqual([
+      "currency",
+      "currentPlan",
+      "isActive",
+      "lastPaymentAt",
+      "mrr",
+      "nextBillingAt",
+      "pastDueAt",
+      "status",
+    ]);
   });
 });

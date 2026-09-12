@@ -1,251 +1,93 @@
 // 📁 src/services/subscriptionMetricsService.js
-// Servicio para calcular métricas de suscripciones
+//
+// La suscripción del comercio, como la muestra el panel.
+//
+// QUÉ SE SACÓ DE ACÁ
+//
+// Tres funciones exportadas —getPlatformSubscriptionMetrics, getRevenueByPlan y
+// getSubscriptionHistory— que no las importaba nadie. No eran inofensivas: las
+// tres calculaban plata con los precios ESCRITOS A MANO Y EN DÓLARES (99 y
+// 26,14), los mismos que se sacaron de todo el resto del sistema cuando el
+// precio pasó a ser una decisión del dueño, en pesos y cargada desde el panel.
+// Un reporte muerto con precios viejos es una trampa esperando a que alguien lo
+// enchufe a una pantalla.
+//
+// getSubscriptionHistory además prometía un historial que no existe: devolvía
+// `previousPlans: []` y `statusChanges: []` fijos, con un TODO. Cuando haga
+// falta se escribe leyendo una tabla de auditoría real.
 
 import Tenant from '../models/tenantModel.js'
+import { getPlanMonthlyPriceArs } from './ai/aiPlanPolicy.js'
 import logger from '../../config/logger.js'
 
 /**
- * Obtener resumen de suscripciones para un tenant
- * Incluye conteos por estado y plan
+ * Estado de la suscripción del comercio para el panel.
+ *
+ * Todas las salidas —incluidas las de error— tienen la MISMA forma. Antes no:
+ * el camino feliz devolvía `lastPaymentAt` y los de error devolvían
+ * `nextBillingDate`, una clave que nadie más producía, así que el panel leía
+ * undefined justo cuando algo había fallado.
  */
+const emptySummary = {
+  currentPlan: null,
+  status: 'none',
+  isActive: false,
+  mrr: 0,
+  currency: 'ARS',
+  pastDueAt: null,
+  lastPaymentAt: null,
+  nextBillingAt: null,
+}
+
 export const getSubscriptionSummary = async tenantId => {
   try {
-    // Obtener el tenant para ver su estado de suscripción
     const tenant = await Tenant.findById(tenantId)
       .select('plan subscriptionStatus subscriptionPastDueAt integrations.subscriptionMercadoPago')
       .lean()
 
-    if (!tenant) {
-      return {
-        currentPlan: null,
-        status: 'none',
-        isActive: false,
-        mrr: 0,
-        nextBillingDate: null,
-      }
-    }
-
-    const planPrices = {
-      starter: 26.14,
-      pro: 99,
-      free: 0,
-    }
+    if (!tenant) return { ...emptySummary }
 
     const isActive = tenant.subscriptionStatus === 'active'
-    const mrr = isActive ? planPrices[tenant.plan] || 0 : 0
+
+    // EL MRR SALE DEL PRECIO VIGENTE, NO DE UNA TABLA ACÁ ADENTRO.
+    //
+    // Había un `{ starter: 26.14, pro: 99, free: 0 }` escrito en este archivo, y
+    // el panel lo mostraba con formato de pesos: "Ingreso recurrente mensual:
+    // $26,14" para un plan que se cobra en miles de pesos. Eran los precios en
+    // DÓLARES de una lista vieja, con el signo $ prestado del formateador.
+    //
+    // getPlanMonthlyPriceArs es la única fuente: override del panel → variable
+    // de entorno → nada. `null` significa "sin precio configurado", y en ese
+    // caso el MRR es 0 porque no hay número que cobrar, no porque sea gratis.
+    const priceArs = getPlanMonthlyPriceArs(tenant.plan)
+    const mrr = isActive && Number.isFinite(priceArs) ? priceArs : 0
+
+    const provider = tenant.integrations?.subscriptionMercadoPago || {}
 
     return {
       currentPlan: tenant.plan || null,
       status: tenant.subscriptionStatus || 'none',
       isActive,
       mrr,
+      currency: 'ARS',
       pastDueAt: tenant.subscriptionPastDueAt || null,
-      lastPaymentAt: tenant.integrations?.subscriptionMercadoPago?.lastPaymentAt || null,
+      lastPaymentAt: provider.lastPaymentAt || null,
+      // El próximo cobro tal como lo informa Mercado Pago. El panel tenía una
+      // tarjeta "Próximo pago" que mostraba lastPaymentAt: el título decía una
+      // fecha futura y el número era la del último cobro. Este campo existe en
+      // el tenant desde que el webhook lo guarda; nadie lo estaba sirviendo.
+      nextBillingAt: provider.nextBillingAt || null,
     }
   } catch (error) {
     logger.error('Error calculando resumen de suscripciones', {
       tenantId,
       error: error.message,
     })
-    return {
-      currentPlan: null,
-      status: 'none',
-      isActive: false,
-      mrr: 0,
-      nextBillingDate: null,
-    }
-  }
-}
 
-/**
- * Obtener métricas de suscripciones para todos los tenants (admin view)
- * Solo disponible para administradores de plataforma
- */
-export const getPlatformSubscriptionMetrics = async () => {
-  try {
-    const tenants = await Tenant.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalTenants: { $sum: 1 },
-          activeSubscriptions: {
-            $sum: {
-              $cond: [{ $eq: ['$subscriptionStatus', 'active'] }, 1, 0],
-            },
-          },
-          trialSubscriptions: {
-            $sum: {
-              $cond: [{ $eq: ['$subscriptionStatus', 'trialing'] }, 1, 0],
-            },
-          },
-          pastDueSubscriptions: {
-            $sum: {
-              $cond: [{ $eq: ['$subscriptionStatus', 'past_due'] }, 1, 0],
-            },
-          },
-          cancelledSubscriptions: {
-            $sum: {
-              $cond: [{ $eq: ['$subscriptionStatus', 'cancelled'] }, 1, 0],
-            },
-          },
-          starterSubscriptions: {
-            $sum: {
-              $cond: [{ $eq: ['$plan', 'starter'] }, 1, 0],
-            },
-          },
-          proSubscriptions: {
-            $sum: {
-              $cond: [{ $eq: ['$plan', 'pro'] }, 1, 0],
-            },
-          },
-          totalMRR: {
-            $sum: {
-              $cond: [
-                { $eq: ['$subscriptionStatus', 'active'] },
-                {
-                  $cond: [
-                    { $eq: ['$plan', 'pro'] },
-                    99,
-                    {
-                      $cond: [{ $eq: ['$plan', 'starter'] }, 26.14, 0],
-                    },
-                  ],
-                },
-                0,
-              ],
-            },
-          },
-        },
-      },
-    ])
-
-    const metrics = tenants[0] || {
-      totalTenants: 0,
-      activeSubscriptions: 0,
-      trialSubscriptions: 0,
-      pastDueSubscriptions: 0,
-      cancelledSubscriptions: 0,
-      starterSubscriptions: 0,
-      proSubscriptions: 0,
-      totalMRR: 0,
-    }
-
-    return {
-      ...metrics,
-      conversionRate: metrics.totalTenants
-        ? ((metrics.activeSubscriptions / metrics.totalTenants) * 100).toFixed(2)
-        : 0,
-      churnRate: metrics.totalTenants
-        ? ((metrics.cancelledSubscriptions / metrics.totalTenants) * 100).toFixed(2)
-        : 0,
-    }
-  } catch (error) {
-    logger.error('Error obteniendo métricas de suscripciones de plataforma', {
-      error: error.message,
-    })
-    return {
-      totalTenants: 0,
-      activeSubscriptions: 0,
-      trialSubscriptions: 0,
-      pastDueSubscriptions: 0,
-      cancelledSubscriptions: 0,
-      starterSubscriptions: 0,
-      proSubscriptions: 0,
-      totalMRR: 0,
-      conversionRate: 0,
-      churnRate: 0,
-    }
-  }
-}
-
-/**
- * Obtener desglose de ingresos por plan
- */
-export const getRevenueByPlan = async () => {
-  try {
-    const revenue = await Tenant.aggregate([
-      {
-        $match: {
-          subscriptionStatus: 'active',
-        },
-      },
-      {
-        $group: {
-          _id: '$plan',
-          count: { $sum: 1 },
-          revenue: {
-            $sum: {
-              $cond: [
-                { $eq: ['$plan', 'pro'] },
-                99,
-                {
-                  $cond: [{ $eq: ['$plan', 'starter'] }, 26.14, 0],
-                },
-              ],
-            },
-          },
-        },
-      },
-      {
-        $sort: { revenue: -1 },
-      },
-    ])
-
-    return revenue.map(item => ({
-      plan: item._id || null,
-      subscriptions: item.count,
-      mrr: Number(item.revenue.toFixed(2)),
-    }))
-  } catch (error) {
-    logger.error('Error obteniendo ingresos por plan', {
-      error: error.message,
-    })
-    return []
-  }
-}
-
-/**
- * Obtener histórico de cambios de suscripción
- */
-export const getSubscriptionHistory = async (tenantId, days = 30) => {
-  try {
-    const startDate = new Date()
-    startDate.setDate(startDate.getDate() - days)
-
-    const tenant = await Tenant.findById(tenantId)
-      .select('plan subscriptionStatus integrations.subscriptionMercadoPago')
-      .lean()
-
-    if (!tenant) {
-      return {
-        currentPlan: null,
-        previousPlans: [],
-        statusChanges: [],
-      }
-    }
-
-    // TODO: Implementar log de cambios de suscripción cuando se agregue auditoría
-    return {
-      currentPlan: tenant.plan || null,
-      previousPlans: [],
-      statusChanges: [],
-    }
-  } catch (error) {
-    logger.error('Error obteniendo histórico de suscripciones', {
-      tenantId,
-      error: error.message,
-    })
-    return {
-      currentPlan: null,
-      previousPlans: [],
-      statusChanges: [],
-    }
+    return { ...emptySummary }
   }
 }
 
 export default {
   getSubscriptionSummary,
-  getPlatformSubscriptionMetrics,
-  getRevenueByPlan,
-  getSubscriptionHistory,
 }
