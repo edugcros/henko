@@ -576,6 +576,31 @@ const seoSchema = new Schema(
     metaDescription: { type: String, trim: true, maxlength: 320, default: '' },
     shortDescription: { type: String, trim: true, maxlength: 500, default: '' },
     keywords: { type: [String], default: [] },
+
+    // POSICIONAMIENTO: se guardaba en ningún lado.
+    //
+    // El formulario de alta tiene una sección entera para esto —intención de
+    // búsqueda, posicionamiento, audiencia, enfoque de contenido, preguntas
+    // frecuentes y pilares—, con textareas, contadores de caracteres y un botón
+    // "Crear posicionamiento SEO" que avisa "Posicionamiento SEO creado". El
+    // panel los mandaba en el alta y el servidor los tiraba: el schema no los
+    // declaraba y el normalizador devolvía solo las cinco claves de arriba.
+    //
+    // O sea que alguien podía escribir cinco campos de estrategia de contenido,
+    // guardar el producto, y no quedaba nada. Ni siquiera se notaba, porque la
+    // pantalla de edición tampoco los muestra.
+    focusKeyword: { type: String, trim: true, maxlength: 120, default: '' },
+    searchIntent: {
+      type: String,
+      trim: true,
+      enum: ['', 'informational', 'commercial', 'transactional', 'navigational'],
+      default: '',
+    },
+    positioning: { type: String, trim: true, maxlength: 900, default: '' },
+    targetAudience: { type: String, trim: true, maxlength: 300, default: '' },
+    contentAngle: { type: String, trim: true, maxlength: 420, default: '' },
+    faq: { type: [String], default: [] },
+    contentPillars: { type: [String], default: [] },
   },
   { _id: false },
 )

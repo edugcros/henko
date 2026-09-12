@@ -369,9 +369,52 @@ const normalizeKeywordList = value => {
   ]
 }
 
-const normalizeSeoPayload = ({ body = {}, title = '', description = '', slug = '' } = {}) => {
+/**
+ * Lista de frases, con las mayúsculas intactas.
+ *
+ * normalizeKeywordList pasa todo a minúscula, que está bien para palabras clave
+ * y para los pilares de contenido, pero no para las preguntas frecuentes: son
+ * texto que se lee tal cual y "¿Qué motor tiene?" no puede quedar en minúscula.
+ */
+const normalizePhraseList = (value, max = 20) => {
+  const parsed = safeJsonParse(value, value)
+  const values = Array.isArray(parsed)
+    ? parsed
+    : String(parsed || '').split(/[\n;|]+/g)
+
+  return [
+    ...new Set(
+      values
+        .map(item => String(item || '').trim().slice(0, 300))
+        .filter(Boolean)
+        .slice(0, max),
+    ),
+  ]
+}
+
+const ALLOWED_SEO_SEARCH_INTENTS = [
+  'informational',
+  'commercial',
+  'transactional',
+  'navigational',
+]
+
+/**
+ * @param {object} current - El SEO que el producto ya tiene. Se usa como piso:
+ * una edición que no manda estos campos no puede borrarlos. Sin esto, guardar
+ * desde la pantalla de edición —que no los muestra— vaciaba el posicionamiento
+ * escrito en el alta.
+ */
+const normalizeSeoPayload = ({
+  body = {},
+  title = '',
+  description = '',
+  slug = '',
+  current = {},
+} = {}) => {
   const rawSeo = normalizePlainObject(body.seo)
   const source = { ...rawSeo, ...body }
+  const previous = normalizePlainObject(current)
 
   const shortDescription = truncateText(
     source.shortDescription || source.summary || rawSeo.shortDescription,
@@ -395,12 +438,47 @@ const normalizeSeoPayload = ({ body = {}, title = '', description = '', slug = '
     source.slug || rawSeo.slug || slug || title,
   )
 
+  // El posicionamiento: lo escribe una persona en el formulario de alta y hasta
+  // ahora se descartaba entero. Los nombres duplicados (seoPositioning y
+  // positioning) existen porque el panel manda los dos: el plano viene del
+  // formulario y el anidado del objeto seo que arma esa misma pantalla.
+  const searchIntent = normalizeText(
+    source.seoSearchIntent || rawSeo.searchIntent || previous.searchIntent,
+    '',
+  )
+
   return {
     slug: resolvedSlug,
     metaTitle,
     metaDescription,
     shortDescription,
     keywords: normalizeKeywordList(source.keywords || rawSeo.keywords),
+
+    focusKeyword: truncateText(
+      source.seoFocusKeyword || rawSeo.focusKeyword || previous.focusKeyword,
+      120,
+      '',
+    ),
+    searchIntent: ALLOWED_SEO_SEARCH_INTENTS.includes(searchIntent) ? searchIntent : '',
+    positioning: truncateText(
+      source.seoPositioning || rawSeo.positioning || previous.positioning,
+      900,
+      '',
+    ),
+    targetAudience: truncateText(
+      source.seoTargetAudience || rawSeo.targetAudience || previous.targetAudience,
+      300,
+      '',
+    ),
+    contentAngle: truncateText(
+      source.seoContentAngle || rawSeo.contentAngle || previous.contentAngle,
+      420,
+      '',
+    ),
+    faq: normalizePhraseList(source.seoFaq || rawSeo.faq || previous.faq),
+    contentPillars: normalizeKeywordList(
+      source.seoContentPillars || rawSeo.contentPillars || previous.contentPillars,
+    ),
   }
 }
 
@@ -2300,6 +2378,7 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
         title: updates.title || product.title,
         description: updates.description || product.description,
         slug: updates.slug || product.seo?.slug || product.slug,
+        current: product.seo?.toObject?.() || product.seo,
       })
     }
 
