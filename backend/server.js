@@ -13,6 +13,7 @@ import {
   startAiInsightWorker,
   stopAiInsightWorker,
 } from './src/workers/aiInsightWorker.js'
+import { refreshPlatformAiSettings } from './src/services/ai/platformAiSettingService.js'
 
 // =====================================================
 // Configuración servidor
@@ -34,6 +35,19 @@ const startServer = async () => {
 
     await connectDB()
     logger.info('[SERVER] 🟢 MongoDB conectado')
+
+    // Los ajustes de plataforma se leen de memoria y se refrescan en segundo
+    // plano (ver platformAiSettingService). Eso alcanza para el techo de gasto,
+    // que cae a su variable de entorno mientras tanto, pero NO para los precios:
+    // no hay variable configurada, así que la respuesta de arranque es "sin
+    // precio" — y un plan sin precio no se vende. Comprobado en producción: el
+    // primer GET /subscriptions/plans después de un deploy devolvía los dos
+    // planes en null, o sea el panel sin botón de contratar y un intento de
+    // pago rechazado, hasta que terminaba el primer refresh.
+    //
+    // No corta el arranque si falla: se cae al comportamiento de siempre.
+    await refreshPlatformAiSettings()
+    logger.info('[SERVER] 🟢 Ajustes de plataforma cargados')
 
     logger.info('[SERVER] 🔄 Inicializando CSRF token store...')
     
