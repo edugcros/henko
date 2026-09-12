@@ -4,7 +4,7 @@ import app from '../../app.js'
 import User from '../models/userModel.js'
 import Product from '../models/productModel.js'
 import Tenant from '../models/tenantModel.js'
-import { connectTestDB, disconnectTestDB } from './testDB.js'
+import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import {
   authHeaders,
   createTestProduct,
@@ -19,9 +19,7 @@ describe('wishlist', () => {
 
   beforeAll(async () => {
     await connectTestDB()
-    await User.deleteMany()
-    await Product.deleteMany()
-    await Tenant.deleteMany()
+    await resetCollections(User, Product, Tenant)
 
     tenantContext = await createTestTenant()
     session = await registerAndLoginUser({

@@ -7,6 +7,17 @@ import User from '../models/userModel.js'
 import Product from '../models/productModel.js'
 import { generateAccessToken } from '../../config/generateAccessToken.js'
 
+// El registro pasa por verifyTurnstile, y .env.development trae cargada la key
+// de prueba de Cloudflare. Con una key presente el middleware exige el token en
+// el cuerpo y después consulta a challenges.cloudflare.com: una prueba de alta
+// de usuario terminaría fallando por no tener internet, que no es lo que quiere
+// medir. Sin key, el middleware deja pasar y lo dice — es su comportamiento
+// documentado para poder deployar antes de tener el secreto.
+//
+// El middleware en sí tiene su propia suite (turnstileMiddleware.test.js), así
+// que apagarlo acá no deja nada sin cubrir.
+delete process.env.TURNSTILE_SECRET_KEY
+
 const uniqueSuffix = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
 export const getCSRFToken = async (domain = null) => {
@@ -114,6 +125,10 @@ export const registerAndLoginUser = async ({
     throw new Error(`Register failed: ${registerRes.status} ${JSON.stringify(registerRes.body)}`)
   }
 
+  // Sin comercio en contexto: este helper corre fuera de una request, igual que
+  // un script. Se declara el cruce en vez de simularlo, que es la misma regla
+  // que sigue el código de producción cuando busca un usuario por email antes
+  // de saber a qué comercio pertenece.
   await User.updateOne(
     { email },
     {
@@ -121,7 +136,10 @@ export const registerAndLoginUser = async ({
       emailVerificationToken: undefined,
       emailVerificationExpires: undefined,
     },
-  )
+  ).setOptions({
+    ignoreTenant: true,
+    platformScope: 'alta de usuario de prueba: el email es único por prueba',
+  })
 
   const loginRes = await request(app)
     .post('/api/user/login')

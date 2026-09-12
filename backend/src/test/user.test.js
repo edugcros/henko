@@ -3,7 +3,7 @@ import request from 'supertest'
 import app from '../../app.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
-import { connectTestDB, disconnectTestDB } from './testDB.js'
+import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import {
   authHeaders,
   createTestTenant,
@@ -16,8 +16,7 @@ describe('user controller', () => {
 
   beforeAll(async () => {
     await connectTestDB()
-    await User.deleteMany()
-    await Tenant.deleteMany()
+    await resetCollections(User, Tenant)
 
     tenantContext = await createTestTenant()
   })

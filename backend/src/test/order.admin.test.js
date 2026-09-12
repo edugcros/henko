@@ -6,7 +6,7 @@ import Product from '../models/productModel.js'
 import Order, { FULFILLMENT_STATUS, PAYMENT_STATUS } from '../models/orderModel.js'
 import Cart from '../models/cartModel.js'
 import Tenant from '../models/tenantModel.js'
-import { connectTestDB, disconnectTestDB } from './testDB.js'
+import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import {
   authHeaders,
   createTestProduct,
@@ -24,11 +24,7 @@ describe('orders - admin routes', () => {
 
   beforeAll(async () => {
     await connectTestDB()
-    await User.deleteMany()
-    await Product.deleteMany()
-    await Order.deleteMany()
-    await Cart.deleteMany()
-    await Tenant.deleteMany()
+    await resetCollections(User, Product, Order, Cart, Tenant)
 
     tenantContext = await createTestTenant()
     buyerSession = await registerAndLoginUser({
