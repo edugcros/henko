@@ -431,7 +431,7 @@ export const verifyEmail = expressAsyncHandler(async (req, res) => {
   const user = await User.findOne({
     emailVerificationToken: hashToken(token),
     emailVerificationExpires: { $gt: Date.now() },
-  }).setOptions({ ignoreTenant: true })
+  }).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
   if (!user) {
     return sendResponse(res, 400, false, 'Token inválido o expirado.')
@@ -625,7 +625,7 @@ export const createUserAdmin = [
         const opts = { session }
 
         const [emailExists, slugExists, domainExists] = await Promise.all([
-          User.exists({ email }).setOptions({ ignoreTenant: true }).session(session),
+          User.exists({ email }).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' }).session(session),
           Tenant.exists({ slug: finalSlug }).session(session),
           Tenant.exists({
             $or: [
@@ -890,7 +890,7 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
         blockedUntil: null,
       },
       { validateBeforeSave: false },
-    ).setOptions({ ignoreTenant: true })
+    ).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
     user.isBlocked = false
     user.failedLoginAttempts = 0
@@ -915,7 +915,7 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
 
     await User.findByIdAndUpdate(user._id, update, {
       validateBeforeSave: false,
-    }).setOptions({ ignoreTenant: true })
+    }).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
     if (attempts >= maxAttempts) {
       return sendResponse(
@@ -951,7 +951,7 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
       validateBeforeSave: false,
       new: true,
     },
-  ).setOptions({ ignoreTenant: true })
+  ).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
   sendAuthCookies(res, req, refreshToken, accessToken, user.role)
 
@@ -1045,7 +1045,7 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
     { $set: { refreshToken: newHashedJti } },
   )
     .select('+refreshToken role tenantId email isBlocked')
-    .setOptions({ ignoreTenant: true })
+    .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
   if (!updatedUser) {
     // Diagnóstico: el filtro atómico no matcheó nada — puede ser que el
@@ -1056,7 +1056,7 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
     // ambos.
     const existingUser = await User.findById(decoded.sub)
       .select('email refreshToken')
-      .setOptions({ ignoreTenant: true })
+      .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
     logger.warn('[REFRESH] Rotación atómica no matcheó ningún documento', {
       userId: String(decoded.sub),
@@ -1107,7 +1107,7 @@ export const logout = expressAsyncHandler(async (req, res) => {
         decoded.sub || decoded.id,
         { refreshToken: null },
         { validateBeforeSave: false, new: false },
-      ).setOptions({ ignoreTenant: true })
+      ).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
       if (user?.tenantId) {
         recordAuthMetric({
@@ -1170,7 +1170,7 @@ export const updatePassword = expressAsyncHandler(async (req, res) => {
 export const resendVerificationLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('resend-verification'),
   windowMs: 15 * 60 * 1000,
   max: 5,
   standardHeaders: true,
@@ -1245,7 +1245,7 @@ export const resendVerificationEmail = expressAsyncHandler(async (req, res) => {
 export const forgotPasswordLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('forgot-password'),
   windowMs: 15 * 60 * 1000,
   max: 5,
   standardHeaders: true,
@@ -1312,7 +1312,7 @@ export const resetPassword = expressAsyncHandler(async (req, res) => {
   const user = await User.findOne({
     passwordResetToken: hashToken(token),
     passwordResetExpires: { $gt: Date.now() },
-  }).setOptions({ ignoreTenant: true })
+  }).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
   if (!user) {
     return sendResponse(res, 400, false, 'Token inválido o expirado. Solicita uno nuevo.')

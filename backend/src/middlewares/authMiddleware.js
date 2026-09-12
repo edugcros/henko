@@ -65,7 +65,7 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
 
     const user = await User.findById(decoded.sub)
       .select('tenantId role email firstname lastname mobile isBlocked blockedUntil passwordChangedAt')
-      .setOptions({ ignoreTenant: true })
+      .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-del-token' })
 
     if (!user) {
       return res.status(401).json({

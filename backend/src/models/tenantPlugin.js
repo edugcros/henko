@@ -80,8 +80,19 @@ const shouldIgnoreTenant = context => {
  * Pero esos casos comparten algo: NO hay tenant en el contexto. Un worker, un
  * script y una request pre-login corren sin contexto. Cuando sí lo hay, el
  * comercio de esa request ya está determinado, y saltear el filtro significa ir
- * a buscar datos fuera de él. Ese es el único caso que hay que mirar, y por eso
- * la guarda no hace ruido en los 20 y pico de usos legítimos que ya existen.
+ * a buscar datos fuera de él. Ese es el único caso que hay que mirar.
+ *
+ * ESA REGLA TENÍA UNA EXCEPCIÓN QUE NO VI, y la encontró producción.
+ *
+ * El login NO corre sin contexto: resolveTenantByDomain resuelve el comercio a
+ * partir del dominio ANTES de saber quién es el usuario. Así que buscar un
+ * usuario por email —que es cross-tenant por definición, porque todavía no se
+ * sabe a qué comercio pertenece— ocurre con un tenant ya en contexto, y la
+ * guarda lo marcaba como sospechoso en cada inicio de sesión.
+ *
+ * Un aviso de nivel error en cada login es exactamente lo que esta guarda no
+ * tenía que ser: ruido que enseña a ignorar el log. Los diez puntos del camino
+ * de autenticación declaran su motivo con platformScope y ya no gritan.
  *
  * QUÉ HACE Y QUÉ NO
  *

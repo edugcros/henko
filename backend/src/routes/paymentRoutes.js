@@ -28,7 +28,7 @@ const router = express.Router()
 const paymentWriteLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('payment-create'),
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
@@ -58,7 +58,7 @@ const paymentWriteLimiter = rateLimit({
 const mpWebhookLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('payment-webhook'),
   windowMs: 60 * 1000,
   max: 120,
   standardHeaders: true,

@@ -155,7 +155,7 @@ const agentOrAdminAuth = (req, res, next) => {
 const analysisWriteLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('product-analysis'),
   windowMs: Number(
     process.env.PRODUCT_ANALYSIS_RATE_LIMIT_WINDOW_MS ||
       15 * 60 * 1000,

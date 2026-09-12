@@ -33,7 +33,45 @@
 
 import logger from '../../config/logger.js'
 
-const REDIS_URL = String(process.env.REDIS_URL || '').trim()
+const RAW_REDIS_URL = String(process.env.REDIS_URL || '').trim()
+
+/**
+ * REDIS_URL tiene que ser una URL, y en producción no lo era.
+ *
+ * Estaba puesta con el comando entero que muestra el panel del proveedor:
+ * `redis-cli --tls -u rediss://...`. El cliente respondía "Invalid URL" —
+ * literalmente eso y nada más— así que Redis nunca se usó y todo cayó a memoria
+ * por proceso, en silencio: los límites de tasa se multiplican por instancia y
+ * el disyuntor de IA deja de ser compartido.
+ *
+ * Se valida acá y se avisa nombrando el problema. Un aviso que dice qué está
+ * mal y cómo se arregla es la diferencia entre un log que se lee y uno que no.
+ */
+const REDIS_URL = (() => {
+  if (!RAW_REDIS_URL) return ''
+
+  try {
+    const { protocol } = new URL(RAW_REDIS_URL)
+
+    if (protocol !== 'redis:' && protocol !== 'rediss:') {
+      logger.error('[CACHE] REDIS_URL no es una URL de Redis; se ignora', {
+        esquemaLeido: protocol,
+        seEsperaba: 'redis:// o rediss://',
+      })
+      return ''
+    }
+
+    return RAW_REDIS_URL
+  } catch {
+    logger.error('[CACHE] REDIS_URL no es una URL válida; se ignora y se usa memoria', {
+      // Nunca el valor: puede traer la contraseña adentro.
+      empiezaCon: RAW_REDIS_URL.slice(0, 12),
+      pista:
+        'Si copiaste el comando del panel del proveedor, va solo la parte que sigue a -u, empezando en rediss:// o redis://',
+    })
+    return ''
+  }
+})()
 
 // Prefijo por si la instancia de Redis se comparte con otra cosa. Dos servicios
 // escribiendo la clave 'ai:platform:breaker' sin prefijo se pisan.

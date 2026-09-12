@@ -134,7 +134,7 @@ const createRateLimitHandler = message => {
 const strictLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('theme-strict'),
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
@@ -147,7 +147,7 @@ const strictLimiter = rateLimit({
 const patchLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('theme-patch'),
   windowMs: 5 * 60 * 1000,
   max: 240,
   standardHeaders: true,
@@ -162,7 +162,7 @@ const patchLimiter = rateLimit({
 const publicLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('theme-public'),
   windowMs: 5 * 60 * 1000,
   max: 200,
   standardHeaders: true,
@@ -176,7 +176,7 @@ const publicLimiter = rateLimit({
 const cssLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('theme-css'),
   windowMs: 60 * 1000,
   max: 100,
   standardHeaders: true,

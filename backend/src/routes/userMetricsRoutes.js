@@ -37,7 +37,7 @@ const getTenantKey = req => {
 const metricsRateLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('user-metrics'),
   windowMs: 60 * 1000,
   max: 180,
   standardHeaders: true,

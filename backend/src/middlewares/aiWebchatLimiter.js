@@ -19,7 +19,7 @@ export const aiWebchatLimiter = rateLimit({
   // Compartido entre instancias. Con el almacén por defecto —memoria del
   // proceso— este límite se multiplicaba por la cantidad de instancias, o sea
   // que aflojaba justo cuando la plataforma crece.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('ai-webchat'),
   // La clave se ancla SOLO en tenant+IP. visitorId/sessionId los define
   // el cliente sin ninguna firma que los respalde — usarlos como parte
   // (u override) de la clave permitía evadir el límite por completo

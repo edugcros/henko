@@ -23,7 +23,7 @@ const router = express.Router()
 const publicEnquiryLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('enquiry'),
   windowMs: 15 * 60 * 1000,
   max: 8,
   standardHeaders: true,

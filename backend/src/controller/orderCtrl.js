@@ -230,7 +230,7 @@ export const orderWriteLimiter = rateLimit({
   max: req => (['admin', 'manager'].includes(req.user?.role) ? 100 : 30),
   // Compartido entre instancias, igual que los demás limitadores: con el
   // almacén por defecto este techo se multiplicaba por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('order-write'),
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: req => {

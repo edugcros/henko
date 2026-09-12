@@ -26,6 +26,30 @@ import { cacheIncr, cacheGet, cacheSet, cacheDel } from '../utils/cache.js'
 const PREFIX = 'ratelimit:'
 
 export class SharedRateLimitStore {
+  /**
+   * @param {string} name  Identifica a QUÉ limitador pertenece este almacén.
+   *
+   * NO ES DECORATIVO, Y FALTABA.
+   *
+   * Todos los almacenes usaban el mismo prefijo `ratelimit:`, así que dos
+   * limitadores distintos cuya clave coincidiera —la misma IP, por ejemplo—
+   * compartían contador: los golpes contra el límite global le descontaban al
+   * de pagos, que admite 10 por hora. Hoy no chocan porque sus keyGenerator
+   * producen strings distintos, o sea por casualidad y no por diseño.
+   *
+   * `prefix` además es el campo por el que express-rate-limit distingue
+   * limitadores al validar. Sin él tomaba a todos por el mismo y avisaba
+   * ERR_ERL_DOUBLE_COUNT en cada request que pasa por dos limitadores — que son
+   * todas, porque el global está montado sobre /api entero.
+   */
+  constructor(name) {
+    if (!name) {
+      throw new Error('SharedRateLimitStore necesita un nombre para no compartir contador con otro limitador')
+    }
+
+    this.prefix = `${PREFIX}${name}:`
+  }
+
   /** express-rate-limit llama a esto con las opciones ya resueltas. */
   init(options) {
     this.windowMs = options.windowMs
@@ -39,12 +63,12 @@ export class SharedRateLimitStore {
    */
   async increment(key) {
     const ttlSec = Math.max(1, Math.ceil(this.windowMs / 1000))
-    const totalHits = await cacheIncr(`${PREFIX}${key}`, ttlSec)
+    const totalHits = await cacheIncr(`${this.prefix}${key}`, ttlSec)
 
     // La librería usa resetTime para el header Retry-After. Se guarda aparte
     // en el primer golpe: Redis sabe cuándo vence la clave, pero preguntárselo
     // sería un viaje más por cada request.
-    const resetKey = `${PREFIX}reset:${key}`
+    const resetKey = `${this.prefix}reset:${key}`
 
     if (totalHits === 1) {
       const resetTime = new Date(Date.now() + this.windowMs)
@@ -66,7 +90,7 @@ export class SharedRateLimitStore {
    * No baja de cero: un contador negativo daría ventana infinita a esa clave.
    */
   async decrement(key) {
-    const cacheKey = `${PREFIX}${key}`
+    const cacheKey = `${this.prefix}${key}`
     const current = Number(await cacheGet(cacheKey)) || 0
 
     if (current <= 1) {
@@ -78,8 +102,8 @@ export class SharedRateLimitStore {
   }
 
   async resetKey(key) {
-    await cacheDel(`${PREFIX}${key}`)
-    await cacheDel(`${PREFIX}reset:${key}`)
+    await cacheDel(`${this.prefix}${key}`)
+    await cacheDel(`${this.prefix}reset:${key}`)
   }
 }
 

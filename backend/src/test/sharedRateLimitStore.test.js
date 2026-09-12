@@ -40,7 +40,7 @@ let limiter;
 beforeEach(() => {
   jest.clearAllMocks();
   store.clear();
-  limiter = new SharedRateLimitStore();
+  limiter = new SharedRateLimitStore('prueba');
   limiter.init({ windowMs: 60_000 });
 });
 
@@ -99,4 +99,49 @@ test("resetKey limpia el conteo y su vencimiento", async () => {
   await limiter.resetKey("ip-a");
 
   expect((await limiter.increment("ip-a")).totalHits).toBe(1);
+});
+
+// ─── Cada limitador cuenta lo suyo ───────────────────────
+//
+// Todos los almacenes usaban el mismo prefijo `ratelimit:`, así que dos
+// limitadores distintos con la misma clave —la misma IP, típicamente—
+// compartían contador: los golpes contra el límite global le descontaban al de
+// pagos, que admite 10 por hora. Hoy no chocaban porque sus keyGenerator
+// producen strings distintos, o sea por casualidad.
+//
+// `prefix` es además el campo por el que express-rate-limit distingue
+// limitadores: sin él tomaba a todos por el mismo y avisaba ERR_ERL_DOUBLE_COUNT
+// en cada request que pasa por dos, que son todas — el global cuelga de /api.
+
+describe("SharedRateLimitStore · un contador por limitador", () => {
+  const nuevo = async nombre => {
+    const store = new SharedRateLimitStore(nombre);
+    store.init({ windowMs: 60_000 });
+    return store;
+  };
+
+  test("dos limitadores con la MISMA clave no se pisan", async () => {
+    const pagos = await nuevo("pagos");
+    const global = await nuevo("global");
+
+    await pagos.increment("1.2.3.4");
+    await pagos.increment("1.2.3.4");
+    const enGlobal = await global.increment("1.2.3.4");
+
+    // Si compartieran contador, acá vendría 3 y el limitador global estaría
+    // castigando a alguien por lo que hizo contra otro.
+    expect(enGlobal.totalHits).toBe(1);
+  });
+
+  test("expone prefix, que es como la librería los distingue", async () => {
+    const store = await nuevo("pagos");
+
+    expect(store.prefix).toBe("ratelimit:pagos:");
+  });
+
+  test("sin nombre no se construye", () => {
+    // Un almacén sin nombre volvería a compartir contador en silencio. Es mejor
+    // que falle al arrancar que descubrirlo por un límite que no limita.
+    expect(() => new SharedRateLimitStore()).toThrow(/nombre/i);
+  });
 });

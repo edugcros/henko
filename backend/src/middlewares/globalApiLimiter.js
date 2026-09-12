@@ -46,7 +46,7 @@ export const globalApiLimiter = rateLimit({
   // Compartido entre instancias: el almacén por defecto vive en la memoria del
   // proceso, con lo cual el límite efectivo se multiplica por la cantidad de
   // instancias justo cuando más falta hace.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('global-api'),
 
   // req.ip respeta la config de trust proxy de app.js. Leer x-forwarded-for a
   // mano confiaría en un header que cualquiera puede falsificar.

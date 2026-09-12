@@ -64,7 +64,7 @@ const adminContext = [
 const authLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('user-auth'),
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
@@ -116,7 +116,7 @@ router.get('/csrf-token', (req, res) => {
 const registerAdminLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
-  store: new SharedRateLimitStore(),
+  store: new SharedRateLimitStore('user-write'),
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
