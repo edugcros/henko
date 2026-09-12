@@ -187,8 +187,22 @@ export const sendWhatsappTextMessage = async ({
   const destination = normalizePhone(to)
   const body = clean(text)
 
-  if (!cleanPhoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID faltante')
-  if (!cleanAccessToken) throw new Error('WHATSAPP_ACCESS_TOKEN faltante')
+  // Los mensajes nombran de dónde sale el dato de verdad. Decían
+  // "WHATSAPP_PHONE_NUMBER_ID faltante" y "WHATSAPP_ACCESS_TOKEN faltante",
+  // como si fueran variables de entorno del servidor: no lo son. Las
+  // credenciales de WhatsApp son POR COMERCIO y se cargan en el panel, en
+  // Configuración del agente. Quien leía ese error terminaba buscando la
+  // variable en Render, donde no está ni tiene que estar.
+  if (!cleanPhoneNumberId) {
+    throw new Error(
+      'Falta el Phone Number ID de WhatsApp en la configuración del asistente',
+    )
+  }
+  if (!cleanAccessToken) {
+    throw new Error(
+      'Falta el Access Token de WhatsApp en la configuración del asistente',
+    )
+  }
   if (!destination) throw new Error('Destinatario WhatsApp faltante')
   if (!body) throw new Error('Mensaje WhatsApp vacío')
 
@@ -222,8 +236,22 @@ export const sendWhatsappTemplateMessage = async ({
   const cleanTemplateName = sanitizeTemplateName(templateName)
 
   if (!cleanTemplateName) throw new Error('Nombre de template WhatsApp faltante')
-  if (!cleanPhoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID faltante')
-  if (!cleanAccessToken) throw new Error('WHATSAPP_ACCESS_TOKEN faltante')
+  // Los mensajes nombran de dónde sale el dato de verdad. Decían
+  // "WHATSAPP_PHONE_NUMBER_ID faltante" y "WHATSAPP_ACCESS_TOKEN faltante",
+  // como si fueran variables de entorno del servidor: no lo son. Las
+  // credenciales de WhatsApp son POR COMERCIO y se cargan en el panel, en
+  // Configuración del agente. Quien leía ese error terminaba buscando la
+  // variable en Render, donde no está ni tiene que estar.
+  if (!cleanPhoneNumberId) {
+    throw new Error(
+      'Falta el Phone Number ID de WhatsApp en la configuración del asistente',
+    )
+  }
+  if (!cleanAccessToken) {
+    throw new Error(
+      'Falta el Access Token de WhatsApp en la configuración del asistente',
+    )
+  }
   if (!destination) throw new Error('Destinatario WhatsApp faltante')
 
   const parameters = Array.isArray(bodyParameters)
