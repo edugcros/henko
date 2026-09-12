@@ -137,13 +137,19 @@ describe("subscriptionCtrl · el alta llega a Mercado Pago", () => {
     },
   });
 
+  // Exactamente lo que envía el Brick de Mercado Pago. SIN `payer.name`: no lo
+  // manda, porque el nombre del titular viaja dentro del token de la tarjeta.
   const pedido = () => ({
     user: { _id: USER_ID, tenantId: TENANT._id },
     body: {
       plan: "pro",
-      token: "card-token-123",
-      paymentMethodId: "visa",
-      payer: { email: "duenio@comercio.com", name: "Dueño" },
+      token: "fa2a788ac4f2ff028502dd2b9471f04a",
+      paymentMethodId: "master",
+      issuerId: "12468",
+      payer: {
+        email: "duenio@comercio.com",
+        identification: { type: "DNI", number: "32680474" },
+      },
     },
   });
 
@@ -241,3 +247,106 @@ describe("subscriptionCtrl · el alta llega a Mercado Pago", () => {
     expect(body.metadata.tenant_id).toBe(TENANT._id);
   });
 });
+
+describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
+
+  test("un pago sin payer.name NO se rechaza", async () => {
+    // Rechazaba todos: la validación exigía `payer.name`, un campo del
+    // formulario propio que el Brick reemplazó. El síntoma en producción era
+    // 400 "Datos del pagador incompletos" con una tarjeta perfectamente
+    // tokenizada.
+    jest.resetModules()
+
+    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
+      createSubscriptionClient: () => ({ create: mockCreate }),
+      buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
+      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
+      mapMercadoPagoSubscriptionStatus: () => "active",
+      readProviderBillingDates: () => ({
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        nextBillingAt: null,
+      }),
+    }))
+
+    mockCreate.mockResolvedValue({ id: "mp-sub-1", status: "authorized" })
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: "user",
+    })
+    mockTenantFindById.mockResolvedValue(TENANT)
+    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} })
+    mockSendEmail.mockResolvedValue({})
+
+    const { processSubscriptionPayment } = await import(
+      "../controller/subscriptionCtrl.js"
+    )
+
+    const req = {
+      user: { _id: USER_ID, tenantId: TENANT._id },
+      body: {
+        plan: "pro",
+        token: "fa2a788ac4f2ff028502dd2b9471f04a",
+        payer: { email: "duenio@comercio.com" },
+      },
+    }
+
+    const res = respuesta()
+    await processSubscriptionPayment(req, res)
+
+    expect(String(res.body?.message || "")).not.toContain("pagador incompletos")
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+  })
+
+  test("sin email sí se rechaza: es lo único que Mercado Pago necesita", async () => {
+    jest.resetModules()
+
+    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
+      createSubscriptionClient: () => ({ create: mockCreate }),
+      buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
+      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
+      mapMercadoPagoSubscriptionStatus: () => "active",
+      readProviderBillingDates: () => ({
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        nextBillingAt: null,
+      }),
+    }))
+
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: "user",
+    })
+    mockTenantFindById.mockResolvedValue(TENANT)
+
+    const { processSubscriptionPayment } = await import(
+      "../controller/subscriptionCtrl.js"
+    )
+
+    const res = respuesta()
+    await processSubscriptionPayment(
+      {
+        user: { _id: USER_ID, tenantId: TENANT._id },
+        body: { plan: "pro", token: "tok", payer: {} },
+      },
+      res,
+    )
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body.message).toContain("email")
+  })
+})

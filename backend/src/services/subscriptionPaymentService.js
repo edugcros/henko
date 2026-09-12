@@ -2,8 +2,6 @@
 // Servicio para procesar pagos de suscripción con Mercado Pago
 // Valida plan, crea PaymentIntent y maneja confirmación
 
-import crypto from 'node:crypto'
-import { Money } from '../utils/money.js'
 import { normalizePlan, getPlanMonthlyPriceArs } from './ai/aiPlanPolicy.js'
 import { MercadoPagoConfig, PreApproval } from 'mercadopago'
 
@@ -73,16 +71,21 @@ const isValidEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(v
  * - Cobro automático mensual
  * - Reintentos en caso de fallo
  */
+/**
+ * Los parámetros son los que /preapproval realmente usa.
+ *
+ * Antes recibía además paymentMethodId, issuerId, payer y autoRenew. Ninguno
+ * sobrevivió al contrato real: el medio de pago y el emisor van dentro del token
+ * de la tarjeta, el pagador se identifica con payer_email, y la renovación
+ * automática es lo que una suscripción es. Mantenerlos en la firma sugería que
+ * hacían algo.
+ */
 export const buildMercadoPagoSubscriptionData = ({
   plan,
   tenantId,
   userId,
   email,
-  paymentMethodId,
   token,
-  issuerId,
-  payer,
-  autoRenew = true,
 }) => {
   const normalizedPlan = normalizePlan(plan)
   const priceArs = getPlanMonthlyPriceArs(normalizedPlan)
@@ -95,7 +98,6 @@ export const buildMercadoPagoSubscriptionData = ({
     throw error
   }
 
-  const amountCents = Math.round(priceArs * 100)
   const payerEmail = normalizeEmail(email)
 
   if (!payerEmail || !isValidEmail(payerEmail)) {
@@ -157,11 +159,7 @@ export const buildMercadoPagoSubscriptionData = ({
     subscriptionData.card_token_id = token
   }
 
-  return {
-    subscriptionData,
-    planPrice: priceArs,
-    amountCents,
-  }
+  return { subscriptionData }
 }
 
 /**

@@ -99,3 +99,51 @@ describe("payload de suscripción · el contrato", () => {
     expect(() => armar({ plan: "enterprise" })).toThrow("SUBSCRIPTION_PLAN_INVALID");
   });
 });
+
+// ─── Lo que manda el Brick, tal cual ─────────────────────
+//
+// El checkout dejó de tener formulario propio: los datos del pago los arma el
+// Brick de Mercado Pago. Estos casos usan exactamente la forma que envía, para
+// que una validación pensada para la pantalla vieja no vuelva a rechazar un
+// pago bueno.
+
+describe("payload · con lo que envía el Brick", () => {
+  const DEL_BRICK = {
+    token: "fa2a788ac4f2ff028502dd2b9471f04a",
+    payment_method_id: "master",
+    issuer_id: "12468",
+    payer: {
+      email: "duenio@comercio.com",
+      identification: { type: "DNI", number: "32680474" },
+    },
+  };
+
+  test("alcanza con el token y el email: no hace falta un nombre", () => {
+    // `payer.name` era obligatorio y el Brick no lo manda — el nombre del
+    // titular viaja dentro del token. Todo pago se rechazaba con "Datos del
+    // pagador incompletos".
+    const body = buildMercadoPagoSubscriptionData({
+      plan: "starter",
+      tenantId: "64b7f0000000000000000001",
+      userId: "64b7f0000000000000000009",
+      email: DEL_BRICK.payer.email,
+      token: DEL_BRICK.token,
+    }).subscriptionData;
+
+    expect(body.payer_email).toBe("duenio@comercio.com");
+    expect(body.card_token_id).toBe(DEL_BRICK.token);
+  });
+
+  test("el medio de pago y el emisor no viajan: ya están en el token", () => {
+    const body = buildMercadoPagoSubscriptionData({
+      plan: "starter",
+      tenantId: "64b7f0000000000000000001",
+      userId: "64b7f0000000000000000009",
+      email: DEL_BRICK.payer.email,
+      token: DEL_BRICK.token,
+    }).subscriptionData;
+
+    expect(body.payment_method_id).toBeUndefined();
+    expect(body.issuer_id).toBeUndefined();
+  });
+});

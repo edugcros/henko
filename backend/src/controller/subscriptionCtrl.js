@@ -187,13 +187,10 @@ export const processSubscriptionPayment = async (req, res) => {
   }
 
   try {
-    const {
-      plan,
-      token,
-      paymentMethodId,
-      issuerId,
-      payer,
-    } = req.body
+    // paymentMethodId e issuerId los manda el Brick y NO se usan: /preapproval
+    // no los acepta (ver PreApprovalRequest), la tarjeta ya los lleva dentro del
+    // token. Se dejan fuera del destructuring para que no parezca que se usan.
+    const { plan, token, payer } = req.body
 
     // Validar plan
     const normalizedPlan = normalizePlan(plan)
@@ -201,9 +198,16 @@ export const processSubscriptionPayment = async (req, res) => {
       return sendResponse(res, 400, false, 'Plan no válido para suscripción')
     }
 
-    // Validar datos del pagador
-    if (!payer || !payer.email || !payer.name) {
-      return sendResponse(res, 400, false, 'Datos del pagador incompletos')
+    // El email del pagador es lo único que Mercado Pago necesita del comprador:
+    // es el campo con el que identifica a quién le cobra.
+    //
+    // Acá se exigía además `payer.name`, y eso rechazaba todo pago desde que el
+    // formulario propio pasó a ser el Brick de Mercado Pago: el Brick manda
+    // email e identificación, no un nombre suelto — el del titular viaja dentro
+    // del token de la tarjeta. La validación quedó pidiendo un campo de una
+    // pantalla que ya no existe.
+    if (!payer?.email) {
+      return sendResponse(res, 400, false, 'Falta el email del pagador')
     }
 
     if (!token) {
@@ -224,10 +228,7 @@ export const processSubscriptionPayment = async (req, res) => {
         tenantId: tenant._id,
         userId,
         email: payer.email,
-        paymentMethodId,
         token,
-        issuerId,
-        payer,
       })
       subscriptionPaymentData = subscriptionData
     } catch (buildError) {
