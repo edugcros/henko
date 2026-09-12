@@ -73,6 +73,60 @@ const CheckoutPage = () => {
   const selectedPlan = searchParams.get('plan') || 'starter'
   const [precioArs, setPrecioArs] = useState(null)
 
+  // Al sacar el formulario propio me llevé también estas declaraciones, que no
+  // eran suyas: el JSX de abajo las sigue usando. El build compiló igual
+  // —webpack no verifica variables no declaradas— y el smoke test de pantallas
+  // solo importa el módulo, así que la página explotaba recién al renderizar,
+  // con el ErrorBoundary tapando el motivo. De ahí sale el test de esta pantalla.
+  const [isLoading, setIsLoading] = useState(true)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [mpReady, setMpReady] = useState(false)
+  const [mpError, setMpError] = useState(null)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(false)
+  const [subscriptionId, setSubscriptionId] = useState(null)
+
+  // Trae la clave pública e inicializa el SDK. Este efecto también se perdió en
+  // el borrado, así que initMercadoPago no corría y el Brick nunca aparecía.
+  useEffect(() => {
+    let vigente = true
+
+    const cargarConfig = async () => {
+      try {
+        const response = await api.get('/subscriptions/config')
+        const publicKey = response.data?.data?.mpPublicKey
+
+        if (!vigente) return
+
+        // Es la clave de HENKO, no la del comercio: el token lo consume la
+        // cuenta que cobra, y esta suscripción la cobra la plataforma.
+        if (!publicKey) {
+          setMpError('Falta configurar la clave pública de Mercado Pago.')
+          return
+        }
+
+        if (!publicKey.startsWith('TEST-') && !publicKey.startsWith('APP_USR-')) {
+          setMpError('La clave pública de Mercado Pago tiene formato inválido.')
+          return
+        }
+
+        initMercadoPago(publicKey, { locale: 'es-AR' })
+        setMpReady(true)
+      } catch (err) {
+        console.error('Error cargando config MP:', err)
+        if (vigente) setMpError('No se pudo cargar la configuración de pago.')
+      } finally {
+        if (vigente) setIsLoading(false)
+      }
+    }
+
+    cargarConfig()
+
+    return () => {
+      vigente = false
+    }
+  }, [])
+
   const planDetails = {
     name: PLAN_PRESENTATION[selectedPlan]?.name || PLAN_PRESENTATION.starter.name,
     features: PLAN_FEATURES[selectedPlan] || PLAN_FEATURES.starter,
