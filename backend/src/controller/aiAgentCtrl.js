@@ -4,6 +4,7 @@ import AiAgent from '../models/aiAgentModel.js'
 import AiKnowledge from '../models/aiKnowledgeModel.js'
 import AiCartRecovery from '../models/aiCartRecoveryModel.js'
 import AiCampaignRule from '../models/aiCampaignRuleModel.js'
+import { getCartRecoveryReadiness } from '../services/aiAgent/aiCartRecoveryService.js'
 import { processAgentMessage } from '../services/aiAgent/aiAgentBrainService.js'
 import {
   getOrCreateAiAgentForTenant,
@@ -506,12 +507,23 @@ export const listCampaignRules = asyncHandler(async (req, res) => {
   if (type && allowedRuleTypes.has(type)) filter.type = type
   if (channel && allowedRuleChannels.has(channel)) filter.channel = channel
 
-  const items = await AiCampaignRule.find(filter)
-    .setOptions({ tenantId })
-    .sort({ updatedAt: -1 })
-    .lean()
+  const [items, readiness] = await Promise.all([
+    AiCampaignRule.find(filter)
+      .setOptions({ tenantId })
+      .sort({ updatedAt: -1 })
+      .lean(),
 
-  return res.status(200).json({ success: true, data: items })
+    // Si la recuperación de carritos puede correr o no, y por qué no.
+    //
+    // Una regla activa no alcanza: hace falta el agente prendido y su canal de
+    // WhatsApp también. Cuando falta alguno, el worker descarta cada carrito en
+    // silencio y la pantalla mostraba la regla como si estuviera trabajando.
+    getCartRecoveryReadiness({ tenantId }),
+  ])
+
+  // `data` sigue siendo el arreglo de siempre: la pantalla lo lee así y no hay
+  // motivo para romperle la forma por agregar un dato al costado.
+  return res.status(200).json({ success: true, data: items, readiness })
 })
 
 export const deleteCampaignRule = asyncHandler(async (req, res) => {
@@ -574,8 +586,18 @@ export const upsertCampaignRule = asyncHandler(async (req, res) => {
     })
   }
 
+  // OJO: `tenantId` NO va acá.
+  //
+  // Este mismo objeto se usa para crear y para editar. En la edición viaja
+  // dentro de un $set, y el plugin de aislamiento rechaza cualquier update que
+  // toque tenantId —con razón: mover una fila de comercio es la fuga que ese
+  // plugin existe para impedir—. Resultado: editar CUALQUIER regla de campaña
+  // fallaba siempre con TENANT_MUTATION_FORBIDDEN. Crear andaba, porque ahí el
+  // campo se escribe en el documento nuevo y no como mutación.
+  //
+  // El comercio se agrega solo en el create; el update lo filtra por el mismo
+  // valor que ya tiene.
   const payload = {
-    tenantId,
     name,
     type,
     enabled: body.enabled === undefined ? true : toBoolean(body.enabled),
@@ -626,7 +648,7 @@ export const upsertCampaignRule = asyncHandler(async (req, res) => {
   }
 
   if (!ruleId) {
-    const created = await AiCampaignRule.create(payload)
+    const created = await AiCampaignRule.create({ ...payload, tenantId })
     return res.status(201).json({ success: true, data: created })
   }
 

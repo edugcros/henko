@@ -7,7 +7,15 @@ const unwrap = response => response?.data?.data ?? response?.data
 
 export const listCampaignRules = async params => {
   const response = await api.get('/ai-agent/campaign-rules', { params })
-  return unwrap(response)
+
+  // El backend manda las reglas en `data` y, al lado, si la recuperación de
+  // carritos puede correr. Se devuelven las dos cosas: una regla activa con el
+  // canal de WhatsApp apagado no hace nada, y la pantalla tiene que poder
+  // decirlo.
+  return {
+    items: unwrap(response) || [],
+    readiness: response?.data?.readiness || null,
+  }
 }
 
 export const upsertCampaignRule = async (payload, id) => {

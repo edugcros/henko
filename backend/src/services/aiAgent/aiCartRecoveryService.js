@@ -129,6 +129,68 @@ const getVariantSnapshot = item => {
   }
 }
 
+/**
+ * ¿Este comercio puede recuperar carritos ahora mismo?
+ *
+ * La recuperación necesita tres cosas prendidas a la vez —el agente, su canal
+ * de WhatsApp y una regla de campaña activa del tipo correcto— y hasta acá,
+ * cuando faltaba una, createCartRecoveryFromCart devolvía `null` y el detector
+ * seguía de largo. El worker corre cada 60 segundos: sin fila, sin log y sin
+ * aviso en el panel, la función quedaba indistinguible de una rota.
+ *
+ * Comprobado en producción: la regla estaba creada y activa, el carrito
+ * abandonado esperaba con su usuario y su teléfono, y no pasaba nada. El único
+ * bloqueo era el canal de WhatsApp del agente, apagado.
+ *
+ * Devuelve el motivo para que lo use quien lo necesite: el detector lo registra
+ * en su resultado y la pantalla de reglas lo muestra al lado de la regla que no
+ * se va a ejecutar.
+ */
+export const getCartRecoveryReadiness = async ({ tenantId } = {}) => {
+  if (!tenantId) {
+    return { ready: false, reason: 'tenant_missing', agentEnabled: false, whatsappEnabled: false, hasActiveRule: false }
+  }
+
+  const [agent, rule] = await Promise.all([
+    AiAgent.findOne({ tenantId })
+      .select('enabled channels.whatsapp.enabled')
+      .setOptions({ tenantId })
+      .lean(),
+
+    AiCampaignRule.findOne({
+      tenantId,
+      type: 'abandoned_cart',
+      enabled: true,
+      channel: 'whatsapp',
+    })
+      .select('_id')
+      .setOptions({ tenantId })
+      .lean(),
+  ])
+
+  const agentEnabled = Boolean(agent?.enabled)
+  const whatsappEnabled = Boolean(agent?.channels?.whatsapp?.enabled)
+  const hasActiveRule = Boolean(rule)
+
+  const reason = !agent
+    ? 'agent_missing'
+    : !agentEnabled
+      ? 'agent_disabled'
+      : !whatsappEnabled
+        ? 'whatsapp_channel_disabled'
+        : !hasActiveRule
+          ? 'no_active_abandoned_cart_rule'
+          : null
+
+  return {
+    ready: reason === null,
+    reason,
+    agentEnabled,
+    whatsappEnabled,
+    hasActiveRule,
+  }
+}
+
 export const createCartRecoveryFromCart = async ({
   tenantId,
   tenant = null,

@@ -2,7 +2,10 @@
 import Cart from '../../models/cartModel.js'
 import Tenant from '../../models/tenantModel.js'
 import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
-import { createCartRecoveryFromCart } from './aiCartRecoveryService.js'
+import {
+  createCartRecoveryFromCart,
+  getCartRecoveryReadiness,
+} from './aiCartRecoveryService.js'
 
 const toSafeNumber = (value, fallback) => {
   const number = Number(value)
@@ -66,10 +69,43 @@ export const detectAbandonedCarts = async ({
 
   const results = []
 
+  // Por qué NO se recupera, cuando no se recupera.
+  //
+  // Antes, un comercio con el canal de WhatsApp apagado o sin regla activa
+  // hacía que createCartRecoveryFromCart devolviera null y el ciclo siguiera
+  // sin dejar rastro: cada 60 segundos, en silencio. Ahora el motivo queda en
+  // el resultado del ciclo, que es lo que el worker registra.
+  //
+  // Se consulta una vez por comercio por ciclo y se recuerda: el barrido cruza
+  // comercios y no tiene sentido repetir la misma consulta por cada carrito.
+  const readinessByTenant = new Map()
+
+  const readinessFor = async tenantIdOfCart => {
+    const key = String(tenantIdOfCart)
+
+    if (!readinessByTenant.has(key)) {
+      readinessByTenant.set(key, await getCartRecoveryReadiness({ tenantId: tenantIdOfCart }))
+    }
+
+    return readinessByTenant.get(key)
+  }
+
   for (const cart of carts) {
     try {
       if (!cart?.tenantId || !cart?._id) continue
       if (getCartProducts(cart).length === 0) continue
+
+      const readiness = await readinessFor(cart.tenantId)
+
+      if (!readiness.ready) {
+        results.push({
+          cartId: serializeId(cart._id),
+          tenantId: serializeId(cart.tenantId),
+          status: 'skipped',
+          reason: readiness.reason,
+        })
+        continue
+      }
 
       const existing = await AiCartRecovery.findOne({
         tenantId: cart.tenantId,
@@ -107,7 +143,18 @@ export const detectAbandonedCarts = async ({
           recoveryId: serializeId(recovery._id),
           status: 'scheduled',
         })
+        continue
       }
+
+      // Llegó hasta acá con todo prendido: lo que falta es del carrito, no de
+      // la configuración. El caso típico es un carrito sin usuario asociado o
+      // un usuario sin teléfono, y hasta ahora también era invisible.
+      results.push({
+        cartId: serializeId(cart._id),
+        tenantId: serializeId(cart.tenantId),
+        status: 'skipped',
+        reason: 'cart_without_reachable_contact',
+      })
     } catch (error) {
       results.push({
         cartId: cart?._id,

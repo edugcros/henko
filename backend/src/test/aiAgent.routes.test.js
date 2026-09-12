@@ -78,10 +78,12 @@ describe('colas de revisión · primero lo urgente', () => {
     const tenantId = tenantContext.tenant._id
     const base = { tenantId, status: 'pending_review' }
 
+    // La huella es única por (comercio, tipo:entidad): insertando con el
+    // driver crudo hay que ponerla a mano, o las tres filas chocan entre sí.
     await AiInsight.collection.insertMany([
-      { ...base, priority: 'medium', title: 'Media', type: 'low_conversion', updatedAt: new Date() },
-      { ...base, priority: 'low', title: 'Baja', type: 'low_conversion', updatedAt: new Date() },
-      { ...base, priority: 'high', title: 'Alta', type: 'low_conversion', updatedAt: new Date() },
+      { ...base, priority: 'medium', title: 'Media', type: 'low_conversion', fingerprint: 'low_conversion:media', updatedAt: new Date() },
+      { ...base, priority: 'low', title: 'Baja', type: 'low_conversion', fingerprint: 'low_conversion:baja', updatedAt: new Date() },
+      { ...base, priority: 'high', title: 'Alta', type: 'low_conversion', fingerprint: 'low_conversion:alta', updatedAt: new Date() },
     ])
 
     await AiLearningSuggestion.collection.insertMany([

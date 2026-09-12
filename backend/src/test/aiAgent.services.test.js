@@ -332,3 +332,157 @@ describe("asistente · primer mensaje de un visitante nuevo", () => {
     expect(texto).not.toContain("PRIMER MENSAJE");
   });
 });
+
+// ─── Reglas de campaña y recuperación de carritos ────────────────────────────
+//
+// Dos fallas reportadas por el comercio: "no se puede editar la regla, da
+// error" y "no se ve qué hace la recuperación de carrito ni funciona".
+
+describe("reglas de campaña · editar una regla existente", () => {
+  let mongod;
+  let AiCampaignRule;
+
+  const TENANT = new mongoose.Types.ObjectId();
+
+  beforeAll(async () => {
+    mongod = await MongoMemoryServer.create();
+    await mongoose.connect(mongod.getUri());
+    AiCampaignRule = (await import("../models/aiCampaignRuleModel.js")).default;
+  }, 60000);
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await mongod?.stop();
+  });
+
+  afterEach(async () => {
+    await AiCampaignRule.collection.deleteMany({});
+  });
+
+  test("el update NO puede llevar tenantId adentro", async () => {
+    // El controlador armaba un solo objeto para crear y para editar, con
+    // tenantId incluido. En la edición eso viaja dentro de un $set y el plugin
+    // de aislamiento lo rechaza —con razón: mover una fila de comercio es la
+    // fuga que ese plugin existe para impedir—. Editar cualquier regla fallaba
+    // siempre.
+    const regla = await AiCampaignRule.create({
+      tenantId: TENANT,
+      name: "Recuperación de carrito",
+      type: "abandoned_cart",
+      channel: "whatsapp",
+      messageTemplate: "Hola, quedó algo en tu carrito",
+    });
+
+    await expect(
+      AiCampaignRule.findOneAndUpdate(
+        { _id: regla._id, tenantId: TENANT },
+        { $set: { tenantId: TENANT, name: "Editada" } },
+        { new: true },
+      ).setOptions({ tenantId: TENANT }),
+    ).rejects.toThrow(/Cannot modify tenantId/);
+
+    // Sin tenantId en el $set, la misma edición pasa.
+    const editada = await AiCampaignRule.findOneAndUpdate(
+      { _id: regla._id, tenantId: TENANT },
+      { $set: { name: "Editada" } },
+      { new: true },
+    ).setOptions({ tenantId: TENANT });
+
+    expect(editada.name).toBe("Editada");
+    expect(String(editada.tenantId)).toBe(String(TENANT));
+  });
+});
+
+describe("recuperación de carritos · por qué no corre", () => {
+  let mongod;
+  let AiAgent;
+  let AiCampaignRule;
+  let getCartRecoveryReadiness;
+
+  const TENANT = new mongoose.Types.ObjectId();
+
+  const crearAgente = ({ enabled = true, whatsapp = true } = {}) =>
+    AiAgent.collection.insertOne({
+      tenantId: TENANT,
+      enabled,
+      channels: { webchat: { enabled: true }, whatsapp: { enabled: whatsapp } },
+    });
+
+  const crearRegla = (extra = {}) =>
+    AiCampaignRule.collection.insertOne({
+      tenantId: TENANT,
+      name: "Carrito abandonado",
+      type: "abandoned_cart",
+      channel: "whatsapp",
+      enabled: true,
+      messageTemplate: "Hola",
+      ...extra,
+    });
+
+  beforeAll(async () => {
+    mongod = await MongoMemoryServer.create();
+    await mongoose.connect(mongod.getUri());
+    AiAgent = (await import("../models/aiAgentModel.js")).default;
+    AiCampaignRule = (await import("../models/aiCampaignRuleModel.js")).default;
+    ({ getCartRecoveryReadiness } = await import(
+      "../services/aiAgent/aiCartRecoveryService.js"
+    ));
+  }, 60000);
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await mongod?.stop();
+  });
+
+  afterEach(async () => {
+    await AiAgent.collection.deleteMany({});
+    await AiCampaignRule.collection.deleteMany({});
+  });
+
+  test("con el canal de WhatsApp apagado lo dice, en vez de callarse", async () => {
+    // Es el caso real de producción: regla activa, carrito esperando, y nada
+    // pasaba porque el canal estaba en false. El worker lo descartaba cada 60
+    // segundos sin dejar rastro.
+    await crearAgente({ whatsapp: false });
+    await crearRegla();
+
+    const estado = await getCartRecoveryReadiness({ tenantId: TENANT });
+
+    expect(estado.ready).toBe(false);
+    expect(estado.reason).toBe("whatsapp_channel_disabled");
+    expect(estado.hasActiveRule).toBe(true);
+  });
+
+  test("sin regla activa, el motivo es la regla y no el canal", async () => {
+    await crearAgente();
+
+    const estado = await getCartRecoveryReadiness({ tenantId: TENANT });
+
+    expect(estado.reason).toBe("no_active_abandoned_cart_rule");
+    expect(estado.whatsappEnabled).toBe(true);
+  });
+
+  test("con el asistente apagado, ese es el motivo", async () => {
+    await crearAgente({ enabled: false });
+    await crearRegla();
+
+    const estado = await getCartRecoveryReadiness({ tenantId: TENANT });
+
+    expect(estado.reason).toBe("agent_disabled");
+  });
+
+  test("con todo prendido, está lista", async () => {
+    await crearAgente();
+    await crearRegla();
+
+    const estado = await getCartRecoveryReadiness({ tenantId: TENANT });
+
+    expect(estado).toMatchObject({
+      ready: true,
+      reason: null,
+      agentEnabled: true,
+      whatsappEnabled: true,
+      hasActiveRule: true,
+    });
+  });
+});

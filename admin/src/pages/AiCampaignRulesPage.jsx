@@ -174,8 +174,27 @@ const RuleCard = ({ rule, busy, onEdit, onDelete }) => {
   )
 }
 
+// Por qué la recuperación de carritos no está corriendo. El backend manda el
+// motivo; acá se traduce a algo que se pueda leer y accionar.
+const READINESS_MESSAGES = {
+  agent_missing:
+    'Todavía no hay un asistente de IA configurado para esta tienda, así que ninguna regla de recuperación se ejecuta.',
+  agent_disabled:
+    'El asistente de IA está apagado. Mientras siga así, las reglas de recuperación de carrito no se ejecutan.',
+  whatsapp_channel_disabled:
+    'El canal de WhatsApp del asistente está apagado, y la recuperación de carritos se envía por ahí. Las reglas quedan guardadas pero no se ejecutan hasta que lo prendas en Configuración del agente.',
+  no_active_abandoned_cart_rule:
+    'No hay ninguna regla activa de tipo "carrito abandonado" por WhatsApp, así que no se recupera ningún carrito.',
+  default:
+    'La recuperación de carritos no puede ejecutarse con la configuración actual.',
+}
+
 const AiCampaignRulesPage = () => {
   const [rules, setRules] = useState([])
+  // Si la recuperación de carritos puede correr, y si no, por qué. Una regla
+  // activa con el canal apagado no hace nada, y así se veía igual que una que
+  // sí trabaja.
+  const [readiness, setReadiness] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
   const [error, setError] = useState('')
@@ -195,7 +214,8 @@ const AiCampaignRulesPage = () => {
     setError('')
     try {
       const data = await listCampaignRules()
-      setRules(Array.isArray(data) ? data : [])
+      setRules(Array.isArray(data?.items) ? data.items : [])
+      setReadiness(data?.readiness || null)
     } catch (err) {
       console.error('[AI_CAMPAIGN_RULES_ERROR]', err)
       setError(
@@ -344,6 +364,12 @@ const AiCampaignRulesPage = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
+        </Alert>
+      )}
+
+      {!loading && readiness && !readiness.ready && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          {READINESS_MESSAGES[readiness.reason] || READINESS_MESSAGES.default}
         </Alert>
       )}
 
