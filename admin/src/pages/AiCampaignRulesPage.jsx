@@ -182,7 +182,7 @@ const READINESS_MESSAGES = {
   agent_disabled:
     'El asistente de IA está apagado. Mientras siga así, las reglas de recuperación de carrito no se ejecutan.',
   whatsapp_channel_disabled:
-    'El canal de WhatsApp del asistente está apagado, y la recuperación de carritos se envía por ahí. Las reglas quedan guardadas pero no se ejecutan hasta que lo prendas en Configuración del agente.',
+    'Tus reglas activas son de WhatsApp y ese canal está apagado en Configuración del agente. Dos salidas: prenderlo, o crear una regla de carrito abandonado por Email — el correo no necesita nada de Meta y le llega a cualquier comprador que haya dejado su dirección.',
   no_active_abandoned_cart_rule:
     'No hay ninguna regla activa de tipo "carrito abandonado" por WhatsApp, así que no se recupera ningún carrito.',
   default:

@@ -151,43 +151,52 @@ export const getCartRecoveryReadiness = async ({ tenantId } = {}) => {
     return { ready: false, reason: 'tenant_missing', agentEnabled: false, whatsappEnabled: false, hasActiveRule: false }
   }
 
-  const [agent, rule] = await Promise.all([
+  const [agent, rules] = await Promise.all([
     AiAgent.findOne({ tenantId })
       .select('enabled channels.whatsapp.enabled')
       .setOptions({ tenantId })
       .lean(),
 
-    AiCampaignRule.findOne({
-      tenantId,
-      type: 'abandoned_cart',
-      enabled: true,
-      channel: 'whatsapp',
-    })
-      .select('_id')
+    AiCampaignRule.find({ tenantId, type: 'abandoned_cart', enabled: true })
+      .select('channel')
       .setOptions({ tenantId })
       .lean(),
   ])
 
   const agentEnabled = Boolean(agent?.enabled)
   const whatsappEnabled = Boolean(agent?.channels?.whatsapp?.enabled)
-  const hasActiveRule = Boolean(rule)
+  const activeRules = Array.isArray(rules) ? rules : []
+  const hasActiveRule = activeRules.length > 0
+  const hasWhatsappRule = activeRules.some(rule => rule.channel === 'whatsapp')
+  const hasEmailRule = activeRules.some(rule => rule.channel === 'email')
+
+  // Con una regla de correo activa alcanza: el correo no depende del canal de
+  // WhatsApp ni de que el comprador haya dejado el teléfono.
+  const usableChannel = hasEmailRule
+    ? 'email'
+    : hasWhatsappRule && whatsappEnabled
+      ? 'whatsapp'
+      : null
 
   const reason = !agent
     ? 'agent_missing'
     : !agentEnabled
       ? 'agent_disabled'
-      : !whatsappEnabled
-        ? 'whatsapp_channel_disabled'
-        : !hasActiveRule
-          ? 'no_active_abandoned_cart_rule'
+      : !hasActiveRule
+        ? 'no_active_abandoned_cart_rule'
+        : usableChannel === null
+          ? 'whatsapp_channel_disabled'
           : null
 
   return {
     ready: reason === null,
     reason,
+    usableChannel,
     agentEnabled,
     whatsappEnabled,
     hasActiveRule,
+    hasWhatsappRule,
+    hasEmailRule,
   }
 }
 
@@ -203,21 +212,18 @@ export const createCartRecoveryFromCart = async ({
     return null
   }
 
-  const [agent, rule, user] = await Promise.all([
-    AiAgent.findOne({
-      tenantId,
-      enabled: true,
-      'channels.whatsapp.enabled': true,
-    })
-      .setOptions({ tenantId })
-      .lean(),
+  const [agent, rules, user] = await Promise.all([
+    AiAgent.findOne({ tenantId, enabled: true }).setOptions({ tenantId }).lean(),
 
-    AiCampaignRule.findOne({
-      tenantId,
-      type: 'abandoned_cart',
-      enabled: true,
-      channel: 'whatsapp',
-    })
+    // TODAS las reglas activas, no solo las de WhatsApp.
+    //
+    // Antes esta búsqueda pedía `channel: 'whatsapp'` fijo, y con eso alcanzaba
+    // para que la recuperación por correo —que está entera del otro lado: el
+    // worker sabe mandarla, el servicio de email existe y hasta personaliza
+    // mejor, porque el correo no tiene la ventana de 24 h— no se alcanzara
+    // nunca. Un comercio sin WhatsApp no recuperaba ni un carrito aunque el
+    // comprador hubiera dejado su email en el checkout.
+    AiCampaignRule.find({ tenantId, type: 'abandoned_cart', enabled: true })
       .setOptions({ tenantId })
       .lean(),
 
@@ -226,15 +232,34 @@ export const createCartRecoveryFromCart = async ({
       : null,
   ])
 
-  if (!agent || !rule || !user) {
+  if (!agent || !user) {
     return null
   }
 
   const phone = getUserPhone(user)
+  const email = clean(user.email).toLowerCase()
 
-  if (!phone) {
+  // WhatsApp primero cuando se puede: convierte más. El correo entra cuando
+  // WhatsApp no está disponible, no como reemplazo.
+  const deliverable = {
+    whatsapp: Boolean(agent?.channels?.whatsapp?.enabled && phone),
+    email: Boolean(email),
+  }
+
+  const rule =
+    (Array.isArray(rules) ? rules : []).find(
+      item => item.channel === 'whatsapp' && deliverable.whatsapp,
+    ) ||
+    (Array.isArray(rules) ? rules : []).find(
+      item => item.channel === 'email' && deliverable.email,
+    ) ||
+    null
+
+  if (!rule) {
     return null
   }
+
+  const channel = rule.channel === 'email' ? 'email' : 'whatsapp'
 
   const existing = await AiCartRecovery.findOne({
     tenantId,
@@ -328,11 +353,11 @@ export const createCartRecoveryFromCart = async ({
         dedupeKey,
         userId,
         cartId: cart._id,
-        channel: 'whatsapp',
+        channel,
         customer: {
           name: getUserName(user),
           phone,
-          email: clean(user.email),
+          email,
         },
         cartSnapshot: {
           items: snapshotItems,

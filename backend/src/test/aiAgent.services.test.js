@@ -552,3 +552,171 @@ describe("webhook de WhatsApp · token por comercio", () => {
     expect((await verificar("")).statusCode).toBe(403);
   });
 });
+
+// ─── Recuperación por correo ─────────────────────────────────────────────────
+//
+// El worker sabía mandar por email, el servicio de correo existía y hasta
+// personaliza mejor que WhatsApp (el correo no tiene ventana de 24 h). Lo
+// único que faltaba era que el creador de recuperaciones lo eligiera: buscaba
+// la regla con `channel: 'whatsapp'` fijo. Un comercio sin WhatsApp no
+// recuperaba un solo carrito, aunque el comprador hubiera dejado su email.
+
+describe("recuperación de carritos · el correo también sirve", () => {
+  let mongod;
+  let AiAgent;
+  let AiCampaignRule;
+  let AiCartRecovery;
+  let User;
+  let Cart;
+  let createCartRecoveryFromCart;
+  let getCartRecoveryReadiness;
+
+  const TENANT = new mongoose.Types.ObjectId();
+
+  const crearAgente = ({ whatsapp = false } = {}) =>
+    AiAgent.collection.insertOne({
+      tenantId: TENANT,
+      enabled: true,
+      channels: { webchat: { enabled: true }, whatsapp: { enabled: whatsapp } },
+    });
+
+  const crearRegla = channel =>
+    AiCampaignRule.collection.insertOne({
+      tenantId: TENANT,
+      name: `Carrito abandonado (${channel})`,
+      type: "abandoned_cart",
+      channel,
+      enabled: true,
+      messageTemplate: "Hola {{customerName}}, quedó algo en tu carrito",
+      trigger: { delayMinutes: 30, maxAttempts: 2 },
+    });
+
+  const crearUsuario = async ({ phone = "", email = "" } = {}) => {
+    const { insertedId } = await User.collection.insertOne({
+      tenantId: TENANT,
+      firstname: "Clienta",
+      email,
+      mobile: phone,
+    });
+
+    return insertedId;
+  };
+
+  const carrito = () => ({
+    _id: new mongoose.Types.ObjectId(),
+    tenantId: TENANT,
+    updatedAt: new Date(),
+    products: [
+      {
+        productId: new mongoose.Types.ObjectId(),
+        title: "Zapatilla Urbana",
+        quantity: 1,
+        price: 1000,
+        subtotal: 1000,
+      },
+    ],
+  });
+
+  beforeAll(async () => {
+    mongod = await MongoMemoryServer.create();
+    await mongoose.connect(mongod.getUri());
+
+    AiAgent = (await import("../models/aiAgentModel.js")).default;
+    AiCampaignRule = (await import("../models/aiCampaignRuleModel.js")).default;
+    AiCartRecovery = (await import("../models/aiCartRecoveryModel.js")).default;
+    User = (await import("../models/userModel.js")).default;
+    Cart = (await import("../models/cartModel.js")).default;
+    ({ createCartRecoveryFromCart, getCartRecoveryReadiness } = await import(
+      "../services/aiAgent/aiCartRecoveryService.js"
+    ));
+  }, 60000);
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await mongod?.stop();
+  });
+
+  afterEach(async () => {
+    await Promise.all([
+      AiAgent.collection.deleteMany({}),
+      AiCampaignRule.collection.deleteMany({}),
+      AiCartRecovery.collection.deleteMany({}),
+      User.collection.deleteMany({}),
+      Cart.collection.deleteMany({}),
+    ]);
+  });
+
+  test("sin WhatsApp pero con regla de correo, la recuperación sale igual", async () => {
+    await crearAgente({ whatsapp: false });
+    await crearRegla("email");
+    const userId = await crearUsuario({ email: "clienta@correo.com" });
+
+    const recovery = await createCartRecoveryFromCart({
+      tenantId: TENANT,
+      tenant: { _id: TENANT, name: "Tienda" },
+      cart: carrito(),
+      userId,
+    });
+
+    expect(recovery).toBeTruthy();
+    expect(recovery.channel).toBe("email");
+    expect(recovery.customer.email).toBe("clienta@correo.com");
+  });
+
+  test("cuando los dos canales están disponibles, gana WhatsApp", async () => {
+    // Convierte más. El correo entra cuando WhatsApp no está, no como reemplazo.
+    await crearAgente({ whatsapp: true });
+    await crearRegla("whatsapp");
+    await crearRegla("email");
+    const userId = await crearUsuario({
+      phone: "+5493585132767",
+      email: "clienta@correo.com",
+    });
+
+    const recovery = await createCartRecoveryFromCart({
+      tenantId: TENANT,
+      tenant: { _id: TENANT, name: "Tienda" },
+      cart: carrito(),
+      userId,
+    });
+
+    expect(recovery.channel).toBe("whatsapp");
+  });
+
+  test("una regla de WhatsApp con el canal apagado no manda por correo sola", async () => {
+    // Si el comercio configuró WhatsApp y solo WhatsApp, no se le cambia el
+    // canal por atrás: se avisa que no puede correr.
+    await crearAgente({ whatsapp: false });
+    await crearRegla("whatsapp");
+    const userId = await crearUsuario({
+      phone: "+5493585132767",
+      email: "clienta@correo.com",
+    });
+
+    const recovery = await createCartRecoveryFromCart({
+      tenantId: TENANT,
+      tenant: { _id: TENANT, name: "Tienda" },
+      cart: carrito(),
+      userId,
+    });
+
+    expect(recovery).toBeNull();
+
+    const estado = await getCartRecoveryReadiness({ tenantId: TENANT });
+    expect(estado.reason).toBe("whatsapp_channel_disabled");
+  });
+
+  test("con regla de correo, el diagnóstico dice que está lista", async () => {
+    await crearAgente({ whatsapp: false });
+    await crearRegla("email");
+
+    const estado = await getCartRecoveryReadiness({ tenantId: TENANT });
+
+    expect(estado).toMatchObject({
+      ready: true,
+      reason: null,
+      usableChannel: "email",
+      whatsappEnabled: false,
+    });
+  });
+});

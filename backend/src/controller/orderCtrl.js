@@ -658,25 +658,45 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
     })
   }
 
-  // Si el cliente marcó el opt-in en el checkout, registramos el
-  // consentimiento de marketing para el canal WhatsApp (clave: teléfono).
-  // Es lo que habilita al agente a enviar campañas salientes (p. ej.
-  // recuperación de carrito) fuera de la ventana de servicio de 24h.
+  // El opt-in del checkout vale para los DOS canales.
+  //
+  // Se registraba solo para WhatsApp, con el teléfono como clave. El mismo
+  // checkbox —"quiero recibir novedades"— es el permiso que la recuperación de
+  // carrito necesita para escribir, y la que sale por correo se frenaba con
+  // "falta consentimiento" aunque el comprador lo hubiera dado dos minutos
+  // antes en la misma pantalla. Cada canal tiene su preferencia porque su
+  // clave es distinta (teléfono / email) y porque darse de baja de uno no es
+  // darse de baja del otro.
+  //
   // Fire-and-forget: un fallo acá nunca debe romper la creación de la orden.
-  const consentPhone = createdOrder.shippingAddress?.phone
-  if (marketingConsentGiven && consentPhone) {
-    registerMarketingConsent({
-      tenantId,
-      channel: 'whatsapp',
-      destination: consentPhone,
-      consentSource: 'checkout_opt_in',
-    }).catch(error => {
-      logger.error('[ORDER_MARKETING_CONSENT_ERROR]', {
+  const consentTargets = [
+    { channel: 'whatsapp', destination: createdOrder.shippingAddress?.phone },
+    {
+      channel: 'email',
+      destination:
+        createdOrder.shippingAddress?.email ||
+        createdOrder.customerSnapshot?.email,
+    },
+  ]
+
+  if (marketingConsentGiven) {
+    for (const target of consentTargets) {
+      if (!target.destination) continue
+
+      registerMarketingConsent({
         tenantId,
-        orderId: String(createdOrder._id),
-        error: error?.message,
+        channel: target.channel,
+        destination: target.destination,
+        consentSource: 'checkout_opt_in',
+      }).catch(error => {
+        logger.error('[ORDER_MARKETING_CONSENT_ERROR]', {
+          tenantId,
+          orderId: String(createdOrder._id),
+          channel: target.channel,
+          error: error?.message,
+        })
       })
-    })
+    }
   }
 
   return res.status(201).json({
