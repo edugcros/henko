@@ -147,3 +147,25 @@ describe("payload · con lo que envía el Brick", () => {
     expect(body.issuer_id).toBeUndefined();
   });
 });
+
+describe("payload · fechas", () => {
+  test("NO se manda start_date", () => {
+    // Se mandaba `new Date().toISOString()`. Para cuando Mercado Pago lo lee ya
+    // es pasado, y contesta "cannot be a past date". Es una carrera imposible de
+    // ganar: cualquier instante que uno escriba llega viejo.
+    //
+    // El campo es opcional y omitirlo arranca la suscripción de inmediato.
+    const body = buildMercadoPagoSubscriptionData({
+      plan: "starter",
+      tenantId: "64b7f0000000000000000001",
+      userId: "64b7f0000000000000000009",
+      email: "duenio@comercio.com",
+      token: "tok",
+    }).subscriptionData;
+
+    expect(body.auto_recurring.start_date).toBeUndefined();
+    // Y lo que sí tiene que viajar sigue viajando.
+    expect(body.auto_recurring.frequency).toBe(1);
+    expect(body.auto_recurring.frequency_type).toBe("months");
+  });
+});

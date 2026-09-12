@@ -138,7 +138,18 @@ export const buildMercadoPagoSubscriptionData = ({
       // cuenta MLA es un rechazo asegurado, y era lo que estaba escrito.
       transaction_amount: priceArs,
       currency_id: 'ARS',
-      start_date: new Date().toISOString(),
+      // start_date NO se manda, y es a propósito.
+      //
+      // Iba `new Date().toISOString()` — "ahora". Para cuando el request llega a
+      // Mercado Pago, ese "ahora" ya pasó, y su validación es estricta:
+      // "Invalid value for auto_recurring.start_date, cannot be a past date".
+      // Es una carrera que no se puede ganar: cualquier instante que uno escriba
+      // es pasado cuando el otro lo lee.
+      //
+      // El campo es opcional (AutoRecurringRequest.start_date?) y omitirlo hace
+      // que la suscripción arranque ya, que es lo que este checkout quiere.
+      // Sumarle unos minutos de colchón sería elegir un número arbitrario para
+      // esquivar el problema en vez de sacarlo.
     },
     // ADMIN_BASE_URL no existe en config/env.js: quedaba "undefined/..." y
     // Mercado Pago rechaza una back_url inválida. env.adminUrl sí es
