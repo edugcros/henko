@@ -35,13 +35,10 @@ import {
   getAiBudget,
   saveAiCredentials,
 } from '../../services/aiBudgetService.js'
-
-const PLAN_LABELS = {
-  free: 'Gratis',
-  starter: 'Starter',
-  pro: 'Pro',
-  enterprise: 'Enterprise',
-}
+// El nombre del plan sale de un solo lugar. Acá decía "Starter" y "Pro"
+// mientras la pantalla de planes del mismo panel decía "Emprendedor" y
+// "Profesional" — dos nombres para el mismo plan, a dos clicks de distancia.
+import { getPlanName } from '../../constants/plans.js'
 
 // Orden fijo: el más caro y el más consultado primero. No se reordena por
 // valor — un medidor que cambia de lugar según cuánto se usó obliga a
@@ -356,7 +353,7 @@ const AiBudgetPanel = () => {
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }} useFlexGap>
         <Chip
           size="small"
-          label={`Plan ${PLAN_LABELS[budget.plan] || budget.plan}`}
+          label={`Plan ${getPlanName(budget.plan)}`}
           color="primary"
           variant="outlined"
         />

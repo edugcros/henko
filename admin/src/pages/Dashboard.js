@@ -66,6 +66,7 @@ import { useSnackbar } from 'notistack'
 import api from '@utils/axiosConfig'
 
 import { analyticsAPI } from '../services/api'
+import { getPlanName } from '../constants/plans.js'
 
 const DEBUG = process.env.REACT_APP_DEBUG_API === 'true'
 
@@ -1165,12 +1166,12 @@ const AnalyticsDashboardView = ({ onOpenConfig }) => {
                 value={
                   subscriptionLoading ? (
                     <Skeleton width={80} />
-                  ) : subscriptionMetrics.currentPlan === 'free' ? (
-                    'Gratis'
-                  ) : subscriptionMetrics.currentPlan === 'starter' ? (
-                    'Emprendedor'
                   ) : (
-                    'Profesional'
+                    // El nombre sale de constants/plans.js. Acá había una
+                    // cadena de ternarios que además mentía: cualquier plan que
+                    // no fuera free o starter caía en 'Profesional', así que un
+                    // enterprise se mostraba como Pro.
+                    getPlanName(subscriptionMetrics.currentPlan)
                   )
                 }
                 icon={PaymentsIcon}

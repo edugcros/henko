@@ -38,6 +38,7 @@ import {
 import { createUserAdmin } from '@features/auth/authSlice'
 import TurnstileWidget from '../components/TurnstileWidget'
 import { env } from '../config/env'
+import { SELLABLE_PLANS } from '../constants/plans.js'
 
 // =====================================================
 // Helpers
@@ -157,14 +158,16 @@ const isReservedSlug = slug => {
   )
 }
 
-const PUBLIC_SIGNUP_PLANS = new Set(['starter', 'pro'])
-
+// Qué planes se pueden contratar sale de constants/plans.js. Acá había una
+// cuarta lista con los mismos dos valores: agregar un plan obligaba a acordarse
+// de este archivo, y olvidarse significaba que el alta lo rechazara en silencio
+// y cayera al starter.
 const resolveSignupPlan = (...candidates) => {
   const selectedPlan = candidates.find(candidate =>
-    PUBLIC_SIGNUP_PLANS.has(String(candidate || '').toLowerCase()),
+    SELLABLE_PLANS.includes(String(candidate || '').toLowerCase()),
   )
 
-  return selectedPlan ? String(selectedPlan).toLowerCase() : 'starter'
+  return selectedPlan ? String(selectedPlan).toLowerCase() : SELLABLE_PLANS[0]
 }
 
 const ensureUrl = value => {
@@ -283,7 +286,7 @@ const validationSchema = yup.object({
 
   plan: yup
     .string()
-    .oneOf([...PUBLIC_SIGNUP_PLANS], 'El plan seleccionado no es válido')
+    .oneOf([...SELLABLE_PLANS], 'El plan seleccionado no es válido')
     .required('Seleccioná un plan'),
 })
 

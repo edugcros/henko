@@ -32,16 +32,6 @@ const aiUsageSchema = new Schema(
       min: 0,
     },
 
-    // Un contador por métrica de aiPlanPolicy. Van en el mismo documento
-    // (y no en uno por métrica) para que el mes de un tenant se lea con una
-    // sola query: el panel los muestra siempre juntos.
-    counters: {
-      vision: { type: Number, default: 0, min: 0 },
-      agentMessages: { type: Number, default: 0, min: 0 },
-      agentTokens: { type: Number, default: 0, min: 0 },
-      imageEdits: { type: Number, default: 0, min: 0 },
-    },
-
     // Cuánto se gastó contra la key de la plataforma, en USD aproximados.
     // Es la única forma de contestar "¿qué tenant me está quemando la
     // factura?" sin exportar nada desde Google.
@@ -69,6 +59,15 @@ const aiUsageSchema = new Schema(
       type: Date,
       default: null,
     },
+    // Un contador por métrica de aiPlanPolicy. Van en el mismo documento
+    // (y no en uno por métrica) para que el mes de un tenant se lea con una
+    // sola query: el panel los muestra siempre juntos.
+    //
+    // `counters` estaba declarado DOS veces. En un objeto de JavaScript gana el
+    // último, así que este —el completo— era el que valía y todo funcionaba. Pero
+    // el primero tenía solo cuatro métricas: si alguien reordenaba o borraba
+    // este bloque, el schema perdía marketAnalyses y marketTokens sin un solo
+    // error, y el consumo de los análisis de mercado dejaba de contarse.
     counters: {
       vision: { type: Number, default: 0, min: 0 },
       agentMessages: { type: Number, default: 0, min: 0 },
@@ -76,7 +75,6 @@ const aiUsageSchema = new Schema(
       imageEdits: { type: Number, default: 0, min: 0 },
       marketAnalyses: { type: Number, default: 0, min: 0 },
       marketTokens: { type: Number, default: 0, min: 0 },
-
     },
   },
   { timestamps: true },

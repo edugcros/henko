@@ -99,10 +99,14 @@ const loadTenantFromRequest = async req => {
 export const getSubscriptionPlans = async (req, res) => {
   return sendResponse(res, 200, true, 'Planes obtenidos', {
     currency: 'ARS',
-    plans: getPlanCatalog().map(({ plan, monthlyPriceArs, currency }) => ({
+    // Se saca `source` (panel/env/default): a quien mira precios no le dice
+    // nada, y de dónde salió cada número es asunto del dueño. Las cuotas sí
+    // viajan: son parte de lo que se está comprando.
+    plans: getPlanCatalog().map(({ plan, monthlyPriceArs, currency, limits }) => ({
       plan,
       monthlyPriceArs,
       currency,
+      limits,
     })),
   })
 }

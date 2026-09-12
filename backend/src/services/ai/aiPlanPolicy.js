@@ -460,6 +460,12 @@ export const getPlanCatalog = () =>
     monthlyPriceArs: getPlanMonthlyPriceArs(plan),
     currency: 'ARS',
     source: getPlanPriceSource(plan),
+    // Las cuotas viajan con el precio porque son parte de lo que se compra.
+    // El checkout las tenía escritas a mano —"300 análisis de imágenes/mes" y
+    // compañía—, o sea una segunda copia de DEFAULT_PLAN_LIMITS. Hoy coincidían;
+    // el día que alguien mueva un tope por variable de entorno, la pantalla
+    // seguiría prometiendo lo viejo y el medidor entregaría otra cosa.
+    limits: getPlanLimits(plan),
   }))
 
 // ─── Costos operativos de HENKO (Bloque 8.10) ────────────

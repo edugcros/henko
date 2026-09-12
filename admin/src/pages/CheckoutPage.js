@@ -38,7 +38,7 @@ import {
 } from '@mui/icons-material'
 import api from '@utils/axiosConfig'
 import { PLAN_PRESENTATION, formatArs } from '../constants/plans.js'
-import { getPlanCatalog, findPlanPrice } from '../services/subscriptionPlansService.js'
+import { getPlanCatalog } from '../services/subscriptionPlansService.js'
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 
 // El precio NO está acá. Lo trae /subscriptions/plans, que es de donde sale el
@@ -46,23 +46,29 @@ import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 // decía literalmente "Pagar USD 26.14" mientras el backend cobraba 40.000 pesos:
 // el número y la moneda del botón estaban los dos mal.
 //
-// Las cuotas de cada plan siguen escritas acá porque son texto de producto. Son
-// las mismas que DEFAULT_PLAN_LIMITS del backend, así que si alguien mueve un
-// tope por variable de entorno esta lista queda vieja — es una copia menos grave
-// que la del precio, pero es una copia.
-const PLAN_FEATURES = {
-  starter: [
-    '300 análisis de imágenes/mes',
-    '2.000 mensajes del asistente/mes',
-    '100 generaciones de fondo con IA/mes',
-    '50 análisis de demanda/mes',
-  ],
-  pro: [
-    '1.500 análisis de imágenes/mes',
-    '10.000 mensajes del asistente/mes',
-    '500 generaciones de fondo con IA/mes',
-    '250 análisis de demanda/mes',
-  ],
+// Las cuotas tampoco están acá: vienen con el catálogo, derivadas de los mismos
+// topes que el medidor aplica. Estaban escritas a mano —"300 análisis de
+// imágenes/mes" y compañía—, una segunda copia de DEFAULT_PLAN_LIMITS. Hoy
+// coincidían; el día que alguien mueva un tope por variable de entorno, esta
+// pantalla seguiría prometiendo lo viejo.
+const ETIQUETA_CUOTA = {
+  vision: 'análisis de imágenes',
+  agentMessages: 'mensajes del asistente',
+  imageEdits: 'generaciones de fondo con IA',
+  marketAnalyses: 'análisis de demanda',
+}
+
+// En este orden y solo estas cuatro: son las que el comercio entiende al
+// comprar. Las de tokens son un freno técnico, no una promesa de venta.
+const CUOTAS_VISIBLES = ['vision', 'agentMessages', 'imageEdits', 'marketAnalyses']
+
+const describirCuotas = limits => {
+  if (!limits) return []
+
+  return CUOTAS_VISIBLES.filter(clave => limits[clave] > 0).map(
+    clave =>
+      `${new Intl.NumberFormat('es-AR').format(limits[clave])} ${ETIQUETA_CUOTA[clave]}/mes`,
+  )
 }
 
 const CheckoutPage = () => {
@@ -72,6 +78,7 @@ const CheckoutPage = () => {
 
   const selectedPlan = searchParams.get('plan') || 'starter'
   const [precioArs, setPrecioArs] = useState(null)
+  const [cuotas, setCuotas] = useState([])
 
   // Al sacar el formulario propio me llevé también estas declaraciones, que no
   // eran suyas: el JSX de abajo las sigue usando. El build compiló igual
@@ -129,7 +136,7 @@ const CheckoutPage = () => {
 
   const planDetails = {
     name: PLAN_PRESENTATION[selectedPlan]?.name || PLAN_PRESENTATION.starter.name,
-    features: PLAN_FEATURES[selectedPlan] || PLAN_FEATURES.starter,
+    features: cuotas,
   }
 
   useEffect(() => {
@@ -137,12 +144,19 @@ const CheckoutPage = () => {
 
     getPlanCatalog()
       .then(catalogo => {
-        if (vigente) setPrecioArs(findPlanPrice(catalogo, selectedPlan))
+        if (!vigente) return
+
+        const fila = (catalogo?.plans || []).find(p => p.plan === selectedPlan)
+
+        setPrecioArs(fila ? fila.monthlyPriceArs : null)
+        setCuotas(describirCuotas(fila?.limits))
       })
       .catch(() => {
-        // Sin precio no se muestra ninguno. Un respaldo escrito acá sería
-        // exactamente el problema que esto vino a sacar.
-        if (vigente) setPrecioArs(null)
+        // Sin catálogo no se muestra precio ni cuotas. Un respaldo escrito acá
+        // sería exactamente el problema que esto vino a sacar.
+        if (!vigente) return
+        setPrecioArs(null)
+        setCuotas([])
       })
 
     return () => {

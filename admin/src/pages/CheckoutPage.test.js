@@ -59,7 +59,23 @@ beforeEach(() => {
           success: true,
           data: {
             currency: "ARS",
-            plans: [{ plan: "starter", monthlyPriceArs: 1, currency: "ARS" }],
+            plans: [
+              {
+                plan: "starter",
+                monthlyPriceArs: 1,
+                currency: "ARS",
+                // Las cuotas vienen del backend, derivadas de los mismos topes
+                // que el medidor aplica.
+                limits: {
+                  vision: 300,
+                  agentMessages: 2000,
+                  agentTokens: 10000000,
+                  imageEdits: 100,
+                  marketAnalyses: 50,
+                  marketTokens: 1250000,
+                },
+              },
+            ],
           },
         },
       });
@@ -70,6 +86,15 @@ beforeEach(() => {
 });
 
 describe("CheckoutPage · abre", () => {
+  test("las cuotas salen del catálogo, no escritas en la pantalla", async () => {
+    // Estaban escritas a mano y duplicaban DEFAULT_PLAN_LIMITS del backend. Si
+    // alguien mueve un tope, la pantalla tiene que seguirlo.
+    render(<CheckoutPage />);
+
+    expect(await screen.findByText(/2\.000 mensajes del asistente\/mes/)).toBeInTheDocument();
+    expect(screen.getByText(/300 análisis de imágenes\/mes/)).toBeInTheDocument();
+  });
+
   test("renderiza sin romper", async () => {
     render(<CheckoutPage />);
 
