@@ -93,6 +93,26 @@ const aiLeadSchema = new Schema(
       index: true,
     },
 
+    /**
+     * Todas las charlas de esta persona, no solo la primera y la última.
+     *
+     * El lead guardaba dos punteros: conversationId (la charla que lo originó,
+     * congelada) y lastConversationId (la más reciente). Con eso, una persona
+     * que vuelve tres veces deja dos conversaciones alcanzables desde el panel
+     * y el resto huérfanas — en producción quedaron seis de siete sin ningún
+     * lead que las nombre.
+     *
+     * Es la lista, no un reemplazo: los dos punteros siguen existiendo porque
+     * uno identifica el origen (y sostiene el índice único) y el otro es el que
+     * el panel abre por defecto.
+     */
+    conversationIds: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'AiConversation',
+      },
+    ],
+
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -312,13 +332,28 @@ aiLeadSchema.index({ tenantId: 1, 'customer.phone': 1, status: 1 })
 aiLeadSchema.index({ tenantId: 1, 'customer.email': 1, status: 1 })
 aiLeadSchema.index({ tenantId: 1, channel: 1, lastInteractionAt: -1 })
 aiLeadSchema.index({ tenantId: 1, assignedTo: 1, status: 1 })
+/**
+ * Una conversación pertenece a un solo lead.
+ *
+ * ESTE ÍNDICE NUNCA EXISTIÓ. La expresión parcial incluía
+ * `deletedAt: { $exists: false }`, y MongoDB no admite $exists:false en un
+ * índice parcial: rechaza la especificación entera con "Expression not
+ * supported in partial index: $not". Comprobado contra la base de producción —
+ * están los veintiséis índices del schema menos este.
+ *
+ * O sea que la unicidad que el código daba por sentada no la sostenía nadie.
+ *
+ * Sin la cláusula imposible el índice sí se crea. Queda un poco más estricto:
+ * un lead borrado lógicamente también se queda con su conversación. Eso no
+ * bloquea nada — upsertLeadFromConversation ya sabe crear el lead nuevo sin
+ * reclamar el conversationId cuando otro lo tiene.
+ */
 aiLeadSchema.index(
   { tenantId: 1, conversationId: 1 },
   {
     unique: true,
     partialFilterExpression: {
       conversationId: { $type: 'objectId' },
-      deletedAt: { $exists: false },
     },
   },
 )

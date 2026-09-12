@@ -63,10 +63,18 @@ export const getAiLeads = async params => {
   return unwrap(response)
 }
 
-export const getAiLeadById = async leadId => {
+export const getAiLeadById = async (leadId, { conversationId } = {}) => {
   const id = requireLeadId(leadId)
+  const wanted = clean(conversationId)
 
-  const response = await api.get(`${BASE_URL}/${id}`, buildRequestConfig())
+  // Un lead puede tener varias charlas. Sin conversationId el backend devuelve
+  // la última, que es lo que se quiere al abrir el lead.
+  const response = await api.get(
+    `${BASE_URL}/${id}`,
+    buildRequestConfig(
+      wanted ? { params: { conversationId: wanted } } : undefined,
+    ),
+  )
   return unwrap(response)
 }
 

@@ -250,6 +250,19 @@ const extractPreferenceHints = text => {
 const buildConversationMemory = ({ conversation, currentText }) => {
   const recentMessages = getRecentConversationMessages(conversation, 12)
   const lastAssistant = [...recentMessages].reverse().find(message => message.role === 'assistant')
+
+  // ¿Hay algo previo, de verdad?
+  //
+  // El mensaje que se está contestando ya está guardado en la conversación
+  // cuando se arma esta memoria, así que "hay historial" es tener más de uno.
+  //
+  // Importa porque isFollowUp salía SOLO de cómo está escrito el mensaje
+  // actual: alguien que entra por primera vez y arranca con "¿y el más
+  // barato?" hacía que el prompt dijera "Es seguimiento de una charla previa:
+  // sí" con la memoria vacía. El modelo, obediente, retomaba un hilo que no
+  // existía — de ahí las respuestas que arrancan pidiendo disculpas por una
+  // confusión anterior en el primer mensaje de un visitante nuevo.
+  const hasPriorMessages = recentMessages.length > 1
   const lastUserMessages = recentMessages
     .filter(message => message.role === 'user')
     .slice(-4)
@@ -263,7 +276,8 @@ const buildConversationMemory = ({ conversation, currentText }) => {
   const mentionedProducts = extractProductTitlesFromMessages(recentMessages)
 
   return {
-    isFollowUp: isFollowUpMessage(currentText),
+    isFirstMessage: !hasPriorMessages,
+    isFollowUp: hasPriorMessages && isFollowUpMessage(currentText),
     lastUserMessages,
     lastAssistantText: clean(lastAssistant?.content || '').slice(0, 900),
     mentionedProducts,
@@ -343,13 +357,38 @@ const shouldForceSafeFallback = validation => {
   )
 }
 
+/**
+ * La instrucción de reparación.
+ *
+ * EL BORRADOR NUNCA SE ENVIÓ, Y HAY QUE DECIRLO.
+ *
+ * La reparación arma la charla así: [...historial, assistant: borrador
+ * rechazado, user: "reescribí eso"]. Para el modelo, ese borrador ES un
+ * mensaje que ya le dijo al cliente, así que la respuesta nueva arrancaba
+ * pidiendo perdón por algo que el cliente jamás leyó.
+ *
+ * Visto en producción, y en el peor caso posible: primer mensaje de un
+ * visitante nuevo —"¿Qué promociones hay hoy?"— y la primera línea que recibió
+ * fue "¡Hola! Te pido disculpas por la confusión anterior". No hubo confusión
+ * anterior; no hubo nada anterior.
+ *
+ * Por eso la instrucción ahora nombra al borrador por lo que es —interno,
+ * descartado, invisible— y, cuando el asistente todavía no habló en esta
+ * conversación, prohíbe explícitamente cualquier referencia a un mensaje
+ * previo.
+ */
 const buildRepairInstruction = ({ validation, userText, conversationMemory }) => {
   const warnings = getValidationWarnings(validation)
+  const yaHabloElAsistente = Boolean(clean(conversationMemory?.lastAssistantText))
 
   return [
-    'Reescribí tu respuesta anterior porque la validación interna detectó riesgo comercial.',
+    'Tu mensaje anterior fue un BORRADOR INTERNO que la validación descartó: no se envió y el cliente no lo vio.',
+    'Escribí la respuesta que sí va a leer, como si fuera la única.',
+    yaHabloElAsistente
+      ? '- No te disculpes por el borrador ni lo menciones: para el cliente nunca existió.'
+      : '- Es tu PRIMER mensaje en esta conversación: no hay nada anterior que corregir. Prohibido disculparte, decir "como te decía" o hablar de una confusión previa.',
     'No uses una frase fija ni empieces con "Encontré estas opciones del catálogo".',
-    'Contestá como una conversación natural, siguiendo el hilo previo.',
+    'Contestá como una conversación natural.',
     conversationMemory?.summary ? `Memoria de conversación:\n${conversationMemory.summary}` : '',
     `Mensaje actual del cliente: ${clean(userText)}`,
     warnings.length ? `Problemas a corregir: ${warnings.join(', ')}` : '',
@@ -358,6 +397,7 @@ const buildRepairInstruction = ({ validation, userText, conversationMemory }) =>
     '- Si hay productos en contexto, mencioná como máximo 2 y solo si sirven para la consulta actual.',
     '- Si el cliente está preguntando por un seguimiento como "ese", "más barato" o "en negro", retomá el producto o preferencia previa.',
     '- No inventes números, stock, cuotas, códigos ni políticas.',
+    '- Escribí solo el mensaje para el cliente, en español rioplatense: nada de razonamiento, notas internas ni texto en otro idioma.',
   ]
     .filter(Boolean)
     .join('\n')

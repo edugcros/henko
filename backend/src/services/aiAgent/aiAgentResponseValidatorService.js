@@ -14,6 +14,7 @@ const MAX_FALLBACK_PRODUCTS = 3
 const MAX_LEARNING_SIGNALS = 8
 
 const HARD_BLOCK_WARNINGS = new Set([
+  'contains_model_reasoning_leak',
   'mentions_price_without_products',
   'mentions_stock_without_products',
   'mentions_discount_without_promotions',
@@ -696,6 +697,34 @@ const buildRepairInstruction = ({ warnings, blockedReasons, products, promotions
   }
 }
 
+/**
+ * Razonamiento del modelo que se coló en la respuesta.
+ *
+ * Pasó en producción: un cliente recibió "…Pelota Adidas Argentum 25 / KTM
+ * Ultra / Honda VFR). Let's pick 2 clear ones:" — el modelo pensando en voz
+ * alta, en inglés, con un paréntesis que abría en ningún lado. Ninguna regla lo
+ * miraba, así que salió tal cual hacia la tienda.
+ *
+ * Se buscan marcas de PROCESO, no palabras en inglés: el catálogo está lleno de
+ * "Mountain Bike" y "Free Fire", y bloquear por idioma dejaría afuera respuestas
+ * buenas. Lo que no puede aparecer nunca es el modelo hablando de su propia
+ * tarea o mostrando andamiaje de formato.
+ */
+const REASONING_LEAK_PATTERNS = [
+  /\b(let's|lets)\s+(pick|choose|go|say|check|start|see)\b/i,
+  /\b(i|we)\s+(need|should|will|must|can)\s+to?\s*\w+/i,
+  /\b(okay|ok|alright|so),?\s+(so|now|let)\b/i,
+  /\bas an ai\b|\bi'm an ai\b|\bcomo (una|un) (ia|modelo de lenguaje)\b/i,
+  /\b(here'?s|here is)\s+(the|a|my)\s+\w+/i,
+  /\b(the )?(user|customer) (is|wants|asked|needs)\b/i,
+  /^\s*(thinking|reasoning|analysis|draft|plan)\s*:/im,
+  /<\/?think>|```/,
+]
+
+const hasModelReasoningLeak = text => {
+  return REASONING_LEAK_PATTERNS.some(pattern => pattern.test(text))
+}
+
 export const validateAgentCommerceResponse = ({
   responseText,
   products = [],
@@ -713,6 +742,10 @@ export const validateAgentCommerceResponse = ({
 
   if (!text) {
     blockedReasons.push('empty_response')
+  }
+
+  if (text && hasModelReasoningLeak(text)) {
+    warnings.push('contains_model_reasoning_leak')
   }
 
   const lower = normalizeText(text)

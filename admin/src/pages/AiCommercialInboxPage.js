@@ -111,6 +111,9 @@ const AiCommercialInboxPage = () => {
   const [selectedLeadId, setSelectedLeadId] = useState(null)
   const [selectedLead, setSelectedLead] = useState(null)
   const [conversation, setConversation] = useState(null)
+  // El historial de charlas del lead: una persona que vuelve deja varias, y
+  // antes solo se podía abrir la última.
+  const [conversations, setConversations] = useState([])
   const [status, setStatus] = useState('all')
   const [intent, setIntent] = useState('all')
   const [query, setQuery] = useState('')
@@ -178,10 +181,11 @@ const AiCommercialInboxPage = () => {
     }
   }, [params, selectedLeadId])
 
-  const loadDetail = useCallback(async leadId => {
+  const loadDetail = useCallback(async (leadId, conversationId) => {
     if (!leadId) {
       setSelectedLead(null)
       setConversation(null)
+      setConversations([])
       return
     }
 
@@ -189,9 +193,10 @@ const AiCommercialInboxPage = () => {
     setError('')
 
     try {
-      const data = await getAiLeadById(leadId)
+      const data = await getAiLeadById(leadId, { conversationId })
       setSelectedLead(data?.lead || null)
       setConversation(data?.conversation || null)
+      setConversations(data?.conversations || [])
     } catch (err) {
       console.error('[AI_LEAD_DETAIL_ERROR]', err)
       setError(
@@ -509,6 +514,11 @@ const AiCommercialInboxPage = () => {
           <Grid size={{ xs: 12, md: 4.8 }}>
             <LeadConversationPanel
               conversation={conversation}
+              conversations={conversations}
+              onSelectConversation={conversationId => {
+                if (!selectedLeadId) return
+                loadDetail(selectedLeadId, conversationId)
+              }}
               lead={selectedLead}
               loading={detailLoading || actionLoading}
               onDeleteConversation={item => {

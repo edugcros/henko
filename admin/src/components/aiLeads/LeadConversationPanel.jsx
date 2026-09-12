@@ -29,8 +29,19 @@ const getRoleLabel = role => {
   return role || 'Sistema'
 }
 
-const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversation }) => {
+const LeadConversationPanel = ({
+  conversation,
+  conversations = [],
+  onSelectConversation,
+  loading = false,
+  onDeleteConversation,
+}) => {
   const messages = conversation?.messages || []
+  const currentId = String(conversation?._id || '')
+  // Solo tiene sentido elegir cuando hay más de una. Una persona que vuelve
+  // deja varias charlas y antes solo se podía leer la última: el resto
+  // quedaba guardado y sin forma de abrirlo.
+  const historial = Array.isArray(conversations) ? conversations : []
 
   if (!conversation) {
     return (
@@ -80,6 +91,36 @@ const LeadConversationPanel = ({ conversation, loading = false, onDeleteConversa
           </Box>
           <Chip size="small" label={`${messages.length} mensajes`} />
         </Stack>
+
+        {historial.length > 1 && (
+          <Box sx={{ mt: 1.5 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontWeight: 700 }}
+            >
+              {historial.length} conversaciones de este cliente
+            </Typography>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ mt: 0.8, flexWrap: 'wrap', gap: 0.8 }}
+            >
+              {historial.map((item, index) => (
+                <Chip
+                  key={item.id}
+                  size="small"
+                  clickable={!loading}
+                  disabled={loading}
+                  color={item.id === currentId ? 'primary' : 'default'}
+                  variant={item.id === currentId ? 'filled' : 'outlined'}
+                  onClick={() => onSelectConversation?.(item.id)}
+                  label={`${formatDate(item.lastMessageAt || item.createdAt) || `#${historial.length - index}`} · ${item.messageCount}`}
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
 
         {conversation?._id && (
           <Button

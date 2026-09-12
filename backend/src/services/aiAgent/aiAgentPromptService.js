@@ -332,6 +332,17 @@ const formatCatalogSnapshot = snapshot => {
 const formatConversationMemory = memory => {
   if (!memory) return 'No hay memoria conversacional previa.'
 
+  // Un visitante que recién llega tiene que leerse como tal. Antes el bloque
+  // decía "Es seguimiento de una charla previa: sí/no" sin poder distinguir
+  // "no hay charla previa" de "la hay y esto no la retoma", y el modelo
+  // terminaba inventando un hilo anterior en el primer mensaje.
+  if (memory.isFirstMessage) {
+    return [
+      'PRIMER MENSAJE de esta conversación: el cliente recién llega.',
+      'No hubo respuestas anteriores. No te disculpes por nada previo, no digas "como te decía" ni des por hecho ningún producto ya conversado.',
+    ].join('\n')
+  }
+
   const preferences = memory.preferenceHints || {}
   const rows = [
     `Es seguimiento de una charla previa: ${memory.isFollowUp ? 'sí' : 'no'}`,

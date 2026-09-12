@@ -245,9 +245,53 @@ export const getAiLeadById = asyncHandler(async (req, res) => {
 
   if (!lead) return sendNotFound(res)
 
-  const conversationId = lead.lastConversationId || lead.conversationId
-  const conversation = conversationId
-    ? await AiConversation.findOne({ _id: conversationId, tenantId })
+  const requestedConversationId = clean(req.query.conversationId)
+
+  // Todas las charlas de esta persona, no solo la última. El panel abría
+  // siempre lastConversationId y las anteriores no tenían forma de leerse: una
+  // persona que volvía tres veces dejaba dos conversaciones invisibles.
+  const historyIds = [
+    ...(Array.isArray(lead.conversationIds) ? lead.conversationIds : []),
+    lead.conversationId,
+    lead.lastConversationId,
+  ]
+    .filter(Boolean)
+    .map(String)
+
+  const uniqueHistoryIds = [...new Set(historyIds)]
+
+  const conversations = uniqueHistoryIds.length
+    ? await AiConversation.find({
+      _id: { $in: uniqueHistoryIds },
+      tenantId,
+      deletedAt: { $exists: false },
+    })
+      .setOptions({ tenantId })
+      .select('_id channel status lastMessageAt createdAt messages')
+      .sort({ lastMessageAt: -1, createdAt: -1 })
+      .lean()
+    : []
+
+  // Solo el resumen: el cuerpo de los mensajes viaja una vez, en la charla que
+  // se está mirando.
+  const conversationSummaries = conversations.map(item => ({
+    id: String(item._id),
+    channel: item.channel,
+    status: item.status,
+    messageCount: (item.messages || []).length,
+    lastMessageAt: item.lastMessageAt || item.createdAt || null,
+    createdAt: item.createdAt || null,
+  }))
+
+  // Se puede pedir una charla puntual del historial; por defecto, la última.
+  const selectedId =
+    (requestedConversationId &&
+      uniqueHistoryIds.includes(requestedConversationId) &&
+      requestedConversationId) ||
+    String(lead.lastConversationId || lead.conversationId || '')
+
+  const conversation = selectedId
+    ? await AiConversation.findOne({ _id: selectedId, tenantId })
       .setOptions({ tenantId })
       .select(
         '_id channel status externalUserId customer customerName customerEmail customerPhone messages lastMessageAt createdAt updatedAt',
@@ -260,6 +304,7 @@ export const getAiLeadById = asyncHandler(async (req, res) => {
     data: {
       lead: normalizeLead(lead),
       conversation,
+      conversations: conversationSummaries,
     },
   })
 })

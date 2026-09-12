@@ -380,6 +380,28 @@ export const pickProductsOfInterest = ({
   return uniqueProductsByIdentity([...explicit, ...matched]).slice(0, 8)
 }
 
+/**
+ * A qué lead pertenece esta conversación.
+ *
+ * La identidad es la persona, no el chat: si vuelve el mismo email o el mismo
+ * teléfono, es el mismo lead y se le agrega la conversación nueva. Eso está
+ * bien y se mantiene.
+ *
+ * LO QUE ESTABA MAL: un lead CERRADO seguía entrando en esta búsqueda. Un
+ * comercio marca "perdido" o "ganado" y esa fila queda como historia de una
+ * oportunidad terminada; con la regla vieja, la siguiente consulta de esa
+ * misma persona la reabría por arriba —le pisaba el nombre, el último mensaje,
+ * el puntaje y la conversación asociada— en vez de abrir una oportunidad
+ * nueva. Visto desde el panel: cada charla nueva reemplazaba a la anterior en
+ * lugar de sumarse.
+ *
+ * Comprobado en producción: siete conversaciones, un solo lead, en estado
+ * 'lost', apuntando siempre a la última charla. Las otras seis quedaron sin
+ * ningún lead que las nombre.
+ *
+ * El estado final no se toca (buildStatusFromLeadScore ya lo respetaba); lo
+ * que cambia es que deja de ser candidato a recibir escrituras.
+ */
 const buildLeadLookup = ({ tenantId, conversation, customer }) => {
   const or = []
   const conversationId = conversation?._id || conversation?.id
@@ -401,6 +423,7 @@ const buildLeadLookup = ({ tenantId, conversation, customer }) => {
   return {
     tenantId,
     deletedAt: { $exists: false },
+    status: { $nin: [...FINAL_STATUSES] },
     ...(or.length ? { $or: or } : { externalFallbackKey: '__no_match__' }),
   }
 }
@@ -579,8 +602,16 @@ export const upsertLeadFromConversation = async ({
     },
   }
 
+  // La charla queda anotada en la lista, no solo en el puntero "última". Sin
+  // esto, la segunda conversación de una misma persona dejaba la primera sin
+  // ningún lead que la nombre.
+  if (conversationId) {
+    update.$addToSet = { conversationIds: conversationId }
+  }
+
   if (newProductsOnly.length) {
     update.$addToSet = {
+      ...update.$addToSet,
       productsOfInterest: {
         $each: newProductsOnly,
       },
@@ -593,11 +624,33 @@ export const upsertLeadFromConversation = async ({
     }
   }
 
-  return AiLead.findOneAndUpdate(lookup, update, {
-    new: true,
-    upsert: true,
-    setDefaultsOnInsert: true,
-  }).setOptions({ tenantId })
+  const options = { new: true, upsert: true, setDefaultsOnInsert: true }
+
+  try {
+    return await AiLead.findOneAndUpdate(lookup, update, options).setOptions({
+      tenantId,
+    })
+  } catch (error) {
+    // Un lead cerrado ya se quedó con este conversationId, y el índice único
+    // (tenantId, conversationId) no deja que otro lo tome. Pasa cuando la
+    // oportunidad se cierra en el panel en medio de una charla y el cliente
+    // sigue escribiendo: la oportunidad nueva es legítima, pero la charla ya
+    // tiene dueño.
+    //
+    // Se crea igual, sin reclamar el conversationId. El vínculo con la charla
+    // viaja en lastConversationId, que es además el que el panel usa para
+    // abrirla.
+    if (error?.code !== 11000) throw error
+
+    return AiLead.findOneAndUpdate(
+      lookup,
+      {
+        ...update,
+        $setOnInsert: { ...update.$setOnInsert, conversationId: null },
+      },
+      options,
+    ).setOptions({ tenantId })
+  }
 }
 
 export const addLeadNote = async ({ tenantId, leadId, text, user } = {}) => {
