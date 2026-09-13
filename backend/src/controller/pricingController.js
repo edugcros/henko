@@ -4,7 +4,10 @@ import asyncHandler from 'express-async-handler'
 import mongoose from 'mongoose'
 
 import PricingPolicy from '../models/pricingPolicyModel.js'
-import { recommendPriceForProduct } from '../services/pricing/pricingRecommendationService.js'
+import {
+  applyRecommendedPrice,
+  recommendPriceForProduct,
+} from '../services/pricing/pricingRecommendationService.js'
 import {
   getActorIdFromRequest,
   resolveAuthorizedTenantFromRequest,
@@ -166,6 +169,33 @@ export const recommendPrice = asyncHandler(async (req, res) => {
       data: { signals: result.signals },
     })
   }
+
+  return res.status(200).json({ success: true, data: result })
+})
+
+/**
+ * POST /api/pricing/apply/:productId
+ *
+ * Aplica el precio recomendado. Queda registrado en el historial como cambio
+ * originado en una recomendación, que es lo que después permite medir si el
+ * motor sirve para algo.
+ */
+export const applyPrice = asyncHandler(async (req, res) => {
+  const tenantId = requireTenant(req)
+
+  const { productId } = req.params
+
+  if (!mongoose.isValidObjectId(productId)) {
+    return res.status(400).json({ success: false, message: 'productId inválido.' })
+  }
+
+  const result = await applyRecommendedPrice({
+    tenantId,
+    productId,
+    price: req.body?.price,
+    reason: req.body?.reason,
+    userId: req.user?._id || null,
+  })
 
   return res.status(200).json({ success: true, data: result })
 })

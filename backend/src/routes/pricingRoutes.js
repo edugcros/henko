@@ -4,6 +4,7 @@ import express from 'express'
 
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
 import {
+  applyPrice,
   getPricingPolicy,
   recommendPrice,
   updatePricingPolicy,
@@ -22,5 +23,9 @@ router.put('/policy', updatePricingPolicy)
 // producto tiene señales que lo justifiquen. El consumo se cobra contra
 // MARKET_ANALYSES / MARKET_TOKENS, que ya tienen topes por plan.
 router.post('/recommend/:productId', recommendPrice)
+
+// Aplicar el precio. Es el paso que faltaba: el motor recomendaba y no había
+// forma de ejecutar la recomendación desde el panel.
+router.post('/apply/:productId', applyPrice)
 
 export default router

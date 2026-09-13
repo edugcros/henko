@@ -314,3 +314,175 @@ describe("parseRecommendation · no confiar en el modelo", () => {
     expect(parseRecommendation({})).toBeNull();
   });
 });
+
+// ─── Aplicar el precio ───────────────────────────────────────────────────────
+//
+// El motor recomendaba y la pantalla mostraba, pero no había forma de aplicar:
+// ni botón ni endpoint. El comerciante leía "precio recomendado $12.900", se
+// iba a Editar producto y lo tipeaba a mano — perdiendo de paso el rastro de
+// que ese cambio salió de una recomendación, que es justo lo que después
+// permite medir si el motor sirve.
+
+describe("aplicar el precio recomendado", () => {
+  let mongod;
+  let mongoose;
+  let Product;
+  let PricingPolicy;
+  let ProductPriceHistory;
+  let applyRecommendedPrice;
+
+  let TENANT;
+
+  const crearProducto = async (extra = {}) => {
+    const producto = await Product.create({
+      tenantId: TENANT,
+      title: "Casco AGV",
+      description: "Un casco",
+      categoria: "Cascos",
+      subcategoria: "Integral",
+      marca: "AGV",
+      slug: `casco-agv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      price: 100000,
+      stock: 5,
+      ...extra,
+    });
+
+    return producto;
+  };
+
+  beforeAll(async () => {
+    mongoose = (await import("mongoose")).default;
+    const { MongoMemoryServer } = await import("mongodb-memory-server");
+
+    mongod = await MongoMemoryServer.create();
+    await mongoose.connect(mongod.getUri());
+
+    TENANT = new mongoose.Types.ObjectId();
+
+    Product = (await import("../models/productModel.js")).default;
+    PricingPolicy = (await import("../models/pricingPolicyModel.js")).default;
+    ProductPriceHistory = (await import("../models/productPriceHistoryModel.js")).default;
+    ({ applyRecommendedPrice } = await import(
+      "../services/pricing/pricingRecommendationService.js"
+    ));
+  }, 60000);
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await mongod?.stop();
+  });
+
+  afterEach(async () => {
+    await Promise.all([
+      Product.collection.deleteMany({}),
+      PricingPolicy.collection.deleteMany({}),
+      ProductPriceHistory.collection.deleteMany({}),
+    ]);
+  });
+
+  test("cambia el precio y deja el rastro de que vino de una recomendación", async () => {
+    const producto = await crearProducto();
+
+    const resultado = await applyRecommendedPrice({
+      tenantId: TENANT,
+      productId: producto._id,
+      price: 129000,
+      reason: "Margen por debajo del mínimo",
+    });
+
+    expect(resultado).toMatchObject({
+      previousPrice: 100000,
+      newPrice: 129000,
+      changePercent: 29,
+    });
+
+    const guardado = await Product.findById(producto._id)
+      .setOptions({ tenantId: TENANT })
+      .lean();
+    expect(guardado.price).toBe(129000);
+
+    // El historial es lo que después permite medir si la recomendación sirvió.
+    const [historia] = await ProductPriceHistory.find({ tenantId: TENANT })
+      .setOptions({ tenantId: TENANT })
+      .lean();
+
+    expect(historia).toMatchObject({
+      previousPrice: 100000,
+      newPrice: 129000,
+      source: "ai_recommendation",
+      reason: "Margen por debajo del mínimo",
+    });
+  });
+
+  test("las variantes se mueven en la misma proporción", async () => {
+    // Si no, el precio base cambia y las variantes quedan en el viejo — que es
+    // el que el comprador termina pagando.
+    const producto = await crearProducto({
+      hasVariants: true,
+      variants: [
+        { key: "m", combinacion: { talle: "M" }, price: 100000, stock: 2 },
+        { key: "l", combinacion: { talle: "L" }, price: 120000, stock: 1 },
+      ],
+    });
+
+    await applyRecommendedPrice({
+      tenantId: TENANT,
+      productId: producto._id,
+      price: 50000,
+    });
+
+    const guardado = await Product.findById(producto._id)
+      .setOptions({ tenantId: TENANT })
+      .lean();
+
+    expect(guardado.variants.map(v => v.price)).toEqual([50000, 60000]);
+  });
+
+  test("no deja vender por debajo del costo cargado", async () => {
+    const producto = await crearProducto({ costoUnitario: 80000 });
+
+    await expect(
+      applyRecommendedPrice({
+        tenantId: TENANT,
+        productId: producto._id,
+        price: 70000,
+      }),
+    ).rejects.toThrow(/por debajo del costo/i);
+
+    const guardado = await Product.findById(producto._id)
+      .setOptions({ tenantId: TENANT })
+      .lean();
+    expect(guardado.price).toBe(100000);
+  });
+
+  test("respeta el piso y el techo que fijó el comercio", async () => {
+    await PricingPolicy.create({
+      tenantId: TENANT,
+      priceFloor: 90000,
+      priceCeiling: 150000,
+    });
+
+    const producto = await crearProducto();
+
+    await expect(
+      applyRecommendedPrice({ tenantId: TENANT, productId: producto._id, price: 80000 }),
+    ).rejects.toThrow(/precio mínimo/i);
+
+    await expect(
+      applyRecommendedPrice({ tenantId: TENANT, productId: producto._id, price: 200000 }),
+    ).rejects.toThrow(/precio máximo/i);
+  });
+
+  test("un producto de otro comercio no se toca", async () => {
+    const producto = await crearProducto();
+    const otroComercio = new mongoose.Types.ObjectId();
+
+    await expect(
+      applyRecommendedPrice({
+        tenantId: otroComercio,
+        productId: producto._id,
+        price: 120000,
+      }),
+    ).rejects.toThrow(/no encontrado/i);
+  });
+});
