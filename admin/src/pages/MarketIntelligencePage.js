@@ -92,24 +92,50 @@ const COMPONENT_LABELS = {
 // número basado en lo que un modelo leyó buscando se ve idéntico a uno
 // calculado sobre ventas reales, y no lo es.
 const COMPONENT_SOURCE = {
-  demand: { kind: 'observed', help: 'Cuánta gente busca y compra esto. Sale del interés de búsqueda encontrado en la web o, si no hay ninguna fuente externa, de tus propias ventas.' },
-  trend: { kind: 'observed', help: 'Si el interés sube o baja, según lo que se encontró buscando. Es una foto del momento, no una serie histórica.' },
-  competition: { kind: 'mixed', help: 'Cuántos vendedores distintos publican el producto hoy. Es un conteo real; solo si el buscador no responde se usa la lectura de la IA.' },
-  social: { kind: 'observed', help: 'Menciones en redes y foros. Señal aproximada.' },
-  commercial: { kind: 'mixed', help: 'Cuánto mercado activo hay: ofertas publicadas hoy y rotación de la categoría en tu tienda.' },
-  opportunity: { kind: 'mixed', help: 'Huecos que podrías ocupar: quejas repetidas de compradores, y categorías que en tu tienda rotan pero este producto no.' },
+  demand: {
+    kind: 'mixed',
+    help: 'Cuánta gente busca esto. Sale del interés de búsqueda medido en Google, y si no hay ninguna fuente externa, de tus propias ventas. El índice de búsquedas es relativo al término, así que aporta con tope.',
+  },
+  trend: {
+    kind: 'mixed',
+    help: 'Si el interés sube o baja, medido sobre 12 meses de búsquedas en Google en tu país. Compara las últimas 4 semanas contra las 4 anteriores.',
+  },
+  competition: {
+    kind: 'mixed',
+    help: 'Cuántos vendedores distintos publican el producto hoy. Es un conteo real; solo si el buscador no responde se usa la lectura de la IA.',
+  },
+  social: {
+    kind: 'observed',
+    help: 'Menciones en redes y foros. Señal aproximada.',
+  },
+  commercial: {
+    kind: 'mixed',
+    help: 'Cuánto mercado activo hay: ofertas publicadas hoy y rotación de la categoría en tu tienda.',
+  },
+  opportunity: {
+    kind: 'mixed',
+    help: 'Huecos que podrías ocupar: quejas repetidas de compradores, y categorías que en tu tienda rotan pero este producto no.',
+  },
 }
 
 // Los cuatro pasos, en el orden en que ocurren. Numerados porque son una
 // secuencia real: cada uno usa lo que dejó el anterior.
 const HOW_IT_WORKS = [
   'Escribís un producto —del catálogo, o uno que estés pensando traer— y elegís el país.',
-  'HENKO consulta tres fuentes a la vez: el buscador de precios (quién lo vende y a cuánto), una búsqueda con IA (si el interés sube o baja, marcas, quejas de compradores) y tu propia tienda (tus ventas, tu stock, cómo rota la categoría).',
+  'HENKO consulta cuatro fuentes a la vez: el buscador de precios (quién lo vende y a cuánto), el interés de búsqueda en Google de los últimos 12 meses en tu país, una búsqueda con IA (marcas, quejas de compradores, intención de compra) y tu propia tienda (tus ventas, tu stock, cómo rota la categoría).',
   'Con lo que cada fuente haya contestado se arma el puntaje. Lo que no se pudo medir no puntúa cero: queda afuera del cálculo y se avisa, porque no saberlo y que sea malo son cosas distintas.',
   'Si cargás tu costo, además te dice desde qué precio empezás a ganar y cuánto te quedaría vendiendo al precio típico del mercado.',
 ]
 
 const SOURCE_MARK = { observed: '≈', mixed: '◐', measured: '' }
+
+const TREND_TEXT = {
+  CRECIENTE: 'Se busca más que hace un mes',
+  ESTABLE: 'El interés se mantiene',
+  DECRECIENTE: 'Se busca menos que hace un mes',
+  VOLATIL: 'El interés salta sin patrón',
+  INDETERMINADA: 'Sin dirección clara',
+}
 
 const POSITION_COLOR = {
   MUY_COMPETITIVO: 'success',
@@ -272,6 +298,7 @@ export default function MarketIntelligencePage() {
   const prices = result?.priceStats
   const offers = result?.offers || []
   const sources = result?.sources || []
+  const interest = result?.searchInterest || null
 
   // Hay puntaje, pero el componente principal no se midió: lo que el número
   // describe es el mercado alrededor del producto, no cuánta gente lo quiere.
@@ -924,6 +951,86 @@ export default function MarketIntelligencePage() {
                       </AccordionDetails>
                     </Accordion>
                   )}
+
+                  <Divider sx={{ mt: 2 }} />
+                </Box>
+              )}
+
+              {interest?.hasVolume && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block' }}
+                  >
+                    Interés de búsqueda en Google · 12 meses
+                    {interest.query
+                      ? ` · buscado como "${interest.query}"`
+                      : ''}
+                  </Typography>
+
+                  <Stack
+                    direction="row"
+                    spacing={2}
+                    sx={{ alignItems: 'flex-end', mt: 1 }}
+                  >
+                    <Box>
+                      <Typography variant="body1">
+                        {TREND_TEXT[interest.direction] || 'Sin dirección clara'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {Number.isFinite(Number(interest.changePercent))
+                          ? `${Number(interest.changePercent) > 0 ? '+' : ''}${
+                            interest.changePercent
+                          }% contra el mes anterior`
+                          : 'sin base para comparar el mes anterior'}
+                      </Typography>
+                    </Box>
+
+                    {/* La curva, no solo la etiqueta: una subida sostenida y un
+                        pico aislado dan la misma palabra y no son lo mismo. */}
+                    {interest.points?.length > 1 && (
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        sx={{
+                          alignItems: 'flex-end',
+                          height: 44,
+                          flex: 1,
+                          maxWidth: 320,
+                        }}
+                      >
+                        {interest.points.map(point => {
+                          const alto = Math.max(
+                            4,
+                            (Number(point.value) /
+                              Math.max(
+                                ...interest.points.map(p => Number(p.value) || 0),
+                                1,
+                              )) *
+                              44,
+                          )
+
+                          return (
+                            <Tooltip
+                              key={point.date}
+                              title={`${point.date}: ${point.value}`}
+                            >
+                              <Box
+                                sx={{
+                                  flex: 1,
+                                  height: alto,
+                                  bgcolor: 'primary.main',
+                                  opacity: 0.5,
+                                  borderRadius: 0.5,
+                                }}
+                              />
+                            </Tooltip>
+                          )
+                        })}
+                      </Stack>
+                    )}
+                  </Stack>
 
                   <Divider sx={{ mt: 2 }} />
                 </Box>

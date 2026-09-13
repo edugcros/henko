@@ -61,6 +61,18 @@ const RESULTADO = {
     gemini: { available: false },
     internal: { available: true },
   },
+  searchInterest: {
+    hasVolume: true,
+    query: 'campera cuero',
+    direction: 'CRECIENTE',
+    changePercent: 23.2,
+    vsYearPercent: 10,
+    points: [
+      { date: 'sem 1', value: 40 },
+      { date: 'sem 2', value: 48 },
+      { date: 'sem 3', value: 56 },
+    ],
+  },
   sources: [
     {
       key: 'shopping',
@@ -111,7 +123,7 @@ describe('Análisis de mercado · la pantalla se explica', () => {
     render(<MarketIntelligencePage />)
 
     expect(screen.getByText(/Cómo funciona/i)).toBeDefined()
-    expect(screen.getByText(/consulta tres fuentes/i)).toBeDefined()
+    expect(screen.getByText(/consulta cuatro fuentes/i)).toBeDefined()
   })
 })
 
@@ -166,5 +178,21 @@ describe('Análisis de mercado · no se afirma lo que no se midió', () => {
 
     await screen.findByText(/De dónde salieron los datos/i)
     expect(screen.queryByText(/exceeded your current quota/i)).toBeNull()
+  })
+})
+
+describe('Análisis de mercado · el interés de búsqueda se ve', () => {
+  test('muestra la dirección medida y con qué término se buscó', async () => {
+    // El interés sale de una serie de 12 meses de Google Trends, que no
+    // depende de la cuota de búsqueda de la IA. Y se busca por un término
+    // corto, no por el título del producto: el comerciante tiene que poder
+    // juzgar si ese término representa lo que vende.
+    await analizar()
+
+    expect(
+      await screen.findByText(/Se busca más que hace un mes/i),
+    ).toBeDefined()
+    expect(screen.getByText(/buscado como "campera cuero"/i)).toBeDefined()
+    expect(screen.getByText(/\+23.2% contra el mes anterior/i)).toBeDefined()
   })
 })
