@@ -11,6 +11,8 @@
 // Las señales de acá son las de un análisis real de producción
 // (Queso de Campo Ricolact, 2026-09-13), no inventadas.
 
+import { jest } from '@jest/globals'
+
 import {
   calculateDemandScore,
   SCORING_VERSION,
@@ -263,5 +265,98 @@ describe('veredicto · no se afirma lo que no se midió', () => {
   test('con la demanda medida el veredicto vuelve a ser sobre la demanda', () => {
     expect(veredicto(80, 70, { demand: 78 }).recommendation).toBe('RECOMENDADO')
     expect(veredicto(30, 70, { demand: 20 }).recommendation).toBe('NO RECOMENDADO')
+  })
+})
+
+// ─── La búsqueda que sí funcionó no se tira ─────────────────────────────────
+//
+// El análisis pasa por dos llamadas: la primera busca en Google —el recurso
+// escaso, el que tiene cuota propia y ya está pagado— y la segunda solo
+// reordena ese texto en JSON. En producción, dos de las tres búsquedas que
+// funcionaron terminaron descartadas porque la segunda no devolvió JSON
+// válido: se perdió lo caro por fallar lo barato.
+
+const mockCallAgentLLM = jest.fn()
+
+jest.unstable_mockModule('../services/aiAgent/aiAgentLLMService.js', () => ({
+  callAgentLLM: mockCallAgentLLM,
+  callAgentLLMForRepair: jest.fn(),
+}))
+
+describe('búsqueda con IA · el segundo paso no puede tirar el primero', () => {
+  let getGroundingSignals
+
+  const TEXTO_GROUNDED = 'El mercado de cascos en Argentina crece.'
+
+  const SENALES = {
+    searchIntent: { informational: 3, commercial: 4, transactional: 5 },
+    trendDirection: 'CRECIENTE',
+  }
+
+  const respuestaDeBusqueda = () => ({
+    content: TEXTO_GROUNDED,
+    groundingMetadata: {
+      groundingChunks: [{ web: { uri: 'https://ejemplo.com', title: 'Ejemplo' } }],
+    },
+    usageMetadata: { totalTokenCount: 4359 },
+  })
+
+  beforeAll(async () => {
+    ({ getGroundingSignals } = await import(
+      '../services/marketIntelligence/sources/geminiGroundingSource.js'
+    ))
+  })
+
+  beforeEach(() => {
+    mockCallAgentLLM.mockReset()
+  })
+
+  test('el JSON envuelto en un bloque de código se recupera igual', async () => {
+    mockCallAgentLLM
+      .mockResolvedValueOnce(respuestaDeBusqueda())
+      .mockResolvedValueOnce({
+        content: '```json\n' + JSON.stringify(SENALES) + '\n```',
+        usageMetadata: { totalTokenCount: 200 },
+      })
+
+    const signals = await getGroundingSignals({
+      product: 'casco',
+      country: 'AR',
+      apiKey: 'k',
+    })
+
+    expect(signals.available).toBe(true)
+    expect(signals.trendDirection).toBe('CRECIENTE')
+    expect(signals.sources).toHaveLength(1)
+  })
+
+  test('el segundo paso no gasta la salida en razonar', async () => {
+    // Con el presupuesto por defecto, un modelo "thinking" corta el JSON por
+    // MAX_TOKENS a mitad de camino. Este paso no razona: reordena.
+    mockCallAgentLLM
+      .mockResolvedValueOnce(respuestaDeBusqueda())
+      .mockResolvedValueOnce({ content: JSON.stringify(SENALES) })
+
+    await getGroundingSignals({ product: 'casco', country: 'AR', apiKey: 'k' })
+
+    expect(mockCallAgentLLM.mock.calls[1][0]).toMatchObject({ thinkingBudget: 1 })
+  })
+
+  test('si el JSON no se recupera, el texto buscado vuelve igual', async () => {
+    mockCallAgentLLM
+      .mockResolvedValueOnce(respuestaDeBusqueda())
+      .mockResolvedValueOnce({ content: 'perdón, no puedo' })
+
+    const signals = await getGroundingSignals({
+      product: 'casco',
+      country: 'AR',
+      apiKey: 'k',
+    })
+
+    expect(signals.available).toBe(false)
+    expect(signals.groundedText).toBe(TEXTO_GROUNDED)
+    expect(signals.sources).toHaveLength(1)
+    // Y los tokens del paso 1 se siguen cobrando: ya se gastaron.
+    expect(signals.tokensUsed).toBeGreaterThan(0)
   })
 })

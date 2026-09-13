@@ -9,7 +9,7 @@
  * La API de Gemini rechaza combinar `tools: [{ google_search: {} }]` con
  * `responseSchema` en modelos 2.5.x (400 INVALID_ARGUMENT: "controlled
  * generation is not supported with google_search tool"). El DEFAULT_MODEL
- * de aiAgentLLMService.js es gemini-3.6-flash, así que este archivo NO
+ * de aiAgentLLMService.js es gemini-3.8-flash, así que este archivo NO
  * asume que el modelo resuelto soporte ambas cosas a la vez — funciona
  * igual sin importar qué modelo gane la cadena de fallback:
  *
@@ -28,6 +28,9 @@
 import { callAgentLLM } from '../../aiAgent/aiAgentLLMService.js'
 import { readUsage, sumUsage } from '../../ai/aiUsageMetadata.js'
 import { buildGroundingPrompt, buildExtractionPrompt } from '../prompts/groundingPrompt.js'
+
+/** Suficiente para el JSON del schema; el paso 2 no escribe prosa. */
+const EXTRACTION_MAX_TOKENS = 2048
 
 const GROUNDING_RESPONSE_SCHEMA = {
   type: 'object',
@@ -114,6 +117,13 @@ export async function getGroundingSignals({ product, country, apiKey }) {
   const sources = extractGroundingSources(groundingResult)
 
   // --- Paso 2: extracción estructurada del texto ya grounded ---
+  //
+  // thinkingBudget al mínimo, a propósito. Este paso no razona: reordena en
+  // JSON un texto que ya está escrito. Con el presupuesto por defecto, los
+  // modelos "thinking" gastan la salida en razonamiento interno y cortan la
+  // respuesta por MAX_TOKENS a mitad del JSON — que es exactamente lo que
+  // pasó en producción, y el costo no es una llamada más: se pierde la
+  // búsqueda del paso 1, que es el recurso escaso y ya está pagada.
   const extractionResult = await callAgentLLM({
     systemPrompt: buildExtractionPrompt(),
     messages: [{ role: 'user', content: groundingResult.content }],
@@ -121,6 +131,8 @@ export async function getGroundingSignals({ product, country, apiKey }) {
     temperature: 0,
     responseMimeType: 'application/json',
     responseSchema: GROUNDING_RESPONSE_SCHEMA,
+    maxOutputTokens: EXTRACTION_MAX_TOKENS,
+    thinkingBudget: 1,
     apiKey,
   })
 
@@ -136,6 +148,11 @@ export async function getGroundingSignals({ product, country, apiKey }) {
     return {
       available: false,
       reason: 'NO_DISPONIBLE: no se pudo estructurar la respuesta grounded en JSON válido',
+      // El texto grounded se devuelve igual. La búsqueda salió bien y está
+      // pagada: perderla entera porque el reordenado falló era tirar el
+      // recurso escaso por el más barato de los dos.
+      groundedText: groundingResult.content,
+      sources,
       tokensUsed,
       usage,
     }
@@ -164,10 +181,33 @@ function extractGroundingSources(groundingResult) {
     .map(web => ({ url: web.uri, title: web.title || 'NO_DISPONIBLE' }))
 }
 
+/**
+ * El modelo debería devolver JSON pelado —se le pide responseMimeType y
+ * schema— pero en la práctica a veces lo envuelve en un bloque de código, y a
+ * veces lo antecede con una línea de prosa. Las dos formas se recuperan sin
+ * gastar otra llamada.
+ */
 function safeParseJson(text) {
-  try {
-    return text ? JSON.parse(text) : null
-  } catch {
-    return null
+  const raw = String(text || '').trim()
+  if (!raw) return null
+
+  const candidates = [raw]
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fenced) candidates.push(fenced[1].trim())
+
+  const first = raw.indexOf('{')
+  const last = raw.lastIndexOf('}')
+  if (first !== -1 && last > first) candidates.push(raw.slice(first, last + 1))
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate)
+      if (parsed && typeof parsed === 'object') return parsed
+    } catch {
+      // Se prueba la forma siguiente.
+    }
   }
+
+  return null
 }
