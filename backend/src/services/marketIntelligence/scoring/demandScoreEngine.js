@@ -48,8 +48,13 @@
  *   3 — la BI interna alimenta demand y commercial, no solo opportunity
  *   4 — MELI retirado (API cerrada): competencia pasa a medirse con Gemini
  *   5 — no se emite score cuando las señales internas no tienen varianza
+ *   6 — las ofertas del buscador de precios alimentan competencia y actividad
+ *       comercial. Hasta acá la única fuente externa que funcionaba no entraba
+ *       al score: doce análisis reales de producción salieron con 1 a 9 puntos
+ *       sobre el 55% del modelo, teniendo ocho a cuarenta ofertas de mercado
+ *       medidas y guardadas en el mismo documento.
  */
-export const SCORING_VERSION = 5
+export const SCORING_VERSION = 6
 
 const WEIGHTS = {
   demand: 0.30,
@@ -153,6 +158,19 @@ function scoreDemand(signals) {
     return clamp(weighted * 10, 0, 100)
   }
 
+  // Sin intención de búsqueda externa, lo único que queda son las ventas
+  // propias — y eso mide la demanda de MI clientela, no la del mercado. Se usa
+  // solo cuando no hay ninguna señal externa: ahí el análisis se presenta
+  // explícitamente como interno y responde otra pregunta.
+  //
+  // Mezclarlas era el resultado más falso de la herramienta. Una Coca-Cola de
+  // 2,25 L, con decenas de vendedores publicándola, salía "no conviene" porque
+  // esta tienda había vendido una sola unidad en 90 días: una venta propia
+  // valía 2 puntos sobre 100 y pesaba el 30% del puntaje, así que hundía
+  // cualquier producto con un mercado enorme detrás.
+  const hasExternal = signals.shopping?.available || signals.gemini?.available
+  if (hasExternal) return null
+
   const internal = signals.internal
   if (!internal?.available || !internal.isInCatalog) return null
 
@@ -182,14 +200,37 @@ function scoreTrend(signals) {
 }
 
 /**
- * Competencia. Antes salía del conteo de vendedores en MELI (dato duro);
- * con esa API cerrada, sale de lo que Gemini observa buscando (evidencia
- * más blanda: una lectura del mercado, no un conteo).
+ * Competencia. Se mide con el conteo real de vendedores que publican el
+ * producto —dato duro— y solo si eso no está, con la lectura de Gemini.
+ *
+ * Esto estaba al revés de lo que la evidencia permitía: la competencia salía
+ * únicamente de Gemini, y cuando Gemini no contestaba quedaba "no medible"
+ * aunque el buscador de ofertas hubiera devuelto siete vendedores distintos
+ * publicando el producto. Un conteo de vendedores es exactamente lo que este
+ * componente quiere medir, y es más duro que una opinión del modelo.
  *
  * Más competencia no es automáticamente peor (sección 8 del spec): mide
- * validación de mercado tanto como dificultad de entrada.
+ * validación de mercado tanto como dificultad de entrada. Por eso la escala
+ * sube con la cantidad de vendedores en vez de bajar.
  */
 function scoreCompetition(signals) {
+  const merchants = signals.shopping?.available
+    ? Number(signals.shopping.merchantCount || 0)
+    : null
+
+  if (merchants !== null && merchants > 0) {
+    // TODO CALIBRACIÓN: los cortes salen de la misma escala cualitativa que
+    // usaba Gemini (BAJA 40 → MUY_ALTA 90), traducida a conteos de vendedores.
+    if (merchants >= 15) return 90
+    if (merchants >= 8) return 85
+    if (merchants >= 4) return 70
+    return 40
+  }
+
+  // Cero vendedores CON el buscador respondiendo es una medición, no un vacío:
+  // nadie lo publica en ese mercado.
+  if (merchants === 0) return 20
+
   const level = signals.gemini?.competition?.level
 
   if (!level || level === 'INDETERMINADA') return null
@@ -206,23 +247,36 @@ function scoreSocial(signals) {
 }
 
 /**
- * Actividad comercial: ventas visibles en marketplace o, si no hay, la
- * rotación de la categoría dentro del propio catálogo.
+ * Actividad comercial: cuánto mercado activo hay alrededor del producto.
  *
- * La categoría importa: un producto puntual sin ventas cuya categoría rota
- * bien indica que el rubro funciona y este producto no lo está capturando.
- */
-/**
- * Actividad comercial. Sin MELI no hay ventas visibles de marketplace, así
- * que se mide con dos señales más débiles:
- *   - que exista un rango de precios publicado (hay oferta activa)
+ * Sin MELI no hay ventas visibles de marketplace, así que se mide con tres
+ * señales, de la más dura a la más blanda:
+ *
+ *   - ofertas publicadas hoy en el buscador de precios (hay oferta viva, y
+ *     cuántas)
+ *   - un rango de precios que Gemini haya observado (más blando: dice que hay
+ *     mercado, no cuánto)
  *   - la rotación de la categoría en el catálogo propio
+ *
+ * Antes solo miraba las dos últimas. Con el buscador devolviendo cuarenta
+ * ofertas de un producto, "actividad comercial" puntuaba 1 porque la
+ * categoría del comercio había vendido una unidad.
  */
 function scoreCommercial(signals) {
   const categoryUnits = signals.internal?.categoryUnitsSold
+  const offerCount = signals.shopping?.available
+    ? Number(signals.shopping.offerCount || 0)
+    : null
   const hasPublishedPrices = Boolean(signals.gemini?.priceRange?.min)
 
-  if (categoryUnits == null && !hasPublishedPrices) return null
+  if (offerCount === null && categoryUnits == null && !hasPublishedPrices) {
+    return null
+  }
+
+  // TODO CALIBRACIÓN: la escala asume que ~20 ofertas simultáneas ya es un
+  // mercado plenamente activo.
+  const offerSignal =
+    offerCount !== null ? clamp(offerCount * 4, 0, 80) : 0
 
   // Precios publicados = hay mercado activo, pero no dice cuánto se vende.
   const priceSignal = hasPublishedPrices ? 40 : 0
@@ -230,7 +284,7 @@ function scoreCommercial(signals) {
   // Topeado en 60: es actividad de la categoría, no del producto.
   const internalSignal = categoryUnits != null ? clamp(categoryUnits, 0, 60) : 0
 
-  return clamp(Math.max(priceSignal, internalSignal), 0, 100)
+  return clamp(Math.max(offerSignal, priceSignal, internalSignal), 0, 100)
 }
 
 function scoreOpportunity(signals) {
