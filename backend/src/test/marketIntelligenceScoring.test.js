@@ -18,6 +18,8 @@ import {
   SCORING_VERSION,
 } from '../services/marketIntelligence/scoring/demandScoreEngine.js'
 import { calculateConfidence } from '../services/marketIntelligence/scoring/confidenceCalculator.js'
+import { classifyTrend } from '../services/marketIntelligence/scoring/trendClassifier.js'
+import { buildTrendQueries } from '../services/marketIntelligence/sources/trendsSource.js'
 import { buildMarketAnalysisResponse } from '../services/marketIntelligence/schemas/marketAnalysisContract.js'
 
 const CUOTA_AGOTADA =
@@ -201,7 +203,12 @@ describe('respuesta al panel · los errores se cuentan en castellano', () => {
   test('cada fuente dice qué aporta y qué contestó', () => {
     const { sources } = respuesta()
 
-    expect(sources.map(s => s.key)).toEqual(['shopping', 'gemini', 'internal'])
+    expect(sources.map(s => s.key)).toEqual([
+      'shopping',
+      'trends',
+      'gemini',
+      'internal',
+    ])
     expect(sources.find(s => s.key === 'shopping').detail).toMatch(/8 ofertas de 7 vendedores/i)
     expect(sources.find(s => s.key === 'internal').detail).toMatch(/catálogo/i)
   })
@@ -358,5 +365,109 @@ describe('búsqueda con IA · el segundo paso no puede tirar el primero', () => 
     expect(signals.sources).toHaveLength(1)
     // Y los tokens del paso 1 se siguen cobrando: ya se gastaron.
     expect(signals.tokensUsed).toBeGreaterThan(0)
+  })
+})
+
+// ─── Interés de búsqueda medido ─────────────────────────────────────────────
+//
+// La demanda y la tendencia dependían de la búsqueda con IA, que necesita el
+// tool de Google Search — y ese tool tiene cuota propia, agotada. Google Trends
+// entra por otra puerta: 12 meses de interés real, semana a semana, sin esa
+// cuota. Es además la serie histórica que el clasificador de tendencia
+// documentaba como faltante desde el principio.
+
+const serie = valores =>
+  valores.map((value, i) => ({ date: `sem ${i + 1}`, value }))
+
+const conTendencia = (extra = {}) => ({
+  available: true,
+  hasVolume: true,
+  geo: 'AR',
+  query: 'campera cuero',
+  weeks: 12,
+  changePercent: 30,
+  vsYearPercent: 10,
+  weeksWithInterest: 1,
+  volatility: 0.1,
+  direction: 'CRECIENTE',
+  points: serie([40, 42, 41, 43, 44, 45, 46, 48, 50, 52, 54, 56]),
+  ...extra,
+})
+
+describe('consulta a tendencias · no se busca el título completo', () => {
+  test('del título sale algo que una persona escribiría en Google', () => {
+    // Verificado contra Trends: con el título entero la serie viene vacía
+    // siempre; con tres palabras hay 54 semanas de datos.
+    expect(buildTrendQueries('Gaseosa Coca-Cola Original Taste Botella 2.25L Pack x 6')[0]).toBe(
+      'gaseosa coca cola',
+    )
+    expect(buildTrendQueries('botas cuero talle 43 color negro')[0]).toBe('botas cuero')
+  })
+
+  test('el segundo intento suelta la palabra genérica del principio', () => {
+    // "motocicleta kawasaki ninja" no tiene serie; "kawasaki ninja" sí.
+    const [principal, alternativa] = buildTrendQueries('Motocicleta Kawasaki Ninja ZX-10R')
+
+    expect(principal).toBe('motocicleta kawasaki ninja')
+    expect(alternativa).toBe('kawasaki ninja')
+  })
+
+  test('un texto sin palabras útiles no consulta nada', () => {
+    expect(buildTrendQueries('2.25 43 x6')).toEqual([])
+  })
+})
+
+describe('puntaje · la tendencia se mide con la serie, no con una opinión', () => {
+  test('la serie manda sobre la lectura del modelo', () => {
+    const { components } = calculateDemandScore(
+      señalesReales({
+        trends: conTendencia({ direction: 'DECRECIENTE' }),
+        gemini: { available: true, trendDirection: 'CRECIENTE' },
+      }),
+    )
+
+    expect(components.trend).toBe(20)
+  })
+
+  test('con la IA sin cupo, la demanda deja de estar sin medir', () => {
+    const { components, measuredWeight } = calculateDemandScore(
+      señalesReales({ trends: conTendencia() }),
+    )
+
+    expect(components.demand).not.toBeNull()
+    // Topeado: el índice de Trends es relativo al término, no un volumen.
+    expect(components.demand).toBeLessThanOrEqual(60)
+    expect(measuredWeight).toBeGreaterThanOrEqual(0.9)
+  })
+
+  test('sin serie no se afirma que nadie lo busca', () => {
+    // Google no publica series para términos con poco volumen y no documenta
+    // su umbral: puntuar eso como demanda baja sería inventar un dato negativo.
+    const { components } = calculateDemandScore(
+      señalesReales({
+        trends: { available: true, hasVolume: false, query: 'x', direction: 'INDETERMINADA' },
+      }),
+    )
+
+    expect(components.demand).toBeNull()
+    expect(components.trend).toBeNull()
+  })
+
+  test('la etiqueta VOLÁTIL ya se puede emitir, y EXPLOSIVA también', () => {
+    // Las dos estaban documentadas como imposibles sin serie histórica.
+    expect(classifyTrend(señalesReales({ trends: conTendencia({ direction: 'VOLATIL' }) }))).toBe(
+      'VOLATIL',
+    )
+
+    expect(
+      classifyTrend(señalesReales({ trends: conTendencia({ changePercent: 140 }) })),
+    ).toBe('EXPLOSIVA')
+  })
+
+  test('tendencias cuenta como fuente para la confianza', () => {
+    const conFuente = calculateConfidence(señalesReales({ trends: conTendencia() }), 0.9)
+    const sinFuente = calculateConfidence(señalesReales(), 0.9)
+
+    expect(conFuente).toBeGreaterThan(sinFuente)
   })
 })

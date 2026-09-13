@@ -53,8 +53,11 @@
  *       al score: doce análisis reales de producción salieron con 1 a 9 puntos
  *       sobre el 55% del modelo, teniendo ocho a cuarenta ofertas de mercado
  *       medidas y guardadas en el mismo documento.
+ *   7 — Google Trends entra como fuente: la tendencia pasa a medirse con una
+ *       serie de 12 meses en vez de la lectura de un modelo, y la demanda
+ *       tiene de dónde salir cuando la búsqueda con IA está sin cupo
  */
-export const SCORING_VERSION = 6
+export const SCORING_VERSION = 7
 
 const WEIGHTS = {
   demand: 0.30,
@@ -138,14 +141,18 @@ export function calculateDemandScore(rawSignals) {
 // productos entre sí, no como valores absolutos.
 
 /**
- * Demanda: intención de búsqueda externa (Gemini) o, si no hay, ventas
- * reales del tenant.
+ * Demanda, en tres escalones de evidencia:
  *
- * Las ventas propias son evidencia de demanda MÁS dura que la intención de
- * búsqueda — alguien que compró pesa más que alguien que buscó. Pero es
- * demanda de ESTE comercio, no del mercado, así que se topea en 70: sin
- * señal externa no hay forma de saber si el mercado la valida más allá de
- * la propia clientela.
+ *   1. Intención de búsqueda de la búsqueda con IA, que separa quién averigua
+ *      de quién está por comprar. Es lo más informativo y lo más frágil: el
+ *      tool de Google Search tiene cuota propia.
+ *   2. Interés de búsqueda medido en Google Trends. No dice cuánta gente
+ *      busca —el índice es relativo al propio término— así que aporta
+ *      topeado.
+ *   3. Ventas propias, solo cuando no hay ninguna fuente externa. Alguien que
+ *      compró pesa más que alguien que buscó, pero es demanda de ESTE
+ *      comercio y no del mercado: son preguntas distintas y mezclarlas hundía
+ *      productos con mercado enorme detrás.
  */
 function scoreDemand(signals) {
   const intent = signals.gemini?.searchIntent
@@ -158,6 +165,27 @@ function scoreDemand(signals) {
     return clamp(weighted * 10, 0, 100)
   }
 
+  // Google Trends: interés de búsqueda medido, no la opinión de un modelo.
+  //
+  // Aporta topeado en 60 a propósito. El índice es RELATIVO al propio término
+  // —100 es el mejor momento de esa búsqueda, no un volumen absoluto— así que
+  // de acá nunca puede salir "demanda excepcional": eso exige saber cuánta
+  // gente busca, no solo si busca más que en marzo.
+  const trends = signals.trends
+
+  // hasVolume false no puntúa: ver el comentario en trendsSource.js. Sin serie
+  // no se sabe si nadie lo busca o si el término era demasiado específico.
+  if (trends?.available && trends.hasVolume !== false) {
+    const sostenido = clamp(Number(trends.weeksWithInterest || 0) * 40, 0, 40)
+
+    // Contra su propio año: si las últimas semanas están por encima del
+    // promedio, el interés está vivo hoy y no solo en el pasado.
+    const vsYear = Number(trends.vsYearPercent)
+    const momento = Number.isFinite(vsYear) ? clamp(20 + vsYear / 5, 0, 20) : 10
+
+    return clamp(sostenido + momento, 0, 60)
+  }
+
   // Sin intención de búsqueda externa, lo único que queda son las ventas
   // propias — y eso mide la demanda de MI clientela, no la del mercado. Se usa
   // solo cuando no hay ninguna señal externa: ahí el análisis se presenta
@@ -168,7 +196,10 @@ function scoreDemand(signals) {
   // esta tienda había vendido una sola unidad en 90 días: una venta propia
   // valía 2 puntos sobre 100 y pesaba el 30% del puntaje, así que hundía
   // cualquier producto con un mercado enorme detrás.
-  const hasExternal = signals.shopping?.available || signals.gemini?.available
+  const hasExternal =
+    signals.shopping?.available ||
+    signals.trends?.available ||
+    signals.gemini?.available
   if (hasExternal) return null
 
   const internal = signals.internal
@@ -189,13 +220,30 @@ function scoreDemand(signals) {
   return clamp(units * 2, 0, 70)
 }
 
+/**
+ * Tendencia. Primero la serie real de Google Trends —12 meses de interés de
+ * búsqueda, medido— y solo si no está, la lectura de la IA, que es una foto
+ * del momento contada en prosa.
+ *
+ * VOLATIL no es un punto intermedio entre subir y bajar: es "se mueve sin
+ * patrón". Puntúa como estable porque no habilita ni desalienta, y la etiqueta
+ * se muestra aparte para que se vea que la serie es errática.
+ */
 function scoreTrend(signals) {
+  const map = { CRECIENTE: 80, ESTABLE: 50, VOLATIL: 50, DECRECIENTE: 20 }
+
+  const trends = signals.trends
+
+  if (trends?.available && trends.hasVolume !== false) {
+    const measured = map[trends.direction]
+    if (measured !== undefined) return measured
+  }
+
   const direction = signals.gemini?.trendDirection
 
   // INDETERMINADA significa "no pude determinarlo", no "no hay tendencia".
   if (!direction || direction === 'INDETERMINADA') return null
 
-  const map = { CRECIENTE: 80, ESTABLE: 50, DECRECIENTE: 20 }
   return map[direction] ?? null
 }
 
@@ -319,7 +367,10 @@ function scoreOpportunity(signals) {
  * fijas que no distinguen un producto de otro.
  */
 function isDegenerateInternalOnly(signals) {
-  const hasExternal = signals.shopping?.available || signals.gemini?.available
+  const hasExternal =
+    signals.shopping?.available ||
+    signals.trends?.available ||
+    signals.gemini?.available
   if (hasExternal) return false
 
   const internal = signals.internal

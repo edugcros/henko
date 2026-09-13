@@ -61,6 +61,18 @@ function buildMarketAnalysisResponse(doc) {
     // a cuánto, el comercio no tiene forma de juzgar si la muestra es
     // representativa de su mercado.
     offers: doc.rawSignals?.shopping?.offers ?? [],
+    // Interés de búsqueda medido, para que el comerciante vea la forma de la
+    // curva y no solo una etiqueta.
+    searchInterest: doc.rawSignals?.trends?.available
+      ? {
+        hasVolume: doc.rawSignals.trends.hasVolume !== false,
+        query: doc.rawSignals.trends.query || null,
+        direction: doc.rawSignals.trends.direction,
+        changePercent: doc.rawSignals.trends.changePercent,
+        vsYearPercent: doc.rawSignals.trends.vsYearPercent,
+        points: doc.rawSignals.trends.points || [],
+      }
+      : null,
     // Qué contestó cada fuente y, si no contestó, por qué — en castellano.
     // El panel mostraba el error crudo de Google ("You exceeded your current
     // quota, please check your plan and billing details…") al comerciante.
@@ -71,12 +83,14 @@ function buildMarketAnalysisResponse(doc) {
 
 const SOURCE_LABELS = {
   shopping: 'Buscador de precios',
+  trends: 'Interés de búsqueda',
   gemini: 'Búsqueda con IA',
   internal: 'Tu tienda',
 }
 
 const SOURCE_ROLES = {
   shopping: 'Precios y vendedores publicados hoy en Google Shopping.',
+  trends: 'Cuánto se busca el producto en el país, semana a semana, últimos 12 meses.',
   gemini: 'Interés de búsqueda, tendencia, marcas y quejas de compradores.',
   internal: 'Tus ventas, tu stock y la rotación de la categoría.',
 }
@@ -89,7 +103,7 @@ const SOURCE_ROLES = {
  * de acá nombra las dos cosas.
  */
 function describeSources(rawSignals = {}) {
-  return ['shopping', 'gemini', 'internal'].map(key => {
+  return ['shopping', 'trends', 'gemini', 'internal'].map(key => {
     const signal = rawSignals?.[key] || null
     const available = Boolean(signal?.available)
 
@@ -110,6 +124,19 @@ function describeSuccess(key, signal) {
     const offers = Number(signal.offerCount || 0)
     if (offers === 0) return 'Respondió, pero nadie publica este producto online en ese país.'
     return `${offers} ofertas de ${Number(signal.merchantCount || 0)} vendedores distintos.`
+  }
+
+  if (key === 'trends') {
+    if (signal.hasVolume === false) {
+      return `Google no publica una serie de búsquedas para "${signal.query}" en ese país, así que el interés no se pudo medir. Suele pasar con productos muy específicos.`
+    }
+
+    const cambio = Number(signal.changePercent)
+    const movimiento = Number.isFinite(cambio)
+      ? `${cambio > 0 ? '+' : ''}${cambio}% en el último mes`
+      : 'sin base para comparar el último mes'
+
+    return `${signal.weeks} semanas de interés medido para "${signal.query}": ${movimiento}.`
   }
 
   if (key === 'internal') {
@@ -158,6 +185,14 @@ function explainFailure(reason, code = null) {
 
   if (/sin dominio de Google mapeado/i.test(text)) {
     return 'Ese país todavía no tiene buscador de precios configurado.'
+  }
+
+  if (/buscador de tendencias no respondió/i.test(text)) {
+    return 'El buscador de tendencias no respondió. Suele ser momentáneo: volvé a intentar.'
+  }
+
+  if (/tendencias no está configurad|sin tendencias configuradas/i.test(text)) {
+    return 'El buscador de tendencias no está configurado en el servidor.'
   }
 
   if (/no devolvió resultados/i.test(text)) {

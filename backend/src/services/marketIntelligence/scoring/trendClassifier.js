@@ -16,18 +16,38 @@ const TREND_LABELS = {
   INDETERMINADA: '❓ INDETERMINADA',
 }
 
+/** Suba desde la que el crecimiento deja de ser "crecimiento" y es un salto. */
+const EXPLOSIVE_CHANGE_PERCENT = 100
+
 /**
  * @param {Object} rawSignals
  * @returns {string} Una de las claves de TREND_LABELS
  *
- * NOTA: EXPLOSIVA, ESTACIONAL y VOLATIL requieren series temporales que hoy
- * ninguna fuente implementada (meliSource, geminiGroundingSource) provee —
- * Gemini grounding da un snapshot puntual, no una serie histórica. Por eso
- * el clasificador solo puede emitir estas tres etiquetas una vez que se
- * implemente Google Trends (histórico real) como fuente adicional.
- * Documentado explícitamente para no fingir estas clasificaciones sin base.
+ * Con la serie de Google Trends ya se pueden emitir EXPLOSIVA y VOLATIL, que
+ * antes estaban documentadas como imposibles: la búsqueda con IA daba una foto
+ * del momento y estas etiquetas necesitan histórico.
+ *
+ * ESTACIONAL sigue sin emitirse. Detectar estacionalidad pide comparar el mismo
+ * mes contra años anteriores, y la serie que traemos es de 12 meses: alcanza
+ * para ver un pico, no para saber si ese pico se repite todos los años.
  */
 function classifyTrend(rawSignals) {
+  const trends = rawSignals.trends
+
+  if (trends?.available && trends.hasVolume !== false) {
+    if (trends.direction === 'VOLATIL') return 'VOLATIL'
+
+    const change = Number(trends.changePercent)
+
+    if (Number.isFinite(change) && change >= EXPLOSIVE_CHANGE_PERCENT) {
+      return 'EXPLOSIVA'
+    }
+
+    if (trends.direction && trends.direction !== 'INDETERMINADA') {
+      return trends.direction
+    }
+  }
+
   const direction = rawSignals.gemini?.trendDirection
 
   if (!direction || direction === 'INDETERMINADA') return 'INDETERMINADA'

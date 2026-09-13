@@ -23,7 +23,7 @@
  * siempre, tuviera los datos que tuviera.
  */
 
-const TOTAL_SOURCES = 3 // shopping, gemini, internal
+const TOTAL_SOURCES = 4 // shopping, trends, gemini, internal
 
 /** Con menos de esto, una mediana de precios describe anécdotas, no un mercado. */
 const MIN_REPRESENTATIVE_SAMPLE = 5
@@ -36,6 +36,7 @@ const MIN_REPRESENTATIVE_SAMPLE = 5
 export function calculateConfidence(rawSignals, measuredWeight = 0) {
   const availableSources = [
     rawSignals.shopping,
+    rawSignals.trends,
     rawSignals.gemini,
     rawSignals.internal,
   ].filter(s => s?.available).length
@@ -65,7 +66,11 @@ export function calculateConfidence(rawSignals, measuredWeight = 0) {
  * que premiar: el bonus se otorga solo cuando las dos existen y coinciden.
  */
 function checkConsistency(rawSignals) {
-  const trend = rawSignals.gemini?.trendDirection
+  // La serie medida manda sobre la lectura del modelo.
+  const trend =
+    (rawSignals.trends?.available && rawSignals.trends.hasVolume !== false
+      ? rawSignals.trends.direction
+      : null) || rawSignals.gemini?.trendDirection
   const merchantCount = rawSignals.shopping?.available
     ? Number(rawSignals.shopping.merchantCount || 0)
     : null
