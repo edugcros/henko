@@ -343,18 +343,52 @@ const PricingPage = () => {
 
   const flags = useMemo(() => signals?.flags || [], [signals])
 
+  // El análisis puede terminar en "no lo toques", y eso es un resultado
+  // válido: no es lo mismo que una recomendación de cambio que no se puede
+  // aplicar.
+  const sinCambio =
+    decision != null && Number(decision.finalPrice) === Number(signals?.price)
+
   // ------------------------------------------------------------------
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: 'auto' }}>
-      <Stack spacing={0.5} sx={{ mb: 3 }}>
+      <Stack spacing={1.5} sx={{ mb: 3 }}>
         <Typography variant="h4" fontWeight={700}>
           Pricing Intelligence
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Los indicadores se calculan sin costo. La IA solo analiza los
-          productos que muestran alguna señal, y nunca fija un precio por sí
-          sola: propone, y tu política decide si es aplicable.
+          Te dice si el precio de un producto está donde tiene que estar, y por
+          qué. Nunca cambia un precio solo: te muestra el número y lo aplicás
+          vos.
         </Typography>
+
+        {/*
+          Cuatro pasos, numerados porque son una secuencia real: cada uno solo
+          corre si el anterior dio algo. La pantalla se entendía solo sabiendo
+          cómo está construida por dentro.
+        */}
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+            Cómo funciona
+          </Typography>
+          <Stack component="ol" spacing={0.75} sx={{ m: 0, pl: 2.5 }}>
+            {[
+              'Elegís un producto y HENKO mira sus números: costo, margen, cuánto vendió en 30 días contra los 30 anteriores, cuánto stock le queda y si el costo se movió desde el último cambio de precio. Esto no gasta consumo de IA.',
+              'Si algo de eso está fuera de lugar, aparece como una señal con su explicación. Si está todo bien, la pantalla te lo dice y no se analiza nada más.',
+              'Solo cuando hay una señal que se puede razonar, la IA propone un precio y explica el motivo.',
+              'Tu política —la de abajo— recorta esa propuesta: margen mínimo, variación máxima, piso y techo. Recién ahí aparece el botón para aplicarla, y el cambio queda en el historial del producto.',
+            ].map(paso => (
+              <Typography
+                component="li"
+                variant="body2"
+                color="text.secondary"
+                key={paso}
+              >
+                {paso}
+              </Typography>
+            ))}
+          </Stack>
+        </Paper>
       </Stack>
 
       {/* ── Análisis ────────────────────────────────────── */}
@@ -613,18 +647,23 @@ const PricingPage = () => {
                   sx={{ mb: 2, alignItems: { sm: 'center' } }}
                 >
                   <Typography variant="h5" fontWeight={700}>
-                    {money(decision.currentPrice ?? signals.price)} →{' '}
-                    {money(decision.finalPrice)}
+                    {sinCambio
+                      ? money(signals.price)
+                      : `${money(decision.currentPrice ?? signals.price)} → ${money(decision.finalPrice)}`}
                   </Typography>
 
                   <Chip
-                    label={`${decision.changePercent > 0 ? '+' : ''}${percent(decision.changePercent, 2)}`}
+                    label={
+                      sinCambio
+                        ? 'dejar como está'
+                        : `${decision.changePercent > 0 ? '+' : ''}${percent(decision.changePercent, 2)}`
+                    }
                     color={
-                      decision.changePercent > 0
-                        ? 'success'
-                        : decision.changePercent < 0
-                          ? 'warning'
-                          : 'default'
+                      sinCambio
+                        ? 'default'
+                        : decision.changePercent > 0
+                          ? 'success'
+                          : 'warning'
                     }
                   />
 
@@ -676,6 +715,14 @@ const PricingPage = () => {
 
                 {decision.allowed === false ? (
                   <Alert severity="error">{decision.reason}</Alert>
+                ) : sinCambio ? (
+                  // Recomendar el precio que ya tiene no es un cambio que se
+                  // "aplica": antes salía un botón apagado debajo de un texto
+                  // que prometía cambiarlo.
+                  <Alert severity="success">
+                    Te conviene dejar el precio como está. El análisis no
+                    encontró motivo para moverlo.
+                  </Alert>
                 ) : (
                   <Stack spacing={1.5}>
                     <Alert

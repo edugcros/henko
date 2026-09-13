@@ -254,3 +254,47 @@ describe('PricingPage · producto sin senales', () => {
     )
   })
 })
+
+// Cuando la IA recomienda el precio que el producto ya tiene, eso es un
+// resultado —"no lo toques"— y no un cambio a aplicar. Salía "$300 → $300",
+// un 0.00% y un botón apagado debajo de un texto que prometía cambiar el
+// precio.
+describe('PricingPage · la recomendacion no cambia nada', () => {
+  beforeEach(() => {
+    mockGetProducts.mockResolvedValue({ data: [PRODUCTO] })
+    mockRecommend.mockResolvedValue({
+      success: true,
+      data: {
+        ...RESULTADO,
+        recommendation: {
+          recommendedPrice: 100000,
+          reason: 'No hay datos suficientes',
+          confidence: 0.2,
+        },
+        decision: {
+          action: 'hold',
+          finalPrice: 100000,
+          changePercent: 0,
+          requiresApproval: false,
+          allowed: true,
+          adjustments: [],
+        },
+      },
+    })
+  })
+
+  test('lo dice en palabras y no ofrece aplicar nada', async () => {
+    render(<PricingPage />)
+
+    await waitFor(() => expect(mockGetProducts).toHaveBeenCalled())
+
+    await userEvent.type(screen.getByLabelText(/producto/i), 'Casco')
+    await userEvent.click(
+      await screen.findByRole('option', { name: /Casco AGV/i }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
+
+    expect(await screen.findByText(/dejar el precio como está/i)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^Aplicar/i })).toBeNull()
+  })
+})
