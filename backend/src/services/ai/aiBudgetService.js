@@ -87,7 +87,7 @@ const getDefaultPricingModel = () =>
     process.env.GEMINI_IMAGE_MODEL ||
       process.env.GOOGLE_IMAGE_MODEL ||
       process.env.GEMINI_MODEL ||
-      'gemma-4-26b-a4b-it',
+      'gemini-3.8-flash',
   )
 
 /**

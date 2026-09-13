@@ -50,7 +50,7 @@ const REPORT = {
     { metric: "agentTokens", costUsd: 8.62, tokens: 6_500_000, operations: 2100 },
   ],
   byModel: [
-    { model: "gemma-4-26b-a4b-it", costUsd: 30.1, tokens: 22_000_000, operations: 5000, fallbackRows: 0 },
+    { model: "gemini-3.6-flash", costUsd: 30.1, tokens: 22_000_000, operations: 5000, fallbackRows: 0 },
   ],
   quality: { rows: 5700, estimatedRows: 2100, fallbackRows: 0 },
 };
@@ -73,7 +73,7 @@ test("muestra el gasto del mes y qué lo consume", async () => {
   // a nadie que no haya leído el código.
   expect(screen.getByText("Análisis de imágenes")).toBeInTheDocument();
   expect(screen.getByText("Tokens del agente")).toBeInTheDocument();
-  expect(screen.getByText("gemma-4-26b-a4b-it")).toBeInTheDocument();
+  expect(screen.getByText("gemini-3.6-flash")).toBeInTheDocument();
 });
 
 test("sin techo configurado avisa que nada detiene el gasto", async () => {

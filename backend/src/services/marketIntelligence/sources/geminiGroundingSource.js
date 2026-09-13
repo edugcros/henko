@@ -9,7 +9,7 @@
  * La API de Gemini rechaza combinar `tools: [{ google_search: {} }]` con
  * `responseSchema` en modelos 2.5.x (400 INVALID_ARGUMENT: "controlled
  * generation is not supported with google_search tool"). El DEFAULT_MODEL
- * de aiAgentLLMService.js es gemma-4-26b-a4b-it, así que este archivo NO
+ * de aiAgentLLMService.js es gemini-3.8-flash, así que este archivo NO
  * asume que el modelo resuelto soporte ambas cosas a la vez — funciona
  * igual sin importar qué modelo gane la cadena de fallback:
  *
@@ -43,6 +43,17 @@ const EXTRACTION_MAX_TOKENS = 2048
  * y ahí se pierde la búsqueda, que es lo caro.
  */
 const GROUNDING_MAX_TOKENS = 4000
+
+/**
+ * Modelo del paso 1, independiente de GEMINI_MODEL.
+ *
+ * El resto del backend puede estar configurado con el modelo que le convenga
+ * por cuota —incluido Gemma, que tiene 14.400 pedidos diarios— pero Gemma no
+ * soporta herramientas: la llamada con `tools` se cuelga hasta el timeout. Acá
+ * se pide explícitamente uno que pueda buscar.
+ */
+const getGroundingModel = () =>
+  String(process.env.GEMINI_GROUNDING_MODEL || '').trim() || 'gemini-3.8-flash'
 
 const GROUNDING_RESPONSE_SCHEMA = {
   type: 'object',
@@ -107,6 +118,7 @@ export async function getGroundingSignals({ product, country, apiKey }) {
     conversationalMode: false,
     temperature: 0.2,
     maxOutputTokens: GROUNDING_MAX_TOKENS,
+    model: getGroundingModel(),
     apiKey, // BYOK del tenant o key de plataforma, resuelta por el orquestador
     tools: [{ google_search: {} }], // TODO: confirmar nombre exacto tras aplicar el patch
     // Sin thinkingBudget definido a propósito: dejamos el default del

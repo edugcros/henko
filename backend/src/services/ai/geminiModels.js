@@ -31,7 +31,7 @@ import logger from '../../../config/logger.js'
  *
  * IMPORTANTE — corrección de un error de nomenclatura previo:
  *
- * Esta lista tenía "gemini-3.5-flash" y "gemma-4-26b-a4b-it". Google no
+ * Esta lista tenía "gemini-3.5-flash" y "gemini-3.6-flash". Google no
  * tiene una versión 3.5: la familia va 1.0 → 1.5 → 2.0 → 2.5. Esos nombres
  * nunca existieron, probablemente por mezcla con nomenclatura de OpenAI o
  * Anthropic. Cuando la API se le pega a un modelo inexistente en el path
@@ -49,7 +49,7 @@ import logger from '../../../config/logger.js'
  * El texto anterior afirmaba que "Google no tiene una versión 3.5: la familia
  * va 1.0 → 1.5 → 2.0 → 2.5" y por esa premisa eliminó gemini-3.5-flash como
  * nombre imaginario. Es falso: GET /v1beta/models lista gemini-3.5-flash y
- * gemma-4-26b-a4b-it. Sacarlo igual estuvo bien, pero por el motivo
+ * gemini-3.5-flash-lite. Sacarlo igual estuvo bien, pero por el motivo
  * contrario al que se escribió — cuesta el doble que 3.6 (USD 1.50/9.00 por
  * 1M contra 0.75/3.75).
  *
@@ -58,13 +58,30 @@ import logger from '../../../config/logger.js'
  * la cadena de respaldo no podía respaldar nada. Todo el aparato de cooldowns
  * y modelos muertos de este archivo quedó inerte.
  *
- * Cadena verificada con generateContent real contra la key del proyecto:
- *   gemma-4-26b-a4b-it       200 en el catálogo, USD 0.75/3.75 por 1M
- *   gemini-3.7-flash       200 verificado, mismo precio, generación más nueva
- *   gemma-4-26b-a4b-it  200 verificado, USD 0.25/1.50 — degradación barata
+ * EL ORDEN LO DECIDE LA CUOTA, NO SOLO LA CALIDAD.
  *
- * No se incluye gemini-2.5-flash-lite: da 404 con esta key pese a figurar en
- * la documentación de precios.
+ * En el nivel gratuito los Flash "grandes" (3.5 a 3.8) comparten un techo de
+ * 20 pedidos POR DÍA y 5 por minuto; los Lite tienen 500 por día y 15 por
+ * minuto, y Gemma 14.400 por día. Medido en el panel de cuotas del proyecto:
+ * 3.6 iba 31/20 y 3.7 iba 24/20 — los dos pasados. Con la cadena vieja, cuando
+ * el principal se agotaba se caía en esos dos, que ya estaban al tope, y recién
+ * después llegaba al único con margen: dos viajes perdidos y dos pausas de 15
+ * minutos por nada.
+ *
+ * Cadena verificada con generateContent real contra la key del proyecto, cada
+ * uno probado además con prompt de sistema y con responseSchema:
+ *   gemini-3.5-flash-lite  200 · 500/día · USD 0.30/2.50 por 1M
+ *   gemini-3.1-flash-lite  200 · 500/día · USD 0.25/1.50 — degradación barata
+ *   gemma-4-26b-a4b-it     200 · 14.400/día · último recurso
+ *
+ * Gemma va último y no primero, aunque tenga la cuota más grande: es un modelo
+ * abierto más chico, su techo real son ~16.000 tokens por minuto (con prompts
+ * de 3.900 tokens eso son cuatro mensajes por minuto, no treinta) y NO soporta
+ * el tool de búsqueda de Google. Sirve para que el asistente conteste algo
+ * antes que quedarse mudo, no para ser la cara del comercio todo el día.
+ *
+ * No se incluye ningún modelo 2.x: todos dan 404 "no longer available to new
+ * users" con esta key, pese a figurar en la documentación de precios.
  *
  * OJO con los precios: los modelos 3.x duplican tarifa el 1/1/2027
  * (0.75/3.75 → 1.50/7.50). El flash-lite 3.1 no tiene ese ajuste anunciado.
@@ -73,10 +90,26 @@ import logger from '../../../config/logger.js'
  * verificar con una llamada real antes de agregar un nombre acá.
  */
 const FALLBACK_MODELS = [
-  'gemma-4-26b-a4b-it',
-  'gemini-3.7-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
   'gemma-4-26b-a4b-it',
 ]
+
+/**
+ * Modelos que NO pueden usar el tool de búsqueda de Google.
+ *
+ * Gemma es un modelo abierto servido por la misma API, y acepta prompt de
+ * sistema y responseSchema — pero no herramientas. Mandarle `tools` no
+ * devuelve un error claro: la llamada se queda esperando hasta el timeout, y
+ * el análisis de mercado paga esa espera en cada corrida.
+ */
+const NO_TOOL_SUPPORT = [/^gemma/i]
+
+/** ¿Este modelo puede buscar en Google? */
+export const supportsSearchGrounding = model => {
+  const name = normalizeModelName(model)
+  return Boolean(name) && !NO_TOOL_SUPPORT.some(pattern => pattern.test(name))
+}
 
 /** Modelos retirados por Google (404). Permanente para este proceso. */
 const deadModels = new Set()
@@ -143,7 +176,7 @@ export const isQuotaError = (status, body = '') =>
  * NO significa que el modelo no exista, así que se trata como la cuota: se
  * pausa el modelo un rato y se sigue por el siguiente de la cadena.
  *
- * Verificado el 07/09/2026: gemma-4-26b-a4b-it devolvía 503 de forma sostenida
+ * Verificado el 07/09/2026: gemini-3.6-flash devolvía 503 de forma sostenida
  * mientras gemini-3.7-flash respondía normal. Sin este caso, el 503 se
  * propagaba como error y la IA fallaba entera aun teniendo alternativas.
  */

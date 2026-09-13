@@ -17,7 +17,7 @@ const clean = value => String(value ?? '').trim()
 // tope hardcodeado sin vía de override fue justo lo que rompió esto en
 // producción dos veces seguidas. La primera vez, 500 no alcanzaba ni para un
 // caption real (aparte del JSON de la respuesta). La segunda, con el tope ya
-// en 1024: probado en vivo contra gemma-4-26b-a4b-it, el "pensamiento" interno
+// en 1024: probado en vivo contra gemini-3.6-flash, el "pensamiento" interno
 // del modelo (thoughtsTokenCount) NO respeta thinkingBudget como un techo —
 // es un mínimo, no un máximo — y consumió entre 0 y ~550 tokens de forma no
 // determinística entre llamados idénticos, dejando a veces muy poco margen

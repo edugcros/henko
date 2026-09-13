@@ -9,7 +9,12 @@
 // 2. getGeminiFinishInfo ahora también extrae groundingMetadata, para poder
 //    citar fuentes reales cuando se usa el tool de grounding.
 
-import { getModelChain, isModelUnavailable, markModelDead } from '../ai/geminiModels.js'
+import {
+  getModelChain,
+  isModelUnavailable,
+  markModelDead,
+  supportsSearchGrounding,
+} from '../ai/geminiModels.js'
 
 const clean = value => String(value || '').trim()
 
@@ -19,7 +24,7 @@ const sleep = milliseconds =>
 const DEFAULT_GEMINI_API_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta'
 
-const DEFAULT_MODEL = 'gemma-4-26b-a4b-it'
+const DEFAULT_MODEL = 'gemini-3.8-flash'
 const DEFAULT_PROVIDER = 'gemini'
 
 const REPETITIVE_OPENERS = [
@@ -466,7 +471,7 @@ const buildGenerationConfig = ({
     ...(Array.isArray(stopSequences) && stopSequences.length
       ? { stopSequences: stopSequences.map(clean).filter(Boolean).slice(0, 5) }
       : {}),
-    // Los modelos Gemini "thinking" (gemma-4-26b-a4b-it, y 2.5 mientras vivió)
+    // Los modelos Gemini "thinking" (gemini-3.6-flash, y 2.5 mientras vivió)
     // gastan maxOutputTokens en razonamiento interno antes de escribir la
     // respuesta — con presupuestos chicos (tareas de JSON corto, sin
     // razonamiento real que hacer) eso corta la respuesta con MAX_TOKENS
@@ -495,6 +500,10 @@ export const callGemini = async ({
   stopSequences,
   thinkingBudget,
   apiKey: providedApiKey,
+  // Modelo pedido por el llamador. Sin esto, todo el backend queda atado a
+  // GEMINI_MODEL: si esa variable apunta a un modelo que no soporta
+  // herramientas, el análisis de mercado no tiene forma de pedir uno que sí.
+  model: providedModel,
   // PATCH: opcional, pasado tal cual al payload de la API (ej. para
   // Google Search grounding: tools: [{ google_search: {} }]). Si no se
   // pasa, el comportamiento y el payload son idénticos a antes del patch.
@@ -504,8 +513,7 @@ export const callGemini = async ({
   // la del comercio y no la de la plataforma. El fallback a la variable de
   // entorno queda para los llamadores que todavía no pasan tenant.
   const apiKey = clean(providedApiKey) || clean(process.env.GEMINI_API_KEY)
-  const model = normalizeGeminiModelName()
-console.log('callGemini: model', model, 'apiKey present?', Boolean(apiKey))
+  const model = normalizeGeminiModelName(providedModel)
 
   if (!apiKey) {
     return {
@@ -564,6 +572,21 @@ console.log('callGemini: model', model, 'apiKey present?', Boolean(apiKey))
 
   const usesGrounding = Array.isArray(tools) && tools.length > 0
 
+  // Con herramientas, la cadena se queda solo con los modelos que las
+  // soportan. Caer en uno que no las soporta no falla rápido: se cuelga hasta
+  // el timeout.
+  const candidates = getModelChain(model).filter(
+    candidate => !usesGrounding || supportsSearchGrounding(candidate),
+  )
+
+  if (candidates.length === 0) {
+    const error = new Error(
+      'Ningún modelo disponible soporta la búsqueda con Google',
+    )
+    error.code = 'AI_NO_GROUNDING_MODEL'
+    throw error
+  }
+
   // Google retira modelos sin aviso (404) o agota su cuota (429). Un modelo
   // muerto en GEMINI_MODEL rompía el agente en silencio, así que recorremos
   // la cadena de respaldos antes de darnos por vencidos.
@@ -571,7 +594,7 @@ console.log('callGemini: model', model, 'apiKey present?', Boolean(apiKey))
   let usedModel = model
   let lastError
 
-  for (const candidate of getModelChain(model)) {
+  for (const candidate of candidates) {
     try {
       const url = `${getGeminiApiBaseUrl()}/models/${candidate}:generateContent`
       const result = await fetchGemini({ url, apiKey, payload })
@@ -645,6 +668,7 @@ export const callAgentLLM = async ({
   stopSequences,
   thinkingBudget,
   apiKey,
+  model,
   // PATCH: propagado igual que el resto de los parámetros opcionales.
   tools,
 } = {}) => {
@@ -669,6 +693,7 @@ export const callAgentLLM = async ({
     stopSequences,
     thinkingBudget,
     apiKey,
+    model,
     tools,
   })
 }

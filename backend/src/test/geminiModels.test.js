@@ -10,6 +10,7 @@
 
 import {
   extractErrorStatus,
+  supportsSearchGrounding,
   getModelChain,
   getModelHealth,
   isModelDead,
@@ -35,21 +36,21 @@ describe("geminiModels · la cadena puede respaldar de verdad", () => {
   });
 
   test("el modelo preferido va primero y no se duplica", () => {
-    const chain = getModelChain("gemma-4-26b-a4b-it");
+    const chain = getModelChain("gemini-3.6-flash");
 
-    expect(chain[0]).toBe("gemma-4-26b-a4b-it");
-    expect(chain.filter(m => m === "gemma-4-26b-a4b-it")).toHaveLength(1);
+    expect(chain[0]).toBe("gemini-3.6-flash");
+    expect(chain.filter(m => m === "gemini-3.6-flash")).toHaveLength(1);
   });
 
   test("normaliza el prefijo models/ que devuelve la API de Google", () => {
-    const chain = getModelChain("models/gemma-4-26b-a4b-it");
+    const chain = getModelChain("models/gemini-3.6-flash");
 
-    expect(chain[0]).toBe("gemma-4-26b-a4b-it");
+    expect(chain[0]).toBe("gemini-3.6-flash");
   });
 });
 
 describe("geminiModels · saturación del proveedor (503)", () => {
-  // Verificado contra la API el 07/09/2026: gemma-4-26b-a4b-it devolvía 503
+  // Verificado contra la API el 07/09/2026: gemini-3.6-flash devolvía 503
   // sostenido mientras gemini-3.7-flash respondía normal. Sin este caso el
   // 503 se propagaba como error y la IA fallaba entera teniendo alternativas.
 
@@ -218,5 +219,65 @@ describe("cuota de búsqueda con Google", () => {
     ).rejects.toBeDefined();
 
     expect(getModelHealth().coolingDown.length).toBeGreaterThan(0);
+  }, 30000);
+});
+
+// ─── Gemma tiene la cuota más grande y no sabe buscar ───────────────────────
+//
+// 14.400 pedidos por día contra los 20 de los Flash, así que es el último
+// respaldo de la cadena. Pero no soporta herramientas, y mandarle `tools` no
+// devuelve un error: la llamada se cuelga hasta el timeout. Eso ya pasó en
+// producción — cada análisis de mercado esperaba de gusto.
+
+describe("qué modelo puede buscar en Google", () => {
+  test("Gemma queda afuera de las llamadas con búsqueda", () => {
+    expect(supportsSearchGrounding("gemma-4-26b-a4b-it")).toBe(false);
+    expect(supportsSearchGrounding("models/gemma-4-31b-it")).toBe(false);
+  });
+
+  test("los Gemini sí pueden", () => {
+    expect(supportsSearchGrounding("gemini-3.8-flash")).toBe(true);
+    expect(supportsSearchGrounding("gemini-3.1-flash-lite")).toBe(true);
+  });
+
+  test("la cadena de respaldo prioriza cuota, con Gemma al final", () => {
+    const chain = getModelChain("gemini-3.8-flash");
+
+    // Los Flash grandes tienen 20 pedidos por día; los Lite, 500.
+    expect(chain).toContain("gemini-3.5-flash-lite");
+    expect(chain).toContain("gemini-3.1-flash-lite");
+    expect(chain[chain.length - 1]).toBe("gemma-4-26b-a4b-it");
+  });
+
+  test("una llamada con búsqueda no cae en un modelo que no la soporta", async () => {
+    const { callAgentLLM } = await import("../services/aiAgent/aiAgentLLMService.js");
+
+    const fetchOriginal = global.fetch;
+    const modelosLlamados = [];
+
+    global.fetch = async url => {
+      modelosLlamados.push(String(url).match(/models\/([^:]+):/)?.[1]);
+      return {
+        ok: false,
+        status: 503,
+        json: async () => ({ error: { code: 503, message: "high demand" } }),
+        text: async () => "high demand",
+      };
+    };
+
+    try {
+      await callAgentLLM({
+        systemPrompt: "x",
+        messages: [{ role: "user", content: "x" }],
+        apiKey: "k",
+        model: "gemini-3.8-flash",
+        tools: [{ google_search: {} }],
+      }).catch(() => {});
+    } finally {
+      global.fetch = fetchOriginal;
+    }
+
+    expect(modelosLlamados.length).toBeGreaterThan(0);
+    expect(modelosLlamados.some(m => String(m).startsWith("gemma"))).toBe(false);
   }, 30000);
 });
