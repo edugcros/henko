@@ -32,6 +32,18 @@ import { buildGroundingPrompt, buildExtractionPrompt } from '../prompts/groundin
 /** Suficiente para el JSON del schema; el paso 2 no escribe prosa. */
 const EXTRACTION_MAX_TOKENS = 2048
 
+/**
+ * El paso 1 sí escribe prosa: seis puntos de investigación.
+ *
+ * El tope global del proyecto es 1200 tokens (AI_AGENT_MAX_OUTPUT_TOKENS), que
+ * está bien para una respuesta del agente de ventas y no para esto: acá el
+ * modelo razona con presupuesto completo —a propósito, para no cortar la
+ * búsqueda— y ese razonamiento sale del mismo presupuesto de salida. Con 1200
+ * compartidos, el informe se corta por MAX_TOKENS o directamente vuelve vacío,
+ * y ahí se pierde la búsqueda, que es lo caro.
+ */
+const GROUNDING_MAX_TOKENS = 4000
+
 const GROUNDING_RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
@@ -94,6 +106,7 @@ export async function getGroundingSignals({ product, country, apiKey }) {
     messages: [{ role: 'user', content: `Analizá el producto: ${product}` }],
     conversationalMode: false,
     temperature: 0.2,
+    maxOutputTokens: GROUNDING_MAX_TOKENS,
     apiKey, // BYOK del tenant o key de plataforma, resuelta por el orquestador
     tools: [{ google_search: {} }], // TODO: confirmar nombre exacto tras aplicar el patch
     // Sin thinkingBudget definido a propósito: dejamos el default del

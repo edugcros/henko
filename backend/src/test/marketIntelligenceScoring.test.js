@@ -337,6 +337,19 @@ describe('búsqueda con IA · el segundo paso no puede tirar el primero', () => 
     expect(signals.sources).toHaveLength(1)
   })
 
+  test('la búsqueda no comparte el tope de salida del agente de ventas', async () => {
+    // El tope global es 1200 tokens: alcanza para una respuesta de WhatsApp y
+    // no para un informe de seis puntos escrito por un modelo que además
+    // razona con ese mismo presupuesto.
+    mockCallAgentLLM
+      .mockResolvedValueOnce(respuestaDeBusqueda())
+      .mockResolvedValueOnce({ content: JSON.stringify(SENALES) })
+
+    await getGroundingSignals({ product: 'casco', country: 'AR', apiKey: 'k' })
+
+    expect(mockCallAgentLLM.mock.calls[0][0].maxOutputTokens).toBeGreaterThanOrEqual(2000)
+  })
+
   test('el segundo paso no gasta la salida en razonar', async () => {
     // Con el presupuesto por defecto, un modelo "thinking" corta el JSON por
     // MAX_TOKENS a mitad de camino. Este paso no razona: reordena.
