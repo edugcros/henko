@@ -69,6 +69,14 @@ const RECOMMENDATION = {
     color: 'default',
     detail: 'No hay suficiente información para dar una respuesta. No significa que el producto sea malo: significa que falta evidencia.',
   },
+  // Sin esto, un producto con mercado activo pero sin medición de demanda
+  // recibía "No conviene por ahora": una conclusión sobre la demanda, que es
+  // justo lo único que no se midió.
+  'FALTA MEDIR LA DEMANDA': {
+    label: 'Hay mercado, falta medir la demanda',
+    color: 'info',
+    detail: 'Se midió el mercado alrededor del producto —quién lo vende y a qué precio— pero no cuánta gente lo está buscando. Con eso todavía no se puede decir si conviene: mirá los precios y la competencia, y volvé a analizar cuando la búsqueda con IA responda.',
+  },
 }
 
 const COMPONENT_LABELS = {
@@ -84,13 +92,22 @@ const COMPONENT_LABELS = {
 // número basado en lo que un modelo leyó buscando se ve idéntico a uno
 // calculado sobre ventas reales, y no lo es.
 const COMPONENT_SOURCE = {
-  demand: { kind: 'observed', help: 'Estimado a partir de búsquedas y menciones encontradas en la web.' },
-  trend: { kind: 'observed', help: 'Dirección del interés según lo que se encontró buscando. No es una serie histórica.' },
-  competition: { kind: 'observed', help: 'Lectura del mercado basada en marcas y ofertas encontradas, no en un conteo de vendedores.' },
+  demand: { kind: 'observed', help: 'Cuánta gente busca y compra esto. Sale del interés de búsqueda encontrado en la web o, si no hay ninguna fuente externa, de tus propias ventas.' },
+  trend: { kind: 'observed', help: 'Si el interés sube o baja, según lo que se encontró buscando. Es una foto del momento, no una serie histórica.' },
+  competition: { kind: 'mixed', help: 'Cuántos vendedores distintos publican el producto hoy. Es un conteo real; solo si el buscador no responde se usa la lectura de la IA.' },
   social: { kind: 'observed', help: 'Menciones en redes y foros. Señal aproximada.' },
-  commercial: { kind: 'mixed', help: 'Combina precios publicados con la rotación real de la categoría en tu tienda.' },
-  opportunity: { kind: 'mixed', help: 'Combina quejas de compradores con datos de tu propio catálogo.' },
+  commercial: { kind: 'mixed', help: 'Cuánto mercado activo hay: ofertas publicadas hoy y rotación de la categoría en tu tienda.' },
+  opportunity: { kind: 'mixed', help: 'Huecos que podrías ocupar: quejas repetidas de compradores, y categorías que en tu tienda rotan pero este producto no.' },
 }
+
+// Los cuatro pasos, en el orden en que ocurren. Numerados porque son una
+// secuencia real: cada uno usa lo que dejó el anterior.
+const HOW_IT_WORKS = [
+  'Escribís un producto —del catálogo, o uno que estés pensando traer— y elegís el país.',
+  'HENKO consulta tres fuentes a la vez: el buscador de precios (quién lo vende y a cuánto), una búsqueda con IA (si el interés sube o baja, marcas, quejas de compradores) y tu propia tienda (tus ventas, tu stock, cómo rota la categoría).',
+  'Con lo que cada fuente haya contestado se arma el puntaje. Lo que no se pudo medir no puntúa cero: queda afuera del cálculo y se avisa, porque no saberlo y que sea malo son cosas distintas.',
+  'Si cargás tu costo, además te dice desde qué precio empezás a ganar y cuánto te quedaría vendiendo al precio típico del mercado.',
+]
 
 const SOURCE_MARK = { observed: '≈', mixed: '◐', measured: '' }
 
@@ -254,15 +271,42 @@ export default function MarketIntelligencePage() {
   const profit = result?.profitability
   const prices = result?.priceStats
   const offers = result?.offers || []
+  const sources = result?.sources || []
+
+  // Hay puntaje, pero el componente principal no se midió: lo que el número
+  // describe es el mercado alrededor del producto, no cuánta gente lo quiere.
+  const demandUnmeasured =
+    result && !unmeasurable && (result.breakdown?.demand ?? null) === null
 
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h5" gutterBottom>
         Análisis de mercado
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Analizá si un producto tiene demanda real antes de sumarlo al catálogo.
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Analizá si un producto tiene demanda real antes de sumarlo al catálogo:
+        quién lo vende, a cuánto, si el interés crece, y cuánto te quedaría a vos.
       </Typography>
+
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+            Cómo funciona
+          </Typography>
+          <Stack component="ol" spacing={0.75} sx={{ m: 0, pl: 2.5 }}>
+            {HOW_IT_WORKS.map(paso => (
+              <Typography
+                component="li"
+                variant="body2"
+                color="text.secondary"
+                key={paso}
+              >
+                {paso}
+              </Typography>
+            ))}
+          </Stack>
+        </CardContent>
+      </Card>
 
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
@@ -641,8 +685,11 @@ export default function MarketIntelligencePage() {
             <Grid size={{ xs: 12, md: 6 }}>
               <Card variant="outlined" sx={{ height: '100%' }}>
                 <CardContent>
+                  {/* El título sigue a lo que el número mide de verdad. Con la
+                      demanda sin medir, el puntaje describe el mercado
+                      alrededor del producto. */}
                   <Typography variant="overline" color="text.secondary">
-                    Demanda
+                    {demandUnmeasured ? 'Mercado' : 'Demanda'}
                   </Typography>
 
                   {/* Typography hermanos dentro de un Stack, nunca anidados.
@@ -917,10 +964,52 @@ export default function MarketIntelligencePage() {
                     </>
                   )}
                 </Stack>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  {gemini?.reason || gemini?.error || 'No se pudieron obtener señales externas del mercado.'}
-                </Typography>
+              ) : null}
+
+              {/* De dónde salió cada cosa y qué falta. Acá aparecía el error
+                  crudo del proveedor, en inglés, que no le dice a un
+                  comerciante ni qué se perdió del análisis ni qué hacer. */}
+              {sources.length > 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Divider sx={{ mb: 2 }} />
+                  <Typography variant="subtitle2" gutterBottom>
+                    De dónde salieron los datos
+                  </Typography>
+
+                  <Stack spacing={1.25}>
+                    {sources.map(source => (
+                      <Stack
+                        key={source.key}
+                        direction="row"
+                        spacing={1.25}
+                        sx={{ alignItems: 'flex-start' }}
+                      >
+                        <Chip
+                          size="small"
+                          label={source.available ? 'respondió' : 'sin datos'}
+                          color={source.available ? 'success' : 'default'}
+                          variant={source.available ? 'filled' : 'outlined'}
+                          sx={{ mt: 0.25, flexShrink: 0, minWidth: 92 }}
+                        />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {source.label}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: 'block' }}
+                          >
+                            {source.role}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {source.detail}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
               )}
 
               <Box sx={{ mt: 3 }}>
