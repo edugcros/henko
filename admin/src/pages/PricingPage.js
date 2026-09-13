@@ -41,6 +41,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
 import productService from '../features/product/productService'
 import {
+  applyRecommendedPrice,
   getPricingPolicy,
   recommendPrice,
   updatePricingPolicy,
@@ -62,15 +63,57 @@ const MODES = [
   { value: 'autopilot', label: 'Automático — aplica dentro de la política' },
 ]
 
+// Cada señal, con lo que significa en plata y qué se puede hacer. Eran
+// etiquetas sueltas: "Stock sin rotar" no le dice a nadie qué hacer con eso.
 const FLAG_LABEL = {
-  margin_below_min: { text: 'Margen bajo el mínimo', color: 'error' },
-  margin_below_target: { text: 'Margen bajo el objetivo', color: 'warning' },
-  no_cost: { text: 'Sin costo cargado', color: 'error' },
-  stock_stuck: { text: 'Stock sin rotar', color: 'warning' },
-  stock_critical: { text: 'Dejó de vender con stock', color: 'error' },
-  demand_falling: { text: 'Demanda en baja', color: 'warning' },
-  demand_rising: { text: 'Demanda en alza', color: 'success' },
-  cost_increased: { text: 'Subió el costo', color: 'warning' },
+  margin_below_min: {
+    text: 'Margen bajo el mínimo',
+    color: 'error',
+    detail:
+      'Cada venta deja menos de lo que definiste como piso. O sube el precio, o baja el costo, o el producto trabaja para cubrir gastos.',
+  },
+  margin_below_target: {
+    text: 'Margen bajo el objetivo',
+    color: 'warning',
+    detail:
+      'Deja ganancia, pero menos de la que apuntabas. Suele pasar cuando el costo subió y el precio quedó quieto.',
+  },
+  no_cost: {
+    text: 'Sin costo cargado',
+    color: 'error',
+    detail:
+      'No se puede calcular cuánto ganás con este producto. Cargá el costo unitario en la ficha y todo lo demás se calcula solo.',
+  },
+  stock_stuck: {
+    text: 'Stock sin rotar',
+    color: 'warning',
+    detail:
+      'Al ritmo de venta actual, este stock tarda demasiado en salir. Es plata quieta en el depósito: un precio más bajo puede convenir más que el margen que estás defendiendo.',
+  },
+  stock_critical: {
+    text: 'Dejó de vender con stock',
+    color: 'error',
+    detail:
+      'Vendía y se frenó, y todavía hay unidades. Algo cambió: el precio, un competidor, o la ficha del producto.',
+  },
+  demand_falling: {
+    text: 'Demanda en baja',
+    color: 'warning',
+    detail:
+      'Se vende bastante menos que el mes pasado. Antes de tocar el precio conviene mirar si es estacional.',
+  },
+  demand_rising: {
+    text: 'Demanda en alza',
+    color: 'success',
+    detail:
+      'Se vende más que el mes pasado. Es la señal que habilita subir sin resignar volumen.',
+  },
+  cost_increased: {
+    text: 'Subió el costo',
+    color: 'warning',
+    detail:
+      'El costo subió desde la última vez que tocaste el precio, así que el margen se achicó sin que lo decidieras.',
+  },
 }
 
 const ADJUSTMENT_LABEL = {
@@ -147,6 +190,8 @@ const PricingPage = () => {
   const [selected, setSelected] = useState(null)
   const [result, setResult] = useState(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [applyResult, setApplyResult] = useState(null)
   const [error, setError] = useState(null)
 
   const requestSeq = useRef(0)
@@ -216,6 +261,7 @@ const PricingPage = () => {
 
       setAnalyzing(true)
       setError(null)
+      setApplyResult(null)
 
       try {
         const res = await recommendPrice({ productId: selected._id, force })
@@ -238,6 +284,36 @@ const PricingPage = () => {
     },
     [selected],
   )
+
+  // Aplica el precio que la política dejó. Vuelve a pedir los indicadores
+  // después, para que lo que quede en pantalla sea el estado nuevo del
+  // producto y no el de antes del cambio.
+  const applyPrice = useCallback(async () => {
+    const decision = result?.decision
+
+    if (!selected?._id || !decision?.finalPrice) return
+
+    setApplying(true)
+    setError(null)
+
+    try {
+      const res = await applyRecommendedPrice({
+        productId: selected._id,
+        price: decision.finalPrice,
+        reason: result?.recommendation?.reason || '',
+      })
+
+      // Primero se recalcula y recién después se deja la confirmación:
+      // analyze() limpia el resultado anterior, así que al revés se borraría
+      // el mensaje que le acaba de decir al comerciante qué cambió.
+      await analyze(false)
+      setApplyResult(res?.data || null)
+    } catch (err) {
+      setError(err?.response?.data?.message || 'No se pudo aplicar el precio.')
+    } finally {
+      setApplying(false)
+    }
+  }, [analyze, result, selected])
 
   const savePolicy = useCallback(async () => {
     if (!policy) return
@@ -300,6 +376,7 @@ const PricingPage = () => {
             onChange={(_, value) => {
               setSelected(value)
               setResult(null)
+              setApplyResult(null)
               setError(null)
             }}
             onInputChange={(_, value, reason) => {
@@ -422,21 +499,21 @@ const PricingPage = () => {
                 <Row label="Stock" value={`${signals.stock} unidades`} />
                 <Row
                   label="Vendidas (30 días)"
-                  value={signals.demand.unitsLast30}
+                  value={signals.demand?.unitsLast30}
                 />
                 <Row
                   label="30 días previos"
-                  value={signals.demand.unitsPrior30}
+                  value={signals.demand?.unitsPrior30}
                 />
                 <Row
                   label="Variación"
-                  value={percent(signals.demand.changePercent)}
+                  value={percent(signals.demand?.changePercent)}
                 />
                 <Row
                   label="Cobertura de stock"
                   value={
-                    signals.demand.stockCoverageDays !== null
-                      ? `${signals.demand.stockCoverageDays} días`
+                    signals.demand?.stockCoverageDays !== null
+                      ? `${signals.demand?.stockCoverageDays} días`
                       : 'sin ventas en el período'
                   }
                 />
@@ -450,25 +527,35 @@ const PricingPage = () => {
             </Grid>
 
             {flags.length > 0 && (
-              <Stack
-                direction="row"
-                spacing={1}
-                flexWrap="wrap"
-                useFlexGap
-                sx={{ mt: 2 }}
-              >
+              <Stack spacing={1.25} sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  Qué encontramos en este producto
+                </Typography>
                 {flags.map(flag => {
                   const meta = FLAG_LABEL[flag] || {
                     text: flag,
                     color: 'default',
                   }
+
                   return (
-                    <Chip
+                    <Stack
                       key={flag}
-                      label={meta.text}
-                      color={meta.color}
-                      size="small"
-                    />
+                      direction="row"
+                      spacing={1.25}
+                      sx={{ alignItems: 'flex-start' }}
+                    >
+                      <Chip
+                        label={meta.text}
+                        color={meta.color}
+                        size="small"
+                        sx={{ mt: 0.25, flexShrink: 0 }}
+                      />
+                      {meta.detail && (
+                        <Typography variant="body2" color="text.secondary">
+                          {meta.detail}
+                        </Typography>
+                      )}
+                    </Stack>
                   )
                 })}
               </Stack>
@@ -566,13 +653,55 @@ const PricingPage = () => {
                 {decision.allowed === false ? (
                   <Alert severity="error">{decision.reason}</Alert>
                 ) : (
-                  <Alert
-                    severity={decision.requiresApproval ? 'info' : 'success'}
-                  >
-                    {decision.requiresApproval
-                      ? 'Este cambio necesita tu aprobación antes de aplicarse.'
-                      : 'Tu política permite aplicar este cambio automáticamente.'}
-                  </Alert>
+                  <Stack spacing={1.5}>
+                    <Alert
+                      severity={decision.requiresApproval ? 'info' : 'success'}
+                    >
+                      {decision.requiresApproval
+                        ? 'Este cambio está fuera de lo que tu política aplica sin revisar: mirá el número antes de confirmarlo.'
+                        : 'Este cambio entra dentro de lo que tu política permite aplicar sin vueltas.'}
+                    </Alert>
+
+                    {/*
+                      El botón que faltaba. El motor recomendaba y no había
+                      forma de ejecutar la recomendación: había que ir a Editar
+                      producto y tipear el número a mano, perdiendo el rastro
+                      de que salió de acá.
+                    */}
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1.5}
+                      sx={{ alignItems: { sm: 'center' } }}
+                    >
+                      <Button
+                        variant="contained"
+                        onClick={applyPrice}
+                        disabled={
+                          applying || decision.finalPrice === signals?.price
+                        }
+                      >
+                        {applying
+                          ? 'Aplicando…'
+                          : `Aplicar ${money(decision.finalPrice)}`}
+                      </Button>
+                      <Typography variant="caption" color="text.secondary">
+                        Cambia el precio del producto ahora y queda registrado
+                        en su historial como cambio sugerido por HENKO.
+                      </Typography>
+                    </Stack>
+
+                    {applyResult && (
+                      <Alert severity="success">
+                        Precio actualizado: de{' '}
+                        {money(applyResult.previousPrice)} a{' '}
+                        {money(applyResult.newPrice)}
+                        {applyResult.variantsUpdated > 0
+                          ? ` (y ${applyResult.variantsUpdated} variantes en la misma proporción)`
+                          : ''}
+                        .
+                      </Alert>
+                    )}
+                  </Stack>
                 )}
               </Box>
             )}

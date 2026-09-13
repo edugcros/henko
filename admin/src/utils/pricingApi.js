@@ -33,4 +33,22 @@ export const recommendPrice = async ({ productId, force = false }) => {
   return data
 }
 
-export default { getPricingPolicy, updatePricingPolicy, recommendPrice }
+/**
+ * Aplica el precio al producto. Queda registrado en el historial como un
+ * cambio originado en una recomendación — lo que después permite medir si el
+ * motor sirve para algo.
+ */
+export const applyRecommendedPrice = async ({ productId, price, reason }) => {
+  const { data } = await api.post(`${BASE_URL}/apply/${productId}`, {
+    price,
+    reason,
+  })
+  return data
+}
+
+export default {
+  getPricingPolicy,
+  updatePricingPolicy,
+  recommendPrice,
+  applyRecommendedPrice,
+}

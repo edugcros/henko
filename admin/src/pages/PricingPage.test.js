@@ -10,32 +10,35 @@
 // que dependen de la forma de la respuesta del backend se rendericen sin
 // romperse.
 
-import { jest } from "@jest/globals";
-import { render, screen, waitFor } from "@testing-library/react";
+import { jest } from '@jest/globals'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
-const mockGetPolicy = jest.fn();
-const mockRecommend = jest.fn();
-const mockUpdatePolicy = jest.fn();
-const mockGetProducts = jest.fn();
+const mockGetPolicy = jest.fn()
+const mockRecommend = jest.fn()
+const mockApplyPrice = jest.fn()
+const mockUpdatePolicy = jest.fn()
+const mockGetProducts = jest.fn()
 
 // Se mockea la capa de red y no fetch: pricingApi importa axiosConfig, que
 // valida REACT_APP_API_BASE_URL al cargar el módulo y aborta sin ella.
-jest.unstable_mockModule("../utils/pricingApi", () => ({
+jest.unstable_mockModule('../utils/pricingApi', () => ({
   getPricingPolicy: mockGetPolicy,
   updatePricingPolicy: mockUpdatePolicy,
   recommendPrice: mockRecommend,
+  applyRecommendedPrice: mockApplyPrice,
   default: {},
-}));
+}))
 
-jest.unstable_mockModule("../features/product/productService", () => ({
+jest.unstable_mockModule('../features/product/productService', () => ({
   default: { getAdminProducts: mockGetProducts },
-}));
+}))
 
-const { default: PricingPage } = await import("./PricingPage.js");
+const { default: PricingPage } = await import('./PricingPage.js')
 
 const POLICY = {
-  strategy: "margin",
-  mode: "manual",
+  strategy: 'margin',
+  mode: 'manual',
   minMarginPercent: 35,
   targetMarginPercent: 50,
   maxChangePercent: 10,
@@ -44,49 +47,168 @@ const POLICY = {
   priceCeiling: null,
   rounding: { enabled: true, endings: [990] },
   isDefault: true,
-};
+}
 
 beforeEach(() => {
-  mockGetPolicy.mockResolvedValue({ success: true, data: POLICY });
-  mockGetProducts.mockResolvedValue({ data: [] });
-  mockRecommend.mockResolvedValue({ success: true, data: null });
-});
+  mockGetPolicy.mockResolvedValue({ success: true, data: POLICY })
+  mockGetProducts.mockResolvedValue({ data: [] })
+  mockRecommend.mockResolvedValue({ success: true, data: null })
+})
 
-describe("PricingPage · monta", () => {
-  test("renderiza sin romperse", async () => {
-    render(<PricingPage />);
+describe('PricingPage · monta', () => {
+  test('renderiza sin romperse', async () => {
+    render(<PricingPage />)
 
-    expect(await screen.findByText("Pricing Intelligence")).toBeDefined();
-  });
+    expect(await screen.findByText('Pricing Intelligence')).toBeDefined()
+  })
 
-  test("muestra el buscador de productos", async () => {
-    render(<PricingPage />);
+  test('muestra el buscador de productos', async () => {
+    render(<PricingPage />)
 
-    await waitFor(() => expect(mockGetProducts).toHaveBeenCalled());
-    expect(screen.getByLabelText(/producto/i)).toBeDefined();
-  });
+    await waitFor(() => expect(mockGetProducts).toHaveBeenCalled())
+    expect(screen.getByLabelText(/producto/i)).toBeDefined()
+  })
 
-  test("carga la política y avisa que son los valores de fábrica", async () => {
-    render(<PricingPage />);
+  test('carga la política y avisa que son los valores de fábrica', async () => {
+    render(<PricingPage />)
 
-    expect(await screen.findByText(/valores de fábrica/i)).toBeDefined();
-  });
+    expect(await screen.findByText(/valores de fábrica/i)).toBeDefined()
+  })
 
-  test("no rompe si la política no carga", async () => {
+  test('no rompe si la política no carga', async () => {
     // El comerciante tiene que poder ver los indicadores aunque la
     // configuración falle.
-    mockGetPolicy.mockRejectedValue(new Error("500"));
+    mockGetPolicy.mockRejectedValue(new Error('500'))
 
-    render(<PricingPage />);
+    render(<PricingPage />)
 
-    expect(await screen.findByText("Pricing Intelligence")).toBeDefined();
-  });
+    expect(await screen.findByText('Pricing Intelligence')).toBeDefined()
+  })
 
-  test("no rompe si el catálogo no carga", async () => {
-    mockGetProducts.mockRejectedValue(new Error("500"));
+  test('no rompe si el catálogo no carga', async () => {
+    mockGetProducts.mockRejectedValue(new Error('500'))
 
-    render(<PricingPage />);
+    render(<PricingPage />)
 
-    expect(await screen.findByText("Pricing Intelligence")).toBeDefined();
-  });
-});
+    expect(await screen.findByText('Pricing Intelligence')).toBeDefined()
+  })
+})
+
+// ─── Aplicar la recomendación ────────────────────────────────────────────────
+//
+// El motor recomendaba, la pantalla mostraba el número y no había forma de
+// ejecutarlo: había que ir a Editar producto y tipearlo a mano. Este es el
+// paso que hace que la función se cumpla.
+
+const PRODUCTO = { _id: 'p1', title: 'Casco AGV', price: 100000 }
+
+const RESULTADO = {
+  found: true,
+  analyzed: true,
+  // Misma forma que devuelve buildPricingSignals.
+  signals: {
+    productId: 'p1',
+    title: 'Casco AGV',
+    price: 100000,
+    stock: 5,
+    cost: null,
+    marginPercent: 12,
+    demand: {
+      unitsLast30: 2,
+      unitsPrior30: 6,
+      changePercent: -66.7,
+      stockCoverageDays: 75,
+    },
+    costChangePercent: null,
+    lastPriceChange: null,
+    flags: ['margin_below_min'],
+    warrantsAnalysis: true,
+  },
+  policy: { strategy: 'margin', mode: 'manual' },
+  recommendation: {
+    recommendedPrice: 129000,
+    reason: 'El margen quedó abajo del mínimo',
+    confidence: 0.8,
+  },
+  decision: {
+    action: 'increase',
+    finalPrice: 129000,
+    changePercent: 29,
+    requiresApproval: true,
+    allowed: true,
+    adjustments: [],
+  },
+}
+
+describe('PricingPage · aplicar el precio', () => {
+  beforeEach(() => {
+    mockGetProducts.mockResolvedValue({ data: [PRODUCTO] })
+    mockRecommend.mockResolvedValue({ success: true, data: RESULTADO })
+    mockApplyPrice.mockResolvedValue({
+      success: true,
+      data: {
+        previousPrice: 100000,
+        newPrice: 129000,
+        changePercent: 29,
+        variantsUpdated: 0,
+      },
+    })
+  })
+
+  const elegirProductoYAnalizar = async () => {
+    render(<PricingPage />)
+
+    await waitFor(() => expect(mockGetProducts).toHaveBeenCalled())
+
+    // El Autocomplete de MUI abre la lista al escribir, no al hacer foco.
+    const buscador = screen.getByLabelText(/producto/i)
+    await userEvent.type(buscador, 'Casco')
+
+    const opcion = await screen.findByRole('option', { name: /Casco AGV/i })
+    await userEvent.click(opcion)
+
+    // El análisis no se dispara solo al elegir: lo pide el comerciante, porque
+    // puede costar una llamada de IA.
+    await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
+
+    await waitFor(() => expect(mockRecommend).toHaveBeenCalled())
+    // Espera a que el resultado esté pintado antes de que el test asevere.
+    await screen.findByText(/Precio actual/i, {}, { timeout: 5000 })
+  }
+
+  test('cada señal explica qué significa, no solo su nombre', async () => {
+    // Antes eran etiquetas sueltas: "Margen bajo el mínimo" no le dice a nadie
+    // qué hacer con eso.
+    await elegirProductoYAnalizar()
+
+    expect(
+      await screen.findByText(/Qué encontramos en este producto/i),
+    ).toBeDefined()
+    expect(
+      screen.getByText(/menos de lo que definiste como piso/i),
+    ).toBeDefined()
+  })
+
+  test('el botón aplica el precio que dejó la política', async () => {
+    await elegirProductoYAnalizar()
+
+    const boton = await screen.findByRole('button', { name: /Aplicar/i })
+    await userEvent.click(boton)
+
+    await waitFor(() => expect(mockApplyPrice).toHaveBeenCalled())
+
+    expect(mockApplyPrice).toHaveBeenCalledWith(
+      expect.objectContaining({ productId: 'p1', price: 129000 }),
+    )
+  })
+
+  test('después de aplicar dice qué cambió', async () => {
+    await elegirProductoYAnalizar()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Aplicar/i }),
+    )
+
+    expect(await screen.findByText(/Precio actualizado/i)).toBeDefined()
+  })
+})
