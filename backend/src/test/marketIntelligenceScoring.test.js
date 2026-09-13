@@ -204,6 +204,25 @@ describe('respuesta al panel · los errores se cuentan en castellano', () => {
     expect(sources.find(s => s.key === 'internal').detail).toMatch(/catálogo/i)
   })
 
+  test('la cuota de búsqueda no se confunde con la de tokens', () => {
+    // Es el caso real: la clave tiene tokens —el análisis de imágenes anda—
+    // pero la búsqueda con Google, que se mide aparte, está agotada.
+    const { sources } = respuesta(
+      señalesReales({
+        gemini: {
+          available: false,
+          code: 'AI_GROUNDING_QUOTA',
+          error: 'You exceeded your current quota, please check your plan and billing details.',
+        },
+      }),
+    )
+
+    const ia = sources.find(s => s.key === 'gemini')
+
+    expect(ia.detail).toMatch(/búsquedas en Google/i)
+    expect(ia.detail).toMatch(/aparte de los tokens/i)
+  })
+
   test('un modelo dado de baja manda a donde se cambia', () => {
     const { sources } = respuesta(
       señalesReales({

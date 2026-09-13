@@ -263,7 +263,15 @@ function unwrapSettled(settledResult, sourceName) {
 
   logger.warn(`[marketIntelligence] fuente ${sourceName} falló`, {
     error: settledResult.reason?.message,
+    code: settledResult.reason?.code,
   })
 
-  return { available: false, error: settledResult.reason?.message || 'NO_DISPONIBLE' }
+  return {
+    available: false,
+    // El código distingue causas que llegan con el mismo mensaje de Google.
+    // Sin él, "se agotó la búsqueda con Google" y "se agotaron los tokens del
+    // modelo" son indistinguibles, y llevan a revisar cosas distintas.
+    code: settledResult.reason?.code || null,
+    error: settledResult.reason?.message || 'NO_DISPONIBLE',
+  }
 }

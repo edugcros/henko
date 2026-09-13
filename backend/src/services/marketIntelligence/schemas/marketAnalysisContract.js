@@ -100,7 +100,7 @@ function describeSources(rawSignals = {}) {
       available,
       detail: available
         ? describeSuccess(key, signal)
-        : explainFailure(signal?.reason || signal?.error || ''),
+        : explainFailure(signal?.reason || signal?.error || '', signal?.code),
     }
   })
 }
@@ -121,8 +121,16 @@ function describeSuccess(key, signal) {
   return 'Respondió con señales de mercado.'
 }
 
-function explainFailure(reason) {
+function explainFailure(reason, code = null) {
   const text = String(reason || '')
+
+  // La búsqueda con Google se mide aparte de los tokens del modelo, y devuelve
+  // el mismo 429. Confundirlas manda a revisar el lugar equivocado: acá la
+  // clave puede tener todos los tokens del mundo —el análisis de imágenes y el
+  // agente de ventas siguen andando— y aun así no poder buscar en Google.
+  if (code === 'AI_GROUNDING_QUOTA') {
+    return 'Se agotó la cuota de búsquedas en Google de la clave de IA. Es un límite aparte de los tokens: el resto de la IA sigue funcionando. Se renueva sola, o se amplía habilitando facturación en la clave de Google.'
+  }
 
   if (/exceeded your current quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(text)) {
     return 'La clave de IA llegó al límite de consultas de Google. Se renueva sola, o se amplía habilitando facturación en la clave.'

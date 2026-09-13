@@ -561,6 +561,8 @@ export const callGemini = async ({
     ...(Array.isArray(tools) && tools.length ? { tools } : {}),
   }
 
+  const usesGrounding = Array.isArray(tools) && tools.length > 0
+
   // Google retira modelos sin aviso (404) o agota su cuota (429). Un modelo
   // muerto en GEMINI_MODEL rompía el agente en silencio, así que recorremos
   // la cadena de respaldos antes de darnos por vencidos.
@@ -579,6 +581,22 @@ export const callGemini = async ({
       break
     } catch (error) {
       const detail = String(error?.message || '')
+
+      // La búsqueda con Google se mide aparte del modelo, y su 429 llega
+      // idéntico al de una cuota de tokens. Verificado contra la API con la
+      // key de producción: la misma llamada sin `tools` devuelve 200 y con
+      // `tools` devuelve 429, en todos los modelos de la cadena.
+      //
+      // Tratarlo como problema del modelo tenía dos costos: se recorría la
+      // cadena entera para cobrar el mismo 429 en cada modelo, y cada uno
+      // quedaba en cooldown 15 minutos — un cooldown que comparten el agente
+      // de ventas, el análisis de producto y los insights, que no tienen nada
+      // que ver con la búsqueda. Un análisis de mercado degradaba a toda la
+      // plataforma.
+      if (usesGrounding && error?.statusCode === 429) {
+        error.code = 'AI_GROUNDING_QUOTA'
+        throw error
+      }
 
       if (!isModelUnavailable(error?.statusCode, detail)) throw error
 
