@@ -212,3 +212,45 @@ describe('PricingPage · aplicar el precio', () => {
     expect(await screen.findByText(/Precio actualizado/i)).toBeDefined()
   })
 })
+
+// Un producto sano también tiene que dejar pedir el análisis. Antes la
+// pantalla terminaba en un cartel verde sin nada que tocar, y el backend ya
+// aceptaba force.
+describe('PricingPage · producto sin senales', () => {
+  beforeEach(() => {
+    mockGetProducts.mockResolvedValue({ data: [PRODUCTO] })
+    mockRecommend.mockResolvedValue({
+      success: true,
+      data: {
+        ...RESULTADO,
+        analyzed: false,
+        recommendation: null,
+        decision: null,
+        signals: { ...RESULTADO.signals, flags: [], warrantsAnalysis: false },
+      },
+    })
+  })
+
+  test('deja pedir el analisis igual', async () => {
+    render(<PricingPage />)
+
+    await waitFor(() => expect(mockGetProducts).toHaveBeenCalled())
+
+    await userEvent.type(screen.getByLabelText(/producto/i), 'Casco')
+    await userEvent.click(
+      await screen.findByRole('option', { name: /Casco AGV/i }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
+
+    await waitFor(() => expect(mockRecommend).toHaveBeenCalled())
+    expect(await screen.findByText(/Nada que corregir/i)).toBeDefined()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Analizar igual/i }),
+    )
+
+    expect(mockRecommend).toHaveBeenLastCalledWith(
+      expect.objectContaining({ productId: 'p1', force: true }),
+    )
+  })
+})

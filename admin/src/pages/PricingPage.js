@@ -564,11 +564,35 @@ const PricingPage = () => {
             <Divider sx={{ my: 3 }} />
 
             {/* Recomendación */}
+            {/*
+              Sin análisis, "Analizar igual" está SIEMPRE. Antes aparecía solo
+              cuando había señales: en un producto sano la pantalla terminaba
+              en un cartel verde y no había forma de pedir la recomendación,
+              aunque el backend acepta force. Quien quería una segunda opinión
+              sobre un precio se quedaba sin nada que tocar.
+            */}
             {!result?.analyzed && !result?.blocked && (
-              <Alert severity="success">
-                Sin señales que ameriten revisar el precio. No se gastó consumo
-                de IA.
-              </Alert>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2}
+                sx={{ alignItems: { sm: 'center' } }}
+              >
+                <Alert
+                  severity={flags.length > 0 ? 'info' : 'success'}
+                  sx={{ flex: 1 }}
+                >
+                  {flags.length > 0
+                    ? 'Hay señales, pero no se ejecutó el análisis de IA.'
+                    : 'Nada que corregir: los indicadores están dentro de lo que definiste, así que no se gastó consumo de IA.'}
+                </Alert>
+                <Button
+                  variant="outlined"
+                  onClick={() => analyze(true)}
+                  disabled={analyzing}
+                >
+                  Analizar igual
+                </Button>
+              </Stack>
             )}
 
             {result?.analyzed && decision && (
@@ -704,21 +728,6 @@ const PricingPage = () => {
                   </Stack>
                 )}
               </Box>
-            )}
-
-            {!result?.analyzed && flags.length > 0 && !result?.blocked && (
-              <Stack direction="row" spacing={2} alignItems="center">
-                <Alert severity="info" sx={{ flex: 1 }}>
-                  Hay señales pero no se ejecutó el análisis de IA.
-                </Alert>
-                <Button
-                  variant="outlined"
-                  onClick={() => analyze(true)}
-                  disabled={analyzing}
-                >
-                  Analizar igual
-                </Button>
-              </Stack>
             )}
           </Box>
         )}
