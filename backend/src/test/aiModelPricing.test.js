@@ -14,8 +14,8 @@ const ANTES = new Date("2026-09-08T00:00:00.000Z");
 const DESPUES = new Date("2027-03-01T00:00:00.000Z");
 
 describe("getModelPrice · la tarifa depende de la fecha", () => {
-  test("gemini-3.6-flash cuesta 0,75 / 3,75 durante 2026", () => {
-    const p = getModelPrice("gemini-3.6-flash", ANTES);
+  test("gemma-4-26b-a4b-it cuesta 0,75 / 3,75 durante 2026", () => {
+    const p = getModelPrice("gemma-4-26b-a4b-it", ANTES);
 
     expect(p.input).toBe(0.75);
     expect(p.output).toBe(3.75);
@@ -23,7 +23,7 @@ describe("getModelPrice · la tarifa depende de la fecha", () => {
   });
 
   test("y el doble a partir del 1/1/2027", () => {
-    const p = getModelPrice("gemini-3.6-flash", DESPUES);
+    const p = getModelPrice("gemma-4-26b-a4b-it", DESPUES);
 
     expect(p.input).toBe(1.5);
     expect(p.output).toBe(7.5);
@@ -38,8 +38,8 @@ describe("getModelPrice · la tarifa depende de la fecha", () => {
   });
 
   test("los lite no tienen ese ajuste anunciado", () => {
-    expect(getModelPrice("gemini-3.1-flash-lite", ANTES).input).toBe(0.25);
-    expect(getModelPrice("gemini-3.1-flash-lite", DESPUES).input).toBe(0.25);
+    expect(getModelPrice("gemma-4-26b-a4b-it", ANTES).input).toBe(0.25);
+    expect(getModelPrice("gemma-4-26b-a4b-it", DESPUES).input).toBe(0.25);
   });
 
   test("normaliza el prefijo models/ y las mayúsculas", () => {
@@ -59,7 +59,7 @@ describe("getModelPrice · la tarifa depende de la fecha", () => {
 describe("computeCostUsd · costo de un consumo", () => {
   test("con entrada y salida medidas usa cada tarifa", () => {
     const r = computeCostUsd({
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
       inputTokens: 1_000_000,
       outputTokens: 1_000_000,
       at: ANTES,
@@ -73,7 +73,7 @@ describe("computeCostUsd · costo de un consumo", () => {
     // Casi todos los call sites reciben totalTokenCount de Gemini y nada más.
     // Un costo repartido no se puede confundir con uno medido.
     const r = computeCostUsd({
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
       totalTokens: 10_000,
       at: ANTES,
     });
@@ -88,7 +88,7 @@ describe("computeCostUsd · costo de un consumo", () => {
     // Number.isFinite tomaba los defaults en null por un desglose real. El
     // precio salía correcto y el costo, cero.
     const r = computeCostUsd({
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
       inputTokens: null,
       outputTokens: null,
       totalTokens: 10_000,
@@ -102,13 +102,13 @@ describe("computeCostUsd · costo de un consumo", () => {
     // Es lo que invalida una tarifa mezclada única: dos operaciones con el
     // mismo total de tokens cuestan distinto según su proporción.
     const entrada = computeCostUsd({
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
       inputTokens: 10_000,
       outputTokens: 0,
       at: ANTES,
     });
     const salida = computeCostUsd({
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
       inputTokens: 0,
       outputTokens: 10_000,
       at: ANTES,
@@ -118,15 +118,15 @@ describe("computeCostUsd · costo de un consumo", () => {
   });
 
   test("devuelve la tarifa aplicada para que el ledger la congele", () => {
-    const r = computeCostUsd({ model: "gemini-3.6-flash", totalTokens: 1000, at: ANTES });
+    const r = computeCostUsd({ model: "gemma-4-26b-a4b-it", totalTokens: 1000, at: ANTES });
 
     expect(r.price.input).toBe(0.75);
     expect(r.price.output).toBe(3.75);
   });
 
   test("sin tokens no hay costo", () => {
-    expect(computeCostUsd({ model: "gemini-3.6-flash", totalTokens: 0 }).costUsd).toBe(0);
-    expect(computeCostUsd({ model: "gemini-3.6-flash", totalTokens: -5 }).costUsd).toBe(0);
+    expect(computeCostUsd({ model: "gemma-4-26b-a4b-it", totalTokens: 0 }).costUsd).toBe(0);
+    expect(computeCostUsd({ model: "gemma-4-26b-a4b-it", totalTokens: -5 }).costUsd).toBe(0);
     expect(computeCostUsd({}).costUsd).toBe(0);
   });
 });
@@ -140,8 +140,8 @@ describe("listModelPricing · lo vigente hoy", () => {
   });
 
   test("en 2027 el mismo modelo aparece con la tarifa nueva", () => {
-    const hoy = listModelPricing(ANTES).find(m => m.model === "gemini-3.6-flash");
-    const luego = listModelPricing(DESPUES).find(m => m.model === "gemini-3.6-flash");
+    const hoy = listModelPricing(ANTES).find(m => m.model === "gemma-4-26b-a4b-it");
+    const luego = listModelPricing(DESPUES).find(m => m.model === "gemma-4-26b-a4b-it");
 
     expect(hoy.inputPerMillion).toBe(0.75);
     expect(luego.inputPerMillion).toBe(1.5);

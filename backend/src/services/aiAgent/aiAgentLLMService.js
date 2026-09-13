@@ -19,7 +19,7 @@ const sleep = milliseconds =>
 const DEFAULT_GEMINI_API_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta'
 
-const DEFAULT_MODEL = 'gemini-3.8-flash'
+const DEFAULT_MODEL = 'gemma-4-26b-a4b-it'
 const DEFAULT_PROVIDER = 'gemini'
 
 const REPETITIVE_OPENERS = [
@@ -466,7 +466,7 @@ const buildGenerationConfig = ({
     ...(Array.isArray(stopSequences) && stopSequences.length
       ? { stopSequences: stopSequences.map(clean).filter(Boolean).slice(0, 5) }
       : {}),
-    // Los modelos Gemini "thinking" (gemini-3.6-flash, y 2.5 mientras vivió)
+    // Los modelos Gemini "thinking" (gemma-4-26b-a4b-it, y 2.5 mientras vivió)
     // gastan maxOutputTokens en razonamiento interno antes de escribir la
     // respuesta — con presupuestos chicos (tareas de JSON corto, sin
     // razonamiento real que hacer) eso corta la respuesta con MAX_TOKENS
@@ -505,6 +505,7 @@ export const callGemini = async ({
   // entorno queda para los llamadores que todavía no pasan tenant.
   const apiKey = clean(providedApiKey) || clean(process.env.GEMINI_API_KEY)
   const model = normalizeGeminiModelName()
+console.log('callGemini: model', model, 'apiKey present?', Boolean(apiKey))
 
   if (!apiKey) {
     return {

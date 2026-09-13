@@ -35,21 +35,21 @@ describe("geminiModels · la cadena puede respaldar de verdad", () => {
   });
 
   test("el modelo preferido va primero y no se duplica", () => {
-    const chain = getModelChain("gemini-3.6-flash");
+    const chain = getModelChain("gemma-4-26b-a4b-it");
 
-    expect(chain[0]).toBe("gemini-3.6-flash");
-    expect(chain.filter(m => m === "gemini-3.6-flash")).toHaveLength(1);
+    expect(chain[0]).toBe("gemma-4-26b-a4b-it");
+    expect(chain.filter(m => m === "gemma-4-26b-a4b-it")).toHaveLength(1);
   });
 
   test("normaliza el prefijo models/ que devuelve la API de Google", () => {
-    const chain = getModelChain("models/gemini-3.6-flash");
+    const chain = getModelChain("models/gemma-4-26b-a4b-it");
 
-    expect(chain[0]).toBe("gemini-3.6-flash");
+    expect(chain[0]).toBe("gemma-4-26b-a4b-it");
   });
 });
 
 describe("geminiModels · saturación del proveedor (503)", () => {
-  // Verificado contra la API el 07/09/2026: gemini-3.6-flash devolvía 503
+  // Verificado contra la API el 07/09/2026: gemma-4-26b-a4b-it devolvía 503
   // sostenido mientras gemini-3.7-flash respondía normal. Sin este caso el
   // 503 se propagaba como error y la IA fallaba entera teniendo alternativas.
 

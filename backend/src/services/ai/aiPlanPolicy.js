@@ -71,7 +71,7 @@ export const AI_METRIC_LABELS = Object.freeze({
 /**
  * Topes mensuales por plan.
  *
- * MEDICIÓN REAL (agosto 2026, gemini-3.6-flash, catálogo vacío, un
+ * MEDICIÓN REAL (agosto 2026, gemma-4-26b-a4b-it, catálogo vacío, un
  * saludo de una línea): **2.617 tokens** para un solo mensaje. Ese es el piso
  * absoluto — un mensaje con catálogo, promociones y memoria de conversación
  * en el prompt cuesta bastante más.
@@ -600,7 +600,7 @@ export const getMaxInboundMessageChars = () =>
 /**
  * Tokens que consume un análisis de visión.
  *
- * MEDICIÓN (agosto 2026, gemini-3.6-flash): ~3.900 tokens de entrada más la
+ * MEDICIÓN (agosto 2026, gemma-4-26b-a4b-it): ~3.900 tokens de entrada más la
  * imagen contra ~1.000 de salida. Se usa solo para convertir el techo del
  * presupuesto —que está en tokens— a la unidad en que se mide visión, que son
  * análisis. No interviene en ningún costo: el costo de visión se calcula con

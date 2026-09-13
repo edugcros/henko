@@ -1015,13 +1015,13 @@ describe("aiBudgetService · ledger", () => {
       tenantId: TENANT_ID,
       metric: AI_METRICS.AGENT_TOKENS,
       amount: 10000,
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
     });
 
     const row = entry();
 
     expect(row.event).toBe("consumed");
-    expect(row.model).toBe("gemini-3.6-flash");
+    expect(row.model).toBe("gemma-4-26b-a4b-it");
     expect(row.priceInputPerMillion).toBe(0.75);
     expect(row.priceOutputPerMillion).toBe(3.75);
     expect(row.costUsd).toBeGreaterThan(0);
@@ -1044,7 +1044,7 @@ describe("aiBudgetService · ledger", () => {
       tenantId: TENANT_ID,
       metric: AI_METRICS.AGENT_TOKENS,
       amount: 5000,
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
       inputTokens: 4500,
       outputTokens: 500,
     });
@@ -1060,7 +1060,7 @@ describe("aiBudgetService · ledger", () => {
 
   test("el modelo se guarda en forma canónica", async () => {
     // El nombre viaja al catálogo y al ledger. Con dos criterios distintos,
-    // 'models/Gemini-3.6-Flash' y 'gemini-3.6-flash' quedan como dos gastos
+    // 'models/Gemini-3.6-Flash' y 'gemma-4-26b-a4b-it' quedan como dos gastos
     // separados en el reporte por modelo.
     mockProfile.mockResolvedValue(platformProfile());
     mockAiUsage.findOneAndUpdate.mockReturnValue(chainable({}));
@@ -1075,7 +1075,7 @@ describe("aiBudgetService · ledger", () => {
       model: "models/Gemini-3.6-Flash",
     });
 
-    expect(entry().model).toBe("gemini-3.6-flash");
+    expect(entry().model).toBe("gemma-4-26b-a4b-it");
     // Y se cobra a la tarifa correcta, no a la conservadora de desconocido.
     expect(entry().priceInputPerMillion).toBe(0.75);
   });
@@ -1094,7 +1094,7 @@ describe("aiBudgetService · ledger", () => {
       tenantId: TENANT_ID,
       metric: AI_METRICS.AGENT_TOKENS,
       amount: 10000,
-      model: "gemini-3.1-flash-lite",
+      model: "gemma-4-26b-a4b-it",
     });
 
     expect(entry().priceInputPerMillion).toBe(0.25);
@@ -1308,7 +1308,7 @@ describe("aiBudgetService · recordTokenSpend", () => {
     await recordTokenSpend({
       tenantId: TENANT_ID,
       metric: AI_METRICS.VISION,
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
       inputTokens: 3900,
       outputTokens: 1000,
     });
@@ -1356,7 +1356,7 @@ describe("aiBudgetService · recordTokenSpend", () => {
     await recordTokenSpend({
       tenantId: TENANT_ID,
       metric: AI_METRICS.VISION,
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
       inputTokens: 3900,
       outputTokens: 1000,
       totalTokens: 4900,
@@ -1379,12 +1379,12 @@ describe("aiBudgetService · recordTokenSpend", () => {
     await recordTokenSpend({
       tenantId: TENANT_ID,
       metric: AI_METRICS.VISION,
-      model: "gemini-3.1-flash-lite",
+      model: "gemma-4-26b-a4b-it",
       inputTokens: 3900,
       outputTokens: 1000,
     });
 
-    expect(entry().model).toBe("gemini-3.1-flash-lite");
+    expect(entry().model).toBe("gemma-4-26b-a4b-it");
     expect(entry().priceInputPerMillion).toBe(0.25);
   });
 

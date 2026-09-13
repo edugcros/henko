@@ -31,7 +31,7 @@ import logger from '../../../config/logger.js'
  *
  * IMPORTANTE — corrección de un error de nomenclatura previo:
  *
- * Esta lista tenía "gemini-3.5-flash" y "gemini-3.6-flash". Google no
+ * Esta lista tenía "gemini-3.5-flash" y "gemma-4-26b-a4b-it". Google no
  * tiene una versión 3.5: la familia va 1.0 → 1.5 → 2.0 → 2.5. Esos nombres
  * nunca existieron, probablemente por mezcla con nomenclatura de OpenAI o
  * Anthropic. Cuando la API se le pega a un modelo inexistente en el path
@@ -49,7 +49,7 @@ import logger from '../../../config/logger.js'
  * El texto anterior afirmaba que "Google no tiene una versión 3.5: la familia
  * va 1.0 → 1.5 → 2.0 → 2.5" y por esa premisa eliminó gemini-3.5-flash como
  * nombre imaginario. Es falso: GET /v1beta/models lista gemini-3.5-flash y
- * gemini-3.5-flash-lite. Sacarlo igual estuvo bien, pero por el motivo
+ * gemma-4-26b-a4b-it. Sacarlo igual estuvo bien, pero por el motivo
  * contrario al que se escribió — cuesta el doble que 3.6 (USD 1.50/9.00 por
  * 1M contra 0.75/3.75).
  *
@@ -59,9 +59,9 @@ import logger from '../../../config/logger.js'
  * y modelos muertos de este archivo quedó inerte.
  *
  * Cadena verificada con generateContent real contra la key del proyecto:
- *   gemini-3.6-flash       200 en el catálogo, USD 0.75/3.75 por 1M
+ *   gemma-4-26b-a4b-it       200 en el catálogo, USD 0.75/3.75 por 1M
  *   gemini-3.7-flash       200 verificado, mismo precio, generación más nueva
- *   gemini-3.1-flash-lite  200 verificado, USD 0.25/1.50 — degradación barata
+ *   gemma-4-26b-a4b-it  200 verificado, USD 0.25/1.50 — degradación barata
  *
  * No se incluye gemini-2.5-flash-lite: da 404 con esta key pese a figurar en
  * la documentación de precios.
@@ -73,9 +73,9 @@ import logger from '../../../config/logger.js'
  * verificar con una llamada real antes de agregar un nombre acá.
  */
 const FALLBACK_MODELS = [
-  'gemini-3.6-flash',
+  'gemma-4-26b-a4b-it',
   'gemini-3.7-flash',
-  'gemini-3.1-flash-lite',
+  'gemma-4-26b-a4b-it',
 ]
 
 /** Modelos retirados por Google (404). Permanente para este proceso. */
@@ -143,7 +143,7 @@ export const isQuotaError = (status, body = '') =>
  * NO significa que el modelo no exista, así que se trata como la cuota: se
  * pausa el modelo un rato y se sigue por el siguiente de la cadena.
  *
- * Verificado el 07/09/2026: gemini-3.6-flash devolvía 503 de forma sostenida
+ * Verificado el 07/09/2026: gemma-4-26b-a4b-it devolvía 503 de forma sostenida
  * mientras gemini-3.7-flash respondía normal. Sin este caso, el 503 se
  * propagaba como error y la IA fallaba entera aun teniendo alternativas.
  */

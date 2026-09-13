@@ -7,7 +7,7 @@
 
 import { readUsage, sumUsage } from "../services/ai/aiUsageMetadata.js";
 
-const respuesta = (prompt, candidates, total, model = "gemini-3.6-flash") => ({
+const respuesta = (prompt, candidates, total, model = "gemma-4-26b-a4b-it") => ({
   model,
   usageMetadata: {
     promptTokenCount: prompt,
@@ -22,7 +22,7 @@ describe("readUsage", () => {
       inputTokens: 3900,
       outputTokens: 1000,
       totalTokens: 4900,
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
     });
   });
 
@@ -70,7 +70,7 @@ describe("sumUsage", () => {
       inputTokens: 1500,
       outputTokens: 500,
       totalTokens: 2000,
-      model: "gemini-3.6-flash",
+      model: "gemma-4-26b-a4b-it",
     });
   });
 
@@ -103,10 +103,10 @@ describe("sumUsage", () => {
     // calculado con uno. Es una aproximación conocida, y mejor que repartir el
     // total entero con una proporción inventada.
     const total = sumUsage(
-      readUsage(respuesta(100, 50, 150, "gemini-3.6-flash")),
-      readUsage(respuesta(100, 50, 150, "gemini-3.1-flash-lite")),
+      readUsage(respuesta(100, 50, 150, "gemma-4-26b-a4b-it")),
+      readUsage(respuesta(100, 50, 150, "gemma-4-26b-a4b-it")),
     );
 
-    expect(total.model).toBe("gemini-3.1-flash-lite");
+    expect(total.model).toBe("gemma-4-26b-a4b-it");
   });
 });

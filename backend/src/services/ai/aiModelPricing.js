@@ -29,7 +29,7 @@ const M = 1_000_000
 const CATALOG = [
   // Familia 3.x — la tarifa vigente hasta fin de 2026.
   {
-    models: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'],
+    models: ['gemma-4-26b-a4b-it', 'gemini-3.7-flash', 'gemma-4-26b-a4b-it'],
     from: null,
     until: '2027-01-01T00:00:00.000Z',
     input: 0.75,
@@ -37,7 +37,7 @@ const CATALOG = [
   },
   // La duplicación ya anunciada. Entra sola el 1/1/2027 sin tocar código.
   {
-    models: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'],
+    models: ['gemma-4-26b-a4b-it', 'gemini-3.7-flash', 'gemma-4-26b-a4b-it'],
     from: '2027-01-01T00:00:00.000Z',
     until: null,
     input: 1.5,
@@ -45,8 +45,8 @@ const CATALOG = [
   },
 
   { models: ['gemini-3.5-flash'], from: null, until: null, input: 1.5, output: 9.0 },
-  { models: ['gemini-3.5-flash-lite'], from: null, until: null, input: 0.3, output: 2.5 },
-  { models: ['gemini-3.1-flash-lite'], from: null, until: null, input: 0.25, output: 1.5 },
+  { models: ['gemma-4-26b-a4b-it'], from: null, until: null, input: 0.3, output: 2.5 },
+  { models: ['gemma-4-26b-a4b-it'], from: null, until: null, input: 0.25, output: 1.5 },
   { models: ['gemini-2.5-flash'], from: null, until: null, input: 0.3, output: 2.5 },
   { models: ['gemini-2.5-flash-lite'], from: null, until: null, input: 0.1, output: 0.4 },
 ]
@@ -66,7 +66,7 @@ const FALLBACK = { input: 1.5, output: 9.0, fallback: true }
  *
  * Se exporta porque el nombre viaja a dos lados —al catálogo para buscar el
  * precio, y al ledger como dato del movimiento— y tienen que coincidir. Con
- * dos criterios distintos, 'models/Gemini-3.6-Flash' y 'gemini-3.6-flash'
+ * dos criterios distintos, 'models/Gemini-3.6-Flash' y 'gemma-4-26b-a4b-it'
  * quedan como dos filas del mismo modelo y el reporte por modelo los muestra
  * como dos gastos separados.
  */

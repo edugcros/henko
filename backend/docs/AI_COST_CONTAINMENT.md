@@ -122,7 +122,7 @@ después del primer mes, no la estimación inicial.
 
 ### Medición de referencia
 
-Agosto 2026, `gemini-3.6-flash`, catálogo vacío, un saludo de una línea:
+Agosto 2026, `gemma-4-26b-a4b-it`, catálogo vacío, un saludo de una línea:
 **2.617 tokens** por mensaje. Aquel cálculo daba USD 0,0024 con la tarifa vieja
 de 0.9; con la corregida de 1.3 son **USD 0,0034**. Ese es el piso absoluto — un mensaje
 con catálogo, promociones y memoria de conversación en el prompt cuesta
@@ -164,7 +164,7 @@ AI_SUBSCRIPTION_GRACE_DAYS=7      # días de gracia en past_due
 AI_BYOK_ALLOWED_PLANS=pro,enterprise
 
 # Costo estimado para el panel (tarifa mezclada, solo visibilidad).
-# Revisado 07/09/2026 contra los precios publicados: gemini-3.6-flash cuesta
+# Revisado 07/09/2026 contra los precios publicados: gemma-4-26b-a4b-it cuesta
 # USD 0.75 por 1M de entrada y 3.75 de salida. El 0.9 anterior solo daba con
 # una mezcla 95/5; la real ronda 75/25 (prompt de visión ~3.900 tokens contra
 # ~1.000 de salida), o sea ~1.3. Con 0.9 el panel subestimaba ~45%.
