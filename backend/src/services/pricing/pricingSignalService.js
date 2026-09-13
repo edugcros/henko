@@ -219,6 +219,13 @@ export const buildPricingSignals = async ({ tenantId, productId, policy }) => {
     flags,
     // El filtro: sin ninguna señal, este producto no justifica una llamada de
     // IA. Es la línea que separa USD 0,78 de USD 260 por mes.
-    warrantsAnalysis: flags.length > 0,
+    //
+    // "Sin costo cargado" no cuenta como señal para analizar, aunque se
+    // muestre. La respuesta ya la sabe el sistema —cargá el costo— y sin costo
+    // no hay margen que calcular: la IA solo puede contestar "no hay datos
+    // suficientes", que es lo que contestaba, gastando una llamada para
+    // recomendar el mismo precio. Si además hay una señal de rotación o
+    // demanda, ahí sí se analiza: eso se puede razonar sin conocer el costo.
+    warrantsAnalysis: flags.some(flag => flag !== PRICING_FLAG.NO_COST),
   }
 }

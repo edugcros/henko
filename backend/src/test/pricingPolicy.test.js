@@ -330,6 +330,8 @@ describe("aplicar el precio recomendado", () => {
   let PricingPolicy;
   let ProductPriceHistory;
   let applyRecommendedPrice;
+  let buildPricingSignals;
+  let PRICING_FLAG;
 
   let TENANT;
 
@@ -360,6 +362,9 @@ describe("aplicar el precio recomendado", () => {
     TENANT = new mongoose.Types.ObjectId();
 
     Product = (await import("../models/productModel.js")).default;
+    ({ buildPricingSignals, PRICING_FLAG } = await import(
+      "../services/pricing/pricingSignalService.js"
+    ));
     PricingPolicy = (await import("../models/pricingPolicyModel.js")).default;
     ProductPriceHistory = (await import("../models/productPriceHistoryModel.js")).default;
     ({ applyRecommendedPrice } = await import(
@@ -484,5 +489,24 @@ describe("aplicar el precio recomendado", () => {
         price: 120000,
       }),
     ).rejects.toThrow(/no encontrado/i);
+  });
+
+  // "Sin costo cargado" no justifica gastar IA.
+  //
+  // Un producto sin costo y sin ventas llegaba igual al modelo, que contestaba
+  // "no hay datos suficientes para justificar una variación" con 20% de
+  // confianza y recomendaba el mismo precio. Una llamada paga para decir algo
+  // que el sistema ya sabía: falta el costo.
+  test("sin costo cargado se muestra la señal pero no se llama a la IA", async () => {
+    const producto = await crearProducto();
+
+    const signals = await buildPricingSignals({
+      tenantId: TENANT,
+      productId: producto._id,
+      policy: { minMarginPercent: 35, targetMarginPercent: 50, consider: {} },
+    });
+
+    expect(signals.flags).toContain(PRICING_FLAG.NO_COST);
+    expect(signals.warrantsAnalysis).toBe(false);
   });
 });
