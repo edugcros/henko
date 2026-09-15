@@ -39,6 +39,28 @@ const aiPlatformUsageSchema = new Schema(
 
     // Se marca la primera vez que el disyuntor corta, para poder alertar una
     // sola vez y no en cada request del resto del mes.
+    /**
+     * Plata comprometida y todavía no liquidada.
+     *
+     * VA APARTE DE estimatedCostUsd A PROPÓSITO, y es la decisión central de
+     * este contador: `estimatedCostUsd` significa "esto ya se gastó" y es lo
+     * que la auditoría contable compara contra el libro. Si las reservas se
+     * sumaran ahí, ese número incluiría plata que todavía no tiene fila en el
+     * ledger y la auditoría dispararía una falsa alarma en cada operación en
+     * vuelo.
+     *
+     * El disyuntor mira la SUMA de los dos: lo gastado más lo comprometido es
+     * lo que realmente hay que cuidar. La auditoría mira solo el primero.
+     *
+     * Una reserva que nunca se liquida —el proceso murió— la devuelve el
+     * barrido de operaciones colgadas, igual que la cuota.
+     */
+    reservedCostUsd: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     // Cuál de los dos controles cortó: 'tokens' o 'usd'. La acción que hay que
     // tomar es distinta — si cortó la plata, hay que decidir si se gasta más;
     // si cortó el volumen, hay algo consumiendo de más— y sin esto las dos se

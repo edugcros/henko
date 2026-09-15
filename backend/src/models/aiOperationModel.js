@@ -190,6 +190,18 @@ const aiOperationSchema = new mongoose.Schema(
     // Cuánto cupo reservó, para poder devolverlo sin releer el ledger.
     amount: { type: Number, default: 0, min: 0 },
 
+    /**
+     * Plata comprometida al reservar, todavía no liquidada.
+     *
+     * Se guarda acá porque es lo que hay que devolver: al liquidar contra el
+     * costo real, al devolver la operación, o al barrerla si quedó colgada.
+     * Sin este número habría que adivinar cuánto liberar.
+     *
+     * Vuelve a cero apenas se libera, así que una operación con esto en cero
+     * no tiene plata retenida a su nombre.
+     */
+    reservedCostUsd: { type: Number, default: 0, min: 0 },
+
     // Por qué falló, en el lenguaje del sistema (DENY_REASONS o el código del
     // proveedor). No es para mostrarle al comercio: para eso está
     // buildBudgetDenialMessage.

@@ -25,9 +25,9 @@ process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base6
 const { default: AiOperation } = await import('../models/aiOperationModel.js')
 const { default: AiProviderCall } = await import('../models/aiProviderCallModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
-const { reserveAiBudget, AI_METRICS, DENY_REASONS } = await import(
-  '../services/ai/aiBudgetService.js'
-)
+const { default: AiUsage } = await import('../models/aiUsageModel.js')
+const { reserveAiBudget, refundAiBudget, recordTokenSpend, AI_METRICS, DENY_REASONS } =
+  await import('../services/ai/aiBudgetService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 const { cacheDel } = await import('../utils/cache.js')
 
@@ -73,6 +73,12 @@ beforeEach(async () => {
   // test leería la del primero.
   await cacheDel(`ai:platform:breaker:${PERIODO_REAL}`)
   await AiPlatformUsage.deleteMany({ period: PERIODO_REAL })
+
+  // También el contador del comercio: todos los casos comparten período y
+  // tenant, así que sin esto el cupo llega acumulado del caso anterior y una
+  // reserva se deniega por cuota cuando el test creía estar midiendo el techo
+  // de plataforma.
+  await AiUsage.deleteMany({ period: PERIODO_REAL }).setOptions({ ignoreTenant: true })
 })
 
 /** Una clave de operación distinta por caso; el período es siempre el real. */
@@ -190,5 +196,133 @@ describe('el techo en dólares corta por su cuenta', () => {
     await cacheDel(`ai:platform:breaker:${PERIODO_REAL}`)
     await conConsumo({ tokens: 10, costUsd: 99.6 })
     expect((await reservar(nuevaClave())).allowed).toBe(false)
+  })
+})
+
+// ─── BLOQUE 10 · cien al mismo tiempo ───────────────────────────────────────
+//
+// El costo real se conoce DESPUÉS de la respuesta. Entre comprobar el techo y
+// ese momento hay una ventana, y con cien requests simultáneos los cien pasan
+// la comprobación y los cien gastan. Un techo que se comprueba y no se reserva
+// no es un techo: es una sugerencia.
+
+describe('concurrencia · el techo se reserva, no se consulta', () => {
+  const PLATA = 0.01 // lo que se compromete por operación de agentMessages
+
+  test('cien reservas simultáneas contra un techo de USD 1', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '1'
+
+    const resultados = await Promise.all(
+      Array.from({ length: 100 }, (_, i) => reservar(`concurrente-${i}`)),
+    )
+
+    const permitidas = resultados.filter(r => r.allowed).length
+    const denegadas = resultados.filter(r => !r.allowed)
+
+    // USD 1 / USD 0,01 = 100 exactas. Ni una más.
+    expect(permitidas).toBeLessThanOrEqual(1 / PLATA)
+
+    const doc = await AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean()
+
+    // Lo comprometido no puede pasarse del techo. Sin la reserva atómica esto
+    // daba 100 permitidas sin importar el techo.
+    expect(doc.reservedCostUsd).toBeLessThanOrEqual(1)
+    expect(doc.reservedCostUsd).toBeCloseTo(permitidas * PLATA, 6)
+
+    if (denegadas.length > 0) {
+      expect(denegadas[0].reason).toBe(DENY_REASONS.PLATFORM_BUDGET)
+      expect(denegadas[0].detail).toBe('usd')
+    }
+  }, 60000)
+
+  test('con techo holgado, las cien entran', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '1000'
+
+    const resultados = await Promise.all(
+      Array.from({ length: 100 }, (_, i) => reservar(`holgadas-${i}`)),
+    )
+
+    expect(resultados.filter(r => r.allowed)).toHaveLength(100)
+  }, 60000)
+})
+
+describe('liquidación · se devuelve la diferencia', () => {
+  test('reservado 0,01 · real 0,0034 · queda retenido 0', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
+
+    const operationId = nuevaClave()
+    const reserva = await reservar(operationId)
+    expect(reserva.allowed).toBe(true)
+
+    const conReserva = await AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean()
+    expect(conReserva.reservedCostUsd).toBeCloseTo(0.01, 6)
+    // Todavía no se gastó nada: la auditoría contable compara este número
+    // contra el libro y no puede incluir plata comprometida.
+    expect(conReserva.estimatedCostUsd || 0).toBe(0)
+
+    await recordTokenSpend({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 2000, outputTokens: 500,
+      profile: PERFIL, period: PERIODO_REAL, operationId,
+    })
+    await new Promise(r => setTimeout(r, 300))
+
+    const liquidado = await AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean()
+
+    // La retención vuelve a cero y queda SOLO el gasto real.
+    expect(liquidado.reservedCostUsd).toBe(0)
+    expect(liquidado.estimatedCostUsd).toBeGreaterThan(0)
+    expect(liquidado.estimatedCostUsd).toBeLessThan(0.01)
+  })
+
+  test('una reserva denegada por cuota del comercio no retiene plata', async () => {
+    // Sin esto, un comercio sin cupo le comería el techo a la plataforma con
+    // cada intento fallido.
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period: PERIODO_REAL,
+      operationId: nuevaClave(), limitOverride: 1,
+    })
+    const denegada = await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period: PERIODO_REAL,
+      operationId: nuevaClave(), limitOverride: 1,
+    })
+
+    expect(denegada.allowed).toBe(false)
+
+    const doc = await AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean()
+    // Solo la que sí reservó retiene.
+    expect(doc.reservedCostUsd).toBeCloseTo(0.01, 6)
+  })
+
+  test('devolver la operación suelta lo comprometido', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
+
+    const operationId = nuevaClave()
+    await reservar(operationId)
+
+    await refundAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      period: PERIODO_REAL, operationId,
+    })
+    await new Promise(r => setTimeout(r, 200))
+
+    const doc = await AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean()
+    expect(doc.reservedCostUsd).toBe(0)
+  })
+
+  test('sin techo en dólares no se reserva nada, y no cuesta nada', async () => {
+    // El comportamiento de hoy: sin AI_PLATFORM_MONTHLY_USD_BUDGET no hay
+    // reserva financiera, así que tampoco hay escritura de más por operación.
+    const resultado = await reservar(nuevaClave())
+
+    expect(resultado.allowed).toBe(true)
+
+    const doc = await AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean()
+    expect(doc?.reservedCostUsd || 0).toBe(0)
   })
 })

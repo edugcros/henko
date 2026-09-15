@@ -33,6 +33,7 @@ import {
   getPlanLimit,
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
+  getEstimatedCostUsd,
   getSharedKeyTenantCap,
   getSubscriptionState,
   normalizeMetric,
@@ -134,6 +135,7 @@ const openOperation = async ({
   feature = null,
   provider = null,
   requestedModel = null,
+  reservedCostUsd = 0,
   status = AI_OPERATION_STATUS.RUNNING,
 }) => {
   try {
@@ -146,6 +148,7 @@ const openOperation = async ({
       feature,
       provider,
       requestedModel,
+      reservedCostUsd,
       status,
       startedAt: new Date(),
     })
@@ -297,6 +300,26 @@ const claimConsumption = async ({
     return true
   }
 
+  // LA LIQUIDACIÓN.
+  //
+  // Ya se conoce el costo real, así que lo comprometido al reservar se suelta.
+  // El gasto verdadero entra por registerPlatformConsumption, que es quien
+  // mueve estimatedCostUsd; acá solo se libera la retención.
+  //
+  //   reservado  0,010
+  //   real       0,0034   ← lo cobra registerPlatformConsumption
+  //   liberado   0,010    ← lo suelta esto
+  //
+  // Se libera el total y no la diferencia porque son dos contadores distintos:
+  // el techo mira la suma de los dos, así que soltar todo lo retenido y sumar
+  // todo lo gastado deja el número final exacto.
+  //
+  // La liberación se hace ANTES de cerrar la operación y se espera: si el
+  // proceso muere en el medio, la reserva queda retenida y la levanta el
+  // barrido de colgadas. Al revés —cerrar primero— la operación quedaría
+  // 'completed' con plata retenida que ya nadie busca.
+  await liquidarReserva({ tenantId, operationId, period })
+
   // El estado de la operación es observabilidad y no se espera: el dinero ya
   // lo mueven los contadores y el ledger. La última llamada que registre
   // consumo deja la operación completada, que es lo que uno quiere saber.
@@ -308,6 +331,33 @@ const claimConsumption = async ({
   })
 
   return true
+}
+
+/**
+ * Suelta la plata que una operación tenía retenida, una sola vez.
+ *
+ * El reclamo va en el filtro: solo quien encuentra la operación CON reserva
+ * pendiente la libera, así que una liquidación y un barrido que se crucen
+ * sobre la misma operación no descuentan dos veces.
+ */
+const liquidarReserva = async ({ tenantId, operationId, period }) => {
+  if (!operationId || !tenantId) return
+
+  const operacion = await AiOperation.findOneAndUpdate(
+    { tenantId, operationId, reservedCostUsd: { $gt: 0 } },
+    { $set: { reservedCostUsd: 0 } },
+    { new: false },
+  )
+    .setOptions({ tenantId })
+    .lean()
+    .catch(() => null)
+
+  if (!operacion) return
+
+  await releasePlatformCost({
+    period: operacion.period || period,
+    amount: Number(operacion.reservedCostUsd || 0),
+  })
 }
 
 /**
@@ -510,6 +560,86 @@ const buildDeniedResult = ({ metric, limit, used, reason, detail, profile }) => 
  * segundo no compra nada.
  */
 /**
+ * Compromete plata ANTES de llamar al proveedor. Atómica.
+ *
+ * ES LA DIFERENCIA ENTRE UN TECHO Y UNA SUGERENCIA
+ *
+ * El costo real se conoce después de la respuesta. Entre la comprobación del
+ * techo y ese momento hay una ventana, y con cien requests simultáneos los
+ * cien pasan la comprobación y los cien gastan: el techo se supera por
+ * concurrencia sin que ninguno haya hecho nada mal.
+ *
+ * Acá el techo viaja DENTRO del filtro del findOneAndUpdate, igual que el tope
+ * de cuota por comercio. Si no entra, no matchea, y no se reserva nada. No hay
+ * ventana porque no hay dos pasos.
+ *
+ * La condición suma las tres cosas: lo ya gastado, lo ya comprometido por
+ * otras operaciones en vuelo, y lo que esta pide.
+ *
+ * @returns {Promise<number>} cuánto se comprometió; 0 si no hacía falta
+ *   reservar, null si no entró en el techo.
+ */
+const reservePlatformCost = async ({ period, estimate, usdBudget }) => {
+  if (usdBudget === UNLIMITED || !(estimate > 0)) return 0
+
+  await AiPlatformUsage.updateOne(
+    { period },
+    { $setOnInsert: { period } },
+    { upsert: true },
+  ).catch(() => null)
+
+  const updated = await AiPlatformUsage.findOneAndUpdate(
+    {
+      period,
+      $expr: {
+        $lte: [
+          {
+            $add: [
+              { $ifNull: ['$estimatedCostUsd', 0] },
+              { $ifNull: ['$reservedCostUsd', 0] },
+              estimate,
+            ],
+          },
+          usdBudget,
+        ],
+      },
+    },
+    { $inc: { reservedCostUsd: estimate } },
+    { new: true },
+  ).lean()
+
+  return updated ? estimate : null
+}
+
+/**
+ * Libera plata comprometida: al liquidarla contra el costo real, al devolver
+ * una operación, o al barrer una que quedó colgada.
+ *
+ * Nunca deja el contador en negativo: el $max con cero lo impide aunque una
+ * liberación llegue dos veces, que es exactamente lo que pasaría si un refund
+ * y el barrido se cruzaran sobre la misma operación.
+ */
+const releasePlatformCost = async ({ period, amount }) => {
+  if (!(amount > 0)) return
+
+  await AiPlatformUsage.updateOne({ period }, [
+    {
+      $set: {
+        reservedCostUsd: {
+          $max: [0, { $subtract: [{ $ifNull: ['$reservedCostUsd', 0] }, amount] }],
+        },
+      },
+    },
+  ]).catch(error => {
+    logger.warn('[AI BUDGET] No se pudo liberar la reserva financiera', {
+      period,
+      amount,
+      error: error.message,
+    })
+  })
+}
+
+/**
  * Cuál de los dos techos se pasó, si alguno.
  *
  * DOS CONTROLES, NO UNO CON DOS NOMBRES
@@ -551,7 +681,10 @@ const evaluatePlatformBudget = async () => {
   const usage = await AiPlatformUsage.findOne({ period }).lean()
 
   const tokens = Number(usage?.tokens || 0)
-  const costUsd = Number(usage?.estimatedCostUsd || 0)
+  // Gastado MÁS comprometido. Mirar solo lo gastado dejaría entrar a cien
+  // requests simultáneos: ninguno habría liquidado todavía.
+  const costUsd =
+    Number(usage?.estimatedCostUsd || 0) + Number(usage?.reservedCostUsd || 0)
 
   // La plata se evalúa primero: entre dos techos pasados, el que hay que
   // contarle al dueño de la plataforma es el que le cuesta dinero.
@@ -1153,6 +1286,40 @@ export const reserveAiBudget = async ({
 
   const upfrontCostUsd = getUpfrontCostUsd(normalizedMetric, reservationAmount)
 
+  // LA RESERVA FINANCIERA, antes que nada.
+  //
+  // Va primero porque es el único techo compartido por TODOS los comercios:
+  // si no entra, no hay nada más que decidir. Y va como reserva y no como
+  // comprobación porque el costo real recién se conoce después de la
+  // respuesta — comprobar y después gastar deja pasar a cien requests
+  // simultáneos.
+  //
+  // Lo que se compromete es un estimado ALTO. La diferencia contra el costo
+  // real se libera apenas se sabe, en claimConsumption.
+  //
+  // Una edición de imagen no se estima: su tarifa es plana y ya se conoce acá,
+  // así que se compromete el número exacto.
+  const usdBudget = getPlatformMonthlyUsdBudget()
+  const estimateUsd =
+    upfrontCostUsd > 0 ? upfrontCostUsd : getEstimatedCostUsd(normalizedMetric)
+
+  const reservedUsd = await reservePlatformCost({
+    period,
+    estimate: estimateUsd,
+    usdBudget,
+  })
+
+  if (reservedUsd === null) {
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit,
+      used: 0,
+      reason: DENY_REASONS.PLATFORM_BUDGET,
+      detail: 'usd',
+      profile: aiProfile,
+    })
+  }
+
   // EL CANDADO. Antes de este punto no se tocó ningún contador; después de
   // este punto, el `$inc` solo corre si la operación es nueva.
   const { fresh, operation } = await openOperation({
@@ -1164,6 +1331,7 @@ export const reserveAiBudget = async ({
     feature,
     provider,
     requestedModel,
+    reservedCostUsd: reservedUsd,
   })
 
   // Reintento: este cobro ya ocurrió. Se devuelve permitido —porque la reserva
@@ -1171,6 +1339,10 @@ export const reserveAiBudget = async ({
   // nada. Devolver denegado sería peor: haría fallar un reintento legítimo de
   // algo que ya estaba pago.
   if (!fresh) {
+    // No se cobra, así que no se compromete: lo reservado hace tres líneas se
+    // devuelve o quedaría retenido hasta fin de mes por un reintento.
+    await releasePlatformCost({ period, amount: reservedUsd })
+
     const usage = await AiUsage.findOne({ tenantId: id, period })
       .setOptions({ tenantId: id })
       .lean()
@@ -1197,6 +1369,11 @@ export const reserveAiBudget = async ({
   })
 
   if (!updated) {
+    // La cuota del comercio no alcanzó: la plata comprometida vuelve. Sin
+    // esto, un comercio sin cupo le comería el techo a la plataforma con cada
+    // intento fallido.
+    await releasePlatformCost({ period, amount: reservedUsd })
+
     const usage = await AiUsage.findOne({ tenantId: id, period })
       .setOptions({ tenantId: id })
       .lean()
@@ -1382,6 +1559,11 @@ export const refundAiBudget = async ({
         })
         return null
       })
+
+    if (reclamada) {
+      // La operación se devolvió: la plata comprometida vuelve con ella.
+      await liquidarReserva({ tenantId: id, operationId, period })
+    }
 
     if (!reclamada) {
       const operacion = await AiOperation.findOne({ tenantId: id, operationId })

@@ -242,9 +242,18 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       remainingTokens: hasBudget ? Math.max(0, budget - tokens) : null,
       // El costo del contador de plataforma, que es el que HENKO paga.
       estimatedCostUsd: round(usage?.estimatedCostUsd || 0, 2),
+      // Plata comprometida por operaciones en vuelo, todavía sin liquidar. El
+      // techo mira la SUMA de las dos; la auditoría contable, solo la gastada.
+      reservedCostUsd: round(usage?.reservedCostUsd || 0, 2),
       percentUsdUsed:
         usdBudget !== UNLIMITED && usdBudget > 0
-          ? round((Number(usage?.estimatedCostUsd || 0) / usdBudget) * 100, 1)
+          ? round(
+            ((Number(usage?.estimatedCostUsd || 0) +
+                Number(usage?.reservedCostUsd || 0)) /
+                usdBudget) *
+                100,
+            1,
+          )
           : null,
       lastActivityAt: usage?.lastActivityAt || null,
     },

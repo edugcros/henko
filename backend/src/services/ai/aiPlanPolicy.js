@@ -603,6 +603,50 @@ export const getPlatformMonthlyUsdBudget = () => {
   return budget === null ? UNLIMITED : budget
 }
 
+/**
+ * Cuánto se compromete por adelantado para una operación de esta métrica.
+ *
+ * POR QUÉ HACE FALTA ESTIMAR
+ *
+ * El costo real se conoce DESPUÉS de la respuesta, cuando el proveedor
+ * devuelve cuántos tokens gastó. Entre la comprobación del techo y ese momento
+ * hay una ventana, y con cien requests simultáneos los cien pasan la
+ * comprobación y los cien gastan. Un techo que se comprueba y no se reserva no
+ * es un techo: es una sugerencia.
+ *
+ * Reservando primero, el que no entra no entra — y la diferencia entre lo
+ * reservado y lo real se devuelve apenas se sabe.
+ *
+ * LOS NÚMEROS, Y POR QUÉ ESTÁN ALTOS
+ *
+ * Se estima por ARRIBA, igual que la tarifa de respaldo del catálogo de
+ * precios. Los dos errores no cuestan lo mismo: estimar de más deniega alguna
+ * operación cerca del techo y se devuelve en segundos; estimar de menos deja
+ * pasar la concurrencia que esto vino a frenar, y eso llega en la factura.
+ *
+ * Las referencias salen de corridas reales medidas:
+ *   - una extracción de mercado gastó entre 1.980 y 3.700 tokens con
+ *     gemini-3.1-flash-lite (0,25/1,50 por millón) → menos de un milésimo de
+ *     dólar; se reserva un centavo
+ *   - un análisis de visión mueve decenas de miles de tokens → cinco centavos
+ *   - una edición de imagen tiene tarifa plana conocida y no se estima: se
+ *     cobra el número exacto al reservar (getUpfrontCostUsd)
+ */
+const ESTIMATED_COST_USD = Object.freeze({
+  [AI_METRICS.AGENT_MESSAGES]: 0.01,
+  [AI_METRICS.AGENT_TOKENS]: 0.01,
+  [AI_METRICS.MARKET_ANALYSES]: 0.01,
+  [AI_METRICS.MARKET_TOKENS]: 0.01,
+  [AI_METRICS.VISION]: 0.05,
+})
+
+export const getEstimatedCostUsd = metric => {
+  const override = readEnvNumber(`AI_ESTIMATED_COST_USD_${String(metric || '').toUpperCase()}`)
+  if (override !== null) return override
+
+  return ESTIMATED_COST_USD[metric] ?? 0.01
+}
+
 /** De dónde sale el techo en dólares. Solo para mostrarlo, no para decidir. */
 export const getPlatformUsdBudgetSource = () => {
   const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET)

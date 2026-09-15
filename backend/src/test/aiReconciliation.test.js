@@ -25,6 +25,7 @@ const { default: AiOperation } = await import('../models/aiOperationModel.js')
 const { default: AiProviderCall } = await import('../models/aiProviderCallModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
+const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 
 const {
   reserveAiBudget, refundAiBudget, recordAiConsumption,
@@ -576,5 +577,41 @@ describe('auditoría contable · detectar, no corregir', () => {
     const auditoria = await auditAccounting(period)
 
     expect(auditoria.balanced).toBe(true)
+  })
+})
+
+describe('reservas colgadas · también sueltan la plata comprometida', () => {
+  test('barrer una colgada devuelve el cupo Y la reserva financiera', async () => {
+    // Sin esto, un proceso que muere entre reservar y responder deja plata
+    // retenida contra el techo de la plataforma hasta que cambia el mes — y
+    // ese techo lo comparten TODOS los comercios.
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
+    const period = getCurrentPeriod()
+
+    try {
+      await AiPlatformUsage.deleteMany({ period })
+
+      const operationId = 'colgada-con-plata'
+      await reserveAiBudget({
+        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+        profile: PERFIL, period, operationId,
+      })
+
+      const retenida = await AiPlatformUsage.findOne({ period }).lean()
+      expect(retenida.reservedCostUsd).toBeGreaterThan(0)
+
+      await AiOperation.updateOne(
+        { tenantId: TENANT, operationId },
+        { $set: { startedAt: new Date(Date.now() - 3600000) } },
+      ).setOptions({ tenantId: TENANT })
+
+      await sweepStaleOperations()
+      await asentar()
+
+      const suelta = await AiPlatformUsage.findOne({ period }).lean()
+      expect(suelta.reservedCostUsd).toBe(0)
+    } finally {
+      delete process.env.AI_PLATFORM_MONTHLY_USD_BUDGET
+    }
   })
 })
