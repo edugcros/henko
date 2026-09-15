@@ -153,7 +153,9 @@ function assessMarketPosition(breakEvenPrice, priceStats) {
     }
   }
 
-  if (breakEvenPrice > p25) {
+  // p25 viene null cuando la muestra es chica: sin cuartil no hay "mitad
+  // cara del mercado" que afirmar, y se pasa al tramo siguiente.
+  if (p25 !== null && p25 !== undefined && breakEvenPrice > p25) {
     return {
       level: 'AJUSTADO',
       message: 'Tenés margen, pero quedás en la mitad cara del mercado. Vas a competir contra opciones más baratas.',

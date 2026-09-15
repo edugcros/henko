@@ -750,3 +750,168 @@ describe('packs · se compara la misma cantidad de unidades', () => {
     expect(looksLikeBundle({ title: 'Yerba Playadito 1kg' }, ambiguo)).toBe(false)
   })
 })
+
+// ─── Un listado de categoría no es una ficha de producto ────────────────────
+//
+// Caso real, 15/09 16:14 UTC: analizando "Gorra Fox Racing Negra con Logo
+// Blanco" las dos únicas ofertas fueron la portada de la marca en motordos
+// ($110.971) y los resultados de búsqueda de MercadoLibre ($78.699). Ninguna
+// es una gorra: son precios de otra cosa que estaba en la misma página.
+//
+// Una página de categoría SIEMPRE tiene un precio a la vista, así que el
+// parser no falla — encuentra el precio equivocado, que es peor.
+
+describe('listados · no se cotiza una página de categoría', () => {
+  let isListingPage
+  let normalizeTavilyResults
+
+  beforeAll(async () => {
+    ;({
+      __test__: { isListingPage, normalizeTavilyResults },
+    } = await import('../services/marketIntelligence/sources/shoppingSource.js'))
+  })
+
+  test('las dos URLs que ensuciaron la corrida real son listados', () => {
+    expect(isListingPage('https://www.motordos.com.ar/marca-fox-racing-21')).toBe(true)
+    expect(
+      isListingPage('https://listado.mercadolibre.com.ar/gorra-fox-hombre'),
+    ).toBe(true)
+  })
+
+  test('las fichas de producto que sí sirvieron siguen entrando', () => {
+    // Las tres de la corrida de la yerba: si el filtro se las lleva puestas,
+    // no queda ninguna fuente de precios.
+    const fichas = [
+      'https://www.tiendapipore.com.ar/productos/yerba-mate-elaborada-con-palo-por-1-kg',
+      'https://mas-sabor.com.ar/productos/yerba-mate-con-palo-1kg-pack-x-10u',
+      'https://tienda.open25.com.ar/productos/yerba-playadito-1kg-pack-x5',
+    ]
+
+    for (const url of fichas) {
+      expect(isListingPage(url)).toBe(false)
+    }
+  })
+
+  test('Shopify publica la ficha dentro de una colección, y sigue siendo ficha', () => {
+    // /collections/ sin /products/ es la categoría; con /products/ es el
+    // producto. Sin esta distinción se pierde media tienda Shopify.
+    expect(
+      isListingPage('https://tienda.com.ar/collections/gorras/products/gorra-fox-negra'),
+    ).toBe(false)
+    expect(isListingPage('https://tienda.com.ar/collections/gorras')).toBe(true)
+  })
+
+  test('el listado no llega a ser una oferta', () => {
+    const ofertas = normalizeTavilyResults(
+      [
+        {
+          title: 'Fox Racing Moto | Indumentaria y Equipamiento | Argentina - Motor Dos',
+          url: 'https://www.motordos.com.ar/marca-fox-racing-21',
+          content: 'Campera Fox Racing $110.971',
+        },
+        {
+          title: 'Gorra Fox Hombre | MercadoLibre',
+          url: 'https://listado.mercadolibre.com.ar/gorra-fox-hombre',
+          content: 'Gorra Fox $78.699',
+        },
+      ],
+      'es-AR',
+      'Gorra Fox Racing Negra con Logo Blanco',
+    )
+
+    expect(ofertas).toHaveLength(0)
+  })
+})
+
+// ─── Cuartiles con dos precios ──────────────────────────────────────────────
+//
+// La misma corrida publicó min $78.699, p25 $86.767, mediana $94.835, p75
+// $102.903, max $110.971: cinco cifras nacidas de DOS precios. p25 y p75 son
+// puntos de una recta trazada entre los dos, no cuartiles de un mercado.
+
+describe('cuartiles · no se interpola una distribución que no existe', () => {
+  let computePriceStats
+
+  beforeAll(async () => {
+    ;({
+      __test__: { computePriceStats },
+    } = await import('../services/marketIntelligence/sources/shoppingSource.js'))
+  })
+
+  const ofertas = precios => precios.map(price => ({ price, currency: 'ARS' }))
+
+  test('con dos precios no hay p25 ni p75', () => {
+    const stats = computePriceStats(ofertas([78699, 110971]))
+
+    expect(stats.p25).toBeNull()
+    expect(stats.p75).toBeNull()
+
+    // El más barato, el del medio y el más caro sí son lo que dicen ser.
+    expect(stats.min).toBe(78699)
+    expect(stats.max).toBe(110971)
+    expect(stats.median).toBe(94835)
+    expect(stats.sampleSize).toBe(2)
+  })
+
+  test('con muestra suficiente los cuartiles vuelven', () => {
+    const stats = computePriceStats(ofertas([100, 200, 300, 400, 500]))
+
+    expect(stats.p25).toBe(200)
+    expect(stats.p75).toBe(400)
+    expect(stats.sampleSize).toBe(5)
+  })
+})
+
+// ─── La misma página, una sola vez ──────────────────────────────────────────
+
+describe('investigación web · una barra de más no es otra página', () => {
+  let getWebResearchSignals
+
+  beforeEach(() => {
+    mockCallAgentLLM.mockReset()
+    mockTavilySearch.mockReset()
+  })
+
+  beforeAll(async () => {
+    ;({ getWebResearchSignals } = await import(
+      '../services/marketIntelligence/sources/webResearchSource.js'
+    ))
+  })
+
+  test('es.alpinestars.com//products y /products son la misma', () => {
+    // Textual de la corrida real: Tavily devolvió las dos, el modelo las contó
+    // como dos menciones y el panel las listó dos veces.
+    const paginas = [
+      {
+        url: 'https://es.alpinestars.com//products/intuitive-snapback-hat',
+        title: 'Gorra Snapback Intuitive',
+        content: 'gorra de moto',
+      },
+      {
+        url: 'https://es.alpinestars.com/products/intuitive-snapback-hat',
+        title: 'Gorra Snapback Intuitive',
+        content: 'gorra de moto',
+      },
+      {
+        url: 'https://otra.com.ar/gorra',
+        title: 'Otra gorra',
+        content: 'texto',
+      },
+    ]
+
+    mockTavilySearch.mockResolvedValue(paginas)
+    mockCallAgentLLM.mockResolvedValue({
+      content: JSON.stringify({
+        searchIntent: { informational: 1, commercial: 0, transactional: 0 },
+        trendDirection: 'ESTABLE',
+      }),
+    })
+
+    return getWebResearchSignals({ product: 'gorra', country: 'AR', apiKey: 'k' }).then(
+      signals => {
+        expect(signals.pagesFound).toBe(2)
+        expect(signals.sources).toHaveLength(2)
+      },
+    )
+  })
+})

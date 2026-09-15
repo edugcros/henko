@@ -72,8 +72,13 @@
  *       por tres terminó midiéndose contra un kilo suelto de otra marca, un
  *       pack de cinco y uno de diez. La fórmula no cambia; cambian los precios
  *       que entran, y con ellos competencia y actividad comercial.
+ *  11 — las páginas de listado dejan de cotizarse como si fueran fichas de
+ *       producto, y los cuartiles no se publican con menos de cinco precios.
+ *       Una gorra se había medido con la portada de la marca ($110.971) y con
+ *       los resultados de búsqueda de MercadoLibre ($78.699): dos precios de
+ *       otra cosa, de los que salieron cinco cifras de "distribución".
  */
-export const SCORING_VERSION = 10
+export const SCORING_VERSION = 11
 
 const WEIGHTS = {
   demand: 0.30,

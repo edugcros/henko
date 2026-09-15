@@ -51,6 +51,21 @@ const MIN_SAMPLE_FOR_RETRY = num('SHOPPING_MIN_SAMPLE', 3)
 const MIN_SAMPLE_FOR_OUTLIERS = num('SHOPPING_MIN_SAMPLE_OUTLIERS', 5)
 
 /**
+ * Debajo de esta muestra no se publican cuartiles.
+ *
+ * Con dos precios, p25 y p75 son interpolaciones lineales entre esos dos
+ * puntos y la mediana es su promedio: tres números que suenan a estadística
+ * de mercado y describen una recta entre dos datos. En una corrida real
+ * salieron min $78.699, p25 $86.767, mediana $94.835, p75 $102.903, max
+ * $110.971 — cinco cifras distintas nacidas de dos precios, y los dos
+ * equivocados.
+ *
+ * El mínimo, la mediana y el máximo se siguen publicando: con dos datos son
+ * el más barato, el del medio y el más caro, que es exactamente lo que dicen.
+ */
+const MIN_SAMPLE_FOR_QUARTILES = num('SHOPPING_MIN_SAMPLE_QUARTILES', 5)
+
+/**
  * Lo que se le agrega al nombre del producto para empujar la búsqueda hacia
  * páginas de venta y no hacia notas o reseñas, que no traen precio.
  */
@@ -228,31 +243,6 @@ const ADAPTERS = {
 // ─── Normalización ───────────────────────────────────────
 
 /**
- * Los proveedores devuelven formas parecidas pero no idénticas, y el precio
- * a veces viene como string con símbolo de moneda. Todo lo que entra al
- * scoring pasa por acá.
- */
-function normalizeOffers(rawResults) {
-  return rawResults
-    .slice(0, MAX_OFFERS)
-    .map(item => {
-      const price = parsePrice(item.extracted_price ?? item.price)
-      if (price === null) return null
-
-      return {
-        title: String(item.title || '').slice(0, 200),
-        price,
-        currency: item.currency || detectCurrency(item.price) || null,
-        merchant: item.source || item.merchant || item.seller || null,
-        rating: numberOrNull(item.rating),
-        reviewCount: numberOrNull(item.reviews),
-        link: item.link || item.product_link || null,
-      }
-    })
-    .filter(Boolean)
-}
-
-/**
  * Resultados de Tavily → la misma forma de oferta que el resto del paquete
  * espera. Nada de esto sabe que cambió el proveedor.
  *
@@ -268,6 +258,10 @@ function normalizeTavilyResults(results, locale, product = '') {
   for (const item of Array.isArray(results) ? results : []) {
     const merchant = hostnameOf(item?.url)
     if (!merchant || porDominio.has(merchant)) continue
+
+    // Un listado de categoría o de marca no es una ficha de producto: su
+    // precio es el de otra cosa que estaba en la misma página.
+    if (isListingPage(item?.url)) continue
 
     // La página tiene que ser del producto, no de otro que comparta los
     // adjetivos de la consulta.
@@ -402,6 +396,62 @@ function identifyingWords(product) {
  * unidad de venta. Se comparan cantidades.
  */
 const BUNDLE_HINTS = /\b(pack|packs|bulto|combo|caja\s?x)\b/i
+
+/**
+ * Páginas de LISTADO, no de producto.
+ *
+ * Analizando "Gorra Fox Racing Negra con Logo Blanco" las dos únicas ofertas
+ * fueron `motordos.com.ar/marca-fox-racing-21` —la portada de la marca, donde
+ * el precio más visible era el de una campera— y
+ * `listado.mercadolibre.com.ar/gorra-fox-hombre`, que son los resultados de
+ * una búsqueda. De ahí salieron $110.971 y $78.699 para una gorra, y con dos
+ * datos Tukey no corre.
+ *
+ * Una página de categoría siempre tiene un precio a la vista, así que el
+ * parser encuentra uno y no falla; encuentra el precio equivocado, que es
+ * peor. El precio de un listado no es el precio de nada en particular.
+ *
+ * Se filtra por la forma de la URL, que es la señal confiable: la primera
+ * palabra del título de un listado y la de una ficha de producto se parecen
+ * demasiado.
+ */
+const LISTING_HOST = /^(listado|listing|lista)\./i
+
+/**
+ * No se incluyen los segmentos de una sola letra —el `/b/` de eBay es su
+ * ruta de categoría— porque se llevan puesta cualquier URL corta legítima:
+ * agregarlos hizo fallar al instante el test de `otra.com.ar/c`. Además, esos
+ * sitios ya quedan afuera por el filtro de dominio local.
+ */
+const LISTING_PATH =
+  /(^|\/)(marcas?|categorias?|category|categories|collections?|coleccion(es)?|search|buscar|busqueda|resultados|brands?)(\/|-|$|\?)/i
+
+/**
+ * Marcas de ficha de producto, que le ganan a las de listado.
+ *
+ * Shopify publica el mismo producto en `/products/x` y en
+ * `/collections/gorras/products/x`: las dos son la ficha. Sin esta guarda, la
+ * segunda forma —que es la que suele indexarse— se descartaría por decir
+ * "collections", y perderíamos precios buenos de cualquier tienda Shopify.
+ */
+const PRODUCT_PATH = /(^|\/)(productos?|products?|item|dp)(\/|$)|-p-\d|\/p-?\d/i
+
+function isListingPage(url) {
+  const texto = String(url || '')
+  if (!texto) return false
+
+  let parsed
+  try {
+    parsed = new URL(texto)
+  } catch {
+    return false
+  }
+
+  if (LISTING_HOST.test(parsed.hostname)) return true
+  if (PRODUCT_PATH.test(parsed.pathname)) return false
+
+  return LISTING_PATH.test(parsed.pathname)
+}
 
 /** De dónde sale el multiplicador, en orden de preferencia. */
 const PACK_QTY_PATTERNS = [
@@ -606,19 +656,6 @@ function parsePrice(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-function detectCurrency(value) {
-  if (typeof value !== 'string') return null
-  if (value.includes('ARS') || value.includes('$')) return 'ARS'
-  if (value.includes('R$')) return 'BRL'
-  if (value.includes('€')) return 'EUR'
-  return null
-}
-
-function numberOrNull(value) {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
 /**
  * Percentiles, no promedio.
  *
@@ -665,11 +702,15 @@ function computePriceStats(offers) {
     offers.map(o => o.price).sort((a, b) => a - b),
   )
 
+  // Los cuartiles solo cuando hay muestra que los sostenga. null es "no se
+  // puede saber", que es distinto de un número interpolado entre dos precios.
+  const hayCuartiles = prices.length >= MIN_SAMPLE_FOR_QUARTILES
+
   return {
     min: prices[0],
-    p25: percentile(prices, 0.25),
+    p25: hayCuartiles ? percentile(prices, 0.25) : null,
     median: percentile(prices, 0.5),
-    p75: percentile(prices, 0.75),
+    p75: hayCuartiles ? percentile(prices, 0.75) : null,
     max: prices[prices.length - 1],
     currency: offers.find(o => o.currency)?.currency || null,
     sampleSize: prices.length,
@@ -688,6 +729,7 @@ export const __test__ = {
   identifyingWords,
   packSize,
   looksLikeBundle,
+  isListingPage,
 }
 
 function percentile(sorted, p) {

@@ -153,7 +153,7 @@ export async function getWebResearchSignals({ product, country, apiKey }) {
     }
   }
 
-  const usadas = pages.slice(0, MAX_PAGES)
+  const usadas = sinRepetidas(pages).slice(0, MAX_PAGES)
 
   const extraction = await callAgentLLM({
     systemPrompt: buildExtractionPrompt({ product, country }),
@@ -203,6 +203,41 @@ export async function getWebResearchSignals({ product, country, apiKey }) {
     pagesFound: usadas.length,
     tokensUsed,
     usage,
+  }
+}
+
+/**
+ * La misma página, una sola vez.
+ *
+ * En una corrida real entraron `es.alpinestars.com//products/intuitive-
+ * snapback-hat` y `es.alpinestars.com/products/intuitive-snapback-hat`: la
+ * misma página con una barra de más. Tavily las devolvió como dos resultados,
+ * el modelo las contó como dos menciones y el panel las listó dos veces. Un
+ * conteo de páginas que se puede inflar con una barra no mide nada.
+ */
+function sinRepetidas(pages) {
+  const vistas = new Set()
+
+  return pages.filter(p => {
+    const clave = normalizarUrl(p?.url)
+    if (!clave || vistas.has(clave)) return false
+
+    vistas.add(clave)
+    return true
+  })
+}
+
+function normalizarUrl(url) {
+  try {
+    const { hostname, pathname } = new URL(String(url || ''))
+
+    // Sin query ni ancla, sin barras repetidas y sin la barra final: es la
+    // misma página en todos esos casos.
+    const ruta = pathname.replace(/\/{2,}/g, '/').replace(/\/$/, '')
+
+    return `${hostname.toLowerCase()}${ruta}`
+  } catch {
+    return null
   }
 }
 
