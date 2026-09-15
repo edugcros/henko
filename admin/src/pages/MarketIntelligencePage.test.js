@@ -168,3 +168,31 @@ describe('Análisis de mercado · no se afirma lo que no se midió', () => {
     expect(screen.queryByText(/exceeded your current quota/i)).toBeNull()
   })
 })
+
+describe('Análisis de mercado · un resultado guardado se avisa', () => {
+  test('dice que viene del caché y ofrece rehacerlo', async () => {
+    // El backend sirve el análisis guardado hasta 24 horas. Sin avisarlo, el
+    // comerciante aprieta "Analizar", recibe el resultado de ayer al instante
+    // y parece que la IA no corrió.
+    mockAnalyze.mockResolvedValue({
+      success: true,
+      data: {
+        ...RESULTADO,
+        fromCache: true,
+        generatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      },
+    })
+
+    await analizar()
+
+    expect(await screen.findByText(/análisis guardado de hace 3 horas/i)).toBeDefined()
+    expect(screen.getByRole('button', { name: /Analizar de nuevo/i })).toBeDefined()
+  })
+
+  test('un análisis recién hecho no muestra ese aviso', async () => {
+    await analizar()
+
+    await screen.findByText(/De dónde salieron los datos/i)
+    expect(screen.queryByText(/análisis guardado/i)).toBeNull()
+  })
+})

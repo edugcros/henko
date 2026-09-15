@@ -122,7 +122,7 @@ const COMPONENT_SOURCE = {
 // secuencia real: cada uno usa lo que dejó el anterior.
 const HOW_IT_WORKS = [
   'Escribís un producto —del catálogo, o uno que estés pensando traer— y elegís el país.',
-  'HENKO consulta tres fuentes a la vez: el buscador de precios (qué tiendas lo venden hoy y a cuánto, con el link de cada una), una búsqueda con IA (marcas, quejas de compradores, intención de compra) y tu propia tienda (tus ventas, tu stock, cómo rota la categoría).',
+  'HENKO consulta tres fuentes a la vez: el buscador de precios (qué tiendas lo venden hoy y a cuánto, con el link de cada una), una búsqueda en la web cuyas páginas lee la IA para sacar marcas, quejas repetidas e intención de compra —vas a ver los links de lo que leyó—, y tu propia tienda (tus ventas, tu stock, cómo rota la categoría).',
   'Con lo que cada fuente haya contestado se arma el puntaje. Lo que no se pudo medir no puntúa cero: queda afuera del cálculo y se avisa, porque no saberlo y que sea malo son cosas distintas.',
   'Si cargás tu costo, además te dice desde qué precio empezás a ganar y cuánto te quedaría vendiendo al precio típico del mercado.',
 ]
@@ -131,6 +131,24 @@ const HOW_IT_WORKS = [
 // componente se mide sin intermediarios, y declarar una categoría que nada usa
 // hace creer que existe.
 const SOURCE_MARK = { observed: '≈', mixed: '◐' }
+
+/**
+ * Cuánto hace que se calculó, en palabras.
+ *
+ * El backend guarda cada análisis y lo sirve hasta 24 horas, pero la pantalla
+ * no lo decía: apretabas "Analizar" sobre un producto que ya habías mirado y
+ * recibías el resultado de ayer al instante, sin que la IA corriera. Se ve
+ * exactamente igual que una función que no funciona.
+ */
+const antiguedad = iso => {
+  const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+
+  if (!Number.isFinite(minutos) || minutos < 2) return 'recién'
+  if (minutos < 60) return `hace ${minutos} minutos`
+
+  const horas = Math.round(minutos / 60)
+  return horas === 1 ? 'hace una hora' : `hace ${horas} horas`
+}
 
 const POSITION_COLOR = {
   MUY_COMPETITIVO: 'success',
@@ -547,6 +565,25 @@ export default function MarketIntelligencePage() {
           puede quedar con nodos que ya no le pertenecen. */}
       {result && (
         <Box key={`${result.product}-${result.country}-${result.generatedAt}`}>
+          {result.fromCache && (
+            <Alert
+              severity="info"
+              sx={{ mb: 3 }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => handleAnalyze(true)}
+                  disabled={loading}
+                >
+                  Analizar de nuevo
+                </Button>
+              }
+            >
+              Este es el análisis guardado de {antiguedad(result.generatedAt)}. No
+              se volvió a consultar nada, así que no gastó consumo.
+            </Alert>
+          )}
           {result.degenerate ? (
             <Alert severity="info" sx={{ mb: 3 }}>
               No hay datos suficientes para analizar este producto. Las fuentes externas no respondieron,
@@ -977,12 +1014,36 @@ export default function MarketIntelligencePage() {
                     </>
                   )}
 
+                  {/* Las páginas, con su link. Decir "12 fuentes consultadas"
+                      y no mostrarlas pide fe: son URLs reales que devolvió el
+                      buscador, y abrirlas es la única forma de que el
+                      comerciante juzgue si lo que leyó la IA sirve. */}
                   {research.sources?.length > 0 && (
                     <>
                       <Divider sx={{ my: 1 }} />
-                      <Typography variant="caption" color="text.secondary">
-                        Fuentes consultadas: {research.sources.length}
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Páginas leídas ({research.sources.length})
                       </Typography>
+                      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                        {research.sources.slice(0, 8).map(fuente => (
+                          <Typography
+                            key={fuente.url}
+                            variant="caption"
+                            color="text.secondary"
+                            noWrap
+                            title={fuente.title}
+                          >
+                            <a
+                              href={fuente.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'inherit' }}
+                            >
+                              {fuente.title || fuente.url}
+                            </a>
+                          </Typography>
+                        ))}
+                      </Stack>
                     </>
                   )}
                 </Stack>
