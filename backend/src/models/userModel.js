@@ -171,42 +171,66 @@ const userSchema = new Schema(
       },
     ],
 
+    /**
+     * LEGADO. El casillero único, de antes de refreshSessions.
+     *
+     * Se conserva para no desloguear a todo el mundo el día del deploy: un
+     * refresh que llega con este token se acepta UNA vez y se migra a una
+     * sesión del array. Cuando no queden usuarios con este campo poblado, se
+     * puede borrar.
+     *
+     * La ventana de gracia ya no vive acá: es parte de cada sesión, porque
+     * cada una rota por su cuenta.
+     */
     refreshToken: {
       type: String,
       select: false,
     },
 
     /**
-     * El token INMEDIATAMENTE anterior, y cuándo se rotó.
+     * Las sesiones abiertas, una por origen o dispositivo.
      *
-     * POR QUÉ HACE FALTA RECORDARLO
+     * POR QUÉ UN ARRAY Y NO UN CAMPO
      *
-     * La rotación es un compare-and-swap atómico, y eso está bien: dos
-     * requests de refresh simultáneas no pueden pisarse la escritura. Pero
-     * la que pierde la carrera no matchea ningún documento y se iba con 403
-     * —"Token de refresco inválido"— aunque su token fuera legítimo y tuviera
-     * un segundo de antigüedad.
+     * Había UN solo `refreshToken` por usuario, y las cookies son host-only
+     * —getCookieDomain() devuelve undefined, y `.vercel.app` está en la Public
+     * Suffix List, así que no puede existir una cookie de dominio padre—.
+     * Resultado: el panel en henko-admin y la tienda en henko-web tienen cada
+     * uno SU cookie, y el servidor un solo casillero. El que refresca último
+     * pisa al otro, y la cookie del perdedor queda muerta para siempre.
      *
-     * Y pasa seguido: el panel monta varios componentes que reaccionan en
-     * paralelo a un access token vencido, y cada uno dispara su propio
-     * refresh. Medido en los logs de producción de un solo día: veinte
-     * ocurrencias, siempre en pares separados por un segundo.
+     * Medido en producción sobre un día: 26 respuestas 403 de refresh, TODAS
+     * desde henko-web; todas las de henko-admin devolvieron 200. No era una
+     * carrera entre requests: era la tienda intentando con una cookie que el
+     * panel ya había invalidado.
      *
-     * Con estos dos campos, un token que acaba de ser rotado sigue siendo
-     * aceptable durante una ventana corta. Es el "reuse interval" que usan
-     * los proveedores de identidad, y distingue las dos cosas que antes se
-     * veían iguales: dos pestañas compitiendo (legítimo, se acepta) de un
-     * token viejo reaparecido mucho después (sospechoso, se rechaza).
+     * Y no es un caso raro: el propio panel embebe la tienda para la vista
+     * previa del tema (theme-preview?source=admin), así que estar logueado en
+     * los dos a la vez es un flujo central del producto.
      *
-     * Se guarda el hash, igual que el vigente: acá nunca vive un token.
+     * Cada sesión rota por su cuenta. Cerrar una no toca a las demás.
      */
-    previousRefreshToken: {
-      type: String,
-      select: false,
-    },
+    refreshSessions: {
+      type: [
+        {
+          _id: false,
+          // Hash del jti vigente de ESTA sesión.
+          tokenHash: { type: String, required: true },
 
-    refreshTokenRotatedAt: {
-      type: Date,
+          // El inmediatamente anterior y cuándo se rotó: la ventana de gracia
+          // para dos requests de la MISMA sesión que salen juntas.
+          previousTokenHash: { type: String, default: null },
+          rotatedAt: { type: Date, default: null },
+
+          createdAt: { type: Date, default: Date.now },
+          lastUsedAt: { type: Date, default: Date.now },
+
+          // Para que el usuario pueda reconocer sus sesiones si alguna vez se
+          // listan en el panel. No se usa para decidir nada.
+          userAgent: { type: String, default: null },
+        },
+      ],
+      default: [],
       select: false,
     },
 

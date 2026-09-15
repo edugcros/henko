@@ -939,16 +939,39 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
     role: user.role,
   })
 
+  // ABRE UNA SESIÓN. No pisa las otras.
+  //
+  // Antes esto escribía el único `refreshToken` del usuario, así que loguearse
+  // en la tienda mataba la sesión del panel y viceversa. Con las cookies
+  // host-only que usa el proyecto —y `.vercel.app` en la Public Suffix List,
+  // que hace imposible compartirlas— eso convertía "tener el panel y la
+  // tienda abiertos" en un problema garantizado.
+  //
+  // El $slice recorta a las más recientes: sin tope, un usuario que entra
+  // desde muchos dispositivos haría crecer el documento sin límite.
   await User.findByIdAndUpdate(
     user._id,
     {
-      failedLoginAttempts: 0,
-      isBlocked: false,
-      blockedUntil: null,
-      refreshToken: hashedJti,
-      // Un login nuevo no hereda la ventana de gracia de la sesión anterior.
-      previousRefreshToken: null,
-      refreshTokenRotatedAt: null,
+      $set: {
+        failedLoginAttempts: 0,
+        isBlocked: false,
+        blockedUntil: null,
+      },
+      $push: {
+        refreshSessions: {
+          $each: [
+            {
+              tokenHash: hashedJti,
+              previousTokenHash: null,
+              rotatedAt: null,
+              createdAt: new Date(),
+              lastUsedAt: new Date(),
+              userAgent: String(req.get?.('user-agent') || '').slice(0, 200) || null,
+            },
+          ],
+          $slice: -MAX_REFRESH_SESSIONS,
+        },
+      },
     },
     {
       validateBeforeSave: false,
@@ -1008,6 +1031,19 @@ export const getCurrentUser = expressAsyncHandler(async (req, res) => {
 })
 
 /**
+ * Cuántas sesiones abiertas se conservan por usuario.
+ *
+ * Diez cubre de sobra el caso real —panel, tienda, teléfono, otra
+ * computadora— y pone un techo al tamaño del documento: sin tope, cada login
+ * desde un dispositivo nuevo agrega una entrada para siempre. Al pasarse, se
+ * cae la más vieja, que es la que con más probabilidad ya nadie usa.
+ */
+const MAX_REFRESH_SESSIONS = Math.max(
+  Number(process.env.MAX_REFRESH_SESSIONS) || 10,
+  1,
+)
+
+/**
  * Cuánto sigue siendo aceptable el token recién rotado.
  *
  * Tiene que cubrir el tiempo entre dos requests que salieron juntas del mismo
@@ -1060,62 +1096,70 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
   // carrera; la otra no matchea ningún documento en vez de corromper el
   // estado.
   const hashedIncoming = hashRefreshJti(decoded.jti)
+  const ahora = new Date()
 
+  // Rota SOLO la sesión que presentó este token. El operador posicional `$`
+  // apunta al elemento que matcheó el filtro, así que sigue siendo un
+  // compare-and-swap atómico — pero sobre una sesión, no sobre el usuario.
+  //
+  // Esta es la línea que arregla el bug: antes el filtro era
+  // `{ refreshToken: hashedIncoming }` sobre un único campo, y cualquier
+  // rotación de cualquier origen invalidaba a todos los demás.
   const updatedUser = await User.findOneAndUpdate(
-    { _id: decoded.sub, refreshToken: hashedIncoming },
+    { _id: decoded.sub, 'refreshSessions.tokenHash': hashedIncoming },
     {
       $set: {
-        refreshToken: newHashedJti,
-        // El que se acaba de rotar queda anotado como anterior. Es lo que
-        // permite reconocer, un segundo después, a una request hermana que
-        // salió con el mismo token y perdió la carrera.
-        previousRefreshToken: hashedIncoming,
-        refreshTokenRotatedAt: new Date(),
+        'refreshSessions.$.tokenHash': newHashedJti,
+        // El que se acaba de rotar queda anotado como anterior DE ESTA
+        // sesión: es lo que reconoce a una request hermana que salió con el
+        // mismo token y perdió la carrera.
+        'refreshSessions.$.previousTokenHash': hashedIncoming,
+        'refreshSessions.$.rotatedAt': ahora,
+        'refreshSessions.$.lastUsedAt': ahora,
       },
     },
   )
-    .select('+refreshToken role tenantId email isBlocked')
+    .select('role tenantId email isBlocked')
     .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
   if (!updatedUser) {
-    // El CAS no matcheó. Hay dos causas posibles y no son lo mismo:
+    // Ninguna sesión tiene este token como vigente. Tres causas posibles, y
+    // las tres se ven igual desde afuera:
     //
-    //   a) otra request hermana rotó este mismo token hace un instante —el
-    //      panel monta varios componentes que reaccionan en paralelo a un
-    //      access token vencido y cada uno dispara su propio refresh—, o
-    //   b) el token es viejo de verdad: robado, reusado, o de una sesión
-    //      que ya se cerró.
+    //   a) una request hermana de ESTA MISMA sesión lo rotó hace un instante
+    //      (el panel monta varios componentes que reaccionan en paralelo a un
+    //      access token vencido),
+    //   b) el usuario venía de antes de refreshSessions y su token sigue en
+    //      el casillero viejo,
+    //   c) el token es viejo de verdad: robado, reusado, o de una sesión
+    //      cerrada.
     //
-    // Antes las dos terminaban en 403. Medido en producción: veinte 403 en
-    // un día, siempre en pares separados por un segundo, todos del caso (a).
-    // Cada uno es una sesión legítima que el frontend puede interpretar como
-    // "te venció la sesión".
-    //
-    // La ventana de gracia las separa. Si el token que llegó es exactamente
-    // el ANTERIOR y la rotación fue hace menos de REFRESH_GRACE_MS, esta es
-    // la hermana que perdió la carrera: se le da un access token nuevo y se
-    // la deja seguir.
-    //
-    // NO se vuelve a rotar. El refresh token vigente es el que ya emitió la
-    // ganadora, y su Set-Cookie es el que vale; esta respuesta no manda
-    // cookie de refresco para no pisarlo. Rotar de nuevo acá abriría una
-    // cadena sin fin con tres o más requests simultáneas.
-    const graceUser = await User.findOne({
+    // Las tres terminaban en 403. Las dos primeras son legítimas.
+
+    // (a) Ventana de gracia, dentro de la propia sesión.
+    const conGracia = await User.findOne({
       _id: decoded.sub,
-      previousRefreshToken: hashedIncoming,
-      refreshTokenRotatedAt: { $gte: new Date(Date.now() - REFRESH_GRACE_MS) },
+      refreshSessions: {
+        $elemMatch: {
+          previousTokenHash: hashedIncoming,
+          rotatedAt: { $gte: new Date(Date.now() - REFRESH_GRACE_MS) },
+        },
+      },
     })
       .select('role tenantId email isBlocked')
       .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
-    if (graceUser && !graceUser.isBlocked) {
-      const graceAccessToken = generateAccessToken(graceUser._id, {
-        role: graceUser.role,
-        tenantId: graceUser.tenantId,
+    if (conGracia && !conGracia.isBlocked) {
+      // No se vuelve a rotar: el token vigente es el que emitió la hermana
+      // que ganó, y su Set-Cookie es el que vale. Esta respuesta no manda
+      // cookie de refresco para no pisarlo.
+      const graceAccessToken = generateAccessToken(conGracia._id, {
+        role: conGracia.role,
+        tenantId: conGracia.tenantId,
       })
 
       logger.info('[REFRESH] Request hermana dentro de la ventana de gracia', {
-        userId: String(graceUser._id),
+        userId: String(conGracia._id),
         graceMs: REFRESH_GRACE_MS,
       })
 
@@ -1124,28 +1168,74 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
         message: 'Tokens renovados correctamente',
         token: graceAccessToken,
         accessToken: graceAccessToken,
-        data: {
-          token: graceAccessToken,
-          accessToken: graceAccessToken,
-        },
+        data: { token: graceAccessToken, accessToken: graceAccessToken },
       })
     }
 
-    // Diagnóstico: el usuario puede no existir, o el token guardado no
-    // coincide con el de esta cookie y tampoco entra en la gracia. Esta
-    // lectura extra es solo para loguear cuál de los casos fue.
-    const existingUser = await User.findById(decoded.sub)
-      .select('email refreshToken')
+    // (b) Migración del casillero viejo.
+    //
+    // Sin esto, el deploy desloguea a todos los que tengan sesión abierta.
+    // Se acepta UNA vez: el token se mueve a una sesión del array y el campo
+    // viejo se limpia, así que la próxima vez ya entra por el camino normal.
+    const migrado = await User.findOneAndUpdate(
+      { _id: decoded.sub, refreshToken: hashedIncoming },
+      {
+        $set: { refreshToken: null },
+        $push: {
+          refreshSessions: {
+            $each: [
+              {
+                tokenHash: newHashedJti,
+                previousTokenHash: hashedIncoming,
+                rotatedAt: ahora,
+                createdAt: ahora,
+                lastUsedAt: ahora,
+                userAgent: String(req.get?.('user-agent') || '').slice(0, 200) || null,
+              },
+            ],
+            $slice: -MAX_REFRESH_SESSIONS,
+          },
+        },
+      },
+    )
+      .select('role tenantId email isBlocked')
       .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
-    logger.warn('[REFRESH] Rotación atómica no matcheó ningún documento', {
+    if (migrado && !migrado.isBlocked) {
+      const migratedAccessToken = generateAccessToken(migrado._id, {
+        role: migrado.role,
+        tenantId: migrado.tenantId,
+      })
+
+      sendAuthCookies(res, req, newRefreshToken, migratedAccessToken, migrado.role)
+
+      logger.info('[REFRESH] Sesión migrada del casillero único al array', {
+        userId: String(migrado._id),
+      })
+
+      return res.status(200).json({
+        success: true,
+        message: 'Tokens renovados correctamente',
+        token: migratedAccessToken,
+        accessToken: migratedAccessToken,
+        data: { token: migratedAccessToken, accessToken: migratedAccessToken },
+      })
+    }
+
+    // (c) No hay nada que rescatar.
+    const existingUser = await User.findById(decoded.sub)
+      .select('email refreshToken refreshSessions')
+      .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
+
+    logger.warn('[REFRESH] Ninguna sesión reconoce este token', {
       userId: String(decoded.sub),
       userExists: Boolean(existingUser),
       userEmail: existingUser?.email,
-      hadStoredRefreshToken: Boolean(existingUser?.refreshToken),
-      // Distingue el token viejo de verdad del que apenas perdió la carrera:
-      // si esto dice true, la ventana se quedó corta.
-      fueraDeGracia: Boolean(graceUser),
+      // Cuántas sesiones tiene abiertas. Si dice 0, el usuario está
+      // efectivamente deslogueado en todos lados; si dice 2 y esto igual
+      // falla, el token es de una que se cerró.
+      sesionesAbiertas: existingUser?.refreshSessions?.length ?? 0,
+      teniaCasilleroViejo: Boolean(existingUser?.refreshToken),
     })
 
     return sendResponse(res, 403, false, 'Token de refresco inválido')
@@ -1186,12 +1276,30 @@ export const logout = expressAsyncHandler(async (req, res) => {
   if (refreshToken) {
     try {
       const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET)
+      // Cierra SOLO esta sesión. Cerrar sesión en la tienda no tiene por qué
+      // echar al mismo usuario del panel — que es justo lo que hacía cuando
+      // había un solo casillero.
+      //
+      // El $pull saca la sesión por su token vigente Y por el anterior: si el
+      // logout llega justo después de una rotación, la cookie del navegador
+      // todavía puede ser la vieja, y dejarla en el array la mantendría viva
+      // por la ventana de gracia.
+      const hashedLogout = hashRefreshJti(decoded.jti)
+
       const user = await User.findByIdAndUpdate(
         decoded.sub || decoded.id,
-        // También el anterior: sin esto, el token que se acaba de rotar
-        // seguiría entrando por la ventana de gracia DESPUÉS de cerrar
-        // sesión, que es justo cuando no tiene que servir.
-        { refreshToken: null, previousRefreshToken: null, refreshTokenRotatedAt: null },
+        {
+          $pull: {
+            refreshSessions: {
+              $or: [
+                { tokenHash: hashedLogout },
+                { previousTokenHash: hashedLogout },
+              ],
+            },
+          },
+          // Y el casillero viejo, para los que todavía no migraron.
+          $set: { refreshToken: null },
+        },
         { validateBeforeSave: false, new: false },
       ).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 

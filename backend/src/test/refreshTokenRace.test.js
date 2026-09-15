@@ -1,34 +1,44 @@
 // 📁 src/test/refreshTokenRace.test.js
 //
-// Dos refresh simultáneos del mismo navegador no son un ataque.
+// Una sesión por origen, no un casillero por usuario.
 //
-// La rotación es un compare-and-swap atómico y eso está bien: dos requests
-// concurrentes no pueden pisarse la escritura. Pero la que perdía la carrera
-// no matcheaba ningún documento y se iba con 403 "Token de refresco inválido"
-// —con un token legítimo de un segundo de antigüedad—.
+// EL BUG, COMO SE VE EN PRODUCCIÓN
 //
-// Y pasa seguido. En los logs de producción de un solo día: VEINTE
-// ocurrencias, siempre en pares separados por un segundo, todas del mismo
-// usuario. El panel monta varios componentes que reaccionan en paralelo a un
-// access token vencido y cada uno dispara su propio refresh.
+// 26 respuestas 403 de refresh en un día. TODAS con referer
+// henko-web.vercel.app (la tienda); todas las de henko-admin.vercel.app
+// devolvieron 200. Un minuto típico:
 //
-// Contra base real: lo que se prueba es una carrera entre dos escrituras y un
-// filtro atómico de Mongo. Con mocks se probaría el mock.
+//   20:32:43  refresh 200   henko-admin.vercel.app/admin/productlist
+//   20:32:44  refresh 403   henko-web.vercel.app/product/...
+//   20:32:46  refresh 403   henko-web.vercel.app/product/...
+//
+// No era una carrera entre requests hermanas: era que el panel rotaba el
+// único refreshToken del usuario y la cookie de la tienda quedaba apuntando a
+// un jti que ya no existía. Muerta para siempre, hasta volver a loguear — y
+// entonces rompía el panel.
+//
+// Las cookies son host-only (getCookieDomain devuelve undefined) y
+// `.vercel.app` está en la Public Suffix List, así que compartirlas es
+// imposible: cada origen tiene la suya y el servidor tenía un solo casillero.
+//
+// Y no es un caso de borde: el panel EMBEBE la tienda para la vista previa
+// del tema (theme-preview?source=admin), así que estar logueado en los dos a
+// la vez es un flujo central.
+//
+// Contra base real: lo que se prueba son filtros atómicos y operadores de
+// array de Mongo. Con mocks se probaría el mock.
 
 import mongoose from 'mongoose'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
-process.env.JWT_SECRET = 'test-access-secret-para-la-carrera-de-refresh'
-process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-para-la-carrera'
+process.env.JWT_SECRET = 'test-access-secret-para-las-sesiones'
+process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-para-las-sesiones'
 
 const { default: User } = await import('../models/userModel.js')
-const { generateRefreshToken, hashRefreshJti } = await import(
-  '../../config/generateRefreshToken.js'
-)
+const { hashRefreshJti } = await import('../../config/generateRefreshToken.js')
 
 let mongod
-
 const TENANT = new mongoose.Types.ObjectId()
 
 beforeAll(async () => {
@@ -41,160 +51,224 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-/** Un usuario con una sesión abierta, como lo deja el login. */
-const conSesion = async () => {
-  const { jti } = await generateRefreshToken(new mongoose.Types.ObjectId(), {
-    tenantId: TENANT,
-  })
+const opciones = { ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' }
 
-  const user = await User.create({
-    firstname: 'Carrera',
-    lastname: 'Concurrente',
-    mobile: `11${String(Date.now()).slice(-8)}`,
-    email: `carrera-${Date.now()}-${Math.random()}@test.com`,
+const sesion = jti => ({
+  tokenHash: hashRefreshJti(jti),
+  previousTokenHash: null,
+  rotatedAt: null,
+  createdAt: new Date(),
+  lastUsedAt: new Date(),
+  userAgent: 'test',
+})
+
+/** Un usuario con las sesiones que se le indiquen. */
+const usuarioCon = async (jtis, { legacy = null } = {}) =>
+  User.create({
+    firstname: 'Sesiones',
+    lastname: 'Multiples',
+    mobile: `11${String(Date.now()).slice(-6)}${Math.floor(Math.random() * 100)}`,
+    email: `sesiones-${Date.now()}-${Math.random()}@test.com`,
     password: 'Secreta123!',
     tenantId: TENANT,
-    refreshToken: hashRefreshJti(jti),
-    previousRefreshToken: null,
-    refreshTokenRotatedAt: null,
+    refreshSessions: jtis.map(sesion),
+    refreshToken: legacy ? hashRefreshJti(legacy) : null,
   })
 
-  return { user, jti }
-}
-
-/**
- * La rotación, tal como la hace handleRefreshToken: un compare-and-swap que
- * además anota cuál era el token anterior.
- */
-const rotar = async (userId, jtiEntrante, jtiNuevo) =>
+/** La rotación, tal como la hace handleRefreshToken. */
+const rotar = (userId, jtiEntrante, jtiNuevo) =>
   User.findOneAndUpdate(
-    { _id: userId, refreshToken: hashRefreshJti(jtiEntrante) },
+    { _id: userId, 'refreshSessions.tokenHash': hashRefreshJti(jtiEntrante) },
     {
       $set: {
-        refreshToken: hashRefreshJti(jtiNuevo),
-        previousRefreshToken: hashRefreshJti(jtiEntrante),
-        refreshTokenRotatedAt: new Date(),
+        'refreshSessions.$.tokenHash': hashRefreshJti(jtiNuevo),
+        'refreshSessions.$.previousTokenHash': hashRefreshJti(jtiEntrante),
+        'refreshSessions.$.rotatedAt': new Date(),
+        'refreshSessions.$.lastUsedAt': new Date(),
       },
     },
   )
-    .select('+refreshToken')
-    .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
+    .select('role tenantId')
+    .setOptions(opciones)
 
-/** La consulta de la ventana de gracia. */
-const dentroDeGracia = async (userId, jtiEntrante, graciaMs = 60000) =>
+const dentroDeGracia = (userId, jtiEntrante, graciaMs = 60000) =>
   User.findOne({
     _id: userId,
-    previousRefreshToken: hashRefreshJti(jtiEntrante),
-    refreshTokenRotatedAt: { $gte: new Date(Date.now() - graciaMs) },
+    refreshSessions: {
+      $elemMatch: {
+        previousTokenHash: hashRefreshJti(jtiEntrante),
+        rotatedAt: { $gte: new Date(Date.now() - graciaMs) },
+      },
+    },
   })
-    .select('role tenantId email isBlocked')
-    .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
+    .select('role tenantId')
+    .setOptions(opciones)
 
-describe('refresh · dos pestañas compitiendo', () => {
-  test('la que pierde la carrera entra por la ventana de gracia', async () => {
-    const { user, jti } = await conSesion()
+const sesionesDe = async userId => {
+  const u = await User.findById(userId).select('+refreshSessions').setOptions(opciones)
+  return u.refreshSessions
+}
 
-    // Las dos salen con el MISMO token, que es lo que pasa cuando dos
-    // componentes reaccionan al mismo access token vencido.
-    const [ganadora, perdedora] = await Promise.all([
-      rotar(user._id, jti, 'jti-de-la-primera'),
-      rotar(user._id, jti, 'jti-de-la-segunda'),
+describe('el bug de producción · panel y tienda a la vez', () => {
+  test('el panel rota y la tienda SIGUE viva', async () => {
+    // Este es el caso exacto de los logs: dos orígenes, dos cookies.
+    const user = await usuarioCon(['jti-del-panel', 'jti-de-la-tienda'])
+
+    await rotar(user._id, 'jti-del-panel', 'jti-del-panel-2')
+
+    // Antes esto devolvía null y la tienda quedaba muerta para siempre.
+    const tienda = await rotar(user._id, 'jti-de-la-tienda', 'jti-de-la-tienda-2')
+    expect(tienda).not.toBeNull()
+
+    // Y el panel también sigue vivo con su token nuevo.
+    expect(await rotar(user._id, 'jti-del-panel-2', 'jti-del-panel-3')).not.toBeNull()
+
+    expect(await sesionesDe(user._id)).toHaveLength(2)
+  })
+
+  test('loguearse en la tienda no echa del panel', async () => {
+    const user = await usuarioCon(['jti-del-panel'])
+
+    // Un login nuevo AGREGA una sesión en vez de pisar la que había.
+    await User.findByIdAndUpdate(user._id, {
+      $push: { refreshSessions: { $each: [sesion('jti-nuevo-de-la-tienda')], $slice: -10 } },
+    }).setOptions(opciones)
+
+    expect(await rotar(user._id, 'jti-del-panel', 'sigue')).not.toBeNull()
+    expect(await rotar(user._id, 'jti-nuevo-de-la-tienda', 'sigue2')).not.toBeNull()
+  })
+})
+
+describe('la carrera dentro de UNA sesión', () => {
+  test('dos requests hermanas: una rota, la otra entra por gracia', async () => {
+    const user = await usuarioCon(['compartido'])
+
+    const [a, b] = await Promise.all([
+      rotar(user._id, 'compartido', 'primera'),
+      rotar(user._id, 'compartido', 'segunda'),
     ])
 
-    // Solo una gana el compare-and-swap. Eso no cambia: es lo que evita que
-    // se pisen la escritura.
-    const ganadoras = [ganadora, perdedora].filter(Boolean)
-    expect(ganadoras).toHaveLength(1)
+    // El compare-and-swap sigue siendo atómico: solo una gana.
+    expect([a, b].filter(Boolean)).toHaveLength(1)
 
-    // Y la que perdió ahora es reconocible en vez de recibir un 403.
-    const rescatada = await dentroDeGracia(user._id, jti)
-    expect(rescatada).not.toBeNull()
-    expect(String(rescatada._id)).toBe(String(user._id))
+    // Y la que perdió es reconocible en vez de irse con 403.
+    expect(await dentroDeGracia(user._id, 'compartido')).not.toBeNull()
   })
 
-  test('el token viejo de verdad sigue rechazado', async () => {
-    const { user, jti } = await conSesion()
+  test('la gracia de una sesión no rescata a otra', async () => {
+    const user = await usuarioCon(['panel', 'tienda'])
+    await rotar(user._id, 'panel', 'panel-2')
 
-    await rotar(user._id, jti, 'segundo')
-    // Una rotación más: el primero ya quedó dos pasos atrás.
-    await rotar(user._id, 'segundo', 'tercero')
+    // El token viejo del panel no puede pasar por la sesión de la tienda.
+    const rescatada = await dentroDeGracia(user._id, 'panel')
+    expect(rescatada).not.toBeNull()
 
-    // La gracia cubre UN solo paso. Aceptar cualquier token anterior
-    // convertiría la rotación en decorativa.
-    expect(await dentroDeGracia(user._id, jti)).toBeNull()
+    // Pero un token que nunca existió no entra por ninguna.
+    expect(await dentroDeGracia(user._id, 'jamas-existio')).toBeNull()
   })
 
   test('pasada la ventana, el token deja de servir', async () => {
-    const { user, jti } = await conSesion()
-    await rotar(user._id, jti, 'nuevo')
+    const user = await usuarioCon(['vieja'])
+    await rotar(user._id, 'vieja', 'nueva')
 
-    // Se envejece la rotación más allá de la ventana.
     await User.updateOne(
-      { _id: user._id },
-      { $set: { refreshTokenRotatedAt: new Date(Date.now() - 120000) } },
-    ).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
+      { _id: user._id, 'refreshSessions.previousTokenHash': hashRefreshJti('vieja') },
+      { $set: { 'refreshSessions.$.rotatedAt': new Date(Date.now() - 120000) } },
+    ).setOptions(opciones)
 
-    expect(await dentroDeGracia(user._id, jti, 60000)).toBeNull()
+    expect(await dentroDeGracia(user._id, 'vieja', 60000)).toBeNull()
   })
+})
 
-  test('cerrar sesión cierra también la ventana', async () => {
-    // Sin esto, el token recién rotado seguiría entrando por la gracia
-    // DESPUÉS del logout, que es justo cuando no tiene que servir.
-    const { user, jti } = await conSesion()
-    await rotar(user._id, jti, 'nuevo')
+describe('migración · nadie se desloguea el día del deploy', () => {
+  test('un token del casillero viejo se acepta una vez y se migra', async () => {
+    const user = await usuarioCon([], { legacy: 'token-de-antes' })
 
-    expect(await dentroDeGracia(user._id, jti)).not.toBeNull()
+    const migrado = await User.findOneAndUpdate(
+      { _id: user._id, refreshToken: hashRefreshJti('token-de-antes') },
+      {
+        $set: { refreshToken: null },
+        $push: {
+          refreshSessions: { $each: [sesion('token-nuevo')], $slice: -10 },
+        },
+      },
+    )
+      .select('role tenantId')
+      .setOptions(opciones)
+
+    expect(migrado).not.toBeNull()
+
+    // Ya migrado: la próxima entra por el camino normal.
+    expect(await rotar(user._id, 'token-nuevo', 'y-el-siguiente')).not.toBeNull()
+
+    // Y el casillero viejo no sirve una segunda vez.
+    const repetido = await User.findOne({
+      _id: user._id,
+      refreshToken: hashRefreshJti('token-de-antes'),
+    }).setOptions(opciones)
+    expect(repetido).toBeNull()
+  })
+})
+
+describe('logout · cierra una sesión, no todas', () => {
+  test('cerrar en la tienda deja el panel abierto', async () => {
+    const user = await usuarioCon(['panel', 'tienda'])
 
     await User.findByIdAndUpdate(user._id, {
-      refreshToken: null,
-      previousRefreshToken: null,
-      refreshTokenRotatedAt: null,
-    })
-      .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
+      $pull: {
+        refreshSessions: {
+          $or: [
+            { tokenHash: hashRefreshJti('tienda') },
+            { previousTokenHash: hashRefreshJti('tienda') },
+          ],
+        },
+      },
+    }).setOptions(opciones)
 
-    expect(await dentroDeGracia(user._id, jti)).toBeNull()
+    expect(await sesionesDe(user._id)).toHaveLength(1)
+    expect(await rotar(user._id, 'panel', 'panel-2')).not.toBeNull()
+    expect(await rotar(user._id, 'tienda', 'no-deberia')).toBeNull()
   })
 
-  test('un login nuevo no hereda la gracia de la sesión anterior', async () => {
-    const { user, jti } = await conSesion()
-    await rotar(user._id, jti, 'nuevo')
+  test('el logout justo después de rotar también cierra', async () => {
+    // La cookie del navegador puede ser todavía la vieja. Si el $pull solo
+    // mirara el token vigente, la sesión quedaría viva por la gracia.
+    const user = await usuarioCon(['sesion'])
+    await rotar(user._id, 'sesion', 'sesion-2')
 
     await User.findByIdAndUpdate(user._id, {
-      refreshToken: hashRefreshJti('sesion-nueva'),
-      previousRefreshToken: null,
-      refreshTokenRotatedAt: null,
-    })
-      .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
+      $pull: {
+        refreshSessions: {
+          $or: [
+            { tokenHash: hashRefreshJti('sesion') },
+            { previousTokenHash: hashRefreshJti('sesion') },
+          ],
+        },
+      },
+    }).setOptions(opciones)
 
-    expect(await dentroDeGracia(user._id, jti)).toBeNull()
+    expect(await sesionesDe(user._id)).toHaveLength(0)
+    expect(await dentroDeGracia(user._id, 'sesion')).toBeNull()
   })
+})
 
-  test('la gracia es de ESE usuario, no de cualquiera', async () => {
-    const a = await conSesion()
-    const b = await conSesion()
+describe('tope de sesiones', () => {
+  test('al pasarse, se cae la más vieja', async () => {
+    // Sin tope, cada login desde un dispositivo nuevo agrandaría el documento
+    // para siempre.
+    const user = await usuarioCon(['s1', 's2', 's3'])
 
-    await rotar(a.user._id, a.jti, 'nuevo-de-a')
+    for (const j of ['s4', 's5', 's6']) {
+      await User.findByIdAndUpdate(user._id, {
+        $push: { refreshSessions: { $each: [sesion(j)], $slice: -3 } },
+      }).setOptions(opciones)
+    }
 
-    // El token de A no puede rescatar una request de B.
-    expect(await dentroDeGracia(b.user._id, a.jti)).toBeNull()
-  })
+    const sesiones = await sesionesDe(user._id)
+    expect(sesiones).toHaveLength(3)
 
-  test('tres simultáneas: una rota, las otras dos entran por gracia', async () => {
-    // El panel puede montar más de dos componentes. Ninguna debe recibir 403.
-    const { user, jti } = await conSesion()
-
-    const resultados = await Promise.all([
-      rotar(user._id, jti, 'a'),
-      rotar(user._id, jti, 'b'),
-      rotar(user._id, jti, 'c'),
-    ])
-
-    expect(resultados.filter(Boolean)).toHaveLength(1)
-
-    // Las dos que perdieron comparten el mismo token entrante, así que las
-    // dos entran por la misma ventana. Por eso la gracia NO vuelve a rotar:
-    // si lo hiciera, cada una movería el anterior y se dejarían afuera entre
-    // ellas.
-    expect(await dentroDeGracia(user._id, jti)).not.toBeNull()
+    // La primera ya no está; las últimas sí.
+    expect(await rotar(user._id, 's1', 'x')).toBeNull()
+    expect(await rotar(user._id, 's6', 'x')).not.toBeNull()
   })
 })
