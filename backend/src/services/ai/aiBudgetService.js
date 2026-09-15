@@ -2050,6 +2050,32 @@ export const startStaleOperationSweeper = ({ logger: log = logger } = {}) => {
     intervalMinutes: Math.round(intervalMs / 60000),
     staleAfterMinutes: Math.round(STALE_AFTER_MS / 60000),
   })
+
+  anunciarFrenos(log)
+}
+
+/**
+ * Qué frenos quedaron armados, al arrancar.
+ *
+ * Los dos techos se configuran por variable de entorno y no había forma de
+ * saber cuáles estaban puestos sin leer el panel o esperar a que cortaran.
+ * "¿Está activo el techo en dólares?" se contestaba deduciendo, y el modo de
+ * falla es silencioso: una variable mal escrita deja el freno apagado y todo
+ * se ve exactamente igual hasta la factura.
+ *
+ * Una línea en el arranque lo vuelve verificable desde los logs del servicio.
+ */
+const anunciarFrenos = (log = logger) => {
+  const tokens = getPlatformMonthlyTokenBudget()
+  const usd = getPlatformMonthlyUsdBudget()
+
+  log.info?.('[AI BUDGET] Frenos de plataforma', {
+    tokenBudget: tokens === UNLIMITED ? 'sin techo' : tokens,
+    usdBudget: usd === UNLIMITED ? 'sin techo' : usd,
+    // Con los dos sin techo no hay disyuntor. Es una decisión válida, y
+    // conviene que se lea como tal y no como un olvido.
+    disyuntor: tokens === UNLIMITED && usd === UNLIMITED ? 'APAGADO' : 'armado',
+  })
 }
 
 export const stopStaleOperationSweeper = () => {
