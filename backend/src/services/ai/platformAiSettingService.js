@@ -179,7 +179,12 @@ export const setPlatformAiOverride = async ({
   state.values.set(setting, value)
   state.loadedAt = Date.now()
 
-  if (setting === PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET) {
+  // Mover CUALQUIERA de los dos techos cambia en qué porcentaje está el mes,
+  // así que el escalón de aviso ya anunciado deja de valer.
+  if (
+    setting === PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET ||
+    setting === PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET
+  ) {
     await resetPeriodAlertState(previousValue, value)
   }
 

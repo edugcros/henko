@@ -32,6 +32,7 @@ import {
   estimateImageCostUsd,
   getPlanLimit,
   getPlatformMonthlyTokenBudget,
+  getPlatformMonthlyUsdBudget,
   getSharedKeyTenantCap,
   getSubscriptionState,
   normalizeMetric,
@@ -508,9 +509,33 @@ const buildDeniedResult = ({ metric, limit, used, reason, detail, profile }) => 
  * Pagar una lectura extra por cada mensaje del agente para afinarlo al
  * segundo no compra nada.
  */
-const isPlatformBudgetExhausted = async () => {
-  const budget = getPlatformMonthlyTokenBudget()
-  if (budget === UNLIMITED) return false
+/**
+ * Cuál de los dos techos se pasó, si alguno.
+ *
+ * DOS CONTROLES, NO UNO CON DOS NOMBRES
+ *
+ *   tokens → volumen. No depende de ningún precio, así que es la red cuando el
+ *            catálogo de tarifas está viejo o el modelo no figura en él.
+ *   usd    → plata. Es lo que HENKO paga de verdad, y el único que sube cuando
+ *            la cadena de respaldo entrega un modelo cinco veces más caro sin
+ *            que se mueva un solo token de más.
+ *
+ * Corta el primero que se pase. No es "uno duro y otro blando": los dos paran
+ * la IA, porque pasarse de cualquiera de los dos es un problema —uno de plata
+ * y otro de volumen— y ninguno se arregla dejando correr al otro.
+ *
+ * Con AI_PLATFORM_MONTHLY_USD_BUDGET sin configurar, el techo en dólares es
+ * UNLIMITED y esto se comporta exactamente como antes.
+ *
+ * @returns {Promise<{exhausted: boolean, reason: 'tokens'|'usd'|null}>}
+ */
+const evaluatePlatformBudget = async () => {
+  const tokenBudget = getPlatformMonthlyTokenBudget()
+  const usdBudget = getPlatformMonthlyUsdBudget()
+
+  if (tokenBudget === UNLIMITED && usdBudget === UNLIMITED) {
+    return { exhausted: false, reason: null }
+  }
 
   // El período va en la clave: si no, un disyuntor que cortó el día 31 sigue
   // cortando hasta 30 segundos después del cambio de mes, cuando el contador
@@ -519,15 +544,29 @@ const isPlatformBudgetExhausted = async () => {
   const cacheKey = `${BREAKER_CACHE_KEY}:${period}`
 
   const cached = await cacheGet(cacheKey)
-  if (cached !== null && cached !== undefined) return Boolean(cached.exhausted)
+  if (cached !== null && cached !== undefined) {
+    return { exhausted: Boolean(cached.exhausted), reason: cached.reason ?? null }
+  }
 
   const usage = await AiPlatformUsage.findOne({ period }).lean()
+
   const tokens = Number(usage?.tokens || 0)
-  const exhausted = tokens >= budget
+  const costUsd = Number(usage?.estimatedCostUsd || 0)
 
-  await cacheSet(cacheKey, { exhausted }, BREAKER_CACHE_TTL_SEC)
+  // La plata se evalúa primero: entre dos techos pasados, el que hay que
+  // contarle al dueño de la plataforma es el que le cuesta dinero.
+  const reason =
+    usdBudget !== UNLIMITED && costUsd >= usdBudget
+      ? 'usd'
+      : tokenBudget !== UNLIMITED && tokens >= tokenBudget
+        ? 'tokens'
+        : null
 
-  return exhausted
+  const resultado = { exhausted: reason !== null, reason }
+
+  await cacheSet(cacheKey, resultado, BREAKER_CACHE_TTL_SEC)
+
+  return resultado
 }
 
 /**
@@ -551,10 +590,30 @@ const ALERT_THRESHOLDS = Object.freeze([50, 80])
  * No lanza nunca: es un aviso sobre un consumo que ya se registró, así que su
  * fallo no puede voltear la operación que lo disparó.
  */
-const announceBudgetPressure = async ({ period, usage, budget }) => {
+const announceBudgetPressure = async ({ period, usage, budget, usdBudget = UNLIMITED }) => {
   try {
     const tokens = Number(usage?.tokens || 0)
-    const percent = (tokens / budget) * 100
+    const costUsd = Number(usage?.estimatedCostUsd || 0)
+
+    // El aviso sale por el techo MÁS CERCA de cortar, no por el de tokens.
+    //
+    // Con los dos controles puestos, avisar siempre por tokens dejaría el caso
+    // que este bloque vino a resolver: la cadena de respaldo entrega un modelo
+    // cinco veces más caro, el gasto va por el 90% y los tokens por el 30%, y
+    // el aviso diría "todo bien" hasta que corte.
+    const porcentajes = [
+      budget !== UNLIMITED && budget > 0
+        ? { control: 'tokens', percent: (tokens / budget) * 100 }
+        : null,
+      usdBudget !== UNLIMITED && usdBudget > 0
+        ? { control: 'usd', percent: (costUsd / usdBudget) * 100 }
+        : null,
+    ].filter(Boolean)
+
+    if (porcentajes.length === 0) return
+
+    const apremiante = porcentajes.reduce((a, b) => (b.percent > a.percent ? b : a))
+    const percent = apremiante.percent
 
     // El escalón más alto alcanzado. Si un consumo grande cruza los dos de una,
     // se anuncia el 80 y no se emite después un 50 que ya quedó viejo.
@@ -592,10 +651,15 @@ const announceBudgetPressure = async ({ period, usage, budget }) => {
 
     logger[level](`[AI BUDGET] Presupuesto de plataforma al ${reached}%`, {
       period,
+      // Cuál de los dos techos es el que está al ${reached}%. Sin esto, un
+      // aviso por gasto se lee como un aviso por volumen y manda a buscar el
+      // problema donde no está.
+      control: apremiante.control,
       percent: percent.toFixed(1),
       tokens,
-      budget,
-      estimatedCostUsd: Number(usage?.estimatedCostUsd || 0).toFixed(2),
+      budget: budget === UNLIMITED ? null : budget,
+      usdBudget: usdBudget === UNLIMITED ? null : usdBudget,
+      estimatedCostUsd: costUsd.toFixed(2),
       topSpend,
     })
 
@@ -604,10 +668,12 @@ const announceBudgetPressure = async ({ period, usage, budget }) => {
     if (reached >= EMAIL_THRESHOLD) {
       await notifyBudgetPressure({
         period,
+        control: apremiante.control,
         percent: percent.toFixed(1),
         tokens,
         budget,
-        estimatedCostUsd: Number(usage?.estimatedCostUsd || 0),
+        usdBudget,
+        estimatedCostUsd: costUsd,
         topSpend,
       })
     }
@@ -626,6 +692,7 @@ const registerPlatformConsumption = async ({
 }) => {
   const period = requestedPeriod || getCurrentPeriod()
   const budget = getPlatformMonthlyTokenBudget()
+  const usdBudget = getPlatformMonthlyUsdBudget()
   const normalizedTokens = Math.max(0, Math.round(Number(tokens) || 0))
   // El costo admite negativo y los tokens no. Un refund de un gasto cobrado por
   // adelantado tiene que poder revertir la plata; los tokens, en cambio, ya se
@@ -646,13 +713,22 @@ const registerPlatformConsumption = async ({
     { upsert: true, new: true, setDefaultsOnInsert: true },
   ).lean()
 
-  if (budget === UNLIMITED) return updated
+  if (budget === UNLIMITED && usdBudget === UNLIMITED) return updated
 
-  await announceBudgetPressure({ period, usage: updated, budget })
+  await announceBudgetPressure({ period, usage: updated, budget, usdBudget })
+
+  // Cuál de los dos se pasó. La plata primero: entre dos techos superados, el
+  // que hay que contar es el que cuesta dinero.
+  const breakerReason =
+    usdBudget !== UNLIMITED && Number(updated.estimatedCostUsd || 0) >= usdBudget
+      ? 'usd'
+      : budget !== UNLIMITED && updated.tokens >= budget
+        ? 'tokens'
+        : null
 
   // Solo una instancia puede reclamar el disparo. Se tolera tanto null como
   // campo ausente porque convivimos con documentos creados por versiones viejas.
-  if (updated.tokens >= budget && !updated.breakerTrippedAt) {
+  if (breakerReason && !updated.breakerTrippedAt) {
     const claimed = await AiPlatformUsage.findOneAndUpdate(
       {
         period,
@@ -661,15 +737,19 @@ const registerPlatformConsumption = async ({
           { breakerTrippedAt: { $exists: false } },
         ],
       },
-      { $set: { breakerTrippedAt: new Date() } },
+      { $set: { breakerTrippedAt: new Date(), breakerReason } },
       { new: true },
     ).lean()
 
     if (claimed) {
       logger.error('[AI BUDGET] Disyuntor de plataforma activado', {
         period,
+        // Por cuál cortó. "El disyuntor cortó" a secas no dice si hay que
+        // decidir gastar más o buscar qué está consumiendo de más.
+        reason: breakerReason,
         tokens: claimed.tokens,
         budget,
+        usdBudget: usdBudget === UNLIMITED ? null : usdBudget,
         estimatedCostUsd: Number(claimed.estimatedCostUsd || 0).toFixed(2),
       })
 
@@ -1031,12 +1111,17 @@ export const reserveAiBudget = async ({
     })
   }
 
-  if (await isPlatformBudgetExhausted()) {
+  const platformBudget = await evaluatePlatformBudget()
+
+  if (platformBudget.exhausted) {
     return buildDeniedResult({
       metric: normalizedMetric,
       limit,
       used: 0,
       reason: DENY_REASONS.PLATFORM_BUDGET,
+      // Cuál de los dos techos cortó. Lo consume el panel de plataforma: la
+      // acción es distinta según cuál sea.
+      detail: platformBudget.reason,
       profile: aiProfile,
     })
   }
@@ -1824,12 +1909,15 @@ export const checkAiEntitlement = async ({ tenantId, metric, profile = null }) =
     }
   }
 
-  if (await isPlatformBudgetExhausted()) {
+  const platformBudget = await evaluatePlatformBudget()
+
+  if (platformBudget.exhausted) {
     return buildDeniedResult({
       metric: normalizedMetric,
       limit,
       used: 0,
       reason: DENY_REASONS.PLATFORM_BUDGET,
+      detail: platformBudget.reason,
       profile: aiProfile,
     })
   }

@@ -39,6 +39,16 @@ const aiPlatformUsageSchema = new Schema(
 
     // Se marca la primera vez que el disyuntor corta, para poder alertar una
     // sola vez y no en cada request del resto del mes.
+    // Cuál de los dos controles cortó: 'tokens' o 'usd'. La acción que hay que
+    // tomar es distinta — si cortó la plata, hay que decidir si se gasta más;
+    // si cortó el volumen, hay algo consumiendo de más— y sin esto las dos se
+    // ven igual: "el disyuntor cortó".
+    breakerReason: {
+      type: String,
+      enum: ['tokens', 'usd', null],
+      default: null,
+    },
+
     breakerTrippedAt: {
       type: Date,
       default: null,

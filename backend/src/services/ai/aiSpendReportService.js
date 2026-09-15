@@ -23,7 +23,9 @@ import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import logger from '../../../config/logger.js'
 import {
   getPlatformMonthlyTokenBudget,
+  getPlatformMonthlyUsdBudget,
   getPlatformBudgetSource,
+  getPlatformUsdBudgetSource,
   UNLIMITED,
 } from './aiPlanPolicy.js'
 import { getPlatformAiSettingHistory } from './platformAiSettingService.js'
@@ -180,6 +182,7 @@ const getPeriodQuality = async period => {
  */
 export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
   const budget = getPlatformMonthlyTokenBudget()
+  const usdBudget = getPlatformMonthlyUsdBudget()
 
   const [usage, byMetric, byModel, quality, settingHistory, reconciliation] =
     await Promise.all([
@@ -224,6 +227,14 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       // Los avisos viven en el mismo objeto que el techo porque se leen juntos:
       // un 47% no dice nada sin saber que el próximo escalón es 50.
       alertedThreshold: Number(usage?.alertedThreshold || 0),
+      // El techo en PLATA, que es lo que HENKO paga. Va al lado del de tokens
+      // y no en lugar de él: miden cosas distintas, y la pantalla tiene que
+      // poder mostrar que el gasto va por el 90% mientras el volumen va por el
+      // 30% — que es exactamente lo que pasa cuando la cadena de respaldo
+      // entrega un modelo cinco veces más caro.
+      usd: usdBudget === UNLIMITED ? null : usdBudget,
+      usdConfigured: usdBudget !== UNLIMITED,
+      usdSource: getPlatformUsdBudgetSource(),
     },
     consumption: {
       tokens,
@@ -231,11 +242,19 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       remainingTokens: hasBudget ? Math.max(0, budget - tokens) : null,
       // El costo del contador de plataforma, que es el que HENKO paga.
       estimatedCostUsd: round(usage?.estimatedCostUsd || 0, 2),
+      percentUsdUsed:
+        usdBudget !== UNLIMITED && usdBudget > 0
+          ? round((Number(usage?.estimatedCostUsd || 0) / usdBudget) * 100, 1)
+          : null,
       lastActivityAt: usage?.lastActivityAt || null,
     },
     breaker: {
       trippedAt: usage?.breakerTrippedAt || null,
       tripped: Boolean(usage?.breakerTrippedAt),
+      // 'tokens' o 'usd'. La acción es distinta: si cortó la plata hay que
+      // decidir si se gasta más; si cortó el volumen, hay que buscar qué está
+      // consumiendo de más.
+      reason: usage?.breakerReason || null,
     },
     // null cuando no se pudo calcular: es distinto de "no hay diferencia", y
     // la pantalla lo tiene que poder distinguir.

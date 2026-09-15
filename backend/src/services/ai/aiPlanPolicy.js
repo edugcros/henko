@@ -569,6 +569,48 @@ export const getPlatformMonthlyTokenBudget = () => {
   return budget === null ? UNLIMITED : Math.floor(budget)
 }
 
+/**
+ * Techo de GASTO del mes, en dólares.
+ *
+ * Es el control que mide lo que HENKO realmente paga. El de tokens mide
+ * volumen, y los dos hacen falta porque no son lo mismo: entre gemini-3.6-flash
+ * (0,75/3,75 por millón) y gemini-3.1-flash-lite (0,25/1,50) hay 5x, así que el
+ * mismo tope de tokens puede costar veinte dólares o cien según qué modelo esté
+ * respondiendo. Y quién responde lo decide la cadena de respaldo cuando el
+ * modelo pedido está saturado, no una configuración.
+ *
+ * POR QUÉ EL DE TOKENS NO PASA A SER DECORATIVO
+ *
+ * El número en dólares es un ESTIMADO: sale de multiplicar tokens por el
+ * catálogo de precios, y un modelo que no está en el catálogo se cobra con la
+ * tarifa de respaldo (1,50/9,00), elegida a propósito cara porque subestimar
+ * llega en la factura. Un modelo nuevo puede inflar ese número o —si el
+ * catálogo quedó viejo hacia el otro lado— achicarlo. El tope de tokens sigue
+ * siendo la red: no depende de ningún precio.
+ *
+ * Sin la variable puesta devuelve UNLIMITED, así que el comportamiento de hoy
+ * —solo tope de tokens— no cambia en nada hasta que alguien la configure.
+ *
+ * A diferencia del de tokens, NO se redondea a entero: un techo de 99,50 es
+ * perfectamente razonable.
+ */
+export const getPlatformMonthlyUsdBudget = () => {
+  const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET)
+
+  if (override !== null && Number.isFinite(override)) return override
+
+  const budget = readEnvNumber('AI_PLATFORM_MONTHLY_USD_BUDGET')
+  return budget === null ? UNLIMITED : budget
+}
+
+/** De dónde sale el techo en dólares. Solo para mostrarlo, no para decidir. */
+export const getPlatformUsdBudgetSource = () => {
+  const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET)
+
+  if (override !== null && Number.isFinite(override)) return 'panel'
+  return readEnvNumber('AI_PLATFORM_MONTHLY_USD_BUDGET') === null ? 'none' : 'env'
+}
+
 /** De dónde sale el techo vigente. Solo para mostrarlo, no para decidir. */
 export const getPlatformBudgetSource = () => {
   const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET)

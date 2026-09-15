@@ -29,6 +29,15 @@ import mongoose from 'mongoose'
 
 export const PLATFORM_AI_SETTINGS = Object.freeze({
   MONTHLY_TOKEN_BUDGET: 'monthlyTokenBudget',
+
+  // El techo en PLATA, que es lo que HENKO paga de verdad.
+  //
+  // El de tokens no lo reemplaza: miden cosas distintas. Entre gemini-3.6-flash
+  // y 3.1-flash-lite hay 5x de diferencia de tarifa, así que el mismo tope de
+  // tokens puede costar veinte dólares o cien según qué modelo esté
+  // respondiendo, y eso lo decide la cadena de respaldo, no nosotros.
+  MONTHLY_USD_BUDGET: 'monthlyUsdBudget',
+
   PER_TENANT_SHARE: 'perTenantShare',
 
   // Precio mensual de cada plan, EN PESOS.
