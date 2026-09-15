@@ -93,9 +93,8 @@ import logger from '../../../config/logger.js'
 const FALLBACK_MODELS = [
   'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
-  'gemini-3.8-flash',
   'gemini-3.7-flash',
-
+  'gemma-4-26b-a4b-it',
 ]
 
 /**
@@ -106,7 +105,7 @@ const FALLBACK_MODELS = [
  * devuelve un error claro: la llamada se queda esperando hasta el timeout, y
  * el análisis de mercado paga esa espera en cada corrida.
  */
-const NO_TOOL_SUPPORT = [/^gemini/i]
+const NO_TOOL_SUPPORT = [/^gemma/i]
 
 /** ¿Este modelo puede buscar en Google? */
 export const supportsSearchGrounding = model => {

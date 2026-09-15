@@ -231,8 +231,8 @@ describe("cuota de búsqueda con Google", () => {
 
 describe("qué modelo puede buscar en Google", () => {
   test("Gemma queda afuera de las llamadas con búsqueda", () => {
-    expect(supportsSearchGrounding("gemini-3.1-flash-lite")).toBe(false);
-    expect(supportsSearchGrounding("models/gemini-3.1-flash-lite")).toBe(false);
+    expect(supportsSearchGrounding("gemma-4-26b-a4b-it")).toBe(false);
+    expect(supportsSearchGrounding("models/gemma-4-31b-it")).toBe(false);
   });
 
   test("los Gemini sí pueden", () => {
@@ -246,7 +246,7 @@ describe("qué modelo puede buscar en Google", () => {
     // Los Flash grandes tienen 20 pedidos por día; los Lite, 500.
     expect(chain).toContain("gemini-3.5-flash-lite");
     expect(chain).toContain("gemini-3.1-flash-lite");
-    expect(chain[chain.length - 1]).toBe("gemini-3.8-flash");
+    expect(chain[chain.length - 1]).toBe("gemma-4-26b-a4b-it");
   });
 
   test("una llamada con búsqueda no cae en un modelo que no la soporta", async () => {
@@ -278,6 +278,8 @@ describe("qué modelo puede buscar en Google", () => {
     }
 
     expect(modelosLlamados.length).toBeGreaterThan(0);
-    expect(modelosLlamados.some(m => String(m).startsWith("gemini"))).toBe(false);
+    // Al revés sería el absurdo: una búsqueda que no puede usar ningún Gemini.
+    expect(modelosLlamados.some(m => String(m).startsWith("gemma"))).toBe(false);
+    expect(modelosLlamados.every(m => String(m).startsWith("gemini"))).toBe(true);
   }, 30000);
 });
