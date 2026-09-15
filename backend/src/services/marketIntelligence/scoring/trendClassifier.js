@@ -6,13 +6,17 @@
  * pueda evolucionar sin tocar demandScoreEngine.js.
  */
 
+/**
+ * Solo las etiquetas que alguna fuente puede emitir hoy.
+ *
+ * EXPLOSIVA, ESTACIONAL y VOLÁTIL necesitan una serie histórica. Existieron
+ * mientras Google Trends fue fuente; sin ella, dejarlas declaradas es prometer
+ * una clasificación que el clasificador nunca devuelve.
+ */
 const TREND_LABELS = {
-  EXPLOSIVA: '🚀 EXPLOSIVA',
   CRECIENTE: '📈 CRECIENTE',
   ESTABLE: '➡️ ESTABLE',
   DECRECIENTE: '📉 DECRECIENTE',
-  ESTACIONAL: '🔄 ESTACIONAL',
-  VOLATIL: '⚠️ VOLÁTIL',
   INDETERMINADA: '❓ INDETERMINADA',
 }
 
@@ -29,7 +33,7 @@ function classifyTrend(rawSignals) {
   const direction = rawSignals.gemini?.trendDirection
 
   if (!direction || direction === 'INDETERMINADA') return 'INDETERMINADA'
-  if (direction === 'CRECIENTE') return 'CRECIENTE' // TODO: promover a EXPLOSIVA si Google Trends muestra pendiente pronunciada
+  if (direction === 'CRECIENTE') return 'CRECIENTE'
   if (direction === 'ESTABLE') return 'ESTABLE'
   if (direction === 'DECRECIENTE') return 'DECRECIENTE'
 

@@ -55,7 +55,6 @@ const marketAnalysisSchema = new Schema(
     // mostraba la tendencia medida al analizarlo y "no medida" cinco minutos
     // después, sin que nada hubiera cambiado.
     rawSignals: {
-      meli: Schema.Types.Mixed,
       shopping: Schema.Types.Mixed,
       gemini: Schema.Types.Mixed,
       internal: Schema.Types.Mixed,

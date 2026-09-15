@@ -626,8 +626,11 @@ describe('persistencia · ninguna fuente se pierde al guardar', () => {
     )).default
   })
 
-  test('el schema declara las cinco fuentes del análisis', () => {
-    for (const fuente of ['meli', 'shopping', 'gemini', 'internal']) {
+  test('el schema declara las tres fuentes del análisis', () => {
+    // MercadoLibre salió del paquete: su API está cerrada a integradores y el
+    // stub que fallaba rápido ocupaba un lugar en cada análisis para devolver
+    // siempre lo mismo.
+    for (const fuente of ['shopping', 'gemini', 'internal']) {
       expect(MarketAnalysis.schema.path(`rawSignals.${fuente}`)).toBeDefined()
     }
   })

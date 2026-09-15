@@ -3,7 +3,7 @@
  *
  * Orquestador del HENKO Market Intelligence Agent.
  *
- * Coordina fuentes de datos (MELI, Gemini grounding, BI interna del tenant),
+ * Coordina fuentes de datos (precios de tiendas, búsqueda con IA, BI interna),
  * pasa sus outputs crudos al scoring determinístico y devuelve un contrato
  * de respuesta estable.
  *
@@ -29,7 +29,6 @@ import {
   buildBudgetDenialMessage,
 } from '../ai/aiBudgetService.js'
 
-import { getMeliSignals } from './sources/meliSource.js'
 import { getShoppingSignals } from './sources/shoppingSource.js'
 import { getGroundingSignals } from './sources/geminiGroundingSource.js'
 import { getInternalBiSignals } from './sources/internalBiSource.js'
@@ -40,7 +39,15 @@ import { calculateProfitability } from './scoring/profitabilityEngine.js'
 import { buildMarketAnalysisResponse } from './schemas/marketAnalysisContract.js'
 import MarketAnalysis from './schemas/MarketAnalysis.js'
 
-const CACHE_TTL_HOURS = 24
+/**
+ * Cuánto vale un análisis guardado. Configurable porque depende del rubro: un
+ * precio de electrónica se mueve más rápido que uno de indumentaria, y el
+ * operador conoce su mercado mejor que este archivo.
+ */
+const CACHE_TTL_HOURS =
+  Number(process.env.MARKET_CACHE_TTL_HOURS) > 0
+    ? Number(process.env.MARKET_CACHE_TTL_HOURS)
+    : 24
 
 /**
  * @param {Object} params
@@ -133,18 +140,22 @@ export async function analyzeMarketDemand({
     }
   }
 
-  // Las tres fuentes son independientes: el fallo de una degrada la confianza
-  // pero no tumba el análisis. allSettled es intencional.
-  const [meliResult, shoppingResult, groundingResult, internalResult] =
+  // Las fuentes son independientes: el fallo de una degrada la confianza pero
+  // no tumba el análisis. allSettled es intencional.
+  //
+  // MercadoLibre estuvo acá y se fue: cerró /sites/{id}/search a integradores
+  // externos y devuelve 403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES con cualquier
+  // credencial —verificado contra las tres combinaciones posibles—. No hay
+  // configuración que lo resuelva, así que el stub que fallaba rápido también
+  // se retiró: ocupaba un lugar en cada análisis para devolver siempre lo mismo.
+  const [shoppingResult, groundingResult, internalResult] =
     await Promise.allSettled([
-      getMeliSignals({ product, country }),
       getShoppingSignals({ product, country }),
       getGroundingSignals({ product, country, apiKey: profile.apiKey }),
       getInternalBiSignals({ tenantId, product }),
     ])
 
   const rawSignals = {
-    meli: unwrapSettled(meliResult, 'meliSource'),
     shopping: unwrapSettled(shoppingResult, 'shoppingSource'),
     gemini: unwrapSettled(groundingResult, 'geminiGroundingSource'),
     internal: unwrapSettled(internalResult, 'internalBiSource'),
@@ -202,7 +213,6 @@ export async function analyzeMarketDemand({
     logger.warn('[marketIntelligence] cobertura insuficiente, reserva devuelta', {
       tenantId: String(tenantId),
       normalizedQuery,
-      meli: rawSignals.meli?.reason || rawSignals.meli?.error,
       gemini: rawSignals.gemini?.reason || rawSignals.gemini?.error,
     })
   } else if (noExternalSources) {

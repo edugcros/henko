@@ -127,7 +127,10 @@ const HOW_IT_WORKS = [
   'Si cargás tu costo, además te dice desde qué precio empezás a ganar y cuánto te quedaría vendiendo al precio típico del mercado.',
 ]
 
-const SOURCE_MARK = { observed: '≈', mixed: '◐', measured: '' }
+// Marca la dureza de la evidencia. No hay 'measured' sin marca: hoy ningún
+// componente se mide sin intermediarios, y declarar una categoría que nada usa
+// hace creer que existe.
+const SOURCE_MARK = { observed: '≈', mixed: '◐' }
 
 const POSITION_COLOR = {
   MUY_COMPETITIVO: 'success',

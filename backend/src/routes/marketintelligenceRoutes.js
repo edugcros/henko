@@ -8,17 +8,16 @@
 
 import express from 'express'
 import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
-import { analyzeProduct, getAnalysisHistory } from '../controller/marketIntelligenceController.js'
+import { analyzeProduct } from '../controller/marketIntelligenceController.js'
 
 const router = express.Router()
 
 // Todas las rutas requieren sesión autenticada + rol isAdmin del comercio.
-// El análisis consume cuota de Gemini y de la API de MELI, así que no debe
+// El análisis consume cuota de IA y del buscador de precios, así que no debe
 // quedar accesible a usuarios finales de la tienda.
 router.use(authMiddleware, isAdmin)
 
 router.post('/analyze', analyzeProduct)
-router.get('/history', getAnalysisHistory)
 
 export default router
 

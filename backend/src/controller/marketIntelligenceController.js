@@ -15,7 +15,10 @@ import {
 } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
 
-const MAX_PRODUCT_LENGTH = 200
+const MAX_PRODUCT_LENGTH =
+  Number(process.env.MARKET_MAX_PRODUCT_LENGTH) > 0
+    ? Number(process.env.MARKET_MAX_PRODUCT_LENGTH)
+    : 200
 
 const normalizeString = value => (typeof value === 'string' ? value.trim() : '')
 
@@ -152,18 +155,4 @@ export const analyzeProduct = asyncHandler(async (req, res) => {
   })
 })
 
-/**
- * GET /api/market-intelligence/history?limit=20
- *
- * TODO: implementar. Debe exponerse desde el servicio (no leer el modelo
- * MarketAnalysis directo acá) para no romper la separación de capas del
- * resto del paquete.
- */
-export const getAnalysisHistory = asyncHandler(async (req, res) => {
-  return res.status(501).json({
-    success: false,
-    message: 'Historial todavía no implementado.',
-  })
-})
-
-export default { analyzeProduct, getAnalysisHistory }
+export default { analyzeProduct }

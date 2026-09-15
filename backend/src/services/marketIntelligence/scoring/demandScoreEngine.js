@@ -75,7 +75,7 @@ const WEIGHTS = {
 }
 
 /**
- * @param {Object} rawSignals - { meli, gemini, internal } de sources/
+ * @param {Object} rawSignals - { shopping, gemini, internal } de sources/
  * @returns {{ total: number|null, components: Object, measuredWeight: number, unmeasured: string[] }}
  */
 export function calculateDemandScore(rawSignals) {
@@ -209,7 +209,7 @@ function scoreDemand(signals) {
  * scrape.do, que era el único que la servía.
  */
 function scoreTrend(signals) {
-  const map = { CRECIENTE: 80, ESTABLE: 50, VOLATIL: 50, DECRECIENTE: 20 }
+  const map = { CRECIENTE: 80, ESTABLE: 50, DECRECIENTE: 20 }
 
   const direction = signals.gemini?.trendDirection
 

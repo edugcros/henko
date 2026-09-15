@@ -78,10 +78,10 @@ const GROUNDING_RESPONSE_SCHEMA = {
     trendDirection: { type: 'string', enum: ['CRECIENTE', 'ESTABLE', 'DECRECIENTE', 'INDETERMINADA'] },
     recurringComplaints: { type: 'array', items: { type: 'string' } },
 
-    // Competencia y precios: los cubría meliSource con datos duros de
-    // marketplace. Con MELI cerrado, Gemini es la única fuente externa, así
-    // que reporta lo que encuentre buscando — es evidencia más blanda
-    // (observación, no conteo), y el scoring lo topea en consecuencia.
+    // Competencia y precios: los mide el buscador de precios con datos duros
+    // —cuántas tiendas publican el producto y a cuánto—. Lo que sale de acá es
+    // evidencia más blanda, una lectura de lo que el modelo encontró leyendo,
+    // y el scoring la usa solo como respaldo.
     competition: {
       type: 'object',
       properties: {

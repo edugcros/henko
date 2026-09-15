@@ -240,13 +240,18 @@ describe("qué modelo puede buscar en Google", () => {
     expect(supportsSearchGrounding("gemini-3.1-flash-lite")).toBe(true);
   });
 
-  test("la cadena de respaldo prioriza cuota, con Gemma al final", () => {
+  test("la cadena de respaldo prioriza cuota, y Gemma no está", () => {
     const chain = getModelChain("gemini-3.8-flash");
 
-    // Los Flash grandes tienen 20 pedidos por día; los Lite, 500.
-    expect(chain).toContain("gemini-3.5-flash-lite");
+    // Los Flash grandes tienen 20 pedidos por día; los Lite, 500. Por eso los
+    // Lite van antes que el otro Flash grande.
+    expect(chain.indexOf("gemini-3.5-flash-lite")).toBeLessThan(
+      chain.indexOf("gemini-3.7-flash"),
+    );
     expect(chain).toContain("gemini-3.1-flash-lite");
-    expect(chain[chain.length - 1]).toBe("gemma-4-26b-a4b-it");
+
+    // Gemma quedó fuera por decisión de producto, aunque su cuota sea la mayor.
+    expect(chain.some(m => m.startsWith("gemma"))).toBe(false);
   });
 
   test("una llamada con búsqueda no cae en un modelo que no la soporta", async () => {

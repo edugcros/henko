@@ -27,13 +27,4 @@ export const analyzeProduct = async ({ product, country = 'AR', forceRefresh = f
   return data
 }
 
-/**
- * Historial de análisis previos del tenant.
- * TODO: el endpoint devuelve 501 hasta que se implemente en el controller.
- */
-export const getAnalysisHistory = async ({ limit = 20 } = {}) => {
-  const { data } = await api.get(`${BASE_URL}/history`, { params: { limit } })
-  return data
-}
-
-export default { analyzeProduct, getAnalysisHistory }
+export default { analyzeProduct }
