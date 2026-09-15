@@ -2014,6 +2014,28 @@ export const startStaleOperationSweeper = ({ logger: log = logger } = {}) => {
   // cupo tomado durante el mes, no una urgencia de segundos.
   const intervalMs = envPositiveInt('AI_STALE_SWEEP_INTERVAL_MS', 15 * 60 * 1000)
 
+  // UNA PASADA AL ARRANCAR, y es lo que hace que esto sirva de verdad.
+  //
+  // El intervalo se reinicia en cada deploy. Verificado en producción: dos
+  // operaciones quedaron 67 y 59 minutos en 'running' con la barredora
+  // desplegada y funcionando —su consulta las encontraba— porque entre deploy
+  // y deploy el tick de quince minutos nunca llegó a dispararse. En un
+  // servicio que se reinicia seguido, un timer largo sin pasada inicial es un
+  // timer que no corre nunca.
+  //
+  // Va con un retraso corto y no en el instante cero: al arrancar hay
+  // conexiones abriéndose y migraciones corriendo, y este barrido no tiene
+  // ninguna urgencia de segundos.
+  const arranqueMs = envPositiveInt('AI_STALE_SWEEP_ON_START_MS', 60 * 1000)
+
+  const primeraPasada = setTimeout(() => {
+    sweepStaleOperations().catch(error => {
+      log.error?.('[AI SWEEP] El barrido de arranque falló', { error: error.message })
+    })
+  }, arranqueMs)
+
+  primeraPasada.unref?.()
+
   sweepInterval = setInterval(() => {
     sweepStaleOperations().catch(error => {
       log.error?.('[AI SWEEP] El barrido falló', { error: error.message })
