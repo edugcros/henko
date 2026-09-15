@@ -288,7 +288,7 @@ export default function MarketIntelligencePage() {
     result && (result.demandScore === null || result.demandScore === undefined)
   const lowConfidence = result && !unmeasurable && result.confidenceScore < 50
   const internalOnly = result && !unmeasurable && result.internalOnly
-  const gemini = result?.rawSignals?.gemini
+  const research = result?.rawSignals?.research
   const profit = result?.profitability
   const prices = result?.priceStats
   const offers = result?.offers || []
@@ -951,25 +951,25 @@ export default function MarketIntelligencePage() {
                 </Box>
               )}
 
-              {gemini?.available ? (
+              {research?.available ? (
                 <Stack spacing={1}>
                   <Typography variant="body2">
-                    Competencia: {gemini.competition?.level?.replace('_', ' ') || 'Sin datos'}
+                    Competencia: {research.competition?.level?.replace('_', ' ') || 'Sin datos'}
                   </Typography>
 
-                  {gemini.competition?.knownBrands?.length > 0 && (
+                  {research.competition?.knownBrands?.length > 0 && (
                     <Typography variant="body2">
-                      Marcas presentes: {gemini.competition.knownBrands.join(', ')}
+                      Marcas presentes: {research.competition.knownBrands.join(', ')}
                     </Typography>
                   )}
 
-                  {gemini.recurringComplaints?.length > 0 && (
+                  {research.recurringComplaints?.length > 0 && (
                     <>
                       <Divider sx={{ my: 1 }} />
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
                         Quejas frecuentes de compradores
                       </Typography>
-                      {gemini.recurringComplaints.map((complaint, i) => (
+                      {research.recurringComplaints.map((complaint, i) => (
                         <Typography key={i} variant="body2" color="text.secondary">
                           • {complaint}
                         </Typography>
@@ -977,11 +977,11 @@ export default function MarketIntelligencePage() {
                     </>
                   )}
 
-                  {gemini.sources?.length > 0 && (
+                  {research.sources?.length > 0 && (
                     <>
                       <Divider sx={{ my: 1 }} />
                       <Typography variant="caption" color="text.secondary">
-                        Fuentes consultadas: {gemini.sources.length}
+                        Fuentes consultadas: {research.sources.length}
                       </Typography>
                     </>
                   )}

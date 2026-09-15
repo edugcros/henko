@@ -30,7 +30,7 @@ import {
 } from '../ai/aiBudgetService.js'
 
 import { getShoppingSignals } from './sources/shoppingSource.js'
-import { getGroundingSignals } from './sources/geminiGroundingSource.js'
+import { getWebResearchSignals } from './sources/webResearchSource.js'
 import { getInternalBiSignals } from './sources/internalBiSource.js'
 import { calculateDemandScore, SCORING_VERSION } from './scoring/demandScoreEngine.js'
 import { classifyTrend } from './scoring/trendClassifier.js'
@@ -148,16 +148,16 @@ export async function analyzeMarketDemand({
   // credencial —verificado contra las tres combinaciones posibles—. No hay
   // configuración que lo resuelva, así que el stub que fallaba rápido también
   // se retiró: ocupaba un lugar en cada análisis para devolver siempre lo mismo.
-  const [shoppingResult, groundingResult, internalResult] =
+  const [shoppingResult, researchResult, internalResult] =
     await Promise.allSettled([
       getShoppingSignals({ product, country }),
-      getGroundingSignals({ product, country, apiKey: profile.apiKey }),
+      getWebResearchSignals({ product, country, apiKey: profile.apiKey }),
       getInternalBiSignals({ tenantId, product }),
     ])
 
   const rawSignals = {
     shopping: unwrapSettled(shoppingResult, 'shoppingSource'),
-    gemini: unwrapSettled(groundingResult, 'geminiGroundingSource'),
+    research: unwrapSettled(researchResult, 'webResearchSource'),
     internal: unwrapSettled(internalResult, 'internalBiSource'),
   }
 
@@ -166,8 +166,8 @@ export async function analyzeMarketDemand({
   //
   // Van a MARKET_TOKENS, no a AGENT_TOKENS: mezclarlos hacía que el panel
   // atribuyera al bot de WhatsApp un consumo que gastó esta herramienta.
-  const tokensUsed = Number(rawSignals.gemini?.tokensUsed || 0)
-  const usage = rawSignals.gemini?.usage || null
+  const tokensUsed = Number(rawSignals.research?.tokensUsed || 0)
+  const usage = rawSignals.research?.usage || null
 
   if (tokensUsed > 0) {
     await recordAiConsumption({
@@ -199,7 +199,7 @@ export async function analyzeMarketDemand({
   // pero BI interna suficiente sí hay un resultado útil (limitado al propio
   // catálogo), así que ahí el consumo se cobra: el trabajo se hizo.
   const noExternalSources =
-    !rawSignals.shopping?.available && !rawSignals.gemini?.available
+    !rawSignals.shopping?.available && !rawSignals.research?.available
   const producedNothing = breakdown.total === null
 
   if (producedNothing) {
@@ -213,7 +213,7 @@ export async function analyzeMarketDemand({
     logger.warn('[marketIntelligence] cobertura insuficiente, reserva devuelta', {
       tenantId: String(tenantId),
       normalizedQuery,
-      gemini: rawSignals.gemini?.reason || rawSignals.gemini?.error,
+      research: rawSignals.research?.reason || rawSignals.research?.error,
     })
   } else if (noExternalSources) {
     logger.info('[marketIntelligence] análisis basado solo en datos internos del tenant', {

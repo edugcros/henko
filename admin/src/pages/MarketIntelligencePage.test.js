@@ -58,7 +58,7 @@ const RESULTADO = {
   profitability: null,
   rawSignals: {
     shopping: { available: true, offerCount: 8, merchantCount: 7 },
-    gemini: { available: false },
+    research: { available: false },
     internal: { available: true },
   },
   sources: [
@@ -70,7 +70,7 @@ const RESULTADO = {
       detail: '8 ofertas de 7 vendedores distintos.',
     },
     {
-      key: 'gemini',
+      key: 'research',
       label: 'Búsqueda con IA',
       role: 'Interés de búsqueda, tendencia, marcas y quejas de compradores.',
       available: false,
@@ -154,7 +154,7 @@ describe('Análisis de mercado · no se afirma lo que no se midió', () => {
         ...RESULTADO,
         rawSignals: {
           ...RESULTADO.rawSignals,
-          gemini: {
+          research: {
             available: false,
             error: 'You exceeded your current quota, please check your plan',
           },

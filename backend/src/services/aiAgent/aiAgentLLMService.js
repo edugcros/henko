@@ -303,10 +303,18 @@ const getRetryDelayMs = ({ attempt, error }) => {
   return baseMs + jitterMs
 }
 
-const fetchGemini = async ({ url, apiKey, payload }) => {
+const fetchGemini = async ({ url, apiKey, payload, timeoutOverrideMs }) => {
+  // El default está pensado para el agente de ventas: un mensaje corto que
+  // tiene que contestar mientras alguien espera del otro lado. Una llamada que
+  // manda doce páginas de contexto no entra en esa medida, y cortarla a los 15
+  // segundos tira a la basura la búsqueda que ya se pagó. Por eso el llamador
+  // puede pedir su propio presupuesto.
   const timeoutMs = Math.min(
-    Math.max(toNumber(process.env.AI_AGENT_LLM_TIMEOUT_MS, 15000), 1000),
-    60000,
+    Math.max(
+      toNumber(timeoutOverrideMs, toNumber(process.env.AI_AGENT_LLM_TIMEOUT_MS, 15000)),
+      1000,
+    ),
+    120000,
   )
   const maxAttempts = Math.min(
     Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_ATTEMPTS, 3), 1),
@@ -500,6 +508,8 @@ export const callGemini = async ({
   stopSequences,
   thinkingBudget,
   apiKey: providedApiKey,
+  // Presupuesto de tiempo propio, para llamadas que no son un chat.
+  timeoutMs: timeoutOverrideMs,
   // Modelo pedido por el llamador. Sin esto, todo el backend queda atado a
   // GEMINI_MODEL: si esa variable apunta a un modelo que no soporta
   // herramientas, el análisis de mercado no tiene forma de pedir uno que sí.
@@ -597,7 +607,7 @@ export const callGemini = async ({
   for (const candidate of candidates) {
     try {
       const url = `${getGeminiApiBaseUrl()}/models/${candidate}:generateContent`
-      const result = await fetchGemini({ url, apiKey, payload })
+      const result = await fetchGemini({ url, apiKey, payload, timeoutOverrideMs })
 
       data = result.data
       usedModel = candidate
@@ -669,6 +679,7 @@ export const callAgentLLM = async ({
   thinkingBudget,
   apiKey,
   model,
+  timeoutMs,
   // PATCH: propagado igual que el resto de los parámetros opcionales.
   tools,
 } = {}) => {
@@ -694,6 +705,7 @@ export const callAgentLLM = async ({
     thinkingBudget,
     apiKey,
     model,
+    timeoutMs,
     tools,
   })
 }

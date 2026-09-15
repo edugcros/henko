@@ -27,8 +27,9 @@
  *   TAVILY_API_KEY
  */
 
-import axios from 'axios'
 import logger from '../../../../config/logger.js'
+
+import { hasTavilyKey, tavilySearch, TAVILY_COUNTRY } from './tavilyClient.js'
 
 /**
  * Todo lo ajustable sale por variable de entorno, con el default medido entre
@@ -41,7 +42,6 @@ const num = (name, fallback) => {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
-const REQUEST_TIMEOUT_MS = num('SHOPPING_TIMEOUT_MS', 20000)
 const MAX_OFFERS = num('SHOPPING_MAX_OFFERS', 40)
 
 /** Debajo de esto la mediana describe anécdotas y vale gastar otro crédito. */
@@ -49,15 +49,6 @@ const MIN_SAMPLE_FOR_RETRY = num('SHOPPING_MIN_SAMPLE', 3)
 
 /** Muestra mínima para que el descarte de atípicos signifique algo. */
 const MIN_SAMPLE_FOR_OUTLIERS = num('SHOPPING_MIN_SAMPLE_OUTLIERS', 5)
-
-const TAVILY_SEARCH_URL =
-  String(process.env.TAVILY_API_URL || '').trim() || 'https://api.tavily.com/search'
-
-/** 'basic' cuesta 1 crédito; 'advanced' cuesta 2 y acá no aporta. */
-const TAVILY_SEARCH_DEPTH =
-  String(process.env.TAVILY_SEARCH_DEPTH || '').trim() || 'basic'
-
-const TAVILY_MAX_RESULTS = num('TAVILY_MAX_RESULTS', 20)
 
 /**
  * Lo que se le agrega al nombre del producto para empujar la búsqueda hacia
@@ -143,20 +134,6 @@ export async function getShoppingSignals({ product, country }) {
 // ─── Adapters por proveedor ──────────────────────────────
 
 /**
- * Tavily espera el país escrito, no el código ISO.
- * Docs: https://docs.tavily.com/documentation/api-reference/endpoint/search
- */
-const TAVILY_COUNTRY = {
-  AR: 'argentina',
-  MX: 'mexico',
-  CL: 'chile',
-  CO: 'colombia',
-  UY: 'uruguay',
-  PE: 'peru',
-  BR: 'brazil',
-}
-
-/**
  * Dominio de cada mercado, para el reintento sin filtro de país.
  *
  * Medido contra la API: `country` acota muy bien —quince de diecinueve
@@ -192,34 +169,15 @@ const ADAPTERS = {
    * análisis contra dos o tres pedidos) y en que no se agota a mitad de mes.
    */
   async tavily({ product, locale, country }) {
-    const apiKey = String(process.env.TAVILY_API_KEY || '').trim()
+    if (!hasTavilyKey()) return null
 
-    if (!apiKey) {
-      logger.warn('[shoppingSource] TAVILY_API_KEY no configurada')
-      return null
-    }
-
-    const buscar = async extra => {
-      const { data } = await axios.post(
-        TAVILY_SEARCH_URL,
-        {
-          query: `${product} ${SEARCH_SUFFIX}`.trim(),
-          search_depth: TAVILY_SEARCH_DEPTH,
-          max_results: TAVILY_MAX_RESULTS,
-          topic: 'general',
-          language: locale.hl,
-          include_answer: false,
-          include_raw_content: false,
-          ...extra,
-        },
-        {
-          headers: { Authorization: `Bearer ${apiKey}` },
-          timeout: REQUEST_TIMEOUT_MS,
-        },
-      )
-
-      return Array.isArray(data?.results) ? data.results : []
-    }
+    const buscar = async extra =>
+      tavilySearch({
+        query: `${product} ${SEARCH_SUFFIX}`.trim(),
+        language: locale.hl,
+        source: 'shoppingSource',
+        ...extra,
+      })
 
     try {
       const pais = TAVILY_COUNTRY[country]

@@ -36,7 +36,7 @@ const MIN_REPRESENTATIVE_SAMPLE = 5
 export function calculateConfidence(rawSignals, measuredWeight = 0) {
   const availableSources = [
     rawSignals.shopping,
-    rawSignals.gemini,
+    rawSignals.research,
     rawSignals.internal,
   ].filter(s => s?.available).length
 
@@ -65,7 +65,7 @@ export function calculateConfidence(rawSignals, measuredWeight = 0) {
  * que premiar: el bonus se otorga solo cuando las dos existen y coinciden.
  */
 function checkConsistency(rawSignals) {
-  const trend = rawSignals.gemini?.trendDirection
+  const trend = rawSignals.research?.trendDirection
   const merchantCount = rawSignals.shopping?.available
     ? Number(rawSignals.shopping.merchantCount || 0)
     : null

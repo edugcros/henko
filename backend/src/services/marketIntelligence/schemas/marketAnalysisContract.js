@@ -47,7 +47,8 @@ function buildMarketAnalysisResponse(doc) {
     // true = el score sale solo de datos del propio comercio. Responde
     // "¿mis clientes quieren esto?", NO "¿el mercado quiere esto?". La UI
     // debe decirlo explícitamente: son preguntas distintas.
-    internalOnly: !doc.rawSignals?.shopping?.available && !doc.rawSignals?.gemini?.available,
+    internalOnly:
+      !doc.rawSignals?.shopping?.available && !doc.rawSignals?.research?.available,
     unmeasured: doc.unmeasured ?? [],
     rawSignals: doc.rawSignals,
     recommendation: buildRecommendation(
@@ -61,8 +62,6 @@ function buildMarketAnalysisResponse(doc) {
     // a cuánto, el comercio no tiene forma de juzgar si la muestra es
     // representativa de su mercado.
     offers: doc.rawSignals?.shopping?.offers ?? [],
-    // Interés de búsqueda medido, para que el comerciante vea la forma de la
-    // curva y no solo una etiqueta.
     // Qué contestó cada fuente y, si no contestó, por qué — en castellano.
     // El panel mostraba el error crudo de Google ("You exceeded your current
     // quota, please check your plan and billing details…") al comerciante.
@@ -73,13 +72,14 @@ function buildMarketAnalysisResponse(doc) {
 
 const SOURCE_LABELS = {
   shopping: 'Buscador de precios',
-  gemini: 'Búsqueda con IA',
+  research: 'Búsqueda en la web',
   internal: 'Tu tienda',
 }
 
 const SOURCE_ROLES = {
   shopping: 'Precios publicados hoy en tiendas online, cada uno con el link del que salió.',
-  gemini: 'Interés de búsqueda, tendencia, marcas y quejas de compradores.',
+  research:
+    'Lo que dicen las páginas sobre el producto: interés, marcas, quejas repetidas.',
   internal: 'Tus ventas, tu stock y la rotación de la categoría.',
 }
 
@@ -91,7 +91,7 @@ const SOURCE_ROLES = {
  * de acá nombra las dos cosas.
  */
 function describeSources(rawSignals = {}) {
-  return ['shopping', 'gemini', 'internal'].map(key => {
+  return ['shopping', 'research', 'internal'].map(key => {
     const signal = rawSignals?.[key] || null
     const available = Boolean(signal?.available)
 
@@ -128,18 +128,33 @@ function describeSuccess(key, signal) {
       : 'No tenés este producto en tu catálogo.'
   }
 
+  if (key === 'research') {
+    const paginas = Number(signal.pagesFound || 0)
+    return paginas > 0
+      ? `${paginas} páginas leídas, con su link a la vista.`
+      : 'Respondió con señales de mercado.'
+  }
+
   return 'Respondió con señales de mercado.'
 }
 
 function explainFailure(reason, code = null) {
   const text = String(reason || '')
 
-  // La búsqueda con Google se mide aparte de los tokens del modelo, y devuelve
-  // el mismo 429. Confundirlas manda a revisar el lugar equivocado: acá la
-  // clave puede tener todos los tokens del mundo —el análisis de imágenes y el
-  // agente de ventas siguen andando— y aun así no poder buscar en Google.
-  if (code === 'AI_GROUNDING_QUOTA') {
-    return 'Se agotó la cuota de búsquedas en Google de la clave de IA. Es un límite aparte de los tokens: el resto de la IA sigue funcionando. Se renueva sola, o se amplía habilitando facturación en la clave de Google.'
+  if (/buscador web no está configurado/i.test(text)) {
+    return 'Falta cargar la credencial del buscador web en el servidor.'
+  }
+
+  if (/buscador web no respondió/i.test(text)) {
+    return 'El buscador web no respondió. Suele ser momentáneo: volvé a intentar.'
+  }
+
+  if (/no se encontraron páginas/i.test(text)) {
+    return 'No hay páginas que hablen de este producto. Con un nombre más general —la categoría en vez del modelo exacto— suele aparecer algo.'
+  }
+
+  if (/formato esperado/i.test(text)) {
+    return 'La IA leyó las páginas pero no devolvió las señales en el formato esperado. Volvé a analizar y suele resolverse.'
   }
 
   if (/exceeded your current quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(text)) {
@@ -158,16 +173,12 @@ function explainFailure(reason, code = null) {
     return 'La IA contestó, pero no en el formato esperado. Volvé a analizar y suele resolverse.'
   }
 
-  if (/MercadoLibre/i.test(text)) {
-    return 'MercadoLibre cerró su buscador a integraciones externas. No hay forma de consultarlo.'
-  }
-
   if (/SHOPPING_PROVIDER|no implementado|deshabilitado/i.test(text)) {
     return 'El buscador de precios está apagado en la configuración del servidor.'
   }
 
-  if (/sin dominio de Google mapeado/i.test(text)) {
-    return 'Ese país todavía no tiene buscador de precios configurado.'
+  if (/sin mercado configurado/i.test(text)) {
+    return 'Ese país todavía no está configurado como mercado.'
   }
 
   if (/no devolvió resultados/i.test(text)) {

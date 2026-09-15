@@ -30,7 +30,7 @@ const TREND_LABELS = {
  * Documentado para no fingir estas clasificaciones sin base.
  */
 function classifyTrend(rawSignals) {
-  const direction = rawSignals.gemini?.trendDirection
+  const direction = rawSignals.research?.trendDirection
 
   if (!direction || direction === 'INDETERMINADA') return 'INDETERMINADA'
   if (direction === 'CRECIENTE') return 'CRECIENTE'

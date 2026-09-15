@@ -56,6 +56,11 @@
  *   7 — Google Trends entra como fuente: la tendencia pasa a medirse con una
  *       serie de 12 meses en vez de la lectura de un modelo, y la demanda
  *       tiene de dónde salir cuando la búsqueda con IA está sin cupo
+ *   9 — la búsqueda deja de hacerla el modelo y la hace Tavily: Gemini solo
+ *       estructura lo que las páginas dicen. Demanda, tendencia y social
+ *       vuelven a medirse después de estar apagadas por la cuota de grounding
+ *       en cero. La señal pasa a llamarse `research` en vez de `gemini`, así
+ *       que los documentos guardados con la 8 no se pueden leer con esta.
  *   8 — se retira Google Trends al salir scrape.do, que era quien lo servía.
  *       Demanda y tendencia vuelven a depender de la búsqueda con IA, y
  *       quedan sin medir mientras esa cuota siga en cero. La versión sube
@@ -63,7 +68,7 @@
  *       tener la serie, y mezclarlos con los nuevos compararía peras con
  *       manzanas.
  */
-export const SCORING_VERSION = 8
+export const SCORING_VERSION = 9
 
 const WEIGHTS = {
   demand: 0.30,
@@ -162,7 +167,7 @@ export function calculateDemandScore(rawSignals) {
  * demanda queda SIN MEDIR, y el panel lo dice en esas palabras.
  */
 function scoreDemand(signals) {
-  const intent = signals.gemini?.searchIntent
+  const intent = signals.research?.searchIntent
 
   if (intent) {
     const weighted =
@@ -182,7 +187,7 @@ function scoreDemand(signals) {
   // esta tienda había vendido una sola unidad en 90 días: una venta propia
   // valía 2 puntos sobre 100 y pesaba el 30% del puntaje, así que hundía
   // cualquier producto con un mercado enorme detrás.
-  const hasExternal = signals.shopping?.available || signals.gemini?.available
+  const hasExternal = signals.shopping?.available || signals.research?.available
   if (hasExternal) return null
 
   const internal = signals.internal
@@ -211,7 +216,7 @@ function scoreDemand(signals) {
 function scoreTrend(signals) {
   const map = { CRECIENTE: 80, ESTABLE: 50, DECRECIENTE: 20 }
 
-  const direction = signals.gemini?.trendDirection
+  const direction = signals.research?.trendDirection
 
   // INDETERMINADA significa "no pude determinarlo", no "no hay tendencia".
   if (!direction || direction === 'INDETERMINADA') return null
@@ -251,7 +256,7 @@ function scoreCompetition(signals) {
   // nadie lo publica en ese mercado.
   if (merchants === 0) return 20
 
-  const level = signals.gemini?.competition?.level
+  const level = signals.research?.competition?.level
 
   if (!level || level === 'INDETERMINADA') return null
 
@@ -260,7 +265,7 @@ function scoreCompetition(signals) {
 }
 
 function scoreSocial(signals) {
-  const mentions = signals.gemini?.socialSignals?.mentions
+  const mentions = signals.research?.socialSignals?.mentions
   if (mentions === 'NO_DISPONIBLE' || mentions == null) return null
 
   return clamp(mentions / 10, 0, 100)
@@ -287,7 +292,7 @@ function scoreCommercial(signals) {
   const offerCount = signals.shopping?.available
     ? Number(signals.shopping.offerCount || 0)
     : null
-  const hasPublishedPrices = Boolean(signals.gemini?.priceRange?.min)
+  const hasPublishedPrices = Boolean(signals.research?.priceRange?.min)
 
   if (offerCount === null && categoryUnits == null && !hasPublishedPrices) {
     return null
@@ -308,7 +313,7 @@ function scoreCommercial(signals) {
 }
 
 function scoreOpportunity(signals) {
-  const complaints = signals.gemini?.recurringComplaints
+  const complaints = signals.research?.recurringComplaints
   const internal = signals.internal
 
   if (!Array.isArray(complaints) && !internal?.available) return null
@@ -324,7 +329,7 @@ function scoreOpportunity(signals) {
 
   // Producto que NO está en el catálogo: si alguna fuente externa muestra
   // demanda, es una oportunidad no cubierta.
-  if (internal?.available && internal?.isInCatalog === false && signals.gemini?.available) {
+  if (internal?.available && internal?.isInCatalog === false && signals.research?.available) {
     score += 25
   }
 
@@ -339,7 +344,7 @@ function scoreOpportunity(signals) {
  * fijas que no distinguen un producto de otro.
  */
 function isDegenerateInternalOnly(signals) {
-  const hasExternal = signals.shopping?.available || signals.gemini?.available
+  const hasExternal = signals.shopping?.available || signals.research?.available
   if (hasExternal) return false
 
   const internal = signals.internal

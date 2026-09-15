@@ -34,7 +34,7 @@ const señalesReales = (extra = {}) => ({
     priceStats: { min: 4450, p25: 4786, median: 8000, p75: 20060, max: 30600, currency: 'ARS', sampleSize: 8 },
     offers: [],
   },
-  gemini: { available: false, error: CUOTA_AGOTADA },
+  research: { available: false, error: CUOTA_AGOTADA },
   internal: {
     available: true,
     scope: 'internal',
@@ -94,7 +94,7 @@ describe('puntaje de demanda · las ofertas del mercado cuentan', () => {
     const { components } = calculateDemandScore(
       señalesReales({
         shopping: { available: false, reason: 'NO_DISPONIBLE' },
-        gemini: {
+        research: {
           available: true,
           searchIntent: { informational: 2, commercial: 3, transactional: 4 },
           trendDirection: 'CRECIENTE',
@@ -191,7 +191,7 @@ describe('respuesta al panel · los errores se cuentan en castellano', () => {
 
   test('no se le muestra al comerciante el error literal de Google', () => {
     const { sources } = respuesta()
-    const ia = sources.find(s => s.key === 'gemini')
+    const ia = sources.find(s => s.key === 'research')
 
     expect(ia.available).toBe(false)
     expect(ia.detail).not.toMatch(/quota|billing/i)
@@ -201,41 +201,23 @@ describe('respuesta al panel · los errores se cuentan en castellano', () => {
   test('cada fuente dice qué aporta y qué contestó', () => {
     const { sources } = respuesta()
 
-    expect(sources.map(s => s.key)).toEqual(['shopping', 'gemini', 'internal'])
+    expect(sources.map(s => s.key)).toEqual(['shopping', 'research', 'internal'])
     expect(sources.find(s => s.key === 'shopping').detail).toMatch(/8 ofertas de 7 vendedores/i)
     expect(sources.find(s => s.key === 'internal').detail).toMatch(/catálogo/i)
   })
 
-  test('la cuota de búsqueda no se confunde con la de tokens', () => {
-    // Es el caso real: la clave tiene tokens —el análisis de imágenes anda—
-    // pero la búsqueda con Google, que se mide aparte, está agotada.
-    const { sources } = respuesta(
-      señalesReales({
-        gemini: {
-          available: false,
-          code: 'AI_GROUNDING_QUOTA',
-          error: 'You exceeded your current quota, please check your plan and billing details.',
-        },
-      }),
-    )
-
-    const ia = sources.find(s => s.key === 'gemini')
-
-    expect(ia.detail).toMatch(/búsquedas en Google/i)
-    expect(ia.detail).toMatch(/aparte de los tokens/i)
-  })
 
   test('un modelo dado de baja manda a donde se cambia', () => {
     const { sources } = respuesta(
       señalesReales({
-        gemini: {
+        research: {
           available: false,
           error: 'This model models/gemini-2.5-flash-lite is no longer available to new users.',
         },
       }),
     )
 
-    expect(sources.find(s => s.key === 'gemini').detail).toMatch(
+    expect(sources.find(s => s.key === 'research').detail).toMatch(
       /Configuración del agente/i,
     )
   })
@@ -278,127 +260,18 @@ describe('veredicto · no se afirma lo que no se midió', () => {
 
 const mockCallAgentLLM = jest.fn()
 
+const mockTavilySearch = jest.fn()
+
 jest.unstable_mockModule('../services/aiAgent/aiAgentLLMService.js', () => ({
   callAgentLLM: mockCallAgentLLM,
   callAgentLLMForRepair: jest.fn(),
 }))
 
-describe('búsqueda con IA · el segundo paso no puede tirar el primero', () => {
-  let getGroundingSignals
-
-  const TEXTO_GROUNDED = 'El mercado de cascos en Argentina crece.'
-
-  const SENALES = {
-    searchIntent: { informational: 3, commercial: 4, transactional: 5 },
-    trendDirection: 'CRECIENTE',
-  }
-
-  const respuestaDeBusqueda = () => ({
-    content: TEXTO_GROUNDED,
-    groundingMetadata: {
-      groundingChunks: [{ web: { uri: 'https://ejemplo.com', title: 'Ejemplo' } }],
-    },
-    usageMetadata: { totalTokenCount: 4359 },
-  })
-
-  beforeAll(async () => {
-    ({ getGroundingSignals } = await import(
-      '../services/marketIntelligence/sources/geminiGroundingSource.js'
-    ))
-  })
-
-  beforeEach(() => {
-    mockCallAgentLLM.mockReset()
-  })
-
-  test('el JSON envuelto en un bloque de código se recupera igual', async () => {
-    mockCallAgentLLM
-      .mockResolvedValueOnce(respuestaDeBusqueda())
-      .mockResolvedValueOnce({
-        content: '```json\n' + JSON.stringify(SENALES) + '\n```',
-        usageMetadata: { totalTokenCount: 200 },
-      })
-
-    const signals = await getGroundingSignals({
-      product: 'casco',
-      country: 'AR',
-      apiKey: 'k',
-    })
-
-    expect(signals.available).toBe(true)
-    expect(signals.trendDirection).toBe('CRECIENTE')
-    expect(signals.sources).toHaveLength(1)
-  })
-
-  test('la búsqueda no comparte el tope de salida del agente de ventas', async () => {
-    // El tope global es 1200 tokens: alcanza para una respuesta de WhatsApp y
-    // no para un informe de seis puntos escrito por un modelo que además
-    // razona con ese mismo presupuesto.
-    mockCallAgentLLM
-      .mockResolvedValueOnce(respuestaDeBusqueda())
-      .mockResolvedValueOnce({ content: JSON.stringify(SENALES) })
-
-    await getGroundingSignals({ product: 'casco', country: 'AR', apiKey: 'k' })
-
-    expect(mockCallAgentLLM.mock.calls[0][0].maxOutputTokens).toBeGreaterThanOrEqual(2000)
-  })
-
-  test('el segundo paso no gasta la salida en razonar', async () => {
-    // Con el presupuesto por defecto, un modelo "thinking" corta el JSON por
-    // MAX_TOKENS a mitad de camino. Este paso no razona: reordena.
-    mockCallAgentLLM
-      .mockResolvedValueOnce(respuestaDeBusqueda())
-      .mockResolvedValueOnce({ content: JSON.stringify(SENALES) })
-
-    await getGroundingSignals({ product: 'casco', country: 'AR', apiKey: 'k' })
-
-    expect(mockCallAgentLLM.mock.calls[1][0]).toMatchObject({ thinkingBudget: 1 })
-  })
-
-  test('si el JSON no se recupera, el texto buscado vuelve igual', async () => {
-    mockCallAgentLLM
-      .mockResolvedValueOnce(respuestaDeBusqueda())
-      .mockResolvedValueOnce({ content: 'perdón, no puedo' })
-
-    const signals = await getGroundingSignals({
-      product: 'casco',
-      country: 'AR',
-      apiKey: 'k',
-    })
-
-    expect(signals.available).toBe(false)
-    expect(signals.groundedText).toBe(TEXTO_GROUNDED)
-    expect(signals.sources).toHaveLength(1)
-    // Y los tokens del paso 1 se siguen cobrando: ya se gastaron.
-    expect(signals.tokensUsed).toBeGreaterThan(0)
-  })
-})
-
-// ─── Interés de búsqueda medido ─────────────────────────────────────────────
-//
-// La demanda y la tendencia dependían de la búsqueda con IA, que necesita el
-// tool de Google Search — y ese tool tiene cuota propia, agotada. Google Trends
-// entra por otra puerta: 12 meses de interés real, semana a semana, sin esa
-// cuota. Es además la serie histórica que el clasificador de tendencia
-// documentaba como faltante desde el principio.
-
-const serie = valores =>
-  valores.map((value, i) => ({ date: `sem ${i + 1}`, value }))
-
-const conTendencia = (extra = {}) => ({
-  available: true,
-  hasVolume: true,
-  geo: 'AR',
-  query: 'campera cuero',
-  weeks: 12,
-  changePercent: 30,
-  vsYearPercent: 10,
-  weeksWithInterest: 1,
-  volatility: 0.1,
-  direction: 'CRECIENTE',
-  points: serie([40, 42, 41, 43, 44, 45, 46, 48, 50, 52, 54, 56]),
-  ...extra,
-})
+jest.unstable_mockModule('../services/marketIntelligence/sources/tavilyClient.js', () => ({
+  tavilySearch: mockTavilySearch,
+  hasTavilyKey: () => true,
+  TAVILY_COUNTRY: { AR: 'argentina' },
+}))
 
 describe('precios desde texto · lo que NO se puede tomar por precio', () => {
   let normalizeTavilyResults
@@ -630,7 +503,7 @@ describe('persistencia · ninguna fuente se pierde al guardar', () => {
     // MercadoLibre salió del paquete: su API está cerrada a integradores y el
     // stub que fallaba rápido ocupaba un lugar en cada análisis para devolver
     // siempre lo mismo.
-    for (const fuente of ['shopping', 'gemini', 'internal']) {
+    for (const fuente of ['shopping', 'research', 'internal']) {
       expect(MarketAnalysis.schema.path(`rawSignals.${fuente}`)).toBeDefined()
     }
   })
@@ -659,5 +532,121 @@ describe('configuración · nada fijo a mano', () => {
       if (previo === undefined) delete process.env.SHOPPING_MIN_SAMPLE_OUTLIERS
       else process.env.SHOPPING_MIN_SAMPLE_OUTLIERS = previo
     }
+  })
+})
+
+// ─── Tavily busca, Gemini ordena ────────────────────────────────────────────
+//
+// El paso de investigación lo hacía Gemini con el tool de Google Search, y
+// estaba muerto: la familia Gemini 3 tiene cuota de búsqueda CERO en el nivel
+// gratuito. Comprobado contra la API con la clave de producción, mismo minuto:
+// sin `tools` responde 200, con `tools` responde 429. Ahora busca Tavily y el
+// modelo solo estructura, con una llamada común de las que sí funcionan.
+
+describe('investigación web · el modelo ordena, no recuerda', () => {
+  let getWebResearchSignals
+
+  const PAGINAS = [
+    {
+      url: 'https://foro.com.ar/hilo-campera',
+      title: 'Opiniones campera de cuero',
+      content: 'Varios usuarios dicen que el cierre se traba al mes.',
+    },
+    {
+      url: 'https://blog.com.ar/review',
+      title: 'Review: campera biker',
+      content: 'El cierre vino fallado. Igual la calidad general es buena.',
+    },
+  ]
+
+  const SENALES = {
+    searchIntent: { informational: 1, commercial: 1, transactional: 0 },
+    trendDirection: 'ESTABLE',
+    recurringComplaints: ['el cierre se traba'],
+  }
+
+  beforeAll(async () => {
+    ;({ getWebResearchSignals } = await import(
+      '../services/marketIntelligence/sources/webResearchSource.js'
+    ))
+  })
+
+  beforeEach(() => {
+    mockCallAgentLLM.mockReset()
+    mockTavilySearch.mockReset()
+  })
+
+  test('no manda herramientas: no depende de la cuota que está en cero', async () => {
+    mockTavilySearch.mockResolvedValue(PAGINAS)
+    mockCallAgentLLM.mockResolvedValue({ content: JSON.stringify(SENALES) })
+
+    await getWebResearchSignals({ product: 'campera de cuero', country: 'AR', apiKey: 'k' })
+
+    expect(mockCallAgentLLM).toHaveBeenCalledTimes(1)
+    expect(mockCallAgentLLM.mock.calls[0][0].tools).toBeUndefined()
+  })
+
+  test('las fuentes son las URLs que trajo el buscador, no lo que el modelo escriba', async () => {
+    // Una URL inventada por un modelo es indistinguible de una real hasta que
+    // alguien la abre.
+    mockTavilySearch.mockResolvedValue(PAGINAS)
+    mockCallAgentLLM.mockResolvedValue({
+      content: JSON.stringify({ ...SENALES, sources: [{ url: 'https://inventada.com' }] }),
+    })
+
+    const signals = await getWebResearchSignals({ product: 'campera', country: 'AR', apiKey: 'k' })
+
+    expect(signals.available).toBe(true)
+    expect(signals.sources.map(f => f.url)).toEqual([
+      'https://foro.com.ar/hilo-campera',
+      'https://blog.com.ar/review',
+    ])
+  })
+
+  test('el modelo recibe cada página con su link', async () => {
+    mockTavilySearch.mockResolvedValue(PAGINAS)
+    mockCallAgentLLM.mockResolvedValue({ content: JSON.stringify(SENALES) })
+
+    await getWebResearchSignals({ product: 'campera', country: 'AR', apiKey: 'k' })
+
+    const enviado = mockCallAgentLLM.mock.calls[0][0].messages[0].content
+
+    expect(enviado).toContain('https://foro.com.ar/hilo-campera')
+    expect(enviado).toContain('[1]')
+    expect(enviado).toContain('[2]')
+  })
+
+  test('si la IA no devuelve el formato, la búsqueda no se pierde', async () => {
+    mockTavilySearch.mockResolvedValue(PAGINAS)
+    mockCallAgentLLM.mockResolvedValue({ content: 'perdón, no puedo' })
+
+    const signals = await getWebResearchSignals({ product: 'campera', country: 'AR', apiKey: 'k' })
+
+    expect(signals.available).toBe(false)
+    expect(signals.reason).toMatch(/formato esperado/i)
+    expect(signals.sources).toHaveLength(2)
+    expect(signals.pagesFound).toBe(2)
+  })
+
+  test('el JSON envuelto en un bloque de código se recupera igual', async () => {
+    mockTavilySearch.mockResolvedValue(PAGINAS)
+    mockCallAgentLLM.mockResolvedValue({
+      content: '```json\n' + JSON.stringify(SENALES) + '\n```',
+    })
+
+    const signals = await getWebResearchSignals({ product: 'campera', country: 'AR', apiKey: 'k' })
+
+    expect(signals.available).toBe(true)
+    expect(signals.trendDirection).toBe('ESTABLE')
+  })
+
+  test('sin páginas no se llama a la IA ni se inventa nada', async () => {
+    mockTavilySearch.mockResolvedValue([])
+
+    const signals = await getWebResearchSignals({ product: 'zxqwv', country: 'AR', apiKey: 'k' })
+
+    expect(signals.available).toBe(false)
+    expect(signals.reason).toMatch(/no se encontraron páginas/i)
+    expect(mockCallAgentLLM).not.toHaveBeenCalled()
   })
 })
