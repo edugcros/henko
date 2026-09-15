@@ -675,3 +675,45 @@ describe('tendencias · sin proveedor que las publique se dice, no se inventa', 
     }
   })
 })
+
+// ─── Lo que se guarda tiene que ser lo que se calculó ───────────────────────
+//
+// Encontrado leyendo la base de producción: los análisis guardados tenían
+// rawSignals.trends en null aunque el código lo calculaba. El schema declara
+// las fuentes una por una y Mongoose descarta en silencio lo que no figure,
+// así que la serie de interés se mostraba al analizar y desaparecía al
+// guardarse. Con el caché de 24 h, el mismo producto mostraba la tendencia
+// medida y, cinco minutos después, "no medida".
+
+describe('persistencia · ninguna fuente se pierde al guardar', () => {
+  let MarketAnalysis
+
+  beforeAll(async () => {
+    MarketAnalysis = (await import(
+      '../services/marketIntelligence/schemas/MarketAnalysis.js'
+    )).default
+  })
+
+  test('el schema declara las cinco fuentes del análisis', () => {
+    for (const fuente of ['meli', 'shopping', 'trends', 'gemini', 'internal']) {
+      expect(MarketAnalysis.schema.path(`rawSignals.${fuente}`)).toBeDefined()
+    }
+  })
+
+  test('un documento conserva la serie de interés', () => {
+    const doc = new MarketAnalysis({
+      tenantId: '6aa52ab0b38ba2c1646d6167',
+      product: 'campera de cuero',
+      normalizedQuery: 'campera de cuero',
+      country: 'AR',
+      scoringVersion: 7,
+      expiresAt: new Date(Date.now() + 86400000),
+      rawSignals: {
+        shopping: { available: true, provider: 'tavily', offerCount: 3 },
+        trends: { available: true, hasVolume: true, weeks: 52, direction: 'CRECIENTE' },
+      },
+    })
+
+    expect(doc.rawSignals.trends).toMatchObject({ weeks: 52, direction: 'CRECIENTE' })
+  })
+})

@@ -48,9 +48,16 @@ const marketAnalysisSchema = new Schema(
     // resultado del cálculo sí, porque es lo que el panel muestra.
     profitability: Schema.Types.Mixed,
 
+    // Cada fuente va declarada. Mongoose descarta en silencio lo que no
+    // figure acá: `trends` se sumó al análisis y no a este schema, así que la
+    // serie de interés se calculaba, se mostraba una vez y desaparecía al
+    // guardarse. Con el caché de 24 h eso significa que el mismo producto
+    // mostraba la tendencia medida al analizarlo y "no medida" cinco minutos
+    // después, sin que nada hubiera cambiado.
     rawSignals: {
       meli: Schema.Types.Mixed,
       shopping: Schema.Types.Mixed,
+      trends: Schema.Types.Mixed,
       gemini: Schema.Types.Mixed,
       internal: Schema.Types.Mixed,
     },
