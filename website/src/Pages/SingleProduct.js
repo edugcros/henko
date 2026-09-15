@@ -1678,7 +1678,7 @@ const SingleProduct = () => {
                     ? 'Stock según variante'
                     : `${displayStock} disponibles`
                 }
-                color={displayStock > 0 ? 'success' : 'error'}
+                color={displayStock > 0 ? themeColors.warning : 'error'}
                 variant="outlined"
               />
               {logisticsRows.slice(0, 2).map(row => (

@@ -29,8 +29,13 @@ import { callAgentLLM } from '../../aiAgent/aiAgentLLMService.js'
 import { readUsage, sumUsage } from '../../ai/aiUsageMetadata.js'
 import { buildGroundingPrompt, buildExtractionPrompt } from '../prompts/groundingPrompt.js'
 
+const num = (name, fallback) => {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
 /** Suficiente para el JSON del schema; el paso 2 no escribe prosa. */
-const EXTRACTION_MAX_TOKENS = 2048
+const EXTRACTION_MAX_TOKENS = num('MARKET_EXTRACTION_MAX_TOKENS', 2048)
 
 /**
  * El paso 1 sí escribe prosa: seis puntos de investigación.
@@ -42,7 +47,7 @@ const EXTRACTION_MAX_TOKENS = 2048
  * compartidos, el informe se corta por MAX_TOKENS o directamente vuelve vacío,
  * y ahí se pierde la búsqueda, que es lo caro.
  */
-const GROUNDING_MAX_TOKENS = 4000
+const GROUNDING_MAX_TOKENS = num('MARKET_RESEARCH_MAX_TOKENS', 4000)
 
 /**
  * Modelo del paso 1, independiente de GEMINI_MODEL.

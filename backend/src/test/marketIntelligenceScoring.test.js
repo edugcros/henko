@@ -508,6 +508,65 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
     expect(ofertas.map(o => o.merchant)).toEqual(['tienda.com.ar', 'otra.com.ar'])
   })
 
+  test('una página de OTRO producto no entra a la muestra', () => {
+    // Caso real de producción, 15/09 14:21. Buscando una campera de cuero
+    // sintético con suela, Tavily devolvió botines "de cuero sintético suela"
+    // y una pantubota "de cuero sintético gamuzado suela": los atributos
+    // coincidían. Dos de los tres precios eran de otra cosa, y los botines a
+    // $18.473 fijaban el mínimo contra una campera de $157.499.
+    const ofertas = normalizeTavilyResults(
+      [
+        resultado('https://www.billabong.com.ar/p/campera-laguna', 'Campera Mujer Laguna parka matelaseada', 'Precio $157.499'),
+        resultado('https://briganti.com.ar/p/pantubota', 'Pantubota Bambi Mujer de Cuero Sintético Gamuzado Suela', 'Precio $89.999'),
+        resultado('https://www.sgcdeportes.com.ar/p/botines', 'BOTINES NTX STADIO FUTSAL CUERO SINTETICO SUELA', 'Precio $18.473'),
+      ],
+      AR,
+      'Campera De Cuero Sintético Biker Bicolor Blanco Y Suela',
+    )
+
+    expect(ofertas).toHaveLength(1)
+    expect(ofertas[0].merchant).toBe('billabong.com.ar')
+  })
+
+  test('la marca también identifica, cuando el sustantivo no aparece', () => {
+    // "Gaseosa Coca-Cola…": las páginas tituladas "Coca Cola 2.25L" no dicen
+    // "gaseosa" y quedaban afuera. La segunda palabra sirve cuando no es un
+    // material — "cuero" no identifica nada, "coca" sí.
+    const ofertas = normalizeTavilyResults(
+      [resultado('https://super.com.ar/p/coca', 'Coca Cola 2.25L', 'Precio $5.824')],
+      AR,
+      'Gaseosa Coca-Cola Original Taste Botella 2.25L',
+    )
+
+    expect(ofertas).toHaveLength(1)
+  })
+
+  test('un pack no es el precio de la unidad', () => {
+    // Caso real: buscando "Yerba Mate Playadito 1kg" entraron packs por cinco
+    // a $27.200 y $38.000 junto a los kilos sueltos de $4.100.
+    const ofertas = normalizeTavilyResults(
+      [
+        resultado('https://a.com.ar/p/yerba-1kg', 'Yerba Mate Playadito 1kg', 'Precio $4.100'),
+        resultado('https://b.com.ar/p/yerba-pack', 'Yerba Playadito 1kg - Pack x 5un', 'Precio $27.200'),
+      ],
+      AR,
+      'Yerba Mate Playadito 1kg',
+    )
+
+    expect(ofertas).toHaveLength(1)
+    expect(ofertas[0].price).toBe(4100)
+  })
+
+  test('si se pide un pack, el pack vale', () => {
+    const ofertas = normalizeTavilyResults(
+      [resultado('https://b.com.ar/p/yerba-pack', 'Yerba Playadito 1kg Pack x 5un', 'Precio $27.200')],
+      AR,
+      'Yerba Mate Playadito Pack x 5 unidades',
+    )
+
+    expect(ofertas).toHaveLength(1)
+  })
+
   test('una página sin precio legible no inventa uno', () => {
     const ofertas = normalizeTavilyResults(
       [resultado('https://blog.com/nota', 'Las mejores camperas de 2026', 'Repasamos los modelos del año')],
@@ -573,4 +632,29 @@ describe('persistencia · ninguna fuente se pierde al guardar', () => {
     }
   })
 
+})
+
+// ─── Lo ajustable se ajusta sin tocar código ────────────────────────────────
+
+describe('configuración · nada fijo a mano', () => {
+  test('el umbral de atípicos sale de una variable', async () => {
+    const previo = process.env.SHOPPING_MIN_SAMPLE_OUTLIERS
+    process.env.SHOPPING_MIN_SAMPLE_OUTLIERS = '3'
+
+    try {
+      // Con el módulo recargado, tres precios ya alcanzan para descartar.
+      const { __test__ } = await import(
+        `../services/marketIntelligence/sources/shoppingSource.js?umbral=${Date.now()}`
+      )
+
+      const stats = __test__.computePriceStats(
+        [4100, 4200, 4300, 4400, 900000].map(price => ({ price })),
+      )
+
+      expect(stats.max).toBeLessThan(900000)
+    } finally {
+      if (previo === undefined) delete process.env.SHOPPING_MIN_SAMPLE_OUTLIERS
+      else process.env.SHOPPING_MIN_SAMPLE_OUTLIERS = previo
+    }
+  })
 })

@@ -30,11 +30,41 @@
 import axios from 'axios'
 import logger from '../../../../config/logger.js'
 
-const REQUEST_TIMEOUT_MS = 20000
-const MAX_OFFERS = 40
+/**
+ * Todo lo ajustable sale por variable de entorno, con el default medido entre
+ * paréntesis. Nada de números sueltos en medio del código: el día que Tavily
+ * cambie de endpoint o haya que ampliar la muestra, no se toca un archivo de
+ * lógica.
+ */
+const num = (name, fallback) => {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+const REQUEST_TIMEOUT_MS = num('SHOPPING_TIMEOUT_MS', 20000)
+const MAX_OFFERS = num('SHOPPING_MAX_OFFERS', 40)
 
 /** Debajo de esto la mediana describe anécdotas y vale gastar otro crédito. */
-const MIN_SAMPLE_FOR_RETRY = 3
+const MIN_SAMPLE_FOR_RETRY = num('SHOPPING_MIN_SAMPLE', 3)
+
+/** Muestra mínima para que el descarte de atípicos signifique algo. */
+const MIN_SAMPLE_FOR_OUTLIERS = num('SHOPPING_MIN_SAMPLE_OUTLIERS', 5)
+
+const TAVILY_SEARCH_URL =
+  String(process.env.TAVILY_API_URL || '').trim() || 'https://api.tavily.com/search'
+
+/** 'basic' cuesta 1 crédito; 'advanced' cuesta 2 y acá no aporta. */
+const TAVILY_SEARCH_DEPTH =
+  String(process.env.TAVILY_SEARCH_DEPTH || '').trim() || 'basic'
+
+const TAVILY_MAX_RESULTS = num('TAVILY_MAX_RESULTS', 20)
+
+/**
+ * Lo que se le agrega al nombre del producto para empujar la búsqueda hacia
+ * páginas de venta y no hacia notas o reseñas, que no traen precio.
+ */
+const SEARCH_SUFFIX =
+  String(process.env.SHOPPING_QUERY_SUFFIX || '').trim() || 'precio comprar'
 
 /**
  * La moneda no es decoración: se usa para descartar precios que están en otra
@@ -171,13 +201,11 @@ const ADAPTERS = {
 
     const buscar = async extra => {
       const { data } = await axios.post(
-        'https://api.tavily.com/search',
+        TAVILY_SEARCH_URL,
         {
-          // "precio" y "comprar" empujan la búsqueda hacia páginas de venta y
-          // no hacia notas o reseñas, que no traen precio.
-          query: `${product} precio comprar`,
-          search_depth: 'basic', // 1 crédito; "advanced" cuesta 2 y acá no aporta
-          max_results: 20,
+          query: `${product} ${SEARCH_SUFFIX}`.trim(),
+          search_depth: TAVILY_SEARCH_DEPTH,
+          max_results: TAVILY_MAX_RESULTS,
           topic: 'general',
           language: locale.hl,
           include_answer: false,
@@ -216,16 +244,16 @@ const ADAPTERS = {
           : resultados
 
       const abiertos = await buscar({
-        query: `${product} precio comprar ${pais || ''}`.trim(),
+        query: `${product} ${SEARCH_SUFFIX} ${pais || ''}`.trim(),
       })
 
-      let ofertas = normalizeTavilyResults(soloLocales(abiertos), locale)
+      let ofertas = normalizeTavilyResults(soloLocales(abiertos), locale, product)
 
       // Con dos precios o menos no hay mediana que valga. Ahí sí se gasta el
       // segundo crédito en el filtro de país, que es el que a veces trae doce.
       if (ofertas.length < MIN_SAMPLE_FOR_RETRY && pais) {
         const conPais = await buscar({ country: pais })
-        ofertas = mergeOffers(ofertas, normalizeTavilyResults(soloLocales(conPais), locale))
+        ofertas = mergeOffers(ofertas, normalizeTavilyResults(soloLocales(conPais), locale, product))
       }
 
       return ofertas
@@ -275,12 +303,20 @@ function normalizeOffers(rawResults) {
  * la misma tienda son una tienda, no diez competidores — contarlos como diez
  * inflaría el conteo de vendedores, que es justo lo que mide competencia.
  */
-function normalizeTavilyResults(results, locale) {
+function normalizeTavilyResults(results, locale, product = '') {
   const porDominio = new Map()
+  const palabras = identifyingWords(product)
 
   for (const item of Array.isArray(results) ? results : []) {
     const merchant = hostnameOf(item?.url)
     if (!merchant || porDominio.has(merchant)) continue
+
+    // La página tiene que ser del producto, no de otro que comparta los
+    // adjetivos de la consulta.
+    if (!mentionsProduct(item, palabras)) continue
+
+    // Un pack por cinco no es el precio del kilo.
+    if (looksLikeBundle(item, product)) continue
 
     const encontrado = findPriceInText(
       `${item?.title || ''} ${item?.content || ''}`,
@@ -312,6 +348,109 @@ function mergeOffers(primeras, segundas) {
   }
 
   return [...porDominio.values()].slice(0, MAX_OFFERS)
+}
+
+/** Palabras que describen presentación o variante, no qué es la cosa. */
+const NOISE_WORDS = new Set([
+  'de', 'del', 'la', 'el', 'los', 'las', 'con', 'sin', 'para', 'por', 'y', 'o',
+  'a', 'en', 'un', 'una', 'al', 'su', 'x', 'talle', 'talles', 'medida',
+  'medidas', 'color', 'colores', 'pack', 'unidad', 'unidades', 'combo', 'set',
+  'kit', 'modelo', 'nuevo', 'nueva', 'original', 'importado', 'oferta',
+  'promo', 'envio', 'gratis', 'cuotas', 'negro', 'blanco', 'rojo', 'azul',
+  'verde', 'gris', 'amarillo', 'rosa', 'marron', 'beige', 'bicolor',
+])
+
+const sinAcentos = texto =>
+  String(texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+
+/**
+ * El sustantivo que dice QUÉ es el producto: la primera palabra con peso del
+ * título.
+ *
+ * Buscando "Campera De Cuero Sintético Biker Bicolor Blanco Y Suela", Tavily
+ * devolvió en producción unos BOTINES "de cuero sintético suela" y una
+ * pantubota "de cuero sintético gamuzado suela": los atributos coincidían con
+ * la consulta, y entraron a la muestra con $18.473 y $89.999 contra una
+ * campera de $157.499. Dos de tres precios eran de otra cosa.
+ *
+ * Los atributos no sirven para filtrar —son justo lo que comparten categorías
+ * distintas—. El sustantivo sí.
+ */
+/**
+ * Materiales y acabados. Son justo lo que comparten categorías distintas
+ * —botines y camperas de "cuero sintético"— así que nunca alcanzan solos para
+ * decir que una página es del producto buscado.
+ */
+const ATTRIBUTE_WORDS = new Set([
+  'cuero', 'sintetico', 'sintetica', 'eco', 'ecocuero', 'gamuzado', 'algodon',
+  'lana', 'acero', 'inoxidable', 'inox', 'plastico', 'madera', 'vidrio',
+  'metal', 'aluminio', 'goma', 'tela', 'lino', 'seda', 'nylon', 'poliester',
+  'suela', 'liviano', 'pesado', 'grande', 'chico', 'mediano', 'premium',
+  'clasico', 'clasica', 'deportivo', 'deportiva', 'urbano', 'urbana',
+])
+
+function significantTokens(product) {
+  return sinAcentos(product)
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(w => !NOISE_WORDS.has(w))
+    .filter(w => !/\d/.test(w))
+    .filter(w => w.length > 2)
+}
+
+/**
+ * Las palabras con las que se decide si una página es del producto: el
+ * sustantivo, y la que le sigue cuando no es un material.
+ *
+ * El sustantivo solo alcanzaba para sacar los botines, pero dejaba afuera
+ * media Coca-Cola: buscando "Gaseosa Coca-Cola Original Taste", las páginas
+ * tituladas "Coca Cola 2.25L" no dicen "gaseosa" y caían. La segunda palabra
+ * suele ser la marca —"coca"— y ahí sí identifica. Cuando es un material
+ * —"cuero"— no se acepta sola, que es exactamente lo que dejaba pasar botines
+ * y pantubotas de cuero sintético.
+ */
+function identifyingWords(product) {
+  const tokens = significantTokens(product)
+  if (tokens.length === 0) return []
+
+  const palabras = [tokens[0]]
+
+  if (tokens[1] && !ATTRIBUTE_WORDS.has(tokens[1])) palabras.push(tokens[1])
+
+  return palabras
+}
+
+/**
+ * Packs y bultos cuando se preguntó por una unidad.
+ *
+ * Buscando "Yerba Mate Playadito 1kg" entraron páginas de pack por cinco a
+ * $27.200 y $38.000 junto a los kilos sueltos de $4.100: la mediana aguanta,
+ * pero el "más caro" del mercado pasa a ser un precio de otra cosa. Si la
+ * consulta pide un pack, no se filtra nada.
+ */
+const BUNDLE_HINTS =
+  /\b(pack|packs|bulto|combo|caja\s?x|x\s?\d{1,2}\s?(u|un|unid|unidades)|\d{1,2}\s?unidades)\b/i
+
+function looksLikeBundle(item, product) {
+  if (BUNDLE_HINTS.test(String(product || ''))) return false
+
+  return BUNDLE_HINTS.test(`${item?.title || ''} ${item?.url || ''}`)
+}
+
+/** ¿Esta página habla del producto, o de otro que comparte los adjetivos? */
+function mentionsProduct(item, palabras) {
+  if (!palabras.length) return true
+
+  const texto = sinAcentos(`${item?.title || ''} ${item?.url || ''}`)
+
+  // Tolera el plural: "camperas" cuando se buscó "campera".
+  return palabras.some(
+    p => texto.includes(p) || texto.includes(p.replace(/s$/, '')),
+  )
 }
 
 function hostnameOf(url) {
@@ -491,13 +630,14 @@ function numberOrNull(value) {
  * de rentabilidad, no — le diría al comerciante que su competencia vende
  * cascos a cinco mil pesos.
  *
- * Solo se aplica con cinco o más precios: con menos, el rango intercuartil no
- * describe nada y el descarte sería arbitrario. Y las ofertas se siguen
+ * Solo se aplica a partir de SHOPPING_MIN_SAMPLE_OUTLIERS precios (cinco por
+ * defecto): con menos, el rango intercuartil no describe nada y el descarte
+ * sería arbitrario. Y las ofertas se siguen
  * mostrando completas con su link: lo que se recorta son las estadísticas, no
  * lo que el comerciante puede mirar.
  */
 function withoutOutliers(sorted) {
-  if (sorted.length < 5) return sorted
+  if (sorted.length < MIN_SAMPLE_FOR_OUTLIERS) return sorted
 
   const p25 = percentile(sorted, 0.25)
   const p75 = percentile(sorted, 0.75)
@@ -534,7 +674,12 @@ function computePriceStats(offers) {
  * parte frágil de este archivo y necesita cobertura directa, sin salir a la
  * red. No lo consume nadie más.
  */
-export const __test__ = { normalizeTavilyResults, findPriceInText, computePriceStats }
+export const __test__ = {
+  normalizeTavilyResults,
+  findPriceInText,
+  computePriceStats,
+  identifyingWords,
+}
 
 function percentile(sorted, p) {
   if (sorted.length === 0) return null

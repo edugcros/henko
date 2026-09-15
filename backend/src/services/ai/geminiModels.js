@@ -72,7 +72,8 @@ import logger from '../../../config/logger.js'
  * uno probado además con prompt de sistema y con responseSchema:
  *   gemini-3.5-flash-lite  200 · 500/día · USD 0.30/2.50 por 1M
  *   gemini-3.1-flash-lite  200 · 500/día · USD 0.25/1.50 — degradación barata
- *   gemma-4-26b-a4b-it     200 · 14.400/día · último recurso
+ *   gemini-3.8-flash       200 · 20/día  · USD 0.75/3.75 — degradación cara
+ *  gemini-3.7-flash       200 · 20/día  · USD 0.75/3.75 — degradación cara
  *
  * Gemma va último y no primero, aunque tenga la cuota más grande: es un modelo
  * abierto más chico, su techo real son ~16.000 tokens por minuto (con prompts
@@ -92,7 +93,9 @@ import logger from '../../../config/logger.js'
 const FALLBACK_MODELS = [
   'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
-  'gemma-4-26b-a4b-it',
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+
 ]
 
 /**
@@ -103,7 +106,7 @@ const FALLBACK_MODELS = [
  * devuelve un error claro: la llamada se queda esperando hasta el timeout, y
  * el análisis de mercado paga esa espera en cada corrida.
  */
-const NO_TOOL_SUPPORT = [/^gemma/i]
+const NO_TOOL_SUPPORT = [/^gemini/i]
 
 /** ¿Este modelo puede buscar en Google? */
 export const supportsSearchGrounding = model => {
