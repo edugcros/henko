@@ -61,21 +61,31 @@ const RESULTADO = {
     research: { available: false },
     internal: { available: true },
   },
+  // Copiado de backend/src/services/marketIntelligence/schemas/
+  // marketAnalysisContract.js — SOURCE_LABELS, SOURCE_ROLES y describeSources.
+  // Esa es la fuente de verdad: la pantalla no escribe estos textos, los
+  // renderiza tal como llegan.
+  //
+  // Este bloque ya quedó viejo una vez sin que nadie se enterara: seguía
+  // diciendo "Búsqueda con IA" y "Google Shopping" cuando el backend ya decía
+  // otra cosa, y el test pasaba igual. De ahí que las aserciones de abajo usen
+  // los valores de acá en vez de repetir el texto: si el fixture se
+  // desactualiza, se desactualiza en un solo lugar.
   sources: [
     {
       key: 'shopping',
       label: 'Buscador de precios',
-      role: 'Precios y vendedores publicados hoy en Google Shopping.',
+      role: 'Precios publicados hoy en tiendas online, cada uno con el link del que salió.',
       available: true,
-      detail: '8 ofertas de 7 vendedores distintos.',
+      detail: 'Precios encontrados en 3 tiendas distintas.',
     },
     {
       key: 'research',
-      label: 'Búsqueda con IA',
-      role: 'Interés de búsqueda, tendencia, marcas y quejas de compradores.',
+      label: 'Búsqueda en la web',
+      role: 'Lo que dicen las páginas sobre el producto: interés, marcas, quejas repetidas.',
       available: false,
       detail:
-        'La clave de IA llegó al límite de consultas de Google. Se renueva sola, o se amplía habilitando facturación en la clave.',
+        'No hay páginas que hablen de este producto. Con un nombre más general —la categoría en vez del modelo exacto— suele aparecer algo.',
     },
     {
       key: 'internal',
@@ -138,13 +148,18 @@ describe('Análisis de mercado · no se afirma lo que no se midió', () => {
   })
 
   test('cada fuente dice qué aportó, y la que falló por qué', async () => {
+    // La pantalla no redacta estos textos: los manda el backend y acá se
+    // comprueba que llegue cada uno a la vista, sea cual sea su redacción.
     await analizar()
 
     expect(
       await screen.findByText(/De dónde salieron los datos/i),
     ).toBeDefined()
-    expect(screen.getByText(/8 ofertas de 7 vendedores/i)).toBeDefined()
-    expect(screen.getByText(/límite de consultas de Google/i)).toBeDefined()
+
+    for (const fuente of RESULTADO.sources) {
+      expect(screen.getByText(fuente.label)).toBeDefined()
+      expect(screen.getByText(fuente.detail)).toBeDefined()
+    }
   })
 
   test('no aparece el error crudo del proveedor', async () => {
