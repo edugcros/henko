@@ -103,8 +103,15 @@ import process from 'node:process'
  *       de las fotos. Y el mensaje deja de recortarse a 5.000 caracteres: se
  *       perdía el 38% del digest, con las últimas cuatro páginas, mientras el
  *       panel decía "12 páginas leídas".
+ *  16 — la investigación deja de pedir el país en la consulta y ordena por
+ *       quién opina. Medido sobre 30 resultados: con la palabra "argentina",
+ *       6 reseñas y 22 tiendas; sin ella, 14 y 1. El país es correcto para el
+ *       buscador de precios —necesita tiendas locales— y esta fuente había
+ *       copiado el patrón al revés. Además: tope de páginas por dominio (una
+ *       corrida leyó once de doce en el mismo shop alemán) y la regla de "qué
+ *       es una queja recurrente" pasa del prompt al código.
  */
-export const SCORING_VERSION = 15
+export const SCORING_VERSION = 16
 
 const num = (name, fallback) => {
   const value = Number(process.env[name])

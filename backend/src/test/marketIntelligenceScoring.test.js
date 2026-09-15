@@ -1191,3 +1191,99 @@ describe('investigación web · se lee el cuerpo, no el resumen', () => {
     expect(mockCallAgentLLM.mock.calls[0][0].maxCharsPerMessage).toBeGreaterThan(12000)
   })
 })
+
+// ─── Qué páginas se leen, y qué cuenta como patrón ──────────────────────────
+//
+// Tres corridas seguidas del MISMO producto y la MISMA consulta devolvieron
+// cosas distintas: una vez reseñas y foros, otra doce fichas de es.alpinestars
+// .com, otra once páginas de fc-moto.de. El ranking del buscador varía, y
+// tomar las primeras doce que vengan ataba el análisis a esa lotería: en las
+// dos corridas de tiendas, las quejas volvieron vacías.
+
+describe('investigación web · se leen las que opinan', () => {
+  let opinionScore
+  let conTopePorDominio
+  let recurrentes
+  let sueltas
+
+  beforeAll(async () => {
+    ;({
+      __test__: { opinionScore, conTopePorDominio, recurrentes, sueltas },
+    } = await import('../services/marketIntelligence/sources/webResearchSource.js'))
+  })
+
+  test('una reseña puntúa más que una ficha de tienda', () => {
+    const resena = {
+      title: 'Review: Alpinestars Tech 7 Enduro Boot',
+      url: 'https://theloamwolf.com/reviews/gear/review-alpinestars-tech-7-enduro-boot',
+    }
+    const tienda = {
+      title: 'Alpinestars Tech-7 Enduro 2026 Botas de motocross',
+      url: 'https://www.fc-moto.de/es/Alpinestars-Tech-7-Enduro-2026-Botas-de-motocross',
+    }
+
+    expect(opinionScore(resena, 'Alpinestars')).toBeGreaterThan(
+      opinionScore(tienda, 'Alpinestars'),
+    )
+  })
+
+  test('el foro y YouTube son opinión aunque no digan "review"', () => {
+    const foro = { title: 'Botas alpinestars tech7 ¿Que tal son?', url: 'https://embarrados.com/enduro/viewtopic.php?t=42337' }
+    const yt = { title: 'Alpinestars Tech 7 Boots', url: 'https://www.youtube.com/watch?v=erJ3y9hFvdo' }
+
+    expect(opinionScore(foro, 'Alpinestars')).toBeGreaterThan(0)
+    expect(opinionScore(yt, 'Alpinestars')).toBeGreaterThan(0)
+  })
+
+  test('la tienda del propio fabricante va al fondo', () => {
+    // Una marca no publica las quejas sobre su producto. En una corrida real,
+    // cuatro de las doce páginas eran es.alpinestars.com.
+    const propia = { title: 'Tech 7 - Botas de MX Azul | Alpinestars', url: 'https://es.alpinestars.com//products/tech-7-boots-blue' }
+    const ajena = { title: 'Botas Alpinestars Tech 7', url: 'https://mxzambrana.com/botas-moto/botas-alpinestars-tech-7' }
+
+    expect(opinionScore(propia, 'Alpinestars')).toBeLessThan(opinionScore(ajena, 'Alpinestars'))
+  })
+
+  test('no se leen once páginas del mismo shop', () => {
+    // Textual de una corrida: once de doce páginas eran fc-moto.de, incluidas
+    // fichas de la Tech-5 y la Tech-10, que ni siquiera son el producto.
+    const paginas = [
+      { url: 'https://www.fc-moto.de/es/Alpinestars-Tech-7-Enduro-2026' },
+      { url: 'https://www.fc-moto.de/ca/Alpinestars-Tech-7-Enduro-2026' },
+      { url: 'https://fc-moto.de/es/Alpinestars-Tech-7-Botas' },
+      { url: 'https://www.fc-moto.de/es/Alpinestars-Tech-10-Enduro' },
+      { url: 'https://theloamwolf.com/reviews/gear/review-alpinestars-tech-7' },
+    ]
+
+    const quedan = conTopePorDominio(paginas)
+
+    // www. y sin www. son el mismo sitio.
+    expect(quedan.filter(p => p.url.includes('fc-moto.de'))).toHaveLength(2)
+    expect(quedan).toHaveLength(3)
+  })
+
+  test('dos páginas distintas son un patrón; una sola es una anécdota', () => {
+    const crudas = [
+      { issue: 'desgaste de suelas', mentionedIn: [1, 4, 7] },
+      { issue: 'el talle viene chico', mentionedIn: [2, 5] },
+      { issue: 'a uno se le rompió la hebilla', mentionedIn: [3] },
+    ]
+
+    expect(recurrentes(crudas)).toEqual(['desgaste de suelas', 'el talle viene chico'])
+
+    // Las sueltas no entran al score, pero no se tiran: "una persona dijo que
+    // la hebilla falla" es información para el comerciante.
+    expect(sueltas(crudas)).toEqual(['a uno se le rompió la hebilla'])
+  })
+
+  test('el mismo extracto repetido no hace un patrón', () => {
+    expect(recurrentes([{ issue: 'pesa', mentionedIn: [3, 3, 3] }])).toEqual([])
+    expect(sueltas([{ issue: 'pesa', mentionedIn: [3, 3, 3] }])).toEqual(['pesa'])
+  })
+
+  test('sin quejas, las dos listas vacías', () => {
+    expect(recurrentes([])).toEqual([])
+    expect(recurrentes(undefined)).toEqual([])
+    expect(sueltas(null)).toEqual([])
+  })
+})

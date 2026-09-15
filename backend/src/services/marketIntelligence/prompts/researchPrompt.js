@@ -21,6 +21,12 @@
  * Principio que no cambia: el prompt NO le pide al modelo que calcule ningún
  * puntaje. Solo señales observables. El cálculo vive en
  * scoring/demandScoreEngine.js.
+ *
+ * Por eso las quejas cambiaron de forma. Antes se le pedía "solo las que
+ * aparezcan en al menos dos extractos": eso es un JUICIO sobre qué es un
+ * patrón, y contradecía el principio de arriba. Ahora se le pide el hecho
+ * observable —la queja y en qué extractos está— y la regla del "dos" la aplica
+ * webResearchSource, donde se puede leer, cambiar y testear.
  */
 
 /**
@@ -47,8 +53,12 @@ Reglas estrictas:
 3. trendDirection: solo si algún extracto dice explícitamente que el interés
    sube, se mantiene o baja. Que haya muchas páginas no significa que crezca.
    Si nadie lo dice, usá "INDETERMINADA".
-4. recurringComplaints: solo quejas que aparezcan en AL MENOS DOS extractos
-   distintos. Una queja aislada no es un patrón. Si no hay, array vacío.
+4. complaints: TODA molestia, defecto, limitación o crítica que algún extracto
+   mencione sobre el producto, aunque aparezca una sola vez. Incluí también las
+   críticas suaves ("tarda en ablandarse", "el talle viene chico", "pesa"). En
+   mentionedIn poné los NÚMEROS de los extractos que la mencionan. No juzgues
+   si es un patrón: esa regla la aplica el sistema que recibe esto.
+   Si de verdad ningún extracto menciona nada negativo, array vacío.
 5. competition.level: derivalo de cuántos vendedores y marcas distintas
    aparecen en los extractos. knownBrands: solo marcas nombradas.
 6. priceRange: solo si los extractos dan precios concretos CON moneda, y del

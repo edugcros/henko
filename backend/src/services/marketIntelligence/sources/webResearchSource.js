@@ -34,12 +34,7 @@
 import { callAgentLLM } from '../../aiAgent/aiAgentLLMService.js'
 import { readUsage } from '../../ai/aiUsageMetadata.js'
 import { buildExtractionPrompt } from '../prompts/researchPrompt.js'
-import {
-  hasTavilyKey,
-  tavilyExtract,
-  tavilySearch,
-  TAVILY_COUNTRY,
-} from './tavilyClient.js'
+import { hasTavilyKey, tavilyExtract, tavilySearch } from './tavilyClient.js'
 
 const num = (name, fallback) => {
   const value = Number(process.env[name])
@@ -78,13 +73,18 @@ const MAX_CHARS_PER_PAGE = num('MARKET_RESEARCH_CHARS_PER_PAGE', 3000)
 const EXTRACT_PAGES = num('MARKET_RESEARCH_EXTRACT_PAGES', 5)
 
 /**
- * Lo que se busca. Apunta a opiniones y problemas, no a fichas de producto:
+ * Lo que se busca. Apunta a opiniones y PROBLEMAS, no a fichas de producto:
  * los precios ya los trae el buscador de precios, y lo que falta acá es lo
  * que la gente dice.
+ *
+ * Nombrar los problemas en la consulta no es sesgar: es pedir el material que
+ * esta fuente necesita. Medido sobre 30 resultados, 'review opiniones
+ * problemas defectos' devolvió 17 reseñas y 2 tiendas, contra 6 y 22 de la
+ * consulta anterior.
  */
 const RESEARCH_SUFFIX =
   String(process.env.MARKET_RESEARCH_QUERY_SUFFIX || '').trim() ||
-  'opiniones reseñas vale la pena'
+  'review opiniones problemas defectos'
 
 const RESPONSE_SCHEMA = {
   type: 'object',
@@ -105,7 +105,17 @@ const RESPONSE_SCHEMA = {
       type: 'string',
       enum: ['CRECIENTE', 'ESTABLE', 'DECRECIENTE', 'INDETERMINADA'],
     },
-    recurringComplaints: { type: 'array', items: { type: 'string' } },
+    complaints: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          issue: { type: 'string' },
+          mentionedIn: { type: 'array', items: { type: 'integer' } },
+        },
+        required: ['issue', 'mentionedIn'],
+      },
+    },
     competition: {
       type: 'object',
       properties: {
@@ -147,14 +157,19 @@ export async function getWebResearchSignals({ product, country, brand, apiKey })
     return { available: false, reason: 'NO_DISPONIBLE: el buscador web no está configurado' }
   }
 
-  // El país va en la CONSULTA, no en el filtro `country` de Tavily.
+  // ACÁ EL PAÍS NO VA. En el buscador de precios sí: necesita tiendas locales
+  // y el dominio .ar se exige siempre. Esta fuente copió ese patrón y era
+  // exactamente al revés.
   //
-  // Medido sobre seis productos: con el filtro puesto, cinco consultas
-  // volvieron con cero resultados. Acá pasó lo mismo la primera vez —dos de
-  // dos productos sin una sola página— y el análisis se quedaba sin el 60% del
-  // modelo por un parámetro.
+  // Medido sobre 30 resultados de la misma consulta, con y sin la palabra
+  // "argentina": con el país, 6 reseñas y 22 tiendas; sin el país, 14 reseñas
+  // y 1 tienda. El nombre del país es una señal comercial y arrastra
+  // e-commerce, que es justo lo que esta fuente NO necesita.
+  //
+  // Y no se pierde nada: lo que un usuario opina de unas botas no cambia por
+  // el país donde se compran. La localización es problema de los precios.
   const pages = await tavilySearch({
-    query: `${product} ${RESEARCH_SUFFIX} ${TAVILY_COUNTRY[country] || ''}`.trim(),
+    query: `${product} ${RESEARCH_SUFFIX}`.trim(),
     language: 'es',
     source: 'webResearchSource',
   })
@@ -186,7 +201,13 @@ export async function getWebResearchSignals({ product, country, brand, apiKey })
     }
   }
 
-  const usadas = await conTextoCompleto(relevantes.slice(0, MAX_PAGES))
+  // Primero las que opinan. Tomar las primeras doce que vengan dejaba el
+  // análisis a merced del ranking del buscador — ver opinionScore().
+  const ordenadas = [...relevantes].sort(
+    (a, b) => opinionScore(b, brand) - opinionScore(a, brand),
+  )
+
+  const usadas = await conTextoCompleto(conTopePorDominio(ordenadas).slice(0, MAX_PAGES))
 
   const extraction = await callAgentLLM({
     systemPrompt: buildExtractionPrompt({ product, country }),
@@ -234,13 +255,129 @@ export async function getWebResearchSignals({ product, country, brand, apiKey })
     }
   }
 
+  const { complaints, ...senales } = parsed
+
   return {
     available: true,
-    ...parsed,
+    ...senales,
+    // La regla vive acá y no en el prompt: una queja que aparece en dos
+    // páginas distintas es un patrón; una sola es la experiencia de alguien.
+    // El modelo reporta el hecho, el código decide qué cuenta.
+    recurringComplaints: recurrentes(complaints),
+    // También las sueltas, que no entran al score pero el comerciante puede
+    // querer verlas: "una persona dijo que el cierre falla" es información.
+    singleComplaints: sueltas(complaints),
     sources,
     pagesFound: usadas.length,
     tokensUsed,
     usage,
+  }
+}
+
+/** Cuántas páginas distintas tienen que mencionarla para ser un patrón. */
+const MIN_PAGES_FOR_PATTERN = num('MARKET_RESEARCH_MIN_COMPLAINT_PAGES', 2)
+
+const listaDeQuejas = (complaints, filtro) =>
+  (Array.isArray(complaints) ? complaints : [])
+    .filter(c => c?.issue && filtro(new Set(c.mentionedIn || []).size))
+    .map(c => String(c.issue).slice(0, 200))
+
+const recurrentes = c => listaDeQuejas(c, n => n >= MIN_PAGES_FOR_PATTERN)
+const sueltas = c => listaDeQuejas(c, n => n > 0 && n < MIN_PAGES_FOR_PATTERN)
+
+/**
+ * Como máximo unas pocas páginas por sitio.
+ *
+ * La fuente de precios ya guardaba UNA oferta por dominio —diez páginas de un
+ * vendedor son un vendedor— pero acá no había tope, y se notó: una corrida
+ * real leyó ONCE de sus doce páginas en fc-moto.de, un shop alemán, incluidas
+ * fichas de la Tech-5 y la Tech-10, que no son el producto. Doce lecturas para
+ * enterarse de lo que opina un solo sitio.
+ *
+ * El tope se aplica DESPUÉS de ordenar por opinión, así que un foro con varios
+ * hilos buenos conserva sus dos mejores y el resto de los lugares queda para
+ * otras voces. Dos, y no uno, porque en un foro o en YouTube dos hilos
+ * distintos sí son dos opiniones distintas.
+ */
+const MAX_PER_DOMAIN = num('MARKET_RESEARCH_MAX_PER_DOMAIN', 2)
+
+function conTopePorDominio(pages) {
+  const cuenta = new Map()
+
+  return pages.filter(p => {
+    let host
+    try {
+      host = new URL(String(p?.url || '')).hostname.toLowerCase().replace(/^www\./, '')
+    } catch {
+      return false
+    }
+
+    const vistas = cuenta.get(host) || 0
+    if (vistas >= MAX_PER_DOMAIN) return false
+
+    cuenta.set(host, vistas + 1)
+    return true
+  })
+}
+
+/**
+ * Cuánto promete opinar esta página.
+ *
+ * Esta fuente busca lo que la gente DICE del producto. La misma consulta,
+ * repetida con minutos de diferencia, devolvió una vez doce fichas de tienda
+ * —cuatro de ellas del sitio del propio fabricante, donde por definición no
+ * hay una queja— y otra vez diez reseñas entre las primeras doce. El ranking
+ * del buscador varía, y tomar las primeras que vengan ataba el análisis a esa
+ * lotería: con las doce fichas de tienda, `recurringComplaints` volvió vacío.
+ *
+ * No se descarta nada, se ordena: si no hay una sola reseña, se leen las
+ * fichas igual y el resultado lo dirá. Lo que cambia es a quién se le pide el
+ * cuerpo completo —solo las primeras cinco, que es lo que cuesta un crédito—
+ * y qué doce llegan al modelo.
+ */
+const OPINION_MARKERS =
+  /(review|rese[nñ]a|revis[ai]|opinion|opini[oó]n|prueba|probamos|probada|test|comparativ|an[aá]lisis|foro|forum|viewtopic|hilo|coment|vale la pena|versus)/i
+
+/** Sitios cuyo contenido ES la opinión de la gente. */
+const COMMUNITY_HOSTS =
+  /(reddit|youtube|youtu\.be|tiktok|instagram|facebook|quora|forocoches|taringa|vitalmx)/i
+
+/** Marcas de página de venta: tiene precio y botón de comprar, no opiniones. */
+const SHOP_MARKERS = /(\/products?\/|\/productos?\/|\/collections?\/|\/comprar|\/tienda\/|\/shop\/|\/cart)/i
+
+function opinionScore(page, brand = null) {
+  const url = String(page?.url || '')
+  const texto = `${page?.title || ''} ${url}`.toLowerCase()
+
+  let score = 0
+
+  if (OPINION_MARKERS.test(texto)) score += 3
+  if (COMMUNITY_HOSTS.test(url)) score += 3
+  if (SHOP_MARKERS.test(url)) score -= 2
+
+  // El sitio del propio fabricante. En la corrida que motivó esto, cuatro de
+  // las doce páginas eran es.alpinestars.com: una marca no publica las quejas
+  // sobre su producto, así que pedirle opiniones a su tienda es gastar la
+  // lectura. Pesa más que cualquier otra marca porque es una certeza, no un
+  // indicio.
+  if (brand && esSitioDeLaMarca(url, brand)) score -= 5
+
+  return score
+}
+
+function esSitioDeLaMarca(url, brand) {
+  const token = String(brand)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+
+  if (token.length < 3) return false
+
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/[^a-z0-9]/g, '').includes(token)
+  } catch {
+    return false
   }
 }
 
@@ -392,3 +529,9 @@ function safeParseJson(text) {
 
   return null
 }
+
+/**
+ * Expuesto solo para los tests: el orden en que se leen las páginas decide qué
+ * ve el modelo, y esa regla necesita cobertura sin salir a la red.
+ */
+export const __test__ = { opinionScore, conTopePorDominio, recurrentes, sueltas }
