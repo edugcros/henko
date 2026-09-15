@@ -57,7 +57,6 @@ const marketAnalysisSchema = new Schema(
     rawSignals: {
       meli: Schema.Types.Mixed,
       shopping: Schema.Types.Mixed,
-      trends: Schema.Types.Mixed,
       gemini: Schema.Types.Mixed,
       internal: Schema.Types.Mixed,
     },

@@ -16,38 +16,16 @@ const TREND_LABELS = {
   INDETERMINADA: '❓ INDETERMINADA',
 }
 
-/** Suba desde la que el crecimiento deja de ser "crecimiento" y es un salto. */
-const EXPLOSIVE_CHANGE_PERCENT = 100
-
 /**
  * @param {Object} rawSignals
  * @returns {string} Una de las claves de TREND_LABELS
  *
- * Con la serie de Google Trends ya se pueden emitir EXPLOSIVA y VOLATIL, que
- * antes estaban documentadas como imposibles: la búsqueda con IA daba una foto
- * del momento y estas etiquetas necesitan histórico.
- *
- * ESTACIONAL sigue sin emitirse. Detectar estacionalidad pide comparar el mismo
- * mes contra años anteriores, y la serie que traemos es de 12 meses: alcanza
- * para ver un pico, no para saber si ese pico se repite todos los años.
+ * EXPLOSIVA, ESTACIONAL y VOLATIL necesitan una serie histórica, y hoy ninguna
+ * fuente la provee: la búsqueda con IA da un snapshot puntual. Google Trends sí
+ * la daba y llegó a habilitar EXPLOSIVA y VOLATIL, pero se fue con scrape.do.
+ * Documentado para no fingir estas clasificaciones sin base.
  */
 function classifyTrend(rawSignals) {
-  const trends = rawSignals.trends
-
-  if (trends?.available && trends.hasVolume !== false) {
-    if (trends.direction === 'VOLATIL') return 'VOLATIL'
-
-    const change = Number(trends.changePercent)
-
-    if (Number.isFinite(change) && change >= EXPLOSIVE_CHANGE_PERCENT) {
-      return 'EXPLOSIVA'
-    }
-
-    if (trends.direction && trends.direction !== 'INDETERMINADA') {
-      return trends.direction
-    }
-  }
-
   const direction = rawSignals.gemini?.trendDirection
 
   if (!direction || direction === 'INDETERMINADA') return 'INDETERMINADA'

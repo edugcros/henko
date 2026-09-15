@@ -18,8 +18,6 @@ import {
   SCORING_VERSION,
 } from '../services/marketIntelligence/scoring/demandScoreEngine.js'
 import { calculateConfidence } from '../services/marketIntelligence/scoring/confidenceCalculator.js'
-import { classifyTrend } from '../services/marketIntelligence/scoring/trendClassifier.js'
-import { buildTrendQueries } from '../services/marketIntelligence/sources/trendsSource.js'
 import { buildMarketAnalysisResponse } from '../services/marketIntelligence/schemas/marketAnalysisContract.js'
 
 const CUOTA_AGOTADA =
@@ -30,7 +28,7 @@ const señalesReales = (extra = {}) => ({
   meli: { available: false, retired: true },
   shopping: {
     available: true,
-    provider: 'scrapedo',
+    provider: 'tavily',
     offerCount: 8,
     merchantCount: 7,
     priceStats: { min: 4450, p25: 4786, median: 8000, p75: 20060, max: 30600, currency: 'ARS', sampleSize: 8 },
@@ -203,12 +201,7 @@ describe('respuesta al panel · los errores se cuentan en castellano', () => {
   test('cada fuente dice qué aporta y qué contestó', () => {
     const { sources } = respuesta()
 
-    expect(sources.map(s => s.key)).toEqual([
-      'shopping',
-      'trends',
-      'gemini',
-      'internal',
-    ])
+    expect(sources.map(s => s.key)).toEqual(['shopping', 'gemini', 'internal'])
     expect(sources.find(s => s.key === 'shopping').detail).toMatch(/8 ofertas de 7 vendedores/i)
     expect(sources.find(s => s.key === 'internal').detail).toMatch(/catálogo/i)
   })
@@ -407,92 +400,6 @@ const conTendencia = (extra = {}) => ({
   ...extra,
 })
 
-describe('consulta a tendencias · no se busca el título completo', () => {
-  test('del título sale algo que una persona escribiría en Google', () => {
-    // Verificado contra Trends: con el título entero la serie viene vacía
-    // siempre; con tres palabras hay 54 semanas de datos.
-    expect(buildTrendQueries('Gaseosa Coca-Cola Original Taste Botella 2.25L Pack x 6')[0]).toBe(
-      'gaseosa coca cola',
-    )
-    expect(buildTrendQueries('botas cuero talle 43 color negro')[0]).toBe('botas cuero')
-  })
-
-  test('el segundo intento suelta la palabra genérica del principio', () => {
-    // "motocicleta kawasaki ninja" no tiene serie; "kawasaki ninja" sí.
-    const [principal, alternativa] = buildTrendQueries('Motocicleta Kawasaki Ninja ZX-10R')
-
-    expect(principal).toBe('motocicleta kawasaki ninja')
-    expect(alternativa).toBe('kawasaki ninja')
-  })
-
-  test('un texto sin palabras útiles no consulta nada', () => {
-    expect(buildTrendQueries('2.25 43 x6')).toEqual([])
-  })
-})
-
-describe('puntaje · la tendencia se mide con la serie, no con una opinión', () => {
-  test('la serie manda sobre la lectura del modelo', () => {
-    const { components } = calculateDemandScore(
-      señalesReales({
-        trends: conTendencia({ direction: 'DECRECIENTE' }),
-        gemini: { available: true, trendDirection: 'CRECIENTE' },
-      }),
-    )
-
-    expect(components.trend).toBe(20)
-  })
-
-  test('con la IA sin cupo, la demanda deja de estar sin medir', () => {
-    const { components, measuredWeight } = calculateDemandScore(
-      señalesReales({ trends: conTendencia() }),
-    )
-
-    expect(components.demand).not.toBeNull()
-    // Topeado: el índice de Trends es relativo al término, no un volumen.
-    expect(components.demand).toBeLessThanOrEqual(60)
-    expect(measuredWeight).toBeGreaterThanOrEqual(0.9)
-  })
-
-  test('sin serie no se afirma que nadie lo busca', () => {
-    // Google no publica series para términos con poco volumen y no documenta
-    // su umbral: puntuar eso como demanda baja sería inventar un dato negativo.
-    const { components } = calculateDemandScore(
-      señalesReales({
-        trends: { available: true, hasVolume: false, query: 'x', direction: 'INDETERMINADA' },
-      }),
-    )
-
-    expect(components.demand).toBeNull()
-    expect(components.trend).toBeNull()
-  })
-
-  test('la etiqueta VOLÁTIL ya se puede emitir, y EXPLOSIVA también', () => {
-    // Las dos estaban documentadas como imposibles sin serie histórica.
-    expect(classifyTrend(señalesReales({ trends: conTendencia({ direction: 'VOLATIL' }) }))).toBe(
-      'VOLATIL',
-    )
-
-    expect(
-      classifyTrend(señalesReales({ trends: conTendencia({ changePercent: 140 }) })),
-    ).toBe('EXPLOSIVA')
-  })
-
-  test('tendencias cuenta como fuente para la confianza', () => {
-    const conFuente = calculateConfidence(señalesReales({ trends: conTendencia() }), 0.9)
-    const sinFuente = calculateConfidence(señalesReales(), 0.9)
-
-    expect(conFuente).toBeGreaterThan(sinFuente)
-  })
-})
-
-// ─── Tavily como proveedor de precios ───────────────────────────────────────
-//
-// scrape.do devolvía ofertas ya estructuradas (precio, vendedor, link). Tavily
-// devuelve páginas con un fragmento de texto, así que el precio hay que
-// encontrarlo ahí adentro — y ahí es donde este cambio se puede ir de las
-// manos: un número mal leído entra directo a la mediana y a la tarjeta de
-// rentabilidad.
-
 describe('precios desde texto · lo que NO se puede tomar por precio', () => {
   let normalizeTavilyResults
 
@@ -651,40 +558,6 @@ describe('estadísticas de precio · los atípicos no deciden el piso', () => {
   })
 })
 
-describe('tendencias · sin proveedor que las publique se dice, no se inventa', () => {
-  let getTrendsSignals
-
-  beforeAll(async () => {
-    ;({ getTrendsSignals } = await import(
-      '../services/marketIntelligence/sources/trendsSource.js'
-    ))
-  })
-
-  test('con Tavily configurado, la serie queda como no medida', async () => {
-    const previo = process.env.SHOPPING_PROVIDER
-    process.env.SHOPPING_PROVIDER = 'tavily'
-
-    try {
-      const signals = await getTrendsSignals({ product: 'campera de cuero', country: 'AR' })
-
-      expect(signals.available).toBe(false)
-      expect(signals.reason).toMatch(/no publica series/i)
-    } finally {
-      if (previo === undefined) delete process.env.SHOPPING_PROVIDER
-      else process.env.SHOPPING_PROVIDER = previo
-    }
-  })
-})
-
-// ─── Lo que se guarda tiene que ser lo que se calculó ───────────────────────
-//
-// Encontrado leyendo la base de producción: los análisis guardados tenían
-// rawSignals.trends en null aunque el código lo calculaba. El schema declara
-// las fuentes una por una y Mongoose descarta en silencio lo que no figure,
-// así que la serie de interés se mostraba al analizar y desaparecía al
-// guardarse. Con el caché de 24 h, el mismo producto mostraba la tendencia
-// medida y, cinco minutos después, "no medida".
-
 describe('persistencia · ninguna fuente se pierde al guardar', () => {
   let MarketAnalysis
 
@@ -695,25 +568,9 @@ describe('persistencia · ninguna fuente se pierde al guardar', () => {
   })
 
   test('el schema declara las cinco fuentes del análisis', () => {
-    for (const fuente of ['meli', 'shopping', 'trends', 'gemini', 'internal']) {
+    for (const fuente of ['meli', 'shopping', 'gemini', 'internal']) {
       expect(MarketAnalysis.schema.path(`rawSignals.${fuente}`)).toBeDefined()
     }
   })
 
-  test('un documento conserva la serie de interés', () => {
-    const doc = new MarketAnalysis({
-      tenantId: '6aa52ab0b38ba2c1646d6167',
-      product: 'campera de cuero',
-      normalizedQuery: 'campera de cuero',
-      country: 'AR',
-      scoringVersion: 7,
-      expiresAt: new Date(Date.now() + 86400000),
-      rawSignals: {
-        shopping: { available: true, provider: 'tavily', offerCount: 3 },
-        trends: { available: true, hasVolume: true, weeks: 52, direction: 'CRECIENTE' },
-      },
-    })
-
-    expect(doc.rawSignals.trends).toMatchObject({ weeks: 52, direction: 'CRECIENTE' })
-  })
 })

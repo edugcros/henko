@@ -1,14 +1,15 @@
 /**
  * shoppingSource.js
  *
- * Precios y ofertas reales del mercado, vía un proveedor de scraping.
+ * Precios reales del mercado, vía Tavily.
  *
  * POR QUÉ UN ADAPTER Y NO UNA INTEGRACIÓN DIRECTA:
- * Este mercado de proveedores es inestable. En un benchmark de agosto 2026,
- * solo 3 de 16 proveedores tenían un camino funcional de búsqueda +
- * producto, y Google cerró la página clásica de ofertas por product_id que
- * todos ofrecían. Acoplar el análisis a un proveedor puntual significa
- * reescribir esta capa cada vez que uno se cae o cambia su API.
+ * Este mercado de proveedores es inestable, y ya se cobró dos: MercadoLibre
+ * cerró su API de búsqueda a integradores, y scrape.do agotó su cuota mensual.
+ * En un benchmark de agosto 2026 solo 3 de 16 proveedores tenían un camino
+ * funcional. Acoplar el análisis a uno puntual significa reescribir esta capa
+ * cada vez que se cae; con el adapter, el cambio a Tavily no tocó ni el
+ * scoring ni el panel.
  *
  * Cambiar de proveedor es implementar un adapter nuevo y cambiar
  * SHOPPING_PROVIDER — nada más de este paquete se entera. Eso ya se ejerció:
@@ -22,10 +23,8 @@
  * que es lo que lo hace defendible.
  *
  * Variables de entorno:
- *   SHOPPING_PROVIDER   'tavily' (default) | 'scrapedo' | 'serpapi' | 'none'
+ *   SHOPPING_PROVIDER   'tavily' (default) | 'none' para apagarlo
  *   TAVILY_API_KEY
- *   SCRAPEDO_API_KEY
- *   SERPAPI_API_KEY
  */
 
 import axios from 'axios'
@@ -42,14 +41,14 @@ const MIN_SAMPLE_FOR_RETRY = 3
  * moneda antes de que entren a la mediana. Un US$ 120 mezclado entre pesos
  * rompe los percentiles enteros.
  */
-const GOOGLE_DOMAIN_BY_COUNTRY = {
-  AR: { domain: 'google.com.ar', gl: 'ar', hl: 'es', currency: 'ARS' },
-  MX: { domain: 'google.com.mx', gl: 'mx', hl: 'es', currency: 'MXN' },
-  CL: { domain: 'google.cl', gl: 'cl', hl: 'es', currency: 'CLP' },
-  CO: { domain: 'google.com.co', gl: 'co', hl: 'es', currency: 'COP' },
-  UY: { domain: 'google.com.uy', gl: 'uy', hl: 'es', currency: 'UYU' },
-  PE: { domain: 'google.com.pe', gl: 'pe', hl: 'es', currency: 'PEN' },
-  BR: { domain: 'google.com.br', gl: 'br', hl: 'pt', currency: 'BRL' },
+const MARKET_BY_COUNTRY = {
+  AR: { hl: 'es', currency: 'ARS' },
+  MX: { hl: 'es', currency: 'MXN' },
+  CL: { hl: 'es', currency: 'CLP' },
+  CO: { hl: 'es', currency: 'COP' },
+  UY: { hl: 'es', currency: 'UYU' },
+  PE: { hl: 'es', currency: 'PEN' },
+  BR: { hl: 'pt', currency: 'BRL' },
 }
 
 /**
@@ -73,9 +72,9 @@ export async function getShoppingSignals({ product, country }) {
     return { available: false, reason: 'NO_DISPONIBLE: SHOPPING_PROVIDER deshabilitado' }
   }
 
-  const locale = GOOGLE_DOMAIN_BY_COUNTRY[country]
+  const locale = MARKET_BY_COUNTRY[country]
   if (!locale) {
-    return { available: false, reason: `NO_DISPONIBLE: país ${country} sin dominio de Google mapeado` }
+    return { available: false, reason: `NO_DISPONIBLE: país ${country} sin mercado configurado` }
   }
 
   const adapter = ADAPTERS[provider]
@@ -232,70 +231,6 @@ const ADAPTERS = {
       return ofertas
     } catch (error) {
       logger.warn('[shoppingSource] tavily falló', {
-        status: error?.response?.status,
-        message: error.message,
-      })
-      return null
-    }
-  },
-
-  /**
-   * Scrape.do — endpoint de Google Shopping.
-   * Docs: https://scrape.do/documentation/
-   */
-  async scrapedo({ product, locale }) {
-    const apiKey = String(process.env.SCRAPEDO_API_KEY || '').trim()
-    if (!apiKey) {
-      logger.warn('[shoppingSource] SCRAPEDO_API_KEY no configurada')
-      return null
-    }
-
-    try {
-      const { data } = await axios.get('https://api.scrape.do/plugin/google/shopping', {
-        params: {
-          token: apiKey,
-          q: product,
-          google_domain: locale.domain,
-          gl: locale.gl,
-          hl: locale.hl,
-        },
-        timeout: REQUEST_TIMEOUT_MS,
-      })
-
-      return normalizeOffers(data?.shopping_results || data?.results || [])
-    } catch (error) {
-      logger.warn('[shoppingSource] scrape.do falló', {
-        status: error?.response?.status,
-        message: error.message,
-      })
-      return null
-    }
-  },
-
-  /**
-   * SerpApi — alternativa cara (~21x scrape.do) pero con el output más
-   * completo. Se mantiene como escape si scrape.do falla o cambia.
-   */
-  async serpapi({ product, locale }) {
-    const apiKey = String(process.env.SERPAPI_API_KEY || '').trim()
-    if (!apiKey) return null
-
-    try {
-      const { data } = await axios.get('https://serpapi.com/search.json', {
-        params: {
-          engine: 'google_shopping',
-          q: product,
-          google_domain: locale.domain,
-          gl: locale.gl,
-          hl: locale.hl,
-          api_key: apiKey,
-        },
-        timeout: REQUEST_TIMEOUT_MS,
-      })
-
-      return normalizeOffers(data?.shopping_results || [])
-    } catch (error) {
-      logger.warn('[shoppingSource] serpapi falló', {
         status: error?.response?.status,
         message: error.message,
       })

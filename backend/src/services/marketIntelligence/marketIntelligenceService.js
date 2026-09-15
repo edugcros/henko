@@ -32,7 +32,6 @@ import {
 import { getMeliSignals } from './sources/meliSource.js'
 import { getShoppingSignals } from './sources/shoppingSource.js'
 import { getGroundingSignals } from './sources/geminiGroundingSource.js'
-import { getTrendsSignals } from './sources/trendsSource.js'
 import { getInternalBiSignals } from './sources/internalBiSource.js'
 import { calculateDemandScore, SCORING_VERSION } from './scoring/demandScoreEngine.js'
 import { classifyTrend } from './scoring/trendClassifier.js'
@@ -136,11 +135,10 @@ export async function analyzeMarketDemand({
 
   // Las tres fuentes son independientes: el fallo de una degrada la confianza
   // pero no tumba el análisis. allSettled es intencional.
-  const [meliResult, shoppingResult, trendsResult, groundingResult, internalResult] =
+  const [meliResult, shoppingResult, groundingResult, internalResult] =
     await Promise.allSettled([
       getMeliSignals({ product, country }),
       getShoppingSignals({ product, country }),
-      getTrendsSignals({ product, country }),
       getGroundingSignals({ product, country, apiKey: profile.apiKey }),
       getInternalBiSignals({ tenantId, product }),
     ])
@@ -148,7 +146,6 @@ export async function analyzeMarketDemand({
   const rawSignals = {
     meli: unwrapSettled(meliResult, 'meliSource'),
     shopping: unwrapSettled(shoppingResult, 'shoppingSource'),
-    trends: unwrapSettled(trendsResult, 'trendsSource'),
     gemini: unwrapSettled(groundingResult, 'geminiGroundingSource'),
     internal: unwrapSettled(internalResult, 'internalBiSource'),
   }
@@ -191,9 +188,7 @@ export async function analyzeMarketDemand({
   // pero BI interna suficiente sí hay un resultado útil (limitado al propio
   // catálogo), así que ahí el consumo se cobra: el trabajo se hizo.
   const noExternalSources =
-    !rawSignals.shopping?.available &&
-    !rawSignals.trends?.available &&
-    !rawSignals.gemini?.available
+    !rawSignals.shopping?.available && !rawSignals.gemini?.available
   const producedNothing = breakdown.total === null
 
   if (producedNothing) {
