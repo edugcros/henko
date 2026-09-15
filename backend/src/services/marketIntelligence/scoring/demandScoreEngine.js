@@ -67,8 +67,13 @@
  *       aunque la fórmula no cambie: los análisis guardados con la 7 podían
  *       tener la serie, y mezclarlos con los nuevos compararía peras con
  *       manzanas.
+ *  10 — los precios se comparan a igual cantidad de unidades. El filtro de
+ *       packs se apagaba entero cuando la consulta pedía un pack, y un pack
+ *       por tres terminó midiéndose contra un kilo suelto de otra marca, un
+ *       pack de cinco y uno de diez. La fórmula no cambia; cambian los precios
+ *       que entran, y con ellos competencia y actividad comercial.
  */
-export const SCORING_VERSION = 9
+export const SCORING_VERSION = 10
 
 const WEIGHTS = {
   demand: 0.30,

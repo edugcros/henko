@@ -650,3 +650,103 @@ describe('investigación web · el modelo ordena, no recuerda', () => {
     expect(mockCallAgentLLM).not.toHaveBeenCalled()
   })
 })
+
+// ─── Un pack de 3 no se compara contra un kilo suelto ───────────────────────
+//
+// Caso real, 15/09 15:52 UTC: analizando "Yerba Mate Playadito Elaborada con
+// Palo 1kg Pack x 3 Unidades" el panel mostró mediana $25.440 y mínimo $4.000.
+// Los tres precios eran de tres productos distintos —un kilo suelto de otra
+// marca, un pack de diez y uno de cinco— y ninguno era el pack por tres.
+//
+// La causa: el filtro de packs se apagaba entero cuando la consulta pedía un
+// pack. Pasaba de "filtrar bultos" a "no filtrar nada", justo cuando comparar
+// cantidades importa más.
+
+describe('packs · se compara la misma cantidad de unidades', () => {
+  let packSize
+  let looksLikeBundle
+  let normalizeTavilyResults
+
+  const PRODUCTO = 'Yerba Mate Playadito Elaborada con Palo 1kg Pack x 3 Unidades'
+
+  // Textualmente los tres resultados que devolvió Tavily en esa corrida.
+  const RESULTADOS_REALES = [
+    {
+      title: 'YERBA MATE ELABORADA CON PALO POR 1 KG.',
+      url: 'https://www.tiendapipore.com.ar/productos/yerba-mate-elaborada-con-palo-por-1-kg',
+      content: 'Yerba mate elaborada con palo 1 kg $4.000',
+    },
+    {
+      title: 'Yerba Mate Más Sabor Con Palo 1kg - Pack x 10u',
+      url: 'https://mas-sabor.com.ar/productos/yerba-mate-con-palo-1kg-pack-x-10u',
+      content: 'Pack x 10 unidades $28.000',
+    },
+    {
+      title: 'Yerba Playadito 1kg - Pack x 5un - Comprar en OPEN25HS!',
+      url: 'https://tienda.open25.com.ar/productos/yerba-playadito-1kg-pack-x5',
+      content: 'Pack x 5 unidades $25.440',
+    },
+  ]
+
+  beforeAll(async () => {
+    ;({
+      __test__: { packSize, looksLikeBundle, normalizeTavilyResults },
+    } = await import('../services/marketIntelligence/sources/shoppingSource.js'))
+  })
+
+  test('lee cuántas unidades trae cada título', () => {
+    expect(packSize('Yerba Mate Playadito 1kg Pack x 3 Unidades')).toBe(3)
+    expect(packSize('Yerba Mate Más Sabor Con Palo 1kg - Pack x 10u')).toBe(10)
+    expect(packSize('Yerba Playadito 1kg - Pack x 5un')).toBe(5)
+    expect(packSize('Combo 2 unidades')).toBe(2)
+
+    // Sin palabra de pack, es una unidad.
+    expect(packSize('YERBA MATE ELABORADA CON PALO POR 1 KG.')).toBe(1)
+
+    // "1kg" es peso, no cantidad de unidades.
+    expect(packSize('Yerba Mate Playadito 1kg')).toBe(1)
+
+    // Dice pack y no dice cuántas: no es 1, y no es comparable.
+    expect(packSize('Pack ahorro yerba mate')).toBeNull()
+  })
+
+  test('el caso de producción: ninguno de los tres era el pack por tres', () => {
+    for (const resultado of RESULTADOS_REALES) {
+      expect(looksLikeBundle(resultado, PRODUCTO)).toBe(true)
+    }
+
+    const ofertas = normalizeTavilyResults(RESULTADOS_REALES, 'es-AR', PRODUCTO)
+
+    // Cero ofertas es la respuesta verdadera: ese pack no está publicado.
+    // Una mediana de $25.440 construida con otros tres productos, no.
+    expect(ofertas).toHaveLength(0)
+  })
+
+  test('el pack de la misma cantidad sí entra', () => {
+    const mismo = {
+      title: 'Yerba Mate Playadito 1kg Pack x 3 Unidades',
+      url: 'https://tienda.com.ar/playadito-pack-x3',
+      content: 'Pack x 3 unidades $12.600',
+    }
+
+    expect(looksLikeBundle(mismo, PRODUCTO)).toBe(false)
+  })
+
+  test('preguntando por una unidad, los packs se siguen yendo', () => {
+    // Es el comportamiento que ya existía y no debe perderse.
+    const unaUnidad = 'Yerba Mate Playadito 1kg'
+
+    expect(looksLikeBundle({ title: 'Yerba Playadito Pack x 5un' }, unaUnidad)).toBe(true)
+    expect(looksLikeBundle({ title: 'Yerba Playadito 1kg' }, unaUnidad)).toBe(false)
+  })
+
+  test('si la consulta dice pack sin decir cuántas, no se filtra', () => {
+    // No hay con qué comparar. Mejor una muestra ruidosa que el comerciante
+    // puede mirar oferta por oferta, que cero resultados por una ambigüedad
+    // del propio título.
+    const ambiguo = 'Yerba Mate Playadito Pack ahorro'
+
+    expect(looksLikeBundle({ title: 'Yerba Playadito Pack x 5un' }, ambiguo)).toBe(false)
+    expect(looksLikeBundle({ title: 'Yerba Playadito 1kg' }, ambiguo)).toBe(false)
+  })
+})

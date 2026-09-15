@@ -383,20 +383,69 @@ function identifyingWords(product) {
 }
 
 /**
- * Packs y bultos cuando se preguntó por una unidad.
+ * Packs y bultos: lo que importa es CUÁNTAS unidades trae, no si dice "pack".
  *
  * Buscando "Yerba Mate Playadito 1kg" entraron páginas de pack por cinco a
  * $27.200 y $38.000 junto a los kilos sueltos de $4.100: la mediana aguanta,
- * pero el "más caro" del mercado pasa a ser un precio de otra cosa. Si la
- * consulta pide un pack, no se filtra nada.
+ * pero el "más caro" del mercado pasa a ser un precio de otra cosa.
+ *
+ * La primera versión resolvía eso con un interruptor: si la consulta pedía un
+ * pack, no filtraba nada. En producción, analizando "Yerba Mate Playadito
+ * Elaborada con Palo 1kg Pack x 3 Unidades", el interruptor se apagó y la
+ * muestra quedó formada por un kilo suelto a $4.000, un pack de diez a $28.000
+ * y uno de cinco a $25.440. Mediana $25.440, mínimo $4.000: tres precios de
+ * tres productos distintos, ninguno del pack por tres. Y con tres datos Tukey
+ * no corre —pide cinco—, así que el $4.000 sobrevivió hasta la tarjeta de
+ * rentabilidad.
+ *
+ * Comparar un pack de tres contra un kilo suelto no es un outlier: es otra
+ * unidad de venta. Se comparan cantidades.
  */
-const BUNDLE_HINTS =
-  /\b(pack|packs|bulto|combo|caja\s?x|x\s?\d{1,2}\s?(u|un|unid|unidades)|\d{1,2}\s?unidades)\b/i
+const BUNDLE_HINTS = /\b(pack|packs|bulto|combo|caja\s?x)\b/i
 
+/** De dónde sale el multiplicador, en orden de preferencia. */
+const PACK_QTY_PATTERNS = [
+  /\b(?:pack|packs|bulto|combo|caja)\s*x\s*(\d{1,3})\b/i,
+  /\bx\s*(\d{1,3})\s*(?:u|un|unid|unidades)\b/i,
+  /\b(\d{1,3})\s*unidades\b/i,
+]
+
+/**
+ * Cuántas unidades trae el texto.
+ *
+ *   "Pack x 3 Unidades" → 3
+ *   "1kg" (sin palabra de pack) → 1
+ *   "Pack ahorro" (dice pack, no dice cuántas) → null
+ *
+ * El null es su propio caso: no es uno, y no es comparable con nada.
+ */
+function packSize(text) {
+  const texto = String(text || '')
+
+  for (const patron of PACK_QTY_PATTERNS) {
+    const m = texto.match(patron)
+    if (m) {
+      const qty = Number(m[1])
+      if (Number.isFinite(qty) && qty > 0) return qty
+    }
+  }
+
+  return BUNDLE_HINTS.test(texto) ? null : 1
+}
+
+/**
+ * ¿Este resultado vende otra cantidad que la consultada?
+ *
+ * Cuando la consulta misma es ambigua —dice "pack" sin decir cuántas— no hay
+ * con qué comparar y no se filtra: es preferible una muestra ruidosa que el
+ * comerciante puede mirar oferta por oferta, a cero resultados por una
+ * ambigüedad del propio título.
+ */
 function looksLikeBundle(item, product) {
-  if (BUNDLE_HINTS.test(String(product || ''))) return false
+  const pedidas = packSize(product)
+  if (pedidas === null) return false
 
-  return BUNDLE_HINTS.test(`${item?.title || ''} ${item?.url || ''}`)
+  return packSize(`${item?.title || ''} ${item?.url || ''}`) !== pedidas
 }
 
 /** ¿Esta página habla del producto, o de otro que comparte los adjetivos? */
@@ -637,6 +686,8 @@ export const __test__ = {
   findPriceInText,
   computePriceStats,
   identifyingWords,
+  packSize,
+  looksLikeBundle,
 }
 
 function percentile(sorted, p) {
