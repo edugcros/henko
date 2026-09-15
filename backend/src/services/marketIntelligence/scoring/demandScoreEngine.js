@@ -93,8 +93,13 @@ import process from 'node:process'
  *       alcanzable era 70 y RECOMENDADO pide 75: ningún producto podía ser
  *       recomendado nunca. Tres análisis reales seguidos dieron 29, 18 y 32,
  *       los tres "NO RECOMENDADO".
+ *  14 — el buscador pide 50 resultados por consulta en vez de 20. Medido
+ *       contra la API: las tiendas argentinas distintas pasaron de 0 a 5 en
+ *       unas botas y de 1 a 13 en un sommier. La muestra pobre no la causaban
+ *       los filtros —eran correctos— sino pedir pocos resultados y quedarse
+ *       con once páginas del mismo vendedor.
  */
-export const SCORING_VERSION = 13
+export const SCORING_VERSION = 14
 
 const num = (name, fallback) => {
   const value = Number(process.env[name])

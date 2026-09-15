@@ -10,7 +10,7 @@
  *   TAVILY_API_KEY        credencial (sin ella, las fuentes se reportan caídas)
  *   TAVILY_API_URL        endpoint            (https://api.tavily.com/search)
  *   TAVILY_SEARCH_DEPTH   'basic' | 'advanced'                       (basic)
- *   TAVILY_MAX_RESULTS    resultados por consulta                        (20)
+ *   TAVILY_MAX_RESULTS    resultados por consulta                        (50)
  *   TAVILY_TIMEOUT_MS     corte de la llamada                         (20000)
  *
  * 'basic' cuesta 1 crédito y 'advanced' 2. El plan gratuito da 1.000 al mes.
@@ -31,7 +31,20 @@ const SEARCH_URL =
 const SEARCH_DEPTH =
   String(process.env.TAVILY_SEARCH_DEPTH || '').trim() || 'basic'
 
-const MAX_RESULTS = num('TAVILY_MAX_RESULTS', 20)
+/**
+ * Cuántos resultados pedir por búsqueda.
+ *
+ * Veinte dejaba el análisis sin muestra, y no por los filtros: medido contra
+ * la API con dos productos reales, pasar de 20 a 50 llevó las tiendas
+ * ARGENTINAS distintas de 0 a 5 en unas botas Alpinestars Tech-7, y de 1 a 13
+ * en un sommier Cannon Doral. Con veinte, los 20 resultados del sommier eran
+ * 11 páginas de la MISMA tienda —y una oferta por dominio, así que la
+ * "competencia" del producto se medía con un solo vendedor.
+ *
+ * No cuesta más: Tavily cobra por búsqueda (1 crédito en basic, 2 en
+ * advanced), no por resultado devuelto.
+ */
+const MAX_RESULTS = num('TAVILY_MAX_RESULTS', 50)
 const TIMEOUT_MS = num('TAVILY_TIMEOUT_MS', 20000)
 
 /**
