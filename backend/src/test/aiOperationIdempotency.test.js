@@ -29,9 +29,13 @@ const { default: AiOperation, AI_OPERATION_STATUS, AI_FEATURES, AI_PROVIDERS } =
   await import('../models/aiOperationModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
-const { reserveAiBudget, refundAiBudget, recordTokenSpend, AI_METRICS } = await import(
-  '../services/ai/aiBudgetService.js'
+const { default: AiProviderCall, CALL_ID } = await import(
+  '../models/aiProviderCallModel.js'
 )
+const { reserveAiBudget, refundAiBudget, recordTokenSpend, recordAiConsumption, AI_METRICS } =
+  await import(
+  '../services/ai/aiBudgetService.js'
+  )
 
 const TENANT = '64b7f0000000000000000001'
 const OTRO_TENANT = '64b7f0000000000000000002'
@@ -54,6 +58,7 @@ beforeAll(async () => {
   // Los índices únicos son el mecanismo bajo prueba: sin esto, Mongoose los
   // construye en segundo plano y el primer test correría sin candado.
   await AiOperation.init()
+  await AiProviderCall.init()
   await AiConsumptionLedger.init()
 }, 180000)
 
@@ -438,5 +443,164 @@ describe('trazabilidad · de dónde vino y quién cobró', () => {
     expect(porFuncion.map(f => f._id)).toEqual([
       'aiAgent', 'cartRecovery', 'socialPromotion',
     ])
+  })
+})
+
+// ─── BLOQUE 3 · la devolución se reclama, no se consulta ────────────────────
+//
+// La guarda anterior leía el estado y después decidía. Dos refunds
+// concurrentes leían 'running' los dos, los dos decidían que había algo que
+// devolver, y los dos descontaban: la misma carrera que todo esto viene
+// cerrando, un nivel más arriba.
+
+describe('devolución · exactamente una vez, no al menos una', () => {
+  test('dos refunds SIMULTÁNEOS devuelven una sola vez', async () => {
+    const period = '2032-01'
+    const operationId = 'carrera-de-refunds'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId,
+    })
+    expect(await contador(period)).toBe(1)
+
+    // En paralelo, que es donde la guarda vieja se rompía.
+    await Promise.all([
+      refundAiBudget({
+        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+      }),
+      refundAiBudget({
+        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+      }),
+    ])
+    await asentar()
+
+    // Con la guarda vieja esto podía quedar en -1: cupo regalado.
+    expect(await contador(period)).toBe(0)
+  })
+
+  test('no se devuelve cupo de una operación que nunca lo retuvo', async () => {
+    const period = '2032-02'
+    const operationId = 'nunca-reservo'
+
+    // Se agota el tope y se intenta reservar: queda 'failed', sin cupo.
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId: 'quema', limitOverride: 1,
+    })
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId, limitOverride: 1,
+    })
+    await asentar()
+    expect(await contador(period)).toBe(1)
+
+    await refundAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+    })
+    await asentar()
+
+    // Devolverle cupo a algo que nunca lo reservó sería regalarle cuota.
+    expect(await contador(period)).toBe(1)
+  })
+})
+
+// ─── BLOQUE 4 · una operación puede hacer varias llamadas ───────────────────
+//
+// El cerebro del agente contesta y, si la respuesta sale mal formada, la
+// repara con una SEGUNDA llamada que se paga igual. Antes eso se registraba
+// inventándole a la reparación una operación falsa —`${operationId}:repair`—
+// para que el índice del ledger no la rechazara. Contaba dos operaciones donde
+// hay una, y desde que AiOperation gobierna el cobro, la reparación aparecía
+// como una operación sin reserva propia.
+
+describe('llamadas al proveedor · la unidad es la llamada, no la operación', () => {
+  test('respuesta y reparación: una operación, dos llamadas, dos consumos', async () => {
+    const period = '2032-03'
+    const operationId = 'contesta-y-repara'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId,
+    })
+
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 1000,
+      model: 'gemini-3.1-flash-lite', inputTokens: 700, outputTokens: 300,
+      profile: PERFIL, period, operationId,
+    })
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 400,
+      model: 'gemini-3.1-flash-lite', inputTokens: 300, outputTokens: 100,
+      profile: PERFIL, period, operationId, callId: CALL_ID.REPAIR,
+    })
+    await asentar()
+
+    // Las DOS se cobran: antes del sufijo, la reparación viajaba gratis en la
+    // contabilidad y cara en la factura.
+    expect(await contador(period, 'agentTokens')).toBe(1400)
+
+    // Una sola operación.
+    const operaciones = await AiOperation.countDocuments({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+    expect(operaciones).toBe(1)
+
+    // Dos llamadas.
+    const llamadas = await AiProviderCall.find({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(llamadas.map(l => l.callId).sort()).toEqual(['main', 'repair'])
+
+    // Y dos filas de consumo en el ledger, distinguibles.
+    const filas = await AiConsumptionLedger.countDocuments({
+      tenantId: TENANT, event: 'consumed',
+      operationId: { $in: [operationId, `${operationId}:repair`] },
+    }).setOptions({ tenantId: TENANT })
+    expect(filas).toBe(2)
+  })
+
+  test('la misma llamada repetida sí se descarta', async () => {
+    const period = '2032-04'
+    const operationId = 'repite-la-misma'
+
+    for (let i = 0; i < 5; i++) {
+      await recordAiConsumption({
+        tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 500,
+        model: 'gemini-3.1-flash-lite', inputTokens: 400, outputTokens: 100,
+        profile: PERFIL, period, operationId, callId: CALL_ID.REPAIR,
+      })
+    }
+    await asentar()
+
+    expect(await contador(period, 'agentTokens')).toBe(500)
+
+    const llamadas = await AiProviderCall.countDocuments({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+    expect(llamadas).toBe(1)
+  })
+
+  test('la llamada guarda qué se pidió, qué respondió y cuánto costó', async () => {
+    const period = '2032-05'
+    const operationId = 'llamada-completa'
+
+    await recordTokenSpend({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 2000, outputTokens: 500,
+      profile: PERFIL, period, operationId,
+      provider: 'gemini', requestedModel: 'gemini-3.8-flash',
+    })
+    await asentar()
+
+    const llamada = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(llamada.callId).toBe('main')
+    expect(llamada.provider).toBe('gemini')
+    expect(llamada.requestedModel).toBe('gemini-3.8-flash')
+    expect(llamada.actualModel).toBe('gemini-3.1-flash-lite')
+    expect(llamada.totalTokens).toBe(2500)
+    expect(llamada.costUsd).toBeGreaterThan(0)
   })
 })

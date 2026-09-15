@@ -43,6 +43,7 @@ import { getPeriodSpendByMetric } from './aiSpendReportService.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
+import AiProviderCall, { CALL_ID } from '../../models/aiProviderCallModel.js'
 import AiOperation, {
   AI_FEATURES,
   AI_OPERATION_STATUS,
@@ -55,7 +56,7 @@ import AiOperation, {
 export { AI_METRICS, AI_METRIC_LABELS, UNLIMITED }
 // Mismo criterio: quien mide consumo declara de dónde viene con un solo
 // import, sin tener que conocer el modelo por dentro.
-export { AI_FEATURES, AI_PROVIDERS, AI_OPERATION_STATUS }
+export { AI_FEATURES, AI_PROVIDERS, AI_OPERATION_STATUS, CALL_ID }
 
 const clean = value => String(value || '').trim()
 
@@ -219,75 +220,93 @@ const openOperation = async ({
 }
 
 /**
- * Reclama el consumo de una operación. Devuelve false si ya estaba reclamado.
+ * Reclama el consumo de UNA LLAMADA. Devuelve false si ya estaba reclamado.
  *
- * El consumo llega DESPUÉS de la reserva, así que acá la operación ya existe y
- * el candado no puede ser un insert: es una transición atómica a 'completed'.
- * El upsert cubre al llamador que registra consumo sin haber reservado —el
- * camino BYOK y el de los tokens medidos a posteriori—: ahí la fila nace ya
- * completada, y el mismo índice único la protege.
+ * La unidad no es la operación: es la llamada dentro de la operación. Una
+ * operación puede hacer varias legítimamente —el agente contesta y repara, el
+ * análisis de mercado busca y estructura— y cada una se paga.
  *
- * Un `findOne` seguido de un `update` sería la misma carrera que esto viene a
- * cerrar, un nivel más arriba. Es una sola operación o no sirve.
+ * La versión anterior reclamaba por operación y marcaba 'completed' con la
+ * PRIMERA llamada que registrara consumo. Con dos llamadas reales, la segunda
+ * se habría descartado como reintento y su costo habría desaparecido de la
+ * contabilidad. Eso no se notaba porque aiAgentBrainService le inventaba a la
+ * reparación una operación falsa —`${operationId}:repair`— que esquivaba el
+ * problema contando dos operaciones donde hay una.
+ *
+ * El insert de AiProviderCall ES el candado: su índice único (tenant,
+ * operación, llamada) impone la unicidad en la base, no una comprobación
+ * previa en el código.
  *
  * Sin operationId no hay nada que reclamar y se deja pasar: cerrar el paso
- * sería dejar de registrar consumo real de todos los llamadores que todavía no
+ * sería dejar de registrar consumo real de los llamadores que todavía no
  * informan clave, que es peor que el problema.
  */
 const claimConsumption = async ({
   tenantId,
   operationId,
+  callId = CALL_ID.MAIN,
   period,
   metric,
   amount = 0,
+  provider = null,
+  requestedModel = null,
   actualModel = null,
+  breakdown = null,
+  costUsd = 0,
+  ok = true,
 }) => {
   if (!operationId || !tenantId) return true
 
   try {
-    await AiOperation.findOneAndUpdate(
-      { tenantId, operationId, status: { $ne: AI_OPERATION_STATUS.COMPLETED } },
-      {
-        $set: {
-          status: AI_OPERATION_STATUS.COMPLETED,
-          completedAt: new Date(),
-          ...(actualModel ? { actualModel } : {}),
-        },
-        $setOnInsert: {
-          tenantId,
-          operationId,
-          period,
-          metric,
-          amount: Math.max(0, Math.round(Number(amount) || 0)),
-          startedAt: new Date(),
-        },
-      },
-      { upsert: true, new: true },
-    ).setOptions({ tenantId })
-
-    return true
+    await AiProviderCall.create({
+      tenantId,
+      operationId,
+      callId,
+      period,
+      metric,
+      provider,
+      requestedModel,
+      actualModel,
+      inputTokens: breakdown?.inputTokens ?? null,
+      outputTokens: breakdown?.outputTokens ?? null,
+      totalTokens: breakdown?.totalTokens ?? Math.max(0, Math.round(Number(amount) || 0)),
+      costUsd: Number(costUsd) || 0,
+      ok,
+    })
   } catch (error) {
     if (error?.code === 11000) {
-      // El documento existe y YA estaba en 'completed', así que el filtro no lo
-      // encontró y el upsert intentó insertar uno nuevo contra el índice único.
-      // Eso es exactamente un reintento.
-      logger.info('[AI OPERATION] Consumo repetido descartado', {
+      logger.info('[AI OPERATION] Llamada ya registrada, no se cobra de nuevo', {
         tenantId: String(tenantId),
         operationId,
+        callId,
         metric,
       })
+
       return false
     }
 
-    logger.error('[AI OPERATION] No se pudo reclamar el consumo, se registra sin candado', {
+    logger.error('[AI OPERATION] No se pudo registrar la llamada, se sigue sin candado', {
       tenantId: String(tenantId),
       operationId,
+      callId,
       metric,
       error: error.message,
     })
 
     return true
   }
+
+  // El estado de la operación es observabilidad y no se espera: el dinero ya
+  // lo mueven los contadores y el ledger. La última llamada que registre
+  // consumo deja la operación completada, que es lo que uno quiere saber.
+  closeOperation({
+    tenantId,
+    operationId,
+    status: AI_OPERATION_STATUS.COMPLETED,
+    actualModel,
+  })
+
+  return true
 }
 
 /**
@@ -331,6 +350,25 @@ const closeOperation = ({
       })
     })
 }
+
+/**
+ * La clave con la que el movimiento entra al ledger.
+ *
+ * El índice único del ledger es (tenant, operación, evento), y una operación
+ * con dos llamadas produce legítimamente dos consumos. Componer la clave acá
+ * los mantiene distinguibles sin tocar ese índice, que ya está construido
+ * sobre datos de producción: cambiarlo exigiría reconstruirlo con la colección
+ * en uso, y el beneficio no lo justifica.
+ *
+ * Es el mismo sufijo que antes armaba aiAgentBrainService a mano. La
+ * diferencia es dónde vive: ahora es un detalle del medidor y no una decisión
+ * que cada llamador toma por su cuenta — y AiOperation ya no lo ve, así que el
+ * conteo de operaciones dejó de estar inflado.
+ */
+const ledgerKey = (operationId, callId) =>
+  !operationId || !callId || callId === CALL_ID.MAIN
+    ? operationId
+    : `${operationId}:${callId}`
 
 const writeLedgerEntry = ({
   tenantId,
@@ -1222,26 +1260,63 @@ export const refundAiBudget = async ({
 
   const period = requestedPeriod || getCurrentPeriod()
 
-  // Un refund repetido descuenta dos veces, igual que un cobro repetido cobra
-  // dos veces. El estado de la operación es el que corta: si ya está devuelta,
-  // no hay nada que devolver.
+  // SE RECLAMA LA DEVOLUCIÓN, NO SE CONSULTA.
+  //
+  // La primera versión de esta guarda leía el estado y después decidía. Eso es
+  // exactamente la carrera que todo este trabajo viene cerrando, un nivel más
+  // arriba: dos refunds concurrentes leen 'running' los dos, los dos deciden
+  // que hay algo que devolver, y los dos descuentan.
+  //
+  // Acá la transición a 'refunded' ES el reclamo: va en una sola operación con
+  // el estado dentro del filtro, así que solo uno de los dos la gana. El que
+  // pierde no encuentra nada y se va sin tocar ningún agregado.
+  //
+  // El filtro exige HOLDS_QUOTA y no "distinto de refunded": devolver cupo de
+  // una operación que nunca lo reservó —una que se denegó por falta de plan,
+  // por ejemplo— le regalaría cuota al comercio.
   if (operationId) {
-    const yaDevuelta = await AiOperation.findOne({
-      tenantId: id,
-      operationId,
-      status: AI_OPERATION_STATUS.REFUNDED,
-    })
+    const reclamada = await AiOperation.findOneAndUpdate(
+      { tenantId: id, operationId, status: { $in: HOLDS_QUOTA } },
+      {
+        $set: {
+          status: AI_OPERATION_STATUS.REFUNDED,
+          failedAt: new Date(),
+        },
+      },
+      { new: true },
+    )
       .setOptions({ tenantId: id })
       .lean()
-      .catch(() => null)
-
-    if (yaDevuelta) {
-      logger.info('[AI OPERATION] Devolución repetida descartada', {
-        tenantId: String(id),
-        operationId,
-        metric: normalizedMetric,
+      .catch(error => {
+        // Falla abierta, igual que el resto: la contabilidad no puede ser el
+        // motivo por el que a un comercio no se le devuelve su cupo.
+        logger.error('[AI OPERATION] No se pudo reclamar la devolución', {
+          tenantId: String(id),
+          operationId,
+          error: error.message,
+        })
+        return null
       })
-      return
+
+    if (!reclamada) {
+      const operacion = await AiOperation.findOne({ tenantId: id, operationId })
+        .setOptions({ tenantId: id })
+        .lean()
+        .catch(() => null)
+
+      // Si existe, alguien ya la devolvió o nunca retuvo cupo: en los dos
+      // casos no hay nada que descontar. Si NO existe, el llamador está
+      // devolviendo algo que este servicio no reservó, y ahí se deja pasar
+      // para no cambiarle el comportamiento a quien todavía no usa claves.
+      if (operacion) {
+        logger.info('[AI OPERATION] Devolución sin cupo que devolver, descartada', {
+          tenantId: String(id),
+          operationId,
+          metric: normalizedMetric,
+          status: operacion.status,
+        })
+        return
+      }
     }
   }
 
@@ -1291,12 +1366,9 @@ export const refundAiBudget = async ({
         })
       }
 
-      closeOperation({
-        tenantId: id,
-        operationId,
-        status: AI_OPERATION_STATUS.REFUNDED,
-      })
-
+      // No se cierra acá: el estado ya quedó en 'refunded' cuando se ganó el
+      // reclamo, arriba. Volver a escribirlo sería una escritura de más y,
+      // peor, sugeriría que el estado depende de que esta rama se alcance.
       writeLedgerEntry({
         tenantId: id,
         period,
@@ -1340,6 +1412,9 @@ export const recordAiConsumption = async ({
   // así que reserva y consumo de una operación conviven; dos consumos de la
   // misma operación son un reintento y el índice los descarta.
   operationId = null,
+  callId = CALL_ID.MAIN,
+  provider = null,
+  requestedModel = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -1366,10 +1441,15 @@ export const recordAiConsumption = async ({
   const nuevo = await claimConsumption({
     tenantId: id,
     operationId,
+    callId,
     period,
     metric: normalizedMetric,
     amount: normalizedAmount,
+    provider,
+    requestedModel,
     actualModel: isTokenMetric ? usedModel : null,
+    breakdown,
+    costUsd,
   })
 
   if (!nuevo) return
@@ -1411,7 +1491,7 @@ export const recordAiConsumption = async ({
     tenantId: id,
     period,
     event: LEDGER_EVENT.CONSUMED,
-    operationId,
+    operationId: ledgerKey(operationId, callId),
     metric: normalizedMetric,
     amount: normalizedAmount,
     model: isTokenMetric ? usedModel : null,
@@ -1443,6 +1523,11 @@ export const recordTokenSpend = async ({
   // así que reserva y consumo de una operación conviven; dos consumos de la
   // misma operación son un reintento y el índice los descarta.
   operationId = null,
+  // Cuál de las llamadas de la operación. El default cubre el caso de siempre
+  // —una operación, una llamada— sin que ningún llamador cambie.
+  callId = CALL_ID.MAIN,
+  provider = null,
+  requestedModel = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -1471,13 +1556,18 @@ export const recordTokenSpend = async ({
   const nuevo = await claimConsumption({
     tenantId: id,
     operationId,
+    callId,
     period,
     metric: normalizedMetric,
     amount: breakdown.totalTokens,
+    provider,
+    requestedModel,
     // El modelo que EFECTIVAMENTE respondió. Es el dato que explica una factura
     // rara: se pide gemini-3.8-flash, el fallback entrega 3.1-flash-lite, y lo
     // que se paga es lo segundo.
     actualModel: breakdown.price?.model || model,
+    breakdown,
+    costUsd,
   })
 
   if (!nuevo) return
@@ -1521,7 +1611,7 @@ export const recordTokenSpend = async ({
     tenantId: id,
     period,
     event: LEDGER_EVENT.CONSUMED,
-    operationId,
+    operationId: ledgerKey(operationId, callId),
     metric: normalizedMetric,
     amount: breakdown.totalTokens,
     unit: 'tokens',

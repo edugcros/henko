@@ -8,6 +8,7 @@ import {
   AI_FEATURES,
   AI_METRICS,
   AI_PROVIDERS,
+  CALL_ID,
   buildBudgetDenialMessage,
   recordAiConsumption,
   refundAiBudget,
@@ -520,10 +521,14 @@ const repairAiResponseIfNeeded = async ({
         model: repaired?.model,
         inputTokens: repaired?.usageMetadata?.promptTokenCount ?? null,
         outputTokens: repaired?.usageMetadata?.candidatesTokenCount ?? null,
-        // Sufijo propio: la reparación es una segunda llamada pagada, así que
-        // su consumo es un movimiento distinto del de la primera respuesta y
-        // no puede compartir clave con ella.
-        operationId: operationId ? `${operationId}:repair` : null,
+        // La reparación es una SEGUNDA LLAMADA de la misma operación, no otra
+        // operación. Acá se le inventaba una clave con sufijo para que el
+        // índice del ledger no la rechazara, y eso contaba dos operaciones
+        // donde hay una: cualquier conteo quedaba inflado, y desde que
+        // AiOperation gobierna el cobro, la reparación aparecía como una
+        // operación sin reserva propia.
+        operationId,
+        callId: CALL_ID.REPAIR,
       }).catch(() => null)
     }
 

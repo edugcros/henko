@@ -318,6 +318,16 @@ jest.unstable_mockModule("../models/aiOperationModel.js", () => ({
   },
 }));
 
+// El candado del consumo pasa por aca: su indice unico (tenant, operacion,
+// llamada) es lo que distingue una respuesta de su reparacion. Se prueba
+// contra una base real en aiOperationIdempotency.test.js.
+const mockProviderCall = { create: jest.fn(), find: jest.fn(), findOne: jest.fn() };
+
+jest.unstable_mockModule("../models/aiProviderCallModel.js", () => ({
+  default: mockProviderCall,
+  CALL_ID: { MAIN: "main", REPAIR: "repair", EXTRACTION: "extraction" },
+}));
+
 jest.unstable_mockModule("../services/ai/aiCredentialsService.js", () => ({
   KEY_SOURCE: { TENANT: "tenant", PLATFORM: "platform", NONE: "none" },
   loadTenantAiProfile: mockProfile,
@@ -404,8 +414,10 @@ const chainableLean = result => ({
 beforeEach(() => {
   mockOperation.create.mockResolvedValue({});
   mockOperation.findOne.mockReturnValue(chainableLean(null));
-  mockOperation.findOneAndUpdate.mockReturnValue(chainable({}));
+  // El refund y la reapertura encadenan .setOptions().lean().
+  mockOperation.findOneAndUpdate.mockReturnValue(chainableLean({}));
   mockOperation.updateOne.mockReturnValue(chainable({}));
+  mockProviderCall.create.mockResolvedValue({});
 });
 
 const platformProfile = (overrides = {}) => ({
