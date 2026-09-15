@@ -52,6 +52,64 @@ const CATALOG = [
 ]
 
 /**
+ * Generación de imágenes, que NO se cobra por token.
+ *
+ * Replicate y HuggingFace cobran por imagen, así que no entra en la tabla de
+ * arriba: no hay entrada ni salida que separar. Pero es un PRECIO, y los
+ * precios viven en este archivo — estaba en aiPlanPolicy.js, que es el archivo
+ * de planes y topes, o sea de lo que el comercio RECIBE. Cuánto le cuesta a
+ * HENKO es otra pregunta y tenía su propia respuesta suelta.
+ *
+ * Lleva vigencia por el mismo motivo que los modelos: el día que se corrija la
+ * tarifa con datos reales de facturación, las imágenes de agosto tienen que
+ * seguir costando lo que costaron. Sin fechas, corregir el número hacia
+ * adelante reescribe la historia hacia atrás.
+ *
+ * El 0,02 es una estimación conservadora sobre el costo documentado de
+ * Replicate (flux-schnell más el respaldo ocasional de quitar fondo), no una
+ * factura. AI_COST_USD_PER_IMAGE_EDIT lo corrige sin tocar código, y cuando
+ * haya una cifra real conviene cerrar esta ventana y abrir una nueva en vez de
+ * editar esta.
+ */
+const IMAGE_CATALOG = [
+  { from: null, until: null, perImage: 0.02 },
+]
+
+/**
+ * Precio de UNA generación de imagen, a la fecha del consumo.
+ *
+ * @param {Date} [at=new Date()] - fecha del consumo, no del cálculo
+ * @returns {{perImage:number, source:'env'|'catalog'}}
+ */
+export const getImagePrice = (at = new Date()) => {
+  // El override de entorno gana, y se informa como tal: un número que no salió
+  // del catálogo tiene que poder distinguirse cuando alguien audite el gasto.
+  const override = Number(process.env.AI_COST_USD_PER_IMAGE_EDIT)
+  if (Number.isFinite(override) && override >= 0) {
+    return { perImage: override, source: 'env' }
+  }
+
+  const when = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date()
+  const entry = IMAGE_CATALOG.find(e => inWindow(e, when))
+
+  return { perImage: entry ? entry.perImage : 0, source: 'catalog' }
+}
+
+/**
+ * Costo de N generaciones de imagen.
+ *
+ * Vivía en aiPlanPolicy.js como estimateImageCostUsd. Se mudó acá sin cambiar
+ * el número: dos archivos que saben precios es exactamente la forma en que
+ * vuelve el problema que el catálogo vino a resolver.
+ */
+export const computeImageCostUsd = (count, at = new Date()) => {
+  const amount = Number(count)
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+
+  return amount * getImagePrice(at).perImage
+}
+
+/**
  * Tarifa a aplicar por defecto cuando el modelo no está en el catálogo.
  *
  * Se usa la MÁS CARA de la familia en uso, no un promedio: si aparece un modelo

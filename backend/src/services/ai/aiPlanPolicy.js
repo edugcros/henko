@@ -319,37 +319,18 @@ export const getSubscriptionState = (tenant = {}) => {
   return { entitled: true, status, plan, reason: 'ok' }
 }
 
-// ─── Costo estimado ──────────────────────────────────────
-
-// estimateCostUsd vivía acá: una tarifa mezclada única (AI_COST_USD_PER_1M_TOKENS,
-// 1,3 por defecto) para convertir tokens a dólares. La reemplazó
-// services/ai/aiModelPricing.js, que cobra por modelo, separa entrada de salida
-// —la salida cuesta 5x— y fecha las tarifas para que la duplicación anunciada
-// del 1/1/2027 no repricee la historia.
+// ─── Costo ───────────────────────────────────────────────
 //
-// Se borra en vez de dejarla deprecada porque quedó sin un solo llamador y
-// porque dos funciones de costeo que dan números distintos por los mismos
-// tokens no conviven: la que sobra se usa por accidente y nadie nota la
-// diferencia, que es exactamente el problema que el catálogo vino a resolver.
-// AI_COST_USD_PER_1M_TOKENS ya no se lee en ningún lado.
-
-/**
- * Costo aproximado en USD de N generaciones de imagen (Replicate/HuggingFace,
- * ver imageAiService.js::generateVariation). El default ($0.02/imagen) es una
- * estimación conservadora sobre el costo típico documentado de Replicate
- * (flux-schnell + el fallback ocasional de quitar fondo) — no una factura
- * real. Mismo criterio que estimateCostUsd: sirve para el panel, no para
- * cobrarle a nadie; el env var permite corregirlo con datos reales de
- * facturación el día que existan.
- */
-export const estimateImageCostUsd = count => {
-  const amount = Number(count)
-  if (!Number.isFinite(amount) || amount <= 0) return 0
-
-  const rate = readEnvNumber('AI_COST_USD_PER_IMAGE_EDIT') ?? 0.02
-
-  return amount * rate
-}
+// ACÁ NO HAY PRECIOS, Y ES A PROPÓSITO.
+//
+// Este archivo define lo que el comercio RECIBE: planes, topes, cuotas. Cuánto
+// le cuesta a HENKO servirlo es otra pregunta y vive en services/ai/
+// aiModelPricing.js, que es el catálogo: una entrada por modelo, con vigencia,
+// y desde ahora también el precio por imagen — que estaba suelto acá.
+//
+// Dos archivos que saben precios es exactamente la forma en que vuelve el
+// problema que el catálogo vino a resolver: el que sobra se usa por accidente
+// y nadie nota que los números no coinciden.
 
 // ─── Precio de plan ──────────────────────────────────────
 //
@@ -501,9 +482,13 @@ export const getUsdToArsRate = () =>
 // precios públicos de los proveedores que HENKO ya usa (Render, MongoDB
 // Atlas, Cloudinary, SendGrid, Meta WhatsApp) — NO son la factura real de
 // HENKO, que puede diferir por el plan/tier contratado, volumen o
-// descuentos. Igual que estimateCostUsd/estimateImageCostUsd más arriba: una
-// estimación razonable y documentada, sobrescribible por variable de entorno
-// en cuanto haya una factura real para comparar.
+// descuentos. Es una estimación razonable y documentada, sobrescribible por
+// variable de entorno en cuanto haya una factura real para comparar.
+//
+// Estos números son de INFRAESTRUCTURA —servidores, base, CDN— y no tienen
+// nada que ver con lo que cobran los proveedores de IA. Eso vive en
+// aiModelPricing.js y no se mezcla acá: son dos facturas distintas, con
+// proveedores distintos, que cambian por motivos distintos.
 
 // Render Standard (backend con workers en background, no puede dormir como
 // el free/starter tier): ~$25/mes. + MongoDB Atlas M10 dedicado: ~$57/mes
@@ -775,7 +760,6 @@ export default {
   getPlanLimits,
   isByokAllowedForPlan,
   getSubscriptionState,
-  estimateImageCostUsd,
   getPlanMonthlyPriceArs,
   getPlanCatalog,
   getPlatformMonthlyTokenBudget,

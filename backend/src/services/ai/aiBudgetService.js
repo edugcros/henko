@@ -29,7 +29,6 @@ import {
   AI_METRIC_LABELS,
   AI_METRIC_LIST,
   UNLIMITED,
-  estimateImageCostUsd,
   getPlanLimit,
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
@@ -40,7 +39,11 @@ import {
   normalizePlan,
 } from './aiPlanPolicy.js'
 import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
-import { computeCostUsd, normalizeModelName } from './aiModelPricing.js'
+import {
+  computeCostUsd,
+  computeImageCostUsd,
+  normalizeModelName,
+} from './aiModelPricing.js'
 import { getPeriodSpendByMetric } from './aiSpendReportService.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
@@ -1086,7 +1089,7 @@ const resolveEffectiveLimit = ({ plan, metric, keySource }) => {
  * atómica con su cuota, y se revierte igual de atómicamente en el refund.
  */
 const getUpfrontCostUsd = (metric, amount) =>
-  metric === AI_METRICS.IMAGE_EDITS ? estimateImageCostUsd(amount) : 0
+  metric === AI_METRICS.IMAGE_EDITS ? computeImageCostUsd(amount) : 0
 
 const applyLimitOverride = (planLimit, override) => {
   const value = Number(override)
