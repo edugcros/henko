@@ -150,4 +150,100 @@ export const notifyBudgetPressure = async ({
   }
 }
 
-export default { notifyBudgetPressure, EMAIL_THRESHOLD }
+/**
+ * Avisa que la contabilidad no cuadra. Nunca lanza.
+ *
+ * Va por el mismo canal que el aviso de presupuesto y a la misma gente: si
+ * PLATFORM_OWNER_EMAILS es quien decide el techo de gasto, es quien tiene que
+ * enterarse de que los números no cierran.
+ *
+ * SIEMPRE manda mail, sin escalones. El aviso de presupuesto tiene umbral
+ * porque un 50% a mitad de mes es normal y un mail que dice algo normal enseña
+ * a ignorar al remitente. Acá no hay nada normal: una diferencia significa que
+ * alguien pagó algo que no se le cobró, o al revés.
+ */
+export const notifyAccountingDrift = async audit => {
+  try {
+    const recipients = getRecipients()
+
+    if (!recipients.length) {
+      logger.warn('[AI ACCOUNTING] Hay una diferencia para avisar y PLATFORM_OWNER_EMAILS está vacío', {
+        period: audit?.period,
+      })
+      return { sent: false, reason: 'no_recipients' }
+    }
+
+    const { period, cost = {}, findings = [] } = audit || {}
+
+    const filas = [
+      ['Libro (ledger)', cost.ledger],
+      ['Suma de los comercios', cost.tenantUsage],
+      ['Contador de plataforma', cost.platformUsage],
+    ]
+      .map(
+        ([etiqueta, valor]) => `<tr>
+          <td style="padding:6px 12px 6px 0">${etiqueta}</td>
+          <td style="padding:6px 0;text-align:right"><strong>${money(valor)}</strong></td>
+        </tr>`,
+      )
+      .join('')
+
+    const diferencias = findings
+      .map(f => `<li>${f.between[0]} vs ${f.between[1]}: <strong>${money(f.difference)}</strong></li>`)
+      .join('')
+
+    const subject = `[HENKO] La contabilidad de IA no cuadra (${period})`
+
+    const html = `
+      <div style="font-family:system-ui,sans-serif;color:#111;max-width:560px">
+        <p style="font-size:16px"><strong>Las tres representaciones del gasto de IA no coinciden en ${period}.</strong></p>
+        <table style="border-collapse:collapse;font-size:14px;margin:12px 0">${filas}</table>
+        <p style="font-size:14px;margin-bottom:4px"><strong>Diferencias</strong></p>
+        <ul style="font-size:14px;margin-top:4px">${diferencias}</ul>
+        <p style="font-size:13px;color:#555;margin-top:20px">
+          El libro es la fuente de verdad. NO se corrigió nada de forma
+          automática: la corrección se pide a mano y solo cuando el libro está
+          completo. El detalle está en el panel, en Plataforma &rarr; Gasto de IA.
+        </p>
+      </div>`
+
+    const text = [
+      `La contabilidad de IA no cuadra en ${period}.`,
+      `Libro: ${money(cost.ledger)}`,
+      `Comercios: ${money(cost.tenantUsage)}`,
+      `Plataforma: ${money(cost.platformUsage)}`,
+      ...findings.map(f => `${f.between[0]} vs ${f.between[1]}: ${money(f.difference)}`),
+      'No se corrigió nada automáticamente.',
+    ].join('\n')
+
+    const results = await Promise.all(
+      recipients.map(to =>
+        sendEmail({ to, subject, html, text }).catch(error => ({
+          success: false,
+          error: error.message,
+        })),
+      ),
+    )
+
+    const delivered = results.filter(result => result?.success).length
+
+    if (!delivered) {
+      logger.error('[AI ACCOUNTING] No se pudo avisar a nadie de la diferencia', {
+        period,
+        intentos: recipients.length,
+      })
+    }
+
+    return { sent: delivered > 0, delivered, attempted: recipients.length }
+  } catch (error) {
+    // El aviso es sobre una diferencia que ya existe: su fallo no puede
+    // voltear la auditoría que lo disparó.
+    logger.error('[AI ACCOUNTING] Falló el envío del aviso de diferencia', {
+      period: audit?.period,
+      error: error.message,
+    })
+    return { sent: false, reason: 'error' }
+  }
+}
+
+export default { notifyBudgetPressure, notifyAccountingDrift, EMAIL_THRESHOLD }

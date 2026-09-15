@@ -18,6 +18,10 @@ import {
   startStaleOperationSweeper,
   stopStaleOperationSweeper,
 } from './src/services/ai/aiBudgetService.js'
+import {
+  startAccountingAudit,
+  stopAccountingAudit,
+} from './src/services/ai/aiAccountingService.js'
 
 // =====================================================
 // Configuración servidor
@@ -70,6 +74,9 @@ const startServer = async () => {
       // siempre: un deploy a mitad de una llamada deja al comercio pagando un
       // mensaje que nunca se envió, y nada lo devolvía hasta cambiar el mes.
       startStaleOperationSweeper({ logger })
+      // Detecta, registra y avisa si el libro, los comercios y la plataforma
+      // dejan de coincidir. Nunca corrige sola.
+      startAccountingAudit({ logger })
     })
 
     serverInstance.on('error', err => {
@@ -106,6 +113,7 @@ const shutdown = async signal => {
     stopAiCartRecoveryWorker()
     stopAiInsightWorker()
     stopStaleOperationSweeper()
+    stopAccountingAudit()
 
     if (serverInstance && isServerListening) {
       await new Promise((resolve, reject) => {

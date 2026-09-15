@@ -30,8 +30,15 @@ const {
   reserveAiBudget, refundAiBudget, recordAiConsumption,
   sweepStaleOperations, AI_METRICS,
 } = await import('../services/ai/aiBudgetService.js')
-const { reconcileTenantUsage, reconcilePlatformUsage, getPlatformSpendSnapshot } =
-  await import('../services/ai/aiSpendReportService.js')
+const { getPlatformSpendSnapshot } = await import(
+  '../services/ai/aiSpendReportService.js'
+)
+const {
+  rebuildTenantProjection,
+  rebuildPlatformProjection,
+  auditAccounting,
+  runAccountingAudit,
+} = await import('../services/ai/aiAccountingService.js')
 
 const TENANT = '64b7f0000000000000000001'
 
@@ -88,7 +95,7 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     })
     await asentar()
 
-    const reporte = await reconcileTenantUsage({ tenantId: TENANT, period })
+    const reporte = await rebuildTenantProjection({ tenantId: TENANT, period })
 
     expect(reporte.hasDrift).toBe(false)
     expect(reporte.applied).toBe(false)
@@ -109,7 +116,7 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     })
     await asentar()
 
-    const reporte = await reconcileTenantUsage({ tenantId: TENANT, period })
+    const reporte = await rebuildTenantProjection({ tenantId: TENANT, period })
 
     expect(reporte.counters.agentMessages).toEqual({ stored: 0, ledger: 0, drift: 0 })
     expect(reporte.hasDrift).toBe(false)
@@ -135,7 +142,7 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     })
     await asentar()
 
-    const reporte = await reconcileTenantUsage({ tenantId: TENANT, period })
+    const reporte = await rebuildTenantProjection({ tenantId: TENANT, period })
 
     expect(reporte.counters.vision).toEqual({ stored: 1, ledger: 1, drift: 0 })
   })
@@ -159,7 +166,7 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
 
     expect(await contador(period, 'agentMessages')).toBe(5)
 
-    const informe = await reconcileTenantUsage({ tenantId: TENANT, period })
+    const informe = await rebuildTenantProjection({ tenantId: TENANT, period })
 
     expect(informe.hasDrift).toBe(true)
     expect(informe.counters.agentMessages).toEqual({ stored: 5, ledger: 1, drift: 4 })
@@ -167,7 +174,7 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     expect(informe.applied).toBe(false)
     expect(await contador(period, 'agentMessages')).toBe(5)
 
-    const aplicado = await reconcileTenantUsage({ tenantId: TENANT, period, apply: true })
+    const aplicado = await rebuildTenantProjection({ tenantId: TENANT, period, apply: true })
 
     expect(aplicado.applied).toBe(true)
     expect(await contador(period, 'agentMessages')).toBe(1)
@@ -188,10 +195,10 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     ).setOptions({ tenantId: TENANT })
     await asentar()
 
-    await reconcileTenantUsage({ tenantId: TENANT, period, apply: true })
+    await rebuildTenantProjection({ tenantId: TENANT, period, apply: true })
     const primera = await contador(period, 'agentMessages')
 
-    const segunda = await reconcileTenantUsage({ tenantId: TENANT, period, apply: true })
+    const segunda = await rebuildTenantProjection({ tenantId: TENANT, period, apply: true })
 
     expect(primera).toBe(1)
     expect(segunda.hasDrift).toBe(false)
@@ -213,12 +220,12 @@ describe('reconciliación de plataforma · el contador del disyuntor', () => {
     // Lo que dejaba el reintento: 5000 reales contados como 15000.
     await AiPlatformUsage.updateOne({ period }, { $inc: { tokens: 10000 } })
 
-    const informe = await reconcilePlatformUsage({ period })
+    const informe = await rebuildPlatformProjection({ period })
 
     expect(informe.hasDrift).toBe(true)
     expect(informe.tokens).toEqual({ stored: 15000, ledger: 5000, drift: 10000 })
 
-    const aplicado = await reconcilePlatformUsage({ period, apply: true })
+    const aplicado = await rebuildPlatformProjection({ period, apply: true })
     expect(aplicado.applied).toBe(true)
 
     const despues = await AiPlatformUsage.findOne({ period }).lean()
@@ -238,7 +245,7 @@ describe('reconciliación de plataforma · el contador del disyuntor', () => {
     })
     await asentar()
 
-    const informe = await reconcilePlatformUsage({ period })
+    const informe = await rebuildPlatformProjection({ period })
 
     expect(informe.tokens.ledger).toBe(0)
   })
@@ -303,14 +310,14 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     await AiConsumptionLedger.deleteOne({ tenantId: TENANT, operationId: 'corto-3' })
       .setOptions({ tenantId: TENANT })
 
-    const informe = await reconcileTenantUsage({ tenantId: TENANT, period })
+    const informe = await rebuildTenantProjection({ tenantId: TENANT, period })
 
     expect(informe.ledgerComplete).toBe(false)
     expect(informe.missingFromLedger).toContain('corto-3')
 
     // Aunque se pida aplicar, no se aplica: corregir contra un libro corto
     // sería borrar consumo real.
-    const intento = await reconcileTenantUsage({ tenantId: TENANT, period, apply: true })
+    const intento = await rebuildTenantProjection({ tenantId: TENANT, period, apply: true })
 
     expect(intento.applied).toBe(false)
     expect(await contador(period, 'agentMessages')).toBe(3)
@@ -329,7 +336,7 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     ).setOptions({ tenantId: TENANT })
     await asentar()
 
-    const aplicado = await reconcileTenantUsage({ tenantId: TENANT, period, apply: true })
+    const aplicado = await rebuildTenantProjection({ tenantId: TENANT, period, apply: true })
 
     expect(aplicado.ledgerComplete).toBe(true)
     expect(aplicado.applied).toBe(true)
@@ -352,7 +359,7 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     })
     await asentar()
 
-    const informe = await reconcileTenantUsage({ tenantId: TENANT, period })
+    const informe = await rebuildTenantProjection({ tenantId: TENANT, period })
 
     expect(informe.ledgerComplete).toBe(true)
     expect(informe.missingFromLedger).toHaveLength(0)
@@ -450,5 +457,124 @@ describe('reservas colgadas · el cupo vuelve solo', () => {
     await sweepStaleOperations()
 
     expect(await contador(period, 'agentMessages')).toBe(1)
+  })
+})
+
+// ─── BLOQUE 7 · las tres representaciones tienen que dar lo mismo ───────────
+//
+// El libro, la suma de lo que cree cada comercio y el contador de plataforma
+// se escriben en el MISMO acto, con el mismo número. Si no coinciden, alguien
+// pagó algo que no se le cobró o al revés.
+
+describe('auditoría contable · detectar, no corregir', () => {
+  test('cuando todo cuadra, no hay hallazgos', async () => {
+    const period = '2060-01'
+
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 12000,
+      model: 'gemini-3.1-flash-lite', inputTokens: 9000, outputTokens: 3000,
+      profile: PERFIL, period, operationId: 'cuadra-1',
+    })
+    await asentar()
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.balanced).toBe(true)
+    expect(auditoria.findings).toHaveLength(0)
+    expect(auditoria.cost.ledger).toBe(auditoria.cost.platformUsage)
+    expect(auditoria.cost.ledger).toBe(auditoria.cost.tenantUsage)
+  })
+
+  test('el caso del enunciado: el comercio quedó corto', async () => {
+    //   Ledger:           82.31
+    //   AiPlatformUsage:  82.31
+    //   AiUsage:          80.21   ← 2,10 que alguien pagó y nadie le cobró
+    const period = '2060-02'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'enunciado',
+      keySource: 'platform', costUsd: 82.31,
+    })
+    await AiPlatformUsage.updateOne(
+      { period },
+      { $set: { estimatedCostUsd: 82.31, tokens: 1 } },
+      { upsert: true },
+    )
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 80.21 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.balanced).toBe(false)
+    expect(auditoria.cost).toEqual({
+      ledger: 82.31,
+      platformUsage: 82.31,
+      tenantUsage: 80.21,
+    })
+
+    // La diferencia dice DÓNDE mirar: el libro y la plataforma coinciden, así
+    // que el roto es el agregado por comercio.
+    expect(auditoria.findings).toEqual([
+      { between: ['ledger', 'tenantUsage'], difference: 2.1 },
+      { between: ['platformUsage', 'tenantUsage'], difference: 2.1 },
+    ])
+  })
+
+  test('el ciclo automático NO corrige nada', async () => {
+    // Corregir un agregado sin que una persona haya mirado la evidencia es la
+    // forma más rápida de convertir un bug de lectura en pérdida de datos. Ya
+    // pasó acá: la primera versión bajaba un contador correcto de 3 a 2.
+    const period = '2060-03'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'no-corregir',
+      keySource: 'platform', costUsd: 50,
+    })
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 10 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    const resultado = await runAccountingAudit({ period })
+
+    expect(resultado.balanced).toBe(false)
+
+    // El número sigue mal DESPUÉS de auditar: detectar y corregir son dos
+    // actos, y el segundo se pide.
+    const despues = await AiUsage.findOne({ tenantId: TENANT, period })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(despues.estimatedCostUsd).toBe(10)
+  })
+
+  test('una diferencia de centésimas de centavo no es un hallazgo', async () => {
+    // Son las mismas sumas hechas en otro orden. Reportarlas entrenaría a
+    // ignorar el aviso que importa.
+    const period = '2060-04'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'ruido',
+      keySource: 'platform', costUsd: 10.000_02,
+    })
+    await AiPlatformUsage.updateOne(
+      { period }, { $set: { estimatedCostUsd: 10 } }, { upsert: true },
+    )
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 10 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.balanced).toBe(true)
   })
 })
