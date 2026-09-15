@@ -59,7 +59,7 @@ const Footer = () => {
     <Box
       component="footer"
       sx={{
-        bgcolor: themeColors.background,
+        bgcolor: themeColors.actionPrimaryText,
         color: themeColors.background,
         mt: 6,
         fontSize: 14,
