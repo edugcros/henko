@@ -276,6 +276,29 @@ jest.unstable_mockModule("../models/aiConsumptionLedgerModel.js", () => ({
   },
 }));
 
+// El candado de idempotencia. Se mockea como los demas modelos: este archivo
+// prueba la LOGICA del medidor sin base, y el candado en si —que es un indice
+// unico de Mongo— se prueba contra una base real en
+// aiOperationIdempotency.test.js, porque un mock del modelo probaria el mock.
+const mockOperation = {
+  create: jest.fn(),
+  findOne: jest.fn(),
+  findOneAndUpdate: jest.fn(),
+  updateOne: jest.fn(),
+};
+
+jest.unstable_mockModule("../models/aiOperationModel.js", () => ({
+  default: mockOperation,
+  AI_OPERATION_STATUS: {
+    PENDING: "pending",
+    RUNNING: "running",
+    COMPLETED: "completed",
+    FAILED: "failed",
+    REFUNDED: "refunded",
+  },
+  TERMINAL_STATUSES: ["completed", "failed", "refunded"],
+}));
+
 jest.unstable_mockModule("../services/ai/aiCredentialsService.js", () => ({
   KEY_SOURCE: { TENANT: "tenant", PLATFORM: "platform", NONE: "none" },
   loadTenantAiProfile: mockProfile,
@@ -346,6 +369,24 @@ const chainable = result => ({
 
 const chainableLean = result => ({
   setOptions: () => ({ lean: () => Promise.resolve(result) }),
+});
+
+/**
+ * Por defecto, toda operacion es nueva.
+ *
+ * Va en un beforeEach de nivel superior y no dentro de un describe: hay ocho
+ * `clearAllMocks` repartidos por el archivo, y atar estos defaults a uno solo
+ * los dejaria dependiendo del orden en que corren los bloques.
+ *
+ * El camino de reintento no se prueba aca. El candado ES un indice unico de
+ * Mongo, asi que mockearlo probaria el mock: vive en
+ * aiOperationIdempotency.test.js, contra una base real.
+ */
+beforeEach(() => {
+  mockOperation.create.mockResolvedValue({});
+  mockOperation.findOne.mockReturnValue(chainableLean(null));
+  mockOperation.findOneAndUpdate.mockReturnValue(chainable({}));
+  mockOperation.updateOne.mockReturnValue(chainable({}));
 });
 
 const platformProfile = (overrides = {}) => ({

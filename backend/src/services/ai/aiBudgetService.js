@@ -43,6 +43,7 @@ import { getPeriodSpendByMetric } from './aiSpendReportService.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
+import AiOperation, { AI_OPERATION_STATUS } from '../../models/aiOperationModel.js'
 
 // Se reexportan para que quien mide consumo tenga un único import: el medidor
 // es la puerta de entrada, la política es un detalle de implementación suyo.
@@ -98,6 +99,193 @@ const getDefaultPricingModel = () =>
  * contable que falla en silencio es peor que no tenerlo, porque igual se confía
  * en él para decir cuánto se gastó.
  */
+/**
+ * Abre la operación, y de paso decide si esto es un reintento.
+ *
+ * ES EL CANDADO DEL COBRO. Se escribe ANTES de tocar cualquier contador: si el
+ * insert entra, la operación es nueva y el cobro procede; si choca contra el
+ * índice único, ese cobro ya ocurrió y hay que saltearlo entero.
+ *
+ * Medido contra una base real antes de esto, llamando dos veces con la misma
+ * clave: el ledger guardaba UNA fila —su índice ya funcionaba— y
+ * `counters.agentMessages` marcaba 2, `AiPlatformUsage.tokens` marcaba 3000
+ * sobre 1500 reales. El `$inc` corría primero y la escritura del ledger ni
+ * siquiera se esperaba, así que el duplicado se detectaba tarde.
+ *
+ * @returns {Promise<{fresh: boolean, operation: Object|null}>}
+ *   fresh:false significa "esto ya se cobró". El llamador NO debe incrementar.
+ */
+const openOperation = async ({
+  tenantId,
+  operationId,
+  period,
+  metric,
+  amount,
+  feature = null,
+  provider = null,
+  requestedModel = null,
+  status = AI_OPERATION_STATUS.RUNNING,
+}) => {
+  try {
+    const operation = await AiOperation.create({
+      tenantId,
+      operationId,
+      period,
+      metric,
+      amount,
+      feature,
+      provider,
+      requestedModel,
+      status,
+      startedAt: new Date(),
+    })
+
+    return { fresh: true, operation }
+  } catch (error) {
+    if (error?.code === 11000) {
+      logger.info('[AI OPERATION] Reintento detectado, no se cobra de nuevo', {
+        tenantId: String(tenantId),
+        operationId,
+        metric,
+      })
+
+      const operation = await AiOperation.findOne({ tenantId, operationId })
+        .setOptions({ tenantId })
+        .lean()
+        .catch(() => null)
+
+      return { fresh: false, operation }
+    }
+
+    // FALLA ABIERTA. La base de contabilidad caída no puede ser el motivo por
+    // el que un comercio se queda sin poder usar la IA: es el mismo contrato
+    // que ya tenía el ledger. Se pierde la protección contra reintentos en esa
+    // ventana, y por eso se loguea en error y no en warn.
+    logger.error('[AI OPERATION] No se pudo abrir la operación, se sigue sin candado', {
+      tenantId: String(tenantId),
+      operationId,
+      metric,
+      error: error.message,
+    })
+
+    return { fresh: true, operation: null }
+  }
+}
+
+/**
+ * Reclama el consumo de una operación. Devuelve false si ya estaba reclamado.
+ *
+ * El consumo llega DESPUÉS de la reserva, así que acá la operación ya existe y
+ * el candado no puede ser un insert: es una transición atómica a 'completed'.
+ * El upsert cubre al llamador que registra consumo sin haber reservado —el
+ * camino BYOK y el de los tokens medidos a posteriori—: ahí la fila nace ya
+ * completada, y el mismo índice único la protege.
+ *
+ * Un `findOne` seguido de un `update` sería la misma carrera que esto viene a
+ * cerrar, un nivel más arriba. Es una sola operación o no sirve.
+ *
+ * Sin operationId no hay nada que reclamar y se deja pasar: cerrar el paso
+ * sería dejar de registrar consumo real de todos los llamadores que todavía no
+ * informan clave, que es peor que el problema.
+ */
+const claimConsumption = async ({
+  tenantId,
+  operationId,
+  period,
+  metric,
+  amount = 0,
+  actualModel = null,
+}) => {
+  if (!operationId || !tenantId) return true
+
+  try {
+    await AiOperation.findOneAndUpdate(
+      { tenantId, operationId, status: { $ne: AI_OPERATION_STATUS.COMPLETED } },
+      {
+        $set: {
+          status: AI_OPERATION_STATUS.COMPLETED,
+          completedAt: new Date(),
+          ...(actualModel ? { actualModel } : {}),
+        },
+        $setOnInsert: {
+          tenantId,
+          operationId,
+          period,
+          metric,
+          amount: Math.max(0, Math.round(Number(amount) || 0)),
+          startedAt: new Date(),
+        },
+      },
+      { upsert: true, new: true },
+    ).setOptions({ tenantId })
+
+    return true
+  } catch (error) {
+    if (error?.code === 11000) {
+      // El documento existe y YA estaba en 'completed', así que el filtro no lo
+      // encontró y el upsert intentó insertar uno nuevo contra el índice único.
+      // Eso es exactamente un reintento.
+      logger.info('[AI OPERATION] Consumo repetido descartado', {
+        tenantId: String(tenantId),
+        operationId,
+        metric,
+      })
+      return false
+    }
+
+    logger.error('[AI OPERATION] No se pudo reclamar el consumo, se registra sin candado', {
+      tenantId: String(tenantId),
+      operationId,
+      metric,
+      error: error.message,
+    })
+
+    return true
+  }
+}
+
+/**
+ * Cierra la operación. No se espera a propósito: el estado final es
+ * observabilidad, no dinero — el dinero ya lo movieron los contadores y el
+ * ledger. Hacer esperar a quien llama por una escritura que no cambia ninguna
+ * decisión sería cobrarle latencia al comercio por nuestra trazabilidad.
+ */
+const closeOperation = ({
+  tenantId,
+  operationId,
+  status,
+  actualModel = null,
+  failureReason = null,
+}) => {
+  if (!operationId || !tenantId) return
+
+  const now = new Date()
+
+  AiOperation.updateOne(
+    { tenantId, operationId },
+    {
+      $set: {
+        status,
+        ...(actualModel ? { actualModel } : {}),
+        ...(failureReason ? { failureReason: String(failureReason).slice(0, 200) } : {}),
+        ...(status === AI_OPERATION_STATUS.COMPLETED ? { completedAt: now } : {}),
+        ...(status === AI_OPERATION_STATUS.FAILED || status === AI_OPERATION_STATUS.REFUNDED
+          ? { failedAt: now }
+          : {}),
+      },
+    },
+  )
+    .setOptions({ tenantId })
+    .catch(error => {
+      logger.warn('[AI OPERATION] No se pudo cerrar la operación', {
+        tenantId: String(tenantId),
+        operationId,
+        status,
+        error: error.message,
+      })
+    })
+}
+
 const writeLedgerEntry = ({
   tenantId,
   period,
@@ -689,6 +877,13 @@ export const reserveAiBudget = async ({
   // genera acá y se devuelve en el resultado para que los pasos siguientes
   // usen la misma.
   operationId: requestedOperationId = null,
+  // Trazabilidad de la operación. Los tres son opcionales: ningún llamador
+  // existente tiene que cambiar para que esto funcione, y el que los manda
+  // gana poder responder "¿qué función me está costando la plata?" y "¿cuántas
+  // veces el fallback decidió el modelo que pagué?".
+  feature = null,
+  provider = null,
+  requestedModel = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -789,6 +984,39 @@ export const reserveAiBudget = async ({
 
   const upfrontCostUsd = getUpfrontCostUsd(normalizedMetric, reservationAmount)
 
+  // EL CANDADO. Antes de este punto no se tocó ningún contador; después de
+  // este punto, el `$inc` solo corre si la operación es nueva.
+  const { fresh, operation } = await openOperation({
+    tenantId: id,
+    operationId,
+    period,
+    metric: normalizedMetric,
+    amount: reservationAmount,
+    feature,
+    provider,
+    requestedModel,
+  })
+
+  // Reintento: este cobro ya ocurrió. Se devuelve permitido —porque la reserva
+  // original SÍ se hizo y el llamador tiene derecho a seguir— pero sin sumar
+  // nada. Devolver denegado sería peor: haría fallar un reintento legítimo de
+  // algo que ya estaba pago.
+  if (!fresh) {
+    const usage = await AiUsage.findOne({ tenantId: id, period })
+      .setOptions({ tenantId: id })
+      .lean()
+      .catch(() => null)
+
+    return buildAllowedResult({
+      metric: normalizedMetric,
+      limit,
+      used: readCounter(usage, normalizedMetric),
+      profile: aiProfile,
+      reason: 'replay',
+      operationId,
+    })
+  }
+
   const updated = await applyReservation({
     tenantId: id,
     period,
@@ -809,6 +1037,13 @@ export const reserveAiBudget = async ({
     )
 
     if (exhaustedGuard) {
+      closeOperation({
+        tenantId: id,
+        operationId,
+        status: AI_OPERATION_STATUS.FAILED,
+        failureReason: `${DENY_REASONS.GUARD_LIMIT}:${exhaustedGuard.metric}`,
+      })
+
       return buildDeniedResult({
         metric: exhaustedGuard.metric,
         limit: exhaustedGuard.limit,
@@ -821,6 +1056,13 @@ export const reserveAiBudget = async ({
 
     const used = readCounter(usage, normalizedMetric)
     if (limit !== UNLIMITED && used + reservationAmount > limit) {
+      closeOperation({
+        tenantId: id,
+        operationId,
+        status: AI_OPERATION_STATUS.FAILED,
+        failureReason: DENY_REASONS.METRIC_LIMIT,
+      })
+
       return buildDeniedResult({
         metric: normalizedMetric,
         limit,
@@ -834,6 +1076,13 @@ export const reserveAiBudget = async ({
     // lecturas o que Mongo/Mongoose rechace la expresión de forma transitoria.
     // No reintentamos sin condición porque eso podría convertir un error de
     // concurrencia en una sobrerreserva.
+    closeOperation({
+      tenantId: id,
+      operationId,
+      status: AI_OPERATION_STATUS.FAILED,
+      failureReason: 'AI_RESERVATION_NOT_CONFIRMED',
+    })
+
     const error = new Error('No se pudo confirmar la reserva atómica de IA')
     error.code = 'AI_RESERVATION_NOT_CONFIRMED'
     error.details = {
@@ -885,6 +1134,17 @@ export const reserveAiBudget = async ({
     ...(upfrontCostUsd > 0 ? { breakdown: { estimated: true } } : {}),
   })
 
+  // Cuando el costo se cobra por adelantado no hay medición posterior que
+  // pueda cerrarla: reservar y consumir fueron el mismo acto, igual que en el
+  // ledger, que ya la marca 'consumed' en este caso.
+  if (upfrontCostUsd > 0) {
+    closeOperation({
+      tenantId: id,
+      operationId,
+      status: AI_OPERATION_STATUS.COMPLETED,
+    })
+  }
+
   return buildAllowedResult({
     metric: normalizedMetric,
     limit,
@@ -915,6 +1175,29 @@ export const refundAiBudget = async ({
   if (!normalizedMetric || !id) return
 
   const period = requestedPeriod || getCurrentPeriod()
+
+  // Un refund repetido descuenta dos veces, igual que un cobro repetido cobra
+  // dos veces. El estado de la operación es el que corta: si ya está devuelta,
+  // no hay nada que devolver.
+  if (operationId) {
+    const yaDevuelta = await AiOperation.findOne({
+      tenantId: id,
+      operationId,
+      status: AI_OPERATION_STATUS.REFUNDED,
+    })
+      .setOptions({ tenantId: id })
+      .lean()
+      .catch(() => null)
+
+    if (yaDevuelta) {
+      logger.info('[AI OPERATION] Devolución repetida descartada', {
+        tenantId: String(id),
+        operationId,
+        metric: normalizedMetric,
+      })
+      return
+    }
+  }
 
   // Lo que se cobró por adelantado se devuelve por adelantado, en el mismo
   // movimiento. La simetría no es estética: es lo que garantiza que cuota y
@@ -961,6 +1244,12 @@ export const refundAiBudget = async ({
           })
         })
       }
+
+      closeOperation({
+        tenantId: id,
+        operationId,
+        status: AI_OPERATION_STATUS.REFUNDED,
+      })
 
       writeLedgerEntry({
         tenantId: id,
@@ -1025,6 +1314,19 @@ export const recordAiConsumption = async ({
 
   const costUsd = breakdown?.costUsd || 0
   const period = requestedPeriod || getCurrentPeriod()
+
+  // Mismo candado que en recordTokenSpend: acá también se incrementan
+  // contadores del comercio y de la plataforma.
+  const nuevo = await claimConsumption({
+    tenantId: id,
+    operationId,
+    period,
+    metric: normalizedMetric,
+    amount: normalizedAmount,
+    actualModel: isTokenMetric ? usedModel : null,
+  })
+
+  if (!nuevo) return
 
   try {
     await ensureUsageDocument({ tenantId: id, period })
@@ -1114,6 +1416,25 @@ export const recordTokenSpend = async ({
   const isByok = aiProfile.keySource === KEY_SOURCE.TENANT
   const costUsd = isByok ? 0 : breakdown.costUsd
   const period = requestedPeriod || getCurrentPeriod()
+
+  // Antes de este punto no se tocó nada. Medido contra una base real, sin este
+  // candado dos llamadas con la misma clave dejaban AiPlatformUsage.tokens en
+  // 3000 sobre 1500 realmente gastados — y ese contador es el que mide el
+  // disyuntor de plataforma, así que un reintento podía dispararlo antes de
+  // tiempo y dejar sin IA a todos los comercios.
+  const nuevo = await claimConsumption({
+    tenantId: id,
+    operationId,
+    period,
+    metric: normalizedMetric,
+    amount: breakdown.totalTokens,
+    // El modelo que EFECTIVAMENTE respondió. Es el dato que explica una factura
+    // rara: se pide gemini-3.8-flash, el fallback entrega 3.1-flash-lite, y lo
+    // que se paga es lo segundo.
+    actualModel: breakdown.price?.model || model,
+  })
+
+  if (!nuevo) return
 
   if (costUsd > 0) {
     try {
