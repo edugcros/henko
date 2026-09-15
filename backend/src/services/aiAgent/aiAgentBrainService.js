@@ -519,6 +519,7 @@ const repairAiResponseIfNeeded = async ({
         amount: Number(repaired?.usageMetadata?.totalTokenCount || 0),
         profile,
         model: repaired?.model,
+        requestedModel: repaired?.requestedModel,
         inputTokens: repaired?.usageMetadata?.promptTokenCount ?? null,
         outputTokens: repaired?.usageMetadata?.candidatesTokenCount ?? null,
         // La reparación es una SEGUNDA LLAMADA de la misma operación, no otra
@@ -627,7 +628,12 @@ const registerTokenUsage = async ({
   usageMetadata,
   profile,
   model = null,
+  // Con cuál se PIDIÓ. El par pedido/real es lo que explica una factura que no
+  // da: entre gemini-3.6-flash y gemini-3.1-flash-lite hay 3x de tarifa, y
+  // quién responde lo decide la cadena de respaldo, no la configuración.
+  requestedModel = null,
   operationId = null,
+  callId = undefined,
 }) => {
   const tokens = Number(usageMetadata?.totalTokenCount || 0)
   if (!Number.isFinite(tokens) || tokens <= 0) return
@@ -641,6 +647,8 @@ const registerTokenUsage = async ({
     // El modelo REAL: con la cadena de respaldo puede no ser el configurado, y
     // entre 3.6-flash y 3.1-flash-lite hay 5x de diferencia de tarifa.
     model,
+    requestedModel,
+    ...(callId ? { callId } : {}),
     // El desglose viene medido en usageMetadata. Sin pasarlo, el costo se
     // reparte con una proporción supuesta teniendo el dato real al lado.
     inputTokens: usageMetadata?.promptTokenCount ?? null,
@@ -1190,6 +1198,7 @@ export const processAgentMessage = async ({
     usageMetadata: aiResult.usageMetadata,
     profile: aiProfile,
     model: aiResult.model,
+    requestedModel: aiResult.requestedModel,
     operationId,
   }).catch(() => null)
 

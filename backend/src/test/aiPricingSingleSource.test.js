@@ -140,3 +140,66 @@ describe('las tarifas siguen fechadas', () => {
     expect(costo.costUsd).toBeGreaterThan(1)
   })
 })
+
+// ─── El modelo real, no el configurado ──────────────────────────────────────
+//
+// Medido en producción sobre 122 filas de costo por tokens:
+//
+//   gemini-3.1-flash-lite   50    ← el configurado en GEMINI_MODEL
+//   gemini-3.6-flash        40    ← 3x más caro
+//   gemini-3.5-flash-lite   22
+//   gemini-3.7-flash         8
+//   gemini-3.5-flash         4
+//   gemini-3.8-flash         2
+//
+// 72 de 122 NO son el modelo configurado. Si el costo se calculara con
+// GEMINI_MODEL, el 59% del gasto estaría mal — y hacia abajo, que es el error
+// que llega en la factura.
+
+describe('costeo · con el modelo que respondió', () => {
+  test('la diferencia entre el pedido y el real es real', () => {
+    const pedido = computeCostUsd({
+      model: 'gemini-3.8-flash',
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+    })
+    const respondio = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+    })
+
+    // 0,75+3,75 contra 0,25+1,50. Costear con el equivocado no es un redondeo.
+    expect(pedido.costUsd).toBeCloseTo(4.5, 6)
+    expect(respondio.costUsd).toBeCloseTo(1.75, 6)
+    expect(pedido.costUsd / respondio.costUsd).toBeGreaterThan(2.5)
+  })
+
+  test('el modelo inferido ya no prefiere el de imágenes', () => {
+    // La precedencia preguntaba primero por GEMINI_IMAGE_MODEL para costear
+    // TOKENS. Un llamador que se olvidara del modelo pagaba 3x por un error de
+    // orden, no por una decisión.
+    const fuente = fs.readFileSync(
+      path.join(SRC, 'services/ai/aiBudgetService.js'),
+      'utf8',
+    )
+    const bloque = fuente.slice(
+      fuente.indexOf('const getDefaultPricingModel'),
+      fuente.indexOf('const resolvePricingModel'),
+    )
+
+    expect(bloque).toContain('GEMINI_MODEL')
+    expect(bloque).not.toContain('GEMINI_IMAGE_MODEL')
+  })
+
+  test('adivinar el modelo deja marca y no pasa desapercibido', () => {
+    // Un costo supuesto que se ve igual que uno medido es peor que no tenerlo.
+    const fuente = fs.readFileSync(
+      path.join(SRC, 'services/ai/aiBudgetService.js'),
+      'utf8',
+    )
+
+    expect(fuente).toContain('pricingFallback')
+    expect(fuente).toContain('[AI PRICING] Costo calculado con un modelo INFERIDO')
+  })
+})

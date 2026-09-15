@@ -1401,6 +1401,10 @@ describe("aiBudgetService · recordTokenSpend", () => {
     await recordTokenSpend({
       tenantId: TENANT_ID,
       metric: AI_METRICS.VISION,
+      // El modelo REAL que respondio. Los siete llamadores de produccion
+      // siempre lo informan: sin el, el costo se calcula con uno adivinado y
+      // queda marcado con pricingFallback.
+      model: "gemini-3.6-flash",
       inputTokens: 3900,
       outputTokens: 1000,
     });
@@ -1467,6 +1471,10 @@ describe("aiBudgetService · recordTokenSpend", () => {
     await recordTokenSpend({
       tenantId: TENANT_ID,
       metric: AI_METRICS.VISION,
+      // El modelo REAL que respondio. Los siete llamadores de produccion
+      // siempre lo informan: sin el, el costo se calcula con uno adivinado y
+      // queda marcado con pricingFallback.
+      model: "gemini-3.6-flash",
       inputTokens: 3900,
       outputTokens: 1000,
     });
@@ -1571,6 +1579,10 @@ describe("aiBudgetService · aviso de presupuesto", () => {
       tenantId: TENANT_ID,
       metric: AI_METRICS.AGENT_TOKENS,
       amount: tokens,
+      // El modelo real. Sin informarlo, el costo sale de uno adivinado y el
+      // medidor lo avisa con un warn — que es justo lo que estos tests miden
+      // para comprobar que NO se avise nada de presupuesto.
+      model: "gemini-3.1-flash-lite",
     });
 
   beforeEach(() => {

@@ -78,6 +78,24 @@ const aiProviderCallSchema = new mongoose.Schema(
 
     costUsd: { type: Number, default: 0, min: 0 },
 
+    /**
+     * true cuando el costo se calculó con un modelo ADIVINADO.
+     *
+     * Pasa si el llamador no informó con cuál gastó y hubo que caer al
+     * configurado. El número que sale es un supuesto: la cadena de respaldo
+     * entrega modelos que difieren hasta 3x en tarifa, así que adivinar cuál
+     * respondió es adivinar cuánto costó.
+     *
+     * Es distinto de priceFallback del ledger, que marca "sé qué modelo era,
+     * pero no está en el catálogo de precios". Acá ni siquiera se sabe el
+     * modelo.
+     *
+     * En producción esto debería ser SIEMPRE false: de 122 filas de costo,
+     * cero llegaron por ese camino. Una fila en true es un llamador que dejó
+     * de informar el modelo.
+     */
+    pricingFallback: { type: Boolean, default: false },
+
     // false cuando el proveedor falló. Una llamada fallida también se registra:
     // se pagó el intento o, como mínimo, se gastó el tiempo, y sin la fila no
     // hay forma de ver que un proveedor está fallando.

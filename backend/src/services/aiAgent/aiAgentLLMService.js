@@ -677,7 +677,14 @@ export const callGemini = async ({
       content ||
       buildProviderFallbackContent({ messages, reason: 'empty_provider_response' }),
     provider: DEFAULT_PROVIDER,
+    // El que RESPONDIÓ. Puede no ser el que se pidió: la cadena de respaldo
+    // entrega otro cuando el primero está saturado o sin cupo.
     model: usedModel,
+    // El que se PIDIÓ. Medido en producción, de 122 filas de costo, 72 son de
+    // un modelo distinto al configurado — y entre gemini-3.6-flash y
+    // gemini-3.1-flash-lite hay 3x de tarifa. Sin este par, "por qué la
+    // factura no da" no se contesta.
+    requestedModel: normalizeGeminiModelName(model),
     finishReason,
     truncated,
     safetyRatings: finishInfo.safetyRatings,

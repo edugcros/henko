@@ -97,13 +97,54 @@ const TOKEN_METRICS = new Set([AI_METRICS.AGENT_TOKENS, AI_METRICS.MARKET_TOKENS
  *
  * El orden de precedencia replica el de aiVisionService::MODEL_NAME.
  */
+/**
+ * Último recurso cuando el llamador NO informa con qué modelo gastó.
+ *
+ * NO ES EL CAMINO NORMAL, y no debe serlo: en producción, de 122 filas de
+ * costo por tokens, CERO llegaron por acá. Los siete llamadores pasan el
+ * modelo real que devolvió el proveedor.
+ *
+ * Si alguna vez se usa, el número que sale es un supuesto: la cadena de
+ * respaldo entrega modelos que difieren hasta 3x en tarifa, así que adivinar
+ * cuál respondió es adivinar cuánto costó. Por eso quien lo use queda MARCADO
+ * con pricingFallback y logueado — un costo supuesto que se ve igual que uno
+ * medido es peor que no tenerlo.
+ *
+ * El orden cambió: antes preguntaba primero por el modelo de IMÁGENES
+ * (gemini-3.8-flash, 0,75/3,75) para costear TOKENS, cuando el de texto
+ * configurado es gemini-3.1-flash-lite (0,25/1,50). Un llamador que se
+ * olvidara del modelo pagaba 3x por un error de precedencia, no por una
+ * decisión.
+ */
 const getDefaultPricingModel = () =>
   normalizeModelName(
-    process.env.GEMINI_IMAGE_MODEL ||
-      process.env.GOOGLE_IMAGE_MODEL ||
-      process.env.GEMINI_MODEL ||
+    process.env.GEMINI_MODEL ||
+      process.env.GOOGLE_TEXT_MODEL ||
+      process.env.GOOGLE_MODEL ||
       'gemini-3.8-flash',
   )
+
+/**
+ * Resuelve con qué modelo costear, y si hubo que adivinarlo.
+ *
+ * @returns {{model: string, pricingFallback: boolean}}
+ */
+const resolvePricingModel = (model, { tenantId, metric } = {}) => {
+  const informado = normalizeModelName(model)
+  if (informado) return { model: informado, pricingFallback: false }
+
+  const inferido = getDefaultPricingModel()
+
+  logger.warn('[AI PRICING] Costo calculado con un modelo INFERIDO', {
+    tenantId: tenantId ? String(tenantId) : null,
+    metric,
+    inferido,
+    detalle:
+      'el llamador no informó con qué modelo gastó; el costo es un supuesto',
+  })
+
+  return { model: inferido, pricingFallback: true }
+}
 
 /**
  * Escribe una fila del ledger. Nunca lanza.
@@ -261,6 +302,7 @@ const claimConsumption = async ({
   breakdown = null,
   costUsd = 0,
   ok = true,
+  pricingFallback = false,
 }) => {
   if (!operationId || !tenantId) return true
 
@@ -279,6 +321,7 @@ const claimConsumption = async ({
       totalTokens: breakdown?.totalTokens ?? Math.max(0, Math.round(Number(amount) || 0)),
       costUsd: Number(costUsd) || 0,
       ok,
+      pricingFallback,
     })
   } catch (error) {
     if (error?.code === 11000) {
@@ -1697,7 +1740,10 @@ export const recordAiConsumption = async ({
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const isByok = aiProfile.keySource === KEY_SOURCE.TENANT
   const isTokenMetric = TOKEN_METRICS.has(normalizedMetric)
-  const usedModel = normalizeModelName(model || getDefaultPricingModel())
+  const { model: usedModel, pricingFallback } = resolvePricingModel(model, {
+    tenantId: id,
+    metric: normalizedMetric,
+  })
 
   const breakdown = isTokenMetric && !isByok
     ? computeCostUsd({ model: usedModel, inputTokens, outputTokens, totalTokens: normalizedAmount })
@@ -1720,6 +1766,7 @@ export const recordAiConsumption = async ({
     actualModel: isTokenMetric ? usedModel : null,
     breakdown,
     costUsd,
+    pricingFallback,
   })
 
   if (!nuevo) return
@@ -1804,8 +1851,13 @@ export const recordTokenSpend = async ({
 
   if (!normalizedMetric || !id) return
 
+  const { model: usedModel, pricingFallback } = resolvePricingModel(model, {
+    tenantId: clean(tenantId),
+    metric: normalizeMetric(metric),
+  })
+
   const breakdown = computeCostUsd({
-    model: model || getDefaultPricingModel(),
+    model: usedModel,
     inputTokens,
     outputTokens,
     totalTokens,
@@ -1835,9 +1887,10 @@ export const recordTokenSpend = async ({
     // El modelo que EFECTIVAMENTE respondió. Es el dato que explica una factura
     // rara: se pide gemini-3.8-flash, el fallback entrega 3.1-flash-lite, y lo
     // que se paga es lo segundo.
-    actualModel: breakdown.price?.model || model,
+    actualModel: breakdown.price?.model || usedModel,
     breakdown,
     costUsd,
+    pricingFallback,
   })
 
   if (!nuevo) return
