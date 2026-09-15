@@ -1623,6 +1623,153 @@ export const recordTokenSpend = async ({
   })
 }
 
+// ─── RESERVAS COLGADAS ──────────────────────────────────────────────────────
+
+/** Entero positivo de entorno, o el default medido. Nada fijo a mano. */
+const envPositiveInt = (name, fallback) => {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback
+}
+
+/**
+ * Cuánto puede estar corriendo una operación antes de considerarla muerta.
+ *
+ * Tiene que ser holgado: la operación más lenta medida es un análisis de
+ * mercado, que llegó a 116 segundos cuando el modelo estaba saturado y hubo
+ * que esperar la cadena de respaldo. Treinta minutos deja margen de sobra y
+ * sigue siendo mucho menos que el mes que el cupo quedaría tomado.
+ *
+ * Barrer de más tiene un costo real y acotado: si la operación seguía viva y
+ * termina después, el cupo ya se devolvió y el comercio se lleva ese mensaje
+ * gratis. Barrer de menos deja al comercio pagando algo que nunca recibió,
+ * hasta que cambie el mes. Por eso el umbral es generoso y el sesgo, a esperar.
+ */
+const STALE_AFTER_MS = envPositiveInt('AI_STALE_OPERATION_MS', 30 * 60 * 1000)
+
+/** Cuántas se barren por ciclo. Un tope evita que un incidente viejo monopolice. */
+const STALE_BATCH = envPositiveInt('AI_STALE_OPERATION_BATCH', 200)
+
+/**
+ * Devuelve el cupo de las operaciones que quedaron corriendo para siempre.
+ *
+ * Una operación entra en 'running' cuando se reserva el cupo y sale cuando se
+ * registra el consumo o se devuelve la reserva. Si el proceso muere en el
+ * medio —un deploy a mitad de una llamada, un timeout del contenedor, un
+ * crash— no pasa ninguna de las dos cosas: el comercio queda pagando un
+ * mensaje que nunca se envió, y nada lo devuelve hasta que cambia el mes.
+ *
+ * Esta función es la razón por la que AiOperation existe como colección
+ * separada y no como una vista derivada del ledger: encontrar estas
+ * operaciones es un índice sobre (status, startedAt), y derivarlo del ledger
+ * sería una agregación buscando reservas sin su consumo ni su devolución.
+ *
+ * NO duplica la lógica de devolución: llama a refundAiBudget, que ya tiene el
+ * reclamo atómico. Dos barredoras corriendo a la vez —dos instancias del
+ * servidor— no pueden devolver la misma reserva dos veces, por el mismo
+ * mecanismo que protege a los refunds normales.
+ *
+ * @param {Object} [params]
+ * @param {number} [params.olderThanMs]
+ * @param {number} [params.limit]
+ * @returns {Promise<{found:number, swept:number}>}
+ */
+export const sweepStaleOperations = async ({
+  olderThanMs = STALE_AFTER_MS,
+  limit = STALE_BATCH,
+} = {}) => {
+  const corte = new Date(Date.now() - olderThanMs)
+
+  const colgadas = await AiOperation.find({
+    status: AI_OPERATION_STATUS.RUNNING,
+    startedAt: { $lt: corte },
+  })
+    .sort({ startedAt: 1 })
+    .limit(limit)
+    .select('tenantId operationId metric amount period startedAt feature')
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:barrido-reservas-colgadas' })
+    .lean()
+
+  if (colgadas.length === 0) return { found: 0, swept: 0 }
+
+  let swept = 0
+
+  for (const operacion of colgadas) {
+    try {
+      await refundAiBudget({
+        tenantId: operacion.tenantId,
+        metric: operacion.metric,
+        amount: operacion.amount || 1,
+        period: operacion.period,
+        operationId: operacion.operationId,
+      })
+
+      swept += 1
+    } catch (error) {
+      logger.warn('[AI SWEEP] No se pudo devolver una reserva colgada', {
+        tenantId: String(operacion.tenantId),
+        operationId: operacion.operationId,
+        error: error.message,
+      })
+    }
+  }
+
+  // Nivel warn y no info: que haya reservas colgadas significa que algo se
+  // murió a mitad de camino. El barrido arregla la plata, no la causa.
+  logger.warn('[AI SWEEP] Reservas colgadas devueltas', {
+    found: colgadas.length,
+    swept,
+    olderThanMinutes: Math.round(olderThanMs / 60000),
+    features: [...new Set(colgadas.map(o => o.feature).filter(Boolean))],
+  })
+
+  return { found: colgadas.length, swept }
+}
+
+let sweepInterval = null
+
+/**
+ * Arranca el barrido periódico.
+ *
+ * Vive acá y no en src/workers/ a propósito: es lógica de presupuesto —decide
+ * devolver plata— y su cuerpo son diez líneas que llaman a refundAiBudget, que
+ * está en este mismo archivo. Un archivo aparte separaría la decisión de
+ * devolver del resto de las reglas de cobro.
+ */
+export const startStaleOperationSweeper = ({ logger: log = logger } = {}) => {
+  if (process.env.AI_STALE_SWEEPER_ENABLED === 'false') {
+    log.info?.('[AI SWEEP] Barrido de reservas colgadas deshabilitado')
+    return
+  }
+
+  if (sweepInterval) return
+
+  // Cada quince minutos. No hace falta más: el daño de una reserva colgada es
+  // cupo tomado durante el mes, no una urgencia de segundos.
+  const intervalMs = envPositiveInt('AI_STALE_SWEEP_INTERVAL_MS', 15 * 60 * 1000)
+
+  sweepInterval = setInterval(() => {
+    sweepStaleOperations().catch(error => {
+      log.error?.('[AI SWEEP] El barrido falló', { error: error.message })
+    })
+  }, intervalMs)
+
+  // No mantiene vivo el proceso: si no queda nada más que hacer, que Node
+  // pueda salir.
+  sweepInterval.unref?.()
+
+  log.info?.('[AI SWEEP] Barrido de reservas colgadas iniciado', {
+    intervalMinutes: Math.round(intervalMs / 60000),
+    staleAfterMinutes: Math.round(STALE_AFTER_MS / 60000),
+  })
+}
+
+export const stopStaleOperationSweeper = () => {
+  if (sweepInterval) {
+    clearInterval(sweepInterval)
+    sweepInterval = null
+  }
+}
+
 /**
  * Chequeo sin reservar, para el middleware de ruta: corta temprano al que ya
  * está sin cupo o sin suscripción, sin duplicar el contador que después

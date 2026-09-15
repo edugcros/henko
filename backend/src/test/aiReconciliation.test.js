@@ -26,8 +26,10 @@ const { default: AiProviderCall } = await import('../models/aiProviderCallModel.
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
 
-const { reserveAiBudget, refundAiBudget, recordAiConsumption, AI_METRICS } =
-  await import('../services/ai/aiBudgetService.js')
+const {
+  reserveAiBudget, refundAiBudget, recordAiConsumption,
+  sweepStaleOperations, AI_METRICS,
+} = await import('../services/ai/aiBudgetService.js')
 const { reconcileTenantUsage, reconcilePlatformUsage, getPlatformSpendSnapshot } =
   await import('../services/ai/aiSpendReportService.js')
 
@@ -267,5 +269,186 @@ describe('la diferencia se ve sin que nadie corra nada', () => {
     // El contador sigue como estaba: mirar no corrige.
     const despues = await AiPlatformUsage.findOne({ period }).lean()
     expect(despues.tokens).toBe(5000)
+  })
+})
+
+// ─── BLOQUE 5 · el libro es la verdad, pero solo si está completo ───────────
+//
+// Declarar al ledger fuente de verdad solo vale si el ledger tiene todo. Hoy
+// puede no tenerlo: writeLedgerEntry no se espera y se traga los errores que
+// no son clave repetida, a propósito, para que la contabilidad nunca rompa
+// una operación de IA. Si esa escritura falla, el contador subió y la fila no
+// existe.
+//
+// Medido antes de esta guarda: un contador CORRECTO en 3, con una fila
+// perdida, quedaba en 2 después de "corregirlo". La reconciliación destruía
+// el número bueno.
+
+describe('fuente de verdad · no se corrige contra un libro corto', () => {
+  test('detecta que al ledger le faltan operaciones y NO toca el contador', async () => {
+    const period = '2050-01'
+
+    // Claves propias: operationId es unico POR COMERCIO, no por periodo.
+    // Reusar una de otro test la trata como reintento y no incrementa nada,
+    // que es el comportamiento correcto de una clave de idempotencia.
+    for (const operationId of ['corto-1', 'corto-2', 'corto-3']) {
+      await reserveAiBudget({
+        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+        profile: PERFIL, period, operationId,
+      })
+    }
+    await asentar()
+
+    // La escritura del ledger de una de ellas falló.
+    await AiConsumptionLedger.deleteOne({ tenantId: TENANT, operationId: 'corto-3' })
+      .setOptions({ tenantId: TENANT })
+
+    const informe = await reconcileTenantUsage({ tenantId: TENANT, period })
+
+    expect(informe.ledgerComplete).toBe(false)
+    expect(informe.missingFromLedger).toContain('corto-3')
+
+    // Aunque se pida aplicar, no se aplica: corregir contra un libro corto
+    // sería borrar consumo real.
+    const intento = await reconcileTenantUsage({ tenantId: TENANT, period, apply: true })
+
+    expect(intento.applied).toBe(false)
+    expect(await contador(period, 'agentMessages')).toBe(3)
+  })
+
+  test('con el libro completo, sí corrige', async () => {
+    const period = '2050-02'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId: 'completa',
+    })
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $inc: { 'counters.agentMessages': 3 } },
+    ).setOptions({ tenantId: TENANT })
+    await asentar()
+
+    const aplicado = await reconcileTenantUsage({ tenantId: TENANT, period, apply: true })
+
+    expect(aplicado.ledgerComplete).toBe(true)
+    expect(aplicado.applied).toBe(true)
+    expect(await contador(period, 'agentMessages')).toBe(1)
+  })
+
+  test('una llamada extra no cuenta como operación faltante', async () => {
+    // La reparación entra al ledger como 'operacion:repair'. Compararla de
+    // forma literal la daría por ausente y bloquearía toda corrección.
+    const period = '2050-03'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId: 'con-reparacion',
+    })
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 600,
+      model: 'gemini-3.1-flash-lite', inputTokens: 400, outputTokens: 200,
+      profile: PERFIL, period, operationId: 'con-reparacion', callId: 'repair',
+    })
+    await asentar()
+
+    const informe = await reconcileTenantUsage({ tenantId: TENANT, period })
+
+    expect(informe.ledgerComplete).toBe(true)
+    expect(informe.missingFromLedger).toHaveLength(0)
+  })
+})
+
+// ─── Reservas colgadas ──────────────────────────────────────────────────────
+//
+// Una operación entra en 'running' cuando se reserva el cupo y sale cuando se
+// registra el consumo o se devuelve la reserva. Si el proceso muere en el
+// medio —un deploy a mitad de una llamada, un crash— no pasa ninguna de las
+// dos: el comercio queda pagando algo que nunca recibió, hasta que cambie el
+// mes.
+
+describe('reservas colgadas · el cupo vuelve solo', () => {
+  const vieja = async (operationId, period, minutos = 60) => {
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId,
+    })
+
+    // Se la envejece: el barrido mira startedAt.
+    await AiOperation.updateOne(
+      { tenantId: TENANT, operationId },
+      { $set: { startedAt: new Date(Date.now() - minutos * 60000) } },
+    ).setOptions({ tenantId: TENANT })
+  }
+
+  test('devuelve el cupo de una operación que quedó corriendo', async () => {
+    const period = '2051-01'
+    await vieja('murio-a-mitad', period)
+    await asentar()
+    expect(await contador(period, 'agentMessages')).toBe(1)
+
+    const resultado = await sweepStaleOperations()
+
+    expect(resultado.swept).toBeGreaterThanOrEqual(1)
+    expect(await contador(period, 'agentMessages')).toBe(0)
+
+    const op = await AiOperation.findOne({ tenantId: TENANT, operationId: 'murio-a-mitad' })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(op.status).toBe('refunded')
+  })
+
+  test('no toca las que todavía están corriendo', async () => {
+    const period = '2051-02'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId: 'recien-empezada',
+    })
+    await asentar()
+
+    await sweepStaleOperations()
+
+    // El análisis de mercado más lento medido tardó 116 segundos. Barrer algo
+    // vivo le regala el trabajo al comercio y, peor, descuenta cupo de algo
+    // que sí se va a entregar.
+    expect(await contador(period, 'agentMessages')).toBe(1)
+  })
+
+  test('barrer dos veces no devuelve dos veces', async () => {
+    const period = '2051-03'
+    await vieja('doble-barrido', period)
+    await asentar()
+
+    await sweepStaleOperations()
+    await sweepStaleOperations()
+
+    // Reusa refundAiBudget, que tiene el reclamo atómico: dos instancias del
+    // servidor barriendo a la vez no pueden devolver la misma reserva dos
+    // veces.
+    expect(await contador(period, 'agentMessages')).toBe(0)
+  })
+
+  test('no barre una que ya se completó', async () => {
+    const period = '2051-04'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId: 'termino-bien',
+    })
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 300,
+      model: 'gemini-3.1-flash-lite', inputTokens: 200, outputTokens: 100,
+      profile: PERFIL, period, operationId: 'termino-bien',
+    })
+    await AiOperation.updateOne(
+      { tenantId: TENANT, operationId: 'termino-bien' },
+      { $set: { startedAt: new Date(Date.now() - 3600000) } },
+    ).setOptions({ tenantId: TENANT })
+    await asentar()
+
+    await sweepStaleOperations()
+
+    expect(await contador(period, 'agentMessages')).toBe(1)
   })
 })

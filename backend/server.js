@@ -14,6 +14,10 @@ import {
   stopAiInsightWorker,
 } from './src/workers/aiInsightWorker.js'
 import { refreshPlatformAiSettings } from './src/services/ai/platformAiSettingService.js'
+import {
+  startStaleOperationSweeper,
+  stopStaleOperationSweeper,
+} from './src/services/ai/aiBudgetService.js'
 
 // =====================================================
 // Configuración servidor
@@ -62,6 +66,10 @@ const startServer = async () => {
 
       startAiCartRecoveryWorker({ logger })
       startAiInsightWorker({ logger })
+      // Devuelve el cupo de las operaciones que quedaron corriendo para
+      // siempre: un deploy a mitad de una llamada deja al comercio pagando un
+      // mensaje que nunca se envió, y nada lo devolvía hasta cambiar el mes.
+      startStaleOperationSweeper({ logger })
     })
 
     serverInstance.on('error', err => {
@@ -97,6 +105,7 @@ const shutdown = async signal => {
   try {
     stopAiCartRecoveryWorker()
     stopAiInsightWorker()
+    stopStaleOperationSweeper()
 
     if (serverInstance && isServerListening) {
       await new Promise((resolve, reject) => {

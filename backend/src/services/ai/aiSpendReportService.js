@@ -21,6 +21,7 @@
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import AiUsage from '../../models/aiUsageModel.js'
+import AiOperation from '../../models/aiOperationModel.js'
 import mongoose from 'mongoose'
 import logger from '../../../config/logger.js'
 import {
@@ -340,6 +341,35 @@ export const reconcileTenantUsage = async ({ tenantId, period, apply = false }) 
     .setOptions({ tenantId })
     .lean()
 
+  // ¿ESTÁ COMPLETO EL LIBRO?
+  //
+  // Declarar al ledger fuente de verdad solo vale si el ledger tiene todo. Y
+  // hoy puede no tenerlo: writeLedgerEntry no se espera y se traga los errores
+  // que no son clave repetida, justamente para que la contabilidad nunca rompa
+  // una operación de IA. Si esa escritura falla, el contador subió y la fila
+  // no existe.
+  //
+  // Sin esta comprobación, corregir "desde el libro" DESTRUYE el número bueno:
+  // medido, un contador correcto en 3 con una fila perdida quedaba en 2.
+  //
+  // AiOperation es el contraste confiable porque se escribe ANTES de tocar
+  // ningún contador y SÍ se espera: es el candado del cobro. Si tiene
+  // operaciones que el ledger no conoce, el que está incompleto es el ledger.
+  const [operaciones, enElLedger] = await Promise.all([
+    AiOperation.distinct('operationId', { tenantId, period }).setOptions({ tenantId }),
+    AiConsumptionLedger.distinct('operationId', { tenantId, period })
+      .setOptions({ tenantId }),
+  ])
+
+  // Las filas de una llamada extra entran al ledger como 'operacion:llamada',
+  // así que se compara contra la parte anterior a los dos puntos.
+  const conocidas = new Set(
+    enElLedger.filter(Boolean).map(id => String(id).split(':')[0]),
+  )
+
+  const missingFromLedger = operaciones.filter(id => id && !conocidas.has(id))
+  const ledgerComplete = missingFromLedger.length === 0
+
   // Cada métrica lee SOLO las filas de su propia unidad. Es la línea de la que
   // depende que el número signifique algo — ver el caso de `vision` arriba.
   const delLedger = new Map(
@@ -376,10 +406,26 @@ export const reconcileTenantUsage = async ({ tenantId, period, apply = false }) 
     counters,
     cost: { stored: costoAlmacenado, ledger: costoLedger, drift: costDrift },
     hasDrift,
+    // false = al libro le faltan filas, así que la diferencia de arriba NO es
+    // un contador inflado: es un libro corto. Corregir contra él sería borrar
+    // consumo real.
+    ledgerComplete,
+    missingFromLedger: missingFromLedger.slice(0, 20),
     applied: false,
   }
 
   if (!apply || !hasDrift) return report
+
+  if (!ledgerComplete) {
+    logger.error('[AI RECONCILE] No se corrige: al ledger le faltan operaciones', {
+      tenantId: String(tenantId),
+      period,
+      missing: missingFromLedger.length,
+      ejemplos: missingFromLedger.slice(0, 5),
+    })
+
+    return report
+  }
 
   // Se escribe el valor del ledger, no la diferencia: el ledger es el libro y
   // un $set deja el agregado exactamente en lo que el libro dice, sin importar
