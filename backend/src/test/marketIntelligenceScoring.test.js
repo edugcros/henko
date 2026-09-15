@@ -548,6 +548,23 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
     expect(ofertas[0].price).toBe(89999)
   })
 
+  test('un umbral de envío gratis no es el precio', () => {
+    // Texto real de campingcenter.com.ar, capturado en la verificación en vivo:
+    // el parser tomaba ese $100 como el precio de una campera de Columbia.
+    const ofertas = normalizeTavilyResults(
+      [
+        resultado(
+          'https://www.campingcenter.com.ar/campera-powder-lite',
+          'Campera POWDER LITE MID II Mujer',
+          '3 cuotas SIN interes en todos los articulos - Envios GRATIS x compra de mas de $100mil - En las sucursales descuento 10 % en efectivo',
+        ),
+      ],
+      AR,
+    )
+
+    expect(ofertas).toHaveLength(0)
+  })
+
   test('descarta precios en otra moneda', () => {
     // Un US$ 120 entre precios en pesos rompe la mediana y los percentiles: no
     // son comparables y acá no hay tipo de cambio.
@@ -591,6 +608,46 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
     )
 
     expect(ofertas).toHaveLength(0)
+  })
+})
+
+describe('estadísticas de precio · los atípicos no deciden el piso', () => {
+  let getPriceStatsForTest
+
+  beforeAll(async () => {
+    ;({ __test__: { computePriceStats: getPriceStatsForTest } } = await import(
+      '../services/marketIntelligence/sources/shoppingSource.js'
+    ))
+  })
+
+  test('el extremo disparatado no entra a las estadísticas', () => {
+    // Corrida real de "casco de moto integral": nueve tiendas argentinas, con
+    // $5.000 y $1.202.600 saliendo de listados de categoría y no de productos.
+    const precios = [5000, 81400, 107923, 156100, 259000, 280000, 422100, 554000, 1202600]
+
+    const stats = getPriceStatsForTest(precios.map(price => ({ price })))
+
+    // El millón doscientos queda fuera: está a más de 1,5 rangos
+    // intercuartiles del p75.
+    expect(stats.max).toBeLessThan(1202600)
+    expect(stats.sampleSize).toBe(8)
+
+    // El $5.000 SOBREVIVE, y está bien que así sea: con una dispersión tan
+    // ancha la regla de Tukey no lo marca, y recortarlo pediría un criterio
+    // inventado que también se llevaría ofertas baratas legítimas. Por eso el
+    // panel muestra cada precio con su link en vez de pedir fe.
+    expect(stats.min).toBe(5000)
+    expect(stats.median).toBe(207550)
+  })
+
+  test('con muestra chica no se descarta nada', () => {
+    // Con cuatro precios el rango intercuartil no describe nada y recortar
+    // sería inventar un criterio.
+    const stats = getPriceStatsForTest([{ price: 100 }, { price: 200 }, { price: 300 }, { price: 99000 }])
+
+    expect(stats.min).toBe(100)
+    expect(stats.max).toBe(99000)
+    expect(stats.sampleSize).toBe(4)
   })
 })
 

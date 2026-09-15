@@ -10,13 +10,20 @@
  * todos ofrecían. Acoplar el análisis a un proveedor puntual significa
  * reescribir esta capa cada vez que uno se cae o cambia su API.
  *
- * El default es Scrape.do (~$1.16/1K requests, el mejor ratio
- * precio/confiabilidad medido). Cambiar de proveedor es implementar un
- * adapter nuevo y cambiar SHOPPING_PROVIDER — nada más de este paquete se
- * entera.
+ * Cambiar de proveedor es implementar un adapter nuevo y cambiar
+ * SHOPPING_PROVIDER — nada más de este paquete se entera. Eso ya se ejerció:
+ * scrape.do agotó su cuota mensual y el reemplazo por Tavily no tocó ni el
+ * scoring ni el panel.
+ *
+ * El default hoy es Tavily: un crédito por búsqueda contra los dos o tres
+ * pedidos que gastaba scrape.do, con el mismo plan gratuito de 1.000 mensuales.
+ * A cambio no devuelve ofertas estructuradas sino páginas con texto, así que el
+ * precio se extrae de ahí y queda atado al link del que salió — verificable,
+ * que es lo que lo hace defendible.
  *
  * Variables de entorno:
- *   SHOPPING_PROVIDER   'scrapedo' (default) | 'serpapi' | 'none'
+ *   SHOPPING_PROVIDER   'tavily' (default) | 'scrapedo' | 'serpapi' | 'none'
+ *   TAVILY_API_KEY
  *   SCRAPEDO_API_KEY
  *   SERPAPI_API_KEY
  */
@@ -26,6 +33,9 @@ import logger from '../../../../config/logger.js'
 
 const REQUEST_TIMEOUT_MS = 20000
 const MAX_OFFERS = 40
+
+/** Debajo de esto la mediana describe anécdotas y vale gastar otro crédito. */
+const MIN_SAMPLE_FOR_RETRY = 3
 
 /**
  * La moneda no es decoración: se usa para descartar precios que están en otra
@@ -57,7 +67,7 @@ const GOOGLE_DOMAIN_BY_COUNTRY = {
  * @property {Array} offers             - muestra para mostrar en el panel
  */
 export async function getShoppingSignals({ product, country }) {
-  const provider = (process.env.SHOPPING_PROVIDER || 'scrapedo').trim().toLowerCase()
+  const provider = (process.env.SHOPPING_PROVIDER || 'tavily').trim().toLowerCase()
 
   if (provider === 'none') {
     return { available: false, reason: 'NO_DISPONIBLE: SHOPPING_PROVIDER deshabilitado' }
@@ -117,6 +127,27 @@ const TAVILY_COUNTRY = {
   BR: 'brazil',
 }
 
+/**
+ * Dominio de cada mercado, para el reintento sin filtro de país.
+ *
+ * Medido contra la API: `country` acota muy bien —quince de diecinueve
+ * resultados argentinos— pero en algunas consultas devuelve CERO resultados,
+ * y "casco de moto integral" fue una de ellas. Sin el filtro siempre hay
+ * respuesta, pero entran tiendas de otros países que también escriben con "$":
+ * un precio mexicano o chileno leído como pesos argentinos rompe la mediana
+ * igual que un dólar. De ahí que el reintento se quede solo con el dominio
+ * local.
+ */
+const COUNTRY_TLD = {
+  AR: '.ar',
+  MX: '.mx',
+  CL: '.cl',
+  CO: '.co',
+  UY: '.uy',
+  PE: '.pe',
+  BR: '.br',
+}
+
 const ADAPTERS = {
   /**
    * Tavily — buscador web para agentes.
@@ -139,7 +170,7 @@ const ADAPTERS = {
       return null
     }
 
-    try {
+    const buscar = async extra => {
       const { data } = await axios.post(
         'https://api.tavily.com/search',
         {
@@ -149,10 +180,10 @@ const ADAPTERS = {
           search_depth: 'basic', // 1 crédito; "advanced" cuesta 2 y acá no aporta
           max_results: 20,
           topic: 'general',
-          country: TAVILY_COUNTRY[country] || undefined,
           language: locale.hl,
           include_answer: false,
           include_raw_content: false,
+          ...extra,
         },
         {
           headers: { Authorization: `Bearer ${apiKey}` },
@@ -160,7 +191,45 @@ const ADAPTERS = {
         },
       )
 
-      return normalizeTavilyResults(data?.results || [], locale)
+      return Array.isArray(data?.results) ? data.results : []
+    }
+
+    try {
+      const pais = TAVILY_COUNTRY[country]
+      const tld = COUNTRY_TLD[country]
+
+      // El país va en la consulta, no en el filtro `country`.
+      //
+      // Medido contra la API sobre seis productos: con `country` puesto, CINCO
+      // de las seis consultas devolvieron cero resultados —la sexta devolvió
+      // doce precios, así que cuando funciona es excelente, pero es todo o
+      // nada—. La consulta abierta acotada por dominio local respondió en las
+      // seis y dio 22 precios contra 12.
+      // El dominio local se exige SIEMPRE, venga la tanda de donde venga.
+      //
+      // Con el filtro `country` puesto igual entraron walmart.com a US$ 3 y
+      // bodegaaurrera.com.mx a 2.450 pesos mexicanos, mezclados entre precios
+      // argentinos: la mediana de la Coca-Cola se desplomó de $5.800 a $3.875.
+      // El parámetro de país de Tavily no garantiza el país de la tienda.
+      const soloLocales = resultados =>
+        tld
+          ? resultados.filter(r => (hostnameOf(r?.url) || '').endsWith(tld))
+          : resultados
+
+      const abiertos = await buscar({
+        query: `${product} precio comprar ${pais || ''}`.trim(),
+      })
+
+      let ofertas = normalizeTavilyResults(soloLocales(abiertos), locale)
+
+      // Con dos precios o menos no hay mediana que valga. Ahí sí se gasta el
+      // segundo crédito en el filtro de país, que es el que a veces trae doce.
+      if (ofertas.length < MIN_SAMPLE_FOR_RETRY && pais) {
+        const conPais = await buscar({ country: pais })
+        ofertas = mergeOffers(ofertas, normalizeTavilyResults(soloLocales(conPais), locale))
+      }
+
+      return ofertas
     } catch (error) {
       logger.warn('[shoppingSource] tavily falló', {
         status: error?.response?.status,
@@ -299,6 +368,17 @@ function normalizeTavilyResults(results, locale) {
   return [...porDominio.values()].slice(0, MAX_OFFERS)
 }
 
+/** Une dos tandas sin repetir tienda: el conteo de vendedores mide competencia. */
+function mergeOffers(primeras, segundas) {
+  const porDominio = new Map(primeras.map(o => [o.merchant, o]))
+
+  for (const oferta of segundas) {
+    if (!porDominio.has(oferta.merchant)) porDominio.set(oferta.merchant, oferta)
+  }
+
+  return [...porDominio.values()].slice(0, MAX_OFFERS)
+}
+
 function hostnameOf(url) {
   try {
     return new URL(String(url)).hostname.replace(/^www\./, '')
@@ -342,6 +422,23 @@ function findPriceInText(texto, locale) {
     if (/(cuota|cuotas|x\s?\d{1,2}\s?$|sin inter[eé]s|por mes|\/mes|mensual)/i.test(antes)) {
       continue
     }
+
+    // Umbrales y promociones. Visto en una página real: "Envios GRATIS x
+    // compra de mas de $100mil" dejó un precio de CIEN PESOS en una campera,
+    // y con eso el escenario "al más barato" de la rentabilidad pasa a ser
+    // fantasía.
+    if (
+      /(env[ií]o|env[ií]os|gratis|compras? (de )?(mas|m[áa]s) de|superiores? a|a partir de|descuento|ahorr|reintegro|tope|m[íi]nimo de)/i.test(
+        antes,
+      )
+    ) {
+      continue
+    }
+
+    // "$100mil", "$2 millones": el número escrito no es el número. Antes de
+    // adivinar el factor, se descarta.
+    const despues = limpio.slice(match.index + match[0].length, match.index + match[0].length + 12)
+    if (/^\s?(mil|millon|millones|k\b)/i.test(despues)) continue
 
     const marca = match[1].toLowerCase()
     const moneda =
@@ -448,8 +545,43 @@ function numberOrNull(value) {
  * barato o un pack mayorista caro mezclado en los resultados). La mediana y
  * los cuartiles describen dónde está realmente el mercado.
  */
+/**
+ * Descarta atípicos antes de calcular los percentiles, con la regla estándar
+ * de Tukey: fuera de [p25 − 1,5·RIC, p75 + 1,5·RIC].
+ *
+ * No es cosmética. Buscando "casco de moto integral" entran páginas de
+ * CATEGORÍA, no de producto, y de ahí sale el artículo más barato o más caro
+ * del listado: en una corrida real convivieron $5.000 y $1.202.600 con una
+ * mediana de $259.000. La mediana aguanta eso; "al más barato" de la tarjeta
+ * de rentabilidad, no — le diría al comerciante que su competencia vende
+ * cascos a cinco mil pesos.
+ *
+ * Solo se aplica con cinco o más precios: con menos, el rango intercuartil no
+ * describe nada y el descarte sería arbitrario. Y las ofertas se siguen
+ * mostrando completas con su link: lo que se recorta son las estadísticas, no
+ * lo que el comerciante puede mirar.
+ */
+function withoutOutliers(sorted) {
+  if (sorted.length < 5) return sorted
+
+  const p25 = percentile(sorted, 0.25)
+  const p75 = percentile(sorted, 0.75)
+  const ric = p75 - p25
+
+  if (!Number.isFinite(ric) || ric <= 0) return sorted
+
+  const piso = p25 - 1.5 * ric
+  const techo = p75 + 1.5 * ric
+
+  const filtrados = sorted.filter(p => p >= piso && p <= techo)
+
+  return filtrados.length >= 3 ? filtrados : sorted
+}
+
 function computePriceStats(offers) {
-  const prices = offers.map(o => o.price).sort((a, b) => a - b)
+  const prices = withoutOutliers(
+    offers.map(o => o.price).sort((a, b) => a - b),
+  )
 
   return {
     min: prices[0],
@@ -467,7 +599,7 @@ function computePriceStats(offers) {
  * parte frágil de este archivo y necesita cobertura directa, sin salir a la
  * red. No lo consume nadie más.
  */
-export const __test__ = { normalizeTavilyResults, findPriceInText }
+export const __test__ = { normalizeTavilyResults, findPriceInText, computePriceStats }
 
 function percentile(sorted, p) {
   if (sorted.length === 0) return null
