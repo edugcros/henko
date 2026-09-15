@@ -29,6 +29,8 @@
  * falta de fuente es, en la práctica, inventar un dato negativo.
  */
 
+import process from 'node:process'
+
 /**
  * Versión del modelo de scoring.
  *
@@ -83,8 +85,27 @@
  *       de las dos: medido contra la API, de 20 páginas de "Gorra Fox Racing"
  *       una sola era de una gorra Fox, y el modelo reportó competencia ALTA
  *       leyendo sobre PUMA, Alpinestars y un sitio de stickers.
+ *  13 — `social` pasa a no medirse y `commercial` se recalibra. Los dos
+ *       estaban clavados cerca de cero por escalas viejas: social era
+ *       "páginas que leí / 10" (techo 1,2 sobre 100) y commercial asumía que
+ *       veinte ofertas son un mercado activo, cuando hoy se guarda un precio
+ *       por dominio y salen una o dos. Con esas dos escalas, el score máximo
+ *       alcanzable era 70 y RECOMENDADO pide 75: ningún producto podía ser
+ *       recomendado nunca. Tres análisis reales seguidos dieron 29, 18 y 32,
+ *       los tres "NO RECOMENDADO".
  */
-export const SCORING_VERSION = 12
+export const SCORING_VERSION = 13
+
+const num = (name, fallback) => {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+/** Vendedores distintos que se consideran un mercado plenamente activo. */
+const ACTIVE_MERCHANTS = num('MARKET_ACTIVE_MERCHANTS', 8)
+
+/** Unidades en 90 días que se consideran una categoría con movimiento. */
+const ACTIVE_CATEGORY_UNITS = num('MARKET_ACTIVE_CATEGORY_UNITS', 30)
 
 const WEIGHTS = {
   demand: 0.30,
@@ -105,7 +126,7 @@ export function calculateDemandScore(rawSignals) {
     demand: scoreDemand(rawSignals),
     trend: scoreTrend(rawSignals),
     competition: scoreCompetition(rawSignals),
-    social: scoreSocial(rawSignals),
+    social: scoreSocial(),
     commercial: scoreCommercial(rawSignals),
     opportunity: scoreOpportunity(rawSignals),
   }
@@ -280,11 +301,28 @@ function scoreCompetition(signals) {
   return map[level] ?? null
 }
 
-function scoreSocial(signals) {
-  const mentions = signals.research?.socialSignals?.mentions
-  if (mentions === 'NO_DISPONIBLE' || mentions == null) return null
-
-  return clamp(mentions / 10, 0, 100)
+/**
+ * Interés social: HOY NO SE PUEDE MEDIR, y por eso devuelve null.
+ *
+ * `socialSignals.mentions` lo cuenta el modelo sobre las páginas que le
+ * pasamos, que son doce como máximo. La escala —mentions/10— venía de cuando
+ * la fuente era una búsqueda con grounding que reportaba menciones reales; con
+ * doce páginas, el techo del componente es 1,2 sobre 100.
+ *
+ * O sea que "interés social" valía cero para todo producto, siempre. Y no era
+ * cero medido: era el número de páginas que nosotros elegimos leer, dividido
+ * diez. Una tautología de la búsqueda, no una señal del mercado.
+ *
+ * Puntuar cero por falta de fuente es inventar un dato negativo — el punto
+ * central del encabezado de este archivo. null saca el 10% del denominador en
+ * vez de arrastrar el score hacia abajo, y el componente aparece en
+ * `unmeasured`, que es la verdad: no lo estamos midiendo.
+ *
+ * Para medirlo de verdad hace falta una fuente que cuente menciones sobre un
+ * universo que no sea el de nuestra propia consulta.
+ */
+function scoreSocial() {
+  return null
 }
 
 /**
@@ -314,16 +352,31 @@ function scoreCommercial(signals) {
     return null
   }
 
-  // TODO CALIBRACIÓN: la escala asume que ~20 ofertas simultáneas ya es un
-  // mercado plenamente activo.
+  // La escala venía de cuando el buscador devolvía de ocho a cuarenta ofertas
+  // del mismo producto, muchas de ellas repetidas del mismo vendedor y varias
+  // de productos distintos. Hoy se guarda UN precio por dominio y se exigen
+  // marca, país, ficha de producto y misma cantidad de unidades: en tres
+  // corridas reales salieron 0, 1 y 1 ofertas. Con `offerCount * 4`, un
+  // mercado con tres tiendas publicando puntuaba 12 sobre 100.
+  //
+  // ACTIVE_MERCHANTS es cuántos vendedores distintos se consideran un mercado
+  // plenamente activo. Ocho es la referencia, ajustable sin tocar el código.
   const offerSignal =
-    offerCount !== null ? clamp(offerCount * 4, 0, 80) : 0
+    offerCount !== null
+      ? clamp((offerCount / ACTIVE_MERCHANTS) * 80, 0, 80)
+      : 0
 
   // Precios publicados = hay mercado activo, pero no dice cuánto se vende.
   const priceSignal = hasPublishedPrices ? 40 : 0
 
-  // Topeado en 60: es actividad de la categoría, no del producto.
-  const internalSignal = categoryUnits != null ? clamp(categoryUnits, 0, 60) : 0
+  // Topeado en 60: es actividad de la categoría, no del producto. La escala
+  // tenía el mismo problema que la de arriba —una unidad vendida valía un
+  // punto—, así que se mide contra lo que se considera una categoría con
+  // movimiento.
+  const internalSignal =
+    categoryUnits != null
+      ? clamp((categoryUnits / ACTIVE_CATEGORY_UNITS) * 60, 0, 60)
+      : 0
 
   return clamp(Math.max(offerSignal, priceSignal, internalSignal), 0, 100)
 }

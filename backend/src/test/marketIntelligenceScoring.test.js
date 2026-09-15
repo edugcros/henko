@@ -1013,3 +1013,97 @@ describe('marca · el filtro que sí separa', () => {
     ).toBe(false)
   })
 })
+
+// ─── El modelo tiene que poder decir que sí ─────────────────────────────────
+//
+// Tres análisis reales seguidos —botas Alpinestars, pistón Mahle, sommier
+// Cannon— dieron 29, 18 y 32, los tres "NO RECOMENDADO". No era el mercado:
+// era el modelo.
+//
+// `social` valía "páginas que leí / 10", con doce páginas como máximo: techo
+// 1,2 sobre 100, para todo producto, siempre. Y `commercial` asumía que veinte
+// ofertas simultáneas son un mercado activo, escala heredada de cuando el
+// buscador devolvía cuarenta resultados repetidos; hoy se guarda un precio por
+// dominio y salen una o dos.
+//
+// Con esos dos componentes clavados en cero, el máximo alcanzable era 70 y
+// RECOMENDADO pide 75. Ningún producto podía ser recomendado nunca.
+
+describe('techo del modelo · un producto bueno tiene que poder recomendarse', () => {
+  let calculateDemandScore
+  let buildMarketAnalysisResponse
+
+  beforeAll(async () => {
+    ;({ calculateDemandScore } = await import(
+      '../services/marketIntelligence/scoring/demandScoreEngine.js'
+    ))
+    ;({ buildMarketAnalysisResponse } = await import(
+      '../services/marketIntelligence/schemas/marketAnalysisContract.js'
+    ))
+  })
+
+  // Un producto con mercado de verdad: la gente busca para comprar, hay diez
+  // tiendas publicándolo, la categoría rota y este comercio no lo vende.
+  const PRODUCTO_BUENO = {
+    shopping: {
+      available: true,
+      offerCount: 10,
+      merchantCount: 10,
+      priceStats: { min: 1000, median: 1500, max: 2000, sampleSize: 10 },
+    },
+    research: {
+      available: true,
+      searchIntent: { informational: 5, commercial: 5, transactional: 8 },
+      trendDirection: 'INDETERMINADA',
+      recurringComplaints: ['tarda en llegar', 'el envío es caro', 'poca variedad'],
+      socialSignals: { mentions: 7, engagement: 'NO_DISPONIBLE' },
+    },
+    internal: {
+      available: true,
+      isInCatalog: true,
+      unitsSoldLast90Days: 0,
+      categoryUnitsSold: 5,
+      currentStock: 10,
+    },
+  }
+
+  test('un producto con mercado real llega a RECOMENDADO', () => {
+    const { total } = calculateDemandScore(PRODUCTO_BUENO)
+
+    expect(total).toBeGreaterThanOrEqual(75)
+
+    const respuesta = buildMarketAnalysisResponse({
+      demandScore: total,
+      confidenceScore: 70,
+      breakdown: calculateDemandScore(PRODUCTO_BUENO).components,
+      rawSignals: PRODUCTO_BUENO,
+      trendClassification: 'INDETERMINADA',
+    })
+
+    expect(respuesta.recommendation).toBe('RECOMENDADO')
+  })
+
+  test('el interés social se declara sin medir, no se puntúa cero', () => {
+    // Contar las páginas que nosotros elegimos leer no mide el interés de
+    // nadie. Puntuar cero por falta de fuente es inventar un dato negativo.
+    const { components, unmeasured } = calculateDemandScore(PRODUCTO_BUENO)
+
+    expect(components.social).toBeNull()
+    expect(unmeasured).toContain('social')
+  })
+
+  test('tres tiendas publicando ya no puntúan 12 sobre 100', () => {
+    const { components } = calculateDemandScore({
+      ...PRODUCTO_BUENO,
+      shopping: { ...PRODUCTO_BUENO.shopping, offerCount: 3, merchantCount: 3 },
+    })
+
+    // Con la escala vieja: 3 * 4 = 12.
+    expect(components.commercial).toBeGreaterThan(25)
+  })
+
+  test('la referencia de mercado activo sale del entorno', () => {
+    // NADA HARCODEADO: ocho vendedores es el default, no una constante fija.
+    expect(process.env.MARKET_ACTIVE_MERCHANTS).toBeUndefined()
+  })
+})
