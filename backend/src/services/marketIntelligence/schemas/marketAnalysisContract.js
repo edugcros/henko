@@ -89,7 +89,7 @@ const SOURCE_LABELS = {
 }
 
 const SOURCE_ROLES = {
-  shopping: 'Precios y vendedores publicados hoy en Google Shopping.',
+  shopping: 'Precios publicados hoy en tiendas online, cada uno con el link del que salió.',
   trends: 'Cuánto se busca el producto en el país, semana a semana, últimos 12 meses.',
   gemini: 'Interés de búsqueda, tendencia, marcas y quejas de compradores.',
   internal: 'Tus ventas, tu stock y la rotación de la categoría.',
@@ -122,8 +122,16 @@ function describeSources(rawSignals = {}) {
 function describeSuccess(key, signal) {
   if (key === 'shopping') {
     const offers = Number(signal.offerCount || 0)
+    const merchants = Number(signal.merchantCount || 0)
+
     if (offers === 0) return 'Respondió, pero nadie publica este producto online en ese país.'
-    return `${offers} ofertas de ${Number(signal.merchantCount || 0)} vendedores distintos.`
+
+    // Con un buscador de páginas hay un precio por tienda, así que decir
+    // "5 ofertas de 5 vendedores" suena a error. Con ofertas estructuradas sí
+    // son dos números distintos y vale mostrarlos.
+    if (offers === merchants) return `Precios encontrados en ${merchants} tiendas distintas.`
+
+    return `${offers} ofertas de ${merchants} vendedores distintos.`
   }
 
   if (key === 'trends') {
@@ -189,6 +197,10 @@ function explainFailure(reason, code = null) {
 
   if (/buscador de tendencias no respondió/i.test(text)) {
     return 'El buscador de tendencias no respondió. Suele ser momentáneo: volvé a intentar.'
+  }
+
+  if (/no publica series de interés/i.test(text)) {
+    return 'El buscador de precios que está configurado no publica series de interés de búsqueda, así que la tendencia no se pudo medir. Es una limitación del proveedor, no una falla.'
   }
 
   if (/tendencias no está configurad|sin tendencias configuradas/i.test(text)) {

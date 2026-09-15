@@ -27,14 +27,19 @@ import logger from '../../../../config/logger.js'
 const REQUEST_TIMEOUT_MS = 20000
 const MAX_OFFERS = 40
 
+/**
+ * La moneda no es decoración: se usa para descartar precios que están en otra
+ * moneda antes de que entren a la mediana. Un US$ 120 mezclado entre pesos
+ * rompe los percentiles enteros.
+ */
 const GOOGLE_DOMAIN_BY_COUNTRY = {
-  AR: { domain: 'google.com.ar', gl: 'ar', hl: 'es' },
-  MX: { domain: 'google.com.mx', gl: 'mx', hl: 'es' },
-  CL: { domain: 'google.cl', gl: 'cl', hl: 'es' },
-  CO: { domain: 'google.com.co', gl: 'co', hl: 'es' },
-  UY: { domain: 'google.com.uy', gl: 'uy', hl: 'es' },
-  PE: { domain: 'google.com.pe', gl: 'pe', hl: 'es' },
-  BR: { domain: 'google.com.br', gl: 'br', hl: 'pt' },
+  AR: { domain: 'google.com.ar', gl: 'ar', hl: 'es', currency: 'ARS' },
+  MX: { domain: 'google.com.mx', gl: 'mx', hl: 'es', currency: 'MXN' },
+  CL: { domain: 'google.cl', gl: 'cl', hl: 'es', currency: 'CLP' },
+  CO: { domain: 'google.com.co', gl: 'co', hl: 'es', currency: 'COP' },
+  UY: { domain: 'google.com.uy', gl: 'uy', hl: 'es', currency: 'UYU' },
+  PE: { domain: 'google.com.pe', gl: 'pe', hl: 'es', currency: 'PEN' },
+  BR: { domain: 'google.com.br', gl: 'br', hl: 'pt', currency: 'BRL' },
 }
 
 /**
@@ -68,7 +73,7 @@ export async function getShoppingSignals({ product, country }) {
     return { available: false, reason: `NO_DISPONIBLE: proveedor "${provider}" no implementado` }
   }
 
-  const offers = await adapter({ product, locale })
+  const offers = await adapter({ product, locale, country })
 
   if (!offers) {
     return { available: false, reason: `NO_DISPONIBLE: ${provider} no devolvió resultados` }
@@ -98,7 +103,73 @@ export async function getShoppingSignals({ product, country }) {
 
 // ─── Adapters por proveedor ──────────────────────────────
 
+/**
+ * Tavily espera el país escrito, no el código ISO.
+ * Docs: https://docs.tavily.com/documentation/api-reference/endpoint/search
+ */
+const TAVILY_COUNTRY = {
+  AR: 'argentina',
+  MX: 'mexico',
+  CL: 'chile',
+  CO: 'colombia',
+  UY: 'uruguay',
+  PE: 'peru',
+  BR: 'brazil',
+}
+
 const ADAPTERS = {
+  /**
+   * Tavily — buscador web para agentes.
+   * Docs: https://docs.tavily.com/documentation/api-reference/endpoint/search
+   *
+   * NO devuelve ofertas estructuradas: da páginas con su URL y un fragmento de
+   * texto. El precio se saca de ese fragmento y queda atado al link del que
+   * salió, así que el comerciante puede abrirlo y verificarlo — que es lo que
+   * hace defendible este dato y no una estimación.
+   *
+   * Contra Google Shopping pierde en tamaño de muestra: cinco a diez
+   * observaciones contra cuarenta ofertas. Gana en costo (un crédito por
+   * análisis contra dos o tres pedidos) y en que no se agota a mitad de mes.
+   */
+  async tavily({ product, locale, country }) {
+    const apiKey = String(process.env.TAVILY_API_KEY || '').trim()
+
+    if (!apiKey) {
+      logger.warn('[shoppingSource] TAVILY_API_KEY no configurada')
+      return null
+    }
+
+    try {
+      const { data } = await axios.post(
+        'https://api.tavily.com/search',
+        {
+          // "precio" y "comprar" empujan la búsqueda hacia páginas de venta y
+          // no hacia notas o reseñas, que no traen precio.
+          query: `${product} precio comprar`,
+          search_depth: 'basic', // 1 crédito; "advanced" cuesta 2 y acá no aporta
+          max_results: 20,
+          topic: 'general',
+          country: TAVILY_COUNTRY[country] || undefined,
+          language: locale.hl,
+          include_answer: false,
+          include_raw_content: false,
+        },
+        {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          timeout: REQUEST_TIMEOUT_MS,
+        },
+      )
+
+      return normalizeTavilyResults(data?.results || [], locale)
+    } catch (error) {
+      logger.warn('[shoppingSource] tavily falló', {
+        status: error?.response?.status,
+        message: error.message,
+      })
+      return null
+    }
+  },
+
   /**
    * Scrape.do — endpoint de Google Shopping.
    * Docs: https://scrape.do/documentation/
@@ -191,6 +262,149 @@ function normalizeOffers(rawResults) {
     .filter(Boolean)
 }
 
+/**
+ * Resultados de Tavily → la misma forma de oferta que el resto del paquete
+ * espera. Nada de esto sabe que cambió el proveedor.
+ *
+ * El vendedor sale del dominio: si el precio lo publica tiendaoficial.com.ar,
+ * eso es lo que hay que mostrar. Y una página por vendedor: diez resultados de
+ * la misma tienda son una tienda, no diez competidores — contarlos como diez
+ * inflaría el conteo de vendedores, que es justo lo que mide competencia.
+ */
+function normalizeTavilyResults(results, locale) {
+  const porDominio = new Map()
+
+  for (const item of Array.isArray(results) ? results : []) {
+    const merchant = hostnameOf(item?.url)
+    if (!merchant || porDominio.has(merchant)) continue
+
+    const encontrado = findPriceInText(
+      `${item?.title || ''} ${item?.content || ''}`,
+      locale,
+    )
+
+    if (!encontrado) continue
+
+    porDominio.set(merchant, {
+      title: String(item.title || '').slice(0, 200),
+      price: encontrado.price,
+      currency: encontrado.currency,
+      merchant,
+      rating: null,
+      reviewCount: null,
+      link: item.url || null,
+    })
+  }
+
+  return [...porDominio.values()].slice(0, MAX_OFFERS)
+}
+
+function hostnameOf(url) {
+  try {
+    return new URL(String(url)).hostname.replace(/^www\./, '')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Busca un precio dentro de un texto corrido.
+ *
+ * Tres decisiones que evitan que esto mienta:
+ *
+ *   - Exige marca de moneda. Un número suelto en una descripción puede ser un
+ *     modelo, una medida o un año.
+ *
+ *   - Descarta las cuotas. "12 cuotas sin interés de $ 7.499" no es el precio
+ *     del producto, y tomarlo hundiría la mediana a una fracción de la real.
+ *
+ *   - Descarta lo que esté en otra moneda que la del mercado consultado. Un
+ *     US$ 120 mezclado entre precios en pesos rompe la mediana y los
+ *     percentiles enteros: no son comparables y no hay tipo de cambio acá.
+ */
+function findPriceInText(texto, locale) {
+  const limpio = String(texto || '').replace(/\s+/g, ' ')
+  if (!limpio) return null
+
+  const patron = /(us\$|u\$s|usd|ar\$|ars|r\$|\$)\s?([\d][\d.,]{1,14})/gi
+  const esperada = locale?.currency || 'ARS'
+
+  for (const match of limpio.matchAll(patron)) {
+    // Solo la oración en curso. Con una ventana fija de 40 caracteres, el
+    // "sin interés" de la cuota anterior seguía visible cuando llegaba el
+    // precio real —"12 cuotas sin interés de $ 7.499. Precio $ 89.999"— y
+    // terminaba descartando los dos.
+    const ventana = limpio.slice(Math.max(0, match.index - 40), match.index)
+    const corte = ventana.lastIndexOf('. ')
+    const antes = corte === -1 ? ventana : ventana.slice(corte + 2)
+
+    // "cuotas de", "12x", "por mes": no es el precio del producto.
+    if (/(cuota|cuotas|x\s?\d{1,2}\s?$|sin inter[eé]s|por mes|\/mes|mensual)/i.test(antes)) {
+      continue
+    }
+
+    const marca = match[1].toLowerCase()
+    const moneda =
+      marca.startsWith('us') || marca === 'u$s' || marca === 'usd'
+        ? 'USD'
+        : marca === 'r$'
+          ? 'BRL'
+          : esperada
+
+    if (moneda !== esperada) continue
+
+    const price = parsePriceFromText(match[2])
+    if (price === null) continue
+
+    return { price, currency: moneda }
+  }
+
+  return null
+}
+
+/**
+ * Precio escrito por una persona, con un solo separador ambiguo.
+ *
+ * `parsePrice` alcanza cuando el proveedor manda el número ya limpio, pero con
+ * texto libre hay un caso que resuelve mal: "$ 89.999" es ochenta y nueve mil
+ * en Argentina y lo leía como ochenta y nueve con noventa y nueve centésimas —
+ * un precio mil veces menor entrando a la mediana y a la tarjeta de
+ * rentabilidad.
+ *
+ * La regla: con un solo separador, si lo que sigue son exactamente tres
+ * dígitos es separador de miles; con uno o dos, es decimal. Con los dos
+ * separadores presentes manda el de más a la derecha, como antes.
+ */
+function parsePriceFromText(texto) {
+  const limpio = String(texto || '').replace(/[^\d.,]/g, '')
+  if (!limpio) return null
+
+  const puntos = (limpio.match(/\./g) || []).length
+  const comas = (limpio.match(/,/g) || []).length
+
+  if (puntos && comas) return parsePrice(limpio)
+
+  const separador = puntos ? '.' : comas ? ',' : null
+
+  if (!separador) {
+    const entero = Number(limpio)
+    return Number.isFinite(entero) && entero > 0 ? entero : null
+  }
+
+  const partes = limpio.split(separador)
+  const ultima = partes[partes.length - 1]
+
+  // Tres dígitos al final, o más de un separador: son miles.
+  const esMiles = ultima.length === 3 || partes.length > 2
+
+  const normalizado = esMiles
+    ? partes.join('')
+    : `${partes.slice(0, -1).join('')}.${ultima}`
+
+  const valor = Number(normalizado)
+  return Number.isFinite(valor) && valor > 0 ? valor : null
+}
+
 function parsePrice(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value !== 'string') return null
@@ -247,6 +461,13 @@ function computePriceStats(offers) {
     sampleSize: prices.length,
   }
 }
+
+/**
+ * Expuesto solo para los tests: el parseo de precios desde texto libre es la
+ * parte frágil de este archivo y necesita cobertura directa, sin salir a la
+ * red. No lo consume nadie más.
+ */
+export const __test__ = { normalizeTavilyResults, findPriceInText }
 
 function percentile(sorted, p) {
   if (sorted.length === 0) return null

@@ -944,9 +944,10 @@ export default function MarketIntelligencePage() {
                         </Stack>
 
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                          Muestra de las ofertas encontradas en Google Shopping. Solo aparecen comercios
-                          que publican su catálogo ahí, así que puede haber tiendas del rubro que no
-                          figuren. Revisá si los productos listados son realmente comparables al tuyo.
+                          Un precio por tienda, tomado de la página que figura en cada link.
+                          Abrilo y verificá: la muestra es chica y puede haber tiendas del rubro
+                          que no aparezcan. Fijate también si lo que lista cada página es
+                          realmente comparable a lo que vendés vos.
                         </Typography>
                       </AccordionDetails>
                     </Accordion>

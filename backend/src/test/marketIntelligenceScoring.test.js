@@ -484,3 +484,137 @@ describe('puntaje · la tendencia se mide con la serie, no con una opinión', ()
     expect(conFuente).toBeGreaterThan(sinFuente)
   })
 })
+
+// ─── Tavily como proveedor de precios ───────────────────────────────────────
+//
+// scrape.do devolvía ofertas ya estructuradas (precio, vendedor, link). Tavily
+// devuelve páginas con un fragmento de texto, así que el precio hay que
+// encontrarlo ahí adentro — y ahí es donde este cambio se puede ir de las
+// manos: un número mal leído entra directo a la mediana y a la tarjeta de
+// rentabilidad.
+
+describe('precios desde texto · lo que NO se puede tomar por precio', () => {
+  let normalizeTavilyResults
+
+  const AR = { domain: 'google.com.ar', gl: 'ar', hl: 'es', currency: 'ARS' }
+
+  const resultado = (url, title, content) => ({ url, title, content })
+
+  beforeAll(async () => {
+    ;({ __test__: { normalizeTavilyResults } } = await import(
+      '../services/marketIntelligence/sources/shoppingSource.js'
+    ))
+  })
+
+  test('toma el precio marcado con moneda', () => {
+    const ofertas = normalizeTavilyResults(
+      [resultado('https://www.tienda.com.ar/campera', 'Campera de cuero', 'Campera biker $ 89.999 envío gratis')],
+      AR,
+    )
+
+    expect(ofertas).toHaveLength(1)
+    expect(ofertas[0]).toMatchObject({
+      price: 89999,
+      currency: 'ARS',
+      merchant: 'tienda.com.ar',
+      link: 'https://www.tienda.com.ar/campera',
+    })
+  })
+
+  test('el punto de miles no se lee como decimal', () => {
+    // "$ 89.999" es ochenta y nueve mil, no ochenta y nueve con noventa y
+    // nueve: mil veces menos entrando a la mediana y a la rentabilidad.
+    const casos = [
+      ['Precio $ 89.999', 89999],
+      ['Precio $ 1.299.500', 1299500],
+      ['Precio $ 4.450', 4450],
+      ['Precio $ 12,50', 12.5],
+      ['Precio $ 8000', 8000],
+    ]
+
+    for (const [texto, esperado] of casos) {
+      expect(normalizeTavilyResults([resultado('https://t.com.ar/a', '', texto)], AR)[0].price).toBe(esperado)
+    }
+  })
+
+  test('ignora las cuotas, que no son el precio', () => {
+    // "12 cuotas sin interés de $ 7.499" sobre una campera de 89.999: tomar la
+    // cuota hunde la mediana a una fracción de la real.
+    const ofertas = normalizeTavilyResults(
+      [resultado('https://x.com.ar/a', 'Campera', '12 cuotas sin interés de $ 7.499. Precio $ 89.999')],
+      AR,
+    )
+
+    expect(ofertas[0].price).toBe(89999)
+  })
+
+  test('descarta precios en otra moneda', () => {
+    // Un US$ 120 entre precios en pesos rompe la mediana y los percentiles: no
+    // son comparables y acá no hay tipo de cambio.
+    const ofertas = normalizeTavilyResults(
+      [resultado('https://importado.com/a', 'Jacket', 'Leather jacket US$ 120 free shipping')],
+      AR,
+    )
+
+    expect(ofertas).toHaveLength(0)
+  })
+
+  test('un número sin moneda no es un precio', () => {
+    const ofertas = normalizeTavilyResults(
+      [resultado('https://x.com.ar/a', 'Campera modelo 2026', 'Talle 42, modelo 2026, 100% cuero')],
+      AR,
+    )
+
+    expect(ofertas).toHaveLength(0)
+  })
+
+  test('diez páginas de la misma tienda son UN vendedor', () => {
+    // merchantCount mide competencia. Contar diez resultados del mismo dominio
+    // como diez competidores infla justo el número que decide ese componente.
+    const ofertas = normalizeTavilyResults(
+      [
+        resultado('https://tienda.com.ar/a', 'Campera A', 'Precio $ 80.000'),
+        resultado('https://tienda.com.ar/b', 'Campera B', 'Precio $ 90.000'),
+        resultado('https://otra.com.ar/c', 'Campera C', 'Precio $ 70.000'),
+      ],
+      AR,
+    )
+
+    expect(ofertas).toHaveLength(2)
+    expect(ofertas.map(o => o.merchant)).toEqual(['tienda.com.ar', 'otra.com.ar'])
+  })
+
+  test('una página sin precio legible no inventa uno', () => {
+    const ofertas = normalizeTavilyResults(
+      [resultado('https://blog.com/nota', 'Las mejores camperas de 2026', 'Repasamos los modelos del año')],
+      AR,
+    )
+
+    expect(ofertas).toHaveLength(0)
+  })
+})
+
+describe('tendencias · sin proveedor que las publique se dice, no se inventa', () => {
+  let getTrendsSignals
+
+  beforeAll(async () => {
+    ;({ getTrendsSignals } = await import(
+      '../services/marketIntelligence/sources/trendsSource.js'
+    ))
+  })
+
+  test('con Tavily configurado, la serie queda como no medida', async () => {
+    const previo = process.env.SHOPPING_PROVIDER
+    process.env.SHOPPING_PROVIDER = 'tavily'
+
+    try {
+      const signals = await getTrendsSignals({ product: 'campera de cuero', country: 'AR' })
+
+      expect(signals.available).toBe(false)
+      expect(signals.reason).toMatch(/no publica series/i)
+    } finally {
+      if (previo === undefined) delete process.env.SHOPPING_PROVIDER
+      else process.env.SHOPPING_PROVIDER = previo
+    }
+  })
+})

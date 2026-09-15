@@ -115,6 +115,26 @@ const average = values =>
  * @property {Array} points           - serie recortada, para mostrar en el panel
  */
 export async function getTrendsSignals({ product, country }) {
+  // Esta serie sale de Google Trends a través de scrape.do. Tavily, que
+  // reemplazó a scrape.do en los precios, NO tiene nada equivalente: devuelve
+  // páginas con su texto, y de ahí no sale una serie de 52 semanas.
+  //
+  // Se podría contar cuántas notas se publicaron por mes y llamarlo "interés",
+  // pero eso mide cobertura de prensa, no gente buscando. Ponerle nombre de
+  // demanda a otra cosa es exactamente lo que esta pantalla dejó de hacer, así
+  // que cuando el proveedor de tendencias está apagado se informa como no
+  // medido y el panel lo dice.
+  const provider = (process.env.TRENDS_PROVIDER || process.env.SHOPPING_PROVIDER || 'scrapedo')
+    .trim()
+    .toLowerCase()
+
+  if (provider !== 'scrapedo') {
+    return {
+      available: false,
+      reason: `NO_DISPONIBLE: el proveedor "${provider}" no publica series de interés de búsqueda`,
+    }
+  }
+
   const apiKey = String(process.env.SCRAPEDO_API_KEY || '').trim()
 
   if (!apiKey) {
