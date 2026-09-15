@@ -946,6 +946,9 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
       isBlocked: false,
       blockedUntil: null,
       refreshToken: hashedJti,
+      // Un login nuevo no hereda la ventana de gracia de la sesión anterior.
+      previousRefreshToken: null,
+      refreshTokenRotatedAt: null,
     },
     {
       validateBeforeSave: false,
@@ -1004,6 +1007,22 @@ export const getCurrentUser = expressAsyncHandler(async (req, res) => {
   )
 })
 
+/**
+ * Cuánto sigue siendo aceptable el token recién rotado.
+ *
+ * Tiene que cubrir el tiempo entre dos requests que salieron juntas del mismo
+ * navegador — en los logs de producción, un segundo— con margen para una red
+ * lenta. Sesenta segundos es holgado y sigue siendo una ventana angosta: un
+ * token robado sirve un minuto y solo si el ladrón llega antes que el dueño.
+ *
+ * Alargarlo debilita la rotación; acortarlo devuelve los 403 que esto vino a
+ * sacar. Configurable porque el punto justo depende de la latencia real.
+ */
+const REFRESH_GRACE_MS = Math.max(
+  Number(process.env.REFRESH_GRACE_MS) || 60000,
+  1000,
+)
+
 export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
   const refreshToken = req.cookies?.refreshToken
   if (!refreshToken) return sendResponse(res, 403, false, 'No hay token de refresco')
@@ -1040,20 +1059,81 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
   // hace que solo UNA de las dos requests concurrentes pueda ganar la
   // carrera; la otra no matchea ningún documento en vez de corromper el
   // estado.
+  const hashedIncoming = hashRefreshJti(decoded.jti)
+
   const updatedUser = await User.findOneAndUpdate(
-    { _id: decoded.sub, refreshToken: hashRefreshJti(decoded.jti) },
-    { $set: { refreshToken: newHashedJti } },
+    { _id: decoded.sub, refreshToken: hashedIncoming },
+    {
+      $set: {
+        refreshToken: newHashedJti,
+        // El que se acaba de rotar queda anotado como anterior. Es lo que
+        // permite reconocer, un segundo después, a una request hermana que
+        // salió con el mismo token y perdió la carrera.
+        previousRefreshToken: hashedIncoming,
+        refreshTokenRotatedAt: new Date(),
+      },
+    },
   )
     .select('+refreshToken role tenantId email isBlocked')
     .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 
   if (!updatedUser) {
-    // Diagnóstico: el filtro atómico no matcheó nada — puede ser que el
-    // usuario ya no exista, o que el refreshToken guardado no coincida con
-    // el jti de esta cookie (ya rotado por otra request, o realmente
-    // robado/reusado). Esta lectura extra es solo para loguear cuál de los
-    // dos casos fue — no afecta la respuesta, que sigue siendo 403 en
-    // ambos.
+    // El CAS no matcheó. Hay dos causas posibles y no son lo mismo:
+    //
+    //   a) otra request hermana rotó este mismo token hace un instante —el
+    //      panel monta varios componentes que reaccionan en paralelo a un
+    //      access token vencido y cada uno dispara su propio refresh—, o
+    //   b) el token es viejo de verdad: robado, reusado, o de una sesión
+    //      que ya se cerró.
+    //
+    // Antes las dos terminaban en 403. Medido en producción: veinte 403 en
+    // un día, siempre en pares separados por un segundo, todos del caso (a).
+    // Cada uno es una sesión legítima que el frontend puede interpretar como
+    // "te venció la sesión".
+    //
+    // La ventana de gracia las separa. Si el token que llegó es exactamente
+    // el ANTERIOR y la rotación fue hace menos de REFRESH_GRACE_MS, esta es
+    // la hermana que perdió la carrera: se le da un access token nuevo y se
+    // la deja seguir.
+    //
+    // NO se vuelve a rotar. El refresh token vigente es el que ya emitió la
+    // ganadora, y su Set-Cookie es el que vale; esta respuesta no manda
+    // cookie de refresco para no pisarlo. Rotar de nuevo acá abriría una
+    // cadena sin fin con tres o más requests simultáneas.
+    const graceUser = await User.findOne({
+      _id: decoded.sub,
+      previousRefreshToken: hashedIncoming,
+      refreshTokenRotatedAt: { $gte: new Date(Date.now() - REFRESH_GRACE_MS) },
+    })
+      .select('role tenantId email isBlocked')
+      .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
+
+    if (graceUser && !graceUser.isBlocked) {
+      const graceAccessToken = generateAccessToken(graceUser._id, {
+        role: graceUser.role,
+        tenantId: graceUser.tenantId,
+      })
+
+      logger.info('[REFRESH] Request hermana dentro de la ventana de gracia', {
+        userId: String(graceUser._id),
+        graceMs: REFRESH_GRACE_MS,
+      })
+
+      return res.status(200).json({
+        success: true,
+        message: 'Tokens renovados correctamente',
+        token: graceAccessToken,
+        accessToken: graceAccessToken,
+        data: {
+          token: graceAccessToken,
+          accessToken: graceAccessToken,
+        },
+      })
+    }
+
+    // Diagnóstico: el usuario puede no existir, o el token guardado no
+    // coincide con el de esta cookie y tampoco entra en la gracia. Esta
+    // lectura extra es solo para loguear cuál de los casos fue.
     const existingUser = await User.findById(decoded.sub)
       .select('email refreshToken')
       .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
@@ -1063,6 +1143,9 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
       userExists: Boolean(existingUser),
       userEmail: existingUser?.email,
       hadStoredRefreshToken: Boolean(existingUser?.refreshToken),
+      // Distingue el token viejo de verdad del que apenas perdió la carrera:
+      // si esto dice true, la ventana se quedó corta.
+      fueraDeGracia: Boolean(graceUser),
     })
 
     return sendResponse(res, 403, false, 'Token de refresco inválido')
@@ -1105,7 +1188,10 @@ export const logout = expressAsyncHandler(async (req, res) => {
       const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET)
       const user = await User.findByIdAndUpdate(
         decoded.sub || decoded.id,
-        { refreshToken: null },
+        // También el anterior: sin esto, el token que se acaba de rotar
+        // seguiría entrando por la ventana de gracia DESPUÉS de cerrar
+        // sesión, que es justo cuando no tiene que servir.
+        { refreshToken: null, previousRefreshToken: null, refreshTokenRotatedAt: null },
         { validateBeforeSave: false, new: false },
       ).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
 

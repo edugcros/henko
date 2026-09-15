@@ -176,6 +176,40 @@ const userSchema = new Schema(
       select: false,
     },
 
+    /**
+     * El token INMEDIATAMENTE anterior, y cuándo se rotó.
+     *
+     * POR QUÉ HACE FALTA RECORDARLO
+     *
+     * La rotación es un compare-and-swap atómico, y eso está bien: dos
+     * requests de refresh simultáneas no pueden pisarse la escritura. Pero
+     * la que pierde la carrera no matchea ningún documento y se iba con 403
+     * —"Token de refresco inválido"— aunque su token fuera legítimo y tuviera
+     * un segundo de antigüedad.
+     *
+     * Y pasa seguido: el panel monta varios componentes que reaccionan en
+     * paralelo a un access token vencido, y cada uno dispara su propio
+     * refresh. Medido en los logs de producción de un solo día: veinte
+     * ocurrencias, siempre en pares separados por un segundo.
+     *
+     * Con estos dos campos, un token que acaba de ser rotado sigue siendo
+     * aceptable durante una ventana corta. Es el "reuse interval" que usan
+     * los proveedores de identidad, y distingue las dos cosas que antes se
+     * veían iguales: dos pestañas compitiendo (legítimo, se acepta) de un
+     * token viejo reaparecido mucho después (sospechoso, se rechaza).
+     *
+     * Se guarda el hash, igual que el vigente: acá nunca vive un token.
+     */
+    previousRefreshToken: {
+      type: String,
+      select: false,
+    },
+
+    refreshTokenRotatedAt: {
+      type: Date,
+      select: false,
+    },
+
     passwordChangedAt: {
       type: Date,
     },
