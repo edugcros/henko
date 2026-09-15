@@ -332,17 +332,61 @@ const serializeUserWithTenant = (user, tenant) => ({
   tenant: serializeTenant(tenant),
 })
 
+/**
+ * ¿La cookie de auth sale particionada?
+ *
+ * EL PROBLEMA
+ *
+ * La API vive en henko.onrender.com y los frontends en *.vercel.app. Son
+ * SITIOS distintos, así que las cookies de auth son de TERCEROS para las dos
+ * pantallas. Chrome las está bloqueando: medido sobre un día entero de logs,
+ * cada refresh desde henko-web devolvió "no hay token de refresco" —ni uno
+ * solo exitoso— con el frontend mandando withCredentials correctamente y el
+ * backend emitiendo SameSite=None; Secure como corresponde. La cookie no
+ * llega porque nunca se guardó.
+ *
+ * LA SOLUCIÓN SOPORTADA
+ *
+ * `Partitioned` (CHIPS) es la forma que Chrome dejó abierta para cookies de
+ * terceros legítimas: la cookie se guarda con clave (sitio de arriba, origen
+ * de la cookie). La tienda y el panel quedan en particiones distintas, cada
+ * uno con su propia cookie de refresco.
+ *
+ * Eso encaja exactamente con refreshSessions: cada partición es una sesión
+ * propia, que es lo que el modelo ya sabe manejar.
+ *
+ * Solo tiene sentido con SameSite=None —una cookie same-site no necesita
+ * partición— y exige Secure, que es la misma condición que ya pide None.
+ *
+ * ESTO NO ES LA SOLUCIÓN DEFINITIVA
+ *
+ * La de fondo es que la API y los frontends compartan sitio: api.henko.com
+ * con henko.com deja de ser cross-site y el problema desaparece de raíz, sin
+ * depender de lo que cada navegador decida sobre cookies de terceros.
+ * PRODUCTION_DOMAIN ya dice henko.com y el dominio resuelve.
+ *
+ * Se puede apagar con AUTH_COOKIE_PARTITIONED=false si algo sale mal, sin
+ * necesidad de un revert.
+ */
+export const usePartitionedCookies = sameSite =>
+  process.env.AUTH_COOKIE_PARTITIONED !== 'false' &&
+  String(sameSite).toLowerCase() === 'none'
+
 const clearAuthCookies = (res, req) => {
   const cookieDomain = getCookieDomain(req)
   const secure = env.cookieSecure ?? isProd
   const sameSite = env.cookieSameSite || (isProd ? 'None' : 'Lax')
 
+  // Los atributos tienen que coincidir con los del seteo —incluido
+  // Partitioned— o el navegador trata la cookie a borrar como otra distinta y
+  // la original se queda viva.
   const httpOnlyCookieOptions = {
     httpOnly: true,
     secure,
     sameSite,
     path: '/',
     domain: cookieDomain,
+    ...(usePartitionedCookies(sameSite) ? { partitioned: true } : {}),
   }
 
   res.clearCookie('token', httpOnlyCookieOptions)
@@ -363,6 +407,8 @@ const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
   const sameSite = env.cookieSameSite || (isProd ? 'None' : 'Lax')
   const domain = getCookieDomain(req)
 
+  const partitioned = usePartitionedCookies(sameSite)
+
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure,
@@ -370,6 +416,7 @@ const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
     domain,
     path: '/',
     maxAge: getRefreshCookieMaxAge(role),
+    ...(partitioned ? { partitioned: true } : {}),
   })
 
   if (accessToken) {
@@ -380,6 +427,7 @@ const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
       domain,
       path: '/',
       maxAge: getAccessCookieMaxAge(),
+      ...(partitioned ? { partitioned: true } : {}),
     })
   }
 }
