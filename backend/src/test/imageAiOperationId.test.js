@@ -28,6 +28,11 @@ const mockGenerate = jest.fn();
 
 jest.unstable_mockModule("../services/ai/aiBudgetService.js", () => ({
   AI_METRICS: { IMAGE_EDITS: "imageEdits" },
+  // El controlador declara de que funcion viene y contra quien presupuesta.
+  // Van con los valores reales y no con placeholders: abajo se comprueba que
+  // el controlador mande EXACTAMENTE estos.
+  AI_FEATURES: { IMAGE_AI: "imageAi" },
+  AI_PROVIDERS: { REPLICATE: "replicate" },
   buildBudgetDenialMessage: () => "sin cupo",
   refundAiBudget: mockRefund,
   reserveAiBudget: mockReserve,
@@ -143,4 +148,22 @@ describe("imageAiCtrl · cobro de la edición", () => {
     // No se reservó nada, así que no hay nada que devolver.
     expect(mockRefund).not.toHaveBeenCalled();
   });
+});
+
+// Un mock que solo satisface el import no prueba nada: prueba el mock. Esto
+// comprueba que el controlador declare de que funcion viene y contra quien
+// presupuesta, que es lo unico que despues permite responder "¿que funcion me
+// esta costando la plata?" — agentMessages lo comparten tres funciones y
+// `metric` no las distingue.
+test("declara de que funcion viene y contra quien presupuesta", async () => {
+  mockGenerate.mockResolvedValue({
+    buffer: Buffer.from("resultado"),
+    contentType: "image/png",
+  });
+
+  await correr();
+
+  expect(mockReserve).toHaveBeenCalledWith(
+    expect.objectContaining({ feature: "imageAi", provider: "replicate" }),
+  );
 });

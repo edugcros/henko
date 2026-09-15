@@ -297,6 +297,25 @@ jest.unstable_mockModule("../models/aiOperationModel.js", () => ({
     REFUNDED: "refunded",
   },
   TERMINAL_STATUSES: ["completed", "failed", "refunded"],
+  // Los estados que retienen cupo: es lo que decide si un reintento puede
+  // volver a reservar o si ya hay algo cobrado a su nombre.
+  HOLDS_QUOTA: ["running", "completed"],
+  AI_FEATURES: {
+    IMAGE_AI: "imageAi",
+    SOCIAL_PROMOTION: "socialPromotion",
+    AI_AGENT: "aiAgent",
+    CART_RECOVERY: "cartRecovery",
+    VISION: "vision",
+    INSIGHTS: "insights",
+    MARKET_INTELLIGENCE: "marketIntelligence",
+    PRICING: "pricing",
+  },
+  AI_PROVIDERS: {
+    GEMINI: "gemini",
+    REPLICATE: "replicate",
+    HUGGINGFACE: "huggingface",
+    TAVILY: "tavily",
+  },
 }));
 
 jest.unstable_mockModule("../services/ai/aiCredentialsService.js", () => ({

@@ -11,7 +11,9 @@ import AIPreference from '../models/aIPreference.js'
 import CorrectionLog from '../models/correctionLog.js'
 import logger from '../../config/logger.js'
 import {
+  AI_FEATURES,
   AI_METRICS,
+  AI_PROVIDERS,
   DENY_REASONS,
   buildBudgetDenialMessage,
   reserveAiBudget,
@@ -1889,6 +1891,8 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     metric: AI_METRICS.VISION,
     profile: aiProfile,
     operationId,
+    feature: AI_FEATURES.VISION,
+    provider: AI_PROVIDERS.GEMINI,
   })
 
   if (!usageReservation.allowed) {

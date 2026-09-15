@@ -21,7 +21,9 @@
 import { callAgentLLM } from '../aiAgent/aiAgentLLMService.js'
 import { loadTenantAiProfile } from '../ai/aiCredentialsService.js'
 import {
+  AI_FEATURES,
   AI_METRICS,
+  AI_PROVIDERS,
   buildBudgetDenialMessage,
   reserveAiBudget,
   refundAiBudget,
@@ -161,6 +163,10 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
     // Mismo guard que el análisis de mercado: son el mismo presupuesto de
     // research, distinto del que consume el asistente de ventas.
     guards: [AI_METRICS.MARKET_TOKENS],
+    // Comparte métrica y presupuesto con el análisis de mercado; `feature` es
+    // lo que permite ver cuánto cuesta cada uno por separado.
+    feature: AI_FEATURES.PRICING,
+    provider: AI_PROVIDERS.GEMINI,
     profile,
   })
 

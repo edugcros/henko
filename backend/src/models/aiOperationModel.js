@@ -78,6 +78,61 @@ export const TERMINAL_STATUSES = Object.freeze([
   AI_OPERATION_STATUS.REFUNDED,
 ])
 
+/**
+ * Estados en los que HAY cupo reservado a nombre de esta operación.
+ *
+ * Es la regla que decide qué hace un reintento, y la distinción importa más de
+ * lo que parece. Si la operación está en uno de estos, algo ya se cobró y
+ * volver a cobrarlo es el bug que todo esto vino a cerrar. Si NO está —porque
+ * se denegó por falta de cupo, o porque falló y se devolvió la reserva—
+ * entonces no hay nada cobrado y el reintento tiene que poder reservar de
+ * nuevo, que es el caso normal de "el proveedor se cayó, probá otra vez".
+ *
+ * La primera versión de esto trataba todo reintento igual y devolvía
+ * `allowed: true` sobre una reserva DENEGADA: un comercio sin cupo que
+ * reintentara con la misma clave pasaba igual, sin haber reservado nada.
+ */
+export const HOLDS_QUOTA = Object.freeze([
+  AI_OPERATION_STATUS.RUNNING,
+  AI_OPERATION_STATUS.COMPLETED,
+])
+
+/**
+ * De dónde salió la operación. Responde "¿qué función me está costando la
+ * plata?", que `metric` no contesta: el agente de WhatsApp, la recuperación de
+ * carritos y la promoción social comparten AGENT_MESSAGES y son tres negocios
+ * distintos.
+ *
+ * Es un enum y no texto libre a propósito: un typo en una función poco usada
+ * no se nota, y parte el reporte en dos categorías que deberían ser una.
+ */
+export const AI_FEATURES = Object.freeze({
+  IMAGE_AI: 'imageAi',
+  SOCIAL_PROMOTION: 'socialPromotion',
+  AI_AGENT: 'aiAgent',
+  CART_RECOVERY: 'cartRecovery',
+  VISION: 'vision',
+  INSIGHTS: 'insights',
+  MARKET_INTELLIGENCE: 'marketIntelligence',
+  PRICING: 'pricing',
+})
+
+/**
+ * Quién cobra. Sin esto, un corte de un proveedor se ve como "fallaron varias
+ * operaciones sueltas" y no como "se cayó Replicate".
+ *
+ * Es el proveedor DECLARADO al reservar. La generación de imágenes puede caer
+ * de Replicate a HuggingFace en la misma llamada, así que ahí este campo dice
+ * contra quién se presupuestó, no necesariamente quién respondió — igual que
+ * requestedModel frente a actualModel.
+ */
+export const AI_PROVIDERS = Object.freeze({
+  GEMINI: 'gemini',
+  REPLICATE: 'replicate',
+  HUGGINGFACE: 'huggingface',
+  TAVILY: 'tavily',
+})
+
 const aiOperationSchema = new mongoose.Schema(
   {
     // La clave de idempotencia. La provee quien llama cuando puede derivar una
@@ -89,7 +144,12 @@ const aiOperationSchema = new mongoose.Schema(
     // Qué parte del producto la pidió: 'imageAi', 'marketIntelligence',
     // 'aiAgent', 'vision'. Responde "¿qué función me está costando la plata?",
     // que `metric` no contesta: dos features distintas comparten métrica.
-    feature: { type: String, trim: true, default: null, index: true },
+    feature: {
+      type: String,
+      enum: [...Object.values(AI_FEATURES), null],
+      default: null,
+      index: true,
+    },
 
     // La métrica de presupuesto contra la que se cobra. Es la que tiene tope
     // por plan y la que mira el disyuntor.
@@ -98,7 +158,12 @@ const aiOperationSchema = new mongoose.Schema(
     // 'gemini' | 'replicate' | 'stability' | 'tavily'. Sin esto, un corte de un
     // proveedor se ve como "fallaron varias operaciones" y no como "se cayó
     // Replicate".
-    provider: { type: String, trim: true, default: null, index: true },
+    provider: {
+      type: String,
+      enum: [...Object.values(AI_PROVIDERS), null],
+      default: null,
+      index: true,
+    },
 
     // El modelo que se PIDIÓ y el que efectivamente respondió.
     //

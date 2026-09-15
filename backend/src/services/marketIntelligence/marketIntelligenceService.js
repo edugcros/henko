@@ -22,7 +22,9 @@
 import logger from '../../../config/logger.js'
 import { loadTenantAiProfile } from '../ai/aiCredentialsService.js'
 import {
+  AI_FEATURES,
   AI_METRICS,
+  AI_PROVIDERS,
   reserveAiBudget,
   refundAiBudget,
   recordAiConsumption,
@@ -118,6 +120,10 @@ export async function analyzeMarketDemand({
     // no dejar sin research a alguien cuyo bot de ventas tuvo un mes activo
     // — son productos distintos con presupuestos distintos.
     guards: [AI_METRICS.MARKET_TOKENS],
+    feature: AI_FEATURES.MARKET_INTELLIGENCE,
+    // El que cobra los tokens de la extracción. Tavily cobra aparte, en
+    // créditos propios que no pasan por este presupuesto.
+    provider: AI_PROVIDERS.GEMINI,
     profile,
   })
 

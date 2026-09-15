@@ -43,11 +43,19 @@ import { getPeriodSpendByMetric } from './aiSpendReportService.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
-import AiOperation, { AI_OPERATION_STATUS } from '../../models/aiOperationModel.js'
+import AiOperation, {
+  AI_FEATURES,
+  AI_OPERATION_STATUS,
+  AI_PROVIDERS,
+  HOLDS_QUOTA,
+} from '../../models/aiOperationModel.js'
 
 // Se reexportan para que quien mide consumo tenga un único import: el medidor
 // es la puerta de entrada, la política es un detalle de implementación suyo.
 export { AI_METRICS, AI_METRIC_LABELS, UNLIMITED }
+// Mismo criterio: quien mide consumo declara de dónde viene con un solo
+// import, sin tener que conocer el modelo por dentro.
+export { AI_FEATURES, AI_PROVIDERS, AI_OPERATION_STATUS }
 
 const clean = value => String(value || '').trim()
 
@@ -143,6 +151,44 @@ const openOperation = async ({
     return { fresh: true, operation }
   } catch (error) {
     if (error?.code === 11000) {
+      // La clave ya existe. Lo que decide qué hacer es EN QUÉ ESTADO quedó:
+      //
+      //   running / completed → hay cupo reservado a su nombre. Volver a
+      //                         cobrarlo es el bug que esto vino a cerrar.
+      //   pending / failed / refunded → no hay nada cobrado. Es el caso normal
+      //                         de "el proveedor se cayó, probá de nuevo", y
+      //                         el reintento tiene que poder reservar.
+      //
+      // La transición se hace en UNA sola operación con el estado en el
+      // filtro: leer y después escribir sería la misma carrera que todo esto
+      // intenta cerrar, un nivel más arriba.
+      const reabierta = await AiOperation.findOneAndUpdate(
+        { tenantId, operationId, status: { $nin: HOLDS_QUOTA } },
+        {
+          $set: {
+            status,
+            startedAt: new Date(),
+            failedAt: null,
+            failureReason: null,
+            ...(requestedModel ? { requestedModel } : {}),
+          },
+        },
+        { new: true },
+      )
+        .setOptions({ tenantId })
+        .lean()
+        .catch(() => null)
+
+      if (reabierta) {
+        logger.info('[AI OPERATION] Reintento de una operación sin cupo retenido', {
+          tenantId: String(tenantId),
+          operationId,
+          metric,
+        })
+
+        return { fresh: true, operation: reabierta }
+      }
+
       logger.info('[AI OPERATION] Reintento detectado, no se cobra de nuevo', {
         tenantId: String(tenantId),
         operationId,

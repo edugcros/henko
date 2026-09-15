@@ -2,7 +2,9 @@ import expressAsyncHandler from 'express-async-handler'
 import { removeBackground, generateVariation } from '../services/imageAiService.js'
 import { getBackgroundRemovalStatus } from '../services/ai/backgroundRemoval.js'
 import {
+  AI_FEATURES,
   AI_METRICS,
+  AI_PROVIDERS,
   buildBudgetDenialMessage,
   refundAiBudget,
   reserveAiBudget,
@@ -79,6 +81,11 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
   const reservation = await reserveAiBudget({
     tenantId,
     metric: AI_METRICS.IMAGE_EDITS,
+    feature: AI_FEATURES.IMAGE_AI,
+    // Contra quién se presupuesta. La generación puede caer a HuggingFace en
+    // la misma llamada; este campo dice contra quién se reservó, igual que
+    // requestedModel frente a actualModel.
+    provider: AI_PROVIDERS.REPLICATE,
   })
 
   if (!reservation.allowed) {

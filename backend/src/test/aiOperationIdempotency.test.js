@@ -25,9 +25,8 @@ process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base6
 const { default: AiConsumptionLedger } = await import(
   '../models/aiConsumptionLedgerModel.js'
 )
-const { default: AiOperation, AI_OPERATION_STATUS } = await import(
-  '../models/aiOperationModel.js'
-)
+const { default: AiOperation, AI_OPERATION_STATUS, AI_FEATURES, AI_PROVIDERS } =
+  await import('../models/aiOperationModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
 const { reserveAiBudget, refundAiBudget, recordTokenSpend, AI_METRICS } = await import(
@@ -289,5 +288,155 @@ describe('sin cupo · la operación queda marcada como fallida', () => {
     // de un proceso que murió a mitad de camino.
     expect(op.status).toBe(AI_OPERATION_STATUS.FAILED)
     expect(op.failedAt).toBeInstanceOf(Date)
+  })
+})
+
+// ─── El reintento respeta en qué estado quedó la operación ──────────────────
+//
+// La primera versión de este candado trataba todo reintento igual: si la clave
+// ya existía, devolvía `allowed: true` y no cobraba. Sonaba bien y tenía un
+// agujero grave — una reserva DENEGADA por falta de cupo también queda
+// registrada, así que un comercio sin cupo que reintentara con la misma clave
+// pasaba igual, sin haber reservado nada.
+//
+// La regla correcta no es "¿ya existe?" sino "¿hay cupo reservado a su
+// nombre?". running y completed lo tienen; pending, failed y refunded no.
+
+describe('reintento · depende de si hay cupo retenido', () => {
+  test('el reintento de una reserva DENEGADA sigue denegado', async () => {
+    const period = '2031-01'
+    const operationId = 'sin-cupo'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId: 'quema-el-cupo', limitOverride: 1,
+    })
+
+    const primera = await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId, limitOverride: 1,
+    })
+    await asentar()
+
+    const reintento = await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId, limitOverride: 1,
+    })
+
+    expect(primera.allowed).toBe(false)
+    // Antes de este arreglo acá salía allowed:true con reason 'replay'.
+    expect(reintento.allowed).toBe(false)
+    expect(await contador(period)).toBe(1)
+  })
+
+  test('devuelta la reserva, el reintento puede volver a reservar', async () => {
+    // Es el caso normal: el proveedor se cayó, se devolvió el cupo, se
+    // reintenta con la misma clave. Bloquearlo dejaría al comercio sin poder
+    // repetir algo por lo que no pagó.
+    const period = '2031-02'
+    const operationId = 'proveedor-caido'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId,
+    })
+    await refundAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+    })
+    await asentar()
+    expect(await contador(period)).toBe(0)
+
+    const reintento = await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId,
+    })
+
+    expect(reintento.allowed).toBe(true)
+    expect(reintento.reason).not.toBe('replay')
+    expect(await contador(period)).toBe(1)
+  })
+
+  test('DIEZ reintentos de una operación viva: una sola contable', async () => {
+    const period = '2031-03'
+    const operationId = 'diez-veces'
+
+    const resultados = []
+    for (let i = 0; i < 10; i++) {
+      resultados.push(
+        await reserveAiBudget({
+          tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+          profile: PERFIL, period, operationId,
+        }),
+      )
+    }
+    await asentar()
+
+    // Los diez pueden seguir; uno solo cobró.
+    expect(resultados.every(r => r.allowed)).toBe(true)
+    expect(resultados.filter(r => r.reason === 'replay')).toHaveLength(9)
+    expect(await contador(period)).toBe(1)
+
+    const operaciones = await AiOperation.countDocuments({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+    expect(operaciones).toBe(1)
+  })
+})
+
+describe('trazabilidad · de dónde vino y quién cobró', () => {
+  test('la operación guarda la función y el proveedor declarados', async () => {
+    const period = '2031-04'
+    const operationId = 'con-origen'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId,
+      feature: AI_FEATURES.CART_RECOVERY,
+      provider: AI_PROVIDERS.GEMINI,
+    })
+
+    const op = await AiOperation.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(op.feature).toBe('cartRecovery')
+    expect(op.provider).toBe('gemini')
+  })
+
+  test('una función fuera del catálogo no entra', async () => {
+    // Sin el enum, un typo en una función poco usada parte el reporte en dos
+    // categorías que deberían ser una, y nadie se entera.
+    await expect(
+      AiOperation.create({
+        tenantId: TENANT, operationId: 'inventada', period: '2031-05',
+        metric: 'agentMessages', feature: 'carritoRecuperado',
+      }),
+    ).rejects.toThrow(/validation/i)
+  })
+
+  test('las tres funciones que comparten métrica se distinguen', async () => {
+    // agentMessages lo usan el agente de WhatsApp, la recuperación de carritos
+    // y la promoción social. Sin `feature` son indistinguibles en el reporte.
+    const period = '2031-06'
+
+    for (const feature of [
+      AI_FEATURES.AI_AGENT,
+      AI_FEATURES.CART_RECOVERY,
+      AI_FEATURES.SOCIAL_PROMOTION,
+    ]) {
+      await reserveAiBudget({
+        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+        profile: PERFIL, period, operationId: `op-${feature}`, feature,
+      })
+    }
+
+    const porFuncion = await AiOperation.aggregate([
+      { $match: { tenantId: new mongoose.Types.ObjectId(TENANT), period } },
+      { $group: { _id: '$feature', operaciones: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ])
+
+    expect(porFuncion.map(f => f._id)).toEqual([
+      'aiAgent', 'cartRecovery', 'socialPromotion',
+    ])
   })
 })

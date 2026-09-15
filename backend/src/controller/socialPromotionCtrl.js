@@ -8,7 +8,9 @@
 import expressAsyncHandler from 'express-async-handler'
 import Product from '../models/productModel.js'
 import {
+  AI_FEATURES,
   AI_METRICS,
+  AI_PROVIDERS,
   buildBudgetDenialMessage,
   recordAiConsumption,
   refundAiBudget,
@@ -46,6 +48,11 @@ export const generateProductSocialContent = expressAsyncHandler(async (req, res)
     tenantId,
     metric: AI_METRICS.AGENT_MESSAGES,
     guards: [AI_METRICS.AGENT_TOKENS],
+    // Comparte métrica con el agente de WhatsApp y con la recuperación de
+    // carritos, y son tres negocios distintos. `feature` es lo único que los
+    // separa en el reporte.
+    feature: AI_FEATURES.SOCIAL_PROMOTION,
+    provider: AI_PROVIDERS.GEMINI,
   })
 
   if (!reservation.allowed) {

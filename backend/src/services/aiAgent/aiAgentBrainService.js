@@ -5,7 +5,9 @@ import logger from '../../../config/logger.js'
 import { buildAgentSystemPrompt } from './aiAgentPromptService.js'
 import { callAgentLLM } from './aiAgentLLMService.js'
 import {
+  AI_FEATURES,
   AI_METRICS,
+  AI_PROVIDERS,
   buildBudgetDenialMessage,
   recordAiConsumption,
   refundAiBudget,
@@ -593,6 +595,8 @@ const reserveAgentMessageQuota = async ({ tenantId, agent, profile, operationId 
     tenantId,
     metric: AI_METRICS.AGENT_MESSAGES,
     operationId,
+    feature: AI_FEATURES.AI_AGENT,
+    provider: AI_PROVIDERS.GEMINI,
     // Si ya se pasó del tope de tokens del mes no se contesta un mensaje más:
     // los tokens recién se conocen después de responder, así que el único
     // freno posible es el mensaje siguiente.

@@ -159,6 +159,7 @@ const DEFAULTS = {
     warning: '#ed6c02',
     success: '#2e7d32',
     accent: '#ff9800',
+    info: '#0288d1',  
   },
 
   typography: {
@@ -353,10 +354,25 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
         border: theme.colors.cardBorder,
         price: theme.colors.cardPrice,
       },
-      error: { main: theme.colors.error },
-      warning: { main: theme.colors.warning },
-      success: { main: theme.colors.success },
-      info: { main: theme.colors.accent },
+      error: {
+        main: theme.colors.error,
+        contrastText: getContrastText(theme.colors.error),
+      },
+
+      warning: {
+        main: theme.colors.warning,
+        contrastText: getContrastText(theme.colors.warning),
+      },
+
+      success: {
+        main: theme.colors.success,
+        contrastText: getContrastText(theme.colors.success),
+      },
+
+      info: {
+        main: theme.colors.info,
+        contrastText: getContrastText(theme.colors.info),
+      },
 
       background: {
         default: theme.colors.background,

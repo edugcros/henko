@@ -1671,16 +1671,16 @@ const SingleProduct = () => {
             </Box>
 
             <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Chip
-                icon={<StockIcon />}
-                label={
-                  hasVariants && !normalizedSelectedVariant
-                    ? 'Stock según variante'
-                    : `${displayStock} disponibles`
-                }
-                color={displayStock > 0 ? themeColors.warning : 'error'}
-                variant="outlined"
-              />
+                <Chip
+                  icon={<StockIcon />}
+                  label={
+                    hasVariants && !normalizedSelectedVariant
+                      ? 'Stock según variante'
+                      : `${displayStock} disponibles`
+                  }
+                  color={displayStock > 0 ? 'warning' : 'error'}
+                  variant="outlined"
+                />
               {logisticsRows.slice(0, 2).map(row => (
                 <Chip
                   key={row.label}

@@ -21,7 +21,9 @@ import {
 import { sendWhatsappTextMessage } from '../aiAgent/whatsappService.js'
 import { sendReactivationEmail } from '../email/reactivationEmail.service.js'
 import {
+  AI_FEATURES,
   AI_METRICS,
+  AI_PROVIDERS,
   recordAiConsumption,
   refundAiBudget,
   reserveAiBudget,
@@ -100,6 +102,8 @@ export const generateReactivationMessage = async ({ tenantId, insight }) => {
     tenantId,
     metric: AI_METRICS.AGENT_MESSAGES,
     guards: [AI_METRICS.AGENT_TOKENS],
+    feature: AI_FEATURES.INSIGHTS,
+    provider: AI_PROVIDERS.GEMINI,
   })
 
   if (!reservation.allowed) {

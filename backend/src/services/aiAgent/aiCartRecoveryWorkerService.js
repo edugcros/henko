@@ -14,7 +14,9 @@ import {
 } from './whatsappService.js'
 import { sendCartRecoveryEmail } from '../email/cartRecoveryEmail.service.js'
 import {
+  AI_FEATURES,
   AI_METRICS,
+  AI_PROVIDERS,
   recordAiConsumption,
   refundAiBudget,
   reserveAiBudget,
@@ -156,6 +158,8 @@ export const tryPersonalizeMessage = async ({ tenantId, values }) => {
     tenantId,
     metric: AI_METRICS.AGENT_MESSAGES,
     guards: [AI_METRICS.AGENT_TOKENS],
+    feature: AI_FEATURES.CART_RECOVERY,
+    provider: AI_PROVIDERS.GEMINI,
   })
 
   if (!reservation.allowed) return null
