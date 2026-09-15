@@ -77,8 +77,14 @@
  *       Una gorra se había medido con la portada de la marca ($110.971) y con
  *       los resultados de búsqueda de MercadoLibre ($78.699): dos precios de
  *       otra cosa, de los que salieron cinco cifras de "distribución".
+ *  12 — la marca sale del catálogo (`marca` es obligatoria en el producto) y
+ *       las fuentes externas la exigen en el título o la URL. Antes se
+ *       adivinaba por posición —la 2ª palabra del título— y bastaba con una
+ *       de las dos: medido contra la API, de 20 páginas de "Gorra Fox Racing"
+ *       una sola era de una gorra Fox, y el modelo reportó competencia ALTA
+ *       leyendo sobre PUMA, Alpinestars y un sitio de stickers.
  */
-export const SCORING_VERSION = 11
+export const SCORING_VERSION = 12
 
 const WEIGHTS = {
   demand: 0.30,

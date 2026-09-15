@@ -148,12 +148,22 @@ export async function analyzeMarketDemand({
   // credencial —verificado contra las tres combinaciones posibles—. No hay
   // configuración que lo resuelva, así que el stub que fallaba rápido también
   // se retiró: ocupaba un lugar en cada análisis para devolver siempre lo mismo.
-  const [shoppingResult, researchResult, internalResult] =
-    await Promise.allSettled([
-      getShoppingSignals({ product, country }),
-      getWebResearchSignals({ product, country, apiKey: profile.apiKey }),
-      getInternalBiSignals({ tenantId, product }),
-    ])
+  //
+  // La fuente interna corre PRIMERO, sola: es la única local —una consulta a
+  // Mongo contra dos llamadas de red— y es la que sabe la marca del producto.
+  // Esa marca es lo que después distingue una página de la gorra buscada de
+  // una gorra cualquiera, así que las otras dos la necesitan antes de salir.
+  const [internalResult] = await Promise.allSettled([
+    getInternalBiSignals({ tenantId, product }),
+  ])
+
+  const brand =
+    internalResult.status === 'fulfilled' ? internalResult.value?.brand || null : null
+
+  const [shoppingResult, researchResult] = await Promise.allSettled([
+    getShoppingSignals({ product, country, brand }),
+    getWebResearchSignals({ product, country, brand, apiKey: profile.apiKey }),
+  ])
 
   const rawSignals = {
     shopping: unwrapSettled(shoppingResult, 'shoppingSource'),

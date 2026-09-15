@@ -915,3 +915,101 @@ describe('investigación web · una barra de más no es otra página', () => {
     )
   })
 })
+
+// ─── La marca la sabe el catálogo, no se adivina ────────────────────────────
+//
+// Medido contra la API de Tavily el 15/09: la consulta "Gorra Fox Racing
+// Negra con Logo Blanco opiniones reseñas vale la pena argentina" devolvió 20
+// páginas y UNA hablaba de una gorra Fox. Las otras diecinueve decían "gorra",
+// "negra", "racing" y "logo" —todas las palabras de la consulta menos la que
+// importa— y eran de PUMA, Alpinestars, 226ERS, Armani, Ariat, Roland Garros
+// y un sitio de stickers PNG.
+//
+// El modelo las leyó todas y devolvió knownBrands: [Fox Racing, 226ERS,
+// Mitchell Ness, HRT, Alpinestars] con competencia ALTA. Esas señales pesan
+// el 60% del score.
+//
+// El filtro anterior tomaba la 1ª y 2ª palabra del título suponiendo que la
+// marca es la segunda. Con "Gaseosa Coca-Cola" acierta; con "Gorra Fox" la
+// segunda es "fox" y aun así pasaba cualquier gorra, porque bastaba con UNA
+// de las dos palabras. `marca` es obligatoria en el modelo de producto: el
+// dato ya estaba en la base.
+
+describe('marca · el filtro que sí separa', () => {
+  let mentionsBrand
+
+  beforeAll(async () => {
+    ;({
+      __test__: { mentionsBrand },
+    } = await import('../services/marketIntelligence/sources/shoppingSource.js'))
+  })
+
+  // Títulos textuales de la corrida medida contra la API.
+  const AJENAS = [
+    ['226ERS GORRA CYCLING HYDRAZERO NEGRA', 'https://cabberty.com/gorras/226ers-gorra-cycling-hydrazero-negra'],
+    ['La Argentina | Tienda Oficial', 'https://www.mercadolibre.com.ar/tienda/la-argentina'],
+    ['HRT Gorra Racing negro/blanco', 'https://www.paddock-legends.com/es/hrt-gorra-racing-negro-blanco/p-15298'],
+    ['Gorra Snapback Intuitive - Gorra de Moto | Alpinestars®', 'https://es.alpinestars.com/products/intuitive-snapback-hat'],
+    ['Gorra trucker McLAREN RACING Lifestyle | PUMA', 'https://eu.puma.com/es/es/pd/gorra-trucker-mclaren-racing-lifestyle/027483'],
+    ['Gorras Hombre | Gorra Running | PUMA', 'https://eu.puma.com/es/es/hombre/accesorios/accesorios-para-la-cabeza'],
+    ['Waykins | Gorra de nailon con logo negra', 'https://www.trendhim.com/es/waykins-gorra-de-nailon-con-logo-negra-p.html'],
+    ['31 Hats Gorra Negra LA Bordada – El Mago Drop', 'https://thirtyonehats.com.mx/producto/31-hats-x-el-mago-magic-club'],
+    ['Gorra Ariat Negra Logo De Toro Blanco – Ariat Mexico', 'https://ariat.com.mx/gorra-ariat-negra'],
+    ['Armani Exchange: Gorra con Logo Blanco Hombre', 'https://elpalaciodehierro.com/armani-gorra-logo'],
+    ['Gorra Roland Garros Logo - Blanco', 'https://tenniswarehouse-europe.com/gorra-roland-garros'],
+  ]
+
+  test('las diecinueve gorras de otras marcas quedan afuera', () => {
+    for (const [title, url] of AJENAS) {
+      expect(mentionsBrand({ title, url }, 'Fox Racing')).toBe(false)
+    }
+  })
+
+  test('la única que era de una gorra Fox entra', () => {
+    expect(
+      mentionsBrand(
+        {
+          title: 'Las mejores ofertas en Gorra de béisbol Gorras de deportes para Fox Hombres | eBay',
+          url: 'https://co.ebay.com/b/Fox-Baseball-Cap-Sports-Hats-for-Men/52365/bn_72214316',
+        },
+        'Fox Racing',
+      ),
+    ).toBe(true)
+  })
+
+  test('alcanza con el primer token: "Fox Racing" se publica como "Fox"', () => {
+    // Exigir "racing" dejaría afuera fichas buenas.
+    expect(mentionsBrand({ title: 'Gorra Fox negra', url: '' }, 'Fox Racing')).toBe(true)
+  })
+
+  test('las dos páginas de la yerba nombran Playadito y entran', () => {
+    const paginas = [
+      ['Playadito on Instagram: "Playadito Sin Palo está elaborada..."', 'https://instagram.com/p/x'],
+      ['Cata de Yerba Mate | Unión, Taragüi, Mañanita y Playadito', 'https://blog.com.ar/cata'],
+    ]
+
+    for (const [title, url] of paginas) {
+      expect(mentionsBrand({ title, url }, 'Playadito')).toBe(true)
+    }
+  })
+
+  test('la marca en la URL cuenta igual que en el título', () => {
+    expect(
+      mentionsBrand({ title: 'Gorra negra con logo', url: 'https://x.com.ar/fox-gorra' }, 'Fox'),
+    ).toBe(true)
+  })
+
+  test('sin marca conocida no se filtra nada', () => {
+    // Producto fuera del catálogo: es preferible leer de más que no leer nada.
+    expect(mentionsBrand({ title: 'cualquier cosa', url: '' }, null)).toBe(true)
+  })
+
+  test('no se busca en el cuerpo: nombrar la marca al pasar es demasiado fácil', () => {
+    expect(
+      mentionsBrand(
+        { title: 'Gorra PUMA', url: 'https://puma.com/gorra', content: 'mejor que las Fox' },
+        'Fox',
+      ),
+    ).toBe(false)
+  })
+})

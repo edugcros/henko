@@ -122,7 +122,7 @@ const RESPONSE_SCHEMA = {
  * @property {string[]} recurringComplaints
  * @property {Array<{url:string, title:string}>} sources - las páginas leídas, verificables
  */
-export async function getWebResearchSignals({ product, country, apiKey }) {
+export async function getWebResearchSignals({ product, country, brand, apiKey }) {
   if (!hasTavilyKey()) {
     return { available: false, reason: 'NO_DISPONIBLE: el buscador web no está configurado' }
   }
@@ -153,7 +153,20 @@ export async function getWebResearchSignals({ product, country, apiKey }) {
     }
   }
 
-  const usadas = sinRepetidas(pages).slice(0, MAX_PAGES)
+  const relevantes = sinRepetidas(pages).filter(p => mencionaMarca(p, brand))
+
+  // Buscó, encontró páginas, y ninguna era de este producto. Es un resultado
+  // distinto de "no hay nada publicado" y merece decirlo distinto.
+  if (relevantes.length === 0) {
+    return {
+      available: false,
+      reason: `NO_DISPONIBLE: ninguna de las ${pages.length} páginas encontradas habla de ${brand}`,
+      sources: [],
+      pagesFound: 0,
+    }
+  }
+
+  const usadas = relevantes.slice(0, MAX_PAGES)
 
   const extraction = await callAgentLLM({
     systemPrompt: buildExtractionPrompt({ product, country }),
@@ -204,6 +217,38 @@ export async function getWebResearchSignals({ product, country, apiKey }) {
     tokensUsed,
     usage,
   }
+}
+
+/**
+ * La página tiene que nombrar la marca en el título o la URL.
+ *
+ * Medido contra la API: "Gorra Fox Racing Negra con Logo Blanco" devolvió 20
+ * páginas y una sola era de una gorra Fox. El modelo leyó las otras
+ * diecinueve —gorras de PUMA, Alpinestars, 226ERS, Armani, un sitio de
+ * stickers PNG— y reportó obedientemente `knownBrands: [226ERS, Mitchell
+ * Ness, HRT, Alpinestars]` y competencia ALTA. Son señales que pesan el 60%
+ * del score, construidas leyendo sobre otros productos.
+ *
+ * Sin marca conocida —producto fuera del catálogo— no se filtra: es preferible
+ * leer de más que no leer nada.
+ */
+function mencionaMarca(page, brand) {
+  if (!brand) return true
+
+  const token = String(brand)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)[0]
+
+  if (!token || token.length < 2) return true
+
+  return `${page?.title || ''} ${page?.url || ''}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .includes(token)
 }
 
 /**

@@ -101,7 +101,7 @@ const MARKET_BY_COUNTRY = {
  * @property {Object} priceStats        - min, p25, median, p75, max, currency
  * @property {Array} offers             - muestra para mostrar en el panel
  */
-export async function getShoppingSignals({ product, country }) {
+export async function getShoppingSignals({ product, country, brand = null }) {
   const provider = (process.env.SHOPPING_PROVIDER || 'tavily').trim().toLowerCase()
 
   if (provider === 'none') {
@@ -118,7 +118,7 @@ export async function getShoppingSignals({ product, country }) {
     return { available: false, reason: `NO_DISPONIBLE: proveedor "${provider}" no implementado` }
   }
 
-  const offers = await adapter({ product, locale, country })
+  const offers = await adapter({ product, locale, country, brand })
 
   if (!offers) {
     return { available: false, reason: `NO_DISPONIBLE: ${provider} no devolvió resultados` }
@@ -183,7 +183,7 @@ const ADAPTERS = {
    * observaciones contra cuarenta ofertas. Gana en costo (un crédito por
    * análisis contra dos o tres pedidos) y en que no se agota a mitad de mes.
    */
-  async tavily({ product, locale, country }) {
+  async tavily({ product, locale, country, brand }) {
     if (!hasTavilyKey()) return null
 
     const buscar = async extra =>
@@ -220,13 +220,16 @@ const ADAPTERS = {
         query: `${product} ${SEARCH_SUFFIX} ${pais || ''}`.trim(),
       })
 
-      let ofertas = normalizeTavilyResults(soloLocales(abiertos), locale, product)
+      let ofertas = normalizeTavilyResults(soloLocales(abiertos), locale, product, brand)
 
       // Con dos precios o menos no hay mediana que valga. Ahí sí se gasta el
       // segundo crédito en el filtro de país, que es el que a veces trae doce.
       if (ofertas.length < MIN_SAMPLE_FOR_RETRY && pais) {
         const conPais = await buscar({ country: pais })
-        ofertas = mergeOffers(ofertas, normalizeTavilyResults(soloLocales(conPais), locale, product))
+        ofertas = mergeOffers(
+          ofertas,
+          normalizeTavilyResults(soloLocales(conPais), locale, product, brand),
+        )
       }
 
       return ofertas
@@ -251,7 +254,7 @@ const ADAPTERS = {
  * la misma tienda son una tienda, no diez competidores — contarlos como diez
  * inflaría el conteo de vendedores, que es justo lo que mide competencia.
  */
-function normalizeTavilyResults(results, locale, product = '') {
+function normalizeTavilyResults(results, locale, product = '', brand = null) {
   const porDominio = new Map()
   const palabras = identifyingWords(product)
 
@@ -262,6 +265,9 @@ function normalizeTavilyResults(results, locale, product = '') {
     // Un listado de categoría o de marca no es una ficha de producto: su
     // precio es el de otra cosa que estaba en la misma página.
     if (isListingPage(item?.url)) continue
+
+    // Si el catálogo sabe la marca, la página tiene que nombrarla.
+    if (!mentionsBrand(item, brand)) continue
 
     // La página tiene que ser del producto, no de otro que comparta los
     // adjetivos de la consulta.
@@ -498,6 +504,32 @@ function looksLikeBundle(item, product) {
   return packSize(`${item?.title || ''} ${item?.url || ''}`) !== pedidas
 }
 
+/**
+ * La marca, exigida en el título o la URL.
+ *
+ * Es el filtro de relevancia que funciona, y el único: medido contra la API,
+ * pidiendo "Gorra Fox Racing Negra con Logo Blanco" volvieron 20 páginas y
+ * solo UNA era de una gorra Fox. Las otras diecinueve decían "gorra", decían
+ * "negra", decían "racing" y decían "logo" —todas las palabras de la
+ * consulta menos la que importa— y eran de PUMA, Alpinestars, 226ERS, Armani
+ * y un sitio de stickers.
+ *
+ * No se busca en el cuerpo de la página: nombrar la marca al pasar es
+ * demasiado fácil. En el título o en la URL es una afirmación de qué vende
+ * esa página.
+ *
+ * Alcanza con el primer token de la marca: "Fox Racing" se publica muchas
+ * veces como "Fox" a secas, y exigir "racing" dejaría afuera fichas buenas.
+ */
+function mentionsBrand(item, brand) {
+  if (!brand) return true
+
+  const token = sinAcentos(brand).split(/\s+/).filter(Boolean)[0]
+  if (!token || token.length < 2) return true
+
+  return sinAcentos(`${item?.title || ''} ${item?.url || ''}`).includes(token)
+}
+
 /** ¿Esta página habla del producto, o de otro que comparte los adjetivos? */
 function mentionsProduct(item, palabras) {
   if (!palabras.length) return true
@@ -724,6 +756,7 @@ function computePriceStats(offers) {
  */
 export const __test__ = {
   normalizeTavilyResults,
+  mentionsBrand,
   findPriceInText,
   computePriceStats,
   identifyingWords,

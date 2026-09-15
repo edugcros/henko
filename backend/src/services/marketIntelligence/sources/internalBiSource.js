@@ -81,6 +81,7 @@ export async function getInternalBiSignals({ tenantId, product }) {
     scope: 'internal',
     isInCatalog: true,
     matchedProducts: matched.length,
+    brand: brandFromCatalog(product, matched),
     unitsSoldLast90Days: sales.units,
     paidOrdersWithProduct: sales.orders,
     currentStock: matched.reduce((sum, p) => sum + (Number(p.stock) || 0), 0),
@@ -88,6 +89,48 @@ export async function getInternalBiSignals({ tenantId, product }) {
     marginPercent: null, // TODO: requiere costo de adquisición
     internalSearchCount: 0, // TODO: conectar con SearchLog cuando exista
   }
+}
+
+/**
+ * La marca del producto, tomada del catálogo y confirmada contra la consulta.
+ *
+ * Las fuentes externas venían adivinando la marca por posición: se quedaban
+ * con la primera y la segunda palabra del título, suponiendo que la segunda
+ * es la marca. Con "Gaseosa Coca-Cola" acierta; con "Yerba Mate Playadito" la
+ * categoría ocupa dos palabras y la marca queda tercera, así que el filtro
+ * terminaba siendo "yerba" o "mate" y pasaba cualquier página de yerba.
+ *
+ * Medido contra la API con dos productos reales: pidiendo "Gorra Fox Racing
+ * Negra con Logo Blanco", de 20 páginas UNA hablaba de una gorra Fox — el
+ * resto eran gorras de PUMA, Alpinestars, 226ERS, Armani y hasta un sitio de
+ * stickers PNG. El modelo extrajo obedientemente las marcas de esas páginas y
+ * reportó competencia ALTA. Esas señales pesan el 60% del score.
+ *
+ * `marca` es obligatoria en el modelo de producto, así que cuando el producto
+ * está en el catálogo el dato ya existe y no hace falta deducirlo. No se toma
+ * la del primer match a ciegas: se exige que la consulta la nombre, que es lo
+ * que la convierte en la marca de ESTE análisis y no la de un match lejano.
+ *
+ * Devuelve null cuando el producto no está en el catálogo o la consulta no
+ * nombra ninguna marca conocida. Ahí las fuentes siguen como hasta ahora.
+ */
+function brandFromCatalog(product, matched) {
+  const consulta = sinAcentos(product)
+
+  const candidatas = matched
+    .map(p => String(p?.marca || '').trim())
+    .filter(Boolean)
+    // La más larga primero: entre "Fox" y "Fox Racing", la específica gana.
+    .sort((a, b) => b.length - a.length)
+
+  return candidatas.find(m => consulta.includes(sinAcentos(m))) || null
+}
+
+function sinAcentos(texto) {
+  return String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
 }
 
 /**
@@ -166,7 +209,7 @@ async function aggregateCategorySales({ tenantId, categories, productIds, since 
  * indexados) con fallback a regex multi-campo si el índice no existe.
  */
 async function findMatchingProducts({ tenantId, product, terms }) {
-  const select = '_id title titulo stock categoria'
+  const select = '_id title titulo stock categoria marca'
 
   try {
     const byText = await Product.find(
