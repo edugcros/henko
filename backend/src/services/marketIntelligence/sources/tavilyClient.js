@@ -12,6 +12,8 @@
  *   TAVILY_SEARCH_DEPTH   'basic' | 'advanced'                       (basic)
  *   TAVILY_MAX_RESULTS    resultados por consulta                        (50)
  *   TAVILY_TIMEOUT_MS     corte de la llamada                         (20000)
+ *   TAVILY_EXTRACT_URL    endpoint de extracción  (https://api.tavily.com/extract)
+ *   TAVILY_EXTRACT_DEPTH  'basic' | 'advanced'                        (basic)
  *
  * 'basic' cuesta 1 crédito y 'advanced' 2. El plan gratuito da 1.000 al mes.
  */
@@ -77,6 +79,60 @@ export const hasTavilyKey = () => Boolean(String(process.env.TAVILY_API_KEY || '
  * @param {number} [params.maxResults]
  * @param {string} [params.source]     quién pregunta, solo para el log
  */
+const EXTRACT_URL =
+  String(process.env.TAVILY_EXTRACT_URL || '').trim() || 'https://api.tavily.com/extract'
+
+const EXTRACT_DEPTH =
+  String(process.env.TAVILY_EXTRACT_DEPTH || '').trim() || 'basic'
+
+/**
+ * El CUERPO de las páginas, no el extracto del buscador.
+ *
+ * `search` devuelve un resumen por página que para una ficha de tienda es el
+ * texto ALT de las fotos: medido sobre las botas Alpinestars Tech-7, lo que
+ * llegaba al modelo era "vista superior que muestra el forro interior... goma
+ * texturizada azul y negra". Con eso, pedirle quejas de compradores y recibir
+ * una lista vacía es la respuesta correcta — no hay ninguna queja ahí.
+ *
+ * `extract` devuelve el texto real: 7.319 caracteres del hilo del foro, 8.732
+ * de la review de Loam Wolf, 18.286 de la prueba de Moto1Pro. Cuesta 1 crédito
+ * cada 5 URLs (2 en advanced), contra 1 por búsqueda. Comparado con el
+ * endpoint Research —de 4 a 110 créditos por consulta sobre un plan de 1.000
+ * al mes— es la forma barata de tener el contenido.
+ *
+ * Devuelve solo las que salieron bien; las fallidas se omiten sin romper nada.
+ *
+ * @param {Object} params
+ * @param {string[]} params.urls
+ * @param {string} [params.source] - quién pregunta, solo para el log
+ * @returns {Promise<Array<{url:string, content:string}>|null>}
+ */
+export async function tavilyExtract({ urls, source = 'tavily' }) {
+  const apiKey = String(process.env.TAVILY_API_KEY || '').trim()
+  const lista = (Array.isArray(urls) ? urls : []).filter(Boolean)
+
+  if (!apiKey || lista.length === 0) return null
+
+  try {
+    const { data } = await axios.post(
+      EXTRACT_URL,
+      { urls: lista, extract_depth: EXTRACT_DEPTH },
+      { headers: { Authorization: `Bearer ${apiKey}` }, timeout: TIMEOUT_MS },
+    )
+
+    return (Array.isArray(data?.results) ? data.results : [])
+      .map(r => ({ url: r?.url || null, content: String(r?.raw_content || '') }))
+      .filter(r => r.url && r.content)
+  } catch (error) {
+    logger.warn(`[${source}] Tavily extract falló`, {
+      status: error?.response?.status,
+      message: error.message,
+    })
+
+    return null
+  }
+}
+
 export async function tavilySearch({
   query,
   language,

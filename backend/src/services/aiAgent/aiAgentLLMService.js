@@ -181,18 +181,37 @@ const mergeAdjacentSameRoleMessages = messages => {
   return merged
 }
 
-const normalizeMessagesForGemini = messages => {
+/**
+ * @param {Array} messages
+ * @param {number} [maxCharsOverride] - límite propio del llamador.
+ *
+ * El default de 5.000 caracteres por mensaje está pensado para un chat de
+ * WhatsApp. La extracción de señales de mercado manda UN mensaje con doce
+ * páginas dentro: 8.765 caracteres medidos, recortados a 5.000 sin que nadie
+ * se enterara —el 38% del texto, y con él las últimas cuatro páginas—. Encima
+ * el panel seguía diciendo "12 páginas leídas".
+ */
+const normalizeMessagesForGemini = (messages, maxCharsOverride = null) => {
   const maxMessages = Math.min(
     Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_INPUT_MESSAGES, 18), 4),
     40,
   )
-  const maxCharsPerMessage = Math.min(
-    Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_CHARS_PER_MESSAGE, 5000), 800),
-    12000,
-  )
-  const totalBudget = Math.min(
-    Math.max(toNumber(process.env.AI_AGENT_LLM_TOTAL_INPUT_CHARS, 28000), 5000),
-    80000,
+  // El tope de 12.000 aplica al default compartido. Un llamador que sabe qué
+  // está mandando puede pedir más, hasta el presupuesto total.
+  const maxCharsPerMessage = maxCharsOverride
+    ? Math.min(Math.max(maxCharsOverride, 800), 200000)
+    : Math.min(
+      Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_CHARS_PER_MESSAGE, 5000), 800),
+      12000,
+    )
+  const totalBudget = Math.max(
+    Math.min(
+      Math.max(toNumber(process.env.AI_AGENT_LLM_TOTAL_INPUT_CHARS, 28000), 5000),
+      80000,
+    ),
+    // El presupuesto total nunca puede quedar por debajo de lo que el propio
+    // llamador pidió para un mensaje: recortaría por la otra punta.
+    maxCharsPerMessage,
   )
 
   const recent = (messages || []).slice(-maxMessages)
@@ -218,8 +237,8 @@ const normalizeMessagesForGemini = messages => {
   return normalized.reverse()
 }
 
-const toGeminiContents = messages => {
-  return normalizeMessagesForGemini(messages).map(message => ({
+const toGeminiContents = (messages, maxCharsPerMessage = null) => {
+  return normalizeMessagesForGemini(messages, maxCharsPerMessage).map(message => ({
     role: normalizeRole(message.role),
     parts: [{ text: clean(message.content) }],
   }))
@@ -510,6 +529,10 @@ export const callGemini = async ({
   apiKey: providedApiKey,
   // Presupuesto de tiempo propio, para llamadas que no son un chat.
   timeoutMs: timeoutOverrideMs,
+  // Presupuesto de texto propio, por el mismo motivo: el default de 5.000
+  // caracteres es el de un chat, y una extracción manda doce páginas en un
+  // solo mensaje.
+  maxCharsPerMessage,
   // Modelo pedido por el llamador. Sin esto, todo el backend queda atado a
   // GEMINI_MODEL: si esa variable apunta a un modelo que no soporta
   // herramientas, el análisis de mercado no tiene forma de pedir uno que sí.
@@ -547,7 +570,7 @@ export const callGemini = async ({
     conversationalMode,
   })
 
-  const contents = toGeminiContents(messages)
+  const contents = toGeminiContents(messages, maxCharsPerMessage)
 
   if (!contents.length) {
     contents.push({
@@ -680,6 +703,7 @@ export const callAgentLLM = async ({
   apiKey,
   model,
   timeoutMs,
+  maxCharsPerMessage,
   // PATCH: propagado igual que el resto de los parámetros opcionales.
   tools,
 } = {}) => {
@@ -706,6 +730,7 @@ export const callAgentLLM = async ({
     apiKey,
     model,
     timeoutMs,
+    maxCharsPerMessage,
     tools,
   })
 }

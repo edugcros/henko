@@ -34,7 +34,12 @@
 import { callAgentLLM } from '../../aiAgent/aiAgentLLMService.js'
 import { readUsage } from '../../ai/aiUsageMetadata.js'
 import { buildExtractionPrompt } from '../prompts/researchPrompt.js'
-import { hasTavilyKey, tavilySearch, TAVILY_COUNTRY } from './tavilyClient.js'
+import {
+  hasTavilyKey,
+  tavilyExtract,
+  tavilySearch,
+  TAVILY_COUNTRY,
+} from './tavilyClient.js'
 
 const num = (name, fallback) => {
   const value = Number(process.env[name])
@@ -54,8 +59,23 @@ const EXTRACTION_TIMEOUT_MS = num('MARKET_EXTRACTION_TIMEOUT_MS', 45000)
 /** Cuántas páginas se le pasan al modelo. Más contexto no es más señal. */
 const MAX_PAGES = num('MARKET_RESEARCH_PAGES', 12)
 
-/** Cuánto de cada página. El extracto de Tavily ya viene recortado. */
-const MAX_CHARS_PER_PAGE = num('MARKET_RESEARCH_CHARS_PER_PAGE', 600)
+/**
+ * Cuánto de cada página se le manda al modelo.
+ *
+ * Eran 600, y con el resumen del buscador eso era casi todo lo que había. Con
+ * el cuerpo real de la página —que trae de 6.000 a 18.000 caracteres— 600 es
+ * el menú de navegación y nada más.
+ */
+const MAX_CHARS_PER_PAGE = num('MARKET_RESEARCH_CHARS_PER_PAGE', 3000)
+
+/**
+ * A cuántas páginas se les pide el cuerpo.
+ *
+ * Extract cuesta 1 crédito cada 5 URLs, así que cinco es el escalón barato:
+ * el análisis pasa de 1 crédito a 2. El endpoint Research, que hace esto y
+ * además redacta, cuesta de 4 a 110 sobre un plan de 1.000 al mes.
+ */
+const EXTRACT_PAGES = num('MARKET_RESEARCH_EXTRACT_PAGES', 5)
 
 /**
  * Lo que se busca. Apunta a opiniones y problemas, no a fichas de producto:
@@ -166,7 +186,7 @@ export async function getWebResearchSignals({ product, country, brand, apiKey })
     }
   }
 
-  const usadas = relevantes.slice(0, MAX_PAGES)
+  const usadas = await conTextoCompleto(relevantes.slice(0, MAX_PAGES))
 
   const extraction = await callAgentLLM({
     systemPrompt: buildExtractionPrompt({ product, country }),
@@ -176,6 +196,11 @@ export async function getWebResearchSignals({ product, country, brand, apiKey })
     responseMimeType: 'application/json',
     responseSchema: RESPONSE_SCHEMA,
     maxOutputTokens: EXTRACTION_MAX_TOKENS,
+    // El default del agente son 5.000 caracteres por mensaje, pensado para un
+    // chat. Acá el mensaje son doce páginas: medido, 8.765 caracteres se
+    // recortaban a 5.000 —el 38%, y con él las últimas cuatro páginas— y el
+    // panel seguía diciendo "12 páginas leídas". Se pide el tamaño real.
+    maxCharsPerMessage: MAX_PAGES * (MAX_CHARS_PER_PAGE + 300),
     // Este paso no razona: ordena texto que ya está escrito. Con el
     // presupuesto por defecto, un modelo "thinking" gasta la salida pensando y
     // corta el JSON por la mitad.
@@ -217,6 +242,42 @@ export async function getWebResearchSignals({ product, country, brand, apiKey })
     tokensUsed,
     usage,
   }
+}
+
+/**
+ * El cuerpo real de las primeras páginas, con el resumen como respaldo.
+ *
+ * Lo que devuelve `search` en `content` es un resumen, y para una ficha de
+ * tienda ese resumen es el texto ALT de las fotos. Medido sobre las botas
+ * Alpinestars Tech-7, lo que llegaba al modelo era "vista superior que
+ * muestra el forro interior... goma texturizada azul y negra". Pedirle quejas
+ * de compradores a eso y recibir una lista vacía no era un fallo del modelo:
+ * era la respuesta correcta, porque ahí no hay ninguna queja.
+ *
+ * `extract` devuelve el texto de verdad —7.319 caracteres del hilo del foro,
+ * 8.732 de la review, 18.286 de la prueba— por 1 crédito cada 5 URLs.
+ *
+ * Solo a las primeras EXTRACT_PAGES, que son las mejor rankeadas. Si Extract
+ * falla o no cubre una página, esa se queda con el resumen del buscador: se
+ * pierde calidad en esa página, no el análisis.
+ */
+async function conTextoCompleto(pages) {
+  if (pages.length === 0) return pages
+
+  const objetivo = pages.slice(0, EXTRACT_PAGES)
+  const extraidas = await tavilyExtract({
+    urls: objetivo.map(p => p.url).filter(Boolean),
+    source: 'webResearchSource',
+  })
+
+  if (!extraidas?.length) return pages
+
+  const porUrl = new Map(extraidas.map(e => [e.url, e.content]))
+
+  return pages.map(p => {
+    const cuerpo = porUrl.get(p.url)
+    return cuerpo ? { ...p, content: cuerpo, fullText: true } : p
+  })
 }
 
 /**

@@ -98,8 +98,13 @@ import process from 'node:process'
  *       unas botas y de 1 a 13 en un sommier. La muestra pobre no la causaban
  *       los filtros —eran correctos— sino pedir pocos resultados y quedarse
  *       con once páginas del mismo vendedor.
+ *  15 — la investigación lee el CUERPO de las páginas (endpoint Extract) en vez
+ *       del resumen del buscador, que para una ficha de tienda es el texto ALT
+ *       de las fotos. Y el mensaje deja de recortarse a 5.000 caracteres: se
+ *       perdía el 38% del digest, con las últimas cuatro páginas, mientras el
+ *       panel decía "12 páginas leídas".
  */
-export const SCORING_VERSION = 14
+export const SCORING_VERSION = 15
 
 const num = (name, fallback) => {
   const value = Number(process.env[name])

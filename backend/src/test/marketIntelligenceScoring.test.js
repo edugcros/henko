@@ -267,8 +267,11 @@ jest.unstable_mockModule('../services/aiAgent/aiAgentLLMService.js', () => ({
   callAgentLLMForRepair: jest.fn(),
 }))
 
+const mockTavilyExtract = jest.fn()
+
 jest.unstable_mockModule('../services/marketIntelligence/sources/tavilyClient.js', () => ({
   tavilySearch: mockTavilySearch,
+  tavilyExtract: mockTavilyExtract,
   hasTavilyKey: () => true,
   TAVILY_COUNTRY: { AR: 'argentina' },
 }))
@@ -574,6 +577,7 @@ describe('investigación web · el modelo ordena, no recuerda', () => {
   beforeEach(() => {
     mockCallAgentLLM.mockReset()
     mockTavilySearch.mockReset()
+    mockTavilyExtract.mockReset()
   })
 
   test('no manda herramientas: no depende de la cuota que está en cero', async () => {
@@ -870,6 +874,7 @@ describe('investigación web · una barra de más no es otra página', () => {
   beforeEach(() => {
     mockCallAgentLLM.mockReset()
     mockTavilySearch.mockReset()
+    mockTavilyExtract.mockReset()
   })
 
   beforeAll(async () => {
@@ -1105,5 +1110,84 @@ describe('techo del modelo · un producto bueno tiene que poder recomendarse', (
   test('la referencia de mercado activo sale del entorno', () => {
     // NADA HARCODEADO: ocho vendedores es el default, no una constante fija.
     expect(process.env.MARKET_ACTIVE_MERCHANTS).toBeUndefined()
+  })
+})
+
+// ─── El resumen del buscador no era el contenido de la página ───────────────
+//
+// `search` devuelve un resumen por página, y para una ficha de tienda ese
+// resumen es el texto ALT de las fotos. Medido con las botas Alpinestars
+// Tech-7, lo que llegaba al modelo era: "vista superior que muestra el forro
+// interior... goma texturizada azul y negra, logotipo de Alpinestars blanco".
+//
+// Pedirle a eso las quejas de los compradores y recibir [] no era un fallo del
+// modelo: era la respuesta correcta. Ahí no hay ninguna queja.
+//
+// Con el cuerpo real de las páginas —7.319 caracteres del hilo del foro, 8.732
+// de la review— la misma corrida devolvió "demasiado blandas o falta de
+// rigidez para impactos fuertes".
+
+describe('investigación web · se lee el cuerpo, no el resumen', () => {
+  let getWebResearchSignals
+
+  const PAGINAS = [
+    { url: 'https://foro.com.ar/hilo', title: 'Botas ¿qué tal son?', content: 'resumen corto' },
+    { url: 'https://review.com.ar/nota', title: 'Review botas', content: 'resumen corto' },
+  ]
+
+  const SENALES = {
+    searchIntent: { informational: 1, commercial: 1, transactional: 0 },
+    trendDirection: 'ESTABLE',
+  }
+
+  beforeAll(async () => {
+    ;({ getWebResearchSignals } = await import(
+      '../services/marketIntelligence/sources/webResearchSource.js'
+    ))
+  })
+
+  beforeEach(() => {
+    mockCallAgentLLM.mockReset()
+    mockTavilySearch.mockReset()
+    mockTavilyExtract.mockReset()
+    mockCallAgentLLM.mockResolvedValue({ content: JSON.stringify(SENALES) })
+  })
+
+  test('al modelo le llega el cuerpo extraído, no el resumen', async () => {
+    mockTavilySearch.mockResolvedValue(PAGINAS)
+    mockTavilyExtract.mockResolvedValue([
+      { url: 'https://foro.com.ar/hilo', content: 'las botas son muy rígidas al principio' },
+    ])
+
+    await getWebResearchSignals({ product: 'botas', country: 'AR', apiKey: 'k' })
+
+    const enviado = mockCallAgentLLM.mock.calls[0][0].messages[0].content
+
+    expect(enviado).toContain('muy rígidas al principio')
+    // La que no se pudo extraer conserva su resumen: se pierde calidad en esa
+    // página, no el análisis.
+    expect(enviado).toContain('resumen corto')
+  })
+
+  test('si Extract falla, se sigue con el resumen del buscador', async () => {
+    mockTavilySearch.mockResolvedValue(PAGINAS)
+    mockTavilyExtract.mockResolvedValue(null)
+
+    const signals = await getWebResearchSignals({ product: 'botas', country: 'AR', apiKey: 'k' })
+
+    expect(signals.available).toBe(true)
+    expect(mockCallAgentLLM.mock.calls[0][0].messages[0].content).toContain('resumen corto')
+  })
+
+  test('se pide un límite de mensaje del tamaño real del digest', async () => {
+    // El default del agente son 5.000 caracteres, pensado para un chat. Doce
+    // páginas medían 8.765 y se recortaban al 38% sin avisar, mientras el
+    // panel seguía diciendo "12 páginas leídas".
+    mockTavilySearch.mockResolvedValue(PAGINAS)
+    mockTavilyExtract.mockResolvedValue([])
+
+    await getWebResearchSignals({ product: 'botas', country: 'AR', apiKey: 'k' })
+
+    expect(mockCallAgentLLM.mock.calls[0][0].maxCharsPerMessage).toBeGreaterThan(12000)
   })
 })
