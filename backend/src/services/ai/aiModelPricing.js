@@ -51,6 +51,116 @@ const CATALOG = [
   { models: ['gemini-2.5-flash-lite'], from: null, until: null, input: 0.1, output: 0.4 },
 ]
 
+
+/**
+ * Herramientas: lo que se paga POR LLAMADA, no por token.
+ *
+ * POR QUÉ HACE FALTA, CON EL NÚMERO QUE LO JUSTIFICA
+ *
+ * Toda la contabilidad de este archivo asumía que la IA se cobra por tokens.
+ * Para el análisis de mercado eso deja afuera lo que más cuesta. Medido contra
+ * producción, 2026-09:
+ *
+ *   llamadas a Gemini de mercado   51 · USD 0,0568   ← lo único contabilizado
+ *   créditos de Tavily estimados  255 · USD 2,0400   ← invisible
+ *
+ * La herramienta costaba 36 VECES lo que los tokens, y no aparecía en ningún
+ * lado: ni en el ledger, ni en el disyuntor, ni en el reporte. Cada análisis
+ * gasta ~5 créditos —una búsqueda de shopping, una de research y una
+ * extracción de hasta 12 URLs— y con eso ya se iba el 25% del cupo gratis
+ * mensual sin que nadie lo viera.
+ *
+ * EL PRECIO SALE DE LA TARIFA PUBLICADA, NO DE UN SUPUESTO
+ *
+ * Tavily: 1.000 créditos gratis por mes; pay-as-you-go a USD 0,008 el crédito
+ * (los planes mensuales bajan de 0,0075 a 0,005). Se costea al precio de
+ * pay-as-you-go a propósito: es el techo, y para un disyuntor conviene el
+ * número que no subestima. Los créditos dentro del cupo gratis no se facturan,
+ * pero sí se gastan, y un cupo que se agota a mitad de mes deja sin análisis a
+ * todos los comercios — exactamente lo que el disyuntor existe para anticipar.
+ *
+ * Google Search grounding está declarado y hoy vale cero porque NO SE USA: el
+ * parámetro `tools` de callGemini no lo pasa ningún llamador, y el grounding
+ * se probó y se abandonó (con `tools`, la API devuelve 429 en todos los
+ * modelos de la cadena — ver webResearchSource.js). Queda con su entrada lista
+ * para el día que se reactive, con cantidad cero mientras tanto.
+ *
+ * Lleva vigencia por el mismo motivo que los modelos: corregir una tarifa
+ * hacia adelante no puede reescribir lo que costó el mes pasado.
+ */
+const TOOL_CATALOG = [
+  // Tavily — https://docs.tavily.com/documentation/api-credits
+  // La unidad es el CRÉDITO, no la llamada: una búsqueda basic gasta 1, una
+  // advanced 2, y una extracción 1 cada 5 URLs resueltas. Quien llama cuenta
+  // los créditos; acá solo se los pone precio.
+  { tools: ['tavily_search', 'tavily_extract'], from: null, until: null, unitCostUsd: 0.008 },
+
+  // Google Search grounding. USD 35 por 1.000 consultas = 0,035 cada una,
+  // después de las 1.500 gratis por día. Hoy la cantidad es siempre cero.
+  { tools: ['google_search'], from: null, until: null, unitCostUsd: 0.035 },
+]
+
+/** Tarifa a aplicar si la herramienta no está en el catálogo. */
+const TOOL_FALLBACK_UNIT_COST = 0.05
+
+const warnedTools = new Set()
+
+/**
+ * Precio por unidad de una herramienta, a la fecha del consumo.
+ *
+ * @param {string} tool
+ * @param {Date} [at=new Date()]
+ * @returns {{tool:string, unitCostUsd:number, fallback?:boolean}}
+ */
+export const getToolPrice = (tool, at = new Date()) => {
+  const name = String(tool || '').trim().toLowerCase()
+  const when = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date()
+
+  const entry = TOOL_CATALOG.find(e => e.tools.includes(name) && inWindow(e, when))
+
+  if (entry) return { tool: name, unitCostUsd: entry.unitCostUsd }
+
+  if (name && !warnedTools.has(name)) {
+    warnedTools.add(name)
+    logger.warn('[AI PRICING] Herramienta fuera del catálogo, se usa la tarifa conservadora', {
+      tool: name,
+      assumedUnitCostUsd: TOOL_FALLBACK_UNIT_COST,
+    })
+  }
+
+  return { tool: name, unitCostUsd: TOOL_FALLBACK_UNIT_COST, fallback: true }
+}
+
+/**
+ * Costo de N unidades de una herramienta.
+ *
+ * SEPARADO DEL COSTO POR TOKENS, Y ES EL PUNTO.
+ *
+ * Mezclarlos en un solo número hace imposible contestar la pregunta que
+ * importa —"¿esto se va en modelo o en herramientas?"— y esa pregunta tiene
+ * respuestas opuestas: si se va en tokens, la palanca es el modelo o el
+ * prompt; si se va en herramientas, es cuántas páginas se extraen.
+ *
+ * @param {Object} params
+ * @param {string} params.tool     - 'tavily_search', 'google_search'…
+ * @param {number} params.quantity - unidades (créditos, consultas)
+ * @param {Date}   [params.at]     - fecha del consumo, no del cálculo
+ * @returns {{tool:string, quantity:number, unitCostUsd:number, costUsd:number, fallback:boolean}}
+ */
+export const computeToolCostUsd = ({ tool, quantity, at = new Date() } = {}) => {
+  const price = getToolPrice(tool, at)
+  const amount = Number(quantity)
+  const unidades = Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 0
+
+  return {
+    tool: price.tool,
+    quantity: unidades,
+    unitCostUsd: price.unitCostUsd,
+    costUsd: Number((unidades * price.unitCostUsd).toFixed(6)),
+    fallback: Boolean(price.fallback),
+  }
+}
+
 /**
  * Generación de imágenes, que NO se cobra por token.
  *

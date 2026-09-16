@@ -41,6 +41,7 @@ import {
 import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
 import {
   computeCostUsd,
+  computeToolCostUsd,
   computeImageCostUsd,
   normalizeModelName,
 } from './aiModelPricing.js'
@@ -359,6 +360,8 @@ const claimConsumption = async ({
   breakdown = null,
   // Lo que el proveedor midió y no entra en el precio, pero explica la fila.
   usage = null,
+  // El desglose de una llamada a herramienta, cuando la fila es de eso.
+  toolBreakdown = null,
   costUsd = 0,
   ok = true,
   pricingFallback = false,
@@ -391,6 +394,10 @@ const claimConsumption = async ({
       // estimada se pueda auditar sin reconstruir la tabla de aquel día.
       assumedInputRatio: breakdown?.assumedRatio?.ratio ?? null,
       assumedRatioSource: breakdown?.assumedRatio?.source ?? null,
+      tool: toolBreakdown?.tool ?? null,
+      toolQuantity: toolBreakdown?.quantity ?? null,
+      toolUnitCostUsd: toolBreakdown?.unitCostUsd ?? null,
+      toolCostUsd: toolBreakdown?.costUsd ?? 0,
       ok,
       pricingFallback,
     })
@@ -1928,6 +1935,128 @@ export const recordAiConsumption = async ({
  * de visión) ya fue descontada por reserveAiBudget. Solo registra costo,
  * consumo de plataforma y ledger.
  */
+/**
+ * Consumo de una HERRAMIENTA: lo que se paga por llamada, no por token.
+ *
+ * QUÉ PROBLEMA RESUELVE
+ *
+ * Toda la contabilidad de IA asumía tokens. Para el análisis de mercado eso
+ * deja afuera lo que más cuesta: medido en producción sobre 2026-09, las
+ * llamadas a Gemini de mercado sumaron USD 0,0568 y los créditos de Tavily
+ * unos USD 2,0400 — 36 veces más, y sin una fila en ningún lado. Ni el ledger,
+ * ni el disyuntor, ni el reporte los veían.
+ *
+ * Y el cupo importa aunque no se facture: Tavily regala 1.000 créditos por
+ * mes, ya se iba el 25% en un mes, y un cupo agotado a mitad de mes deja sin
+ * análisis a todos los comercios. Eso es precisamente lo que el disyuntor
+ * existe para anticipar.
+ *
+ * CÓMO SE PARECE Y CÓMO SE DIFERENCIA DE recordTokenSpend
+ *
+ * Se parece en todo lo que importa: mismo candado de idempotencia por
+ * (operación, llamada), misma fila en AiProviderCall, mismo ledger, mismo
+ * contador de plataforma. Un reintento no cobra dos veces.
+ *
+ * Se diferencia en que NO toca el contador de tokens del disyuntor —no gastó
+ * tokens— pero SÍ el de dólares, que es donde este gasto se tiene que ver.
+ *
+ * No descuenta cuota del comercio: la unidad que se le cobró (el análisis) ya
+ * la descontó reserveAiBudget. Esto registra lo que le cuesta a HENKO.
+ *
+ * @param {Object} params
+ * @param {string} params.tool     - 'tavily_search', 'tavily_extract'…
+ * @param {number} params.quantity - unidades consumidas (créditos, consultas)
+ * @param {string} params.callId   - distingue esta llamada dentro de la operación
+ */
+export const recordToolSpend = async ({
+  tenantId,
+  metric,
+  tool,
+  quantity,
+  profile = null,
+  period: requestedPeriod = null,
+  operationId = null,
+  callId = null,
+  provider = null,
+}) => {
+  const normalizedMetric = normalizeMetric(metric)
+  const id = clean(tenantId)
+
+  if (!normalizedMetric || !id || !tool) return
+
+  const toolBreakdown = computeToolCostUsd({ tool, quantity })
+  if (toolBreakdown.quantity <= 0) return
+
+  const aiProfile = profile || (await loadTenantAiProfile(id))
+
+  // Con key propia el comercio le paga a Google, pero la herramienta la paga
+  // HENKO igual: la clave de Tavily es de la plataforma, no del comercio. Por
+  // eso acá no hay rama de BYOK como en los tokens.
+  const costUsd = toolBreakdown.costUsd
+  const period = requestedPeriod || getCurrentPeriod()
+
+  // El callId por defecto nombra la herramienta: una operación puede hacer una
+  // búsqueda y una extracción, y son dos llamadas distintas que tienen que
+  // convivir sin que el índice único descarte la segunda como reintento.
+  const llamada = callId || `tool:${toolBreakdown.tool}`
+
+  const nuevo = await claimConsumption({
+    tenantId: id,
+    operationId,
+    callId: llamada,
+    period,
+    metric: normalizedMetric,
+    amount: 0,
+    provider,
+    toolBreakdown,
+    // costUsd de la fila es el de TOKENS, y acá no hubo.
+    costUsd: 0,
+  })
+
+  if (!nuevo) return
+
+  if (costUsd > 0) {
+    try {
+      await ensureUsageDocument({ tenantId: id, period })
+      await AiUsage.updateOne(
+        { tenantId: id, period },
+        { $inc: { estimatedCostUsd: costUsd }, $set: { lastActivityAt: new Date() } },
+      ).setOptions({ tenantId: id })
+    } catch (error) {
+      logger.warn('[AI BUDGET] No se pudo registrar el costo de la herramienta', {
+        tenantId: id,
+        tool: toolBreakdown.tool,
+        error: error.message,
+      })
+    }
+
+    // Tokens en cero: el disyuntor de volumen no se toca, el de plata sí.
+    await registerPlatformConsumption({ tokens: 0, costUsd, period }).catch(error => {
+      logger.warn('[AI BUDGET] No se pudo registrar el gasto de plataforma de la herramienta', {
+        tenantId: id,
+        tool: toolBreakdown.tool,
+        error: error.message,
+      })
+    })
+  }
+
+  writeLedgerEntry({
+    tenantId: id,
+    period,
+    event: LEDGER_EVENT.CONSUMED,
+    operationId: ledgerKey(operationId, llamada),
+    metric: normalizedMetric,
+    amount: toolBreakdown.quantity,
+    keySource: aiProfile.keySource,
+    plan: aiProfile.plan,
+    costUsd,
+    // La unidad dice qué se está contando. 'tokens' y 'units' ya existían;
+    // esta es la tercera clase y mezclarla con las otras dos haría que el
+    // reporte sume créditos de Tavily con análisis de mercado.
+    unit: 'toolCalls',
+  })
+}
+
 export const recordTokenSpend = async ({
   tenantId,
   metric,

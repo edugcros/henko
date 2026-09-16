@@ -101,7 +101,12 @@ const MARKET_BY_COUNTRY = {
  * @property {Object} priceStats        - min, p25, median, p75, max, currency
  * @property {Array} offers             - muestra para mostrar en el panel
  */
-export async function getShoppingSignals({ product, country, brand = null }) {
+export async function getShoppingSignals({
+  product,
+  country,
+  brand = null,
+  toolUsage = null,
+}) {
   const provider = (process.env.SHOPPING_PROVIDER || 'tavily').trim().toLowerCase()
 
   if (provider === 'none') {
@@ -118,7 +123,7 @@ export async function getShoppingSignals({ product, country, brand = null }) {
     return { available: false, reason: `NO_DISPONIBLE: proveedor "${provider}" no implementado` }
   }
 
-  const offers = await adapter({ product, locale, country, brand })
+  const offers = await adapter({ product, locale, country, brand, toolUsage })
 
   if (!offers) {
     return { available: false, reason: `NO_DISPONIBLE: ${provider} no devolvió resultados` }
@@ -183,14 +188,17 @@ const ADAPTERS = {
    * observaciones contra cuarenta ofertas. Gana en costo (un crédito por
    * análisis contra dos o tres pedidos) y en que no se agota a mitad de mes.
    */
-  async tavily({ product, locale, country, brand }) {
+  async tavily({ product, locale, country, brand, toolUsage = null }) {
     if (!hasTavilyKey()) return null
 
+    // El acumulador viaja hasta el cliente, que es el único que sabe cuántos
+    // créditos costó cada llamada (depende de la profundidad configurada).
     const buscar = async extra =>
       tavilySearch({
         query: `${product} ${SEARCH_SUFFIX}`.trim(),
         language: locale.hl,
         source: 'shoppingSource',
+        toolUsage,
         ...extra,
       })
 

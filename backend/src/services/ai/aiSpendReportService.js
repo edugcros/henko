@@ -84,18 +84,45 @@ export const getPeriodSpendByMetric = async period => {
         tokens: {
           $sum: conSigno({ $cond: [{ $eq: ['$unit', 'tokens'] }, '$amount', 0] }),
         },
+        // Lo que se fue en HERRAMIENTAS, separado de lo que se fue en tokens.
+        //
+        // Va aparte porque las dos mitades llevan a palancas opuestas: si el
+        // gasto se concentra en tokens, se toca el modelo o el prompt; si se
+        // concentra en herramientas, cuántas páginas se extraen. Con un solo
+        // número, la pregunta no tiene respuesta.
+        //
+        // Medido antes de contabilizarlas, 2026-09: marketTokens gastaba USD
+        // 0,0568 en Gemini y ~USD 2,0400 en créditos de Tavily. El 97% del
+        // costo de esa feature estaba afuera del reporte.
+        toolCostUsd: {
+          $sum: conSigno({ $cond: [{ $eq: ['$unit', 'toolCalls'] }, '$costUsd', 0] }),
+        },
+        toolCalls: {
+          $sum: conSigno({ $cond: [{ $eq: ['$unit', 'toolCalls'] }, '$amount', 0] }),
+        },
         operations: { $sum: conSigno(1) },
       },
     },
     { $sort: { costUsd: -1 } },
   ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
 
-  return rows.map(row => ({
-    metric: row._id,
-    costUsd: round(row.costUsd),
-    tokens: row.tokens || 0,
-    operations: row.operations || 0,
-  }))
+  return rows.map(row => {
+    const toolCostUsd = round(row.toolCostUsd || 0)
+
+    return {
+      metric: row._id,
+      // El total de la feature: tokens MÁS herramientas. Sigue significando lo
+      // mismo que antes —el gasto de esa métrica— y ahora incluye lo que antes
+      // faltaba.
+      costUsd: round(row.costUsd),
+      // Y las dos mitades, para poder mirarlas por separado.
+      tokenCostUsd: round(row.costUsd - toolCostUsd),
+      toolCostUsd,
+      tokens: row.tokens || 0,
+      toolCalls: row.toolCalls || 0,
+      operations: row.operations || 0,
+    }
+  })
 }
 
 /**

@@ -107,7 +107,48 @@ const EXTRACT_DEPTH =
  * @param {string} [params.source] - quién pregunta, solo para el log
  * @returns {Promise<Array<{url:string, content:string}>|null>}
  */
-export async function tavilyExtract({ urls, source = 'tavily' }) {
+
+/**
+ * Cuántos créditos gasta cada llamada, y cómo se reportan.
+ *
+ * POR QUÉ ESTÁ ACÁ Y NO EN QUIEN LLAMA
+ *
+ * El precio de una llamada depende de la profundidad configurada y de cuántas
+ * URLs resolvió la extracción. Las dos cosas las sabe este archivo y ninguna
+ * sale en la respuesta, así que contar afuera obligaría a duplicar la tabla de
+ * créditos y a adivinar la profundidad.
+ *
+ * LA TARIFA (docs.tavily.com/documentation/api-credits)
+ *
+ *   search   basic 1 crédito · advanced 2
+ *   extract  basic 1 crédito cada 5 URLs RESUELTAS · advanced 2 cada 5
+ *
+ * "Resueltas" y no "pedidas": Tavily cobra las extracciones exitosas, así que
+ * pedir 12 URLs y resolver 7 cuesta 2 créditos, no 3. Contar las pedidas
+ * sobreestimaría el gasto justo en las corridas que salieron mal.
+ *
+ * SE REPORTA POR UN ACUMULADOR, NO POR EL VALOR DE RETORNO
+ *
+ * Cambiar lo que devuelven estas funciones rompería a los tres llamadores por
+ * una razón que no es la suya. El acumulador es opcional: quien quiere
+ * contabilizar lo pasa, y quien no, sigue llamando igual que antes.
+ *
+ * Una llamada que FALLA no gasta créditos y no se anota. Ese es el motivo de
+ * que el push esté después del await y no antes.
+ */
+const CREDITOS_POR_BUSQUEDA = depth => (String(depth).toLowerCase() === 'advanced' ? 2 : 1)
+
+const CREDITOS_POR_EXTRACCION = (urlsResueltas, depth) =>
+  Math.ceil(Math.max(0, urlsResueltas) / 5) *
+  (String(depth).toLowerCase() === 'advanced' ? 2 : 1)
+
+/** Anota un consumo en el acumulador, si quien llamó pasó uno. */
+const anotar = (toolUsage, tool, quantity) => {
+  if (!Array.isArray(toolUsage) || !(quantity > 0)) return
+  toolUsage.push({ tool, quantity })
+}
+
+export async function tavilyExtract({ urls, source = 'tavily', toolUsage = null }) {
   const apiKey = String(process.env.TAVILY_API_KEY || '').trim()
   const lista = (Array.isArray(urls) ? urls : []).filter(Boolean)
 
@@ -120,9 +161,14 @@ export async function tavilyExtract({ urls, source = 'tavily' }) {
       { headers: { Authorization: `Bearer ${apiKey}` }, timeout: TIMEOUT_MS },
     )
 
-    return (Array.isArray(data?.results) ? data.results : [])
+    const resueltas = (Array.isArray(data?.results) ? data.results : [])
       .map(r => ({ url: r?.url || null, content: String(r?.raw_content || '') }))
       .filter(r => r.url && r.content)
+
+    // Con las RESUELTAS, no con las pedidas: Tavily cobra las exitosas.
+    anotar(toolUsage, 'tavily_extract', CREDITOS_POR_EXTRACCION(resueltas.length, EXTRACT_DEPTH))
+
+    return resueltas
   } catch (error) {
     logger.warn(`[${source}] Tavily extract falló`, {
       status: error?.response?.status,
@@ -139,6 +185,7 @@ export async function tavilySearch({
   country,
   maxResults = MAX_RESULTS,
   source = 'tavily',
+  toolUsage = null,
 }) {
   const apiKey = String(process.env.TAVILY_API_KEY || '').trim()
 
@@ -165,6 +212,10 @@ export async function tavilySearch({
         timeout: TIMEOUT_MS,
       },
     )
+
+    // La búsqueda se cobra por llamada, no por resultado: haya devuelto 50 o
+    // ninguno, el crédito ya se gastó.
+    anotar(toolUsage, 'tavily_search', CREDITOS_POR_BUSQUEDA(SEARCH_DEPTH))
 
     return Array.isArray(data?.results) ? data.results : []
   } catch (error) {

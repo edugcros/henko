@@ -74,9 +74,25 @@ const aiConsumptionLedgerSchema = new mongoose.Schema(
     // las dos clases —una unidad reservada al tenant, y los tokens que esa
     // unidad gastó— y sumar las dos juntas daría un número sin sentido. Cada
     // fila dice qué es, que es la propiedad de la que depende todo el diseño.
+    /**
+     * Qué se está contando en `amount`. Son tres clases distintas y mezclarlas
+     * hace que el reporte sume peras con manzanas:
+     *
+     *   units      lo que se le cobra al comercio por unidad (un análisis, una
+     *              imagen, un mensaje)
+     *   tokens     lo que Google cobra por token
+     *   toolCalls  lo que se paga POR LLAMADA a una herramienta externa: un
+     *              crédito de Tavily, una consulta de Google Search grounding
+     *
+     * La tercera llegó con el Bloque 7. Sin ella el enum rechazaba la fila y
+     * writeLedgerEntry —que traga los errores para no tumbar la operación— la
+     * descartaba dejando solo una línea de log: el costo se registraba en los
+     * contadores y NO en el libro, que es la peor combinación posible porque
+     * la reconciliación no tiene con qué cuadrar.
+     */
     unit: {
       type: String,
-      enum: ['units', 'tokens'],
+      enum: ['units', 'tokens', 'toolCalls'],
       required: true,
       default: 'units',
     },

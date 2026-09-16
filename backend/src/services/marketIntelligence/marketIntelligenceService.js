@@ -28,6 +28,7 @@ import {
   reserveAiBudget,
   refundAiBudget,
   recordAiConsumption,
+  recordToolSpend,
   buildBudgetDenialMessage,
 } from '../ai/aiBudgetService.js'
 
@@ -159,6 +160,15 @@ export async function analyzeMarketDemand({
   // Mongo contra dos llamadas de red— y es la que sabe la marca del producto.
   // Esa marca es lo que después distingue una página de la gorra buscada de
   // una gorra cualquiera, así que las otras dos la necesitan antes de salir.
+  // Los creditos de herramienta que gaste este analisis. Las fuentes anotan
+  // aca y al final se registran bajo la misma operacion que los tokens.
+  //
+  // Hace falta porque el costo de este analisis NO esta en los tokens: medido
+  // en produccion sobre 2026-09, las llamadas a Gemini de mercado sumaron USD
+  // 0,0568 y los creditos de Tavily unos USD 2,0400 — 36 veces mas, y sin una
+  // fila en ningun lado.
+  const toolUsage = []
+
   const [internalResult] = await Promise.allSettled([
     getInternalBiSignals({ tenantId, product }),
   ])
@@ -167,8 +177,8 @@ export async function analyzeMarketDemand({
     internalResult.status === 'fulfilled' ? internalResult.value?.brand || null : null
 
   const [shoppingResult, researchResult] = await Promise.allSettled([
-    getShoppingSignals({ product, country, brand }),
-    getWebResearchSignals({ product, country, brand, apiKey: profile.apiKey }),
+    getShoppingSignals({ product, country, brand, toolUsage }),
+    getWebResearchSignals({ product, country, brand, apiKey: profile.apiKey, toolUsage }),
   ])
 
   const rawSignals = {
@@ -208,6 +218,45 @@ export async function analyzeMarketDemand({
       // cuesta cinco veces la entrada, ese reparto es justo donde más se
       // equivoca uno. Va entero: adentro viajan los tokens de pensamiento.
       usage,
+    })
+  }
+
+  // ─── Lo que costaron las HERRAMIENTAS ────────────────────────────────
+  //
+  // Va aparte del costo por tokens y es el punto: si los dos se sumaran en un
+  // solo numero, la pregunta que importa —"¿esto se va en modelo o en
+  // herramientas?"— no tendria respuesta, y las dos respuestas llevan a
+  // palancas opuestas. Si se va en tokens, se toca el modelo o el prompt; si
+  // se va en herramientas, cuantas paginas se extraen.
+  //
+  // Se agrupa por herramienta antes de registrar: una busqueda de shopping y
+  // una de research son dos llamadas al mismo endpoint, y lo que interesa es
+  // cuantos creditos de 'tavily_search' gasto la operacion. Registrarlas por
+  // separado necesitaria un callId distinto para cada una y no agrega nada.
+  //
+  // Se registra SIEMPRE que se hayan gastado creditos, incluso si el analisis
+  // despues falla: lo que ya se le pago a Tavily no se recupera.
+  const creditosPorHerramienta = new Map()
+  for (const { tool, quantity } of toolUsage) {
+    creditosPorHerramienta.set(tool, (creditosPorHerramienta.get(tool) || 0) + quantity)
+  }
+
+  for (const [tool, quantity] of creditosPorHerramienta) {
+    await recordToolSpend({
+      tenantId,
+      metric: AI_METRICS.MARKET_TOKENS,
+      tool,
+      quantity,
+      profile,
+      operationId: budget.operationId,
+      provider: 'tavily',
+    }).catch(error => {
+      logger.warn('[marketIntelligence] No se pudo registrar el costo de la herramienta', {
+        tenantId: String(tenantId),
+        tool,
+        quantity,
+        error: error.message,
+      })
     })
   }
 

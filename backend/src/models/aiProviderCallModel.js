@@ -174,6 +174,32 @@ const aiProviderCallSchema = new mongoose.Schema(
     assumedRatioSource: { type: String, trim: true, default: null },
 
     /**
+     * LA LLAMADA A UNA HERRAMIENTA, QUE NO SE COBRA POR TOKEN.
+     *
+     * Una búsqueda de Tavily, una extracción, una consulta de Google Search
+     * grounding. El precio es por unidad —crédito o consulta— y la unidad no
+     * tiene nada que ver con los tokens.
+     *
+     * Va SEPARADO de costUsd a propósito, y ese es el punto del bloque: si se
+     * sumaran en un solo número, la pregunta que importa —"¿esto se va en
+     * modelo o en herramientas?"— no tendría respuesta, y las dos respuestas
+     * llevan a palancas opuestas. Si se va en tokens, se toca el modelo o el
+     * prompt; si se va en herramientas, cuántas páginas se extraen.
+     *
+     * Medido en producción antes de esto: 51 llamadas a Gemini de mercado por
+     * USD 0,0568, contra ~255 créditos de Tavily por USD 2,0400. La
+     * herramienta costaba 36 veces los tokens y no aparecía en ningún lado.
+     *
+     * costUsd sigue siendo el costo de TOKENS. El total de la fila es la suma
+     * de los dos: cambiarle el significado a costUsd habría movido en silencio
+     * todos los agregados que ya lo leen.
+     */
+    tool: { type: String, trim: true, default: null, index: true },
+    toolQuantity: { type: Number, default: null, min: 0 },
+    toolUnitCostUsd: { type: Number, default: null, min: 0 },
+    toolCostUsd: { type: Number, default: 0, min: 0 },
+
+    /**
      * true cuando el costo se calculó con un modelo ADIVINADO.
      *
      * Pasa si el llamador no informó con cuál gastó y hubo que caer al

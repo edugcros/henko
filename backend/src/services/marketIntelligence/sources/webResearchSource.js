@@ -152,7 +152,15 @@ const RESPONSE_SCHEMA = {
  * @property {string[]} recurringComplaints
  * @property {Array<{url:string, title:string}>} sources - las páginas leídas, verificables
  */
-export async function getWebResearchSignals({ product, country, brand, apiKey }) {
+export async function getWebResearchSignals({
+  product,
+  country,
+  brand,
+  apiKey,
+  // Acumulador de creditos de herramienta. Quien contabiliza lo pasa; el
+  // resto llama igual que antes.
+  toolUsage = null,
+}) {
   if (!hasTavilyKey()) {
     return { available: false, reason: 'NO_DISPONIBLE: el buscador web no está configurado' }
   }
@@ -172,6 +180,7 @@ export async function getWebResearchSignals({ product, country, brand, apiKey })
     query: `${product} ${RESEARCH_SUFFIX}`.trim(),
     language: 'es',
     source: 'webResearchSource',
+    toolUsage,
   })
 
   if (pages === null) {
@@ -207,7 +216,10 @@ export async function getWebResearchSignals({ product, country, brand, apiKey })
     (a, b) => opinionScore(b, brand) - opinionScore(a, brand),
   )
 
-  const usadas = await conTextoCompleto(conTopePorDominio(ordenadas).slice(0, MAX_PAGES))
+  const usadas = await conTextoCompleto(
+    conTopePorDominio(ordenadas).slice(0, MAX_PAGES),
+    toolUsage,
+  )
 
   const extraction = await callAgentLLM({
     systemPrompt: buildExtractionPrompt({ product, country }),
@@ -398,13 +410,14 @@ function esSitioDeLaMarca(url, brand) {
  * falla o no cubre una página, esa se queda con el resumen del buscador: se
  * pierde calidad en esa página, no el análisis.
  */
-async function conTextoCompleto(pages) {
+async function conTextoCompleto(pages, toolUsage = null) {
   if (pages.length === 0) return pages
 
   const objetivo = pages.slice(0, EXTRACT_PAGES)
   const extraidas = await tavilyExtract({
     urls: objetivo.map(p => p.url).filter(Boolean),
     source: 'webResearchSource',
+    toolUsage,
   })
 
   if (!extraidas?.length) return pages
