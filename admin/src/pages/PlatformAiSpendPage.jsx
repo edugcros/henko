@@ -466,29 +466,79 @@ export default function PlatformAiSpendPage() {
         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
           Calidad de la medición
         </Typography>
+        {/* El porcentaje primero: es la respuesta a "¿me puedo fiar del
+            total?" sin tener que sumar nada mentalmente. */}
+        {quality.measuredShare !== null &&
+          quality.measuredShare !== undefined && (
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 600, mb: 1 }}
+              color={
+                quality.measuredShare >= 95 ? 'success.main' : 'warning.main'
+              }
+            >
+              {quality.measuredShare}% del gasto en tokens está medido
+            </Typography>
+          )}
+
+        {/* Las cuatro clases son EXCLUYENTES y suman el total, así que la
+            columna de plata se puede leer como un reparto y no como cuatro
+            números sueltos que se pisan. */}
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
           <Typography variant="body2" color="text.secondary">
-            {formatTokens(quality.rows)} movimientos registrados
+            {formatTokens(quality.measured ?? quality.rows)} medidos
+            {quality.measuredCostUsd !== undefined &&
+              ` · ${formatUsd(quality.measuredCostUsd)}`}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color={
+              quality.estimatedRows > 0 ? 'warning.main' : 'text.secondary'
+            }
+          >
             {formatTokens(quality.estimatedRows)} con costo repartido
+            {quality.estimatedCostUsd !== undefined &&
+              ` · ${formatUsd(quality.estimatedCostUsd)}`}
           </Typography>
           <Typography
             variant="body2"
             color={quality.fallbackRows > 0 ? 'warning.main' : 'text.secondary'}
           >
             {formatTokens(quality.fallbackRows)} con tarifa de respaldo
+            {quality.fallbackCostUsd !== undefined &&
+              ` · ${formatUsd(quality.fallbackCostUsd)}`}
+          </Typography>
+          {/* El peor caso va en error y no en warning: no saber la tarifa es
+              cobrar de más o de menos; no saber el modelo es no saber nada. */}
+          <Typography
+            variant="body2"
+            color={quality.unknownModel > 0 ? 'error.main' : 'text.secondary'}
+          >
+            {formatTokens(quality.unknownModel ?? 0)} sin modelo conocido
+            {quality.unknownModelCostUsd !== undefined &&
+              ` · ${formatUsd(quality.unknownModelCostUsd)}`}
           </Typography>
         </Stack>
+
         <Typography
           variant="caption"
           color="text.secondary"
           sx={{ display: 'block', mt: 1.5 }}
         >
-          Visión, el agente y pricing informan el desglose real de entrada y
-          salida. Mercado, insights y recuperación de carrito todavía entregan
-          solo el total, así que su costo se reparte con una proporción
-          supuesta.
+          Sobre {formatTokens(quality.rows)} movimientos de tokens
+          {quality.costUsd !== undefined && ` (${formatUsd(quality.costUsd)})`}.
+          {quality.flatRate?.rows > 0 && (
+            <>
+              {' '}
+              Aparte, {formatTokens(quality.flatRate.rows)} movimientos de
+              precio por unidad ({formatUsd(quality.flatRate.costUsd)}):
+              imágenes y mensajes no se cobran por token, así que no hay
+              desglose que medir ni suponer y no entran en el porcentaje.
+            </>
+          )}{' '}
+          Los ocho llamadores informan el desglose real que devuelve el
+          proveedor; repartir el total con una proporción supuesta quedó como
+          último recurso y sale por log cuando ocurre.
         </Typography>
       </Paper>
 

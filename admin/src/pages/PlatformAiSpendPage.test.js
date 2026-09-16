@@ -102,6 +102,61 @@ test("si el disyuntor cortó, lo dice arriba de todo", async () => {
   expect(screen.getByText(/key propia siguen funcionando/i)).toBeInTheDocument();
 });
 
+test("la calidad se lee en plata y encabeza con el porcentaje medido", async () => {
+  // El numero de produccion al 16/09/2026: 132 movimientos de tokens, 4 con el
+  // costo repartido, 92,3% del gasto medido. Y 28 movimientos de precio por
+  // unidad que NO entran en ese porcentaje, porque no hay desglose que medir.
+  load({
+    quality: {
+      rows: 132,
+      estimatedRows: 4,
+      fallbackRows: 0,
+      costUsd: 0.467461,
+      measured: 128,
+      measuredCostUsd: 0.431609,
+      estimated: 4,
+      estimatedCostUsd: 0.035852,
+      priceFallback: 0,
+      fallbackCostUsd: 0,
+      unknownModel: 0,
+      unknownModelCostUsd: 0,
+      measuredShare: 92.3,
+      flatRate: { rows: 28, costUsd: 0.382812 },
+    },
+  });
+
+  await waitFor(() =>
+    expect(
+      screen.getByText("92.3% del gasto en tokens está medido"),
+    ).toBeInTheDocument(),
+  );
+
+  // Cada clase con su plata al lado: cuatro filas mal medidas de un total de
+  // 132 suenan a nada hasta que se ve que son el 7,7% del gasto.
+  expect(screen.getByText(/128 medidos/)).toBeInTheDocument();
+  expect(screen.getByText(/4 con costo repartido/)).toBeInTheDocument();
+  expect(screen.getByText(/0 sin modelo conocido/)).toBeInTheDocument();
+
+  // Y lo que se cobra por unidad se informa aparte, no mezclado.
+  expect(
+    screen.getByText(/28 movimientos de precio por unidad/),
+  ).toBeInTheDocument();
+});
+
+test("un reporte viejo, sin los campos de plata, no rompe la pantalla", async () => {
+  // El panel puede quedar desplegado antes que el backend. Sin los campos
+  // nuevos tiene que seguir mostrando lo que ya mostraba.
+  load({ quality: { rows: 40, estimatedRows: 3, fallbackRows: 1 } });
+
+  await waitFor(() =>
+    expect(screen.getByText(/3 con costo repartido/)).toBeInTheDocument(),
+  );
+
+  expect(screen.getByText(/1 con tarifa de respaldo/)).toBeInTheDocument();
+  // Sin measuredShare no se inventa un porcentaje.
+  expect(screen.queryByText(/del gasto en tokens está medido/)).toBeNull();
+});
+
 test("marca los modelos que se cobraron con tarifa de respaldo", async () => {
   // Si eso crece, el catálogo quedó viejo y el costo mostrado está inflado.
   load({

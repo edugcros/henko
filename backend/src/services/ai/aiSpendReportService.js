@@ -133,34 +133,124 @@ export const getPeriodSpendByModel = async period => {
 }
 
 /**
- * Cuánta de la contabilidad del período es medida y cuánta supuesta.
+ * Cuánta de la contabilidad del período es medida, y cuánta plata hay detrás
+ * de cada clase de supuesto.
  *
  * Va en el reporte y no en una nota al pie porque cambia cómo hay que leer el
  * total. Un costo repartido con una proporción asumida y uno calculado con el
  * usageMetadata real no son la misma clase de dato, y quien mira el número para
  * decidir algo tiene que saber cuál está mirando.
  *
- * `fallbackRows` es distinto y más urgente: son filas cobradas con la tarifa
- * conservadora porque el modelo no estaba en el catálogo. Si eso crece, el
- * catálogo quedó viejo y el total está inflado.
+ * SOLO CUENTA LAS FILAS DE TOKENS, Y ESA ES LA CORRECCIÓN QUE MÁS IMPORTA.
+ *
+ * Antes miraba TODOS los movimientos, y el resultado mentía. Medido en
+ * producción sobre 2026-09:
+ *
+ *   todos los movimientos   160 filas · 27 estimadas (17%) · 24 sin modelo
+ *   solo las de tokens      132 filas ·  4 estimadas  (3%) ·  0 sin modelo
+ *
+ * Las 19 de diferencia son ediciones de imagen. Llevan costEstimated porque el
+ * precio es por imagen y se cobra al reservar, y no llevan modelo porque no lo
+ * tienen: las sirve Replicate, no Gemini. Contarlas como "contabilidad
+ * supuesta" inflaba el defecto cuatro veces y tapaba la señal real. Lo que se
+ * cobra por unidad se informa aparte, en `flatRate`.
+ *
+ * LAS CUATRO CLASES SON EXCLUYENTES Y SUMAN EL TOTAL.
+ *
+ * Si se contaran solapadas, una fila estimada Y con tarifa de respaldo sumaría
+ * dos veces y el reporte no cerraría contra el gasto. Van de peor a mejor:
+ *
+ *   unknownModel   ni siquiera se sabe qué modelo respondió
+ *   priceFallback  el modelo se sabe, pero no está en el catálogo
+ *   estimated      la tarifa se sabe; el reparto entrada/salida fue supuesto
+ *   measured       todo real
+ *
+ * UNA ACLARACIÓN DE NOMBRES QUE CUESTA CARA SI SE PASA POR ALTO.
+ *
+ * `priceFallback` (ledger) y `pricingFallback` (AiProviderCall) se escriben
+ * casi igual y significan cosas distintas: el primero es "sé el modelo, no
+ * tengo su tarifa"; el segundo, "no sé ni el modelo". Acá se usa el nombre del
+ * campo que se está contando, y el segundo caso viaja como `unknownModel`,
+ * que dice lo que es.
  */
-const getPeriodQuality = async period => {
-  const [row] = await AiConsumptionLedger.aggregate([
+export const getPeriodQuality = async period => {
+  const ES_TOKENS = { $eq: [{ $ifNull: ['$unit', 'units'] }, 'tokens'] }
+  const SIN_MODELO = { $in: [{ $ifNull: ['$model', null] }, [null, '']] }
+
+  // Excluyentes y en orden de gravedad: la primera que aplica se queda la fila.
+  const clase = {
+    $switch: {
+      branches: [
+        { case: SIN_MODELO, then: 'unknownModel' },
+        { case: { $eq: ['$priceFallback', true] }, then: 'priceFallback' },
+        { case: { $eq: ['$costEstimated', true] }, then: 'estimated' },
+      ],
+      default: 'measured',
+    },
+  }
+
+  const filas = await AiConsumptionLedger.aggregate([
     { $match: { period, event: LEDGER_EVENT.CONSUMED } },
     {
       $group: {
-        _id: null,
+        _id: { tokens: ES_TOKENS, clase },
         rows: { $sum: 1 },
-        estimatedRows: { $sum: { $cond: ['$costEstimated', 1, 0] } },
-        fallbackRows: { $sum: { $cond: ['$priceFallback', 1, 0] } },
+        costUsd: { $sum: { $ifNull: ['$costUsd', 0] } },
       },
     },
   ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
 
+  const acc = {
+    measured: { rows: 0, costUsd: 0 },
+    estimated: { rows: 0, costUsd: 0 },
+    priceFallback: { rows: 0, costUsd: 0 },
+    unknownModel: { rows: 0, costUsd: 0 },
+  }
+  const flatRate = { rows: 0, costUsd: 0 }
+
+  for (const f of filas) {
+    const destino = f._id.tokens ? acc[f._id.clase] : flatRate
+    if (!destino) continue
+    destino.rows += f.rows
+    destino.costUsd += f.costUsd
+  }
+
+  const rows =
+    acc.measured.rows + acc.estimated.rows + acc.priceFallback.rows + acc.unknownModel.rows
+  const costUsd =
+    acc.measured.costUsd +
+    acc.estimated.costUsd +
+    acc.priceFallback.costUsd +
+    acc.unknownModel.costUsd
+
   return {
-    rows: row?.rows || 0,
-    estimatedRows: row?.estimatedRows || 0,
-    fallbackRows: row?.fallbackRows || 0,
+    // Los tres nombres que el panel ya leía. Siguen significando lo mismo, pero
+    // ahora sobre las filas de tokens, que es donde la pregunta tiene sentido.
+    rows,
+    estimatedRows: acc.estimated.rows,
+    fallbackRows: acc.priceFallback.rows,
+
+    // El total de tokens, para que la suma de las cuatro clases se pueda
+    // verificar contra él en vez de tener que confiar.
+    costUsd: round(costUsd, 6),
+
+    measured: acc.measured.rows,
+    measuredCostUsd: round(acc.measured.costUsd, 6),
+    estimated: acc.estimated.rows,
+    estimatedCostUsd: round(acc.estimated.costUsd, 6),
+    priceFallback: acc.priceFallback.rows,
+    fallbackCostUsd: round(acc.priceFallback.costUsd, 6),
+    unknownModel: acc.unknownModel.rows,
+    unknownModelCostUsd: round(acc.unknownModel.costUsd, 6),
+
+    // El número que contesta la pregunta de una sola lectura: qué porcentaje
+    // del gasto en tokens salió de una medición y no de un supuesto. null
+    // cuando no hubo gasto — es distinto de 0%.
+    measuredShare: costUsd > 0 ? round((acc.measured.costUsd / costUsd) * 100, 1) : null,
+
+    // Imágenes y mensajes: precio por unidad, no por token. No entra en el
+    // porcentaje de arriba porque no hay desglose que medir ni suponer.
+    flatRate: { rows: flatRate.rows, costUsd: round(flatRate.costUsd, 6) },
   }
 }
 
@@ -280,5 +370,6 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
 export default {
   getPeriodSpendByMetric,
   getPeriodSpendByModel,
+  getPeriodQuality,
   getPlatformSpendSnapshot,
 }
