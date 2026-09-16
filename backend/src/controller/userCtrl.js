@@ -38,6 +38,9 @@ import expressAsyncHandler from 'express-async-handler'
 import { body, validationResult } from 'express-validator'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
+// El mismo predicado que usa el gate: una sola definición para que el menú
+// del panel y el permiso real no puedan discrepar.
+import { isPlatformOwner } from '../middlewares/platformOwnerMiddleware.js'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import process from 'process'
@@ -330,6 +333,20 @@ const serializeUserWithTenant = (user, tenant) => ({
   ...user.toSafeObject(),
   tenantId: tenant._id,
   tenant: serializeTenant(tenant),
+
+  /**
+   * Si este usuario es dueño de la plataforma. Lo usa el panel para decidir
+   * si dibuja el grupo "Plataforma" en el menú.
+   *
+   * NO ES UN PERMISO, ES UN DATO DE LA PROPIA CUENTA. El acceso lo sigue
+   * decidiendo requirePlatformOwner en cada request; esto solo evita dos
+   * errores opuestos que hoy conviven: dos reportes que el dueño no encuentra
+   * porque están escondidos de todos, y uno que el admin de cualquier
+   * comercio ve en su menú para recibir un 403.
+   *
+   * Al que no es dueño le llega false, que es lo que ya sabe de sí mismo.
+   */
+  isPlatformOwner: isPlatformOwner(user.email),
 })
 
 /**

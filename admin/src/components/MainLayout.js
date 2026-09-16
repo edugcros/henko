@@ -182,6 +182,28 @@ const MainLayout = () => {
     }
   }, [openKey])
 
+  /**
+   * El menú que le corresponde a ESTE usuario.
+   *
+   * `ownerOnly` marca los reportes que cruzan todos los comercios (ver
+   * adminMenu.jsx). Filtrarlos acá NO es el control de acceso —ese sigue
+   * siendo requirePlatformOwner del lado del servidor, en cada request— sino
+   * la forma de no dibujarle al admin de un comercio un ítem que solo le va a
+   * devolver 403.
+   *
+   * `isPlatformOwner` lo informa el backend en /me y en el login, calculado
+   * con el MISMO predicado que usa el gate, para que el menú y el permiso no
+   * puedan discrepar.
+   *
+   * Va con el resto de los hooks, antes de los returns tempranos de abajo: es
+   * el mismo error que este archivo ya tuvo dos veces.
+   */
+  const menuVisible = useMemo(
+    () =>
+      adminMenuItems.filter(item => !item.ownerOnly || user?.isPlatformOwner),
+    [user?.isPlatformOwner],
+  )
+
   // ─────────────────────────────────────────────────────────────────────
   // LOS DOS RETURNS TEMPRANOS, ACÁ Y NO ARRIBA
   // ─────────────────────────────────────────────────────────────────────
@@ -417,7 +439,7 @@ const MainLayout = () => {
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', mx: 1.5 }} />
 
         <Box sx={{ py: 1, flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-          <List disablePadding>{renderMenuItems(adminMenuItems)}</List>
+          <List disablePadding>{renderMenuItems(menuVisible)}</List>
         </Box>
 
         {user && !collapsed && (

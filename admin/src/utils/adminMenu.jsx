@@ -50,6 +50,10 @@ import ArchitectureIcon from '@mui/icons-material/Architecture'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import PaymentIcon from '@mui/icons-material/Payment'
 import SettingsIcon from '@mui/icons-material/Settings'
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
+import BoltIcon from '@mui/icons-material/Bolt'
+import SellIcon from '@mui/icons-material/Sell'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 
 // Rutas que existen pero no van en el menú, con el motivo.
@@ -65,21 +69,11 @@ const HIDDEN_ROUTES = new Map([
   // y la agregaría al menú con un ':productId' en la etiqueta.
   ['edit-product/:productId', 'se llega desde la lista de productos'],
 
-  // Reportes de plataforma: cruzan todos los comercios y el gate real es
-  // server-side (requirePlatformOwner, allowlist de email). routesConfig.js
-  // dice que van "deliberadamente sin entrada en el menú", y no era cierto:
-  // sin declararlas acá, la verificación de cobertura las trataba como
-  // huérfanas y las agregaba sola al final del menú — o sea que el admin de
-  // cualquier comercio veía un ítem a un reporte financiero cruzado que solo
-  // le iba a devolver 403.
-  [
-    'plataforma/margen',
-    'reporte de plataforma, no va en el menú de un comercio',
-  ],
-  [
-    'plataforma/gasto-ia',
-    'reporte de plataforma, no va en el menú de un comercio',
-  ],
+  // Los reportes de plataforma estuvieron acá y se fueron: ahora tienen su
+  // propio grupo en MENU_STRUCTURE, visible solo para el dueño. Esconderlos
+  // de TODOS resolvía la mitad del problema y creaba la otra: el dueño
+  // tampoco los encontraba, y a un reporte que muestra si el disyuntor está
+  // por cortar hay que poder llegar sin acordarse la URL de memoria.
 ])
 
 /**
@@ -177,6 +171,44 @@ const MENU_STRUCTURE = [
       { key: 'mi-suscripcion', label: 'Mi suscripción', icon: ReceiptLongIcon },
     ],
   },
+
+  // ─── Solo para el dueño de la plataforma ─────────────────────────────
+  //
+  // Las tres cruzan TODOS los comercios, así que no son del panel de un
+  // comercio: son del panel de HENKO. Van juntas y al final porque se usan
+  // con otra frecuencia y por otra persona que el resto del menú.
+  //
+  // `ownerOnly` lo filtra MainLayout con el `isPlatformOwner` que informa el
+  // backend. NO es el control de acceso —ese sigue siendo
+  // requirePlatformOwner en cada request— sino la forma de no dibujarle a un
+  // comercio un ítem que solo le va a devolver 403.
+  //
+  // Antes de esto había un error de cada lado: margen y gasto-ia escondidos
+  // de todos, incluido el dueño, y precios visible para todos porque quedaba
+  // como ruta huérfana y el menú la agregaba sola al final.
+  {
+    key: 'plataforma',
+    label: 'Plataforma',
+    icon: AdminPanelSettingsIcon,
+    ownerOnly: true,
+    children: [
+      {
+        key: 'plataforma/gasto-ia',
+        label: 'Gasto de IA',
+        icon: BoltIcon,
+      },
+      {
+        key: 'plataforma/margen',
+        label: 'Margen',
+        icon: MonetizationOnIcon,
+      },
+      {
+        key: 'plataforma/precios',
+        label: 'Precios de planes',
+        icon: SellIcon,
+      },
+    ],
+  },
 ]
 
 // Ruta → meta, para saber cuáles llevan el punto de "nuevo".
@@ -206,6 +238,9 @@ const buildGroup = group => {
     // El punto de "nuevo" sube al grupo: si vive dentro de un grupo cerrado,
     // nadie lo ve.
     isNew: children.some(child => child.isNew),
+    // Sin esto el grupo se dibujaba para todos: buildGroup arma un objeto
+    // nuevo y lo que no se copia, se pierde.
+    ...(group.ownerOnly ? { ownerOnly: true } : {}),
     children,
   }
 }
