@@ -1583,6 +1583,16 @@ describe("aiBudgetService · aviso de presupuesto", () => {
       // medidor lo avisa con un warn — que es justo lo que estos tests miden
       // para comprobar que NO se avise nada de presupuesto.
       model: "gemini-3.1-flash-lite",
+      // Y el desglose medido, por el mismo motivo: sin él hay que repartir el
+      // total con una proporción supuesta, y eso ahora también sale por warn.
+      // Ningún llamador real reporta un total pelado —hay un test estructural
+      // que lo impide— así que un fixture que lo hacía probaba un camino que
+      // no existe.
+      usage: {
+        inputTokens: Math.round(tokens * 0.9),
+        outputTokens: tokens - Math.round(tokens * 0.9),
+        totalTokens: tokens,
+      },
     });
 
   beforeEach(() => {

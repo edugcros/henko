@@ -19,9 +19,28 @@
 // La forma es la misma que espera recordAiConsumption, para que propagarla sea
 // pasar el objeto y no traducir en cada llamador.
 
-const num = value => {
+/**
+ * Lee un contador del proveedor SIN confundir "no vino" con "vino en cero".
+ *
+ * Antes esto devolvía 0 para las dos cosas y el llamador hacía `|| null`, con
+ * lo cual un cero MEDIDO terminaba como "no se sabe". No es lo mismo, y la
+ * diferencia se paga: computeCostUsd, al no ver desglose, reparte el total con
+ * una proporción supuesta e inventa tokens de salida que no existieron.
+ *
+ * Reproducido contra la API, maxOutputTokens 1:
+ *
+ *   prompt 13 · candidates (NO VINO) · total 13   ← Google midió 13 y 0
+ *   readUsage      → in 13 · out null
+ *   computeCostUsd → in 10 · out 3 · estimated    ← los 13 medidos, a la basura
+ *
+ * Y en producción dejó cuatro filas con la firma exacta del reparto:
+ * 8581 × 0,8 = 6865 de entrada y 1716 de salida que nunca ocurrieron, cobrados
+ * a tarifa de salida, que es 5 o 6 veces la de entrada.
+ */
+const leer = value => {
+  if (value === null || value === undefined) return null
   const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : null
 }
 
 /**
@@ -57,28 +76,54 @@ export const readUsage = result => {
   const usage = result?.usageMetadata
   if (!usage) return null
 
-  const inputTokens = num(usage.promptTokenCount)
-  const visibleTokens = num(usage.candidatesTokenCount)
-  const thinkingTokens = num(usage.thoughtsTokenCount)
-  const outputTokens = visibleTokens + thinkingTokens
+  const inputTokens = leer(usage.promptTokenCount)
+  const visibleTokens = leer(usage.candidatesTokenCount)
+  const thinkingTokens = leer(usage.thoughtsTokenCount)
+  const declaredTotal = leer(usage.totalTokenCount)
+
+  // Lo que el proveedor desglosó por nombre.
+  const desglosada =
+    visibleTokens === null && thinkingTokens === null
+      ? null
+      : (visibleTokens || 0) + (thinkingTokens || 0)
+
+  // Y lo que su propia aritmética dice: total menos entrada ES la salida
+  // facturable, sin importar en qué claves la haya repartido. Esto es lo que
+  // recupera el caso de arriba —candidates ausente con total igual a prompt da
+  // cero de salida, que es un dato, no una ausencia— y de paso captura
+  // cualquier categoría de salida que Google agregue con un nombre nuevo.
+  const porDiferencia =
+    declaredTotal !== null && inputTokens !== null
+      ? Math.max(0, declaredTotal - inputTokens)
+      : null
+
+  // Gana la mayor: si las dos vías coinciden da igual, y si difieren la culpa
+  // es de una clave que no estamos leyendo, que se cobra igual.
+  const outputTokens =
+    porDiferencia !== null
+      ? Math.max(porDiferencia, desglosada || 0)
+      : desglosada
 
   // Entrada servida desde la caché de contexto. Hoy siempre viene vacío porque
   // HENKO no usa caché —verificado contra la API: la clave no aparece en la
   // respuesta— pero leerla no cuesta nada y el día que se active, el dato ya
   // está. Importa porque se factura con descuento: contarla como entrada plena
   // sería el error de este archivo, al revés.
-  const cachedInputTokens = num(usage.cachedContentTokenCount)
+  const cachedInputTokens = leer(usage.cachedContentTokenCount)
 
-  const totalTokens = num(usage.totalTokenCount) || inputTokens + outputTokens
+  const totalTokens = declaredTotal || (inputTokens || 0) + (outputTokens || 0)
 
+  // Una llamada que no gastó nada no es un consumo.
   if (!totalTokens) return null
 
   return {
-    inputTokens: inputTokens || null,
-    outputTokens: outputTokens || null,
-    visibleTokens: visibleTokens || null,
-    thinkingTokens: thinkingTokens || null,
-    cachedInputTokens: cachedInputTokens || null,
+    // Sin `|| null`: un cero acá es un cero MEDIDO y tiene que llegar como
+    // tal, o computeCostUsd lo toma por ausencia y reparte.
+    inputTokens,
+    outputTokens,
+    visibleTokens,
+    thinkingTokens,
+    cachedInputTokens,
     totalTokens,
     // 'standard' o 'flex'/'priority' según el plan. Viene en toda respuesta
     // —medido— y es la explicación de dos facturas distintas por el mismo

@@ -154,6 +154,38 @@ const avisarResidual = (breakdown, { tenantId, metric, model }) => {
   })
 }
 
+/**
+ * Avisa cuando un costo NO se midio, sino que se repartio.
+ *
+ * Estimar era silencioso: la fila quedaba marcada con costEstimated y nadie la
+ * miraba. En produccion dejo cuatro filas repartidas 80/20 —dos del agente,
+ * dos de mercado— y hubo que salir a buscarlas con una consulta para
+ * enterarse.
+ *
+ * Va con feature, modelo y operacion porque son las tres cosas que hacen falta
+ * para ir a ver POR QUE ese llamador no informo el desglose. Y va en warn: no
+ * es un error —el costo se cobra igual— pero tampoco es normal. Desde que
+ * readUsage distingue un cero medido de una ausencia, no queda caso conocido
+ * que llegue aca; si aparece uno, es una clave nueva del proveedor o un
+ * llamador nuevo mal cableado.
+ */
+const avisarEstimacion = (breakdown, { tenantId, metric, model, operationId }) => {
+  if (!breakdown?.estimated) return
+
+  logger.warn('[AI PRICING] Costo REPARTIDO, no medido', {
+    tenantId: tenantId ? String(tenantId) : null,
+    metric,
+    model,
+    operationId,
+    ratioEntrada: breakdown.assumedRatio?.ratio ?? null,
+    ratioOrigen: breakdown.assumedRatio?.source ?? null,
+    inputTokens: breakdown.inputTokens,
+    outputTokens: breakdown.outputTokens,
+    detalle:
+      'el proveedor no desgloso entrada y salida; el reparto es un supuesto',
+  })
+}
+
 const resolvePricingModel = (model, { tenantId, metric } = {}) => {
   const informado = normalizeModelName(model)
   if (informado) return { model: informado, pricingFallback: false }
@@ -1799,10 +1831,19 @@ export const recordAiConsumption = async ({
       // Al 10% de la entrada, y viene sin pedirlo: Gemini cachea implícito.
       cachedInputTokens: usage?.cachedInputTokens ?? null,
       totalTokens: normalizedAmount,
+      // Si hay que repartir, con la proporcion medida de ESTA feature. El 0,8
+      // global se equivocaba en todas: el agente mide 0,988.
+      metric: normalizedMetric,
     })
     : null
 
   avisarResidual(breakdown, { tenantId: id, metric: normalizedMetric, model: usedModel })
+  avisarEstimacion(breakdown, {
+    tenantId: id,
+    metric: normalizedMetric,
+    model: usedModel,
+    operationId,
+  })
 
   const costUsd = breakdown?.costUsd || 0
   const period = requestedPeriod || getCurrentPeriod()
@@ -1921,9 +1962,16 @@ export const recordTokenSpend = async ({
     outputTokens,
     cachedInputTokens: usage?.cachedInputTokens ?? null,
     totalTokens,
+    metric: normalizedMetric,
   })
 
   avisarResidual(breakdown, { tenantId: id, metric: normalizedMetric, model: usedModel })
+  avisarEstimacion(breakdown, {
+    tenantId: id,
+    metric: normalizedMetric,
+    model: usedModel,
+    operationId,
+  })
 
   if (breakdown.totalTokens <= 0) return
 

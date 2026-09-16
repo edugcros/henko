@@ -17,8 +17,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
-const { computeCostUsd, computeImageCostUsd, getImagePrice, getModelPrice } =
-  await import('../services/ai/aiModelPricing.js')
+const {
+  computeCostUsd,
+  computeImageCostUsd,
+  getAssumedInputRatio,
+  getImagePrice,
+  getModelPrice,
+} = await import('../services/ai/aiModelPricing.js')
 
 const SRC = path.resolve('src')
 
@@ -516,6 +521,176 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
 
       if (/\bsumUsage\b|\bmergeUsage\b|\bconsolidateUsage\b/.test(codigo)) {
         culpables.push(path.relative(process.cwd(), archivo))
+      }
+    }
+
+    expect(culpables).toEqual([])
+  })
+
+  test('cero de salida es un CERO MEDIDO, no una ausencia', async () => {
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+
+    // LA RESPUESTA REAL DE LA API, reproducida con maxOutputTokens 1:
+    // Google informa la entrada y omite candidatesTokenCount porque no hubo
+    // texto. La salida no es desconocida: es cero, y el total lo confirma.
+    const usage = readUsage({
+      model: 'gemini-3.6-flash',
+      usageMetadata: {
+        promptTokenCount: 13,
+        totalTokenCount: 13,
+        serviceTier: 'standard',
+      },
+    })
+
+    // Antes esto daba out null y los 13 medidos se tiraban a la basura.
+    expect(usage.inputTokens).toBe(13)
+    expect(usage.outputTokens).toBe(0)
+    expect(usage.totalTokens).toBe(13)
+  })
+
+  test('ese cero NO dispara el reparto, y no inventa salida', async () => {
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+
+    const usage = readUsage({
+      usageMetadata: { promptTokenCount: 13, totalTokenCount: 13 },
+    })
+
+    const r = computeCostUsd({
+      model: 'gemini-3.6-flash',
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
+      metric: 'agentTokens',
+    })
+
+    // Antes: in 10, out 3, estimated true. Los 3 nunca existieron, y la salida
+    // cuesta 5 veces la entrada.
+    expect(r.estimated).toBe(false)
+    expect(r.inputTokens).toBe(13)
+    expect(r.outputTokens).toBe(0)
+    expect(r.assumedRatio).toBeNull()
+    expect(r.costUsd).toBe(Number(((13 * 0.75) / 1e6).toFixed(6)))
+  })
+
+  test('la firma que dejo en produccion: 8581 repartidos 80/20', () => {
+    // Las cuatro filas historicas tienen exactamente esta forma, y es como se
+    // encontro el bug: 8581 x 0,8 = 6865 de entrada, 1716 de salida inventada.
+    const roto = computeCostUsd({
+      model: 'gemini-3.5-flash-lite',
+      totalTokens: 8581,
+      assumedInputRatio: 0.8,
+    })
+
+    expect(roto.inputTokens).toBe(6865)
+    expect(roto.outputTokens).toBe(1716)
+    expect(roto.estimated).toBe(true)
+
+    // Lo que costaba de verdad, con la salida real en cero.
+    const real = computeCostUsd({
+      model: 'gemini-3.5-flash-lite',
+      inputTokens: 8581,
+      outputTokens: 0,
+      totalTokens: 8581,
+    })
+
+    expect(real.estimated).toBe(false)
+    expect(roto.costUsd / real.costUsd).toBeGreaterThan(2)
+  })
+
+  test('el reparto va por feature, con la proporcion medida', () => {
+    // Habia un unico 0,8 global. Medido sobre 119 filas con desglose real de
+    // produccion: agentTokens 0,988 · marketTokens 0,941 · vision 0,861.
+    // El 0,8 se equivocaba en las tres, y hacia arriba.
+    expect(getAssumedInputRatio('agentTokens')).toEqual({ ratio: 0.988, source: 'metric' })
+    expect(getAssumedInputRatio('marketTokens')).toEqual({ ratio: 0.941, source: 'metric' })
+    expect(getAssumedInputRatio('vision')).toEqual({ ratio: 0.861, source: 'metric' })
+
+    // Una metrica sin medicion propia cae al global medido, no al 0,8.
+    expect(getAssumedInputRatio('metricaNueva')).toEqual({ ratio: 0.967, source: 'default' })
+    expect(getAssumedInputRatio(undefined).ratio).toBe(0.967)
+  })
+
+  test('suponer 20% de salida donde hay 1,2% casi duplica el costo', () => {
+    const total = 10000
+
+    const conElViejo = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      totalTokens: total,
+      assumedInputRatio: 0.8,
+    })
+
+    const conLoMedido = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      totalTokens: total,
+      metric: 'agentTokens',
+    })
+
+    expect(conElViejo.costUsd).toBeCloseTo((8000 * 0.25 + 2000 * 1.5) / 1e6, 8)
+    expect(conLoMedido.costUsd).toBeCloseTo((9880 * 0.25 + 120 * 1.5) / 1e6, 8)
+
+    // 0,005 contra 0,00265. Y sobrestimar corta el disyuntor antes de tiempo.
+    expect(conElViejo.costUsd / conLoMedido.costUsd).toBeGreaterThan(1.8)
+  })
+
+  test('cuando se reparte, la fila dice con que proporcion y de donde salio', () => {
+    const r = computeCostUsd({ model: 'gemini-3.1-flash-lite', totalTokens: 1000, metric: 'vision' })
+
+    expect(r.estimated).toBe(true)
+    expect(r.assumedRatio).toEqual({ ratio: 0.861, source: 'metric' })
+
+    const impuesta = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      totalTokens: 1000,
+      assumedInputRatio: 0.5,
+    })
+    expect(impuesta.assumedRatio).toEqual({ ratio: 0.5, source: 'caller' })
+  })
+
+  test('repartir deja de ser silencioso', () => {
+    const fuente = fs.readFileSync(path.join(SRC, 'services/ai/aiBudgetService.js'), 'utf8')
+
+    expect(fuente).toContain('[AI PRICING] Costo REPARTIDO, no medido')
+    // Con las tres cosas que hacen falta para ir a ver por que paso.
+    const bloque = fuente.slice(
+      fuente.indexOf('const avisarEstimacion'),
+      fuente.indexOf('const resolvePricingModel'),
+    )
+    expect(bloque).toContain('metric')
+    expect(bloque).toContain('model')
+    expect(bloque).toContain('operationId')
+  })
+
+  test('ningun llamador reporta tokens sueltos en vez del desglose entero', () => {
+    // PUNTO 17. Desarmar el objeto en inputTokens/outputTokens es como se
+    // perdio thoughtsTokenCount: agregar un campo medido obligaba a tocar
+    // siete archivos. Pasando el objeto, el proximo campo llega solo.
+    const culpables = []
+
+    for (const archivo of archivosDeCodigo()) {
+      // El servicio define las funciones y los modelos declaran los campos:
+      // ninguno de los dos es un llamador.
+      if (/aiBudgetService|aiUsageMetadata/.test(archivo)) continue
+      if (archivo.includes(`${path.sep}models${path.sep}`)) continue
+
+      const codigo = fs.readFileSync(archivo, 'utf8')
+
+      // Solo ADENTRO de cada invocacion, no en todo el archivo. Mirar el
+      // archivo entero marcaba los esquemas, donde `inputTokens:` es una
+      // declaracion de campo y no un llamador desarmando el desglose.
+      for (const m of codigo.matchAll(/record(?:AiConsumption|TokenSpend)\(\{/g)) {
+        let i = m.index + m[0].length
+        let nivel = 1
+        while (i < codigo.length && nivel > 0) {
+          if (codigo[i] === '{') nivel += 1
+          if (codigo[i] === '}') nivel -= 1
+          i += 1
+        }
+
+        const llamada = sinComentarios(codigo.slice(m.index, i))
+
+        if (/\binputTokens\s*:|\boutputTokens\s*:/.test(llamada)) {
+          culpables.push(path.relative(process.cwd(), archivo))
+        }
       }
     }
 

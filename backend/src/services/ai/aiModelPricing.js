@@ -151,6 +151,63 @@ const FALLBACK = { input: 1.5, output: 9.0, fallback: true }
 const CACHED_INPUT_RATIO = 0.1
 
 /**
+ * Proporción de ENTRADA supuesta cuando el proveedor no desglosó.
+ *
+ * ES UN CAMINO EXCEPCIONAL Y NO DEBERÍA RECORRERSE NUNCA. Gemini devuelve
+ * promptTokenCount en toda respuesta —verificado incluso en una cortada a un
+ * token de salida— así que desde que readUsage dejó de confundir un cero
+ * medido con una ausencia, no queda caso conocido que llegue acá. Si alguno
+ * llega, sale por log con tenant, métrica, modelo y operación, y la fila queda
+ * marcada con costEstimated para poder encontrarla.
+ *
+ * VA POR FEATURE PORQUE LA MEDICIÓN DICE QUE IMPORTA.
+ *
+ * Había un único 0,8 global. Medido sobre las 119 filas con desglose real de
+ * producción, al 16/09/2026:
+ *
+ *   agentTokens    69 filas · entrada 510.200 · salida  6.365 → 0,988
+ *   marketTokens   42 filas · entrada  91.848 · salida  5.751 → 0,941
+ *   vision          8 filas · entrada  67.519 · salida 10.942 → 0,861
+ *   global                                                    → 0,967
+ *
+ * El 0,8 se equivocaba en todas, y hacia arriba: suponer 20% de salida donde
+ * la realidad es 1,2% casi duplica el costo de una fila del agente. No es
+ * inocuo — el disyuntor de plataforma corta con ese número.
+ *
+ * NO VA POR MODELO. La proporción es una propiedad del TRABAJO, no de quién lo
+ * atiende: un prompt del agente es largo y su respuesta corta conteste quien
+ * conteste. Partir por modelo daría muestras de cuatro filas y una precisión
+ * inventada; lo que sí queda registrado por modelo y por operación es CADA
+ * fila estimada, que es lo que permite auditarlas.
+ *
+ * Estos números salen de una medición con fecha y hay que recalibrarlos si el
+ * uso cambia. Por eso están acá, con el catálogo, y no escondidos en un
+ * parámetro por defecto.
+ */
+const ASSUMED_INPUT_RATIO = Object.freeze({
+  agentTokens: 0.988,
+  marketTokens: 0.941,
+  vision: 0.861,
+})
+
+/** El global, para una métrica sin medición propia. */
+const ASSUMED_INPUT_RATIO_DEFAULT = 0.967
+
+/**
+ * Proporción de entrada a suponer para una métrica.
+ *
+ * @param {string} [metric] - la métrica del consumo (agentTokens, vision…)
+ * @returns {{ratio:number, source:'metric'|'default'}}
+ */
+export const getAssumedInputRatio = metric => {
+  const ratio = ASSUMED_INPUT_RATIO[metric]
+
+  return ratio !== undefined
+    ? { ratio, source: 'metric' }
+    : { ratio: ASSUMED_INPUT_RATIO_DEFAULT, source: 'default' }
+}
+
+/**
  * Forma canónica del nombre de un modelo.
  *
  * Se exporta porque el nombre viaja a dos lados —al catálogo para buscar el
@@ -225,10 +282,10 @@ export const getModelPrice = (model, at = new Date()) => {
  * recalcular un costo histórico daría un número distinto en cuanto cambie el
  * catálogo.
  *
- * Cuando solo se conoce el total de tokens —que es el caso de casi todos los
- * call sites hoy, porque Gemini devuelve totalTokenCount— se reparte con
- * `assumedInputRatio`. Queda declarado en el resultado como `estimated: true`
- * para que un costo repartido no se confunda con uno medido.
+ * Cuando solo se conoce el total de tokens hay que repartirlo, y eso es un
+ * ÚLTIMO RECURSO, no el camino normal: ver ASSUMED_INPUT_RATIO. El resultado
+ * viaja con `estimated: true` y con la proporción que se usó, para que un
+ * costo repartido no se confunda nunca con uno medido.
  */
 export const computeCostUsd = ({
   model,
@@ -239,16 +296,18 @@ export const computeCostUsd = ({
   cachedInputTokens = null,
   totalTokens = null,
   at = new Date(),
-  // 0.8 sale de la medición del prompt de visión: ~3.900 tokens de entrada
-  // más la imagen contra ~1.000 de salida. El agente tiene una proporción
-  // parecida. Es un supuesto, y por eso viaja marcado.
-  assumedInputRatio = 0.8,
+  // De qué feature es el consumo. Solo se usa si hay que estimar, y ahí decide
+  // con qué proporción: medida por feature, no una global para todas.
+  metric = null,
+  // El llamador puede imponer una, pero por defecto manda la medición.
+  assumedInputRatio = null,
 } = {}) => {
   const price = getModelPrice(model, at)
 
   let input = Number(inputTokens)
   let output = Number(outputTokens)
   let estimated = false
+  let assumedRatio = null
 
   // Se pregunta si el dato VINO, no si su conversión es finita: Number(null)
   // es 0 y 0 es finito, así que confiar en Number.isFinite tomaba los defaults
@@ -271,9 +330,15 @@ export const computeCostUsd = ({
       }
     }
 
-    input = Math.round(total * assumedInputRatio)
+    const supuesto =
+      assumedInputRatio !== null && Number.isFinite(Number(assumedInputRatio))
+        ? { ratio: Number(assumedInputRatio), source: 'caller' }
+        : getAssumedInputRatio(metric)
+
+    input = Math.round(total * supuesto.ratio)
     output = total - input
     estimated = true
+    assumedRatio = supuesto
   }
 
   input = Math.max(0, input)
@@ -321,6 +386,9 @@ export const computeCostUsd = ({
     residualTokens,
     price,
     estimated,
+    // Con qué proporción se repartió, y de dónde salió. null cuando no hubo
+    // que repartir, que es como debería ser siempre.
+    assumedRatio,
   }
 }
 
