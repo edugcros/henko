@@ -448,6 +448,11 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
 
 let cicloRef = null
 
+// El timer de la pasada de arranque. Se guarda para poder cancelarlo: sin
+// esto, stopAccountingAudit dejaba una auditoria pendiente que se disparaba
+// despues de haber apagado el ciclo — en un test, sobre una base ya cerrada.
+let arranqueRef = null
+
 const envPositiveInt = (name, fallback) => {
   const value = Number(process.env[name])
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback
@@ -508,6 +513,38 @@ export const startAccountingAudit = ({ logger: log = logger } = {}) => {
 
   const intervalMs = envPositiveInt('AI_ACCOUNTING_AUDIT_INTERVAL_MS', 60 * 60 * 1000)
 
+  // UNA PASADA AL ARRANCAR, Y SIN ESTO LA AUDITORÍA NO CORRÍA NUNCA.
+  //
+  // Es la misma lección que ya tiene escrita el barrido de reservas viejas
+  // (ver startStaleOperationSweeper), y acá pegaba más fuerte porque el
+  // intervalo es cuatro veces más largo.
+  //
+  // Medido en los logs de producción: entre las 00:46 y las 06:25 de un mismo
+  // día hay VEINTICINCO líneas de "[AI ACCOUNTING] Auditoría automática
+  // iniciada" y CERO de "Contabilidad cuadrada" o "La contabilidad NO cuadra".
+  // O sea: el servicio arrancó 25 veces y el tick de sesenta minutos no llegó
+  // a dispararse ni una. La ventana más larga entre reinicios fue de 60
+  // minutos justos, al borde.
+  //
+  // La auditoría existía, estaba encendida, tenía su prueba, y no se ejecutó
+  // nunca. Un timer largo en un servicio que se reinicia seguido es un timer
+  // que no corre.
+  //
+  // Va con un retraso corto y no en el instante cero: al arrancar hay
+  // conexiones abriéndose y migraciones corriendo, y tres agregaciones sobre
+  // el período no tienen ninguna urgencia de segundos.
+  const arranqueMs = envPositiveInt('AI_ACCOUNTING_AUDIT_ON_START_MS', 90 * 1000)
+
+  arranqueRef = setTimeout(() => {
+    runAccountingAudit().catch(error => {
+      log.error?.('[AI ACCOUNTING] La auditoría de arranque falló', {
+        error: error.message,
+      })
+    })
+  }, arranqueMs)
+
+  arranqueRef.unref?.()
+
   cicloRef = setInterval(() => {
     runAccountingAudit().catch(error => {
       log.error?.('[AI ACCOUNTING] El ciclo falló', { error: error.message })
@@ -518,6 +555,7 @@ export const startAccountingAudit = ({ logger: log = logger } = {}) => {
 
   log.info?.('[AI ACCOUNTING] Auditoría automática iniciada', {
     intervalMinutes: Math.round(intervalMs / 60000),
+    primeraPasadaEnSegundos: Math.round(arranqueMs / 1000),
   })
 }
 
@@ -525,6 +563,11 @@ export const stopAccountingAudit = () => {
   if (cicloRef) {
     clearInterval(cicloRef)
     cicloRef = null
+  }
+
+  if (arranqueRef) {
+    clearTimeout(arranqueRef)
+    arranqueRef = null
   }
 }
 

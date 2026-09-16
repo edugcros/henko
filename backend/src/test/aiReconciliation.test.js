@@ -703,3 +703,81 @@ describe('reservas colgadas · también sueltan la plata comprometida', () => {
     }
   })
 })
+
+// ─── La auditoria automatica ────────────────────────────────────────────────
+
+describe('auditoria automatica · un timer largo que nunca corre no sirve', () => {
+  test('hace UNA pasada al arrancar, sin esperar el intervalo', async () => {
+    // MEDIDO EN LOS LOGS DE PRODUCCION, y este es el motivo del test:
+    //
+    // Entre las 00:46 y las 06:25 de un mismo dia hay VEINTICINCO lineas de
+    // "[AI ACCOUNTING] Auditoria automatica iniciada" y CERO de "Contabilidad
+    // cuadrada" o "La contabilidad NO cuadra". El servicio arranco 25 veces y
+    // el tick de sesenta minutos no llego a dispararse ni una; la ventana mas
+    // larga entre reinicios fue de 60 minutos justos, al borde.
+    //
+    // O sea: la auditoria existia, estaba encendida, tenia su prueba, y no se
+    // ejecuto nunca. Es la misma leccion que ya tenia escrita el barrido de
+    // reservas viejas, y aca pegaba mas fuerte porque el intervalo es cuatro
+    // veces mas largo.
+    const { startAccountingAudit, stopAccountingAudit } = await import(
+      '../services/ai/aiAccountingService.js'
+    )
+
+    const lineas = []
+    const log = {
+      info: (msg, meta) => lineas.push({ nivel: 'info', msg, meta }),
+      warn: (msg, meta) => lineas.push({ nivel: 'warn', msg, meta }),
+      error: (msg, meta) => lineas.push({ nivel: 'error', msg, meta }),
+    }
+
+    // La pasada de arranque se adelanta para no esperarla en el test.
+    process.env.AI_ACCOUNTING_AUDIT_ON_START_MS = '50'
+
+    try {
+      startAccountingAudit({ logger: log })
+
+      const arranque = lineas.find(l => l.msg?.includes('Auditoria automatica iniciada') ||
+        l.msg?.includes('Auditoría automática iniciada'))
+      expect(arranque).toBeDefined()
+      // El anuncio dice cuando va a correr la primera, no solo cada cuanto.
+      expect(arranque.meta.primeraPasadaEnSegundos).toBeGreaterThanOrEqual(0)
+
+      await new Promise(r => setTimeout(r, 400))
+    } finally {
+      stopAccountingAudit()
+      delete process.env.AI_ACCOUNTING_AUDIT_ON_START_MS
+    }
+  })
+
+  test('apagarla cancela TAMBIEN la pasada de arranque', async () => {
+    // Sin esto, stop dejaba una auditoria pendiente que se disparaba despues
+    // de haber apagado el ciclo — en un test, sobre una base ya cerrada.
+    const { startAccountingAudit, stopAccountingAudit } = await import(
+      '../services/ai/aiAccountingService.js'
+    )
+
+    process.env.AI_ACCOUNTING_AUDIT_ON_START_MS = '150'
+
+    const lineas = []
+    const log = {
+      info: (msg) => lineas.push(msg),
+      warn: (msg) => lineas.push(msg),
+      error: (msg) => lineas.push(msg),
+    }
+
+    try {
+      startAccountingAudit({ logger: log })
+      stopAccountingAudit()
+
+      const antes = lineas.length
+      await new Promise(r => setTimeout(r, 350))
+
+      // Pasado el plazo de arranque, no aparecio ninguna linea nueva.
+      expect(lineas.length).toBe(antes)
+    } finally {
+      stopAccountingAudit()
+      delete process.env.AI_ACCOUNTING_AUDIT_ON_START_MS
+    }
+  })
+})
