@@ -346,7 +346,8 @@ const claimConsumption = async ({
       inputTokens: breakdown?.inputTokens ?? null,
       outputTokens: breakdown?.outputTokens ?? null,
       thinkingTokens: usage?.thinkingTokens ?? null,
-      cachedInputTokens: usage?.cachedInputTokens ?? null,
+      // El desglose manda: es el que se topeó contra la entrada real.
+      cachedInputTokens: breakdown?.cachedInputTokens ?? usage?.cachedInputTokens ?? null,
       totalTokens: breakdown?.totalTokens ?? Math.max(0, Math.round(Number(amount) || 0)),
       serviceTier: usage?.serviceTier ?? null,
       costUsd: Number(costUsd) || 0,
@@ -1791,7 +1792,14 @@ export const recordAiConsumption = async ({
   })
 
   const breakdown = isTokenMetric && !isByok
-    ? computeCostUsd({ model: usedModel, inputTokens, outputTokens, totalTokens: normalizedAmount })
+    ? computeCostUsd({
+      model: usedModel,
+      inputTokens,
+      outputTokens,
+      // Al 10% de la entrada, y viene sin pedirlo: Gemini cachea implícito.
+      cachedInputTokens: usage?.cachedInputTokens ?? null,
+      totalTokens: normalizedAmount,
+    })
     : null
 
   avisarResidual(breakdown, { tenantId: id, metric: normalizedMetric, model: usedModel })
@@ -1911,6 +1919,7 @@ export const recordTokenSpend = async ({
     model: usedModel,
     inputTokens,
     outputTokens,
+    cachedInputTokens: usage?.cachedInputTokens ?? null,
     totalTokens,
   })
 

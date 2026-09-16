@@ -120,6 +120,37 @@ export const computeImageCostUsd = (count, at = new Date()) => {
 const FALLBACK = { input: 1.5, output: 9.0, fallback: true }
 
 /**
+ * Los tokens de entrada servidos desde caché se cobran al 10% de la entrada.
+ *
+ * NO ES UN SUPUESTO: sale de la tabla de precios de Google, donde la línea de
+ * caché de contexto es exactamente la décima parte de la de entrada, modelo
+ * por modelo.
+ *
+ *   gemini-3.8-flash       entrada 0,75   caché 0,075
+ *   gemini-3.5-flash-lite  entrada 0,30   caché 0,030
+ *
+ * Y NO HACE FALTA PEDIRLO. El caché implícito viene encendido por defecto en
+ * Gemini 2.5 en adelante y Google pasa el ahorro solo: si el prompt repite
+ * contexto reciente, la parte repetida se factura barata sin tocar una línea.
+ *
+ * Por eso importa. HENKO no configura caché ninguno y lo estaba usando igual,
+ * sin verlo: medido en producción apenas se empezó a leer la clave, la llamada
+ * de REPARACIÓN del agente —que reenvía la conversación entera— llegó con
+ * 4.075 de sus 8.525 tokens de entrada servidos desde caché. Cobrándolos a
+ * tarifa plena, esa fila salía USD 0,002236 contra 0,001319 reales: 41% de
+ * MÁS.
+ *
+ * Y de más es tan malo como de menos, por otro motivo: el disyuntor de
+ * plataforma corta cuando el gasto acumulado llega al techo. Sobrestimarlo
+ * deja sin IA a todos los comercios antes de tiempo.
+ *
+ * El caché implícito no tiene costo de almacenamiento, así que no hay una
+ * tercera línea que sumar. El explícito sí lo tiene, y el día que se use habrá
+ * que contarlo aparte — no existe hoy en el código.
+ */
+const CACHED_INPUT_RATIO = 0.1
+
+/**
  * Forma canónica del nombre de un modelo.
  *
  * Se exporta porque el nombre viaja a dos lados —al catálogo para buscar el
@@ -159,7 +190,14 @@ export const getModelPrice = (model, at = new Date()) => {
   const entry = CATALOG.find(e => e.models.includes(name) && inWindow(e, when))
 
   if (entry) {
-    return { model: name, input: entry.input, output: entry.output }
+    return {
+      model: name,
+      input: entry.input,
+      output: entry.output,
+      // Por modelo si alguna vez Google rompe la regla del 10%; derivada
+      // mientras tanto, para no repetir el mismo número siete veces.
+      cachedInput: entry.cachedInput ?? entry.input * CACHED_INPUT_RATIO,
+    }
   }
 
   // Una sola advertencia por modelo y proceso: si aparece uno nuevo conviene
@@ -173,7 +211,11 @@ export const getModelPrice = (model, at = new Date()) => {
     })
   }
 
-  return { model: name, ...FALLBACK }
+  return {
+    model: name,
+    ...FALLBACK,
+    cachedInput: FALLBACK.input * CACHED_INPUT_RATIO,
+  }
 }
 
 /**
@@ -192,6 +234,9 @@ export const computeCostUsd = ({
   model,
   inputTokens = null,
   outputTokens = null,
+  // Parte de inputTokens —no se suma aparte— que vino de caché y se cobra al
+  // 10%. Ver CACHED_INPUT_RATIO.
+  cachedInputTokens = null,
   totalTokens = null,
   at = new Date(),
   // 0.8 sale de la medición del prompt de visión: ~3.900 tokens de entrada
@@ -254,11 +299,20 @@ export const computeCostUsd = ({
 
   output += residualTokens
 
-  const costUsd = (input * price.input + output * price.output) / M
+  // La parte cacheada sale de la entrada, no se suma: cachedContentTokenCount
+  // es un SUBCONJUNTO de promptTokenCount. Sumarla contaría dos veces los
+  // mismos tokens; el tope contra `input` es por si un proveedor informa algo
+  // incoherente, porque cobrar entrada negativa sería peor que el bug.
+  const cached = Math.min(Math.max(0, Number(cachedInputTokens) || 0), input)
+  const freshInput = input - cached
+
+  const costUsd =
+    (freshInput * price.input + cached * price.cachedInput + output * price.output) / M
 
   return {
     costUsd: Number(costUsd.toFixed(6)),
     inputTokens: input,
+    cachedInputTokens: cached || null,
     outputTokens: output,
     totalTokens: input + output,
     // Tokens que el proveedor cobró y no desglosó. Distinto de `estimated`:

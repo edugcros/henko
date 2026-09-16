@@ -358,6 +358,120 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     expect(fuente).toContain('[AI PRICING] El proveedor cobró tokens que no desglosó')
   })
 
+  test('la entrada cacheada se cobra al 10%, no al 100%', () => {
+    // LA FILA REAL DE PRODUCCIÓN, la primera que se registró leyendo la clave:
+    // agentTokens/repair, gemini-3.1-flash-lite, entrada 8525 de las cuales
+    // 4075 vinieron de caché, salida 70.
+    //
+    // Gemini 2.5 en adelante cachea IMPLÍCITAMENTE, sin que nadie lo pida, y
+    // Google pasa el ahorro solo. La llamada de reparación del agente reenvía
+    // la conversación entera, así que casi la mitad de su prompt pega en
+    // caché todas las veces.
+    const conCache = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 8525,
+      cachedInputTokens: 4075,
+      outputTokens: 70,
+      totalTokens: 8595,
+    })
+
+    const sinLeerlo = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 8525,
+      outputTokens: 70,
+      totalTokens: 8595,
+    })
+
+    // Lo que costaba la fila antes de leer la clave: USD 0,002236.
+    expect(sinLeerlo.costUsd).toBeCloseTo(0.002236, 6)
+
+    // Lo que cuesta de verdad: 4450 frescos a 0,25 + 4075 a 0,025 + 70 a 1,5.
+    expect(conCache.costUsd).toBeCloseTo(
+      (4450 * 0.25 + 4075 * 0.025 + 70 * 1.5) / 1e6,
+      6,
+    )
+    expect(conCache.costUsd).toBeCloseTo(0.001319, 6)
+
+    // 41% de sobrecobro. Y de más es tan malo como de menos: el disyuntor de
+    // plataforma corta con ese número, y sobrestimar el gasto deja sin IA a
+    // todos los comercios antes de tiempo.
+    expect(sinLeerlo.costUsd / conCache.costUsd).toBeGreaterThan(1.4)
+  })
+
+  test('la tarifa de caché es la décima parte, modelo por modelo', () => {
+    // Sale de la tabla de Google, no de un supuesto: gemini-3.8-flash cobra
+    // 0,75 de entrada y 0,075 de caché; gemini-3.5-flash-lite, 0,30 y 0,03.
+    for (const modelo of [
+      'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-flash',
+    ]) {
+      const p = getModelPrice(modelo)
+      expect(p.cachedInput).toBeCloseTo(p.input * 0.1, 8)
+    }
+
+    // Y un modelo fuera del catálogo también tiene tarifa de caché, o cobrar
+    // la parte cacheada daría NaN.
+    const desconocido = getModelPrice('gemini-9.9-inventado')
+    expect(desconocido.cachedInput).toBeCloseTo(desconocido.input * 0.1, 8)
+  })
+
+  test('la parte cacheada sale de la entrada, no se suma', () => {
+    // cachedContentTokenCount es un SUBCONJUNTO de promptTokenCount. Sumarlo
+    // contaría dos veces los mismos tokens.
+    const r = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 1000,
+      cachedInputTokens: 400,
+      outputTokens: 100,
+      totalTokens: 1100,
+    })
+
+    expect(r.inputTokens).toBe(1000)
+    expect(r.totalTokens).toBe(1100)
+    expect(r.costUsd).toBeCloseTo((600 * 0.25 + 400 * 0.025 + 100 * 1.5) / 1e6, 8)
+  })
+
+  test('un caché mayor que la entrada no genera entrada negativa', () => {
+    // Dato incoherente del proveedor: se topea. Cobrar de menos por un número
+    // roto sería el mismo error que este archivo corrige.
+    const r = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 100,
+      cachedInputTokens: 5000,
+      outputTokens: 10,
+      totalTokens: 110,
+    })
+
+    expect(r.cachedInputTokens).toBe(100)
+    // El costo viaja redondeado a 6 decimales, así que la expectativa se
+    // redondea igual en vez de pedirle al test una precisión que la función no
+    // promete.
+    expect(r.costUsd).toBe(Number(((100 * 0.025 + 10 * 1.5) / 1e6).toFixed(6)))
+    expect(r.costUsd).toBeGreaterThan(0)
+  })
+
+  test('sin caché nada cambia', () => {
+    const conNull = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 1000,
+      cachedInputTokens: null,
+      outputTokens: 100,
+      totalTokens: 1100,
+    })
+
+    const sinElCampo = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 1000,
+      outputTokens: 100,
+      totalTokens: 1100,
+    })
+
+    expect(conNull.costUsd).toBe(sinElCampo.costUsd)
+    expect(conNull.cachedInputTokens).toBeNull()
+  })
+
   test('UN SOLO archivo lee el desglose del proveedor', () => {
     // Esta es la causa raíz, no el síntoma. candidatesTokenCount se leía a
     // mano en cuatro archivos además del lector: aiVisionService,

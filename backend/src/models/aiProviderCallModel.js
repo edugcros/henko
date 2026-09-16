@@ -96,12 +96,20 @@ const aiProviderCallSchema = new mongoose.Schema(
     thinkingTokens: { type: Number, default: null, min: 0 },
 
     /**
-     * Entrada servida desde la caché de contexto, que se factura con descuento.
+     * Parte de inputTokens servida desde caché, que se cobra al 10%.
      *
-     * Hoy es SIEMPRE null: HENKO no usa caché de contexto y la API ni siquiera
-     * devuelve la clave —verificado contra generateContent—. Se guarda porque
-     * sale del mismo objeto que ya se lee y el día que se active, cobrarla como
-     * entrada plena sería el mismo error que este commit corrige, al revés.
+     * NO es una columna muerta y por poco lo damos por hecho: en una sonda
+     * suelta contra la API la clave no aparecía, y la primera conclusión fue
+     * "HENKO no usa caché". La primera fila real de producción la desmintió —
+     * la llamada de REPARACIÓN del agente, que reenvía la conversación entera,
+     * llegó con 4.075 de sus 8.525 tokens de entrada desde caché.
+     *
+     * Gemini 2.5 en adelante cachea IMPLÍCITAMENTE, sin que nadie lo pida, y
+     * Google pasa el ahorro solo. Cobrarlos a tarifa plena inflaba esa fila un
+     * 41%, y el disyuntor de plataforma corta con ese número: sobrestimar el
+     * gasto deja sin IA a todos los comercios antes de tiempo.
+     *
+     * No se suma a inputTokens: es un subconjunto suyo.
      */
     cachedInputTokens: { type: Number, default: null, min: 0 },
 
