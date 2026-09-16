@@ -109,7 +109,21 @@ const aiConsumptionLedgerSchema = new mongoose.Schema(
     outputTokens: { type: Number, default: null, min: 0 },
     totalTokens: { type: Number, default: null, min: 0 },
 
+    /** Lo que le cuesta a HENKO. Cero cuando el comercio usa su propia key. */
     costUsd: { type: Number, default: 0, min: 0 },
+
+    /**
+     * Lo que el proveedor le cobro a la key usada, sea de quien sea.
+     *
+     * Con key de plataforma coincide con costUsd. Con key del comercio, costUsd
+     * es cero y esto no. Antes no existia, asi que el consumo BYOK entraba al
+     * libro con costo cero y ahi moria: el comercio no sabia cuanto gastaba y
+     * HENKO no sabia cuanto le ahorraba esa key.
+     *
+     * Las filas anteriores a este campo no lo tienen, y ahi el fallback
+     * correcto es costUsd: antes de BYOK toda key era de HENKO.
+     */
+    tenantProviderCostUsd: { type: Number, default: 0, min: 0 },
 
     // El precio vigente cuando ocurrió, congelado. Sin esto, recalcular un
     // costo histórico daría otro número apenas cambie el catálogo — y los

@@ -124,7 +124,30 @@ const aiProviderCallSchema = new mongoose.Schema(
      */
     serviceTier: { type: String, trim: true, default: null },
 
+    /**
+     * Lo que le cuesta a HENKO esta llamada. CERO cuando el comercio usó su
+     * propia key: en ese caso le factura Google al comercio, no a nosotros.
+     *
+     * Es el número que alimenta el disyuntor de plataforma y el reporte de
+     * gasto, y por eso conserva el nombre corto: renombrarlo movería en
+     * silencio todos los agregados que ya lo leen.
+     */
     costUsd: { type: Number, default: 0, min: 0 },
+
+    /**
+     * Lo que el proveedor le cobró a la key que se usó, sea de quien sea.
+     *
+     * Con key de plataforma coincide con costUsd. Con key del comercio, costUsd
+     * es cero y esto NO — y antes ese número no se calculaba en ningún lado,
+     * así que un comercio con su propia key no tenía forma de saber cuánto
+     * estaba gastando.
+     *
+     * Son dos preguntas distintas y se deciden distinto: "cuánto me cuesta
+     * servir a este comercio" mira costUsd; "cuánto consume este comercio"
+     * mira este. Sumarlos, o usar uno por el otro, mezcla la caja de HENKO con
+     * la del comercio.
+     */
+    tenantProviderCostUsd: { type: Number, default: 0, min: 0 },
 
     /**
      * La tarifa que se APLICÓ, congelada en la fila.

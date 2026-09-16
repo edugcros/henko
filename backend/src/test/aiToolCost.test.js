@@ -31,6 +31,7 @@ const { default: AiConsumptionLedger } = await import(
   '../models/aiConsumptionLedgerModel.js'
 )
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
+const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { recordToolSpend, recordTokenSpend, recordAiConsumption, AI_METRICS } = await import(
   '../services/ai/aiBudgetService.js'
 )
@@ -580,5 +581,152 @@ describe('version del catalogo · reconstruir que tabla estaba activa', () => {
       .lean()
 
     expect(fila.pricingVersion).toBe(PRICING_VERSION)
+  })
+})
+
+describe('BYOK · un solo camino para los dos registradores', () => {
+  const BYOK = { ...PERFIL, keySource: 'tenant' }
+
+  test('recordTokenSpend cuenta byokTokens, igual que recordAiConsumption', async () => {
+    // EL BUG: el bloque que incrementa byokTokens estaba detras de
+    // `if (costUsd > 0)`, y con key propia el costo para HENKO es cero. Asi
+    // que recordTokenSpend NUNCA lo incrementaba, mientras recordAiConsumption
+    // si. Dos funciones que registran el mismo consumo con contabilidades
+    // distintas del mismo campo.
+    //
+    // El unico llamador de recordTokenSpend es vision, asi que el hueco era
+    // latente: hasta que alguien activara BYOK y su consumo de vision
+    // desapareciera sin dejar rastro.
+    const period = '2034-01'
+
+    await recordTokenSpend({
+      tenantId: TENANT, metric: AI_METRICS.VISION,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 3000, outputTokens: 500,
+      profile: BYOK, period, operationId: 'byok-vision',
+    })
+    await asentar()
+
+    const usage = await AiUsage.findOne({ tenantId: TENANT, period })
+      .setOptions({ tenantId: TENANT }).lean()
+
+    expect(usage.byokTokens).toBe(3500)
+  })
+
+  test('los dos registradores dejan el MISMO contador', async () => {
+    // La propiedad del punto: mismo consumo BYOK, mismo evento, mismo contador.
+    const periodoA = '2034-02'
+    const periodoB = '2034-03'
+
+    await recordTokenSpend({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 800, outputTokens: 200,
+      profile: BYOK, period: periodoA, operationId: 'por-tokenspend',
+    })
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1000, model: 'gemini-3.1-flash-lite',
+      profile: BYOK, period: periodoB, operationId: 'por-consumption',
+      usage: { inputTokens: 800, outputTokens: 200, totalTokens: 1000 },
+    })
+    await asentar()
+
+    const a = await AiUsage.findOne({ tenantId: TENANT, period: periodoA })
+      .setOptions({ tenantId: TENANT }).lean()
+    const b = await AiUsage.findOne({ tenantId: TENANT, period: periodoB })
+      .setOptions({ tenantId: TENANT }).lean()
+
+    expect(a.byokTokens).toBe(1000)
+    expect(b.byokTokens).toBe(1000)
+    expect(a.byokTokens).toBe(b.byokTokens)
+  })
+
+  test('con key de plataforma NO se cuenta como BYOK', async () => {
+    const period = '2034-04'
+
+    await recordTokenSpend({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 800, outputTokens: 200,
+      profile: PERFIL, period, operationId: 'con-key-de-henko',
+    })
+    await asentar()
+
+    const usage = await AiUsage.findOne({ tenantId: TENANT, period })
+      .setOptions({ tenantId: TENANT }).lean()
+
+    expect(usage.byokTokens || 0).toBe(0)
+    expect(usage.estimatedCostUsd).toBeGreaterThan(0)
+  })
+})
+
+describe('quien paga · costo de HENKO contra consumo del comercio', () => {
+  const BYOK = { ...PERFIL, keySource: 'tenant' }
+
+  test('BYOK: HENKO cero, el comercio NO cero', async () => {
+    // Antes el costo del proveedor ni se calculaba cuando la key era del
+    // comercio, asi que ese numero no existia en ningun lado: el comercio no
+    // sabia cuanto gastaba y HENKO no sabia cuanto le ahorraba esa key.
+    const period = '2034-05'
+    const operationId = 'byok-con-costo'
+
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1_000_000, model: 'gemini-3.1-flash-lite',
+      profile: BYOK, period, operationId,
+      usage: { inputTokens: 800000, outputTokens: 200000, totalTokens: 1_000_000 },
+    })
+    await asentar()
+
+    const fila = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT }).lean()
+
+    expect(fila.costUsd).toBe(0)
+    // 800k a 0,25 + 200k a 1,5 = 0,20 + 0,30
+    expect(fila.tenantProviderCostUsd).toBeCloseTo(0.5, 4)
+
+    // Y el desglose deja de estar vacio: antes todo esto era null para BYOK.
+    expect(fila.priceInputPerMillion).toBe(0.25)
+    expect(fila.actualModel).toBe('gemini-3.1-flash-lite')
+  })
+
+  test('key de plataforma: los dos numeros coinciden', async () => {
+    const period = '2034-06'
+    const operationId = 'plataforma-con-costo'
+
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1_000_000, model: 'gemini-3.1-flash-lite',
+      profile: PERFIL, period, operationId,
+      usage: { inputTokens: 800000, outputTokens: 200000, totalTokens: 1_000_000 },
+    })
+    await asentar()
+
+    const fila = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT }).lean()
+
+    expect(fila.costUsd).toBeCloseTo(0.5, 4)
+    expect(fila.tenantProviderCostUsd).toBe(fila.costUsd)
+  })
+
+  test('el disyuntor de plataforma sigue mirando SOLO lo que paga HENKO', async () => {
+    // Es la razon por la que los dos numeros no se pueden sumar ni confundir:
+    // si el consumo BYOK entrara al techo, el freno cortaria por plata que
+    // HENKO no gasta y dejaria sin IA a los comercios que si le pagan.
+    const period = '2034-07'
+
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1_000_000, model: 'gemini-3.1-flash-lite',
+      profile: BYOK, period, operationId: 'byok-no-toca-el-techo',
+      usage: { inputTokens: 800000, outputTokens: 200000, totalTokens: 1_000_000 },
+    })
+    await asentar()
+
+    const plataforma = await AiPlatformUsage.findOne({ period }).lean()
+
+    expect(plataforma?.estimatedCostUsd || 0).toBe(0)
+    expect(plataforma?.tokens || 0).toBe(0)
   })
 })

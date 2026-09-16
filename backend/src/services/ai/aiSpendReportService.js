@@ -297,16 +297,55 @@ export const getPeriodQuality = async period => {
  * porque no lo paga HENKO. Por eso el desglose se informa aparte del total
  * contra el techo en vez de mezclarlos en un solo número.
  */
+/**
+ * Quien paga cada consumo, separado de cuanto se consume.
+ *
+ * Es la respuesta al "separar claramente costo de HENKO y consumo del tenant":
+ * las dos cifras existen siempre y solo coinciden cuando la key es de la
+ * plataforma. Mezclarlas es mezclar la caja de HENKO con la del comercio.
+ */
+const getSpendByKeySource = async period => {
+  const rows = await AiConsumptionLedger.aggregate([
+    { $match: { period, event: LEDGER_EVENT.CONSUMED } },
+    {
+      $group: {
+        _id: { $ifNull: ['$keySource', 'unknown'] },
+        platformCostUsd: { $sum: { $ifNull: ['$costUsd', 0] } },
+        tenantProviderCostUsd: {
+          // Las filas viejas no tienen el campo: ahi el costo del proveedor es
+          // el mismo que el de plataforma, porque antes de BYOK toda key era
+          // de HENKO.
+          $sum: { $ifNull: ['$tenantProviderCostUsd', { $ifNull: ['$costUsd', 0] }] },
+        },
+        tokens: {
+          $sum: { $cond: [{ $eq: [{ $ifNull: ['$unit', 'units'] }, 'tokens'] }, '$amount', 0] },
+        },
+        rows: { $sum: 1 },
+      },
+    },
+    { $sort: { platformCostUsd: -1 } },
+  ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+
+  return rows.map(row => ({
+    keySource: row._id,
+    rows: row.rows,
+    tokens: row.tokens || 0,
+    platformCostUsd: round(row.platformCostUsd, 6),
+    tenantProviderCostUsd: round(row.tenantProviderCostUsd, 6),
+  }))
+}
+
 export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
   const budget = getPlatformMonthlyTokenBudget()
   const usdBudget = getPlatformMonthlyUsdBudget()
 
-  const [usage, byMetric, byModel, quality, settingHistory, reconciliation] =
+  const [usage, byMetric, byModel, quality, byKeySource, settingHistory, reconciliation] =
     await Promise.all([
       AiPlatformUsage.findOne({ period }).lean(),
       getPeriodSpendByMetric(period),
       getPeriodSpendByModel(period),
       getPeriodQuality(period),
+      getSpendByKeySource(period),
       getPlatformAiSettingHistory(10).catch(() => []),
       // La diferencia entre el contador y el libro, SIN corregir. Va acá y no
       // en un script que alguien tiene que acordarse de correr: una
@@ -388,6 +427,16 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     byMetric,
     byModel,
     quality,
+    // QUIEN PAGA, QUE NO ES LO MISMO QUE CUANTO SE CONSUME.
+    //
+    //   platformCostUsd        lo que paga HENKO
+    //   tenantProviderCostUsd  lo que el proveedor le cobro a la key usada
+    //
+    // Con key de plataforma coinciden. Con key del comercio el primero es cero
+    // y el segundo no, y antes ese segundo no se calculaba: el consumo BYOK
+    // entraba al libro con costo cero y ahi moria. El comercio no sabia cuanto
+    // gastaba y HENKO no sabia cuanto le estaba ahorrando esa key.
+    byKeySource,
     // Quién movió el techo, cuándo y por qué. Va en el mismo reporte porque un
     // salto en el consumo y un cambio de límite se leen juntos o no se leen.
     settingHistory,

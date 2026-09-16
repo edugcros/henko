@@ -363,6 +363,10 @@ const claimConsumption = async ({
   // El desglose de una llamada a herramienta, cuando la fila es de eso.
   toolBreakdown = null,
   costUsd = 0,
+  // Lo que le cobró el proveedor a la key que se usó, sea de quien sea. Con
+  // key de plataforma coincide con costUsd; con key del comercio, costUsd es
+  // cero y esto no.
+  tenantProviderCostUsd = null,
   ok = true,
   pricingFallback = false,
 }) => {
@@ -386,6 +390,8 @@ const claimConsumption = async ({
       totalTokens: breakdown?.totalTokens ?? Math.max(0, Math.round(Number(amount) || 0)),
       serviceTier: usage?.serviceTier ?? null,
       costUsd: Number(costUsd) || 0,
+      tenantProviderCostUsd:
+        tenantProviderCostUsd === null ? Number(costUsd) || 0 : Number(tenantProviderCostUsd) || 0,
       priceInputPerMillion: breakdown?.price?.input ?? null,
       priceOutputPerMillion: breakdown?.price?.output ?? null,
       priceFallback: Boolean(breakdown?.price?.fallback),
@@ -563,6 +569,9 @@ const writeLedgerEntry = ({
   plan = null,
   breakdown = null,
   costUsd = 0,
+  // Lo que le cobro el proveedor a la key usada. Con key de plataforma es el
+  // mismo numero; con key del comercio, costUsd es cero y esto no.
+  tenantProviderCostUsd = null,
   unit = 'units',
   operationId = null,
 }) => {
@@ -581,6 +590,8 @@ const writeLedgerEntry = ({
     outputTokens: breakdown?.outputTokens ?? null,
     totalTokens: breakdown?.totalTokens ?? null,
     costUsd: Number(costUsd) || 0,
+    tenantProviderCostUsd:
+      tenantProviderCostUsd === null ? Number(costUsd) || 0 : Number(tenantProviderCostUsd) || 0,
     priceInputPerMillion: breakdown?.price?.input ?? null,
     priceOutputPerMillion: breakdown?.price?.output ?? null,
     costEstimated: Boolean(breakdown?.estimated),
@@ -1841,7 +1852,17 @@ export const recordAiConsumption = async ({
     metric: normalizedMetric,
   })
 
-  const breakdown = isTokenMetric && !isByok
+  // SE CALCULA AUNQUE SEA BYOK, Y ESA ES LA MITAD DEL PUNTO 27.
+  //
+  // Antes la condición era `isTokenMetric && !isByok`: con key del comercio no
+  // se calculaba nada, así que el consumo se registraba y el costo
+  // desaparecía. Un comercio con su propia key no tenía forma de saber cuánto
+  // estaba gastando — ni él ni nadie.
+  //
+  // El costo del proveedor existe igual; lo único que cambia es QUIÉN lo paga.
+  // Calcularlo siempre también llena el desglose de esas filas: tarifa, tier,
+  // caché y modelo estaban todos en null para BYOK.
+  const breakdown = isTokenMetric
     ? computeCostUsd({
       model: usedModel,
       inputTokens,
@@ -1867,7 +1888,18 @@ export const recordAiConsumption = async ({
     operationId,
   })
 
-  const costUsd = breakdown?.costUsd || 0
+  // LAS DOS MITADES DEL COSTO, QUE NO SON LA MISMA PLATA.
+  //
+  //   platformCostUsd        lo que paga HENKO. Cero con key del comercio.
+  //   tenantProviderCostUsd  lo que el proveedor le cobra a ESA key, sin
+  //                          importar de quién sea.
+  //
+  // Con key de plataforma los dos coinciden. Con key propia el primero es cero
+  // y el segundo no, y confundirlos es confundir "cuánto me cuesta servir a
+  // este comercio" con "cuánto consume este comercio" — dos preguntas que se
+  // contestan distinto y se deciden distinto.
+  const tenantProviderCostUsd = breakdown?.costUsd || 0
+  const costUsd = isByok ? 0 : tenantProviderCostUsd
   const period = requestedPeriod || getCurrentPeriod()
 
   // Mismo candado que en recordTokenSpend: acá también se incrementan
@@ -1885,6 +1917,7 @@ export const recordAiConsumption = async ({
     breakdown,
     usage,
     costUsd,
+    tenantProviderCostUsd,
     pricingFallback,
   })
 
@@ -1967,6 +2000,7 @@ export const recordAiConsumption = async ({
     plan: aiProfile.plan,
     breakdown,
     costUsd,
+    tenantProviderCostUsd,
     unit: isTokenMetric ? 'tokens' : 'units',
   })
 }
@@ -2160,7 +2194,19 @@ export const recordTokenSpend = async ({
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const isByok = aiProfile.keySource === KEY_SOURCE.TENANT
-  const costUsd = isByok ? 0 : breakdown.costUsd
+
+  // LAS DOS MITADES DEL COSTO, QUE NO SON LA MISMA PLATA.
+  //
+  //   platformCostUsd        lo que paga HENKO. Cero con key del comercio.
+  //   tenantProviderCostUsd  lo que el proveedor le cobra a ESA key, sin
+  //                          importar de quién sea.
+  //
+  // Con key de plataforma los dos números coinciden. Con key propia, el
+  // primero es cero y el segundo no — y ese segundo no se calculaba en ningún
+  // lado, así que un comercio con su propia key no tenía forma de saber cuánto
+  // estaba gastando. El consumo se registraba y el costo desaparecía.
+  const tenantProviderCostUsd = breakdown.costUsd
+  const costUsd = isByok ? 0 : tenantProviderCostUsd
   const period = requestedPeriod || getCurrentPeriod()
 
   // Antes de este punto no se tocó nada. Medido contra una base real, sin este
@@ -2184,18 +2230,39 @@ export const recordTokenSpend = async ({
     breakdown,
     usage,
     costUsd,
+    tenantProviderCostUsd,
     pricingFallback,
   })
 
   if (!nuevo) return
 
-  if (costUsd > 0) {
+  // UN SOLO CAMINO PARA BYOK, Y ESTE BLOQUE ESTABA DETRÁS DE `if (costUsd > 0)`.
+  //
+  // Con key propia el costo para HENKO es cero, así que el bloque entero se
+  // salteaba y byokTokens NUNCA se incrementaba — mientras que
+  // recordAiConsumption sí lo hacía. Dos funciones que registran el mismo tipo
+  // de consumo y llevaban contabilidades distintas del mismo campo.
+  //
+  // El único llamador de recordTokenSpend es visión, así que el hueco es
+  // latente y no vivo: todavía no hubo un análisis de imagen con key del
+  // comercio. Latente hasta que alguien active BYOK y su consumo de visión
+  // desaparezca sin dejar rastro.
+  //
+  // La condición pasa a ser "¿hubo algo que registrar?" en vez de "¿le costó
+  // plata a HENKO?", que son preguntas distintas.
+  if (costUsd > 0 || isByok) {
     try {
       await ensureUsageDocument({ tenantId: id, period })
       await AiUsage.updateOne(
         { tenantId: id, period },
         {
-          $inc: { estimatedCostUsd: costUsd },
+          $inc: {
+            ...(costUsd > 0 ? { estimatedCostUsd: costUsd } : {}),
+            // Mismo campo y mismo criterio que recordAiConsumption. Acá no
+            // hace falta preguntar si la métrica es de tokens: esta función
+            // solo registra tokens, eso dice su nombre y eso calcula.
+            ...(isByok ? { byokTokens: breakdown.totalTokens } : {}),
+          },
           $set: { lastActivityAt: new Date() },
         },
       ).setOptions({ tenantId: id })
