@@ -597,6 +597,90 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     expect(roto.costUsd / real.costUsd).toBeGreaterThan(2)
   })
 
+  test('la cascada va del dato mas especifico al mas general', () => {
+    // PUNTO 18: "separado por feature, model, operation si realmente hace
+    // falta estimar". La feature y el modelo eligen la proporcion; la
+    // operacion la registra (ver assumedInputRatio en AiProviderCall).
+    //
+    //   metric+model  el par medido, si junta muestra suficiente
+    //   metric        el promedio de la feature
+    //   default       el global
+    expect(getAssumedInputRatio('agentTokens', 'gemini-3.1-flash-lite')).toEqual({
+      ratio: 0.987,
+      source: 'metric+model',
+    })
+
+    // Un modelo sin par propio cae a su feature, no al global.
+    expect(getAssumedInputRatio('agentTokens', 'gemini-9.9-inventado')).toEqual({
+      ratio: 0.988,
+      source: 'metric',
+    })
+
+    // Una feature sin medicion cae al global.
+    expect(getAssumedInputRatio('metricaNueva', 'gemini-3.6-flash')).toEqual({
+      ratio: 0.967,
+      source: 'default',
+    })
+  })
+
+  test('LA REGLA DE MUESTRA MINIMA: un par de una fila no entra', () => {
+    // Medido en produccion, agentTokens con gemini-3.5-flash-lite da 0,748
+    // con UNA sola fila, contra 0,988 de su feature con 70. Meter ese numero
+    // en la tabla seria precision inventada, peor que el promedio.
+    //
+    // Y no es un detalle: 0,748 supondria 25% de salida donde la feature mide
+    // 1,2%, o sea el mismo error del 80/20 que este bloque vino a sacar.
+    const conPocaMuestra = getAssumedInputRatio('agentTokens', 'gemini-3.5-flash-lite')
+
+    expect(conPocaMuestra.source).toBe('metric')
+    expect(conPocaMuestra.ratio).toBe(0.988)
+    expect(conPocaMuestra.ratio).not.toBe(0.748)
+
+    // Lo mismo del otro lado: marketTokens con 3.6-flash da 0,827 con cuatro
+    // filas y tampoco entra.
+    expect(getAssumedInputRatio('marketTokens', 'gemini-3.6-flash')).toEqual({
+      ratio: 0.941,
+      source: 'metric',
+    })
+  })
+
+  test('el nombre del modelo se normaliza antes de buscar el par', () => {
+    // Sin esto, 'models/Gemini-3.6-Flash' no encontraria su entrada y caeria
+    // un nivel en silencio — el mismo criterio con el que se busca el precio.
+    expect(getAssumedInputRatio('agentTokens', 'models/Gemini-3.6-Flash')).toEqual({
+      ratio: 0.989,
+      source: 'metric+model',
+    })
+  })
+
+  test('sin modelo informado, la feature alcanza', () => {
+    expect(getAssumedInputRatio('agentTokens')).toEqual({ ratio: 0.988, source: 'metric' })
+    expect(getAssumedInputRatio('agentTokens', null).source).toBe('metric')
+  })
+
+  test('computeCostUsd reparte con el par cuando lo hay', () => {
+    const conPar = computeCostUsd({
+      model: 'gemini-3.6-flash',
+      totalTokens: 10000,
+      metric: 'agentTokens',
+    })
+
+    expect(conPar.assumedRatio).toEqual({ ratio: 0.989, source: 'metric+model' })
+    expect(conPar.inputTokens).toBe(9890)
+    expect(conPar.outputTokens).toBe(110)
+
+    // Y con el mismo total y otra feature, el reparto cambia: es el punto de
+    // haber sacado el 0,8 global.
+    const vision = computeCostUsd({
+      model: 'gemini-3.6-flash',
+      totalTokens: 10000,
+      metric: 'vision',
+    })
+
+    expect(vision.assumedRatio.source).toBe('metric')
+    expect(vision.inputTokens).toBe(8610)
+  })
+
   test('el reparto va por feature, con la proporcion medida', () => {
     // Habia un unico 0,8 global. Medido sobre 119 filas con desglose real de
     // produccion: agentTokens 0,988 · marketTokens 0,941 · vision 0,861.
@@ -626,9 +710,18 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     })
 
     expect(conElViejo.costUsd).toBeCloseTo((8000 * 0.25 + 2000 * 1.5) / 1e6, 8)
-    expect(conLoMedido.costUsd).toBeCloseTo((9880 * 0.25 + 120 * 1.5) / 1e6, 8)
 
-    // 0,005 contra 0,00265. Y sobrestimar corta el disyuntor antes de tiempo.
+    // 0,987 y no 0,988: agentTokens con gemini-3.1-flash-lite tiene par propio
+    // medido (33 filas), asi que gana sobre el promedio de la feature. Este
+    // test se escribio antes de que existiera la cascada por modelo y el
+    // cambio de numero es la prueba de que la cascada esta actuando.
+    expect(conLoMedido.assumedRatio).toEqual({ ratio: 0.987, source: 'metric+model' })
+    // Redondeado a 6 decimales, que es lo que la funcion promete.
+    expect(conLoMedido.costUsd).toBe(
+      Number(((9870 * 0.25 + 130 * 1.5) / 1e6).toFixed(6)),
+    )
+
+    // 0,005 contra 0,00266. Y sobrestimar corta el disyuntor antes de tiempo.
     expect(conElViejo.costUsd / conLoMedido.costUsd).toBeGreaterThan(1.8)
   })
 

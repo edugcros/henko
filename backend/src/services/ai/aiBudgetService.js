@@ -387,6 +387,10 @@ const claimConsumption = async ({
       priceOutputPerMillion: breakdown?.price?.output ?? null,
       priceFallback: Boolean(breakdown?.price?.fallback),
       costEstimated: Boolean(breakdown?.estimated),
+      // Con qué proporción se repartió y de qué nivel salió, para que una fila
+      // estimada se pueda auditar sin reconstruir la tabla de aquel día.
+      assumedInputRatio: breakdown?.assumedRatio?.ratio ?? null,
+      assumedRatioSource: breakdown?.assumedRatio?.source ?? null,
       ok,
       pricingFallback,
     })

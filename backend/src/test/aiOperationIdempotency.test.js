@@ -740,6 +740,70 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
   })
 })
 
+describe('una fila repartida se audita sola', () => {
+  test('la operacion guarda con que proporcion se repartio y de que nivel salio', async () => {
+    // PUNTO 18, la pata de "operation": la feature y el modelo ELIGEN la
+    // proporcion, y la operacion la REGISTRA. Sin el par, una fila estimada
+    // obliga a reconstruir a mano con que numero se calculo, y si la tabla
+    // cambio desde entonces esa reconstruccion da distinto sin que nadie se
+    // entere.
+    const period = '2032-08'
+    const operationId = 'llamada-repartida'
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      // Solo el total: es el unico caso donde hay que repartir.
+      amount: 10000,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'gemini',
+    })
+    await asentar()
+
+    const llamada = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(llamada.costEstimated).toBe(true)
+    // agentTokens + gemini-3.1-flash-lite tiene par medido propio (33 filas).
+    expect(llamada.assumedInputRatio).toBe(0.987)
+    expect(llamada.assumedRatioSource).toBe('metric+model')
+
+    // Y el reparto que quedo guardado coincide con esa proporcion.
+    expect(llamada.inputTokens).toBe(9870)
+    expect(llamada.outputTokens).toBe(130)
+  })
+
+  test('una fila MEDIDA no inventa proporcion', async () => {
+    const period = '2032-08'
+    const operationId = 'llamada-medida'
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 10000,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'gemini',
+      usage: { inputTokens: 9000, outputTokens: 1000, totalTokens: 10000 },
+    })
+    await asentar()
+
+    const llamada = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(llamada.costEstimated).toBe(false)
+    expect(llamada.assumedInputRatio).toBeNull()
+    expect(llamada.assumedRatioSource).toBeNull()
+  })
+})
+
 describe('todo consumo pagado informa su operación', () => {
   // Guardián estructural: el bug no fue una línea mal escrita, fue que la
   // clave era OPCIONAL y cinco llamadores se la olvidaron durante meses sin

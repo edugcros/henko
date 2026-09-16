@@ -174,37 +174,90 @@ const CACHED_INPUT_RATIO = 0.1
  * la realidad es 1,2% casi duplica el costo de una fila del agente. No es
  * inocuo — el disyuntor de plataforma corta con ese número.
  *
- * NO VA POR MODELO. La proporción es una propiedad del TRABAJO, no de quién lo
- * atiende: un prompt del agente es largo y su respuesta corta conteste quien
- * conteste. Partir por modelo daría muestras de cuatro filas y una precisión
- * inventada; lo que sí queda registrado por modelo y por operación es CADA
- * fila estimada, que es lo que permite auditarlas.
+ * Y TAMBIÉN POR MODELO, PERO SOLO DONDE HAY CON QUÉ.
+ *
+ * La proporción es sobre todo una propiedad del TRABAJO: un prompt del agente
+ * es largo y su respuesta corta, conteste quien conteste. La medición por
+ * (feature, modelo) lo confirma — donde hay muestra, el modelo no mueve la
+ * aguja:
+ *
+ *   agentTokens   gemini-3.1-flash-lite   33 filas   0,987   (feature: 0,988)
+ *   agentTokens   gemini-3.6-flash        28 filas   0,989
+ *   marketTokens  gemini-3.1-flash-lite   20 filas   0,938   (feature: 0,941)
+ *   marketTokens  gemini-3.5-flash-lite   18 filas   0,950
+ *
+ * Las divergencias que parecen grandes salen todas de muestras ínfimas:
+ * agentTokens con gemini-3.5-flash-lite da 0,748 con UNA fila, y marketTokens
+ * con gemini-3.6-flash da 0,827 con cuatro. Meter esos números en la tabla
+ * sería precisión inventada, que es peor que el promedio de la feature.
+ *
+ * Por eso la dimensión por modelo EXISTE y se respeta, con una regla: solo
+ * entra a la tabla el par que llegó a MUESTRA_MINIMA filas medidas. El que no
+ * llega cae a la proporción de su feature, y una feature sin medición propia
+ * cae al global. Tres niveles, del más específico al más general, y el
+ * resultado informa cuál se usó para que un costo repartido se pueda auditar
+ * sin adivinar de dónde salió el número.
+ *
+ * Al día de hoy los cuatro pares que califican difieren de su feature en menos
+ * de 0,01 — o sea que la dimensión por modelo casi no cambia el número. Está
+ * igual porque el día que un modelo nuevo tenga un perfil distinto de verdad,
+ * la tabla ya tiene dónde ponerlo y la regla ya dice cuándo creerle.
  *
  * Estos números salen de una medición con fecha y hay que recalibrarlos si el
  * uso cambia. Por eso están acá, con el catálogo, y no escondidos en un
  * parámetro por defecto.
  */
+
+/** Filas medidas que hace falta juntar antes de creerle a un par. */
+const MUESTRA_MINIMA = 15
+
 const ASSUMED_INPUT_RATIO = Object.freeze({
   agentTokens: 0.988,
   marketTokens: 0.941,
   vision: 0.861,
 })
 
+/**
+ * Por (feature, modelo). Clave `${metric}|${model}`.
+ *
+ * Solo pares con MUESTRA_MINIMA filas medidas o más; el conteo va al lado
+ * para que se pueda revisar si el número sigue mereciendo estar acá.
+ */
+const ASSUMED_INPUT_RATIO_BY_MODEL = Object.freeze({
+  'agentTokens|gemini-3.1-flash-lite': 0.987, // 33 filas
+  'agentTokens|gemini-3.6-flash': 0.989, //     28 filas
+  'marketTokens|gemini-3.1-flash-lite': 0.938, // 20 filas
+  'marketTokens|gemini-3.5-flash-lite': 0.95, //  18 filas
+})
+
 /** El global, para una métrica sin medición propia. */
 const ASSUMED_INPUT_RATIO_DEFAULT = 0.967
 
 /**
- * Proporción de entrada a suponer para una métrica.
+ * Proporción de entrada a suponer, del dato más específico al más general.
+ *
+ *   metric+model  el par medido, si junta muestra suficiente
+ *   metric        el promedio de la feature
+ *   default       el global, para una feature sin medir
  *
  * @param {string} [metric] - la métrica del consumo (agentTokens, vision…)
- * @returns {{ratio:number, source:'metric'|'default'}}
+ * @param {string} [model]  - el modelo que respondió
+ * @returns {{ratio:number, source:'metric+model'|'metric'|'default'}}
  */
-export const getAssumedInputRatio = metric => {
-  const ratio = ASSUMED_INPUT_RATIO[metric]
+export const getAssumedInputRatio = (metric, model) => {
+  // normalize() es la misma forma canónica con la que se busca el precio: sin
+  // esto 'models/Gemini-3.6-Flash' no encontraría su par y caería un nivel.
+  const porModelo =
+    metric && model
+      ? ASSUMED_INPUT_RATIO_BY_MODEL[`${metric}|${normalize(model)}`]
+      : undefined
 
-  return ratio !== undefined
-    ? { ratio, source: 'metric' }
-    : { ratio: ASSUMED_INPUT_RATIO_DEFAULT, source: 'default' }
+  if (porModelo !== undefined) return { ratio: porModelo, source: 'metric+model' }
+
+  const porMetrica = ASSUMED_INPUT_RATIO[metric]
+  if (porMetrica !== undefined) return { ratio: porMetrica, source: 'metric' }
+
+  return { ratio: ASSUMED_INPUT_RATIO_DEFAULT, source: 'default' }
 }
 
 /**
@@ -333,7 +386,7 @@ export const computeCostUsd = ({
     const supuesto =
       assumedInputRatio !== null && Number.isFinite(Number(assumedInputRatio))
         ? { ratio: Number(assumedInputRatio), source: 'caller' }
-        : getAssumedInputRatio(metric)
+        : getAssumedInputRatio(metric, model)
 
     input = Math.round(total * supuesto.ratio)
     output = total - input

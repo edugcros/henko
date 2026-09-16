@@ -146,11 +146,32 @@ const aiProviderCallSchema = new mongoose.Schema(
 
     /**
      * true cuando el proveedor NO desglosó y hubo que repartir el total con una
-     * proporción supuesta (80/20). Distinto de priceFallback —ahí falta el
-     * precio, acá faltan los tokens— y distinto de pricingFallback, que es que
-     * falta el modelo.
+     * proporción supuesta. Distinto de priceFallback —ahí falta el precio, acá
+     * faltan los tokens— y distinto de pricingFallback, que es que falta el
+     * modelo.
      */
     costEstimated: { type: Boolean, default: false },
+
+    /**
+     * Con qué proporción se repartió, y de qué nivel salió ese número.
+     *
+     * null cuando no hubo que repartir, que es como debería ser siempre.
+     *
+     * Es la tercera pata de "separado por feature, modelo y operación": la
+     * feature y el modelo eligen la proporción (ver ASSUMED_INPUT_RATIO en
+     * aiModelPricing.js), y esto la deja registrada EN LA OPERACIÓN. Sin el
+     * par, una fila estimada obliga a reconstruir a mano con qué número se
+     * calculó — y si la tabla cambió desde entonces, esa reconstrucción da
+     * distinto y nadie se entera.
+     *
+     * `assumedRatioSource` dice cuán específico fue el dato:
+     *   'metric+model'  el par medido, con muestra suficiente
+     *   'metric'        el promedio de la feature
+     *   'default'       el global
+     *   'caller'        una proporción impuesta por el llamador
+     */
+    assumedInputRatio: { type: Number, default: null, min: 0, max: 1 },
+    assumedRatioSource: { type: String, trim: true, default: null },
 
     /**
      * true cuando el costo se calculó con un modelo ADIVINADO.
