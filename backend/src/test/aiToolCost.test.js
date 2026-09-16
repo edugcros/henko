@@ -4,13 +4,13 @@
 //
 // EL AGUJERO QUE ESTE BLOQUE CIERRA, MEDIDO EN PRODUCCIÓN (2026-09)
 //
-//   llamadas a Gemini de mercado   51 · USD 0,0568   ← lo único contabilizado
-//   créditos de Tavily estimados  255 · USD 2,0400   ← invisible
+//   tokens de mercado    48 llamadas · USD 0,0585
+//   créditos de Tavily  192          · USD 1,5360   ← era invisible
 //
-// La herramienta costaba 36 VECES lo que los tokens y no aparecía en ningún
-// lado: ni en el ledger, ni en el disyuntor, ni en el reporte. Cada análisis
-// gasta ~5 créditos —una búsqueda de shopping, una de research y una
-// extracción de hasta 12 URLs— y con eso ya se iba el 25% del cupo gratis
+// La herramienta cuesta 26 VECES lo que los tokens y no aparecía en ningún
+// lado: ni en el ledger, ni en el disyuntor, ni en el reporte. Son 4,00
+// créditos por análisis —3 de búsqueda, 1 de extracción— iguales en las tres
+// primeras corridas con registro, y con eso ya se iba el 19% del cupo gratis
 // mensual de 1.000.
 //
 // Contra base real donde se prueba el candado, porque la idempotencia ES un
@@ -90,9 +90,10 @@ describe('el precio de una herramienta', () => {
       fallback: false,
     })
 
-    // Un análisis completo: 1 búsqueda de shopping + 1 de research + 3 de
-    // extracción (12 URLs, 1 crédito cada 5).
-    expect(computeToolCostUsd({ tool: 'tavily_search', quantity: 5 }).costUsd).toBe(0.04)
+    // Un análisis completo, medido: 3 créditos de búsqueda —shopping busca una
+    // vez y reintenta con filtro de país cuando trae pocas ofertas, más la de
+    // research— y 1 de extracción.
+    expect(computeToolCostUsd({ tool: 'tavily_search', quantity: 4 }).costUsd).toBe(0.032)
   })
 
   test('cantidades que no son cantidades cuestan cero', () => {

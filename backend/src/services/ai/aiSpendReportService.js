@@ -91,9 +91,9 @@ export const getPeriodSpendByMetric = async period => {
         // concentra en herramientas, cuántas páginas se extraen. Con un solo
         // número, la pregunta no tiene respuesta.
         //
-        // Medido antes de contabilizarlas, 2026-09: marketTokens gastaba USD
-        // 0,0568 en Gemini y ~USD 2,0400 en créditos de Tavily. El 97% del
-        // costo de esa feature estaba afuera del reporte.
+        // Sobre 2026-09: marketTokens gastó USD 0,0585 en tokens y USD 1,5360
+        // en créditos de Tavily. El 96% del costo de esa feature estaba
+        // afuera del reporte.
         toolCostUsd: {
           $sum: conSigno({ $cond: [{ $eq: ['$unit', 'toolCalls'] }, '$costUsd', 0] }),
         },

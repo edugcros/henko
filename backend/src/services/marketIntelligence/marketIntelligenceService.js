@@ -163,10 +163,12 @@ export async function analyzeMarketDemand({
   // Los creditos de herramienta que gaste este analisis. Las fuentes anotan
   // aca y al final se registran bajo la misma operacion que los tokens.
   //
-  // Hace falta porque el costo de este analisis NO esta en los tokens: medido
-  // en produccion sobre 2026-09, las llamadas a Gemini de mercado sumaron USD
-  // 0,0568 y los creditos de Tavily unos USD 2,0400 — 36 veces mas, y sin una
-  // fila en ningun lado.
+  // Hace falta porque el costo de este analisis NO esta en los tokens: sobre
+  // 2026-09, los tokens de mercado sumaron USD 0,0585 y los 192 creditos de
+  // Tavily, USD 1,5360 — 26 veces mas, y sin una fila en ningun lado.
+  //
+  // Son 4,00 creditos por analisis (3 de busqueda, 1 de extraccion), iguales
+  // en las tres primeras corridas medidas.
   const toolUsage = []
 
   const [internalResult] = await Promise.allSettled([

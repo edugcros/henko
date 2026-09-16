@@ -58,17 +58,32 @@ const CATALOG = [
  * POR QUÉ HACE FALTA, CON EL NÚMERO QUE LO JUSTIFICA
  *
  * Toda la contabilidad de este archivo asumía que la IA se cobra por tokens.
- * Para el análisis de mercado eso deja afuera lo que más cuesta. Medido contra
- * producción, 2026-09:
+ * Para el análisis de mercado eso deja afuera lo que más cuesta. Sobre
+ * 2026-09, con el consumo de herramientas ya medido:
  *
- *   llamadas a Gemini de mercado   51 · USD 0,0568   ← lo único contabilizado
- *   créditos de Tavily estimados  255 · USD 2,0400   ← invisible
+ *   tokens de mercado               48 llamadas · USD 0,0585
+ *   créditos de Tavily             192          · USD 1,5360   ← era invisible
  *
- * La herramienta costaba 36 VECES lo que los tokens, y no aparecía en ningún
- * lado: ni en el ledger, ni en el disyuntor, ni en el reporte. Cada análisis
- * gasta ~5 créditos —una búsqueda de shopping, una de research y una
- * extracción de hasta 12 URLs— y con eso ya se iba el 25% del cupo gratis
- * mensual sin que nadie lo viera.
+ * La herramienta cuesta 26 VECES lo que los tokens, y no aparecía en ningún
+ * lado: ni en el ledger, ni en el disyuntor, ni en el reporte. Con eso ya se
+ * iba el 19% del cupo gratis mensual sin que nadie lo viera.
+ *
+ * EL CONSUMO POR ANÁLISIS ES MEDIDO, NO ESTIMADO
+ *
+ * La primera versión de este comentario decía "~5 créditos" y salía de leer el
+ * código: una búsqueda de shopping, una de research y una extracción de hasta
+ * 12 URLs. Las tres primeras corridas reales, ya con las filas en la base,
+ * dieron 4,00 créditos las tres:
+ *
+ *   tavily_search   3   shopping busca una vez y REINTENTA con filtro de país
+ *                       cuando la primera trae pocas ofertas, más la de
+ *                       research
+ *   tavily_extract  1   las páginas que resolvieron entraron en un solo tramo
+ *                       de cinco, no en tres
+ *
+ * O sea que la lectura del código se equivocaba de los dos lados a la vez:
+ * de menos en las búsquedas y de más en la extracción. Por eso el número que
+ * queda acá es el de la base y no el del razonamiento.
  *
  * EL PRECIO SALE DE LA TARIFA PUBLICADA, NO DE UN SUPUESTO
  *

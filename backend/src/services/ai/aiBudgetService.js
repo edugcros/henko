@@ -1941,13 +1941,19 @@ export const recordAiConsumption = async ({
  * QUÉ PROBLEMA RESUELVE
  *
  * Toda la contabilidad de IA asumía tokens. Para el análisis de mercado eso
- * deja afuera lo que más cuesta: medido en producción sobre 2026-09, las
- * llamadas a Gemini de mercado sumaron USD 0,0568 y los créditos de Tavily
- * unos USD 2,0400 — 36 veces más, y sin una fila en ningún lado. Ni el ledger,
- * ni el disyuntor, ni el reporte los veían.
+ * deja afuera lo que más cuesta: sobre 2026-09, los tokens de mercado sumaron
+ * USD 0,0585 y los créditos de Tavily USD 1,5360 — 26 veces más, y sin una
+ * fila en ningún lado. Ni el ledger, ni el disyuntor, ni el reporte los veían.
+ *
+ * Son 4,00 créditos por análisis, medidos sobre las tres primeras corridas con
+ * registro (las tres dieron lo mismo: 3 de búsqueda y 1 de extracción). El
+ * número anterior de este comentario, ~5, salía de leer el código y se
+ * equivocaba de los dos lados: shopping busca dos veces cuando la primera trae
+ * pocas ofertas, y la extracción entró en un solo tramo de cinco URLs en vez
+ * de tres.
  *
  * Y el cupo importa aunque no se facture: Tavily regala 1.000 créditos por
- * mes, ya se iba el 25% en un mes, y un cupo agotado a mitad de mes deja sin
+ * mes, ya se iba el 19% en un mes, y un cupo agotado a mitad de mes deja sin
  * análisis a todos los comercios. Eso es precisamente lo que el disyuntor
  * existe para anticipar.
  *

@@ -186,9 +186,10 @@ const aiProviderCallSchema = new mongoose.Schema(
      * llevan a palancas opuestas. Si se va en tokens, se toca el modelo o el
      * prompt; si se va en herramientas, cuántas páginas se extraen.
      *
-     * Medido en producción antes de esto: 51 llamadas a Gemini de mercado por
-     * USD 0,0568, contra ~255 créditos de Tavily por USD 2,0400. La
-     * herramienta costaba 36 veces los tokens y no aparecía en ningún lado.
+     * Medido sobre 2026-09: los tokens de mercado costaron USD 0,0585 y los
+     * 192 créditos de Tavily, USD 1,5360. La herramienta cuesta 26 veces los
+     * tokens y no aparecía en ningún lado. Son 4,00 créditos por análisis,
+     * iguales en las tres primeras corridas con registro.
      *
      * costUsd sigue siendo el costo de TOKENS. El total de la fila es la suma
      * de los dos: cambiarle el significado a costUsd habría movido en silencio
