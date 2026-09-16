@@ -176,6 +176,12 @@ export const tryPersonalizeMessage = async ({ tenantId, values }) => {
         tenantId,
         metric: AI_METRICS.AGENT_TOKENS,
         amount: result.tokensUsed,
+        // La operación que reservó. Sin ella el consumo no tiene candado de
+        // idempotencia, no llega a AiProviderCall y la operación nunca se
+        // cierra: el barrido la reembolsa aunque haya salido bien. Ver
+        // marketIntelligenceService.js para la medición.
+        operationId: reservation.operationId,
+        provider: 'gemini',
         // El desglose medido y el modelo real, enteros: el objeto trae
         // también los tokens de pensamiento, que se facturan como salida.
         usage: result.usage,

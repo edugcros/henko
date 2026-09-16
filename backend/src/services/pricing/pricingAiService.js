@@ -205,6 +205,12 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
         metric: AI_METRICS.MARKET_TOKENS,
         amount: tokensUsed,
         profile,
+        // La operación que reservó. Sin ella el consumo no tiene candado de
+        // idempotencia, no llega a AiProviderCall y la operación nunca se
+        // cierra: el barrido la reembolsa aunque haya salido bien. Ver
+        // marketIntelligenceService.js para la medición.
+        operationId: budget.operationId,
+        provider: 'gemini',
         // El modelo real y el desglose medido están acá: sin pasarlos, el costo
         // se calcula con el modelo supuesto y una proporción inventada.
         model: result?.model,

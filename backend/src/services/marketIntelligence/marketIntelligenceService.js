@@ -191,6 +191,18 @@ export async function analyzeMarketDemand({
       metric: AI_METRICS.MARKET_TOKENS,
       amount: tokensUsed,
       profile,
+      // La operación que reservó. Sin ella, recordAiConsumption entra sin
+      // candado: el consumo queda con operationId nulo, no genera fila en
+      // AiProviderCall, no liquida la reserva y —lo que más duele— NO CIERRA
+      // LA OPERACIÓN, que es lo único que la marca 'completed'.
+      //
+      // Medido en producción: de 155 consumos del ledger, 68 tenían la clave
+      // en nulo, y 'marketAnalyses' tenía 0 operaciones completadas contra 2
+      // colgadas en 'running'. Las colgadas las levanta el barrido de reservas
+      // viejas, que las REEMBOLSA: el análisis salía, el comercio lo recibía y
+      // la cuota se le devolvía igual.
+      operationId: budget.operationId,
+      provider: 'gemini',
       // El desglose medido y el modelo real, cuando la fuente los informa. Sin
       // ellos el costo se reparte con una proporción supuesta, y como la salida
       // cuesta cinco veces la entrada, ese reparto es justo donde más se

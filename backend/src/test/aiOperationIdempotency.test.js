@@ -17,6 +17,9 @@
 // disyuntor de plataforma. Contarlo doble puede disparar el freno de
 // emergencia antes de tiempo y dejar sin IA a TODOS los comercios.
 
+import fs from 'node:fs'
+import path from 'node:path'
+import process from 'node:process'
 import mongoose from 'mongoose'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 
@@ -653,5 +656,143 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
         1e6,
       6,
     )
+  })
+
+  test('un consumo con operación cierra la operación; sin ella queda colgada', async () => {
+    // ESTE ERA EL AGUJERO, medido en producción:
+    //
+    //   Ledger: 68 de 155 consumos con operationId nulo.
+    //   AiOperation: marketAnalyses → 2 running, 0 completed. Nunca una.
+    //
+    // Cinco de los seis llamadores tenían la clave de la reserva en la mano
+    // —la usaban para el reembolso— y no se la pasaban al consumo. Sin ella,
+    // claimConsumption se va en la primera línea: no hay candado, no hay fila
+    // de AiProviderCall, no se liquida la reserva, y sobre todo NO SE CIERRA
+    // LA OPERACIÓN. El barrido de colgadas la levanta después y la REEMBOLSA:
+    // el comercio recibía el trabajo y la cuota se le devolvía igual.
+    const period = '2032-07'
+
+    const conOperacion = 'consumo-con-operacion'
+    await reserveAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_ANALYSES,
+      profile: PERFIL,
+      period,
+      operationId: conOperacion,
+    })
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      amount: 1500,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period,
+      operationId: conOperacion,
+      provider: 'gemini',
+    })
+    await asentar()
+
+    const operacion = await AiOperation.findOne({ tenantId: TENANT, operationId: conOperacion })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(operacion.status).toBe('completed')
+
+    // Y dejó su fila de llamada al proveedor.
+    const llamada = await AiProviderCall.findOne({ tenantId: TENANT, operationId: conOperacion })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(llamada).not.toBeNull()
+    expect(llamada.provider).toBe('gemini')
+
+    // El contraste: el mismo consumo sin la clave no deja rastro de llamada.
+    const sinOperacion = 'consumo-sin-operacion'
+    await reserveAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_ANALYSES,
+      profile: PERFIL,
+      period,
+      operationId: sinOperacion,
+    })
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      amount: 1500,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period,
+    })
+    await asentar()
+
+    const colgada = await AiOperation.findOne({ tenantId: TENANT, operationId: sinOperacion })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    // Sigue retenida: es lo que pasaba en producción con TODOS los análisis.
+    expect(colgada.status).toBe('running')
+    expect(
+      await AiProviderCall.countDocuments({ tenantId: TENANT, operationId: sinOperacion }).setOptions(
+        { tenantId: TENANT },
+      ),
+    ).toBe(0)
+  })
+})
+
+describe('todo consumo pagado informa su operación', () => {
+  // Guardián estructural: el bug no fue una línea mal escrita, fue que la
+  // clave era OPCIONAL y cinco llamadores se la olvidaron durante meses sin
+  // que nada se quejara. Esto recorre el backend y exige que cada
+  // recordAiConsumption la pase.
+  test('ningún recordAiConsumption se llama sin operationId', () => {
+    const SRC = path.resolve('src')
+
+    const archivos = (dir, acc = []) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name)
+        if (e.isDirectory()) {
+          if (e.name !== 'test') archivos(full, acc)
+        } else if (e.name.endsWith('.js')) acc.push(full)
+      }
+      return acc
+    }
+
+    const culpables = []
+
+    for (const archivo of archivos(SRC)) {
+      // El propio servicio define la función; no se audita a sí mismo.
+      if (archivo.endsWith('aiBudgetService.js')) continue
+
+      const codigo = fs.readFileSync(archivo, 'utf8')
+
+      // Cada invocación, desde el paréntesis hasta su cierre.
+      for (const m of codigo.matchAll(/recordAiConsumption\(\{/g)) {
+        let i = m.index + m[0].length
+        let nivel = 1
+        while (i < codigo.length && nivel > 0) {
+          if (codigo[i] === '{') nivel += 1
+          if (codigo[i] === '}') nivel -= 1
+          i += 1
+        }
+
+        // Sin comentarios: el porqué de esta regla está escrito ARRIBA de cada
+        // llamada y menciona operationId varias veces, así que buscarlo en el
+        // texto crudo daba positivo aunque el argumento no estuviera. Se probó
+        // quitándole la clave al análisis de mercado: el test pasaba igual.
+        const llamada = codigo
+          .slice(m.index, i)
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .split('\n')
+          .filter(l => !l.trim().startsWith('//'))
+          .join('\n')
+
+        if (!/\boperationId\b/.test(llamada)) {
+          culpables.push(path.relative(process.cwd(), archivo))
+        }
+      }
+    }
+
+    expect(culpables).toEqual([])
   })
 })

@@ -98,6 +98,12 @@ export const generateProductSocialContent = expressAsyncHandler(async (req, res)
       metric: AI_METRICS.AGENT_TOKENS,
       amount: result.tokensUsed,
       model: result.model,
+      // La operación que reservó el mensaje. Los tokens son de la MISMA
+      // operación, no de otra: reservar por unidad y gastar tokens son dos
+      // caras del mismo acto. Sin esto la operación nunca se cierra y el
+      // barrido devuelve el mensaje que el comercio sí recibió.
+      operationId: reservation.operationId,
+      provider: 'gemini',
       // El desglose medido, entero. Desarmarlo acá era lo que hacía que un
       // campo nuevo del proveedor —los tokens de pensamiento— no llegara.
       usage: result.usage,
