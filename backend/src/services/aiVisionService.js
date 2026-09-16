@@ -21,6 +21,7 @@ import {
   recordTokenSpend,
 } from './ai/aiBudgetService.js'
 import { loadTenantAiProfile } from './ai/aiCredentialsService.js'
+import { readUsage } from './ai/aiUsageMetadata.js'
 import { getCurrentPeriod } from './ai/aiPeriod.js'
 import {
   extractErrorStatus,
@@ -2181,17 +2182,18 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     // reservó arriba. Lo que hace esta línea es que el gasto llegue al
     // disyuntor de plataforma, que hasta ahora no veía visión en absoluto.
     // Va el modelo REAL (activeModel), que puede ser uno de respaldo con otra
-    // tarifa, y el desglose medido de usageMetadata en vez de un reparto.
-    const usage = response.usageMetadata || {}
-
+    // tarifa, y el desglose medido en vez de un reparto.
+    //
+    // Por readUsage y no leyendo las claves a mano: promptTokenCount y
+    // candidatesTokenCount sueltos dejan afuera thoughtsTokenCount, que Google
+    // cobra a tarifa de salida. El modelo se sigue informando explícito porque
+    // la respuesta del SDK no lo trae y activeModel sí lo sabe.
     recordTokenSpend({
       tenantId: normalizedTenantId,
       metric: AI_METRICS.VISION,
       operationId,
       model: activeModel,
-      inputTokens: usage.promptTokenCount ?? null,
-      outputTokens: usage.candidatesTokenCount ?? null,
-      totalTokens: usage.totalTokenCount ?? null,
+      usage: readUsage(response),
       profile: aiProfile,
     }).catch(error => {
       logger.warn('[AI VISION] No se pudo registrar el gasto de tokens', {

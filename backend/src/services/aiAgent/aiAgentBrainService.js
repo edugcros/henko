@@ -16,6 +16,7 @@ import {
 } from '../ai/aiBudgetService.js'
 import { getMaxInboundMessageChars } from '../ai/aiPlanPolicy.js'
 import { loadTenantAiProfile } from '../ai/aiCredentialsService.js'
+import { readUsage } from '../ai/aiUsageMetadata.js'
 import { searchRelevantKnowledgeForAgent } from './aiAgentToolService.js'
 import { runAgentCommerceTools } from './aiAgentCommerceToolsService.js'
 import { registerConversationLearningSignal } from './aiAgentLearningService.js'
@@ -513,15 +514,18 @@ const repairAiResponseIfNeeded = async ({
     // registraba en ningún lado, así que toda respuesta regenerada quedaba
     // fuera de la contabilidad y dentro de la factura.
     if (tenantId) {
+      // Por readUsage: la reparación piensa igual que la respuesta original, y
+      // ese razonamiento se factura como salida.
+      const usage = readUsage(repaired)
+
       await recordAiConsumption({
         tenantId,
         metric: AI_METRICS.AGENT_TOKENS,
-        amount: Number(repaired?.usageMetadata?.totalTokenCount || 0),
+        amount: usage?.totalTokens || 0,
         profile,
         model: repaired?.model,
         requestedModel: repaired?.requestedModel,
-        inputTokens: repaired?.usageMetadata?.promptTokenCount ?? null,
-        outputTokens: repaired?.usageMetadata?.candidatesTokenCount ?? null,
+        usage,
         // La reparación es una SEGUNDA LLAMADA de la misma operación, no otra
         // operación. Acá se le inventaba una clave con sufijo para que el
         // índice del ledger no la rechazara, y eso contaba dos operaciones
@@ -635,13 +639,17 @@ const registerTokenUsage = async ({
   operationId = null,
   callId = undefined,
 }) => {
-  const tokens = Number(usageMetadata?.totalTokenCount || 0)
-  if (!Number.isFinite(tokens) || tokens <= 0) return
+  // Un solo lector para todo el proyecto. Leer promptTokenCount y
+  // candidatesTokenCount a mano —como hacía esta función— deja afuera
+  // thoughtsTokenCount: medido en producción, 30 de estas filas escondían
+  // 18.683 tokens de razonamiento facturados a tarifa de salida.
+  const usage = readUsage({ usageMetadata, model })
+  if (!usage) return
 
   await recordAiConsumption({
     tenantId,
     metric: AI_METRICS.AGENT_TOKENS,
-    amount: tokens,
+    amount: usage.totalTokens,
     profile,
     operationId,
     // El modelo REAL: con la cadena de respaldo puede no ser el configurado, y
@@ -649,10 +657,9 @@ const registerTokenUsage = async ({
     model,
     requestedModel,
     ...(callId ? { callId } : {}),
-    // El desglose viene medido en usageMetadata. Sin pasarlo, el costo se
-    // reparte con una proporción supuesta teniendo el dato real al lado.
-    inputTokens: usageMetadata?.promptTokenCount ?? null,
-    outputTokens: usageMetadata?.candidatesTokenCount ?? null,
+    // El desglose viene medido. Sin pasarlo, el costo se reparte con una
+    // proporción supuesta teniendo el dato real al lado.
+    usage,
   })
 }
 

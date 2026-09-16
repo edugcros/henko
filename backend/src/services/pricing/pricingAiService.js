@@ -20,6 +20,7 @@
 
 import { callAgentLLM } from '../aiAgent/aiAgentLLMService.js'
 import { loadTenantAiProfile } from '../ai/aiCredentialsService.js'
+import { readUsage } from '../ai/aiUsageMetadata.js'
 import {
   AI_FEATURES,
   AI_METRICS,
@@ -190,7 +191,11 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
       apiKey: profile.apiKey,
     })
 
-    const tokensUsed = Number(result?.usageMetadata?.totalTokenCount || 0)
+    // Por readUsage y no a mano: leer promptTokenCount y candidatesTokenCount
+    // sueltos es lo que dejaba afuera thoughtsTokenCount, que se factura como
+    // salida y acá llegó a ser el 89% de ella.
+    const usage = readUsage(result)
+    const tokensUsed = usage?.totalTokens || 0
 
     // Los tokens se registran aunque el parseo falle: ya se gastaron contra la
     // API de Google, y no cobrarlos deja el presupuesto mintiendo.
@@ -203,8 +208,8 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
         // El modelo real y el desglose medido están acá: sin pasarlos, el costo
         // se calcula con el modelo supuesto y una proporción inventada.
         model: result?.model,
-        inputTokens: result?.usageMetadata?.promptTokenCount ?? null,
-        outputTokens: result?.usageMetadata?.candidatesTokenCount ?? null,
+        requestedModel: result?.requestedModel,
+        usage,
       }).catch(error => {
         logger.warn('[PRICING AI] No se pudo registrar el consumo de tokens', {
           tenantId: String(tenantId),

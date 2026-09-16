@@ -194,10 +194,8 @@ export async function analyzeMarketDemand({
       // El desglose medido y el modelo real, cuando la fuente los informa. Sin
       // ellos el costo se reparte con una proporción supuesta, y como la salida
       // cuesta cinco veces la entrada, ese reparto es justo donde más se
-      // equivoca uno.
-      model: usage?.model,
-      inputTokens: usage?.inputTokens ?? null,
-      outputTokens: usage?.outputTokens ?? null,
+      // equivoca uno. Va entero: adentro viajan los tokens de pensamiento.
+      usage,
     })
   }
 

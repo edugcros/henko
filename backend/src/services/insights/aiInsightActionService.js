@@ -119,11 +119,9 @@ export const generateReactivationMessage = async ({ tenantId, insight }) => {
         tenantId,
         metric: AI_METRICS.AGENT_TOKENS,
         amount: result.tokensUsed,
-        // El desglose medido y el modelo real que informa el generador. Sin
-        // ellos el costo se reparte con una proporción supuesta.
-        model: result.usage?.model,
-        inputTokens: result.usage?.inputTokens ?? null,
-        outputTokens: result.usage?.outputTokens ?? null,
+        // El desglose medido y el modelo real, enteros: el objeto trae
+        // también los tokens de pensamiento, que se facturan como salida.
+        usage: result.usage,
       })
     }
 

@@ -30,13 +30,45 @@ const num = value => {
  * Devuelve null cuando no hay nada que leer: distinguir "no vino" de "vino en
  * cero" importa, porque cero entrada y cero salida es un desglose válido y
  * significa otra cosa.
+ *
+ * LOS TOKENS DE PENSAMIENTO SON SALIDA
+ *
+ * candidatesTokenCount cuenta solo el texto que se ve. Lo que el modelo razonó
+ * antes de contestar viaja aparte, en thoughtsTokenCount, NO está incluido ahí
+ * —y sí está incluido en totalTokenCount—. Google lo factura a tarifa de
+ * salida, que es la cara: 3,75 contra 0,75 por millón en 3.8-flash.
+ *
+ * Medido contra la API, mismo prompt, con thinkingBudget 512:
+ *
+ *   gemini-3.6-flash       prompt 61 · candidates 387 · thoughts 462 · total 910
+ *   gemini-3.5-flash-lite  prompt 61 · candidates 388 · thoughts   0 · total 449
+ *
+ * Y medido contra la base de producción: de 122 filas de consumo con desglose,
+ * 40 tenían total > entrada + salida. 23.836 tokens de pensamiento sin contar
+ * contra 2.910 de salida contados — el 89% de la salida de esas filas. El
+ * costo registrado de todo el histórico era USD 0,459 contra 0,556 reales:
+ * 21,2% de menos, y el disyuntor de plataforma decide con ese número.
+ *
+ * Por eso outputTokens los SUMA. thinkingTokens queda aparte para poder
+ * explicar por qué la salida de una fila es diez veces su texto visible, pero
+ * no es una tercera categoría de precio: no existe tal cosa en la factura.
  */
 export const readUsage = result => {
   const usage = result?.usageMetadata
   if (!usage) return null
 
   const inputTokens = num(usage.promptTokenCount)
-  const outputTokens = num(usage.candidatesTokenCount)
+  const visibleTokens = num(usage.candidatesTokenCount)
+  const thinkingTokens = num(usage.thoughtsTokenCount)
+  const outputTokens = visibleTokens + thinkingTokens
+
+  // Entrada servida desde la caché de contexto. Hoy siempre viene vacío porque
+  // HENKO no usa caché —verificado contra la API: la clave no aparece en la
+  // respuesta— pero leerla no cuesta nada y el día que se active, el dato ya
+  // está. Importa porque se factura con descuento: contarla como entrada plena
+  // sería el error de este archivo, al revés.
+  const cachedInputTokens = num(usage.cachedContentTokenCount)
+
   const totalTokens = num(usage.totalTokenCount) || inputTokens + outputTokens
 
   if (!totalTokens) return null
@@ -44,7 +76,14 @@ export const readUsage = result => {
   return {
     inputTokens: inputTokens || null,
     outputTokens: outputTokens || null,
+    visibleTokens: visibleTokens || null,
+    thinkingTokens: thinkingTokens || null,
+    cachedInputTokens: cachedInputTokens || null,
     totalTokens,
+    // 'standard' o 'flex'/'priority' según el plan. Viene en toda respuesta
+    // —medido— y es la explicación de dos facturas distintas por el mismo
+    // trabajo, así que se guarda aunque hoy sea siempre el mismo valor.
+    serviceTier: usage.serviceTier || null,
     model: result?.model || null,
   }
 }
@@ -72,11 +111,19 @@ export const sumUsage = (...usages) => {
   const completos = presentes.every(u => u.inputTokens !== null && u.outputTokens !== null)
 
   const totalTokens = presentes.reduce((sum, u) => sum + u.totalTokens, 0)
+  const sumar = campo => {
+    const total = presentes.reduce((s, u) => s + (Number(u[campo]) || 0), 0)
+    return total || null
+  }
 
   return {
     inputTokens: completos ? presentes.reduce((s, u) => s + u.inputTokens, 0) : null,
     outputTokens: completos ? presentes.reduce((s, u) => s + u.outputTokens, 0) : null,
+    visibleTokens: sumar('visibleTokens'),
+    thinkingTokens: sumar('thinkingTokens'),
+    cachedInputTokens: sumar('cachedInputTokens'),
     totalTokens,
+    serviceTier: presentes.map(u => u.serviceTier).filter(Boolean).pop() || null,
     model: presentes.map(u => u.model).filter(Boolean).pop() || null,
   }
 }

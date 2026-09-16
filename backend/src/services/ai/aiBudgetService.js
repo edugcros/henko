@@ -129,6 +129,31 @@ const getDefaultPricingModel = () =>
  *
  * @returns {{model: string, pricingFallback: boolean}}
  */
+/**
+ * Avisa cuando el proveedor cobró más tokens de los que desglosó.
+ *
+ * computeCostUsd ya los cobra —del lado caro, que es el correcto— pero un
+ * remanente sostenido significa que hay una clave nueva en la respuesta que
+ * nadie está leyendo por su nombre. Así apareció thoughtsTokenCount: 40 filas
+ * de producción con total > entrada + salida, 23.836 tokens y el 21,2% del
+ * costo. La próxima vez, esto lo dice el mismo día.
+ *
+ * No se guarda como columna a propósito: si todo anda bien es cero para
+ * siempre, y una columna que siempre vale cero deja de mirarse.
+ */
+const avisarResidual = (breakdown, { tenantId, metric, model }) => {
+  if (!breakdown?.residualTokens) return
+
+  logger.warn('[AI PRICING] El proveedor cobró tokens que no desglosó', {
+    tenantId: tenantId ? String(tenantId) : null,
+    metric,
+    model,
+    residualTokens: breakdown.residualTokens,
+    detalle:
+      'se cobraron como salida; revisar si usageMetadata trae una clave nueva',
+  })
+}
+
 const resolvePricingModel = (model, { tenantId, metric } = {}) => {
   const informado = normalizeModelName(model)
   if (informado) return { model: informado, pricingFallback: false }
@@ -300,6 +325,8 @@ const claimConsumption = async ({
   requestedModel = null,
   actualModel = null,
   breakdown = null,
+  // Lo que el proveedor midió y no entra en el precio, pero explica la fila.
+  usage = null,
   costUsd = 0,
   ok = true,
   pricingFallback = false,
@@ -318,8 +345,15 @@ const claimConsumption = async ({
       actualModel,
       inputTokens: breakdown?.inputTokens ?? null,
       outputTokens: breakdown?.outputTokens ?? null,
+      thinkingTokens: usage?.thinkingTokens ?? null,
+      cachedInputTokens: usage?.cachedInputTokens ?? null,
       totalTokens: breakdown?.totalTokens ?? Math.max(0, Math.round(Number(amount) || 0)),
+      serviceTier: usage?.serviceTier ?? null,
       costUsd: Number(costUsd) || 0,
+      priceInputPerMillion: breakdown?.price?.input ?? null,
+      priceOutputPerMillion: breakdown?.price?.output ?? null,
+      priceFallback: Boolean(breakdown?.price?.fallback),
+      costEstimated: Boolean(breakdown?.estimated),
       ok,
       pricingFallback,
     })
@@ -1717,9 +1751,20 @@ export const recordAiConsumption = async ({
   metric,
   amount = 0,
   profile = null,
-  model = null,
-  inputTokens = null,
-  outputTokens = null,
+  // El objeto que devuelve readUsage(), entero.
+  //
+  // Los siete llamadores venían repitiendo `inputTokens: usage?.inputTokens ??
+  // null, outputTokens: usage?.outputTokens ?? null`, y esa repetición es la
+  // razón por la que thoughtsTokenCount tardó en aparecer: agregar un campo
+  // medido obligaba a tocar siete archivos, así que no se agregaba. Pasando el
+  // objeto, el próximo campo llega solo.
+  //
+  // Los sueltos siguen aceptándose y GANAN si se informan, para los llamadores
+  // que arman el desglose a mano.
+  usage = null,
+  model = usage?.model ?? null,
+  inputTokens = usage?.inputTokens ?? null,
+  outputTokens = usage?.outputTokens ?? null,
   period: requestedPeriod = null,
   // La misma clave que devolvió reserveAiBudget. El evento distingue la fila,
   // así que reserva y consumo de una operación conviven; dos consumos de la
@@ -1749,6 +1794,8 @@ export const recordAiConsumption = async ({
     ? computeCostUsd({ model: usedModel, inputTokens, outputTokens, totalTokens: normalizedAmount })
     : null
 
+  avisarResidual(breakdown, { tenantId: id, metric: normalizedMetric, model: usedModel })
+
   const costUsd = breakdown?.costUsd || 0
   const period = requestedPeriod || getCurrentPeriod()
 
@@ -1765,6 +1812,7 @@ export const recordAiConsumption = async ({
     requestedModel,
     actualModel: isTokenMetric ? usedModel : null,
     breakdown,
+    usage,
     costUsd,
     pricingFallback,
   })
@@ -1830,10 +1878,13 @@ export const recordAiConsumption = async ({
 export const recordTokenSpend = async ({
   tenantId,
   metric,
-  model = null,
-  inputTokens = null,
-  outputTokens = null,
-  totalTokens = null,
+  // Ver recordAiConsumption: el objeto entero de readUsage(), y los sueltos
+  // ganan si se informan.
+  usage = null,
+  model = usage?.model ?? null,
+  inputTokens = usage?.inputTokens ?? null,
+  outputTokens = usage?.outputTokens ?? null,
+  totalTokens = usage?.totalTokens ?? null,
   profile = null,
   period: requestedPeriod = null,
   // La misma clave que devolvió reserveAiBudget. El evento distingue la fila,
@@ -1863,6 +1914,8 @@ export const recordTokenSpend = async ({
     totalTokens,
   })
 
+  avisarResidual(breakdown, { tenantId: id, metric: normalizedMetric, model: usedModel })
+
   if (breakdown.totalTokens <= 0) return
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
@@ -1889,6 +1942,7 @@ export const recordTokenSpend = async ({
     // que se paga es lo segundo.
     actualModel: breakdown.price?.model || usedModel,
     breakdown,
+    usage,
     costUsd,
     pricingFallback,
   })

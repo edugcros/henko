@@ -203,3 +203,179 @@ describe('costeo · con el modelo que respondió', () => {
     expect(fuente).toContain('[AI PRICING] Costo calculado con un modelo INFERIDO')
   })
 })
+
+describe('pensar es salida, y la salida cuesta 5x', () => {
+  // MEDIDO CONTRA LA API, mismo prompt, thinkingBudget 512:
+  //
+  //   gemini-3.6-flash  prompt 61 · candidates 387 · thoughts 462 · total 910
+  //
+  // thoughtsTokenCount NO está dentro de candidatesTokenCount y SÍ está dentro
+  // de totalTokenCount. Google lo factura a tarifa de salida.
+  //
+  // Y MEDIDO CONTRA LA BASE DE PRODUCCIÓN: de 122 filas de consumo con
+  // desglose, 40 tenían total > entrada + salida. 23.836 tokens de
+  // razonamiento sin contar contra 2.910 de salida contados. El costo
+  // registrado del histórico era USD 0,459 contra 0,556 reales: 21,2% de
+  // menos, con el disyuntor de plataforma decidiendo sobre ese número.
+
+  const RESPUESTA_REAL = {
+    model: 'gemini-3.6-flash',
+    usageMetadata: {
+      promptTokenCount: 61,
+      candidatesTokenCount: 387,
+      thoughtsTokenCount: 462,
+      totalTokenCount: 910,
+      serviceTier: 'standard',
+    },
+  }
+
+  test('el razonamiento entra en la salida, no se evapora', async () => {
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+    const usage = readUsage(RESPUESTA_REAL)
+
+    // Antes esto daba 387 y se perdían 462.
+    expect(usage.outputTokens).toBe(387 + 462)
+    expect(usage.visibleTokens).toBe(387)
+    expect(usage.thinkingTokens).toBe(462)
+
+    // La invariante que el bug rompía: el desglose vuelve a dar el total.
+    expect(usage.inputTokens + usage.outputTokens).toBe(usage.totalTokens)
+  })
+
+  test('el nivel de servicio viaja; la caché no miente cuando no hay', async () => {
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+    const usage = readUsage(RESPUESTA_REAL)
+
+    expect(usage.serviceTier).toBe('standard')
+    // No se usa caché de contexto: la clave ni siquiera vuelve de la API.
+    expect(usage.cachedInputTokens).toBeNull()
+  })
+
+  test('un modelo que no piensa no cambia de comportamiento', async () => {
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+
+    // gemini-3.5-flash-lite, mismo prompt: thoughts 0.
+    const usage = readUsage({
+      model: 'gemini-3.5-flash-lite',
+      usageMetadata: {
+        promptTokenCount: 61,
+        candidatesTokenCount: 388,
+        totalTokenCount: 449,
+      },
+    })
+
+    expect(usage.outputTokens).toBe(388)
+    expect(usage.thinkingTokens).toBeNull()
+  })
+
+  test('sumar varias llamadas suma el razonamiento de cada una', async () => {
+    const { readUsage, sumUsage } = await import('../services/ai/aiUsageMetadata.js')
+
+    const total = sumUsage(readUsage(RESPUESTA_REAL), readUsage(RESPUESTA_REAL))
+
+    expect(total.thinkingTokens).toBe(924)
+    expect(total.outputTokens).toBe(1698)
+    expect(total.totalTokens).toBe(1820)
+    expect(total.serviceTier).toBe('standard')
+  })
+
+  test('el costo sube lo que el razonamiento vale', () => {
+    // gemini-3.6-flash está fuera del catálogo, así que cae en la tarifa tope
+    // (1,5 / 9,0). El punto no es el número exacto: es que 462 tokens de
+    // salida no pueden costar cero.
+    const sinPensar = computeCostUsd({
+      model: 'gemini-3.6-flash',
+      inputTokens: 61,
+      outputTokens: 387,
+      totalTokens: 448,
+    })
+
+    const conPensar = computeCostUsd({
+      model: 'gemini-3.6-flash',
+      inputTokens: 61,
+      outputTokens: 387 + 462,
+      totalTokens: 910,
+    })
+
+    expect(conPensar.costUsd).toBeGreaterThan(sinPensar.costUsd)
+
+    const precio = getModelPrice('gemini-3.6-flash')
+    expect(conPensar.costUsd - sinPensar.costUsd).toBeCloseTo(
+      (462 * precio.output) / 1e6,
+      6,
+    )
+  })
+
+  test('el remanente que el proveedor no desglosa se cobra, y como salida', () => {
+    // La red para el PRÓXIMO campo, sea cual sea su nombre: si el total dice
+    // más de lo que el desglose explica, la diferencia no se evapora.
+    const r = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 61,
+      outputTokens: 387,
+      totalTokens: 910,
+    })
+
+    expect(r.residualTokens).toBe(462)
+    expect(r.outputTokens).toBe(387 + 462)
+    expect(r.totalTokens).toBe(910)
+    // No es un costo repartido: los tokens vinieron medidos.
+    expect(r.estimated).toBe(false)
+  })
+
+  test('un desglose consistente no inventa remanente', () => {
+    const r = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 61,
+      outputTokens: 388,
+      totalTokens: 449,
+    })
+
+    expect(r.residualTokens).toBe(0)
+    expect(r.outputTokens).toBe(388)
+  })
+
+  test('un total menor que el desglose no descuenta nada', () => {
+    // El total manda solo hacia arriba. Si viniera más chico que la suma, el
+    // dato roto es el total, y restar salida sería cobrar de menos otra vez.
+    const r = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 1000,
+      outputTokens: 1000,
+      totalTokens: 500,
+    })
+
+    expect(r.residualTokens).toBe(0)
+    expect(r.outputTokens).toBe(1000)
+  })
+
+  test('el remanente se avisa en vez de quedar como columna en cero', () => {
+    const fuente = fs.readFileSync(
+      path.join(SRC, 'services/ai/aiBudgetService.js'),
+      'utf8',
+    )
+
+    expect(fuente).toContain('[AI PRICING] El proveedor cobró tokens que no desglosó')
+  })
+
+  test('UN SOLO archivo lee el desglose del proveedor', () => {
+    // Esta es la causa raíz, no el síntoma. candidatesTokenCount se leía a
+    // mano en cuatro archivos además del lector: aiVisionService,
+    // aiAgentBrainService (dos veces) y pricingAiService. Agregar un campo
+    // medido obligaba a tocar cinco lugares, así que no se agregaba — y
+    // thoughtsTokenCount quedó afuera desde el día que Google lo publicó.
+    const culpables = []
+
+    for (const archivo of archivosDeCodigo()) {
+      if (archivo.endsWith('aiUsageMetadata.js')) continue
+
+      const codigo = sinComentarios(fs.readFileSync(archivo, 'utf8'))
+
+      if (/candidatesTokenCount|thoughtsTokenCount|cachedContentTokenCount/.test(codigo)) {
+        culpables.push(path.relative(process.cwd(), archivo))
+      }
+    }
+
+    expect(culpables).toEqual([])
+  })
+})

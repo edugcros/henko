@@ -98,10 +98,9 @@ export const generateProductSocialContent = expressAsyncHandler(async (req, res)
       metric: AI_METRICS.AGENT_TOKENS,
       amount: result.tokensUsed,
       model: result.model,
-      // El desglose medido: sin él el costo se reparte con una proporción
-      // supuesta, y la salida cuesta cinco veces la entrada.
-      inputTokens: result.usage?.inputTokens ?? null,
-      outputTokens: result.usage?.outputTokens ?? null,
+      // El desglose medido, entero. Desarmarlo acá era lo que hacía que un
+      // campo nuevo del proveedor —los tokens de pensamiento— no llegara.
+      usage: result.usage,
     })
   }
 

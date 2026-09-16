@@ -73,10 +73,76 @@ const aiProviderCallSchema = new mongoose.Schema(
     actualModel: { type: String, trim: true, default: null, index: true },
 
     inputTokens: { type: Number, default: null, min: 0 },
+
+    /**
+     * Salida FACTURABLE: el texto visible más lo que el modelo razonó.
+     *
+     * No es candidatesTokenCount. Esa clave cuenta solo lo que se ve, y el
+     * razonamiento viaja en thoughtsTokenCount, que Google cobra a tarifa de
+     * salida igual. Medido en producción, contarlo de menos escondía 23.836
+     * tokens y el 21,2% del costo histórico. Ver aiUsageMetadata.js.
+     */
     outputTokens: { type: Number, default: null, min: 0 },
+
+    /**
+     * Cuánto de esa salida fue razonamiento y no texto entregado.
+     *
+     * No cambia el precio —se cobra al mismo ritmo que el resto de la salida—
+     * pero es lo único que explica una fila con 111 tokens de respuesta y 1.196
+     * de salida. Sin este campo, esa fila parece un error de carga.
+     *
+     * También es la palanca: si sube de golpe, se baja con thinkingBudget.
+     */
+    thinkingTokens: { type: Number, default: null, min: 0 },
+
+    /**
+     * Entrada servida desde la caché de contexto, que se factura con descuento.
+     *
+     * Hoy es SIEMPRE null: HENKO no usa caché de contexto y la API ni siquiera
+     * devuelve la clave —verificado contra generateContent—. Se guarda porque
+     * sale del mismo objeto que ya se lee y el día que se active, cobrarla como
+     * entrada plena sería el mismo error que este commit corrige, al revés.
+     */
+    cachedInputTokens: { type: Number, default: null, min: 0 },
+
     totalTokens: { type: Number, default: null, min: 0 },
 
+    /**
+     * Nivel de servicio con el que el proveedor atendió: 'standard', 'flex'…
+     *
+     * Viene en toda respuesta de Gemini (medido) y decide tarifa. Hoy es
+     * siempre 'standard', y por eso mismo sirve: el día que una llamada salga
+     * en otro nivel, esta columna lo dice en vez de que aparezca en la factura.
+     */
+    serviceTier: { type: String, trim: true, default: null },
+
     costUsd: { type: Number, default: 0, min: 0 },
+
+    /**
+     * La tarifa que se APLICÓ, congelada en la fila.
+     *
+     * Acá iba a ir un `pricingVersion`. Un número de versión solo sirve si
+     * alguien se acuerda de subirlo, y el catálogo no tiene versiones: tiene
+     * ventanas de vigencia por modelo. Guardar la tarifa efectiva contesta la
+     * misma pregunta —"¿con qué precio se calculó esto?"— sin depender de que
+     * nadie se olvide, y deja la fila verificable sola: costUsd tiene que dar
+     * con estos dos números y estos tokens.
+     *
+     * Mismos nombres que el ledger, para que las dos colecciones se lean igual.
+     */
+    priceInputPerMillion: { type: Number, default: null, min: 0 },
+    priceOutputPerMillion: { type: Number, default: null, min: 0 },
+
+    /** true si el modelo no está en el catálogo y se cobró con la tarifa tope. */
+    priceFallback: { type: Boolean, default: false },
+
+    /**
+     * true cuando el proveedor NO desglosó y hubo que repartir el total con una
+     * proporción supuesta (80/20). Distinto de priceFallback —ahí falta el
+     * precio, acá faltan los tokens— y distinto de pricingFallback, que es que
+     * falta el modelo.
+     */
+    costEstimated: { type: Boolean, default: false },
 
     /**
      * true cuando el costo se calculó con un modelo ADIVINADO.

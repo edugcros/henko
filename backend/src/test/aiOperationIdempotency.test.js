@@ -603,4 +603,55 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
     expect(llamada.totalTokens).toBe(2500)
     expect(llamada.costUsd).toBeGreaterThan(0)
   })
+
+  test('la fila guarda el razonamiento y la tarifa con la que se cobró', async () => {
+    // El usageMetadata REAL de gemini-3.6-flash, medido contra la API.
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+    const period = '2032-06'
+    const operationId = 'llamada-con-pensamiento'
+
+    const usage = readUsage({
+      model: 'gemini-3.1-flash-lite',
+      usageMetadata: {
+        promptTokenCount: 61,
+        candidatesTokenCount: 387,
+        thoughtsTokenCount: 462,
+        totalTokenCount: 910,
+        serviceTier: 'standard',
+      },
+    })
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: usage.totalTokens,
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'gemini',
+      usage,
+    })
+    await asentar()
+
+    const llamada = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    // La salida facturable incluye lo que el modelo razonó.
+    expect(llamada.outputTokens).toBe(387 + 462)
+    expect(llamada.thinkingTokens).toBe(462)
+    expect(llamada.serviceTier).toBe('standard')
+    expect(llamada.cachedInputTokens).toBeNull()
+
+    // La fila se verifica sola: costo = tokens × tarifa guardada.
+    expect(llamada.priceInputPerMillion).toBeGreaterThan(0)
+    expect(llamada.priceOutputPerMillion).toBeGreaterThan(0)
+    expect(llamada.costEstimated).toBe(false)
+    expect(llamada.costUsd).toBeCloseTo(
+      (llamada.inputTokens * llamada.priceInputPerMillion +
+        llamada.outputTokens * llamada.priceOutputPerMillion) /
+        1e6,
+      6,
+    )
+  })
 })

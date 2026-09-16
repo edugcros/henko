@@ -234,6 +234,26 @@ export const computeCostUsd = ({
   input = Math.max(0, input)
   output = Math.max(0, output)
 
+  // RED DE SEGURIDAD: el total manda sobre la suma del desglose.
+  //
+  // Así se descubrió que los tokens de pensamiento no se contaban: 40 filas de
+  // producción tenían totalTokenCount mayor que promptTokenCount +
+  // candidatesTokenCount, porque thoughtsTokenCount viajaba en una clave que
+  // nadie leía. 23.836 tokens desaparecidos, 21,2% del costo histórico.
+  //
+  // aiUsageMetadata.js ya cierra ESE hueco por nombre. Esto cierra el próximo,
+  // sea cual sea la clave que Google agregue: si el proveedor dice que el total
+  // es mayor que lo que desglosó, el remanente se cobra, y se cobra como
+  // SALIDA. No es arbitrario — es la categoría cara, y equivocarse hacia
+  // abajo en el costo propio es el error que no se nota hasta la factura.
+  const declaredTotal = Number(totalTokens)
+  const residualTokens =
+    hasDetail && Number.isFinite(declaredTotal) && declaredTotal > input + output
+      ? declaredTotal - input - output
+      : 0
+
+  output += residualTokens
+
   const costUsd = (input * price.input + output * price.output) / M
 
   return {
@@ -241,6 +261,10 @@ export const computeCostUsd = ({
     inputTokens: input,
     outputTokens: output,
     totalTokens: input + output,
+    // Tokens que el proveedor cobró y no desglosó. Distinto de `estimated`:
+    // acá el desglose vino, pero incompleto. Un valor > 0 sostenido es un
+    // campo nuevo del proveedor que conviene leer por su nombre.
+    residualTokens,
     price,
     estimated,
   }

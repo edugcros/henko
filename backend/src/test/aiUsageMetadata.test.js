@@ -18,10 +18,18 @@ const respuesta = (prompt, candidates, total, model = "gemini-3.6-flash") => ({
 
 describe("readUsage", () => {
   test("lee entrada, salida y modelo", () => {
+    // La forma se afirma ENTERA a propósito: si un campo medido desaparece,
+    // este test lo dice. Fue exactamente lo contrario —un campo del proveedor
+    // que nunca se leyó, thoughtsTokenCount— lo que escondió el 21,2% del
+    // costo durante meses.
     expect(readUsage(respuesta(3900, 1000, 4900))).toEqual({
       inputTokens: 3900,
       outputTokens: 1000,
+      visibleTokens: 1000,
+      thinkingTokens: null,
+      cachedInputTokens: null,
       totalTokens: 4900,
+      serviceTier: null,
       model: "gemini-3.6-flash",
     });
   });
@@ -69,7 +77,11 @@ describe("sumUsage", () => {
     expect(total).toEqual({
       inputTokens: 1500,
       outputTokens: 500,
+      visibleTokens: 500,
+      thinkingTokens: null,
+      cachedInputTokens: null,
       totalTokens: 2000,
+      serviceTier: null,
       model: "gemini-3.6-flash",
     });
   });
