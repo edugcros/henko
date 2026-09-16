@@ -44,8 +44,36 @@ const num = (name, fallback) => {
 
 const MAX_OFFERS = num('SHOPPING_MAX_OFFERS', 40)
 
-/** Debajo de esto la mediana describe anécdotas y vale gastar otro crédito. */
-const MIN_SAMPLE_FOR_RETRY = num('SHOPPING_MIN_SAMPLE', 3)
+/**
+ * Cuándo vale la pena gastar el segundo crédito de búsqueda.
+ *
+ * ERA 3 —"debajo de esto la mediana describe anécdotas"— Y LA INTENCIÓN ESTABA
+ * BIEN, PERO EL REINTENTO NO LA CUMPLÍA.
+ *
+ * Medido sobre 16 productos, con el gasto de herramientas ya contabilizado:
+ *
+ *   ofertas de la búsqueda abierta   reintentos   ganaron algo
+ *   0                                    4            1  (+7 ofertas)
+ *   1                                    4            0
+ *
+ * Todo reintento que sirvió partía de CERO. Los cuatro que partían de una
+ * oferta ganaron nada: el filtro de país no busca en otro lado, filtra el
+ * mismo índice, así que si la consulta abierta encontró una sola cosa, la
+ * filtrada encuentra esa misma o ninguna.
+ *
+ * O sea que con el umbral en 3, la mitad de los reintentos eran crédito tirado
+ * — y el caso que justifica la función (una consulta que no devuelve NADA y el
+ * filtro de país rescata con siete precios) se sigue cubriendo igual con el
+ * umbral en 1.
+ *
+ * El ahorro: la mitad de los créditos de reintento, sin perder una sola
+ * oferta. Sobre el consumo medido —4 créditos por análisis— eso es medio
+ * crédito menos en los análisis que hoy reintentan.
+ *
+ * Sigue siendo configurable: subirlo vuelve al comportamiento de antes si
+ * alguna vez la medición cambia.
+ */
+const MIN_SAMPLE_FOR_RETRY = num('SHOPPING_MIN_SAMPLE', 1)
 
 /** Muestra mínima para que el descarte de atípicos signifique algo. */
 const MIN_SAMPLE_FOR_OUTLIERS = num('SHOPPING_MIN_SAMPLE_OUTLIERS', 5)
@@ -230,8 +258,10 @@ const ADAPTERS = {
 
       let ofertas = normalizeTavilyResults(soloLocales(abiertos), locale, product, brand)
 
-      // Con dos precios o menos no hay mediana que valga. Ahí sí se gasta el
-      // segundo crédito en el filtro de país, que es el que a veces trae doce.
+      // Solo si la búsqueda abierta no trajo NADA. Ver MIN_SAMPLE_FOR_RETRY:
+      // reintentar con una oferta encontrada no agregó ninguna en 4 de 4
+      // casos medidos, porque el filtro de país recorta el mismo índice en vez
+      // de buscar en otro.
       if (ofertas.length < MIN_SAMPLE_FOR_RETRY && pais) {
         const conPais = await buscar({ country: pais })
         ofertas = mergeOffers(
