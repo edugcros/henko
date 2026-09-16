@@ -145,6 +145,32 @@ const aiProviderCallSchema = new mongoose.Schema(
     priceFallback: { type: Boolean, default: false },
 
     /**
+     * Qué catálogo produjo este costo. Ej.: 'google-gemini-2026-09+dcf9cbfa'.
+     *
+     * Las tarifas de arriba ya contestan "cuánto costó ESTA fila". Esto
+     * contesta otra pregunta: "qué tabla estaba activa", que es lo que permite
+     * agarrar un grupo entero de filas y decir si un deploy cambió el costeo —
+     * incluso en las métricas donde la tarifa no se guarda.
+     *
+     * Lleva un hash del contenido del catálogo pegado a la etiqueta legible a
+     * propósito: una versión que hay que subir a mano solo sirve mientras
+     * alguien se acuerde. Si se corrige una tarifa y se olvida la etiqueta, el
+     * hash cambia igual y las filas quedan distinguibles.
+     */
+    pricingVersion: { type: String, trim: true, default: null, index: true },
+
+    /**
+     * El multiplicador de tier que se APLICÓ: 1 standard, 0,5 batch y flex,
+     * 1,8 priority.
+     *
+     * Es distinto de serviceTier, que es lo que INFORMÓ el proveedor. Cuando
+     * el tier es desconocido se costea como standard, y entonces serviceTier
+     * dice una cosa y el multiplicador otra — sin este campo esa fila parece
+     * mal calculada, y en realidad está bien calculada con el dato que había.
+     */
+    tierMultiplier: { type: Number, default: null, min: 0 },
+
+    /**
      * true cuando el proveedor NO desglosó y hubo que repartir el total con una
      * proporción supuesta. Distinto de priceFallback —ahí falta el precio, acá
      * faltan los tokens— y distinto de pricingFallback, que es que falta el

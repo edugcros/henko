@@ -15,6 +15,8 @@
 // Verificado contra ai.google.dev/gemini-api/docs/pricing el 07/09/2026.
 // Los precios son USD por millón de tokens.
 
+import crypto from 'node:crypto'
+
 import logger from '../../../config/logger.js'
 
 const M = 1_000_000
@@ -497,20 +499,27 @@ const warnedModels = new Set()
  * @param {Date} [at=new Date()] - fecha del consumo, no del cálculo
  * @returns {{input:number, output:number, fallback?:boolean, model:string}}
  */
-export const getModelPrice = (model, at = new Date()) => {
+export const getModelPrice = (model, at = new Date(), serviceTier = null) => {
   const name = normalize(model)
   const when = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date()
+
+  // El nivel de servicio multiplica TODA la tarifa —entrada, salida y caché—
+  // así que se aplica acá y no en cada uso, donde habría que acordarse tres
+  // veces. Ver TIER_MULTIPLIER.
+  const { tier, multiplier } = getTierMultiplier(serviceTier)
 
   const entry = CATALOG.find(e => e.models.includes(name) && inWindow(e, when))
 
   if (entry) {
     return {
       model: name,
-      input: entry.input,
-      output: entry.output,
+      tier,
+      tierMultiplier: multiplier,
+      input: entry.input * multiplier,
+      output: entry.output * multiplier,
       // Por modelo si alguna vez Google rompe la regla del 10%; derivada
       // mientras tanto, para no repetir el mismo número siete veces.
-      cachedInput: entry.cachedInput ?? entry.input * CACHED_INPUT_RATIO,
+      cachedInput: (entry.cachedInput ?? entry.input * CACHED_INPUT_RATIO) * multiplier,
     }
   }
 
@@ -527,10 +536,113 @@ export const getModelPrice = (model, at = new Date()) => {
 
   return {
     model: name,
-    ...FALLBACK,
-    cachedInput: FALLBACK.input * CACHED_INPUT_RATIO,
+    tier,
+    tierMultiplier: multiplier,
+    fallback: true,
+    input: FALLBACK.input * multiplier,
+    output: FALLBACK.output * multiplier,
+    cachedInput: FALLBACK.input * CACHED_INPUT_RATIO * multiplier,
   }
 }
+
+
+/**
+ * El nivel de servicio MULTIPLICA la tarifa, y por mucho.
+ *
+ * Tomado de la tabla de precios de Google, sobre gemini-3.8-flash:
+ *
+ *   standard   0,75 / 3,75    1,0x
+ *   batch      0,375 / 1,875  0,5x
+ *   flex       0,375 / 1,875  0,5x
+ *   priority   1,35 / 6,75    1,8x
+ *
+ * El campo `serviceTier` ya se guardaba en cada fila —viene en toda respuesta
+ * de Gemini— pero el catálogo no lo miraba, así que todo se costeaba a tarifa
+ * standard. Una llamada que volviera en 'flex' se cobraba al DOBLE de lo que
+ * cuesta, y una en 'priority' al 55% de lo que cuesta.
+ *
+ * Hoy todas las respuestas medidas dicen 'standard', así que no hay error
+ * vivo. Pero el campo existe justamente porque eso puede cambiar sin aviso —
+ * activar Batch para un trabajo pesado es una decisión de una línea— y un
+ * costeo que ignora el tier convierte un ahorro del 50% en un número que no
+ * se mueve.
+ *
+ * Un tier desconocido se costea como standard: es el multiplicador más alto
+ * de los dos baratos y el más bajo del caro, o sea el que menos se equivoca
+ * en cualquier dirección. Y sale por log una vez, para que se note.
+ */
+const TIER_MULTIPLIER = Object.freeze({
+  standard: 1,
+  batch: 0.5,
+  flex: 0.5,
+  priority: 1.8,
+})
+
+const warnedTiers = new Set()
+
+/**
+ * Cuánto multiplica la tarifa un nivel de servicio.
+ *
+ * @param {string} [tier]
+ * @returns {{tier:string, multiplier:number, known:boolean}}
+ */
+export const getTierMultiplier = tier => {
+  const name = String(tier || 'standard').trim().toLowerCase() || 'standard'
+  const multiplier = TIER_MULTIPLIER[name]
+
+  if (multiplier !== undefined) return { tier: name, multiplier, known: true }
+
+  if (!warnedTiers.has(name)) {
+    warnedTiers.add(name)
+    logger.warn('[AI PRICING] Nivel de servicio desconocido, se costea como standard', {
+      serviceTier: name,
+      conocidos: Object.keys(TIER_MULTIPLIER).join(', '),
+    })
+  }
+
+  return { tier: name, multiplier: 1, known: false }
+}
+
+/**
+ * Identifica el catálogo con el que se calculó un costo.
+ *
+ * POR QUÉ NO ES SOLO UNA CONSTANTE ESCRITA A MANO.
+ *
+ * La etiqueta legible —'google-gemini-2026-09'— dice de qué tabla de precios
+ * se trata y es lo que uno quiere leer. Pero una versión que hay que subir a
+ * mano solo sirve mientras alguien se acuerde, y ese fue el motivo por el que
+ * esto no se hizo en el Bloque 5.
+ *
+ * Por eso la versión lleva pegado un hash del CONTENIDO de los catálogos. Si
+ * alguien corrige una tarifa y se olvida de tocar la etiqueta, el hash cambia
+ * igual y las filas de antes y de después quedan distinguibles. La etiqueta
+ * explica, el hash garantiza.
+ *
+ * Qué agrega sobre las tarifas ya congeladas en cada fila: esas contestan
+ * "cuánto costó ESTA fila". La versión contesta "qué tabla estaba activa",
+ * que es lo que permite agarrar un grupo entero de filas y decir si un deploy
+ * cambió el costeo — incluso en las métricas donde la tarifa no se guarda.
+ */
+const PRICING_LABEL = 'google-gemini-2026-09'
+
+const hashDelCatalogo = () =>
+  crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify({
+        modelos: CATALOG,
+        herramientas: TOOL_CATALOG,
+        imagen: IMAGE_CATALOG,
+        tiers: TIER_MULTIPLIER,
+        cacheRatio: CACHED_INPUT_RATIO,
+        fallback: FALLBACK,
+      }),
+    )
+    .digest('hex')
+    .slice(0, 8)
+
+/** Ej.: 'google-gemini-2026-09+1a2b3c4d'. Se calcula una vez por proceso. */
+export const PRICING_VERSION = `${PRICING_LABEL}+${hashDelCatalogo()}`
 
 /**
  * Costo en USD de un consumo, con el desglose que lo justifica.
@@ -551,6 +663,8 @@ export const computeCostUsd = ({
   // Parte de inputTokens —no se suma aparte— que vino de caché y se cobra al
   // 10%. Ver CACHED_INPUT_RATIO.
   cachedInputTokens = null,
+  // 'standard' | 'batch' | 'flex' | 'priority'. Multiplica toda la tarifa.
+  serviceTier = null,
   totalTokens = null,
   at = new Date(),
   // De qué feature es el consumo. Solo se usa si hay que estimar, y ahí decide
@@ -559,7 +673,7 @@ export const computeCostUsd = ({
   // El llamador puede imponer una, pero por defecto manda la medición.
   assumedInputRatio = null,
 } = {}) => {
-  const price = getModelPrice(model, at)
+  const price = getModelPrice(model, at, serviceTier)
 
   let input = Number(inputTokens)
   let output = Number(outputTokens)
@@ -642,6 +756,8 @@ export const computeCostUsd = ({
     // campo nuevo del proveedor que conviene leer por su nombre.
     residualTokens,
     price,
+    // Qué catálogo produjo este número. Ver PRICING_VERSION.
+    pricingVersion: PRICING_VERSION,
     estimated,
     // Con qué proporción se repartió, y de dónde salió. null cuando no hubo
     // que repartir, que es como debería ser siempre.

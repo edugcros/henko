@@ -16,6 +16,8 @@
 // Contra base real donde se prueba el candado, porque la idempotencia ES un
 // índice único de Mongo: con un mock se probaría el mock.
 
+import fs from 'node:fs'
+import path from 'node:path'
 import mongoose from 'mongoose'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 
@@ -32,6 +34,8 @@ const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageMode
 const { recordToolSpend, recordTokenSpend, recordAiConsumption, AI_METRICS } = await import(
   '../services/ai/aiBudgetService.js'
 )
+
+const SRC = path.resolve('src')
 
 const TENANT = '64b7f0000000000000000077'
 
@@ -409,5 +413,172 @@ describe('grounding de Google · se cuenta y se cobra solo', () => {
 
     expect(filas).toHaveLength(1)
     expect(filas[0].tool).toBeNull()
+  })
+})
+
+describe('nivel de servicio · el tier multiplica la tarifa', () => {
+  test('los multiplicadores son los de la tabla de Google', async () => {
+    const { computeCostUsd } = await import('../services/ai/aiModelPricing.js')
+
+    // gemini-3.8-flash, 1M de entrada y 1M de salida:
+    //   standard  0,75 / 3,75   x1,0  -> 4,50
+    //   batch     0,375/1,875   x0,5  -> 2,25
+    //   flex      0,375/1,875   x0,5  -> 2,25
+    //   priority  1,35 / 6,75   x1,8  -> 8,10
+    const porTier = tier =>
+      computeCostUsd({
+        model: 'gemini-3.8-flash',
+        inputTokens: 1_000_000,
+        outputTokens: 1_000_000,
+        serviceTier: tier,
+      })
+
+    expect(porTier('standard').costUsd).toBeCloseTo(4.5, 6)
+    expect(porTier('batch').costUsd).toBeCloseTo(2.25, 6)
+    expect(porTier('flex').costUsd).toBeCloseTo(2.25, 6)
+    expect(porTier('priority').costUsd).toBeCloseTo(8.1, 6)
+  })
+
+  test('sin tier informado se costea como standard, igual que antes', async () => {
+    // La red de compatibilidad: toda fila historica se calculo sin tier y
+    // tiene que seguir dando lo mismo.
+    const { computeCostUsd } = await import('../services/ai/aiModelPricing.js')
+
+    const sinTier = computeCostUsd({
+      model: 'gemini-3.8-flash', inputTokens: 1_000_000, outputTokens: 1_000_000,
+    })
+    const standard = computeCostUsd({
+      model: 'gemini-3.8-flash', inputTokens: 1_000_000, outputTokens: 1_000_000,
+      serviceTier: 'standard',
+    })
+
+    expect(sinTier.costUsd).toBe(standard.costUsd)
+    expect(sinTier.price.tierMultiplier).toBe(1)
+  })
+
+  test('un tier desconocido se costea como standard Y deja marca', async () => {
+    // Se elige standard porque es el que menos se equivoca en cualquier
+    // direccion: esta arriba de batch/flex y abajo de priority. Y la fila
+    // guarda el multiplicador aplicado, para que se vea que serviceTier decia
+    // una cosa y el costeo hizo otra.
+    const { computeCostUsd } = await import('../services/ai/aiModelPricing.js')
+
+    const r = computeCostUsd({
+      model: 'gemini-3.8-flash', inputTokens: 1_000_000, outputTokens: 1_000_000,
+      serviceTier: 'turbo-premium-inventado',
+    })
+
+    expect(r.costUsd).toBeCloseTo(4.5, 6)
+    expect(r.price.tierMultiplier).toBe(1)
+    expect(r.price.tier).toBe('turbo-premium-inventado')
+  })
+
+  test('el caché tambien se multiplica, no solo entrada y salida', async () => {
+    // Si el tier se aplicara solo a dos de las tres tarifas, un trabajo en
+    // batch con mucho cache saldria mal por la parte que no se multiplico.
+    const { getModelPrice } = await import('../services/ai/aiModelPricing.js')
+
+    const std = getModelPrice('gemini-3.8-flash')
+    const batch = getModelPrice('gemini-3.8-flash', new Date(), 'batch')
+
+    expect(batch.input).toBeCloseTo(std.input * 0.5, 8)
+    expect(batch.output).toBeCloseTo(std.output * 0.5, 8)
+    expect(batch.cachedInput).toBeCloseTo(std.cachedInput * 0.5, 8)
+  })
+
+  test('la fila guarda el tier informado Y el multiplicador aplicado', async () => {
+    const period = '2033-09'
+    const operationId = 'con-tier'
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 10000,
+      model: 'gemini-3.8-flash',
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'gemini',
+      usage: {
+        inputTokens: 8000, outputTokens: 2000, totalTokens: 10000,
+        serviceTier: 'batch',
+      },
+    })
+    await asentar()
+
+    const fila = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(fila.serviceTier).toBe('batch')
+    expect(fila.tierMultiplier).toBe(0.5)
+
+    // Y la tarifa congelada YA tiene el multiplicador adentro, asi que la fila
+    // se sigue verificando sola.
+    expect(fila.priceInputPerMillion).toBeCloseTo(0.375, 6)
+    expect(fila.costUsd).toBeCloseTo(
+      (fila.inputTokens * fila.priceInputPerMillion +
+        fila.outputTokens * fila.priceOutputPerMillion) / 1e6,
+      6,
+    )
+  })
+})
+
+describe('version del catalogo · reconstruir que tabla estaba activa', () => {
+  test('lleva etiqueta legible y hash del contenido', async () => {
+    const { PRICING_VERSION } = await import('../services/ai/aiModelPricing.js')
+
+    const [etiqueta, hash] = PRICING_VERSION.split('+')
+    expect(etiqueta).toBe('google-gemini-2026-09')
+    expect(hash).toHaveLength(8)
+    expect(Number.isNaN(parseInt(hash, 16))).toBe(false)
+  })
+
+  test('el hash cambia si cambia el catalogo, sin que nadie suba la etiqueta', async () => {
+    // ESTE ES EL PUNTO. Una version que hay que subir a mano solo sirve
+    // mientras alguien se acuerde, y ese fue el motivo por el que esto no se
+    // hizo antes. El hash del contenido la vuelve confiable: si se corrige una
+    // tarifa y se olvida la etiqueta, las filas quedan distinguibles igual.
+    const fuente = fs.readFileSync(
+      path.join(SRC, 'services/ai/aiModelPricing.js'),
+      'utf8',
+    )
+
+    const bloque = fuente.slice(
+      fuente.indexOf('const hashDelCatalogo'),
+      fuente.indexOf('export const PRICING_VERSION'),
+    )
+
+    // El hash se calcula sobre el CONTENIDO de los catalogos, no sobre una
+    // constante: si alguno de estos deja de entrar, deja de detectar cambios.
+    expect(bloque).toContain('CATALOG')
+    expect(bloque).toContain('TOOL_CATALOG')
+    expect(bloque).toContain('IMAGE_CATALOG')
+    expect(bloque).toContain('TIER_MULTIPLIER')
+  })
+
+  test('queda congelada en la fila', async () => {
+    const { PRICING_VERSION } = await import('../services/ai/aiModelPricing.js')
+    const period = '2033-10'
+    const operationId = 'con-version'
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 5000,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'gemini',
+      usage: { inputTokens: 4000, outputTokens: 1000, totalTokens: 5000 },
+    })
+    await asentar()
+
+    const fila = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(fila.pricingVersion).toBe(PRICING_VERSION)
   })
 })

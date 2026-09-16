@@ -389,6 +389,12 @@ const claimConsumption = async ({
       priceInputPerMillion: breakdown?.price?.input ?? null,
       priceOutputPerMillion: breakdown?.price?.output ?? null,
       priceFallback: Boolean(breakdown?.price?.fallback),
+      // Con qué catálogo se calculó. Ver PRICING_VERSION en aiModelPricing.js.
+      pricingVersion: breakdown?.pricingVersion ?? null,
+      // El multiplicador que se APLICÓ. `serviceTier` de arriba es lo que
+      // INFORMÓ el proveedor; esto es lo que el costeo hizo con esa
+      // información, y son dos cosas distintas cuando el tier es desconocido.
+      tierMultiplier: breakdown?.price?.tierMultiplier ?? null,
       costEstimated: Boolean(breakdown?.estimated),
       // Con qué proporción se repartió y de qué nivel salió, para que una fila
       // estimada se pueda auditar sin reconstruir la tabla de aquel día.
@@ -1842,6 +1848,10 @@ export const recordAiConsumption = async ({
       outputTokens,
       // Al 10% de la entrada, y viene sin pedirlo: Gemini cachea implícito.
       cachedInputTokens: usage?.cachedInputTokens ?? null,
+      // El nivel de servicio MULTIPLICA la tarifa: batch y flex valen la
+      // mitad, priority 1,8 veces. Sin pasarlo, un trabajo en batch se
+      // cobraría al DOBLE de lo que cuesta.
+      serviceTier: usage?.serviceTier ?? null,
       totalTokens: normalizedAmount,
       // Si hay que repartir, con la proporcion medida de ESTA feature. El 0,8
       // global se equivocaba en todas: el agente mide 0,988.
@@ -2133,6 +2143,7 @@ export const recordTokenSpend = async ({
     inputTokens,
     outputTokens,
     cachedInputTokens: usage?.cachedInputTokens ?? null,
+    serviceTier: usage?.serviceTier ?? null,
     totalTokens,
     metric: normalizedMetric,
   })
