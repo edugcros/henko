@@ -30,6 +30,8 @@ describe("readUsage", () => {
       cachedInputTokens: null,
       totalTokens: 4900,
       serviceTier: null,
+      // Cero y no null: es un conteo, y "no hubo busquedas" es 0.
+      groundingQueries: 0,
       model: "gemini-3.6-flash",
     });
   });

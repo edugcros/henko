@@ -103,16 +103,81 @@ const CATALOG = [
  * Lleva vigencia por el mismo motivo que los modelos: corregir una tarifa
  * hacia adelante no puede reescribir lo que costó el mes pasado.
  */
+/**
+ * Familias de herramientas.
+ *
+ * POR QUÉ UNA FAMILIA Y NO UN CAMPO POR HERRAMIENTA.
+ *
+ * El pedido era una estructura tipo toolCost.googleSearch / .maps /
+ * .grounding / .function, con la consigna correcta al lado: "no agregar
+ * campos aislados cada vez que aparece una nueva herramienta".
+ *
+ * Esa consigna es justo la que rompe esa estructura: cada herramienta nueva
+ * sería una clave nueva —o sea, un campo aislado— más una migración, más cada
+ * consulta del reporte tocada. Por eso la herramienta viaja como VALOR y no
+ * como campo: `tool: 'tavily_search'`. Sumar una es agregar una fila a este
+ * catálogo y nada más; el esquema, el reporte y la reconciliación no se
+ * enteran.
+ *
+ * Lo que sí faltaba de ese pedido, y es lo que aporta, es poder agrupar sin
+ * enumerar nombres: "cuánto se fue en buscar" no debería obligar a acordarse
+ * de que existen tavily_search y google_search. Para eso está la familia.
+ *
+ * Las familias describen QUÉ HACE la herramienta, no quién la vende: el día
+ * que se cambie de proveedor de búsqueda, la serie histórica sigue siendo
+ * comparable.
+ */
+export const TOOL_FAMILY = Object.freeze({
+  WEB_SEARCH: 'webSearch',
+  CONTENT_EXTRACTION: 'contentExtraction',
+  MAPS: 'maps',
+  FUNCTION_CALLING: 'functionCalling',
+  OTHER: 'other',
+})
+
 const TOOL_CATALOG = [
   // Tavily — https://docs.tavily.com/documentation/api-credits
   // La unidad es el CRÉDITO, no la llamada: una búsqueda basic gasta 1, una
   // advanced 2, y una extracción 1 cada 5 URLs resueltas. Quien llama cuenta
   // los créditos; acá solo se los pone precio.
-  { tools: ['tavily_search', 'tavily_extract'], from: null, until: null, unitCostUsd: 0.008 },
+  {
+    tools: ['tavily_search'],
+    family: TOOL_FAMILY.WEB_SEARCH,
+    from: null,
+    until: null,
+    unitCostUsd: 0.008,
+  },
+  {
+    tools: ['tavily_extract'],
+    family: TOOL_FAMILY.CONTENT_EXTRACTION,
+    from: null,
+    until: null,
+    unitCostUsd: 0.008,
+  },
 
-  // Google Search grounding. USD 35 por 1.000 consultas = 0,035 cada una,
-  // después de las 1.500 gratis por día. Hoy la cantidad es siempre cero.
-  { tools: ['google_search'], from: null, until: null, unitCostUsd: 0.035 },
+  /**
+   * Google Search grounding. USD 35 por 1.000 consultas = 0,035 cada una.
+   *
+   * LA UNIDAD ES LA CONSULTA, Y ESO CAMBIÓ CON LA GENERACIÓN 3.
+   *
+   * En Gemini 2.5 y anteriores se facturaba POR PROMPT: una request con tres
+   * búsquedas adentro costaba una. Desde la 3 se factura por cada consulta que
+   * el modelo decide ejecutar, y HENKO corre 3.x — así que una sola respuesta
+   * puede costar varias veces esto.
+   *
+   * Hoy la cantidad es siempre cero: el parámetro `tools` de callGemini no lo
+   * pasa ningún llamador. Y no es por olvido — verificado contra la API con la
+   * key de producción HOY, los tres modelos de la cadena devuelven 429 con
+   * `tools` puesto y 200 sin él. El precio queda cargado para el día que eso
+   * cambie, y contarlo ya es automático (ver readUsage).
+   */
+  {
+    tools: ['google_search'],
+    family: TOOL_FAMILY.WEB_SEARCH,
+    from: null,
+    until: null,
+    unitCostUsd: 0.035,
+  },
 ]
 
 /** Tarifa a aplicar si la herramienta no está en el catálogo. */
@@ -133,7 +198,13 @@ export const getToolPrice = (tool, at = new Date()) => {
 
   const entry = TOOL_CATALOG.find(e => e.tools.includes(name) && inWindow(e, when))
 
-  if (entry) return { tool: name, unitCostUsd: entry.unitCostUsd }
+  if (entry) {
+    return {
+      tool: name,
+      family: entry.family || TOOL_FAMILY.OTHER,
+      unitCostUsd: entry.unitCostUsd,
+    }
+  }
 
   if (name && !warnedTools.has(name)) {
     warnedTools.add(name)
@@ -143,7 +214,12 @@ export const getToolPrice = (tool, at = new Date()) => {
     })
   }
 
-  return { tool: name, unitCostUsd: TOOL_FALLBACK_UNIT_COST, fallback: true }
+  return {
+    tool: name,
+    family: TOOL_FAMILY.OTHER,
+    unitCostUsd: TOOL_FALLBACK_UNIT_COST,
+    fallback: true,
+  }
 }
 
 /**
@@ -169,6 +245,9 @@ export const computeToolCostUsd = ({ tool, quantity, at = new Date() } = {}) => 
 
   return {
     tool: price.tool,
+    // Para poder preguntar "cuánto se fue en buscar" sin tener que acordarse
+    // de qué herramientas hacen eso.
+    family: price.family,
     quantity: unidades,
     unitCostUsd: price.unitCostUsd,
     costUsd: Number((unidades * price.unitCostUsd).toFixed(6)),

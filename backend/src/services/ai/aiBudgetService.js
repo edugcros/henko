@@ -395,6 +395,7 @@ const claimConsumption = async ({
       assumedInputRatio: breakdown?.assumedRatio?.ratio ?? null,
       assumedRatioSource: breakdown?.assumedRatio?.source ?? null,
       tool: toolBreakdown?.tool ?? null,
+      toolFamily: toolBreakdown?.family ?? null,
       toolQuantity: toolBreakdown?.quantity ?? null,
       toolUnitCostUsd: toolBreakdown?.unitCostUsd ?? null,
       toolCostUsd: toolBreakdown?.costUsd ?? 0,
@@ -1898,6 +1899,38 @@ export const recordAiConsumption = async ({
       metric: normalizedMetric,
       period,
       error: error.message,
+    })
+  }
+
+  // LAS BÚSQUEDAS DE GROUNDING SE COBRAN APARTE DE LOS TOKENS.
+  //
+  // Van acá y no en cada llamador por el mismo motivo que el desglose: un
+  // costo que depende de que alguien se acuerde de cablearlo es un costo que
+  // no se cobra. readUsage ya cuenta las consultas, así que cualquier llamador
+  // que pase el objeto entero queda cubierto sin tocar su código.
+  //
+  // Hoy nunca entra: `tools` no lo pasa nadie y con él la API devuelve 429 en
+  // toda la cadena. El día que eso cambie, se cobra solo.
+  if (usage?.groundingQueries > 0) {
+    await recordToolSpend({
+      tenantId: id,
+      metric: normalizedMetric,
+      tool: 'google_search',
+      quantity: usage.groundingQueries,
+      profile: aiProfile,
+      period,
+      operationId,
+      // Un callId propio: el grounding es otra llamada de la misma operación y
+      // tiene que convivir con la de tokens sin que el índice único la
+      // descarte como reintento.
+      callId: `${callId}:grounding`,
+      provider,
+    }).catch(error => {
+      logger.warn('[AI BUDGET] No se pudo registrar el costo de grounding', {
+        tenantId: id,
+        queries: usage.groundingQueries,
+        error: error.message,
+      })
     })
   }
 

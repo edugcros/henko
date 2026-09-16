@@ -196,6 +196,24 @@ const aiProviderCallSchema = new mongoose.Schema(
      * todos los agregados que ya lo leen.
      */
     tool: { type: String, trim: true, default: null, index: true },
+
+    /**
+     * Qué CLASE de herramienta, para poder agrupar sin enumerar nombres.
+     *
+     * 'webSearch' | 'contentExtraction' | 'maps' | 'functionCalling' | 'other'
+     *
+     * Describe qué HACE, no quién la vende: el día que se cambie de proveedor
+     * de búsqueda, la serie histórica sigue siendo comparable. Y evita que
+     * "cuánto se fue en buscar" obligue a acordarse de que existen
+     * tavily_search y google_search.
+     *
+     * Es la alternativa a un campo por herramienta (toolCost.googleSearch,
+     * .maps, .grounding…): esa forma convierte cada herramienta nueva en una
+     * migración, que es justo lo que hay que evitar. Acá la herramienta es un
+     * VALOR, así que sumar una es agregar una fila al catálogo y nada más.
+     */
+    toolFamily: { type: String, trim: true, default: null, index: true },
+
     toolQuantity: { type: Number, default: null, min: 0 },
     toolUnitCostUsd: { type: Number, default: null, min: 0 },
     toolCostUsd: { type: Number, default: 0, min: 0 },

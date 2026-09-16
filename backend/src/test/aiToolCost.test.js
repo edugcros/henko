@@ -29,7 +29,7 @@ const { default: AiConsumptionLedger } = await import(
   '../models/aiConsumptionLedgerModel.js'
 )
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
-const { recordToolSpend, recordTokenSpend, AI_METRICS } = await import(
+const { recordToolSpend, recordTokenSpend, recordAiConsumption, AI_METRICS } = await import(
   '../services/ai/aiBudgetService.js'
 )
 
@@ -84,6 +84,9 @@ describe('el precio de una herramienta', () => {
   test('cantidad por tarifa, y nada más', () => {
     expect(computeToolCostUsd({ tool: 'tavily_search', quantity: 1 })).toEqual({
       tool: 'tavily_search',
+      // La familia permite preguntar "cuanto se fue en buscar" sin enumerar
+      // que herramientas hacen eso.
+      family: 'webSearch',
       quantity: 1,
       unitCostUsd: 0.008,
       costUsd: 0.008,
@@ -109,6 +112,10 @@ describe('el precio de una herramienta', () => {
     // tener precio.
     expect(computeToolCostUsd({ tool: 'google_search', quantity: 0 })).toEqual({
       tool: 'google_search',
+      // Misma familia que Tavily: las dos buscan en la web. La familia dice
+      // que HACE la herramienta, no quien la vende, asi que cambiar de
+      // proveedor no parte la serie historica.
+      family: 'webSearch',
       quantity: 0,
       unitCostUsd: 0.035,
       costUsd: 0,
@@ -295,5 +302,112 @@ describe('registrar el consumo de una herramienta', () => {
     expect(fila).not.toBeNull()
     expect(fila.amount).toBe(1)
     expect(fila.costUsd).toBeCloseTo(0.008, 6)
+  })
+})
+
+describe('grounding de Google · se cuenta y se cobra solo', () => {
+  test('readUsage cuenta CADA consulta, no una por respuesta', async () => {
+    // Desde Gemini 3 se factura por cada busqueda que el modelo decide
+    // ejecutar; en 2.5 y anteriores era por prompt. HENKO corre 3.x, asi que
+    // una sola respuesta con tres busquedas cuesta tres.
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+
+    const usage = readUsage({
+      model: 'gemini-3.6-flash',
+      usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 },
+      groundingMetadata: {
+        webSearchQueries: ['precio casco ls2', 'opiniones casco ls2', 'ls2 storm argentina'],
+      },
+    })
+
+    expect(usage.groundingQueries).toBe(3)
+  })
+
+  test('sin grounding, cero: no se inventa una busqueda', async () => {
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+
+    const sinNada = readUsage({
+      usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 },
+    })
+    expect(sinNada.groundingQueries).toBe(0)
+
+    const conMetadataVacia = readUsage({
+      usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50, totalTokenCount: 150 },
+      groundingMetadata: { groundingChunks: [] },
+    })
+    expect(conMetadataVacia.groundingQueries).toBe(0)
+  })
+
+  test('el consumo lo cobra SOLO, sin que el llamador cablee nada', async () => {
+    // Es el punto: un costo que depende de que alguien se acuerde de cablearlo
+    // es un costo que no se cobra. El llamador pasa el objeto de readUsage
+    // entero —que ya hacen los ocho— y el grounding queda cubierto.
+    const { readUsage } = await import('../services/ai/aiUsageMetadata.js')
+    const period = '2033-07'
+    const operationId = 'con-grounding'
+
+    const usage = readUsage({
+      model: 'gemini-3.1-flash-lite',
+      usageMetadata: { promptTokenCount: 4000, candidatesTokenCount: 200, totalTokenCount: 4200 },
+      groundingMetadata: { webSearchQueries: ['una', 'dos'] },
+    })
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      amount: usage.totalTokens,
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'gemini',
+      usage,
+    })
+    await asentar()
+
+    const filas = await AiProviderCall.find({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    // Dos filas: la de tokens y la del grounding, con callId propio para que
+    // el indice unico no descarte la segunda como reintento.
+    expect(filas).toHaveLength(2)
+
+    const grounding = filas.find(f => f.tool === 'google_search')
+    expect(grounding).toBeDefined()
+    expect(grounding.toolQuantity).toBe(2)
+    expect(grounding.toolUnitCostUsd).toBe(0.035)
+    expect(grounding.toolCostUsd).toBeCloseTo(0.07, 6)
+    expect(grounding.toolFamily).toBe('webSearch')
+    expect(grounding.callId).toContain('grounding')
+
+    // Y SEPARADO del costo por tokens, que es la consigna del bloque.
+    const tokens = filas.find(f => !f.tool)
+    expect(tokens.costUsd).toBeGreaterThan(0)
+    expect(tokens.toolCostUsd).toBe(0)
+  })
+
+  test('sin busquedas no aparece fila de herramienta', async () => {
+    const period = '2033-08'
+    const operationId = 'sin-grounding'
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      amount: 4200,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'gemini',
+      usage: { inputTokens: 4000, outputTokens: 200, totalTokens: 4200, groundingQueries: 0 },
+    })
+    await asentar()
+
+    const filas = await AiProviderCall.find({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(filas).toHaveLength(1)
+    expect(filas[0].tool).toBeNull()
   })
 })

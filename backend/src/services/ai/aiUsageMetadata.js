@@ -129,6 +129,29 @@ export const readUsage = result => {
     // —medido— y es la explicación de dos facturas distintas por el mismo
     // trabajo, así que se guarda aunque hoy sea siempre el mismo valor.
     serviceTier: usage.serviceTier || null,
+
+    /**
+     * Cuántas búsquedas de Google ejecutó el modelo, que NO se pagan por token.
+     *
+     * LA UNIDAD ES LA CONSULTA, Y CAMBIÓ CON LA GENERACIÓN 3.
+     *
+     * En Gemini 2.5 y anteriores el grounding se facturaba POR PROMPT: una
+     * respuesta con tres búsquedas adentro costaba una. Desde la 3 se factura
+     * por CADA consulta que el modelo decide ejecutar, y HENKO corre 3.x. Por
+     * eso se cuenta la longitud del arreglo y no "1 si hubo grounding".
+     *
+     * HOY ES SIEMPRE CERO, y no por olvido: el parámetro `tools` de callGemini
+     * no lo pasa ningún llamador, porque con `tools` puesto la API devuelve
+     * 429 en todos los modelos de la cadena — verificado de nuevo contra la
+     * key de producción al escribir esto, los tres dieron 429.
+     *
+     * Se cuenta igual para que el día que eso cambie el costo se registre
+     * SOLO, sin que nadie tenga que acordarse de cablear nada. Un costo que
+     * depende de que alguien se acuerde es un costo que no se cobra.
+     */
+    groundingQueries:
+      result?.groundingMetadata?.webSearchQueries?.length || 0,
+
     model: result?.model || null,
   }
 }
