@@ -89,26 +89,62 @@ const BUDGET_SOURCE_LABEL = {
  */
 function BudgetDialog({ open, budget, onClose, onSaved }) {
   const [tokens, setTokens] = useState('')
+  const [usd, setUsd] = useState('')
+  const [share, setShare] = useState('')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Los valores vigentes al abrir, para poder comparar y mandar SOLO lo que
+  // cambió. Sin esto, abrir el diálogo y guardar reescribiría los tres frenos
+  // con el mismo motivo, ensuciando el historial con cambios que no ocurrieron.
   useEffect(() => {
     if (!open) return
     setTokens(budget.tokens === null ? '' : String(budget.tokens))
+    setUsd(
+      budget.usd === null || budget.usd === undefined ? '' : String(budget.usd),
+    )
+    setShare(
+      budget.perTenantShare === null || budget.perTenantShare === undefined
+        ? ''
+        : String(budget.perTenantShare),
+    )
     setReason('')
     setError('')
-  }, [open, budget.tokens])
+  }, [open, budget.tokens, budget.usd, budget.perTenantShare])
+
+  /**
+   * Un campo vacío significa "volver a la variable de entorno", no cero.
+   *
+   * La diferencia importa: un techo en cero apaga la IA, y ninguno la deja
+   * gobernada por Render. Son dos decisiones distintas y la pantalla no puede
+   * confundirlas.
+   */
+  const valorDe = texto => (String(texto).trim() === '' ? null : Number(texto))
 
   const submit = async ({ remove = false } = {}) => {
     setSaving(true)
     setError('')
 
     try {
-      const data = await updatePlatformAiBudget({
-        tokens: remove ? null : Number(tokens),
-        reason,
-      })
+      const data = await updatePlatformAiBudget(
+        remove
+          ? { tokens: null, usd: null, perTenantShare: null, reason }
+          : {
+              // Solo lo que se movió. Un campo que no cambió no viaja, así que
+              // el historial registra el cambio que ocurrió y no tres.
+              ...(String(tokens) !== String(budget.tokens ?? '')
+                ? { tokens: valorDe(tokens) }
+                : {}),
+              ...(String(usd) !== String(budget.usd ?? '')
+                ? { usd: valorDe(usd) }
+                : {}),
+              ...(String(share) !== String(budget.perTenantShare ?? '')
+                ? { perTenantShare: valorDe(share) }
+                : {}),
+              reason,
+            },
+      )
       onSaved(data)
       onClose()
     } catch (err) {
@@ -120,6 +156,11 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
 
   // El motivo es obligatorio del lado del servidor también; acá solo evita el
   // viaje de ida y vuelta.
+  //
+  // NO se exige además que algo haya cambiado, aunque el submit solo mande lo
+  // que se movió. Un botón deshabilitado sin decir por qué es más confuso que
+  // el caso que evitaría: si no se cambió nada, el backend contesta «No se
+  // indicó ningún freno para cambiar», que dice exactamente qué pasó.
   const canSubmit = reason.trim().length > 0 && !saving
 
   return (
@@ -138,7 +179,40 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           value={tokens}
           onChange={event => setTokens(event.target.value)}
           sx={{ mb: 2 }}
-          helperText="A tarifa de 2026, 200.000.000 de tokens son unos USD 270."
+          helperText="Vacío = lo decide la variable de entorno. A tarifa de 2026, 200.000.000 de tokens son unos USD 270."
+        />
+
+        {/* El techo en PLATA, que es el que importa de verdad: el mismo tope de
+            tokens puede costar veinte dólares o cien según qué modelo esté
+            respondiendo, y eso lo decide la cadena de respaldo. Hasta ahora
+            solo se podía tocar por variable de entorno en Render, sin motivo
+            ni historial. */}
+        <TextField
+          label="Techo en dólares"
+          type="number"
+          fullWidth
+          value={usd}
+          onChange={event => setUsd(event.target.value)}
+          sx={{ mb: 2 }}
+          helperText="Vacío = lo decide la variable de entorno. Corta cuando el gasto del mes llega acá, aunque sobren tokens."
+        />
+
+        {/* El reparto por comercio: qué fracción del techo puede llevarse UNO.
+            Es lo único que impide que un solo comercio se coma el presupuesto
+            de todos. */}
+        <TextField
+          label="Reparto por comercio"
+          type="number"
+          fullWidth
+          value={share}
+          onChange={event => setShare(event.target.value)}
+          sx={{ mb: 2 }}
+          inputProps={{ step: 0.05, min: 0.01, max: 1 }}
+          helperText={
+            share && Number(share) > 0
+              ? `Cada comercio puede usar hasta el ${Math.round(Number(share) * 100)}% del techo. Vacío = variable de entorno.`
+              : 'Entre 0.01 y 1. Es el tope que impide que un solo comercio se lleve todo el presupuesto.'
+          }
         />
 
         <TextField
@@ -156,7 +230,8 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           <Alert severity="info" sx={{ mt: 2 }}>
             Hoy manda un valor fijado desde el panel, así que cambiar la
             variable de entorno en Render no tiene efecto. Podés devolverle el
-            mando con «Volver a la variable».
+            mando con «Volver a la variable», que suelta los tres frenos a la
+            vez.
           </Alert>
         )}
 
@@ -261,6 +336,7 @@ export default function PlatformAiSpendPage() {
     byMetric,
     byModel,
     quality,
+    byTenant,
     settingHistory,
   } = report
   const percent = consumption.percentUsed
@@ -367,6 +443,129 @@ export default function PlatformAiSpendPage() {
         onClose={() => setEditing(false)}
         onSaved={setReport}
       />
+
+      {/* QUIÉN se lo gastó.
+
+          Es la tabla que convierte un total en algo sobre lo que se puede
+          actuar. Todo el resto de la pantalla es agregado, y ninguna de esas
+          vistas contesta la pregunta que uno se hace cuando el disyuntor
+          corta.
+
+          Va ARRIBA de "qué lo consume" a propósito: con un techo compartido,
+          saber quién antes que qué es lo que decide si hay que hablar con
+          alguien o cambiar de modelo. */}
+      {byTenant?.length > 0 && (
+        <>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+            Quién lo consume
+          </Typography>
+          <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Comercio</TableCell>
+                  <TableCell align="right">Paga HENKO</TableCell>
+                  <TableCell align="right">Tokens</TableCell>
+                  <TableCell align="right">De su parte</TableCell>
+                  <TableCell align="right">Operaciones</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {byTenant.map(row => (
+                  <TableRow key={row.tenantId} hover>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {row.name}
+                      </Typography>
+                      <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                        {row.plan && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={row.plan}
+                          />
+                        )}
+                        {/* Con key propia el comercio le paga a Google, no a
+                            HENKO: ver un cero en la columna de costo sin esta
+                            marca se lee como un error. */}
+                        {row.keySources?.includes('tenant') && (
+                          <Tooltip title="Usa su propia clave: parte de su consumo no le cuesta a HENKO">
+                            <Chip
+                              size="small"
+                              color="info"
+                              variant="outlined"
+                              label="key propia"
+                            />
+                          </Tooltip>
+                        )}
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {formatUsd(row.platformCostUsd)}
+                      </Typography>
+                      {/* Lo que el proveedor le cobró a la key usada. Solo se
+                          muestra cuando difiere, que es exactamente el caso
+                          BYOK: si no, sería el mismo número dos veces. */}
+                      {row.tenantProviderCostUsd > row.platformCostUsd && (
+                        <Typography variant="caption" color="text.secondary">
+                          {formatUsd(row.tenantProviderCostUsd)} con su key
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {formatTokens(row.tokens)}
+                    </TableCell>
+                    <TableCell align="right">
+                      {/* El porcentaje de SU parte, no del total de la
+                          plataforma. Es el número que anticipa el corte: un
+                          comercio al 90% de su parte se queda sin IA aunque la
+                          plataforma vaya al 30%. */}
+                      {row.percentOfCap === null ? (
+                        <Typography variant="body2" color="text.secondary">
+                          sin tope
+                        </Typography>
+                      ) : (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: row.percentOfCap >= 80 ? 600 : 400,
+                          }}
+                          color={
+                            row.percentOfCap >= 80
+                              ? 'error.main'
+                              : row.percentOfCap >= 50
+                                ? 'warning.main'
+                                : 'text.secondary'
+                          }
+                        >
+                          {row.percentOfCap}%
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {formatTokens(row.operations)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', mb: 3, mt: -2 }}
+          >
+            «De su parte» es contra el tope por comercio
+            {budget.perTenantShare
+              ? ` (${Math.round(budget.perTenantShare * 100)}% del techo)`
+              : ''}
+            , no contra el techo total: un comercio puede quedarse sin IA con la
+            plataforma al 30%.
+          </Typography>
+        </>
+      )}
 
       <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
         Qué lo consume

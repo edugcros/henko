@@ -22,9 +22,29 @@ export const getPlatformAiSpend = async period => {
  * Mueve el techo de gasto. `tokens: null` quita el override y devuelve el mando
  * a la variable de entorno. Responde con el reporte ya actualizado.
  */
-export const updatePlatformAiBudget = async ({ tokens, reason }) => {
+/**
+ * Mueve los frenos de gasto de IA.
+ *
+ * Cada campo es OPCIONAL y se manda solo si se quiere cambiar; `null` quita el
+ * override y le devuelve el mando a la variable de entorno.
+ *
+ * Son tres y no uno porque miden cosas distintas: entre gemini-3.6-flash y
+ * 3.1-flash-lite hay 5x de tarifa, asi que el mismo tope de tokens puede
+ * costar veinte dolares o cien segun que modelo responda — y eso lo decide la
+ * cadena de respaldo, no nosotros.
+ */
+export const updatePlatformAiBudget = async ({
+  tokens,
+  usd,
+  perTenantShare,
+  reason,
+}) => {
   const response = await api.put('/platform/ai-spend/budget', {
-    tokens,
+    // undefined no viaja en JSON, asi que un campo que no se toca no llega al
+    // backend y no se escribe. Es lo que permite mover uno sin pisar los otros.
+    ...(tokens !== undefined ? { tokens } : {}),
+    ...(usd !== undefined ? { usd } : {}),
+    ...(perTenantShare !== undefined ? { perTenantShare } : {}),
     reason,
   })
 

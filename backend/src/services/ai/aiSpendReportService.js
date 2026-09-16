@@ -24,6 +24,7 @@ import logger from '../../../config/logger.js'
 import {
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
+  getPerTenantShare,
   getPlatformBudgetSource,
   getPlatformUsdBudgetSource,
   UNLIMITED,
@@ -335,17 +336,135 @@ const getSpendByKeySource = async period => {
   }))
 }
 
+
+/**
+ * Quién se está gastando el presupuesto.
+ *
+ * POR QUÉ FALTABA Y POR QUÉ IMPORTA
+ *
+ * Todo el reporte era agregado: por métrica, por modelo, por calidad, por
+ * origen de key. Ninguna de esas vistas contesta la pregunta que uno se hace
+ * cuando el disyuntor corta — "¿quién fue?" — y el dato estaba a mano: AiUsage
+ * es por comercio y el ledger tiene tenantId en cada fila.
+ *
+ * Con un comercio, el agregado y el detalle son el mismo número. Con diez, el
+ * agregado deja de servir para decidir nada: un techo compartido sin saber
+ * quién lo consume solo permite castigar a todos por igual.
+ *
+ * SE LEE DEL LEDGER Y NO DE AiUsage, a propósito. AiUsage es la proyección y
+ * puede driftear —ya pasó, 17.223 tokens— mientras que el libro es la fuente
+ * de verdad. Y permite separar lo que paga HENKO de lo que consume el
+ * comercio, que en AiUsage vive en un solo número.
+ */
+export const getPeriodSpendByTenant = async period => {
+  const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
+  const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
+
+  const filas = await AiConsumptionLedger.aggregate([
+    {
+      $match: {
+        period,
+        event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.REFUNDED] },
+      },
+    },
+    {
+      $group: {
+        _id: '$tenantId',
+        // Lo que paga HENKO. Es lo que pega contra el techo.
+        platformCostUsd: { $sum: conSigno({ $ifNull: ['$costUsd', 0] }) },
+        // Lo que le cobró el proveedor a la key usada, sea de quien sea. Con
+        // key propia del comercio el de arriba es cero y este no.
+        tenantProviderCostUsd: {
+          $sum: conSigno({
+            $ifNull: ['$tenantProviderCostUsd', { $ifNull: ['$costUsd', 0] }],
+          }),
+        },
+        tokens: {
+          $sum: conSigno({
+            $cond: [{ $eq: [{ $ifNull: ['$unit', 'units'] }, 'tokens'] }, '$amount', 0],
+          }),
+        },
+        toolCalls: {
+          $sum: conSigno({
+            $cond: [{ $eq: [{ $ifNull: ['$unit', 'units'] }, 'toolCalls'] }, '$amount', 0],
+          }),
+        },
+        operations: { $sum: conSigno(1) },
+        // Con qué key vino el consumo. Un comercio puede cambiar de key a
+        // mitad de mes, así que se recolectan todas las que aparecieron.
+        keySources: { $addToSet: '$keySource' },
+      },
+    },
+    { $sort: { platformCostUsd: -1 } },
+    // El nombre del comercio: sin él la tabla es una lista de ObjectId y no se
+    // puede actuar sobre ella.
+    {
+      $lookup: {
+        from: 'tenants',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'tenant',
+      },
+    },
+  ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+
+  const budget = getPlatformMonthlyTokenBudget()
+  const usdBudget = getPlatformMonthlyUsdBudget()
+  const share = getPerTenantShare()
+
+  return filas.map(fila => {
+    const tenant = fila.tenant?.[0] || null
+    const tokens = fila.tokens || 0
+    const platformCostUsd = round(fila.platformCostUsd, 6)
+
+    // El tope por comercio es una FRACCIÓN del techo global (ver
+    // resolveEffectiveLimit en aiPlanPolicy.js). Mostrar cuánto de ESE tope
+    // lleva usado es lo que convierte la tabla en algo accionable: un comercio
+    // al 90% de su parte va a quedarse sin IA aunque la plataforma vaya al 30%.
+    const tokenCap = budget === UNLIMITED ? null : Math.floor(budget * share)
+
+    return {
+      tenantId: String(fila._id),
+      name: tenant?.name || tenant?.hostname || '(comercio eliminado)',
+      plan: tenant?.plan || null,
+      tokens,
+      toolCalls: fila.toolCalls || 0,
+      operations: fila.operations || 0,
+      platformCostUsd,
+      tenantProviderCostUsd: round(fila.tenantProviderCostUsd, 6),
+      // Con key propia HENKO no paga, así que el comercio no consume techo.
+      keySources: (fila.keySources || []).filter(Boolean),
+      tokenCap,
+      percentOfCap: tokenCap ? round((tokens / tokenCap) * 100, 1) : null,
+      percentOfPlatformUsd:
+        usdBudget === UNLIMITED || usdBudget <= 0
+          ? null
+          : round((platformCostUsd / usdBudget) * 100, 1),
+    }
+  })
+}
+
 export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
   const budget = getPlatformMonthlyTokenBudget()
   const usdBudget = getPlatformMonthlyUsdBudget()
 
-  const [usage, byMetric, byModel, quality, byKeySource, settingHistory, reconciliation] =
+  const [
+    usage,
+    byMetric,
+    byModel,
+    quality,
+    byKeySource,
+    byTenant,
+    settingHistory,
+    reconciliation,
+  ] =
     await Promise.all([
       AiPlatformUsage.findOne({ period }).lean(),
       getPeriodSpendByMetric(period),
       getPeriodSpendByModel(period),
       getPeriodQuality(period),
       getSpendByKeySource(period),
+      getPeriodSpendByTenant(period),
       getPlatformAiSettingHistory(10).catch(() => []),
       // La diferencia entre el contador y el libro, SIN corregir. Va acá y no
       // en un script que alguien tiene que acordarse de correr: una
@@ -391,6 +510,18 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       usd: usdBudget === UNLIMITED ? null : usdBudget,
       usdConfigured: usdBudget !== UNLIMITED,
       usdSource: getPlatformUsdBudgetSource(),
+
+      // Que fraccion del techo puede llevarse UN comercio.
+      //
+      // Va en el mismo objeto que los dos techos porque es el tercer freno y
+      // se decide junto con ellos: subir el techo global sin mirar el reparto
+      // le da mas margen a todos por igual, incluido el que se estaba
+      // comiendo el presupuesto.
+      //
+      // Hasta ahora solo existia como variable de entorno y no se veia en
+      // ningun lado, asi que era un limite que cortaba sin que nadie supiera
+      // que estaba puesto.
+      perTenantShare: getPerTenantShare(),
     },
     consumption: {
       tokens,
@@ -437,6 +568,17 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     // entraba al libro con costo cero y ahi moria. El comercio no sabia cuanto
     // gastaba y HENKO no sabia cuanto le estaba ahorrando esa key.
     byKeySource,
+    // QUIÉN se lo gastó.
+    //
+    // Es la vista que convierte un total en algo sobre lo que se puede actuar.
+    // Todo el resto del reporte es agregado —por métrica, por modelo, por
+    // calidad, por origen de key— y ninguna de esas vistas contesta la
+    // pregunta que uno se hace cuando el disyuntor corta: quién fue.
+    //
+    // Con un comercio, el agregado y el detalle son el mismo número. Con diez,
+    // un techo compartido sin saber quién lo consume solo permite castigar a
+    // todos por igual.
+    byTenant,
     // Quién movió el techo, cuándo y por qué. Va en el mismo reporte porque un
     // salto en el consumo y un cambio de límite se leen juntos o no se leen.
     settingHistory,
@@ -447,5 +589,6 @@ export default {
   getPeriodSpendByMetric,
   getPeriodSpendByModel,
   getPeriodQuality,
+  getPeriodSpendByTenant,
   getPlatformSpendSnapshot,
 }

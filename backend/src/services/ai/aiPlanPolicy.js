@@ -186,6 +186,32 @@ export const getPlanLimit = (plan, metric) => {
 /**
  * Todos los topes de un plan de una sola vez (para el snapshot del admin).
  */
+/**
+ * Que fraccion del techo global puede llevarse UN comercio.
+ *
+ * SE EXPORTA PARA QUE HAYA UNA SOLA DEFINICION.
+ *
+ * Estaba inline adentro de resolveEffectiveLimit, que es quien APLICA el tope.
+ * El reporte del panel necesita el mismo numero para mostrar cuanto lleva
+ * usado cada comercio de SU parte, y con la formula duplicada la pantalla
+ * diria una cosa y el medidor cortaria en otra — el error mas caro posible en
+ * una pantalla de control, porque se descubre cuando el servicio ya se corto.
+ *
+ * El override de base gana sobre la variable de entorno, y el resultado se
+ * acota entre 1% y 100%: una fraccion de cero dejaria a todos sin nada, y una
+ * mayor a uno permitiria que un solo comercio se lleve mas que el techo
+ * entero.
+ */
+export const getPerTenantShare = () => {
+  const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.PER_TENANT_SHARE)
+  const raw =
+    override !== null && Number.isFinite(override)
+      ? override
+      : readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5
+
+  return Math.min(Math.max(raw, 0.01), 1)
+}
+
 export const getPlanLimits = plan => {
   const normalizedPlan = normalizePlan(plan)
 
@@ -725,12 +751,7 @@ export const getSharedKeyTenantCap = metric => {
   const budget = getPlatformMonthlyTokenBudget()
   if (budget === UNLIMITED) return UNLIMITED
 
-  const shareOverride = getPlatformAiOverride(PLATFORM_AI_SETTINGS.PER_TENANT_SHARE)
-  const rawShare =
-    shareOverride !== null && Number.isFinite(shareOverride)
-      ? shareOverride
-      : readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5
-  const share = Math.min(Math.max(rawShare, 0.01), 1)
+  const share = getPerTenantShare()
   const tokenCap = Math.floor(budget * share)
 
   if (isTokenMetric) return tokenCap

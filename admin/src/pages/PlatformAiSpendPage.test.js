@@ -277,3 +277,119 @@ test("un 403 explica que no tenés acceso en vez de tirar un error", async () =>
     expect(screen.getByText(/No tenés acceso/i)).toBeInTheDocument(),
   );
 });
+
+test("muestra quién lo consume, no solo cuánto", async () => {
+  // Todo el resto de la pantalla es agregado y ninguna de esas vistas contesta
+  // la pregunta que uno se hace cuando el disyuntor corta: quién fue.
+  load({
+    budget: { ...REPORT.budget, perTenantShare: 0.5 },
+    byTenant: [
+      {
+        tenantId: "t1", name: "Moto Norte", plan: "pro",
+        tokens: 4_000_000, operations: 900, toolCalls: 40,
+        platformCostUsd: 12.5, tenantProviderCostUsd: 12.5,
+        keySources: ["platform"], tokenCap: 5_000_000, percentOfCap: 80,
+        percentOfPlatformUsd: 25,
+      },
+      {
+        tenantId: "t2", name: "Casa Sur", plan: "starter",
+        tokens: 200_000, operations: 30, toolCalls: 0,
+        platformCostUsd: 0, tenantProviderCostUsd: 0.9,
+        keySources: ["tenant"], tokenCap: 5_000_000, percentOfCap: 4,
+        percentOfPlatformUsd: 0,
+      },
+    ],
+  });
+
+  await waitFor(() =>
+    expect(screen.getByText("Moto Norte")).toBeInTheDocument(),
+  );
+
+  expect(screen.getByText("Casa Sur")).toBeInTheDocument();
+
+  // El porcentaje es de SU parte, no del techo total: es el numero que
+  // anticipa el corte de ese comercio.
+  expect(screen.getByText("80%")).toBeInTheDocument();
+
+  // Un comercio con key propia se marca: ver un cero en la columna de costo
+  // sin esa marca se lee como un error de carga.
+  expect(screen.getByText(/key propia/i)).toBeInTheDocument();
+  expect(screen.getByText(/con su key/i)).toBeInTheDocument();
+});
+
+test("sin comercios no dibuja la tabla", async () => {
+  load({ byTenant: [] });
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+
+  expect(screen.queryByText("Quién lo consume")).toBeNull();
+});
+
+test("un reporte sin byTenant no rompe la pantalla", async () => {
+  // El panel puede quedar desplegado antes que el backend.
+  const { byTenant, ...sinTenant } = REPORT;
+  mockGetAiSpend.mockResolvedValue(sinTenant);
+  render(<PlatformAiSpendPage />);
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  expect(screen.queryByText("Quién lo consume")).toBeNull();
+});
+
+test("el diálogo maneja los TRES frenos, no solo el de tokens", async () => {
+  // El modelo y el servicio los soportaban desde siempre; lo que faltaba era
+  // el endpoint y la pantalla. El techo en PLATA es el que importa: entre
+  // 3.6-flash y 3.1-flash-lite hay 5x de tarifa, asi que el mismo tope de
+  // tokens puede costar veinte dolares o cien.
+  const user = userEvent.setup();
+  load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } });
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /cambiar techo/i }));
+
+  expect(screen.getByLabelText(/techo en tokens/i)).toBeInTheDocument();
+  expect(screen.getByLabelText(/techo en dólares/i)).toBeInTheDocument();
+  expect(screen.getByLabelText(/reparto por comercio/i)).toBeInTheDocument();
+});
+
+test("manda SOLO el freno que se movió", async () => {
+  // Un campo que no cambio no viaja, asi que el historial registra el cambio
+  // que ocurrio y no tres.
+  const user = userEvent.setup();
+  mockUpdateBudget.mockResolvedValue(REPORT);
+  load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } });
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /cambiar techo/i }));
+
+  const campoUsd = screen.getByLabelText(/techo en dólares/i);
+  await user.clear(campoUsd);
+  await user.type(campoUsd, "80");
+  await user.type(screen.getByLabelText(/motivo/i), "subimos por el mes de campañas");
+  await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+  await waitFor(() => expect(mockUpdateBudget).toHaveBeenCalled());
+
+  const enviado = mockUpdateBudget.mock.calls[0][0];
+  expect(enviado.usd).toBe(80);
+  expect(enviado).not.toHaveProperty("tokens");
+  expect(enviado).not.toHaveProperty("perTenantShare");
+  expect(enviado.reason).toMatch(/campañas/);
+});
+
+test("un campo vacío suelta el freno, y no es lo mismo que cero", async () => {
+  // Un techo en cero apaga la IA; ninguno la deja gobernada por Render. Son
+  // dos decisiones distintas y la pantalla no puede confundirlas.
+  const user = userEvent.setup();
+  mockUpdateBudget.mockResolvedValue(REPORT);
+  load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } });
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /cambiar techo/i }));
+
+  await user.clear(screen.getByLabelText(/techo en dólares/i));
+  await user.type(screen.getByLabelText(/motivo/i), "que lo decida la variable");
+  await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+  await waitFor(() => expect(mockUpdateBudget).toHaveBeenCalled());
+  expect(mockUpdateBudget.mock.calls[0][0].usd).toBeNull();
+});

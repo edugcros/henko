@@ -258,3 +258,111 @@ describe("calidad de la contabilidad", () => {
     expect(q.fallbackRows).toBe(1);
   });
 });
+
+describe("por comercio · quien se lo gasto", () => {
+  const OTRO = new mongoose.Types.ObjectId();
+
+  const tokens = extra =>
+    fila({ metric: "agentTokens", unit: "tokens", model: "gemini-3.1-flash-lite", ...extra });
+
+  test("separa el consumo de cada comercio", async () => {
+    // TODO el resto del reporte es agregado: por metrica, por modelo, por
+    // calidad, por origen de key. Ninguna de esas vistas contesta la pregunta
+    // que uno se hace cuando el disyuntor corta — quien fue — y el dato estaba
+    // a mano: el ledger tiene tenantId en cada fila.
+    await Ledger.collection.insertMany([
+      tokens({ amount: 10000, costUsd: 0.10 }),
+      tokens({ amount: 5000, costUsd: 0.05 }),
+      tokens({ amount: 1000, costUsd: 0.01, tenantId: OTRO }),
+    ]);
+
+    const { getPeriodSpendByTenant } = await import(
+      "../services/ai/aiSpendReportService.js"
+    );
+    const filas = await getPeriodSpendByTenant(PERIODO);
+
+    expect(filas).toHaveLength(2);
+
+    // Ordenado por lo que le cuesta a HENKO: el que hay que mirar primero va
+    // primero.
+    expect(filas[0].tenantId).toBe(String(TENANT));
+    expect(filas[0].tokens).toBe(15000);
+    expect(filas[0].platformCostUsd).toBeCloseTo(0.15, 6);
+
+    expect(filas[1].tokens).toBe(1000);
+  });
+
+  test("las devoluciones restan, igual que en el resto del reporte", async () => {
+    await Ledger.collection.insertMany([
+      tokens({ amount: 10000, costUsd: 0.1, operationId: "op-1" }),
+      fila({
+        event: "refunded", metric: "agentTokens", unit: "tokens",
+        amount: 10000, costUsd: 0.1, operationId: "op-1",
+      }),
+    ]);
+
+    const { getPeriodSpendByTenant } = await import(
+      "../services/ai/aiSpendReportService.js"
+    );
+    const [comercio] = await getPeriodSpendByTenant(PERIODO);
+
+    expect(comercio.tokens).toBe(0);
+    expect(comercio.platformCostUsd).toBe(0);
+  });
+
+  test("separa lo que paga HENKO de lo que consume el comercio", async () => {
+    // Con key propia el primero es cero y el segundo no. Confundirlos es
+    // confundir "cuanto me cuesta servir a este comercio" con "cuanto consume
+    // este comercio", que se deciden distinto.
+    await Ledger.collection.insertMany([
+      tokens({
+        amount: 10000, costUsd: 0, tenantProviderCostUsd: 0.1,
+        keySource: "tenant",
+      }),
+    ]);
+
+    const { getPeriodSpendByTenant } = await import(
+      "../services/ai/aiSpendReportService.js"
+    );
+    const [comercio] = await getPeriodSpendByTenant(PERIODO);
+
+    expect(comercio.platformCostUsd).toBe(0);
+    expect(comercio.tenantProviderCostUsd).toBeCloseTo(0.1, 6);
+    expect(comercio.keySources).toContain("tenant");
+  });
+
+  test("dice cuanto lleva de SU parte, no de la plataforma", async () => {
+    // Es lo que vuelve accionable la tabla: un comercio al 90% de su parte se
+    // va a quedar sin IA aunque la plataforma vaya al 30%. Sin esta columna,
+    // la pantalla muestra un total tranquilizador mientras alguien se corta.
+    await Ledger.collection.insertMany([tokens({ amount: 10000, costUsd: 0.1 })]);
+
+    const { getPeriodSpendByTenant } = await import(
+      "../services/ai/aiSpendReportService.js"
+    );
+    const [comercio] = await getPeriodSpendByTenant(PERIODO);
+
+    // Sin techo configurado no se inventa un porcentaje.
+    if (comercio.tokenCap === null) {
+      expect(comercio.percentOfCap).toBeNull();
+    } else {
+      expect(comercio.percentOfCap).toBeCloseTo((10000 / comercio.tokenCap) * 100, 1);
+    }
+  });
+
+  test("un comercio borrado no rompe la tabla", async () => {
+    // El ledger es append-only y el tenant puede haberse dado de baja: la fila
+    // sigue siendo gasto real y tiene que verse.
+    await Ledger.collection.insertMany([
+      tokens({ amount: 500, costUsd: 0.01, tenantId: new mongoose.Types.ObjectId() }),
+    ]);
+
+    const { getPeriodSpendByTenant } = await import(
+      "../services/ai/aiSpendReportService.js"
+    );
+    const [comercio] = await getPeriodSpendByTenant(PERIODO);
+
+    expect(comercio.name).toBe("(comercio eliminado)");
+    expect(comercio.tokens).toBe(500);
+  });
+});

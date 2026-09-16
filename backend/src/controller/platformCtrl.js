@@ -57,31 +57,33 @@ export const getAiSpendReport = expressAsyncHandler(async (req, res) => {
 })
 
 /**
- * PUT /api/platform/ai-spend/budget
+ * Los tres frenos, con la misma maniobra.
  *
- * Mueve el techo de gasto sin reiniciar el servicio. Es la única maniobra útil
- * cuando el disyuntor ya cortó: la variable de entorno exige un deploy, y la IA
- * está caída para todos los comercios de la key compartida mientras tanto.
+ * POR QUE LOS TRES Y NO SOLO EL DE TOKENS
  *
- * `tokens: null` quita el override y devuelve el mando a la variable de
- * entorno. Sin eso, poner un valor acá sería irreversible sin un deploy — que
- * es exactamente lo que esto vino a evitar.
+ * El modelo (PLATFORM_AI_SETTINGS) y el servicio (setPlatformAiOverride) ya
+ * soportaban los tres desde siempre. Lo que faltaba era ESTE endpoint: leia
+ * solo `tokens` y escribia solo MONTHLY_TOKEN_BUDGET, asi que el techo en
+ * PLATA y el reparto por comercio solo se podian tocar por variable de entorno
+ * en Render — sin motivo, sin historial y sin que quedara registrado quien lo
+ * cambio.
+ *
+ * Y el de plata es el que importa: entre gemini-3.6-flash y 3.1-flash-lite hay
+ * 5x de tarifa, asi que el mismo tope de tokens puede costar veinte dolares o
+ * cien segun que modelo este respondiendo, y eso lo decide la cadena de
+ * respaldo y no nosotros.
+ *
+ * CADA CAMPO ES OPCIONAL, Y `null` QUITA EL OVERRIDE
+ *
+ * Mandar solo `usd` mueve solo ese. `usd: null` devuelve el mando a la
+ * variable de entorno: sin eso, poner un valor aca seria irreversible sin un
+ * deploy, que es exactamente lo que este endpoint vino a evitar.
  */
 export const updateAiBudget = expressAsyncHandler(async (req, res) => {
-  const { tokens, reason } = req.body || {}
+  const { tokens, usd, perTenantShare, reason } = req.body || {}
 
-  const isRemoval = tokens === null
-  const value = isRemoval ? null : Number(tokens)
-
-  if (!isRemoval && (!Number.isFinite(value) || value < 0)) {
-    return res.status(400).json({
-      success: false,
-      message: 'El techo debe ser un número de tokens no negativo, o null para volver a la variable de entorno.',
-    })
-  }
-
-  // Se pide el motivo y no se acepta vacío: dentro de tres meses el número solo
-  // no explica por qué alguien duplicó el techo un martes a las 3 de la mañana,
+  // Se pide el motivo y no se acepta vacio: dentro de tres meses el numero solo
+  // no explica por que alguien duplico el techo un martes a las 3 de la manana,
   // y quien lo mire va a ser otra persona, o vos sin el contexto de hoy.
   const cleanReason = String(reason || '').trim()
 
@@ -92,13 +94,69 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
     })
   }
 
-  await setPlatformAiOverride({
-    setting: PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET,
-    value: isRemoval ? null : Math.floor(value),
-    changedByEmail: req.user?.email,
-    changedByUserId: req.user?._id || null,
-    reason: cleanReason.slice(0, 500),
-  })
+  /**
+   * Cada freno con su validacion, porque miden cosas distintas.
+   *
+   * El reparto es una FRACCION y se acota entre 1% y 100%: en cero deja a
+   * todos los comercios sin nada, y arriba de uno permite que uno solo se
+   * lleve mas que el techo entero. Los dos techos son cantidades y solo se
+   * exige que no sean negativas — un techo en cero es una decision valida
+   * (apagar la IA) y distinta de no tener techo.
+   */
+  const CAMPOS = [
+    {
+      valor: tokens,
+      setting: PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET,
+      normalizar: v => Math.floor(v),
+      valido: v => Number.isFinite(v) && v >= 0,
+      error: 'El techo en tokens debe ser un número no negativo, o null para volver a la variable de entorno.',
+    },
+    {
+      valor: usd,
+      setting: PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET,
+      normalizar: v => Math.round(v * 100) / 100,
+      valido: v => Number.isFinite(v) && v >= 0,
+      error: 'El techo en dólares debe ser un número no negativo, o null para volver a la variable de entorno.',
+    },
+    {
+      valor: perTenantShare,
+      setting: PLATFORM_AI_SETTINGS.PER_TENANT_SHARE,
+      normalizar: v => Math.round(v * 10000) / 10000,
+      valido: v => Number.isFinite(v) && v >= 0.01 && v <= 1,
+      error: 'El reparto por comercio debe estar entre 0.01 y 1, o null para volver a la variable de entorno.',
+    },
+  ]
+
+  const cambios = CAMPOS.filter(campo => campo.valor !== undefined)
+
+  if (cambios.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'No se indicó ningún freno para cambiar.',
+    })
+  }
+
+  for (const campo of cambios) {
+    if (campo.valor === null) continue
+
+    const numero = Number(campo.valor)
+    if (!campo.valido(numero)) {
+      return res.status(400).json({ success: false, message: campo.error })
+    }
+  }
+
+  // Se validan TODOS antes de escribir NINGUNO: un pedido con dos frenos donde
+  // el segundo es invalido no puede dejar el primero aplicado y el otro no,
+  // porque quien lo mando se entera del error y asume que no paso nada.
+  for (const campo of cambios) {
+    await setPlatformAiOverride({
+      setting: campo.setting,
+      value: campo.valor === null ? null : campo.normalizar(Number(campo.valor)),
+      changedByEmail: req.user?.email,
+      changedByUserId: req.user?._id || null,
+      reason: cleanReason.slice(0, 500),
+    })
+  }
 
   // Se devuelve el reporte entero y no un ok: la pantalla tiene que mostrar el
   // efecto del cambio —el porcentaje nuevo, el corte levantado— sin una segunda
