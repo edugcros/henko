@@ -23,6 +23,11 @@ import {
   ListItemText,
   Collapse,
   CssBaseline,
+  // Se usaba en el spinner de rehidratación sin estar importado: esa rama
+  // tiraba ReferenceError en vez de mostrar el spinner. No saltaba en el
+  // build —webpack no ejecuta componentes— ni en el uso normal, porque con
+  // PersistGate el flag llega en true y la rama no se recorre nunca.
+  CircularProgress,
   Divider,
   Stack,
   Tooltip,
@@ -103,7 +108,7 @@ const childItemSx = {
 // Fragmento corregido de MainLayout.js
 //
 // Reemplazar SOLO estas partes del archivo actual. El resto queda igual.
- 
+
 // ─────────────────────────────────────────────────────────────────────────
 // 1) Estado de sesión: esperar la rehidratación antes de decidir
 // ─────────────────────────────────────────────────────────────────────────
@@ -118,34 +123,34 @@ const childItemSx = {
 // mismo que tu código ya asume al hacer localStorage.removeItem('persist:root').
 // Si el árbol está envuelto en PersistGate, este flag ya viene en true y el
 // chequeo es un no-op: no rompe nada, solo cubre el caso en que no lo esté.
- 
+
 const MainLayout = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const location = useLocation()
- 
+
   const [collapsed, setCollapsed] = useState(false)
   const [anchorEl, setAnchorEl] = useState(null)
   const [openGroups, setOpenGroups] = useState({})
- 
+
   const user = useSelector(state => state.user?.user || null)
- 
+
   // `?? true` como default: si el store no usa redux-persist en el root, no
   // hay nada que esperar y el comportamiento vuelve a ser el de antes.
   const rehydrated = useSelector(state => state._persist?.rehydrated ?? true)
- 
+
   useEffect(() => {
     // Antes de la rehidratación no se sabe si hay sesión: null todavía no
     // significa "no autenticado", significa "no cargado".
     if (!rehydrated) return
- 
+
     if (!user?.tenantId) {
       navigate('/login', { replace: true })
     }
   }, [rehydrated, user, navigate])
- 
+
   // ... el resto de los hooks y handlers queda igual ...
- 
+
   // ─────────────────────────────────────────────────────────────────────
   // 2) No renderizar el layout hasta saber si hay sesión
   // ─────────────────────────────────────────────────────────────────────
@@ -155,7 +160,44 @@ const MainLayout = () => {
   // parpadeo es visible y da sensación de que algo se rompió.
   //
   // Va DESPUÉS de todos los hooks: un return temprano antes de ellos
-  // rompería las reglas de hooks de React.
+  // rompería las reglas de hooks de React. (Estaba escrito acá arriba y el
+  // return estaba igual ANTES del useMemo y del useEffect de abajo — ver el
+  // bloque donde ahora viven los dos.)
+
+  const { selectedKey, openKey } = useMemo(() => {
+    // El Dashboard vive en la key '' (navega a /admin/). Antes esto devolvía
+    // 'dashboard' cuando la ruta quedaba vacía, así que no coincidía con
+    // ninguna entrada del menú y el ítem nunca se marcaba como activo. La
+    // barra opcional cubre además /admin sin barra final.
+    const key = location.pathname.replace(/^\/admin\/?/, '')
+    const group = adminMenuItems.find(item =>
+      item.children?.some(child => child.key === key),
+    )
+    return { selectedKey: key, openKey: group?.key }
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (openKey) {
+      setOpenGroups(prev => ({ ...prev, [openKey]: true }))
+    }
+  }, [openKey])
+
+  // ─────────────────────────────────────────────────────────────────────
+  // LOS DOS RETURNS TEMPRANOS, ACÁ Y NO ARRIBA
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // Los dos estaban ANTES del useMemo y del useEffect de arriba, con un
+  // comentario al lado que decía la regla correcta: "un return temprano antes
+  // de ellos rompería las reglas de hooks de React". La regla estaba escrita y
+  // no se cumplía.
+  //
+  // En el render donde la condición daba verdadero se llamaban DOS hooks menos
+  // que en el anterior, y React tira "rendered fewer hooks than expected", que
+  // aborta el árbol entero en vez de mostrar lo que el return quería mostrar.
+  //
+  // Mientras la rehidratación no terminó, `user` en null no significa "no hay
+  // sesión" sino "todavía no sé": dibujar el panel vacío y saltar al login es
+  // el parpadeo que esto evita.
   if (!rehydrated) {
     return (
       <Box
@@ -171,26 +213,10 @@ const MainLayout = () => {
       </Box>
     )
   }
- 
-  // Sesión ausente: el efecto de arriba ya disparó la navegación al login.
+
+  // Sesión ausente: el efecto de más arriba ya disparó la navegación al login.
   // Devolver null evita renderizar un panel que está por desaparecer.
   if (!user?.tenantId) return null
- 
-  const { selectedKey, openKey } = useMemo(() => {
-    // El Dashboard vive en la key '' (navega a /admin/). Antes esto devolvía
-    // 'dashboard' cuando la ruta quedaba vacía, así que no coincidía con
-    // ninguna entrada del menú y el ítem nunca se marcaba como activo. La
-    // barra opcional cubre además /admin sin barra final.
-    const key = location.pathname.replace(/^\/admin\/?/, '')
-    const group = adminMenuItems.find(item => item.children?.some(child => child.key === key))
-    return { selectedKey: key, openKey: group?.key }
-  }, [location.pathname])
-
-  useEffect(() => {
-    if (openKey) {
-      setOpenGroups(prev => ({ ...prev, [openKey]: true }))
-    }
-  }, [openKey])
 
   const handleLogoutUser = async () => {
     try {
@@ -235,7 +261,10 @@ const MainLayout = () => {
       if (group.children?.length) {
         return (
           <Box key={group.key}>
-            <ListItemButton onClick={() => handleGroupToggle(group.key)} sx={groupHeaderSx}>
+            <ListItemButton
+              onClick={() => handleGroupToggle(group.key)}
+              sx={groupHeaderSx}
+            >
               <ListItemIcon>
                 <Badge color="error" variant={group.isNew ? 'dot' : 'standard'}>
                   <GroupIcon sx={{ fontSize: 22 }} />
@@ -262,7 +291,10 @@ const MainLayout = () => {
                       onClick={() => navigate(`/admin/${item.key}`)}
                     >
                       <ListItemIcon>
-                        <Badge color="error" variant={item.isNew ? 'dot' : 'standard'}>
+                        <Badge
+                          color="error"
+                          variant={item.isNew ? 'dot' : 'standard'}
+                        >
                           <ItemIcon sx={{ fontSize: 20 }} />
                         </Badge>
                       </ListItemIcon>
@@ -332,7 +364,8 @@ const MainLayout = () => {
                   width: 36,
                   height: 36,
                   borderRadius: 2.5,
-                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                  background:
+                    'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -355,7 +388,10 @@ const MainLayout = () => {
                 >
                   Henko
                 </Typography>
-                <Typography variant="caption" sx={{ color: TEXT_SECONDARY, fontSize: '0.7rem' }}>
+                <Typography
+                  variant="caption"
+                  sx={{ color: TEXT_SECONDARY, fontSize: '0.7rem' }}
+                >
                   Admin Panel
                 </Typography>
               </Box>
@@ -370,7 +406,11 @@ const MainLayout = () => {
               '&:hover': { bgcolor: HOVER_BG, color: '#fff' },
             }}
           >
-            {collapsed ? <MenuIcon sx={{ fontSize: 20 }} /> : <ChevronLeft sx={{ fontSize: 20 }} />}
+            {collapsed ? (
+              <MenuIcon sx={{ fontSize: 20 }} />
+            ) : (
+              <ChevronLeft sx={{ fontSize: 20 }} />
+            )}
           </IconButton>
         </Box>
 
@@ -384,7 +424,11 @@ const MainLayout = () => {
           <>
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', mx: 1.5 }} />
             <Box sx={{ p: 2 }}>
-              <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                sx={{ alignItems: 'center' }}
+              >
                 <Avatar
                   sx={{
                     width: 34,
@@ -428,7 +472,9 @@ const MainLayout = () => {
             borderColor: 'divider',
           }}
         >
-          <Toolbar sx={{ justifyContent: 'flex-end', minHeight: '56px !important' }}>
+          <Toolbar
+            sx={{ justifyContent: 'flex-end', minHeight: '56px !important' }}
+          >
             {user && (
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                 <Tooltip title="Cerrar sesión">
@@ -492,7 +538,9 @@ const MainLayout = () => {
                     }}
                     sx={{ gap: 1.5, py: 1.25 }}
                   >
-                    <LogoutIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                    <LogoutIcon
+                      sx={{ fontSize: 18, color: 'text.secondary' }}
+                    />
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       Cerrar sesión
                     </Typography>
@@ -504,7 +552,12 @@ const MainLayout = () => {
         </AppBar>
 
         <Box sx={{ p: 3, flex: 1, bgcolor: '#f8fafc' }}>
-          <ToastContainer position="top-right" autoClose={250} newestOnTop theme="light" />
+          <ToastContainer
+            position="top-right"
+            autoClose={250}
+            newestOnTop
+            theme="light"
+          />
           <Outlet />
         </Box>
       </Box>

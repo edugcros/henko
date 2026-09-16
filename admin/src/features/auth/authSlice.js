@@ -90,13 +90,17 @@ export const createUserAdmin = createAsyncThunk(
       const response = await authService.registerAdmin(payload)
 
       if (!response?.success) {
-        return rejectWithValue(response?.message || 'Error al crear el comercio')
+        return rejectWithValue(
+          response?.message || 'Error al crear el comercio',
+        )
       }
 
       return response.data || response
     } catch (error) {
       return rejectWithValue(
-        error?.response?.data?.message || error?.message || 'Error al crear el comercio',
+        error?.response?.data?.message ||
+          error?.message ||
+          'Error al crear el comercio',
       )
     }
   },
@@ -104,15 +108,23 @@ export const createUserAdmin = createAsyncThunk(
 
 export const getMe = createAsyncThunk('auth/get-me', async (_, thunkAPI) => {
   try {
-    const response = await authService.getCurrentUser()
-    // Normalizamos: la data suele venir en response.data
-    const data = response.data || response
-    if (data.user) safeStorage.setUser(data.user)
+    // getCurrentUser devuelve { user }, la misma forma que el login, para que
+    // el reducer no tenga que adivinar en qué nivel está. Antes devolvía
+    // { success, data: { user } } y acá se desenvolvía UNA vez, así que al
+    // store llegaba { user: {...} } en lugar del usuario: state.user.tenantId
+    // quedaba undefined y MainLayout mandaba al login creyendo que no había
+    // sesión.
+    const { user } = await authService.getCurrentUser()
+
+    if (user) safeStorage.setUser(user)
+
     // El token que venga en el cuerpo se ignora: el que vale viaja en la cookie
     // httpOnly que el backend puso en esta misma respuesta.
-    return data
+    return { user }
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response?.data || 'Error al obtener perfil')
+    return thunkAPI.rejectWithValue(
+      error.response?.data || 'Error al obtener perfil',
+    )
   }
 })
 
@@ -155,29 +167,32 @@ export const loginUser = createAsyncThunk(
   },
 )
 
-export const logoutUser = createAsyncThunk('user/logout', async (_, { rejectWithValue }) => {
-  try {
-    // 1. Llamada al service (que a su vez llama al backend)
-    const res = await authService.logoutUser()
+export const logoutUser = createAsyncThunk(
+  'user/logout',
+  async (_, { rejectWithValue }) => {
+    try {
+      // 1. Llamada al service (que a su vez llama al backend)
+      const res = await authService.logoutUser()
 
-    // 2. Limpieza de storage local (Lo que el JS SÍ controla)
-    safeStorage.removeAuth()
-    sessionStorage.clear() // Borra cualquier rastro de tenant o estado temporal
+      // 2. Limpieza de storage local (Lo que el JS SÍ controla)
+      safeStorage.removeAuth()
+      sessionStorage.clear() // Borra cualquier rastro de tenant o estado temporal
 
-    // 3. Feedback visual
-    toast.success('Sesión cerrada correctamente')
+      // 3. Feedback visual
+      toast.success('Sesión cerrada correctamente')
 
-    return res
-  } catch (err) {
-    // Aunque falle la petición (ej. el servidor está caído),
-    // forzamos la limpieza local para que el usuario no quede atrapado
-    safeStorage.removeAuth()
-    sessionStorage.clear()
+      return res
+    } catch (err) {
+      // Aunque falle la petición (ej. el servidor está caído),
+      // forzamos la limpieza local para que el usuario no quede atrapado
+      safeStorage.removeAuth()
+      sessionStorage.clear()
 
-    const message = err?.message || 'Error al cerrar sesión'
-    return rejectWithValue(message)
-  }
-})
+      const message = err?.message || 'Error al cerrar sesión'
+      return rejectWithValue(message)
+    }
+  },
+)
 
 // ---------------------------
 // Slice
@@ -301,7 +316,8 @@ const authSlice = createSlice({
         state.isLoading = false
         // Mantenemos el error para mostrar un toast de "El servidor no respondió, pero se cerró la sesión local"
         state.isError = true
-        state.message = action.payload || 'Error al cerrar sesión en el servidor'
+        state.message =
+          action.payload || 'Error al cerrar sesión en el servidor'
 
         // --- Limpieza de Estado ---
         state.user = null
@@ -318,7 +334,9 @@ const authSlice = createSlice({
       })
       .addCase(getMe.fulfilled, (state, action) => {
         state.isLoading = false
-        state.user = action.payload?.data || action.payload
+        // Igual que loginUser.fulfilled: el usuario, plano. El `?.data ||
+        // payload` de antes tenía que adivinar el nivel, y adivinaba mal.
+        state.user = action.payload.user
         state.isAuthenticated = true
       })
       .addCase(getMe.rejected, state => {

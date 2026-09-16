@@ -12,9 +12,19 @@ const normalizeAuthResponse = response => {
   const raw = response?.data || response
 
   return {
-    user: raw?.user || raw?.data?.user || raw?.data?.profile || raw?.profile || null,
+    user:
+      raw?.user ||
+      raw?.data?.user ||
+      raw?.data?.profile ||
+      raw?.profile ||
+      null,
 
-    token: raw?.token || raw?.accessToken || raw?.data?.token || raw?.data?.accessToken || null,
+    token:
+      raw?.token ||
+      raw?.accessToken ||
+      raw?.data?.token ||
+      raw?.data?.accessToken ||
+      null,
 
     refreshToken: raw?.refreshToken || raw?.data?.refreshToken || null,
   }
@@ -28,7 +38,10 @@ const getApiErrorMessage = (error, fallback = 'Error inesperado') => {
   if (typeof error === 'string') return error
 
   return (
-    error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
   )
 }
 
@@ -162,7 +175,10 @@ const loginUser = async userData => {
     const normalized = normalizeAuthResponse(response)
 
     if (!normalized?.user) {
-      throw new Error(response?.data?.message || 'Respuesta inválida del servidor durante login')
+      throw new Error(
+        response?.data?.message ||
+          'Respuesta inválida del servidor durante login',
+      )
     }
 
     // El token sigue viniendo en el body por compatibilidad con otros clientes,
@@ -229,18 +245,33 @@ const getCurrentUser = async () => {
     silentAuthCheck: true,
   })
 
+  // /me NO tiene la forma del login, y ahí estaba el bug.
+  //
+  // El login responde { data: { user, token } }; /me usa sendResponse(), que
+  // arma { success, message, data: <el usuario> } — el usuario va en `data`
+  // DIRECTO, sin envoltorio `user`. normalizeAuthResponse solo mira `raw.user`
+  // y `raw.data.user`, así que con /me devolvía null, esto lanzaba, getMe caía
+  // en rejected y PrivateRoute mandaba al login.
+  //
+  // Consecuencia: CUALQUIER carga completa del panel —F5, o entrar tipeando
+  // una URL— terminaba en el login, con /me devolviendo 200. Se notaba poco
+  // porque después de loguearse uno navega haciendo clic, y ahí el usuario ya
+  // está en el store; aparecía al refrescar, y se leía como "se me venció la
+  // sesión".
+  //
+  // Se prueban las dos formas para no depender de cuál conteste: primero la
+  // del login (por si algún día se unifican) y después la de sendResponse.
   const normalized = normalizeAuthResponse(response)
+  const user = normalized?.user || response?.data || null
 
-  if (!normalized?.user) {
+  // Un usuario de verdad trae identidad y comercio. Sin esto, un `data` con
+  // cualquier cosa adentro pasaría por perfil válido y el panel arrancaría con
+  // un objeto que no es un usuario.
+  if (!user?._id || !user?.tenantId) {
     throw new Error('No se pudo recuperar el perfil del usuario')
   }
 
-  return {
-    success: true,
-    data: {
-      user: normalized.user,
-    },
-  }
+  return { user }
 }
 
 // ======================================================
