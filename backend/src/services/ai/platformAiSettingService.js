@@ -24,11 +24,14 @@
 //  - Con varias instancias, un cambio tarda hasta REFRESH_MS en verse en las
 //    otras. La que recibe el cambio lo aplica en el acto.
 
+import mongoose from 'mongoose'
+
 import logger from '../../../config/logger.js'
 import PlatformAiSetting, {
   PLATFORM_AI_SETTINGS,
 } from '../../models/platformAiSettingModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
+import AiTenantPolicy from '../../models/aiTenantPolicyModel.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 
 export { PLATFORM_AI_SETTINGS }
@@ -215,10 +218,179 @@ export const getPlatformAiSettingHistory = async (limit = 20) => {
   }))
 }
 
+// ─── POLÍTICA POR COMERCIO ───────────────────────────────────────────────────
+//
+// Lo mismo que arriba pero para UN comercio: su fracción del techo y el
+// interruptor. Vive acá y no en un servicio aparte porque es el mismo tema
+// —gobernar el gasto en caliente— y el archivo ya trae todo lo que hace falta.
+//
+// POR QUÉ ESTAS SÍ LEEN DE LA BASE CADA VEZ
+//
+// Los ajustes de plataforma se leen de memoria porque los consume código
+// SÍNCRONO en el camino caliente, y volverlos asíncronos cascadearía por toda
+// la capa de política. Acá no pasa: quien los consume ya es asíncrono
+// (reserveAiBudget), y el costo es un findOne por índice único al lado de una
+// llamada a Gemini que tarda segundos.
+//
+// Y hay un motivo mejor que el costo: un interruptor con caché de 30 segundos
+// no es un interruptor. Quien lo aprieta lo hace porque algo está pasando AHORA
+// —un comercio desbocado, uno que dejó de pagar— y "en medio minuto se aplica"
+// es justo la respuesta que no sirve. Una fracción mal calculada cuesta unos
+// tokens; medio minuto de un loop corriendo cuesta plata de verdad.
+
+/**
+ * La política de un comercio, o los valores por defecto si nunca se le tocó
+ * nada.
+ *
+ * Nunca lanza. Si la base falla, devuelve el defecto permisivo: el mismo
+ * criterio que el freno de velocidad. Un comercio que no hizo nada mal no se
+ * queda sin servicio por un problema nuestro, y el cupo mensual y el disyuntor
+ * siguen puestos detrás.
+ *
+ * @returns {Promise<{share: number|null, suspended: boolean, suspendedReason: string|null}>}
+ */
+export const getTenantAiPolicy = async tenantId => {
+  const id = String(tenantId || '').trim()
+  const defecto = { share: null, suspended: false, suspendedReason: null }
+
+  if (!id) return defecto
+
+  // Sin base conectada se devuelve el defecto YA, sin esperar. Sin esto,
+  // mongoose encola la consulta y la deja colgada hasta bufferTimeoutMS —diez
+  // segundos— que es exactamente el costo que este camino no puede pagar: lo
+  // recorre cada operación de IA. La decisión ante una falla ya es el defecto
+  // permisivo; esto es la misma decisión tomada antes y gratis.
+  if (mongoose.connection?.readyState !== 1) return defecto
+
+  try {
+    const row = await AiTenantPolicy.findOne({ tenantId: id })
+      .setOptions({ tenantId: id })
+      .maxTimeMS(1000)
+      .lean()
+
+    if (!row) return defecto
+
+    return {
+      share: Number.isFinite(row.share) ? row.share : null,
+      suspended: row.suspended === true,
+      suspendedReason: row.suspendedReason || null,
+    }
+  } catch (error) {
+    logger.warn('[AI POLICY] No se pudo leer la política del comercio, se deja pasar', {
+      tenantId: id,
+      error: error.message,
+    })
+
+    return defecto
+  }
+}
+
+/**
+ * Cambia la política de un comercio. Solo los campos que vengan.
+ *
+ * `share: null` explícito lo devuelve a la fracción global, que es distinto de
+ * no mandar el campo (dejarlo como está). Por eso se mira si la clave EXISTE y
+ * no si el valor es falsy.
+ *
+ * Levantar la suspensión limpia el motivo: un motivo viejo colgado de un
+ * comercio activo confunde a quien lo lea después.
+ */
+export const setTenantAiPolicy = async ({
+  tenantId,
+  share,
+  suspended,
+  suspendedReason = null,
+  changedByEmail,
+  reason = '',
+}) => {
+  const id = String(tenantId || '').trim()
+  if (!id) throw new Error('setTenantAiPolicy requiere tenantId')
+
+  const $set = { changedByEmail, reason }
+
+  if (share !== undefined) {
+    if (share !== null) {
+      const parsed = Number(share)
+
+      // Se valida acá y no solo en el controlador porque este servicio también
+      // lo puede llamar un script de mantenimiento, y el mismo valor
+      // disparatado tiene que rebotar por los dos caminos.
+      if (!Number.isFinite(parsed) || parsed < 0.01 || parsed > 1) {
+        throw new Error('La fracción por comercio tiene que estar entre 0,01 y 1')
+      }
+
+      $set.share = parsed
+    } else {
+      $set.share = null
+    }
+  }
+
+  if (suspended !== undefined) {
+    $set.suspended = suspended === true
+    $set.suspendedReason = suspended === true ? String(suspendedReason || '').trim() || null : null
+  }
+
+  const row = await AiTenantPolicy.findOneAndUpdate(
+    { tenantId: id },
+    { $set, $setOnInsert: { tenantId: id } },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  ).setOptions({ tenantId: id })
+
+  logger.info('[AI POLICY] Política de comercio cambiada', {
+    tenantId: id,
+    share: row.share,
+    suspended: row.suspended,
+    changedByEmail,
+    reason,
+  })
+
+  return {
+    tenantId: id,
+    share: Number.isFinite(row.share) ? row.share : null,
+    suspended: row.suspended === true,
+    suspendedReason: row.suspendedReason || null,
+    changedByEmail: row.changedByEmail || null,
+    reason: row.reason || '',
+    updatedAt: row.updatedAt,
+  }
+}
+
+/**
+ * Todas las políticas cargadas, indexadas por tenantId.
+ *
+ * El panel muestra una fila por comercio y necesita saber cuáles tienen algo
+ * distinto. Una consulta y no una por comercio: con diez da igual, con
+ * doscientos no.
+ */
+export const getAllTenantAiPolicies = async () => {
+  const rows = await AiTenantPolicy.find({})
+    .setOptions({
+      ignoreTenant: true,
+      platformScope: 'el panel de plataforma gobierna a TODOS los comercios',
+    })
+    .lean()
+
+  return rows.reduce((acc, row) => {
+    acc[String(row.tenantId)] = {
+      share: Number.isFinite(row.share) ? row.share : null,
+      suspended: row.suspended === true,
+      suspendedReason: row.suspendedReason || null,
+      changedByEmail: row.changedByEmail || null,
+      reason: row.reason || '',
+      updatedAt: row.updatedAt,
+    }
+
+    return acc
+  }, {})
+}
+
 export default {
   PLATFORM_AI_SETTINGS,
   getPlatformAiOverride,
   setPlatformAiOverride,
   refreshPlatformAiSettings,
   getPlatformAiSettingHistory,
+  getTenantAiPolicy,
+  setTenantAiPolicy,
+  getAllTenantAiPolicies,
 }

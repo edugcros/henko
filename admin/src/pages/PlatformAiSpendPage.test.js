@@ -18,10 +18,15 @@ process.env.REACT_APP_API_BASE_URL = "http://localhost:5000/api";
 
 const mockGetAiSpend = jest.fn();
 const mockUpdateBudget = jest.fn();
+const mockUpdateTenantPolicy = jest.fn();
 
 jest.unstable_mockModule("../services/platformService", () => ({
   getPlatformAiSpend: mockGetAiSpend,
   updatePlatformAiBudget: mockUpdateBudget,
+  // Acotar o pausar a UN comercio. El mock tiene que declarar todos los
+  // exports que la pantalla importa: con uno de menos, el módulo entero no
+  // resuelve y la suite no corre ningún test — que es lo que pasó al agregarlo.
+  updateTenantAiPolicy: mockUpdateTenantPolicy,
   getPlatformMarginReport: jest.fn(),
   default: {},
 }));
@@ -392,4 +397,235 @@ test("un campo vacío suelta el freno, y no es lo mismo que cero", async () => {
 
   await waitFor(() => expect(mockUpdateBudget).toHaveBeenCalled());
   expect(mockUpdateBudget.mock.calls[0][0].usd).toBeNull();
+});
+
+// ─── GOBIERNO POR COMERCIO ───────────────────────────────────────────────────
+//
+// Las tres palancas anteriores son globales: para frenar a uno había que
+// bajarle el reparto a todos, o sea castigar a los diez porque uno se desbocó.
+// Esto acota o apaga a uno solo.
+
+const CON_COMERCIOS = {
+  byTenant: [
+    {
+      tenantId: "64b7f00000000000000000a1",
+      name: "Tienda Grande",
+      plan: "pro",
+      tokens: 5_000_000,
+      toolCalls: 0,
+      operations: 900,
+      platformCostUsd: 12.4,
+      tenantProviderCostUsd: 12.4,
+      keySources: ["platform"],
+      tokenCap: 100_000_000,
+      percentOfCap: 5,
+      percentOfPlatformUsd: 24.8,
+      share: null,
+      suspended: false,
+      suspendedReason: null,
+    },
+  ],
+};
+
+test("cada comercio se puede gobernar desde su propia fila", async () => {
+  // La acción va donde está el número que la justifica: mandarla a otra
+  // pantalla obligaría a recordar qué comercio era y cuánto llevaba.
+  load(CON_COMERCIOS);
+
+  await waitFor(() => expect(screen.getByText("Tienda Grande")).toBeInTheDocument());
+  expect(screen.getByRole("button", { name: /gobernar/i })).toBeInTheDocument();
+});
+
+test("acotar a un comercio manda solo su fracción", async () => {
+  const user = userEvent.setup();
+  mockUpdateTenantPolicy.mockResolvedValue({ ...REPORT, ...CON_COMERCIOS });
+  load(CON_COMERCIOS);
+
+  await waitFor(() => expect(screen.getByText("Tienda Grande")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /gobernar/i }));
+
+  await user.type(screen.getByLabelText(/su parte del techo/i), "0.1");
+  await user.type(screen.getByLabelText(/^motivo$/i), "se comió el 60% en tres días");
+  await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+  await waitFor(() => expect(mockUpdateTenantPolicy).toHaveBeenCalled());
+
+  const enviado = mockUpdateTenantPolicy.mock.calls[0][0];
+  expect(enviado.tenantId).toBe("64b7f00000000000000000a1");
+  expect(enviado.share).toBe(0.1);
+  // El interruptor no se tocó: no puede viajar y apagar al comercio de paso.
+  expect(enviado).not.toHaveProperty("suspended");
+});
+
+test("pausar pide que se le explique al comercio", async () => {
+  // Un servicio que se apaga sin decir por qué genera un ticket de soporte por
+  // cada comercio afectado.
+  const user = userEvent.setup();
+  mockUpdateTenantPolicy.mockResolvedValue({ ...REPORT, ...CON_COMERCIOS });
+  load(CON_COMERCIOS);
+
+  await waitFor(() => expect(screen.getByText("Tienda Grande")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /gobernar/i }));
+
+  await user.click(screen.getByLabelText(/pausar las funciones de ia/i));
+
+  await user.type(
+    screen.getByLabelText(/qué va a ver el comercio/i),
+    "factura impaga desde agosto",
+  );
+  await user.type(screen.getByLabelText(/^motivo$/i), "mora de 40 días");
+  await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+  await waitFor(() => expect(mockUpdateTenantPolicy).toHaveBeenCalled());
+
+  const enviado = mockUpdateTenantPolicy.mock.calls[0][0];
+  expect(enviado.suspended).toBe(true);
+  expect(enviado.suspendedReason).toMatch(/factura impaga/);
+});
+
+test("sin motivo no se puede guardar", async () => {
+  // Apagarle la IA a un comercio es la decisión más cara de esta pantalla y la
+  // que más se va a tener que explicar dentro de tres meses.
+  const user = userEvent.setup();
+  load(CON_COMERCIOS);
+
+  await waitFor(() => expect(screen.getByText("Tienda Grande")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: /gobernar/i }));
+
+  expect(screen.getByRole("button", { name: /^guardar$/i })).toBeDisabled();
+});
+
+test("un comercio pausado se ve pausado en la tabla", async () => {
+  // Dejó de consumir, así que sus números son ceros: sin la marca se leería
+  // como un comercio que simplemente no usó la IA.
+  load({
+    byTenant: [
+      { ...CON_COMERCIOS.byTenant[0], suspended: true, suspendedReason: "mora" },
+    ],
+  });
+
+  await waitFor(() => expect(screen.getByText("pausado")).toBeInTheDocument());
+});
+
+test("un comercio acotado muestra que tiene un tope propio", async () => {
+  load({ byTenant: [{ ...CON_COMERCIOS.byTenant[0], share: 0.1 }] });
+
+  await waitFor(() => expect(screen.getByText("acotado 10%")).toBeInTheDocument());
+});
+
+// ─── PRONÓSTICO, DEGRADACIÓN Y ANOMALÍAS ─────────────────────────────────────
+
+test("avisa el día en que se agota el techo al ritmo actual", async () => {
+  // Es lo único de la pantalla que mira adelante. El resto dice cuánto se
+  // gastó, y para cuando ese número alarma, ya se gastó.
+  load({
+    budget: { ...REPORT.budget, usd: 50 },
+    forecast: {
+      dailyAvgUsd: 2.5,
+      recentAvgUsd: 4.1,
+      daysElapsed: 9,
+      daysInPeriod: 30,
+      recentWindowDays: 7,
+      daily: [],
+      projectedUsd: 119.6,
+      projectedPercent: 239.2,
+      exhaustionDay: 18,
+      willExhaust: true,
+      basis: "recent",
+    },
+  });
+
+  await waitFor(() =>
+    expect(screen.getByText(/el techo se agota el día 18/i)).toBeInTheDocument(),
+  );
+  // Y con cuál de los dos ritmos se proyectó: que el reciente venga más alto
+  // que el del mes es una información distinta de la proyección misma.
+  expect(screen.getByText(/últimos 7 días/i)).toBeInTheDocument();
+});
+
+test("a ritmo tranquilo no grita nada", async () => {
+  // Un cartel que aparece todos los meses diciendo «vas bien» enseña a no
+  // leerlo, y el porcentaje de consumo ya cubre el caso tranquilo.
+  load({
+    forecast: {
+      dailyAvgUsd: 0.4,
+      recentAvgUsd: 0.3,
+      daysElapsed: 9,
+      daysInPeriod: 30,
+      recentWindowDays: 7,
+      daily: [],
+      projectedUsd: 12,
+      projectedPercent: 24,
+      exhaustionDay: null,
+      willExhaust: false,
+      basis: "month",
+    },
+  });
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  expect(screen.queryByText(/se agota el día/i)).not.toBeInTheDocument();
+});
+
+test("muestra en qué escalón de servicio está la plataforma", async () => {
+  // Un asistente que de golpe contesta peor, sin nada en pantalla que lo
+  // explique, se diagnostica como un bug del agente y se busca durante horas en
+  // el lugar equivocado.
+  load({
+    degradation: { level: "economy", percentUsed: 83.4, economyAt: 80, essentialAt: 90 },
+  });
+
+  await waitFor(() => expect(screen.getByText(/modo economía/i)).toBeInTheDocument());
+  expect(screen.getByText(/83.4% del techo/i)).toBeInTheDocument();
+});
+
+test("en modo normal no muestra ningún escalón", async () => {
+  load({
+    degradation: { level: "normal", percentUsed: 12.3, economyAt: 80, essentialAt: 90 },
+  });
+
+  await waitFor(() => expect(screen.getByText("$33.12")).toBeInTheDocument());
+  expect(screen.queryByText(/modo economía/i)).not.toBeInTheDocument();
+});
+
+test("señala al comercio que se salió de su propia costumbre", async () => {
+  // La tabla de consumo ordena por cuánto gastan, y el desborde típico es un
+  // comercio CHICO que multiplicó por cincuenta lo suyo y sigue en la mitad de
+  // abajo de esa lista.
+  load({
+    anomalies: [
+      {
+        tenantId: "64b7f00000000000000000b2",
+        name: "Tienda Chica",
+        todayUsd: 5,
+        todayOperations: 812,
+        typicalUsd: 0.1,
+        factor: 50,
+        baselineDays: 14,
+      },
+    ],
+  });
+
+  await waitFor(() => expect(screen.getByText("Tienda Chica")).toBeInTheDocument());
+  expect(screen.getByText(/50× su habitual/i)).toBeInTheDocument();
+});
+
+test("el que arranca de cero no muestra un múltiplo inventado", async () => {
+  // No hay división que hacer, y decir «infinitas veces más» no ayuda a nadie.
+  load({
+    anomalies: [
+      {
+        tenantId: "64b7f00000000000000000b3",
+        name: "Tienda Nueva",
+        todayUsd: 3,
+        todayOperations: 500,
+        typicalUsd: 0,
+        factor: null,
+        baselineDays: 14,
+      },
+    ],
+  });
+
+  await waitFor(() =>
+    expect(screen.getByText(/no venía consumiendo nada/i)).toBeInTheDocument(),
+  );
 });

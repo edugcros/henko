@@ -51,6 +51,33 @@ export const updatePlatformAiBudget = async ({
   return unwrap(response)
 }
 
+/**
+ * Acota o apaga la IA de UN comercio.
+ *
+ * Las otras tres palancas son globales: para frenar a uno había que bajarle el
+ * reparto a todos. `share: null` lo devuelve a la fracción global y `suspended`
+ * lo apaga; cada campo es opcional, así que mover uno no pisa el otro.
+ *
+ * Responde con el reporte entero ya actualizado, igual que el techo: la tabla
+ * tiene que mostrar el efecto sin una segunda vuelta que pueda fallar.
+ */
+export const updateTenantAiPolicy = async ({
+  tenantId,
+  share,
+  suspended,
+  suspendedReason,
+  reason,
+}) => {
+  const response = await api.put(`/platform/ai-spend/tenant/${tenantId}`, {
+    ...(share !== undefined ? { share } : {}),
+    ...(suspended !== undefined ? { suspended } : {}),
+    ...(suspendedReason !== undefined ? { suspendedReason } : {}),
+    reason,
+  })
+
+  return unwrap(response)
+}
+
 /** Precios vigentes de los planes, con su historial de cambios. */
 export const getPlanPrices = async () => {
   const response = await api.get('/platform/plan-prices')
@@ -75,6 +102,7 @@ export default {
   getPlatformMarginReport,
   getPlatformAiSpend,
   updatePlatformAiBudget,
+  updateTenantAiPolicy,
   getPlanPrices,
   updatePlanPrice,
 }

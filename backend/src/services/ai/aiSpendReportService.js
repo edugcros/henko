@@ -28,8 +28,15 @@ import {
   getPlatformBudgetSource,
   getPlatformUsdBudgetSource,
   UNLIMITED,
+  degradationLevelFor,
+  DEGRADATION_ECONOMY_PERCENT,
+  DEGRADATION_ESSENTIAL_PERCENT,
 } from './aiPlanPolicy.js'
-import { getPlatformAiSettingHistory } from './platformAiSettingService.js'
+import {
+  getPlatformAiSettingHistory,
+  getAllTenantAiPolicies,
+} from './platformAiSettingService.js'
+import Tenant from '../../models/tenantModel.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 // La contabilidad vive aparte: este archivo REPORTA, aquel RECONCILIA.
 import { rebuildPlatformProjection } from './aiAccountingService.js'
@@ -410,21 +417,32 @@ export const getPeriodSpendByTenant = async period => {
 
   const budget = getPlatformMonthlyTokenBudget()
   const usdBudget = getPlatformMonthlyUsdBudget()
-  const share = getPerTenantShare()
+  const shareGlobal = getPerTenantShare()
 
-  return filas.map(fila => {
+  // Lo que el dueño de la plataforma decidió sobre cada comercio. Una consulta
+  // para todos, no una por fila.
+  const politicas = await getAllTenantAiPolicies().catch(() => ({}))
+
+  const filasConPolitica = filas.map(fila => {
     const tenant = fila.tenant?.[0] || null
+    const tenantId = String(fila._id)
     const tokens = fila.tokens || 0
     const platformCostUsd = round(fila.platformCostUsd, 6)
+    const politica = politicas[tenantId] || null
 
     // El tope por comercio es una FRACCIÓN del techo global (ver
     // resolveEffectiveLimit en aiPlanPolicy.js). Mostrar cuánto de ESE tope
     // lleva usado es lo que convierte la tabla en algo accionable: un comercio
     // al 90% de su parte va a quedarse sin IA aunque la plataforma vaya al 30%.
+    //
+    // Y tiene que ser la fracción de ESTE comercio, no la global: si se le bajó
+    // a la mitad, su tope real es la mitad y la columna estaría mintiendo justo
+    // sobre el comercio que alguien decidió vigilar.
+    const share = Number.isFinite(politica?.share) ? politica.share : shareGlobal
     const tokenCap = budget === UNLIMITED ? null : Math.floor(budget * share)
 
     return {
-      tenantId: String(fila._id),
+      tenantId,
       name: tenant?.name || tenant?.hostname || '(comercio eliminado)',
       plan: tenant?.plan || null,
       tokens,
@@ -440,8 +458,376 @@ export const getPeriodSpendByTenant = async period => {
         usdBudget === UNLIMITED || usdBudget <= 0
           ? null
           : round((platformCostUsd / usdBudget) * 100, 1),
+      // La política, para que la tabla sea el lugar donde se mira Y se actúa.
+      // `share: null` quiere decir "usa la global", y la pantalla tiene que
+      // poder distinguir eso de "le pusieron justo la global".
+      share: Number.isFinite(politica?.share) ? politica.share : null,
+      suspended: politica?.suspended === true,
+      suspendedReason: politica?.suspendedReason || null,
     }
   })
+
+  // Un comercio suspendido dejó de consumir, así que no tiene filas en el libro
+  // y se caía de la tabla — justo el que alguien decidió vigilar, invisible en
+  // la pantalla desde donde se lo tiene que poder levantar. Se agregan en cero.
+  const yaEstan = new Set(filasConPolitica.map(f => f.tenantId))
+  const faltantes = Object.entries(politicas).filter(
+    ([tenantId, politica]) => !yaEstan.has(tenantId) && politica.suspended,
+  )
+
+  if (faltantes.length === 0) return filasConPolitica
+
+  const tenants = await Tenant.find({ _id: { $in: faltantes.map(([id]) => id) } })
+    .select('name hostname plan')
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+    .lean()
+
+  const porId = new Map(tenants.map(t => [String(t._id), t]))
+
+  const enCero = faltantes.map(([tenantId, politica]) => {
+    const tenant = porId.get(tenantId) || null
+
+    return {
+      tenantId,
+      name: tenant?.name || tenant?.hostname || '(comercio eliminado)',
+      plan: tenant?.plan || null,
+      tokens: 0,
+      toolCalls: 0,
+      operations: 0,
+      platformCostUsd: 0,
+      tenantProviderCostUsd: 0,
+      keySources: [],
+      tokenCap: null,
+      percentOfCap: null,
+      percentOfPlatformUsd: null,
+      share: Number.isFinite(politica.share) ? politica.share : null,
+      suspended: true,
+      suspendedReason: politica.suspendedReason || null,
+    }
+  })
+
+  return [...filasConPolitica, ...enCero]
+}
+
+// ─── RITMO DE QUEMA Y PRONÓSTICO ─────────────────────────────────────────────
+//
+// Todo lo de arriba contesta "cuánto llevo". Ninguna contesta "cuánto voy a
+// llevar", que es la única que permite actuar ANTES.
+//
+// La diferencia entre las dos es el tiempo que uno tiene para hacer algo. El
+// disyuntor corta cuando ya se gastó; el aviso del 80% avisa cuando faltan dos
+// días a ritmo normal y unas horas a ritmo desbocado. Un pronóstico que dice
+// "al ritmo de esta semana llegás al techo el día 18" avisa el día 6.
+
+/** Cuántos días tiene el mes del período. Día 0 del mes siguiente, en UTC. */
+const diasDelPeriodo = period => {
+  const [anio, mes] = String(period).split('-').map(Number)
+  return new Date(Date.UTC(anio, mes, 0)).getUTCDate()
+}
+
+/**
+ * El gasto día por día del período.
+ *
+ * Sale del LIBRO y no del contador agregado: el contador tiene un solo número
+ * por mes y no se puede derivar de él ninguna serie. Es también la base de la
+ * detección de anomalías, que necesita comparar un día contra los anteriores.
+ *
+ * @returns {Promise<Array<{day: number, costUsd: number, tokens: number, operations: number}>>}
+ */
+export const getPeriodDailySpend = async period => {
+  const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
+  const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
+
+  const filas = await AiConsumptionLedger.aggregate([
+    {
+      $match: {
+        period,
+        event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.REFUNDED] },
+      },
+    },
+    {
+      $group: {
+        // UTC, igual que el período: agrupar en hora local haría que el gasto
+        // del día 1 a las 00:30 de Buenos Aires cayera en el día anterior, que
+        // ni siquiera pertenece a este período.
+        _id: { $dayOfMonth: { date: '$createdAt', timezone: 'UTC' } },
+        costUsd: { $sum: conSigno({ $ifNull: ['$costUsd', 0] }) },
+        tokens: {
+          $sum: conSigno({
+            $cond: [{ $eq: [{ $ifNull: ['$unit', 'units'] }, 'tokens'] }, '$amount', 0],
+          }),
+        },
+        operations: { $sum: conSigno(1) },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+
+  return filas.map(fila => ({
+    day: fila._id,
+    costUsd: round(fila.costUsd, 6),
+    tokens: fila.tokens || 0,
+    operations: fila.operations || 0,
+  }))
+}
+
+// Cuántos días mira el ritmo "reciente".
+//
+// SIETE Y NO TRES NI TREINTA. Tres días capturan cualquier pico —un bulk
+// import de un martes proyecta un mes catastrófico que no va a pasar— y el mes
+// entero diluye justamente lo que hay que ver: un comercio que se desbocó el
+// día 20 queda escondido bajo diecinueve días normales. Siete además cubre la
+// semana completa, y el consumo de una tienda tiene forma semanal: los fines de
+// semana no se parecen a los martes.
+const DIAS_RITMO_RECIENTE = 7
+
+/**
+ * A este ritmo, ¿cuándo se llega al techo?
+ *
+ * DOS RITMOS Y NO UNO, Y SE PROYECTA CON EL PEOR
+ *
+ * El promedio del mes es estable pero lento en reaccionar; el de los últimos
+ * siete días ve el cambio pero se sacude con un pico. Se calculan los dos, se
+ * proyecta con el MAYOR y se dice cuál se usó.
+ *
+ * Proyectar con el mayor no es pesimismo: este número existe para dar tiempo, y
+ * un pronóstico que subestima el gasto no da ninguno. El costo de equivocarse
+ * hacia arriba es mirar la pantalla un día de más; hacia abajo, es el
+ * presupuesto agotado sin aviso.
+ *
+ * QUÉ PASA CON UN PERÍODO PASADO
+ *
+ * No se proyecta nada: ya terminó, y "va a llegar al techo el día 18" sobre un
+ * mes cerrado es una afirmación sin sentido. Se devuelve la serie igual, que es
+ * lo que sirve para mirar un mes viejo.
+ */
+export const buildForecast = ({ period, daily, spentUsd, usdBudget, now = new Date() }) => {
+  const esPeriodoEnCurso = period === getCurrentPeriod()
+  const diasDelMes = diasDelPeriodo(period)
+
+  // Los días transcurridos incluyen el de hoy, que está a medio andar. Contarlo
+  // entero bajaría el promedio diario y correría el pronóstico hacia adelante —
+  // justo el error que este número no puede cometer.
+  const diaDeHoy = esPeriodoEnCurso ? now.getUTCDate() : diasDelMes
+  const diasCompletos = Math.max(1, diaDeHoy - 1)
+
+  // Se excluye HOY de los dos promedios, por lo mismo.
+  const cerrados = daily.filter(d => d.day < diaDeHoy)
+  const gastoCerrado = cerrados.reduce((total, d) => total + d.costUsd, 0)
+
+  const promedioDelMes = gastoCerrado / diasCompletos
+
+  const recientes = cerrados.filter(d => d.day > diaDeHoy - 1 - DIAS_RITMO_RECIENTE)
+  const diasRecientes = Math.min(diasCompletos, DIAS_RITMO_RECIENTE)
+  const promedioReciente =
+    recientes.reduce((total, d) => total + d.costUsd, 0) / Math.max(1, diasRecientes)
+
+  const base = {
+    dailyAvgUsd: round(promedioDelMes, 4),
+    recentAvgUsd: round(promedioReciente, 4),
+    daysElapsed: diasCompletos,
+    daysInPeriod: diasDelMes,
+    recentWindowDays: DIAS_RITMO_RECIENTE,
+    daily,
+  }
+
+  // Sin techo en plata no hay nada contra qué proyectar, y sin días cerrados no
+  // hay ritmo: el día 1 del mes, cualquier proyección sería inventada.
+  if (!esPeriodoEnCurso || usdBudget === UNLIMITED || usdBudget <= 0 || cerrados.length === 0) {
+    return { ...base, projectedUsd: null, exhaustionDay: null, willExhaust: null, basis: null }
+  }
+
+  const ritmo = Math.max(promedioDelMes, promedioReciente)
+  const basis = promedioReciente >= promedioDelMes ? 'recent' : 'month'
+
+  const diasQueFaltan = diasDelMes - diasCompletos
+  const proyectado = spentUsd + ritmo * diasQueFaltan
+
+  // El día en que el acumulado cruza el techo, si lo cruza dentro del mes.
+  // Se resuelve con una división y no iterando día por día porque el ritmo es
+  // constante por construcción: iterar daría el mismo número con más código.
+  const loQueFalta = usdBudget - spentUsd
+  const exhaustionDay =
+    ritmo > 0 && loQueFalta >= 0 && Math.ceil(loQueFalta / ritmo) <= diasQueFaltan
+      ? diasCompletos + Math.max(1, Math.ceil(loQueFalta / ritmo))
+      : null
+
+  return {
+    ...base,
+    projectedUsd: round(proyectado, 2),
+    // Cuánto del techo se va a haber usado al cerrar el mes. Arriba de 100 es
+    // la señal: el disyuntor va a cortar antes de que termine.
+    projectedPercent: round((proyectado / usdBudget) * 100, 1),
+    // null = a este ritmo no llega al techo este mes. Distinto de que falte el
+    // dato para calcularlo, que es cuando todo el bloque viene en null.
+    exhaustionDay,
+    willExhaust: proyectado > usdBudget,
+    // Con cuál de los dos ritmos se proyectó: el reciente avisa que algo cambió
+    // esta semana, y es una información distinta de la proyección misma.
+    basis,
+  }
+}
+
+// ─── ANOMALÍAS ───────────────────────────────────────────────────────────────
+//
+// Todo lo demás compara contra un TECHO. Eso deja ciego el caso más común de
+// desborde: un comercio chico que multiplica por cincuenta su consumo habitual
+// y sigue lejísimos del techo, porque su techo estaba pensado para un comercio
+// grande. No va a disparar ninguna alarma hasta que sea tarde, y para entonces
+// se comió el presupuesto de todos.
+//
+// Lo que detecta esto es distinto: cada comercio contra SÍ MISMO. No importa
+// cuánto gasta, importa cuánto cambió.
+
+// Cuántos días de historia hacen falta antes de poder decir "esto es raro".
+//
+// Con menos, cualquier comercio nuevo aparecería como anomalía el día que
+// empieza a usar el producto, que es exactamente lo que uno quiere que pase y
+// no algo para alarmarse.
+const MINIMO_DIAS_BASE = 3
+
+// Cuánto tiene que multiplicar su propia costumbre para llamar la atención.
+//
+// TRES Y NO DOS. El consumo de una tienda tiene forma semanal: un lunes puede
+// ser el doble de un domingo sin que pase nada raro. Duplicar generaría un
+// aviso por semana y eso entrena a ignorarlos.
+const FACTOR_ANOMALIA = 3
+
+// Piso en plata, para que un múltiplo grande sobre nada no sea noticia.
+//
+// Sin esto, pasar de USD 0,001 a USD 0,01 son "diez veces más" y no significa
+// nada. USD 0,25 en un día es, medido, unas 125 operaciones contra las ~5 que
+// hace por día un comercio activo — y es el 15% de lo que la plataforma ENTERA
+// puede gastar en un día con un techo de USD 50 al mes.
+const PISO_ANOMALIA_USD = 0.25
+
+/** La mediana, que es lo que hace que un solo pico no corrompa la base. */
+const mediana = valores => {
+  if (valores.length === 0) return 0
+
+  const ordenados = [...valores].sort((a, b) => a - b)
+  const medio = Math.floor(ordenados.length / 2)
+
+  return ordenados.length % 2 === 0
+    ? (ordenados[medio - 1] + ordenados[medio]) / 2
+    : ordenados[medio]
+}
+
+/**
+ * Comercios que hoy están gastando muy por encima de SU propia costumbre.
+ *
+ * MEDIANA Y NO PROMEDIO. Un solo día desbocado dentro de la base levantaría el
+ * promedio lo suficiente como para que el segundo día desbocado pareciera
+ * normal — o sea que el mecanismo se desactivaría solo justo cuando empieza a
+ * hacer falta. La mediana no se mueve por un valor extremo.
+ *
+ * SE COMPARA HOY, NO EL ÚLTIMO DÍA CERRADO. Un día de atraso puede ser todo el
+ * presupuesto: el objetivo es enterarse mientras está pasando. La contra es que
+ * a las 2 de la mañana el día lleva poco acumulado y no dispara nada — es un
+ * falso negativo temprano, no un falso positivo, y esa es la dirección correcta
+ * para equivocarse acá.
+ *
+ * @returns {Promise<Array>} ordenadas por cuánto se pasaron, la peor primero
+ */
+export const getSpendAnomalies = async (period, { now = new Date() } = {}) => {
+  // Solo tiene sentido sobre el mes en curso: sobre uno cerrado no hay nada que
+  // hacer con el dato.
+  if (period !== getCurrentPeriod()) return []
+
+  const hoy = now.getUTCDate()
+  if (hoy <= MINIMO_DIAS_BASE) return []
+
+  const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
+  const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
+
+  const filas = await AiConsumptionLedger.aggregate([
+    {
+      $match: {
+        period,
+        event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.REFUNDED] },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          tenantId: '$tenantId',
+          day: { $dayOfMonth: { date: '$createdAt', timezone: 'UTC' } },
+        },
+        costUsd: { $sum: conSigno({ $ifNull: ['$costUsd', 0] }) },
+        operations: { $sum: conSigno(1) },
+      },
+    },
+  ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+
+  // Por comercio: los días cerrados son la base, hoy es lo que se compara.
+  const porComercio = new Map()
+
+  for (const fila of filas) {
+    const tenantId = String(fila._id.tenantId)
+    const entrada = porComercio.get(tenantId) || { base: [], hoy: null }
+
+    if (fila._id.day === hoy) {
+      entrada.hoy = { costUsd: fila.costUsd || 0, operations: fila.operations || 0 }
+    } else if (fila._id.day < hoy) {
+      entrada.base.push(fila.costUsd || 0)
+    }
+
+    porComercio.set(tenantId, entrada)
+  }
+
+  const sospechosos = []
+
+  for (const [tenantId, { base, hoy: consumoDeHoy }] of porComercio) {
+    if (!consumoDeHoy || base.length < MINIMO_DIAS_BASE) continue
+    if (consumoDeHoy.costUsd < PISO_ANOMALIA_USD) continue
+
+    const habitual = mediana(base)
+
+    // Un comercio que nunca gastó nada y hoy gasta: la división no sirve, pero
+    // el caso es real y hay que reportarlo. Se informa el múltiplo en null, que
+    // es distinto de "no se pasó".
+    const factor = habitual > 0 ? consumoDeHoy.costUsd / habitual : null
+
+    if (factor !== null && factor < FACTOR_ANOMALIA) continue
+
+    sospechosos.push({
+      tenantId,
+      todayUsd: round(consumoDeHoy.costUsd, 4),
+      todayOperations: consumoDeHoy.operations,
+      typicalUsd: round(habitual, 4),
+      // null = arrancó de cero, no hay múltiplo que calcular.
+      factor: factor === null ? null : round(factor, 1),
+      baselineDays: base.length,
+    })
+  }
+
+  if (sospechosos.length === 0) return []
+
+  // La peor primero. Las que arrancan de cero van arriba de todo: no tienen
+  // múltiplo con qué ordenarse y son, por definición, un cambio total. Se
+  // comparan por separado y no con un Infinity de relleno, porque dos null
+  // darían Infinity − Infinity = NaN y un comparador que devuelve NaN deja el
+  // orden indefinido.
+  sospechosos.sort((a, b) => {
+    if (a.factor === null && b.factor === null) return b.todayUsd - a.todayUsd
+    if (a.factor === null) return -1
+    if (b.factor === null) return 1
+    return b.factor - a.factor
+  })
+
+  // El nombre del comercio: sin él la lista es de ObjectId y no se puede actuar
+  // sobre ella. Una consulta para todos y no una por fila.
+  const tenants = await Tenant.find({ _id: { $in: sospechosos.map(s => s.tenantId) } })
+    .select('name hostname')
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+    .lean()
+
+  const porId = new Map(tenants.map(t => [String(t._id), t]))
+
+  return sospechosos.map(s => ({
+    ...s,
+    name: porId.get(s.tenantId)?.name || porId.get(s.tenantId)?.hostname || '(comercio eliminado)',
+  }))
 }
 
 export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
@@ -455,6 +841,8 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     quality,
     byKeySource,
     byTenant,
+    daily,
+    anomalies,
     settingHistory,
     reconciliation,
   ] =
@@ -465,6 +853,16 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       getPeriodQuality(period),
       getSpendByKeySource(period),
       getPeriodSpendByTenant(period),
+      getPeriodDailySpend(period),
+      // No tumba el reporte si falla: es una señal adicional, y perderla no
+      // puede dejar sin pantalla a quien necesita ver el gasto.
+      getSpendAnomalies(period).catch(error => {
+        logger.warn('[AI ANOMALÍAS] No se pudieron calcular', {
+          period,
+          error: error.message,
+        })
+        return []
+      }),
       getPlatformAiSettingHistory(10).catch(() => []),
       // La diferencia entre el contador y el libro, SIN corregir. Va acá y no
       // en un script que alguien tiene que acordarse de correr: una
@@ -486,6 +884,29 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
 
   const tokens = Number(usage?.tokens || 0)
   const hasBudget = budget !== UNLIMITED
+
+  // Lo gastado Y lo comprometido: el pronóstico tiene que partir del mismo
+  // número contra el que corta el disyuntor, o diría que hay margen donde el
+  // medidor ya está cortando.
+  const gastadoUsd =
+    Number(usage?.estimatedCostUsd || 0) + Number(usage?.reservedCostUsd || 0)
+
+  // El porcentaje del techo que esté MÁS CERCA de cortar — el mismo criterio
+  // que usa el medidor para decidir el escalón, y el mismo que usa el aviso por
+  // email. Con los dos techos puestos, mirar solo el de tokens deja pasar el
+  // caso en que la cadena de respaldo entrega un modelo cinco veces más caro:
+  // el gasto va por el 90% y el volumen por el 30%.
+  const percentPeorTecho = Math.max(
+    usdBudget !== UNLIMITED && usdBudget > 0 ? (gastadoUsd / usdBudget) * 100 : 0,
+    hasBudget && budget > 0 ? (tokens / budget) * 100 : 0,
+  )
+
+  const forecast = buildForecast({
+    period,
+    daily,
+    spentUsd: gastadoUsd,
+    usdBudget,
+  })
 
   return {
     period,
@@ -551,6 +972,28 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       // decidir si se gasta más; si cortó el volumen, hay que buscar qué está
       // consumiendo de más.
       reason: usage?.breakerReason || null,
+    },
+    // Hacia dónde va el mes. Es lo único de esta pantalla que mira adelante:
+    // todo lo demás dice cuánto se gastó, y para cuando eso alarma, ya se
+    // gastó.
+    forecast,
+    // Comercios que hoy están gastando muy por encima de SU propia costumbre.
+    // Es la única señal que no compara contra un techo: un comercio chico puede
+    // multiplicar por cincuenta su consumo y seguir lejísimos del suyo.
+    anomalies,
+    // En qué escalón de servicio está la plataforma AHORA, y dónde empieza cada
+    // uno. Se deriva del mismo porcentaje que ya está en `consumption` y no de
+    // una segunda medición: dos números que tendrían que coincidir y se
+    // calculan por caminos distintos terminan no coincidiendo.
+    //
+    // Los umbrales viajan con el nivel porque sin ellos "modo economía" es una
+    // etiqueta sin referencia: lo que hace falta saber es a cuánto está del
+    // siguiente escalón.
+    degradation: {
+      level: degradationLevelFor(percentPeorTecho),
+      percentUsed: round(percentPeorTecho, 1),
+      economyAt: DEGRADATION_ECONOMY_PERCENT,
+      essentialAt: DEGRADATION_ESSENTIAL_PERCENT,
     },
     // null cuando no se pudo calcular: es distinto de "no hay diferencia", y
     // la pantalla lo tiene que poder distinguir.

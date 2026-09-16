@@ -97,6 +97,41 @@ const FALLBACK_MODELS = [
 ]
 
 /**
+ * La cadena cuando hay que ahorrar, ordenada por TARIFA y no por calidad.
+ *
+ * Sale del mismo catálogo verificado de arriba: 3.1-flash-lite cuesta
+ * 0,25/1,50 por millón contra 0,30/2,50 del 3.5 y 0,75/3,75 de los flash
+ * grandes. O sea un tercio del input y menos de la mitad del output que el más
+ * caro de la cadena normal.
+ *
+ * Los flash grandes NO están: si estuvieran al final, una racha de 429 en los
+ * dos lite terminaría cayendo justo en el modelo que este modo vino a evitar.
+ * Prefiero que falle contra la API —que se ve en el log y dispara el cooldown—
+ * antes que gastar al triple en silencio, que es exactamente el modo de falla
+ * que no se nota hasta la factura.
+ */
+const ECONOMY_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']
+
+/**
+ * En qué escalón de servicio está la plataforma.
+ *
+ * Lo escribe el medidor de presupuesto (aiBudgetService) en cada evaluación del
+ * disyuntor, que ocurre en cada operación de IA. Se lee de memoria y no de la
+ * base porque getModelChain es SÍNCRONA y la llaman tres servicios en el camino
+ * caliente; volverla asíncrona cascadearía por los tres.
+ *
+ * Arranca en 'normal': antes del primer pedido no hay medición, y degradar sin
+ * haber medido nada sería empeorar el servicio por las dudas.
+ */
+let economyMode = 'normal'
+
+export const setEconomyMode = level => {
+  economyMode = level === 'economy' || level === 'essential' ? level : 'normal'
+}
+
+export const getEconomyMode = () => economyMode
+
+/**
  * Modelos que NO pueden usar el tool de búsqueda de Google.
  *
  * Gemma es un modelo abierto servido por la misma API, y acepta prompt de
@@ -152,9 +187,17 @@ const isCoolingDown = model => {
  * que produciría un error interno mucho más confuso de diagnosticar.
  */
 export const getModelChain = (...preferred) => {
-  const chain = [...preferred, ...FALLBACK_MODELS]
-    .map(normalizeModelName)
-    .filter(Boolean)
+  // EN MODO ECONOMÍA SE IGNORA EL PREFERIDO.
+  //
+  // Es todo el punto del modo: el preferido es justamente el modelo caro que
+  // eligió quien llama. Respetarlo y poner los baratos detrás no ahorraría
+  // nada, porque el primero de la cadena es el que contesta casi siempre.
+  //
+  // El modo lo pone el medidor cuando el gasto pasa el 80% del techo, y se
+  // levanta solo cuando vuelve a bajar o cuando arranca el mes.
+  const base = economyMode === 'normal' ? [...preferred, ...FALLBACK_MODELS] : ECONOMY_MODELS
+
+  const chain = base.map(normalizeModelName).filter(Boolean)
 
   const unique = [...new Set(chain)]
   const usable = unique.filter(model => !deadModels.has(model) && !isCoolingDown(model))
@@ -273,7 +316,11 @@ export const isModelDead = model => {
 
 /** Estado actual, para diagnóstico desde el panel o un healthcheck. */
 export const getModelHealth = () => ({
-  chain: FALLBACK_MODELS,
+  // La cadena que rige AHORA, no la de siempre: en modo economía son otras, y
+  // un healthcheck que informe la lista normal mientras responde la barata
+  // manda a buscar el problema al lugar equivocado.
+  chain: economyMode === 'normal' ? FALLBACK_MODELS : ECONOMY_MODELS,
+  economyMode,
   dead: [...deadModels],
   coolingDown: [...cooldownModels.entries()].map(([model, until]) => ({
     model,
@@ -285,4 +332,7 @@ export const getModelHealth = () => ({
 export const resetDeadModels = () => {
   deadModels.clear()
   cooldownModels.clear()
+  // El modo también: es estado de módulo, y un test que degrada dejaría a los
+  // siguientes eligiendo modelos distintos según el orden en que corran.
+  economyMode = 'normal'
 }

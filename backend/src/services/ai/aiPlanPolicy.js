@@ -212,6 +212,70 @@ export const getPerTenantShare = () => {
   return Math.min(Math.max(raw, 0.01), 1)
 }
 
+// ─── ESCALONES DE DEGRADACIÓN ────────────────────────────────────────────────
+//
+// El disyuntor es binario: hasta el 99,9% todo normal y en el 100% la IA se
+// apaga para todos los comercios de la key compartida. El primer síntoma de esa
+// transición es un cliente escribiéndole a una tienda que no contesta.
+//
+// Entre "todo normal" y "nada" hay dos escalones que valen plata y casi no
+// cuestan calidad. Viven ACÁ, en la capa de política, y no en el medidor ni en
+// el reporte, porque los dos necesitan el mismo número: el medidor para
+// aplicarlo y el panel para mostrarlo. Duplicar la fórmula haría que la
+// pantalla dijera una cosa y el servicio hiciera otra — el mismo error que
+// motivó extraer getPerTenantShare.
+//
+// Es el mismo motivo por el que el período vive en aiPeriod.js: un dato que dos
+// módulos comparten no pertenece a ninguno de los dos.
+
+export const DEGRADATION = Object.freeze({
+  NORMAL: 'normal',
+  // 80%: se fuerza el modelo más barato de la cadena. Medido sobre el catálogo
+  // propio: 3.1-flash-lite cuesta 0,25/1,50 por millón contra 0,75/3,75 de los
+  // flash grandes. El asistente contesta igual, un poco menos fino.
+  ECONOMY: 'economy',
+  // 90%: además se posponen las funciones caras que NO ve un cliente.
+  ESSENTIAL: 'essential',
+})
+
+// Un escalón MÁS abajo que el aviso por email del 80%, a propósito: el aviso le
+// pide a una persona que haga algo, y esto lo hace solo mientras esa persona se
+// entera.
+export const DEGRADATION_ECONOMY_PERCENT = 80
+export const DEGRADATION_ESSENTIAL_PERCENT = 90
+
+/** En qué escalón está la plataforma, según cuán cerca del techo esté. */
+export const degradationLevelFor = percentUsed => {
+  if (percentUsed >= DEGRADATION_ESSENTIAL_PERCENT) return DEGRADATION.ESSENTIAL
+  if (percentUsed >= DEGRADATION_ECONOMY_PERCENT) return DEGRADATION.ECONOMY
+  return DEGRADATION.NORMAL
+}
+
+/**
+ * Funciones que se posponen en el escalón 'essential'.
+ *
+ * EL CRITERIO ES QUIÉN LAS VE, NO CUÁNTO CUESTAN.
+ *
+ * Lo que toca un cliente —el asistente contestando en WhatsApp— no se apaga
+ * hasta el disyuntor: apagarlo es apagar la tienda, y el comercio paga
+ * justamente por eso. Lo que se pospone es herramienta interna del comercio,
+ * que puede esperar los días que faltan para que el mes cierre.
+ *
+ * El análisis de mercado encabeza la lista con motivo medido: es el único que
+ * además de tokens gasta herramientas —tres búsquedas de Tavily por corrida más
+ * grounding— así que es el que más baja el gasto por función apagada.
+ *
+ * VISIÓN QUEDA ADENTRO del servicio a propósito, aunque no la vea un cliente:
+ * es el paso obligado para cargar un producto, apagarla bloquea el alta, y su
+ * costo ya está acotado por la cuota del plan (300 y 1.500 al mes). No es de
+ * donde viene un desborde.
+ */
+export const DEFERRABLE_METRICS = Object.freeze([
+  AI_METRICS.MARKET_ANALYSES,
+  AI_METRICS.MARKET_TOKENS,
+  AI_METRICS.IMAGE_EDITS,
+])
+
 export const getPlanLimits = plan => {
   const normalizedPlan = normalizePlan(plan)
 
@@ -735,7 +799,7 @@ const getVisionTokensPerCall = () =>
  * un presupuesto medido en tokens no significaría nada. Su freno son las
  * cuotas por plan.
  */
-export const getSharedKeyTenantCap = metric => {
+export const getSharedKeyTenantCap = (metric, { share: shareOverride = null } = {}) => {
   const normalizedMetric = normalizeMetric(metric)
 
   // La guarda vieja comparaba solo contra AGENT_TOKENS y quedó viva debajo de
@@ -751,7 +815,17 @@ export const getSharedKeyTenantCap = metric => {
   const budget = getPlatformMonthlyTokenBudget()
   if (budget === UNLIMITED) return UNLIMITED
 
-  const share = getPerTenantShare()
+  // La fracción de ESTE comercio si el dueño de la plataforma le puso una, y
+  // si no la global. Antes era siempre la global, y la única palanca para
+  // acotar a uno que se desbocaba era bajársela a todos.
+  //
+  // Se acota igual que la global —entre 1% y 100%— porque llega desde afuera y
+  // el rango tiene que valer venga de donde venga.
+  const share =
+    Number.isFinite(shareOverride) && shareOverride !== null
+      ? Math.min(Math.max(shareOverride, 0.01), 1)
+      : getPerTenantShare()
+
   const tokenCap = Math.floor(budget * share)
 
   if (isTokenMetric) return tokenCap

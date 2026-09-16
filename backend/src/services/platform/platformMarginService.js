@@ -18,10 +18,10 @@
 // legítimo.
 
 import Tenant from '../../models/tenantModel.js'
-import AiUsage from '../../models/aiUsageModel.js'
 import Order from '../../models/orderModel.js'
 import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
 import { getCurrentPeriod } from '../ai/aiBudgetService.js'
+import { getPeriodSpendByTenant } from '../ai/aiSpendReportService.js'
 import {
   getEmailCostPerSendUsd,
   getPlanMonthlyPriceArs,
@@ -56,17 +56,27 @@ const parsePeriodRange = period => {
 export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   const range = parsePeriodRange(period)
 
-  const [allTenants, usageRows, emailOrderRows, recoveryRows] = await Promise.all([
+  const [allTenants, spendRows, emailOrderRows, recoveryRows] = await Promise.all([
     // Sin filtrar por status acá a propósito: el margen (abajo) solo mira
     // comercios no borrados, pero el ciclo de vida (más abajo) necesita ver
     // también los borrados para poder contarlos en el período.
     Tenant.find({})
       .select('name plan status subscriptionStatus createdAt updatedAt')
       .lean(),
-    AiUsage.aggregate([
-      { $match: { period } },
-      { $project: { tenantId: 1, estimatedCostUsd: 1, byokTokens: 1 } },
-    ]).option({ ignoreTenant: true, platformScope: 'platform:margen' }),
+    // EL COSTO DE IA SALE DEL LIBRO, NO DEL CONTADOR.
+    //
+    // Acá había un AiUsage.aggregate sobre estimatedCostUsd. AiUsage es una
+    // PROYECCIÓN: se escribe en paralelo al libro y puede desviarse —por eso
+    // existe la auditoría contable que la reconstruye desde el ledger cada
+    // hora—. Calcular el margen contra un número que otro proceso corrige
+    // significa que el margen cambia solo, sin que nada haya pasado en el
+    // negocio, y que dos pantallas del mismo panel dan cifras distintas para
+    // el mismo comercio.
+    //
+    // getPeriodSpendByTenant lee el libro, que es la fuente declarada, y además
+    // devuelve separado lo que paga HENKO de lo que paga el comercio con su
+    // propia key — que es exactamente la distinción que un margen necesita.
+    getPeriodSpendByTenant(period),
     // Emails de confirmación de compra — no cubre recuperación de carrito por
     // email, esa se cuenta aparte vía AiCartRecovery (mismo criterio: cada
     // envío real, no un estimado).
@@ -86,8 +96,10 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
 
   const tenants = allTenants.filter(tenant => tenant.status !== 'deleted')
 
+  // Lo que paga HENKO por ese comercio. Con key propia el costo es del
+  // comercio y no entra al margen de la plataforma: no lo paga HENKO.
   const costByTenant = new Map(
-    usageRows.map(row => [String(row.tenantId), row.estimatedCostUsd || 0]),
+    spendRows.map(row => [String(row.tenantId), row.platformCostUsd || 0]),
   )
 
   const emailSendsByTenant = new Map(
@@ -148,6 +160,25 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       whatsappSends,
       communicationsCostArs: aArs(communicationsCostUsd),
       estimatedMarginArs,
+
+      // EL MARGEN EN PESOS NO DICE SI EL COMERCIO ES RENTABLE.
+      //
+      // Un comercio que deja $8.000 sobre un plan de $10.000 y otro que deja
+      // $8.000 sobre uno de $40.000 son negocios completamente distintos, y en
+      // la columna de pesos se ven idénticos. El porcentaje es lo que permite
+      // ordenarlos y decidir si un plan está mal puesto.
+      //
+      // null cuando el plan no tiene precio cargado: sin ingreso no hay
+      // porcentaje, y un cero ahí se leería como "no deja nada".
+      marginPercent:
+        planPriceArs === null || planPriceArs === 0
+          ? null
+          : Math.round((estimatedMarginArs / planPriceArs) * 1000) / 10,
+
+      // Cuesta más de lo que paga. Es la única fila de este reporte sobre la
+      // que hay que hacer algo, y sin marcarla se pierde entre las demás: en
+      // una lista ordenada por nombre, un margen negativo es una celda más.
+      unprofitable: estimatedMarginArs !== null && estimatedMarginArs < 0,
     }
   })
 
@@ -212,9 +243,16 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     ).length,
   }
 
+  const unprofitable = tenantRows.filter(row => row.unprofitable)
+
   const totals = {
     tenantCount: tenantRows.length,
     customPricingCount: tenantRows.length - billable.length,
+    // Cuántos comercios cuestan más de lo que pagan, y cuánto se pierde con
+    // ellos. Va en los totales porque es la pregunta que se hace primero al
+    // abrir esta pantalla, y contarlos a ojo sobre la tabla no escala.
+    unprofitableCount: unprofitable.length,
+    unprofitableLossArs: unprofitable.reduce((sum, row) => sum + row.estimatedMarginArs, 0),
     totalPlanRevenueArs: billable.reduce((sum, row) => sum + row.planPriceArs, 0),
     totalAiCostArs: tenantRows.reduce((sum, row) => sum + row.aiCostArs, 0),
     totalCommunicationsCostArs,
@@ -239,6 +277,9 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     lifecycle,
     notes: [
       'estimatedMarginArs por comercio es precio del plan menos costo de IA y de comunicaciones de ESE comercio — no incluye la porción de infraestructura/storage (ver los dos puntos siguientes).',
+      'aiCostArs sale del LIBRO (AiConsumptionLedger), que es la fuente de verdad declarada, y no del contador agregado AiUsage. El contador es una proyección que puede desviarse —hay una auditoría horaria que lo reconstruye desde el libro—, así que un margen calculado contra él cambiaría solo, sin que pase nada en el negocio.',
+      'aiCostArs cuenta lo que paga HENKO. El consumo de un comercio con API key propia lo paga el comercio contra Google, así que no entra a este margen; se ve aparte en el reporte de gasto de IA.',
+      'marginPercent es el margen sobre el precio del plan. Un mismo margen en pesos sobre planes distintos son negocios distintos, y en la columna de pesos se ven iguales.',
       'infraCostArs y storageCostArs son costos totales de la plataforma, no prorrateados por comercio — dividirlos individualmente inventaría una precisión que no existe hoy. Se restan una sola vez en totals.totalEstimatedMarginArs. Default estimado por investigación de precios públicos de Render/MongoDB Atlas/Cloudinary (ver aiPlanPolicy.js) — no es la factura real de HENKO, sobrescribible con PLATFORM_INFRA_MONTHLY_COST_USD / PLATFORM_STORAGE_MONTHLY_COST_USD en cuanto haya una factura real para comparar.',
       'communicationsCostArs por comercio sí es medible (volumen real de envíos de email/WhatsApp). La tarifa por envío también es una estimación de precios públicos de SendGrid/Meta WhatsApp (ver aiPlanPolicy.js), configurable con EMAIL_COST_USD_PER_SEND / WHATSAPP_COST_USD_PER_SEND.',
       'planPriceArs null significa que ese plan todavía no tiene precio cargado en el panel — no se estima uno automáticamente, y mientras esté así el plan no se puede contratar.',

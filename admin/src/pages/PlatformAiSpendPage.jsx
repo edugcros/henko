@@ -21,9 +21,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   LinearProgress,
   Paper,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -37,6 +39,7 @@ import {
 import {
   getPlatformAiSpend,
   updatePlatformAiBudget,
+  updateTenantAiPolicy,
 } from '../services/platformService'
 
 const formatUsd = value =>
@@ -265,12 +268,196 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
   )
 }
 
+/**
+ * Las dos palancas sobre UN comercio: acotarlo o apagarlo.
+ *
+ * POR QUÉ ES UN DIÁLOGO Y NO UN SWITCH EN LA FILA
+ *
+ * Apagarle la IA a un comercio es la acción más cara de esta pantalla y la
+ * única irreversible desde el lado del comercio: él no puede volver a
+ * prenderla. Un switch en la tabla la pone a un click de distancia de cualquier
+ * scroll desprolijo, y sin motivo escrito no queda nadie que pueda explicar la
+ * decisión dentro de tres meses.
+ *
+ * LAS DOS JUNTAS, Y NO EN DOS DIÁLOGOS
+ *
+ * Son la misma decisión sobre el mismo comercio, tomada con la misma
+ * información a la vista. Separarlas obligaría a dos viajes para "bajale el
+ * tope, y si sigue así apagalo".
+ */
+function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
+  const [share, setShare] = useState('')
+  const [suspended, setSuspended] = useState(false)
+  const [suspendedReason, setSuspendedReason] = useState('')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  // Los valores vigentes al abrir, para poder comparar y mandar SOLO lo que
+  // cambió — mismo criterio que el diálogo del techo.
+  useEffect(() => {
+    if (!row) return
+    setShare(
+      row.share === null || row.share === undefined ? '' : String(row.share),
+    )
+    setSuspended(row.suspended === true)
+    setSuspendedReason(row.suspendedReason || '')
+    setReason('')
+    setError('')
+  }, [row])
+
+  // La página lo monta solo con comercio elegido; esto cubre cualquier otro
+  // llamador. Va DESPUÉS de todos los hooks: un return temprano arriba
+  // cambiaría la cantidad de hooks entre renders y rompe el orden.
+  if (!row) return null
+
+  // Vacío significa "usá la fracción global", no cero. La diferencia importa:
+  // el backend distingue null (volver a la global) de no mandar el campo.
+  const shareValue = String(share).trim() === '' ? null : Number(share)
+  const shareEfectiva = shareValue ?? budget.perTenantShare ?? null
+
+  // El tope que resulta, en tokens. Una fracción sola no le dice nada a nadie:
+  // "0,1" es abstracto y "20.000.000 de tokens" es una decisión que se puede
+  // comparar contra lo que el comercio ya consumió, que está en la misma fila.
+  const topeResultante =
+    budget.tokens && shareEfectiva
+      ? Math.floor(budget.tokens * shareEfectiva)
+      : null
+
+  const submit = async () => {
+    setSaving(true)
+    setError('')
+
+    try {
+      const data = await updateTenantAiPolicy({
+        tenantId: row.tenantId,
+        ...(String(share) !== String(row.share ?? '')
+          ? { share: shareValue }
+          : {}),
+        ...(suspended !== row.suspended
+          ? { suspended, suspendedReason }
+          : // El motivo visible puede cambiar sin que cambie el interruptor.
+            suspended && suspendedReason !== (row.suspendedReason || '')
+            ? { suspended: true, suspendedReason }
+            : {}),
+        reason,
+      })
+
+      onSaved(data)
+      onClose()
+    } catch (err) {
+      setError(
+        err?.response?.data?.message ||
+          'No se pudo cambiar la política de este comercio.',
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const canSubmit = reason.trim().length > 0 && !saving
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>{row.name}</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Este comercio lleva {formatTokens(row.tokens)} tokens y{' '}
+          {formatUsd(row.platformCostUsd)} a cargo de HENKO en el período. Los
+          cambios rigen de inmediato y solo afectan a este comercio.
+        </Typography>
+
+        <TextField
+          label="Su parte del techo"
+          type="number"
+          fullWidth
+          value={share}
+          onChange={event => setShare(event.target.value)}
+          sx={{ mb: 2 }}
+          inputProps={{ step: 0.05, min: 0.01, max: 1 }}
+          helperText={
+            topeResultante
+              ? `${Math.round(shareEfectiva * 100)}% del techo = ${formatTokens(topeResultante)} tokens para este comercio. Vacío = usa el reparto global.`
+              : 'Entre 0.01 y 1. Vacío = usa el reparto global de la plataforma.'
+          }
+        />
+
+        {/* El interruptor. Se separa visualmente del campo de arriba porque son
+            decisiones de peso distinto: una acota, la otra apaga. */}
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={suspended}
+                onChange={event => setSuspended(event.target.checked)}
+                color="error"
+              />
+            }
+            label="Pausar las funciones de IA de este comercio"
+          />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block' }}
+          >
+            No se repone el mes que viene ni se levanta solo: lo tenés que
+            volver a prender vos. Corta también si el comercio usa su propia
+            clave.
+          </Typography>
+
+          {suspended && (
+            <TextField
+              label="Qué va a ver el comercio"
+              fullWidth
+              value={suspendedReason}
+              onChange={event => setSuspendedReason(event.target.value)}
+              sx={{ mt: 2 }}
+              placeholder="Ej.: factura de agosto impaga"
+              helperText="Se le muestra al comercio cuando intente usar la IA. Sin esto abre un ticket para preguntar qué pasó."
+            />
+          )}
+        </Paper>
+
+        <TextField
+          label="Motivo"
+          fullWidth
+          multiline
+          minRows={2}
+          value={reason}
+          onChange={event => setReason(event.target.value)}
+          placeholder="Ej.: consumió el 60% del presupuesto del mes en tres días"
+          helperText="Obligatorio, y es para adentro: queda con tu email en el registro del cambio."
+        />
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button variant="contained" onClick={submit} disabled={!canSubmit}>
+          Guardar
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
 export default function PlatformAiSpendPage() {
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState(null)
   const [editing, setEditing] = useState(false)
+  // El comercio cuya política se está editando, o null. Se guarda la fila
+  // entera y no el id: el diálogo muestra su consumo para poder decidir con el
+  // número a la vista, y volver a buscarlo en el reporte sería reconstruir algo
+  // que ya se tenía en la mano.
+  const [governing, setGoverning] = useState(null)
 
   const load = useCallback(async ({ signal } = {}) => {
     setLoading(true)
@@ -337,6 +524,9 @@ export default function PlatformAiSpendPage() {
     byModel,
     quality,
     byTenant,
+    forecast,
+    degradation,
+    anomalies,
     settingHistory,
   } = report
   const percent = consumption.percentUsed
@@ -358,6 +548,58 @@ export default function PlatformAiSpendPage() {
           </strong>{' '}
           La IA está detenida para todos los comercios sobre la key de la
           plataforma. Los que tienen key propia siguen funcionando.
+        </Alert>
+      )}
+
+      {/* EN QUÉ ESCALÓN DE SERVICIO ESTÁ.
+
+          El servicio se degrada solo antes de cortar, y eso tiene que ser
+          visible: un asistente que de golpe contesta peor, sin nada en pantalla
+          que lo explique, se diagnostica como un bug del agente y se busca
+          durante horas en el lugar equivocado.
+
+          Solo aparece cuando hay degradación: en modo normal no hay nada que
+          contar. */}
+      {degradation && degradation.level !== 'normal' && !breaker.tripped && (
+        <Alert
+          severity={degradation.level === 'essential' ? 'error' : 'warning'}
+          sx={{ mb: 2 }}
+        >
+          <strong>
+            {degradation.level === 'essential'
+              ? 'Solo lo esencial.'
+              : 'Modo economía.'}
+          </strong>{' '}
+          El gasto va por el {degradation.percentUsed}% del techo, así que se
+          está respondiendo con el modelo más barato de la cadena.
+          {degradation.level === 'essential'
+            ? ' Además están pospuestos el análisis de mercado y las ediciones de imagen. El asistente de las tiendas sigue contestando.'
+            : ` A partir del ${degradation.essentialAt}% se posponen además el análisis de mercado y las ediciones de imagen.`}{' '}
+          Se levanta solo cuando baja el consumo o arranca el mes.
+        </Alert>
+      )}
+
+      {/* HACIA DÓNDE VA EL MES.
+
+          Va arriba de todo —solo debajo del corte, que ya ocurrió— porque es lo
+          único de esta pantalla que mira adelante. El resto dice cuánto se
+          gastó, y para cuando ese número alarma, ya se gastó.
+
+          Solo se muestra si va a pasarse: un cartel que aparece todos los
+          meses diciendo «vas bien» enseña a no leerlo, y el porcentaje de
+          consumo que está justo abajo ya cubre el caso tranquilo. */}
+      {forecast?.willExhaust && !breaker.tripped && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <strong>
+            {forecast.exhaustionDay
+              ? `Al ritmo actual, el techo se agota el día ${forecast.exhaustionDay}.`
+              : 'Al ritmo actual, el mes cierra por encima del techo.'}
+          </strong>{' '}
+          Proyección: {formatUsd(forecast.projectedUsd)} sobre un techo de{' '}
+          {formatUsd(budget.usd)} ({forecast.projectedPercent}%).{' '}
+          {forecast.basis === 'recent'
+            ? `Calculado con el ritmo de los últimos ${forecast.recentWindowDays} días (${formatUsd(forecast.recentAvgUsd)} por día), que viene más alto que el promedio del mes (${formatUsd(forecast.dailyAvgUsd)}).`
+            : `Calculado con el promedio del mes, ${formatUsd(forecast.dailyAvgUsd)} por día.`}
         </Alert>
       )}
 
@@ -430,6 +672,19 @@ export default function PlatformAiSpendPage() {
             Última actividad: {formatDate(consumption.lastActivityAt)}
             {' · '}
             {BUDGET_SOURCE_LABEL[budget.source] || budget.source}
+            {/* El ritmo diario también cuando NO alarma: es el número contra el
+                que se compara cualquier cambio, y verlo solo el día que salta
+                la alerta no deja con qué compararlo. */}
+            {forecast?.dailyAvgUsd > 0 && (
+              <>
+                {' · '}
+                {formatUsd(forecast.dailyAvgUsd)} por día en{' '}
+                {forecast.daysElapsed}{' '}
+                {forecast.daysElapsed === 1 ? 'día cerrado' : 'días cerrados'}
+                {forecast.projectedUsd !== null &&
+                  ` · proyectado al cierre: ${formatUsd(forecast.projectedUsd)}`}
+              </>
+            )}
           </Typography>
           <Button size="small" onClick={() => setEditing(true)}>
             Cambiar techo
@@ -443,6 +698,63 @@ export default function PlatformAiSpendPage() {
         onClose={() => setEditing(false)}
         onSaved={setReport}
       />
+
+      {/* Se MONTA solo cuando hay comercio elegido, en vez de estar siempre
+          montado con un `open`. Así el formulario nace limpio en cada apertura
+          y no puede arrastrar lo tipeado para otro comercio — que sería el peor
+          error posible acá, porque el cambio se aplicaría sobre el equivocado. */}
+      {governing && (
+        <TenantPolicyDialog
+          row={governing}
+          budget={budget}
+          onClose={() => setGoverning(null)}
+          onSaved={setReport}
+        />
+      )}
+
+      {/* COMERCIOS FUERA DE SU PROPIA COSTUMBRE.
+
+          Va arriba de la tabla de consumo porque contesta una pregunta que esa
+          tabla no puede: la tabla ordena por cuánto gastan, y el desborde
+          típico es un comercio CHICO que multiplicó por cincuenta lo suyo y
+          sigue en la mitad de abajo de la lista.
+
+          Solo aparece cuando hay algo: una sección vacía que está siempre
+          enseña a saltearla. */}
+      {anomalies?.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            {anomalies.length === 1
+              ? 'Un comercio está gastando fuera de lo habitual'
+              : `${anomalies.length} comercios están gastando fuera de lo habitual`}
+          </Typography>
+          <Stack spacing={0.5}>
+            {anomalies.map(row => (
+              <Typography variant="body2" key={row.tenantId}>
+                <strong>{row.name}</strong>: {formatUsd(row.todayUsd)} hoy en{' '}
+                {formatTokens(row.todayOperations)}{' '}
+                {row.todayOperations === 1 ? 'operación' : 'operaciones'}
+                {/* factor null = venía de cero. No hay múltiplo que calcular y
+                    decir "infinitas veces más" no ayuda a nadie. */}
+                {row.factor === null
+                  ? ', cuando no venía consumiendo nada'
+                  : `, ${row.factor}× su habitual de ${formatUsd(row.typicalUsd)} por día`}
+                .
+              </Typography>
+            ))}
+          </Stack>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', mt: 1 }}
+          >
+            Se compara contra la mediana de sus propios días del mes, no contra
+            el techo: un comercio chico puede multiplicar por cincuenta lo suyo
+            y seguir lejísimos de su tope. Con «Gobernar», en la tabla de abajo,
+            se lo acota o se lo pausa.
+          </Typography>
+        </Alert>
+      )}
 
       {/* QUIÉN se lo gastó.
 
@@ -468,6 +780,7 @@ export default function PlatformAiSpendPage() {
                   <TableCell align="right">Tokens</TableCell>
                   <TableCell align="right">De su parte</TableCell>
                   <TableCell align="right">Operaciones</TableCell>
+                  <TableCell align="right" />
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -495,6 +808,33 @@ export default function PlatformAiSpendPage() {
                               color="info"
                               variant="outlined"
                               label="key propia"
+                            />
+                          </Tooltip>
+                        )}
+                        {/* Un comercio apagado deja de consumir, así que sus
+                            números de la fila son ceros y sin esta marca se
+                            leería como un comercio que simplemente no usó la
+                            IA. La diferencia es que a este lo apagamos
+                            nosotros. */}
+                        {row.suspended && (
+                          <Tooltip
+                            title={
+                              row.suspendedReason ||
+                              'Sin motivo cargado: el comercio ve un mensaje genérico'
+                            }
+                          >
+                            <Chip size="small" color="error" label="pausado" />
+                          </Tooltip>
+                        )}
+                        {/* Solo cuando tiene fracción propia: un comercio con
+                            la global no tiene nada que señalar. */}
+                        {row.share !== null && row.share !== undefined && (
+                          <Tooltip title="Tiene un tope propio, distinto del reparto global">
+                            <Chip
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                              label={`acotado ${Math.round(row.share * 100)}%`}
                             />
                           </Tooltip>
                         )}
@@ -546,6 +886,14 @@ export default function PlatformAiSpendPage() {
                     <TableCell align="right">
                       {formatTokens(row.operations)}
                     </TableCell>
+                    {/* La acción va en la misma fila donde está el número que
+                        la justifica. Mandarla a otra pantalla obligaría a
+                        recordar qué comercio era y cuánto llevaba. */}
+                    <TableCell align="right">
+                      <Button size="small" onClick={() => setGoverning(row)}>
+                        Gobernar
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -557,12 +905,13 @@ export default function PlatformAiSpendPage() {
             color="text.secondary"
             sx={{ display: 'block', mb: 3, mt: -2 }}
           >
-            «De su parte» es contra el tope por comercio
+            «De su parte» es contra el tope de CADA comercio
             {budget.perTenantShare
-              ? ` (${Math.round(budget.perTenantShare * 100)}% del techo)`
+              ? ` (${Math.round(budget.perTenantShare * 100)}% del techo salvo a los que tengan uno propio)`
               : ''}
             , no contra el techo total: un comercio puede quedarse sin IA con la
-            plataforma al 30%.
+            plataforma al 30%. Con «Gobernar» se le baja el tope a uno solo, o
+            se le pausa la IA, sin tocar a los demás.
           </Typography>
         </>
       )}

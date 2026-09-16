@@ -66,7 +66,10 @@ export default function PlatformMarginPage() {
         if (err?.response?.status === 403) {
           setForbidden(true)
         } else {
-          setError(err?.response?.data?.message || 'No se pudo cargar el reporte de margen.')
+          setError(
+            err?.response?.data?.message ||
+              'No se pudo cargar el reporte de margen.',
+          )
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -117,7 +120,11 @@ export default function PlatformMarginPage() {
         Período: {report?.period}
       </Typography>
 
-      <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}
+      >
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
           <Typography variant="caption" color="text.secondary">
             Comercios
@@ -155,7 +162,9 @@ export default function PlatformMarginPage() {
             Infra + storage (plataforma)
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {formatArs((totals.infraCostArs || 0) + (totals.storageCostArs || 0))}
+            {formatArs(
+              (totals.infraCostArs || 0) + (totals.storageCostArs || 0),
+            )}
           </Typography>
         </Paper>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
@@ -166,12 +175,43 @@ export default function PlatformMarginPage() {
             {formatArs(totals.totalEstimatedMarginArs)}
           </Typography>
         </Paper>
+        {/* Cuántos cuestan más de lo que pagan. Es la primera pregunta al abrir
+            esta pantalla, y contarlos a ojo sobre la tabla no escala. Solo
+            aparece cuando hay alguno: un cero permanente es ruido. */}
+        {totals.unprofitableCount > 0 && (
+          <Paper
+            sx={{
+              p: 2,
+              borderRadius: 3,
+              minWidth: 180,
+              borderColor: 'error.main',
+            }}
+            variant="outlined"
+          >
+            <Typography variant="caption" color="error.main">
+              Pierden plata
+            </Typography>
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 800, color: 'error.main' }}
+            >
+              {totals.unprofitableCount}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {formatArs(totals.unprofitableLossArs)} en total
+            </Typography>
+          </Paper>
+        )}
       </Stack>
 
       <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1 }}>
         Ciclo de vida de comercios
       </Typography>
-      <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}
+      >
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
           <Typography variant="caption" color="text.secondary">
             Altas este período
@@ -214,7 +254,11 @@ export default function PlatformMarginPage() {
         </Paper>
       </Stack>
 
-      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3, mb: 3 }}>
+      <TableContainer
+        component={Paper}
+        variant="outlined"
+        sx={{ borderRadius: 3, mb: 3 }}
+      >
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -225,13 +269,33 @@ export default function PlatformMarginPage() {
               <TableCell align="right">Costo de IA</TableCell>
               <TableCell align="right">Comunicaciones</TableCell>
               <TableCell align="right">Margen estimado</TableCell>
+              {/* El margen en pesos no dice si el comercio es rentable: uno que
+                  deja $8.000 sobre un plan de $10.000 y otro que deja lo mismo
+                  sobre uno de $40.000 son negocios distintos y en la columna de
+                  pesos se ven idénticos. */}
+              <TableCell align="right">%</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {tenants.map(tenant => (
-              <TableRow key={tenant.tenantId}>
+              <TableRow
+                key={tenant.tenantId}
+                // La fila que cuesta más de lo que paga es la única sobre la
+                // que hay que hacer algo. Sin marcarla se pierde entre las
+                // demás: en una lista larga, un negativo es una celda más.
+                sx={
+                  tenant.unprofitable
+                    ? {
+                        bgcolor: 'error.light',
+                        '& td': { color: 'error.contrastText' },
+                      }
+                    : undefined
+                }
+              >
                 <TableCell>{tenant.name}</TableCell>
-                <TableCell sx={{ textTransform: 'capitalize' }}>{tenant.plan}</TableCell>
+                <TableCell sx={{ textTransform: 'capitalize' }}>
+                  {tenant.plan}
+                </TableCell>
                 <TableCell>
                   <Chip
                     size="small"
@@ -240,15 +304,35 @@ export default function PlatformMarginPage() {
                     sx={{ textTransform: 'capitalize' }}
                   />
                 </TableCell>
-                <TableCell align="right">{formatArs(tenant.planPriceArs)}</TableCell>
-                <TableCell align="right">{formatArs(tenant.aiCostArs)}</TableCell>
-                <TableCell align="right">{formatArs(tenant.communicationsCostArs)}</TableCell>
-                <TableCell align="right">{formatArs(tenant.estimatedMarginArs)}</TableCell>
+                <TableCell align="right">
+                  {formatArs(tenant.planPriceArs)}
+                </TableCell>
+                <TableCell align="right">
+                  {formatArs(tenant.aiCostArs)}
+                </TableCell>
+                <TableCell align="right">
+                  {formatArs(tenant.communicationsCostArs)}
+                </TableCell>
+                <TableCell align="right">
+                  {formatArs(tenant.estimatedMarginArs)}
+                </TableCell>
+                <TableCell align="right">
+                  {/* null = el plan no tiene precio cargado. Sin ingreso no hay
+                      porcentaje, y un cero ahí se leería como "no deja nada". */}
+                  {tenant.marginPercent === null ||
+                  tenant.marginPercent === undefined
+                    ? '—'
+                    : `${tenant.marginPercent}%`}
+                </TableCell>
               </TableRow>
             ))}
             {!tenants.length && (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                <TableCell
+                  colSpan={8}
+                  align="center"
+                  sx={{ py: 4, color: 'text.secondary' }}
+                >
                   Sin datos para este período.
                 </TableCell>
               </TableRow>

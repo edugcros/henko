@@ -18,6 +18,7 @@
 //    plataforma, pero se registra igual para poder dimensionar su plan.
 
 import { randomUUID } from 'node:crypto'
+import mongoose from 'mongoose'
 
 import AiUsage from '../../models/aiUsageModel.js'
 import AiAgent from '../../models/aiAgentModel.js'
@@ -37,6 +38,9 @@ import {
   getSubscriptionState,
   normalizeMetric,
   normalizePlan,
+  DEGRADATION,
+  DEFERRABLE_METRICS,
+  degradationLevelFor,
 } from './aiPlanPolicy.js'
 import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
 import {
@@ -50,6 +54,20 @@ import { getCurrentPeriod } from './aiPeriod.js'
 import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 import AiProviderCall, { CALL_ID } from '../../models/aiProviderCallModel.js'
+import AiRateWindow, {
+  RATE_WINDOW,
+  windowStartFor,
+} from '../../models/aiRateWindowModel.js'
+// El freno de velocidad se configura por el mismo mecanismo que los techos:
+// override en base, con motivo e historial, y la variable de entorno como
+// respaldo.
+import { getPlatformAiOverride, getTenantAiPolicy } from './platformAiSettingService.js'
+// El escalón de servicio se escribe donde lo lee la selección de modelo. La
+// dirección de la dependencia es esta y no la inversa: geminiModels lo usan la
+// visión, el agente y las imágenes, y hacerlo depender del medidor cerraría un
+// ciclo.
+import { setEconomyMode, getEconomyMode } from './geminiModels.js'
+import { PLATFORM_AI_SETTINGS } from '../../models/platformAiSettingModel.js'
 import AiOperation, {
   AI_FEATURES,
   AI_OPERATION_STATUS,
@@ -628,6 +646,16 @@ export const DENY_REASONS = Object.freeze({
   METRIC_LIMIT: 'metric_limit_exceeded',
   GUARD_LIMIT: 'guard_limit_exceeded',
   PLATFORM_BUDGET: 'platform_budget_exhausted',
+  // Va demasiado rapido. Es distinto de quedarse sin cupo: el cupo se agota y
+  // hay que esperar al mes que viene; esto se destraba solo en un minuto.
+  RATE_LIMIT: 'rate_limit_exceeded',
+  // El dueño de la plataforma le apagó la IA a ESTE comercio. No se destraba
+  // solo ni se repone el mes que viene: lo levanta una persona.
+  TENANT_SUSPENDED: 'tenant_suspended',
+  // El presupuesto de la plataforma está por encima del 90% y esta función se
+  // pospone para que el asistente de las tiendas siga contestando. Es
+  // temporal: se levanta solo cuando baja el consumo o arranca el mes.
+  DEGRADED: 'service_degraded',
 })
 
 /**
@@ -650,6 +678,27 @@ export const buildBudgetDenialMessage = (result = {}) => {
 
   case DENY_REASONS.PLATFORM_BUDGET:
     return 'El servicio de IA está temporalmente pausado por mantenimiento de capacidad. Volvé a intentar más tarde.'
+
+  // Este caso faltaba y caía en el default, que dice "se alcanzó el límite
+  // mensual de tu plan". Era falso y además mandaba al comercio a la acción
+  // equivocada: le sugería subir de plan cuando lo único que tenía que hacer
+  // era esperar un minuto.
+  case DENY_REASONS.RATE_LIMIT:
+    return 'Estás haciendo muchas consultas seguidas. Esperá un momento y volvé a intentar.'
+
+  // Se dice que es temporal y que el asistente sigue andando: sin eso, el
+  // comercio asume que se quedó sin plan y abre un ticket por algo que se
+  // resuelve solo.
+  case DENY_REASONS.DEGRADED:
+    return `${label} está pausado temporalmente por alta demanda en la plataforma. El asistente de tu tienda sigue funcionando normalmente. Volvé a intentar más tarde.`
+
+  // El motivo se muestra porque lo escribió una persona para que se lea. Si no
+  // lo escribió, queda un mensaje que igual dice a dónde ir: un servicio que
+  // se apaga sin explicar por qué genera un ticket por cada comercio.
+  case DENY_REASONS.TENANT_SUSPENDED:
+    return result.detail
+      ? `Las funciones de IA de tu cuenta están pausadas: ${result.detail}`
+      : 'Las funciones de IA de tu cuenta están pausadas. Contactá al soporte para reactivarlas.'
 
   case DENY_REASONS.GUARD_LIMIT:
     return `Se alcanzó el límite mensual de ${label} de tu plan. Se renueva el mes que viene, o podés subir de plan.`
@@ -801,6 +850,39 @@ const releasePlatformCost = async ({ period, amount }) => {
  *
  * @returns {Promise<{exhausted: boolean, reason: 'tokens'|'usd'|null}>}
  */
+// ─── DEGRADACIÓN PROGRESIVA ──────────────────────────────────────────────────
+//
+// Los escalones y el criterio de qué se pospone viven en aiPlanPolicy.js, que
+// es la capa de política y de donde también los lee el panel. Acá está solo lo
+// que los APLICA.
+
+/**
+ * Deja el nivel puesto donde lo lee la selección de modelo.
+ *
+ * Va por un setter y no por un import al revés porque geminiModels.js no puede
+ * depender del medidor: lo usan la visión, el agente y las imágenes, y sería un
+ * ciclo. El nivel se refresca en cada evaluación del presupuesto, que ocurre en
+ * cada operación de IA, así que nunca está más viejo que la caché del disyuntor.
+ */
+const applyDegradation = percentUsed => {
+  const level = degradationLevelFor(percentUsed)
+
+  if (level !== getEconomyMode()) {
+    logger.warn('[AI DEGRADACIÓN] Cambia el escalón de servicio', {
+      level,
+      percentUsed: Math.round(percentUsed * 10) / 10,
+      detalle:
+        level === DEGRADATION.NORMAL
+          ? 'vuelve el servicio completo'
+          : level === DEGRADATION.ECONOMY
+            ? 'se fuerza el modelo mas barato de la cadena'
+            : 'ademas se posponen las funciones caras que no ve un cliente',
+    })
+  }
+
+  setEconomyMode(level)
+}
+
 const evaluatePlatformBudget = async () => {
   const tokenBudget = getPlatformMonthlyTokenBudget()
   const usdBudget = getPlatformMonthlyUsdBudget()
@@ -817,7 +899,17 @@ const evaluatePlatformBudget = async () => {
 
   const cached = await cacheGet(cacheKey)
   if (cached !== null && cached !== undefined) {
-    return { exhausted: Boolean(cached.exhausted), reason: cached.reason ?? null }
+    // El nivel se reaplica también desde la caché: el proceso que respondió el
+    // primer pedido lo dejó puesto, y cualquier otro que lea la caché tiene que
+    // quedar en el mismo estado o degradaría distinto según qué instancia
+    // atienda.
+    applyDegradation(cached.percentUsed ?? 0)
+    return {
+      exhausted: Boolean(cached.exhausted),
+      reason: cached.reason ?? null,
+      percentUsed: cached.percentUsed ?? 0,
+      level: degradationLevelFor(cached.percentUsed ?? 0),
+    }
   }
 
   const usage = await AiPlatformUsage.findOne({ period }).lean()
@@ -837,11 +929,23 @@ const evaluatePlatformBudget = async () => {
         ? 'tokens'
         : null
 
-  const resultado = { exhausted: reason !== null, reason }
+  // Qué tan cerca está el techo, por el freno que esté MÁS cerca de cortar.
+  //
+  // Es el mismo criterio que usa el aviso por email, y por el mismo motivo: con
+  // los dos techos puestos, mirar solo el de tokens deja pasar el caso en que
+  // la cadena de respaldo entrega un modelo cinco veces más caro y el gasto va
+  // por el 90% mientras el volumen va por el 30%.
+  const percentUsed = Math.max(
+    usdBudget !== UNLIMITED && usdBudget > 0 ? (costUsd / usdBudget) * 100 : 0,
+    tokenBudget !== UNLIMITED && tokenBudget > 0 ? (tokens / tokenBudget) * 100 : 0,
+  )
+
+  const resultado = { exhausted: reason !== null, reason, percentUsed }
 
   await cacheSet(cacheKey, resultado, BREAKER_CACHE_TTL_SEC)
+  applyDegradation(percentUsed)
 
-  return resultado
+  return { ...resultado, level: degradationLevelFor(percentUsed) }
 }
 
 /**
@@ -1203,14 +1307,19 @@ const applyReservation = async ({
  * Autolímite del comercio. Solo puede APRETAR el tope del plan, nunca
  * aflojarlo: si se aceptara un valor más alto, cualquier admin de tenant se
  * subiría la cuota desde su propio panel.
+ *
+ * `tenantShare` es la fracción que el DUEÑO DE LA PLATAFORMA le asignó a este
+ * comercio, cuando le asignó una. No se lee acá adentro porque esto es
+ * síncrono y se llama desde cuatro lugares: la lee quien puede (reserveAiBudget
+ * y compañía, que ya son asíncronos) y la baja como dato.
  */
-const resolveEffectiveLimit = ({ plan, metric, keySource }) => {
+const resolveEffectiveLimit = ({ plan, metric, keySource, tenantShare = null }) => {
   const planLimit = getPlanLimit(plan, metric)
 
   if (keySource !== KEY_SOURCE.PLATFORM) return planLimit
   if (planLimit !== UNLIMITED) return planLimit
 
-  return getSharedKeyTenantCap(metric)
+  return getSharedKeyTenantCap(metric, { share: tenantShare })
 }
 
 /**
@@ -1300,6 +1409,161 @@ const buildAllowedResult = ({
  * @param period         Período explícito para operaciones controladas. Si no
  *                       viene, se usa el período actual como antes.
  */
+
+// ─── FRENO DE VELOCIDAD ─────────────────────────────────────────────────────
+//
+// El cupo mensual mide ACUMULADO y por eso no protege contra un bug: un loop
+// en el agente puede quemar el presupuesto entero en una hora y el disyuntor
+// recién se entera cuando ya pasó.
+//
+// Esto mide RITMO. Va acá y no en un middleware de ruta porque el agente entra
+// por WhatsApp, no siempre por una ruta HTTP nuestra — reserveAiBudget es el
+// único punto por donde pasa todo consumo.
+
+/**
+ * Cuántas operaciones de IA puede hacer un comercio por ventana.
+ *
+ * LOS NÚMEROS SALEN DEL USO REAL, NO DE UN REDONDEO.
+ *
+ * Medido sobre el mes en curso: el comercio activo hizo 145 operaciones en
+ * todo el mes, o sea unas 5 por día. Un tope de 30 por minuto es casi
+ * doscientas veces el uso normal —así que ningún uso legítimo lo toca— y al
+ * mismo tiempo acota un loop desbocado a 600 por hora en vez de a infinito.
+ *
+ * POR QUÉ 600 POR HORA Y NO UN NÚMERO MÁS CHICO. El tope tiene que dejar que
+ * el aviso por email llegue a tiempo, no reemplazarlo. Con el presupuesto en
+ * USD 50 y un costo medido de ~USD 0,002 por operación, el techo son unas
+ * 25.000 operaciones; a 600 por hora un loop desbocado tarda 41 horas en
+ * comerse el presupuesto. El aviso del 80% sale mucho antes de eso, que es
+ * exactamente lo que el freno tiene que garantizar: tiempo.
+ *
+ * La ventana de una hora existe porque la de un minuto sola es esquivable sin
+ * querer: 29 por minuto sostenidas durante una hora son 1.740 operaciones y
+ * ninguna dispara el freno del minuto.
+ *
+ * Se cuentan OPERACIONES y no tokens porque los tokens se conocen después de
+ * llamar al proveedor, y para entonces ya se gastaron. La operación se cuenta
+ * antes, que es el único momento en que negarla ahorra plata.
+ */
+const RATE_DEFAULTS = Object.freeze({
+  [RATE_WINDOW.MINUTE]: 30,
+  [RATE_WINDOW.HOUR]: 600,
+})
+
+/** Un entero positivo de entorno, o null si no está o no sirve. */
+const readEnvPositiveInt = name => {
+  const raw = Number(process.env[name])
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : null
+}
+
+const rateLimitFor = window => {
+  const override = getPlatformAiOverride(
+    window === RATE_WINDOW.MINUTE
+      ? PLATFORM_AI_SETTINGS.RATE_PER_MINUTE
+      : PLATFORM_AI_SETTINGS.RATE_PER_HOUR,
+  )
+
+  if (override !== null && Number.isFinite(override) && override > 0) return override
+
+  const env = readEnvPositiveInt(
+    window === RATE_WINDOW.MINUTE
+      ? 'AI_RATE_LIMIT_PER_MINUTE'
+      : 'AI_RATE_LIMIT_PER_HOUR',
+  )
+
+  return env ?? RATE_DEFAULTS[window]
+}
+
+/**
+ * Reclama un lugar en la ventana. Devuelve false si ya no hay.
+ *
+ * EL LÍMITE VIAJA EN EL FILTRO, que es lo que lo hace atómico.
+ *
+ * Con el tope adentro del filtro y upsert, cuando la ventana está llena el
+ * documento no matchea, el upsert intenta insertar y choca contra el índice
+ * único con 11000. Ese error ES la respuesta "no hay lugar", resuelta por la
+ * base. Leer el contador y después decidir sería la misma carrera que todo
+ * este paquete viene cerrando: dos requests simultáneas leerían 19 y las dos
+ * pasarían.
+ */
+const claimRateSlot = async ({ tenantId, window, limit, at }) => {
+  const windowStart = windowStartFor(window, at)
+
+  // SIN BASE CONECTADA SE SALTEA, Y NO SE ESPERA.
+  //
+  // Sin esto, mongoose ENCOLA la operación y la deja esperando hasta que corta
+  // por bufferTimeoutMS, que son diez segundos. Como se piden dos ventanas, el
+  // freno le agregaba VEINTE SEGUNDOS a cada llamada de IA mientras Mongo
+  // estuviera caído, y encima escribía un error por cada una.
+  //
+  // La decisión de fondo ya estaba tomada abajo —ante una falla se deja pasar—
+  // y esto es la misma decisión tomada antes y sin costo. No se pierde nada:
+  // con la base caída ninguna operación de IA puede completarse igual, porque
+  // el perfil del comercio y el registro del consumo también salen de ahí.
+  if (mongoose.connection?.readyState !== 1) return true
+
+  try {
+    await AiRateWindow.findOneAndUpdate(
+      { tenantId, window, windowStart, count: { $lt: limit } },
+      { $inc: { count: 1 }, $setOnInsert: { tenantId, window, windowStart } },
+      { upsert: true, new: true },
+    )
+      .setOptions({ tenantId })
+      // Y con la base conectada pero lenta, el freno tampoco puede ser el que
+      // hace esperar: un segundo es dos órdenes de magnitud más de lo que tarda
+      // este upsert y sigue siendo ruido al lado de una llamada a Gemini.
+      .maxTimeMS(1000)
+
+    return true
+  } catch (error) {
+    // 11000 es la ventana llena, no una falla.
+    if (error?.code === 11000) return false
+
+    // Cualquier otro error afloja el freno en vez de endurecerlo. Un limitador
+    // que se rompe hacia el lado de negar deja sin IA a comercios que no
+    // hicieron nada, y el cupo mensual sigue puesto detrás: el peor caso de
+    // aflojar es que un abuso pase unos minutos más; el de endurecer es cortar
+    // un servicio que funciona.
+    logger.error('[AI RATE] No se pudo contar la operación, se deja pasar', {
+      tenantId: String(tenantId),
+      window,
+      error: error.message,
+    })
+
+    return true
+  }
+}
+
+/**
+ * ¿Este comercio está yendo demasiado rápido?
+ *
+ * Se piden las dos ventanas en ORDEN y se corta en la primera que niegue: si
+ * el minuto ya está lleno, consumir un lugar de la hora sería cobrarle al
+ * comercio una operación que no va a hacer.
+ *
+ * @returns {Promise<{allowed:boolean, window?:string, limit?:number}>}
+ */
+const checkRateLimit = async ({ tenantId, at = new Date() }) => {
+  for (const window of [RATE_WINDOW.MINUTE, RATE_WINDOW.HOUR]) {
+    const limit = rateLimitFor(window)
+    const ok = await claimRateSlot({ tenantId, window, limit, at })
+
+    if (!ok) {
+      logger.warn('[AI RATE] Comercio frenado por velocidad', {
+        tenantId: String(tenantId),
+        window,
+        limit,
+        detalle:
+          'el cupo mensual no lo habria frenado: mide acumulado, no ritmo',
+      })
+
+      return { allowed: false, window, limit }
+    }
+  }
+
+  return { allowed: true }
+}
+
 export const reserveAiBudget = async ({
   tenantId,
   metric,
@@ -1334,11 +1598,19 @@ export const reserveAiBudget = async ({
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const subscription = getSubscriptionState(aiProfile)
+
+  // Lo que el DUEÑO DE LA PLATAFORMA decidió sobre este comercio. Se lee una
+  // vez y se usa dos veces —para el interruptor y para su fracción del techo—
+  // porque son la misma decisión sobre el mismo comercio y leerla dos veces
+  // abriría la ventana para que cambie entre una y otra.
+  const tenantPolicy = await getTenantAiPolicy(id)
+
   const limit = applyLimitOverride(
     resolveEffectiveLimit({
       plan: aiProfile.plan,
       metric: normalizedMetric,
       keySource: aiProfile.keySource,
+      tenantShare: tenantPolicy.share,
     }),
     limitOverride,
   )
@@ -1360,6 +1632,53 @@ export const reserveAiBudget = async ({
       limit,
       used: 0,
       reason: DENY_REASONS.NO_API_KEY,
+      profile: aiProfile,
+    })
+  }
+
+  // EL INTERRUPTOR, antes que el freno de velocidad.
+  //
+  // Un comercio apagado no tiene por qué gastar un lugar de su ventana de
+  // velocidad: no va a hacer la operación. Va antes también que el bloque de
+  // BYOK porque apagarlo es una decisión de HENKO sobre el uso de SUS
+  // funciones, y no cambia porque el comercio ponga la key. Si dejó de pagar,
+  // dejó de pagar.
+  if (tenantPolicy.suspended) {
+    logger.warn('[AI POLICY] Operación rechazada: comercio suspendido', {
+      tenantId: id,
+      metric: normalizedMetric,
+      motivo: tenantPolicy.suspendedReason || '(sin motivo cargado)',
+    })
+
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit,
+      used: 0,
+      reason: DENY_REASONS.TENANT_SUSPENDED,
+      // El motivo va al mensaje que ve el comercio, no solo al log.
+      detail: tenantPolicy.suspendedReason || undefined,
+      profile: aiProfile,
+    })
+  }
+
+  // EL FRENO DE VELOCIDAD VA ANTES QUE TODO LO DEMÁS.
+  //
+  // Antes de mirar cupos, techos o presupuestos: si el comercio va a mil por
+  // hora, lo que importa es frenarlo ya, no averiguar cuánto le queda. Y se
+  // aplica TAMBIÉN con key propia —el bloque de BYOK está más abajo— porque un
+  // loop desbocado con la key del comercio igual satura la API, igual genera
+  // carga, e igual es un bug que conviene que se note.
+  const rate = await checkRateLimit({ tenantId: id })
+
+  if (!rate.allowed) {
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit,
+      used: 0,
+      reason: DENY_REASONS.RATE_LIMIT,
+      // Cuál ventana cortó: la acción es distinta. El minuto se destraba solo
+      // enseguida; la hora, no.
+      detail: `${rate.window}:${rate.limit}`,
       profile: aiProfile,
     })
   }
@@ -1401,6 +1720,34 @@ export const reserveAiBudget = async ({
     })
   }
 
+  // EL SEGUNDO ESCALÓN DE LA DEGRADACIÓN: posponer lo caro que no ve un cliente.
+  //
+  // El primero —forzar el modelo barato— no se decide acá: lo aplica la cadena
+  // de modelos, que ya quedó en modo economía cuando evaluatePlatformBudget
+  // midió el porcentaje unas líneas arriba.
+  //
+  // Va DESPUÉS del disyuntor porque es un escalón más suave: si ya cortó, el
+  // motivo que corresponde informar es el corte y no la degradación. Y va antes
+  // de reservar plata porque el sentido de posponer es no gastarla.
+  if (
+    platformBudget.level === DEGRADATION.ESSENTIAL &&
+    DEFERRABLE_METRICS.includes(normalizedMetric)
+  ) {
+    logger.warn('[AI DEGRADACIÓN] Función pospuesta para proteger el servicio', {
+      tenantId: id,
+      metric: normalizedMetric,
+      percentUsed: Math.round(platformBudget.percentUsed * 10) / 10,
+    })
+
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit,
+      used: 0,
+      reason: DENY_REASONS.DEGRADED,
+      profile: aiProfile,
+    })
+  }
+
   const period = requestedPeriod || getCurrentPeriod()
   const uniqueGuardMetrics = [...new Set((guards || []).map(normalizeMetric).filter(Boolean))]
   const guardLimits = uniqueGuardMetrics
@@ -1420,6 +1767,10 @@ export const reserveAiBudget = async ({
           plan: aiProfile.plan,
           metric: guardMetric,
           keySource: aiProfile.keySource,
+          // La misma fracción que la métrica principal. Sin esto, acotar a un
+          // comercio le apretaría los tokens que reserva y no los que gasta
+          // como guarda — o sea, la mitad del freno.
+          tenantShare: tenantPolicy.share,
         }),
         guardOverrides?.[guardMetric] ?? null,
       ),
@@ -2517,10 +2868,13 @@ export const checkAiEntitlement = async ({ tenantId, metric, profile = null }) =
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
   const subscription = getSubscriptionState(aiProfile)
+  const tenantPolicy = await getTenantAiPolicy(id)
+
   const limit = resolveEffectiveLimit({
     plan: aiProfile.plan,
     metric: normalizedMetric,
     keySource: aiProfile.keySource,
+    tenantShare: tenantPolicy.share,
   })
 
   if (!subscription.entitled) {
@@ -2540,6 +2894,24 @@ export const checkAiEntitlement = async ({ tenantId, metric, profile = null }) =
       limit,
       used: 0,
       reason: DENY_REASONS.NO_API_KEY,
+      profile: aiProfile,
+    })
+  }
+
+  // El mismo interruptor que en la reserva, en el mismo lugar del orden: acá no
+  // se reserva nada, solo hace que el rechazo llegue en el borde de la ruta en
+  // vez de adentro del servicio, que es para lo que existe este chequeo.
+  //
+  // Tiene que estar en los DOS lugares. Este no cubre al agente —entra por
+  // WhatsApp, sin pasar por el middleware— y el de la reserva no le ahorra al
+  // comercio el trabajo previo de la ruta.
+  if (tenantPolicy.suspended) {
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit,
+      used: 0,
+      reason: DENY_REASONS.TENANT_SUSPENDED,
+      detail: tenantPolicy.suspendedReason || undefined,
       profile: aiProfile,
     })
   }
@@ -2624,15 +2996,22 @@ export const getAiBudgetSnapshot = async tenantId => {
     .setOptions({ tenantId: id })
     .lean()
   const selfLimits = await loadAgentSelfLimits(id)
+  const tenantPolicy = await getTenantAiPolicy(id)
 
   // Los topes del snapshot pasan por la misma resolución que el cobro: si el
   // panel mostrara "sin límite" y el medidor cortara igual, el comercio no
   // tendría forma de entender por qué se le apagó el asistente.
+  //
+  // La fracción asignada a este comercio entra por el mismo motivo, y es la
+  // parte fácil de olvidar: bajársela y que el panel siguiera mostrando el
+  // tope viejo reproduciría exactamente ese problema, pero solo para el
+  // comercio acotado — o sea, para el único que iba a chocar contra el tope.
   const limits = AI_METRIC_LIST.reduce((acc, metric) => {
     acc[metric] = resolveEffectiveLimit({
       plan: profile.plan,
       metric,
       keySource: profile.keySource,
+      tenantShare: tenantPolicy.share,
     })
     return acc
   }, {})
@@ -2681,6 +3060,13 @@ export const getAiBudgetSnapshot = async tenantId => {
       hasTenantKey: profile.hasTenantKey,
     },
     metrics,
+    // La suspensión viaja al panel del comercio. Sin esto, el panel mostraría
+    // cupo disponible y el asistente no respondería: el comercio abriría un
+    // ticket para que le expliquen algo que ya estaba decidido y escrito.
+    //
+    // Va el motivo pero no quién lo decidió: eso es para adentro.
+    suspended: tenantPolicy.suspended,
+    suspendedReason: tenantPolicy.suspendedReason,
     // Se acota a cero por el cruce del despliegue: una edición reservada por la
     // versión vieja (que no cobraba al reservar) y devuelta por la nueva (que
     // sí descuenta) resta una plata que nunca se sumó. Son centavos y una

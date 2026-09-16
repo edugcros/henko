@@ -14,6 +14,7 @@ import {
   getMarginReport,
   getAiSpendReport,
   updateAiBudget,
+  updateTenantAiPolicy,
   getPlanPrices,
   updatePlanPrice,
 } from '../controller/platformCtrl.js'
@@ -25,9 +26,14 @@ router.use(authMiddleware, isAdmin, requirePlatformOwner)
 router.get('/margin', getMarginReport)
 router.get('/ai-spend', getAiSpendReport)
 
-// La única escritura de esta ruta. Mueve un límite de seguridad, así que queda
-// registrada con autor y motivo (ver models/platformAiSettingModel.js).
+// Mueve un límite de seguridad, así que queda registrada con autor y motivo
+// (ver models/platformAiSettingModel.js).
 router.put('/ai-spend/budget', updateAiBudget)
+
+// Lo mismo pero para UN comercio: acotarlo o apagarlo sin tocar a los demás.
+// El segmento fijo 'tenant' antes del parámetro es lo que mantiene el espacio
+// de rutas sin ambigüedad, sin depender del orden de declaración.
+router.put('/ai-spend/tenant/:tenantId', updateTenantAiPolicy)
 
 // Precios de los planes. Misma clase de escritura que el techo: cambia lo que
 // se le cobra a un comercio, así que queda con autor y motivo.

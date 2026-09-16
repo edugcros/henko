@@ -5,12 +5,14 @@
 // el aislamiento por tenant que usa el resto del panel admin.
 
 import expressAsyncHandler from 'express-async-handler'
+import mongoose from 'mongoose'
 import { getPlatformMarginReport } from '../services/platform/platformMarginService.js'
 import { getPlatformSpendSnapshot } from '../services/ai/aiSpendReportService.js'
 import { isValidPeriod } from '../services/ai/aiPeriod.js'
 import {
   setPlatformAiOverride,
   getPlatformAiSettingHistory,
+  setTenantAiPolicy,
   PLATFORM_AI_SETTINGS,
 } from '../services/ai/platformAiSettingService.js'
 import { AI_PLANS, getPlanCatalog, normalizePlan } from '../services/ai/aiPlanPolicy.js'
@@ -161,6 +163,92 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
   // Se devuelve el reporte entero y no un ok: la pantalla tiene que mostrar el
   // efecto del cambio —el porcentaje nuevo, el corte levantado— sin una segunda
   // vuelta que pueda fallar y dejarla mostrando lo viejo.
+  const report = await getPlatformSpendSnapshot()
+
+  return res.status(200).json({ success: true, data: report })
+})
+
+/**
+ * PUT /api/platform/ai-spend/tenant/:tenantId
+ *
+ * Acota o apaga la IA de UN comercio.
+ *
+ * QUÉ FALTABA
+ *
+ * Hasta acá las tres palancas eran globales: los dos techos y el reparto. Si un
+ * comercio se desbocaba, la única maniobra disponible era bajarle el reparto A
+ * TODOS —castigar a los diez porque uno se desbocó— o bajar el techo global, que
+ * es lo mismo con otro nombre. Y el autolímite que existe en el panel del
+ * comercio lo pone EL COMERCIO: puede volver a subirlo cuando quiera, así que
+ * no es un control de la plataforma.
+ *
+ * DOS COSAS DISTINTAS, EL MISMO ENDPOINT
+ *
+ * `share` ACOTA: el comercio sigue trabajando con menos techo. `suspended`
+ * APAGA. Van juntas porque son la misma decisión sobre el mismo comercio y
+ * quien la toma elige cuál de las dos: separarlas en dos endpoints obligaría a
+ * dos viajes para "bajale el tope y si sigue, apagalo".
+ *
+ * Cada campo es opcional y se distingue ausente de null, igual que en los
+ * techos: `share: null` lo devuelve a la fracción global, no mandarlo lo deja
+ * como está.
+ */
+export const updateTenantAiPolicy = expressAsyncHandler(async (req, res) => {
+  const { tenantId } = req.params
+  const { share, suspended, suspendedReason, reason } = req.body || {}
+
+  if (!mongoose.Types.ObjectId.isValid(String(tenantId || '').trim())) {
+    return res.status(400).json({
+      success: false,
+      message: 'Comercio inválido.',
+    })
+  }
+
+  // Mismo criterio que el techo: el motivo no es opcional. Apagarle la IA a un
+  // comercio es la decisión más cara de esta pantalla y la que más se va a
+  // tener que explicar.
+  const cleanReason = String(reason || '').trim()
+
+  if (!cleanReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá por qué se cambia la política de este comercio.',
+    })
+  }
+
+  if (share === undefined && suspended === undefined) {
+    return res.status(400).json({
+      success: false,
+      message: 'No se indicó ningún cambio.',
+    })
+  }
+
+  // Se valida ANTES de escribir, igual que los techos: un pedido con el
+  // interruptor válido y la fracción inválida no puede dejar aplicada la mitad,
+  // porque quien lo mandó ve el error y asume que no pasó nada.
+  if (share !== undefined && share !== null) {
+    const numero = Number(share)
+
+    if (!Number.isFinite(numero) || numero < 0.01 || numero > 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'La fracción del comercio debe estar entre 0.01 y 1, o null para usar la global.',
+      })
+    }
+  }
+
+  await setTenantAiPolicy({
+    tenantId: String(tenantId).trim(),
+    share: share === undefined ? undefined : share === null ? null : Math.round(Number(share) * 10000) / 10000,
+    suspended: suspended === undefined ? undefined : Boolean(suspended),
+    suspendedReason: String(suspendedReason || '').trim().slice(0, 300),
+    changedByEmail: req.user?.email,
+    reason: cleanReason.slice(0, 500),
+  })
+
+  // El reporte entero, igual que al mover un techo: la tabla tiene que mostrar
+  // el efecto —el comercio apagado, el tope nuevo— sin una segunda vuelta que
+  // pueda fallar y dejarla mostrando lo viejo.
   const report = await getPlatformSpendSnapshot()
 
   return res.status(200).json({ success: true, data: report })

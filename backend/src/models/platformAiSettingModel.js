@@ -40,6 +40,21 @@ export const PLATFORM_AI_SETTINGS = Object.freeze({
 
   PER_TENANT_SHARE: 'perTenantShare',
 
+  /**
+   * El freno de VELOCIDAD: cuantas operaciones de IA por ventana y comercio.
+   *
+   * Los dos techos de arriba miden acumulado y por eso no protegen contra un
+   * bug: un loop en el agente quema el presupuesto del mes en una hora y el
+   * disyuntor recien se entera cuando ya paso. Estos miden ritmo.
+   *
+   * Viven aca y no solo como variable de entorno por el mismo motivo que los
+   * techos: cuando hay que aflojarlos —un comercio con una migracion grande,
+   * una campana— la variable exige un deploy, y cuando hay que apretarlos es
+   * porque algo ya se esta desbocando.
+   */
+  RATE_PER_MINUTE: 'ratePerMinute',
+  RATE_PER_HOUR: 'ratePerHour',
+
   // Precio mensual de cada plan, EN PESOS.
   //
   // Viven acá y no en una colección propia porque esto ya es lo que el dueño de
