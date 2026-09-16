@@ -5,7 +5,7 @@
 // equivoca justo donde más duele: dos operaciones con el mismo total pueden
 // costar muy distinto según su proporción.
 
-import { readUsage, sumUsage } from "../services/ai/aiUsageMetadata.js";
+import { readUsage } from "../services/ai/aiUsageMetadata.js";
 
 const respuesta = (prompt, candidates, total, model = "gemini-3.6-flash") => ({
   model,
@@ -65,60 +65,24 @@ describe("readUsage", () => {
   });
 });
 
-describe("sumUsage", () => {
-  test("suma dos llamadas manteniendo el desglose", () => {
-    // El caso real: el grounding de mercado hace dos llamadas y el consumo se
-    // registra una sola vez al final.
-    const total = sumUsage(
-      readUsage(respuesta(1000, 200, 1200)),
-      readUsage(respuesta(500, 300, 800)),
-    );
+describe("consolidar llamadas · borrado a proposito", () => {
+  test("el modulo ya no ofrece una forma de fusionar desgloses", async () => {
+    // sumUsage vivia aca. Sumaba varias llamadas y se quedaba con el modelo de
+    // la ultima que informara uno; su propio comentario lo admitia.
+    //
+    // Entre gemini-3.6-flash (0,75/3,75) y gemini-3.1-flash-lite (0,25/1,50)
+    // hay 3x de tarifa, y quien responde lo decide la cadena de respaldo, no la
+    // configuracion: medido, 72 de 122 filas no eran el modelo pedido. Un
+    // millon de tokens en cada uno, costeado entero con el ultimo, no se
+    // equivoca un poco.
+    //
+    // Se puede borrar porque la unidad contable ya no es la operacion sino
+    // (operacion, llamada): cada llamada deja su fila en AiProviderCall con su
+    // modelo, su tarifa y su costo. El paso siguiente es otro callId, no una
+    // fusion.
+    const modulo = await import("../services/ai/aiUsageMetadata.js");
 
-    expect(total).toEqual({
-      inputTokens: 1500,
-      outputTokens: 500,
-      visibleTokens: 500,
-      thinkingTokens: null,
-      cachedInputTokens: null,
-      totalTokens: 2000,
-      serviceTier: null,
-      model: "gemini-3.6-flash",
-    });
-  });
-
-  test("si a una llamada le falta el desglose, se informa el total sin inventar el reparto", () => {
-    // Sumar solo las que tienen desglose daría un total menor al real y el
-    // costo saldría bajo. Mejor un costo marcado como estimado que uno
-    // preciso y equivocado.
-    const total = sumUsage(
-      readUsage(respuesta(1000, 200, 1200)),
-      readUsage({ usageMetadata: { totalTokenCount: 800 } }),
-    );
-
-    expect(total.totalTokens).toBe(2000);
-    expect(total.inputTokens).toBeNull();
-    expect(total.outputTokens).toBeNull();
-  });
-
-  test("ignora las llamadas que no gastaron nada", () => {
-    const total = sumUsage(readUsage(respuesta(100, 50, 150)), null, undefined);
-
-    expect(total.totalTokens).toBe(150);
-  });
-
-  test("sin ninguna llamada devuelve null", () => {
-    expect(sumUsage(null, undefined)).toBeNull();
-  });
-
-  test("conserva el último modelo informado", () => {
-    // Si dos pasos corrieron en modelos distintos, el costo del conjunto queda
-    // calculado con uno. Es una aproximación conocida, y mejor que repartir el
-    // total entero con una proporción inventada.
-    const total = sumUsage(
-      readUsage(respuesta(100, 50, 150, "gemini-3.6-flash")),
-      readUsage(respuesta(100, 50, 150, "gemini-3.1-flash-lite")),
-    );
-
-    expect(total.model).toBe("gemini-3.1-flash-lite");
+    expect(modulo.sumUsage).toBeUndefined();
+    expect(Object.keys(modulo.default)).toEqual(["readUsage"]);
   });
 });

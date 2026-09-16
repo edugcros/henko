@@ -88,44 +88,47 @@ export const readUsage = result => {
   }
 }
 
-/**
- * Suma los desgloses de varias llamadas en uno solo.
- *
- * Hace falta donde una operación llama al proveedor más de una vez —el
- * grounding de mercado hace dos, y el agente puede sumar una de reparación— y
- * el consumo se registra una sola vez al final.
- *
- * El modelo que queda es el de la última llamada que informó uno. Si dos pasos
- * corrieron en modelos distintos con tarifas distintas, el costo del conjunto
- * queda calculado con una sola: es una aproximación, y es mejor que la
- * alternativa actual de repartir el total entero con una proporción inventada.
- */
-export const sumUsage = (...usages) => {
-  const presentes = usages.filter(Boolean)
-  if (!presentes.length) return null
+// ACÁ VIVÍA sumUsage, Y SE BORRÓ A PROPÓSITO.
+//
+// Sumaba los desgloses de varias llamadas en uno solo y se quedaba con el
+// modelo de la última que informara uno. Su propio comentario lo admitía:
+// "si dos pasos corrieron en modelos distintos con tarifas distintas, el costo
+// del conjunto queda calculado con una sola".
+//
+// POR QUÉ ERA GRAVE
+//
+// Entre gemini-3.6-flash (0,75/3,75) y gemini-3.1-flash-lite (0,25/1,50) hay
+// 3x de tarifa, y quién responde no lo decide la configuración sino la cadena
+// de respaldo — medido: 72 de 122 filas no eran el modelo pedido.
+//
+// Con un millón de tokens en cada uno, repartidos 80/20 entrada/salida:
+//
+//   por llamada   1,35 (3.6-flash) + 0,50 (3.1-flash-lite) = USD 1,85
+//   consolidado   2M enteros a tarifa del último           = USD 1,00
+//
+// Consolidar registra el 54% del gasto y pierde el 46%, hacia abajo, que es el
+// error que no se nota hasta la factura.
+//
+// POR QUÉ SE PUEDE BORRAR EN VEZ DE ARREGLAR
+//
+// Consolidar era un parche para una época en la que el consumo de una
+// operación se registraba UNA sola vez al final. Eso ya no es así: desde
+// AiProviderCall, la unidad contable es (operación, llamada), y cada llamada
+// deja su fila con su propio modelo, su propia tarifa y su propio costo.
+//
+// Verificado contra producción, cuatro operaciones del agente con dos
+// llamadas cada una:
+//
+//   op agent:…msg_d87f0262
+//      main    gemini-3.1-flash-lite  USD 0,002166  tarifa salida 1,5
+//      repair  gemini-3.1-flash-lite  USD 0,002236  tarifa salida 1,5
+//      costo de la operación = la suma de las dos
+//
+// Cuando aparezca un paso nuevo, la forma correcta es una llamada más a
+// recordAiConsumption con otro callId, no volver a fusionar desgloses. Por eso
+// esto no queda deprecado: queda borrado, y un test estructural impide que
+// vuelva. Una función que promedia modelos distintos, existiendo, se usa.
+//
+// No tenía un solo llamador en backend, admin ni website.
 
-  // Si a alguna llamada le faltó el desglose, sumar solo las que lo tienen
-  // daría un total menor al real. En ese caso se informa el total —que sí es
-  // correcto— y se deja el desglose afuera para que el costo se marque como
-  // estimado en vez de mentir con precisión.
-  const completos = presentes.every(u => u.inputTokens !== null && u.outputTokens !== null)
-
-  const totalTokens = presentes.reduce((sum, u) => sum + u.totalTokens, 0)
-  const sumar = campo => {
-    const total = presentes.reduce((s, u) => s + (Number(u[campo]) || 0), 0)
-    return total || null
-  }
-
-  return {
-    inputTokens: completos ? presentes.reduce((s, u) => s + u.inputTokens, 0) : null,
-    outputTokens: completos ? presentes.reduce((s, u) => s + u.outputTokens, 0) : null,
-    visibleTokens: sumar('visibleTokens'),
-    thinkingTokens: sumar('thinkingTokens'),
-    cachedInputTokens: sumar('cachedInputTokens'),
-    totalTokens,
-    serviceTier: presentes.map(u => u.serviceTier).filter(Boolean).pop() || null,
-    model: presentes.map(u => u.model).filter(Boolean).pop() || null,
-  }
-}
-
-export default { readUsage, sumUsage }
+export default { readUsage }

@@ -268,15 +268,18 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     expect(usage.thinkingTokens).toBeNull()
   })
 
-  test('sumar varias llamadas suma el razonamiento de cada una', async () => {
-    const { readUsage, sumUsage } = await import('../services/ai/aiUsageMetadata.js')
+  test('dos llamadas iguales cuestan el doble, una fila cada una', () => {
+    // Antes esto se probaba sumando los desgloses con sumUsage. Se borro: la
+    // unidad contable es (operacion, llamada), asi que dos llamadas son dos
+    // costeos, no un desglose fusionado.
+    const una = computeCostUsd({
+      model: 'gemini-3.6-flash',
+      inputTokens: 61,
+      outputTokens: 387 + 462,
+      totalTokens: 910,
+    })
 
-    const total = sumUsage(readUsage(RESPUESTA_REAL), readUsage(RESPUESTA_REAL))
-
-    expect(total.thinkingTokens).toBe(924)
-    expect(total.outputTokens).toBe(1698)
-    expect(total.totalTokens).toBe(1820)
-    expect(total.serviceTier).toBe('standard')
+    expect(Number((una.costUsd * 2).toFixed(6))).toBeCloseTo(0.00646, 6)
   })
 
   test('el costo sube lo que el razonamiento vale', () => {
@@ -470,6 +473,53 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
 
     expect(conNull.costUsd).toBe(sinElCampo.costUsd)
     expect(conNull.cachedInputTokens).toBeNull()
+  })
+
+  test('1M en un modelo mas 1M en otro NO es 2M en el ultimo', () => {
+    // EL CASO QUE sumUsage COSTEABA MAL, con numeros redondos.
+    const A = 'gemini-3.6-flash'
+    const B = 'gemini-3.1-flash-lite'
+
+    const porLlamada =
+      computeCostUsd({ model: A, inputTokens: 800000, outputTokens: 200000, totalTokens: 1000000 })
+        .costUsd +
+      computeCostUsd({ model: B, inputTokens: 800000, outputTokens: 200000, totalTokens: 1000000 })
+        .costUsd
+
+    // Lo que daba consolidar: 2M enteros al modelo de la ultima llamada.
+    const consolidado = computeCostUsd({
+      model: B,
+      inputTokens: 1600000,
+      outputTokens: 400000,
+      totalTokens: 2000000,
+    }).costUsd
+
+    // Real:         1,35 (A) + 0,50 (B) = USD 1,85
+    // Consolidado:  2M enteros a tarifa de B = USD 1,00
+    expect(porLlamada).toBeCloseTo(1.85, 6)
+    expect(consolidado).toBeCloseTo(1.0, 6)
+
+    // No es una diferencia de redondeo: consolidar registra el 54% del gasto
+    // real y pierde el 46%. Y pierde hacia ABAJO, que es el error que no se
+    // nota hasta la factura.
+    expect(porLlamada / consolidado).toBeCloseTo(1.85, 6)
+    expect(consolidado / porLlamada).toBeLessThan(0.55)
+  })
+
+  test('ningun archivo vuelve a fusionar desgloses de varias llamadas', () => {
+    // El bug que sumUsage tenia no era un error de calculo: era que existiera.
+    // Una funcion que promedia modelos distintos, estando disponible, se usa.
+    const culpables = []
+
+    for (const archivo of archivosDeCodigo()) {
+      const codigo = sinComentarios(fs.readFileSync(archivo, 'utf8'))
+
+      if (/\bsumUsage\b|\bmergeUsage\b|\bconsolidateUsage\b/.test(codigo)) {
+        culpables.push(path.relative(process.cwd(), archivo))
+      }
+    }
+
+    expect(culpables).toEqual([])
   })
 
   test('UN SOLO archivo lee el desglose del proveedor', () => {
