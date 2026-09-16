@@ -163,10 +163,36 @@ export const rebuildTenantProjection = async ({ tenantId, period, apply = false 
   ])
 
   // Las filas de una llamada extra entran al ledger como 'operacion:llamada',
-  // así que se compara contra la parte anterior a los dos puntos.
-  const conocidas = new Set(
-    enElLedger.filter(Boolean).map(id => String(id).split(':')[0]),
-  )
+  // así que hay que reconocer la operación adentro de esa clave compuesta.
+  //
+  // ESTO DECÍA split(':')[0] Y ERA UN BUG QUE APAGABA LA RECONCILIACIÓN ENTERA.
+  //
+  // Asumía que un operationId no lleva dos puntos. El del agente sí:
+  //
+  //   AiOperation     agent:6a4dcc91…:msg_d87f0262-…
+  //   ledger          agent:6a4dcc91…:msg_d87f0262-…:main
+  //   split(':')[0]   "agent"                            ← no coincide con nada
+  //
+  // Resultado medido en producción: 8 de 23 operaciones del período se
+  // reportaban como ausentes del libro teniendo sus tres filas —la reserva y
+  // las dos llamadas—, ledgerComplete quedaba en false, y la corrección
+  // automática se negaba a aplicar. O sea que el drift real que la
+  // reconciliación existe para cerrar (−17.223 tokens, −0,006 USD) no se
+  // cerraba nunca, y el panel mostraba números viejos sin que nada avisara.
+  //
+  // Y fallaba justo para el agente, que es el mayor consumidor: el único
+  // llamador que namespacea su clave es el que más filas escribe.
+  //
+  // Ahora se indexan TODOS los prefijos en los límites de ':', así que la
+  // operación se encuentra sin importar cuántos segmentos tenga su clave ni
+  // cuántos le agregue el callId — 'tool:tavily_search' agrega dos.
+  const conocidas = new Set()
+  for (const id of enElLedger.filter(Boolean)) {
+    const partes = String(id).split(':')
+    for (let i = 1; i <= partes.length; i += 1) {
+      conocidas.add(partes.slice(0, i).join(':'))
+    }
+  }
 
   const missingFromLedger = operaciones.filter(id => id && !conocidas.has(id))
   const ledgerComplete = missingFromLedger.length === 0

@@ -28,7 +28,7 @@ const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageMode
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 
 const {
-  reserveAiBudget, refundAiBudget, recordAiConsumption,
+  reserveAiBudget, refundAiBudget, recordAiConsumption, recordToolSpend,
   sweepStaleOperations, AI_METRICS,
 } = await import('../services/ai/aiBudgetService.js')
 const { getPlatformSpendSnapshot } = await import(
@@ -364,6 +364,94 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
 
     expect(informe.ledgerComplete).toBe(true)
     expect(informe.missingFromLedger).toHaveLength(0)
+  })
+
+  test('una clave CON dos puntos propios tampoco falta', async () => {
+    // ESTE ERA EL BUG, Y EL TEST DE ARRIBA NO LO AGARRABA.
+    //
+    // El de arriba usa 'con-reparacion', una clave sin dos puntos. El agente
+    // namespacea la suya:
+    //
+    //   AiOperation     agent:<tenant>:msg_<uuid>
+    //   ledger          agent:<tenant>:msg_<uuid>:main
+    //
+    // El chequeo hacia split(':')[0], que sobre esa clave devuelve "agent" y
+    // no coincide con nada. Medido en produccion: 8 de 23 operaciones del
+    // periodo se reportaban ausentes TENIENDO sus filas, ledgerComplete
+    // quedaba en false y la correccion se negaba a aplicar. O sea que el drift
+    // que la reconciliacion existe para cerrar no se cerraba nunca.
+    //
+    // Y fallaba justo para el agente: el unico llamador que namespacea su
+    // clave es el que mas filas escribe.
+    const period = '2050-04'
+    const operationId = `agent:${TENANT}:msg_9f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f`
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId,
+    })
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 800,
+      model: 'gemini-3.1-flash-lite', inputTokens: 600, outputTokens: 200,
+      profile: PERFIL, period, operationId, callId: 'main',
+    })
+    await recordAiConsumption({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 500,
+      model: 'gemini-3.1-flash-lite', inputTokens: 400, outputTokens: 100,
+      profile: PERFIL, period, operationId, callId: 'repair',
+    })
+    await asentar()
+
+    const informe = await rebuildTenantProjection({ tenantId: TENANT, period })
+
+    expect(informe.missingFromLedger).toHaveLength(0)
+    expect(informe.ledgerComplete).toBe(true)
+  })
+
+  test('un callId de varios segmentos tampoco la pierde', async () => {
+    // Una llamada a herramienta entra como 'operacion:tool:tavily_search':
+    // el callId agrega DOS segmentos, no uno. Cualquier arreglo que recorte
+    // una cantidad fija de segmentos vuelve a romperse aca.
+    const period = '2050-05'
+    const operationId = `agent:${TENANT}:msg_herramienta`
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.MARKET_ANALYSES,
+      profile: PERFIL, period, operationId,
+    })
+    await recordToolSpend({
+      tenantId: TENANT, metric: AI_METRICS.MARKET_TOKENS,
+      tool: 'tavily_search', quantity: 4,
+      profile: PERFIL, period, operationId, provider: 'tavily',
+    })
+    await asentar()
+
+    const informe = await rebuildTenantProjection({ tenantId: TENANT, period })
+
+    expect(informe.missingFromLedger).toHaveLength(0)
+    expect(informe.ledgerComplete).toBe(true)
+  })
+
+  test('una operacion que de verdad falta SIGUE detectandose', async () => {
+    // La red no puede quedar tan laxa que deje pasar el caso real: si la
+    // operacion no tiene NINGUNA fila, corregir contra el libro borraria
+    // consumo de verdad.
+    const period = '2050-06'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL, period, operationId: `agent:${TENANT}:msg_sin_libro`,
+    })
+    await asentar()
+
+    // Se borran TODAS sus filas del ledger: la operacion queda huerfana.
+    await AiConsumptionLedger.deleteMany({ operationId: { $regex: 'msg_sin_libro' } })
+      .setOptions({ tenantId: TENANT })
+
+    const informe = await rebuildTenantProjection({ tenantId: TENANT, period })
+
+    expect(informe.ledgerComplete).toBe(false)
+    expect(informe.missingFromLedger).toContain(`agent:${TENANT}:msg_sin_libro`)
   })
 })
 
