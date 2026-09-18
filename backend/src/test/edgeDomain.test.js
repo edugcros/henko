@@ -140,6 +140,85 @@ describe('alta en el borde', () => {
   })
 })
 
+describe('la verificación que pide el BORDE, además de la nuestra', () => {
+  test('cuando el dominio ya está en otra cuenta, se devuelve qué falta', async () => {
+    // EL CASO QUE ESTO CIERRA.
+    //
+    // Nuestro TXT prueba que el dominio es del comercio. Si ese hostname ya
+    // está dado de alta en otra cuenta del proveedor —una landing vieja, un
+    // sitio anterior— el borde exige su propia prueba antes de servirlo.
+    //
+    // Descartarla era el peor de los casos: el comercio veía "verificado" en
+    // HENKO y su tienda no funcionaba, sin nada en pantalla que lo explicara.
+    process.env.VERCEL_TOKEN = 'tok'
+    process.env.VERCEL_PROJECT_ID = 'prj_123'
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        name: 'mitienda.com.ar',
+        verification: [
+          {
+            type: 'TXT',
+            domain: '_vercel.mitienda.com.ar',
+            value: 'vc-domain-verify=mitienda.com.ar,0217cb2e14',
+            reason: 'pending_domain_verification',
+          },
+        ],
+      }),
+    })
+
+    const res = await registrarDominioEnBorde('mitienda.com.ar')
+
+    expect(res.ok).toBe(true)
+    expect(res.verificacionPendiente).toEqual([
+      {
+        type: 'TXT',
+        name: '_vercel.mitienda.com.ar',
+        value: 'vc-domain-verify=mitienda.com.ar,0217cb2e14',
+        motivo: 'pending_domain_verification',
+      },
+    ])
+  })
+
+  test('el caso normal no pide nada extra', async () => {
+    // Un dominio que no está en ninguna otra cuenta se registra y listo. Si
+    // esto devolviera algo, el panel le mostraría al comercio un paso
+    // inventado.
+    process.env.VERCEL_TOKEN = 'tok'
+    process.env.VERCEL_PROJECT_ID = 'prj_123'
+
+    const res = await registrarDominioEnBorde('mitienda.com.ar')
+
+    expect(res.ok).toBe(true)
+    expect(res.verificacionPendiente).toEqual([])
+  })
+
+  test('una entrada incompleta del proveedor se descarta', async () => {
+    // Sin nombre no hay registro que cargar. Mostrarle al comercio una fila
+    // vacía sería peor que no mostrar nada.
+    process.env.VERCEL_TOKEN = 'tok'
+    process.env.VERCEL_PROJECT_ID = 'prj_123'
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        verification: [
+          { type: 'TXT', value: 'algo' },
+          { type: 'TXT', domain: '_vercel.ok.com', value: 'v' },
+        ],
+      }),
+    })
+
+    const res = await registrarDominioEnBorde('ok.com')
+
+    expect(res.verificacionPendiente).toHaveLength(1)
+    expect(res.verificacionPendiente[0].name).toBe('_vercel.ok.com')
+  })
+})
+
 describe('baja en el borde', () => {
   test('quitar un dominio también lo saca del proyecto', async () => {
     // Si no, el hostname sigue ocupando cupo con su certificado renovándose

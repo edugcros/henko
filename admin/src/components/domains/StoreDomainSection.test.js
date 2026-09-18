@@ -59,7 +59,34 @@ const INSTRUCCIONES = {
     name: "_henko-verify.mitienda.com.ar",
     value: "henko-verify=abc123",
   },
-  pointing: { type: "CNAME", name: "mitienda.com.ar", value: "api.henkart.com.ar" },
+  // El destino es el BORDE de la tienda. Decía api.henkart.com.ar —el backend—
+  // y ese era el bug: un comercio que siguiera esa instrucción apuntaba su
+  // dominio a la API y recibía JSON en vez de su tienda.
+  pointing: {
+    type: "CNAME",
+    name: "mitienda.com.ar",
+    value: "d2fac79b8adc2292.vercel-dns-017.com",
+  },
+};
+
+// Verificado de nuestro lado, pero el borde pide su propia prueba: pasa cuando
+// el hostname ya está dado de alta en otra cuenta del proveedor.
+const PROPIO_CON_PENDIENTE_DEL_BORDE = {
+  hostname: "mitienda.com.ar",
+  type: "custom_domain",
+  context: "both",
+  status: "active",
+  isPrimary: false,
+  sslStatus: "pending",
+  verifiedAt: new Date().toISOString(),
+  lastCheckedAt: new Date().toISOString(),
+  edgeVerification: [
+    {
+      type: "TXT",
+      name: "_vercel.mitienda.com.ar",
+      value: "vc-domain-verify=mitienda.com.ar,0217cb2e14",
+    },
+  ],
 };
 
 beforeEach(() => {
@@ -197,4 +224,59 @@ test("no ofrece quitar el subdominio de la plataforma", async () => {
     expect(screen.getByRole("button", { name: /quitar dominio/i })).toBeInTheDocument(),
   );
   expect(screen.getAllByRole("button", { name: /quitar/i })).toHaveLength(1);
+});
+
+// CUANDO EL BORDE PIDE SU PROPIA VERIFICACIÓN
+//
+// Nuestro TXT prueba que el dominio es del comercio. Si ese hostname ya está
+// dado de alta en otra cuenta del proveedor —una landing vieja, un sitio
+// anterior— el borde exige su propia prueba antes de servirlo.
+//
+// Sin mostrarlo, el comercio ve su dominio "Funcionando" acá y la tienda no
+// abre. Es el peor de los casos: la pantalla afirma lo contrario de lo que pasa.
+
+test("muestra el registro que pide el borde cuando falta", async () => {
+  mockGetDomains.mockResolvedValue([PLATAFORMA, PROPIO_CON_PENDIENTE_DEL_BORDE]);
+
+  render(<StoreDomainSection />);
+
+  expect(await screen.findByText(/falta un paso más/i)).toBeInTheDocument();
+  expect(screen.getByText("_vercel.mitienda.com.ar")).toBeInTheDocument();
+  expect(
+    screen.getByText("vc-domain-verify=mitienda.com.ar,0217cb2e14"),
+  ).toBeInTheDocument();
+});
+
+test("da forma de reintentar sin tener que volver a cargar el dominio", async () => {
+  // El aviso le pide al comercio que cargue un registro y toque verificar. Sin
+  // el botón en este estado, le estaríamos pidiendo algo que no puede
+  // completar: el de "Verificar" solo existía mientras el dominio estaba
+  // pendiente.
+  mockGetDomains.mockResolvedValue([PLATAFORMA, PROPIO_CON_PENDIENTE_DEL_BORDE]);
+  mockVerifyDomain.mockResolvedValue({ verified: true, instructions: null });
+
+  const user = userEvent.setup();
+  render(<StoreDomainSection />);
+
+  const boton = await screen.findByRole("button", { name: /verificar de nuevo/i });
+  await user.click(boton);
+
+  await waitFor(() => expect(mockVerifyDomain).toHaveBeenCalledWith("mitienda.com.ar"));
+});
+
+test("sin pendientes del borde no inventa un paso", async () => {
+  // El caso normal. Mostrar el aviso acá mandaría al comercio a crear un
+  // registro que nadie le pidió.
+  mockGetDomains.mockResolvedValue([
+    PLATAFORMA,
+    { ...PROPIO_CON_PENDIENTE_DEL_BORDE, edgeVerification: null },
+  ]);
+
+  render(<StoreDomainSection />);
+
+  expect(await screen.findByText(/mitienda\.com\.ar/)).toBeInTheDocument();
+  expect(screen.queryByText(/falta un paso más/i)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /verificar de nuevo/i }),
+  ).not.toBeInTheDocument();
 });

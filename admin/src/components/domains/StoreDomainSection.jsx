@@ -22,6 +22,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   Chip,
@@ -397,10 +398,59 @@ export default function StoreDomainSection() {
             .
           </Typography>
 
+          {/* CUANDO EL DOMINIO YA ESTÁ EN OTRA CUENTA DEL PROVEEDOR
+
+              Nuestra verificación probó que el dominio es del comercio. Si ese
+              hostname ya está dado de alta en otra cuenta del borde —una landing
+              vieja, un sitio anterior— el proveedor pide su propia prueba antes
+              de servirlo.
+
+              Sin este aviso el comercio ve su dominio "funcionando" acá y la
+              tienda no abre, sin nada que explique qué falta. Va ARRIBA del
+              certificado a propósito: mientras esto no se resuelva, el
+              certificado tampoco se emite. */}
+          {propio.edgeVerification?.length > 0 && (
+            <Alert severity="warning" variant="outlined" sx={{ borderRadius: 2 }}>
+              <AlertTitle sx={{ fontWeight: 700 }}>Falta un paso más</AlertTitle>
+              <Typography variant="body2" sx={{ mb: 1.5 }}>
+                Tu dominio ya figura en otra cuenta de nuestro proveedor. Para
+                que podamos servirlo, agregá también este registro en tu DNS.
+              </Typography>
+
+              <Table size="small" sx={{ '& td, & th': { border: 0, px: 0, py: 0.5 } }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Tipo</TableCell>
+                    <TableCell>Nombre</TableCell>
+                    <TableCell>Valor</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {propio.edgeVerification.map(registro => (
+                    <TableRow key={`${registro.type}-${registro.name}`}>
+                      <TableCell>{registro.type}</TableCell>
+                      <TableCell>
+                        <CopyableValue value={registro.name} />
+                      </TableCell>
+                      <TableCell>
+                        <CopyableValue value={registro.value} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                Cuando lo cargues, tocá «Verificar» de nuevo. Podés borrarlo una
+                vez que tu tienda abra.
+              </Typography>
+            </Alert>
+          )}
+
           {/* El certificado lo emite el borde y puede tardar unos minutos
               después de verificar. Decirlo evita el ticket de "verifiqué y me
               da error de seguridad". */}
-          {propio.sslStatus === 'pending' && (
+          {propio.sslStatus === 'pending' && !propio.edgeVerification?.length && (
             <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
               Estamos emitiendo el certificado de seguridad. Puede tardar unos
               minutos; hasta entonces el navegador puede mostrar una
@@ -408,18 +458,38 @@ export default function StoreDomainSection() {
             </Alert>
           )}
 
-          <Button
-            size="small"
-            variant="outlined"
-            color="inherit"
-            disabled={busy === 'delete'}
-            onClick={() =>
-              ejecutar('delete', () => deleteDomain(propio.hostname))
-            }
-            sx={{ borderRadius: 2, textTransform: 'none' }}
-          >
-            {busy === 'delete' ? 'Quitando...' : 'Quitar dominio'}
-          </Button>
+          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1 }}>
+            {/* Reintentar tiene que estar acá, no solo mientras el dominio está
+                pendiente: si el borde pide un registro más, el comercio lo carga
+                y necesita una forma de decir "ya está". Sin este botón, el aviso
+                de arriba le pediría algo que no puede completar. */}
+            {propio.edgeVerification?.length > 0 && (
+              <Button
+                size="small"
+                variant="contained"
+                disabled={busy === 'verify'}
+                onClick={() =>
+                  ejecutar('verify', () => verifyDomain(propio.hostname))
+                }
+                sx={{ borderRadius: 2, textTransform: 'none' }}
+              >
+                {busy === 'verify' ? 'Verificando...' : 'Verificar de nuevo'}
+              </Button>
+            )}
+
+            <Button
+              size="small"
+              variant="outlined"
+              color="inherit"
+              disabled={busy === 'delete'}
+              onClick={() =>
+                ejecutar('delete', () => deleteDomain(propio.hostname))
+              }
+              sx={{ borderRadius: 2, textTransform: 'none' }}
+            >
+              {busy === 'delete' ? 'Quitando...' : 'Quitar dominio'}
+            </Button>
+          </Stack>
         </Stack>
       )}
     </Stack>

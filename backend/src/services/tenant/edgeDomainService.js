@@ -53,6 +53,35 @@ const pedir = async (ruta, opciones = {}) => {
 }
 
 /**
+ * Los registros que el BORDE pide, además de los nuestros.
+ *
+ * POR QUÉ HAY UNA SEGUNDA VERIFICACIÓN
+ *
+ * Nuestro TXT prueba que el dominio es del comercio. Eso no le dice nada al
+ * borde: si ese hostname ya está dado de alta en OTRA cuenta del proveedor —una
+ * landing vieja, un sitio anterior del mismo comercio— exige su propia prueba
+ * antes de servirlo. Es razonable: dos cuentas distintas reclamando el mismo
+ * nombre.
+ *
+ * Descartarlo es el peor de los casos: el comercio ve "verificado" en HENKO y
+ * su tienda no funciona, porque el borde sigue esperando un registro que nadie
+ * le pidió. El dato ya viene en la respuesta del alta; lo único que faltaba era
+ * no tirarlo.
+ */
+const extraerVerificacionPendiente = cuerpo => {
+  const lista = Array.isArray(cuerpo?.verification) ? cuerpo.verification : []
+
+  return lista
+    .filter(item => item?.type && item?.domain)
+    .map(item => ({
+      type: String(item.type).toUpperCase(),
+      name: item.domain,
+      value: item.value ?? null,
+      motivo: item.reason || null,
+    }))
+}
+
+/**
  * Registra el dominio en el proyecto de la tienda.
  *
  * Devuelve siempre un objeto con `ok`; no lanza. El alta del dominio ya pasó su
@@ -72,8 +101,18 @@ export const registrarDominioEnBorde = async hostname => {
   })
 
   if (ok) {
-    logger.info('[BORDE] Dominio registrado', { hostname })
-    return { ok: true, yaExistia: false }
+    const pendiente = extraerVerificacionPendiente(cuerpo)
+
+    if (pendiente.length) {
+      logger.warn('[BORDE] El dominio quedó registrado pero el borde pide su propia verificación', {
+        hostname,
+        registros: pendiente.map(r => r.name),
+      })
+    } else {
+      logger.info('[BORDE] Dominio registrado', { hostname })
+    }
+
+    return { ok: true, yaExistia: false, verificacionPendiente: pendiente }
   }
 
   // Que ya esté dado de alta es el resultado deseado, no un error: pasa al

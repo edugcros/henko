@@ -129,6 +129,30 @@ const domainSchema = new Schema(
       type: Date,
       default: null,
     },
+
+    /**
+     * Lo que el BORDE pide además de nuestra verificación de propiedad.
+     *
+     * Nuestro TXT prueba que el dominio es del comercio. Si ese hostname ya
+     * está dado de alta en otra cuenta del proveedor —una landing vieja, un
+     * sitio anterior— el borde exige su propia prueba antes de servirlo.
+     *
+     * Se guarda para poder mostrárselo al comercio: sin esto, el dominio figura
+     * verificado de nuestro lado y la tienda no anda, sin nada en pantalla que
+     * explique qué falta. Vacío es el caso normal.
+     */
+    edgeVerification: {
+      type: [
+        {
+          _id: false,
+          type: { type: String },
+          name: String,
+          value: String,
+          motivo: String,
+        },
+      ],
+      default: undefined,
+    },
   },
   { _id: false },
 )

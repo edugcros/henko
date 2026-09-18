@@ -157,6 +157,15 @@ const serializeDomain = domain => ({
   verifiedAt: domain.verifiedAt || null,
   sslStatus: domain.sslStatus,
   lastCheckedAt: domain.lastCheckedAt || null,
+  // Solo viaja cuando hay algo que hacer. Mandar un array vacío haría que el
+  // panel tuviera que distinguir "no falta nada" de "todavía no se intentó".
+  edgeVerification: domain.edgeVerification?.length
+    ? domain.edgeVerification.map(item => ({
+        type: item.type,
+        name: item.name,
+        value: item.value,
+      }))
+    : null,
 })
 
 const findDomainEntry = (tenant, hostname) =>
@@ -304,6 +313,17 @@ export const verifyTenantDomain = async ({ tenantId, hostname: raw }) => {
         hostname,
         motivo: alta.motivo,
       })
+    }
+
+    // Lo que el borde pide ADEMÁS de lo nuestro. Se guarda aunque esté vacío
+    // para limpiar lo de un intento anterior: si el comercio ya cargó el
+    // registro que faltaba, dejarlo puesto lo mandaría a hacer algo hecho.
+    const entradaActual = findDomainEntry(tenant, hostname)
+    const pendiente = alta.verificacionPendiente || []
+
+    if (entradaActual) {
+      entradaActual.edgeVerification = pendiente.length ? pendiente : undefined
+      await tenant.save()
     }
   }
 
