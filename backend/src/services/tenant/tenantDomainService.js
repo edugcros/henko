@@ -28,6 +28,7 @@
 // dominio es suyo.
 
 import { promises as dns } from 'node:dns'
+import tls from 'node:tls'
 import { randomBytes } from 'node:crypto'
 
 import Tenant from '../../models/tenantModel.js'
@@ -289,10 +290,184 @@ export const removeTenantDomain = async ({ tenantId, hostname: raw }) => {
   return { removed: hostname }
 }
 
+// ─── EL CERTIFICADO ──────────────────────────────────────────────────────────
+//
+// QUIÉN CONFIRMA QUE EL CERTIFICADO EXISTE
+//
+// La respuesta obvia sería preguntarle al proveedor de borde. No se hace así,
+// por dos motivos.
+//
+// El primero es que ataría este código a un proveedor que todavía no está
+// elegido. El segundo es mejor: preguntarle al proveedor devuelve lo que el
+// proveedor CREE, y lo que importa es lo que ve el navegador del cliente. Entre
+// "Cloudflare dice que emitió el certificado" y "el handshake TLS contra ese
+// dominio funciona" hay un montón de formas de fallar — DNS que todavía apunta
+// a otro lado, un proxy mal configurado, un certificado emitido para otro
+// nombre.
+//
+// Abrir la conexión responde la pregunta de verdad, y sirve igual con
+// Cloudflare, con ACM o con certbot.
+
+const TLS_TIMEOUT_MS = Number(process.env.DOMAIN_TLS_TIMEOUT_MS || 8000)
+
+/**
+ * ¿Este dominio presenta un certificado válido para su propio nombre?
+ *
+ * No lanza nunca: que todavía no haya certificado es el estado NORMAL de un
+ * dominio recién verificado, no una falla.
+ */
+export const hasValidCertificate = hostname =>
+  new Promise(resolve => {
+    let resuelto = false
+
+    const terminar = (ok, detalle) => {
+      if (resuelto) return
+      resuelto = true
+
+      socket.destroy()
+      resolve({ ok, detail: detalle })
+    }
+
+    const socket = tls.connect(
+      {
+        host: hostname,
+        port: 443,
+        // servername es lo que hace que esto mida lo correcto: sin SNI, un
+        // borde compartido devolvería su certificado por defecto y daríamos por
+        // bueno un certificado que no cubre este dominio.
+        servername: hostname,
+        // Se valida contra las CA del sistema: un certificado autofirmado no
+        // sirve de nada para el cliente, así que tampoco acá.
+        rejectUnauthorized: true,
+      },
+      () => terminar(socket.authorized, socket.authorizationError || null),
+    )
+
+    socket.setTimeout(TLS_TIMEOUT_MS, () => terminar(false, 'timeout'))
+    socket.on('error', error => terminar(false, error.code || error.message))
+  })
+
+/**
+ * Revisa los dominios verificados que todavía no tienen certificado.
+ *
+ * Solo mira los que ya pasaron la verificación de propiedad: preguntar por el
+ * certificado de un dominio que ni siquiera apunta acá es gastar ocho segundos
+ * de timeout para aprender nada.
+ *
+ * Nunca baja un dominio de 'active' a 'pending'. Un certificado que hoy no
+ * responde puede ser un problema de red pasajero, y degradar el estado por eso
+ * haría que el panel alarme al comercio por algo que se arregla solo. Para
+ * bajarlo haría falta una racha de fallos, que es otra decisión.
+ */
+export const refreshPendingCertificates = async ({ logger: log = logger } = {}) => {
+  const tenants = await Tenant.find({
+    'domains.type': 'custom_domain',
+    'domains.status': 'active',
+    'domains.sslStatus': 'pending',
+  }).setOptions({
+    ignoreTenant: true,
+    platformScope: 'job de certificados: cruza comercios por definición',
+  })
+
+  let revisados = 0
+  let activados = 0
+
+  for (const tenant of tenants) {
+    let cambio = false
+
+    for (const domain of tenant.domains) {
+      if (domain.type !== 'custom_domain') continue
+      if (domain.status !== 'active' || domain.sslStatus !== 'pending') continue
+
+      revisados += 1
+
+      const { ok, detail } = await hasValidCertificate(domain.hostname)
+
+      domain.lastCheckedAt = new Date()
+      cambio = true
+
+      if (ok) {
+        domain.sslStatus = 'active'
+        activados += 1
+
+        log.info?.('[DOMINIO SSL] Certificado activo', {
+          tenantId: String(tenant._id),
+          hostname: domain.hostname,
+        })
+      } else {
+        log.debug?.('[DOMINIO SSL] Todavía sin certificado', {
+          hostname: domain.hostname,
+          detail,
+        })
+      }
+    }
+
+    if (cambio) await tenant.save()
+  }
+
+  if (revisados > 0) {
+    log.info?.('[DOMINIO SSL] Revisión terminada', { revisados, activados })
+  }
+
+  return { revisados, activados }
+}
+
+let certInterval = null
+
+/**
+ * Arranca la revisión periódica de certificados.
+ *
+ * CON UNA PASADA AL ARRANQUE, que es lo que hace que sirva.
+ *
+ * Es la misma lección que dejó el barrido de reservas colgadas: el intervalo se
+ * reinicia en cada deploy, y en un servicio que se reinicia seguido un timer
+ * largo sin pasada inicial es un timer que no corre nunca. Acá pesa más todavía
+ * porque el momento en que hace falta —justo después de que el comercio
+ * verificó su dominio— es cuando más ansioso está mirando la pantalla.
+ */
+export const startCertificateWatcher = ({ logger: log = logger } = {}) => {
+  if (process.env.DOMAIN_CERT_WATCHER_ENABLED === 'false') {
+    log.info?.('[DOMINIO SSL] Revisión de certificados deshabilitada')
+    return
+  }
+
+  if (certInterval) return
+
+  const intervalMs = Number(process.env.DOMAIN_CERT_INTERVAL_MS || 10 * 60 * 1000)
+  const arranqueMs = Number(process.env.DOMAIN_CERT_ON_START_MS || 60 * 1000)
+
+  const correr = () =>
+    refreshPendingCertificates({ logger: log }).catch(error => {
+      log.error?.('[DOMINIO SSL] La revisión falló', { error: error.message })
+    })
+
+  const primeraPasada = setTimeout(correr, arranqueMs)
+  primeraPasada.unref?.()
+
+  certInterval = setInterval(correr, intervalMs)
+  certInterval.unref?.()
+
+  log.info?.('[DOMINIO SSL] Revisión de certificados iniciada', {
+    intervalMinutes: Math.round(intervalMs / 60000),
+    primeraPasadaEnSegundos: Math.round(arranqueMs / 1000),
+  })
+}
+
+export const stopCertificateWatcher = () => {
+  if (!certInterval) return
+
+  clearInterval(certInterval)
+  certInterval = null
+}
+
 export default {
   listTenantDomains,
   registerTenantDomain,
   verifyTenantDomain,
   removeTenantDomain,
+  hasValidCertificate,
+  refreshPendingCertificates,
+  startCertificateWatcher,
+  stopCertificateWatcher,
   VERIFICATION_PREFIX,
 }

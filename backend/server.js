@@ -22,6 +22,10 @@ import {
   startAccountingAudit,
   stopAccountingAudit,
 } from './src/services/ai/aiAccountingService.js'
+import {
+  startCertificateWatcher,
+  stopCertificateWatcher,
+} from './src/services/tenant/tenantDomainService.js'
 
 // =====================================================
 // Configuración servidor
@@ -77,6 +81,11 @@ const startServer = async () => {
       // Detecta, registra y avisa si el libro, los comercios y la plataforma
       // dejan de coincidir. Nunca corrige sola.
       startAccountingAudit({ logger })
+      // Pasa sslStatus a 'active' cuando el dominio del comercio ya presenta un
+      // certificado válido. Lo comprueba abriendo la conexión TLS, no
+      // preguntándole al proveedor: lo que importa es lo que ve el navegador
+      // del cliente.
+      startCertificateWatcher({ logger })
     })
 
     serverInstance.on('error', err => {
@@ -114,6 +123,7 @@ const shutdown = async signal => {
     stopAiInsightWorker()
     stopStaleOperationSweeper()
     stopAccountingAudit()
+    stopCertificateWatcher()
 
     if (serverInstance && isServerListening) {
       await new Promise((resolve, reject) => {
