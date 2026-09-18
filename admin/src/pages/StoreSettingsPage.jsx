@@ -33,8 +33,12 @@ import MailOutlineIcon from '@mui/icons-material/MailOutlined'
 import PaletteIcon from '@mui/icons-material/Palette'
 import SaveIcon from '@mui/icons-material/Save'
 
-import { fetchTenantSettings, saveTenantSettings } from '../features/tenant/tenantSlice'
+import {
+  fetchTenantSettings,
+  saveTenantSettings,
+} from '../features/tenant/tenantSlice'
 import SendingDomainSection from '../components/emailDomain/SendingDomainSection'
+import StoreDomainSection from '../components/domains/StoreDomainSection'
 
 const clean = value => String(value ?? '').trim()
 
@@ -55,7 +59,11 @@ const toForm = data => ({
 const SectionCard = ({ title, subtitle, icon, children }) => (
   <Card variant="outlined" sx={{ borderRadius: 3 }}>
     <CardContent>
-      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
+      <Stack
+        direction="row"
+        spacing={1.5}
+        sx={{ alignItems: 'center', mb: 0.5 }}
+      >
         {icon}
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {title}
@@ -83,7 +91,11 @@ const SectionCard = ({ title, subtitle, icon, children }) => (
  */
 const EmailPreview = ({ fromName, fromAddress, replyTo }) => (
   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
-    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      sx={{ fontWeight: 700 }}
+    >
       ASÍ LO VE TU CLIENTE
     </Typography>
 
@@ -105,7 +117,9 @@ const EmailPreview = ({ fromName, fromAddress, replyTo }) => (
 
 const StoreSettingsPage = () => {
   const dispatch = useDispatch()
-  const { data, isLoading, isSaving, isError, message } = useSelector(state => state.tenant || {})
+  const { data, isLoading, isSaving, isError, message } = useSelector(
+    state => state.tenant || {},
+  )
 
   const [form, setForm] = useState(null)
   const [emailIdentity, setEmailIdentity] = useState(null)
@@ -125,7 +139,10 @@ const StoreSettingsPage = () => {
     if (data) setForm(toForm(data))
   }, [data])
 
-  const setField = useCallback((key, value) => setForm(prev => ({ ...prev, [key]: value })), [])
+  const setField = useCallback(
+    (key, value) => setForm(prev => ({ ...prev, [key]: value })),
+    [],
+  )
 
   const emailError = useMemo(() => {
     const value = clean(form?.contactEmail)
@@ -215,7 +232,9 @@ const StoreSettingsPage = () => {
                 value={form.name}
                 onChange={e => setField('name', e.target.value)}
                 error={!clean(form.name)}
-                helperText={!clean(form.name) ? 'El nombre no puede quedar vacío' : ''}
+                helperText={
+                  !clean(form.name) ? 'El nombre no puede quedar vacío' : ''
+                }
               />
             </Grid>
             <Grid size={{ xs: 12 }}>
@@ -268,6 +287,18 @@ const StoreSettingsPage = () => {
                 Enviar desde tu propio dominio
               </Typography>
               <SendingDomainSection onIdentityChange={setEmailIdentity} />
+            </Grid>
+
+            {/* Van juntos porque la gente los confunde, y separados porque son
+                cosas distintas: uno es por dónde SALEN los correos, el otro es
+                por dónde ENTRAN los clientes. Un comercio puede tener uno, el
+                otro, o los dos. */}
+            <Grid size={{ xs: 12 }}>
+              <Divider sx={{ mb: 2 }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                La dirección de tu tienda
+              </Typography>
+              <StoreDomainSection />
             </Grid>
 
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -331,7 +362,13 @@ const StoreSettingsPage = () => {
           <Button
             variant="contained"
             size="large"
-            startIcon={isSaving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
+            startIcon={
+              isSaving ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <SaveIcon />
+              )
+            }
             onClick={handleSave}
             disabled={!canSave}
             sx={{ borderRadius: 2, textTransform: 'none', px: 4 }}
