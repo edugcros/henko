@@ -73,7 +73,12 @@ const getPlatformRoots = () =>
 const isPlatformDomain = hostname =>
   getPlatformRoots().some(root => hostname === root || hostname.endsWith(`.${root}`))
 
-/** El hostname normalizado, o un error 400 con el motivo. */
+/**
+ * El hostname normalizado, o un error 400 con el motivo.
+ *
+ * Valida FORMA, no permiso. La regla de quién puede reclamar qué se aplica
+ * aparte, y solo donde corresponde — ver assertClaimable.
+ */
 const parseHostname = value => {
   const hostname = normalizeHostname(normalizeDomainValue(value || ''))
 
@@ -88,11 +93,30 @@ const parseHostname = value => {
     )
   }
 
+  return hostname
+}
+
+/**
+ * ¿Este comercio puede RECLAMAR este dominio?
+ *
+ * SOLO EN EL ALTA, Y ESA DISTINCIÓN COSTÓ UN INCIDENTE
+ *
+ * Esta comprobación vivía dentro de parseHostname, o sea que corría también al
+ * verificar y al dar de baja. El efecto: un dominio ya registrado quedaba
+ * imposible de operar si la regla cambiaba después del alta — que es
+ * exactamente lo que pasó. Se cargó `henkart.com.ar` cuando ROOT_DOMAIN
+ * todavía no estaba configurado, y al configurarlo el mismo dominio pasó a ser
+ * "de la plataforma": la verificación empezó a rechazarlo y la tienda quedó
+ * devolviendo 404 sin forma de destrabarla desde el panel.
+ *
+ * La regla de reclamo pertenece al momento del reclamo. Verificar y dar de baja
+ * operan sobre algo que YA está en el comercio —findDomainEntry devuelve 404 si
+ * no está— así que no hay nada que reclamar ahí.
+ */
+const assertClaimable = hostname => {
   if (isPlatformDomain(hostname)) {
     throw buildError(400, 'Ese dominio pertenece a la plataforma y no se puede reclamar.')
   }
-
-  return hostname
 }
 
 /** Lo que el comercio tiene que cargar en su DNS. */
@@ -145,6 +169,10 @@ export const listTenantDomains = async tenantId => {
  */
 export const registerTenantDomain = async ({ tenantId, hostname: raw }) => {
   const hostname = parseHostname(raw)
+
+  // La regla de reclamo va acá y solo acá: es el único momento en que alguien
+  // pide quedarse con un dominio.
+  assertClaimable(hostname)
 
   const tenant = await Tenant.findById(tenantId)
   if (!tenant) throw buildError(404, 'Comercio no encontrado')

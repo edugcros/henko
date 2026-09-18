@@ -268,6 +268,55 @@ describe('verificación de propiedad', () => {
       verifyTenantDomain({ tenantId: tenant._id, hostname: 'ajeno.com.ar' }),
     ).rejects.toMatchObject({ statusCode: 404 })
   })
+
+  test('un dominio de la plataforma YA cargado se puede verificar igual', async () => {
+    // ESTA ES LA QUE COSTÓ UN INCIDENTE.
+    //
+    // La guarda de "dominio de la plataforma" corría dentro de parseHostname, o
+    // sea también al verificar. Se dio de alta henkart.com.ar cuando ROOT_DOMAIN
+    // todavía no estaba configurado; al configurarlo, ese mismo dominio pasó a
+    // ser de la plataforma, la verificación empezó a rechazarlo, y la tienda
+    // quedó devolviendo 404 sin forma de destrabarla desde el panel.
+    //
+    // La regla de reclamo pertenece al momento del reclamo. Verificar opera
+    // sobre algo que YA está en el comercio.
+    //
+    // El dominio se inserta directo en vez de darlo de alta por el servicio,
+    // porque el alta lo rechazaría —correctamente— y lo que se quiere reproducir
+    // es justamente el estado de algo que entró cuando la regla no aplicaba.
+    const token = 'henko-verify=' + 'a'.repeat(32)
+
+    const tenant = await crearComercio()
+    tenant.domains.push({
+      hostname: 'tienda.henkart.com.ar',
+      normalizedHostname: 'tienda.henkart.com.ar',
+      type: 'custom_domain',
+      context: 'both',
+      status: 'pending',
+      verificationToken: token,
+    })
+    await tenant.save()
+
+    resolveTxtMock.mockResolvedValue([[token]])
+
+    const res = await verifyTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'tienda.henkart.com.ar',
+    })
+
+    expect(res.verified).toBe(true)
+    expect(res.domain.status).toBe('active')
+  })
+
+  test('pero seguir sin poder RECLAMAR uno de la plataforma', async () => {
+    // El arreglo de arriba no puede aflojar el alta: ahí la regla sigue
+    // valiendo, porque es el momento en que alguien pide quedarse con algo.
+    const tenant = await crearComercio()
+
+    await expect(
+      registerTenantDomain({ tenantId: tenant._id, hostname: 'otra.henkart.com.ar' }),
+    ).rejects.toMatchObject({ statusCode: 400 })
+  })
 })
 
 describe('baja', () => {
