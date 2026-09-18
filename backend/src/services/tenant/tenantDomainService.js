@@ -117,10 +117,24 @@ const parseHostname = value => {
  * La regla de reclamo pertenece al momento del reclamo. Verificar y dar de baja
  * operan sobre algo que YA está en el comercio —findDomainEntry devuelve 404 si
  * no está— así que no hay nada que reclamar ahí.
+ *
+ * EL MENSAJE TIENE QUE DECIR QUÉ HACER
+ *
+ * Decía "Ese dominio pertenece a la plataforma y no se puede reclamar". Es
+ * cierto y no sirve de nada: quien escribe un subdominio de HENKO acá está
+ * confundiendo la dirección que le dimos con un dominio propio, y ese mensaje
+ * no lo saca del error — solo le dice que no. Medido en producción: dos
+ * intentos seguidos del mismo usuario contra el mismo 400, sin cambiar de idea
+ * entre uno y otro, porque nada le indicaba hacia dónde corregir.
  */
 const assertClaimable = hostname => {
   if (isPlatformDomain(hostname)) {
-    throw buildError(400, 'Ese dominio pertenece a la plataforma y no se puede reclamar.')
+    throw buildError(
+      400,
+      `${hostname} es una dirección de HENKO, no un dominio propio. ` +
+        'La dirección de tu tienda ya funciona sola y no hace falta cargarla acá. ' +
+        'Este campo es para un dominio que hayas comprado vos, por ejemplo mitienda.com.ar.',
+    )
   }
 }
 

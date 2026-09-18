@@ -147,6 +147,25 @@ describe('alta de un dominio propio', () => {
     ).rejects.toMatchObject({ statusCode: 400 })
   })
 
+  test('y el mensaje dice qué cargar en su lugar', async () => {
+    // Rechazar bien y explicar mal deja al comercio en un callejón: el mensaje
+    // anterior —"pertenece a la plataforma y no se puede reclamar"— es cierto y
+    // no lo saca del error. Medido en producción: dos intentos seguidos del
+    // mismo usuario contra el mismo 400, sin cambiar de idea entre uno y otro.
+    //
+    // La propiedad: el mensaje nombra el dominio rechazado Y da un ejemplo de
+    // lo que sí va. Sin el ejemplo no hay hacia dónde corregir.
+    const tenant = await crearComercio()
+
+    await expect(
+      registerTenantDomain({ tenantId: tenant._id, hostname: 'otra-tienda.henkart.com.ar' }),
+    ).rejects.toThrow(/otra-tienda\.henkart\.com\.ar/)
+
+    await expect(
+      registerTenantDomain({ tenantId: tenant._id, hostname: 'otra-tienda.henkart.com.ar' }),
+    ).rejects.toThrow(/mitienda\.com\.ar/)
+  })
+
   test('NO se puede reclamar el dominio de otro comercio', async () => {
     // Lo resuelve el índice único sobre domainKeys: la base, no una
     // comprobación previa que pueda perder la carrera.
