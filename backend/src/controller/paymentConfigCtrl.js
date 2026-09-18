@@ -1,6 +1,7 @@
 import asyncHandler from 'express-async-handler'
 import Tenant from '../models/tenantModel.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
+import { describeMpAccount } from '../services/paymentTenantConfigService.js'
 
 const clean = value => String(value ?? '').trim()
 
@@ -95,6 +96,49 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
       return res.status(400).json({
         success: false,
         message: `El Access Token es de modo "${tkMode}" pero seleccionaste "${mode}".`,
+      })
+    }
+  }
+
+  // EL PREFIJO NO ALCANZA PARA "PRODUCTION"
+  //
+  // Los chequeos de arriba comparan prefijos, y con eso se atrapa el caso
+  // obvio: una credencial TEST- declarada como productiva. Lo que no se ve es
+  // el inverso silencioso — una cuenta de PRUEBA de Mercado Pago emite
+  // credenciales APP_USR-, indistinguibles de las reales sin preguntar.
+  //
+  // Un comercio que guarde esas creyendo que ya cobra tiene una tienda que
+  // parece funcionar: el checkout abre, la tarjeta se aprueba, el cliente
+  // recibe su comprobante. La plata no existe. Se entera semanas después.
+  //
+  // Por eso se le pregunta a Mercado Pago, y por eso corta si no se puede
+  // preguntar: guardar credenciales es algo que se hace un puñado de veces por
+  // comercio, y volver a intentar cuesta un click. Dejar pasar lo que no
+  // pudimos verificar cuesta la venta entera.
+  const modoEfectivo = mode || clean(currentMp.mode)
+
+  if (accessToken && modoEfectivo === 'production') {
+    let cuenta
+
+    try {
+      cuenta = await describeMpAccount(accessToken)
+    } catch (error) {
+      return res.status(503).json({
+        success: false,
+        message:
+          'No pudimos verificar la cuenta con Mercado Pago. Probá de nuevo en un minuto.',
+        code: error.code || 'MP_ACCOUNT_LOOKUP_FAILED',
+      })
+    }
+
+    if (cuenta.isTestAccount) {
+      return res.status(400).json({
+        success: false,
+        code: 'MP_TEST_ACCOUNT_IN_PRODUCTION',
+        message:
+          `Estas credenciales son de una cuenta de prueba de Mercado Pago (${cuenta.nickname}). ` +
+          'Empiezan con APP_USR- igual que las reales, pero los pagos no cobran nada. ' +
+          'Copiá las de tu cuenta verdadera, o elegí el modo "test".',
       })
     }
   }

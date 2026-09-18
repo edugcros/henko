@@ -73,6 +73,60 @@ const inferMpPublicKeyMode = publicKey => {
   return null
 }
 
+// ¿DE QUIÉN ES ESTA CREDENCIAL?
+//
+// El prefijo distingue TEST- de APP_USR-, y hasta acá eso era todo lo que
+// sabíamos mirar. El agujero: una cuenta de PRUEBA de Mercado Pago emite
+// credenciales APP_USR-, idénticas por fuera a las de una cuenta real.
+// Comprobado contra /users/me con el token de .env.development: empieza con
+// APP_USR-, y la cuenta es TESTUSER1577837093912844460, tags
+// ["test_user","normal"].
+//
+// Qué pasa si una de esas llega a producción: el backend arranca sin quejarse
+// —pasa el chequeo de prefijo—, el checkout abre, la tarjeta se aprueba y el
+// comprador recibe su comprobante. Contra una cuenta que no existe. Nadie se
+// entera hasta que alguien va a buscar la plata.
+//
+// Offline no se pueden distinguir. El último segmento del token es el id de la
+// cuenta (comprobado: coincide con el id de /users/me), pero un id de prueba
+// no se ve distinto de uno real. La única fuente es Mercado Pago.
+export const extractMpAccountId = token => {
+  const ultimo = sanitizeString(token).split('-').pop()
+  return /^\d+$/.test(ultimo) ? ultimo : null
+}
+
+export const describeMpAccount = async (token, { timeoutMs = 5000 } = {}) => {
+  if (!isValidMpAccessToken(token)) {
+    const error = new Error('MP_ACCESS_TOKEN_INVALID_FORMAT')
+    error.code = 'MP_ACCESS_TOKEN_INVALID_FORMAT'
+    throw error
+  }
+
+  const res = await fetch('https://api.mercadopago.com/users/me', {
+    headers: { Authorization: `Bearer ${sanitizeString(token)}` },
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+
+  if (!res.ok) {
+    const error = new Error(`MP_ACCOUNT_LOOKUP_FAILED: HTTP ${res.status}`)
+    error.code = 'MP_ACCOUNT_LOOKUP_FAILED'
+    error.status = res.status
+    throw error
+  }
+
+  const cuenta = await res.json()
+
+  return {
+    id: cuenta?.id ? String(cuenta.id) : null,
+    nickname: sanitizeString(cuenta?.nickname) || null,
+    // La marca la pone Mercado Pago, no nosotros. Si algún día deja de venir,
+    // esto da false y el que llame decide: preferimos no inventar un veredicto.
+    isTestAccount: Array.isArray(cuenta?.tags)
+      ? cuenta.tags.includes('test_user')
+      : false,
+  }
+}
+
 const assertCompatibleMpMode = ({ token, tenantMode }) => {
   const tokenMode = inferMpTokenMode(token)
 

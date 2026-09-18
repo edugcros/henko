@@ -26,6 +26,7 @@ import {
   startCertificateWatcher,
   stopCertificateWatcher,
 } from './src/services/tenant/tenantDomainService.js'
+import { describeMpAccount } from './src/services/paymentTenantConfigService.js'
 
 // =====================================================
 // Configuración servidor
@@ -36,6 +37,56 @@ const PORT = env.port || 5000
 let serverInstance = null
 let isShuttingDown = false
 let isServerListening = false
+
+// =====================================================
+// La credencial de plataforma tiene que ser de una cuenta real
+// =====================================================
+//
+// config/env.js ya rechaza en producción un MP_ACCESS_TOKEN que empiece con
+// TEST-. Eso deja pasar el caso que importa: una cuenta de PRUEBA de Mercado
+// Pago emite credenciales APP_USR-, iguales por fuera a las reales. Con una de
+// esas, los comercios "pagan" su suscripción contra una cuenta que no existe y
+// el panel los da por activos.
+//
+// Offline no hay nada que mirar —el id de cuenta de prueba no se ve distinto—,
+// así que se le pregunta a Mercado Pago una vez, al arrancar.
+//
+// ASIMETRÍA DELIBERADA CON paymentConfigCtrl: allá, si no se puede preguntar,
+// se corta. Acá no. Lo que está en juego allá es un guardado de configuración
+// que se reintenta con un click; acá es todo el backend —tiendas, catálogos,
+// pedidos—, y dejarlo caído por una caída de Mercado Pago sería peor que el
+// riesgo que se está cuidando. Si no se puede verificar, queda el registro.
+const assertPlatformMpAccountIsReal = async () => {
+  if (env.nodeEnv !== 'production') return
+
+  const token = String(env.mercadoPago?.accessToken || '').trim()
+
+  if (!token) return
+
+  let cuenta
+
+  try {
+    cuenta = await describeMpAccount(token)
+  } catch (error) {
+    logger.error(
+      '[SERVER] ⚠️ No se pudo verificar la cuenta de Mercado Pago de plataforma. ' +
+        'El arranque sigue, pero nadie comprobó que la credencial no sea de prueba.',
+      { message: error.message, code: error.code || null },
+    )
+    return
+  }
+
+  if (cuenta.isTestAccount) {
+    throw new Error(
+      `MP_ACCESS_TOKEN pertenece a una cuenta de prueba de Mercado Pago (${cuenta.nickname}, id ${cuenta.id}). ` +
+        'Empieza con APP_USR- igual que una real, pero los cobros de suscripción no recaudarían nada.',
+    )
+  }
+
+  logger.info('[SERVER] 🟢 Cuenta de Mercado Pago de plataforma verificada', {
+    id: cuenta.id,
+  })
+}
 
 // =====================================================
 // Arranque
@@ -61,8 +112,10 @@ const startServer = async () => {
     await refreshPlatformAiSettings()
     logger.info('[SERVER] 🟢 Ajustes de plataforma cargados')
 
+    await assertPlatformMpAccountIsReal()
+
     logger.info('[SERVER] 🔄 Inicializando CSRF token store...')
-    
+
     logger.info('[SERVER] ✅ CSRF token store inicializado')
 
     serverInstance = app.listen(PORT, '0.0.0.0', () => {
