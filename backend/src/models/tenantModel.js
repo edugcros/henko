@@ -90,10 +90,39 @@ const domainSchema = new Schema(
       default: null,
     },
 
+    /**
+     * Estado del certificado TLS de ESTE dominio.
+     *
+     * EL VALOR INICIAL SALE DEL TIPO, NO DEL ENTORNO
+     *
+     * Antes lo escribía el alta de comercio como
+     * `env.isProduction ? 'active' : 'not_required'`. Eso hacía que el campo
+     * dijera en qué entorno corre el proceso, no cómo está el certificado: en
+     * producción quedaba 'active' sin que nada lo hubiera comprobado.
+     *
+     * Y la diferencia importa según el tipo:
+     *
+     *   platform_subdomain  lo cubre el certificado wildcard de la plataforma.
+     *                       No hay nada propio que emitir ni que vigilar, así
+     *                       que 'not_required' es literal — y 'active' sería
+     *                       afirmar que emitimos uno.
+     *
+     *   custom_domain       necesita su propio certificado. Arranca en
+     *                       'pending' y solo pasa a 'active' cuando el
+     *                       proveedor confirma la emisión. Declararlo activo de
+     *                       entrada haría que el panel dijera que está todo
+     *                       bien mientras el comercio ve un error de
+     *                       certificado en el navegador.
+     *
+     * `type` se declara antes que este campo, así que ya tiene su valor cuando
+     * corre este default.
+     */
     sslStatus: {
       type: String,
       enum: ['pending', 'active', 'failed', 'not_required'],
-      default: 'not_required',
+      default: function initialSslStatus() {
+        return this.type === 'custom_domain' ? 'pending' : 'not_required'
+      },
     },
 
     lastCheckedAt: {

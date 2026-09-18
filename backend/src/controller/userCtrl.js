@@ -727,7 +727,10 @@ export const createUserAdmin = [
                   status: 'active',
                   isPrimary: true,
                   verifiedAt: new Date(),
-                  sslStatus: env.isProduction ? 'active' : 'not_required',
+                  // sslStatus lo decide el schema a partir del `type`. Acá
+                  // decía `env.isProduction ? 'active' : 'not_required'`, que
+                  // afirmaba tener un certificado emitido por estar en
+                  // producción, sin que nada lo hubiera comprobado.
                 },
               ],
               adminDomains: [
@@ -739,7 +742,7 @@ export const createUserAdmin = [
                   status: 'active',
                   isPrimary: true,
                   verifiedAt: new Date(),
-                  sslStatus: env.isProduction ? 'active' : 'not_required',
+                  // Ídem: lo deriva el schema del tipo del dominio.
                 },
               ],
               currency: 'ARS',
