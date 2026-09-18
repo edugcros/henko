@@ -23,6 +23,9 @@ import React from 'react'
 process.env.REACT_APP_API_BASE_URL = 'http://localhost:5000/api'
 process.env.REACT_APP_NODE_ENV = 'test'
 process.env.REACT_APP_PUBLIC_BASE_DOMAIN = 'henkart.com.ar'
+// Sin esto, adminBase queda vacío y la prueba de la vista previa pasa sin
+// probar nada: no habría ningún dominio de panel que mostrar ni que equivocar.
+process.env.REACT_APP_ADMIN_BASE_DOMAIN = 'admin.henkart.com.ar'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
@@ -133,6 +136,34 @@ describe('el identificador de tienda', () => {
     await user.click(nombre)
 
     expect(slug).toHaveValue('kiosco')
+  })
+
+  test('la vista previa muestra el panel COMPARTIDO, no uno de dos niveles', async () => {
+    // LO QUE EL FORMULARIO LE PROMETE AL COMERCIANTE.
+    //
+    // buildTenantDomainPreview era una copia de la lógica vieja del backend, y
+    // para un adminBase subdominio de la raíz devolvía admin.<slug>.<raíz>. Son
+    // dos niveles: el comodín no los cubre y el handshake TLS falla.
+    //
+    // El backend dejó de asignar ese dominio, pero la copia del formulario
+    // quedó atrás y seguía mostrando "Admin: admin.kiosco.henkart.com.ar" —
+    // una dirección que el comerciante no iba a poder abrir.
+    const user = userEvent.setup()
+    montar()
+
+    const { slug } = campos()
+
+    await user.clear(slug)
+    await user.type(slug, 'kiosco')
+
+    // La tienda sí lleva el identificador…
+    expect(await screen.findByText(/kiosco\.henkart\.com\.ar/)).toBeInTheDocument()
+
+    // …y el panel es el compartido, el mismo para todos los comercios.
+    expect(screen.getByText(/admin\.henkart\.com\.ar/)).toBeInTheDocument()
+
+    // El de dos niveles no puede aparecer: no existe.
+    expect(screen.queryByText(/admin\.kiosco\.henkart\.com\.ar/)).not.toBeInTheDocument()
   })
 
   test('vaciarlo vuelve a delegar en el nombre', async () => {

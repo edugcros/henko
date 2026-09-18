@@ -243,24 +243,24 @@ const buildTenantDomainPreview = ({ slug, publicBaseDomain, adminBaseDomain }) =
       ? publicBase
       : `${normalizedSlug}.${publicBase}`
 
-  if (!adminBase) {
-    return { storefront, admin: `admin.${storefront}` }
-  }
-
-  if (storefront === publicBase) {
-    return { storefront, admin: adminBase }
-  }
-
-  const isAdminSubdomainOfPublic = adminBase.endsWith(`.${publicBase}`)
-
-  if (isAdminSubdomainOfPublic) {
-    const adminPrefix = adminBase.slice(0, -(publicBase.length + 1))
-    return { storefront, admin: `${adminPrefix}.${storefront}` }
-  }
-
+  // EL PANEL ES COMPARTIDO — ESTA VISTA PREVIA PROMETÍA UNA URL INEXISTENTE
+  //
+  // Acá había una copia de la lógica vieja del backend, que para un adminBase
+  // subdominio de la raíz devolvía admin.<slug>.<raíz>. Son DOS niveles, y un
+  // certificado comodín cubre uno solo: admin.kiosco.henkart.com.ar falla el
+  // handshake TLS.
+  //
+  // El backend dejó de asignar ese dominio (buildPlatformTenantDomains), pero
+  // esta copia quedó atrás y el formulario le seguía mostrando al comerciante
+  // la dirección de panel que no iba a poder abrir.
+  //
+  // Todos los comercios entran por el mismo panel y el comercio sale de la
+  // sesión, así que la respuesta es siempre adminBase. Si no hay adminBase
+  // configurado no se inventa ninguno: mostrar admin.<tienda> sería volver a
+  // prometer los dos niveles.
   return {
     storefront,
-    admin: `${normalizedSlug}.${adminBase}`,
+    admin: adminBase || null,
   }
 }
 
