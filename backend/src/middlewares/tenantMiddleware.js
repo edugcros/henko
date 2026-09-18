@@ -174,30 +174,70 @@ const clearTenantContext = req => {
   req.tenantId = null
   req.tenant = null
   req.isAdminContext = false
+  // Sin comercio no hay superficie de ninguna clase. Dejarlo en true haría que
+  // requireShopDomain pasara sobre un contexto limpio.
+  req.isShopContext = false
 }
 
-const isAdminDomainForTenant = (tenant, candidates) => {
-  if (!tenant?.adminDomains || !Array.isArray(tenant.adminDomains)) {
-    return false
+/** ¿Esta entrada de dominio corresponde al host que llegó? */
+const domainMatches = (domain, candidates) => {
+  if (typeof domain === 'string') {
+    return getDomainCandidates(domain).some(candidate => candidates.includes(candidate))
   }
 
-  return tenant.adminDomains.some(domain => {
-    if (typeof domain === 'string') {
-      const domainCandidates = getDomainCandidates(domain)
-      return domainCandidates.some(candidate => candidates.includes(candidate))
-    }
+  if (domain?.status !== 'active') return false
 
-    if (domain.status !== 'active') return false
+  return [domain.hostname, domain.normalizedHostname]
+    .filter(Boolean)
+    .flatMap(value => getDomainCandidates(value))
+    .some(value => candidates.includes(value))
+}
 
-    const values = [
-      domain.hostname,
-      domain.normalizedHostname,
-    ]
-      .filter(Boolean)
-      .flatMap(value => getDomainCandidates(value))
+/**
+ * Qué superficies sirve el host que llegó: panel, tienda, o las dos.
+ *
+ * ANTES ERA UN SOLO BOOLEANO, Y POR ESO NO HABÍA DOMINIO ÚNICO POSIBLE
+ *
+ * `isAdminDomainForTenant` devolvía true/false mirando solo `adminDomains`, y
+ * las dos guardas de ruta son excluyentes: requireAdminDomain exige contexto
+ * admin, requireShopDomain lo prohíbe. Con un dominio sirviendo las dos cosas,
+ * cualquiera de las dos respuestas rompía la mitad del sistema — 27 rutas de
+ * panel o 30 de tienda, según de qué lado cayera.
+ *
+ * Son dos preguntas independientes, no una con dos respuestas. Un dominio
+ * puede ser superficie de panel, de tienda, o de ambas.
+ *
+ * COMPATIBLE CON LO QUE YA HAY, POR CONSTRUCCIÓN
+ *
+ *   dominio en domains, context 'storefront'  → tienda        (como antes)
+ *   dominio en adminDomains                   → panel         (como antes)
+ *   dominio con context 'both'                → las dos       (lo nuevo)
+ *
+ * Un comercio con dominios separados obtiene exactamente los mismos valores
+ * que obtenía con el booleano viejo.
+ */
+const resolveSurfacesForTenant = (tenant, candidates) => {
+  let isAdminSurface = false
+  let isShopSurface = false
 
-    return values.some(value => candidates.includes(value))
-  })
+  const admin = Array.isArray(tenant?.adminDomains) ? tenant.adminDomains : []
+  const shop = Array.isArray(tenant?.domains) ? tenant.domains : []
+
+  for (const domain of admin) {
+    if (!domainMatches(domain, candidates)) continue
+
+    isAdminSurface = true
+    if (domain?.context === 'both') isShopSurface = true
+  }
+
+  for (const domain of shop) {
+    if (!domainMatches(domain, candidates)) continue
+
+    isShopSurface = true
+    if (domain?.context === 'both' || domain?.context === 'admin') isAdminSurface = true
+  }
+
+  return { isAdminSurface, isShopSurface }
 }
 
 const findTenantByDomainCandidates = async candidates => {
@@ -240,10 +280,15 @@ const attachTenantToRequest = ({
   host,
   rawHost,
   isAdminContext,
+  // Por defecto, lo contrario de admin: es lo que valía cuando el contexto era
+  // un solo booleano, y mantiene el comportamiento de cualquier llamador que
+  // todavía no informe las dos superficies.
+  isShopContext = !isAdminContext,
 }) => {
   req.tenantId = tenant._id
   req.tenant = tenant
   req.isAdminContext = isAdminContext
+  req.isShopContext = isShopContext
 
   return {
     tenantId: tenant._id,
@@ -251,6 +296,7 @@ const attachTenantToRequest = ({
     domain: host,
     rawHost,
     isAdmin: isAdminContext,
+    isShop: isShopContext,
   }
 }
 
@@ -416,19 +462,24 @@ export const resolveTenantByDomain = async (req, res, next) => {
       return sendResponse(res, 404, false, 'El comercio no existe o está inactivo')
     }
 
-    const isAdminContext = isAdminDomainForTenant(tenant, candidates)
+    const { isAdminSurface, isShopSurface } = resolveSurfacesForTenant(tenant, candidates)
 
     const context = attachTenantToRequest({
       req,
       tenant,
       host,
       rawHost,
-      isAdminContext,
+      isAdminContext: isAdminSurface,
+      isShopContext: isShopSurface,
     })
 
     if (isDev) {
       logger.debug(
-        `[TENANT] ${tenant.name} | ${fromCache ? 'CACHE HIT' : 'CACHE MISS'} | ${isAdminContext ? 'ADMIN' : 'SHOP'} | ${host}`,
+        // Las tres combinaciones posibles, porque ahora existe la doble. Un log
+        // que dijera solo ADMIN o SHOP escondería justamente el caso nuevo.
+        `[TENANT] ${tenant.name} | ${fromCache ? 'CACHE HIT' : 'CACHE MISS'} | ${
+          isAdminSurface && isShopSurface ? 'ADMIN+SHOP' : isAdminSurface ? 'ADMIN' : 'SHOP'
+        } | ${host}`,
       )
     }
 
@@ -468,7 +519,14 @@ export const requireAdminDomain = (req, res, next) => {
 // =====================================================
 
 export const requireShopDomain = (req, res, next) => {
-  if (req.isAdminContext) {
+  // Pregunta "¿sos superficie de tienda?" y no "¿no sos admin?".
+  //
+  // Con la negación, un dominio que sirve las dos cosas quedaba fuera: era
+  // admin, entonces no era tienda, y las 30 rutas de storefront devolvían 403.
+  // Preguntando por lo que se necesita —que sea tienda— el dominio doble pasa
+  // las dos guardas, y los dominios separados se comportan igual que siempre
+  // porque para ellos las dos superficies siguen siendo excluyentes.
+  if (!req.isShopContext) {
     return sendResponse(res, 403, false, 'Acceso no disponible desde panel admin')
   }
 

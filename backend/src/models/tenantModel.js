@@ -45,9 +45,23 @@ const domainSchema = new Schema(
       index: true,
     },
 
+    /**
+     * Qué superficie sirve este dominio.
+     *
+     * 'both' existe para el comercio que usa UN SOLO dominio: la tienda en la
+     * raíz y el panel en una ruta. Sin este valor había que elegir, y elegir
+     * rompía la mitad: el contexto se derivaba del hostname y las dos guardas
+     * de ruta son excluyentes —requireAdminDomain exige contexto admin y
+     * requireShopDomain lo prohíbe—, así que un dominio marcado como tienda
+     * devolvía 403 en las 27 rutas del panel y uno marcado como admin devolvía
+     * 403 en las 30 de la tienda.
+     *
+     * Los comercios con dominios separados siguen en 'storefront' y 'admin', y
+     * se comportan exactamente igual que antes.
+     */
     context: {
       type: String,
-      enum: ['storefront', 'admin'],
+      enum: ['storefront', 'admin', 'both'],
       default: 'storefront',
       index: true,
     },
