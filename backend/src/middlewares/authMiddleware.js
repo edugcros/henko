@@ -119,6 +119,47 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
       mobile: user.mobile,
     }
 
+    // 4️⃣ EL COMERCIO DEL TOKEN TIENE QUE SER EL DEL DOMINIO
+    //
+    // El comercio del dominio sale de `x-tenant-domain`, un header que manda el
+    // cliente y que gana sobre el host real (ver getHostResolutionInput). El del
+    // token sale del JWT y está verificado contra el usuario unas líneas arriba.
+    // Que no coincidan significa que alguien está pidiendo operar sobre un
+    // comercio que no es el suyo.
+    //
+    // POR QUÉ ACÁ Y NO EN CADA RUTA
+    //
+    // Este es el único punto donde los dos datos existen a la vez:
+    // resolveTenantByDomain corre antes y deja req.tenantId; el JWT se resuelve
+    // recién acá. Ponerlo en las cadenas de ruta serían 57 lugares que hay que
+    // acordarse de tocar, y el que se olvide no falla: queda abierto.
+    //
+    // MEDIDO: HOY ESTO YA SE BLOQUEA, PERO POR CASUALIDAD
+    //
+    // Una prueba contra la base real (tenantHeaderIsolation.test.js) mostró que
+    // el intento no escribe nada — lo corta tenantPlugin al ver que el filtro no
+    // coincide con el contexto. Pero eso es una EXCEPCIÓN de la capa de datos:
+    // devuelve 500, deja un stack trace por intento, y solo salta si el
+    // controller consulta antes de escribir. Un `Model.create()` directo no la
+    // dispararía.
+    //
+    // Acá la respuesta es una decisión de autorización: 403, sin tocar la base.
+    //
+    // Si no hay comercio de dominio —las rutas de plataforma corren a propósito
+    // sin resolveTenantByDomain— no hay nada que comparar y se sigue de largo.
+    const domainTenantId = req.tenantId ? String(req.tenantId) : null
+
+    if (domainTenantId && domainTenantId !== String(user.tenantId)) {
+      logger.warn(
+        `🚨 Tenant mismatch entre token y dominio | user=${user._id} | userTenant=${user.tenantId} | domainTenant=${domainTenantId} | ip=${req.ip} | endpoint=${req.method} ${req.originalUrl}`,
+      )
+
+      return res.status(403).json({
+        success: false,
+        message: 'Tenant inconsistente entre usuario autenticado y dominio',
+      })
+    }
+
     next()
   } catch (err) {
     logger.warn(`JWT inválido o expirado: ${err.message}`)

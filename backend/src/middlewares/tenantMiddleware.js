@@ -478,12 +478,27 @@ export const requireShopDomain = (req, res, next) => {
 // =====================================================
 // Utils para controllers
 // =====================================================
-
-export const getTenantIdFromRequest = req => {
-  const tenantId = req.tenantId || req.user?.tenantId
-
-  return toObjectId(tenantId)
-}
+//
+// ACÁ VIVÍA UN SEGUNDO getTenantIdFromRequest, Y ERA UNA TRAMPA.
+//
+// Tenía el MISMO NOMBRE que el de utils/requestContext.js y la precedencia
+// INVERTIDA:
+//
+//   este            req.tenantId || req.user?.tenantId   → ganaba el DOMINIO
+//   requestContext  preferUserTenant = true              → gana el JWT
+//
+// El dominio sale de `x-tenant-domain`, un header que manda el cliente. Un
+// controller que resolviera el comercio con esta versión habría dejado que un
+// usuario autenticado de un comercio operara sobre otro con solo cambiar ese
+// header — y el import correcto y el peligroso se veían idénticos en el código.
+//
+// No lo usaba nadie: los tres controllers que llaman a esa función
+// (colorCtrl, enqCtrl, userMetricsCtrl) importan la de requestContext. Se borra
+// en vez de renombrarse porque un duplicado muerto con el nombre correcto es
+// exactamente lo que un autocompletado elige mal algún día.
+//
+// La resolución de comercio para controllers vive en un solo lugar:
+// utils/requestContext.js.
 
 
 
