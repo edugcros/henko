@@ -138,6 +138,110 @@ describe('aislamiento entre comercios cuando el header no coincide con el JWT', 
     expect(res.body.success).toBe(false)
   })
 
+  test('CONTROL · el panel compartido opera sobre el comercio del token', async () => {
+    // EL PANEL COMPARTIDO.
+    //
+    // Cada comercio tenía su panel en admin.<slug>.<raíz>: dos niveles bajo la
+    // raíz, y un certificado comodín cubre uno solo. Medido contra producción,
+    // admin.mitienda.henkart.com.ar fallaba el handshake TLS mientras
+    // mitienda.henkart.com.ar respondía 200 — el comercio tenía tienda y no
+    // podía entrar a administrarla, ni suscribirse.
+    //
+    // Con panel único el host ya no dice a qué comercio se entra. Lo dice la
+    // sesión. Esta prueba afirma que el panel efectivamente SIRVE: que el
+    // admin entra por el host compartido y escribe en su propio comercio.
+    const { propio, token } = await armarEscenario()
+    const panel = 'admin.henko.local'
+    const { csrfToken, csrfCookie } = await getCSRFToken(panel)
+
+    const res = await request(app)
+      .post('/api/color')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-tenant-domain', panel)
+      .set('Cookie', csrfCookie)
+      .set('X-CSRF-Token', csrfToken)
+      .send({ title: 'compartido' })
+
+    expect(res.status).toBe(201)
+
+    const creado = await Color.findById(res.body.data._id)
+      .setOptions({ tenantId: propio.tenant._id })
+      .lean()
+
+    expect(String(creado.tenantId)).toBe(String(propio.tenant._id))
+  })
+
+  test('por el panel compartido el host NO puede elegir comercio', async () => {
+    // LA PROPIEDAD QUE EL PANEL COMPARTIDO TIENE QUE CONSERVAR.
+    //
+    // El host compartido está a nombre del comercio dueño de la plataforma en
+    // sus adminDomains. Si el middleware lo resolviera por dominio como a
+    // cualquier otro, TODOS los comercios entrarían como ese. Por eso el panel
+    // compartido se atiende antes de la búsqueda por dominio y sale de la
+    // sesión.
+    //
+    // Se verifica el efecto en la base, no el código de respuesta: lo que
+    // importa es en qué comercio terminó el dato.
+    const { propio, ajeno, token } = await armarEscenario()
+    const panel = 'admin.henko.local'
+    const { csrfToken, csrfCookie } = await getCSRFToken(panel)
+
+    await request(app)
+      .post('/api/color')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-tenant-domain', panel)
+      .set('Cookie', csrfCookie)
+      .set('X-CSRF-Token', csrfToken)
+      .send({ title: 'del propio' })
+
+    const enElAjeno = await Color.find({ tenantId: ajeno.tenant._id })
+      .setOptions({ tenantId: ajeno.tenant._id })
+      .lean()
+
+    const enElPropio = await Color.find({ tenantId: propio.tenant._id })
+      .setOptions({ tenantId: propio.tenant._id })
+      .lean()
+
+    expect(enElAjeno).toHaveLength(0)
+    expect(enElPropio.map(c => c.title)).toContain('del propio')
+  })
+
+  test('sin sesión el panel compartido responde 401, no 400', async () => {
+    // Sin comercio en el host y sin token no hay comercio posible. Un 400
+    // "Tenant no identificado" mandaría al panel a mostrar un error de datos;
+    // un 401 le dice lo que pasa —falta sesión— y puede renovar el token o
+    // mandar a iniciar sesión de nuevo.
+    const panel = 'admin.henko.local'
+    const { csrfToken, csrfCookie } = await getCSRFToken(panel)
+
+    const res = await request(app)
+      .post('/api/color')
+      .set('x-tenant-domain', panel)
+      .set('Cookie', csrfCookie)
+      .set('X-CSRF-Token', csrfToken)
+      .send({ title: 'sin sesion' })
+
+    expect(res.status).toBe(401)
+  })
+
+  test('el comercio con panel PROPIO sigue entrando por su dominio', async () => {
+    // El panel compartido no reemplaza al propio: un comercio que cargó su
+    // dominio administrativo tiene que seguir entrando por ahí, o el cambio
+    // rompería a quien ya lo estaba usando.
+    const { propio, token } = await armarEscenario()
+    const { csrfToken, csrfCookie } = await getCSRFToken(propio.adminDomain)
+
+    const res = await request(app)
+      .post('/api/color')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-tenant-domain', propio.adminDomain)
+      .set('Cookie', csrfCookie)
+      .set('X-CSRF-Token', csrfToken)
+      .send({ title: 'por dominio propio' })
+
+    expect(res.status).toBe(201)
+  })
+
   test('y sobre todo: no queda el dato escrito en el comercio ajeno', async () => {
     // El código de respuesta es una cosa y el efecto en la base es otra. Un
     // 500 después de haber escrito seguiría siendo una fuga: lo que importa es

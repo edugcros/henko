@@ -18,6 +18,10 @@ import {
 import {
   runWithTenantContext,
 } from '../utils/tenantRequestContext.js'
+import {
+  decodeAccessToken,
+  getAccessTokenFromRequest,
+} from '../utils/authRequest.js'
 import expressAsyncHandler from 'express-async-handler'
 
 // =====================================================
@@ -177,6 +181,65 @@ const clearTenantContext = req => {
   // Sin comercio no hay superficie de ninguna clase. Dejarlo en true haría que
   // requireShopDomain pasara sobre un contexto limpio.
   req.isShopContext = false
+}
+
+/**
+ * ¿Este host es el panel COMPARTIDO de la plataforma?
+ *
+ * POR QUÉ EXISTE UN PANEL COMPARTIDO
+ *
+ * Cada comercio tenía su propio panel en admin.<slug>.<raíz>. Eso son DOS
+ * niveles bajo la raíz, y un certificado comodín cubre uno solo: medido contra
+ * producción, admin.mitienda.henkart.com.ar fallaba el handshake TLS mientras
+ * mitienda.henkart.com.ar respondía 200. El comercio tenía tienda y no podía
+ * entrar a administrarla — ni siquiera a suscribirse, porque el alta de
+ * suscripción exige sesión en el panel.
+ *
+ * Con un panel único, el dominio deja de decir a qué comercio se entra. Lo
+ * dice la sesión, que es de donde debería haber salido siempre: el dominio lo
+ * elige quien hace la petición, el token lo firma el servidor.
+ */
+const isPlatformAdminHost = host => {
+  const panel = normalizeHostname(
+    env.tenantAdminBaseDomain || env.adminBaseDomain,
+  )
+
+  if (!panel || !host) return false
+
+  return getDomainCandidates(host).includes(panel)
+}
+
+/**
+ * El comercio que dice la sesión, para el panel compartido.
+ *
+ * Devuelve null —y NO corta— cuando no hay token o no sirve. Tiene que ser
+ * así: el login entra por este mismo camino y todavía no tiene sesión. Cortar
+ * acá dejaría el panel sin forma de iniciar sesión.
+ *
+ * Quien necesita comercio lo exige después (requireTenant), y quien necesita
+ * sesión lo exige en authMiddleware. Acá solo se contesta la pregunta.
+ */
+const resolveTenantFromSession = async req => {
+  const token = getAccessTokenFromRequest(req)
+
+  if (!token || token === 'undefined') return null
+
+  let decoded
+
+  try {
+    decoded = decodeAccessToken(token)
+  } catch {
+    // Token vencido o adulterado: no hay comercio que declarar. El 401 lo da
+    // authMiddleware, que es el que sabe hablar de sesiones.
+    return null
+  }
+
+  if (!isValidObjectId(decoded?.tenantId)) return null
+
+  return Tenant.findOne({
+    _id: toObjectId(decoded.tenantId),
+    status: 'active',
+  }).select('_id name slug status plan domains adminDomains')
 }
 
 /** ¿Esta entrada de dominio corresponde al host que llegó? */
@@ -447,6 +510,40 @@ export const resolveTenantByDomain = async (req, res, next) => {
       }
     }
 
+    // EL PANEL COMPARTIDO NO IDENTIFICA COMERCIO POR SÍ MISMO
+    //
+    // Va antes de la búsqueda por dominio a propósito. El host del panel está
+    // cargado en adminDomains del comercio dueño de la plataforma, así que
+    // buscarlo resolvería ESE comercio para todo el mundo, y el control de
+    // authMiddleware —que compara el comercio del dominio contra el del
+    // token— le devolvería 403 a todos los demás. Funcionando bien, además:
+    // es la guarda de aislamiento.
+    if (isPlatformAdminHost(host)) {
+      const tenant = await resolveTenantFromSession(req)
+
+      if (!tenant) {
+        // Sin sesión utilizable no hay comercio, y está bien: por acá pasa el
+        // login. Se sigue sin comercio y cada ruta exige lo suyo.
+        clearTenantContext(req)
+        req.isPlatformAdminSurface = true
+
+        return next()
+      }
+
+      const context = attachTenantToRequest({
+        req,
+        tenant,
+        host,
+        rawHost,
+        isAdminContext: true,
+        isShopContext: false,
+      })
+
+      req.isPlatformAdminSurface = true
+
+      return runWithTenantContext(context, () => next())
+    }
+
     const cachedCheck = getCachedTenant(candidates)
     const fromCache = cachedCheck !== undefined
     const tenant = fromCache ? cachedCheck : await getOrFetchTenant(candidates)
@@ -496,6 +593,13 @@ export const resolveTenantByDomain = async (req, res, next) => {
 
 export const requireTenant = (req, res, next) => {
   if (!req.tenantId || !isValidObjectId(req.tenantId)) {
+    // En el panel compartido el comercio sale de la sesión, así que "no hay
+    // comercio" significa "no hay sesión". Un 400 mandaría al panel a mostrar
+    // un error de datos en vez de renovar el token o pedir login de nuevo.
+    if (req.isPlatformAdminSurface) {
+      return sendResponse(res, 401, false, 'Sesión requerida en el panel')
+    }
+
     return sendResponse(res, 400, false, 'Tenant no identificado')
   }
 

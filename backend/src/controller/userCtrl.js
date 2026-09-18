@@ -305,18 +305,60 @@ const scheduleWishlistPromotionNotification = ({
   }, 0)
 }
 
-const resolveAdminTenantFromRequest = async req => {
-  const candidates = getDomainCandidates(getTenantDomainFromRequest(req))
-  if (!candidates.length) return null
+const TENANT_LOGIN_FIELDS = '_id name domains adminDomains slug status plan'
 
-  return Tenant.findOne({
-    status: 'active',
-    $or: [
-      { 'adminDomains.hostname': { $in: candidates } },
-      { 'adminDomains.normalizedHostname': { $in: candidates } },
-      { legacyAdminDomains: { $in: candidates } },
-    ],
-  }).select('_id name domains adminDomains slug status plan')
+/**
+ * El comercio al que se está intentando entrar, para el login del panel.
+ *
+ * Con panel propio por comercio lo decía el dominio. Con el panel COMPARTIDO
+ * el dominio es el mismo para todos, así que lo decide el email — y solo ahí,
+ * porque en el login todavía no hay sesión de la cual sacarlo.
+ *
+ * ES UNÍVOCO, Y NO POR CASUALIDAD
+ *
+ * El alta de comercio (registerAdmin) rechaza un email que exista en
+ * CUALQUIER comercio: User.exists({ email }) corre con ignoreTenant. Y el
+ * login de panel exige role === 'admin' más abajo. Así que puede haber a lo
+ * sumo un admin por email en toda la plataforma.
+ *
+ * El índice de usuarios es { email, tenantId } único, o sea que dos
+ * COMPRADORES sí pueden repetir email en tiendas distintas. Por eso se filtra
+ * por rol acá y no solo por email: sin ese filtro, el comprador de otra
+ * tienda podría ganarle la búsqueda al admin.
+ */
+const resolveAdminTenantFromRequest = async (req, email) => {
+  const candidates = getDomainCandidates(getTenantDomainFromRequest(req))
+
+  if (candidates.length) {
+    const porDominio = await Tenant.findOne({
+      status: 'active',
+      $or: [
+        { 'adminDomains.hostname': { $in: candidates } },
+        { 'adminDomains.normalizedHostname': { $in: candidates } },
+        { legacyAdminDomains: { $in: candidates } },
+      ],
+    }).select(TENANT_LOGIN_FIELDS)
+
+    // Un comercio con panel propio sigue entrando por su dominio, igual que
+    // antes. El panel compartido no aparece acá porque el middleware de
+    // tenant no lo resuelve contra adminDomains.
+    if (porDominio && !req.isPlatformAdminSurface) return porDominio
+  }
+
+  if (!req.isPlatformAdminSurface || !email) return null
+
+  const admin = await User.findOne({ email, role: 'admin' })
+    .setOptions({
+      ignoreTenant: true,
+      platformScope: 'auth:usuario-por-identidad',
+    })
+    .select('tenantId')
+
+  if (!admin?.tenantId) return null
+
+  return Tenant.findOne({ _id: admin.tenantId, status: 'active' }).select(
+    TENANT_LOGIN_FIELDS,
+  )
 }
 
 const serializeTenant = tenant => ({
@@ -687,7 +729,19 @@ export const createUserAdmin = [
 
     const { shopDomain, adminDomain, shopUrl, adminUrl } = buildTenantDomains(finalSlug)
     const shopDomainCandidates = uniqueValues([shopDomain, normalizeDomain(shopDomain)])
-    const adminDomainCandidates = uniqueValues([adminDomain, normalizeDomain(adminDomain)])
+
+    // El panel es compartido cuando buildTenantDomains devuelve el mismo host
+    // para todos, o sea cuando no lleva el slug adentro. Se deduce en vez de
+    // volver a leer la configuración: así no puede discrepar con lo que el
+    // constructor de dominios realmente decidió.
+    const esPanelCompartido = !adminDomain.includes(`${finalSlug}.`)
+
+    // Un panel compartido lo van a tener TODOS los comercios, así que
+    // buscarlo entre los dominios ya usados daría DOMAIN_EXISTS siempre a
+    // partir del segundo. Solo se chequea cuando el panel es propio.
+    const adminDomainCandidates = esPanelCompartido
+      ? []
+      : uniqueValues([adminDomain, normalizeDomain(adminDomain)])
 
     const adminId = new mongoose.Types.ObjectId()
     const rawEmailToken = crypto.randomBytes(32).toString('hex')
@@ -742,18 +796,31 @@ export const createUserAdmin = [
                   // producción, sin que nada lo hubiera comprobado.
                 },
               ],
-              adminDomains: [
-                {
-                  hostname: adminDomain,
-                  normalizedHostname: normalizeDomain(adminDomain),
-                  type: 'platform_subdomain',
-                  context: 'admin',
-                  status: 'active',
-                  isPrimary: true,
-                  verifiedAt: new Date(),
-                  // Ídem: lo deriva el schema del tipo del dominio.
-                },
-              ],
+              // EL PANEL COMPARTIDO NO SE GUARDA, PORQUE NO ES DE NADIE
+              //
+              // domainKeys tiene índice único. Si cada comercio anotara
+              // admin.henkart.com.ar como suyo, el segundo que se diera de
+              // alta chocaría con 11000 y el alta fallaría sin motivo visible.
+              //
+              // Tampoco haría falta: en el panel compartido el comercio sale
+              // de la sesión, no del dominio (isPlatformAdminHost en
+              // tenantMiddleware ni siquiera consulta adminDomains). Un
+              // comercio con panel PROPIO sí lo registra, por la vía normal de
+              // alta de dominio desde el panel.
+              adminDomains: esPanelCompartido
+                ? []
+                : [
+                    {
+                      hostname: adminDomain,
+                      normalizedHostname: normalizeDomain(adminDomain),
+                      type: 'platform_subdomain',
+                      context: 'admin',
+                      status: 'active',
+                      isPrimary: true,
+                      verifiedAt: new Date(),
+                      // Ídem: lo deriva el schema del tipo del dominio.
+                    },
+                  ],
               currency: 'ARS',
               locale: 'es-AR',
               timezone: 'America/Argentina/Buenos_Aires',
@@ -891,10 +958,14 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
   let loginTenantId = null
 
   if (isAdmin) {
-    tenant = await resolveAdminTenantFromRequest(req)
+    tenant = await resolveAdminTenantFromRequest(req, email)
 
     if (!tenant) {
-      return sendResponse(res, 404, false, 'Tienda no encontrada')
+      // Mismo mensaje que credenciales inválidas más abajo, a propósito: en el
+      // panel compartido, decir "tienda no encontrada" ante un email sin
+      // comercio convierte el login en un detector de qué correos son admin.
+      logger.warn(`Login de panel sin comercio resoluble para: ${email}`)
+      return sendResponse(res, 401, false, 'Credenciales inválidas')
     }
 
     loginTenantId = tenant._id

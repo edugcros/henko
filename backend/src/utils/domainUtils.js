@@ -72,26 +72,24 @@ export const buildPlatformTenantDomains = ({
     }
   }
 
-  if (shopDomain === publicBase) {
-    return {
-      shopDomain,
-      adminDomain: adminBase,
-    }
-  }
-
-  const isAdminSubdomainOfPublic = adminBase.endsWith(`.${publicBase}`)
-
-  if (isAdminSubdomainOfPublic) {
-    const adminPrefix = adminBase.slice(0, -(publicBase.length + 1))
-    return {
-      shopDomain,
-      adminDomain: `${adminPrefix}.${shopDomain}`,
-    }
-  }
-
+  // EL PANEL ES COMPARTIDO, Y ESO ES LO QUE LO HACE SERVIBLE
+  //
+  // Antes, cuando adminBase era subdominio de la raíz —admin.henkart.com.ar
+  // bajo henkart.com.ar— esto devolvía admin.<slug>.<raíz>. Son DOS niveles, y
+  // un certificado comodín cubre uno solo: medido contra producción,
+  // admin.mitienda.henkart.com.ar fallaba el handshake TLS mientras
+  // mitienda.henkart.com.ar respondía 200. El comercio quedaba con tienda y
+  // sin panel — sin poder siquiera suscribirse, porque el alta de suscripción
+  // exige sesión en el panel.
+  //
+  // Ahora todos los comercios comparten adminBase y el comercio sale de la
+  // sesión (ver isPlatformAdminHost en tenantMiddleware). Un solo nombre, un
+  // solo certificado, y ningún nivel extra que el comodín no cubra.
+  //
+  // El caso del apex ya devolvía adminBase; ahora es la única respuesta.
   return {
     shopDomain,
-    adminDomain: `${normalizedSlug}.${adminBase}`,
+    adminDomain: adminBase,
   }
 }
 
