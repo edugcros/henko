@@ -226,6 +226,44 @@ if (DEPLOY_ENVS.has(APP_ENV)) {
 }
 
 // =====================================================
+// NINGÚN SECRETO VIAJA AL NAVEGADOR, POR MÁS QUE LLEVE REACT_APP_
+// =====================================================
+//
+// LO QUE PASÓ EN LA TIENDA
+//
+// `REACT_APP_MP_ACCESS_TOKEN` estaba cargada en Vercel, y el access token
+// productivo de Mercado Pago —cuenta GRECOEDUARDO87, id 339471025— terminó
+// publicado en /js/main-*.js de henkart.com.ar. Comprobado: se descargó el
+// bundle, se extrajo, y /users/me devolvió 200.
+//
+// ACÁ NO SE PUBLICÓ, Y FUE SUERTE
+//
+// La misma variable estaba cargada en este proyecto. No salió en el bundle
+// solo porque ningún `process.env` de admin/src se resolvió contra ella en un
+// punto alcanzable. Nada lo garantizaba: el define de `process.env` mete el
+// objeto ENTERO en cada aparición, así que alcanza con que la variable EXISTA
+// en el entorno del build. Un commit cualquiera la habría publicado.
+//
+// El objeto entero no se puede quitar —hay accesos con clave calculada— así
+// que lo que se garantiza es que en ese objeto no haya nada secreto. Corta el
+// build en vez de filtrar en silencio: filtrar dejaría la variable viva en el
+// proveedor, esperando a exponerse por otro camino.
+const NOMBRES_DE_SECRETO =
+  /(ACCESS_TOKEN|_SECRET|SECRET_|PRIVATE_KEY|PASSWORD|_PWD|API_KEY|APIKEY|MONGODB|MONGO_URL|DATABASE_URL|SENDGRID|CREDENTIAL)/i
+
+const assertSinSecretos = claves => {
+  const sospechosas = claves.filter(clave => NOMBRES_DE_SECRETO.test(clave))
+
+  if (sospechosas.length > 0) {
+    throw new Error(
+      `Estas variables tienen nombre de secreto y el bundle es público: ${sospechosas.join(', ')}. ` +
+        'Todo lo que empieza con REACT_APP_ se descarga el navegador. ' +
+        'Sacalas del proyecto de frontend; si el backend las necesita, van en Render.',
+    )
+  }
+}
+
+// =====================================================
 // CLIENT ENV
 // =====================================================
 
@@ -247,8 +285,12 @@ export const getClientEnvironment = () => {
       },
     )
 
+  assertSinSecretos(Object.keys(raw))
+
   const stringified = {
-    // 🔒 Clave principal: elimina process.env dinámico del bundle
+    // El objeto ENTERO, en cada aparición de `process.env`. Es seguro solo
+    // gracias a assertSinSecretos: sin esa guarda, cualquier variable del
+    // entorno del build se publica.
     'process.env': JSON.stringify(raw),
 
     // 🔒 Claves directas: mantiene reemplazos explícitos y optimización
