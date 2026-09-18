@@ -392,7 +392,7 @@ export const usePartitionedCookies = sameSite =>
 const clearAuthCookies = (res, req) => {
   const cookieDomain = getCookieDomain(req)
   const secure = env.cookieSecure ?? isProd
-  const sameSite = env.cookieSameSite || (isProd ? 'None' : 'Lax')
+  const sameSite = env.cookieSameSite
 
   // Los atributos tienen que coincidir con los del seteo —incluido
   // Partitioned— o el navegador trata la cookie a borrar como otra distinta y
@@ -421,7 +421,7 @@ const clearAuthCookies = (res, req) => {
 // Ver el plan completo en el repo de planes de la sesión.
 const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
   const secure = env.cookieSecure ?? isProd
-  const sameSite = env.cookieSameSite || (isProd ? 'None' : 'Lax')
+  const sameSite = env.cookieSameSite
   const domain = getCookieDomain(req)
 
   const partitioned = usePartitionedCookies(sameSite)

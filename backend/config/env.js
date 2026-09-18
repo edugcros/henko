@@ -71,6 +71,71 @@ const normalizeSameSite = value => {
   return process.env.NODE_ENV === 'production' ? 'None' : 'Lax'
 }
 
+/**
+ * ¿Este host comparte sitio con el dominio raíz?
+ *
+ * endsWith a secas no alcanza: 'malhenkart.com.ar' termina en 'henkart.com.ar'
+ * y es otro sitio, de otro dueño. El punto es lo que separa un subdominio
+ * propio de un dominio ajeno que empieza parecido.
+ */
+const isSameSiteAsRoot = (host, root) =>
+  Boolean(host && root) && (host === root || host.endsWith(`.${root}`))
+
+/**
+ * Por qué esta instalación necesita SameSite=None, si es que lo necesita.
+ *
+ * Devuelve una razón por cada cosa que el navegador va a tratar como sitio
+ * ajeno. Vacío significa que todo lo que llega a la API comparte sitio con la
+ * raíz y una cookie 'Lax' alcanza.
+ *
+ * Se compara contra ROOT_DOMAIN en vez de calcular el dominio registrable
+ * porque hacerlo bien exige la lista de sufijos públicos —'com.ar' son dos
+ * etiquetas, no una— y acá el operador ya declaró dónde está su raíz.
+ */
+export const crossSiteReasons = ({
+  allowedOrigins = [],
+  allowedRootDomains = [],
+  rootDomain = '',
+  allowCustomDomains = false,
+} = {}) => {
+  const root = normalizeHostname(rootDomain)
+  const razones = []
+
+  allowedOrigins.forEach(origin => {
+    let host
+
+    try {
+      host = new URL(origin).hostname.toLowerCase()
+    } catch {
+      // Un origen ilegible no se puede declarar seguro.
+      razones.push(`ALLOWED_ORIGINS: ${origin} (no se puede leer como URL)`)
+      return
+    }
+
+    if (!isSameSiteAsRoot(host, root)) razones.push(`ALLOWED_ORIGINS: ${origin}`)
+  })
+
+  allowedRootDomains.forEach(domain => {
+    // corsOptions también deja entrar por acá, no solo por la lista de
+    // orígenes: mirar una sola de las dos daría un permiso a medias.
+    if (!isSameSiteAsRoot(normalizeHostname(domain), root)) {
+      razones.push(`ALLOWED_ROOT_DOMAINS: ${domain}`)
+    }
+  })
+
+  // LA RAZÓN QUE NO SE VA A IR
+  //
+  // Un comercio en mitienda.com.ar pegándole a api.henkart.com.ar es sitio
+  // cruzado, y no hay configuración que lo cambie: es la forma del producto.
+  // Mientras los dominios propios estén habilitados, 'None' no es deuda
+  // técnica pendiente de saldar, es el requisito.
+  if (allowCustomDomains) {
+    razones.push('ALLOW_CUSTOM_DOMAINS: los dominios propios de los comercios')
+  }
+
+  return razones
+}
+
 const getFirstValue = (...values) => {
   return values.find(
     value => value !== undefined && value !== null && value !== '',
@@ -485,40 +550,6 @@ if (env.isProduction) {
     )
   }
 
-  /*if (
-    env.tenantAllowSubdomains &&
-    !env.publicBaseDomain.endsWith(env.rootDomain)
-  ) {
-    throw new Error(
-      'PUBLIC_BASE_DOMAIN debe pertenecer al ROOT_DOMAIN cuando TENANT_ALLOW_SUBDOMAINS=true',
-    )
-  }*/
-
-  /* if (
-    env.tenantAllowSubdomains &&
-    !env.adminBaseDomain.endsWith(env.rootDomain)
-  ) {
-    throw new Error(
-      'ADMIN_BASE_DOMAIN debe pertenecer al ROOT_DOMAIN cuando TENANT_ALLOW_SUBDOMAINS=true',
-    )
-  }*/
-
-  const dangerousVars = {
-    MONGODB_URL: env.mongoUri,
-    API_URL: env.apiUrl,
-    BACKEND_URL: env.backendUrl,
-    CLIENT_URL: env.clientUrl,
-    ADMIN_URL: env.adminUrl,
-    ROOT_DOMAIN: env.rootDomain,
-    PUBLIC_BASE_DOMAIN: env.publicBaseDomain,
-    ADMIN_BASE_DOMAIN: env.adminBaseDomain,
-    API_DOMAIN: env.apiDomain,
-  }
-
-  Object.entries(dangerousVars).forEach(([, value]) => {
-    if (!value) return
-  })
-
   if (env.corsAllowAll) {
     throw new Error('CORS_ALLOW_ALL=true no está permitido en producción')
   }
@@ -545,9 +576,23 @@ if (env.isProduction) {
     throw new Error('COOKIE_SECURE=false no está permitido en producción')
   }
 
-  if (env.cookieSameSite !== 'None') {
+  // POR QUÉ ESTE CHEQUE DICE AHORA LO QUE SIEMPRE QUISO DECIR
+  //
+  // Antes cortaba el arranque salvo que fuera 'None', con un mensaje que hablaba
+  // de "dominios cruzados" — la condición que NO comprobaba. La diferencia no se
+  // notaba mientras la condición se cumpliera sola; se notó el día que alguien
+  // puso 'Lax' a mano y el proceso murió en el import de este archivo, antes de
+  // que hubiera servidor para explicarlo.
+  //
+  // Ahora enumera los motivos concretos. Con dominios propios de comercios
+  // habilitados siempre va a haber al menos uno, y está bien: ese es el
+  // requisito real, no una precaución de más.
+  const razonesCruzadas = crossSiteReasons(env)
+
+  if (env.cookieSameSite !== 'None' && razonesCruzadas.length) {
     throw new Error(
-      'COOKIE_SAME_SITE debe ser None en producción si usás dominios cruzados',
+      `COOKIE_SAME_SITE=${env.cookieSameSite} deja sin sesión a todo lo que no comparta sitio con ${env.rootDomain}. ` +
+        `Motivos: ${razonesCruzadas.join(' · ')}. Usá None, o sacá esos accesos.`,
     )
   }
 
