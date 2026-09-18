@@ -1,18 +1,22 @@
 // 📁 src/test/authCookiePartitioned.test.js
 //
-// La cookie de auth es de TERCEROS para las dos pantallas.
+// Cuándo la cookie de auth es de TERCEROS, y qué se hace al respecto.
 //
-// La API vive en henko.onrender.com y los frontends en *.vercel.app: sitios
-// distintos. Medido sobre un día entero de logs de producción, CADA refresh
-// desde henko-web devolvió "no hay token de refresco" —ni uno solo exitoso—
-// con el frontend mandando withCredentials correctamente y el backend
-// emitiendo SameSite=None; Secure. La cookie no llegaba porque nunca se
-// guardó: Chrome la bloquea por ser de terceros.
+// Cuando la API vivía en henko.onrender.com y los frontends en *.vercel.app
+// eran sitios distintos. Medido sobre un día entero de logs de producción,
+// CADA refresh desde la tienda devolvió "no hay token de refresco" —ni uno
+// solo exitoso— con el frontend mandando withCredentials correctamente y el
+// backend emitiendo SameSite=None; Secure. La cookie no llegaba porque nunca
+// se guardó: Chrome la bloquea por ser de terceros.
 //
 // `Partitioned` (CHIPS) es la vía que Chrome dejó abierta. La cookie se guarda
-// con clave (sitio de arriba, origen de la cookie), así que la tienda y el
-// panel quedan en particiones separadas — que es exactamente lo que
-// refreshSessions ya sabe manejar.
+// con clave (sitio de arriba, origen de la cookie), así que cada pantalla
+// queda en su propia partición — que es exactamente lo que refreshSessions ya
+// sabe manejar.
+//
+// Hoy todo vive bajo henkart.com.ar y comparte sitio, así que corre apagado.
+// Vuelve a hacer falta con el primer comercio de dominio propio: mitienda.com.ar
+// pidiéndole a api.henkart.com.ar es sitio cruzado otra vez.
 
 import cookie from 'cookie'
 

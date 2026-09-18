@@ -352,22 +352,22 @@ const serializeUserWithTenant = (user, tenant) => ({
 /**
  * ¿La cookie de auth sale particionada?
  *
- * EL PROBLEMA
+ * EL PROBLEMA QUE LO TRAJO
  *
- * La API vive en henko.onrender.com y los frontends en *.vercel.app. Son
- * SITIOS distintos, así que las cookies de auth son de TERCEROS para las dos
- * pantallas. Chrome las está bloqueando: medido sobre un día entero de logs,
- * cada refresh desde henko-web devolvió "no hay token de refresco" —ni uno
+ * Cuando la API vivía en henko.onrender.com y los frontends en *.vercel.app
+ * eran SITIOS distintos, así que las cookies de auth eran de TERCEROS para las
+ * dos pantallas. Chrome las bloqueaba: medido sobre un día entero de logs,
+ * cada refresh desde la tienda devolvió "no hay token de refresco" —ni uno
  * solo exitoso— con el frontend mandando withCredentials correctamente y el
  * backend emitiendo SameSite=None; Secure como corresponde. La cookie no
- * llega porque nunca se guardó.
+ * llegaba porque nunca se guardaba.
  *
  * LA SOLUCIÓN SOPORTADA
  *
  * `Partitioned` (CHIPS) es la forma que Chrome dejó abierta para cookies de
  * terceros legítimas: la cookie se guarda con clave (sitio de arriba, origen
- * de la cookie). La tienda y el panel quedan en particiones distintas, cada
- * uno con su propia cookie de refresco.
+ * de la cookie). Cada pantalla queda en su propia partición, con su propia
+ * cookie de refresco.
  *
  * Eso encaja exactamente con refreshSessions: cada partición es una sesión
  * propia, que es lo que el modelo ya sabe manejar.
@@ -375,15 +375,24 @@ const serializeUserWithTenant = (user, tenant) => ({
  * Solo tiene sentido con SameSite=None —una cookie same-site no necesita
  * partición— y exige Secure, que es la misma condición que ya pide None.
  *
- * ESTO NO ES LA SOLUCIÓN DEFINITIVA
+ * POR QUÉ HOY ESTÁ APAGADO, Y POR QUÉ VA A HACER FALTA DE NUEVO
  *
- * La de fondo es que la API y los frontends compartan sitio: api.henko.com
- * con henko.com deja de ser cross-site y el problema desaparece de raíz, sin
- * depender de lo que cada navegador decida sobre cookies de terceros.
- * PRODUCTION_DOMAIN ya dice henko.com y el dominio resuelve.
+ * Con todo bajo henkart.com.ar —tienda, panel y api.henkart.com.ar— esas tres
+ * comparten sitio y la cookie dejó de ser de terceros. Por eso corre con
+ * AUTH_COOKIE_PARTITIONED=false y nadie lo nota.
  *
- * Se puede apagar con AUTH_COOKIE_PARTITIONED=false si algo sale mal, sin
- * necesidad de un revert.
+ * Eso vale mientras los comercios entren por el apex o por un subdominio de
+ * la plataforma. NO vale para un comercio con dominio propio: la tienda en
+ * mitienda.com.ar pidiéndole a api.henkart.com.ar es sitio cruzado, y la
+ * cookie de sus clientes vuelve a ser de terceros. Ahí hay que volver a
+ * encenderlo, ANTES de dar de alta el primer comercio con dominio propio —
+ * si no, sus clientes no van a poder iniciar sesión y el síntoma va a ser
+ * otra vez "no hay token de refresco".
+ *
+ * Por eso tampoco se puede bajar SameSite a 'Lax': mientras la plataforma
+ * venda dominios propios, 'None' es el requisito y no una precaución
+ * transitoria. crossSiteReasons() en config/env.js enumera los motivos
+ * concretos al arrancar.
  */
 export const usePartitionedCookies = sameSite =>
   process.env.AUTH_COOKIE_PARTITIONED !== 'false' &&
