@@ -597,12 +597,25 @@ tenantSchema.index({ 'adminDomains.status': 1 })
 /**
  * Índice único real y cruzado para impedir que el mismo hostname
  * exista como storefront en un tenant y admin domain en otro.
+ *
+ * LLEVABA `sparse: true` Y ESO LO DEJABA SIN CREAR
+ *
+ * MongoDB rechaza la combinación: «cannot mix "partialFilterExpression" and
+ * "sparse" options». Con autoIndex en false —que es como corre producción, ver
+ * el log de arranque— el error no salía por ningún lado: el índice simplemente
+ * no existía, y la unicidad global de dominios entre comercios no la
+ * garantizaba nada.
+ *
+ * Apareció recién cuando una prueba llamó a Tenant.init(), que es lo que fuerza
+ * la construcción.
+ *
+ * `sparse` sobra: partialFilterExpression ya excluye los documentos sin la
+ * clave, y con más precisión —solo indexa las entradas que son string—.
  */
 tenantSchema.index(
   { domainKeys: 1 },
   {
     unique: true,
-    sparse: true,
     partialFilterExpression: {
       domainKeys: { $type: 'string' },
     },
@@ -617,13 +630,25 @@ tenantSchema.index(
  * y enviando correo con esa identidad sin controlar el dominio. Última línea
  * de defensa contra la carrera; el chequeo principal vive en
  * tenantEmailDomainService.js antes de llamar al proveedor.
+ *
+ * LLEVABA `$ne: ''` Y POR ESO TAMPOCO SE CREÓ NUNCA
+ *
+ * MongoDB no admite `$ne` dentro de un partialFilterExpression: solo acepta
+ * $exists, $eq, $gt, $gte, $lt, $lte, $type y $and. Rechazaba el índice con
+ * «Expression not supported in partial index: $not», y como producción corre
+ * con autoIndex en false, el error no aparecía en ningún lado — la "última
+ * línea de defensa" que describe el comentario de arriba no existía.
+ *
+ * `$gt: ''` hace exactamente lo que se buscaba: los strings se ordenan, y
+ * cualquiera con contenido es mayor que el vacío. Es de los operadores
+ * soportados.
  */
 tenantSchema.index(
   { 'email.domain': 1 },
   {
     unique: true,
     partialFilterExpression: {
-      'email.domain': { $type: 'string', $ne: '' },
+      'email.domain': { $type: 'string', $gt: '' },
     },
   },
 )

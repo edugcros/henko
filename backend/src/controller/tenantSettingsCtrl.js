@@ -7,6 +7,12 @@ import {
   refreshTenantDomainStatus,
   registerTenantSendingDomain,
 } from '../services/email/tenantEmailDomainService.js'
+import {
+  listTenantDomains,
+  registerTenantDomain,
+  removeTenantDomain,
+  verifyTenantDomain,
+} from '../services/tenant/tenantDomainService.js'
 import { isValidEmail } from '../services/email/emailShared.js'
 
 // Uso genérico (no solo emails): algunos campos de este controller son texto
@@ -124,6 +130,87 @@ export const deleteEmailDomain = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message: 'Volvés a enviar desde la dirección de la plataforma.',
+    data,
+  })
+})
+
+// =====================================================
+// Dominios propios del comercio
+// =====================================================
+//
+// Mismo patrón que el dominio de envío de correo: el controller es delgado y la
+// lógica —validación, token, DNS, transiciones de estado— vive en el servicio,
+// que se puede probar sin levantar HTTP.
+//
+// `requireTenantId` usa resolveAuthorizedTenantFromRequest, así que estas rutas
+// ya cruzan el comercio del JWT contra el del dominio.
+
+/**
+ * GET /api/tenants/me/domains
+ */
+export const getDomains = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const domains = await listTenantDomains(tenantId)
+
+  return res.status(200).json({ success: true, data: domains })
+})
+
+/**
+ * POST /api/tenants/me/domains
+ *
+ * Da de alta el dominio en estado PENDIENTE y devuelve qué cargar en el DNS.
+ * Pendiente no es un trámite: findTenantByDomainCandidates exige 'active', así
+ * que hasta verificar, el dominio no resuelve a nada.
+ */
+export const addDomain = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const data = await registerTenantDomain({
+    tenantId,
+    hostname: clean(req.body?.hostname),
+  })
+
+  return res.status(201).json({
+    success: true,
+    message: 'Dominio cargado. Creá el registro TXT y después verificalo.',
+    data,
+  })
+})
+
+/**
+ * POST /api/tenants/me/domains/verify
+ *
+ * El hostname va en el cuerpo y no en la ruta: un dominio con puntos en un
+ * parámetro de path obliga a encodear y se rompe con facilidad.
+ */
+export const verifyDomain = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const data = await verifyTenantDomain({
+    tenantId,
+    hostname: clean(req.body?.hostname),
+  })
+
+  return res.status(200).json({
+    success: true,
+    message: data.verified
+      ? 'Dominio verificado: ya podés usarlo.'
+      : 'Todavía no vemos el registro TXT. Los cambios de DNS pueden tardar en propagarse.',
+    data,
+  })
+})
+
+/**
+ * DELETE /api/tenants/me/domains
+ */
+export const deleteDomain = asyncHandler(async (req, res) => {
+  const tenantId = requireTenantId(req)
+  const data = await removeTenantDomain({
+    tenantId,
+    hostname: clean(req.body?.hostname),
+  })
+
+  return res.status(200).json({
+    success: true,
+    message: 'Dominio dado de baja.',
     data,
   })
 })
