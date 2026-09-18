@@ -18,6 +18,24 @@ jest.unstable_mockModule("../utils/sendEmail.js", () => ({
   },
 }));
 
+// Los comercios que "existen" en la base, por id. Se mockea el modelo en vez
+// de levantar Mongo porque lo que se verifica es a QUIÉN se le pregunta el
+// nombre, no cómo lo guarda Mongo.
+const comerciosEnBase = new Map();
+const findByIdCalls = [];
+
+jest.unstable_mockModule("../models/tenantModel.js", () => ({
+  default: {
+    findById: id => {
+      findByIdCalls.push(String(id));
+
+      return {
+        lean: async () => comerciosEnBase.get(String(id)) || null,
+      };
+    },
+  },
+}));
+
 const {
   sendVerificationEmail,
   sendResetPasswordEmail,
@@ -63,6 +81,96 @@ const USER = { email: "compradora@ejemplo.com", firstname: "Ana" };
 
 beforeEach(() => {
   sentEmails.length = 0;
+  comerciosEnBase.clear();
+  findByIdCalls.length = 0;
+  delete process.env.STORE_NAME;
+});
+
+// QUÉ NOMBRE FIRMA EL CORREO
+//
+// El nombre salía de una cadena de respaldos que terminaba en STORE_NAME, una
+// variable de entorno de la PLATAFORMA. Quien llamaba sin pasar el comercio no
+// fallaba: mandaba el correo firmado con ese valor.
+//
+// Pasó en producción. El reseteo de contraseña arranca sin sesión, así que no
+// tenía req.tenant y llamaba sin segundo argumento: a un cliente le llegó "Tu
+// contraseña de Henko Dev fue modificada". "Henko Dev" era el STORE_NAME.
+//
+// Con un comercio es un nombre feo. Con varios, el cliente de cualquiera de
+// ellos recibe un correo de SEGURIDAD firmado por alguien que no reconoce.
+describe("el comercio que firma el correo", () => {
+  const USUARIO_CON_COMERCIO = {
+    email: "compradora@ejemplo.com",
+    firstname: "Ana",
+    tenantId: "6a4dcc911161615f76a8131f",
+  };
+
+  test("sin que se lo pasen, lo busca por el comercio del usuario", async () => {
+    // ESTE ES EL CASO QUE FALLÓ. Nadie pasa el comercio y el correo igual
+    // tiene que salir firmado por la tienda donde el cliente compró.
+    comerciosEnBase.set(USUARIO_CON_COMERCIO.tenantId, { name: "Tienda Real" });
+    process.env.STORE_NAME = "Henko Dev";
+
+    await sendPasswordChangedEmail(USUARIO_CON_COMERCIO);
+
+    expect(sentEmails[0].subject).toBe(
+      "Tu contraseña de Tienda Real fue modificada",
+    );
+    expect(sentEmails[0].subject).not.toContain("Henko Dev");
+    expect(findByIdCalls).toEqual([USUARIO_CON_COMERCIO.tenantId]);
+  });
+
+  test("el mismo arreglo vale para el correo de bienvenida", async () => {
+    comerciosEnBase.set(USUARIO_CON_COMERCIO.tenantId, { name: "Tienda Real" });
+    process.env.STORE_NAME = "Henko Dev";
+
+    await sendWelcomeEmail(USUARIO_CON_COMERCIO);
+
+    expect(sentEmails[0].subject).toBe("Bienvenido a Tienda Real");
+  });
+
+  test("y para el de verificación", async () => {
+    comerciosEnBase.set(USUARIO_CON_COMERCIO.tenantId, { name: "Tienda Real" });
+    process.env.STORE_NAME = "Henko Dev";
+
+    await sendVerificationEmail(USUARIO_CON_COMERCIO, null, "tok123");
+
+    expect(sentEmails[0].subject).toContain("Tienda Real");
+  });
+
+  test("si se lo pasan, NO va a la base", async () => {
+    // Quien ya tiene el comercio en la mano —req.tenant— no debe pagar una
+    // consulta por correo enviado.
+    await sendPasswordChangedEmail(USUARIO_CON_COMERCIO, { name: "Pasado" });
+
+    expect(sentEmails[0].subject).toBe("Tu contraseña de Pasado fue modificada");
+    expect(findByIdCalls).toEqual([]);
+  });
+
+  test("un usuario sin comercio no dispara ninguna consulta", async () => {
+    process.env.STORE_NAME = "Henko Dev";
+
+    await sendPasswordChangedEmail({ email: "suelta@ejemplo.com" });
+
+    expect(findByIdCalls).toEqual([]);
+    expect(sentEmails[0].subject).toBe(
+      "Tu contraseña de Henko Dev fue modificada",
+    );
+  });
+
+  test("si la base falla, el correo sale igual", async () => {
+    // Estos avisos son la única señal que recibe el dueño de la casilla si la
+    // acción no fue suya: que no salga es peor que que salga genérico.
+    comerciosEnBase.set(USUARIO_CON_COMERCIO.tenantId, null);
+    process.env.STORE_NAME = "Henko Dev";
+
+    await sendPasswordChangedEmail(USUARIO_CON_COMERCIO);
+
+    expect(sentEmails).toHaveLength(1);
+    expect(sentEmails[0].subject).toBe(
+      "Tu contraseña de Henko Dev fue modificada",
+    );
+  });
 });
 
 describe("correos de cuenta", () => {

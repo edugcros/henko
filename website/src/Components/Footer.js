@@ -59,7 +59,13 @@ const Footer = () => {
     <Box
       component="footer"
       sx={{
-        bgcolor: themeColors.actionPrimaryText,
+        // El footer está pintado para fondo oscuro: usa `background` como
+        // TINTA (acá abajo, y en los enlaces y datos de contacto) y apoya los
+        // separadores en alpha(background, 0.08). Antes el fondo salía de
+        // `actionPrimaryText`, que por defecto es blanco igual que `background`
+        // — o sea blanco sobre blanco. `text` es el mismo oscuro que ya usa la
+        // barra de copyright al pie, así que el footer queda de un solo color.
+        bgcolor: themeColors.text,
         color: themeColors.background,
         mt: 6,
         fontSize: 14,

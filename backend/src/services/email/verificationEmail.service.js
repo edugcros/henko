@@ -1,7 +1,52 @@
 // 📁 src/services/email/verificationEmail.service.js
+import Tenant from '../../models/tenantModel.js'
 import { sendEmail } from '../../utils/sendEmail.js'
 import { buildAdminUrl, buildFrontendUrl } from '../../utils/frontendUrl.js'
 import { escapeHtml, sanitizeString } from './emailShared.js'
+
+/**
+ * El comercio y el nombre que va firmando el correo.
+ *
+ * POR QUÉ LO BUSCA EN LA BASE EN VEZ DE CONFIAR EN QUIEN LLAMA
+ *
+ * Antes cada llamador tenía que acordarse de pasar el comercio, y el que se
+ * olvidaba no fallaba: caía en STORE_NAME y mandaba el correo firmado con el
+ * nombre de la PLATAFORMA. Pasó en producción — un cliente recibió "Tu
+ * contraseña de Henko Dev fue modificada", donde "Henko Dev" es el valor de
+ * una variable de entorno.
+ *
+ * El reseteo de contraseña era el caso: arranca sin sesión, así que no tiene
+ * req.tenant a mano y llamaba sin segundo argumento. Con un solo comercio el
+ * síntoma es un nombre feo; con varios, el cliente de cualquier comercio
+ * recibe un correo de SEGURIDAD firmado por alguien que no reconoce, que es
+ * exactamente lo que se confunde con phishing y se ignora.
+ *
+ * user.tenantId siempre está y es el dato correcto: a qué comercio pertenece
+ * la cuenta, no por qué dominio entró quien disparó la acción. Resolverlo acá
+ * hace que olvidarse deje de ser posible.
+ */
+const resolveTenantFor = async (tenantOrName, user, porDefecto) => {
+  let tenant =
+    typeof tenantOrName === 'object' && tenantOrName !== null ? tenantOrName : null
+
+  if (!tenant && user?.tenantId) {
+    try {
+      tenant = await Tenant.findById(user.tenantId).lean()
+    } catch {
+      // Un correo firmado genéricamente sigue siendo mejor que uno que no
+      // sale: estos avisos son la única señal que recibe el dueño de la
+      // casilla si la acción no fue suya.
+    }
+  }
+
+  const tenantName =
+    tenant?.name ||
+    (typeof tenantOrName === 'string' ? tenantOrName : null) ||
+    process.env.STORE_NAME ||
+    porDefecto
+
+  return { tenant, tenantName }
+}
 
 // =====================================================
 // Verification email
@@ -28,16 +73,11 @@ export const sendVerificationEmail = async (
     throw new Error('Token de verificación requerido')
   }
 
-  const tenant =
-    typeof tenantOrName === 'object' && tenantOrName !== null
-      ? tenantOrName
-      : null
-
-  const tenantName =
-    tenant?.name ||
-    (typeof tenantOrName === 'string' ? tenantOrName : null) ||
-    process.env.STORE_NAME ||
-    'Henko Store'
+  const { tenant, tenantName } = await resolveTenantFor(
+    tenantOrName,
+    user,
+    'Henko Store',
+  )
 
   const safeTenantName = escapeHtml(tenantName)
   const safeUserName = escapeHtml(user.firstname || user.email)
@@ -160,16 +200,11 @@ export const sendResetPasswordEmail = async (user, resetUrl, tenant = null) => {
 export const sendPasswordChangedEmail = async (user, tenantOrName = null) => {
   if (!user?.email) return { success: false, skipped: true }
 
-  const tenant =
-    typeof tenantOrName === 'object' && tenantOrName !== null
-      ? tenantOrName
-      : null
-
-  const tenantName =
-    tenant?.name ||
-    (typeof tenantOrName === 'string' ? tenantOrName : null) ||
-    process.env.STORE_NAME ||
-    'Tu cuenta'
+  const { tenant, tenantName } = await resolveTenantFor(
+    tenantOrName,
+    user,
+    'Tu cuenta',
+  )
 
   const safeTenantName = escapeHtml(tenantName)
   const safeUserName = escapeHtml(user.firstname || user.email)
@@ -223,16 +258,11 @@ export const sendPasswordChangedEmail = async (user, tenantOrName = null) => {
 export const sendWelcomeEmail = async (user, tenantOrName = null) => {
   if (!user?.email) return { success: false, skipped: true }
 
-  const tenant =
-    typeof tenantOrName === 'object' && tenantOrName !== null
-      ? tenantOrName
-      : null
-
-  const tenantName =
-    tenant?.name ||
-    (typeof tenantOrName === 'string' ? tenantOrName : null) ||
-    process.env.STORE_NAME ||
-    'la tienda'
+  const { tenant, tenantName } = await resolveTenantFor(
+    tenantOrName,
+    user,
+    'la tienda',
+  )
 
   const safeTenantName = escapeHtml(tenantName)
   const safeUserName = escapeHtml(user.firstname || user.email)
