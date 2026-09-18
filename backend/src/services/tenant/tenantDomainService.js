@@ -35,6 +35,11 @@ import Tenant from '../../models/tenantModel.js'
 import logger from '../../../config/logger.js'
 import { env } from '../../../config/env.js'
 import {
+  obtenerDestinoDelBorde,
+  registrarDominioEnBorde,
+  quitarDominioDelBorde,
+} from './edgeDomainService.js'
+import {
   normalizeDomainValue,
   normalizeHostname,
 } from '../../utils/domainUtils.js'
@@ -126,12 +131,19 @@ const buildInstructions = (hostname, verificationToken) => ({
     name: `${VERIFICATION_PREFIX}.${hostname}`,
     value: verificationToken,
   },
-  // El destino real lo define el proveedor de borde. Se informa desde el
-  // entorno para no hardcodear infraestructura en el código.
+  // EL DESTINO ES EL BORDE DE LA TIENDA, NO LA API
+  //
+  // Acá decía env.apiDomain, o sea api.henkart.com.ar — el BACKEND. Un comercio
+  // que siguiera esa instrucción apuntaba su dominio a la API: recibía JSON, no
+  // su tienda. Nunca se probó de punta a punta.
+  //
+  // Sale de PLATFORM_EDGE_CNAME. Sin esa variable devuelve null y el panel
+  // muestra el paso como pendiente, que es mejor que dar una instrucción
+  // equivocada con aire de correcta.
   pointing: {
     type: 'CNAME',
     name: hostname,
-    value: env.apiDomain || null,
+    value: obtenerDestinoDelBorde(),
   },
 })
 
@@ -273,6 +285,26 @@ export const verifyTenantDomain = async ({ tenantId, hostname: raw }) => {
       tenantId: String(tenantId),
       hostname,
     })
+
+    // DAR DE ALTA EN EL BORDE ES UN PASO APARTE, Y VA DESPUÉS DEL save()
+    //
+    // Verificar prueba quién es el dueño; registrar en el borde decide quién lo
+    // atiende. Sin lo segundo, el hostname no tiene a dónde ir ni certificado
+    // que presentar.
+    //
+    // Va después de guardar y sin await sobre el resultado del comercio: el
+    // dominio ya quedó verificado, y que el proveedor falle no debe deshacer
+    // eso ni dejar al comercio con un error que no puede resolver. El
+    // certificado lo confirma después el watcher, por handshake real.
+    const alta = await registrarDominioEnBorde(hostname)
+
+    if (!alta.ok) {
+      logger.warn('[DOMINIO] Verificado pero sin alta en el borde', {
+        tenantId: String(tenantId),
+        hostname,
+        motivo: alta.motivo,
+      })
+    }
   }
 
   return {
@@ -314,6 +346,18 @@ export const removeTenantDomain = async ({ tenantId, hostname: raw }) => {
   await tenant.save()
 
   logger.info('[DOMINIO] Baja', { tenantId: String(tenantId), hostname })
+
+  // Sacarlo también del borde. Si no, el hostname sigue dado de alta en el
+  // proyecto ocupando cupo, con su certificado renovándose para siempre, y
+  // ningún comercio lo reclama: nadie lo va a notar hasta que el cupo importe.
+  const baja = await quitarDominioDelBorde(hostname)
+
+  if (!baja.ok && baja.motivo !== 'sin_credenciales') {
+    logger.warn('[DOMINIO] Dado de baja en el comercio pero no en el borde', {
+      hostname,
+      motivo: baja.motivo,
+    })
+  }
 
   return { removed: hostname }
 }
