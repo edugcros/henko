@@ -129,6 +129,72 @@ describe('TurnstileWidget · cuando el desafío no llega', () => {
     expect(renderMock).toHaveBeenCalledTimes(2)
   })
 
+  test('NO se rehace cuando el formulario vuelve a renderizar', async () => {
+    // EL BUCLE.
+    //
+    // Quien usa este componente pasa funciones inline —onVerify={t => …}—, que
+    // son nuevas en cada render del formulario. Con esos callbacks en las
+    // dependencias del efecto, cada tecla escrita en el formulario disparaba
+    // remove() + render() del widget: el desafío parpadeaba sin llegar nunca a
+    // resolverse, y desde afuera se ve como si la página se recargara sola.
+    //
+    // Se rompió así en producción y lo reportó el usuario. Esta prueba lo fija:
+    // el widget se arma UNA vez aunque el padre renderice muchas.
+    const { rerender } = render(
+      <TurnstileWidget
+        siteKey={SITE_KEY}
+        onVerify={() => {}}
+        onExpire={() => {}}
+        onError={() => {}}
+      />,
+    )
+    await dejarMontar()
+
+    expect(renderMock).toHaveBeenCalledTimes(1)
+
+    // Tres renders del padre, con callbacks nuevos cada vez — como escribir
+    // tres letras en cualquier campo.
+    for (let i = 0; i < 3; i += 1) {
+      rerender(
+        <TurnstileWidget
+          siteKey={SITE_KEY}
+          onVerify={() => {}}
+          onExpire={() => {}}
+          onError={() => {}}
+        />,
+      )
+      await dejarMontar()
+    }
+
+    expect(renderMock).toHaveBeenCalledTimes(1)
+    expect(window.turnstile.remove).not.toHaveBeenCalled()
+  })
+
+  test('el callback que corre es el último que pasó el padre', async () => {
+    // El precio de guardar los callbacks en refs sería quedarse con una
+    // versión vieja. No debe pasar: el token tiene que llegarle a quien está
+    // escuchando ahora.
+    const viejo = jest.fn()
+    const nuevo = jest.fn()
+
+    const { rerender } = render(
+      <TurnstileWidget siteKey={SITE_KEY} onVerify={viejo} onError={jest.fn()} />,
+    )
+    await dejarMontar()
+
+    rerender(
+      <TurnstileWidget siteKey={SITE_KEY} onVerify={nuevo} onError={jest.fn()} />,
+    )
+    await dejarMontar()
+
+    await act(async () => {
+      renderMock.mock.calls[0][1].callback('token-ok')
+    })
+
+    expect(nuevo).toHaveBeenCalledWith('token-ok')
+    expect(viejo).not.toHaveBeenCalled()
+  })
+
   test('sin siteKey no monta nada ni inventa un fallo', async () => {
     // Es el modo "todavía no hay captcha configurado": el registro tiene que
     // seguir andando, no mostrar un error que nadie puede resolver.

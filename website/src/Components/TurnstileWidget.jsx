@@ -52,13 +52,28 @@ const TurnstileWidget = ({ siteKey, onVerify, onExpire, onError }) => {
   // la página, que en un formulario a medio llenar significa perder lo escrito.
   const [intento, setIntento] = useState(0)
 
-  const marcarFallo = useCallback(
-    motivo => {
-      setFailed(true)
-      onError?.(motivo)
-    },
-    [onError],
-  )
+  // LOS CALLBACKS VAN POR REF, Y ESTO NO ES ESTILO
+  //
+  // Quien usa este componente pasa funciones inline —onVerify={t => …}—, que
+  // son nuevas en cada render del formulario. Si estuvieran en las
+  // dependencias del efecto de abajo, cada render lo volvería a ejecutar:
+  // remove() + render() del widget, una y otra vez, con el desafío
+  // parpadeando sin llegar nunca a resolverse. Pasó, y se ve como si la
+  // página se recargara sola.
+  //
+  // Con refs el efecto depende solo de lo que de verdad obliga a rehacer el
+  // widget —la clave y el reintento— y los callbacks se leen siempre en su
+  // versión más nueva.
+  const callbacksRef = useRef({ onVerify, onExpire, onError })
+
+  useEffect(() => {
+    callbacksRef.current = { onVerify, onExpire, onError }
+  })
+
+  const marcarFallo = useCallback(motivo => {
+    setFailed(true)
+    callbacksRef.current.onError?.(motivo)
+  }, [])
 
   useEffect(() => {
     if (!siteKey) return undefined
@@ -80,9 +95,9 @@ const TurnstileWidget = ({ siteKey, onVerify, onExpire, onError }) => {
           sitekey: siteKey,
           callback: token => {
             limpiarTimer()
-            onVerify(token)
+            callbacksRef.current.onVerify?.(token)
           },
-          'expired-callback': () => onExpire?.(),
+          'expired-callback': () => callbacksRef.current.onExpire?.(),
           'error-callback': codigo => {
             limpiarTimer()
             // El código de Cloudflare importa: 110200 es "dominio no
@@ -113,7 +128,9 @@ const TurnstileWidget = ({ siteKey, onVerify, onExpire, onError }) => {
         widgetIdRef.current = null
       }
     }
-  }, [siteKey, intento, marcarFallo, onVerify, onExpire])
+    // Solo la clave y el reintento rehacen el widget. Agregar acá un callback
+    // que el padre define inline reintroduce el bucle de montaje.
+  }, [siteKey, intento, marcarFallo])
 
   if (!siteKey) return null
 
