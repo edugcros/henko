@@ -1,5 +1,5 @@
 // 📁 AdminRegister.js
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { useFormik } from 'formik'
 import { useDispatch, useSelector } from 'react-redux'
@@ -44,6 +44,12 @@ import { SELLABLE_PLANS } from '../constants/plans.js'
 // Helpers
 // =====================================================
 
+/**
+ * Limpia el identificador dejando lo que el backend acepta.
+ *
+ * NO recorta los guiones de los extremos, y eso es deliberado: ver
+ * normalizeSlugFinal.
+ */
 const normalizeSlug = value => {
   return String(value || '')
     .trim()
@@ -51,8 +57,26 @@ const normalizeSlug = value => {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)+/g, '')
 }
+
+/**
+ * La forma definitiva, para cuando el identificador deja de editarse.
+ *
+ * POR QU\u00c9 EL RECORTE VA AC\u00c1 Y NO EN CADA TECLA
+ *
+ * Quitar los guiones de los extremos corriendo en cada onChange hace imposible
+ * escribir un identificador con guiones: se tipea "prueba-", el guion queda al
+ * final, se borra, y la letra siguiente se pega \u2014 "pruebaqa2" en vez de
+ * "prueba-qa-2".
+ *
+ * Pas\u00f3 en producci\u00f3n el 18/09/2026: se quiso registrar "prueba-qa-2" y no se
+ * pudo escribir. El placeholder del campo dice "mi-tienda", o sea que el
+ * formulario sugiere exactamente lo que imped\u00eda tipear.
+ *
+ * Un guion colgando mientras alguien escribe es un estado intermedio leg\u00edtimo.
+ * Lo que no puede salir con guiones sueltos es el valor que se env\u00eda.
+ */
+const normalizeSlugFinal = value => normalizeSlug(value).replace(/(^-|-$)+/g, '')
 
 const RESERVED_SLUGS = new Set([
   'api',
@@ -149,7 +173,7 @@ const TYPO_SENSITIVE_SLUGS = ['henko']
 const TYPO_DISTANCE_THRESHOLD = 1
 
 const isReservedSlug = slug => {
-  const normalized = normalizeSlug(slug)
+  const normalized = normalizeSlugFinal(slug)
 
   if (RESERVED_SLUGS.has(normalized)) return true
 
@@ -206,7 +230,7 @@ const getHostnameFromUrl = value => {
 }
 
 const buildTenantDomainPreview = ({ slug, publicBaseDomain, adminBaseDomain }) => {
-  const normalizedSlug = normalizeSlug(slug)
+  const normalizedSlug = normalizeSlugFinal(slug)
   const publicBase = getHostnameFromUrl(publicBaseDomain)
   const adminBase = getHostnameFromUrl(adminBaseDomain)
 
@@ -343,7 +367,7 @@ const AdminRegister = () => {
         email: values.email.trim().toLowerCase(),
         mobile: values.mobile.trim(),
         storeName: values.storeName.trim(),
-        storeSlug: normalizeSlug(values.storeSlug),
+        storeSlug: normalizeSlugFinal(values.storeSlug),
         plan: values.plan || 'starter',
         password: values.password,
         turnstileToken,
@@ -392,14 +416,46 @@ const AdminRegister = () => {
     window.location.href = finalUrl
   }
 
+  // POR QUÉ NO ALCANZA CON formik.touched
+  //
+  // touched se marca en el BLUR, y el campo del identificador escribe con
+  // setFieldValue, que tampoco lo marca. O sea que alguien podía tipear su
+  // identificador, volver a retocar el nombre de la tienda sin haber salido
+  // del campo, y el nombre le pisaba el identificador en silencio.
+  //
+  // Pasó en producción el 18/09/2026: se pidió "prueba-qa-2" y el comercio
+  // quedó como "tienda-de-prueba-qa". No es cosmético — el identificador es la
+  // dirección pública de la tienda, y se lo cambiamos sin avisar.
+  //
+  // Va en una ref y no en estado: no hay que volver a renderizar por esto, y
+  // el valor tiene que estar disponible en el mismo tick del onChange.
+  const identificadorEscritoAMano = useRef(false)
+
   const handleStoreNameChange = event => {
     const storeName = event.target.value
 
     formik.setFieldValue('storeName', storeName)
 
-    if (!formik.touched.storeSlug || !formik.values.storeSlug) {
-      formik.setFieldValue('storeSlug', normalizeSlug(storeName))
+    // Mientras el identificador siga siendo el sugerido, acompaña al nombre.
+    // Apenas alguien lo escribe, deja de tocarse.
+    if (!identificadorEscritoAMano.current) {
+      formik.setFieldValue('storeSlug', normalizeSlugFinal(storeName))
     }
+  }
+
+  const handleStoreSlugChange = event => {
+    // Vaciarlo vuelve a delegar en el nombre: es la forma natural de decir
+    // "no quiero elegirlo yo".
+    identificadorEscritoAMano.current = event.target.value.trim() !== ''
+
+    // Mientras se escribe NO se recortan los guiones de los extremos, o sería
+    // imposible tipear "prueba-qa-2". Se recortan al salir del campo.
+    formik.setFieldValue('storeSlug', normalizeSlug(event.target.value))
+  }
+
+  const handleStoreSlugBlur = event => {
+    formik.setFieldValue('storeSlug', normalizeSlugFinal(event.target.value))
+    formik.handleBlur(event)
   }
 
   return (
@@ -639,10 +695,8 @@ const AdminRegister = () => {
                       label="Identificador de tienda"
                       placeholder="mi-tienda"
                       value={formik.values.storeSlug}
-                      onChange={event =>
-                        formik.setFieldValue('storeSlug', normalizeSlug(event.target.value))
-                      }
-                      onBlur={formik.handleBlur}
+                      onChange={handleStoreSlugChange}
+                      onBlur={handleStoreSlugBlur}
                       name="storeSlug"
                       error={formik.touched.storeSlug && Boolean(formik.errors.storeSlug)}
                       helperText={
