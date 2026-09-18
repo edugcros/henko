@@ -3,7 +3,10 @@ import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import crypto from 'node:crypto'
 import { getCookieDomain } from '../utils/cookieHelper.js'
-import { SUBSCRIPTION_WEBHOOK_PATH } from '../config/subscriptionConfig.js'
+import {
+  SUBSCRIPTION_WEBHOOK_PATH,
+  SENDGRID_WEBHOOK_PATH,
+} from '../config/subscriptionConfig.js'
 
 /**
  * Rutas que no pasan por CSRF.
@@ -51,6 +54,11 @@ export const csrfExemptRoutes = [
   // webhook servidor-a-servidor no trae cookies, así que el CSRF no puede
   // protegerlo, y la firma sí.
   { method: 'POST', path: `${env.apiPrefix}${SUBSCRIPTION_WEBHOOK_PATH}` },
+
+  // Eventos de entrega de SendGrid. Verifica firma ECDSA sobre el cuerpo crudo
+  // (verifySendgridSignature). Mismo razonamiento que arriba: sin cookies, el
+  // CSRF no puede protegerlo y la firma sí.
+  { method: 'POST', path: `${env.apiPrefix}${SENDGRID_WEBHOOK_PATH}` },
 
   // Webhook externo real de WhatsApp/Meta. Valida firma propia x-hub-signature-256.
   { method: 'POST', path: `${env.apiPrefix}/whatsapp/webhook` },

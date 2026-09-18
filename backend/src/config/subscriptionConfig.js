@@ -45,6 +45,13 @@ export const SUBSCRIPTION_WEBHOOK_MOUNT = '/webhooks'
 export const SUBSCRIPTION_WEBHOOK_ROUTE = '/mercadopago/subscription'
 export const SUBSCRIPTION_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${SUBSCRIPTION_WEBHOOK_ROUTE}`
 
+// Eventos de entrega de SendGrid. Vive acá por el mismo motivo que la de
+// Mercado Pago: la ruta la necesitan el router, la lista de exenciones de CSRF
+// y la URL que se configura en el proveedor. Escrita por separado en cada lado,
+// las copias divergen sin que nada falle en el momento — ya pasó dos veces.
+export const SENDGRID_WEBHOOK_ROUTE = '/sendgrid/events'
+export const SENDGRID_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${SENDGRID_WEBHOOK_ROUTE}`
+
 const getApiPrefix = () => `/${clean(process.env.API_PREFIX || 'api').replace(/^\/+|\/+$/g, '')}`
 
 /**

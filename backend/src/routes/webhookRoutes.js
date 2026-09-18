@@ -3,7 +3,11 @@
 
 import express from 'express'
 import { handleSubscriptionWebhook } from '../controller/subscriptionWebhookCtrl.js'
-import { SUBSCRIPTION_WEBHOOK_ROUTE } from '../config/subscriptionConfig.js'
+import { handleSendgridEvents } from '../controller/sendgridWebhookCtrl.js'
+import {
+  SUBSCRIPTION_WEBHOOK_ROUTE,
+  SENDGRID_WEBHOOK_ROUTE,
+} from '../config/subscriptionConfig.js'
 
 const router = express.Router()
 
@@ -31,5 +35,14 @@ const router = express.Router()
 // declarada a Mercado Pago. Escribirla literal acá es lo que permitió que las
 // dos divergieran sin que nada avisara.
 router.post(SUBSCRIPTION_WEBHOOK_ROUTE, handleSubscriptionWebhook)
+
+/**
+ * POST /api/webhooks/sendgrid/events
+ *
+ * Eventos de entrega: delivered, bounce, dropped, blocked, spamreport. Es lo
+ * unico que distingue un correo que llego de uno que SendGrid descarto — el
+ * envio solo sabe que la API lo acepto.
+ */
+router.post(SENDGRID_WEBHOOK_ROUTE, handleSendgridEvents)
 
 export default router

@@ -602,7 +602,17 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
 
       const messageId = response.headers.get('x-message-id')
 
-      logger.info('✅ Email enviado correctamente', {
+      // "Aceptado", no "enviado". El 202 de SendGrid significa "lo recibí,
+      // después veré qué hago": el rebote, el descarte por lista de supresión y
+      // el bloqueo ocurren DESPUÉS y por otro canal.
+      //
+      // Decía "✅ Email enviado correctamente" y eso engañó de verdad: el
+      // 18/09/2026 un correo figuraba así en los logs mientras SendGrid lo tenía
+      // en `Dropped` porque la dirección estaba suprimida por rebotes previos.
+      //
+      // Lo que realmente pasó llega por el webhook de eventos
+      // (sendgridWebhookCtrl), que registra los fallos como error.
+      logger.info('📨 Email aceptado por SendGrid', {
         messageId,
       })
 
