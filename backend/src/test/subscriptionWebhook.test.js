@@ -131,6 +131,32 @@ describe("webhook de suscripción · la URL declarada existe", () => {
     delete process.env.PUBLIC_BACKEND_URL;
   });
 
+  test("la ruta está exenta de CSRF, o el webhook nunca llega al controlador", async () => {
+    // LA CUARTA COPIA DE LA MISMA RUTA.
+    //
+    // Estaba en el router y en getWebhookUrl —esas dos ya se comparan arriba—
+    // pero faltaba en csrfExemptRoutes de app.js. Un webhook servidor-a-servidor
+    // no trae cookies, así que el CSRF lo cortaba con 403 ANTES de llegar al
+    // controlador: la firma, la idempotencia y los códigos HTTP que prueba el
+    // resto de este archivo no se ejecutaban nunca en producción.
+    //
+    // Medido contra api.henkart.com.ar: POST a esta ruta devolvía 403 mientras
+    // que /api/payments/webhook/mercadopago —que sí estaba en la lista—
+    // devolvía 200. Arreglar la URL en el panel de Mercado Pago no habría
+    // servido de nada.
+    const { csrfExemptRoutes } = await import(
+      "../middlewares/csrfMiddleware.js"
+    );
+
+    const exenta = csrfExemptRoutes.some(
+      ruta =>
+        ruta.method === "POST" &&
+        ruta.path.endsWith(config.SUBSCRIPTION_WEBHOOK_PATH),
+    );
+
+    expect(exenta).toBe(true);
+  });
+
   test("sin URL pública HTTPS devuelve null en vez de romper el alta", () => {
     // Lanzar acá dejaría a un comercio sin poder suscribirse por una variable
     // de entorno faltante. Mercado Pago no exige notification_url.

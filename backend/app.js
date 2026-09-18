@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url'
 import cors from 'cors'
 
 import {
+  csrfExemptRoutes,
   csrfProtectionDynamic,
   handleCsrfError,
   logCsrfStatus,
@@ -219,35 +220,10 @@ const isTrustedPredeployTunnelRequest = req => {
 
   return enabled && allowedPredeployOrigins.includes(origin)
 }
-// Rutas públicas/sensibles que no deben depender de CSRF durante predeploy.
-// Login/register deben protegerse con rate-limit, validación y CORS estricto.
-const csrfExemptRoutes = [
-  { method: 'POST', path: `${env.apiPrefix}/user/login` },
-  { method: 'POST', path: `${env.apiPrefix}/user/admin-login` },
-  { method: 'POST', path: `${env.apiPrefix}/user/register` },
-  { method: 'POST', path: `${env.apiPrefix}/user/register-admin` },
-
-  { method: 'POST', path: `${env.apiPrefix}/metrics/events` },
-  { method: 'POST', path: `${env.apiPrefix}/user/forgot-password` },
-  { method: 'PUT', path: `${env.apiPrefix}/user/reset-password` },
-
-  { method: 'POST', path: `${env.apiPrefix}/ai-webchat/message` },
-  { method: 'POST', path: `${env.apiPrefix}/ai-webchat/event` },
-  // Webhook externo real de Mercado Pago.
-  { method: 'POST', path: `${env.apiPrefix}/payments/webhook/mercadopago` },
-
-  // Webhook externo real de WhatsApp/Meta. Valida firma propia x-hub-signature-256.
-  { method: 'POST', path: `${env.apiPrefix}/whatsapp/webhook` },
-
-  // Agente local de análisis por API key. El endpoint mantiene autenticación propia.
-  { method: 'POST', path: `${env.apiPrefix}/product-analysis/import` },
-  { method: 'POST', path: `${env.apiPrefix}/product-analysis/process-due` },
-  { method: 'POST', path: `${env.apiPrefix}/product-analysis/wishlist-promotions/run` },
-
-  // Sesión - refresh y logout (requieren autenticación JWT, no CSRF)
-  { method: 'POST', path: `${env.apiPrefix}/user/refresh` },
-  { method: 'POST', path: `${env.apiPrefix}/user/logout` },
-]
+// La lista vive en csrfMiddleware: qué rutas quedan fuera del CSRF es una
+// decisión del CSRF, no del ensamblado de la app. Además así se puede probar
+// sin levantar el grafo entero de rutas — que es lo que impidió, hasta ahora,
+// tener un test que notara la ausencia del webhook de suscripciones.
 
 // Solo para etapa Vercel + TryCloudflare.
 const tunnelCsrfExemptRoutes = [

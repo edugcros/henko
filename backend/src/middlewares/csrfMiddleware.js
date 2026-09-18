@@ -3,6 +3,67 @@ import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import crypto from 'node:crypto'
 import { getCookieDomain } from '../utils/cookieHelper.js'
+import { SUBSCRIPTION_WEBHOOK_PATH } from '../config/subscriptionConfig.js'
+
+/**
+ * Rutas que no pasan por CSRF.
+ *
+ * POR QUÉ VIVE ACÁ Y NO EN app.js
+ *
+ * Qué queda fuera del CSRF es una decisión del CSRF. Estando en el ensamblado
+ * de la app, para comprobarla había que importar app.js entero —con todas las
+ * rutas, modelos y servicios detrás—, y por eso no había ninguna prueba que
+ * notara una ausencia. Acá se puede mirar la lista sin levantar nada.
+ *
+ * Cada entrada necesita su propia razón de ser inmune: un login se protege con
+ * rate-limit y CORS estricto; un webhook externo, con la firma del proveedor.
+ * Agregar una ruta que no tenga ninguna de las dos la deja abierta.
+ */
+export const csrfExemptRoutes = [
+  { method: 'POST', path: `${env.apiPrefix}/user/login` },
+  { method: 'POST', path: `${env.apiPrefix}/user/admin-login` },
+  { method: 'POST', path: `${env.apiPrefix}/user/register` },
+  { method: 'POST', path: `${env.apiPrefix}/user/register-admin` },
+
+  { method: 'POST', path: `${env.apiPrefix}/metrics/events` },
+  { method: 'POST', path: `${env.apiPrefix}/user/forgot-password` },
+  { method: 'PUT', path: `${env.apiPrefix}/user/reset-password` },
+
+  { method: 'POST', path: `${env.apiPrefix}/ai-webchat/message` },
+  { method: 'POST', path: `${env.apiPrefix}/ai-webchat/event` },
+  // Webhook externo real de Mercado Pago.
+  { method: 'POST', path: `${env.apiPrefix}/payments/webhook/mercadopago` },
+
+  // Webhook de SUSCRIPCIONES de Mercado Pago. Faltaba, y el olvido no se veía:
+  // el alta de una suscripción la activa el flujo síncrono del panel, así que
+  // todo parecía andar. Lo que llega SOLO por acá son las renovaciones
+  // mensuales, los pagos rechazados y las cancelaciones — con 403, una
+  // suscripción dada de baja en Mercado Pago seguía figurando activa en HENKO
+  // y nadie se enteraba hasta la fecha de cobro.
+  //
+  // La ruta se toma de subscriptionConfig, la misma constante con la que se
+  // monta el router y con la que getWebhookUrl() arma la URL que se configura
+  // en Mercado Pago. Escrita a mano, las tres se desincronizan sin que nada
+  // falle en el momento — ya pasó una vez con la URL declarada.
+  //
+  // Eximirlo es seguro porque verifica la firma HMAC de Mercado Pago
+  // (verifyMercadoPagoWebhookSignature, en subscriptionWebhookCtrl): un
+  // webhook servidor-a-servidor no trae cookies, así que el CSRF no puede
+  // protegerlo, y la firma sí.
+  { method: 'POST', path: `${env.apiPrefix}${SUBSCRIPTION_WEBHOOK_PATH}` },
+
+  // Webhook externo real de WhatsApp/Meta. Valida firma propia x-hub-signature-256.
+  { method: 'POST', path: `${env.apiPrefix}/whatsapp/webhook` },
+
+  // Agente local de análisis por API key. El endpoint mantiene autenticación propia.
+  { method: 'POST', path: `${env.apiPrefix}/product-analysis/import` },
+  { method: 'POST', path: `${env.apiPrefix}/product-analysis/process-due` },
+  { method: 'POST', path: `${env.apiPrefix}/product-analysis/wishlist-promotions/run` },
+
+  // Sesión - refresh y logout (requieren autenticación JWT, no CSRF)
+  { method: 'POST', path: `${env.apiPrefix}/user/refresh` },
+  { method: 'POST', path: `${env.apiPrefix}/user/logout` },
+]
 
 /**
  * Middleware CSRF recomendado para arquitectura multi-tenant.
