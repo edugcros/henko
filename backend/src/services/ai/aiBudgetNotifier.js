@@ -38,6 +38,16 @@ const getRecipients = () =>
 
 const money = value => `USD ${Number(value || 0).toFixed(2)}`
 
+/**
+ * Para el aviso de descuadre, donde dos decimales mienten.
+ *
+ * La diferencia que motiva ese correo puede ser de medio centavo —medido en
+ * producción: 0.004943— y con `money` se imprime "USD 0.00": un correo que
+ * afirma que no cuadra y muestra cero. Con cuatro decimales se lee la
+ * magnitud real, que es justo lo que hay que decidir: si es plata o es ruido.
+ */
+const moneyPreciso = value => `USD ${Number(value || 0).toFixed(4)}`
+
 const formatNumber = value => Number(value || 0).toLocaleString('es-AR')
 
 const renderSpendRows = topSpend => {
@@ -183,13 +193,13 @@ export const notifyAccountingDrift = async audit => {
       .map(
         ([etiqueta, valor]) => `<tr>
           <td style="padding:6px 12px 6px 0">${etiqueta}</td>
-          <td style="padding:6px 0;text-align:right"><strong>${money(valor)}</strong></td>
+          <td style="padding:6px 0;text-align:right"><strong>${moneyPreciso(valor)}</strong></td>
         </tr>`,
       )
       .join('')
 
     const diferencias = findings
-      .map(f => `<li>${f.between[0]} vs ${f.between[1]}: <strong>${money(f.difference)}</strong></li>`)
+      .map(f => `<li>${f.between[0]} vs ${f.between[1]}: <strong>${moneyPreciso(f.difference)}</strong></li>`)
       .join('')
 
     const subject = `[HENKO] La contabilidad de IA no cuadra (${period})`
@@ -209,10 +219,10 @@ export const notifyAccountingDrift = async audit => {
 
     const text = [
       `La contabilidad de IA no cuadra en ${period}.`,
-      `Libro: ${money(cost.ledger)}`,
-      `Comercios: ${money(cost.tenantUsage)}`,
-      `Plataforma: ${money(cost.platformUsage)}`,
-      ...findings.map(f => `${f.between[0]} vs ${f.between[1]}: ${money(f.difference)}`),
+      `Libro: ${moneyPreciso(cost.ledger)}`,
+      `Comercios: ${moneyPreciso(cost.tenantUsage)}`,
+      `Plataforma: ${moneyPreciso(cost.platformUsage)}`,
+      ...findings.map(f => `${f.between[0]} vs ${f.between[1]}: ${moneyPreciso(f.difference)}`),
       'No se corrigió nada automáticamente.',
     ].join('\n')
 

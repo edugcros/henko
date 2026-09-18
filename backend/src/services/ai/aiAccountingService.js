@@ -411,17 +411,42 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
     AiPlatformUsage.findOne({ period }).lean(),
   ])
 
-  const ledgerCost = round(libro?.[0]?.costUsd || 0, 2)
-  const tenantsCost = round(comercios?.[0]?.costUsd || 0, 2)
-  const platformCost = round(Number(plataforma?.estimatedCostUsd || 0), 2)
+  // NO SE REDONDEA ANTES DE COMPARAR, Y ANTES SÍ
+  //
+  // Acá se redondeaba cada total a centavos y recién después se comparaba
+  // contra COST_TOLERANCE_USD, que es 0.0001. Después de cuantizar a centavos
+  // la mínima diferencia distinta de cero es 0.01: cien veces la tolerancia.
+  // O sea que la tolerancia era INALCANZABLE. O los tres números caían en el
+  // mismo centavo y la diferencia daba exactamente cero, o se reportaba. El
+  // ruido de punto flotante que la tolerancia existe para absorber no podía
+  // absorberse nunca.
+  //
+  // Medido en producción el 18/09/2026, período 2026-09:
+  //
+  //   ledger         1.071712     tenantUsage   1.071685
+  //   platformUsage  1.076655
+  //
+  //   ledger - tenantUsage    = 0.000027   ← ruido, POR DEBAJO de la tolerancia
+  //   ledger - platformUsage  = 0.004943   ← real, 49x la tolerancia
+  //
+  // Los dos se reportaban igual: 0.01. Uno era ruido que había que callar y el
+  // otro era medio centavo real informado como el doble. Un aviso que no
+  // distingue esas dos cosas no sirve para decidir nada, y encima se disparaba
+  // siempre — que es la forma más rápida de que se deje de leer.
+  const ledgerCost = Number(libro?.[0]?.costUsd || 0)
+  const tenantsCost = Number(comercios?.[0]?.costUsd || 0)
+  const platformCost = Number(plataforma?.estimatedCostUsd || 0)
 
   const findings = []
 
   const anotar = (left, right, leftName, rightName) => {
-    const difference = round(left - right, 2)
+    const difference = left - right
     if (Math.abs(difference) <= COST_TOLERANCE_USD) return
 
-    findings.push({ between: [leftName, rightName], difference })
+    // Seis decimales: por debajo de la tolerancia y muy por encima de lo que
+    // necesita una diferencia de medio centavo. Redondear acá es presentación,
+    // no comparación.
+    findings.push({ between: [leftName, rightName], difference: round(difference, 6) })
   }
 
   anotar(ledgerCost, platformCost, 'ledger', 'platformUsage')
@@ -430,7 +455,14 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
 
   return {
     period,
-    cost: { ledger: ledgerCost, tenantUsage: tenantsCost, platformUsage: platformCost },
+    // A la misma precisión que las diferencias. Mostrar los montos en centavos
+    // y la diferencia en diezmilésimas haría que el correo se contradiga solo:
+    // "1.07 contra 1.08" al lado de "diferencia 0.0049".
+    cost: {
+      ledger: round(ledgerCost, 6),
+      tenantUsage: round(tenantsCost, 6),
+      platformUsage: round(platformCost, 6),
+    },
     findings,
     balanced: findings.length === 0,
   }

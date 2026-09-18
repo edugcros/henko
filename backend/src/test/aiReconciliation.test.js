@@ -666,6 +666,85 @@ describe('auditoría contable · detectar, no corregir', () => {
 
     expect(auditoria.balanced).toBe(true)
   })
+
+  // EL REDONDEO PREVIO A COMPARAR HACÍA INALCANZABLE LA TOLERANCIA
+  //
+  // auditAccounting redondeaba cada total a centavos y recién después comparaba
+  // contra COST_TOLERANCE_USD (0.0001). Cuantizado a centavos, la mínima
+  // diferencia no nula es 0.01: cien veces la tolerancia. O daba exactamente
+  // cero, o se reportaba.
+  //
+  // La prueba de acá arriba pasaba con el código viejo, pero por el motivo
+  // equivocado: el redondeo llevaba 10.00002 y 10 al mismo centavo. No medía la
+  // tolerancia, medía el redondeo. Estas dos sí la miden.
+
+  test('dos montos en centavos distintos, pero la diferencia real es ruido', async () => {
+    // Caen a los lados de un borde de redondeo: 1.00499 -> 1.00 y 1.00502 ->
+    // 1.01. El código viejo reportaba 0.01 de descuadre. La diferencia real es
+    // 0.00003, por debajo de la tolerancia: no hay nada que avisar.
+    const period = '2060-05'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'borde-de-centavo',
+      keySource: 'platform', costUsd: 1.00499,
+    })
+    await AiPlatformUsage.updateOne(
+      { period }, { $set: { estimatedCostUsd: 1.00502 } }, { upsert: true },
+    )
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 1.00499 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.balanced).toBe(true)
+    expect(auditoria.findings).toHaveLength(0)
+  })
+
+  test('una diferencia real de medio centavo se informa por lo que vale', async () => {
+    // Los números son los de producción del 18/09/2026, período 2026-09. El
+    // descuadre es real —49 veces la tolerancia— pero vale 0.004943, no 0.01.
+    // El código viejo informaba el doble, indistinguible de ruido amplificado,
+    // y con eso no se puede decidir si hay que reconstruir el contador.
+    const period = '2060-06'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'medio-centavo',
+      keySource: 'platform', costUsd: 1.071712,
+    })
+    await AiPlatformUsage.updateOne(
+      { period }, { $set: { estimatedCostUsd: 1.076655 } }, { upsert: true },
+    )
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 1.071712 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.balanced).toBe(false)
+
+    const contraPlataforma = auditoria.findings.find(
+      f => f.between[0] === 'ledger' && f.between[1] === 'platformUsage',
+    )
+
+    expect(contraPlataforma).toBeDefined()
+    expect(contraPlataforma.difference).toBeCloseTo(-0.004943, 6)
+
+    // Y NO el centavo entero que informaba antes.
+    expect(Math.abs(contraPlataforma.difference)).toBeLessThan(0.01)
+
+    // El libro y los comercios coinciden: eso es lo que señala al contador de
+    // plataforma como el roto.
+    expect(
+      auditoria.findings.find(f => f.between.includes('tenantUsage') && f.between.includes('ledger')),
+    ).toBeUndefined()
+  })
 })
 
 describe('reservas colgadas · también sueltan la plata comprometida', () => {
