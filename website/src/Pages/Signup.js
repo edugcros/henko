@@ -38,6 +38,7 @@ const Signup = () => {
   const { themeConfig } = useTenant()
   const themeColors = useMemo(() => getThemeColors(themeConfig || {}), [themeConfig])
   const [turnstileToken, setTurnstileToken] = useState('')
+  const [captchaError, setCaptchaError] = useState('')
 
   useEffect(() => {
     dispatch(clearState())
@@ -65,7 +66,18 @@ const Signup = () => {
     },
   })
 
-  const captchaPending = Boolean(env.turnstileSiteKey) && !turnstileToken
+  // Pendiente solo mientras el desafío TODAVÍA puede resolverse. Si falló, el
+  // botón deja de estar bloqueado por él: quien mira la pantalla no puede hacer
+  // nada para conseguir un token, y dejarlo deshabilitado sin explicación es
+  // una pantalla muerta.
+  const captchaPending =
+    Boolean(env.turnstileSiteKey) && !turnstileToken && !captchaError
+
+  // Si el reintento funciona, el aviso de fallo tiene que irse.
+  const setCaptchaToken = React.useCallback(token => {
+    setTurnstileToken(token)
+    setCaptchaError('')
+  }, [])
 
   const { handleSubmit, handleChange, handleBlur, values, errors, touched, setFieldValue } = formik
 
@@ -199,10 +211,23 @@ const Signup = () => {
                   <Box display="flex" justifyContent="center">
                     <TurnstileWidget
                       siteKey={env.turnstileSiteKey}
-                      onVerify={setTurnstileToken}
+                      onVerify={setCaptchaToken}
                       onExpire={() => setTurnstileToken('')}
+                      onError={setCaptchaError}
                     />
                   </Box>
+                )}
+
+                {captchaError && (
+                  <Typography
+                    variant="body2"
+                    color="warning.main"
+                    align="center"
+                  >
+                    No pudimos verificar que no seas un robot. Podés intentar
+                    registrarte igual; si no funciona, recargá la página o probá
+                    desde otra red.
+                  </Typography>
                 )}
 
                 {/* Mensajes de error o éxito */}

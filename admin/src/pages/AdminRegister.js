@@ -303,7 +303,22 @@ const AdminRegister = () => {
 
   const isLoading = loading.createAdmin === true
   const [turnstileToken, setTurnstileToken] = useState('')
-  const captchaPending = Boolean(env.turnstileSiteKey) && !turnstileToken
+  const [captchaError, setCaptchaError] = useState('')
+
+  // Pendiente solo mientras el desafío TODAVÍA puede resolverse. Si falló, el
+  // botón deja de estar bloqueado por él: el visitante no puede hacer nada
+  // para conseguir un token, y dejarlo deshabilitado sin explicación es la
+  // pantalla muerta que este formulario tenía. Se deja intentar y, si el
+  // backend exige el token, contesta un error que al menos se lee.
+  const captchaPending =
+    Boolean(env.turnstileSiteKey) && !turnstileToken && !captchaError
+
+  // Si el reintento funciona, el aviso de fallo tiene que irse: dejarlo puesto
+  // haría que alguien que YA resolvió el desafío siga leyendo que algo anda mal.
+  const setCaptchaToken = React.useCallback(token => {
+    setTurnstileToken(token)
+    setCaptchaError('')
+  }, [])
 
   const platformDomain = env.publicBaseDomain || env.productionDomain || ''
   const isProduction = env.isProduction
@@ -698,10 +713,25 @@ const AdminRegister = () => {
                     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                       <TurnstileWidget
                         siteKey={env.turnstileSiteKey}
-                        onVerify={setTurnstileToken}
+                        onVerify={token => {
+                          setCaptchaToken(token)
+                        }}
                         onExpire={() => setTurnstileToken('')}
+                        onError={setCaptchaError}
                       />
                     </Box>
+                  )}
+
+                  {captchaError && (
+                    <Alert
+                      severity="warning"
+                      variant="outlined"
+                      sx={{ borderRadius: 3 }}
+                    >
+                      No pudimos verificar que no seas un robot. Podés intentar
+                      crear la tienda igual; si no funciona, recargá la página o
+                      probá desde otra red.
+                    </Alert>
                   )}
 
                   {isError && (
