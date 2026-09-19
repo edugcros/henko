@@ -312,6 +312,88 @@ export const mapMercadoPagoSubscriptionStatus = (mpStatus, mpReason) => {
   return statusMap[status] || 'pending'
 }
 
+/**
+ * El pago, consultado con la credencial de PLATAFORMA.
+ *
+ * POR QUÉ HACE FALTA
+ *
+ * Los avisos de tipo `payment` y `subscription_authorized_payment` traen en
+ * `data.id` el id de un PAGO, no el de la suscripción. El id de la suscripción
+ * viaja adentro del pago, en `metadata.preapproval_id`. Sin consultarlo no hay
+ * forma de saber a qué comercio corresponde el evento.
+ *
+ * Devuelve null si no se puede leer: un aviso que no se puede resolver no
+ * puede tumbar el webhook, y arriba se distingue ese caso del de "no existe".
+ */
+export const fetchPlatformPayment = async paymentId => {
+  const accessToken = String(env.mercadoPago?.accessToken || '').trim()
+  const id = sanitizeString(paymentId)
+
+  if (!accessToken || !id) return null
+
+  try {
+    const res = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    })
+
+    if (!res.ok) return null
+
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * De qué suscripción habla este aviso.
+ *
+ * EL BUG QUE CIERRA
+ *
+ * El webhook buscaba el comercio con `data.id` tal cual, contra
+ * `integrations.subscriptionMercadoPago.subscriptionId`. Para los avisos de
+ * suscripción eso está bien. Para los de PAGO no: `data.id` es un id de pago
+ * —10 dígitos— y subscriptionId guarda un id de preapproval —32 caracteres
+ * hex—. No coinciden nunca.
+ *
+ * Medido en producción el 19/09/2026 a las 04:05:
+ *
+ *   type=payment  data.id=179804496028
+ *   -> "Tenant no encontrado para suscripción de MP"
+ *
+ * Y ese pago traía metadata.preapproval_id = 89dc868afe674fd39f84664aea5b5f28.
+ * El dato estaba, no se miraba.
+ *
+ * Los avisos de pago son las RENOVACIONES MENSUALES y los PAGOS RECHAZADOS.
+ * Descartarlos todos deja el ciclo de vida de la suscripción ciego justo
+ * después del alta — que es el mismo agujero que se creyó cerrado al arreglar
+ * el 403 del CSRF.
+ *
+ * Devuelve también el PAGO cuando lo hubo, para no consultarlo dos veces: el
+ * mismo objeto dice de qué suscripción se trata Y si el cobro salió o no.
+ *
+ * @returns {Promise<{preapprovalId: string|null, payment: Object|null}>}
+ */
+export const resolveSubscriptionEventTarget = async ({ type, dataId }) => {
+  const id = sanitizeString(dataId)
+  if (!id) return { preapprovalId: null, payment: null }
+
+  const esAvisoDePago = ['payment', 'subscription_authorized_payment'].includes(
+    sanitizeString(type).toLowerCase(),
+  )
+
+  if (!esAvisoDePago) return { preapprovalId: id, payment: null }
+
+  const payment = await fetchPlatformPayment(id)
+
+  const preapprovalId =
+    sanitizeString(payment?.metadata?.preapproval_id) ||
+    sanitizeString(payment?.metadata?.preapprovalId) ||
+    null
+
+  return { preapprovalId, payment }
+}
+
 // ─── AUDITORÍA CONTRA EL PROVEEDOR ─────────────────────────────────────────
 //
 // QUÉ PROBLEMA RESUELVE

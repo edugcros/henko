@@ -7,7 +7,10 @@ import SubscriptionWebhookEvent, {
 } from '../models/subscriptionWebhookEventModel.js'
 import { sendTemplateEmail } from '../services/emailService.js'
 import { verifyMercadoPagoWebhookSignature } from '../services/paymentWebhookService.js'
-import { readProviderBillingDates } from '../services/subscriptionPaymentService.js'
+import {
+  readProviderBillingDates,
+  resolveSubscriptionEventTarget,
+} from '../services/subscriptionPaymentService.js'
 import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
@@ -117,9 +120,33 @@ export const handleSubscriptionWebhook = async (req, res) => {
   try {
     logger.info('Webhook de suscripción recibido', { type, dataId: data.id, eventId })
 
-    const tenant = await Tenant.findOne({
-      'integrations.subscriptionMercadoPago.subscriptionId': data.id,
+    // `data.id` NO SIEMPRE ES EL ID DE LA SUSCRIPCIÓN
+    //
+    // En los avisos de tipo `payment` y `subscription_authorized_payment` es el
+    // id de un PAGO. subscriptionId guarda un id de preapproval, así que
+    // buscarlo con el id del pago no coincide nunca.
+    //
+    // Medido en producción el 19/09/2026 a las 04:05:
+    //
+    //   type=payment  data.id=179804496028
+    //   -> "Tenant no encontrado para suscripción de MP"
+    //
+    // Y ese pago traía metadata.preapproval_id = 89dc868afe674fd39f84664aea5b5f28.
+    // El dato estaba; no se miraba.
+    //
+    // Los avisos de pago son las RENOVACIONES y los PAGOS RECHAZADOS: todo el
+    // ciclo de vida posterior al alta. Descartarlos deja la suscripción
+    // congelada en el estado del primer día.
+    const { preapprovalId, payment } = await resolveSubscriptionEventTarget({
+      type,
+      dataId: data.id,
     })
+
+    const tenant = preapprovalId
+      ? await Tenant.findOne({
+        'integrations.subscriptionMercadoPago.subscriptionId': preapprovalId,
+      })
+      : null
 
     if (!tenant) {
       // Sin tenant no hay nada que aplicar, y reintentar no lo va a encontrar.
@@ -128,6 +155,10 @@ export const handleSubscriptionWebhook = async (req, res) => {
       // suscripción se creó sin guardar su id y eso sí es un problema.
       logger.warn('Tenant no encontrado para suscripción de MP', {
         mpSubscriptionId: data.id,
+        // Lo que se buscó de verdad. Sin esto, un aviso de pago se investigaba
+        // con el id equivocado.
+        preapprovalId: preapprovalId || '(no se pudo resolver)',
+        type,
         eventId,
       })
 
@@ -151,6 +182,40 @@ export const handleSubscriptionWebhook = async (req, res) => {
     case 'subscription_canceled':
       await handleSubscriptionCanceled(tenant, data)
       break
+
+    // LOS AVISOS DE PAGO CAIAN ACA, EN "no procesado"
+    //
+    // `payment` y `subscription_authorized_payment` son las RENOVACIONES y los
+    // PAGOS RECHAZADOS: todo el ciclo de vida posterior al alta. No estaban en
+    // el switch, así que aunque se resolviera el comercio no pasaba nada.
+    //
+    // El estado sale del pago que ya se consultó para resolver la suscripción;
+    // no hay una segunda llamada. Sin el pago no se decide nada: marcar un
+    // cobro como aprobado o rechazado sin saberlo es peor que no hacer nada.
+    case 'payment':
+    case 'subscription_authorized_payment': {
+      const estado = String(payment?.status || '').toLowerCase()
+
+      if (estado === 'approved') {
+        await handlePaymentAuthorized(tenant, data)
+      } else if (['rejected', 'cancelled'].includes(estado)) {
+        logger.warn('Cobro de suscripción rechazado por el proveedor', {
+          tenantId: String(tenant._id),
+          // El motivo real: 'cc_rejected_high_risk' y compañía. Es lo que
+          // permite decirle al comercio por qué, en vez de un genérico.
+          statusDetail: payment?.status_detail || null,
+          paymentMethod: payment?.payment_method_id || null,
+          paymentType: payment?.payment_type_id || null,
+        })
+        await handlePaymentFailed(tenant, data)
+      } else {
+        logger.info('Cobro de suscripción en estado no terminal', {
+          tenantId: String(tenant._id),
+          estado: estado || '(sin pago consultable)',
+        })
+      }
+      break
+    }
 
     default:
       logger.info('Tipo de evento no procesado', { type })

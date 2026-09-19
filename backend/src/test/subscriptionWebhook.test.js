@@ -58,6 +58,20 @@ jest.unstable_mockModule("../../config/logger.js", () => ({
   default: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
+const mockResolveTarget = jest.fn();
+
+// resolveSubscriptionEventTarget sale a la API de Mercado Pago para traducir
+// un id de PAGO al id de la suscripcion. Acá se controla su respuesta: lo que
+// se prueba es qué hace el webhook con ella, no cómo se obtiene.
+jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
+  resolveSubscriptionEventTarget: mockResolveTarget,
+  readProviderBillingDates: () => ({
+    nextBillingAt: null,
+    currentPeriodEnd: null,
+    currentPeriodStart: null,
+  }),
+}));
+
 const { handleSubscriptionWebhook } = await import(
   "../controller/subscriptionWebhookCtrl.js"
 );
@@ -102,6 +116,8 @@ beforeEach(() => {
   mockEventCreate.mockResolvedValue({ _id: "evt-1" });
   mockEventUpdate.mockResolvedValue({});
   mockTenantFindOne.mockResolvedValue(TENANT);
+  // Por defecto: un aviso de suscripción, donde data.id YA es el preapproval.
+  mockResolveTarget.mockResolvedValue({ preapprovalId: "mp-sub-1", payment: null });
   mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} });
   mockSendEmail.mockResolvedValue({});
 });
@@ -342,5 +358,98 @@ describe("webhook de suscripción · códigos HTTP", () => {
         $set: expect.objectContaining({ status: "processed" }),
       }),
     );
+  });
+});
+
+// LOS AVISOS DE PAGO SON LAS RENOVACIONES, Y SE DESCARTABAN TODOS
+//
+// En `payment` y `subscription_authorized_payment`, data.id es el id de un
+// PAGO. El webhook lo usaba tal cual contra
+// integrations.subscriptionMercadoPago.subscriptionId, que guarda un id de
+// preapproval — 32 caracteres hex contra 10 dígitos. No coinciden nunca.
+//
+// Medido en producción el 19/09/2026 a las 04:05:
+//
+//   type=payment  data.id=179804496028
+//   -> "Tenant no encontrado para suscripción de MP"
+//
+// Y ese pago traía metadata.preapproval_id = 89dc868afe674fd39f84664aea5b5f28,
+// más el motivo del rechazo: cc_rejected_high_risk sobre una prepaid_card.
+// Todo el dato estaba; no se miraba.
+//
+// Encima esos tipos tampoco estaban en el switch: aunque el comercio se
+// resolviera, caían en "Tipo de evento no procesado".
+
+describe("webhook de suscripción · los avisos de pago se aplican", () => {
+  const avisoDePago = () => ({
+    headers: { "x-signature": "ts=1,v1=abc", "x-request-id": "req-pago" },
+    originalUrl: "/api/webhooks/mercadopago/subscription",
+    body: { type: "payment", data: { id: "179804496028" } },
+  });
+
+  test("resuelve el comercio desde el pago, no desde data.id", async () => {
+    // ESTA ES LA PROPIEDAD. Antes: "Tenant no encontrado" y evento descartado.
+    mockResolveTarget.mockResolvedValue({
+      preapprovalId: "89dc868afe674fd39f84664aea5b5f28",
+      payment: { status: "approved" },
+    });
+
+    const res = await correr(avisoDePago());
+
+    expect(res.statusCode).toBe(200);
+    expect(mockTenantFindOne).toHaveBeenCalledWith({
+      "integrations.subscriptionMercadoPago.subscriptionId":
+        "89dc868afe674fd39f84664aea5b5f28",
+    });
+    // Y se aplicó: un cobro aprobado deja la suscripción activa.
+    expect(mockTenantUpdate).toHaveBeenCalled();
+  });
+
+  test("un cobro rechazado NO se aplica como aprobado", async () => {
+    // El caso real: cc_rejected_high_risk sobre una tarjeta prepaga. Tratarlo
+    // como aprobado dejaría al comercio activo sin haber pagado.
+    mockResolveTarget.mockResolvedValue({
+      preapprovalId: "89dc868afe674fd39f84664aea5b5f28",
+      payment: {
+        status: "rejected",
+        status_detail: "cc_rejected_high_risk",
+        payment_method_id: "master",
+        payment_type_id: "prepaid_card",
+      },
+    });
+
+    const res = await correr(avisoDePago());
+
+    expect(res.statusCode).toBe(200);
+
+    const estados = mockTenantUpdate.mock.calls.map(
+      ([, cambios]) => cambios?.subscriptionStatus,
+    );
+    expect(estados).not.toContain("active");
+  });
+
+  test("sin poder consultar el pago no se decide nada", async () => {
+    // Marcar un cobro como aprobado o rechazado sin saberlo es peor que no
+    // hacer nada: una caída de la API de Mercado Pago daría de baja o de alta
+    // a comercios por adivinanza.
+    mockResolveTarget.mockResolvedValue({
+      preapprovalId: "89dc868afe674fd39f84664aea5b5f28",
+      payment: null,
+    });
+
+    const res = await correr(avisoDePago());
+
+    expect(res.statusCode).toBe(200);
+    expect(mockTenantUpdate).not.toHaveBeenCalled();
+  });
+
+  test("si el pago no dice de qué suscripción es, no se toca a nadie", async () => {
+    mockResolveTarget.mockResolvedValue({ preapprovalId: null, payment: null });
+
+    const res = await correr(avisoDePago());
+
+    expect(res.statusCode).toBe(200);
+    expect(mockTenantFindOne).not.toHaveBeenCalled();
+    expect(mockTenantUpdate).not.toHaveBeenCalled();
   });
 });
