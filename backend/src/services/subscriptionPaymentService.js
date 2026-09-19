@@ -386,7 +386,23 @@ export const resolveSubscriptionEventTarget = async ({ type, dataId }) => {
 
   const payment = await fetchPlatformPayment(id)
 
+  // DÓNDE VIVE DE VERDAD EL ID DE LA SUSCRIPCIÓN
+  //
+  // En `point_of_interaction.transaction_data.subscription_id`. NO en
+  // `metadata`: medido sobre el pago 179806584762 del 19/09/2026, metadata
+  // llega vacío —`{}`— y el id está solo en esa ruta.
+  //
+  // La primera versión de esto leía metadata.preapproval_id y resolvía null
+  // siempre. El error vino de un script de diagnóstico que imprimía
+  // `metadata?.preapproval_id || point_of_interaction?...?.subscription_id`:
+  // el valor salía de la segunda rama y se escribió el código contra la
+  // primera.
+  //
+  // Se leen las dos igual. Cuál use Mercado Pago puede depender del tipo de
+  // evento o de la versión de su API, y equivocarse de campo otra vez sale
+  // más caro que un `||`.
   const preapprovalId =
+    sanitizeString(payment?.point_of_interaction?.transaction_data?.subscription_id) ||
     sanitizeString(payment?.metadata?.preapproval_id) ||
     sanitizeString(payment?.metadata?.preapprovalId) ||
     null

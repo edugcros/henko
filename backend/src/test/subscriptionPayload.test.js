@@ -23,9 +23,15 @@ jest.unstable_mockModule("../../config/logger.js", () => ({
   default: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-const { buildMercadoPagoSubscriptionData, mapMercadoPagoSubscriptionError } = await import(
-  "../services/subscriptionPaymentService.js"
-);
+// fetchPlatformPayment lee env.mercadoPago.accessToken, y config/env.js captura
+// process.env al importarse: esto tiene que estar antes.
+process.env.MP_ACCESS_TOKEN = "APP_USR-token-de-plataforma-para-pruebas";
+
+const {
+  buildMercadoPagoSubscriptionData,
+  mapMercadoPagoSubscriptionError,
+  resolveSubscriptionEventTarget,
+} = await import("../services/subscriptionPaymentService.js");
 
 // Los planes ya no traen precio en el código: el dueño lo configura. Para probar
 // el cuerpo hay que fijar uno, igual que en producción hay que configurarlo
@@ -236,5 +242,76 @@ describe("clasificación del rechazo · el detalle del proveedor se lee", () => 
 
     expect(mapeado.code).toBe("SUBSCRIPTION_PAYMENT_ERROR");
     expect(mapeado.details).toContain("CC_VAL_433");
+  });
+});
+
+// DE DONDE SE SACA EL ID DE LA SUSCRIPCION EN UN AVISO DE PAGO
+//
+// En los avisos `payment` y `subscription_authorized_payment`, data.id es el
+// id de un PAGO. El id de la suscripcion viaja adentro del pago, en
+// `point_of_interaction.transaction_data.subscription_id`.
+//
+// NO en `metadata`: medido sobre el pago 179806584762 del 19/09/2026, metadata
+// llega vacio —`{}`— y el id esta solo en esa ruta. La primera version de esto
+// leia metadata.preapproval_id y resolvia null siempre, asi que el webhook
+// seguia descartando todas las renovaciones.
+
+describe("aviso de pago · resolver a que suscripcion pertenece", () => {
+  const pagoReal = {
+    status: "rejected",
+    status_detail: "cc_rejected_high_risk",
+    payment_type_id: "prepaid_card",
+    metadata: {},
+    point_of_interaction: {
+      transaction_data: { subscription_id: "415150e308f74399b2b44fc9c7f1a75d" },
+    },
+  };
+
+  const conFetch = async (respuesta, evento) => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => respuesta }));
+    return resolveSubscriptionEventTarget(evento);
+  };
+
+  test("lo saca de point_of_interaction, que es donde esta", async () => {
+    // ESTA ES LA PROPIEDAD. Leyendo metadata devolvia null y el webhook
+    // descartaba el evento.
+    const r = await conFetch(pagoReal, { type: "payment", dataId: "179806584762" });
+
+    expect(r.preapprovalId).toBe("415150e308f74399b2b44fc9c7f1a75d");
+    expect(r.payment.status).toBe("rejected");
+  });
+
+  test("tambien lo acepta en metadata, por si otro evento lo trae asi", async () => {
+    const r = await conFetch(
+      { status: "approved", metadata: { preapproval_id: "desde-metadata" } },
+      { type: "subscription_authorized_payment", dataId: "1" },
+    );
+
+    expect(r.preapprovalId).toBe("desde-metadata");
+  });
+
+  test("en un aviso de suscripcion, data.id YA es el id y no se consulta nada", async () => {
+    // Pedirle el pago a Mercado Pago cuando el id ya sirve seria una llamada
+    // de red por evento, para nada.
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy;
+
+    const r = await resolveSubscriptionEventTarget({
+      type: "subscription_canceled",
+      dataId: "85f9b9519ee64fe78a03032061d5a42a",
+    });
+
+    expect(r.preapprovalId).toBe("85f9b9519ee64fe78a03032061d5a42a");
+    expect(r.payment).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test("si el pago no se puede leer, devuelve null en vez de romper", async () => {
+    global.fetch = jest.fn(async () => ({ ok: false, status: 404, json: async () => ({}) }));
+
+    const r = await resolveSubscriptionEventTarget({ type: "payment", dataId: "9" });
+
+    expect(r.preapprovalId).toBeNull();
+    expect(r.payment).toBeNull();
   });
 });
