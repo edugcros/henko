@@ -284,7 +284,10 @@ describe("aviso de pago · resolver a que suscripcion pertenece", () => {
   test("tambien lo acepta en metadata, por si otro evento lo trae asi", async () => {
     const r = await conFetch(
       { status: "approved", metadata: { preapproval_id: "desde-metadata" } },
-      { type: "subscription_authorized_payment", dataId: "1" },
+      // `payment`, no `subscription_authorized_payment`: ese otro tipo va por
+      // /authorized_payments, donde preapproval_id es de primer nivel y no
+      // hace falta ningun respaldo.
+      { type: "payment", dataId: "1" },
     );
 
     expect(r.preapprovalId).toBe("desde-metadata");
@@ -313,5 +316,65 @@ describe("aviso de pago · resolver a que suscripcion pertenece", () => {
 
     expect(r.preapprovalId).toBeNull();
     expect(r.payment).toBeNull();
+  });
+});
+
+// EL COBRO RECURRENTE VIVE EN OTRO RECURSO
+//
+// Los avisos `subscription_authorized_payment` traen un id que NO existe en
+// /v1/payments: devuelve 404. Esta en /authorized_payments. Comprobado el
+// 19/09/2026 con el id 7032067277 — 404 en el primero, 200 en el segundo.
+//
+// Ahi el dato viene mejor: preapproval_id es de primer nivel y el cobro real
+// viaja anidado en `payment` con su propio status. El envoltorio tiene su
+// propio status ('processed') que dice que el AVISO se proceso, no que el
+// cobro haya salido: confundirlos activaria comercios por cobros rechazados.
+
+describe("cobro recurrente · sale de /authorized_payments", () => {
+  test("pide el recurso correcto y saca el preapproval de primer nivel", async () => {
+    // ESTA ES LA PROPIEDAD. Pidiendo /v1/payments daba 404 y el aviso se
+    // descartaba con "no se pudo resolver".
+    const urls = [];
+    global.fetch = jest.fn(async url => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        json: async () => ({
+          preapproval_id: "a97143a921a44a3ab0f8cb148edb79b1",
+          status: "processed",
+          payment: { id: 179809310096, status: "approved", status_detail: "accredited" },
+        }),
+      };
+    });
+
+    const r = await resolveSubscriptionEventTarget({
+      type: "subscription_authorized_payment",
+      dataId: "7032067277",
+    });
+
+    expect(urls[0]).toContain("/authorized_payments/7032067277");
+    expect(urls[0]).not.toContain("/v1/payments");
+    expect(r.preapprovalId).toBe("a97143a921a44a3ab0f8cb148edb79b1");
+  });
+
+  test("devuelve el pago ANIDADO, no el envoltorio", async () => {
+    // El envoltorio dice status 'processed' —el aviso se proceso— y el cobro
+    // real puede haber sido rechazado. Devolver el envoltorio activaria al
+    // comercio sin que hubiera pagado.
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        preapproval_id: "pre-1",
+        status: "processed",
+        payment: { status: "rejected", status_detail: "cc_rejected_high_risk" },
+      }),
+    }));
+
+    const r = await resolveSubscriptionEventTarget({
+      type: "subscription_authorized_payment",
+      dataId: "1",
+    });
+
+    expect(r.payment.status).toBe("rejected");
   });
 });

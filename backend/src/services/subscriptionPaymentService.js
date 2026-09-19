@@ -381,14 +381,13 @@ export const createAuthorizableSubscription = async ({
  * Devuelve null si no se puede leer: un aviso que no se puede resolver no
  * puede tumbar el webhook, y arriba se distingue ese caso del de "no existe".
  */
-export const fetchPlatformPayment = async paymentId => {
+const pedirAMercadoPago = async ruta => {
   const accessToken = String(env.mercadoPago?.accessToken || '').trim()
-  const id = sanitizeString(paymentId)
 
-  if (!accessToken || !id) return null
+  if (!accessToken) return null
 
   try {
-    const res = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(id)}`, {
+    const res = await fetch(`https://api.mercadopago.com${ruta}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(10000),
     })
@@ -399,6 +398,34 @@ export const fetchPlatformPayment = async paymentId => {
   } catch {
     return null
   }
+}
+
+export const fetchPlatformPayment = async paymentId => {
+  const id = sanitizeString(paymentId)
+  if (!id) return null
+
+  return pedirAMercadoPago(`/v1/payments/${encodeURIComponent(id)}`)
+}
+
+/**
+ * El cobro recurrente de una suscripción.
+ *
+ * VIVE EN OTRO RECURSO, Y AHÍ ESTUVO EL SEGUNDO TROPIEZO
+ *
+ * Los avisos `subscription_authorized_payment` traen un id que NO existe en
+ * /v1/payments — devuelve 404. Está en /authorized_payments, que es un recurso
+ * distinto: comprobado el 19/09/2026 con el id 7032067277, 404 en el primero y
+ * 200 en el segundo.
+ *
+ * Y ahí el dato viene mejor: `preapproval_id` es un campo de primer nivel, sin
+ * tener que buscarlo adentro de point_of_interaction, y el cobro real viaja
+ * anidado en `payment` con su propio status.
+ */
+export const fetchAuthorizedPayment = async authorizedPaymentId => {
+  const id = sanitizeString(authorizedPaymentId)
+  if (!id) return null
+
+  return pedirAMercadoPago(`/authorized_payments/${encodeURIComponent(id)}`)
 }
 
 /**
@@ -434,11 +461,27 @@ export const resolveSubscriptionEventTarget = async ({ type, dataId }) => {
   const id = sanitizeString(dataId)
   if (!id) return { preapprovalId: null, payment: null }
 
-  const esAvisoDePago = ['payment', 'subscription_authorized_payment'].includes(
-    sanitizeString(type).toLowerCase(),
-  )
+  const tipo = sanitizeString(type).toLowerCase()
 
-  if (!esAvisoDePago) return { preapprovalId: id, payment: null }
+  // DOS RECURSOS DISTINTOS, Y EL MISMO ERROR DOS VECES SI SE CONFUNDEN
+  //
+  // `subscription_authorized_payment` es el COBRO RECURRENTE, y su id vive en
+  // /authorized_payments. Buscarlo en /v1/payments da 404 — comprobado con el
+  // id 7032067277 el 19/09/2026. Ahí el preapproval_id viene de primer nivel y
+  // el cobro real viaja anidado en `payment`.
+  if (tipo === 'subscription_authorized_payment') {
+    const autorizado = await fetchAuthorizedPayment(id)
+
+    return {
+      preapprovalId: sanitizeString(autorizado?.preapproval_id) || null,
+      // Se devuelve el PAGO anidado, no el envoltorio: el que decide arriba
+      // mira `payment.status`, y el del envoltorio ('processed') dice que el
+      // aviso se proceso, no que el cobro haya salido.
+      payment: autorizado?.payment || null,
+    }
+  }
+
+  if (tipo !== 'payment') return { preapprovalId: id, payment: null }
 
   const payment = await fetchPlatformPayment(id)
 
