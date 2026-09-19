@@ -193,9 +193,9 @@ export const notifyAccountingDrift = async audit => {
       ['Libro (ledger)', cost.ledger],
       ...(cost.byok
         ? [
-            ['  del cual, key propia del comercio', cost.byok],
-            ['  libro sin key propia (base del contador)', cost.ledgerSinByok],
-          ]
+          ['  del cual, key propia del comercio', cost.byok],
+          ['  libro sin key propia (base del contador)', cost.ledgerSinByok],
+        ]
         : []),
       ['Suma de los comercios', cost.tenantUsage],
       ['Contador de plataforma', cost.platformUsage],
