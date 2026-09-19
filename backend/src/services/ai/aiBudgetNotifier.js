@@ -183,7 +183,7 @@ export const notifyAccountingDrift = async audit => {
       return { sent: false, reason: 'no_recipients' }
     }
 
-    const { period, cost = {}, findings = [] } = audit || {}
+    const { period, cost = {}, findings = [], ledgerMissing = 0 } = audit || {}
 
     // La fila del libro sin BYOK y la del BYOK solo aparecen cuando hay algo
     // que mostrar. Sin esto el correo ponía un total del libro al lado del
@@ -220,6 +220,14 @@ export const notifyAccountingDrift = async audit => {
         <table style="border-collapse:collapse;font-size:14px;margin:12px 0">${filas}</table>
         <p style="font-size:14px;margin-bottom:4px"><strong>Diferencias</strong></p>
         <ul style="font-size:14px;margin-top:4px">${diferencias}</ul>
+        ${ledgerMissing
+    ? `<p style="font-size:14px;background:#fdf0e6;border-left:3px solid #a03e12;padding:10px 14px">
+             <strong>Y al libro le faltan ${ledgerMissing} fila(s).</strong> Están en las
+             llamadas al proveedor pero no llegaron al libro, así que cualquier
+             comparación contra él se hace sobre datos incompletos. Se reponen con
+             <code>backfillLedgerFromProviderCalls({ period, apply: true })</code>.
+           </p>`
+    : ''}
         <p style="font-size:13px;color:#555;margin-top:20px">
           El libro es la fuente de verdad. NO se corrigió nada de forma
           automática: la corrección se pide a mano y solo cuando el libro está
@@ -233,7 +241,10 @@ export const notifyAccountingDrift = async audit => {
       `Comercios: ${moneyPreciso(cost.tenantUsage)}`,
       `Plataforma: ${moneyPreciso(cost.platformUsage)}`,
       ...findings.map(f => `${f.between[0]} vs ${f.between[1]}: ${moneyPreciso(f.difference)}`),
-      'No se corrigió nada automáticamente.',
+      ...(ledgerMissing
+        ? [`Al libro le faltan ${ledgerMissing} fila(s) que si estan en las llamadas al proveedor.`]
+        : []),
+      'No se corrigio nada automaticamente.',
     ].join('\n')
 
     const results = await Promise.all(

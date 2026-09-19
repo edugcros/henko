@@ -1205,3 +1205,68 @@ describe('relleno del libro · desde las llamadas al proveedor', () => {
     expect(informe.missing).toHaveLength(0)
   })
 })
+
+// UN LIBRO INCOMPLETO NO PUEDE INFORMARSE COMO CUADRADO
+//
+// auditAccounting compara las proyecciones CONTRA el libro, asi que su
+// respuesta se apoya en que el libro este entero. Y puede no estarlo:
+// writeLedgerEntry no se espera y se traga los errores, a proposito.
+//
+// Sin comprobarlo, un libro al que le faltan filas puede dar "cuadra" —si lo
+// que falta cae bajo la tolerancia— y eso es peor que un descuadre: es un
+// veredicto tranquilizador sobre datos incompletos.
+
+describe('ciclo de auditoría · mira si el libro está completo', () => {
+  test('con una fila faltante NO dice que cuadra', async () => {
+    // ESTA ES LA PROPIEDAD. Los numeros dan, pero contra un libro al que le
+    // falta una fila: no es lo mismo que cuadrar.
+    const period = '2063-01'
+
+    // Una llamada al proveedor sin su fila en el libro, con un costo tan
+    // chico que no mueve ninguna comparacion.
+    await AiProviderCall.create({
+      tenantId: TENANT,
+      operationId: `huerfana-${period}`,
+      callId: 'main',
+      period,
+      metric: AI_METRICS.AGENT_TOKENS,
+      provider: 'gemini',
+      actualModel: 'gemini-3.1-flash-lite',
+      totalTokens: 10,
+      costUsd: 0.000001,
+      tenantProviderCostUsd: 0.000001,
+      keySource: 'platform',
+      plan: 'starter',
+    })
+
+    const resultado = await runAccountingAudit({ period })
+
+    expect(resultado.ledgerMissing).toBe(1)
+    expect(resultado.balanced).toBe(false)
+  })
+
+  test('sin filas faltantes y con las cuentas dando, cuadra', async () => {
+    // El caso normal tiene que seguir siendo silencioso, o el aviso se vuelve
+    // ruido y se deja de leer.
+    const period = '2063-02'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: `completa-${period}`,
+      keySource: 'platform', costUsd: 5,
+    })
+    await AiPlatformUsage.updateOne(
+      { period }, { $set: { estimatedCostUsd: 5 } }, { upsert: true },
+    )
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 5 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    const resultado = await runAccountingAudit({ period })
+
+    expect(resultado.ledgerMissing).toBe(0)
+    expect(resultado.balanced).toBe(true)
+  })
+})

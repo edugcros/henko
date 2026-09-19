@@ -718,12 +718,54 @@ export const runAccountingAudit = async ({ period = getCurrentPeriod() } = {}) =
   try {
     const auditoria = await auditAccounting(period)
 
-    if (auditoria.balanced) {
+    // ¿ESTÁ COMPLETO EL LIBRO? DECIDE CUÁNTO VALE EL VEREDICTO DE ARRIBA
+    //
+    // auditAccounting compara las proyecciones CONTRA el libro, así que su
+    // respuesta se apoya en que el libro esté entero. Y puede no estarlo:
+    // writeLedgerEntry no se espera y se traga los errores, a propósito.
+    //
+    // Sin esta comprobación, un libro al que le faltan filas puede dar
+    // "cuadra" —si lo que falta cae bajo la tolerancia— y eso es peor que un
+    // descuadre: es un veredicto tranquilizador sobre datos incompletos.
+    //
+    // Solo DETECTA. Reponer escribe en el libro, que es la fuente de verdad, y
+    // eso se pide a mano: backfillLedgerFromProviderCalls con apply.
+    const relleno = await backfillLedgerFromProviderCalls({ period }).catch(error => {
+      logger.warn('[AI LEDGER] No se pudo comprobar si el libro está completo', {
+        period,
+        error: error.message,
+      })
+      return null
+    })
+
+    const faltanFilas = Number(relleno?.missing?.length || 0)
+
+    if (faltanFilas) {
+      logger.error('[AI LEDGER] Al libro le faltan filas que sí están en las llamadas', {
+        period,
+        faltantes: faltanFilas,
+        // Para poder reponerlas sin volver a buscarlas.
+        operaciones: relleno.missing.slice(0, 20).map(m => m.operationId),
+        comoReponer: 'backfillLedgerFromProviderCalls({ period, apply: true })',
+      })
+    }
+
+    if (auditoria.balanced && !faltanFilas) {
       logger.info('[AI ACCOUNTING] Contabilidad cuadrada', {
         period,
         costUsd: auditoria.cost.ledger,
       })
-      return auditoria
+      return { ...auditoria, ledgerMissing: 0 }
+    }
+
+    if (auditoria.balanced) {
+      // Cuadra, pero contra un libro incompleto. No es lo mismo que cuadrar.
+      logger.warn('[AI ACCOUNTING] Las cuentas dan, pero el libro está incompleto', {
+        period,
+        faltantes: faltanFilas,
+      })
+
+      return { ...auditoria, balanced: false, ledgerMissing: faltanFilas }
     }
 
     // Nivel error y no warn: una diferencia acá significa que alguien pagó
@@ -735,9 +777,9 @@ export const runAccountingAudit = async ({ period = getCurrentPeriod() } = {}) =
       findings: auditoria.findings,
     })
 
-    await notifyAccountingDrift(auditoria)
+    await notifyAccountingDrift({ ...auditoria, ledgerMissing: faltanFilas })
 
-    return auditoria
+    return { ...auditoria, ledgerMissing: faltanFilas }
   } catch (error) {
     logger.error('[AI ACCOUNTING] La auditoría falló', {
       period,
