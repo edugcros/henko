@@ -14,6 +14,7 @@ import {
   mapMercadoPagoSubscriptionStatus,
   readProviderBillingDates,
   createSubscriptionClient,
+  createAuthorizableSubscription,
 } from '../services/subscriptionPaymentService.js'
 import {
   getTenantMercadoPagoContext,
@@ -314,9 +315,59 @@ export const processSubscriptionPayment = async (req, res) => {
       })
 
       const mapped = mapMercadoPagoSubscriptionError(mpError)
+
+      // EL RODEO: QUE LO AUTORICE DESDE MERCADO PAGO
+      //
+      // Cobrar en el acto es mejor cuando la tarjeta pasa. Cuando no pasa, sin
+      // esto el comercio queda en un callejón: no hay forma de elegir otro
+      // medio de pago desde nuestra pantalla.
+      //
+      // Medido el 19/09/2026: el emisor rechazó una prepaga de Mercado Pago
+      // once veces seguidas, y el propio panel del vendedor recomendaba "pague
+      // con otro medio de pago". La plataforma no ofrecía ninguno.
+      //
+      // Se crea la misma suscripción en 'pending' y se devuelve su init_point.
+      // NO activa nada: la autorización llega después por webhook. Darla por
+      // pagada acá sería regalar el servicio a quien abandone esa pantalla.
+      let initPoint = null
+
+      try {
+        const alternativa = await createAuthorizableSubscription({
+          plan: normalizedPlan,
+          tenantId: tenant._id,
+          userId,
+          email: payer.email,
+        })
+
+        initPoint = alternativa.initPoint
+
+        // Sin guardar el id, cuando el comercio autorice el webhook no va a
+        // saber de quién es el evento y el rodeo muere en el último paso.
+        //
+        // Solo si no hay una suscripción activa: pisar el id de una que está
+        // cobrando dejaría a la auditoría comparando contra la equivocada.
+        if (initPoint && tenant.subscriptionStatus !== 'active') {
+          await Tenant.findByIdAndUpdate(tenant._id, {
+            'integrations.subscriptionMercadoPago.subscriptionId': alternativa.id,
+            'integrations.subscriptionMercadoPago.status': alternativa.status,
+            'integrations.subscriptionMercadoPago.planSelected': normalizedPlan,
+          })
+        }
+      } catch (alternativaError) {
+        // Que falle el rodeo no puede cambiar la respuesta del cobro: el
+        // comercio tiene que enterarse igual de por qué no se pudo cobrar.
+        logger.warn('No se pudo ofrecer la autorización desde Mercado Pago', {
+          tenantId: String(tenant._id),
+          error: alternativaError?.message,
+        })
+      }
+
       return sendResponse(res, mapped.status, false, mapped.message, {
         details: mapped.details,
         code: mapped.code,
+        // El panel ofrece este enlace cuando viene. Null significa que el
+        // rodeo tampoco estuvo disponible, no que no haga falta.
+        initPoint,
       })
     }
 

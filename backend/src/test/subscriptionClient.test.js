@@ -163,6 +163,7 @@ describe("subscriptionCtrl · el alta llega a Mercado Pago", () => {
       buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
       mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
       mapMercadoPagoSubscriptionStatus: () => "active",
+      createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
         currentPeriodEnd: null,
@@ -213,6 +214,7 @@ describe("subscriptionCtrl · el alta llega a Mercado Pago", () => {
       }),
       mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
       mapMercadoPagoSubscriptionStatus: () => "active",
+      createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
         currentPeriodEnd: null,
@@ -274,6 +276,7 @@ describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
       buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
       mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
       mapMercadoPagoSubscriptionStatus: () => "active",
+      createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
         currentPeriodEnd: null,
@@ -319,6 +322,7 @@ describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
       buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
       mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
       mapMercadoPagoSubscriptionStatus: () => "active",
+      createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
         currentPeriodEnd: null,
@@ -445,5 +449,128 @@ describe("configuración de suscripción · los dos Mercado Pago son independien
     expect(con.body?.data?.tenantPaymentsReady).toBe(true);
     expect(sin.statusCode).toBe(200);
     expect(con.statusCode).toBe(200);
+  });
+});
+
+// CUANDO LA TARJETA NO PASA, OFRECER AUTORIZAR DESDE MERCADO PAGO
+//
+// El checkout cobra en el acto: tokeniza y manda status 'authorized' con
+// card_token_id. Cuando esa tarjeta no pasa, el comercio queda en un callejon
+// — no hay forma de elegir otro medio de pago desde nuestra pantalla.
+//
+// Medido el 19/09/2026 con un comercio real: el emisor rechazo una prepaga de
+// Mercado Pago once veces seguidas, y el panel del vendedor recomendaba "pague
+// con otro medio de pago". La plataforma no ofrecia ninguno.
+
+describe("cobro rechazado · se ofrece autorizar desde Mercado Pago", () => {
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { this.body = payload; return this; },
+  });
+
+  const pedido = () => ({
+    body: {
+      plan: "starter",
+      token: "tok-1",
+      payer: { email: "duenio@comercio.com", identification: { type: "DNI", number: "32680474" } },
+    },
+  });
+
+  const mockCrearAutorizable = jest.fn();
+
+  const preparar = async ({ estadoActual = "trialing" } = {}) => {
+    jest.resetModules();
+
+    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
+      createSubscriptionClient: () => ({
+        create: async () => { throw Object.assign(new Error("CC_VAL_433 Credit card validation has failed"), { status: 400, causes: [] }); },
+      }),
+      buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
+      mapMercadoPagoSubscriptionError: () => ({
+        status: 400, code: "SUBSCRIPTION_PAYMENT_ERROR",
+        message: "No se pudo procesar el pago de suscripción", details: "CC_VAL_433",
+      }),
+      mapMercadoPagoSubscriptionStatus: () => "pending",
+      readProviderBillingDates: () => ({ nextBillingAt: null, currentPeriodEnd: null, currentPeriodStart: null }),
+      createAuthorizableSubscription: mockCrearAutorizable,
+    }));
+
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id, tenantObjectId: TENANT._id, source: "user",
+    });
+    mockTenantFindById.mockResolvedValue({ ...TENANT, subscriptionStatus: estadoActual });
+    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} });
+
+    const { processSubscriptionPayment } = await import("../controller/subscriptionCtrl.js");
+    const res = respuesta();
+    await processSubscriptionPayment(pedido(), res);
+    return res;
+  };
+
+  test("el rechazo trae el enlace para autorizar con otro medio", async () => {
+    // ESTA ES LA PROPIEDAD. Antes el comercio recibia el error y nada mas.
+    mockCrearAutorizable.mockResolvedValue({
+      id: "pre-1", status: "pending", initPoint: "https://mercadopago.com/autorizar/pre-1",
+    });
+
+    const res = await preparar();
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body?.data?.initPoint).toBe("https://mercadopago.com/autorizar/pre-1");
+  });
+
+  test("guarda el id pendiente, o el webhook no va a saber de quien es", async () => {
+    // Sin esto el rodeo muere en el ultimo paso: el comercio autoriza, llega
+    // el aviso, y "Tenant no encontrado".
+    mockCrearAutorizable.mockResolvedValue({
+      id: "pre-2", status: "pending", initPoint: "https://mercadopago.com/autorizar/pre-2",
+    });
+
+    await preparar();
+
+    const guardados = mockTenantUpdate.mock.calls.map(([, c]) => c);
+    expect(guardados.some(c =>
+      c["integrations.subscriptionMercadoPago.subscriptionId"] === "pre-2")).toBe(true);
+  });
+
+  test("NO da el plan por pagado", async () => {
+    // Un init_point es una invitacion a pagar, no un pago. Activar aca seria
+    // regalar el servicio a quien abandone la pantalla de Mercado Pago.
+    mockCrearAutorizable.mockResolvedValue({
+      id: "pre-3", status: "pending", initPoint: "https://mercadopago.com/autorizar/pre-3",
+    });
+
+    await preparar();
+
+    const estados = mockTenantUpdate.mock.calls.map(([, c]) => c?.subscriptionStatus);
+    expect(estados).not.toContain("active");
+  });
+
+  test("con una suscripcion ACTIVA no se pisa su id", async () => {
+    // Pisarlo dejaria a la auditoria comparando contra la suscripcion
+    // equivocada, y a la que esta cobrando sin nadie que la mire.
+    mockCrearAutorizable.mockResolvedValue({
+      id: "pre-4", status: "pending", initPoint: "https://mercadopago.com/autorizar/pre-4",
+    });
+
+    await preparar({ estadoActual: "active" });
+
+    const guardados = mockTenantUpdate.mock.calls.map(([, c]) => c);
+    expect(guardados.some(c =>
+      c["integrations.subscriptionMercadoPago.subscriptionId"] === "pre-4")).toBe(false);
+  });
+
+  test("si el rodeo tampoco se puede armar, el error del cobro llega igual", async () => {
+    // El comercio tiene que enterarse de por que no se pudo cobrar, aunque la
+    // alternativa falle.
+    mockCrearAutorizable.mockRejectedValue(new Error("MP caido"));
+
+    const res = await preparar();
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body?.data?.code).toBe("SUBSCRIPTION_PAYMENT_ERROR");
+    expect(res.body?.data?.initPoint).toBeNull();
   });
 });

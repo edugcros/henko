@@ -313,6 +313,62 @@ export const mapMercadoPagoSubscriptionStatus = (mpStatus, mpReason) => {
 }
 
 /**
+ * La misma suscripción, pero para que la autorice el comercio.
+ *
+ * QUÉ PROBLEMA RESUELVE
+ *
+ * El checkout cobra en el acto: tokeniza la tarjeta y manda la suscripción con
+ * `status: 'authorized'` y `card_token_id`. Cuando esa tarjeta no pasa, el
+ * comercio queda en un callejón — no hay forma de elegir otro medio de pago
+ * desde nuestra pantalla.
+ *
+ * Medido el 19/09/2026 con un comercio real: el emisor rechazó una prepaga de
+ * Mercado Pago once veces seguidas. El propio panel del vendedor recomendaba
+ * "pague con otro medio de pago", y la plataforma no ofrecía ninguno.
+ *
+ * Sin `card_token_id` y con `status: 'pending'`, Mercado Pago crea la
+ * suscripción y devuelve un `init_point`: el comercio entra con SU sesión de
+ * Mercado Pago y elige ahí cómo pagar —otra tarjeta, dinero en cuenta, lo que
+ * tenga—. Comprobado contra la cuenta de producción: devuelve 201.
+ *
+ * NO REEMPLAZA AL COBRO DIRECTO
+ *
+ * Cuando la tarjeta pasa, cobrar en el acto es mejor: una pantalla menos y el
+ * comercio queda activo al instante. Esto es el rodeo para cuando no pasa.
+ *
+ * La suscripción nace en 'pending' y NO activa nada: la autorización llega
+ * después por webhook. Devolver un init_point y dar el plan por pagado sería
+ * regalar el servicio a quien abandone la pantalla de Mercado Pago.
+ */
+export const createAuthorizableSubscription = async ({
+  plan,
+  tenantId,
+  userId,
+  email,
+}) => {
+  const { subscriptionData } = buildMercadoPagoSubscriptionData({
+    plan,
+    tenantId,
+    userId,
+    email,
+    token: null,
+  })
+
+  const cliente = createSubscriptionClient()
+
+  const creada = await cliente.create({
+    body: { ...subscriptionData, status: 'pending' },
+  })
+
+  return {
+    id: creada?.id || null,
+    status: creada?.status || null,
+    // A dónde mandar al comercio. Sin esto el rodeo no existe.
+    initPoint: creada?.init_point || null,
+  }
+}
+
+/**
  * El pago, consultado con la credencial de PLATAFORMA.
  *
  * POR QUÉ HACE FALTA
