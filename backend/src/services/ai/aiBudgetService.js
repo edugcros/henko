@@ -53,6 +53,7 @@ import { getPeriodSpendByMetric } from './aiSpendReportService.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
+import { escapeRegex } from '../../utils/escapeRegex.js'
 import AiProviderCall, { CALL_ID } from '../../models/aiProviderCallModel.js'
 import AiRateWindow, {
   RATE_WINDOW,
@@ -1339,6 +1340,64 @@ const resolveEffectiveLimit = ({ plan, metric, keySource, tenantShare = null }) 
 const getUpfrontCostUsd = (metric, amount) =>
   metric === AI_METRICS.IMAGE_EDITS ? computeImageCostUsd(amount) : 0
 
+/**
+ * Lo que REALMENTE se cobró por esta operación, leído del libro.
+ *
+ * POR QUÉ NO SE RECALCULA
+ *
+ * La devolución usaba getUpfrontCostUsd, que llama a computeImageCostUsd, que
+ * a su vez resuelve el precio con `at = new Date()` — o sea el precio de HOY.
+ *
+ * Mientras la devolución ocurre segundos después de la consumición eso da lo
+ * mismo. Pero no siempre ocurre así: sweepStaleOperations barre operaciones
+ * colgadas mucho después, y ahí una devolución revierte al precio vigente en
+ * vez del que se cobró. Si el precio por imagen cambió en el medio, se
+ * devuelve de más o de menos — y el libro Y el agregado guardan la reversión
+ * equivocada, coherentemente entre sí, así que ninguna auditoría lo nota.
+ *
+ * Eso anula la garantía que el libro existe para dar: cada fila lleva el
+ * precio del momento congelado adentro. Recalcular es no usarlo.
+ *
+ * EL RESPALDO NO ES OPCIONAL
+ *
+ * writeLedgerEntry no se espera, a propósito, para que la contabilidad nunca
+ * rompa una operación de IA. Así que una devolución inmediata puede llegar
+ * antes que la fila. Sin el respaldo, ese caso devolvería cero y el comercio
+ * se quedaría con el cobro.
+ */
+const resolveUpfrontCostUsd = async ({ tenantId, period, operationId, metric, amount }) => {
+  const recalculado = getUpfrontCostUsd(metric, amount)
+
+  // Solo imageEdits cobra por adelantado. Para el resto no hay nada que leer.
+  if (!(recalculado > 0) || !operationId) return recalculado
+
+  try {
+    const filas = await AiConsumptionLedger.find({
+      tenantId,
+      period,
+      metric,
+      event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.RESERVED] },
+      costUsd: { $gt: 0 },
+      $or: [
+        { operationId },
+        { operationId: { $regex: `^${escapeRegex(String(operationId))}:` } },
+      ],
+    })
+      .select('costUsd')
+      .lean()
+
+    const congelado = filas.reduce((suma, f) => suma + Number(f.costUsd || 0), 0)
+
+    return congelado > 0 ? congelado : recalculado
+  } catch (error) {
+    logger.warn('[AI BUDGET] No se pudo leer el costo congelado, se recalcula', {
+      operationId,
+      error: error.message,
+    })
+    return recalculado
+  }
+}
+
 const applyLimitOverride = (planLimit, override) => {
   const value = Number(override)
   if (!Number.isFinite(value) || value <= 0) return planLimit
@@ -2083,7 +2142,16 @@ export const refundAiBudget = async ({
   // Lo que se cobró por adelantado se devuelve por adelantado, en el mismo
   // movimiento. La simetría no es estética: es lo que garantiza que cuota y
   // dinero no puedan quedar desalineados en ninguna rama.
-  const upfrontCostUsd = getUpfrontCostUsd(normalizedMetric, refundAmount)
+  //
+  // Y se devuelve EL MISMO NÚMERO que se cobró, leído del libro — no uno
+  // recalculado al precio de hoy. Ver resolveUpfrontCostUsd.
+  const upfrontCostUsd = await resolveUpfrontCostUsd({
+    tenantId: id,
+    period,
+    operationId,
+    metric: normalizedMetric,
+    amount: refundAmount,
+  })
 
   try {
     const refunded = await AiUsage.findOneAndUpdate(

@@ -1011,3 +1011,86 @@ describe('auditoria automatica · un timer largo que nunca corre no sirve', () =
     }
   })
 })
+
+// LA DEVOLUCION TIENE QUE DEVOLVER LO QUE SE COBRO
+//
+// getUpfrontCostUsd llamaba a computeImageCostUsd, que resuelve el precio con
+// `at = new Date()`: el precio de HOY, no el del cobro. Mientras la devolucion
+// ocurre segundos despues da lo mismo, pero sweepStaleOperations barre
+// operaciones colgadas mucho despues.
+//
+// Si el precio por imagen cambio en el medio, se devuelve de mas o de menos —
+// y el libro Y el agregado guardan la reversion equivocada, coherentes entre
+// si, asi que ninguna auditoria lo nota. Eso anula la garantia que el libro
+// existe para dar: el precio del momento, congelado en la fila.
+
+describe('devolución · al precio que se cobró, no al de hoy', () => {
+  const PRECIO_ORIGINAL = process.env.AI_COST_USD_PER_IMAGE_EDIT
+
+  afterEach(() => {
+    if (PRECIO_ORIGINAL === undefined) delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+    else process.env.AI_COST_USD_PER_IMAGE_EDIT = PRECIO_ORIGINAL
+  })
+
+  const costoGuardado = async period => {
+    const u = await AiUsage.findOne({ tenantId: TENANT, period })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    return Number(u?.estimatedCostUsd || 0)
+  }
+
+  test('un cambio de precio entre el cobro y la devolución no altera el monto', async () => {
+    // ESTA ES LA PROPIEDAD. Con el recálculo, el comercio recuperaba 0.05
+    // habiendo pagado 0.02 — o al revés si el precio bajaba.
+    const period = '2061-01'
+
+    process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.02'
+
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.IMAGE_EDITS,
+      profile: { ...PERFIL, plan: 'pro' }, period, operationId: 'imagen-precio',
+    })
+    await asentar()
+
+    const trasCobrar = await costoGuardado(period)
+    expect(trasCobrar).toBeCloseTo(0.02, 6)
+
+    // El precio sube DESPUÉS del cobro.
+    process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.05'
+
+    await refundAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.IMAGE_EDITS,
+      period, operationId: 'imagen-precio',
+    })
+    await asentar()
+
+    // Vuelve a cero: se devolvió lo que se cobró.
+    expect(await costoGuardado(period)).toBeCloseTo(0, 6)
+  })
+
+  test('la fila de devolución guarda el monto original', async () => {
+    // Si el libro guardara el recálculo, la auditoría veria dos numeros
+    // coherentes entre si y ambos equivocados: el peor caso.
+    const period = '2061-02'
+
+    process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.02'
+    await reserveAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.IMAGE_EDITS,
+      profile: { ...PERFIL, plan: 'pro' }, period, operationId: 'imagen-libro',
+    })
+    await asentar()
+
+    process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.05'
+    await refundAiBudget({
+      tenantId: TENANT, metric: AI_METRICS.IMAGE_EDITS,
+      period, operationId: 'imagen-libro',
+    })
+    await asentar()
+
+    const devolucion = await AiConsumptionLedger.findOne({
+      tenantId: TENANT, period, event: 'refunded', metric: AI_METRICS.IMAGE_EDITS,
+    }).lean()
+
+    expect(Number(devolucion?.costUsd)).toBeCloseTo(0.02, 6)
+  })
+})
