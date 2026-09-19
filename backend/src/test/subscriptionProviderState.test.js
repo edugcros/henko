@@ -28,6 +28,7 @@ let mongod;
 let Tenant;
 let readProviderBillingDates;
 let getSubscriptionSummary;
+let auditSubscriptions;
 
 const crearTenant = (nombre, extra = {}) =>
   Tenant.create({ name: nombre, slug: `${nombre.toLowerCase()}-${Date.now()}`, ...extra });
@@ -37,7 +38,7 @@ beforeAll(async () => {
   await mongoose.connect(mongod.getUri());
 
   Tenant = (await import("../models/tenantModel.js")).default;
-  ({ readProviderBillingDates } = await import(
+  ({ readProviderBillingDates, auditSubscriptions } = await import(
     "../services/subscriptionPaymentService.js"
   ));
   ({ getSubscriptionSummary } = await import(
@@ -274,5 +275,110 @@ describe("resumen de suscripción · lo que ve el panel", () => {
       "pastDueAt",
       "status",
     ]);
+  });
+});
+
+// AUDITORÍA CONTRA EL PROVEEDOR
+//
+// El estado de suscripción se mantiene por eventos: el alta la escribe el
+// panel, y renovaciones, rechazos y cancelaciones llegan SOLO por webhook. Un
+// evento perdido deja deriva permanente, y ese estado decide si el comercio
+// puede usar la plataforma.
+//
+// Medido en producción el 19/09/2026, sobre el único comercio con suscripción
+// real: Mercado Pago decía `cancelled` y HENKO `active`. La cancelación llegó
+// mientras el webhook devolvía 403 y nunca se aplicó. Arreglar el webhook
+// evita la deriva futura; nada encontraba la que ya existía.
+
+const clienteQueDevuelve = estado => ({
+  get: async () => ({ status: estado, reason: "Suscripción Henko Plan starter" }),
+});
+
+const conSuscripcion = (tenant, subscriptionId = "sub-1") =>
+  Tenant.findByIdAndUpdate(tenant._id, {
+    "integrations.subscriptionMercadoPago": { subscriptionId, status: "authorized" },
+  });
+
+describe("auditoría de suscripciones · detectar, no corregir", () => {
+  test("encuentra el caso de producción: activa acá, cancelada allá", async () => {
+    // ESTA ES LA PROPIEDAD. Sin esto la deriva es invisible para siempre.
+    const tenant = await crearTenant("Deriva", { subscriptionStatus: "active", plan: "pro" });
+    await conSuscripcion(tenant);
+
+    const auditoria = await auditSubscriptions({
+      Tenant,
+      client: clienteQueDevuelve("cancelled"),
+    });
+
+    expect(auditoria.balanced).toBe(false);
+    expect(auditoria.findings).toHaveLength(1);
+    expect(auditoria.findings[0]).toMatchObject({
+      slug: tenant.slug,
+      stored: { subscriptionStatus: "active", plan: "pro" },
+      provider: { status: "cancelled", mapped: "cancelled" },
+    });
+  });
+
+  test("cuando coinciden no hay hallazgo", async () => {
+    // 'authorized' del proveedor mapea a 'active'. Reportarlo entrenaría a
+    // ignorar el aviso que importa.
+    const tenant = await crearTenant("Sana", { subscriptionStatus: "active" });
+    await conSuscripcion(tenant);
+
+    const auditoria = await auditSubscriptions({
+      Tenant,
+      client: clienteQueDevuelve("authorized"),
+    });
+
+    expect(auditoria.balanced).toBe(true);
+    expect(auditoria.checked).toBe(1);
+  });
+
+  test("si el proveedor no contesta, NO es un hallazgo", async () => {
+    // La propiedad de seguridad. Un timeout de Mercado Pago no puede leerse
+    // como una cancelación: con esto al revés, una caída del proveedor daría
+    // de baja a todos los comercios que están pagando.
+    const tenant = await crearTenant("SinRespuesta", { subscriptionStatus: "active" });
+    await conSuscripcion(tenant);
+
+    const auditoria = await auditSubscriptions({
+      Tenant,
+      client: { get: async () => { throw new Error("ETIMEDOUT"); } },
+    });
+
+    expect(auditoria.findings).toHaveLength(0);
+    expect(auditoria.balanced).toBe(true);
+    expect(auditoria.checked).toBe(0);
+    expect(auditoria.unverifiable).toHaveLength(1);
+    expect(auditoria.unverifiable[0].slug).toBe(tenant.slug);
+  });
+
+  test("NO corrige nada", async () => {
+    // Mismo criterio que la auditoría contable: corregir sin que una persona
+    // mire la evidencia convierte un fallo de lectura en pérdida de datos.
+    const tenant = await crearTenant("Intacta", { subscriptionStatus: "active", plan: "pro" });
+    await conSuscripcion(tenant);
+
+    await auditSubscriptions({ Tenant, client: clienteQueDevuelve("cancelled") });
+
+    const despues = await Tenant.findById(tenant._id).lean();
+    expect(despues.subscriptionStatus).toBe("active");
+    expect(despues.plan).toBe("pro");
+  });
+
+  test("ignora a los comercios sin suscripción en el proveedor", async () => {
+    // Un comercio en prueba no tiene subscriptionId. Preguntarle al proveedor
+    // por una suscripción que no existe daría un error por comercio y llenaría
+    // el informe de ruido.
+    await crearTenant("EnPrueba", { subscriptionStatus: "trialing" });
+
+    const auditoria = await auditSubscriptions({
+      Tenant,
+      client: { get: async () => { throw new Error("no debería llamarse"); } },
+    });
+
+    expect(auditoria.checked).toBe(0);
+    expect(auditoria.findings).toHaveLength(0);
+    expect(auditoria.unverifiable).toHaveLength(0);
   });
 });

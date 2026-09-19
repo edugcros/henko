@@ -292,8 +292,122 @@ export const mapMercadoPagoSubscriptionStatus = (mpStatus, mpReason) => {
   return statusMap[status] || 'pending'
 }
 
+// ─── AUDITORÍA CONTRA EL PROVEEDOR ─────────────────────────────────────────
+//
+// QUÉ PROBLEMA RESUELVE
+//
+// El estado de suscripción de un comercio se mantiene por eventos: el alta lo
+// escribe el flujo síncrono del panel, y todo lo demás —renovaciones, pagos
+// rechazados, cancelaciones— llega SOLO por webhook. Un evento perdido deja
+// deriva permanente y silenciosa, y ese estado decide si el comercio puede
+// usar la plataforma.
+//
+// No es hipotético. Medido el 19/09/2026 sobre el único comercio con
+// suscripción real:
+//
+//   Mercado Pago   status: cancelled
+//   HENKO          status: authorized · subscriptionStatus: active · plan: pro
+//
+// La cancelación ocurrió mientras el webhook devolvía 403 —faltaba en
+// csrfExemptRoutes— y nunca llegó. Arreglar el webhook evita la deriva futura;
+// no reconcilia la que ya existe, y nada la iba a encontrar.
+//
+// La contabilidad de IA ya tenía esto: auditAccounting compara las tres
+// representaciones y avisa. Las suscripciones no tenían nada equivalente, y
+// ahí lo que está en juego no son centavos sino el acceso a la plataforma.
+//
+// NUNCA CORRIGE
+//
+// Mismo criterio que aiAccountingService, y por el mismo motivo: corregir un
+// estado sin que una persona haya mirado la evidencia convierte un fallo de
+// lectura en pérdida de datos. Un timeout con Mercado Pago no puede dar de
+// baja a un comercio que está pagando.
+//
+// POR QUÉ USA mapMercadoPagoSubscriptionStatus Y NO COMPARA EL CRUDO
+//
+// Es el MISMO mapeo que aplica el webhook al recibir un evento. Si la
+// auditoría interpretara los estados por su cuenta, podría reportar una deriva
+// que el webhook nunca va a cerrar —porque para él no es deriva— y el aviso
+// quedaría sonando para siempre.
+
+/** Ni hallazgo ni silencio: no se pudo preguntar. */
+const NO_VERIFICABLE = 'no_verificable'
+
+/**
+ * Compara el estado guardado de cada suscripción contra el del proveedor.
+ *
+ * @returns {Promise<SubscriptionAudit>}
+ *
+ * @typedef {Object} SubscriptionAudit
+ * @property {number} checked      - cuántas se pudieron consultar
+ * @property {Array}  findings     - las que no coinciden
+ * @property {Array}  unverifiable - las que el proveedor no contestó
+ * @property {boolean} balanced
+ */
+export const auditSubscriptions = async ({ Tenant, client = null } = {}) => {
+  if (!Tenant) throw new Error('auditSubscriptions requiere el modelo Tenant')
+
+  const tenants = await Tenant.find({
+    'integrations.subscriptionMercadoPago.subscriptionId': { $exists: true, $ne: null },
+  })
+    .select('slug plan subscriptionStatus integrations.subscriptionMercadoPago')
+    .lean()
+
+  const findings = []
+  const unverifiable = []
+  let checked = 0
+
+  // Un solo cliente para todas: crearlo por comercio multiplicaría las
+  // conexiones sin ganar nada, y si la credencial no sirve falla una vez.
+  const mp = client || createSubscriptionClient()
+
+  for (const tenant of tenants) {
+    const guardado = tenant.integrations?.subscriptionMercadoPago || {}
+    const subscriptionId = sanitizeString(guardado.subscriptionId)
+
+    let proveedor
+    try {
+      proveedor = await mp.get({ id: subscriptionId })
+    } catch (error) {
+      // No saber NO es lo mismo que estar mal. Separarlo es lo que impide que
+      // una caída del proveedor se lea como una cancelación masiva.
+      unverifiable.push({
+        tenantId: String(tenant._id),
+        slug: tenant.slug,
+        subscriptionId,
+        reason: NO_VERIFICABLE,
+        message: error?.message || 'sin respuesta',
+      })
+      continue
+    }
+
+    checked += 1
+
+    const esperado = mapMercadoPagoSubscriptionStatus(proveedor?.status, proveedor?.reason || '')
+    const almacenado = sanitizeString(tenant.subscriptionStatus)
+
+    if (esperado === almacenado) continue
+
+    findings.push({
+      tenantId: String(tenant._id),
+      slug: tenant.slug,
+      subscriptionId,
+      stored: { subscriptionStatus: almacenado, plan: tenant.plan },
+      provider: { status: proveedor?.status || null, mapped: esperado },
+    })
+  }
+
+  return {
+    checked,
+    findings,
+    unverifiable,
+    balanced: findings.length === 0,
+  }
+}
+
 export default {
   buildMercadoPagoSubscriptionData,
   mapMercadoPagoSubscriptionError,
   mapMercadoPagoSubscriptionStatus,
+  auditSubscriptions,
 }
