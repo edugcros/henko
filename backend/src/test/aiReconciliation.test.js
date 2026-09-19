@@ -39,6 +39,7 @@ const {
   rebuildPlatformProjection,
   auditAccounting,
   runAccountingAudit,
+  backfillLedgerFromProviderCalls,
 } = await import('../services/ai/aiAccountingService.js')
 
 const TENANT = '64b7f0000000000000000001'
@@ -1092,5 +1093,115 @@ describe('devolución · al precio que se cobró, no al de hoy', () => {
     }).lean()
 
     expect(Number(devolucion?.costUsd)).toBeCloseTo(0.02, 6)
+  })
+})
+
+// RELLENAR EL LIBRO DESDE LAS LLAMADAS AL PROVEEDOR
+//
+// writeLedgerEntry escribe SIN esperar y se traga los errores que no son clave
+// repetida: la contabilidad no puede ser el motivo por el que un comercio se
+// quede sin IA. Pero si esa escritura falla, los contadores subieron y la fila
+// no existe, y el libro —que es la fuente de verdad— queda incompleto.
+//
+// rebuildTenantProjection ya DETECTA el caso y se niega a corregir contadores
+// con el libro incompleto. Lo que faltaba era repararlo.
+//
+// No hace falta una coleccion nueva: AiProviderCall se escribe CON await antes
+// de tocar ningun contador y guarda todo lo necesario.
+
+describe('relleno del libro · desde las llamadas al proveedor', () => {
+  // El indice unico de AiProviderCall es (tenant, operacion, llamada) y NO
+  // incluye el periodo, asi que cada caso necesita su propia operacion.
+  const opDe = period => `op-perdida-${period}`
+
+  const llamada = (period, extra = {}) => AiProviderCall.create({
+    tenantId: TENANT,
+    operationId: opDe(period),
+    callId: 'main',
+    period,
+    metric: AI_METRICS.AGENT_TOKENS,
+    provider: 'gemini',
+    actualModel: 'gemini-3.1-flash-lite',
+    inputTokens: 900,
+    outputTokens: 300,
+    totalTokens: 1200,
+    costUsd: 0.000239,
+    tenantProviderCostUsd: 0.000239,
+    keySource: 'platform',
+    plan: 'starter',
+    ...extra,
+  })
+
+  test('detecta la fila que falta y por defecto NO escribe', async () => {
+    // ESTA ES LA PROPIEDAD. Sin esto el libro queda incompleto para siempre.
+    const period = '2062-01'
+    await llamada(period)
+
+    const informe = await backfillLedgerFromProviderCalls({ period })
+
+    expect(informe.checked).toBe(1)
+    expect(informe.missing).toHaveLength(1)
+    expect(informe.missing[0].operationId).toBe(opDe(period))
+    expect(informe.applied).toBe(false)
+
+    const filas = await AiConsumptionLedger.countDocuments({ period })
+      .setOptions({ tenantId: TENANT })
+    expect(filas).toBe(0)
+  })
+
+  test('con apply la repone con el costo congelado de la llamada', async () => {
+    const period = '2062-02'
+    await llamada(period)
+
+    const informe = await backfillLedgerFromProviderCalls({ period, apply: true })
+
+    expect(informe.written).toBe(1)
+
+    const fila = await AiConsumptionLedger.findOne({ period })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(fila.event).toBe('consumed')
+    expect(fila.operationId).toBe(opDe(period))
+    expect(Number(fila.costUsd)).toBeCloseTo(0.000239, 9)
+    expect(fila.amount).toBe(1200)
+    expect(fila.unit).toBe('tokens')
+    // Congelados en la llamada, no adivinados.
+    expect(fila.keySource).toBe('platform')
+    expect(fila.plan).toBe('starter')
+  })
+
+  test('no duplica lo que ya está en el libro', async () => {
+    const period = '2062-03'
+    await llamada(period)
+    await backfillLedgerFromProviderCalls({ period, apply: true })
+
+    const segunda = await backfillLedgerFromProviderCalls({ period, apply: true })
+
+    expect(segunda.missing).toHaveLength(0)
+    expect(
+      await AiConsumptionLedger.countDocuments({ period }).setOptions({ tenantId: TENANT }),
+    ).toBe(1)
+  })
+
+  test('la clave compuesta de una llamada secundaria se respeta', async () => {
+    // El medidor guarda `operacion:llamada` cuando no es la principal. Si el
+    // reconstructor usara solo operationId, chocaria con la fila de la
+    // principal y no repondria nada — o peor, duplicaria con otra clave.
+    const period = '2062-04'
+    await llamada(period, { callId: 'herramienta-1' })
+
+    await backfillLedgerFromProviderCalls({ period, apply: true })
+
+    const fila = await AiConsumptionLedger.findOne({ period })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(fila.operationId).toBe(`${opDe(period)}:herramienta-1`)
+  })
+
+  test('sin llamadas no hace nada', async () => {
+    const informe = await backfillLedgerFromProviderCalls({ period: '2062-99' })
+
+    expect(informe.checked).toBe(0)
+    expect(informe.missing).toHaveLength(0)
   })
 })

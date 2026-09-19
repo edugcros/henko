@@ -40,6 +40,7 @@ import mongoose from 'mongoose'
 
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 import AiOperation from '../../models/aiOperationModel.js'
+import AiProviderCall, { CALL_ID } from '../../models/aiProviderCallModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import AiUsage from '../../models/aiUsageModel.js'
 import logger from '../../../config/logger.js'
@@ -385,6 +386,147 @@ export const rebuildPlatformProjection = async ({ period, apply = false }) => {
   })
 
   return { ...report, applied: true }
+}
+
+// ─── RELLENAR EL LIBRO DESDE LAS LLAMADAS AL PROVEEDOR ─────────────────────
+//
+// EL AGUJERO QUE CIERRA
+//
+// writeLedgerEntry escribe la fila SIN esperar y se traga los errores que no
+// son clave repetida. Es deliberado: la contabilidad no puede ser el motivo
+// por el que un comercio se quede sin IA. Pero si esa escritura falla, los
+// contadores subieron y la fila no existe — y el libro, que es la fuente de
+// verdad, queda incompleto sin que nada lo repare.
+//
+// rebuildTenantProjection ya DETECTA el caso: compara los operationId de
+// AiOperation contra los del libro y se niega a "corregir" un contador cuando
+// el libro está incompleto, justamente para no destruir el número bueno. Lo
+// que faltaba era poder repararlo.
+//
+// NO HACE FALTA UNA COLECCIÓN NUEVA
+//
+// Una auditoría externa propuso agregar un AiAccountingOutbox. El outbox ya
+// existe: es AiProviderCall. Se escribe CON await, antes de tocar ningún
+// contador, y guarda costUsd, tenantProviderCostUsd, los tokens, el modelo
+// que respondió, las tarifas aplicadas y —desde este cambio— keySource y
+// plan. Agregar una tercera escritura al camino caliente para datos que ya
+// están sería pagar dos veces por lo mismo.
+//
+// QUÉ NO RECONSTRUYE
+//
+// Solo filas de consumo de TOKENS, que es lo que una llamada al proveedor es.
+// Las reservas y las devoluciones no tienen llamada detrás: si falta una de
+// esas, no hay de dónde sacarla y este reconstructor no la inventa.
+//
+// ES IDEMPOTENTE POR LA BASE, NO POR UNA COMPROBACIÓN
+//
+// La clave del libro es (tenant, operación, evento) con índice único, y la
+// operación se compone igual que en el medidor —operationId, o
+// `operationId:callId` cuando no es la llamada principal—. Escribir dos veces
+// choca con 11000 y se descarta. No hay un `if (ya existe)` que pueda perder
+// la carrera.
+
+/** La misma clave que arma el medidor. Si difiere, esto duplica en vez de rellenar. */
+const claveDeLibro = (operationId, callId) =>
+  !operationId || !callId || callId === CALL_ID.MAIN
+    ? operationId
+    : `${operationId}:${callId}`
+
+/**
+ * Encuentra llamadas al proveedor sin fila en el libro y las repone.
+ *
+ * Por defecto NO escribe: primero se mira, después se decide. Mismo criterio
+ * que el resto de este archivo.
+ *
+ * @returns {Promise<{period:string, checked:number, missing:Array, applied:boolean, written:number}>}
+ */
+export const backfillLedgerFromProviderCalls = async ({
+  period = getCurrentPeriod(),
+  apply = false,
+} = {}) => {
+  // ignoreTenant por el mismo motivo que el resto de este archivo: la
+  // pregunta es de la plataforma y el barrido cruza comercios.
+  const llamadas = await AiProviderCall.find({ period })
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:relleno-libro' })
+    .lean()
+
+  if (!llamadas.length) {
+    return { period, checked: 0, missing: [], applied: false, written: 0 }
+  }
+
+  const enElLibro = new Set(
+    await AiConsumptionLedger.distinct('operationId', {
+      period,
+      event: LEDGER_EVENT.CONSUMED,
+    }).setOptions({ ignoreTenant: true, platformScope: 'platform:relleno-libro' }),
+  )
+
+  const faltantes = llamadas.filter(
+    ll => !enElLibro.has(claveDeLibro(ll.operationId, ll.callId)),
+  )
+
+  const report = {
+    period,
+    checked: llamadas.length,
+    missing: faltantes.map(ll => ({
+      tenantId: String(ll.tenantId),
+      operationId: claveDeLibro(ll.operationId, ll.callId),
+      metric: ll.metric,
+      costUsd: round(Number(ll.costUsd || 0), 6),
+    })),
+    applied: false,
+    written: 0,
+  }
+
+  if (!apply || !faltantes.length) return report
+
+  let escritas = 0
+
+  for (const ll of faltantes) {
+    try {
+      await AiConsumptionLedger.create({
+        tenantId: ll.tenantId,
+        period: ll.period,
+        event: LEDGER_EVENT.CONSUMED,
+        operationId: claveDeLibro(ll.operationId, ll.callId),
+        metric: ll.metric,
+        amount: Math.max(0, Math.round(Number(ll.totalTokens) || 0)),
+        unit: 'tokens',
+        model: ll.actualModel,
+        // null cuando la llamada es anterior a estos campos. No saber es
+        // mejor que inventar un plan o una procedencia de key.
+        keySource: ll.keySource ?? null,
+        plan: ll.plan ?? null,
+        inputTokens: ll.inputTokens ?? null,
+        outputTokens: ll.outputTokens ?? null,
+        totalTokens: ll.totalTokens ?? null,
+        costUsd: Number(ll.costUsd) || 0,
+        tenantProviderCostUsd: Number(ll.tenantProviderCostUsd) || 0,
+        priceInputPerMillion: ll.priceInputPerMillion ?? null,
+        priceOutputPerMillion: ll.priceOutputPerMillion ?? null,
+        priceFallback: Boolean(ll.priceFallback),
+      })
+
+      escritas += 1
+    } catch (error) {
+      // 11000: otra instancia la repuso entre el listado y la escritura. Es
+      // el resultado deseado, no un fallo.
+      if (error?.code !== 11000) {
+        logger.error('[AI LEDGER] No se pudo reponer la fila', {
+          operationId: claveDeLibro(ll.operationId, ll.callId),
+          error: error.message,
+        })
+      }
+    }
+  }
+
+  logger.warn('[AI LEDGER] Filas repuestas desde las llamadas al proveedor', {
+    period,
+    faltaban: faltantes.length,
+    repuestas: escritas,
+  })
+
+  return { ...report, applied: true, written: escritas }
 }
 
 // ─── AUDITORÍA CRUZADA ──────────────────────────────────────────────────────

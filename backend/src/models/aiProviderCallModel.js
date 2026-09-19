@@ -150,6 +150,32 @@ const aiProviderCallSchema = new mongoose.Schema(
     tenantProviderCostUsd: { type: Number, default: 0, min: 0 },
 
     /**
+     * Con qué key se pagó y bajo qué plan, congelados igual que la tarifa.
+     *
+     * POR QUÉ ESTÁN ACÁ Y NO SE DERIVAN
+     *
+     * Esta colección es el respaldo desde el que se puede reconstruir una fila
+     * del libro que no llegó a escribirse: writeLedgerEntry no se espera y se
+     * traga los errores, a propósito, para que la contabilidad nunca rompa una
+     * operación de IA. Si esa escritura falla, los contadores subieron y la
+     * fila no existe — y lo único que queda con todos los datos, esperado y
+     * durable, es esta fila.
+     *
+     * `keySource` se podría inferir comparando costUsd con
+     * tenantProviderCostUsd, pero una llamada de plataforma que costó cero se
+     * vería igual que una con key del comercio. Un dato que se adivina mal en
+     * un caso legítimo no sirve para reconstruir contabilidad.
+     *
+     * `plan` no se puede inferir de ninguna forma: es el plan que tenía el
+     * comercio en ESE momento.
+     *
+     * Las filas anteriores a estos campos quedan en null, y el reconstructor
+     * las escribe así: no saber es mejor que inventar.
+     */
+    keySource: { type: String, trim: true, default: null },
+    plan: { type: String, trim: true, default: null },
+
+    /**
      * La tarifa que se APLICÓ, congelada en la fila.
      *
      * Acá iba a ir un `pricingVersion`. Un número de versión solo sirve si

@@ -388,6 +388,10 @@ const claimConsumption = async ({
   tenantProviderCostUsd = null,
   ok = true,
   pricingFallback = false,
+  // Congelados para que esta fila alcance para reconstruir la del libro si
+  // aquella no llega a escribirse. Ver el modelo.
+  keySource = null,
+  plan = null,
 }) => {
   if (!operationId || !tenantId) return true
 
@@ -411,6 +415,8 @@ const claimConsumption = async ({
       costUsd: Number(costUsd) || 0,
       tenantProviderCostUsd:
         tenantProviderCostUsd === null ? Number(costUsd) || 0 : Number(tenantProviderCostUsd) || 0,
+      keySource,
+      plan,
       priceInputPerMillion: breakdown?.price?.input ?? null,
       priceOutputPerMillion: breakdown?.price?.output ?? null,
       priceFallback: Boolean(breakdown?.price?.fallback),
@@ -2325,6 +2331,10 @@ export const recordAiConsumption = async ({
   // contadores del comercio y de la plataforma.
   const nuevo = await claimConsumption({
     tenantId: id,
+    // Congelados acá también: esta fila es el respaldo desde el que se
+    // reconstruye la del libro si aquella se pierde.
+    keySource: aiProfile.keySource,
+    plan: aiProfile.plan,
     operationId,
     callId,
     period,
@@ -2504,6 +2514,10 @@ export const recordToolSpend = async ({
 
   const nuevo = await claimConsumption({
     tenantId: id,
+    // Congelados acá también: esta fila es el respaldo desde el que se
+    // reconstruye la del libro si aquella se pierde.
+    keySource: aiProfile.keySource,
+    plan: aiProfile.plan,
     operationId,
     callId: llamada,
     period,
@@ -2635,6 +2649,10 @@ export const recordTokenSpend = async ({
   // tiempo y dejar sin IA a todos los comercios.
   const nuevo = await claimConsumption({
     tenantId: id,
+    // Congelados acá también: esta fila es el respaldo desde el que se
+    // reconstruye la del libro si aquella se pierde.
+    keySource: aiProfile.keySource,
+    plan: aiProfile.plan,
     operationId,
     callId,
     period,
