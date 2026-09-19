@@ -126,18 +126,40 @@ export const getSubscriptionConfig = async (req, res) => {
       return sendResponse(res, 403, false, 'Tenant no resuelto')
     }
 
-    // Obtener credenciales MP del tenant
-    let mpContext
+    // DOS MERCADO PAGO DISTINTOS, Y ACÁ SE EXIGÍA EL QUE NO ES
+    //
+    //   el del COMERCIO      cobrarle a SUS clientes en su tienda
+    //   el de la PLATAFORMA  cobrarle al comercio SU suscripción a HENKO
+    //
+    // Esta pantalla es la segunda. Igual llamaba a getTenantMercadoPagoContext
+    // y cortaba con 503 si el comercio no tenía las suyas cargadas — una
+    // condición que no tiene nada que ver con poder pagar.
+    //
+    // El efecto sobre un comercio recién creado, medido en producción el
+    // 18/09/2026 a las 20:01:
+    //
+    //   Error en getSubscriptionConfig: "Mercado Pago no tiene credenciales
+    //   válidas para este comercio"  503
+    //
+    // El comercio lee "Mercado Pago no está configurado", entiende que tiene
+    // que cargar SUS keys para poder suscribirse, las carga — y recién ahí el
+    // checkout abre. Quedan las dos cosas enredadas para siempre, y encima si
+    // sus credenciales son de la misma cuenta que cobra la plataforma, Mercado
+    // Pago rechaza el pago por pagador = receptor.
+    //
+    // Peor: bloquea el camino de COBRAR. Un comercio que no puede suscribirse
+    // hasta configurar su tienda es un comercio que no paga.
+    //
+    // Se informa si tiene las suyas —el panel puede sugerirlo— pero no se
+    // bloquea nada con eso.
+    let tenantPaymentsReady = false
     try {
-      mpContext = await getTenantMercadoPagoContext(tenantObjectId)
-    } catch (err) {
-      // getTenantMercadoPagoContext lanza si el tenant no existe o MP no está
-      // configurado. Pasarlo al catch genérico de abajo.
-      throw err
-    }
-
-    if (!mpContext || !mpContext.publicKey) {
-      return sendResponse(res, 503, false, 'Mercado Pago no está configurado')
+      const mpContext = await getTenantMercadoPagoContext(tenantObjectId)
+      tenantPaymentsReady = Boolean(mpContext?.publicKey)
+    } catch {
+      // Que el comercio no tenga sus credenciales es el caso NORMAL de alguien
+      // que recién se da de alta. No es un error de esta pantalla.
+      tenantPaymentsReady = false
     }
 
     // La clave pública que se devuelve es la de HENKO, no la del comercio.
@@ -147,9 +169,6 @@ export const getSubscriptionConfig = async (req, res) => {
     // token (ver subscriptionPaymentService::createSubscriptionClient). Devolver
     // la del comercio produce un token que la cuenta de HENKO no puede usar, y
     // el rechazo de Mercado Pago no dice eso: dice que el token está mal.
-    //
-    // mpContext se sigue consultando arriba a propósito: si el comercio no tiene
-    // Mercado Pago configurado, tampoco puede operar, y conviene decirlo acá.
     const platformPublicKey = String(env.mercadoPago?.publicKey || '').trim()
 
     if (!platformPublicKey) {
@@ -168,6 +187,10 @@ export const getSubscriptionConfig = async (req, res) => {
       currentPlan: tenant.plan,
       subscriptionStatus: tenant.subscriptionStatus || 'trialing',
       trialEndsAt: tenant.trialEndsAt,
+      // Informativo, NO una condición para pagar: dice si el comercio ya puede
+      // cobrarle a sus propios clientes. El panel puede usarlo para sugerir el
+      // siguiente paso una vez que la suscripción esté resuelta.
+      tenantPaymentsReady,
     })
   } catch (error) {
     const statusCode = error?.statusCode || 500

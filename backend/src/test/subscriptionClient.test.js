@@ -350,3 +350,100 @@ describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
     expect(res.body.message).toContain("email")
   })
 })
+
+// SUSCRIBIRSE A HENKO NO NECESITA LAS CREDENCIALES DEL COMERCIO
+//
+// Hay dos Mercado Pago en juego y son independientes:
+//
+//   el del COMERCIO      cobrarle a SUS clientes en su tienda
+//   el de la PLATAFORMA  cobrarle al comercio SU suscripción a HENKO
+//
+// getSubscriptionConfig es la segunda, y aun así llamaba a
+// getTenantMercadoPagoContext y cortaba con 503 cuando el comercio no tenía
+// las suyas cargadas. Medido en producción el 18/09/2026 a las 20:01, sobre un
+// comercio recién creado:
+//
+//   Error en getSubscriptionConfig: "Mercado Pago no tiene credenciales
+//   válidas para este comercio"  503
+//
+// El comercio lee "Mercado Pago no está configurado", entiende que tiene que
+// cargar SUS keys para suscribirse, las carga, y las dos cosas quedan
+// enredadas. Y bloquea el camino de COBRAR: un comercio que no puede
+// suscribirse hasta terminar de configurar su tienda es un comercio que no
+// paga.
+
+describe("configuración de suscripción · los dos Mercado Pago son independientes", () => {
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { this.body = payload; return this; },
+  });
+
+  const prepararConfig = async ({ comercioTieneMp }) => {
+    jest.resetModules();
+    process.env.MP_PUBLIC_KEY = "APP_USR-clave-de-la-plataforma";
+
+    jest.unstable_mockModule("../services/paymentTenantConfigService.js", () => ({
+      getTenantMercadoPagoContext: async () => {
+        if (!comercioTieneMp) {
+          const e = new Error("Mercado Pago no tiene credenciales válidas para este comercio");
+          e.statusCode = 503;
+          throw e;
+        }
+        return { publicKey: "APP_USR-clave-DEL-COMERCIO", accessToken: "APP_USR-x", mode: "production" };
+      },
+      getTenantConfig: async () => ({}),
+      getTenantToken: async () => "APP_USR-x",
+      getTenantPaymentPublicConfig: async () => ({}),
+      createMercadoPagoPaymentClient: () => ({}),
+      describeMpAccount: async () => ({ isTestAccount: false }),
+      extractMpAccountId: () => null,
+    }));
+
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: "user",
+    });
+    mockTenantFindById.mockReturnValue({
+      select: () => Promise.resolve({ plan: "starter", subscriptionStatus: "trialing", trialEndsAt: null }),
+    });
+
+    const { getSubscriptionConfig } = await import("../controller/subscriptionCtrl.js");
+    const res = respuesta();
+    await getSubscriptionConfig({}, res);
+    return res;
+  };
+
+  test("un comercio recién creado, sin sus keys, PUEDE abrir el checkout", async () => {
+    // ESTA ES LA PROPIEDAD. Antes: 503 y el alta bloqueada.
+    const res = await prepararConfig({ comercioTieneMp: false });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.data?.mpPublicKey).toBe("APP_USR-clave-de-la-plataforma");
+  });
+
+  test("la clave que se devuelve es la de HENKO, nunca la del comercio", async () => {
+    // El token de tarjeta lo tiene que crear la misma cuenta que después lo
+    // consume, y esta suscripción la cobra la plataforma. Devolver la del
+    // comercio da un token que la cuenta de HENKO no puede usar, y el rechazo
+    // de Mercado Pago no dice eso: dice que el token está mal.
+    const res = await prepararConfig({ comercioTieneMp: true });
+
+    expect(res.body?.data?.mpPublicKey).toBe("APP_USR-clave-de-la-plataforma");
+    expect(res.body?.data?.mpPublicKey).not.toBe("APP_USR-clave-DEL-COMERCIO");
+  });
+
+  test("informa si el comercio ya puede cobrarle a sus clientes, sin bloquear", async () => {
+    // El dato sigue siendo útil —el panel puede sugerir el siguiente paso—
+    // pero deja de ser una condición para pagar.
+    const sin = await prepararConfig({ comercioTieneMp: false });
+    const con = await prepararConfig({ comercioTieneMp: true });
+
+    expect(sin.body?.data?.tenantPaymentsReady).toBe(false);
+    expect(con.body?.data?.tenantPaymentsReady).toBe(true);
+    expect(sin.statusCode).toBe(200);
+    expect(con.statusCode).toBe(200);
+  });
+});
