@@ -469,3 +469,54 @@ describe("auditoría de suscripciones · el ciclo", () => {
     expect(iniciadas).toHaveLength(1);
   });
 });
+
+// EL PUNTO CIEGO: ACTIVO SIN SUSCRIPCION EN EL PROVEEDOR
+//
+// La auditoria solo alcanza a quien TIENE subscriptionId. Un comercio activo
+// sin esa referencia no se compara contra nada: es invisible, y puede estar
+// usando la plataforma sin que nadie verifique que pago.
+//
+// Aparecio al ir a limpiar la referencia obsoleta del comercio del dueño:
+// borrarla lo habria sacado del control en vez de resolver nada.
+
+describe("auditoría de suscripciones · los activos sin proveedor se ven", () => {
+  test("un comercio activo sin subscriptionId se informa", async () => {
+    // ESTA ES LA PROPIEDAD. Antes desaparecia del informe.
+    const tenant = await crearTenant("SinProveedor", {
+      subscriptionStatus: "active",
+      plan: "pro",
+    });
+
+    const auditoria = await auditSubscriptions({
+      Tenant,
+      client: { get: async () => { throw new Error("no debería llamarse"); } },
+    });
+
+    expect(auditoria.withoutProvider).toHaveLength(1);
+    expect(auditoria.withoutProvider[0]).toMatchObject({
+      slug: tenant.slug,
+      plan: "pro",
+      subscriptionStatus: "active",
+    });
+  });
+
+  test("pero NO cuenta como descuadre", async () => {
+    // El comercio del dueño esta legitimamente asi: no puede suscribirse,
+    // pagador y receptor serian la misma cuenta. Convertirlo en hallazgo
+    // haria sonar el aviso cada hora para siempre.
+    await crearTenant("DelDuenio", { subscriptionStatus: "active", plan: "pro" });
+
+    const auditoria = await auditSubscriptions({ Tenant, client: null });
+
+    expect(auditoria.balanced).toBe(true);
+    expect(auditoria.findings).toHaveLength(0);
+  });
+
+  test("un comercio en prueba no cuenta: todavía no tiene por qué pagar", async () => {
+    await crearTenant("EnPruebaAun", { subscriptionStatus: "trialing", plan: "starter" });
+
+    const auditoria = await auditSubscriptions({ Tenant, client: null });
+
+    expect(auditoria.withoutProvider).toHaveLength(0);
+  });
+});

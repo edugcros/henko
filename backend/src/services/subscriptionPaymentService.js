@@ -571,6 +571,30 @@ export const auditSubscriptions = async ({ Tenant, client = null } = {}) => {
     .select('slug plan subscriptionStatus integrations.subscriptionMercadoPago')
     .lean()
 
+  // EL PUNTO CIEGO: ACTIVO SIN SUSCRIPCIÓN EN EL PROVEEDOR
+  //
+  // La consulta de arriba solo alcanza a quien TIENE subscriptionId. Un
+  // comercio activo sin esa referencia no se compara contra nada: es
+  // invisible para esta auditoría, y puede estar usando la plataforma sin que
+  // nadie verifique que pagó.
+  //
+  // No se cuenta como hallazgo, a propósito. El comercio del propio dueño de
+  // la plataforma está legítimamente en ese estado —no puede suscribirse,
+  // pagador y receptor serían la misma cuenta— y convertirlo en descuadre
+  // haría sonar el aviso cada hora para siempre, que es como se deja de leer.
+  //
+  // Se informa y queda a la vista. Un activo sin proveedor que NO sea el
+  // dueño es algo que alguien tiene que mirar.
+  const sinProveedor = await Tenant.find({
+    subscriptionStatus: { $in: ['active', 'past_due'] },
+    $or: [
+      { 'integrations.subscriptionMercadoPago.subscriptionId': { $exists: false } },
+      { 'integrations.subscriptionMercadoPago.subscriptionId': null },
+    ],
+  })
+    .select('slug plan subscriptionStatus')
+    .lean()
+
   const findings = []
   const unverifiable = []
   let checked = 0
@@ -578,8 +602,21 @@ export const auditSubscriptions = async ({ Tenant, client = null } = {}) => {
   // Sin comercios suscriptos no hay nada que preguntar, y crear el cliente
   // igual hacía fallar la auditoría entera cuando la credencial no está
   // configurada — el caso de cualquier entorno que todavía no cobra.
+  const listaSinProveedor = sinProveedor.map(t => ({
+    tenantId: String(t._id),
+    slug: t.slug,
+    plan: t.plan,
+    subscriptionStatus: t.subscriptionStatus,
+  }))
+
   if (!tenants.length) {
-    return { checked: 0, findings: [], unverifiable: [], balanced: true }
+    return {
+      checked: 0,
+      findings: [],
+      unverifiable: [],
+      withoutProvider: listaSinProveedor,
+      balanced: true,
+    }
   }
 
   // Un solo cliente para todas: crearlo por comercio multiplicaría las
@@ -626,6 +663,7 @@ export const auditSubscriptions = async ({ Tenant, client = null } = {}) => {
     checked,
     findings,
     unverifiable,
+    withoutProvider: listaSinProveedor,
     balanced: findings.length === 0,
   }
 }
@@ -655,6 +693,14 @@ export const runSubscriptionAudit = async ({ Tenant } = {}) => {
   try {
     const modelo = Tenant || (await import('../models/tenantModel.js')).default
     const auditoria = await auditSubscriptions({ Tenant: modelo })
+
+    if (auditoria.withoutProvider?.length) {
+      logger.warn('[SUSCRIPCIONES] Comercios activos sin suscripción en el proveedor', {
+        cantidad: auditoria.withoutProvider.length,
+        comercios: auditoria.withoutProvider.map(t => `${t.slug} (${t.plan})`),
+        nota: 'El comercio del dueño de la plataforma está legítimamente así.',
+      })
+    }
 
     if (auditoria.unverifiable.length) {
       // No es un hallazgo, pero tampoco silencio: si esto aparece siempre, la
