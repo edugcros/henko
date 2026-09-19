@@ -31,6 +31,10 @@ import {
   startSubscriptionAudit,
   stopSubscriptionAudit,
 } from './src/services/subscriptionPaymentService.js'
+import {
+  startPriceHistoryAudit,
+  stopPriceHistoryAudit,
+} from './src/services/pricing/priceHistoryAuditService.js'
 
 // =====================================================
 // Configuración servidor
@@ -147,6 +151,10 @@ const startServer = async () => {
       // no coinciden. Nunca corrige: un estado equivocado puede dejar sin
       // plataforma a un comercio que paga.
       startSubscriptionAudit({ logger })
+      // Relee la cadena del historial de precios y avisa si falta un cambio.
+      // Diaria: con el historial ya transaccional, un hueco nuevo es raro, y
+      // mirarlo cada hora reportaría el mismo hueco viejo veinticuatro veces.
+      startPriceHistoryAudit({ logger })
     })
 
     serverInstance.on('error', err => {
@@ -186,6 +194,7 @@ const shutdown = async signal => {
     stopAccountingAudit()
     stopCertificateWatcher()
     stopSubscriptionAudit()
+    stopPriceHistoryAudit()
 
     if (serverInstance && isServerListening) {
       await new Promise((resolve, reject) => {

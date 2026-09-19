@@ -360,3 +360,96 @@ export const notifySubscriptionDrift = async audit => {
     return { sent: false, reason: 'error' }
   }
 }
+
+/**
+ * Aviso de huecos en la cadena del historial de precios.
+ *
+ * Los de cabeza llevan la fila perdida entera, porque se puede reconstruir:
+ * sus dos extremos son el último precio registrado y el precio de hoy. Los de
+ * cadena rota no, y no hay forma de recuperarlos — el precio intermedio no
+ * quedó en ningún lado. Por eso el correo los distingue: uno se puede reponer
+ * a mano y el otro solo se puede saber que pasó.
+ */
+export const notifyPriceHistoryGaps = async audit => {
+  try {
+    const recipients = getRecipients()
+
+    if (!recipients.length) {
+      logger.warn('[PRICE HISTORY] Hay huecos para avisar y PLATFORM_OWNER_EMAILS está vacío')
+      return { sent: false, reason: 'no_recipients' }
+    }
+
+    const { gaps = [], chains = 0, rows = 0 } = audit || {}
+
+    const describir = gap =>
+      gap.kind === 'head-mismatch'
+        ? `falta el último cambio: de $${gap.lost?.previousPrice} a $${gap.lost?.newPrice}`
+        : `la cadena se corta: la fila dice que venía de $${gap.actualPrevious} y la anterior terminó en $${gap.expectedPrevious}`
+
+    const filas = gaps
+      .slice(0, 30)
+      .map(
+        gap => `<tr>
+          <td style="padding:6px 12px 6px 0"><strong>${gap.title || gap.productId}</strong></td>
+          <td style="padding:6px 12px 6px 0">${gap.variantId || 'precio del producto'}</td>
+          <td style="padding:6px 0">${describir(gap)}</td>
+        </tr>`,
+      )
+      .join('')
+
+    const reconstruibles = gaps.filter(gap => gap.kind === 'head-mismatch').length
+
+    const subject = `[HENKO] ${gaps.length} cambio(s) de precio sin registro en el historial`
+
+    const html = `
+      <div style="font-family:system-ui,sans-serif;color:#111;max-width:680px">
+        <p style="font-size:16px"><strong>El historial de precios tiene ${gaps.length} hueco(s).</strong></p>
+        <table style="border-collapse:collapse;font-size:14px;margin:12px 0">${filas}</table>
+        ${gaps.length > 30 ? `<p style="font-size:13px;color:#555">y ${gaps.length - 30} m&aacute;s.</p>` : ''}
+        <p style="font-size:13px;color:#555;margin-top:20px">
+          Se revisaron ${chains} cadena(s) y ${rows} fila(s). De los huecos,
+          ${reconstruibles} son del &uacute;ltimo cambio y se pueden reponer a
+          mano: sus dos extremos son el &uacute;ltimo precio registrado y el
+          precio actual. El resto son cortes en el medio de la cadena y el
+          precio intermedio no qued&oacute; en ninguna parte.
+        </p>
+        <p style="font-size:13px;color:#555">
+          NO se repuso nada autom&aacute;ticamente: una fila reconstruida
+          llevar&iacute;a una fecha inventada y un autor que no existi&oacute;,
+          y el historial es justamente contra lo que despu&eacute;s se mide si
+          una recomendaci&oacute;n de precio sirvi&oacute;.
+        </p>
+      </div>`
+
+    const text = [
+      `${gaps.length} hueco(s) en el historial de precios.`,
+      ...gaps.slice(0, 30).map(gap => `${gap.title || gap.productId}: ${describir(gap)}`),
+      `${reconstruibles} son del ultimo cambio y se pueden reponer a mano.`,
+      'No se repuso nada automaticamente.',
+    ].join('\n')
+
+    const results = await Promise.all(
+      recipients.map(to =>
+        sendEmail({ to, subject, html, text }).catch(error => ({
+          success: false,
+          error: error.message,
+        })),
+      ),
+    )
+
+    const delivered = results.filter(result => result?.success).length
+
+    if (!delivered) {
+      logger.error('[PRICE HISTORY] No se pudo avisar a nadie de los huecos', {
+        intentos: recipients.length,
+      })
+    }
+
+    return { sent: delivered > 0, delivered, attempted: recipients.length }
+  } catch (error) {
+    logger.error('[PRICE HISTORY] Falló el envío del aviso de huecos', {
+      error: error.message,
+    })
+    return { sent: false, reason: 'error' }
+  }
+}

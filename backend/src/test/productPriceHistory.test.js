@@ -333,3 +333,123 @@ describe("historial de precios · atomicidad con transacción", () => {
     expect(rows[0].newPrice).toBe(140000);
   });
 });
+
+// Auditoría de la cadena.
+//
+// Borrar una fila del historial ES la simulación fiel de una escritura
+// perdida: el estado que queda en la base es exactamente el mismo. Por eso
+// estas pruebas borran filas de verdad en vez de mockear el fallo.
+describe("historial de precios · auditoría de la cadena", () => {
+  let auditPriceHistory;
+
+  beforeAll(async () => {
+    ({ auditPriceHistory } = await import(
+      "../services/pricing/priceHistoryAuditService.js"
+    ));
+  });
+
+  const cambiarPrecio = async (p, precio) => {
+    p.price = precio;
+    await p.save();
+    return Product.findById(p._id).setOptions({ ignoreTenant: true });
+  };
+
+  test("una cadena completa da balanced", async () => {
+    let p = await makeProduct();
+    p = await cambiarPrecio(p, 140000);
+    await cambiarPrecio(p, 180000);
+
+    const a = await auditPriceHistory();
+
+    expect(a.balanced).toBe(true);
+    expect(a.gaps).toHaveLength(0);
+    expect(a.chains).toBe(1);
+    expect(a.rows).toBe(2);
+  });
+
+  test("si falta la última fila, el hueco se reconstruye entero", async () => {
+    let p = await makeProduct();
+    p = await cambiarPrecio(p, 140000);
+    await cambiarPrecio(p, 180000);
+
+    const filas = await historyFor(p._id);
+    await ProductPriceHistory.deleteOne({ _id: filas[filas.length - 1]._id })
+      .setOptions({ ignoreTenant: true });
+
+    const a = await auditPriceHistory();
+
+    expect(a.balanced).toBe(false);
+    expect(a.gaps).toHaveLength(1);
+    expect(a.gaps[0].kind).toBe("head-mismatch");
+    // Los dos extremos que sobrevivieron: lo último registrado y el precio de hoy.
+    expect(a.gaps[0].lost).toEqual({ previousPrice: 140000, newPrice: 180000 });
+  });
+
+  test("si falta una fila del medio, se detecta el corte", async () => {
+    let p = await makeProduct();
+    p = await cambiarPrecio(p, 140000);
+    p = await cambiarPrecio(p, 180000);
+    await cambiarPrecio(p, 200000);
+
+    const filas = await historyFor(p._id);
+    expect(filas).toHaveLength(3);
+    await ProductPriceHistory.deleteOne({ _id: filas[1]._id })
+      .setOptions({ ignoreTenant: true });
+
+    const a = await auditPriceHistory();
+
+    expect(a.balanced).toBe(false);
+    expect(a.gaps).toHaveLength(1);
+    expect(a.gaps[0].kind).toBe("broken-chain");
+    expect(a.gaps[0].expectedPrevious).toBe(140000);
+    expect(a.gaps[0].actualPrevious).toBe(180000);
+  });
+
+  test("el historial de un producto borrado es huérfano, no un hueco", async () => {
+    let p = await makeProduct();
+    await cambiarPrecio(p, 140000);
+
+    await Product.deleteOne({ _id: p._id }).setOptions({ ignoreTenant: true });
+
+    const a = await auditPriceHistory();
+
+    expect(a.balanced).toBe(true);
+    expect(a.gaps).toHaveLength(0);
+    expect(a.orphans).toHaveLength(1);
+    expect(a.orphans[0].rows).toBe(1);
+  });
+
+  // buildEntry no registra cuando el precio anterior es <= 0: sin precio
+  // anterior no hay cambio, hay un alta. El corte que eso deja es legítimo y
+  // tiene que ir aparte — marcarlo como error entrenaría a ignorar el aviso.
+  test("el corte que deja un precio 0 va a expected, no a gaps", async () => {
+    let p = await makeProduct();
+    p = await cambiarPrecio(p, 0);
+    await cambiarPrecio(p, 50000);
+
+    const a = await auditPriceHistory();
+
+    expect(a.gaps).toHaveLength(0);
+    expect(a.balanced).toBe(true);
+    expect(a.expected).toHaveLength(1);
+    expect(a.expected[0].kind).toBe("head-mismatch");
+  });
+
+  test("la cadena de una variante es independiente de la del producto", async () => {
+    const p = await makeProduct({
+      hasVariants: true,
+      variants: [
+        { key: "talle:40", attributes: { talle: "40" }, price: 100000, stock: 5 },
+      ],
+    });
+
+    p.price = 140000;
+    p.variants[0].price = 120000;
+    await p.save();
+
+    const a = await auditPriceHistory();
+
+    expect(a.chains).toBe(2);
+    expect(a.balanced).toBe(true);
+  });
+});
