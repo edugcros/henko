@@ -152,6 +152,18 @@ const sanitizeString = (value, fallback = '') => {
   return clean || fallback
 }
 
+// La atribución viaja como JSON en un header. Un header corrupto no puede
+// voltear un checkout: sin objeto válido, la orden queda sin atribución.
+const parseAttributionHeader = value => {
+  if (typeof value !== 'string' || !value.trim()) return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
 const toBooleanInput = value => {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value === 1
@@ -547,10 +559,37 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
         })
       }
 
+      const attribution = parseAttributionHeader(
+        req.headers['x-metric-attribution'],
+      )
+
       const order = new Order({
         tenantId: tenantObjectId,
         idempotencyKey,
         products: lines,
+
+        // Atribución del visitante, congelada en el request que crea la
+        // orden. Son los mismos headers que el frontend manda en todo
+        // llamado (ver axiosConfig.js).
+        //
+        // Tiene que capturarse acá y no al cobrar: el PURCHASE server-side
+        // sale después —desde el webhook o la confirmación de Mercado Pago—
+        // y ahí ya no hay request del visitante del cual leerlos. Hasta
+        // ahora los escribía createOrderFromCart, que nunca se ejecutaba
+        // porque ningún frontend manda cartId, así que metaCapiService venía
+        // armando el evento sin fbc ni fbp.
+        sessionId: sanitizeString(req.headers['x-metric-session-id']).slice(0, 180),
+        attribution: {
+          utmSource: sanitizeString(attribution.utmSource).slice(0, 120),
+          utmMedium: sanitizeString(attribution.utmMedium).slice(0, 120),
+          utmCampaign: sanitizeString(attribution.utmCampaign).slice(0, 160),
+          utmContent: sanitizeString(attribution.utmContent).slice(0, 160),
+          utmTerm: sanitizeString(attribution.utmTerm).slice(0, 160),
+        },
+        metaClickIds: {
+          fbc: sanitizeString(req.headers['x-fbc']).slice(0, 300),
+          fbp: sanitizeString(req.headers['x-fbp']).slice(0, 300),
+        },
 
         paymentIntent: {
           id: idempotencyKey,

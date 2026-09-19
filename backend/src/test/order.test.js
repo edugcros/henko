@@ -106,4 +106,110 @@ describe('orders - storefront user', () => {
 
     expect(updatedProduct.stock).toBeLessThan(30)
   })
+
+  // La atribución solo se puede leer del request que crea la orden: el
+  // PURCHASE server-side sale después, desde el webhook, cuando ya no hay
+  // visitante. Se afirma sobre el documento guardado y no sobre la respuesta
+  // del endpoint, que no devuelve estos campos.
+  test('freezes visitor attribution and Meta click ids on the order', async () => {
+    await request(app)
+      .post('/api/user/cart')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
+      .send({ productId: product._id, quantity: 1 })
+
+    const orderRes = await request(app)
+      .post('/api/order/create')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
+      .set('x-metric-session-id', 'sesion-atribucion-1')
+      .set(
+        'x-metric-attribution',
+        JSON.stringify({ utmSource: 'instagram', utmCampaign: 'primavera' }),
+      )
+      .set('x-fbc', 'fb.1.1700000000.AbCdEf')
+      .set('x-fbp', 'fb.1.1700000000.987654321')
+      .send({
+        COD: true,
+        idempotencyKey: 'orden-con-atribucion',
+        shippingAddress: {
+          firstName: 'Pedro',
+          lastName: 'Ordenado',
+          email: 'order@test.com',
+          phone: '+541123456789',
+          address: 'Calle Test 123',
+          city: 'Buenos Aires',
+          zipCode: '1000',
+          country: 'AR',
+        },
+      })
+
+    expect(orderRes.statusCode).toBe(201)
+
+    const saved = await Order.findOne({
+      _id: orderRes.body.data._id,
+      tenantId: tenantContext.tenant._id,
+    }).setOptions({ tenantId: tenantContext.tenant._id })
+
+    expect(saved.sessionId).toBe('sesion-atribucion-1')
+    expect(saved.attribution.utmSource).toBe('instagram')
+    expect(saved.attribution.utmCampaign).toBe('primavera')
+    // metaCapiService los manda como fbc/fbp; sin esto el evento sale sin
+    // matching de campaña.
+    expect(saved.metaClickIds.fbc).toBe('fb.1.1700000000.AbCdEf')
+    expect(saved.metaClickIds.fbp).toBe('fb.1.1700000000.987654321')
+  })
+
+  test('survives a corrupted attribution header without failing checkout', async () => {
+    await request(app)
+      .post('/api/user/cart')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
+      .send({ productId: product._id, quantity: 1 })
+
+    const orderRes = await request(app)
+      .post('/api/order/create')
+      .set(authHeaders({
+        token: session.token,
+        domain: tenantContext.shopDomain,
+        csrfToken: session.csrfToken,
+        csrfCookie: session.csrfCookie,
+      }))
+      .set('x-metric-attribution', '{no-es-json')
+      .send({
+        COD: true,
+        idempotencyKey: 'orden-con-header-roto',
+        shippingAddress: {
+          firstName: 'Pedro',
+          lastName: 'Ordenado',
+          email: 'order@test.com',
+          phone: '+541123456789',
+          address: 'Calle Test 123',
+          city: 'Buenos Aires',
+          zipCode: '1000',
+          country: 'AR',
+        },
+      })
+
+    expect(orderRes.statusCode).toBe(201)
+
+    const saved = await Order.findOne({
+      _id: orderRes.body.data._id,
+      tenantId: tenantContext.tenant._id,
+    }).setOptions({ tenantId: tenantContext.tenant._id })
+
+    expect(saved.attribution.utmSource).toBe('')
+  })
 })

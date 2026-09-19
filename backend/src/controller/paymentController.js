@@ -49,7 +49,6 @@ import {
 import {
   applyMercadoPagoStatusToOrder,
   extractMercadoPagoFees,
-  createOrderFromCart,
 } from '../services/paymentOrderService.js'
 import {
   isWebhookProcessed,
@@ -83,17 +82,6 @@ const sanitizeString = (value, fallback = '') => {
 }
 
 const normalizeEmail = value => sanitizeString(value).toLowerCase()
-
-// Un header de atribución corrupto o ausente nunca debe romper la creación
-// de la orden — el peor caso aceptable es "sin atribución", no un 500.
-const safeJsonParse = value => {
-  if (typeof value !== 'string' || !value) return null
-  try {
-    return JSON.parse(value)
-  } catch {
-    return null
-  }
-}
 
 const isValidEmail = value => EMAIL_REGEX.test(normalizeEmail(value))
 
@@ -352,18 +340,15 @@ export const getPaymentPublicConfig = async (req, res) => {
 export const processPayment = async (req, res) => {
   const {
     orderId: bodyOrderId,
-    cartId: bodyCartId,
     token,
     payment_method_id: paymentMethodId,
     installments,
     payer,
     issuer_id: issuerId,
-    shippingAddress,
   } = req.body || {}
 
   const orderId = bodyOrderId || null
-  const cartId = bodyCartId || null
-  const lockResourceId = orderId || cartId || crypto.randomUUID()
+  const lockResourceId = orderId || crypto.randomUUID()
 
   let order = null
   let tenantId = null
@@ -437,51 +422,39 @@ export const processPayment = async (req, res) => {
       })
     }
 
-    if (cartId && !orderId) {
-      order = await createOrderFromCart({
-        cartId,
-        userId,
-        tenantId,
-        shippingAddress,
-        // Mismos headers que el frontend ya manda en todo request (ver
-        // axiosConfig.js) — se capturan acá, una sola vez, para que el
-        // PURCHASE server-side pueda unir toda la sesión y la campaña del
-        // visitante sin importar por cuál de los 3 caminos de aprobación
-        // termine llegando.
-        sessionId: sanitizeString(req.headers['x-metric-session-id']),
-        attribution: safeJsonParse(req.headers['x-metric-attribution']) || {},
-        metaClickIds: {
-          fbc: sanitizeString(req.headers['x-fbc']),
-          fbp: sanitizeString(req.headers['x-fbp']),
-        },
-      })
-
-      logger.info('🛒 Orden creada desde carrito', {
-        orderId: order._id?.toString?.(),
-        tenantId: String(tenantId),
-      })
-    } else if (orderId && isValidObjectId(orderId)) {
-      order = await Order.findOne({
-        _id: toObjectId(orderId),
-        orderby: toObjectId(userId),
-        tenantId: toObjectId(tenantId),
-        isDeleted: false,
-      })
-        .setOptions({ tenantId })
-        .populate('orderby', 'email firstname lastname firstName lastName')
-
-      if (!order) {
-        return res.status(404).json({
-          success: false,
-          code: 'ORDER_NOT_FOUND',
-          message: 'Orden no encontrada',
-        })
-      }
-    } else {
+    // Pagar exige una orden ya creada. Este endpoint NO crea órdenes.
+    //
+    // Antes aceptaba también un cartId y en ese caso armaba la orden acá
+    // mismo, con createOrderFromCart. Ese camino estaba muerto —ningún
+    // frontend manda cartId— y arrastraba dos defectos que solo no lastimaron
+    // porque nadie lo pisaba: le ponía a la orden un idempotencyKey generado
+    // al azar en cada llamada, o sea un campo que promete deduplicación y no
+    // deduplica nada, y escribía discountAmountCents: 0 fijo, o sea perdía el
+    // cupón sin avisar. Crear la orden en createOrder (orderCtrl) es el único
+    // camino que aplica el cupón, acepta la clave de idempotencia del cliente
+    // y choca contra el índice único parcial si se repite.
+    if (!orderId || !isValidObjectId(orderId)) {
       return res.status(400).json({
         success: false,
-        code: 'ORDER_ID_OR_CART_ID_REQUIRED',
-        message: 'Debe enviarse orderId o cartId',
+        code: 'ORDER_ID_REQUIRED',
+        message: 'Debe enviarse orderId',
+      })
+    }
+
+    order = await Order.findOne({
+      _id: toObjectId(orderId),
+      orderby: toObjectId(userId),
+      tenantId: toObjectId(tenantId),
+      isDeleted: false,
+    })
+      .setOptions({ tenantId })
+      .populate('orderby', 'email firstname lastname firstName lastName')
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 'ORDER_NOT_FOUND',
+        message: 'Orden no encontrada',
       })
     }
 
@@ -608,13 +581,14 @@ export const processPayment = async (req, res) => {
       emailQueued: normalizedPaymentStatus === PAYMENT_STATUS.APPROVED,
     })
   } catch (error) {
+    // Sin `stockReserved = false` después de liberar: es el último uso de la
+    // variable en la función y el linter lo marcaba como error.
     if (stockReserved && order) {
       await safelyReleaseReservedStock({
         order,
         tenantId,
         reason: 'processPayment.catch',
       })
-      stockReserved = false
     }
 
     // El pago YA se aprobó (Mercado Pago respondió approved y quedó escrito

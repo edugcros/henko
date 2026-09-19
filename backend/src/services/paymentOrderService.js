@@ -1,13 +1,8 @@
-import crypto from 'node:crypto'
-
-import Order, {
+import {
   PAYMENT_STATUS,
   REFUND_STATUS,
 } from '../models/orderModel.js'
-import Cart from '../models/cartModel.js'
 import { Money } from '../utils/money.js'
-import { toObjectId } from '../utils/requestContext.js'
-import { calculateCartLines, validateCartOwnership } from './orderCartService.js'
 import { normalizeMpStatus } from './paymentMercadoPagoService.js'
 
 const sanitizeString = (value, fallback = '') => {
@@ -35,85 +30,6 @@ const canApplyPaymentTransition = (currentStatus, nextStatus) => {
   }
 
   return allowedTransitions[currentStatus]?.includes(nextStatus) === true
-}
-
-export const createOrderFromCart = async ({
-  cartId,
-  userId,
-  tenantId,
-  shippingAddress = {},
-  sessionId = '',
-  attribution = {},
-  metaClickIds = {},
-}) => {
-  const cart = await Cart.findOne({
-    _id: toObjectId(cartId),
-    userId: toObjectId(userId),
-    tenantId: toObjectId(tenantId),
-  })
-
-  validateCartOwnership({ cart, userId, tenantId })
-
-  const { lines, subtotalCents, currency } = await calculateCartLines({
-    cart,
-    tenantId,
-    money: Money,
-  })
-
-  const order = new Order({
-    tenantId: toObjectId(tenantId),
-    idempotencyKey: crypto.randomUUID(),
-    orderby: toObjectId(userId),
-    sessionId: sanitizeString(sessionId).slice(0, 180),
-    attribution: {
-      utmSource: sanitizeString(attribution.utmSource).slice(0, 120),
-      utmMedium: sanitizeString(attribution.utmMedium).slice(0, 120),
-      utmCampaign: sanitizeString(attribution.utmCampaign).slice(0, 160),
-      utmContent: sanitizeString(attribution.utmContent).slice(0, 160),
-      utmTerm: sanitizeString(attribution.utmTerm).slice(0, 160),
-    },
-    metaClickIds: {
-      fbc: sanitizeString(metaClickIds.fbc).slice(0, 300),
-      fbp: sanitizeString(metaClickIds.fbp).slice(0, 300),
-    },
-
-    products: lines,
-
-    paymentIntent: {
-      id: crypto.randomUUID(),
-      provider: 'mercadopago',
-      status: PAYMENT_STATUS.PENDING,
-      currency,
-      amountCents: subtotalCents,
-      originalAmountCents: subtotalCents,
-      discountAmountCents: 0,
-    },
-
-    paymentStatus: PAYMENT_STATUS.PENDING,
-    fulfillmentStatus: 'unfulfilled',
-    refundStatus: 'none',
-
-    customerSnapshot: {
-      userId: toObjectId(userId),
-      email: shippingAddress?.email || cart.userEmail || '',
-      firstname: shippingAddress?.firstName || '',
-      lastname: shippingAddress?.lastName || '',
-    },
-
-    shippingAddress: {
-      firstName: shippingAddress?.firstName || '',
-      lastName: shippingAddress?.lastName || '',
-      email: shippingAddress?.email || '',
-      phone: shippingAddress?.phone || '',
-      address: shippingAddress?.address || '',
-      city: shippingAddress?.city || '',
-      zipCode: shippingAddress?.zipCode || '',
-      country: shippingAddress?.country || 'AR',
-    },
-  })
-
-  await order.save({ tenantId })
-  return order
 }
 
 /**
