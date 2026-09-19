@@ -174,13 +174,33 @@ export const buildMercadoPagoSubscriptionData = ({
  */
 export const mapMercadoPagoSubscriptionError = error => {
   const rawMessage = String(error?.message || '').toLowerCase()
-  const cause = Array.isArray(error?.cause) ? error.cause : []
 
-  const causeText = cause
-    .map(item => String(item?.description || '').toLowerCase())
+  // EL CAMPO ES `causes`, Y ACÁ SE LEÍA `cause`
+  //
+  // La clase MercadoPagoError del SDK expone `status`, `error` y `causes` —
+  // este último construido desde `body.cause` de la respuesta, pero guardado
+  // en plural (ver node_modules/mercadopago/dist/utils/errors/index.js).
+  // Leyendo `cause` el array quedaba SIEMPRE vacío, así que ninguna de las
+  // ramas de abajo podía disparar por el detalle del proveedor: todo caía en
+  // el mensaje genérico.
+  //
+  // Se conserva `cause` como respaldo por si otra versión del SDK lo expone
+  // así: leer los dos no cuesta nada y equivocarse otra vez sí.
+  const causas = Array.isArray(error?.causes)
+    ? error.causes
+    : Array.isArray(error?.cause)
+      ? error.cause
+      : []
+
+  const causeText = causas
+    .map(item => String(item?.description || item?.message || '').toLowerCase())
     .join(' | ')
 
-  const combined = `${rawMessage} ${causeText}`
+  // El código del proveedor viaja en `error`, aparte del mensaje. Sin esto,
+  // un rechazo cuyo motivo solo está en ese campo se clasifica como genérico.
+  const providerCode = String(error?.error || '').toLowerCase()
+
+  const combined = `${rawMessage} ${causeText} ${providerCode}`
   const status = Number(error?.status || error?.statusCode || 400)
 
   if (

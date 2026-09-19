@@ -23,7 +23,7 @@ jest.unstable_mockModule("../../config/logger.js", () => ({
   default: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-const { buildMercadoPagoSubscriptionData } = await import(
+const { buildMercadoPagoSubscriptionData, mapMercadoPagoSubscriptionError } = await import(
   "../services/subscriptionPaymentService.js"
 );
 
@@ -170,5 +170,71 @@ describe("payload · fechas", () => {
     // Y lo que sí tiene que viajar sigue viajando.
     expect(body.auto_recurring.frequency).toBe(1);
     expect(body.auto_recurring.frequency_type).toBe("months");
+  });
+});
+
+// CLASIFICAR EL RECHAZO DEL PROVEEDOR
+//
+// El error del SDK expone `status`, `error` y `causes` — este último armado
+// desde `body.cause` de la respuesta pero guardado en PLURAL. Ver
+// node_modules/mercadopago/dist/utils/errors/index.js.
+//
+// El mapeador leía `cause`, que en ese objeto no existe. El array quedaba
+// siempre vacío, ninguna rama podía disparar por el detalle del proveedor, y
+// todo caía en el mensaje genérico.
+//
+// Medido: entre el 18 y el 19/09/2026 hubo diez rechazos seguidos y en los
+// logs no había con qué distinguir una tarjeta rechazada de un problema de
+// credenciales. Se investigó a ciegas por eso.
+
+describe("clasificación del rechazo · el detalle del proveedor se lee", () => {
+  test("una causa en `causes` se clasifica, no cae en el genérico", () => {
+    // ESTA ES LA PROPIEDAD. Con el campo mal leído, esto devolvía
+    // SUBSCRIPTION_PAYMENT_ERROR — el mensaje que no dice nada.
+    const mapeado = mapMercadoPagoSubscriptionError({
+      message: "Bad request",
+      status: 400,
+      causes: [{ description: "Invalid card token" }],
+    });
+
+    expect(mapeado.code).toBe("CARD_TOKEN_INVALID");
+  });
+
+  test("el código del proveedor también cuenta", () => {
+    // Viaja en `error`, aparte del mensaje. Un rechazo cuyo motivo solo está
+    // ahí se clasificaba como genérico.
+    const mapeado = mapMercadoPagoSubscriptionError({
+      message: "Bad request",
+      status: 400,
+      error: "invalid_card_token",
+      causes: [],
+    });
+
+    expect(mapeado.code).toBe("CARD_TOKEN_INVALID");
+  });
+
+  test("un `cause` en singular sigue funcionando", () => {
+    // Respaldo por si otra versión del SDK lo expone así. Leer los dos no
+    // cuesta nada; equivocarse de campo otra vez sí.
+    const mapeado = mapMercadoPagoSubscriptionError({
+      message: "Bad request",
+      status: 400,
+      cause: [{ description: "security_code inválido" }],
+    });
+
+    expect(mapeado.code).toBe("CARD_CVV_INVALID");
+  });
+
+  test("sin detalle sigue habiendo un genérico honesto", () => {
+    // Es el caso de CC_VAL_433: Mercado Pago no manda causas. El genérico está
+    // bien ACÁ — lo que estaba mal era que todo terminara acá.
+    const mapeado = mapMercadoPagoSubscriptionError({
+      message: "CC_VAL_433 Credit card validation has failed",
+      status: 400,
+      causes: [],
+    });
+
+    expect(mapeado.code).toBe("SUBSCRIPTION_PAYMENT_ERROR");
+    expect(mapeado.details).toContain("CC_VAL_433");
   });
 });

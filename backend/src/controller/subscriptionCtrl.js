@@ -292,10 +292,25 @@ export const processSubscriptionPayment = async (req, res) => {
         body: subscriptionPaymentData,
       })
     } catch (mpError) {
+      // DIEZ RECHAZOS SEGUIDOS SIN SABER POR QUÉ
+      //
+      // Esto registraba `cause`, que en el error del SDK NO existe: la clase
+      // MercadoPagoError expone `status`, `error` y `causes` (ver
+      // node_modules/mercadopago/dist/utils/errors). Así que el log guardaba
+      // undefined y lo único que quedaba era un mensaje de nueve caracteres.
+      //
+      // Medido: entre el 18 y el 19/09/2026 hubo diez rechazos CC_VAL_433 y en
+      // los logs no había con qué distinguir una tarjeta rechazada por el banco
+      // de un pagador igual al receptor de un problema de riesgo. Se investigó
+      // a ciegas por eso.
       logger.error('Error en Mercado Pago:', {
         error: mpError.message,
         status: mpError.status,
-        cause: mpError.cause,
+        // El código que devuelve el proveedor, que es lo que hay que buscar en
+        // su documentación.
+        providerError: mpError.error || null,
+        // El detalle por campo. Es un array; vacío también es información.
+        causes: Array.isArray(mpError.causes) ? mpError.causes : [],
       })
 
       const mapped = mapMercadoPagoSubscriptionError(mpError)
