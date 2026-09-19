@@ -90,6 +90,9 @@ const CheckoutPage = () => {
   const [mpReady, setMpReady] = useState(false)
   const [mpError, setMpError] = useState(null)
   const [error, setError] = useState(null)
+  // A dónde mandar al comercio cuando su tarjeta no pasa. Lo devuelve el
+  // backend en data.initPoint junto con el error del cobro.
+  const [initPoint, setInitPoint] = useState(null)
   const [success, setSuccess] = useState(false)
   const [subscriptionId, setSubscriptionId] = useState(null)
 
@@ -189,6 +192,7 @@ const CheckoutPage = () => {
    */
   const onPaymentSubmit = async formData => {
     setError(null)
+    setInitPoint(null)
     setIsProcessing(true)
 
     try {
@@ -215,6 +219,7 @@ const CheckoutPage = () => {
         }, 3000)
       } else {
         setError(response.data?.message || 'Error procesando pago')
+        setInitPoint(response.data?.data?.initPoint || null)
       }
     } catch (err) {
       console.error('Error en checkout:', err)
@@ -223,6 +228,14 @@ const CheckoutPage = () => {
         err.response?.data?.data?.details ||
         'Error procesando pago. Intenta nuevamente.',
       )
+      // EL RECHAZO DEJA DE SER UN CALLEJÓN
+      //
+      // Un cobro rechazado suele ser del emisor de la tarjeta, no de la
+      // plataforma: medido el 19/09/2026, once rechazos seguidos de una
+      // prepaga, con el propio Mercado Pago recomendando "pague con otro
+      // medio de pago". Sin este enlace el comercio ve el error y no tiene
+      // ninguna salida desde acá.
+      setInitPoint(err.response?.data?.data?.initPoint || null)
     } finally {
       setIsProcessing(false)
     }
@@ -368,9 +381,35 @@ const CheckoutPage = () => {
                   }}
                 >
                   {error && (
-                    <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+                    <Alert
+                      severity="error"
+                      sx={{ mb: initPoint ? 2 : 3, borderRadius: 2 }}
+                    >
                       <AlertTitle>Error</AlertTitle>
                       {error}
+                    </Alert>
+                  )}
+
+                  {initPoint && (
+                    <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
+                      <AlertTitle>Probá con otro medio de pago</AlertTitle>
+                      Casi siempre el rechazo viene del banco que emitió la
+                      tarjeta, no de nosotros. Podés autorizar la suscripción
+                      desde tu cuenta de Mercado Pago y elegir ahí cómo pagarla
+                      —otra tarjeta, dinero en cuenta, lo que tengas—.
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        href={initPoint}
+                        // Se abre aparte para no perder esta pantalla: si el
+                        // comercio vuelve atrás, encuentra el checkout donde lo
+                        // dejó en vez de una página en blanco.
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ mt: 2, display: 'block', width: 'fit-content' }}
+                      >
+                        Autorizar en Mercado Pago
+                      </Button>
                     </Alert>
                   )}
 

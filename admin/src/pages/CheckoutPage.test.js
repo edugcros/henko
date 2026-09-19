@@ -12,6 +12,7 @@
 import React from "react";
 import { jest } from "@jest/globals";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 process.env.REACT_APP_API_BASE_URL = "http://localhost:5000/api";
 
@@ -36,8 +37,18 @@ jest.unstable_mockModule("react-redux", () => ({
 // acá es que la pantalla lo pida con los datos correctos y no rompa alrededor.
 jest.unstable_mockModule("@mercadopago/sdk-react", () => ({
   initMercadoPago: mockInitMercadoPago,
-  CardPayment: ({ initialization }) => (
-    <div data-testid="brick">monto: {initialization?.amount}</div>
+  // El botón permite disparar onSubmit como lo haría el Brick real, que es la
+  // única forma de ejercitar lo que la pantalla hace con la respuesta.
+  CardPayment: ({ initialization, onSubmit }) => (
+    <div data-testid="brick">
+      monto: {initialization?.amount}
+      <button
+        type="button"
+        onClick={() => onSubmit?.({ token: "tok-1", payer: { email: "a@b.com" } })}
+      >
+        pagar
+      </button>
+    </div>
   ),
 }));
 
@@ -118,5 +129,66 @@ describe("CheckoutPage · abre", () => {
     render(<CheckoutPage />);
 
     expect(await screen.findByTestId("brick")).toHaveTextContent("monto: 1");
+  });
+});
+
+// UN RECHAZO NO PUEDE SER UN CALLEJÓN
+//
+// El cobro directo tokeniza la tarjeta y cobra en el acto. Cuando el emisor la
+// rechaza, el comercio veía el error y nada más: ninguna salida desde esta
+// pantalla.
+//
+// Medido el 19/09/2026 con un comercio real: once rechazos seguidos de una
+// prepaga de Mercado Pago, con el propio panel del vendedor recomendando
+// "pague con otro medio de pago". El backend ya crea la suscripción en pending
+// y devuelve su init_point en data.initPoint; faltaba mostrarlo.
+
+describe("CheckoutPage · cuando la tarjeta no pasa", () => {
+  const rechazoCon = initPoint => {
+    const err = new Error("rechazado");
+    err.response = {
+      data: {
+        success: false,
+        message: "No se pudo procesar el pago de suscripción",
+        data: { code: "SUBSCRIPTION_PAYMENT_ERROR", details: "CC_VAL_433", initPoint },
+      },
+    };
+    return err;
+  };
+
+  test("ofrece autorizar desde Mercado Pago", async () => {
+    // ESTA ES LA PROPIEDAD. Antes solo aparecía el error.
+    mockPost.mockRejectedValue(rechazoCon("https://mercadopago.com/autorizar/pre-1"));
+
+    render(<CheckoutPage />);
+    await userEvent.click(await screen.findByRole("button", { name: /pagar/i }));
+
+    const enlace = await screen.findByRole("link", { name: /autorizar en mercado pago/i });
+    expect(enlace).toHaveAttribute("href", "https://mercadopago.com/autorizar/pre-1");
+  });
+
+  test("el error del cobro se sigue viendo", async () => {
+    // El rodeo no puede tapar por qué falló: el comercio tiene que poder
+    // llamar a su banco si prefiere.
+    mockPost.mockRejectedValue(rechazoCon("https://mercadopago.com/autorizar/pre-2"));
+
+    render(<CheckoutPage />);
+    await userEvent.click(await screen.findByRole("button", { name: /pagar/i }));
+
+    expect(await screen.findByText(/no se pudo procesar el pago/i)).toBeInTheDocument();
+  });
+
+  test("sin enlace no se inventa un botón", async () => {
+    // Si el backend no pudo armar la alternativa, ofrecerla igual mandaría al
+    // comercio a una pantalla que no existe.
+    mockPost.mockRejectedValue(rechazoCon(null));
+
+    render(<CheckoutPage />);
+    await userEvent.click(await screen.findByRole("button", { name: /pagar/i }));
+
+    await screen.findByText(/no se pudo procesar el pago/i);
+    expect(
+      screen.queryByRole("link", { name: /autorizar en mercado pago/i }),
+    ).not.toBeInTheDocument();
   });
 });
