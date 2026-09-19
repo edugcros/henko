@@ -11,7 +11,7 @@
 
 import { jest } from "@jest/globals";
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 
 const TENANT = new mongoose.Types.ObjectId();
 const USER = new mongoose.Types.ObjectId();
@@ -20,15 +20,23 @@ let mongod;
 let Product;
 let ProductPriceHistory;
 let PRICE_CHANGE_SOURCE;
+let withOptionalTransaction;
 
+// Replica set de un solo nodo y no un mongod suelto: sin replica set no hay
+// transacciones, y entonces la mitad de lo que hay que probar acá —que el
+// precio se revierta cuando su historial no entra— no se puede ni ejecutar.
+// Producción es Atlas, o sea replica set, así que además se parece más.
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongod.getUri());
 
   Product = (await import("../models/productModel.js")).default;
   const hist = await import("../models/productPriceHistoryModel.js");
   ProductPriceHistory = hist.default;
   PRICE_CHANGE_SOURCE = hist.PRICE_CHANGE_SOURCE;
+  ({ withOptionalTransaction } = await import(
+    "../utils/withOptionalTransaction.js"
+  ));
 }, 120000);
 
 afterAll(async () => {
@@ -257,7 +265,7 @@ describe("historial de precios · variantes", () => {
 });
 
 describe("historial de precios · no rompe el guardado", () => {
-  test("si el historial falla, el producto se guarda igual", async () => {
+  test("sin transacción, si el historial falla el producto se guarda igual", async () => {
     const p = await makeProduct();
     const spy = jest
       .spyOn(ProductPriceHistory, "insertMany")
@@ -272,5 +280,56 @@ describe("historial de precios · no rompe el guardado", () => {
 
     spy.mockRestore();
     quiet.mockRestore();
+  });
+});
+
+// El caso que el informe externo llamaba "precio nuevo sin trazabilidad".
+// Sobre un replica set el precio y su fila entran juntos o no entra ninguno.
+describe("historial de precios · atomicidad con transacción", () => {
+  test("el helper abre transacción de verdad sobre un replica set", async () => {
+    // Esta prueba parece trivial y no lo es: withOptionalTransaction leía
+    // `db.topology`, que en este driver es undefined, así que devolvía null y
+    // TODOS sus callers corrían sin transacción creyendo que tenían una.
+    const session = await withOptionalTransaction(async s => s);
+    expect(session).not.toBeNull();
+  });
+
+  test("si el historial falla dentro de la transacción, el precio no queda", async () => {
+    const p = await makeProduct();
+    const spy = jest
+      .spyOn(ProductPriceHistory, "insertMany")
+      .mockRejectedValueOnce(new Error("mongo caído"));
+    const quiet = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      withOptionalTransaction(session => {
+        p.price = 140000;
+        return p.save(session ? { session } : {});
+      }),
+    ).rejects.toThrow("mongo caído");
+
+    const saved = await Product.findById(p._id).setOptions({ ignoreTenant: true });
+    expect(saved.price).toBe(100000);
+    expect(await historyFor(p._id)).toHaveLength(0);
+
+    spy.mockRestore();
+    quiet.mockRestore();
+  });
+
+  test("si todo va bien, precio y fila quedan los dos", async () => {
+    const p = await makeProduct();
+
+    await withOptionalTransaction(session => {
+      p.price = 140000;
+      return p.save(session ? { session } : {});
+    });
+
+    const saved = await Product.findById(p._id).setOptions({ ignoreTenant: true });
+    expect(saved.price).toBe(140000);
+
+    const rows = await historyFor(p._id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].previousPrice).toBe(100000);
+    expect(rows[0].newPrice).toBe(140000);
   });
 });

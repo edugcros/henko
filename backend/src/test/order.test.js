@@ -7,6 +7,7 @@ import Order, { PAYMENT_STATUS } from '../models/orderModel.js'
 import Cart from '../models/cartModel.js'
 import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
+import { reserveStockAtomic } from '../services/paymentOrderOpsService.js'
 import {
   authHeaders,
   createTestProduct,
@@ -211,5 +212,60 @@ describe('orders - storefront user', () => {
     }).setOptions({ tenantId: tenantContext.tenant._id })
 
     expect(saved.attribution.utmSource).toBe('')
+  })
+})
+
+// reserveStockAtomic promete, en su propio comentario, que "si una línea falla
+// por falta de stock, las líneas ya descontadas de ese mismo intento se
+// revierten automáticamente". Esa promesa depende enteramente de que
+// withOptionalTransaction abra una transacción de verdad — y durante toda la
+// vida del helper no la abrió, porque leía `db.topology`, undefined en este
+// driver. O sea que un carrito de dos productos donde el segundo no tenía
+// stock dejaba el primero descontado para siempre.
+describe('reserva de stock - atomicidad entre líneas', () => {
+  let tenantContext
+  let conStock
+  let sinStock
+
+  beforeAll(async () => {
+    await connectTestDB()
+    tenantContext = await createTestTenant()
+
+    conStock = await createTestProduct({
+      tenantId: tenantContext.tenant._id,
+      title: 'Con stock',
+      price: 1000,
+      stock: 10,
+    })
+
+    sinStock = await createTestProduct({
+      tenantId: tenantContext.tenant._id,
+      title: 'Sin stock',
+      price: 1000,
+      stock: 1,
+    })
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  test('una línea sin stock revierte el descuento de la anterior', async () => {
+    const lineas = [
+      { product: conStock._id, count: 3, titleSnapshot: 'Con stock' },
+      { product: sinStock._id, count: 5, titleSnapshot: 'Sin stock' },
+    ]
+
+    await expect(
+      reserveStockAtomic(lineas, tenantContext.tenant._id),
+    ).rejects.toThrow()
+
+    const recargado = await Product.findOne({
+      _id: conStock._id,
+      tenantId: tenantContext.tenant._id,
+    }).setOptions({ tenantId: tenantContext.tenant._id })
+
+    // 10 y no 7: el descuento de la primera línea tiene que haberse deshecho.
+    expect(recargado.stock).toBe(10)
   })
 })

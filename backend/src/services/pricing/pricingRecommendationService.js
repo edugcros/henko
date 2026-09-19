@@ -15,6 +15,7 @@ import { PRICE_CHANGE_SOURCE } from '../../models/productPriceHistoryModel.js'
 import { buildPricingSignals } from './pricingSignalService.js'
 import { analyzePricingWithAI } from './pricingAiService.js'
 import { applyPricingPolicy, PRICING_ACTION } from './pricingPolicyService.js'
+import { withOptionalTransaction } from '../../utils/withOptionalTransaction.js'
 
 /**
  * Recomendación de precio para un producto.
@@ -209,7 +210,13 @@ export const applyRecommendedPrice = async ({
     }
   }
 
-  await product.save()
+  // Mismo criterio que la edición manual del panel: el precio y su fila de
+  // historial entran juntos o no entra ninguno. Acá pesa todavía más, porque
+  // sin historial no se puede medir después si la recomendación sirvió, que
+  // es la única razón por la que este camino existe.
+  await withOptionalTransaction(session =>
+    product.save(session ? { session } : {}),
+  )
 
   return {
     productId: String(product._id),

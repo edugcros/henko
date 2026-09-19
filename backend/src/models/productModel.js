@@ -1333,9 +1333,11 @@ productSchema.post('save', async function recordPriceHistory(doc) {
   // Producto nuevo: no hay precio anterior contra el cual comparar.
   if (!before) return
 
-  try {
-    const entries = []
+  // Fuera del try porque el catch las necesita: son lo único que queda del
+  // precio anterior una vez que el producto se guardó.
+  const entries = []
 
+  try {
     const productEntry = buildEntry({
       previous: before.price,
       next: doc.price,
@@ -1364,6 +1366,11 @@ productSchema.post('save', async function recordPriceHistory(doc) {
       './productPriceHistoryModel.js'
     )
 
+    // La sesión del save, si el que llamó abrió una transacción. Con ella el
+    // historial entra en la MISMA transacción que el precio: o se guardan los
+    // dos o ninguno. Sin ella se inserta suelto, como antes.
+    const session = doc.$session() || null
+
     await ProductPriceHistory.insertMany(
       entries.map(entry => ({
         ...entry,
@@ -1375,21 +1382,34 @@ productSchema.post('save', async function recordPriceHistory(doc) {
         changedBy: ctx.userId || null,
         recommendationId: ctx.recommendationId || null,
       })),
+      session ? { session } : {},
     )
 
     // El snapshot queda viejo tras guardar: sin esto, un segundo save() en la
     // misma instancia compararía contra el precio de dos cambios atrás.
     doc.$locals.priceSnapshot = snapshotPrices(doc)
   } catch (error) {
-    // Nunca romper el guardado del producto por un fallo del historial: perder
-    // una fila duele menos que perder la edición del comerciante. Pero se
-    // registra con nivel error — un historial que falla en silencio es peor
-    // que no tenerlo, porque igual se confía en él.
+    // El log lleva las filas enteras a propósito. Después de que el producto se
+    // guardó, `previousPrice` no existe en ningún otro lado: el precio viejo
+    // quedó pisado y el snapshot vivía en memoria. Sin esto, el único dato que
+    // permitiría reconstruir la fila perdida se va con el proceso.
     logger.error('[PRICE HISTORY] No se pudo registrar el cambio de precio', {
       productId: String(doc?._id),
       tenantId: doc?.tenantId ? String(doc.tenantId) : undefined,
       error: error.message,
+      entries,
     })
+
+    // Con transacción abierta hay que dejar que reviente. Tragarse el error
+    // acá haría lo contrario de lo que pidió el que abrió la transacción:
+    // commitearía el precio nuevo sin su historial, que es exactamente el
+    // estado que la transacción existía para impedir.
+    if (doc.$session()) throw error
+
+    // Sin transacción se sigue fallando abierto: perder una fila duele menos
+    // que perder la edición del comerciante, y el precio ya está escrito de
+    // todos modos. Lo que no puede pasar es que nadie se entere — de eso se
+    // ocupa auditPriceHistory, que detecta los huecos releyendo la cadena.
   }
 })
 

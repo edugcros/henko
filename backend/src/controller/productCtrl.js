@@ -42,6 +42,7 @@ import { registerVisualFeedback } from '../services/aiLearningService.js'
 
 import logger from '../../config/logger.js'
 import { PRICE_CHANGE_SOURCE } from '../models/productPriceHistoryModel.js'
+import { withOptionalTransaction } from '../utils/withOptionalTransaction.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -2438,7 +2439,14 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
         : '',
     }
 
-    await product.save()
+    // El precio y su historial, en una sola transacción. El hook de
+    // productModel se engancha a esta misma sesión: si la fila del historial
+    // no entra, el precio nuevo tampoco queda. Sobre Mongo standalone (local)
+    // withOptionalTransaction corre el callback sin sesión y el hook vuelve a
+    // fallar abierto, que es lo mejor que se puede hacer sin transacciones.
+    await withOptionalTransaction(session =>
+      product.save(session ? { session } : {}),
+    )
 
     await registerProductCatalogChange({
       tenantId,
