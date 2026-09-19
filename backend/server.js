@@ -27,6 +27,10 @@ import {
   stopCertificateWatcher,
 } from './src/services/tenant/tenantDomainService.js'
 import { describeMpAccount } from './src/services/paymentTenantConfigService.js'
+import {
+  startSubscriptionAudit,
+  stopSubscriptionAudit,
+} from './src/services/subscriptionPaymentService.js'
 
 // =====================================================
 // Configuración servidor
@@ -139,6 +143,10 @@ const startServer = async () => {
       // preguntándole al proveedor: lo que importa es lo que ve el navegador
       // del cliente.
       startCertificateWatcher({ logger })
+      // Compara el estado de cada suscripción contra Mercado Pago y avisa si
+      // no coinciden. Nunca corrige: un estado equivocado puede dejar sin
+      // plataforma a un comercio que paga.
+      startSubscriptionAudit({ logger })
     })
 
     serverInstance.on('error', err => {
@@ -177,6 +185,7 @@ const shutdown = async signal => {
     stopStaleOperationSweeper()
     stopAccountingAudit()
     stopCertificateWatcher()
+    stopSubscriptionAudit()
 
     if (serverInstance && isServerListening) {
       await new Promise((resolve, reject) => {

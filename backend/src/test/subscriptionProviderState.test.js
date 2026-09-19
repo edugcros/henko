@@ -17,6 +17,7 @@
 // descarta ni al escribir ni al filtrar. El test lo comprueba con strictQuery
 // en true, que es el peor caso.
 
+import { jest } from "@jest/globals";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 
@@ -380,5 +381,91 @@ describe("auditoría de suscripciones · detectar, no corregir", () => {
     expect(auditoria.checked).toBe(0);
     expect(auditoria.findings).toHaveLength(0);
     expect(auditoria.unverifiable).toHaveLength(0);
+  });
+});
+
+// EL CICLO QUE LA CORRE
+//
+// Una auditoría que nadie ejecuta no vale nada. Y hay una lección ya escrita
+// en startAccountingAudit que aplica igual acá: medido en los logs de
+// producción, esa auditoría arrancó 25 veces en una noche y su tick de
+// sesenta minutos no se disparó NI UNA. Un timer largo en un servicio que se
+// reinicia seguido es un timer que no corre. Por eso hay una pasada de
+// arranque además del intervalo.
+
+describe("auditoría de suscripciones · el ciclo", () => {
+  let runSubscriptionAudit;
+  let startSubscriptionAudit;
+  let stopSubscriptionAudit;
+
+  beforeAll(async () => {
+    ({ runSubscriptionAudit, startSubscriptionAudit, stopSubscriptionAudit } =
+      await import("../services/subscriptionPaymentService.js"));
+  });
+
+  afterEach(() => {
+    stopSubscriptionAudit();
+    delete process.env.SUBSCRIPTION_AUDIT_ENABLED;
+  });
+
+  test("una pasada sobre una base sin suscripciones no rompe ni avisa", async () => {
+    const r = await runSubscriptionAudit({ Tenant });
+
+    expect(r).not.toBeNull();
+    expect(r.balanced).toBe(true);
+    expect(r.checked).toBe(0);
+  });
+
+  test("se puede apagar sin un revert", async () => {
+    // Si la auditoría resulta ser el problema —consulta al proveedor por cada
+    // comercio— se apaga con una variable en vez de esperar un deploy.
+    process.env.SUBSCRIPTION_AUDIT_ENABLED = "false";
+    const log = { info: jest.fn(), error: jest.fn() };
+
+    startSubscriptionAudit({ logger: log });
+
+    expect(log.info).toHaveBeenCalledWith(
+      expect.stringContaining("deshabilitada"),
+    );
+  });
+
+  test("la pasada de arranque CORRE de verdad, no solo se anuncia", async () => {
+    // Sin la de arranque, un servicio que se reinicia cada media hora nunca
+    // llega al tick de una hora. Ya pasó con la auditoría contable: 25
+    // arranques en una noche y cero pasadas.
+    //
+    // Se espía Tenant.find, que es lo PRIMERO que toca la auditoría. Dos
+    // versiones anteriores de esta prueba miraban el log de "iniciada" y el
+    // logger inyectado: las dos pasaban con el setTimeout quitado, porque ese
+    // log se arma igual y la pasada usa el logger del módulo. Medir el
+    // anuncio en vez del efecto es exactamente el error que este repo ya tiene
+    // escrito en otros lados.
+    process.env.SUBSCRIPTION_AUDIT_ON_START_MS = "40";
+
+    const espia = jest.spyOn(Tenant, "find");
+    const log = { info: jest.fn(), error: jest.fn() };
+
+    startSubscriptionAudit({ logger: log });
+
+    expect(espia).not.toHaveBeenCalled(); // todavía no: va con retraso
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    delete process.env.SUBSCRIPTION_AUDIT_ON_START_MS;
+
+    expect(espia).toHaveBeenCalled();
+    espia.mockRestore();
+  });
+
+  test("arrancarla dos veces no deja dos ciclos", async () => {
+    const log = { info: jest.fn(), error: jest.fn() };
+
+    startSubscriptionAudit({ logger: log });
+    startSubscriptionAudit({ logger: log });
+
+    const iniciadas = log.info.mock.calls.filter(([msg]) =>
+      String(msg).includes("iniciada"),
+    );
+    expect(iniciadas).toHaveLength(1);
   });
 });

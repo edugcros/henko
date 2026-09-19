@@ -6,6 +6,7 @@ import { normalizePlan, getPlanMonthlyPriceArs } from './ai/aiPlanPolicy.js'
 import { MercadoPagoConfig, PreApproval } from 'mercadopago'
 
 import { env } from '../../config/env.js'
+import logger from '../../config/logger.js'
 
 /**
  * Cliente de SUSCRIPCIONES de Mercado Pago.
@@ -574,6 +575,13 @@ export const auditSubscriptions = async ({ Tenant, client = null } = {}) => {
   const unverifiable = []
   let checked = 0
 
+  // Sin comercios suscriptos no hay nada que preguntar, y crear el cliente
+  // igual hacía fallar la auditoría entera cuando la credencial no está
+  // configurada — el caso de cualquier entorno que todavía no cobra.
+  if (!tenants.length) {
+    return { checked: 0, findings: [], unverifiable: [], balanced: true }
+  }
+
   // Un solo cliente para todas: crearlo por comercio multiplicaría las
   // conexiones sin ganar nada, y si la credencial no sirve falla una vez.
   const mp = client || createSubscriptionClient()
@@ -622,9 +630,134 @@ export const auditSubscriptions = async ({ Tenant, client = null } = {}) => {
   }
 }
 
+// ─── CICLO AUTOMÁTICO ───────────────────────────────────────────────────────
+//
+// DETECTAR → REGISTRAR → AVISAR. Nunca corregir. Mismo criterio que
+// aiAccountingService, y acá lo que está en juego es más grande: el estado de
+// suscripción decide si un comercio puede usar la plataforma.
+
+let cicloRef = null
+
+// El timer de la pasada de arranque, guardado para poder cancelarlo: sin esto,
+// detener el ciclo deja una auditoría pendiente que se dispara después — en un
+// test, sobre una base ya cerrada.
+let arranqueRef = null
+
+const envEnteroPositivo = (nombre, porDefecto) => {
+  const valor = Number(process.env[nombre])
+  return Number.isFinite(valor) && valor > 0 ? Math.floor(valor) : porDefecto
+}
+
+/**
+ * Una pasada: compara contra el proveedor y avisa si algo no coincide.
+ */
+export const runSubscriptionAudit = async ({ Tenant } = {}) => {
+  try {
+    const modelo = Tenant || (await import('../models/tenantModel.js')).default
+    const auditoria = await auditSubscriptions({ Tenant: modelo })
+
+    if (auditoria.unverifiable.length) {
+      // No es un hallazgo, pero tampoco silencio: si esto aparece siempre, la
+      // auditoría no está auditando nada y conviene enterarse.
+      logger.warn('[SUSCRIPCIONES] Suscripciones que el proveedor no pudo confirmar', {
+        cantidad: auditoria.unverifiable.length,
+        comercios: auditoria.unverifiable.map(u => u.slug),
+      })
+    }
+
+    if (auditoria.balanced) {
+      logger.info('[SUSCRIPCIONES] Coinciden con Mercado Pago', {
+        verificadas: auditoria.checked,
+      })
+      return auditoria
+    }
+
+    // Nivel error y no warn: una diferencia significa que un comercio está
+    // usando la plataforma sin pagar, o pagando sin poder usarla.
+    logger.error('[SUSCRIPCIONES] El estado no coincide con Mercado Pago', {
+      verificadas: auditoria.checked,
+      findings: auditoria.findings,
+    })
+
+    // Se carga acá y no arriba: un import estático arrastraría el stack de
+    // correo a TODO consumidor de este servicio, incluido el controlador de
+    // pagos, que no manda mails. Solo hace falta cuando hay algo que avisar.
+    const { notifySubscriptionDrift } = await import('./ai/aiBudgetNotifier.js')
+    await notifySubscriptionDrift(auditoria)
+
+    return auditoria
+  } catch (error) {
+    logger.error('[SUSCRIPCIONES] La auditoría falló', { error: error.message })
+    return null
+  }
+}
+
+/**
+ * Arranca la auditoría periódica de suscripciones.
+ *
+ * UNA PASADA AL ARRANCAR, Y NO ES UN DETALLE
+ *
+ * Es la lección que ya dejó escrita startAccountingAudit: medido en los logs
+ * de producción, esa auditoría arrancó 25 veces en una noche y su tick de
+ * sesenta minutos no llegó a dispararse NI UNA. Un timer largo en un servicio
+ * que se reinicia seguido es un timer que no corre.
+ *
+ * Una vez por hora alcanza: una suscripción no cambia de estado sola, y cada
+ * pasada es una llamada al proveedor por comercio suscripto.
+ */
+export const startSubscriptionAudit = ({ logger: log = logger } = {}) => {
+  if (process.env.SUBSCRIPTION_AUDIT_ENABLED === 'false') {
+    log.info?.('[SUSCRIPCIONES] Auditoría automática deshabilitada')
+    return
+  }
+
+  if (cicloRef) return
+
+  const intervalMs = envEnteroPositivo('SUBSCRIPTION_AUDIT_INTERVAL_MS', 60 * 60 * 1000)
+  // Con retraso y no en el instante cero: al arrancar hay conexiones
+  // abriéndose, y consultar al proveedor no tiene urgencia de segundos.
+  const arranqueMs = envEnteroPositivo('SUBSCRIPTION_AUDIT_ON_START_MS', 120 * 1000)
+
+  arranqueRef = setTimeout(() => {
+    runSubscriptionAudit().catch(error => {
+      log.error?.('[SUSCRIPCIONES] La auditoría de arranque falló', { error: error.message })
+    })
+  }, arranqueMs)
+
+  arranqueRef.unref?.()
+
+  cicloRef = setInterval(() => {
+    runSubscriptionAudit().catch(error => {
+      log.error?.('[SUSCRIPCIONES] El ciclo falló', { error: error.message })
+    })
+  }, intervalMs)
+
+  cicloRef.unref?.()
+
+  log.info?.('[SUSCRIPCIONES] Auditoría automática iniciada', {
+    intervalMinutes: Math.round(intervalMs / 60000),
+    primeraPasadaEnSegundos: Math.round(arranqueMs / 1000),
+  })
+}
+
+export const stopSubscriptionAudit = () => {
+  if (arranqueRef) {
+    clearTimeout(arranqueRef)
+    arranqueRef = null
+  }
+
+  if (cicloRef) {
+    clearInterval(cicloRef)
+    cicloRef = null
+  }
+}
+
 export default {
   buildMercadoPagoSubscriptionData,
   mapMercadoPagoSubscriptionError,
   mapMercadoPagoSubscriptionStatus,
   auditSubscriptions,
+  runSubscriptionAudit,
+  startSubscriptionAudit,
+  stopSubscriptionAudit,
 }

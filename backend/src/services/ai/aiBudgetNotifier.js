@@ -267,3 +267,85 @@ export const notifyAccountingDrift = async audit => {
 }
 
 export default { notifyBudgetPressure, notifyAccountingDrift, EMAIL_THRESHOLD }
+
+/**
+ * Avisa que el estado de una suscripción no coincide con Mercado Pago.
+ *
+ * VIVE EN ESTE ARCHIVO AUNQUE EL NOMBRE DIGA "aiBudget"
+ *
+ * Lo que este módulo hace es avisarle al dueño de la plataforma, y esa lista
+ * —PLATFORM_OWNER_EMAILS— es la misma. Un archivo nuevo para dos funciones que
+ * comparten destinatarios, formato y criterio sería duplicar el canal. El
+ * nombre le quedó chico; el contenido es coherente.
+ *
+ * SIEMPRE manda mail. Una diferencia acá significa que un comercio está usando
+ * la plataforma sin pagar, o pagando sin poder usarla. Nada de eso es normal.
+ */
+export const notifySubscriptionDrift = async audit => {
+  try {
+    const recipients = getRecipients()
+
+    if (!recipients.length) {
+      logger.warn('[SUSCRIPCIONES] Hay una diferencia para avisar y PLATFORM_OWNER_EMAILS está vacío')
+      return { sent: false, reason: 'no_recipients' }
+    }
+
+    const { findings = [], checked = 0 } = audit || {}
+
+    const filas = findings
+      .map(
+        f => `<tr>
+          <td style="padding:6px 12px 6px 0"><strong>${f.slug}</strong></td>
+          <td style="padding:6px 12px 6px 0">HENKO: ${f.stored?.subscriptionStatus} (${f.stored?.plan})</td>
+          <td style="padding:6px 0">Mercado Pago: ${f.provider?.mapped}</td>
+        </tr>`,
+      )
+      .join('')
+
+    const subject = `[HENKO] ${findings.length} suscripción(es) no coinciden con Mercado Pago`
+
+    const html = `
+      <div style="font-family:system-ui,sans-serif;color:#111;max-width:620px">
+        <p style="font-size:16px"><strong>El estado guardado de ${findings.length} suscripción(es) no coincide con el proveedor.</strong></p>
+        <table style="border-collapse:collapse;font-size:14px;margin:12px 0">${filas}</table>
+        <p style="font-size:13px;color:#555;margin-top:20px">
+          Se consultaron ${checked} suscripción(es). NO se corrigió nada de forma
+          automática: un estado equivocado puede dejar sin plataforma a un
+          comercio que paga, así que la correcci&oacute;n se decide a mano.
+          El detalle est&aacute; en el panel, en Plataforma &rarr; Suscripciones.
+        </p>
+      </div>`
+
+    const text = [
+      `${findings.length} suscripcion(es) no coinciden con Mercado Pago.`,
+      ...findings.map(
+        f => `${f.slug}: HENKO dice ${f.stored?.subscriptionStatus}, Mercado Pago dice ${f.provider?.mapped}`,
+      ),
+      'No se corrigio nada automaticamente.',
+    ].join('\n')
+
+    const results = await Promise.all(
+      recipients.map(to =>
+        sendEmail({ to, subject, html, text }).catch(error => ({
+          success: false,
+          error: error.message,
+        })),
+      ),
+    )
+
+    const delivered = results.filter(result => result?.success).length
+
+    if (!delivered) {
+      logger.error('[SUSCRIPCIONES] No se pudo avisar a nadie de la diferencia', {
+        intentos: recipients.length,
+      })
+    }
+
+    return { sent: delivered > 0, delivered, attempted: recipients.length }
+  } catch (error) {
+    logger.error('[SUSCRIPCIONES] Falló el envío del aviso de diferencia', {
+      error: error.message,
+    })
+    return { sent: false, reason: 'error' }
+  }
+}
