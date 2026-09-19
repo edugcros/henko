@@ -216,22 +216,42 @@ export const rebuildTenantProjection = async ({ tenantId, period, apply = false 
     if (drift !== 0) hasDrift = true
   }
 
-  const costoLedger = round(
-    filas.reduce((suma, f) => suma + Number(f.costUsd || 0), 0),
-  )
-  const costoAlmacenado = round(Number(almacenado?.estimatedCostUsd || 0))
-  const costDrift = round(costoAlmacenado - costoLedger)
+  // NO SE REDONDEA ANTES DE COMPARAR
+  //
+  // Acá se redondeaba a 4 decimales —el default de round()— y recién después
+  // se comparaba contra COST_TOLERANCE_USD, que es 0.0001. Cuantizado a
+  // diezmilésimas, la mínima diferencia no nula ES la tolerancia, y la
+  // comparación es `>`: o sea que una deriva de exactamente un diezmilésimo
+  // no se reporta y la siguiente visible es el doble.
+  //
+  // Es el mismo defecto que tenía auditAccounting, en version más leve: allá
+  // se redondeaba a centavos y la tolerancia quedaba cien veces fuera de
+  // alcance. Medido el 19/09/2026 sobre Henko: la auditoría veía 0.000027 de
+  // diferencia y esta función informaba deriva CERO, porque 1.066759 y
+  // 1.066786 caen en el mismo diezmilésimo. Dos herramientas sobre los mismos
+  // datos, sin acuerdo sobre qué significa "cuadra".
+  //
+  // Redondear sigue estando bien para PRESENTAR. Para comparar, no.
+  const costoLedger = filas.reduce((suma, f) => suma + Number(f.costUsd || 0), 0)
+  const costoAlmacenado = Number(almacenado?.estimatedCostUsd || 0)
+  const costDrift = costoAlmacenado - costoLedger
 
-  // El costo se compara con tolerancia: son sumas de flotantes en distinto
-  // orden, y exigir igualdad exacta reportaría diferencias de 1e-15 como si
-  // fueran plata perdida.
+  // La tolerancia absorbe el ruido real de punto flotante, que sobre este
+  // libro se midió en 6.7e-16 con 203 filas y 2.7e-8 proyectado a dos
+  // millones — doce órdenes de magnitud por debajo de este umbral.
   if (Math.abs(costDrift) > COST_TOLERANCE_USD) hasDrift = true
 
   const report = {
     tenantId: String(tenantId),
     period,
     counters,
-    cost: { stored: costoAlmacenado, ledger: costoLedger, drift: costDrift },
+    // Redondeado solo para INFORMAR, a la misma precisión que auditAccounting.
+    // La comparación de arriba ya se hizo con los valores crudos.
+    cost: {
+      stored: round(costoAlmacenado, 6),
+      ledger: round(costoLedger, 6),
+      drift: round(costDrift, 6),
+    },
     hasDrift,
     // false = al libro le faltan filas, así que la diferencia de arriba NO es
     // un contador inflado: es un libro corto. Corregir contra él sería borrar
@@ -327,17 +347,25 @@ export const rebuildPlatformProjection = async ({ period, apply = false }) => {
 
   const tokensLedger = Math.round(Number(fila?.tokens || 0))
   const tokensAlmacenados = Math.round(Number(almacenado?.tokens || 0))
-  const costoLedger = round(Number(fila?.costUsd || 0))
-  const costoAlmacenado = round(Number(almacenado?.estimatedCostUsd || 0))
+  // Mismo criterio que rebuildTenantProjection: se compara crudo y se redondea
+  // solo para informar. Redondear antes deja la tolerancia fuera de alcance.
+  const costoLedger = Number(fila?.costUsd || 0)
+  const costoAlmacenado = Number(almacenado?.estimatedCostUsd || 0)
 
   const tokenDrift = tokensAlmacenados - tokensLedger
-  const costDrift = round(costoAlmacenado - costoLedger)
+  const costDrift = costoAlmacenado - costoLedger
   const hasDrift = tokenDrift !== 0 || Math.abs(costDrift) > COST_TOLERANCE_USD
 
   const report = {
     period,
     tokens: { stored: tokensAlmacenados, ledger: tokensLedger, drift: tokenDrift },
-    cost: { stored: costoAlmacenado, ledger: costoLedger, drift: costDrift },
+    // Redondeado solo para INFORMAR, a la misma precisión que auditAccounting.
+    // La comparación de arriba ya se hizo con los valores crudos.
+    cost: {
+      stored: round(costoAlmacenado, 6),
+      ledger: round(costoLedger, 6),
+      drift: round(costDrift, 6),
+    },
     hasDrift,
     applied: false,
   }

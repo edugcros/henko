@@ -647,6 +647,44 @@ describe('auditoría contable · detectar, no corregir', () => {
     expect(despues.estimatedCostUsd).toBe(10)
   })
 
+  // LAS DOS RECONCILIACIONES TAMBIEN REDONDEABAN ANTES DE COMPARAR
+  //
+  // rebuildTenantProjection y rebuildPlatformProjection redondeaban a 4
+  // decimales —el default de round()— y recien despues comparaban contra
+  // COST_TOLERANCE_USD, que es 0.0001. Cuantizado a diezmilesimas, la minima
+  // diferencia no nula ES la tolerancia, y la comparacion es `>`: una deriva
+  // de exactamente un diezmilesimo quedaba callada.
+  //
+  // Mismo defecto que tenia auditAccounting, en version mas leve. Medido el
+  // 19/09/2026 sobre Henko: la auditoria veia 0.000027 y el reconciliador
+  // informaba deriva CERO, porque 1.066759 y 1.066786 caen en el mismo
+  // diezmilesimo. Dos herramientas sobre los mismos datos sin acuerdo sobre
+  // que significa "cuadra".
+
+  test('una deriva apenas sobre la tolerancia se informa, y por lo que vale', async () => {
+    // 0.00012 es el caso que separa las dos versiones: redondeado a 4
+    // decimales da 0.0001, que NO es > 0.0001, asi que quedaba callado.
+    const period = '2060-09'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'apenas-encima',
+      keySource: 'platform', costUsd: 10,
+    })
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 10.00012 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    const reporte = await rebuildTenantProjection({ tenantId: TENANT, period })
+
+    expect(reporte.hasDrift).toBe(true)
+    expect(reporte.cost.drift).toBeCloseTo(0.00012, 6)
+    // Y NO el 0.0001 al que lo achataba el redondeo previo.
+    expect(reporte.cost.drift).toBeGreaterThan(0.0001)
+  })
+
   test('una diferencia de centésimas de centavo no es un hallazgo', async () => {
     // Son las mismas sumas hechas en otro orden. Reportarlas entrenaría a
     // ignorar el aviso que importa.
