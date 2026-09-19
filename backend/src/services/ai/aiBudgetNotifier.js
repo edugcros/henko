@@ -185,8 +185,18 @@ export const notifyAccountingDrift = async audit => {
 
     const { period, cost = {}, findings = [] } = audit || {}
 
+    // La fila del libro sin BYOK y la del BYOK solo aparecen cuando hay algo
+    // que mostrar. Sin esto el correo ponía un total del libro al lado del
+    // contador de plataforma como si fueran comparables, y no lo son: el
+    // contador no incluye lo que un comercio le paga a su propio proveedor.
     const filas = [
       ['Libro (ledger)', cost.ledger],
+      ...(cost.byok
+        ? [
+            ['  del cual, key propia del comercio', cost.byok],
+            ['  libro sin key propia (base del contador)', cost.ledgerSinByok],
+          ]
+        : []),
       ['Suma de los comercios', cost.tenantUsage],
       ['Contador de plataforma', cost.platformUsage],
     ]

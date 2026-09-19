@@ -599,8 +599,12 @@ describe('auditoría contable · detectar, no corregir', () => {
     const auditoria = await auditAccounting(period)
 
     expect(auditoria.balanced).toBe(false)
+    // Sin BYOK en juego, el libro entero y el libro sin BYOK son el mismo
+    // número: esta fila la pagó la plataforma.
     expect(auditoria.cost).toEqual({
       ledger: 82.31,
+      ledgerSinByok: 82.31,
+      byok: 0,
       platformUsage: 82.31,
       tenantUsage: 80.21,
     })
@@ -609,7 +613,7 @@ describe('auditoría contable · detectar, no corregir', () => {
     // que el roto es el agregado por comercio.
     expect(auditoria.findings).toEqual([
       { between: ['ledger', 'tenantUsage'], difference: 2.1 },
-      { between: ['platformUsage', 'tenantUsage'], difference: 2.1 },
+      { between: ['platformUsage', 'tenantUsageSinByok'], difference: 2.1 },
     ])
   })
 
@@ -729,8 +733,10 @@ describe('auditoría contable · detectar, no corregir', () => {
 
     expect(auditoria.balanced).toBe(false)
 
+    // Sin BYOK, 'ledgerSinByok' es el libro entero. El nombre cambia porque
+    // ahora la comparación declara sobre qué base se hace.
     const contraPlataforma = auditoria.findings.find(
-      f => f.between[0] === 'ledger' && f.between[1] === 'platformUsage',
+      f => f.between[0] === 'ledgerSinByok' && f.between[1] === 'platformUsage',
     )
 
     expect(contraPlataforma).toBeDefined()
@@ -743,6 +749,113 @@ describe('auditoría contable · detectar, no corregir', () => {
     // plataforma como el roto.
     expect(
       auditoria.findings.find(f => f.between.includes('tenantUsage') && f.between.includes('ledger')),
+    ).toBeUndefined()
+  })
+
+  // BYOK NO PONE A LOS TRES NÚMEROS EN LA MISMA BASE
+  //
+  // Con key propia del comercio, HENKO no paga nada — pero el LIBRO sí guarda
+  // lo que ese comercio le pagó a su proveedor, porque es la única forma de
+  // que vea su gasto. AiUsage también lo guarda. AiPlatformUsage no:
+  // registerPlatformConsumption recibe costUsd=0 y rebuildPlatformProjection
+  // filtra keySource != 'tenant'.
+  //
+  // La auditoría comparaba el libro ENTERO contra el contador de plataforma,
+  // así que apenas un comercio usara su propia key el descuadre era permanente
+  // y del tamaño exacto del BYOK. Medido en producción: 0.056 de BYOK haciendo
+  // que la deriva informada (0.004943) no se pareciera a la real (0.060943).
+
+  test('con BYOK en el libro, los números siguen cuadrando', async () => {
+    // ESTA ES LA PROPIEDAD. Todo consistente, más una fila BYOK. Antes esto
+    // reportaba descuadre por el monto del BYOK, para siempre.
+    const period = '2060-07'
+    const OTRO = new mongoose.Types.ObjectId()
+
+    // Lo que pagó la plataforma.
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'byok-plataforma',
+      keySource: 'platform', costUsd: 1,
+    })
+    // Lo que pagó el comercio con su propia key: entra al libro y a su
+    // agregado, NO al contador de plataforma.
+    await AiConsumptionLedger.create({
+      tenantId: OTRO, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'byok-comercio',
+      keySource: 'tenant', costUsd: 0.056,
+    })
+
+    await AiPlatformUsage.updateOne(
+      { period }, { $set: { estimatedCostUsd: 1 } }, { upsert: true },
+    )
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 1 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+    await AiUsage.updateOne(
+      { tenantId: OTRO, period },
+      { $set: { estimatedCostUsd: 0.056 }, $setOnInsert: { tenantId: OTRO, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: OTRO })
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.balanced).toBe(true)
+    expect(auditoria.findings).toHaveLength(0)
+
+    // Y el desglose queda a la vista, que es lo que permite leer el correo.
+    expect(auditoria.cost.byok).toBeCloseTo(0.056, 6)
+    expect(auditoria.cost.ledgerSinByok).toBeCloseTo(1, 6)
+    expect(auditoria.cost.ledger).toBeCloseTo(1.056, 6)
+  })
+
+  test('con BYOK, una deriva real del contador se ve por lo que vale', async () => {
+    // Mismo escenario, pero el contador de plataforma tiene medio centavo de
+    // más. La deriva que hay que informar es ESA, no la que sale de comparar
+    // contra el libro entero —que sería 0.056 más grande y apuntaría al lugar
+    // equivocado.
+    const period = '2060-08'
+    const OTRO = new mongoose.Types.ObjectId()
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'deriva-plataforma',
+      keySource: 'platform', costUsd: 1,
+    })
+    await AiConsumptionLedger.create({
+      tenantId: OTRO, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1, unit: 'tokens', operationId: 'deriva-comercio',
+      keySource: 'tenant', costUsd: 0.056,
+    })
+
+    await AiPlatformUsage.updateOne(
+      { period }, { $set: { estimatedCostUsd: 1.004943 } }, { upsert: true },
+    )
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 1 }, $setOnInsert: { tenantId: TENANT, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+    await AiUsage.updateOne(
+      { tenantId: OTRO, period },
+      { $set: { estimatedCostUsd: 0.056 }, $setOnInsert: { tenantId: OTRO, period } },
+      { upsert: true },
+    ).setOptions({ tenantId: OTRO })
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.balanced).toBe(false)
+
+    const contraContador = auditoria.findings.find(
+      f => f.between[0] === 'ledgerSinByok' && f.between[1] === 'platformUsage',
+    )
+    expect(contraContador).toBeDefined()
+    expect(contraContador.difference).toBeCloseTo(-0.004943, 6)
+
+    // El libro y los comercios coinciden: no hay hallazgo entre ellos.
+    expect(
+      auditoria.findings.find(f => f.between[0] === 'ledger' && f.between[1] === 'tenantUsage'),
     ).toBeUndefined()
   })
 })

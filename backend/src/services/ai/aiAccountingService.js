@@ -374,10 +374,17 @@ export const rebuildPlatformProjection = async ({ period, apply = false }) => {
  *   AiPlatformUsage:  82.31
  *   AiUsage:          80.21   ← acá hay 2,10 que alguien pagó y nadie le cobró
  *
- * Los tres tienen que dar lo mismo porque los tres se escriben en el mismo
- * acto: el costo entra al agregado del comercio, al de la plataforma y al
- * libro con el mismo número. La única excepción legítima es BYOK, y no
- * desalinea nada porque ahí el costo es cero en los tres.
+ * Los tres se escriben en el mismo acto, pero NO sobre la misma base, y eso
+ * hay que tenerlo en cuenta para compararlos:
+ *
+ *   libro            incluye BYOK (lo que el comercio le pagó a su proveedor)
+ *   AiUsage          incluye BYOK
+ *   AiPlatformUsage  NO: con key propia HENKO no paga nada
+ *
+ * Acá decía que BYOK "no desalinea nada porque ahí el costo es cero en los
+ * tres". Es falso: el libro guarda el costo del proveedor del comercio, que
+ * es justamente lo que le permite a ese comercio ver su gasto. Comparar el
+ * libro entero contra el contador de plataforma daba descuadre permanente.
  *
  * Cuando NO dan lo mismo, la diferencia dice dónde mirar:
  *
@@ -395,9 +402,16 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
   const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
 
   const [libro, comercios, plataforma] = await Promise.all([
+    // Agrupado por si la fila la pagó el comercio con su key o la plataforma.
+    // Sin esa separación no hay forma de comparar: ver el bloque de abajo.
     AiConsumptionLedger.aggregate([
       { $match: { period } },
-      { $group: { _id: null, costUsd: { $sum: conSigno('$costUsd') } } },
+      {
+        $group: {
+          _id: { $eq: [{ $ifNull: ['$keySource', 'platform'] }, 'tenant'] },
+          costUsd: { $sum: conSigno('$costUsd') },
+        },
+      },
     ]).option({ ignoreTenant: true, platformScope: 'platform:auditoria-contable-ia' }),
 
     // La suma de lo que cree cada comercio. Va con ignoreTenant por el mismo
@@ -433,7 +447,35 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
   // otro era medio centavo real informado como el doble. Un aviso que no
   // distingue esas dos cosas no sirve para decidir nada, y encima se disparaba
   // siempre — que es la forma más rápida de que se deje de leer.
-  const ledgerCost = Number(libro?.[0]?.costUsd || 0)
+  // LOS TRES NÚMEROS NO ESTABAN EN LA MISMA BASE, Y ASÍ NO PODÍAN CUADRAR
+  //
+  // El encabezado de esta función decía que BYOK "no desalinea nada porque ahí
+  // el costo es cero en los tres". Es falso, y se ve en producción:
+  //
+  //   keySource=tenant  consumed  26 filas  costo 0.056
+  //
+  // Con key propia el costo para HENKO es cero, pero el LIBRO igual guarda lo
+  // que el comercio le pagó a su proveedor — y está bien que lo guarde, es la
+  // única forma de que ese comercio vea su gasto. Lo que no está bien es
+  // comparar ese total contra un contador que por definición no lo incluye:
+  // registerPlatformConsumption recibe costUsd=0 para BYOK, y
+  // rebuildPlatformProjection filtra keySource != 'tenant'.
+  //
+  //   libro completo    incluye BYOK   ← comparable con AiUsage
+  //   AiUsage           incluye BYOK
+  //   AiPlatformUsage   NO incluye BYOK
+  //
+  // Medido en 2026-09: libro 1.071712, AiUsage 1.071685 (coinciden), y
+  // platformUsage 1.076655 contra un libro sin BYOK de 1.015712. La auditoría
+  // informaba 0.004943 de deriva cuando la real, en la base correcta, era
+  // 0.060943 — y con BYOK en cero habría informado descuadre igual, para
+  // siempre, porque comparaba peras con manzanas.
+  //
+  // Ahora cada comparación va contra la base que le corresponde.
+  const byokCost = Number(libro?.find(f => f._id === true)?.costUsd || 0)
+  const plataformaCost = Number(libro?.find(f => f._id === false)?.costUsd || 0)
+  const ledgerCost = byokCost + plataformaCost
+
   const tenantsCost = Number(comercios?.[0]?.costUsd || 0)
   const platformCost = Number(plataforma?.estimatedCostUsd || 0)
 
@@ -449,9 +491,14 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
     findings.push({ between: [leftName, rightName], difference: round(difference, 6) })
   }
 
-  anotar(ledgerCost, platformCost, 'ledger', 'platformUsage')
+  // Con BYOK: el libro entero contra lo que creen los comercios.
   anotar(ledgerCost, tenantsCost, 'ledger', 'tenantUsage')
-  anotar(platformCost, tenantsCost, 'platformUsage', 'tenantUsage')
+  // Sin BYOK: la parte que pagó la plataforma contra su propio contador.
+  anotar(plataformaCost, platformCost, 'ledgerSinByok', 'platformUsage')
+  // Y la tercera pata, que es la que permite triangular cuál de las dos
+  // proyecciones se rompió cuando las otras dos comparaciones fallan. Se le
+  // resta el BYOK a los comercios para ponerla en la base del contador.
+  anotar(platformCost, tenantsCost - byokCost, 'platformUsage', 'tenantUsageSinByok')
 
   return {
     period,
@@ -460,6 +507,8 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
     // "1.07 contra 1.08" al lado de "diferencia 0.0049".
     cost: {
       ledger: round(ledgerCost, 6),
+      ledgerSinByok: round(plataformaCost, 6),
+      byok: round(byokCost, 6),
       tenantUsage: round(tenantsCost, 6),
       platformUsage: round(platformCost, 6),
     },
