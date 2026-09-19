@@ -231,6 +231,10 @@ const handlePaymentAuthorized = async (tenant, data) => {
     {
       subscriptionStatus: 'active',
       subscriptionPastDueAt: null,
+      // Mismo motivo que en subscriptionCtrl: quien pasa a pagar ya no está en
+      // prueba, y esa fecha la exponen los dos controladores al panel. Dejarla
+      // deja un "tu prueba vence el …" encima de un comercio que paga.
+      trialEndsAt: null,
       'integrations.subscriptionMercadoPago.status': data.status,
       'integrations.subscriptionMercadoPago.lastPaymentAt': new Date(),
       'integrations.subscriptionMercadoPago.updatedAt': new Date(),

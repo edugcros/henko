@@ -307,11 +307,26 @@ export const processSubscriptionPayment = async (req, res) => {
           plan: normalizedPlan,
           subscriptionStatus: 'active',
           subscriptionPastDueAt: null,
-          // trialEndsAt ya no se mueve acá. Es la fecha de fin de PRUEBA y esto
-          // es un alta paga: escribirle hoy+30 la convertía en "próximo cobro",
-          // que es otro concepto y vive en nextBillingAt. Con el corte por
-          // suscripción encendido, ese valor decidiría cuándo se le apaga la IA
-          // a un comercio que está pagando.
+          // trialEndsAt NO se pisa con una fecha nueva: es el fin de la PRUEBA,
+          // y escribirle hoy+30 la convertiría en "próximo cobro", que es otro
+          // concepto y vive en nextBillingAt. Con el corte por suscripción
+          // encendido, ese valor decidiría cuándo se le apaga la IA a un
+          // comercio que está pagando.
+          //
+          // PERO SE BORRA, Y ANTES NI SE TOCABA
+          //
+          // Quien empieza a pagar ya no está en prueba, así que esa fecha deja
+          // de significar algo. Dejándola, el comercio queda con un "tu prueba
+          // vence el …" encima para siempre — subscriptionCtrl y
+          // tenantSettingsCtrl la exponen al panel tal cual.
+          //
+          // Medido: Henko quedó en plan pro, subscriptionStatus 'active', con
+          // trialEndsAt el mismo día. El panel anunciaba el vencimiento y mandó
+          // a intentar seis pagos seguidos por algo que no hacía falta. No
+          // cortaba el servicio —el gate de aiPlanPolicy solo mira trialEndsAt
+          // cuando el estado es 'trialing'— pero decía lo contrario de lo que
+          // pasaba, que es el fallo que más caro sale de todos.
+          trialEndsAt: null,
           'integrations.subscriptionMercadoPago': {
             subscriptionId: mpSubscription.id,
             status: mpSubscription.status,

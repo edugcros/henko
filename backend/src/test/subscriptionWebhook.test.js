@@ -206,6 +206,42 @@ describe("webhook de suscripción · firma", () => {
   });
 });
 
+// EMPEZAR A PAGAR TERMINA LA PRUEBA, Y LA FECHA NO SE BORRABA
+//
+// `trialEndsAt` es el fin del período de prueba. Al activarse una suscripción
+// no se pisa con una fecha nueva —eso la convertiría en "próximo cobro", que
+// es otro concepto y vive en nextBillingAt— pero tampoco se borraba, así que
+// un comercio que paga se quedaba con la fecha encima para siempre.
+// subscriptionCtrl y tenantSettingsCtrl la exponen al panel tal cual.
+//
+// Medido: Henko en plan pro, subscriptionStatus 'active', con trialEndsAt el
+// mismo día. El panel anunciaba el vencimiento y eso disparó seis intentos de
+// pago seguidos por algo que no hacía falta. No cortaba el servicio —el gate
+// de aiPlanPolicy solo mira trialEndsAt cuando el estado es 'trialing'— pero
+// decía lo contrario de lo que pasaba.
+
+describe("webhook de suscripción · activar termina la prueba", () => {
+  test("al pasar a activo, trialEndsAt se borra", async () => {
+    await correr();
+
+    const [, cambios] = mockTenantUpdate.mock.calls[0];
+
+    expect(cambios.subscriptionStatus).toBe("active");
+    expect(cambios.trialEndsAt).toBeNull();
+  });
+
+  test("y NO se reemplaza por una fecha futura", async () => {
+    // Escribirle hoy+30 haría que el corte por suscripción apague la IA de un
+    // comercio que está pagando. La fecha del próximo cobro es otra cosa y
+    // sale de lo que informe el proveedor.
+    await correr();
+
+    const [, cambios] = mockTenantUpdate.mock.calls[0];
+
+    expect(cambios.trialEndsAt).not.toEqual(expect.any(Date));
+  });
+});
+
 describe("webhook de suscripción · idempotencia", () => {
   test("un evento nuevo se procesa y queda marcado", async () => {
     const res = await correr();
