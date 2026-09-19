@@ -15,3 +15,34 @@
 // de todos modos: lo hace el claim tenantId del JWT, validado en cada
 // request server-side.
 export const getCookieDomain = () => undefined
+
+/**
+ * ¿Esta cookie viaja con `Partitioned` (CHIPS)?
+ *
+ * VIVÍA EN userCtrl Y csrfMiddleware NO LA USABA — MISMO FALLO QUE EL DE ARRIBA
+ *
+ * El comentario de este archivo cuenta que el scope de dominio tenía dos
+ * implementaciones que divergían, una en cada archivo. La regla de partición
+ * repitió el patrón: `sendAuthCookies` en userCtrl marcaba `partitioned` en
+ * token y refreshToken, y `setSignedSecretCookie` en csrfMiddleware no lo
+ * hacía en `_csrf`.
+ *
+ * Comprobado en producción con AUTH_COOKIE_PARTITIONED=true ya desplegado:
+ *
+ *   Set-Cookie: _csrf=…; HttpOnly; Secure; SameSite=None      ← sin Partitioned
+ *
+ * QUÉ ROMPE
+ *
+ * En un comercio con dominio propio —la tienda en su dominio pidiéndole a
+ * api.henkart.com.ar— Chrome bloquea las cookies de terceros que no estén
+ * particionadas. Con esta asimetría, la sesión SOBREVIVE y el secreto de CSRF
+ * NO: el comprador queda logueado y ningún POST le pasa. Un carrito que no
+ * puede comprar, sin ningún error que lo explique.
+ *
+ * Solo tiene sentido con SameSite=None: una cookie same-site no necesita
+ * partición. Y se apaga con AUTH_COOKIE_PARTITIONED='false' exacto — el
+ * default es encendido, para que olvidarse no deje sesiones rotas.
+ */
+export const usePartitionedCookies = sameSite =>
+  process.env.AUTH_COOKIE_PARTITIONED !== 'false' &&
+  String(sameSite).toLowerCase() === 'none'

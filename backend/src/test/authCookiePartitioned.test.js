@@ -23,9 +23,13 @@ import cookie from 'cookie'
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 process.env.JWT_SECRET = 'test-secret-para-cookies'
 process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-para-cookies'
+// config/env.js captura process.env al importarse: esto tiene que estar antes.
+process.env.CSRF_COOKIE_SAME_SITE = 'None'
+process.env.CSRF_COOKIE_SECURE = 'true'
 
 const { usePartitionedCookies } = await import('../controller/userCtrl.js')
 const { crossSiteReasons } = await import('../../config/env.js')
+const { csrfProtectionDynamic } = await import('../middlewares/csrfMiddleware.js')
 
 const original = process.env.AUTH_COOKIE_PARTITIONED
 
@@ -67,6 +71,57 @@ describe('cookies de auth · particionadas solo donde hace falta', () => {
     expect(header).toContain('Partitioned')
     expect(header).toContain('Secure')
     expect(header).toContain('SameSite=None')
+  })
+})
+
+// LA COOKIE DE CSRF TAMBIÉN, Y NO LA LLEVABA
+//
+// La regla vivía en userCtrl y csrfMiddleware no la usaba: token y
+// refreshToken salían con Partitioned y `_csrf` no. Comprobado en producción
+// con AUTH_COOKIE_PARTITIONED=true ya desplegado:
+//
+//   Set-Cookie: _csrf=…; HttpOnly; Secure; SameSite=None     ← sin Partitioned
+//
+// En un comercio con dominio propio Chrome bloquea las cookies de terceros sin
+// partición. Con esa asimetría la SESIÓN sobrevive y el secreto de CSRF no: el
+// comprador queda logueado y ningún POST le pasa. Un carrito que no puede
+// comprar, sin ningún error que lo explique.
+//
+// Es la tercera vez que el mismo par de archivos diverge sobre la misma
+// cookie: el encabezado de cookieHelper.js cuenta la primera, sobre el scope
+// de dominio. Por eso la regla se mudó ahí.
+
+describe('la cookie de CSRF sigue la misma regla que las de sesión', () => {
+  const emitirCookie = () => {
+    const cookies = []
+    const req = { method: 'GET', cookies: {}, get: () => undefined, headers: {} }
+    const res = { cookie: (nombre, valor, opciones) => cookies.push({ nombre, valor, opciones }) }
+
+    csrfProtectionDynamic(req, res, () => {})
+
+    return cookies.find(c => c.nombre === '_csrf')
+  }
+
+  test('_csrf sale particionada cuando las de sesión también', () => {
+    // ESTA ES LA PROPIEDAD. Sin esto, dominio propio = logueado y sin comprar.
+    delete process.env.AUTH_COOKIE_PARTITIONED
+
+    const csrf = emitirCookie()
+
+    expect(csrf).toBeDefined()
+    expect(csrf.opciones.sameSite).toBe('None')
+    expect(csrf.opciones.partitioned).toBe(true)
+  })
+
+  test('y se apaga con la MISMA variable, no con otra', () => {
+    // Dos interruptores para la misma decisión es cómo se llega a que una
+    // cookie esté particionada y la otra no.
+    process.env.AUTH_COOKIE_PARTITIONED = 'false'
+
+    const csrf = emitirCookie()
+
+    expect(csrf).toBeDefined()
+    expect(csrf.opciones.partitioned).toBeUndefined()
   })
 })
 

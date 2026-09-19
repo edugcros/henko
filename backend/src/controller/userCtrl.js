@@ -26,7 +26,7 @@ import {
   sendWelcomeEmail,
 } from '../services/email/verificationEmail.service.js'
 import { sendResponse } from '../utils/response.js'
-import { getCookieDomain } from '../utils/cookieHelper.js'
+import { getCookieDomain, usePartitionedCookies } from '../utils/cookieHelper.js'
 import { buildPlatformTenantDomains, isReservedSlug } from '../utils/domainUtils.js'
 import {
   getUserIdFromRequest,
@@ -417,28 +417,27 @@ const serializeUserWithTenant = (user, tenant) => ({
  * Solo tiene sentido con SameSite=None —una cookie same-site no necesita
  * partición— y exige Secure, que es la misma condición que ya pide None.
  *
- * POR QUÉ HOY ESTÁ APAGADO, Y POR QUÉ VA A HACER FALTA DE NUEVO
+ * ESTUVO APAGADO MIENTRAS TODO COMPARTÍA SITIO
  *
- * Con todo bajo henkart.com.ar —tienda, panel y api.henkart.com.ar— esas tres
- * comparten sitio y la cookie dejó de ser de terceros. Por eso corre con
- * AUTH_COOKIE_PARTITIONED=false y nadie lo nota.
- *
- * Eso vale mientras los comercios entren por el apex o por un subdominio de
- * la plataforma. NO vale para un comercio con dominio propio: la tienda en
- * mitienda.com.ar pidiéndole a api.henkart.com.ar es sitio cruzado, y la
- * cookie de sus clientes vuelve a ser de terceros. Ahí hay que volver a
- * encenderlo, ANTES de dar de alta el primer comercio con dominio propio —
- * si no, sus clientes no van a poder iniciar sesión y el síntoma va a ser
- * otra vez "no hay token de refresco".
+ * Con tienda, panel y api.henkart.com.ar bajo el mismo dominio, la cookie dejó
+ * de ser de terceros y corría con AUTH_COOKIE_PARTITIONED=false. Se volvió a
+ * encender el 18/09/2026, antes del primer comercio con dominio propio: la
+ * tienda en su dominio pidiéndole a api.henkart.com.ar es sitio cruzado y la
+ * cookie de sus clientes vuelve a ser de terceros.
  *
  * Por eso tampoco se puede bajar SameSite a 'Lax': mientras la plataforma
  * venda dominios propios, 'None' es el requisito y no una precaución
  * transitoria. crossSiteReasons() en config/env.js enumera los motivos
  * concretos al arrancar.
+ *
+ * LA REGLA VIVE EN cookieHelper, NO ACÁ
+ *
+ * Estaba definida en este archivo y csrfMiddleware no la usaba: `_csrf` salía
+ * sin Partitioned mientras token y refreshToken sí lo llevaban. En un dominio
+ * propio eso deja la sesión viva y el CSRF bloqueado — logueado y sin poder
+ * comprar. Se re-exporta desde acá solo para no romper a quien la importe.
  */
-export const usePartitionedCookies = sameSite =>
-  process.env.AUTH_COOKIE_PARTITIONED !== 'false' &&
-  String(sameSite).toLowerCase() === 'none'
+export { usePartitionedCookies }
 
 const clearAuthCookies = (res, req) => {
   const cookieDomain = getCookieDomain(req)

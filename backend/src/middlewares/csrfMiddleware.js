@@ -2,7 +2,7 @@
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import crypto from 'node:crypto'
-import { getCookieDomain } from '../utils/cookieHelper.js'
+import { getCookieDomain, usePartitionedCookies } from '../utils/cookieHelper.js'
 import {
   SUBSCRIPTION_WEBHOOK_PATH,
   SENDGRID_WEBHOOK_PATH,
@@ -156,6 +156,15 @@ const setSignedSecretCookie = (req, res) => {
     domain: cookieDomain,
     path: '/',
     maxAge: CSRF_TOKEN_MAX_AGE_MS,
+    // ESTO FALTABA, Y ROMPÍA EL DOMINIO PROPIO SIN DECIRLO
+    //
+    // token y refreshToken salían con Partitioned y `_csrf` no. En un comercio
+    // con dominio propio Chrome bloquea las cookies de terceros sin partición:
+    // la sesión sobrevive y el secreto de CSRF no llega, así que el comprador
+    // queda logueado y ningún POST le pasa. Comprobado en producción con
+    // AUTH_COOKIE_PARTITIONED=true: Set-Cookie: _csrf=…; SameSite=None, sin
+    // Partitioned.
+    ...(usePartitionedCookies(env.csrfCookieSameSite) ? { partitioned: true } : {}),
   })
 
   return secretValue
@@ -261,12 +270,18 @@ export const handleCsrfError = (err, req, res, next) => {
     `CSRF Violation: ${req.method} ${req.originalUrl} | Host: ${req.get('host')} | Origin: ${req.get('origin') || 'n/a'}`,
   )
 
+  // Los atributos del borrado tienen que coincidir con los del seteo —incluido
+  // Partitioned— o el navegador trata la cookie a borrar como otra distinta y
+  // la original se queda viva. Mismo criterio que clearAuthCookies.
+  const particionada = usePartitionedCookies(env.csrfCookieSameSite)
+
   res.clearCookie('_csrf', {
     domain: cookieDomain,
     path: '/',
     httpOnly: true,
     secure: env.csrfCookieSecure,
     sameSite: env.csrfCookieSameSite,
+    ...(particionada ? { partitioned: true } : {}),
   })
 
   res.clearCookie(env.csrfCookieName || 'XSRF-TOKEN', {
@@ -275,6 +290,7 @@ export const handleCsrfError = (err, req, res, next) => {
     httpOnly: false,
     secure: env.csrfCookieSecure,
     sameSite: env.csrfCookieSameSite,
+    ...(particionada ? { partitioned: true } : {}),
   })
 
   return res.status(403).json({
