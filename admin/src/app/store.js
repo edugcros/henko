@@ -2,7 +2,7 @@ import { configureStore, combineReducers } from '@reduxjs/toolkit'
 import { persistStore, persistReducer } from 'redux-persist'
 import storageSession from 'redux-persist/lib/storage/session' // o 'redux-persist/lib/storage' si querés localStorage
 
-import authReducer from '@features/auth/authSlice'
+import authReducer, { SESSION_RESET } from '@features/auth/authSlice'
 import couponReducer from '@features/coupons/couponSlice'
 import customerReducer from '@features/customers/customerSlice'
 import enquiryReducer from '@features/enquiry/enquirySlice'
@@ -17,10 +17,14 @@ const authPersistConfig = {
   storage: storageSession, // O storage para localStorage
   // 'token' fuera a propósito: el access token vive en una cookie httpOnly
   // desde el backend, nunca en storage legible por JS.
-  whitelist: ['user', 'isAuthenticated'],
+  //
+  // 'sessionKey' va SÍ o SÍ junto a 'user': es a quién pertenece lo guardado.
+  // Persistir el usuario sin su identidad deja exactamente el estado que esto
+  // viene a evitar — datos cacheados sin forma de saber de quién son.
+  whitelist: ['user', 'isAuthenticated', 'sessionKey'],
 }
 
-const rootReducer = combineReducers({
+const appReducer = combineReducers({
   user: persistReducer(authPersistConfig, authReducer),
   product: productReducer,
   customers: customerReducer,
@@ -31,6 +35,22 @@ const rootReducer = combineReducers({
   promotionalBlocks: promotionalBlocksReducer,
   tenant: tenantReducer,
 })
+
+/**
+ * Un cambio de sesión vacía TODO, no solo el slice de auth.
+ *
+ * Si solo se limpiara `user`, en la misma pestaña quedarían cargados los
+ * productos, pedidos, clientes, cupones y el tema del comercio anterior. El
+ * usuario nuevo vería su nombre arriba y el catálogo del otro abajo — que es
+ * la misma confusión que esto viene a resolver, solo que peor, porque ahora
+ * parecería consistente.
+ *
+ * `appReducer(undefined, action)` hace que cada slice devuelva su initialState.
+ */
+export const rootReducer = (state, action) =>
+  action.type === SESSION_RESET
+    ? appReducer(undefined, action)
+    : appReducer(state, action)
 
 // El rootReducer **NO** se persiste entero, solo el slice user
 export const store = configureStore({

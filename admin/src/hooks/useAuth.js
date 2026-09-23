@@ -1,7 +1,13 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { fetchCsrfToken } from '@utils/axiosConfig'
-import { getMe, logoutUser, setCsrfToken } from '@features/auth/authSlice'
+import {
+  getMe,
+  logoutUser,
+  setCsrfToken,
+  openSessionChannel,
+  SESSION_RESET,
+} from '@features/auth/authSlice'
 
 const CSRF_STORAGE_KEY = 'csrfToken'
 const CSRF_FETCHED_AT_KEY = 'csrfTokenFetchedAt'
@@ -90,7 +96,15 @@ export const useAuth = () => {
     user: userRedux,
     isAuthenticated: isAuthenticatedRedux,
     csrfToken: csrfTokenRedux,
+    sessionKey: sessionKeyRedux,
   } = authState
+
+  // En una ref y no en la dependencia del efecto: el canal se suscribe UNA vez
+  // y tiene que leer la clave vigente al momento del mensaje, no la que había
+  // cuando se suscribió. Con la clave como dependencia, cada login recrearía la
+  // suscripción y se perderían avisos en el medio.
+  const sessionKeyRef = useRef(sessionKeyRedux)
+  sessionKeyRef.current = sessionKeyRedux
 
   const [csrfTokenState, setCsrfTokenState] = useState(
     () => csrfTokenRedux || safeSessionGet(CSRF_STORAGE_KEY) || '',
@@ -115,6 +129,38 @@ export const useAuth = () => {
 
     return () => {
       active = false
+    }
+  }, [dispatch])
+
+  // OTRA PESTAÑA CAMBIÓ LA SESIÓN DE ESTE ORIGEN
+  //
+  // La cookie es por origen y el estado de esta pestaña vive en
+  // sessionStorage, que es por pestaña: sin este aviso, una pestaña que no se
+  // recarga sigue mostrando al usuario anterior sobre datos del nuevo.
+  //
+  // Se compara la clave completa (usuario:comercio) y no solo "hay o no hay
+  // sesión": cambiar de comercio con el mismo usuario también es un cambio de
+  // sesión, y es el caso que va a importar cuando exista multi-comercio.
+  useEffect(() => {
+    const canal = openSessionChannel()
+    if (!canal) return undefined
+
+    canal.onmessage = evento => {
+      const ajena = evento?.data?.sessionKey ?? null
+      const propia = sessionKeyRef.current ?? null
+
+      if (ajena === propia) return
+
+      // Se tira todo y se vuelve a preguntar quién sos. getMe resuelve contra
+      // la cookie, que es la única que sabe la verdad; si ya no hay sesión, su
+      // rejected deja isAuthenticated en false y el guard manda al login.
+      dispatch({ type: SESSION_RESET })
+      dispatch(getMe())
+    }
+
+    return () => {
+      canal.onmessage = null
+      canal.close()
     }
   }, [dispatch])
 
