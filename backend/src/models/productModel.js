@@ -1387,6 +1387,12 @@ productSchema.post('save', async function recordPriceHistory(doc) {
 
     // El snapshot queda viejo tras guardar: sin esto, un segundo save() en la
     // misma instancia compararía contra el precio de dos cambios atrás.
+    //
+    // No hace falta protegerlo del reintento de una transacción: los dos
+    // caminos que abren una releen el producto en cada intento, así que el
+    // snapshot lo repone post('init'). Condicionarlo a la sesión, que fue lo
+    // primero que probé, rompía el caso de dos saves dentro de una misma
+    // transacción — la segunda fila saldría con el precio de dos cambios atrás.
     doc.$locals.priceSnapshot = snapshotPrices(doc)
   } catch (error) {
     // El log lleva las filas enteras a propósito. Después de que el producto se

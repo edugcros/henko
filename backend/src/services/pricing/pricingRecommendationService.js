@@ -184,29 +184,35 @@ export const applyRecommendedPrice = async ({
     throw error
   }
 
-  // El hook post('save') de productModel escribe el historial solo; lo que
-  // necesita de acá es el CONTEXTO: que el cambio salió de una recomendación y
-  // no de alguien tipeando. Sin esto quedaría registrado como 'unknown' y no se
-  // podría medir después si las recomendaciones sirven.
-  product.$locals.priceChange = {
-    source: PRICE_CHANGE_SOURCE.AI_RECOMMENDATION,
-    reason: String(reason || '').slice(0, 300),
-    userId,
-  }
-
   const ratio = requestedPrice / previousPrice
   let variantsUpdated = 0
 
-  product.price = requestedPrice
+  // El cambio, como función y no como mutación suelta, para poder aplicarlo de
+  // nuevo si la transacción se reintenta.
+  const aplicarCambio = doc => {
+    variantsUpdated = 0
 
-  // Las variantes se mueven en la misma proporción: si no, un producto con
-  // variantes queda con el precio base cambiado y las variantes en el viejo,
-  // que es lo que el comprador termina pagando.
-  if (product.hasVariants && Array.isArray(product.variants)) {
-    for (const variant of product.variants) {
-      if (variant.isActive === false) continue
-      variant.price = round2(Number(variant.price || 0) * ratio)
-      variantsUpdated += 1
+    // El hook post('save') de productModel escribe el historial solo; lo que
+    // necesita de acá es el CONTEXTO: que el cambio salió de una recomendación
+    // y no de alguien tipeando. Sin esto quedaría registrado como 'unknown' y
+    // no se podría medir después si las recomendaciones sirven.
+    doc.$locals.priceChange = {
+      source: PRICE_CHANGE_SOURCE.AI_RECOMMENDATION,
+      reason: String(reason || '').slice(0, 300),
+      userId,
+    }
+
+    doc.price = requestedPrice
+
+    // Las variantes se mueven en la misma proporción: si no, un producto con
+    // variantes queda con el precio base cambiado y las variantes en el viejo,
+    // que es lo que el comprador termina pagando.
+    if (doc.hasVariants && Array.isArray(doc.variants)) {
+      for (const variant of doc.variants) {
+        if (variant.isActive === false) continue
+        variant.price = round2(Number(variant.price || 0) * ratio)
+        variantsUpdated += 1
+      }
     }
   }
 
@@ -214,16 +220,36 @@ export const applyRecommendedPrice = async ({
   // historial entran juntos o no entra ninguno. Acá pesa todavía más, porque
   // sin historial no se puede medir después si la recomendación sirvió, que
   // es la única razón por la que este camino existe.
-  await withOptionalTransaction(session =>
-    product.save(session ? { session } : {}),
-  )
+  //
+  // Y como allá, el documento se vuelve a leer en cada intento: uno de mongoose
+  // no se puede reusar entre intentos porque save() lo deja limpio, y termina
+  // al escribir en la transacción, no al commitear. Un reintento sobre el mismo
+  // documento no escribiría nada.
+  let guardado = product
+
+  await withOptionalTransaction(async session => {
+    if (session) {
+      guardado = await Product.findOne({ _id: productId, tenantId })
+        .setOptions({ tenantId })
+        .session(session)
+
+      if (!guardado) {
+        const error = new Error('El producto dejó de existir durante el cambio de precio')
+        error.statusCode = 409
+        throw error
+      }
+    }
+
+    aplicarCambio(guardado)
+    await guardado.save(session ? { session } : {})
+  })
 
   return {
-    productId: String(product._id),
-    title: product.title,
+    productId: String(guardado._id),
+    title: guardado.title,
     previousPrice,
-    newPrice: product.price,
-    changePercent: round2(((product.price - previousPrice) / previousPrice) * 100),
+    newPrice: guardado.price,
+    changePercent: round2(((guardado.price - previousPrice) / previousPrice) * 100),
     variantsUpdated,
   }
 }

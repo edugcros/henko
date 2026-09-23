@@ -479,13 +479,17 @@ export const auditOrderFinancials = async ({
     }
   }
 
-  const traerContexto =
-    resolveTenantContext ||
-    (await import('./paymentTenantConfigService.js')).getTenantMercadoPagoContext
+  // Solo se carga el módulo del proveedor si de verdad hace falta. Con
+  // fetchProviderPayment inyectado —las pruebas— no se toca: importarlo
+  // arrastraría el SDK de Mercado Pago sin que nadie lo use.
+  let traerContexto = resolveTenantContext
+  let crearCliente = null
 
-  const crearCliente = fetchProviderPayment
-    ? null
-    : (await import('./paymentTenantConfigService.js')).createMercadoPagoPaymentClient
+  if (!fetchProviderPayment) {
+    const config = await import('./paymentTenantConfigService.js')
+    traerContexto = traerContexto || config.getTenantMercadoPagoContext
+    crearCliente = config.createMercadoPagoPaymentClient
+  }
 
   // Un comercio, un token, un cliente. Resolverlo por orden pediría las
   // credenciales del mismo comercio una vez por orden.

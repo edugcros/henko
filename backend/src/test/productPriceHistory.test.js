@@ -453,3 +453,89 @@ describe("historial de precios · auditoría de la cadena", () => {
     expect(a.balanced).toBe(true);
   });
 });
+
+// Reintento de la transacción.
+//
+// session.withTransaction reintenta el callback cuando Mongo devuelve un
+// TransientTransactionError — dos transacciones tocando el mismo documento,
+// que no es un fallo del negocio sino "volvé a intentar".
+//
+// El problema es que un documento de mongoose NO es repetible: save() limpia
+// los paths modificados al terminar, y termina al escribir en la transacción,
+// no al commitear. Si el commit se aborta, la escritura se deshace pero el
+// documento en memoria ya se cree guardado, así que el segundo intento no
+// escribe nada — y como la respuesta HTTP se arma con el documento en
+// memoria, el endpoint devuelve 200 sobre una edición que nunca ocurrió.
+describe("historial de precios · el reintento de la transacción", () => {
+  const transitorio = () => {
+    const error = new mongoose.mongo.MongoError("conflicto simulado")
+    error.addErrorLabel("TransientTransactionError")
+    return error
+  }
+
+  test("un error transitorio hace reintentar el callback", async () => {
+    // Si esto deja de ser cierto, las dos pruebas de abajo prueban nada.
+    let intentos = 0
+
+    await withOptionalTransaction(async () => {
+      intentos += 1
+      if (intentos === 1) throw transitorio()
+    })
+
+    expect(intentos).toBe(2);
+  });
+
+  test("el precio sobrevive al reintento", async () => {
+    const p = await makeProduct();
+    let intentos = 0;
+
+    await withOptionalTransaction(async session => {
+      // Se relee en cada intento, igual que hace el controlador: un documento
+      // de mongoose no se puede reusar entre intentos de la transacción.
+      const doc = session
+        ? await Product.findById(p._id).setOptions({ ignoreTenant: true }).session(session)
+        : p;
+
+      doc.price = 140000;
+      // tenantId explícito: fuera de una request no hay contexto de comercio
+      // del cual sacarlo. En producción lo pone el middleware.
+      await doc.save(session ? { session, tenantId: TENANT } : { tenantId: TENANT });
+      intentos += 1;
+      if (intentos === 1) throw transitorio();
+    });
+
+    expect(intentos).toBe(2);
+
+    const guardado = await Product.findById(p._id).setOptions({ ignoreTenant: true });
+    expect(guardado.price).toBe(140000);
+  });
+
+  test("la fila del historial sobrevive al reintento, y es una sola", async () => {
+    // El otro lado del mismo problema: el hook avanzaba el snapshot al
+    // insertar, así que en el segundo intento comparaba 140000 contra 140000
+    // y no escribía fila — pero el precio sí quedaba.
+    const p = await makeProduct();
+    let intentos = 0;
+
+    await withOptionalTransaction(async session => {
+      // Se relee en cada intento, igual que hace el controlador: un documento
+      // de mongoose no se puede reusar entre intentos de la transacción.
+      const doc = session
+        ? await Product.findById(p._id).setOptions({ ignoreTenant: true }).session(session)
+        : p;
+
+      doc.price = 140000;
+      // tenantId explícito: fuera de una request no hay contexto de comercio
+      // del cual sacarlo. En producción lo pone el middleware.
+      await doc.save(session ? { session, tenantId: TENANT } : { tenantId: TENANT });
+      intentos += 1;
+      if (intentos === 1) throw transitorio();
+    });
+
+    const filas = await historyFor(p._id);
+
+    expect(filas).toHaveLength(1);
+    expect(filas[0].previousPrice).toBe(100000);
+    expect(filas[0].newPrice).toBe(140000);
+  });
+});

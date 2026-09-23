@@ -2259,7 +2259,9 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
     const tenantId = requireUserTenantId(req)
     assertSameResolvedTenant(req, tenantId)
 
-    const product = await Product.findOne({
+    // `let` y no `const`: si la transacción de más abajo se reintenta, el
+    // documento se vuelve a leer y esta referencia pasa a apuntar al nuevo.
+    let product = await Product.findOne({
       _id: id,
       tenantId,
       isDeleted: { $ne: true },
@@ -2422,14 +2424,12 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
 
     const changedFields = Object.keys(updates)
 
-    Object.assign(product, updates)
-
     // Contexto para el historial de precios. El hook de productModel registra
     // el cambio con o sin esto; lo que se pierde sin contexto es el motivo y el
     // autor, que es justo lo que después permite medir si una recomendación de
     // IA sirvió. Se deriva de la misma señal que ya alimenta audit.lastSource,
     // para no tener dos fuentes de verdad sobre el origen del cambio.
-    product.$locals.priceChange = {
+    const contextoDePrecio = {
       userId: getRequestUserId(req),
       source: (req.body.aiAutomationMode || req.body.aiSource)
         ? PRICE_CHANGE_SOURCE.AI_RECOMMENDATION
@@ -2444,9 +2444,37 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
     // no entra, el precio nuevo tampoco queda. Sobre Mongo standalone (local)
     // withOptionalTransaction corre el callback sin sesión y el hook vuelve a
     // fallar abierto, que es lo mejor que se puede hacer sin transacciones.
-    await withOptionalTransaction(session =>
-      product.save(session ? { session } : {}),
-    )
+    //
+    // EL DOCUMENTO SE VUELVE A LEER EN CADA INTENTO
+    //
+    // withOptionalTransaction reintenta cuando Mongo aborta por conflicto, y
+    // un documento de mongoose NO se puede reusar entre intentos: save() lo
+    // deja limpio —y termina al escribir en la transacción, no al commitear—
+    // así que el segundo intento no escribiría nada. markModified tampoco
+    // alcanza: mongoose 6 compara contra su savedState y descarta el delta.
+    // Medido: el precio quedaba en el valor viejo y el endpoint devolvía 200.
+    //
+    // Releer adentro arregla las tres cosas de una: el documento llega sucio
+    // de verdad, el snapshot de precios lo repone post('init'), y se parte del
+    // estado que la base tiene ahora.
+    await withOptionalTransaction(async session => {
+      if (session) {
+        product = await Product.findOne({
+          _id: id,
+          tenantId,
+          isDeleted: { $ne: true },
+        })
+          .setOptions({ tenantId })
+          .session(session)
+
+        if (!product) throw new Error('El producto dejó de existir durante la edición')
+      }
+
+      Object.assign(product, updates)
+      product.$locals.priceChange = contextoDePrecio
+
+      await product.save(session ? { session } : {})
+    })
 
     await registerProductCatalogChange({
       tenantId,
