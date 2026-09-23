@@ -176,7 +176,22 @@ export default function StoreDomainSection() {
     }
   }, [cargar])
 
-  const propio = domains.find(d => d.type === 'custom_domain') || null
+  // Esta pantalla gestiona el dominio de la TIENDA. Se filtra por superficie
+  // y no se toma "el primer custom_domain": desde que un comercio puede
+  // declarar un dominio propio para su panel, el primero podía ser ese, y esta
+  // tarjeta habría mostrado el panel donde dice tienda — con su botón de
+  // borrar al lado.
+  //
+  // El alta del dominio de panel todavía no se hace desde acá: pedirlo implica
+  // además apuntar el DNS y dar de alta el hostname en el proyecto del panel,
+  // que hoy es un paso manual. Un botón que deja el dominio a mitad de camino
+  // promete algo que no termina de pasar.
+  const propio =
+    domains.find(d => d.type === 'custom_domain' && d.context !== 'admin') ||
+    null
+  const panelPropio =
+    domains.find(d => d.type === 'custom_domain' && d.context === 'admin') ||
+    null
   const plataforma = domains.find(d => d.type === 'platform_subdomain') || null
 
   const hostnameDraft = normalizar(draft)
@@ -265,11 +280,19 @@ export default function StoreDomainSection() {
         </Alert>
       )}
 
+      {panelPropio && (
+        <Alert severity="info" sx={{ borderRadius: 2, mb: 2 }}>
+          Además tenés <strong>{panelPropio.hostname}</strong> configurado como
+          panel de administración
+          {panelPropio.status !== 'active' && ' (todavía sin verificar)'}.
+        </Alert>
+      )}
+
       {!propio && (
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Si ya tenés un dominio propio, podés usarlo para tu tienda y para
-            entrar a este panel. Necesitás poder editar su DNS.
+            Si ya tenés un dominio propio, podés usarlo para tu tienda.
+            Necesitás poder editar su DNS.
           </Typography>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>

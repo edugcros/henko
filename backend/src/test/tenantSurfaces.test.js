@@ -173,3 +173,96 @@ describe('dominio único · las dos superficies a la vez', () => {
     expect(res.status).toBe(403)
   })
 })
+
+// Panel propio: un dominio del comercio declarado SOLO como panel.
+//
+// Es el caso que habilita tener dos cuentas abiertas a la vez, que era la
+// pregunta que trajo todo esto: dos hostnames distintos son dos orígenes
+// distintos, y las cookies de sesión son por origen.
+//
+// LA PARTE QUE NO SE VEÍA
+//
+// resolveSurfacesForTenant ponía isShopSurface en true para CUALQUIER entrada
+// de `domains`, por estar en esa lista, y recién después miraba el context
+// para sumar admin. O sea que un dominio declarado 'admin' quedaba igual como
+// tienda: las 30 rutas de storefront contestaban en el host del panel.
+//
+// Un panel que además sirve la tienda pública no es una molestia estética: es
+// superficie de más, en el hostname donde entran las credenciales.
+describe('panel propio · un dominio del comercio declarado solo como panel', () => {
+  const crearConPanelPropio = async () => {
+    const marca = Date.now()
+    const panel = `admin.propio-${marca}.com.ar`
+    const tienda = `propio-${marca}.com.ar`
+
+    const tenant = await Tenant.create({
+      name: `Propio ${marca}`,
+      slug: `propio-${marca}`,
+      status: 'active',
+      plan: 'starter',
+      domains: [
+        {
+          hostname: tienda,
+          normalizedHostname: tienda,
+          type: 'custom_domain',
+          context: 'storefront',
+          status: 'active',
+          isPrimary: true,
+        },
+        {
+          hostname: panel,
+          normalizedHostname: panel,
+          type: 'custom_domain',
+          context: 'admin',
+          status: 'active',
+          isPrimary: false,
+        },
+      ],
+      adminDomains: [],
+    })
+
+    const { token } = await createTestUser({ tenantId: tenant._id, role: 'admin' })
+
+    return { tenant, panel, tienda, token }
+  }
+
+  test('el dominio de panel sirve el PANEL', async () => {
+    const { panel, token } = await crearConPanelPropio()
+
+    const res = await crearColor({ dominio: panel, token, title: 'turquesa' })
+
+    expect(res.status).toBe(201)
+  })
+
+  // ESTA ES LA PROPIEDAD QUE FALTABA.
+  test('el dominio de panel NO sirve la tienda', async () => {
+    const { panel } = await crearConPanelPropio()
+
+    const res = await listarColores(panel)
+
+    expect(res.status).toBe(403)
+  })
+
+  test('el dominio de tienda sirve la tienda y NO el panel', async () => {
+    const { tienda, token } = await crearConPanelPropio()
+
+    expect((await listarColores(tienda)).status).toBe(200)
+    expect(
+      (await crearColor({ dominio: tienda, token, title: 'coral' })).status,
+    ).toBe(403)
+  })
+
+  test('los dos hostnames resuelven el MISMO comercio', async () => {
+    // Si resolvieran comercios distintos, separar el panel sería partir el
+    // negocio en dos en vez de separar dos superficies del mismo.
+    const { tenant, panel, tienda, token } = await crearConPanelPropio()
+
+    await crearColor({ dominio: panel, token, title: 'ocre' })
+
+    const desdeLaTienda = await listarColores(tienda)
+    const titulos = (desdeLaTienda.body?.data || []).map(c => c.title)
+
+    expect(titulos).toContain('ocre')
+    expect(String(tenant._id)).toBeTruthy()
+  })
+})

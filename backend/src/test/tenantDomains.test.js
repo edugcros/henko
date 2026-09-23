@@ -93,9 +93,10 @@ describe('alta de un dominio propio', () => {
 
     expect(domain.status).toBe('pending')
     expect(domain.type).toBe('custom_domain')
-    // Un dominio por comercio sirviendo tienda Y panel: es el modelo que
-    // resolveSurfacesForTenant sabe interpretar.
-    expect(domain.context).toBe('both')
+    // Tienda por defecto, que es lo que pide casi toda alta. Antes nacía
+    // 'both' y eso dejaba el dominio de la tienda contando como superficie de
+    // panel sin que nada sirviera un panel ahí.
+    expect(domain.context).toBe('storefront')
     // Y sin certificado propio todavía.
     expect(domain.sslStatus).toBe('pending')
 
@@ -357,6 +358,77 @@ describe('baja', () => {
 
     await expect(
       removeTenantDomain({ tenantId: tenant._id, hostname: 'fijo.henkart.com.ar' }),
+    ).rejects.toMatchObject({ statusCode: 400 })
+  })
+})
+
+// Panel propio: el comercio declara para qué es cada dominio.
+//
+// Un hostname sirve UNA aplicación. La tienda y el panel son dos proyectos
+// distintos, así que un comercio que quiere su propio panel necesita un
+// segundo hostname —admin.sutienda.com— declarado como panel.
+//
+// Lo que estas pruebas fijan es que la declaración se respete de punta a
+// punta: al dar de alta, y después al resolver qué superficie es ese host.
+describe('panel propio · la superficie se declara al dar de alta', () => {
+  test('por defecto un dominio propio es SOLO tienda', async () => {
+    const tenant = await crearComercio()
+
+    const { domain } = await registerTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'mitienda.com.ar',
+    })
+
+    expect(domain.context).toBe('storefront')
+  })
+
+  test('se puede dar de alta un dominio SOLO para el panel', async () => {
+    const tenant = await crearComercio()
+
+    const { domain } = await registerTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'admin.mitienda.com.ar',
+      surface: 'admin',
+    })
+
+    expect(domain.context).toBe('admin')
+    // Nace inerte igual que cualquier otro: sin verificar no resuelve a nada.
+    expect(domain.status).toBe('pending')
+  })
+
+  test('los dos conviven en el mismo comercio', async () => {
+    // Es el caso real: la tienda en el dominio propio y el panel en un
+    // subdominio del mismo dominio.
+    const tenant = await crearComercio()
+
+    await registerTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'mitienda.com.ar',
+    })
+    await registerTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'admin.mitienda.com.ar',
+      surface: 'admin',
+    })
+
+    const lista = await listTenantDomains(tenant._id)
+    const porHost = Object.fromEntries(lista.map(d => [d.hostname, d.context]))
+
+    expect(porHost['mitienda.com.ar']).toBe('storefront')
+    expect(porHost['admin.mitienda.com.ar']).toBe('admin')
+  })
+
+  test('una superficie inventada se rechaza, no se asume', async () => {
+    // Asumir tienda ante un valor desconocido dejaría un panel servido como
+    // tienda sin que nadie se entere.
+    const tenant = await crearComercio()
+
+    await expect(
+      registerTenantDomain({
+        tenantId: tenant._id,
+        hostname: 'otra.com.ar',
+        surface: 'cualquier-cosa',
+      }),
     ).rejects.toMatchObject({ statusCode: 400 })
   })
 })

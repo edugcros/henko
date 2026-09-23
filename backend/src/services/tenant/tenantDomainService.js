@@ -195,15 +195,46 @@ export const listTenantDomains = async tenantId => {
   return (tenant.domains || []).map(serializeDomain)
 }
 
+/** Para qué sirve un dominio propio. Es lo que decide sus superficies. */
+export const DOMAIN_SURFACES = Object.freeze({
+  STOREFRONT: 'storefront',
+  ADMIN: 'admin',
+})
+
 /**
  * Da de alta un dominio propio, en estado pendiente.
  *
- * Nace con `context: 'both'`: un comercio tiene UN dominio y desde ahí entra
- * tanto a su tienda como a su panel. Eso es lo que resolveSurfacesForTenant
- * sabe interpretar desde que las superficies dejaron de ser un solo booleano.
+ * QUÉ SUPERFICIE Y POR QUÉ SE ELIGE AL DAR DE ALTA
+ *
+ * Nacía con `context: 'both'`, con el razonamiento de que un comercio tiene UN
+ * dominio y desde ahí entra a su tienda y a su panel. En la práctica no puede
+ * ser: un hostname sirve UNA aplicación, y la tienda y el panel son dos
+ * proyectos distintos. `both` dejaba el dominio de la tienda contando como
+ * superficie de panel sin que nada sirviera un panel ahí — o sea
+ * requireAdminDomain dejaba de restringir nada para ese comercio.
+ *
+ * Ahora se declara al dar de alta, y el default es `storefront`, que es lo que
+ * pide el 99% de las altas. Un comercio que quiere su propio panel da de alta
+ * un segundo hostname —`admin.sutienda.com`— como `admin`.
+ *
+ * `both` se sigue entendiendo al LEER, porque hay datos vivos con ese valor.
+ * Lo que no se puede es crear más.
+ *
+ * LO QUE ESTO NO HACE
+ *
+ * Apuntar el DNS y dar de alta el hostname en el proyecto del panel. Eso es
+ * infraestructura y se hace afuera; acá solo queda declarado para qué es.
  */
-export const registerTenantDomain = async ({ tenantId, hostname: raw }) => {
+export const registerTenantDomain = async ({
+  tenantId,
+  hostname: raw,
+  surface = DOMAIN_SURFACES.STOREFRONT,
+}) => {
   const hostname = parseHostname(raw)
+
+  if (!Object.values(DOMAIN_SURFACES).includes(surface)) {
+    throw buildError(400, 'La superficie del dominio tiene que ser tienda o panel.')
+  }
 
   // La regla de reclamo va acá y solo acá: es el único momento en que alguien
   // pide quedarse con un dominio.
@@ -222,7 +253,11 @@ export const registerTenantDomain = async ({ tenantId, hostname: raw }) => {
     hostname,
     normalizedHostname: hostname,
     type: 'custom_domain',
-    context: 'both',
+    // Todos en `domains`: una sola lista, un solo ciclo de vida —alta,
+    // verificación por TXT, certificado, baja—. `adminDomains` queda para lo
+    // que ya era, los subdominios que asigna la plataforma al crear el
+    // comercio. Quién sirve qué lo decide `context`, no en qué array está.
+    context: surface,
     // Inerte hasta verificar: findTenantByDomainCandidates exige 'active'.
     status: 'pending',
     isPrimary: false,

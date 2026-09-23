@@ -167,6 +167,10 @@ export const addDomain = asyncHandler(async (req, res) => {
   const data = await registerTenantDomain({
     tenantId,
     hostname: clean(req.body?.hostname),
+    // Sin `surface` el servicio asume tienda, que es lo que pide casi toda
+    // alta. Un comercio que quiere su propio panel manda 'admin' y da de alta
+    // un segundo hostname para eso: un hostname sirve una sola aplicación.
+    ...(clean(req.body?.surface) ? { surface: clean(req.body.surface) } : {}),
   })
 
   return res.status(201).json({

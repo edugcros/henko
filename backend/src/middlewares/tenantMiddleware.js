@@ -296,7 +296,17 @@ const resolveSurfacesForTenant = (tenant, candidates) => {
   for (const domain of shop) {
     if (!domainMatches(domain, candidates)) continue
 
-    isShopSurface = true
+    // `context` manda, esté el dominio en la lista que esté.
+    //
+    // Antes esta rama ponía isShopSurface en true SIEMPRE, por estar en
+    // `domains`, y después miraba el context solo para sumar admin. O sea que
+    // un dominio declarado 'admin' quedaba igual como tienda: las 30 rutas de
+    // storefront contestaban en el host del panel del comercio.
+    //
+    // Que la lista decida la superficie y el campo también es tener dos
+    // fuentes para lo mismo. La lista dice de dónde vino el dominio; el
+    // context dice para qué sirve, que es lo que estas dos banderas contestan.
+    if (domain?.context !== 'admin') isShopSurface = true
     if (domain?.context === 'both' || domain?.context === 'admin') isAdminSurface = true
   }
 
