@@ -24,6 +24,7 @@ import {
   confirmSoldStock,
   releaseReservedStock,
   reserveStockAtomic,
+  restoreCommittedStockOnRefundIfNeeded,
 } from '../services/paymentOrderOpsService.js'
 import {
   processPendingEmails,
@@ -272,6 +273,7 @@ const releaseRejectedPaymentReservationIfNeeded = async ({
     order.stockReservedAt = null
   }
 }
+
 
 // =====================================================
 // TENANT CONTEXT
@@ -823,6 +825,9 @@ export const mpWebhook = async (req, res) => {
         tenantId,
         previousStatus,
       })
+      // Devolución o contracargo informado por el proveedor: la reserva ya no
+      // existe, lo que hay que devolver es el stock de la venta.
+      await restoreCommittedStockOnRefundIfNeeded({ order, tenantId })
       await order.save({ tenantId })
     }
 
@@ -981,6 +986,8 @@ export const getPaymentStatus = async (req, res) => {
             tenantId,
             previousStatus,
           })
+
+          await restoreCommittedStockOnRefundIfNeeded({ order, tenantId })
 
           if (order.paymentStatus === PAYMENT_STATUS.APPROVED) {
             await commitApprovedPaymentIfNeeded({

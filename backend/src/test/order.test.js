@@ -7,7 +7,10 @@ import Order, { PAYMENT_STATUS } from '../models/orderModel.js'
 import Cart from '../models/cartModel.js'
 import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
+import mongoose from 'mongoose'
+
 import { reserveStockAtomic } from '../services/paymentOrderOpsService.js'
+import { restoreCommittedStockOnRefundIfNeeded } from '../services/paymentOrderOpsService.js'
 import {
   authHeaders,
   createTestProduct,
@@ -267,5 +270,167 @@ describe('reserva de stock - atomicidad entre líneas', () => {
 
     // 10 y no 7: el descuento de la primera línea tiene que haberse deshecho.
     expect(recargado.stock).toBe(10)
+  })
+})
+
+// Devolución informada por Mercado Pago y reposición de stock.
+//
+// Cuando la devolución llega del proveedor, applyMercadoPagoStatusToOrder pone
+// la orden en 'refunded' y hasta ahora ahí terminaba: las unidades quedaban
+// vendidas para siempre. La reposición vivía solo en el camino de admin.
+//
+// Medido en producción: la única orden reembolsada tiene stockCommittedAt del
+// 11/09, stockRestoredAt en null y ninguna entrada 'refunded' en su auditLog
+// — o sea que no pasó por admin, pasó por el proveedor.
+describe('devolución del proveedor · el stock vuelve, y una sola vez', () => {
+  let tenantContext
+  let producto
+  let orden
+
+  beforeAll(async () => {
+    await connectTestDB()
+    tenantContext = await createTestTenant()
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  // El estado en el que queda una orden después de que el pago se aprueba: el
+  // stock ya se descontó y se confirmó, y la reserva se limpió. Esa es
+  // exactamente la razón por la que releaseRejectedPaymentReservationIfNeeded
+  // no cubre este caso: mira la reserva, que acá ya no existe.
+  const armarVentaAprobada = async () => {
+    producto = await createTestProduct({
+      tenantId: tenantContext.tenant._id,
+      title: 'Vendido y devuelto',
+      price: 1000,
+      stock: 7,
+    })
+
+    orden = new Order({
+      tenantId: tenantContext.tenant._id,
+      idempotencyKey: `devolucion-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      orderby: new mongoose.Types.ObjectId(),
+      products: [
+        {
+          product: producto._id,
+          count: 3,
+          priceCents: 100000,
+          originalPriceCents: 100000,
+          subtotalCents: 300000,
+          originalSubtotalCents: 300000,
+          titleSnapshot: 'Vendido y devuelto',
+          currency: 'ARS',
+        },
+      ],
+      paymentIntent: {
+        id: `pi-${Date.now()}`,
+        provider: 'mercadopago',
+        providerPaymentId: '123456',
+        status: PAYMENT_STATUS.REFUNDED,
+        currency: 'ARS',
+        amountCents: 300000,
+        originalAmountCents: 300000,
+        discountAmountCents: 0,
+      },
+      // Lo que deja applyMercadoPagoStatusToOrder cuando el proveedor informa
+      // una devolución: cambia los estados y nada más.
+      paymentStatus: PAYMENT_STATUS.REFUNDED,
+      refundStatus: 'refunded',
+      paidAt: new Date(),
+      stockReservedAt: null,
+      stockCommittedAt: new Date(),
+      stockRestoredAt: null,
+      customerSnapshot: {
+        userId: new mongoose.Types.ObjectId(),
+        email: 'comprador@test.com',
+      },
+      shippingAddress: {
+        firstName: 'Ana',
+        lastName: 'Compradora',
+        email: 'comprador@test.com',
+        phone: '+541123456789',
+        address: 'Calle Test 123',
+        city: 'Buenos Aires',
+        zipCode: '1000',
+        country: 'AR',
+      },
+    })
+
+    await orden.save({ tenantId: tenantContext.tenant._id })
+    return orden
+  }
+
+  const stockDelProducto = async () => {
+    const p = await Product.findOne({
+      _id: producto._id,
+      tenantId: tenantContext.tenant._id,
+    }).setOptions({ tenantId: tenantContext.tenant._id })
+    return p.stock
+  }
+
+  test('devuelve al catálogo las unidades de la venta', async () => {
+    const o = await armarVentaAprobada()
+
+    await restoreCommittedStockOnRefundIfNeeded({
+      order: o,
+      tenantId: tenantContext.tenant._id,
+    })
+
+    expect(await stockDelProducto()).toBe(10)
+    expect(o.stockRestoredAt).toBeTruthy()
+    expect(o.auditLog.map(e => e.action)).toContain('stock_restored')
+  })
+
+  test('un reintento del webhook no devuelve el stock dos veces', async () => {
+    const o = await armarVentaAprobada()
+    const ctx = { order: o, tenantId: tenantContext.tenant._id }
+
+    await restoreCommittedStockOnRefundIfNeeded(ctx)
+    await restoreCommittedStockOnRefundIfNeeded(ctx)
+
+    expect(await stockDelProducto()).toBe(10)
+  })
+
+  // Mercado Pago reintenta los webhooks, y el polling de estado puede correr
+  // en paralelo con uno. Sin el reclamo atómico de stockRestoredAt, las dos
+  // ejecuciones leen null y las dos reponen: el catálogo termina prometiendo
+  // unidades que no existen.
+  test('dos ejecuciones simultáneas devuelven 3 unidades, no 6', async () => {
+    const o = await armarVentaAprobada()
+
+    // Dos copias distintas del documento: es lo que pasa de verdad cuando el
+    // webhook y el polling cargan la misma orden cada uno por su lado.
+    const copia = await Order.findOne({
+      _id: o._id,
+      tenantId: tenantContext.tenant._id,
+    }).setOptions({ tenantId: tenantContext.tenant._id })
+
+    await Promise.all([
+      restoreCommittedStockOnRefundIfNeeded({
+        order: o,
+        tenantId: tenantContext.tenant._id,
+      }),
+      restoreCommittedStockOnRefundIfNeeded({
+        order: copia,
+        tenantId: tenantContext.tenant._id,
+      }),
+    ])
+
+    // 7 + 3 = 10. Si el stock volviera dos veces darían 13.
+    expect(await stockDelProducto()).toBe(10)
+  })
+
+  test('una orden que no está devuelta no toca el stock', async () => {
+    const o = await armarVentaAprobada()
+    o.paymentStatus = PAYMENT_STATUS.APPROVED
+
+    await restoreCommittedStockOnRefundIfNeeded({
+      order: o,
+      tenantId: tenantContext.tenant._id,
+    })
+
+    expect(await stockDelProducto()).toBe(7)
   })
 })

@@ -64,14 +64,30 @@ export const withOptionalTransaction = async callback => {
   const session = await mongoose.startSession()
 
   try {
-    session.startTransaction()
-    const result = await callback(session)
-    await session.commitTransaction()
+    let result
+
+    // session.withTransaction y no startTransaction/commitTransaction a mano.
+    //
+    // La diferencia es el REINTENTO. Cuando dos transacciones tocan el mismo
+    // documento, Mongo aborta una con un TransientTransactionError: no es un
+    // fallo del negocio, es "volvé a intentar". El ciclo manual lo propagaba
+    // como un error cualquiera, y el llamador lo devolvía como un 500.
+    //
+    // Se vio en la suite: desde que este helper efectivamente abre
+    // transacciones, la edición de producto empezó a fallar de a ratos con un
+    // 500 que no se reproducía corriendo esa prueba sola. Era esto. Es el
+    // mismo mecanismo que ya usa runOrderTransaction (orderExecutionService),
+    // que nunca tuvo el problema.
+    //
+    // El callback tiene que poder correr más de una vez. Los que hay hoy
+    // —guardar un producto, crear un comercio, reservar stock— vuelven a
+    // ejecutar sobre un estado que no se commiteó, así que lo toleran.
+    await session.withTransaction(async () => {
+      result = await callback(session)
+    })
+
     return result
-  } catch (error) {
-    await session.abortTransaction()
-    throw error
   } finally {
-    session.endSession()
+    await session.endSession()
   }
 }
