@@ -35,6 +35,10 @@ import {
   startPriceHistoryAudit,
   stopPriceHistoryAudit,
 } from './src/services/pricing/priceHistoryAuditService.js'
+import {
+  startOrderReconciliation,
+  stopOrderReconciliation,
+} from './src/services/paymentOrderService.js'
 
 // =====================================================
 // Configuración servidor
@@ -155,6 +159,11 @@ const startServer = async () => {
       // Diaria: con el historial ya transaccional, un hueco nuevo es raro, y
       // mirarlo cada hora reportaría el mismo hueco viejo veinticuatro veces.
       startPriceHistoryAudit({ logger })
+      // Compara cada orden reciente contra el pago que Mercado Pago informa.
+      // Es lo único que ve una devolución PARCIAL hecha desde el panel del
+      // proveedor: esa no cambia el status del pago, así que el webhook no la
+      // detecta y la orden sigue figurando cobrada entera.
+      startOrderReconciliation({ logger })
     })
 
     serverInstance.on('error', err => {
@@ -195,6 +204,7 @@ const shutdown = async signal => {
     stopCertificateWatcher()
     stopSubscriptionAudit()
     stopPriceHistoryAudit()
+    stopOrderReconciliation()
 
     if (serverInstance && isServerListening) {
       await new Promise((resolve, reject) => {

@@ -453,3 +453,121 @@ export const notifyPriceHistoryGaps = async audit => {
     return { sent: false, reason: 'error' }
   }
 }
+
+/**
+ * Aviso de órdenes que no cierran contra Mercado Pago.
+ *
+ * Se agrupa por tipo y no por orden: veinte órdenes con la misma devolución
+ * parcial sin registrar son un problema, no veinte. El detalle por orden va
+ * igual, pero debajo del recuento.
+ */
+export const notifyOrderReconciliation = async audit => {
+  try {
+    // `money` de arriba formatea en USD, que es la moneda del gasto de IA.
+    // Las órdenes son en pesos: reusarlo etiquetaría pesos como dólares.
+    const pesos = centavos =>
+      `$${(Number(centavos || 0) / 100).toLocaleString('es-AR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`
+
+    const recipients = getRecipients()
+
+    if (!recipients.length) {
+      logger.warn('[ORDENES] Hay diferencias para avisar y PLATFORM_OWNER_EMAILS está vacío')
+      return { sent: false, reason: 'no_recipients' }
+    }
+
+    const { findings = [], checked = 0, checkedAgainstProvider = 0 } = audit || {}
+
+    const TITULOS = {
+      'products-vs-original': 'las líneas no suman el importe original',
+      'discount-out-of-range': 'el descuento no entra en el importe',
+      'amount-mismatch': 'el cobrado no es original menos descuento',
+      'approved-without-provider-id': 'aprobada sin id de pago del proveedor',
+      'approved-without-paid-at': 'aprobada sin fecha de cobro',
+      'fee-out-of-range': 'la comisión no entra en el cobrado',
+      'net-out-of-range': 'el neto no entra en el cobrado',
+      'net-plus-fee-exceeds-amount': 'neto más comisión supera el cobrado',
+      'provider-status-mismatch': 'el estado no coincide con Mercado Pago',
+      'provider-amount-mismatch': 'el importe no coincide con Mercado Pago',
+      'provider-net-mismatch': 'el neto no coincide con Mercado Pago',
+      'provider-refund-unrecorded': 'DEVOLUCIÓN en Mercado Pago sin registrar acá',
+      'provider-refund-exceeds-payment': 'el proveedor devolvió más de lo cobrado',
+      'refunded-without-provider-refund': 'devuelta acá pero no en Mercado Pago',
+    }
+
+    const porTipo = findings.reduce((acc, f) => {
+      acc[f.kind] = (acc[f.kind] || 0) + 1
+      return acc
+    }, {})
+
+    const resumen = Object.entries(porTipo)
+      .sort((a, b) => b[1] - a[1])
+      .map(
+        ([kind, n]) => `<tr>
+          <td style="padding:6px 12px 6px 0"><strong>${n}</strong></td>
+          <td style="padding:6px 0">${TITULOS[kind] || kind}</td>
+        </tr>`,
+      )
+      .join('')
+
+    const detalle = findings
+      .slice(0, 25)
+      .map(
+        f => `<tr>
+          <td style="padding:4px 12px 4px 0">${f.orderNumber || f.orderId}</td>
+          <td style="padding:4px 12px 4px 0">${pesos(f.amountCents)}</td>
+          <td style="padding:4px 0">${TITULOS[f.kind] || f.kind}</td>
+        </tr>`,
+      )
+      .join('')
+
+    const subject = `[HENKO] ${findings.length} diferencia(s) entre órdenes y Mercado Pago`
+
+    const html = `
+      <div style="font-family:system-ui,sans-serif;color:#111;max-width:680px">
+        <p style="font-size:16px"><strong>${findings.length} diferencia(s) en ${checked} orden(es) revisada(s).</strong></p>
+        <table style="border-collapse:collapse;font-size:14px;margin:12px 0">${resumen}</table>
+        <p style="font-size:14px;margin-top:18px"><strong>Detalle</strong></p>
+        <table style="border-collapse:collapse;font-size:13px;margin:6px 0">${detalle}</table>
+        ${findings.length > 25 ? `<p style="font-size:13px;color:#555">y ${findings.length - 25} m&aacute;s.</p>` : ''}
+        <p style="font-size:13px;color:#555;margin-top:20px">
+          Se le pregunt&oacute; a Mercado Pago por ${checkedAgainstProvider} pago(s).
+          NO se corrigi&oacute; nada: un estado de pago escrito autom&aacute;ticamente
+          puede despachar una orden que se devolvi&oacute;, o retener una que se
+          cobr&oacute; bien.
+        </p>
+      </div>`
+
+    const text = [
+      `${findings.length} diferencia(s) en ${checked} orden(es).`,
+      ...Object.entries(porTipo).map(([kind, n]) => `${n}: ${TITULOS[kind] || kind}`),
+      'No se corrigio nada automaticamente.',
+    ].join('\n')
+
+    const results = await Promise.all(
+      recipients.map(to =>
+        sendEmail({ to, subject, html, text }).catch(error => ({
+          success: false,
+          error: error.message,
+        })),
+      ),
+    )
+
+    const delivered = results.filter(result => result?.success).length
+
+    if (!delivered) {
+      logger.error('[ORDENES] No se pudo avisar a nadie de las diferencias', {
+        intentos: recipients.length,
+      })
+    }
+
+    return { sent: delivered > 0, delivered, attempted: recipients.length }
+  } catch (error) {
+    logger.error('[ORDENES] Falló el envío del aviso de diferencias', {
+      error: error.message,
+    })
+    return { sent: false, reason: 'error' }
+  }
+}
