@@ -495,6 +495,7 @@ export const notifyOrderReconciliation = async audit => {
       'provider-refund-unrecorded': 'DEVOLUCIÓN en Mercado Pago sin registrar acá',
       'provider-refund-exceeds-payment': 'el proveedor devolvió más de lo cobrado',
       'refunded-without-provider-refund': 'devuelta acá pero no en Mercado Pago',
+      'refunded-without-stock-restore': 'devuelta sin devolver el stock al catálogo',
     }
 
     const porTipo = findings.reduce((acc, f) => {

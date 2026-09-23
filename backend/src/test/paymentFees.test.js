@@ -158,7 +158,7 @@ const ordenSana = (extra = {}) => ({
   paymentStatus: "approved",
   refundStatus: "none",
   paidAt: new Date("2026-09-01"),
-  products: [{ subtotalCents: 100000 }],
+  products: [{ subtotalCents: 100000, count: 1 }],
   paymentIntent: {
     provider: "mercadopago",
     providerPaymentId: "9999",
@@ -180,7 +180,7 @@ describe("reconciliación · comprobaciones internas", () => {
 
   test("detecta que las líneas no suman el importe original", () => {
     const o = ordenSana();
-    o.products = [{ subtotalCents: 90000 }];
+    o.products = [{ subtotalCents: 90000, count: 1 }];
 
     expect(tipos(checkOrderInternals(o))).toContain("products-vs-original");
   });
@@ -233,8 +233,47 @@ describe("reconciliación · comprobaciones internas", () => {
 
     expect(checkOrderInternals(o)).toEqual([]);
   });
-});
+  // La orden del 11/09 en producción: devuelta desde Mercado Pago, con el
+  // stock de la venta descontado y nunca devuelto al catálogo. Son unidades
+  // que están en el depósito y que la tienda no puede vender.
+  test("detecta una devolución que no devolvió el stock", () => {
+    const o = ordenSana({
+      paymentStatus: "refunded",
+      refundStatus: "refunded",
+      stockCommittedAt: new Date("2026-09-11"),
+      stockRestoredAt: null,
+    });
 
+    const h = checkOrderInternals(o);
+
+    expect(tipos(h)).toContain("refunded-without-stock-restore");
+    expect(h.find(x => x.kind === "refunded-without-stock-restore")).toMatchObject({
+      lineas: 1,
+      unidades: 1,
+    });
+  });
+
+  test("si el stock ya volvió, no hay hallazgo", () => {
+    const o = ordenSana({
+      paymentStatus: "refunded",
+      refundStatus: "refunded",
+      stockCommittedAt: new Date("2026-09-11"),
+      stockRestoredAt: new Date("2026-09-12"),
+    });
+
+    expect(tipos(checkOrderInternals(o))).not.toContain(
+      "refunded-without-stock-restore",
+    );
+  });
+
+  test("una orden aprobada no reclama reposición de stock", () => {
+    const o = ordenSana({ stockCommittedAt: new Date("2026-09-11") });
+
+    expect(tipos(checkOrderInternals(o))).not.toContain(
+      "refunded-without-stock-restore",
+    );
+  });
+});
 describe("reconciliación · contra Mercado Pago", () => {
   const pagoSano = (extra = {}) => ({
     status: "approved",

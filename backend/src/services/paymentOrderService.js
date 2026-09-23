@@ -260,6 +260,29 @@ export const checkOrderInternals = order => {
     if (!order?.paidAt) anotar('approved-without-paid-at', {})
   }
 
+  // Devuelta, con el stock descontado por la venta y nunca devuelto al
+  // catálogo. Son unidades que existen en el depósito y que la tienda no
+  // puede vender.
+  //
+  // restoreCommittedStockOnRefundIfNeeded lo hace ahora, pero falla abierto:
+  // si la reposición revienta suelta la marca para que el próximo reintento
+  // del webhook lo vuelva a intentar, y si el proveedor deja de reintentar la
+  // orden se queda así sin que nadie se entere. Eso es exactamente lo que
+  // pasó con la orden del 11/09, cuando la reposición directamente no existía.
+  if (
+    order?.paymentStatus === PAYMENT_STATUS.REFUNDED &&
+    order?.stockCommittedAt &&
+    !order?.stockRestoredAt
+  ) {
+    anotar('refunded-without-stock-restore', {
+      lineas: (order?.products || []).length,
+      unidades: (order?.products || []).reduce(
+        (suma, linea) => suma + Number(linea?.count || 0),
+        0,
+      ),
+    })
+  }
+
   const comision = pi.providerFeeCents
   const neto = pi.netReceivedCents
   const cobrado = Number(pi.amountCents)
