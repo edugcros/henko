@@ -175,10 +175,10 @@ const serializeDomain = domain => ({
   // panel tuviera que distinguir "no falta nada" de "todavía no se intentó".
   edgeVerification: domain.edgeVerification?.length
     ? domain.edgeVerification.map(item => ({
-        type: item.type,
-        name: item.name,
-        value: item.value,
-      }))
+      type: item.type,
+      name: item.name,
+      value: item.value,
+    }))
     : null,
 })
 

@@ -351,7 +351,7 @@ couponSchema.methods.calculateDiscountCents = function calculateDiscountCents(ap
     return 0
   }
 
-  let discountCents = 0
+  let discountCents
 
   if (this.discountType === 'percentage') {
     discountCents = Math.round(subtotal * (this.discountValue / 100))

@@ -207,8 +207,11 @@ export const cloudinaryUploadImg = async (buffer, productId, tenantId) => {
       productId,
       tenantId,
     })
+    // `cause` conserva el error original: sin eso, el stack que llega arriba
+    // arranca en esta línea y se pierde qué falló adentro de Cloudinary.
     throw new Error(
       `Error al subir imagen: ${error.message || 'Cloudinary no disponible'}`,
+      { cause: error },
     )
   }
 }
@@ -251,6 +254,7 @@ export const cloudinaryUploadVideo = async (buffer, productId, tenantId) => {
     })
     throw new Error(
       `Error al subir video: ${error.message || 'Cloudinary no disponible'}`,
+      { cause: error },
     )
   }
 }

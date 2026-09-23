@@ -484,7 +484,9 @@ if (!env.cookieSecret) {
 const ensureUrlMatchesHostname = (label, urlValue, hostnameValue) => {
   if (!urlValue || !hostnameValue) return
 
-  let parsedHostname = ''
+  // Sin inicializar: el catch siempre tira, así que o el try asigna o no se
+  // llega a leer nunca. El `= ''` aparentaba un valor por defecto inalcanzable.
+  let parsedHostname
   try {
     parsedHostname = new URL(urlValue).hostname.toLowerCase()
   } catch {

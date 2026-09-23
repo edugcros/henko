@@ -141,7 +141,7 @@ export const evaluateCouponDiscount = ({
     return total + Number(line.subtotalCents || 0)
   }, 0)
 
-  let discountCents = 0
+  let discountCents
 
   if (typeof coupon.calculateDiscountCents === 'function') {
     discountCents = coupon.calculateDiscountCents(applicableSubtotalCents)

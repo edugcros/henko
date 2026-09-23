@@ -809,17 +809,17 @@ export const createUserAdmin = [
               adminDomains: esPanelCompartido
                 ? []
                 : [
-                    {
-                      hostname: adminDomain,
-                      normalizedHostname: normalizeDomain(adminDomain),
-                      type: 'platform_subdomain',
-                      context: 'admin',
-                      status: 'active',
-                      isPrimary: true,
-                      verifiedAt: new Date(),
-                      // Ídem: lo deriva el schema del tipo del dominio.
-                    },
-                  ],
+                  {
+                    hostname: adminDomain,
+                    normalizedHostname: normalizeDomain(adminDomain),
+                    type: 'platform_subdomain',
+                    context: 'admin',
+                    status: 'active',
+                    isPrimary: true,
+                    verifiedAt: new Date(),
+                    // Ídem: lo deriva el schema del tipo del dominio.
+                  },
+                ],
               currency: 'ARS',
               locale: 'es-AR',
               timezone: 'America/Argentina/Buenos_Aires',
@@ -953,8 +953,11 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
     return sendResponse(res, 400, false, 'Correo y contraseña son obligatorios')
   }
 
-  let tenant = null
-  let loginTenantId = null
+  // Sin inicializar: las dos ramas del if de abajo les asignan antes de que
+  // nadie las lea, así que un `= null` acá solo aparenta un valor por defecto
+  // que nunca llega a usarse.
+  let tenant
+  let loginTenantId
 
   if (isAdmin) {
     tenant = await resolveAdminTenantFromRequest(req, email)
