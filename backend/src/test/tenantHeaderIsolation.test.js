@@ -42,6 +42,7 @@ process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base6
 
 const { default: app } = await import('../../app.js')
 const { default: Color } = await import('../models/colorModel.js')
+const { default: Product } = await import('../models/productModel.js')
 const { createTestTenant, createTestUser, getCSRFToken } = await import('./testSetup.js')
 
 let mongod
@@ -262,5 +263,99 @@ describe('aislamiento entre comercios cuando el header no coincide con el JWT', 
       .lean()
 
     expect(enElAjeno).toHaveLength(0)
+  })
+})
+
+// ¿Y si el comercio viene en el QUERY STRING?
+//
+// DE DÓNDE SALE LA SOSPECHA
+//
+// Del log de producción del 23/09. El storefront pide sus productos así:
+//
+//   GET /api/product?tenantId=6a4dcc911161615f76a8131f&limit=100
+//   Referer: https://henkart.com.ar/
+//
+// Ver un tenantId ajeno en una URL asusta, y con razón: si el backend lo
+// leyera, cualquiera cambiaría ese parámetro y se llevaría el catálogo del
+// comercio de al lado sin siquiera estar autenticado. El endpoint es público.
+//
+// Hoy NO lo lee: `req.query.tenantId` no aparece en ningún lado del backend, y
+// getAllProduct resuelve con requireTenantId(req.tenantId), que lo pone
+// resolveTenantByDomain. O sea que el parámetro es del CACHÉ DEL NAVEGADOR:
+// dos comercios en el mismo origen necesitan URLs distintas para no compartir
+// una respuesta 304.
+//
+// Pero esa propiedad hoy se cumple por omisión —nadie escribió esa línea— y no
+// había ninguna prueba que la sostuviera. El día que alguien agregue
+// `req.query.tenantId` como comodidad, nada lo detendría. Esto lo detiene.
+describe('el comercio no se puede elegir por el query string', () => {
+  const crearProducto = (tenantId, title) =>
+    Product.create({
+      tenantId,
+      title,
+      slug: `${title.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      description: 'Producto de prueba de aislamiento',
+      marca: 'Nike',
+      categoria: 'Calzado',
+      subcategoria: 'Running',
+      price: 1000,
+      stock: 5,
+    })
+
+  test('CONTROL · por su dominio, el storefront ve sus propios productos', async () => {
+    const { propio } = await armarEscenario()
+    await crearProducto(propio.tenant._id, 'Zapatilla Propia')
+
+    const res = await request(app)
+      .get('/api/product?limit=50')
+      .set('x-tenant-domain', propio.shopDomain)
+
+    expect(res.status).toBe(200)
+
+    const titulos = (res.body.data || res.body.products || []).map(p => p.title)
+    expect(titulos).toContain('Zapatilla Propia')
+  })
+
+  test('un tenantId ajeno en el query NO trae el catálogo del otro comercio', async () => {
+    // ESTA ES LA PROPIEDAD. El endpoint es público: si el query mandara, no
+    // haría falta ni una sesión para leer el catálogo entero de cualquiera.
+    const { propio, ajeno } = await armarEscenario()
+    await crearProducto(propio.tenant._id, 'Zapatilla Propia')
+    await crearProducto(ajeno.tenant._id, 'Zapatilla Ajena')
+
+    const res = await request(app)
+      .get(`/api/product?tenantId=${ajeno.tenant._id}&limit=50`)
+      .set('x-tenant-domain', propio.shopDomain)
+
+    expect(res.status).toBe(200)
+
+    const devueltos = res.body.data || res.body.products || []
+    const titulos = devueltos.map(p => p.title)
+
+    expect(titulos).not.toContain('Zapatilla Ajena')
+    expect(titulos).toContain('Zapatilla Propia')
+
+    // Y sobre todo: ni una sola fila del otro comercio, mire por donde se mire.
+    const ajenos = devueltos.filter(
+      p => String(p.tenantId) === String(ajeno.tenant._id),
+    )
+    expect(ajenos).toEqual([])
+  })
+
+  test('un tenantId inventado en el query tampoco rompe nada', async () => {
+    // Si el parámetro se leyera sin validar, un ObjectId cualquiera devolvería
+    // una lista vacía en vez del catálogo del dominio — y eso se veria como
+    // "la tienda no tiene productos", que es un fallo silencioso.
+    const { propio } = await armarEscenario()
+    await crearProducto(propio.tenant._id, 'Zapatilla Propia')
+
+    const res = await request(app)
+      .get(`/api/product?tenantId=${new mongoose.Types.ObjectId()}&limit=50`)
+      .set('x-tenant-domain', propio.shopDomain)
+
+    expect(res.status).toBe(200)
+
+    const titulos = (res.body.data || res.body.products || []).map(p => p.title)
+    expect(titulos).toContain('Zapatilla Propia')
   })
 })
