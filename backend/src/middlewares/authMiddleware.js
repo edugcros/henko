@@ -11,9 +11,23 @@ import Tenant from '../models/tenantModel.js'
 // =====================================================
 // 🔐 AUTH MIDDLEWARE
 // =====================================================
+//
+// CADA RESPUESTA LLEVA UN `code` ADEMÁS DEL MENSAJE
+//
+// El mensaje es para la persona y está en castellano; el código es para el
+// cliente. Sin él, distinguir "token vencido" de "usuario bloqueado" obliga al
+// frontend a comparar texto en castellano, y entonces corregir una tilde en un
+// mensaje rompe una decisión de producto en otro repositorio.
+//
+// Los mensajes NO se tocaron: agregar el código es aditivo, así que nada de lo
+// que ya funcionaba cambia de forma.
 export const authMiddleware = asyncHandler(async (req, res, next) => {
   const path = req.path || req.url
-  logger.debug(`[AUTH] Validando - Path: ${path}`)
+
+  logger.debug('[AUTH] Validando solicitud', {
+    method: req.method,
+    path,
+  })
 
   // ---------------------------------------------------
   // 🥇 PRIORIDAD REAL (alineado con axiosConfig)
@@ -32,15 +46,19 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
     path,
   })
 
-  logger.debug(
-    `[AUTH] Credenciales recibidas | cookieToken=${Boolean(req.cookies?.token)} | authorization=${Boolean(req.headers.authorization)} | xAccessToken=${Boolean(req.headers['x-access-token'])}`,
-  )
+  // `'null'` además de `'undefined'`: un cliente que serializa un token vacío
+  // manda el string. Igual moriría en decodeAccessToken, pero con un 401 que
+  // dice "token inválido" en vez de "token ausente", que es lo que pasó.
+  if (!token || token === 'undefined' || token === 'null') {
+    logger.warn('[AUTH] Token ausente', {
+      method: req.method,
+      path,
+    })
 
-  if (!token || token === 'undefined') {
-    logger.warn(`[AUTH] ❌ Token ausente - Path: ${path}`)
     return res.status(401).json({
       success: false,
       message: 'Token de acceso ausente',
+      code: 'AUTH_TOKEN_MISSING',
     })
   }
 
@@ -49,18 +67,37 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
     // 🔐 Verificar JWT
     // -------------------------------------------------
     const decoded = decodeAccessToken(token)
-    logger.debug(`[AUTH] Token decodificado - userId: ${decoded.sub}, tenantId: ${decoded.tenantId}`)
+
+    logger.debug('[AUTH] Token decodificado', {
+      userId: decoded.sub,
+      tenantId: decoded.tenantId,
+      role: decoded.role || null,
+    })
 
     if (!isValidObjectId(decoded.sub)) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'ID de usuario inválido en token' })
+      logger.warn('[AUTH] ID de usuario inválido en el token', {
+        userId: String(decoded.sub),
+        endpoint: `${req.method} ${req.originalUrl}`,
+      })
+
+      return res.status(400).json({
+        success: false,
+        message: 'ID de usuario inválido en token',
+        code: 'INVALID_USER_ID',
+      })
     }
 
     if (!isValidObjectId(decoded.tenantId)) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'ID de tenant inválido en token' })
+      logger.warn('[AUTH] ID de comercio inválido en el token', {
+        tenantId: String(decoded.tenantId),
+        endpoint: `${req.method} ${req.originalUrl}`,
+      })
+
+      return res.status(400).json({
+        success: false,
+        message: 'ID de tenant inválido en token',
+        code: 'INVALID_TENANT_ID',
+      })
     }
 
     const user = await User.findById(decoded.sub)
@@ -68,42 +105,90 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
       .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-del-token' })
 
     if (!user) {
+      logger.warn('[AUTH] Usuario inexistente', {
+        userId: String(decoded.sub),
+        endpoint: `${req.method} ${req.originalUrl}`,
+      })
+
       return res.status(401).json({
         success: false,
         message: 'Usuario inválido o inexistente',
+        code: 'AUTH_USER_NOT_FOUND',
       })
     }
 
     if (String(user.tenantId) !== String(decoded.tenantId)) {
-      logger.warn(
-        `Tenant mismatch en access token | user=${user._id} | tokenTenant=${decoded.tenantId} | userTenant=${user.tenantId}`,
-      )
+      logger.warn('[AUTH] 🚨 Tenant mismatch en access token', {
+        user: String(user._id),
+        tokenTenant: String(decoded.tenantId),
+        userTenant: String(user.tenantId),
+        ip: req.ip,
+        endpoint: `${req.method} ${req.originalUrl}`,
+      })
 
       return res.status(401).json({
         success: false,
         message: 'Token inválido para el tenant del usuario',
+        code: 'TOKEN_TENANT_MISMATCH',
       })
     }
 
     if (user.isBlocked) {
+      logger.warn('[AUTH] Usuario bloqueado', {
+        user: String(user._id),
+        endpoint: `${req.method} ${req.originalUrl}`,
+      })
+
       return res.status(403).json({
         success: false,
         message: 'Usuario bloqueado',
+        code: 'USER_BLOCKED',
       })
     }
 
     if (typeof user.changedPasswordAfter === 'function' && user.changedPasswordAfter(decoded.iat)) {
+      logger.warn('[AUTH] Token anterior al último cambio de contraseña', {
+        user: String(user._id),
+        endpoint: `${req.method} ${req.originalUrl}`,
+      })
+
       return res.status(401).json({
         success: false,
         message: 'La contraseña fue modificada. Inicia sesión nuevamente.',
+        code: 'PASSWORD_CHANGED',
       })
     }
 
     const tenant = await Tenant.findById(user.tenantId).select('_id status')
-    if (!tenant || tenant.status !== 'active') {
+
+    // Inexistente e inactivo se separan: el primero es un dato roto —un usuario
+    // apuntando a un comercio que no está—, el segundo es una decisión de
+    // negocio. Con un solo código el panel no puede distinguir "te suspendimos"
+    // de "algo se rompió", que son dos pantallas distintas.
+    if (!tenant) {
+      logger.warn('[AUTH] Comercio inexistente', {
+        tenantId: String(user.tenantId),
+        user: String(user._id),
+      })
+
       return res.status(403).json({
         success: false,
         message: 'Tenant inválido o inactivo',
+        code: 'TENANT_NOT_FOUND',
+      })
+    }
+
+    if (tenant.status !== 'active') {
+      logger.warn('[AUTH] Comercio inactivo', {
+        tenantId: String(user.tenantId),
+        status: tenant.status,
+        user: String(user._id),
+      })
+
+      return res.status(403).json({
+        success: false,
+        message: 'Tenant inválido o inactivo',
+        code: 'TENANT_INACTIVE',
       })
     }
 
@@ -150,24 +235,35 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
     const domainTenantId = req.tenantId ? String(req.tenantId) : null
 
     if (domainTenantId && domainTenantId !== String(user.tenantId)) {
-      logger.warn(
-        `🚨 Tenant mismatch entre token y dominio | user=${user._id} | userTenant=${user.tenantId} | domainTenant=${domainTenantId} | ip=${req.ip} | endpoint=${req.method} ${req.originalUrl}`,
-      )
+      logger.warn('[AUTH] 🚨 Tenant mismatch entre token y dominio', {
+        user: String(user._id),
+        userTenant: String(user.tenantId),
+        domainTenant: domainTenantId,
+        ip: req.ip,
+        endpoint: `${req.method} ${req.originalUrl}`,
+      })
 
       return res.status(403).json({
         success: false,
         message: 'Tenant inconsistente entre usuario autenticado y dominio',
+        code: 'TENANT_MISMATCH',
       })
     }
 
     next()
   } catch (err) {
-    logger.warn(`JWT inválido o expirado: ${err.message}`)
+    logger.warn('[AUTH] JWT inválido o expirado', {
+      message: err.message,
+      name: err.name,
+      ip: req.ip,
+      endpoint: `${req.method} ${req.originalUrl}`,
+    })
 
     return res.status(401).json({
       success: false,
       message: 'Token inválido o expirado',
       expired: err.name === 'TokenExpiredError',
+      code: 'AUTH_TOKEN_INVALID',
     })
   }
 })
@@ -181,13 +277,26 @@ export const allowRoles = (...roles) =>
       return res.status(401).json({
         success: false,
         message: 'No autenticado',
+        code: 'AUTH_REQUIRED',
       })
     }
 
     if (!roles.includes(req.user.role)) {
+      // Se registra: un permiso insuficiente repetido sobre el mismo endpoint
+      // es la diferencia entre un menú mal armado y alguien probando puertas.
+      logger.warn('[RBAC] Permiso insuficiente', {
+        user: req.user.id,
+        tenantId: req.user.tenantId,
+        role: req.user.role,
+        requiredRoles: roles,
+        ip: req.ip,
+        endpoint: `${req.method} ${req.originalUrl}`,
+      })
+
       return res.status(403).json({
         success: false,
         message: 'Permisos insuficientes',
+        code: 'INSUFFICIENT_PERMISSIONS',
       })
     }
 

@@ -93,3 +93,75 @@ describe('user controller', () => {
     expect(res.body.data.email).toBe('profile@test.com')
   })
 })
+
+// Códigos de error de autenticación.
+//
+// El mensaje es para la persona y está en castellano; el código es para el
+// cliente. Sin pruebas que los fijen son decoración: nadie se entera si uno
+// cambia, y el frontend que decida por ellos se rompe en silencio.
+//
+// Por eso se afirma sobre `code` Y sobre el status: un código correcto con el
+// status equivocado manda al frontend por la rama de error errónea igual.
+describe('authMiddleware · códigos de error', () => {
+  let contexto
+
+  beforeAll(async () => {
+    await connectTestDB()
+    contexto = await createTestTenant()
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  const pedirMiUsuario = cabeceras =>
+    request(app).get('/api/user/me').set(cabeceras)
+
+  test('sin token · 401 AUTH_TOKEN_MISSING', async () => {
+    const res = await pedirMiUsuario({
+      'x-tenant-domain': contexto.shopDomain,
+    })
+
+    expect(res.status).toBe(401)
+    expect(res.body.code).toBe('AUTH_TOKEN_MISSING')
+    // El mensaje no cambió: agregar el código es aditivo.
+    expect(res.body.message).toBe('Token de acceso ausente')
+  })
+
+  test('el string "null" cuenta como ausente, no como inválido', async () => {
+    // Un cliente que serializa un token vacío manda el string. Antes caía en
+    // decodeAccessToken y contestaba "token inválido", que describe otra cosa.
+    const res = await pedirMiUsuario({
+      'x-tenant-domain': contexto.shopDomain,
+      Authorization: 'Bearer null',
+    })
+
+    expect(res.status).toBe(401)
+    expect(res.body.code).toBe('AUTH_TOKEN_MISSING')
+  })
+
+  test('token ilegible · 401 AUTH_TOKEN_INVALID', async () => {
+    const res = await pedirMiUsuario({
+      'x-tenant-domain': contexto.shopDomain,
+      Authorization: 'Bearer esto.no.es.un.jwt',
+    })
+
+    expect(res.status).toBe(401)
+    expect(res.body.code).toBe('AUTH_TOKEN_INVALID')
+    expect(res.body.expired).toBe(false)
+  })
+
+  test('los códigos son distintos entre sí', async () => {
+    // Si dos caminos devolvieran el mismo código, el frontend no podría
+    // distinguirlos — que es exactamente el problema que esto viene a resolver.
+    const sinToken = await pedirMiUsuario({
+      'x-tenant-domain': contexto.shopDomain,
+    })
+    const tokenRoto = await pedirMiUsuario({
+      'x-tenant-domain': contexto.shopDomain,
+      Authorization: 'Bearer esto.no.es.un.jwt',
+    })
+
+    expect(sinToken.body.code).not.toBe(tokenRoto.body.code)
+  })
+})
