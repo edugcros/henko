@@ -13,6 +13,10 @@ import {
   removeTenantDomain,
   verifyTenantDomain,
 } from '../services/tenant/tenantDomainService.js'
+import {
+  isEdgeProvisioningEnabled,
+  SUPERFICIE as EDGE_SURFACE,
+} from '../services/tenant/edgeDomainService.js'
 import { isValidEmail } from '../services/email/emailShared.js'
 
 // Uso genérico (no solo emails): algunos campos de este controller son texto
@@ -152,7 +156,23 @@ export const getDomains = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
   const domains = await listTenantDomains(tenantId)
 
-  return res.status(200).json({ success: true, data: domains })
+  // LA CAPACIDAD LA DECLARA EL BACKEND, NO LA ASUME EL PANEL
+  //
+  // Dar de alta un dominio para el panel solo termina bien si la plataforma
+  // puede registrarlo en el proyecto del panel en el borde. Sin
+  // VERCEL_ADMIN_PROJECT_ID el dominio queda verificado y sin servir: el
+  // comercio apunta su DNS, espera, y no pasa nada.
+  //
+  // Un botón que promete eso es peor que no tenerlo, así que el panel pregunta
+  // en vez de suponer. Si mañana se configura la variable, el botón aparece
+  // solo — sin desplegar el frontend.
+  return res.status(200).json({
+    success: true,
+    data: domains,
+    capabilities: {
+      adminDomain: isEdgeProvisioningEnabled(EDGE_SURFACE.PANEL),
+    },
+  })
 })
 
 /**

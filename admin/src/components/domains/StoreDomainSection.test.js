@@ -11,12 +11,23 @@
 // cuando en realidad le falta crear un registro.
 
 import { jest } from "@jest/globals";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 process.env.REACT_APP_API_BASE_URL = "http://localhost:5000/api";
 
 const mockGetDomains = jest.fn();
+
+/**
+ * La forma que devuelve el servicio: la lista del comercio y la capacidad de
+ * la plataforma, separadas. La lista es del comercio; que se pueda dar de alta
+ * un dominio de panel depende de la configuración del borde, que el panel no
+ * puede ver — por eso viene declarada en vez de asumida.
+ */
+const respuesta = (domains, capabilities = { adminDomain: false }) => ({
+  domains,
+  capabilities,
+});
 const mockAddDomain = jest.fn();
 const mockVerifyDomain = jest.fn();
 const mockDeleteDomain = jest.fn();
@@ -91,7 +102,7 @@ const PROPIO_CON_PENDIENTE_DEL_BORDE = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGetDomains.mockResolvedValue([PLATAFORMA]);
+  mockGetDomains.mockResolvedValue(respuesta([PLATAFORMA]));
 });
 
 test("muestra la dirección que siempre funciona", async () => {
@@ -144,7 +155,7 @@ test("con el dominio pendiente dice que NO funciona todavía", async () => {
   // ESTA ES LA PROPIEDAD. El dominio pendiente no resuelve: el backend exige
   // 'active'. Decir "casi listo" haría que el comercio crea que el problema es
   // nuestro cuando le falta crear un registro.
-  mockGetDomains.mockResolvedValue([PLATAFORMA, PROPIO_PENDIENTE]);
+  mockGetDomains.mockResolvedValue(respuesta([PLATAFORMA, PROPIO_PENDIENTE]));
 
   render(<StoreDomainSection />);
 
@@ -161,8 +172,8 @@ test("muestra el registro TXT que hay que crear", async () => {
     instructions: INSTRUCCIONES,
   });
   mockGetDomains
-    .mockResolvedValueOnce([PLATAFORMA])
-    .mockResolvedValue([PLATAFORMA, PROPIO_PENDIENTE]);
+    .mockResolvedValueOnce(respuesta([PLATAFORMA]))
+    .mockResolvedValue(respuesta([PLATAFORMA, PROPIO_PENDIENTE]));
 
   render(<StoreDomainSection />);
 
@@ -180,7 +191,7 @@ test("verificar sin el registro no se presenta como un error", async () => {
   // Es el caso NORMAL: el comercio acaba de cargarlo y todavía no tocó su DNS.
   // Un cartel rojo ahí manda a buscar un problema que no existe.
   const user = userEvent.setup();
-  mockGetDomains.mockResolvedValue([PLATAFORMA, PROPIO_PENDIENTE]);
+  mockGetDomains.mockResolvedValue(respuesta([PLATAFORMA, PROPIO_PENDIENTE]));
   mockVerifyDomain.mockResolvedValue({
     verified: false,
     domain: PROPIO_PENDIENTE,
@@ -201,10 +212,10 @@ test("con el dominio activo avisa que el certificado puede tardar", async () => 
   // Verificar y que el navegador muestre una advertencia de seguridad es
   // exactamente el momento en que alguien abre un ticket. Decirlo antes lo
   // evita.
-  mockGetDomains.mockResolvedValue([
+  mockGetDomains.mockResolvedValue(respuesta([
     PLATAFORMA,
     { ...PROPIO_PENDIENTE, status: "active", sslStatus: "pending" },
-  ]);
+  ]));
 
   render(<StoreDomainSection />);
 
@@ -216,7 +227,7 @@ test("no ofrece quitar el subdominio de la plataforma", async () => {
   // Solo hay un botón de quitar, y es el del dominio propio. El subdominio no
   // tiene acción porque el backend lo rechaza: es la dirección que siempre
   // funciona.
-  mockGetDomains.mockResolvedValue([PLATAFORMA, PROPIO_PENDIENTE]);
+  mockGetDomains.mockResolvedValue(respuesta([PLATAFORMA, PROPIO_PENDIENTE]));
 
   render(<StoreDomainSection />);
 
@@ -236,7 +247,7 @@ test("no ofrece quitar el subdominio de la plataforma", async () => {
 // abre. Es el peor de los casos: la pantalla afirma lo contrario de lo que pasa.
 
 test("muestra el registro que pide el borde cuando falta", async () => {
-  mockGetDomains.mockResolvedValue([PLATAFORMA, PROPIO_CON_PENDIENTE_DEL_BORDE]);
+  mockGetDomains.mockResolvedValue(respuesta([PLATAFORMA, PROPIO_CON_PENDIENTE_DEL_BORDE]));
 
   render(<StoreDomainSection />);
 
@@ -252,7 +263,7 @@ test("da forma de reintentar sin tener que volver a cargar el dominio", async ()
   // el botón en este estado, le estaríamos pidiendo algo que no puede
   // completar: el de "Verificar" solo existía mientras el dominio estaba
   // pendiente.
-  mockGetDomains.mockResolvedValue([PLATAFORMA, PROPIO_CON_PENDIENTE_DEL_BORDE]);
+  mockGetDomains.mockResolvedValue(respuesta([PLATAFORMA, PROPIO_CON_PENDIENTE_DEL_BORDE]));
   mockVerifyDomain.mockResolvedValue({ verified: true, instructions: null });
 
   const user = userEvent.setup();
@@ -267,10 +278,10 @@ test("da forma de reintentar sin tener que volver a cargar el dominio", async ()
 test("sin pendientes del borde no inventa un paso", async () => {
   // El caso normal. Mostrar el aviso acá mandaría al comercio a crear un
   // registro que nadie le pidió.
-  mockGetDomains.mockResolvedValue([
+  mockGetDomains.mockResolvedValue(respuesta([
     PLATAFORMA,
     { ...PROPIO_CON_PENDIENTE_DEL_BORDE, edgeVerification: null },
-  ]);
+  ]));
 
   render(<StoreDomainSection />);
 
@@ -279,4 +290,122 @@ test("sin pendientes del borde no inventa un paso", async () => {
   expect(
     screen.queryByRole("button", { name: /verificar de nuevo/i }),
   ).not.toBeInTheDocument();
+});
+
+// =====================================================
+// Dominio para el panel
+// =====================================================
+//
+// Un hostname aparte para entrar a la administración. Además de la marca,
+// resuelve algo concreto: la cookie de sesión es por ORIGEN, así que con el
+// panel en su propio hostname se pueden tener dos cuentas abiertas a la vez
+// sin que se pisen.
+//
+// LA CAPACIDAD LA DECLARA EL BACKEND
+//
+// El alta solo termina bien si la plataforma puede registrar el hostname en el
+// proyecto del panel en el borde. Sin eso, el dominio queda verificado y sin
+// servir: el comercio apunta su DNS, espera, y no pasa nada. Un botón que
+// promete eso es peor que no tenerlo.
+
+const PANEL_PROPIO = {
+  hostname: "admin.mitienda.com.ar",
+  type: "custom_domain",
+  context: "admin",
+  status: "active",
+  sslStatus: "active",
+};
+
+test("sin la capacidad, el alta del dominio de panel NI SE OFRECE", async () => {
+  mockGetDomains.mockResolvedValue(
+    respuesta([PLATAFORMA], { adminDomain: false }),
+  );
+
+  render(<StoreDomainSection />);
+
+  await waitFor(() =>
+    expect(screen.getByLabelText(/tu dominio/i)).toBeInTheDocument(),
+  );
+
+  expect(screen.queryByLabelText(/dominio del panel/i)).not.toBeInTheDocument();
+});
+
+test("con la capacidad aparece el alta del dominio de panel", async () => {
+  mockGetDomains.mockResolvedValue(
+    respuesta([PLATAFORMA], { adminDomain: true }),
+  );
+
+  render(<StoreDomainSection />);
+
+  expect(
+    await screen.findByLabelText(/dominio del panel/i),
+  ).toBeInTheDocument();
+});
+
+test("el alta manda la superficie 'admin', no la de tienda", async () => {
+  // Si no viajara la superficie, el backend asumiría tienda y el hostname
+  // terminaría sirviendo la tienda otra vez.
+  const user = userEvent.setup();
+  mockAddDomain.mockResolvedValue({ domain: PANEL_PROPIO, instructions: null });
+  mockGetDomains.mockResolvedValue(
+    respuesta([PLATAFORMA], { adminDomain: true }),
+  );
+
+  render(<StoreDomainSection />);
+
+  const campo = await screen.findByLabelText(/dominio del panel/i);
+  await user.type(campo, "admin.mitienda.com.ar");
+
+  // Acotado a la región del panel: la pantalla tiene dos botones "Agregar".
+  const seccion = screen.getByRole("region", { name: /dominio para el panel/i });
+  await user.click(within(seccion).getByRole("button", { name: /agregar/i }));
+
+  await waitFor(() =>
+    expect(mockAddDomain).toHaveBeenCalledWith("admin.mitienda.com.ar", "admin"),
+  );
+});
+
+test("no deja usar el MISMO hostname que la tienda", async () => {
+  // Un hostname sirve una aplicación. Sin este corte, el backend contestaría
+  // 409 "ya está cargado", que no explica el problema real.
+  const user = userEvent.setup();
+  mockGetDomains.mockResolvedValue(
+    respuesta([PLATAFORMA, PROPIO_PENDIENTE], { adminDomain: true }),
+  );
+
+  render(<StoreDomainSection />);
+
+  const campo = await screen.findByLabelText(/dominio del panel/i);
+  await user.type(campo, PROPIO_PENDIENTE.hostname);
+
+  expect(
+    await screen.findByText(/ese es el dominio de tu tienda/i),
+  ).toBeInTheDocument();
+  expect(mockAddDomain).not.toHaveBeenCalled();
+});
+
+test("si ya hay dominio de panel, lo muestra en vez de ofrecer otro", async () => {
+  mockGetDomains.mockResolvedValue(
+    respuesta([PLATAFORMA, PANEL_PROPIO], { adminDomain: true }),
+  );
+
+  render(<StoreDomainSection />);
+
+  expect(await screen.findByText(PANEL_PROPIO.hostname)).toBeInTheDocument();
+  expect(screen.queryByLabelText(/dominio del panel/i)).not.toBeInTheDocument();
+});
+
+test("el dominio de panel NO se muestra como si fuera el de la tienda", async () => {
+  // Antes el componente tomaba "el primer custom_domain". Con dos, el primero
+  // podía ser el del panel y la tarjeta de la tienda lo habría mostrado como
+  // suyo, con su botón de borrar al lado.
+  mockGetDomains.mockResolvedValue(
+    respuesta([PLATAFORMA, PANEL_PROPIO], { adminDomain: true }),
+  );
+
+  render(<StoreDomainSection />);
+
+  // La tarjeta de la tienda sigue ofreciendo dar de alta un dominio propio,
+  // porque el comercio no tiene uno de tienda.
+  expect(await screen.findByLabelText(/tu dominio/i)).toBeInTheDocument();
 });

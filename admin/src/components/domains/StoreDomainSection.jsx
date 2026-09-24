@@ -27,6 +27,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Paper,
   Stack,
   Table,
   TableBody,
@@ -149,11 +150,18 @@ export default function StoreDomainSection() {
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(null)
   const [feedback, setFeedback] = useState(null)
+  const [draftPanel, setDraftPanel] = useState('')
+  // Lo declara el backend. Falso hasta que lo diga: ante la duda no se ofrece
+  // un alta que quizás no se pueda completar.
+  const [puedeDominioDePanel, setPuedeDominioDePanel] = useState(false)
 
   const cargar = useCallback(async ({ signal } = {}) => {
     try {
-      const data = await getDomains()
-      if (!signal?.cancelled) setDomains(Array.isArray(data) ? data : [])
+      const { domains: lista, capabilities } = await getDomains()
+      if (!signal?.cancelled) {
+        setDomains(Array.isArray(lista) ? lista : [])
+        setPuedeDominioDePanel(Boolean(capabilities?.adminDomain))
+      }
     } catch (error) {
       if (!signal?.cancelled) {
         setFeedback({
@@ -196,6 +204,16 @@ export default function StoreDomainSection() {
 
   const hostnameDraft = normalizar(draft)
   const draftValido = HOSTNAME_RE.test(hostnameDraft)
+
+  const hostnamePanel = normalizar(draftPanel)
+  // Un hostname no puede servir la tienda Y el panel: son dos aplicaciones.
+  // Se corta acá con un mensaje que dice qué hacer, en vez de dejar que el
+  // backend conteste 409 "ya está cargado", que no explica el problema real.
+  const panelDraftEsElDeLaTienda =
+    Boolean(hostnamePanel) &&
+    domains.some(d => normalizar(d.hostname) === hostnamePanel)
+  const panelDraftValido =
+    HOSTNAME_RE.test(hostnamePanel) && !panelDraftEsElDeLaTienda
 
   const ejecutar = async (accion, fn) => {
     setBusy(accion)
@@ -280,12 +298,136 @@ export default function StoreDomainSection() {
         </Alert>
       )}
 
-      {panelPropio && (
-        <Alert severity="info" sx={{ borderRadius: 2, mb: 2 }}>
-          Además tenés <strong>{panelPropio.hostname}</strong> configurado como
-          panel de administración
-          {panelPropio.status !== 'active' && ' (todavía sin verificar)'}.
-        </Alert>
+      {/* PANEL PROPIO
+       *
+       * Un hostname aparte para entrar a la administración. Además de la
+       * marca, resuelve algo concreto: la sesión viaja en una cookie que es
+       * por ORIGEN, así que con el panel en su propio hostname el comercio
+       * puede tener su panel y el de otra cuenta abiertos a la vez sin que se
+       * pisen.
+       *
+       * Solo se ofrece cuando el backend dice que puede completarlo. Sin el
+       * proyecto del panel configurado en el borde, el dominio quedaría
+       * verificado y sin servir: el comercio apunta su DNS, espera, y no pasa
+       * nada.
+       *
+       * La sección va como `section` con nombre: en esta pantalla hay dos
+       * botones "Agregar", uno por dominio. Sin una región nombrada, un lector
+       * de pantalla los anuncia igual y no hay forma de saber cuál es cuál. */}
+      {(panelPropio || puedeDominioDePanel) && (
+        <Paper
+          component="section"
+          aria-label="Dominio para el panel"
+          variant="outlined"
+          sx={{ p: 2, borderRadius: 2, mb: 2 }}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            Dominio para el panel
+          </Typography>
+
+          {panelPropio ? (
+            <Stack spacing={1.5}>
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Typography variant="body2">
+                  <strong>{panelPropio.hostname}</strong>
+                </Typography>
+                <Chip
+                  size="small"
+                  label={
+                    panelPropio.status === 'active'
+                      ? 'Funcionando'
+                      : 'Falta verificar'
+                  }
+                  color={
+                    panelPropio.status === 'active' ? 'success' : 'warning'
+                  }
+                  variant="outlined"
+                />
+              </Stack>
+
+              <Stack direction="row" spacing={1}>
+                {panelPropio.status !== 'active' && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={busy === 'verify-panel'}
+                    onClick={() =>
+                      ejecutar('verify-panel', () =>
+                        verifyDomain(panelPropio.hostname),
+                      )
+                    }
+                    sx={{ borderRadius: 2, textTransform: 'none' }}
+                  >
+                    {busy === 'verify-panel' ? 'Verificando...' : 'Verificar'}
+                  </Button>
+                )}
+                <Button
+                  size="small"
+                  color="error"
+                  disabled={busy === 'delete-panel'}
+                  onClick={() =>
+                    ejecutar('delete-panel', () =>
+                      deleteDomain(panelPropio.hostname),
+                    )
+                  }
+                  sx={{ borderRadius: 2, textTransform: 'none' }}
+                >
+                  Quitar
+                </Button>
+              </Stack>
+            </Stack>
+          ) : (
+            <Stack spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                Si querés entrar a este panel desde tu propio dominio, cargá un
+                subdominio dedicado —por ejemplo{' '}
+                <strong>admin.tudominio.com</strong>—. Tiene que ser un hostname
+                distinto al de tu tienda: cada uno sirve una aplicación.
+              </Typography>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Dominio del panel"
+                  placeholder="admin.mitienda.com.ar"
+                  value={draftPanel}
+                  onChange={event => setDraftPanel(event.target.value)}
+                  error={Boolean(normalizar(draftPanel)) && !panelDraftValido}
+                  helperText={
+                    normalizar(draftPanel) && !panelDraftValido
+                      ? panelDraftEsElDeLaTienda
+                        ? 'Ese es el dominio de tu tienda. El panel necesita uno distinto.'
+                        : 'Va solo el nombre, sin https:// ni barras (ej: admin.mitienda.com.ar).'
+                      : ' '
+                  }
+                />
+                <Button
+                  variant="contained"
+                  disabled={!panelDraftValido || busy === 'add-panel'}
+                  onClick={() =>
+                    ejecutar('add-panel', () =>
+                      addDomain(normalizar(draftPanel), 'admin'),
+                    )
+                  }
+                  sx={{
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {busy === 'add-panel' ? 'Agregando...' : 'Agregar'}
+                </Button>
+              </Stack>
+            </Stack>
+          )}
+        </Paper>
       )}
 
       {!propio && (
@@ -433,14 +575,23 @@ export default function StoreDomainSection() {
               certificado a propósito: mientras esto no se resuelva, el
               certificado tampoco se emite. */}
           {propio.edgeVerification?.length > 0 && (
-            <Alert severity="warning" variant="outlined" sx={{ borderRadius: 2 }}>
-              <AlertTitle sx={{ fontWeight: 700 }}>Falta un paso más</AlertTitle>
+            <Alert
+              severity="warning"
+              variant="outlined"
+              sx={{ borderRadius: 2 }}
+            >
+              <AlertTitle sx={{ fontWeight: 700 }}>
+                Falta un paso más
+              </AlertTitle>
               <Typography variant="body2" sx={{ mb: 1.5 }}>
                 Tu dominio ya figura en otra cuenta de nuestro proveedor. Para
                 que podamos servirlo, agregá también este registro en tu DNS.
               </Typography>
 
-              <Table size="small" sx={{ '& td, & th': { border: 0, px: 0, py: 0.5 } }}>
+              <Table
+                size="small"
+                sx={{ '& td, & th': { border: 0, px: 0, py: 0.5 } }}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell>Tipo</TableCell>
@@ -473,15 +624,24 @@ export default function StoreDomainSection() {
           {/* El certificado lo emite el borde y puede tardar unos minutos
               después de verificar. Decirlo evita el ticket de "verifiqué y me
               da error de seguridad". */}
-          {propio.sslStatus === 'pending' && !propio.edgeVerification?.length && (
-            <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
-              Estamos emitiendo el certificado de seguridad. Puede tardar unos
-              minutos; hasta entonces el navegador puede mostrar una
-              advertencia.
-            </Alert>
-          )}
+          {propio.sslStatus === 'pending' &&
+            !propio.edgeVerification?.length && (
+              <Alert
+                severity="info"
+                variant="outlined"
+                sx={{ borderRadius: 2 }}
+              >
+                Estamos emitiendo el certificado de seguridad. Puede tardar unos
+                minutos; hasta entonces el navegador puede mostrar una
+                advertencia.
+              </Alert>
+            )}
 
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Stack
+            direction="row"
+            spacing={1.5}
+            sx={{ flexWrap: 'wrap', gap: 1 }}
+          >
             {/* Reintentar tiene que estar acá, no solo mientras el dominio está
                 pendiente: si el borde pide un registro más, el comercio lo carga
                 y necesita una forma de decir "ya está". Sin este botón, el aviso
