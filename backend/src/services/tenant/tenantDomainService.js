@@ -354,7 +354,13 @@ export const verifyTenantDomain = async ({ tenantId, hostname: raw }) => {
     // dominio ya quedó verificado, y que el proveedor falle no debe deshacer
     // eso ni dejar al comercio con un error que no puede resolver. El
     // certificado lo confirma después el watcher, por handshake real.
-    const alta = await registrarDominioEnBorde(hostname)
+    // La superficie decide EN QUÉ PROYECTO del borde se da de alta. Un
+    // dominio de panel registrado en el proyecto de la tienda quedaría
+    // sirviendo la tienda: el comercio apunta el DNS, ve que "funciona", y lo
+    // que carga es su tienda otra vez.
+    const alta = await registrarDominioEnBorde(hostname, {
+      surface: entry.context === 'admin' ? 'admin' : 'storefront',
+    })
 
     if (!alta.ok) {
       logger.warn('[DOMINIO] Verificado pero sin alta en el borde', {
@@ -419,7 +425,14 @@ export const removeTenantDomain = async ({ tenantId, hostname: raw }) => {
   // Sacarlo también del borde. Si no, el hostname sigue dado de alta en el
   // proyecto ocupando cupo, con su certificado renovándose para siempre, y
   // ningún comercio lo reclama: nadie lo va a notar hasta que el cupo importe.
-  const baja = await quitarDominioDelBorde(hostname)
+  const baja = await quitarDominioDelBorde(hostname, {
+    // Misma superficie con la que se dio de alta: buscarlo en el proyecto
+    // equivocado devolvería 404, que este servicio trata como éxito, y el
+    // hostname quedaría vivo en el otro proyecto para siempre.
+    // `entry` se capturó ANTES de sacarlo del array, así que conserva su
+    // context aunque ya no esté en el documento.
+    surface: entry.context === 'admin' ? 'admin' : 'storefront',
+  })
 
   if (!baja.ok && baja.motivo !== 'sin_credenciales') {
     logger.warn('[DOMINIO] Dado de baja en el comercio pero no en el borde', {

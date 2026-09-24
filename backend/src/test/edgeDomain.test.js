@@ -48,6 +48,7 @@ beforeEach(() => {
   delete process.env.VERCEL_TOKEN
   delete process.env.VERCEL_PROJECT_ID
   delete process.env.VERCEL_TEAM_ID
+  delete process.env.VERCEL_ADMIN_PROJECT_ID
 })
 
 describe('a dónde se manda al comercio', () => {
@@ -251,5 +252,73 @@ describe('si el alta automática está disponible', () => {
 
     process.env.VERCEL_PROJECT_ID = 'prj_123'
     expect(isEdgeProvisioningEnabled()).toBe(true)
+  })
+})
+
+// El panel y la tienda son DOS proyectos del borde.
+//
+// Un hostname sirve UNA aplicación. Dar de alta admin.sutienda.com en el
+// proyecto del storefront lo deja sirviendo la tienda: el comercio apunta su
+// DNS, ve que "funciona", y lo que carga es su propia tienda otra vez. Eso no
+// se lee como un error de configuración, se lee como que HENKO no anda.
+describe('alta en el borde · la superficie elige el proyecto', () => {
+  test('un dominio de tienda va al proyecto de la tienda', async () => {
+    process.env.VERCEL_TOKEN = 'tok'
+    process.env.VERCEL_PROJECT_ID = 'prj_tienda'
+    process.env.VERCEL_ADMIN_PROJECT_ID = 'prj_panel'
+
+    await registrarDominioEnBorde('mitienda.com.ar')
+
+    expect(llamadas[0].url).toContain('/projects/prj_tienda/domains')
+  })
+
+  test('un dominio de panel va al proyecto del PANEL', async () => {
+    process.env.VERCEL_TOKEN = 'tok'
+    process.env.VERCEL_PROJECT_ID = 'prj_tienda'
+    process.env.VERCEL_ADMIN_PROJECT_ID = 'prj_panel'
+
+    await registrarDominioEnBorde('admin.mitienda.com.ar', { surface: 'admin' })
+
+    expect(llamadas[0].url).toContain('/projects/prj_panel/domains')
+    expect(llamadas[0].url).not.toContain('prj_tienda')
+  })
+
+  // LA DECISIÓN QUE IMPORTA. Sin proyecto de panel configurado NO se cae al de
+  // la tienda: es preferible un paso manual a un alta silenciosa en el lugar
+  // equivocado, que además sería dificilísima de diagnosticar.
+  test('sin proyecto de panel NO se da de alta en el de la tienda', async () => {
+    process.env.VERCEL_TOKEN = 'tok'
+    process.env.VERCEL_PROJECT_ID = 'prj_tienda'
+    delete process.env.VERCEL_ADMIN_PROJECT_ID
+
+    const res = await registrarDominioEnBorde('admin.mitienda.com.ar', {
+      surface: 'admin',
+    })
+
+    expect(res.ok).toBe(false)
+    expect(res.motivo).toBe('sin_proyecto_de_panel')
+    // Y sobre todo: no se llamó a nadie.
+    expect(llamadas).toHaveLength(0)
+  })
+
+  test('la baja también busca en el proyecto que corresponde', async () => {
+    // Buscarlo en el proyecto equivocado devolvería 404, que este servicio
+    // trata como éxito, y el hostname quedaría vivo en el otro para siempre.
+    process.env.VERCEL_TOKEN = 'tok'
+    process.env.VERCEL_PROJECT_ID = 'prj_tienda'
+    process.env.VERCEL_ADMIN_PROJECT_ID = 'prj_panel'
+
+    await quitarDominioDelBorde('admin.mitienda.com.ar', { surface: 'admin' })
+
+    expect(llamadas[0].url).toContain('/projects/prj_panel/domains')
+  })
+
+  test('isEdgeProvisioningEnabled se pregunta por superficie', async () => {
+    process.env.VERCEL_TOKEN = 'tok'
+    process.env.VERCEL_PROJECT_ID = 'prj_tienda'
+    delete process.env.VERCEL_ADMIN_PROJECT_ID
+
+    expect(isEdgeProvisioningEnabled()).toBe(true)
+    expect(isEdgeProvisioningEnabled('admin')).toBe(false)
   })
 })

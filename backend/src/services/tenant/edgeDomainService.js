@@ -28,8 +28,34 @@ const limpio = valor => String(valor || '').trim()
  * ve que falta un paso. Acoplar la verificación a un token del dashboard haría
  * que un secreto sin cargar bloqueara el alta entera.
  */
-export const isEdgeProvisioningEnabled = () =>
-  Boolean(limpio(process.env.VERCEL_TOKEN) && limpio(process.env.VERCEL_PROJECT_ID))
+export const isEdgeProvisioningEnabled = (surface = SUPERFICIE.TIENDA) =>
+  Boolean(limpio(process.env.VERCEL_TOKEN) && proyectoDe(surface))
+
+/**
+ * En qué proyecto del borde vive cada superficie.
+ *
+ * LA TIENDA Y EL PANEL SON DOS PROYECTOS DISTINTOS
+ *
+ * Un hostname sirve UNA aplicación. Dar de alta `admin.sutienda.com` en el
+ * proyecto del storefront lo dejaría sirviendo la tienda: el comercio apunta
+ * su DNS, ve que "funciona", y lo que carga es su propia tienda otra vez. Un
+ * fallo así no se lee como un error de configuración — se lee como que HENKO
+ * no anda.
+ *
+ * Sin VERCEL_ADMIN_PROJECT_ID el alta de un dominio de panel queda sin hacer y
+ * se informa como pendiente, igual que cuando falta el token. No cae al
+ * proyecto de la tienda: es preferible un paso manual a un alta silenciosa en
+ * el lugar equivocado.
+ */
+export const SUPERFICIE = Object.freeze({
+  TIENDA: 'storefront',
+  PANEL: 'admin',
+})
+
+const proyectoDe = surface =>
+  surface === SUPERFICIE.PANEL
+    ? limpio(process.env.VERCEL_ADMIN_PROJECT_ID)
+    : limpio(process.env.VERCEL_PROJECT_ID)
 
 const construirUrl = ruta => {
   const equipo = limpio(process.env.VERCEL_TEAM_ID)
@@ -88,12 +114,21 @@ const extraerVerificacionPendiente = cuerpo => {
  * parte importante —la verificación de propiedad— y un fallo del proveedor no
  * debe deshacerla ni dejar al comercio con un error que no puede resolver.
  */
-export const registrarDominioEnBorde = async hostname => {
-  if (!isEdgeProvisioningEnabled()) {
-    return { ok: false, motivo: 'sin_credenciales' }
+export const registrarDominioEnBorde = async (
+  hostname,
+  { surface = SUPERFICIE.TIENDA } = {},
+) => {
+  if (!isEdgeProvisioningEnabled(surface)) {
+    return {
+      ok: false,
+      motivo:
+        surface === SUPERFICIE.PANEL && limpio(process.env.VERCEL_TOKEN)
+          ? 'sin_proyecto_de_panel'
+          : 'sin_credenciales',
+    }
   }
 
-  const proyecto = encodeURIComponent(limpio(process.env.VERCEL_PROJECT_ID))
+  const proyecto = encodeURIComponent(proyectoDe(surface))
 
   const { ok, status, cuerpo } = await pedir(`/v10/projects/${proyecto}/domains`, {
     method: 'POST',
@@ -138,12 +173,15 @@ export const registrarDominioEnBorde = async hostname => {
 }
 
 /** Baja del dominio en el borde, para cuando el comercio lo quita. */
-export const quitarDominioDelBorde = async hostname => {
-  if (!isEdgeProvisioningEnabled()) {
+export const quitarDominioDelBorde = async (
+  hostname,
+  { surface = SUPERFICIE.TIENDA } = {},
+) => {
+  if (!isEdgeProvisioningEnabled(surface)) {
     return { ok: false, motivo: 'sin_credenciales' }
   }
 
-  const proyecto = encodeURIComponent(limpio(process.env.VERCEL_PROJECT_ID))
+  const proyecto = encodeURIComponent(proyectoDe(surface))
 
   const { ok, status, cuerpo } = await pedir(
     `/v9/projects/${proyecto}/domains/${encodeURIComponent(hostname)}`,
@@ -174,6 +212,7 @@ export const obtenerDestinoDelBorde = () =>
   limpio(process.env.PLATFORM_EDGE_CNAME) || null
 
 export default {
+  SUPERFICIE,
   registrarDominioEnBorde,
   quitarDominioDelBorde,
   obtenerDestinoDelBorde,
