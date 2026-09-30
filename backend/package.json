@@ -48,7 +48,7 @@
     "cloudinary": "^2.11.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.3",
     "express": "^4.22.3",
     "express-async-handler": "^1.2.0",
     "express-mongo-sanitize": "^2.2.0",
