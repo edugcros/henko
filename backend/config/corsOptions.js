@@ -160,8 +160,28 @@ export const corsOptions = {
         return callback(null, true)
       }
 
-      return callback(new Error(`CORS bloqueado para origen: ${origin}`), false)
+      // UN ORIGEN BLOQUEADO ES 403, NO 500
+      //
+      // Sin `statusCode`, el manejador global clasifica cualquier Error pelado
+      // como 500. O sea que la política de CORS funcionando exactamente como se
+      // diseñó se contabilizaba como falla del servidor: cada bot, cada escáner
+      // y cada dominio mal configurado sumaba un 5xx. Eso es justo la señal que
+      // se mira para encontrar incidentes reales, y quedaba enterrada bajo
+      // ruido que no significa nada.
+      //
+      // El mensaje de la respuesta no repite el origen —ya está en el log, con
+      // requestId— porque es un valor que manda quien llama y no hay razón para
+      // devolvérselo.
+      const bloqueo = new Error('Origen no permitido')
+      bloqueo.statusCode = 403
+      bloqueo.code = 'CORS_ORIGIN_BLOCKED'
+      bloqueo.origin = origin
+
+      return callback(bloqueo, false)
     } catch (error) {
+      // Distinto caso: acá falló algo nuestro —la consulta que resuelve los
+      // dominios de los comercios, por ejemplo—. Eso sí es 500 y tiene que
+      // seguir contándose como tal.
       return callback(error, false)
     }
   },
