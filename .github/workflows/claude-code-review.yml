@@ -1,22 +1,45 @@
+# Revisión automática de cada PR.
+#
+# ESTE WORKFLOW ESTUVO ROTO DOS MESES Y MEDIO SIN QUE NADIE SE ENTERARA
+#
+# Última corrida exitosa: 18/07/2026. Desde ahí, 274 fallas seguidas sobre 300
+# corridas. El archivo no se tocó desde que se creó, así que lo que se rompió
+# fue la credencial: funcionó diez días y nunca más.
+#
+# El síntoma era visible en cada PR —un check en rojo— pero como no bloquea el
+# merge, se volvió parte del paisaje. Eso es lo que hace daño de verdad: un
+# rojo permanente entrena a ignorar los rojos, que es exactamente cómo la
+# rotura de eslint 10 llegó a producción y se quedó 12 deployments.
+#
+# Para que vuelva a andar hay que regenerar CLAUDE_CODE_OAUTH_TOKEN.
+#
+# POR QUÉ SE LE PUSIERON DOS FRENOS ANTES DE REVIVIRLO
+#
+# Medido sobre esas 300 corridas: el 40% las disparó Dependabot, y una sola
+# rama acumuló 46 revisiones completas porque cada push arranca una nueva sin
+# cancelar la anterior. Con la credencial arreglada y sin estos frenos, eso se
+# convierte en consumo real de la suscripción, a ese ritmo, desde el primer día.
+#
+#  1. Dependabot queda afuera. Un bump de versión no tiene criterio que revisar;
+#     lo que hay que verificar de un PR así —que instale, compile y pase las
+#     pruebas— ya lo hace ci.yml, que sí bloquea el merge.
+#
+#  2. Un push nuevo cancela la revisión anterior de ese PR. Revisar un commit
+#     que ya fue reemplazado no le sirve a nadie.
+
 name: Claude Code Review
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
 
     runs-on: ubuntu-latest
     permissions:
