@@ -36,6 +36,30 @@ process.env.AI_PLATFORM_PER_TENANT_SHARE = '0.5'
 process.env.AI_LIMIT_STARTER_AGENT_TOKENS = '0'
 process.env.AI_LIMIT_PRO_AGENT_TOKENS = '0'
 
+// La key compartida TIENE que estar presente, y es el requisito que faltaba.
+//
+// `getAiBudgetSnapshot` no recibe el perfil: lo carga con `loadTenantAiProfile`,
+// y como este test no siembra ningun Tenant, lo que recibe es `emptyProfile`.
+// Ahi `keySource` sale de una sola condicion:
+//
+//   keySource: getPlatformApiKey() ? KEY_SOURCE.PLATFORM : KEY_SOURCE.NONE
+//
+// Sin GEMINI_API_KEY eso da `none`, y `resolveEffectiveLimit` corta en su
+// PRIMERA linea —`if (keySource !== PLATFORM) return planLimit`— devolviendo el
+// tope del plan, que este test puso en 0 (ILIMITADO) justamente para llegar a
+// la fraccion. O sea que el snapshot daba `limit: 0` y la fraccion por comercio
+// no se evaluaba nunca: las dos pruebas que la verifican median el camino
+// equivocado.
+//
+// Va fija ACA, en el archivo que la necesita, y no en `jest.env.js`: una key de
+// plataforma global le cambiaria el `keySource` a las otras 67 suites, y con el
+// unico efecto de que varias empezarian a resolver topes compartidos donde hoy
+// resuelven el del plan.
+//
+// NO ES UNA CREDENCIAL: tiene la forma que valida el servicio y un valor
+// evidentemente falso. Ninguna prueba sale a la red con esto.
+process.env.GEMINI_API_KEY = 'AIzaTEST-no-usar-fuera-de-pruebas'
+
 const { default: AiTenantPolicy } = await import('../models/aiTenantPolicyModel.js')
 const { default: AiRateWindow, RATE_WINDOW } = await import(
   '../models/aiRateWindowModel.js'
