@@ -21,6 +21,7 @@ website/build/
 # --- Builds Frontend/Backend ---
 **/dist/
 **/build/
+**/coverage/
 **/.next/
 **/.vite/
 **/.turbo/
