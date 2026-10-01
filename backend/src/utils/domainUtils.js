@@ -140,10 +140,44 @@ const levenshteinDistance = (a, b) => {
 const TYPO_SENSITIVE_SLUGS = ['henko']
 const TYPO_DISTANCE_THRESHOLD = 1
 
-export const isReservedSlug = slug => {
+/**
+ * ¿Este identificador está reservado?
+ *
+ * `publicBaseDomain` es opcional y cierra un hueco concreto: la lista de
+ * arriba y TYPO_SENSITIVE_SLUGS están atadas al nombre de la MARCA ('henko'),
+ * y el dominio que la plataforma usa en realidad es otro. Medido:
+ *
+ *     slug "henko"    -> bloqueado     -> henko.henkart.com.ar
+ *     slug "henkart"  -> NO bloqueado  -> henkart.com.ar
+ *
+ * El segundo no da un subdominio: da el dominio raíz pelado. Es la rama de
+ * `buildPlatformTenantDomains` que existe para el comercio que ES la
+ * plataforma —cuando el slug coincide con la primera etiqueta del dominio
+ * base, devuelve el dominio base— y cualquiera que se registre con ese nombre
+ * cae adentro. La distancia de edición no lo agarra: entre 'henko' y 'henkart'
+ * hay 3, y el umbral es 1.
+ *
+ * Pasando el dominio público se comprueba el DOMINIO RESULTANTE en vez del
+ * texto del slug, que es la pregunta que de verdad importa y además no hay que
+ * mantenerla: si mañana cambia el dominio, la protección se mueve sola.
+ *
+ * Sin el segundo argumento se comporta igual que antes.
+ */
+export const isReservedSlug = (slug, { publicBaseDomain } = {}) => {
   const normalized = normalizeSlug(slug)
 
   if (RESERVED_SLUGS.has(normalized)) return true
+
+  const publicBase = normalizeHostname(publicBaseDomain || '')
+
+  if (publicBase && normalized) {
+    const { shopDomain } = buildPlatformTenantDomains({
+      slug: normalized,
+      publicBaseDomain: publicBase,
+    })
+
+    if (normalizeHostname(shopDomain) === publicBase) return true
+  }
 
   return TYPO_SENSITIVE_SLUGS.some(
     reserved => levenshteinDistance(normalized, reserved) <= TYPO_DISTANCE_THRESHOLD,
