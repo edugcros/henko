@@ -177,7 +177,7 @@ const assertDeployEnv = () => {
     storefrontPreviewUrl,
   ].forEach(value => {
     if (value && hasForbiddenDeployValue(value)) {
-      throw new Error(`Configuración inválida para ${APP_ENV} en admin: ${value}`)
+      throw new Error(`Configuración inválida para ${APP_ENV} en la tienda: ${value}`)
     }
   })
   ;[apiBaseUrl, apiUrl, assetsBaseUrl, storefrontPreviewUrl]
@@ -191,6 +191,22 @@ const assertDeployEnv = () => {
 
   if (debugApi === 'true') {
     throw new Error(`REACT_APP_DEBUG_API=true no está permitido en ${APP_ENV}`)
+  }
+
+  // ESTE CHEQUE ESTABA SOLO EN EL PANEL, QUE ES DONDE MENOS HACE FALTA
+  //
+  // El panel tiene la misma guarda desde siempre. La tienda no la tenía — y es
+  // la tienda la que cobra. Con una clave `TEST-` en un build de producción,
+  // el checkout sale contra el sandbox de Mercado Pago: las compras parecen
+  // completarse, el comprador ve su confirmación, y no se mueve un peso.
+  //
+  // Es una falla silenciosa y cara. No hay nada en la pantalla que la delate;
+  // se descubre cuando alguien cruza las ventas contra lo que efectivamente
+  // entró, que puede ser días después.
+  if (mpPublicKey && mpPublicKey.startsWith('TEST-')) {
+    throw new Error(
+      `REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en ${APP_ENV}`,
+    )
   }
 
   if (hasPlaceholder(mpPublicKey)) {
