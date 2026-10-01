@@ -65,23 +65,6 @@ jobs:
       run:
         working-directory: backend
 
-    # 7 de las 68 suites pasan por `src/test/testDB.js`, que conecta a un mongod
-    # REAL —no a uno en memoria, como hacen las otras 26— y de ahí deriva el
-    # nombre de la base agregándole `-test`. Sin un servidor al que conectar,
-    # `mongoose.connect` se queda esperando y el hook muere por timeout.
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        # Sin healthcheck los pasos arrancan antes de que mongod acepte
-        # conexiones, y el primer beforeAll vuelve a colgarse.
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
       # `resolveTestDbUri` la prefiere sobre MONGODB_URL y le agrega el sufijo,
       # así que la base efectiva es `henko-test`. Las transacciones quedan
@@ -100,6 +83,33 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
+      # 7 de las 68 suites pasan por `src/test/testDB.js`, que conecta a un
+      # mongod REAL —no a uno en memoria, como hacen las otras 26— y de ahí
+      # deriva el nombre de la base agregándole `-test`. Sin un servidor al que
+      # conectar, `mongoose.connect` se queda esperando y el hook muere.
+      #
+      # Se levanta a mano en vez de con `services:` por una razón práctica: de
+      # los service containers, Actions volca el log entero al final del job.
+      # Son 32 mil líneas de mongod que sepultan la salida de Jest y dejan el
+      # fallo ilegible. Un contenedor propio no se volca, y además deja pasarle
+      # `--quiet`, que `services:` no permite (acepta opciones de docker run,
+      # no el comando del contenedor).
+      - name: Levantar MongoDB
+        run: |
+          docker run -d --name henko-mongo -p 27017:27017 mongo:7 \
+            mongod --bind_ip_all --quiet
+          for _ in $(seq 1 30); do
+            if docker exec henko-mongo \
+                 mongosh --quiet --eval 'db.adminCommand({ ping: 1 })' >/dev/null 2>&1; then
+              echo "mongod listo"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "mongod no respondio en 60s"
+          docker logs henko-mongo
+          exit 1
 
       - run: npm ci
 
