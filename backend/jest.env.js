@@ -6,7 +6,7 @@
 //
 // `config/env.js` valida al importarse: si falta PORT, JWT_SECRET,
 // REFRESH_TOKEN_SECRET o MONGODB_URL, tira una excepción en el momento del
-// import. Cualquier suite que importe `app.js` muere ahí antes de correr una
+// import. Cualquier suite que importe `app.js` moría ahí antes de correr una
 // sola prueba — eran 45 de 68 suites y 168 pruebas, todas por este motivo.
 //
 // Y esas variables salían de `.env.development`, que está en `.gitignore`. O
@@ -19,24 +19,45 @@
 // módulos de cada suite, que es la única ventana posible: después del import de
 // env.js ya es tarde.
 //
-// POR QUE `??=` Y NO ASIGNACION DIRECTA
+// POR QUE CARGA DOTENV ACA, SI YA LO HACE env.js
 //
-// Para no cambiarle el entorno a quien ya tiene `.env.development`. Si la
-// variable viene de afuera, gana la de afuera; estos valores solo rellenan lo
-// que falta. `dotenv` tampoco sobreescribe lo que ya está en process.env, así
-// que el orden queda consistente en los dos sentidos.
+// Por el orden. `dotenv` no sobreescribe lo que ya está en `process.env`, y este
+// archivo corre ANTES que env.js. Si acá se asignara a secas, el valor de
+// juguete le ganaría al `.env.development` del desarrollador en vez de rellenar
+// lo que falta — y en el caso de Mongo eso no es cosmético: `resolveTestDbUri`
+// cae a MONGODB_URL cuando no hay MONGODB_TEST_URI, así que un valor inventado
+// acá le mandaría las pruebas a un servidor que no es el suyo.
 //
-// NO SON SECRETOS: son valores de juguete, deliberadamente evidentes. Los
-// tokens que firman y verifican las pruebas viven y mueren dentro de la misma
-// corrida.
+// Cargando primero el mismo archivo que cargará env.js, el `??=` de abajo
+// vuelve a significar lo que dice: rellenar huecos y nada más.
+
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+
+import dotenv from 'dotenv'
+
+// El mismo archivo que elige `config/env.js` para todo lo que no es producción.
+// En CI no existe y `existsSync` lo saltea sin ruido.
+const envFile = path.resolve(process.cwd(), '.env.development')
+
+if (existsSync(envFile)) {
+  dotenv.config({ path: envFile })
+}
 
 process.env.NODE_ENV ??= 'test'
 process.env.PORT ??= '5000'
 
+// NO SON SECRETOS: valores de juguete, deliberadamente evidentes. Los tokens que
+// firman y verifican las pruebas viven y mueren dentro de la misma corrida.
 process.env.JWT_SECRET ??= 'test-jwt-secret-no-usar-fuera-de-pruebas'
 process.env.REFRESH_TOKEN_SECRET ??= 'test-refresh-secret-no-usar-fuera-de-pruebas'
 
-// Ninguna prueba se conecta a esta URI: las que necesitan base levantan su
-// propio `MongoMemoryServer` en un beforeAll y conectan mongoose a mano. Esto
-// está solo para que la validación de `env.js` no tire al importarse.
-process.env.MONGODB_URL ??= 'mongodb://127.0.0.1:27017/henko-test'
+// Para la validación de `env.js`, que exige una de las dos. Las 26 suites que
+// necesitan base levantan su propio `MongoMemoryServer` y no usan esta URI.
+process.env.MONGODB_URL ??= 'mongodb://127.0.0.1:27017/henko'
+
+// Las 7 suites que pasan por `src/test/testDB.js` sí conectan a un mongod real
+// (no a uno en memoria), y de ahí derivan el nombre de base agregándole `-test`.
+// En CI lo provee el service container del workflow; en una máquina sin Mongo
+// local esas 7 fallan, y es lo esperable: piden una base de verdad.
+process.env.MONGODB_TEST_URI ??= process.env.MONGODB_URL
