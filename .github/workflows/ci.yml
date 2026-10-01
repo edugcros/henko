@@ -62,10 +62,31 @@ concurrency:
 permissions:
   contents: read
 
+# LOS TOPES DE TIEMPO DE CADA JOB
+#
+# Sin `timeout-minutes`, un job colgado se queda hasta el tope de Actions, que
+# son SEIS HORAS. Acá hay dos formas concretas de colgarse: la espera a que el
+# replica set llegue a PRIMARY, y una suite que se queda esperando una conexión
+# que nunca llega — que es exactamente el modo de falla que arreglamos en el
+# CORS, y que antes de `jest.env.js` era el estado normal en un checkout limpio.
+#
+# Los números salen de medir las últimas 8 corridas verdes, no de estimar:
+#
+#     job        mediana   máximo
+#     backend      127s      134s
+#     admin        105s      177s
+#     website       45s       56s
+#
+# Los topes quedan muy por encima de eso a propósito. No son un presupuesto de
+# rendimiento: lo único que tienen que hacer es convertir "colgado seis horas"
+# en "falla en minutos". Un runner lento o una caché fría no deberían ponerlo
+# rojo nunca.
+
 jobs:
   backend:
     name: backend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -157,6 +178,7 @@ jobs:
   admin:
     name: admin
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: admin
@@ -182,6 +204,7 @@ jobs:
   website:
     name: website
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: website

@@ -1,6 +1,8 @@
 // 📁 config/corsOptions.js
 import Tenant from '../src/models/tenantModel.js'
 import { env } from './env.js'
+import logger from './logger.js'
+import { estadoDeBase } from './connectDB.js'
 
 const getHostnameFromOrigin = origin => {
   try {
@@ -61,6 +63,40 @@ const CORS_CACHE_TTL = 5 * 60 * 1000
 const CORS_CACHE_MAX = 2000
 const corsOriginCache = new Map()
 
+// Tope para la consulta cuando SÍ hay conexión pero la base está lenta. Es una
+// búsqueda por índice sobre una colección chica: si no contestó en este tiempo,
+// no va a contestar.
+const TOPE_DE_CONSULTA_MS = 1500
+
+/**
+ * ¿Este origen pertenece a algún comercio?
+ *
+ * POR QUÉ SE MIRA EL ESTADO DE LA CONEXIÓN ANTES DE CONSULTAR
+ *
+ * Mongoose encola las consultas mientras no hay conexión y las suelta recién a
+ * los 10 segundos, con un error de buffering. Eso acá se paga carísimo: el
+ * preflight de CORS es lo PRIMERO que hace el navegador, antes de llegar a
+ * ninguna ruta. Con la base caída, cada pedido desde el dominio propio de un
+ * comercio se quedaba 10 segundos colgado antes de fallar.
+ *
+ * Y el momento en que más duele es el peor posible: en el plan free de Render
+ * el servicio duerme, así que después de cada despertar hay una ventana con la
+ * conexión todavía no establecida y la caché vacía.
+ *
+ * Preguntando el estado primero, ese caso no encola nada y se resuelve al
+ * instante.
+ *
+ * QUÉ PASA CUANDO NO SE PUEDE AVERIGUAR
+ *
+ * Se cae a la caché AUNQUE ESTÉ VENCIDA. Un comercio que entró hace seis
+ * minutos no dejó de ser suyo porque la base no conteste ahora, y vencer la
+ * entrada por tiempo es una heurística de frescura, no un cambio de dueño.
+ * Así, una caída de Mongo no desconecta a los comercios que venían andando.
+ *
+ * Si no hay ni caché vencida, se lanza. No es "denegar": es decir que no se
+ * pudo averiguar, que es un 500 honesto y nuestro. Dejarlo pasar sería abrir
+ * CORS a cualquiera justo cuando no podemos verificar nada.
+ */
 const isTenantOriginAllowed = async hostnameCandidates => {
   if (!env.allowDynamicTenantOrigins) return false
 
@@ -71,18 +107,48 @@ const isTenantOriginAllowed = async hostnameCandidates => {
     return cached.allowed
   }
 
-  const tenant = await Tenant.findOne({
-    status: 'active',
-    $or: [
-      { 'domains.hostname': { $in: hostnameCandidates } },
-      { 'domains.normalizedHostname': { $in: hostnameCandidates } },
-      { 'adminDomains.hostname': { $in: hostnameCandidates } },
-      { 'adminDomains.normalizedHostname': { $in: hostnameCandidates } },
+  const recurrirACacheVencida = causa => {
+    if (cached) {
+      logger.warn(
+        `CORS: la base no respondió (${causa}); se usa la caché vencida para ${cacheKey}`,
+      )
+      return cached.allowed
+    }
 
-      { legacyDomains: { $in: hostnameCandidates } },
-      { legacyAdminDomains: { $in: hostnameCandidates } },
-    ],
-  }).select('_id').lean()
+    const error = new Error(
+      `No se pudo verificar el origen contra la base (${causa})`,
+    )
+    error.code = 'CORS_TENANT_LOOKUP_UNAVAILABLE'
+    throw error
+  }
+
+  // readyState 1 es "conectado". Cualquier otro valor significa que la consulta
+  // se encolaría, que es justamente lo que no queremos.
+  if (estadoDeBase().readyState !== 1) {
+    return recurrirACacheVencida('sin conexión')
+  }
+
+  let tenant
+
+  try {
+    tenant = await Tenant.findOne({
+      status: 'active',
+      $or: [
+        { 'domains.hostname': { $in: hostnameCandidates } },
+        { 'domains.normalizedHostname': { $in: hostnameCandidates } },
+        { 'adminDomains.hostname': { $in: hostnameCandidates } },
+        { 'adminDomains.normalizedHostname': { $in: hostnameCandidates } },
+
+        { legacyDomains: { $in: hostnameCandidates } },
+        { legacyAdminDomains: { $in: hostnameCandidates } },
+      ],
+    })
+      .select('_id')
+      .maxTimeMS(TOPE_DE_CONSULTA_MS)
+      .lean()
+  } catch (error) {
+    return recurrirACacheVencida(error.message)
+  }
 
   const allowed = Boolean(tenant)
 

@@ -1,33 +1,38 @@
-// Qué error produce la política de CORS cuando bloquea.
+// La política de CORS: cómo reporta un rechazo, y qué hace cuando no puede
+// averiguar nada porque la base no responde.
 //
 // No prueba QUÉ orígenes se permiten —eso depende de la base y del entorno de
-// cada instalación— sino cómo se reporta el rechazo, que es lo que estaba mal:
-// el Error salía sin `statusCode`, y el manejador global clasifica como 500
-// todo lo que no declare uno. La política haciendo exactamente su trabajo se
-// contaba como falla del servidor.
+// cada instalación— sino las dos cosas que estaban mal:
 //
-// La distinción importa en operación: los 5xx son la señal que se mira para
-// encontrar incidentes, y cada escáner que pasaba por ahí la ensuciaba.
+//  1. El Error de rechazo salía sin `statusCode`, y el manejador global
+//     clasifica como 500 todo lo que no declare uno. La política haciendo
+//     exactamente su trabajo se contaba como falla del servidor, y ensuciaba
+//     la señal que se mira para encontrar incidentes de verdad.
 //
-// POR QUE SE SIMULA EL MODELO
+//  2. Con la base caída, la verificación se colgaba 10 segundos. El preflight
+//     de CORS es lo PRIMERO que hace el navegador, antes de llegar a ninguna
+//     ruta, así que eso era 10 segundos en cada pedido de cada comercio con
+//     dominio propio.
 //
-// `corsOptions.origin` consulta `Tenant` para resolver los dominios propios de
-// los comercios. Sin simularlo, la prueba sale a buscar una base: mongoose
-// encola la consulta y la suelta recién a los 10 segundos con un error de
-// buffering, que no es lo que se quiere medir acá.
+// POR QUE SE SIMULAN EL MODELO Y EL ESTADO DE LA CONEXIÓN
 //
-// (Que ese mismo camino exista en producción —10 segundos colgado en el
-// preflight cuando la base no responde— es un problema aparte, y está anotado
-// como tal.)
+// Sin simularlos, la prueba sale a buscar una base de verdad: mongoose encola
+// la consulta y la suelta recién a los 10 segundos. Simulándolos se puede
+// recorrer a voluntad lo que en producción es un incidente.
 
 import { jest } from '@jest/globals'
 
 const tenantFindOne = jest.fn()
+const estadoDeBase = jest.fn()
 
 jest.unstable_mockModule('../models/tenantModel.js', () => ({
-  default: {
-    findOne: (...args) => tenantFindOne(...args),
-  },
+  default: { findOne: (...args) => tenantFindOne(...args) },
+}))
+
+jest.unstable_mockModule('../../config/connectDB.js', () => ({
+  default: jest.fn(),
+  closeDB: jest.fn(),
+  estadoDeBase,
 }))
 
 const { default: corsOptions } = await import('../../config/corsOptions.js')
@@ -39,12 +44,19 @@ const pedirOrigen = origin =>
     )
   })
 
+// La cadena real es .select().maxTimeMS().lean()
+const consultaQueDevuelve = tenant => ({
+  select: () => ({ maxTimeMS: () => ({ lean: () => Promise.resolve(tenant) }) }),
+})
+
+const CONECTADO = { listo: true, conexion: 'conectado', readyState: 1 }
+const SIN_CONEXION = { listo: false, conexion: 'desconectado', readyState: 0 }
+
 beforeEach(() => {
-  // Ningún comercio reclama estos dominios: es el camino de rechazo.
-  tenantFindOne.mockReturnValue({
-    select: () => ({ lean: () => Promise.resolve(null) }),
-    lean: () => Promise.resolve(null),
-  })
+  jest.clearAllMocks()
+  estadoDeBase.mockReturnValue(CONECTADO)
+  // Ningún comercio reclama el dominio: es el camino de rechazo.
+  tenantFindOne.mockReturnValue(consultaQueDevuelve(null))
 })
 
 describe('política de CORS · cómo reporta un rechazo', () => {
@@ -74,20 +86,73 @@ describe('política de CORS · cómo reporta un rechazo', () => {
     expect(error).toBeNull()
     expect(permitido).toBe(true)
   })
+})
 
-  test('si la consulta de comercios falla, eso SÍ es 500 — no es lo mismo que un origen bloqueado', async () => {
+describe('política de CORS · cuando la base no responde', () => {
+  test('sin conexión no se encola la consulta: es lo que colgaba 10 segundos', async () => {
+    estadoDeBase.mockReturnValue(SIN_CONEXION)
+
+    const { error } = await pedirOrigen('https://nunca-visto.example')
+
+    // Lo que importa no es el error, es que NO se haya tocado la base: una
+    // consulta encolada es exactamente la que mongoose suelta a los 10s.
+    expect(tenantFindOne).not.toHaveBeenCalled()
+    expect(error).toBeInstanceOf(Error)
+    // No es un origen bloqueado: es que no se pudo averiguar. Eso es 500.
+    expect(error.statusCode).toBeUndefined()
+  })
+
+  test('un comercio que venía andando sobrevive la caída, con la caché vencida', async () => {
+    const origen = 'https://comercio-conocido.example'
+
+    // 1. Con la base sana queda cacheado como permitido.
+    tenantFindOne.mockReturnValue(consultaQueDevuelve({ _id: 'tenant-1' }))
+    const primera = await pedirOrigen(origen)
+    expect(primera.permitido).toBe(true)
+
+    // 2. Pasan más de los 5 minutos de la caché, y la base se cae.
+    const ahora = Date.now()
+    jest.spyOn(Date, 'now').mockReturnValue(ahora + 6 * 60 * 1000)
+    estadoDeBase.mockReturnValue(SIN_CONEXION)
+    tenantFindOne.mockClear()
+
+    const segunda = await pedirOrigen(origen)
+
+    // Sigue entrando: vencer por tiempo es una heurística de frescura, no un
+    // cambio de dueño. Y sin tocar la base.
+    expect(segunda.permitido).toBe(true)
+    expect(segunda.error).toBeNull()
+    expect(tenantFindOne).not.toHaveBeenCalled()
+
+    Date.now.mockRestore()
+  })
+
+  test('si la consulta falla estando conectado, también cae a la caché vencida', async () => {
+    const origen = 'https://otro-conocido.example'
+
+    tenantFindOne.mockReturnValue(consultaQueDevuelve({ _id: 'tenant-2' }))
+    expect((await pedirOrigen(origen)).permitido).toBe(true)
+
+    const ahora = Date.now()
+    jest.spyOn(Date, 'now').mockReturnValue(ahora + 6 * 60 * 1000)
     tenantFindOne.mockImplementation(() => {
       throw new Error('la base no responde')
     })
 
-    // Un dominio que no usó ningún otro caso. `isTenantOriginAllowed` cachea
-    // el resultado 5 minutos, así que reusar uno ya consultado devolvería el
-    // valor guardado sin tocar la base, y esta prueba mediría la caché en
-    // lugar del manejo del fallo.
-    const { error } = await pedirOrigen('https://base-caida.example')
+    const { error, permitido } = await pedirOrigen(origen)
 
-    expect(error).toBeInstanceOf(Error)
-    expect(error.statusCode).toBeUndefined()
-    expect(error.code).not.toBe('CORS_ORIGIN_BLOCKED')
+    expect(permitido).toBe(true)
+    expect(error).toBeNull()
+
+    Date.now.mockRestore()
+  })
+
+  test('sin caché previa no se deja pasar a nadie — no se abre CORS por no poder verificar', async () => {
+    estadoDeBase.mockReturnValue(SIN_CONEXION)
+
+    const { error, permitido } = await pedirOrigen('https://desconocido-total.example')
+
+    expect(permitido).toBe(false)
+    expect(error.code).toBe('CORS_TENANT_LOOKUP_UNAVAILABLE')
   })
 })
