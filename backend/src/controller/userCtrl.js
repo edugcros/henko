@@ -695,7 +695,11 @@ export const createUserAdmin = [
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
         throw new Error('Usá solo letras, números y guiones')
       }
-      if (isReservedSlug(slug)) {
+      // Se le pasa el dominio público para que, además de la lista, rechace
+      // cualquier identificador cuya dirección resultante sea el dominio raíz
+      // de la plataforma. Ver isReservedSlug: 'henkart' no estaba en la lista
+      // y daba `henkart.com.ar` pelado.
+      if (isReservedSlug(slug, { publicBaseDomain: env.publicBaseDomain })) {
         throw new Error('Ese identificador está reservado. Elegí otro.')
       }
       return true
