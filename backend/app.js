@@ -16,6 +16,7 @@ import {
 } from './src/middlewares/csrfMiddleware.js'
 
 import { env } from './config/env.js'
+import { estadoDeBase } from './config/connectDB.js'
 import { corsOptions } from './config/corsOptions.js'
 import logger from './config/logger.js'
 
@@ -127,23 +128,29 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 // HEALTHCHECKS
 // =======================================================
 
-app.get('/health', (req, res) => {
-  return res.status(200).json({
-    success: true,
-    service: env.app?.name || 'Henko Commerce API',
-    env: env.nodeEnv,
-    uptime: process.uptime(),
-  })
-})
+// Devolvía 200 fijo, así que informaba "sano" con la base caída. Apuntar el
+// health check de Render a eso es peor que no tener ninguno: deja en rotación
+// un proceso que no puede contestar nada, y encima con el aval del panel.
+//
+// El criterio de `listo` —haberse conectado alguna vez, no estar conectado
+// ahora— está explicado en `estadoDeBase`, en config/connectDB.js.
+//
+// Un solo manejador para las dos rutas: antes eran dos copias textuales, y una
+// de las dos se iba a quedar atrás en el primer cambio.
+const health = (req, res) => {
+  const base = estadoDeBase()
 
-app.get(`${env.apiPrefix}/health`, (req, res) => {
-  return res.status(200).json({
-    success: true,
+  return res.status(base.listo ? 200 : 503).json({
+    success: base.listo,
     service: env.app?.name || 'Henko Commerce API',
     env: env.nodeEnv,
     uptime: process.uptime(),
+    db: base,
   })
-})
+}
+
+app.get('/health', health)
+app.get(`${env.apiPrefix}/health`, health)
 
 // =======================================================
 // CSRF GLOBAL DINÁMICO

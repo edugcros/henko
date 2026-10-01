@@ -43,11 +43,16 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 let listenersRegistered = false
 
+// Si este proceso logró conectarse ALGUNA VEZ, no si está conectado ahora.
+// La distinción es la que usa el health check; el porqué está en `estadoDeBase`.
+let seConectoAlgunaVez = false
+
 const registerConnectionListeners = () => {
   if (listenersRegistered) return
   listenersRegistered = true
 
   mongoose.connection.on('connected', () => {
+    seConectoAlgunaVez = true
     logger.info('🔌 MongoDB conectado (evento)')
   })
 
@@ -114,6 +119,46 @@ const connectDB = async () => {
   }
 
   return null
+}
+
+// =====================================================
+// Estado para el health check
+// =====================================================
+
+const NOMBRE_DE_ESTADO = {
+  0: 'desconectado',
+  1: 'conectado',
+  2: 'conectando',
+  3: 'desconectando',
+}
+
+/**
+ * Qué informar en el health check, y por qué estas dos cosas y no una.
+ *
+ * `listo` NO es "la base responde ahora". Es "este proceso llegó a conectarse
+ * alguna vez". La diferencia decide qué hace Render con el servicio:
+ *
+ *  - Si el health check siguiera el estado ACTUAL, un parpadeo de Mongo haría
+ *    que Render reinicie la instancia. Reiniciar no acerca la base; lo único
+ *    que logra es sumar arranques en frío encima de una caída. El remedio
+ *    empeora la falla.
+ *
+ *  - Si devolviera 200 siempre —que es lo que hacía— un deploy que NUNCA pudo
+ *    llegar a la base pasa como sano y se queda sirviendo 500. Eso ya pasa hoy.
+ *
+ * Conectarse una vez es justo la condición que separa "este build está bien"
+ * de "este build no puede funcionar", que es lo que un health check tiene que
+ * contestar. Un deploy roto no llega a estar vivo; una instancia sana que pierde
+ * la base sigue viva y lo reporta en el cuerpo, para quien la esté mirando.
+ */
+export const estadoDeBase = () => {
+  const readyState = mongoose.connection?.readyState ?? 0
+
+  return {
+    listo: seConectoAlgunaVez,
+    conexion: NOMBRE_DE_ESTADO[readyState] || 'desconocido',
+    readyState,
+  }
 }
 
 // =====================================================
