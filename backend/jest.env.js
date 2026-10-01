@@ -44,6 +44,35 @@ if (existsSync(envFile)) {
   dotenv.config({ path: envFile })
 }
 
+// POR QUE SE BORRAN ESTAS, SI ACABAMOS DE CARGARLAS
+//
+// Cargar `.env.development` resuelve un problema real (ver arriba) pero trae
+// uno nuevo: ese archivo está en `.gitignore`, así que cada desarrollador tiene
+// los suyos, y varias pruebas AFIRMAN sobre valores derivados de estos ajustes.
+// El resultado era que la suite daba distinto según la máquina.
+//
+// Medido: `marketIntelligenceScoring` y `shoppingRetry` fallaban en local y
+// pasaban en CI. No era un falso positivo del CI ni un entorno local roto — era
+// que cada uno medía una configuración distinta. `maxCharsPerMessage` sale de
+// `MARKET_RESEARCH_PAGES * (MARKET_RESEARCH_CHARS_PER_PAGE + 300)`: con los
+// valores por defecto del código da 39600, y con los de un `.env.development`
+// cualquiera daba 10800.
+//
+// La distinción es entre variables de INFRAESTRUCTURA —a qué Mongo conectarse,
+// con qué secreto firmar— que sí tienen que salir del entorno de cada uno, y
+// variables de AJUSTE DE COMPORTAMIENTO, que son justamente lo que las pruebas
+// están midiendo. Dejar que el entorno mueva las segundas es pedirle a la suite
+// que mida algo que no está en el repositorio.
+//
+// Borrarlas acá hace que el código caiga a sus propios valores por defecto, que
+// son los que las pruebas esperan y los únicos iguales para todos. Una prueba
+// que necesite otro valor lo fija ella misma, que es donde se puede leer.
+const AJUSTES_QUE_LAS_PRUEBAS_MIDEN = /^(MARKET_RESEARCH_|SHOPPING_)/
+
+for (const nombre of Object.keys(process.env)) {
+  if (AJUSTES_QUE_LAS_PRUEBAS_MIDEN.test(nombre)) delete process.env[nombre]
+}
+
 process.env.NODE_ENV ??= 'test'
 process.env.PORT ??= '5000'
 
