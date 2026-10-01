@@ -170,9 +170,7 @@ const MainLayout = () => {
     // ninguna entrada del menú y el ítem nunca se marcaba como activo. La
     // barra opcional cubre además /admin sin barra final.
     const key = location.pathname.replace(/^\/admin\/?/, '')
-    const group = adminMenuItems.find(item =>
-      item.children?.some(child => child.key === key),
-    )
+    const group = adminMenuItems.find(item => item.children?.some(child => child.key === key))
     return { selectedKey: key, openKey: group?.key }
   }, [location.pathname])
 
@@ -199,8 +197,7 @@ const MainLayout = () => {
    * el mismo error que este archivo ya tuvo dos veces.
    */
   const menuVisible = useMemo(
-    () =>
-      adminMenuItems.filter(item => !item.ownerOnly || user?.isPlatformOwner),
+    () => adminMenuItems.filter(item => !item.ownerOnly || user?.isPlatformOwner),
     [user?.isPlatformOwner],
   )
 
@@ -283,10 +280,7 @@ const MainLayout = () => {
       if (group.children?.length) {
         return (
           <Box key={group.key}>
-            <ListItemButton
-              onClick={() => handleGroupToggle(group.key)}
-              sx={groupHeaderSx}
-            >
+            <ListItemButton onClick={() => handleGroupToggle(group.key)} sx={groupHeaderSx}>
               <ListItemIcon>
                 <Badge color="error" variant={group.isNew ? 'dot' : 'standard'}>
                   <GroupIcon sx={{ fontSize: 22 }} />
@@ -313,10 +307,7 @@ const MainLayout = () => {
                       onClick={() => navigate(`/admin/${item.key}`)}
                     >
                       <ListItemIcon>
-                        <Badge
-                          color="error"
-                          variant={item.isNew ? 'dot' : 'standard'}
-                        >
+                        <Badge color="error" variant={item.isNew ? 'dot' : 'standard'}>
                           <ItemIcon sx={{ fontSize: 20 }} />
                         </Badge>
                       </ListItemIcon>
@@ -386,8 +377,7 @@ const MainLayout = () => {
                   width: 36,
                   height: 36,
                   borderRadius: 2.5,
-                  background:
-                    'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -410,10 +400,7 @@ const MainLayout = () => {
                 >
                   Henko
                 </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{ color: TEXT_SECONDARY, fontSize: '0.7rem' }}
-                >
+                <Typography variant="caption" sx={{ color: TEXT_SECONDARY, fontSize: '0.7rem' }}>
                   Admin Panel
                 </Typography>
               </Box>
@@ -428,11 +415,7 @@ const MainLayout = () => {
               '&:hover': { bgcolor: HOVER_BG, color: '#fff' },
             }}
           >
-            {collapsed ? (
-              <MenuIcon sx={{ fontSize: 20 }} />
-            ) : (
-              <ChevronLeft sx={{ fontSize: 20 }} />
-            )}
+            {collapsed ? <MenuIcon sx={{ fontSize: 20 }} /> : <ChevronLeft sx={{ fontSize: 20 }} />}
           </IconButton>
         </Box>
 
@@ -446,11 +429,7 @@ const MainLayout = () => {
           <>
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', mx: 1.5 }} />
             <Box sx={{ p: 2 }}>
-              <Stack
-                direction="row"
-                spacing={1.5}
-                sx={{ alignItems: 'center' }}
-              >
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
                 <Avatar
                   sx={{
                     width: 34,
@@ -494,9 +473,7 @@ const MainLayout = () => {
             borderColor: 'divider',
           }}
         >
-          <Toolbar
-            sx={{ justifyContent: 'flex-end', minHeight: '56px !important' }}
-          >
+          <Toolbar sx={{ justifyContent: 'flex-end', minHeight: '56px !important' }}>
             {user && (
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                 <Tooltip title="Cerrar sesión">
@@ -560,9 +537,7 @@ const MainLayout = () => {
                     }}
                     sx={{ gap: 1.5, py: 1.25 }}
                   >
-                    <LogoutIcon
-                      sx={{ fontSize: 18, color: 'text.secondary' }}
-                    />
+                    <LogoutIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       Cerrar sesión
                     </Typography>
@@ -574,12 +549,7 @@ const MainLayout = () => {
         </AppBar>
 
         <Box sx={{ p: 3, flex: 1, bgcolor: '#f8fafc' }}>
-          <ToastContainer
-            position="top-right"
-            autoClose={250}
-            newestOnTop
-            theme="light"
-          />
+          <ToastContainer position="top-right" autoClose={250} newestOnTop theme="light" />
           <Outlet />
         </Box>
       </Box>

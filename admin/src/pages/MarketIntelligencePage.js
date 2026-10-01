@@ -67,7 +67,8 @@ const RECOMMENDATION = {
   'DATOS INSUFICIENTES': {
     label: 'Todavía no se puede saber',
     color: 'default',
-    detail: 'No hay suficiente información para dar una respuesta. No significa que el producto sea malo: significa que falta evidencia.',
+    detail:
+      'No hay suficiente información para dar una respuesta. No significa que el producto sea malo: significa que falta evidencia.',
   },
   // Sin esto, un producto con mercado activo pero sin medición de demanda
   // recibía "No conviene por ahora": una conclusión sobre la demanda, que es
@@ -75,7 +76,8 @@ const RECOMMENDATION = {
   'FALTA MEDIR LA DEMANDA': {
     label: 'Hay mercado, falta medir la demanda',
     color: 'info',
-    detail: 'Se midió el mercado alrededor del producto —quién lo vende y a qué precio— pero no cuánta gente lo está buscando. Con eso todavía no se puede decir si conviene: mirá los precios y la competencia, y volvé a analizar cuando la búsqueda con IA responda.',
+    detail:
+      'Se midió el mercado alrededor del producto —quién lo vende y a qué precio— pero no cuánta gente lo está buscando. Con eso todavía no se puede decir si conviene: mirá los precios y la competencia, y volvé a analizar cuando la búsqueda con IA responda.',
   },
 }
 
@@ -241,7 +243,11 @@ export default function MarketIntelligencePage() {
       if (seq !== requestSeq.current) return
       // getAdminProducts retorna la respuesta desenrollada (via apiRequest),
       // así que response ya es el array o el objeto con los datos
-      const rows = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
+      const rows = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.data)
+          ? response.data
+          : []
       setProductOptions(rows)
     } catch (err) {
       // El desplegable es una ayuda, no el camino unico: si el catalogo no
@@ -256,10 +262,7 @@ export default function MarketIntelligencePage() {
   }, [])
 
   useEffect(() => {
-    const handle = window.setTimeout(
-      () => fetchProductOptions(product),
-      PRODUCT_SEARCH_DEBOUNCE_MS,
-    )
+    const handle = window.setTimeout(() => fetchProductOptions(product), PRODUCT_SEARCH_DEBOUNCE_MS)
     return () => window.clearTimeout(handle)
   }, [product, fetchProductOptions])
 
@@ -281,11 +284,11 @@ export default function MarketIntelligencePage() {
         // de costos sin ese campo, así que enviarlo a medias es ruido.
         costs: hasCost
           ? {
-            unitCost: Number(costs.unitCost),
-            shippingCost: Number(costs.shippingCost) || 0,
-            platformFeePercent: Number(costs.platformFeePercent) || 0,
-            taxPercent: Number(costs.taxPercent) || 0,
-          }
+              unitCost: Number(costs.unitCost),
+              shippingCost: Number(costs.shippingCost) || 0,
+              platformFeePercent: Number(costs.platformFeePercent) || 0,
+              taxPercent: Number(costs.taxPercent) || 0,
+            }
           : null,
       })
       // El controller responde { success, data } — el análisis está en data.
@@ -302,8 +305,7 @@ export default function MarketIntelligencePage() {
 
   // demandScore null = no hubo cobertura suficiente para emitir un score.
   // Distinto de un score bajo, que sí es una medición real.
-  const unmeasurable =
-    result && (result.demandScore === null || result.demandScore === undefined)
+  const unmeasurable = result && (result.demandScore === null || result.demandScore === undefined)
   const lowConfidence = result && !unmeasurable && result.confidenceScore < 50
   const internalOnly = result && !unmeasurable && result.internalOnly
   const research = result?.rawSignals?.research
@@ -314,8 +316,7 @@ export default function MarketIntelligencePage() {
 
   // Hay puntaje, pero el componente principal no se midió: lo que el número
   // describe es el mercado alrededor del producto, no cuánta gente lo quiere.
-  const demandUnmeasured =
-    result && !unmeasurable && (result.breakdown?.demand ?? null) === null
+  const demandUnmeasured = result && !unmeasurable && (result.breakdown?.demand ?? null) === null
 
   return (
     <Box sx={{ p: 3 }}>
@@ -323,8 +324,8 @@ export default function MarketIntelligencePage() {
         Análisis de mercado
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Analizá si un producto tiene demanda real antes de sumarlo al catálogo:
-        quién lo vende, a cuánto, si el interés crece, y cuánto te quedaría a vos.
+        Analizá si un producto tiene demanda real antes de sumarlo al catálogo: quién lo vende, a
+        cuánto, si el interés crece, y cuánto te quedaría a vos.
       </Typography>
 
       <Card variant="outlined" sx={{ mb: 3 }}>
@@ -334,12 +335,7 @@ export default function MarketIntelligencePage() {
           </Typography>
           <Stack component="ol" spacing={0.75} sx={{ m: 0, pl: 2.5 }}>
             {HOW_IT_WORKS.map(paso => (
-              <Typography
-                component="li"
-                variant="body2"
-                color="text.secondary"
-                key={paso}
-              >
+              <Typography component="li" variant="body2" color="text.secondary" key={paso}>
                 {paso}
               </Typography>
             ))}
@@ -349,7 +345,11 @@ export default function MarketIntelligencePage() {
 
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
+            sx={{ alignItems: 'flex-start' }}
+          >
             <Autocomplete
               freeSolo
               fullWidth
@@ -392,11 +392,7 @@ export default function MarketIntelligencePage() {
                         {getProductLabel(option)}
                       </Typography>
                       {getProductSubtitle(option) && (
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          noWrap
-                        >
+                        <Typography variant="caption" color="text.secondary" noWrap>
                           {getProductSubtitle(option)}
                         </Typography>
                       )}
@@ -467,14 +463,16 @@ export default function MarketIntelligencePage() {
             <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0 }}>
               <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
                 <Typography variant="body2">Calcular rentabilidad</Typography>
-                {hasCost && <Chip size="small" label="Con costos" color="primary" variant="outlined" />}
+                {hasCost && (
+                  <Chip size="small" label="Con costos" color="primary" variant="outlined" />
+                )}
               </Stack>
             </AccordionSummary>
 
             <AccordionDetails sx={{ px: 0, pt: 0 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Si cargás lo que te cuesta el producto, calculamos a qué precio empezás a ganar y cómo
-                queda tu margen frente a los precios del mercado. Es opcional.
+                Si cargás lo que te cuesta el producto, calculamos a qué precio empezás a ganar y
+                cómo queda tu margen frente a los precios del mercado. Es opcional.
               </Typography>
 
               <Grid container spacing={2}>
@@ -488,7 +486,9 @@ export default function MarketIntelligencePage() {
                     disabled={loading}
                     helperText="Lo que pagás por cada unidad"
                     slotProps={{
-                      input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
+                      input: {
+                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                      },
                       htmlInput: { min: 0, step: 'any' },
                     }}
                   />
@@ -504,7 +504,9 @@ export default function MarketIntelligencePage() {
                     disabled={loading}
                     helperText="Logística hasta el cliente"
                     slotProps={{
-                      input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
+                      input: {
+                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                      },
                       htmlInput: { min: 0, step: 'any' },
                     }}
                   />
@@ -580,34 +582,36 @@ export default function MarketIntelligencePage() {
                 </Button>
               }
             >
-              Este es el análisis guardado de {antiguedad(result.generatedAt)}. No
-              se volvió a consultar nada, así que no gastó consumo.
+              Este es el análisis guardado de {antiguedad(result.generatedAt)}. No se volvió a
+              consultar nada, así que no gastó consumo.
             </Alert>
           )}
           {result.degenerate ? (
             <Alert severity="info" sx={{ mb: 3 }}>
-              No hay datos suficientes para analizar este producto. Las fuentes externas no respondieron,
-              y en tu tienda no hay ventas de este producto ni de su categoría en los últimos 90 días —
-              así que no hay nada que medir. Con las fuentes externas funcionando, o con historial de
-              ventas, el análisis sí puede decirte algo.
+              No hay datos suficientes para analizar este producto. Las fuentes externas no
+              respondieron, y en tu tienda no hay ventas de este producto ni de su categoría en los
+              últimos 90 días — así que no hay nada que medir. Con las fuentes externas funcionando,
+              o con historial de ventas, el análisis sí puede decirte algo.
             </Alert>
           ) : unmeasurable ? (
             <Alert severity="info" sx={{ mb: 3 }}>
-              No se pudo medir la demanda de este producto. Las fuentes externas no respondieron, así que
-              no hay evidencia suficiente para calcular un score. Esto no significa que el producto no
-              tenga demanda: significa que todavía no lo sabemos.
+              No se pudo medir la demanda de este producto. Las fuentes externas no respondieron,
+              así que no hay evidencia suficiente para calcular un score. Esto no significa que el
+              producto no tenga demanda: significa que todavía no lo sabemos.
             </Alert>
           ) : internalOnly ? (
             <Alert severity="warning" sx={{ mb: 3 }}>
-              Este análisis usa solo los datos de tu tienda, porque las fuentes externas no respondieron.
-              Te dice si <strong>tus clientes</strong> compran este producto, no si el mercado en general
-              lo demanda. Sirve para decidir sobre tu catálogo actual, no para evaluar un producto nuevo.
+              Este análisis usa solo los datos de tu tienda, porque las fuentes externas no
+              respondieron. Te dice si <strong>tus clientes</strong> compran este producto, no si el
+              mercado en general lo demanda. Sirve para decidir sobre tu catálogo actual, no para
+              evaluar un producto nuevo.
             </Alert>
           ) : (
             lowConfidence && (
               <Alert severity="warning" sx={{ mb: 3 }}>
-                La confianza de este análisis es baja ({result.confidenceScore}/100). Faltaron fuentes de
-                datos, así que tomá el score como orientativo y no como base de una decisión de compra.
+                La confianza de este análisis es baja ({result.confidenceScore}/100). Faltaron
+                fuentes de datos, así que tomá el score como orientativo y no como base de una
+                decisión de compra.
               </Alert>
             )
           )}
@@ -617,14 +621,16 @@ export default function MarketIntelligencePage() {
               <CardContent>
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
-                  
+
                   spacing={2}
                   sx={{ alignItems: { sm: 'center' }, mb: 2 }}
                 >
                   <Typography variant="subtitle1">Rentabilidad</Typography>
                   {profit.marketPosition && (
                     <Chip
-                      label={POSITION_LABEL[profit.marketPosition.level] || profit.marketPosition.level}
+                      label={
+                        POSITION_LABEL[profit.marketPosition.level] || profit.marketPosition.level
+                      }
                       color={POSITION_COLOR[profit.marketPosition.level] || 'default'}
                     />
                   )}
@@ -647,11 +653,14 @@ export default function MarketIntelligencePage() {
                   </Grid>
 
                   <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Tooltip title="Por debajo de este precio, cada venta te da pérdida" placement="top">
+                    <Tooltip
+                      title="Por debajo de este precio, cada venta te da pérdida"
+                      placement="top"
+                    >
                       <Typography
                         variant="caption"
                         color="text.secondary"
-                        
+
                         sx={{ display: 'block', cursor: 'help' }}
                       >
                         Empezás a ganar desde
@@ -664,7 +673,11 @@ export default function MarketIntelligencePage() {
 
                   {prices?.median && (
                     <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: 'block' }}
+                      >
                         Precio típico del mercado
                       </Typography>
                       <Typography variant="h6">{money(prices.median, prices.currency)}</Typography>
@@ -691,7 +704,11 @@ export default function MarketIntelligencePage() {
 
                         return (
                           <Grid size={{ xs: 6, md: 3 }} key={key}>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ display: 'block' }}
+                            >
                               {label}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -723,10 +740,10 @@ export default function MarketIntelligencePage() {
 
                 <Alert severity="warning" variant="outlined" sx={{ mt: 3 }}>
                   <Typography variant="caption">
-                    Cálculo orientativo. El impuesto se aplica sobre el precio de venta como un costo
-                    más; si sos responsable inscripto tu carga real es distinta porque computás crédito
-                    fiscal. Sirve para comparar productos y descartar los que no cierran, no para fijar
-                    precios finales.
+                    Cálculo orientativo. El impuesto se aplica sobre el precio de venta como un
+                    costo más; si sos responsable inscripto tu carga real es distinta porque
+                    computás crédito fiscal. Sirve para comparar productos y descartar los que no
+                    cierran, no para fijar precios finales.
                   </Typography>
                 </Alert>
               </CardContent>
@@ -782,7 +799,11 @@ export default function MarketIntelligencePage() {
                   <Typography variant="body2">{result.demandClassification}</Typography>
 
                   {result.measuredWeight != null && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mt: 0.5 }}
+                    >
                       Se pudo evaluar el {Math.round(result.measuredWeight * 100)}% del modelo
                     </Typography>
                   )}
@@ -840,52 +861,63 @@ export default function MarketIntelligencePage() {
                   medir" no informa nada y sugiere que algo falló. */}
               {!unmeasurable && (
                 <>
-              <Divider sx={{ my: 2 }} />
+                  <Divider sx={{ my: 2 }} />
 
-              <Typography variant="subtitle2" gutterBottom>
-                Desglose del score
-              </Typography>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Desglose del score
+                  </Typography>
 
-              <Grid container spacing={1}>
-                {Object.entries(result.breakdown || {}).map(([key, value]) => {
-                  const source = COMPONENT_SOURCE[key]
+                  <Grid container spacing={1}>
+                    {Object.entries(result.breakdown || {}).map(([key, value]) => {
+                      const source = COMPONENT_SOURCE[key]
 
-                  return (
-                    <Grid size={{ xs: 6, sm: 4, md: 2 }} key={key}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        {COMPONENT_LABELS[key] || key}
-                      </Typography>
-                      <Tooltip title={source?.help || ''} placement="top">
-                        <Typography
-                          variant="h6"
-                          color={value === null ? 'text.disabled' : 'text.primary'}
-                          sx={{ cursor: source?.help ? 'help' : 'default' }}
-                        >
-                          {value === null ? '—' : `${SOURCE_MARK[source?.kind] || ''}${Math.round(value)}`}
-                        </Typography>
-                      </Tooltip>
-                    </Grid>
-                  )
-                })}
-              </Grid>
+                      return (
+                        <Grid size={{ xs: 6, sm: 4, md: 2 }} key={key}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: 'block' }}
+                          >
+                            {COMPONENT_LABELS[key] || key}
+                          </Typography>
+                          <Tooltip title={source?.help || ''} placement="top">
+                            <Typography
+                              variant="h6"
+                              color={value === null ? 'text.disabled' : 'text.primary'}
+                              sx={{ cursor: source?.help ? 'help' : 'default' }}
+                            >
+                              {value === null
+                                ? '—'
+                                : `${SOURCE_MARK[source?.kind] || ''}${Math.round(value)}`}
+                            </Typography>
+                          </Tooltip>
+                        </Grid>
+                      )
+                    })}
+                  </Grid>
 
-              {Array.isArray(result.unmeasured) && result.unmeasured.length > 0 && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                  Sin datos para: {result.unmeasured.map(k => COMPONENT_LABELS[k] || k).join(', ')}
-                </Typography>
-              )}
+                  {Array.isArray(result.unmeasured) && result.unmeasured.length > 0 && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mt: 2 }}
+                    >
+                      Sin datos para:{' '}
+                      {result.unmeasured.map(k => COMPONENT_LABELS[k] || k).join(', ')}
+                    </Typography>
+                  )}
 
-              <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
-                <Typography variant="caption" sx={{ display: 'block' }}>
-                  <strong>≈</strong> señal estimada a partir de lo que se encontró buscando en la web ·{' '}
-                  <strong>◐</strong> combina datos de tu tienda con información externa
-                </Typography>
-                <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
-                  Los puntajes todavía no están calibrados con datos históricos. Sirven para comparar
-                  productos entre sí, no como medidas absolutas: un 70 significa "más que un 50", no
-                  "70% de demanda".
-                </Typography>
-              </Alert>
+                  <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
+                    <Typography variant="caption" sx={{ display: 'block' }}>
+                      <strong>≈</strong> señal estimada a partir de lo que se encontró buscando en
+                      la web · <strong>◐</strong> combina datos de tu tienda con información externa
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                      Los puntajes todavía no están calibrados con datos históricos. Sirven para
+                      comparar productos entre sí, no como medidas absolutas: un 70 significa "más
+                      que un 50", no "70% de demanda".
+                    </Typography>
+                  </Alert>
                 </>
               )}
             </CardContent>
@@ -909,7 +941,11 @@ export default function MarketIntelligencePage() {
                       ['Más caro', prices.max],
                     ].map(([label, value]) => (
                       <Box key={label}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: 'block' }}
+                        >
                           {label}
                         </Typography>
                         <Typography variant="body1">{money(value, prices.currency)}</Typography>
@@ -917,7 +953,11 @@ export default function MarketIntelligencePage() {
                     ))}
                   </Stack>
                   {result?.rawSignals?.shopping?.merchantCount > 0 && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mt: 1 }}
+                    >
                       {result.rawSignals.shopping.merchantCount} vendedores distintos
                     </Typography>
                   )}
@@ -931,7 +971,10 @@ export default function MarketIntelligencePage() {
                       disableGutters
                       sx={{ mt: 1, '&:before': { display: 'none' }, bgcolor: 'transparent' }}
                     >
-                      <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0, minHeight: 40 }}>
+                      <AccordionSummary
+                        expandIcon={<ExpandMoreIcon />}
+                        sx={{ px: 0, minHeight: 40 }}
+                      >
                         <Typography variant="body2">Ver de dónde salen estos precios</Typography>
                       </AccordionSummary>
 
@@ -941,8 +984,8 @@ export default function MarketIntelligencePage() {
                             <Box key={i} sx={{ pt: i === 0 ? 0 : 1 }}>
                               <Stack
                                 direction="row"
-                                sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }} 
-                                
+                                sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}
+
                                 spacing={2}
                               >
                                 <Box sx={{ minWidth: 0 }}>
@@ -966,7 +1009,10 @@ export default function MarketIntelligencePage() {
                                     {offer.rating ? ` · ${offer.rating}★` : ''}
                                   </Typography>
                                 </Box>
-                                <Typography variant="body2" sx={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                <Typography
+                                  variant="body2"
+                                  sx={{ fontWeight: 500, whiteSpace: 'nowrap' }}
+                                >
                                   {money(offer.price, offer.currency || prices?.currency)}
                                 </Typography>
                               </Stack>
@@ -974,11 +1020,15 @@ export default function MarketIntelligencePage() {
                           ))}
                         </Stack>
 
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                          Un precio por tienda, tomado de la página que figura en cada link.
-                          Abrilo y verificá: la muestra es chica y puede haber tiendas del rubro
-                          que no aparezcan. Fijate también si lo que lista cada página es
-                          realmente comparable a lo que vendés vos.
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: 'block', mt: 2 }}
+                        >
+                          Un precio por tienda, tomado de la página que figura en cada link. Abrilo
+                          y verificá: la muestra es chica y puede haber tiendas del rubro que no
+                          aparezcan. Fijate también si lo que lista cada página es realmente
+                          comparable a lo que vendés vos.
                         </Typography>
                       </AccordionDetails>
                     </Accordion>
@@ -1099,7 +1149,11 @@ export default function MarketIntelligencePage() {
                 <Button size="small" onClick={() => handleAnalyze(true)} disabled={loading}>
                   Volver a analizar con datos frescos
                 </Button>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', mt: 0.5 }}
+                >
                   Consulta las fuentes de nuevo en lugar de usar el resultado guardado.
                 </Typography>
               </Box>

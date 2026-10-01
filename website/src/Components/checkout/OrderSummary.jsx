@@ -15,13 +15,7 @@ import { useSelector } from 'react-redux'
 import { useTenant } from '../../contexts/TenantContext'
 import { getThemeColors } from '@utils/themeRuntime'
 
-const OrderSummary = ({
-  cart,
-  discount = 0,
-  shipping = 0,
-  onCheckout,
-  loading,
-}) => {
+const OrderSummary = ({ cart, discount = 0, shipping = 0, onCheckout, loading }) => {
   const tenantContext = useTenant()
   const themeState = useSelector(state => state.theme)
 
@@ -37,16 +31,10 @@ const OrderSummary = ({
     return {}
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const themeColors = useMemo(
-    () => getThemeColors(activeConfig),
-    [activeConfig],
-  )
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
 
   const subtotal =
-    cart.items?.reduce(
-      (sum, item) => sum + item.price * (item.quantity || 1),
-      0,
-    ) || 0
+    cart.items?.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0) || 0
 
   const total = Math.max(0, subtotal - discount + shipping)
 
@@ -81,11 +69,7 @@ const OrderSummary = ({
                 primary={item.label}
                 primaryTypographyProps={{ color: 'text.secondary' }}
               />
-              <Typography
-                variant="body1"
-                fontWeight={600}
-                color={item.color || 'inherit'}
-              >
+              <Typography variant="body1" fontWeight={600} color={item.color || 'inherit'}>
                 {isNegative ? '-' : ''}${Math.abs(item.value).toLocaleString()}
                 {item.label === 'Envío' && shipping === 0 && ' (Gratis)'}
               </Typography>

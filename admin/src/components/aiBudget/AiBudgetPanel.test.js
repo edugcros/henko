@@ -8,23 +8,23 @@
 //
 // El resto del componente (BYOK, avisos de suscripción) no se toca acá.
 
-import { jest } from "@jest/globals";
-import { render, screen, waitFor } from "@testing-library/react";
+import { jest } from '@jest/globals'
+import { render, screen, waitFor } from '@testing-library/react'
 
 // config/env.js valida esto al cargarse y aborta sin ella; llega por
 // aiBudgetService → axiosConfig.
-process.env.REACT_APP_API_BASE_URL = "http://localhost:5000/api";
+process.env.REACT_APP_API_BASE_URL = 'http://localhost:5000/api'
 
-const mockGetAiBudget = jest.fn();
+const mockGetAiBudget = jest.fn()
 
-jest.unstable_mockModule("../../services/aiBudgetService.js", () => ({
+jest.unstable_mockModule('../../services/aiBudgetService.js', () => ({
   getAiBudget: mockGetAiBudget,
   saveAiCredentials: jest.fn(),
   deleteAiCredentials: jest.fn(),
   default: {},
-}));
+}))
 
-const { default: AiBudgetPanel } = await import("./AiBudgetPanel.jsx");
+const { default: AiBudgetPanel } = await import('./AiBudgetPanel.jsx')
 
 const metrica = (used, limit, extra = {}) => ({
   used,
@@ -34,14 +34,14 @@ const metrica = (used, limit, extra = {}) => ({
   planLimit: limit,
   selfLimited: false,
   ...extra,
-});
+})
 
 const SNAPSHOT = {
-  period: "2026-09",
-  plan: "pro",
-  subscription: { status: "active", entitled: true, reason: "ok" },
+  period: '2026-09',
+  plan: 'pro',
+  subscription: { status: 'active', entitled: true, reason: 'ok' },
   credentials: {
-    source: "platform",
+    source: 'platform',
     byokEnabled: false,
     byokAllowed: true,
     hasTenantKey: false,
@@ -53,60 +53,58 @@ const SNAPSHOT = {
     imageEdits: metrica(8, 500),
   },
   estimatedCostUsd: 0.13,
-};
+}
 
 const snapshotCon = metrics => ({
   ...SNAPSHOT,
   metrics: { ...SNAPSHOT.metrics, ...metrics },
-});
+})
 
 beforeEach(() => {
-  jest.clearAllMocks();
-});
+  jest.clearAllMocks()
+})
 
-describe("AiBudgetPanel · tope mostrado", () => {
-  test("sin autolímite muestra el tope del plan y no habla de autolímites", async () => {
-    mockGetAiBudget.mockResolvedValue(SNAPSHOT);
+describe('AiBudgetPanel · tope mostrado', () => {
+  test('sin autolímite muestra el tope del plan y no habla de autolímites', async () => {
+    mockGetAiBudget.mockResolvedValue(SNAPSHOT)
 
-    render(<AiBudgetPanel />);
+    render(<AiBudgetPanel />)
 
-    expect(await screen.findByText("3 / 10.000")).toBeInTheDocument();
-    expect(screen.queryByText(/Autolímite tuyo/)).not.toBeInTheDocument();
-  });
+    expect(await screen.findByText('3 / 10.000')).toBeInTheDocument()
+    expect(screen.queryByText(/Autolímite tuyo/)).not.toBeInTheDocument()
+  })
 
-  test("con autolímite muestra el tope real, no el del plan", async () => {
+  test('con autolímite muestra el tope real, no el del plan', async () => {
     mockGetAiBudget.mockResolvedValue(
       snapshotCon({
         agentMessages: metrica(3, 2000, { planLimit: 10_000, selfLimited: true }),
       }),
-    );
+    )
 
-    render(<AiBudgetPanel />);
+    render(<AiBudgetPanel />)
 
     // El número que se cobra.
-    expect(await screen.findByText("3 / 2.000")).toBeInTheDocument();
+    expect(await screen.findByText('3 / 2.000')).toBeInTheDocument()
     // Y el del plan NO aparece como si fuera el tope.
-    expect(screen.queryByText("3 / 10.000")).not.toBeInTheDocument();
-  });
+    expect(screen.queryByText('3 / 10.000')).not.toBeInTheDocument()
+  })
 
-  test("explica de dónde sale el recorte y cuánto da el plan", async () => {
+  test('explica de dónde sale el recorte y cuánto da el plan', async () => {
     // Un tope más bajo que el contratado, sin explicación, se lee como un
     // error de facturación.
     mockGetAiBudget.mockResolvedValue(
       snapshotCon({
         agentMessages: metrica(3, 2000, { planLimit: 10_000, selfLimited: true }),
       }),
-    );
+    )
 
-    render(<AiBudgetPanel />);
+    render(<AiBudgetPanel />)
 
-    await waitFor(() =>
-      expect(screen.getByText(/Autolímite tuyo/)).toBeInTheDocument(),
-    );
-    expect(screen.getByText(/Tu plan permite 10.000/)).toBeInTheDocument();
-  });
+    await waitFor(() => expect(screen.getByText(/Autolímite tuyo/)).toBeInTheDocument())
+    expect(screen.getByText(/Tu plan permite 10.000/)).toBeInTheDocument()
+  })
 
-  test("la barra se llena contra el tope real", async () => {
+  test('la barra se llena contra el tope real', async () => {
     // Con 1.800 de 2.000 el medidor está al 90% y tiene que avisar; contra los
     // 10.000 del plan daría 18% y verde, que es justo el aviso que no llegaba.
     mockGetAiBudget.mockResolvedValue(
@@ -116,49 +114,47 @@ describe("AiBudgetPanel · tope mostrado", () => {
           selfLimited: true,
         }),
       }),
-    );
+    )
 
-    render(<AiBudgetPanel />);
+    render(<AiBudgetPanel />)
 
-    expect(await screen.findByText("Por agotarse")).toBeInTheDocument();
-  });
-});
+    expect(await screen.findByText('Por agotarse')).toBeInTheDocument()
+  })
+})
 
-describe("AiBudgetPanel · formato de números", () => {
-  test("no mezcla dos sistemas en la misma pantalla", async () => {
+describe('AiBudgetPanel · formato de números', () => {
+  test('no mezcla dos sistemas en la misma pantalla', async () => {
     // El bug: la escala corta arrancaba en 10.000, así que el tope de visión
     // (1.500) caía del otro lado y quedaba "1.500" al lado de "10K" y "50.0M".
     // Para alguien que viene leyendo abreviaturas, "1.500" es uno y medio.
-    mockGetAiBudget.mockResolvedValue(SNAPSHOT);
+    mockGetAiBudget.mockResolvedValue(SNAPSHOT)
 
-    render(<AiBudgetPanel />);
+    render(<AiBudgetPanel />)
 
-    await screen.findByText("3 / 10.000");
+    await screen.findByText('3 / 10.000')
 
     // Ningún medidor abrevia en miles.
-    expect(screen.queryByText(/\d+K/)).not.toBeInTheDocument();
-    expect(screen.getByText("1 / 1.500")).toBeInTheDocument();
-    expect(screen.getByText("8 / 500")).toBeInTheDocument();
-  });
+    expect(screen.queryByText(/\d+K/)).not.toBeInTheDocument()
+    expect(screen.getByText('1 / 1.500')).toBeInTheDocument()
+    expect(screen.getByText('8 / 500')).toBeInTheDocument()
+  })
 
-  test("el millón sí se abrevia, y sin decimal cuando es redondo", async () => {
+  test('el millón sí se abrevia, y sin decimal cuando es redondo', async () => {
     // 50.000.000 completo estorba más de lo que informa, y "50 M" no se puede
     // confundir con un número con separador de miles.
-    mockGetAiBudget.mockResolvedValue(SNAPSHOT);
+    mockGetAiBudget.mockResolvedValue(SNAPSHOT)
 
-    render(<AiBudgetPanel />);
+    render(<AiBudgetPanel />)
 
-    expect(await screen.findByText("27.000 / 50 M")).toBeInTheDocument();
-  });
+    expect(await screen.findByText('27.000 / 50 M')).toBeInTheDocument()
+  })
 
-  test("un valor de millones no redondo conserva un decimal", async () => {
-    mockGetAiBudget.mockResolvedValue(
-      snapshotCon({ agentTokens: metrica(1_500_000, 50_000_000) }),
-    );
+  test('un valor de millones no redondo conserva un decimal', async () => {
+    mockGetAiBudget.mockResolvedValue(snapshotCon({ agentTokens: metrica(1_500_000, 50_000_000) }))
 
-    render(<AiBudgetPanel />);
+    render(<AiBudgetPanel />)
 
     // Coma decimal, que es la argentina: "1,5 M", no "1.5 M".
-    expect(await screen.findByText("1,5 M / 50 M")).toBeInTheDocument();
-  });
-});
+    expect(await screen.findByText('1,5 M / 50 M')).toBeInTheDocument()
+  })
+})

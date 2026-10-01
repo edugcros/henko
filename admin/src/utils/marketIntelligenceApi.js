@@ -22,7 +22,12 @@ const BASE_URL = '/market-intelligence' // TODO: alinear con el prefijo real reg
  * @param {string} [params.country='AR']
  * @param {boolean} [params.forceRefresh=false]
  */
-export const analyzeProduct = async ({ product, country = 'AR', forceRefresh = false, costs = null }) => {
+export const analyzeProduct = async ({
+  product,
+  country = 'AR',
+  forceRefresh = false,
+  costs = null,
+}) => {
   const { data } = await api.post(`${BASE_URL}/analyze`, { product, country, forceRefresh, costs })
   return data
 }

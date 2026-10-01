@@ -71,9 +71,7 @@ export const getAiLeadById = async (leadId, { conversationId } = {}) => {
   // la última, que es lo que se quiere al abrir el lead.
   const response = await api.get(
     `${BASE_URL}/${id}`,
-    buildRequestConfig(
-      wanted ? { params: { conversationId: wanted } } : undefined,
-    ),
+    buildRequestConfig(wanted ? { params: { conversationId: wanted } } : undefined),
   )
   return unwrap(response)
 }

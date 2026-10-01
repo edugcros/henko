@@ -50,11 +50,9 @@ const formatUsd = value =>
     maximumFractionDigits: 2,
   }).format(Number(value) || 0)
 
-const formatTokens = value =>
-  new Intl.NumberFormat('es-AR').format(Number(value) || 0)
+const formatTokens = value => new Intl.NumberFormat('es-AR').format(Number(value) || 0)
 
-const formatDate = value =>
-  value ? new Date(value).toLocaleString('es-AR') : '—'
+const formatDate = value => (value ? new Date(value).toLocaleString('es-AR') : '—')
 
 // Las etiquetas de las métricas del backend. Se escriben acá y no se derivan
 // del nombre: 'agentTokens' no le dice nada a nadie que no haya leído el código.
@@ -104,9 +102,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
   useEffect(() => {
     if (!open) return
     setTokens(budget.tokens === null ? '' : String(budget.tokens))
-    setUsd(
-      budget.usd === null || budget.usd === undefined ? '' : String(budget.usd),
-    )
+    setUsd(budget.usd === null || budget.usd === undefined ? '' : String(budget.usd))
     setShare(
       budget.perTenantShare === null || budget.perTenantShare === undefined
         ? ''
@@ -139,9 +135,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
               ...(String(tokens) !== String(budget.tokens ?? '')
                 ? { tokens: valorDe(tokens) }
                 : {}),
-              ...(String(usd) !== String(budget.usd ?? '')
-                ? { usd: valorDe(usd) }
-                : {}),
+              ...(String(usd) !== String(budget.usd ?? '') ? { usd: valorDe(usd) } : {}),
               ...(String(share) !== String(budget.perTenantShare ?? '')
                 ? { perTenantShare: valorDe(share) }
                 : {}),
@@ -171,8 +165,8 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
       <DialogTitle>Cambiar el techo de gasto</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          El valor rige de inmediato y no necesita reiniciar el servicio. Queda
-          registrado con tu email y el motivo.
+          El valor rige de inmediato y no necesita reiniciar el servicio. Queda registrado con tu
+          email y el motivo.
         </Typography>
 
         <TextField
@@ -231,10 +225,9 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
 
         {budget.source === 'panel' && (
           <Alert severity="info" sx={{ mt: 2 }}>
-            Hoy manda un valor fijado desde el panel, así que cambiar la
-            variable de entorno en Render no tiene efecto. Podés devolverle el
-            mando con «Volver a la variable», que suelta los tres frenos a la
-            vez.
+            Hoy manda un valor fijado desde el panel, así que cambiar la variable de entorno en
+            Render no tiene efecto. Podés devolverle el mando con «Volver a la variable», que suelta
+            los tres frenos a la vez.
           </Alert>
         )}
 
@@ -249,18 +242,11 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           Cancelar
         </Button>
         {budget.source === 'panel' && (
-          <Button
-            onClick={() => submit({ remove: true })}
-            disabled={!canSubmit}
-          >
+          <Button onClick={() => submit({ remove: true })} disabled={!canSubmit}>
             Volver a la variable
           </Button>
         )}
-        <Button
-          variant="contained"
-          onClick={() => submit()}
-          disabled={!canSubmit}
-        >
+        <Button variant="contained" onClick={() => submit()} disabled={!canSubmit}>
           Guardar
         </Button>
       </DialogActions>
@@ -297,9 +283,7 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
   // cambió — mismo criterio que el diálogo del techo.
   useEffect(() => {
     if (!row) return
-    setShare(
-      row.share === null || row.share === undefined ? '' : String(row.share),
-    )
+    setShare(row.share === null || row.share === undefined ? '' : String(row.share))
     setSuspended(row.suspended === true)
     setSuspendedReason(row.suspendedReason || '')
     setReason('')
@@ -320,9 +304,7 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
   // "0,1" es abstracto y "20.000.000 de tokens" es una decisión que se puede
   // comparar contra lo que el comercio ya consumió, que está en la misma fila.
   const topeResultante =
-    budget.tokens && shareEfectiva
-      ? Math.floor(budget.tokens * shareEfectiva)
-      : null
+    budget.tokens && shareEfectiva ? Math.floor(budget.tokens * shareEfectiva) : null
 
   const submit = async () => {
     setSaving(true)
@@ -331,9 +313,7 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
     try {
       const data = await updateTenantAiPolicy({
         tenantId: row.tenantId,
-        ...(String(share) !== String(row.share ?? '')
-          ? { share: shareValue }
-          : {}),
+        ...(String(share) !== String(row.share ?? '') ? { share: shareValue } : {}),
         ...(suspended !== row.suspended
           ? { suspended, suspendedReason }
           : // El motivo visible puede cambiar sin que cambie el interruptor.
@@ -346,10 +326,7 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
       onSaved(data)
       onClose()
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          'No se pudo cambiar la política de este comercio.',
-      )
+      setError(err?.response?.data?.message || 'No se pudo cambiar la política de este comercio.')
     } finally {
       setSaving(false)
     }
@@ -362,9 +339,9 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
       <DialogTitle>{row.name}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Este comercio lleva {formatTokens(row.tokens)} tokens y{' '}
-          {formatUsd(row.platformCostUsd)} a cargo de HENKO en el período. Los
-          cambios rigen de inmediato y solo afectan a este comercio.
+          Este comercio lleva {formatTokens(row.tokens)} tokens y {formatUsd(row.platformCostUsd)} a
+          cargo de HENKO en el período. Los cambios rigen de inmediato y solo afectan a este
+          comercio.
         </Typography>
 
         <TextField
@@ -395,14 +372,9 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
             }
             label="Pausar las funciones de IA de este comercio"
           />
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block' }}
-          >
-            No se repone el mes que viene ni se levanta solo: lo tenés que
-            volver a prender vos. Corta también si el comercio usa su propia
-            clave.
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            No se repone el mes que viene ni se levanta solo: lo tenés que volver a prender vos.
+            Corta también si el comercio usa su propia clave.
           </Typography>
 
           {suspended && (
@@ -473,9 +445,7 @@ export default function PlatformAiSpendPage() {
       if (err?.response?.status === 403) {
         setForbidden(true)
       } else {
-        setError(
-          err?.response?.data?.message || 'No se pudo cargar el gasto de IA.',
-        )
+        setError(err?.response?.data?.message || 'No se pudo cargar el gasto de IA.')
       }
     } finally {
       if (!signal?.cancelled) setLoading(false)
@@ -537,17 +507,14 @@ export default function PlatformAiSpendPage() {
         Gasto de IA de la plataforma
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Período {report.period} · lo que paga HENKO por los comercios que usan
-        la key compartida.
+        Período {report.period} · lo que paga HENKO por los comercios que usan la key compartida.
       </Typography>
 
       {breaker.tripped && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          <strong>
-            El disyuntor cortó el {formatDate(breaker.trippedAt)}.
-          </strong>{' '}
-          La IA está detenida para todos los comercios sobre la key de la
-          plataforma. Los que tienen key propia siguen funcionando.
+          <strong>El disyuntor cortó el {formatDate(breaker.trippedAt)}.</strong> La IA está
+          detenida para todos los comercios sobre la key de la plataforma. Los que tienen key propia
+          siguen funcionando.
         </Alert>
       )}
 
@@ -561,17 +528,12 @@ export default function PlatformAiSpendPage() {
           Solo aparece cuando hay degradación: en modo normal no hay nada que
           contar. */}
       {degradation && degradation.level !== 'normal' && !breaker.tripped && (
-        <Alert
-          severity={degradation.level === 'essential' ? 'error' : 'warning'}
-          sx={{ mb: 2 }}
-        >
+        <Alert severity={degradation.level === 'essential' ? 'error' : 'warning'} sx={{ mb: 2 }}>
           <strong>
-            {degradation.level === 'essential'
-              ? 'Solo lo esencial.'
-              : 'Modo economía.'}
+            {degradation.level === 'essential' ? 'Solo lo esencial.' : 'Modo economía.'}
           </strong>{' '}
-          El gasto va por el {degradation.percentUsed}% del techo, así que se
-          está respondiendo con el modelo más barato de la cadena.
+          El gasto va por el {degradation.percentUsed}% del techo, así que se está respondiendo con
+          el modelo más barato de la cadena.
           {degradation.level === 'essential'
             ? ' Además están pospuestos el análisis de mercado y las ediciones de imagen. El asistente de las tiendas sigue contestando.'
             : ` A partir del ${degradation.essentialAt}% se posponen además el análisis de mercado y las ediciones de imagen.`}{' '}
@@ -595,8 +557,8 @@ export default function PlatformAiSpendPage() {
               ? `Al ritmo actual, el techo se agota el día ${forecast.exhaustionDay}.`
               : 'Al ritmo actual, el mes cierra por encima del techo.'}
           </strong>{' '}
-          Proyección: {formatUsd(forecast.projectedUsd)} sobre un techo de{' '}
-          {formatUsd(budget.usd)} ({forecast.projectedPercent}%).{' '}
+          Proyección: {formatUsd(forecast.projectedUsd)} sobre un techo de {formatUsd(budget.usd)} (
+          {forecast.projectedPercent}%).{' '}
           {forecast.basis === 'recent'
             ? `Calculado con el ritmo de los últimos ${forecast.recentWindowDays} días (${formatUsd(forecast.recentAvgUsd)} por día), que viene más alto que el promedio del mes (${formatUsd(forecast.dailyAvgUsd)}).`
             : `Calculado con el promedio del mes, ${formatUsd(forecast.dailyAvgUsd)} por día.`}
@@ -608,9 +570,8 @@ export default function PlatformAiSpendPage() {
           poder distinguirlas acá. */}
       {!budget.configured && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          No hay disyuntor configurado (
-          <code>AI_PLATFORM_MONTHLY_TOKEN_BUDGET</code>). El gasto se registra,
-          pero <strong>nada lo detiene</strong>.
+          No hay disyuntor configurado (<code>AI_PLATFORM_MONTHLY_TOKEN_BUDGET</code>). El gasto se
+          registra, pero <strong>nada lo detiene</strong>.
         </Alert>
       )}
 
@@ -626,8 +587,7 @@ export default function PlatformAiSpendPage() {
           </Typography>
           {percent !== null && (
             <Typography variant="body2" color="text.secondary">
-              {formatTokens(consumption.tokens)} de{' '}
-              {formatTokens(budget.tokens)} tokens
+              {formatTokens(consumption.tokens)} de {formatTokens(budget.tokens)} tokens
               {' · '}
               quedan {formatTokens(consumption.remainingTokens)}
             </Typography>
@@ -642,11 +602,7 @@ export default function PlatformAiSpendPage() {
               color={usageColor(percent)}
               sx={{ height: 10, borderRadius: 5 }}
             />
-            <Stack
-              direction="row"
-              justifyContent="space-between"
-              sx={{ mt: 0.75 }}
-            >
+            <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
               <Typography variant="caption" color="text.secondary">
                 {percent}% del techo
               </Typography>
@@ -678,8 +634,7 @@ export default function PlatformAiSpendPage() {
             {forecast?.dailyAvgUsd > 0 && (
               <>
                 {' · '}
-                {formatUsd(forecast.dailyAvgUsd)} por día en{' '}
-                {forecast.daysElapsed}{' '}
+                {formatUsd(forecast.dailyAvgUsd)} por día en {forecast.daysElapsed}{' '}
                 {forecast.daysElapsed === 1 ? 'día cerrado' : 'días cerrados'}
                 {forecast.projectedUsd !== null &&
                   ` · proyectado al cierre: ${formatUsd(forecast.projectedUsd)}`}
@@ -743,15 +698,10 @@ export default function PlatformAiSpendPage() {
               </Typography>
             ))}
           </Stack>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', mt: 1 }}
-          >
-            Se compara contra la mediana de sus propios días del mes, no contra
-            el techo: un comercio chico puede multiplicar por cincuenta lo suyo
-            y seguir lejísimos de su tope. Con «Gobernar», en la tabla de abajo,
-            se lo acota o se lo pausa.
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Se compara contra la mediana de sus propios días del mes, no contra el techo: un
+            comercio chico puede multiplicar por cincuenta lo suyo y seguir lejísimos de su tope.
+            Con «Gobernar», en la tabla de abajo, se lo acota o se lo pausa.
           </Typography>
         </Alert>
       )}
@@ -791,24 +741,13 @@ export default function PlatformAiSpendPage() {
                         {row.name}
                       </Typography>
                       <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
-                        {row.plan && (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={row.plan}
-                          />
-                        )}
+                        {row.plan && <Chip size="small" variant="outlined" label={row.plan} />}
                         {/* Con key propia el comercio le paga a Google, no a
                             HENKO: ver un cero en la columna de costo sin esta
                             marca se lee como un error. */}
                         {row.keySources?.includes('tenant') && (
                           <Tooltip title="Usa su propia clave: parte de su consumo no le cuesta a HENKO">
-                            <Chip
-                              size="small"
-                              color="info"
-                              variant="outlined"
-                              label="key propia"
-                            />
+                            <Chip size="small" color="info" variant="outlined" label="key propia" />
                           </Tooltip>
                         )}
                         {/* Un comercio apagado deja de consumir, así que sus
@@ -853,9 +792,7 @@ export default function PlatformAiSpendPage() {
                         </Typography>
                       )}
                     </TableCell>
-                    <TableCell align="right">
-                      {formatTokens(row.tokens)}
-                    </TableCell>
+                    <TableCell align="right">{formatTokens(row.tokens)}</TableCell>
                     <TableCell align="right">
                       {/* El porcentaje de SU parte, no del total de la
                           plataforma. Es el número que anticipa el corte: un
@@ -883,9 +820,7 @@ export default function PlatformAiSpendPage() {
                         </Typography>
                       )}
                     </TableCell>
-                    <TableCell align="right">
-                      {formatTokens(row.operations)}
-                    </TableCell>
+                    <TableCell align="right">{formatTokens(row.operations)}</TableCell>
                     {/* La acción va en la misma fila donde está el número que
                         la justifica. Mandarla a otra pantalla obligaría a
                         recordar qué comercio era y cuánto llevaba. */}
@@ -909,9 +844,9 @@ export default function PlatformAiSpendPage() {
             {budget.perTenantShare
               ? ` (${Math.round(budget.perTenantShare * 100)}% del techo salvo a los que tengan uno propio)`
               : ''}
-            , no contra el techo total: un comercio puede quedarse sin IA con la
-            plataforma al 30%. Con «Gobernar» se le baja el tope a uno solo, o
-            se le pausa la IA, sin tocar a los demás.
+            , no contra el techo total: un comercio puede quedarse sin IA con la plataforma al 30%.
+            Con «Gobernar» se le baja el tope a uno solo, o se le pausa la IA, sin tocar a los
+            demás.
           </Typography>
         </>
       )}
@@ -944,9 +879,7 @@ export default function PlatformAiSpendPage() {
                 <TableCell>{metricLabel(row.metric)}</TableCell>
                 <TableCell align="right">{formatUsd(row.costUsd)}</TableCell>
                 <TableCell align="right">{formatTokens(row.tokens)}</TableCell>
-                <TableCell align="right">
-                  {formatTokens(row.operations)}
-                </TableCell>
+                <TableCell align="right">{formatTokens(row.operations)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -957,8 +890,8 @@ export default function PlatformAiSpendPage() {
         Por modelo
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Si el gasto se concentra en un modelo caro, cambiar de modelo es una
-        palanca que no requiere tocar el producto.
+        Si el gasto se concentra en un modelo caro, cambiar de modelo es una palanca que no requiere
+        tocar el producto.
       </Typography>
       <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
         <Table size="small">
@@ -998,9 +931,7 @@ export default function PlatformAiSpendPage() {
                 </TableCell>
                 <TableCell align="right">{formatUsd(row.costUsd)}</TableCell>
                 <TableCell align="right">{formatTokens(row.tokens)}</TableCell>
-                <TableCell align="right">
-                  {formatTokens(row.operations)}
-                </TableCell>
+                <TableCell align="right">{formatTokens(row.operations)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -1016,18 +947,15 @@ export default function PlatformAiSpendPage() {
         </Typography>
         {/* El porcentaje primero: es la respuesta a "¿me puedo fiar del
             total?" sin tener que sumar nada mentalmente. */}
-        {quality.measuredShare !== null &&
-          quality.measuredShare !== undefined && (
-            <Typography
-              variant="h6"
-              sx={{ fontWeight: 600, mb: 1 }}
-              color={
-                quality.measuredShare >= 95 ? 'success.main' : 'warning.main'
-              }
-            >
-              {quality.measuredShare}% del gasto en tokens está medido
-            </Typography>
-          )}
+        {quality.measuredShare !== null && quality.measuredShare !== undefined && (
+          <Typography
+            variant="h6"
+            sx={{ fontWeight: 600, mb: 1 }}
+            color={quality.measuredShare >= 95 ? 'success.main' : 'warning.main'}
+          >
+            {quality.measuredShare}% del gasto en tokens está medido
+          </Typography>
+        )}
 
         {/* Las cuatro clases son EXCLUYENTES y suman el total, así que la
             columna de plata se puede leer como un reparto y no como cuatro
@@ -1035,26 +963,21 @@ export default function PlatformAiSpendPage() {
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
           <Typography variant="body2" color="text.secondary">
             {formatTokens(quality.measured ?? quality.rows)} medidos
-            {quality.measuredCostUsd !== undefined &&
-              ` · ${formatUsd(quality.measuredCostUsd)}`}
+            {quality.measuredCostUsd !== undefined && ` · ${formatUsd(quality.measuredCostUsd)}`}
           </Typography>
           <Typography
             variant="body2"
-            color={
-              quality.estimatedRows > 0 ? 'warning.main' : 'text.secondary'
-            }
+            color={quality.estimatedRows > 0 ? 'warning.main' : 'text.secondary'}
           >
             {formatTokens(quality.estimatedRows)} con costo repartido
-            {quality.estimatedCostUsd !== undefined &&
-              ` · ${formatUsd(quality.estimatedCostUsd)}`}
+            {quality.estimatedCostUsd !== undefined && ` · ${formatUsd(quality.estimatedCostUsd)}`}
           </Typography>
           <Typography
             variant="body2"
             color={quality.fallbackRows > 0 ? 'warning.main' : 'text.secondary'}
           >
             {formatTokens(quality.fallbackRows)} con tarifa de respaldo
-            {quality.fallbackCostUsd !== undefined &&
-              ` · ${formatUsd(quality.fallbackCostUsd)}`}
+            {quality.fallbackCostUsd !== undefined && ` · ${formatUsd(quality.fallbackCostUsd)}`}
           </Typography>
           {/* El peor caso va en error y no en warning: no saber la tarifa es
               cobrar de más o de menos; no saber el modelo es no saber nada. */}
@@ -1068,34 +991,25 @@ export default function PlatformAiSpendPage() {
           </Typography>
         </Stack>
 
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: 'block', mt: 1.5 }}
-        >
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
           Sobre {formatTokens(quality.rows)} movimientos de tokens
           {quality.costUsd !== undefined && ` (${formatUsd(quality.costUsd)})`}.
           {quality.flatRate?.rows > 0 && (
             <>
               {' '}
-              Aparte, {formatTokens(quality.flatRate.rows)} movimientos de
-              precio por unidad ({formatUsd(quality.flatRate.costUsd)}):
-              imágenes y mensajes no se cobran por token, así que no hay
-              desglose que medir ni suponer y no entran en el porcentaje.
+              Aparte, {formatTokens(quality.flatRate.rows)} movimientos de precio por unidad (
+              {formatUsd(quality.flatRate.costUsd)}): imágenes y mensajes no se cobran por token,
+              así que no hay desglose que medir ni suponer y no entran en el porcentaje.
             </>
           )}{' '}
-          Los ocho llamadores informan el desglose real que devuelve el
-          proveedor; repartir el total con una proporción supuesta quedó como
-          último recurso y sale por log cuando ocurre.
+          Los ocho llamadores informan el desglose real que devuelve el proveedor; repartir el total
+          con una proporción supuesta quedó como último recurso y sale por log cuando ocurre.
         </Typography>
       </Paper>
 
       {settingHistory?.length > 0 && (
         <>
-          <Typography
-            variant="subtitle1"
-            sx={{ fontWeight: 600, mt: 3, mb: 1 }}
-          >
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mt: 3, mb: 1 }}>
             Cambios de límites
           </Typography>
           <TableContainer component={Paper} variant="outlined">
@@ -1118,9 +1032,7 @@ export default function PlatformAiSpendPage() {
                         ? 'variable de entorno'
                         : formatTokens(row.previousValue)}
                       {' → '}
-                      {row.value === null
-                        ? 'variable de entorno'
-                        : formatTokens(row.value)}
+                      {row.value === null ? 'variable de entorno' : formatTokens(row.value)}
                     </TableCell>
                     <TableCell>{row.reason}</TableCell>
                   </TableRow>
@@ -1131,15 +1043,10 @@ export default function PlatformAiSpendPage() {
         </>
       )}
 
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ display: 'block', mt: 3 }}
-      >
-        El techo se cambia desde acá y rige de inmediato. Los límites por plan y
-        la fracción por comercio siguen en variables de entorno de Render, que
-        requieren reiniciar el servicio — son decisiones de producto, no
-        maniobras de urgencia.
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 3 }}>
+        El techo se cambia desde acá y rige de inmediato. Los límites por plan y la fracción por
+        comercio siguen en variables de entorno de Render, que requieren reiniciar el servicio — son
+        decisiones de producto, no maniobras de urgencia.
       </Typography>
     </Box>
   )

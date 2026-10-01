@@ -109,16 +109,17 @@ export default [
       'no-unused-vars': 'off',
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
-      'prettier/prettier': [
-        'error',
-        {
-          semi: false,
-          singleQuote: true,
-          trailingComma: 'all',
-          endOfLine: 'auto',
-          printWidth: 80,
-        },
-      ],
+      // Sin opciones inline A PROPOSITO: asi el plugin resuelve
+      // `prettier.config.cjs`, que es la unica fuente de verdad del formato.
+      //
+      // Antes estaban duplicadas aca y NO coincidian con ese archivo:
+      // printWidth 80 contra 100, y faltaba `arrowParens: 'avoid'`. O sea que
+      // `npm run format` reformateaba a 100 columnas y `npm run lint` —que
+      // lleva --fix— lo devolvia a 80. Los dos comandos se deshacian el trabajo
+      // mutuamente en cada corrida, y de ahi salian los miles de errores de
+      // `prettier/prettier` que no habia forma de resolver: eran irresolubles
+      // mientras las dos configuraciones no dijeran lo mismo.
+      'prettier/prettier': 'error',
     },
   },
 ]

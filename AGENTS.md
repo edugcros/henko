@@ -24,8 +24,10 @@ There is no root-level `package.json`; each package is managed independently.
 - The backend includes worker processes and AI features; avoid changing secrets or environment values in the repo.
 - Frontends use Webpack-based React apps, not CRA defaults; check `webpack.*.js` and package scripts before changing app startup.
 - ESLint and Prettier are used in all packages; follow existing lint/format scripts.
-- `.github/workflows/ci.yml` runs `npm ci`, a build and the tests for each package on every PR. Run those same commands locally before pushing.
-- The `lint` scripts in `admin/` and `website/` still carry `--fix`, so they rewrite files instead of reporting. Use `npx eslint src` to check without mutating.
+- `.github/workflows/ci.yml` runs `npm ci`, lint, a build and the tests for each package on every PR. Run those same commands locally before pushing.
+- `npm run lint` reports without changing files in all three packages; `npm run lint:fix` is the one that rewrites (frontends only).
+- `prettier.config.cjs` is the single source of truth for formatting. Do NOT duplicate its options into the `prettier/prettier` rule in `eslint.config.js`: when those two disagree, `npm run format` and `npm run lint` undo each other's work.
+- `.gitattributes` keeps every text file at LF in the repository. Do not commit CRLF.
 
 ## Recommended package commands
 

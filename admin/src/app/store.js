@@ -48,9 +48,7 @@ const appReducer = combineReducers({
  * `appReducer(undefined, action)` hace que cada slice devuelva su initialState.
  */
 export const rootReducer = (state, action) =>
-  action.type === SESSION_RESET
-    ? appReducer(undefined, action)
-    : appReducer(state, action)
+  action.type === SESSION_RESET ? appReducer(undefined, action) : appReducer(state, action)
 
 // El rootReducer **NO** se persiste entero, solo el slice user
 export const store = configureStore({

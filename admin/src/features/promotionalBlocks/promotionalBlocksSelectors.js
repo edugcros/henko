@@ -9,11 +9,9 @@
 // nadie. Inventarles un nombre sería agregar exports que nadie usa para
 // justificar código que ya no existía.
 
-export const selectPromotionalBlocksState = state =>
-  state.promotionalBlocks || {}
+export const selectPromotionalBlocksState = state => state.promotionalBlocks || {}
 
-export const selectPromotionalBlocks = state =>
-  selectPromotionalBlocksState(state).blocks || []
+export const selectPromotionalBlocks = state => selectPromotionalBlocksState(state).blocks || []
 
 export const selectPromotionalBlocksMeta = state =>
   selectPromotionalBlocksState(state).meta || {

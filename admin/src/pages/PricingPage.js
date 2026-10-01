@@ -105,8 +105,7 @@ const FLAG_LABEL = {
   demand_rising: {
     text: 'Demanda en alza',
     color: 'success',
-    detail:
-      'Se vende más que el mes pasado. Es la señal que habilita subir sin resignar volumen.',
+    detail: 'Se vende más que el mes pasado. Es la señal que habilita subir sin resignar volumen.',
   },
   cost_increased: {
     text: 'Subió el costo',
@@ -122,8 +121,7 @@ const ADJUSTMENT_LABEL = {
   clamped_by_floor: 'limitado por el precio mínimo',
   clamped_by_ceiling: 'limitado por el precio máximo',
   rounded: 'redondeado',
-  rejected_impossible_margin:
-    'rechazado: ningún precio alcanza el margen mínimo',
+  rejected_impossible_margin: 'rechazado: ningún precio alcanza el margen mínimo',
 }
 
 const SOURCE_LABEL = {
@@ -134,9 +132,7 @@ const SOURCE_LABEL = {
 }
 
 const money = value =>
-  Number.isFinite(Number(value))
-    ? `$${Math.round(Number(value)).toLocaleString('es-AR')}`
-    : '—'
+  Number.isFinite(Number(value)) ? `$${Math.round(Number(value)).toLocaleString('es-AR')}` : '—'
 
 const percent = (value, decimals = 1) =>
   Number.isFinite(Number(value)) ? `${Number(value).toFixed(decimals)}%` : '—'
@@ -270,10 +266,8 @@ const PricingPage = () => {
         const status = err?.response?.status
         setError(
           status === 429
-            ? err?.response?.data?.message ||
-                'Se agotó la cuota de análisis de este mes.'
-            : err?.response?.data?.message ||
-                'No se pudo analizar el producto.',
+            ? err?.response?.data?.message || 'Se agotó la cuota de análisis de este mes.'
+            : err?.response?.data?.message || 'No se pudo analizar el producto.',
         )
         // Con cuota agotada el backend igual manda los indicadores: valen sin
         // la explicación de la IA.
@@ -335,8 +329,7 @@ const PricingPage = () => {
     }
   }, [policy])
 
-  const setField = (key, value) =>
-    setPolicy(prev => ({ ...prev, [key]: value }))
+  const setField = (key, value) => setPolicy(prev => ({ ...prev, [key]: value }))
 
   const signals = result?.signals || null
   const decision = result?.decision || null
@@ -346,8 +339,7 @@ const PricingPage = () => {
   // El análisis puede terminar en "no lo toques", y eso es un resultado
   // válido: no es lo mismo que una recomendación de cambio que no se puede
   // aplicar.
-  const sinCambio =
-    decision != null && Number(decision.finalPrice) === Number(signals?.price)
+  const sinCambio = decision != null && Number(decision.finalPrice) === Number(signals?.price)
 
   // ------------------------------------------------------------------
   return (
@@ -357,9 +349,8 @@ const PricingPage = () => {
           Pricing Intelligence
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Te dice si el precio de un producto está donde tiene que estar, y por
-          qué. Nunca cambia un precio solo: te muestra el número y lo aplicás
-          vos.
+          Te dice si el precio de un producto está donde tiene que estar, y por qué. Nunca cambia un
+          precio solo: te muestra el número y lo aplicás vos.
         </Typography>
 
         {/*
@@ -378,12 +369,7 @@ const PricingPage = () => {
               'Solo cuando hay una señal que se puede razonar, la IA propone un precio y explica el motivo.',
               'Tu política —la de abajo— recorta esa propuesta: margen mínimo, variación máxima, piso y techo. Recién ahí aparece el botón para aplicarla, y el cambio queda en el historial del producto.',
             ].map(paso => (
-              <Typography
-                component="li"
-                variant="body2"
-                color="text.secondary"
-                key={paso}
-              >
+              <Typography component="li" variant="body2" color="text.secondary" key={paso}>
                 {paso}
               </Typography>
             ))}
@@ -397,11 +383,7 @@ const PricingPage = () => {
           Analizar un producto
         </Typography>
 
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          spacing={2}
-          alignItems="stretch"
-        >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
           <Autocomplete
             sx={{ flex: 1 }}
             options={productOptions}
@@ -433,9 +415,7 @@ const PricingPage = () => {
                     ...(params.slotProps?.input || {}),
                     endAdornment: (
                       <>
-                        {optionsLoading && (
-                          <CircularProgress size={18} sx={{ mr: 1 }} />
-                        )}
+                        {optionsLoading && <CircularProgress size={18} sx={{ mr: 1 }} />}
                         {params.slotProps?.input?.endAdornment}
                       </>
                     ),
@@ -452,11 +432,7 @@ const PricingPage = () => {
             onClick={() => analyze(false)}
             sx={{ minWidth: 160 }}
           >
-            {analyzing ? (
-              <CircularProgress size={22} color="inherit" />
-            ) : (
-              'Analizar'
-            )}
+            {analyzing ? <CircularProgress size={22} color="inherit" /> : 'Analizar'}
           </Button>
         </Stack>
 
@@ -472,19 +448,11 @@ const PricingPage = () => {
             <Grid container spacing={3}>
               {/* Costo y margen */}
               <Grid size={{ xs: 12, md: 6 }}>
-                <Typography
-                  variant="subtitle2"
-                  color="text.secondary"
-                  sx={{ mb: 1 }}
-                >
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
                   COSTO Y MARGEN
                 </Typography>
 
-                <Row
-                  label="Precio actual"
-                  value={money(signals.price)}
-                  emphasis
-                />
+                <Row label="Precio actual" value={money(signals.price)} emphasis />
 
                 {signals.cost ? (
                   <>
@@ -493,56 +461,33 @@ const PricingPage = () => {
                       value={money(signals.cost.unitCost)}
                       source={signals.cost.sources?.unitCost}
                     />
-                    <Row
-                      label="Costo total por unidad"
-                      value={money(signals.cost.totalUnitCost)}
-                    />
+                    <Row label="Costo total por unidad" value={money(signals.cost.totalUnitCost)} />
                     <Row
                       label="Comisiones e impuestos"
                       value={percent((signals.cost.deductionRate || 0) * 100)}
                       source={signals.cost.sources?.paymentFeePercent}
                     />
-                    <Row
-                      label="Precio de equilibrio"
-                      value={money(signals.cost.breakEvenPrice)}
-                    />
-                    <Row
-                      label="Margen actual"
-                      value={percent(signals.marginPercent)}
-                      emphasis
-                    />
+                    <Row label="Precio de equilibrio" value={money(signals.cost.breakEvenPrice)} />
+                    <Row label="Margen actual" value={percent(signals.marginPercent)} emphasis />
                   </>
                 ) : (
                   <Alert severity="warning" sx={{ mt: 1 }}>
-                    Este producto no tiene costo cargado, así que no se puede
-                    calcular su margen. Cargalo en la ficha del producto.
+                    Este producto no tiene costo cargado, así que no se puede calcular su margen.
+                    Cargalo en la ficha del producto.
                   </Alert>
                 )}
               </Grid>
 
               {/* Demanda */}
               <Grid size={{ xs: 12, md: 6 }}>
-                <Typography
-                  variant="subtitle2"
-                  color="text.secondary"
-                  sx={{ mb: 1 }}
-                >
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
                   DEMANDA Y STOCK
                 </Typography>
 
                 <Row label="Stock" value={`${signals.stock} unidades`} />
-                <Row
-                  label="Vendidas (30 días)"
-                  value={signals.demand?.unitsLast30}
-                />
-                <Row
-                  label="30 días previos"
-                  value={signals.demand?.unitsPrior30}
-                />
-                <Row
-                  label="Variación"
-                  value={percent(signals.demand?.changePercent)}
-                />
+                <Row label="Vendidas (30 días)" value={signals.demand?.unitsLast30} />
+                <Row label="30 días previos" value={signals.demand?.unitsPrior30} />
+                <Row label="Variación" value={percent(signals.demand?.changePercent)} />
                 <Row
                   label="Cobertura de stock"
                   value={
@@ -611,19 +556,12 @@ const PricingPage = () => {
                 spacing={2}
                 sx={{ alignItems: { sm: 'center' } }}
               >
-                <Alert
-                  severity={flags.length > 0 ? 'info' : 'success'}
-                  sx={{ flex: 1 }}
-                >
+                <Alert severity={flags.length > 0 ? 'info' : 'success'} sx={{ flex: 1 }}>
                   {flags.length > 0
                     ? 'Hay señales, pero no se ejecutó el análisis de IA.'
                     : 'Nada que corregir: los indicadores están dentro de lo que definiste, así que no se gastó consumo de IA.'}
                 </Alert>
-                <Button
-                  variant="outlined"
-                  onClick={() => analyze(true)}
-                  disabled={analyzing}
-                >
+                <Button variant="outlined" onClick={() => analyze(true)} disabled={analyzing}>
                   Analizar igual
                 </Button>
               </Stack>
@@ -631,11 +569,7 @@ const PricingPage = () => {
 
             {result?.analyzed && decision && (
               <Box>
-                <Typography
-                  variant="subtitle2"
-                  color="text.secondary"
-                  sx={{ mb: 1.5 }}
-                >
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
                   RECOMENDACIÓN
                 </Typography>
 
@@ -659,11 +593,7 @@ const PricingPage = () => {
                         : `${decision.changePercent > 0 ? '+' : ''}${percent(decision.changePercent, 2)}`
                     }
                     color={
-                      sinCambio
-                        ? 'default'
-                        : decision.changePercent > 0
-                          ? 'success'
-                          : 'warning'
+                      sinCambio ? 'default' : decision.changePercent > 0 ? 'success' : 'warning'
                     }
                   />
 
@@ -689,11 +619,7 @@ const PricingPage = () => {
                     recomendación que pasó entera y una que llegó ajustada. */}
                 {decision.adjustments?.length > 0 && (
                   <Alert severity="info" sx={{ mb: 2 }}>
-                    <Typography
-                      variant="body2"
-                      fontWeight={600}
-                      sx={{ mb: 0.5 }}
-                    >
+                    <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
                       Tu política ajustó la propuesta de la IA
                     </Typography>
                     <Stack component="ul" sx={{ m: 0, pl: 2.5 }}>
@@ -703,11 +629,9 @@ const PricingPage = () => {
                         </Typography>
                       ))}
                     </Stack>
-                    {result.recommendation?.recommendedPrice !==
-                      decision.finalPrice && (
+                    {result.recommendation?.recommendedPrice !== decision.finalPrice && (
                       <Typography variant="caption" color="text.secondary">
-                        La IA había propuesto{' '}
-                        {money(result.recommendation?.recommendedPrice)}.
+                        La IA había propuesto {money(result.recommendation?.recommendedPrice)}.
                       </Typography>
                     )}
                   </Alert>
@@ -720,14 +644,12 @@ const PricingPage = () => {
                   // "aplica": antes salía un botón apagado debajo de un texto
                   // que prometía cambiarlo.
                   <Alert severity="success">
-                    Te conviene dejar el precio como está. El análisis no
-                    encontró motivo para moverlo.
+                    Te conviene dejar el precio como está. El análisis no encontró motivo para
+                    moverlo.
                   </Alert>
                 ) : (
                   <Stack spacing={1.5}>
-                    <Alert
-                      severity={decision.requiresApproval ? 'info' : 'success'}
-                    >
+                    <Alert severity={decision.requiresApproval ? 'info' : 'success'}>
                       {decision.requiresApproval
                         ? 'Este cambio está fuera de lo que tu política aplica sin revisar: mirá el número antes de confirmarlo.'
                         : 'Este cambio entra dentro de lo que tu política permite aplicar sin vueltas.'}
@@ -747,24 +669,19 @@ const PricingPage = () => {
                       <Button
                         variant="contained"
                         onClick={applyPrice}
-                        disabled={
-                          applying || decision.finalPrice === signals?.price
-                        }
+                        disabled={applying || decision.finalPrice === signals?.price}
                       >
-                        {applying
-                          ? 'Aplicando…'
-                          : `Aplicar ${money(decision.finalPrice)}`}
+                        {applying ? 'Aplicando…' : `Aplicar ${money(decision.finalPrice)}`}
                       </Button>
                       <Typography variant="caption" color="text.secondary">
-                        Cambia el precio del producto ahora y queda registrado
-                        en su historial como cambio sugerido por HENKO.
+                        Cambia el precio del producto ahora y queda registrado en su historial como
+                        cambio sugerido por HENKO.
                       </Typography>
                     </Stack>
 
                     {applyResult && (
                       <Alert severity="success">
-                        Precio actualizado: de{' '}
-                        {money(applyResult.previousPrice)} a{' '}
+                        Precio actualizado: de {money(applyResult.previousPrice)} a{' '}
                         {money(applyResult.newPrice)}
                         {applyResult.variantsUpdated > 0
                           ? ` (y ${applyResult.variantsUpdated} variantes en la misma proporción)`
@@ -785,11 +702,7 @@ const PricingPage = () => {
           Paper como componente lo anida en sí mismo. Mismo tratamiento que
           MarketIntelligencePage: el borde lo pone el Paper de afuera. */}
       <Paper variant="outlined">
-        <Accordion
-          elevation={0}
-          disableGutters
-          sx={{ '&:before': { display: 'none' } }}
-        >
+        <Accordion elevation={0} disableGutters sx={{ '&:before': { display: 'none' } }}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Stack>
               <Typography variant="h6" fontWeight={600}>
@@ -808,8 +721,7 @@ const PricingPage = () => {
               <Stack spacing={3}>
                 {policy.isDefault && (
                   <Alert severity="info">
-                    Todavía no configuraste nada: estos son los valores de
-                    fábrica.
+                    Todavía no configuraste nada: estos son los valores de fábrica.
                   </Alert>
                 )}
 
@@ -858,11 +770,7 @@ const PricingPage = () => {
                       'Ninguna recomendación puede dejar el margen por debajo.',
                     ],
                     ['targetMarginPercent', 'Margen objetivo (%)', ' '],
-                    [
-                      'maxChangePercent',
-                      'Variación máxima por ajuste (%)',
-                      ' ',
-                    ],
+                    ['maxChangePercent', 'Variación máxima por ajuste (%)', ' '],
                     [
                       'autoApplyMaxPercent',
                       'Aplicar solo hasta (%)',
@@ -877,10 +785,7 @@ const PricingPage = () => {
                         helperText={helper}
                         value={policy[key] ?? ''}
                         onChange={e =>
-                          setField(
-                            key,
-                            e.target.value === '' ? '' : Number(e.target.value),
-                          )
+                          setField(key, e.target.value === '' ? '' : Number(e.target.value))
                         }
                       />
                     </Grid>
@@ -936,17 +841,11 @@ const PricingPage = () => {
                 />
 
                 {policyMessage && (
-                  <Alert severity={policyMessage.severity}>
-                    {policyMessage.text}
-                  </Alert>
+                  <Alert severity={policyMessage.severity}>{policyMessage.text}</Alert>
                 )}
 
                 <Box>
-                  <Button
-                    variant="contained"
-                    onClick={savePolicy}
-                    disabled={policySaving}
-                  >
+                  <Button variant="contained" onClick={savePolicy} disabled={policySaving}>
                     {policySaving ? (
                       <CircularProgress size={22} color="inherit" />
                     ) : (

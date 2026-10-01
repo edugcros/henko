@@ -167,8 +167,7 @@ const mergeDailyMetricRows = (...rowGroups) => {
 
       if (!row.date) return
 
-      const current =
-        byDate.get(row.date) || normalizeDailyRow({ date: row.date })
+      const current = byDate.get(row.date) || normalizeDailyRow({ date: row.date })
 
       byDate.set(row.date, {
         ...current,
@@ -190,17 +189,12 @@ const mergeDailyMetricRows = (...rowGroups) => {
         cartItems: Math.max(current.cartItems, row.cartItems),
         cartValue: Math.max(current.cartValue, row.cartValue),
         activeCartValue: Math.max(current.activeCartValue, row.activeCartValue),
-        abandonedCartValue: Math.max(
-          current.abandonedCartValue,
-          row.abandonedCartValue,
-        ),
+        abandonedCartValue: Math.max(current.abandonedCartValue, row.abandonedCartValue),
       })
     })
   })
 
-  return Array.from(byDate.values()).sort((a, b) =>
-    String(a.date).localeCompare(String(b.date)),
-  )
+  return Array.from(byDate.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)))
 }
 
 const buildDailyRows = data => {
@@ -334,8 +328,7 @@ const buildProductCatalog = (...groups) => {
         const merged = {
           ...existing,
           ...product,
-          title:
-            getProductDisplayName(product) || getProductDisplayName(existing),
+          title: getProductDisplayName(product) || getProductDisplayName(existing),
           image: getProductImage(product) || getProductImage(existing),
         }
 
@@ -400,17 +393,14 @@ const normalizeTopPageRows = (rows, productLookup) => {
       const productKey = normalizeLookupKey(getProductKeyFromPath(row.path))
       const product = productKey ? productLookup.get(productKey) : null
       const isProductPage = Boolean(product)
-      const title = isProductPage
-        ? getProductDisplayName(product)
-        : getPageLabel(row.path)
+      const title = isProductPage ? getProductDisplayName(product) : getPageLabel(row.path)
 
       return {
         ...row,
         isProductPage,
         title,
         image: isProductPage ? getProductImage(product) : '',
-        productId:
-          product?.productId || product?._id || product?.id || productKey || '',
+        productId: product?.productId || product?._id || product?.id || productKey || '',
         path: row.path || '/',
         views: toNumber(row.views),
         sessions: toNumber(row.sessions),
@@ -424,32 +414,22 @@ const normalizeSearchRows = (rows, productCatalog, productLookup) => {
     .map(row => {
       const query = String(row.query || row.term || row.search || '').trim()
       const queryKey = normalizeLookupKey(query)
-      const directProduct = productLookup.get(
-        normalizeLookupKey(row.productId || row.productSlug),
-      )
+      const directProduct = productLookup.get(normalizeLookupKey(row.productId || row.productSlug))
       const matchedProduct =
         directProduct ||
         safeArray(productCatalog).find(product => {
           const title = normalizeLookupKey(getProductDisplayName(product))
           const slug = normalizeLookupKey(product?.slug || product?.productSlug)
 
-          return Boolean(
-            queryKey && (title.includes(queryKey) || slug.includes(queryKey)),
-          )
+          return Boolean(queryKey && (title.includes(queryKey) || slug.includes(queryKey)))
         })
 
       return {
         ...row,
         query,
-        title: matchedProduct
-          ? getProductDisplayName(matchedProduct)
-          : query || 'Búsqueda',
+        title: matchedProduct ? getProductDisplayName(matchedProduct) : query || 'Búsqueda',
         image: matchedProduct ? getProductImage(matchedProduct) : '',
-        productId:
-          matchedProduct?.productId ||
-          matchedProduct?._id ||
-          matchedProduct?.id ||
-          '',
+        productId: matchedProduct?.productId || matchedProduct?._id || matchedProduct?.id || '',
         count: toNumber(row.count || row.searches || row.events),
         sessions: toNumber(row.sessions),
         hasProductMatch: Boolean(matchedProduct),
@@ -507,20 +487,10 @@ const PageInsightItem = ({ item }) => (
         fallback={item.isProductPage ? 'PR' : 'PG'}
       />
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography
-          variant="body2"
-          sx={{ fontWeight: 800 }}
-          noWrap
-          title={item.title}
-        >
+        <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap title={item.title}>
           {item.title}
         </Typography>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          noWrap
-          title={item.path}
-        >
+        <Typography variant="caption" color="text.secondary" noWrap title={item.path}>
           {item.isProductPage ? 'Producto visitado' : item.path}
         </Typography>
       </Box>
@@ -541,37 +511,19 @@ const SearchInsightItem = ({ item }) => (
     <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
       <ProductThumbnail image={item.image} title={item.title} fallback="BQ" />
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography
-          variant="body2"
-          sx={{ fontWeight: 800 }}
-          noWrap
-          title={item.title}
-        >
+        <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap title={item.title}>
           {item.title}
         </Typography>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          noWrap
-          title={item.query}
-        >
+        <Typography variant="caption" color="text.secondary" noWrap title={item.query}>
           {item.hasProductMatch ? `Búsqueda: ${item.query}` : item.query}
         </Typography>
       </Box>
-      <Chip
-        size="small"
-        label={formatNumber(item.count)}
-        sx={{ flexShrink: 0 }}
-      />
+      <Chip size="small" label={formatNumber(item.count)} sx={{ flexShrink: 0 }} />
     </Stack>
   </Paper>
 )
 
-const buildFunnelChartData = (
-  userBehavior = {},
-  payment = {},
-  summary = {},
-) => {
+const buildFunnelChartData = (userBehavior = {}, payment = {}, summary = {}) => {
   const sessions = getSummarySessions(summary, userBehavior)
 
   const rows = [
@@ -615,9 +567,7 @@ const buildFunnelChartData = (
       // El conteo de eventos quedó como respaldo por si el resumen no trae
       // órdenes, no como preferencia.
       name: 'Compra',
-      value: toNumber(
-        summary.paidOrders ?? summary.orders ?? userBehavior.purchases,
-      ),
+      value: toNumber(summary.paidOrders ?? summary.orders ?? userBehavior.purchases),
       description: 'Órdenes pagadas en el período.',
     },
   ]
@@ -671,26 +621,14 @@ const DashboardSectionTitle = ({ title, description }) => (
       </Typography>
     </Stack>
     {description && (
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        sx={{ mt: 0.5, pl: 2 }}
-      >
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, pl: 2 }}>
         {description}
       </Typography>
     )}
   </Box>
 )
 
-const KpiCard = ({
-  title,
-  value,
-  icon: Icon,
-  color,
-  description,
-  trend,
-  gradient,
-}) => (
+const KpiCard = ({ title, value, icon: Icon, color, description, trend, gradient }) => (
   <Card
     sx={{
       height: '100%',
@@ -724,11 +662,7 @@ const KpiCard = ({
             {value}
           </Typography>
           {trend !== undefined && trend !== null && Number(trend) !== 0 && (
-            <Stack
-              direction="row"
-              spacing={0.5}
-              sx={{ alignItems: 'center', mt: 1 }}
-            >
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mt: 1 }}>
               <TrendIcon
                 sx={{
                   fontSize: 16,
@@ -832,9 +766,7 @@ const BarTooltip = ({ active, payload, label, formatter }) => {
           />
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
             {item.name || item.dataKey}:{' '}
-            {formatter
-              ? formatter(item.value, item.dataKey)
-              : formatNumber(item.value)}
+            {formatter ? formatter(item.value, item.dataKey) : formatNumber(item.value)}
           </Typography>
         </Stack>
       ))}
@@ -884,8 +816,7 @@ const AnalyticsDashboardView = () => {
 
         setData(payload)
       } catch (err) {
-        const message =
-          err.response?.data?.message || 'Error cargando analytics'
+        const message = err.response?.data?.message || 'Error cargando analytics'
         setError(message)
         enqueueSnackbar('Error cargando estadísticas', { variant: 'error' })
       } finally {
@@ -933,8 +864,7 @@ const AnalyticsDashboardView = () => {
   const userBehavior = data?.userBehavior || {}
   const ecommerce = data?.ecommerce || {}
   const activeCarts = data?.activeCarts || ecommerce?.carts?.active || {}
-  const abandonedCarts =
-    data?.abandonedCarts || ecommerce?.carts?.abandoned || {}
+  const abandonedCarts = data?.abandonedCarts || ecommerce?.carts?.abandoned || {}
   const paidOrders = getPaidOrders(summary)
   const productCatalog = useMemo(
     () =>
@@ -948,34 +878,23 @@ const AnalyticsDashboardView = () => {
       ),
     [data, ecommerce],
   )
-  const productLookup = useMemo(
-    () => buildProductLookup(productCatalog),
-    [productCatalog],
-  )
+  const productLookup = useMemo(() => buildProductLookup(productCatalog), [productCatalog])
   const topSellingProducts = useMemo(
     () =>
-      normalizeTopProductRows(
-        firstNonEmptyArray(data?.topProducts, ecommerce?.topSellingProducts),
-      ),
+      normalizeTopProductRows(firstNonEmptyArray(data?.topProducts, ecommerce?.topSellingProducts)),
     [data, ecommerce],
   )
   const topVisitedProducts = useMemo(
     () =>
       normalizeTopProductRows(
-        firstNonEmptyArray(
-          data?.topVisitedProducts,
-          ecommerce?.topVisitedProducts,
-        ),
+        firstNonEmptyArray(data?.topVisitedProducts, ecommerce?.topVisitedProducts),
       ),
     [data, ecommerce],
   )
   const topClickedProducts = useMemo(
     () =>
       normalizeTopProductRows(
-        firstNonEmptyArray(
-          data?.topClickedProducts,
-          ecommerce?.topClickedProducts,
-        ),
+        firstNonEmptyArray(data?.topClickedProducts, ecommerce?.topClickedProducts),
       ),
     [data, ecommerce],
   )
@@ -990,9 +909,7 @@ const AnalyticsDashboardView = () => {
       {
         name: 'Abandonados',
         cantidad: Number(abandonedCarts.count || summary.abandonedCarts || 0),
-        productos: Number(
-          abandonedCarts.items || summary.abandonedCartItems || 0,
-        ),
+        productos: Number(abandonedCarts.items || summary.abandonedCartItems || 0),
         valor: Number(abandonedCarts.value || summary.abandonedCartValue || 0),
       },
     ],
@@ -1003,22 +920,13 @@ const AnalyticsDashboardView = () => {
     [userBehavior, ecommerce, summary],
   )
   const dailyRows = useMemo(() => buildDailyRows(data), [data])
-  const trafficRows = firstNonEmptyArray(
-    data?.traffic?.sources,
-    userBehavior?.sources,
-  ).slice(0, 8)
+  const trafficRows = firstNonEmptyArray(data?.traffic?.sources, userBehavior?.sources).slice(0, 8)
   const topPages = useMemo(
-    () =>
-      normalizeTopPageRows(userBehavior?.topPages, productLookup).slice(0, 6),
+    () => normalizeTopPageRows(userBehavior?.topPages, productLookup).slice(0, 6),
     [userBehavior?.topPages, productLookup],
   )
   const topSearches = useMemo(
-    () =>
-      normalizeSearchRows(
-        userBehavior?.topSearches,
-        productCatalog,
-        productLookup,
-      ).slice(0, 6),
+    () => normalizeSearchRows(userBehavior?.topSearches, productCatalog, productLookup).slice(0, 6),
     [userBehavior?.topSearches, productCatalog, productLookup],
   )
 
@@ -1046,8 +954,7 @@ const AnalyticsDashboardView = () => {
           p: { xs: 2.5, md: 3.5 },
           mb: 3,
           borderRadius: 4,
-          background:
-            'linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)',
+          background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)',
           color: '#fff',
           position: 'relative',
           overflow: 'hidden',
@@ -1087,10 +994,7 @@ const AnalyticsDashboardView = () => {
           }}
         >
           <Box>
-            <Typography
-              variant="h5"
-              sx={{ fontWeight: 900, letterSpacing: -0.5 }}
-            >
+            <Typography variant="h5" sx={{ fontWeight: 900, letterSpacing: -0.5 }}>
               Panel de control
             </Typography>
             <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.5 }}>
@@ -1224,9 +1128,7 @@ const AnalyticsDashboardView = () => {
                     // futura y el número era la del último cobro. El próximo
                     // cobro lo informa Mercado Pago y el backend lo guarda; lo
                     // que faltaba era servirlo y leerlo.
-                    new Date(
-                      subscriptionMetrics.nextBillingAt,
-                    ).toLocaleDateString('es-AR')
+                    new Date(subscriptionMetrics.nextBillingAt).toLocaleDateString('es-AR')
                   ) : (
                     'No disponible'
                   )
@@ -1243,9 +1145,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Ventas aprobadas"
-            value={
-              loading ? <Skeleton width={90} /> : formatMoney(summary.revenue)
-            }
+            value={loading ? <Skeleton width={90} /> : formatMoney(summary.revenue)}
             icon={TrendIcon}
             trend={summary.revenueGrowth}
             gradient={KPI_GRADIENTS.revenue}
@@ -1263,13 +1163,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Ticket promedio"
-            value={
-              loading ? (
-                <Skeleton width={90} />
-              ) : (
-                formatMoney(summary.averageOrderValue)
-              )
-            }
+            value={loading ? <Skeleton width={90} /> : formatMoney(summary.averageOrderValue)}
             icon={PaymentsIcon}
             gradient={KPI_GRADIENTS.ticket}
           />
@@ -1277,13 +1171,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Conversión real"
-            value={
-              loading ? (
-                <Skeleton width={90} />
-              ) : (
-                formatPercent(summary.conversionRate)
-              )
-            }
+            value={loading ? <Skeleton width={90} /> : formatPercent(summary.conversionRate)}
             icon={UsersIcon}
             gradient={KPI_GRADIENTS.conversion}
           />
@@ -1299,13 +1187,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={12}>
           <KpiCard
             title="Valor total generado por HENKO"
-            value={
-              loading ? (
-                <Skeleton width={140} />
-              ) : (
-                formatMoney(summary.totalGeneratedValue)
-              )
-            }
+            value={loading ? <Skeleton width={140} /> : formatMoney(summary.totalGeneratedValue)}
             icon={SparkleIcon}
             gradient={KPI_GRADIENTS.totalGeneratedValue}
           />
@@ -1321,13 +1203,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Ingreso por campañas"
-            value={
-              loading ? (
-                <Skeleton width={90} />
-              ) : (
-                formatMoney(summary.metaRevenue)
-              )
-            }
+            value={loading ? <Skeleton width={90} /> : formatMoney(summary.metaRevenue)}
             icon={CampaignIcon}
             gradient={KPI_GRADIENTS.metaRevenue}
           />
@@ -1335,13 +1211,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Recuperado por WhatsApp"
-            value={
-              loading ? (
-                <Skeleton width={90} />
-              ) : (
-                formatMoney(summary.recoveredRevenue)
-              )
-            }
+            value={loading ? <Skeleton width={90} /> : formatMoney(summary.recoveredRevenue)}
             icon={WhatsAppIcon}
             gradient={KPI_GRADIENTS.recoveredRevenue}
           />
@@ -1349,13 +1219,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Influenciado por IA"
-            value={
-              loading ? (
-                <Skeleton width={90} />
-              ) : (
-                formatMoney(summary.aiInfluencedRevenue)
-              )
-            }
+            value={loading ? <Skeleton width={90} /> : formatMoney(summary.aiInfluencedRevenue)}
             icon={AiIcon}
             gradient={KPI_GRADIENTS.aiInfluencedRevenue}
           />
@@ -1371,13 +1235,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Carritos activos"
-            value={
-              loading ? (
-                <Skeleton width={80} />
-              ) : (
-                formatNumber(summary.activeCarts)
-              )
-            }
+            value={loading ? <Skeleton width={80} /> : formatNumber(summary.activeCarts)}
             icon={CartIcon}
             gradient={KPI_GRADIENTS.activeCarts}
           />
@@ -1385,13 +1243,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Valor activo"
-            value={
-              loading ? (
-                <Skeleton width={80} />
-              ) : (
-                formatMoney(summary.activeCartValue)
-              )
-            }
+            value={loading ? <Skeleton width={80} /> : formatMoney(summary.activeCartValue)}
             icon={PaymentsIcon}
             gradient={KPI_GRADIENTS.activeValue}
           />
@@ -1399,13 +1251,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Carritos abandonados"
-            value={
-              loading ? (
-                <Skeleton width={80} />
-              ) : (
-                formatNumber(summary.abandonedCarts)
-              )
-            }
+            value={loading ? <Skeleton width={80} /> : formatNumber(summary.abandonedCarts)}
             icon={AbandonedCartIcon}
             gradient={KPI_GRADIENTS.abandonedCarts}
           />
@@ -1413,13 +1259,7 @@ const AnalyticsDashboardView = () => {
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
             title="Valor abandonado"
-            value={
-              loading ? (
-                <Skeleton width={80} />
-              ) : (
-                formatMoney(summary.abandonedCartValue)
-              )
-            }
+            value={loading ? <Skeleton width={80} /> : formatMoney(summary.abandonedCartValue)}
             icon={AbandonedCartIcon}
             gradient={KPI_GRADIENTS.abandonedValue}
           />
@@ -1447,35 +1287,20 @@ const AnalyticsDashboardView = () => {
                   <Skeleton variant="rectangular" height={360} />
                 ) : dailyRows.length ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={dailyRows}
-                      margin={{ top: 8, right: 18, bottom: 18, left: 8 }}
-                    >
+                    <BarChart data={dailyRows} margin={{ top: 8, right: 18, bottom: 18, left: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="date"
-                        tickFormatter={formatDateLabel}
-                        minTickGap={18}
-                      />
+                      <XAxis dataKey="date" tickFormatter={formatDateLabel} minTickGap={18} />
                       <YAxis
                         yAxisId="money"
-                        tickFormatter={value =>
-                          `$${Number(value || 0).toLocaleString('es-AR')}`
-                        }
+                        tickFormatter={value => `$${Number(value || 0).toLocaleString('es-AR')}`}
                       />
-                      <YAxis
-                        yAxisId="count"
-                        orientation="right"
-                        allowDecimals={false}
-                      />
+                      <YAxis yAxisId="count" orientation="right" allowDecimals={false} />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
                         content={
                           <BarTooltip
                             formatter={(value, key) =>
-                              key === 'revenue'
-                                ? formatMoney(value)
-                                : formatNumber(value)
+                              key === 'revenue' ? formatMoney(value) : formatNumber(value)
                             }
                           />
                         }
@@ -1547,9 +1372,7 @@ const AnalyticsDashboardView = () => {
                         content={
                           <BarTooltip
                             formatter={(value, key) =>
-                              key === 'valor'
-                                ? formatMoney(value)
-                                : formatNumber(value)
+                              key === 'valor' ? formatMoney(value) : formatNumber(value)
                             }
                           />
                         }
@@ -1597,9 +1420,7 @@ const AnalyticsDashboardView = () => {
               />
               <Box
                 sx={{
-                  height: loading
-                    ? 340
-                    : getVerticalChartHeight(topSellingProducts, 360),
+                  height: loading ? 340 : getVerticalChartHeight(topSellingProducts, 360),
                 }}
               >
                 {loading ? (
@@ -1623,9 +1444,7 @@ const AnalyticsDashboardView = () => {
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
-                        content={
-                          <BarTooltip formatter={value => formatMoney(value)} />
-                        }
+                        content={<BarTooltip formatter={value => formatMoney(value)} />}
                       />
                       <Bar
                         dataKey="revenue"
@@ -1659,9 +1478,7 @@ const AnalyticsDashboardView = () => {
               />
               <Box
                 sx={{
-                  height: loading
-                    ? 340
-                    : getVerticalChartHeight(topVisitedProducts, 360),
+                  height: loading ? 340 : getVerticalChartHeight(topVisitedProducts, 360),
                 }}
               >
                 {loading ? (
@@ -1685,11 +1502,7 @@ const AnalyticsDashboardView = () => {
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
-                        content={
-                          <BarTooltip
-                            formatter={value => formatNumber(value)}
-                          />
-                        }
+                        content={<BarTooltip formatter={value => formatNumber(value)} />}
                       />
                       <Bar
                         dataKey="views"
@@ -1738,9 +1551,7 @@ const AnalyticsDashboardView = () => {
               />
               <Box
                 sx={{
-                  height: loading
-                    ? 340
-                    : getVerticalChartHeight(topClickedProducts, 360),
+                  height: loading ? 340 : getVerticalChartHeight(topClickedProducts, 360),
                 }}
               >
                 {loading ? (
@@ -1764,11 +1575,7 @@ const AnalyticsDashboardView = () => {
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
-                        content={
-                          <BarTooltip
-                            formatter={value => formatNumber(value)}
-                          />
-                        }
+                        content={<BarTooltip formatter={value => formatNumber(value)} />}
                       />
                       <Bar
                         dataKey="clicks"
@@ -1808,11 +1615,7 @@ const AnalyticsDashboardView = () => {
                   <Skeleton variant="rectangular" height={360} />
                 ) : funnelRows.length ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={funnelRows}
-                      layout="vertical"
-                      margin={{ left: 20, right: 24 }}
-                    >
+                    <BarChart data={funnelRows} layout="vertical" margin={{ left: 20, right: 24 }}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" allowDecimals={false} />
                       <YAxis dataKey="name" type="category" width={125} />
@@ -1820,9 +1623,7 @@ const AnalyticsDashboardView = () => {
                         content={
                           <BarTooltip
                             formatter={(value, key) =>
-                              key === 'rate'
-                                ? formatPercent(value)
-                                : formatNumber(value)
+                              key === 'rate' ? formatPercent(value) : formatNumber(value)
                             }
                           />
                         }
@@ -1864,21 +1665,13 @@ const AnalyticsDashboardView = () => {
                   <Skeleton variant="rectangular" height={360} />
                 ) : trafficRows.length ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={trafficRows}
-                      layout="vertical"
-                      margin={{ left: 15, right: 24 }}
-                    >
+                    <BarChart data={trafficRows} layout="vertical" margin={{ left: 15, right: 24 }}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" />
                       <YAxis dataKey="channel" type="category" width={110} />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
-                        content={
-                          <BarTooltip
-                            formatter={value => formatNumber(value)}
-                          />
-                        }
+                        content={<BarTooltip formatter={value => formatNumber(value)} />}
                       />
                       <Bar
                         dataKey="sessions"
@@ -1920,28 +1713,13 @@ const AnalyticsDashboardView = () => {
                   safeArray(activeCarts.latest)
                     .slice(0, 6)
                     .map(cart => (
-                      <Paper
-                        key={cart.cartId}
-                        variant="outlined"
-                        sx={{ p: 1.5, borderRadius: 2 }}
-                      >
-                        <Stack
-                          direction="row"
-                          sx={{ justifyContent: 'space-between' }}
-                          spacing={2}
-                        >
+                      <Paper key={cart.cartId} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between' }} spacing={2}>
                           <Box sx={{ minWidth: 0 }}>
-                            <Typography
-                              variant="body2"
-                              sx={{ fontWeight: 800 }}
-                              noWrap
-                            >
+                            <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap>
                               Carrito #{String(cart.cartId || '').slice(-6)}
                             </Typography>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
+                            <Typography variant="caption" color="text.secondary">
                               {formatNumber(cart.itemCount)} productos ·{' '}
                               {new Date(cart.updatedAt).toLocaleString('es-AR')}
                             </Typography>
@@ -1978,17 +1756,12 @@ const AnalyticsDashboardView = () => {
               />
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography
-                    variant="subtitle2"
-                    sx={{ fontWeight: 800, mb: 1 }}
-                  >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
                     Productos o páginas más vistas
                   </Typography>
                   <Stack spacing={1}>
                     {topPages.length ? (
-                      topPages.map(page => (
-                        <PageInsightItem key={page.path} item={page} />
-                      ))
+                      topPages.map(page => <PageInsightItem key={page.path} item={page} />)
                     ) : (
                       <Typography variant="body2" color="text.secondary">
                         Sin visitas.
@@ -1997,10 +1770,7 @@ const AnalyticsDashboardView = () => {
                   </Stack>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography
-                    variant="subtitle2"
-                    sx={{ fontWeight: 800, mb: 1 }}
-                  >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
                     Búsquedas frecuentes
                   </Typography>
                   <Stack spacing={1}>
@@ -2031,20 +1801,14 @@ const Dashboard = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const tenantData = useSelector(s => s.tenant?.data)
-  const tenantLoaded = useSelector(
-    s => s.tenant?.data !== null && !s.tenant?.isLoading,
-  )
+  const tenantLoaded = useSelector(s => s.tenant?.data !== null && !s.tenant?.isLoading)
 
   useEffect(() => {
     dispatch(fetchTenantSettings())
   }, [dispatch])
 
   useEffect(() => {
-    if (
-      tenantLoaded &&
-      tenantData?.onboarding &&
-      !tenantData.onboarding.completed
-    ) {
+    if (tenantLoaded && tenantData?.onboarding && !tenantData.onboarding.completed) {
       navigate('/admin/onboarding', { replace: true })
     }
   }, [tenantLoaded, tenantData, navigate])

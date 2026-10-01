@@ -4974,9 +4974,7 @@ export default function AddProduct() {
           // rojo acusa de fallar a una operación que salió bien. Se saca de la
           // cola y se sigue.
           if (error?.response?.status === 409) {
-            setAgentQueue(current =>
-              current.filter(entry => entry._id !== job._id),
-            )
+            setAgentQueue(current => current.filter(entry => entry._id !== job._id))
             continue
           }
 

@@ -25,9 +25,7 @@ const Explota = ({ error }) => {
 }
 
 const chunkError = () => {
-  const e = new Error(
-    'Loading chunk 2831 failed. (missing: /js/2831.abc.chunk.js)',
-  )
+  const e = new Error('Loading chunk 2831 failed. (missing: /js/2831.abc.chunk.js)')
   e.name = 'ChunkLoadError'
   return e
 }
@@ -53,22 +51,16 @@ describe('reconocer un chunk caído', () => {
     expect(esErrorDeChunk(chunkError())).toBe(true)
     expect(esErrorDeChunk(new Error('Loading chunk 42 failed.'))).toBe(true)
     expect(esErrorDeChunk(new Error('Loading CSS chunk 7 failed'))).toBe(true)
-    expect(
-      esErrorDeChunk(
-        new Error('Failed to fetch dynamically imported module: /x.js'),
-      ),
-    ).toBe(true)
-    expect(esErrorDeChunk(new Error('Importing a module script failed.'))).toBe(
+    expect(esErrorDeChunk(new Error('Failed to fetch dynamically imported module: /x.js'))).toBe(
       true,
     )
+    expect(esErrorDeChunk(new Error('Importing a module script failed.'))).toBe(true)
   })
 
   test('ante la duda NO es un chunk', () => {
     // Tratar un bug como versión vieja lo esconde detrás de un refresh, y el
     // error vuelve a aparecer en cada sesión sin que nadie lo vea entero.
-    expect(
-      esErrorDeChunk(new Error('Cannot read properties of undefined')),
-    ).toBe(false)
+    expect(esErrorDeChunk(new Error('Cannot read properties of undefined'))).toBe(false)
     expect(esErrorDeChunk(new Error('quality is not defined'))).toBe(false)
     expect(esErrorDeChunk(new TypeError('x.map is not a function'))).toBe(false)
     expect(esErrorDeChunk(null)).toBe(false)
@@ -105,9 +97,7 @@ describe('el freno anti-bucle', () => {
     )
 
     expect(reload).not.toHaveBeenCalled()
-    expect(
-      screen.getByText(/No se pudo cargar esta sección/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/No se pudo cargar esta sección/i)).toBeInTheDocument()
   })
 
   test('pasada la ventana, vuelve a permitirse una recarga', () => {
@@ -127,16 +117,12 @@ describe('el freno anti-bucle', () => {
   test('sin sessionStorage sigue funcionando', () => {
     // Modo privado, o cookies de sitio bloqueadas. Una recarga que no se puede
     // contar es mejor que una pantalla de error por una versión vieja.
-    jest
-      .spyOn(window.sessionStorage.__proto__, 'getItem')
-      .mockImplementation(() => {
-        throw new Error('acceso denegado')
-      })
-    jest
-      .spyOn(window.sessionStorage.__proto__, 'setItem')
-      .mockImplementation(() => {
-        throw new Error('acceso denegado')
-      })
+    jest.spyOn(window.sessionStorage.__proto__, 'getItem').mockImplementation(() => {
+      throw new Error('acceso denegado')
+    })
+    jest.spyOn(window.sessionStorage.__proto__, 'setItem').mockImplementation(() => {
+      throw new Error('acceso denegado')
+    })
 
     render(
       <ErrorBoundary recargar={reload}>

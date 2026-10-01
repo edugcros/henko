@@ -51,9 +51,7 @@ const renderProtectedRoutes = () =>
   protectedRoutes
     .map(({ path, Component: _Component }) => {
       if (!_Component) {
-        console.error(
-          `🚨 ERROR: Ruta protegida "${path}" tiene Component undefined`,
-        )
+        console.error(`🚨 ERROR: Ruta protegida "${path}" tiene Component undefined`)
         return null
       }
 

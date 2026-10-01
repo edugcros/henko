@@ -175,9 +175,7 @@ const SubscriptionManagementPage = () => {
         ])
 
         const catalogo = plansResponse?.data?.data?.plans || []
-        setPrecios(
-          Object.fromEntries(catalogo.map(p => [p.plan, p.monthlyPriceArs])),
-        )
+        setPrecios(Object.fromEntries(catalogo.map(p => [p.plan, p.monthlyPriceArs])))
 
         if (subResponse.data.success) {
           setSubscription(subResponse.data.data)
@@ -188,10 +186,7 @@ const SubscriptionManagementPage = () => {
         }
       } catch (err) {
         console.error('Error cargando suscripción:', err)
-        setError(
-          err.response?.data?.message ||
-            'Error al cargar información de suscripción',
-        )
+        setError(err.response?.data?.message || 'Error al cargar información de suscripción')
       } finally {
         setLoading(false)
       }
@@ -245,9 +240,7 @@ const SubscriptionManagementPage = () => {
             }
           } catch (err) {
             console.error('Error cambiando plan:', err)
-            message.error(
-              err.response?.data?.message || 'Error al cambiar plan',
-            )
+            message.error(err.response?.data?.message || 'Error al cambiar plan')
           } finally {
             setChangingPlan(false)
           }
@@ -285,9 +278,7 @@ const SubscriptionManagementPage = () => {
           }
         } catch (err) {
           console.error('Error cancelando suscripción:', err)
-          message.error(
-            err.response?.data?.message || 'Error al cancelar suscripción',
-          )
+          message.error(err.response?.data?.message || 'Error al cancelar suscripción')
         } finally {
           setCancellingSubscription(false)
         }
@@ -322,17 +313,12 @@ const SubscriptionManagementPage = () => {
         }}
       >
         <section style={{ width: '100%', maxWidth: 960, margin: '0 auto' }}>
-          <Empty
-            description="No hay información de suscripción"
-            style={{ marginTop: 48 }}
-          />
+          <Empty description="No hay información de suscripción" style={{ marginTop: 48 }} />
           <Flex justify="center" gap={16} style={{ marginTop: 24 }}>
             <Button type="primary" onClick={() => navigate('/subscripcion')}>
               Ver planes
             </Button>
-            <Button onClick={() => navigate('/admin')}>
-              Volver al panel
-            </Button>
+            <Button onClick={() => navigate('/admin')}>Volver al panel</Button>
           </Flex>
         </section>
       </main>
@@ -347,21 +333,15 @@ const SubscriptionManagementPage = () => {
   // Cancelar exige una suscripción real en Mercado Pago. El estado del comercio
   // puede decir 'active' sin que exista ninguna —es el caso de un plan puesto a
   // mano—, y ahí el botón de cancelar solo puede devolver un error.
-  const tieneSuscripcionEnMercadoPago = Boolean(
-    subscription.mercadoPago?.subscriptionId,
-  )
+  const tieneSuscripcionEnMercadoPago = Boolean(subscription.mercadoPago?.subscriptionId)
   // El próximo cobro sale del proveedor. currentPeriodEnd es el respaldo:
   // en una suscripción que cobra al inicio de cada período, el período vigente
   // termina justo cuando llega el cobro siguiente.
   const nextPaymentAt =
-    subscription.mercadoPago?.nextBillingAt ||
-    subscription.mercadoPago?.currentPeriodEnd ||
-    null
+    subscription.mercadoPago?.nextBillingAt || subscription.mercadoPago?.currentPeriodEnd || null
 
   const trialEndsIn = subscription.trialEndsAt
-    ? Math.ceil(
-        (new Date(subscription.trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24),
-      )
+    ? Math.ceil((new Date(subscription.trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24))
     : null
 
   const invoiceColumns = [
@@ -387,8 +367,7 @@ const SubscriptionManagementPage = () => {
       title: 'Monto',
       dataIndex: 'amount',
       key: 'amount',
-      render: (amount, record) =>
-        formatCurrency(amount, record.currency || 'USD'),
+      render: (amount, record) => formatCurrency(amount, record.currency || 'USD'),
       align: 'right',
       width: 120,
     },
@@ -471,9 +450,7 @@ const SubscriptionManagementPage = () => {
                   El dato correcto lo informa Mercado Pago y el endpoint ya lo
                   devolvía dentro de mercadoPago; solo que nadie lo leía.
                 */}
-                <Text strong>
-                  {formatDate(nextPaymentAt || subscription.trialEndsAt)}
-                </Text>
+                <Text strong>{formatDate(nextPaymentAt || subscription.trialEndsAt)}</Text>
               </Flex>
             </Col>
           </Row>
@@ -577,11 +554,7 @@ const SubscriptionManagementPage = () => {
             type="info"
             showIcon
             action={
-              <Button
-                size="small"
-                type="text"
-                onClick={() => navigate('/subscripcion')}
-              >
+              <Button size="small" type="text" onClick={() => navigate('/subscripcion')}>
                 Ver planes
               </Button>
             }

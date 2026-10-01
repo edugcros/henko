@@ -1,21 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import {
-  Box,
-  Typography,
-  Button,
-  Stack,
-  Chip,
-  Alert,
-  Paper,
-} from '@mui/material'
+import { Box, Typography, Button, Stack, Chip, Alert, Paper } from '@mui/material'
 import CheckIcon from '@mui/icons-material/Check'
 import { useTheme } from '@mui/material/styles'
 
-const ProductVariantSelector = ({
-  product,
-  onVariantSelect,
-  initialSelection = {},
-}) => {
+const ProductVariantSelector = ({ product, onVariantSelect, initialSelection = {} }) => {
   const theme = useTheme()
   const [selectedAttributes, setSelectedAttributes] = useState(initialSelection)
 
@@ -48,9 +36,7 @@ const ProductVariantSelector = ({
     const options = {}
     attributeNames.forEach(attrName => {
       options[attrName] = [
-        ...new Set(
-          normalizedVariants.map(v => v.attributes[attrName]).filter(Boolean),
-        ),
+        ...new Set(normalizedVariants.map(v => v.attributes[attrName]).filter(Boolean)),
       ]
     })
     return options
@@ -61,22 +47,17 @@ const ProductVariantSelector = ({
     const hypothetical = { ...selectedAttributes, [attrName]: value }
 
     return normalizedVariants.some(v => {
-      const matches = Object.entries(hypothetical).every(
-        ([key, val]) => v.attributes[key] === val,
-      )
+      const matches = Object.entries(hypothetical).every(([key, val]) => v.attributes[key] === val)
       return matches && v.stock > 0
     })
   }
 
   // Encontrar variante seleccionada
   const selectedVariant = useMemo(() => {
-    if (Object.keys(selectedAttributes).length !== attributeNames.length)
-      return null
+    if (Object.keys(selectedAttributes).length !== attributeNames.length) return null
 
     return normalizedVariants.find(v =>
-      Object.entries(selectedAttributes).every(
-        ([key, val]) => v.attributes[key] === val,
-      ),
+      Object.entries(selectedAttributes).every(([key, val]) => v.attributes[key] === val),
     )
   }, [selectedAttributes, normalizedVariants, attributeNames])
 
@@ -162,9 +143,7 @@ const ProductVariantSelector = ({
                       position: 'relative',
                       backgroundColor: isColor ? value : undefined,
                       border: selected ? '2px solid' : '1px solid',
-                      borderColor: selected
-                        ? theme.palette.ctaPrimary.main
-                        : 'divider',
+                      borderColor: selected ? theme.palette.ctaPrimary.main : 'divider',
                       opacity: !valid ? 0.4 : 1,
                       '&:hover': {
                         transform: valid ? 'scale(1.05)' : 'none',
@@ -199,9 +178,7 @@ const ProductVariantSelector = ({
                     {isColor && selected && (
                       <CheckIcon
                         sx={{
-                          color: ['#FFFFFF', '#FFFF00', '#FFC0CB'].includes(
-                            value?.toUpperCase(),
-                          )
+                          color: ['#FFFFFF', '#FFFF00', '#FFC0CB'].includes(value?.toUpperCase())
                             ? '#000'
                             : '#fff',
                           fontSize: 20,
@@ -225,22 +202,13 @@ const ProductVariantSelector = ({
             bgcolor: 'background.paper',
             borderRadius: 2,
             border: '1px solid',
-            borderColor:
-              selectedVariant.stock > 0 ? 'success.light' : 'error.light',
+            borderColor: selectedVariant.stock > 0 ? 'success.light' : 'error.light',
             boxShadow: 1,
           }}
         >
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-          >
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Box>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                display="block"
-              >
+              <Typography variant="caption" color="text.secondary" display="block">
                 SKU: {selectedVariant.sku}
               </Typography>
               <Typography
@@ -252,11 +220,7 @@ const ProductVariantSelector = ({
               </Typography>
             </Box>
             <Chip
-              label={
-                selectedVariant.stock > 0
-                  ? `${selectedVariant.stock} disponibles`
-                  : 'Agotado'
-              }
+              label={selectedVariant.stock > 0 ? `${selectedVariant.stock} disponibles` : 'Agotado'}
               color={selectedVariant.stock > 0 ? 'success' : 'error'}
               variant="filled"
               size="small"
@@ -282,8 +246,7 @@ const ProductVariantSelector = ({
       ) : (
         <Alert severity="info" sx={{ mt: 3 }} icon={false}>
           <Typography variant="body2">
-            Selecciona todas las opciones para ver el precio y disponibilidad
-            exactos.
+            Selecciona todas las opciones para ver el precio y disponibilidad exactos.
           </Typography>
         </Alert>
       )}

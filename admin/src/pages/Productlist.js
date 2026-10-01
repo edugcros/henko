@@ -499,7 +499,9 @@ const Productlist = () => {
   // arriba para no perder el scroll ni el contexto visual de la tabla.
   if (isAdminLoading && !hasLoadedOnce.current) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <Box
+        sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}
+      >
         <CircularProgress size={60} />
       </Box>
     )
@@ -626,7 +628,7 @@ const Productlist = () => {
             </Select>
           </FormControl>
 
-          <Box sx={{ flex: 1 }}/>
+          <Box sx={{ flex: 1 }} />
 
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <Select
@@ -728,7 +730,11 @@ const Productlist = () => {
                   </TableCell>
 
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }} color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: 'monospace' }}
+                      color="text.secondary"
+                    >
                       {getProductSku(product)}
                     </Typography>
                   </TableCell>
@@ -759,8 +765,8 @@ const Productlist = () => {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Typography
                         variant="body2"
-                        sx={{ fontWeight: 700, fontSize: '1rem' }} 
-                        
+                        sx={{ fontWeight: 700, fontSize: '1rem' }}
+
                         color={
                           stock === 0
                             ? 'error.main'

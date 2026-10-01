@@ -212,12 +212,8 @@ const AiChatWidget = () => {
   const [actionFeedback, setActionFeedback] = useState('')
   const [showContactForm, setShowContactForm] = useState(false)
   const [contactNoticeDismissed, setContactNoticeDismissed] = useState(false)
-  const [customerProfile, setCustomerProfile] = useState(() =>
-    getAiWebchatCustomerProfile(),
-  )
-  const [contactDraft, setContactDraft] = useState(() =>
-    getAiWebchatCustomerProfile(),
-  )
+  const [customerProfile, setCustomerProfile] = useState(() => getAiWebchatCustomerProfile())
+  const [contactDraft, setContactDraft] = useState(() => getAiWebchatCustomerProfile())
   // Si ya hay un contacto guardado, es porque en algún momento lo aceptó:
   // volver a pedirle la tilde cada vez que corrige un dígito del teléfono
   // convierte el consentimiento en un trámite y deja de significar algo.
@@ -238,10 +234,7 @@ const AiChatWidget = () => {
     }),
   ])
 
-  const profileCompletion = useMemo(
-    () => getProfileCompletion(customerProfile),
-    [customerProfile],
-  )
+  const profileCompletion = useMemo(() => getProfileCompletion(customerProfile), [customerProfile])
 
   const contactDraftErrors = useMemo(() => {
     return {
@@ -293,9 +286,7 @@ const AiChatWidget = () => {
 
       setActionFeedback(
         resultMessage ||
-          (success
-            ? 'Producto agregado al carrito.'
-            : 'No se pudo agregar el producto.'),
+          (success ? 'Producto agregado al carrito.' : 'No se pudo agregar el producto.'),
       )
     }
 
@@ -343,17 +334,10 @@ const AiChatWidget = () => {
     )
   }
 
-  const maybeOpenContactForm = ({
-    userText = '',
-    intent = '',
-    leadScore = null,
-  } = {}) => {
+  const maybeOpenContactForm = ({ userText = '', intent = '', leadScore = null } = {}) => {
     if (profileCompletion.isComplete || contactNoticeDismissed) return
 
-    if (
-      shouldAskContactFromText(userText) ||
-      shouldAskContactFromAi({ intent, leadScore })
-    ) {
+    if (shouldAskContactFromText(userText) || shouldAskContactFromAi({ intent, leadScore })) {
       setShowContactForm(true)
     }
   }
@@ -401,8 +385,7 @@ const AiChatWidget = () => {
     setMessages([
       createMessage({
         role: 'assistant',
-        content:
-          'Nueva conversación iniciada 👋 ¿Qué estás buscando o en qué puedo ayudarte?',
+        content: 'Nueva conversación iniciada 👋 ¿Qué estás buscando o en qué puedo ayudarte?',
         meta: { actions: [] },
       }),
     ])
@@ -453,9 +436,7 @@ const AiChatWidget = () => {
     }
 
     if (action.type === 'request_human') {
-      setActionFeedback(
-        'Tu consulta quedó marcada para ser tomada por un asesor',
-      )
+      setActionFeedback('Tu consulta quedó marcada para ser tomada por un asesor')
     }
   }
 
@@ -485,11 +466,7 @@ const AiChatWidget = () => {
 
       const aiPayload = normalizeAiWebchatResponse(response)
 
-      if (
-        aiPayload.customer?.name ||
-        aiPayload.customer?.email ||
-        aiPayload.customer?.phone
-      ) {
+      if (aiPayload.customer?.name || aiPayload.customer?.email || aiPayload.customer?.phone) {
         syncCustomerProfile(aiPayload.customer)
       } else {
         setCustomerProfile(getAiWebchatCustomerProfile())
@@ -506,10 +483,7 @@ const AiChatWidget = () => {
       })
 
       if (!aiPayload.reply) {
-        console.warn(
-          '[AiChatWidget] La IA respondió sin reply utilizable:',
-          response,
-        )
+        console.warn('[AiChatWidget] La IA respondió sin reply utilizable:', response)
 
         pushAssistantMessage({
           content:
@@ -582,8 +556,7 @@ const AiChatWidget = () => {
                 borderRadius: '22px',
                 bgcolor: 'primary.main',
                 color: 'primary.contrastText',
-                boxShadow:
-                  '0 18px 36px rgba(25,118,210,0.30), 0 8px 18px rgba(0,0,0,0.14)',
+                boxShadow: '0 18px 36px rgba(25,118,210,0.30), 0 8px 18px rgba(0,0,0,0.14)',
                 transition: 'all 0.22s ease',
                 '&:hover': {
                   bgcolor: 'primary.dark',
@@ -634,23 +607,12 @@ const AiChatWidget = () => {
             sx={{
               px: 2,
               py: 1.5,
-              background:
-                'linear-gradient(135deg, rgba(25,118,210,1) 0%, rgba(13,71,161,1) 100%)',
+              background: 'linear-gradient(135deg, rgba(25,118,210,1) 0%, rgba(13,71,161,1) 100%)',
               color: 'primary.contrastText',
             }}
           >
-            <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-              spacing={1.5}
-            >
-              <Stack
-                direction="row"
-                spacing={1.3}
-                alignItems="center"
-                minWidth={0}
-              >
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1.5}>
+              <Stack direction="row" spacing={1.3} alignItems="center" minWidth={0}>
                 <Avatar
                   sx={{
                     bgcolor: 'rgba(255,255,255,0.16)',
@@ -667,12 +629,7 @@ const AiChatWidget = () => {
                     Asistente IA
                   </Typography>
 
-                  <Stack
-                    direction="row"
-                    spacing={0.8}
-                    alignItems="center"
-                    sx={{ mt: 0.35 }}
-                  >
+                  <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mt: 0.35 }}>
                     <Box
                       sx={{
                         width: 8,
@@ -690,12 +647,7 @@ const AiChatWidget = () => {
                 </Box>
               </Stack>
 
-              <Stack
-                direction="row"
-                spacing={0.8}
-                alignItems="center"
-                flexShrink={0}
-              >
+              <Stack direction="row" spacing={0.8} alignItems="center" flexShrink={0}>
                 <Tooltip title="Editar datos de contacto">
                   <IconButton
                     onClick={() => setShowContactForm(prev => !prev)}
@@ -762,29 +714,15 @@ const AiChatWidget = () => {
               borderColor: 'divider',
             }}
           >
-            <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-            >
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                fontWeight={800}
-              >
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Typography variant="caption" color="text.secondary" fontWeight={800}>
                 Consultas rápidas
               </Typography>
 
               {profileCompletion.isComplete ? (
                 <Chip
                   size="small"
-                  icon={
-                    customerProfile.email ? (
-                      <EmailOutlinedIcon />
-                    ) : (
-                      <WhatsAppIcon />
-                    )
-                  }
+                  icon={customerProfile.email ? <EmailOutlinedIcon /> : <WhatsAppIcon />}
                   label={customerProfile.name || 'Contacto guardado'}
                   color="success"
                   variant="outlined"
@@ -803,13 +741,7 @@ const AiChatWidget = () => {
               )}
             </Stack>
 
-            <Stack
-              direction="row"
-              spacing={1}
-              useFlexGap
-              flexWrap="wrap"
-              sx={{ mt: 1 }}
-            >
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
               {QUICK_PROMPTS.map(prompt => (
                 <Chip
                   key={prompt}
@@ -841,17 +773,13 @@ const AiChatWidget = () => {
                 bgcolor: 'grey.50',
               }}
             >
-              <Alert
-                severity="info"
-                icon={<BadgeOutlinedIcon />}
-                sx={{ mb: 1.2, borderRadius: 2 }}
-              >
+              <Alert severity="info" icon={<BadgeOutlinedIcon />} sx={{ mb: 1.2, borderRadius: 2 }}>
                 <Typography variant="body2" fontWeight={800}>
                   Datos para seguimiento comercial
                 </Typography>
                 <Typography variant="caption">
-                  Dejá tu nombre y un contacto para que la tienda pueda
-                  continuar la atención si hace falta.
+                  Dejá tu nombre y un contacto para que la tienda pueda continuar la atención si
+                  hace falta.
                 </Typography>
               </Alert>
 
@@ -871,9 +799,7 @@ const AiChatWidget = () => {
                     value={contactDraft.email}
                     onChange={updateContactDraft('email')}
                     error={contactDraftErrors.email}
-                    helperText={
-                      contactDraftErrors.email ? 'Email inválido' : ''
-                    }
+                    helperText={contactDraftErrors.email ? 'Email inválido' : ''}
                     fullWidth
                   />
 
@@ -883,9 +809,7 @@ const AiChatWidget = () => {
                     value={contactDraft.phone}
                     onChange={updateContactDraft('phone')}
                     error={contactDraftErrors.phone}
-                    helperText={
-                      contactDraftErrors.phone ? 'Teléfono inválido' : ''
-                    }
+                    helperText={contactDraftErrors.phone ? 'Teléfono inválido' : ''}
                     fullWidth
                   />
                 </Stack>
@@ -897,16 +821,14 @@ const AiChatWidget = () => {
                       <Checkbox
                         size="small"
                         checked={contactConsent}
-                        onChange={event =>
-                          setContactConsent(event.target.checked)
-                        }
+                        onChange={event => setContactConsent(event.target.checked)}
                         sx={{ pt: 0.25 }}
                       />
                     }
                     label={
                       <Typography variant="caption" color="text.secondary">
-                        Acepto que la tienda guarde estos datos y me contacte
-                        para responder mi consulta.{' '}
+                        Acepto que la tienda guarde estos datos y me contacte para responder mi
+                        consulta.{' '}
                         <Link
                           href="/privacy-policy"
                           target="_blank"
@@ -957,9 +879,7 @@ const AiChatWidget = () => {
           >
             {messages.map(item => {
               const isUser = item.role === 'user'
-              const actions = Array.isArray(item.meta?.actions)
-                ? item.meta.actions
-                : []
+              const actions = Array.isArray(item.meta?.actions) ? item.meta.actions : []
 
               return (
                 <Box
@@ -1001,9 +921,7 @@ const AiChatWidget = () => {
                           py: 1.2,
                           borderRadius: 3,
                           bgcolor: isUser ? 'primary.main' : 'white',
-                          color: isUser
-                            ? 'primary.contrastText'
-                            : 'text.primary',
+                          color: isUser ? 'primary.contrastText' : 'text.primary',
                           boxShadow: isUser
                             ? '0 8px 18px rgba(25,118,210,0.18)'
                             : '0 8px 20px rgba(15,23,42,0.06)',
@@ -1063,11 +981,7 @@ const AiChatWidget = () => {
                           />
                         )}
 
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ fontSize: 11 }}
-                        >
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
                           {formatTime(item.createdAt)}
                         </Typography>
                       </Stack>
@@ -1078,11 +992,7 @@ const AiChatWidget = () => {
                             <Button
                               key={`${item.id}-${action.type}-${actionIndex}`}
                               size="small"
-                              variant={
-                                action.type === 'add_to_cart'
-                                  ? 'contained'
-                                  : 'outlined'
-                              }
+                              variant={action.type === 'add_to_cart' ? 'contained' : 'outlined'}
                               startIcon={getActionIcon(action.type)}
                               onClick={() => handleActionClick(action)}
                               sx={{
@@ -1168,27 +1078,25 @@ const AiChatWidget = () => {
               </Stack>
             )}
 
-            {!profileCompletion.isComplete &&
-              !showContactForm &&
-              !contactNoticeDismissed && (
-                <Alert
-                  severity="info"
-                  sx={{ mb: 1, borderRadius: 2, py: 0.4 }}
-                  action={
-                    <Button
-                      size="small"
-                      onClick={() => setShowContactForm(true)}
-                      sx={{ textTransform: 'none', fontWeight: 900 }}
-                    >
-                      Completar
-                    </Button>
-                  }
-                >
-                  <Typography variant="caption">
-                    Si querés seguimiento, dejá tu nombre y WhatsApp/email.
-                  </Typography>
-                </Alert>
-              )}
+            {!profileCompletion.isComplete && !showContactForm && !contactNoticeDismissed && (
+              <Alert
+                severity="info"
+                sx={{ mb: 1, borderRadius: 2, py: 0.4 }}
+                action={
+                  <Button
+                    size="small"
+                    onClick={() => setShowContactForm(true)}
+                    sx={{ textTransform: 'none', fontWeight: 900 }}
+                  >
+                    Completar
+                  </Button>
+                }
+              >
+                <Typography variant="caption">
+                  Si querés seguimiento, dejá tu nombre y WhatsApp/email.
+                </Typography>
+              </Alert>
+            )}
 
             <Stack direction="row" spacing={1} alignItems="flex-end">
               <TextField

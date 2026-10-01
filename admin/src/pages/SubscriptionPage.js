@@ -1,7 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { Alert, Button, Card, Col, Divider, Flex, Row, Skeleton, Space, Tag, Typography, theme } from 'antd'
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Divider,
+  Flex,
+  Row,
+  Skeleton,
+  Space,
+  Tag,
+  Typography,
+  theme,
+} from 'antd'
 import { CheckCircleFilled, LockOutlined } from '@ant-design/icons'
 import {
   PLAN_PRESENTATION,
@@ -141,9 +154,7 @@ const SubscriptionPage = () => {
         if (!vigente) return
 
         setPrecios(
-          Object.fromEntries(
-            (catalogo?.plans || []).map(p => [p.plan, p.monthlyPriceArs]),
-          ),
+          Object.fromEntries((catalogo?.plans || []).map(p => [p.plan, p.monthlyPriceArs])),
         )
       })
       .catch(() => {
@@ -172,9 +183,7 @@ const SubscriptionPage = () => {
       if (!PLAN_PRESENTATION[planId]) return
 
       const plan = encodeURIComponent(planId)
-      const destination = isAuthenticated
-        ? `/checkout?plan=${plan}`
-        : `/signup?plan=${plan}`
+      const destination = isAuthenticated ? `/checkout?plan=${plan}` : `/signup?plan=${plan}`
 
       navigate(destination, {
         state: { planId },
@@ -233,19 +242,21 @@ const SubscriptionPage = () => {
         <Row gutter={[20, 20]} justify="center" align="stretch">
           {cargando
             ? SELLABLE_PLANS.map(planId => (
-              <Col xs={24} md={12} key={planId}>
-                <Card><Skeleton active paragraph={{ rows: 6 }} /></Card>
-              </Col>
-            ))
+                <Col xs={24} md={12} key={planId}>
+                  <Card>
+                    <Skeleton active paragraph={{ rows: 6 }} />
+                  </Card>
+                </Col>
+              ))
             : SELLABLE_PLANS.map(planId => (
-              <Col xs={24} md={12} key={planId}>
-                <PlanCard
-                  planId={planId}
-                  priceArs={precios[planId]}
-                  onSelect={handleSelectPlan}
-                />
-              </Col>
-            ))}
+                <Col xs={24} md={12} key={planId}>
+                  <PlanCard
+                    planId={planId}
+                    priceArs={precios[planId]}
+                    onSelect={handleSelectPlan}
+                  />
+                </Col>
+              ))}
         </Row>
 
         <Flex

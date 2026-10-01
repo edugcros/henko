@@ -66,8 +66,7 @@ const describirCuotas = limits => {
   if (!limits) return []
 
   return CUOTAS_VISIBLES.filter(clave => limits[clave] > 0).map(
-    clave =>
-      `${new Intl.NumberFormat('es-AR').format(limits[clave])} ${ETIQUETA_CUOTA[clave]}/mes`,
+    clave => `${new Intl.NumberFormat('es-AR').format(limits[clave])} ${ETIQUETA_CUOTA[clave]}/mes`,
   )
 }
 
@@ -225,8 +224,8 @@ const CheckoutPage = () => {
       console.error('Error en checkout:', err)
       setError(
         err.response?.data?.message ||
-        err.response?.data?.data?.details ||
-        'Error procesando pago. Intenta nuevamente.',
+          err.response?.data?.data?.details ||
+          'Error procesando pago. Intenta nuevamente.',
       )
       // EL RECHAZO DEJA DE SER UN CALLEJÓN
       //
@@ -243,7 +242,9 @@ const CheckoutPage = () => {
 
   if (isLoading) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Box
+        sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
         <CircularProgress />
       </Box>
     )
@@ -328,7 +329,10 @@ const CheckoutPage = () => {
                       <Divider />
 
                       <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: 'text.secondary', fontWeight: 700 }}
+                        >
                           INCLUYE
                         </Typography>
                         <Stack spacing={1} sx={{ mt: 1 }}>
@@ -352,13 +356,16 @@ const CheckoutPage = () => {
                           Próximo pago
                         </Typography>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-AR')}
+                          {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(
+                            'es-AR',
+                          )}
                         </Typography>
                       </Box>
 
                       <Alert severity="info" sx={{ borderRadius: 2 }}>
                         <Typography variant="caption">
-                          Los primeros <strong>14 días son gratis</strong>. Después se cobrará el monto mensual.
+                          Los primeros <strong>14 días son gratis</strong>. Después se cobrará el
+                          monto mensual.
                         </Typography>
                       </Alert>
                     </Stack>
@@ -381,10 +388,7 @@ const CheckoutPage = () => {
                   }}
                 >
                   {error && (
-                    <Alert
-                      severity="error"
-                      sx={{ mb: initPoint ? 2 : 3, borderRadius: 2 }}
-                    >
+                    <Alert severity="error" sx={{ mb: initPoint ? 2 : 3, borderRadius: 2 }}>
                       <AlertTitle>Error</AlertTitle>
                       {error}
                     </Alert>
@@ -393,10 +397,9 @@ const CheckoutPage = () => {
                   {initPoint && (
                     <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
                       <AlertTitle>Probá con otro medio de pago</AlertTitle>
-                      Casi siempre el rechazo viene del banco que emitió la
-                      tarjeta, no de nosotros. Podés autorizar la suscripción
-                      desde tu cuenta de Mercado Pago y elegir ahí cómo pagarla
-                      —otra tarjeta, dinero en cuenta, lo que tengas—.
+                      Casi siempre el rechazo viene del banco que emitió la tarjeta, no de nosotros.
+                      Podés autorizar la suscripción desde tu cuenta de Mercado Pago y elegir ahí
+                      cómo pagarla —otra tarjeta, dinero en cuenta, lo que tengas—.
                       <Button
                         variant="contained"
                         color="primary"
@@ -419,8 +422,7 @@ const CheckoutPage = () => {
                     </Alert>
                   ) : precioArs === null ? (
                     <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                      Este plan todavía no tiene precio configurado, así que no se
-                      puede contratar.
+                      Este plan todavía no tiene precio configurado, así que no se puede contratar.
                     </Alert>
                   ) : (
                     <CardPayment
@@ -452,8 +454,8 @@ const CheckoutPage = () => {
                     variant="caption"
                     sx={{ display: 'block', textAlign: 'center', color: 'text.secondary', mt: 2 }}
                   >
-                    Los datos de tu tarjeta los procesa Mercado Pago directamente.
-                    HENKO no los recibe ni los guarda.
+                    Los datos de tu tarjeta los procesa Mercado Pago directamente. HENKO no los
+                    recibe ni los guarda.
                   </Typography>
                 </Paper>
               </Fade>

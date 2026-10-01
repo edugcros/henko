@@ -1928,9 +1928,8 @@ const AdminOrdersPage = () => {
         )
       }
 
-      return orders.filter(
-        order => normalizeOrderStatusForUI(order.orderStatus) === uiStatus,
-      ).length
+      return orders.filter(order => normalizeOrderStatusForUI(order.orderStatus) === uiStatus)
+        .length
     }
 
     const totalRevenue = summary

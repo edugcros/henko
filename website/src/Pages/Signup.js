@@ -70,8 +70,7 @@ const Signup = () => {
   // botón deja de estar bloqueado por él: quien mira la pantalla no puede hacer
   // nada para conseguir un token, y dejarlo deshabilitado sin explicación es
   // una pantalla muerta.
-  const captchaPending =
-    Boolean(env.turnstileSiteKey) && !turnstileToken && !captchaError
+  const captchaPending = Boolean(env.turnstileSiteKey) && !turnstileToken && !captchaError
 
   // Si el reintento funciona, el aviso de fallo tiene que irse.
   const setCaptchaToken = React.useCallback(token => {
@@ -219,14 +218,9 @@ const Signup = () => {
                 )}
 
                 {captchaError && (
-                  <Typography
-                    variant="body2"
-                    color="warning.main"
-                    align="center"
-                  >
-                    No pudimos verificar que no seas un robot. Podés intentar
-                    registrarte igual; si no funciona, recargá la página o probá
-                    desde otra red.
+                  <Typography variant="body2" color="warning.main" align="center">
+                    No pudimos verificar que no seas un robot. Podés intentar registrarte igual; si
+                    no funciona, recargá la página o probá desde otra red.
                   </Typography>
                 )}
 

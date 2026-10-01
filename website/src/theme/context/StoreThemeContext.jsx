@@ -82,17 +82,12 @@ export const StoreThemeProvider = ({ children }) => {
   }, [previewMode, previewConfig, reduxConfig, tenant?.themeConfig])
 
   const muiTheme = useMemo(() => {
-    return createStoreTheme(
-      activeTheme,
-      activeTheme?.tenantId || tenant?.tenantId || 'default',
-    )
+    return createStoreTheme(activeTheme, activeTheme?.tenantId || tenant?.tenantId || 'default')
   }, [activeTheme, tenant?.tenantId])
 
   const loading = useMemo(() => {
     if (isThemePreviewRoute()) return false
-    return Boolean(
-      !previewMode && !reduxConfig && tenant?.isLoading && !tenant?.themeConfig,
-    )
+    return Boolean(!previewMode && !reduxConfig && tenant?.isLoading && !tenant?.themeConfig)
   }, [previewMode, reduxConfig, tenant?.isLoading, tenant?.themeConfig])
 
   const contextValue = useMemo(

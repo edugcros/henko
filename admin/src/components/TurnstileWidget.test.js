@@ -53,9 +53,7 @@ describe('TurnstileWidget · cuando el desafío no llega', () => {
     // explicación.
     const onError = jest.fn()
 
-    render(
-      <TurnstileWidget siteKey={SITE_KEY} onVerify={jest.fn()} onError={onError} />,
-    )
+    render(<TurnstileWidget siteKey={SITE_KEY} onVerify={jest.fn()} onError={onError} />)
 
     await dejarMontar()
     expect(onError).not.toHaveBeenCalled()
@@ -74,9 +72,7 @@ describe('TurnstileWidget · cuando el desafío no llega', () => {
     // exactamente lo que pasó.
     const onError = jest.fn()
 
-    render(
-      <TurnstileWidget siteKey={SITE_KEY} onVerify={jest.fn()} onError={onError} />,
-    )
+    render(<TurnstileWidget siteKey={SITE_KEY} onVerify={jest.fn()} onError={onError} />)
     await dejarMontar()
 
     await act(async () => {
@@ -92,9 +88,7 @@ describe('TurnstileWidget · cuando el desafío no llega', () => {
     const onVerify = jest.fn()
     const onError = jest.fn()
 
-    render(
-      <TurnstileWidget siteKey={SITE_KEY} onVerify={onVerify} onError={onError} />,
-    )
+    render(<TurnstileWidget siteKey={SITE_KEY} onVerify={onVerify} onError={onError} />)
     await dejarMontar()
 
     await act(async () => {
@@ -182,9 +176,7 @@ describe('TurnstileWidget · cuando el desafío no llega', () => {
     )
     await dejarMontar()
 
-    rerender(
-      <TurnstileWidget siteKey={SITE_KEY} onVerify={nuevo} onError={jest.fn()} />,
-    )
+    rerender(<TurnstileWidget siteKey={SITE_KEY} onVerify={nuevo} onError={jest.fn()} />)
     await dejarMontar()
 
     await act(async () => {

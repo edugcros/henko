@@ -81,7 +81,9 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
       const parsed = trimmed === '' ? null : Number(trimmed)
 
       if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) {
-        setError('El precio tiene que ser un número de pesos, o vacío para volver al valor por defecto.')
+        setError(
+          'El precio tiene que ser un número de pesos, o vacío para volver al valor por defecto.',
+        )
         setSaving(false)
         return
       }
@@ -123,14 +125,14 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
           />
 
           <Alert severity="info" variant="outlined">
-            Los planes no traen precio de fábrica: hasta que definas uno acá, no
-            se pueden contratar. Es a propósito — un número escrito en el código
-            que después alguien cobra de verdad es lo que esto vino a evitar.
+            Los planes no traen precio de fábrica: hasta que definas uno acá, no se pueden
+            contratar. Es a propósito — un número escrito en el código que después alguien cobra de
+            verdad es lo que esto vino a evitar.
             <br />
             <br />
-            El precio nuevo vale para las suscripciones que se creen de ahora en
-            adelante. Las que ya existen siguen con el monto que tienen en Mercado
-            Pago hasta que se les cambie el plan.
+            El precio nuevo vale para las suscripciones que se creen de ahora en adelante. Las que
+            ya existen siguen con el monto que tienen en Mercado Pago hasta que se les cambie el
+            plan.
           </Alert>
         </Stack>
       </DialogContent>
@@ -190,9 +192,7 @@ const PlatformPlanPricesPage = () => {
   // porque esta pantalla escribe precios: si el backend algún día devuelve un
   // plan que acá no se sabe editar, es preferible no mostrarlo a ofrecer un
   // formulario que no tiene dónde guardar.
-  const editable = (data?.plans || []).filter(row =>
-    SELLABLE_PLANS.includes(row.plan),
-  )
+  const editable = (data?.plans || []).filter(row => SELLABLE_PLANS.includes(row.plan))
 
   return (
     <Box sx={{ p: 3 }}>
@@ -200,8 +200,8 @@ const PlatformPlanPricesPage = () => {
         Precios de los planes
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Lo que se define acá es lo que se muestra en la pantalla de planes, en el
-        checkout y lo que se le cobra al comercio. En pesos.
+        Lo que se define acá es lo que se muestra en la pantalla de planes, en el checkout y lo que
+        se le cobra al comercio. En pesos.
       </Typography>
 
       <Paper variant="outlined" sx={{ mb: 4, borderRadius: 2 }}>
@@ -225,7 +225,12 @@ const PlatformPlanPricesPage = () => {
                     {formatArs(row.monthlyPriceArs)}
                   </TableCell>
                   <TableCell>
-                    <Chip size="small" label={origen.text} color={origen.color} variant="outlined" />
+                    <Chip
+                      size="small"
+                      label={origen.text}
+                      color={origen.color}
+                      variant="outlined"
+                    />
                   </TableCell>
                   <TableCell align="right">
                     <Button

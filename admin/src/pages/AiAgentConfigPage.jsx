@@ -317,7 +317,9 @@ const AiAgentConfigPage = () => {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <Box
+        sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}
+      >
         <CircularProgress />
       </Box>
     )
@@ -337,10 +339,9 @@ const AiAgentConfigPage = () => {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 980, mx: 'auto' }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }} 
-        
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+
         spacing={2}
-        
       >
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800 }}>
@@ -431,23 +432,15 @@ const AiAgentConfigPage = () => {
               Antes no había nada: ni la URL del webhook, ni qué campo sale de
               dónde, ni qué pasa si falta uno. Todo eso vivía en el código.
             */}
-            <Paper
-              variant="outlined"
-              sx={{ p: 2.5, borderRadius: 2, bgcolor: 'action.hover' }}
-            >
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, bgcolor: 'action.hover' }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                 Conectar WhatsApp: se hace una sola vez
               </Typography>
 
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ mt: 0.5, mb: 2 }}
-              >
-                Vas a necesitar un número de celular que <strong>no</strong>{' '}
-                esté usando WhatsApp (ni el común ni el Business) y una cuenta
-                de Facebook. Todo lo que sigue se hace en el sitio de Meta, y
-                después se pega en los campos de abajo.
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
+                Vas a necesitar un número de celular que <strong>no</strong> esté usando WhatsApp
+                (ni el común ni el Business) y una cuenta de Facebook. Todo lo que sigue se hace en
+                el sitio de Meta, y después se pega en los campos de abajo.
               </Typography>
 
               <Box component="ol" sx={{ pl: 2.5, m: 0, '& li': { mb: 1.25 } }}>
@@ -467,50 +460,40 @@ const AiAgentConfigPage = () => {
                 </li>
                 <li>
                   <Typography variant="body2">
-                    Dentro de la aplicación agregá el producto{' '}
-                    <strong>WhatsApp</strong>. Meta va a pedirte asociar una
-                    cuenta de empresa: creala ahí mismo si no tenés.
+                    Dentro de la aplicación agregá el producto <strong>WhatsApp</strong>. Meta va a
+                    pedirte asociar una cuenta de empresa: creala ahí mismo si no tenés.
                   </Typography>
                 </li>
                 <li>
                   <Typography variant="body2">
-                    En <strong>WhatsApp → Configuración de la API</strong> están
-                    el <strong>Phone Number ID</strong> y el{' '}
-                    <strong>Business Account ID</strong>. Copialos abajo. Ojo:
-                    es el identificador del número, no el número de teléfono.
+                    En <strong>WhatsApp → Configuración de la API</strong> están el{' '}
+                    <strong>Phone Number ID</strong> y el <strong>Business Account ID</strong>.
+                    Copialos abajo. Ojo: es el identificador del número, no el número de teléfono.
                   </Typography>
                 </li>
                 <li>
                   <Typography variant="body2">
-                    En esa misma pantalla hay un <strong>Access Token</strong>{' '}
-                    temporal. Sirve para probar hoy, pero{' '}
-                    <strong>vence en 24 horas</strong>: para que no se corte,
+                    En esa misma pantalla hay un <strong>Access Token</strong> temporal. Sirve para
+                    probar hoy, pero <strong>vence en 24 horas</strong>: para que no se corte,
                     generá uno permanente en{' '}
                     <em>Configuración del negocio → Usuarios del sistema</em>.
                   </Typography>
                 </li>
                 <li>
                   <Typography variant="body2">
-                    El <strong>App Secret</strong> está en{' '}
-                    <em>Configuración de la app → Básico</em>, botón "Mostrar".
-                    Sin este dato <strong>no entra ningún mensaje</strong>: es
-                    con lo que se comprueba que lo que llega viene de Meta y no
-                    de un tercero.
+                    El <strong>App Secret</strong> está en <em>Configuración de la app → Básico</em>
+                    , botón "Mostrar". Sin este dato <strong>no entra ningún mensaje</strong>: es
+                    con lo que se comprueba que lo que llega viene de Meta y no de un tercero.
                   </Typography>
                 </li>
                 <li>
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    Por último el webhook: en{' '}
-                    <em>WhatsApp → Configuración → Editar</em>, pegá estos dos
-                    valores y marcá la casilla <strong>messages</strong>.
+                    Por último el webhook: en <em>WhatsApp → Configuración → Editar</em>, pegá estos
+                    dos valores y marcá la casilla <strong>messages</strong>.
                   </Typography>
 
                   <Stack spacing={1}>
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{ alignItems: 'center' }}
-                    >
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                       <TextField
                         fullWidth
                         size="small"
@@ -530,31 +513,22 @@ const AiAgentConfigPage = () => {
                       </Tooltip>
                     </Stack>
 
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{ alignItems: 'center' }}
-                    >
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                       <TextField
                         fullWidth
                         size="small"
                         label="Token de verificación"
                         value={
-                          connection?.verifyToken ||
-                          'Tocá "Probar la conexión" para generarlo'
+                          connection?.verifyToken || 'Tocá "Probar la conexión" para generarlo'
                         }
                         InputProps={{ readOnly: true }}
                         onFocus={event => event.target.select()}
                       />
-                      <Tooltip
-                        title={copied === 'token' ? 'Copiado' : 'Copiar'}
-                      >
+                      <Tooltip title={copied === 'token' ? 'Copiado' : 'Copiar'}>
                         <span>
                           <IconButton
                             disabled={!connection?.verifyToken}
-                            onClick={() =>
-                              copyValue('token', connection?.verifyToken)
-                            }
+                            onClick={() => copyValue('token', connection?.verifyToken)}
                             color={copied === 'token' ? 'success' : 'default'}
                             aria-label="Copiar el token de verificación"
                           >
@@ -579,18 +553,13 @@ const AiAgentConfigPage = () => {
                   onClick={runConnectionCheck}
                   disabled={checking}
                   startIcon={
-                    checking ? (
-                      <CircularProgress size={16} color="inherit" />
-                    ) : (
-                      <WhatsAppIcon />
-                    )
+                    checking ? <CircularProgress size={16} color="inherit" /> : <WhatsAppIcon />
                   }
                 >
                   {checking ? 'Revisando…' : 'Probar la conexión'}
                 </Button>
                 <Typography variant="caption" color="text.secondary">
-                  Le pregunta a Meta si los datos sirven. No envía ningún
-                  mensaje.
+                  Le pregunta a Meta si los datos sirven. No envía ningún mensaje.
                 </Typography>
               </Stack>
 
@@ -616,10 +585,7 @@ const AiAgentConfigPage = () => {
                             {item.label}
                           </Typography>
                           {check.detail && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
+                            <Typography variant="caption" color="text.secondary">
                               {check.detail}
                             </Typography>
                           )}

@@ -23,8 +23,7 @@ jest.unstable_mockModule('../features/product/productService', () => ({
   default: { getAdminProducts: mockGetProducts },
 }))
 
-const { default: MarketIntelligencePage } =
-  await import('./MarketIntelligencePage.js')
+const { default: MarketIntelligencePage } = await import('./MarketIntelligencePage.js')
 
 // Un análisis real: el buscador de precios contestó, la búsqueda con IA no.
 const RESULTADO = {
@@ -107,10 +106,7 @@ beforeEach(() => {
 const analizar = async () => {
   render(<MarketIntelligencePage />)
 
-  await userEvent.type(
-    screen.getByLabelText(/producto o categoría/i),
-    'Queso de Campo',
-  )
+  await userEvent.type(screen.getByLabelText(/producto o categoría/i), 'Queso de Campo')
   await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
 
   await waitFor(() => expect(mockAnalyze).toHaveBeenCalled())
@@ -129,9 +125,7 @@ describe('Análisis de mercado · no se afirma lo que no se midió', () => {
   test('sin medir la demanda, el veredicto no dice "no conviene"', async () => {
     await analizar()
 
-    expect(
-      await screen.findByText(/Hay mercado, falta medir la demanda/i),
-    ).toBeDefined()
+    expect(await screen.findByText(/Hay mercado, falta medir la demanda/i)).toBeDefined()
     expect(screen.queryByText(/No conviene por ahora/i)).toBeNull()
   })
 
@@ -152,9 +146,7 @@ describe('Análisis de mercado · no se afirma lo que no se midió', () => {
     // comprueba que llegue cada uno a la vista, sea cual sea su redacción.
     await analizar()
 
-    expect(
-      await screen.findByText(/De dónde salieron los datos/i),
-    ).toBeDefined()
+    expect(await screen.findByText(/De dónde salieron los datos/i)).toBeDefined()
 
     for (const fuente of RESULTADO.sources) {
       expect(screen.getByText(fuente.label)).toBeDefined()

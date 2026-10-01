@@ -25,9 +25,7 @@ const AddProduct = lazy(() => import('./AddProduct'))
 const Productlist = lazy(() => import('./Productlist'))
 const SubscriptionPage = lazy(() => import('./SubscriptionPage'))
 const CheckoutPage = lazy(() => import('./CheckoutPage'))
-const SubscriptionManagementPage = lazy(
-  () => import('./SubscriptionManagementPage'),
-)
+const SubscriptionManagementPage = lazy(() => import('./SubscriptionManagementPage'))
 const NotFound = lazy(() => import('./NotFound'))
 const Forbidden = lazy(() => import('./Forbidden'))
 const ThemeCustomizer = lazy(() => import('./ThemeCustomizer'))
@@ -54,7 +52,6 @@ const StoreSettingsPage = lazy(() => import('./StoreSettingsPage'))
 const VerifyEmailPage = lazy(() => import('./VerifyEmailPage'))
 const MarketIntelligencePage = lazy(() => import('./MarketIntelligencePage'))
 const PricingPage = lazy(() => import('./PricingPage'))
-
 
 const pages = {
   Dashboard,

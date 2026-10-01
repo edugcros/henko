@@ -32,13 +32,18 @@
 # módulos faltantes— sin pedir ningún secreto. La validación del entorno real de
 # cada app la sigue haciendo Vercel en cada deploy, que es donde corresponde.
 #
-# LO QUE TODAVIA NO GATEA
+# EL LINT GATEA EN LOS TRES
 #
-# El lint de admin y website. Sus scripts llevan `--fix`, así que nunca pueden
-# fallar, y el glob `src/**/*.{js,jsx}` sin globstar alcanza un solo nivel de
-# directorios. Arreglar eso destapa ~3951 errores de formato de prettier, que es
-# una normalización aparte (va con el .gitattributes, porque la mitad son
-# finales de línea). El backend sí corre lint acá: su script no lleva `--fix`.
+# Antes no podia: los scripts de admin y website llevaban `--fix`, asi que
+# reescribian en vez de reportar, y el glob `src/**/*.{js,jsx}` sin globstar
+# alcanzaba un solo nivel de directorios (101 de 159 archivos en admin).
+#
+# Y por debajo habia un conflicto que volvia irresoluble el formato: la regla
+# `prettier/prettier` de eslint traia las opciones duplicadas inline y NO
+# coincidian con `prettier.config.cjs` —printWidth 80 contra 100, y faltaba
+# `arrowParens: 'avoid'`—, asi que `npm run format` y `npm run lint` se
+# deshacian el trabajo mutuamente. Resuelto eso, el lint de los tres paquetes
+# queda en exit 0 y puede gatear.
 
 name: CI
 
@@ -168,6 +173,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run lint
+
       - run: npm run build:ci
 
       - run: npm test
@@ -190,6 +197,8 @@ jobs:
           cache-dependency-path: website/package-lock.json
 
       - run: npm ci
+
+      - run: npm run lint
 
       - run: npm run build:ci
 

@@ -55,8 +55,7 @@ const clean = value => String(value ?? '').trim()
 // Mismo criterio que backend/src/services/tenant/tenantDomainService.js (no se
 // puede compartir código entre paquetes acá): feedback inmediato antes de
 // pegarle al servidor. La validación que no se puede evitar vive en el backend.
-const HOSTNAME_RE =
-  /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/
+const HOSTNAME_RE = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/
 
 /** Lo que la gente pega: la URL del navegador, con protocolo y barra. */
 const normalizar = value =>
@@ -118,11 +117,7 @@ const CopyableValue = ({ value }) => {
             color: copied ? 'success.main' : 'text.secondary',
           }}
         >
-          {copied ? (
-            <CheckCircleIcon fontSize="inherit" />
-          ) : (
-            <ContentCopyIcon fontSize="inherit" />
-          )}
+          {copied ? <CheckCircleIcon fontSize="inherit" /> : <ContentCopyIcon fontSize="inherit" />}
         </Box>
       </Tooltip>
     </Stack>
@@ -166,9 +161,7 @@ export default function StoreDomainSection() {
       if (!signal?.cancelled) {
         setFeedback({
           severity: 'error',
-          message:
-            error?.response?.data?.message ||
-            'No se pudieron cargar los dominios.',
+          message: error?.response?.data?.message || 'No se pudieron cargar los dominios.',
         })
       }
     } finally {
@@ -194,12 +187,8 @@ export default function StoreDomainSection() {
   // además apuntar el DNS y dar de alta el hostname en el proyecto del panel,
   // que hoy es un paso manual. Un botón que deja el dominio a mitad de camino
   // promete algo que no termina de pasar.
-  const propio =
-    domains.find(d => d.type === 'custom_domain' && d.context !== 'admin') ||
-    null
-  const panelPropio =
-    domains.find(d => d.type === 'custom_domain' && d.context === 'admin') ||
-    null
+  const propio = domains.find(d => d.type === 'custom_domain' && d.context !== 'admin') || null
+  const panelPropio = domains.find(d => d.type === 'custom_domain' && d.context === 'admin') || null
   const plataforma = domains.find(d => d.type === 'platform_subdomain') || null
 
   const hostnameDraft = normalizar(draft)
@@ -210,10 +199,8 @@ export default function StoreDomainSection() {
   // Se corta acá con un mensaje que dice qué hacer, en vez de dejar que el
   // backend conteste 409 "ya está cargado", que no explica el problema real.
   const panelDraftEsElDeLaTienda =
-    Boolean(hostnamePanel) &&
-    domains.some(d => normalizar(d.hostname) === hostnamePanel)
-  const panelDraftValido =
-    HOSTNAME_RE.test(hostnamePanel) && !panelDraftEsElDeLaTienda
+    Boolean(hostnamePanel) && domains.some(d => normalizar(d.hostname) === hostnamePanel)
+  const panelDraftValido = HOSTNAME_RE.test(hostnamePanel) && !panelDraftEsElDeLaTienda
 
   const ejecutar = async (accion, fn) => {
     setBusy(accion)
@@ -245,9 +232,7 @@ export default function StoreDomainSection() {
     } catch (error) {
       setFeedback({
         severity: 'error',
-        message:
-          error?.response?.data?.message ||
-          'No se pudo completar la operación.',
+        message: error?.response?.data?.message || 'No se pudo completar la operación.',
       })
     } finally {
       setBusy(null)
@@ -264,11 +249,7 @@ export default function StoreDomainSection() {
 
   return (
     <Stack spacing={2}>
-      <Stack
-        direction="row"
-        spacing={1}
-        sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}
-      >
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
           Tu dominio
         </Typography>
@@ -289,11 +270,7 @@ export default function StoreDomainSection() {
       )}
 
       {feedback && (
-        <Alert
-          severity={feedback.severity}
-          variant="outlined"
-          sx={{ borderRadius: 2 }}
-        >
+        <Alert severity={feedback.severity} variant="outlined" sx={{ borderRadius: 2 }}>
           {feedback.message}
         </Alert>
       )}
@@ -327,26 +304,14 @@ export default function StoreDomainSection() {
 
           {panelPropio ? (
             <Stack spacing={1.5}>
-              <Stack
-                direction="row"
-                spacing={1}
-                alignItems="center"
-                flexWrap="wrap"
-                useFlexGap
-              >
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                 <Typography variant="body2">
                   <strong>{panelPropio.hostname}</strong>
                 </Typography>
                 <Chip
                   size="small"
-                  label={
-                    panelPropio.status === 'active'
-                      ? 'Funcionando'
-                      : 'Falta verificar'
-                  }
-                  color={
-                    panelPropio.status === 'active' ? 'success' : 'warning'
-                  }
+                  label={panelPropio.status === 'active' ? 'Funcionando' : 'Falta verificar'}
+                  color={panelPropio.status === 'active' ? 'success' : 'warning'}
                   variant="outlined"
                 />
               </Stack>
@@ -358,9 +323,7 @@ export default function StoreDomainSection() {
                     variant="outlined"
                     disabled={busy === 'verify-panel'}
                     onClick={() =>
-                      ejecutar('verify-panel', () =>
-                        verifyDomain(panelPropio.hostname),
-                      )
+                      ejecutar('verify-panel', () => verifyDomain(panelPropio.hostname))
                     }
                     sx={{ borderRadius: 2, textTransform: 'none' }}
                   >
@@ -371,11 +334,7 @@ export default function StoreDomainSection() {
                   size="small"
                   color="error"
                   disabled={busy === 'delete-panel'}
-                  onClick={() =>
-                    ejecutar('delete-panel', () =>
-                      deleteDomain(panelPropio.hostname),
-                    )
-                  }
+                  onClick={() => ejecutar('delete-panel', () => deleteDomain(panelPropio.hostname))}
                   sx={{ borderRadius: 2, textTransform: 'none' }}
                 >
                   Quitar
@@ -385,9 +344,8 @@ export default function StoreDomainSection() {
           ) : (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Si querés entrar a este panel desde tu propio dominio, cargá un
-                subdominio dedicado —por ejemplo{' '}
-                <strong>admin.tudominio.com</strong>—. Tiene que ser un hostname
+                Si querés entrar a este panel desde tu propio dominio, cargá un subdominio dedicado
+                —por ejemplo <strong>admin.tudominio.com</strong>—. Tiene que ser un hostname
                 distinto al de tu tienda: cada uno sirve una aplicación.
               </Typography>
 
@@ -412,9 +370,7 @@ export default function StoreDomainSection() {
                   variant="contained"
                   disabled={!panelDraftValido || busy === 'add-panel'}
                   onClick={() =>
-                    ejecutar('add-panel', () =>
-                      addDomain(normalizar(draftPanel), 'admin'),
-                    )
+                    ejecutar('add-panel', () => addDomain(normalizar(draftPanel), 'admin'))
                   }
                   sx={{
                     borderRadius: 2,
@@ -433,8 +389,8 @@ export default function StoreDomainSection() {
       {!propio && (
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Si ya tenés un dominio propio, podés usarlo para tu tienda.
-            Necesitás poder editar su DNS.
+            Si ya tenés un dominio propio, podés usarlo para tu tienda. Necesitás poder editar su
+            DNS.
           </Typography>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
@@ -473,13 +429,9 @@ export default function StoreDomainSection() {
           {/* Dice qué pasa AHORA, no qué va a pasar. Mientras esté pendiente el
               dominio no resuelve: el backend exige 'active'. */}
           <Alert severity="warning" variant="outlined" sx={{ borderRadius: 2 }}>
-            <strong>{propio.hostname}</strong> todavía no funciona. Falta que
-            crees el registro de abajo en el DNS de tu dominio y después
-            verifiques. Mientras tanto, seguí usando{' '}
-            {plataforma
-              ? plataforma.hostname
-              : 'el subdominio de la plataforma'}
-            .
+            <strong>{propio.hostname}</strong> todavía no funciona. Falta que crees el registro de
+            abajo en el DNS de tu dominio y después verifiques. Mientras tanto, seguí usando{' '}
+            {plataforma ? plataforma.hostname : 'el subdominio de la plataforma'}.
           </Alert>
 
           {instructions && (
@@ -516,17 +468,11 @@ export default function StoreDomainSection() {
             </Table>
           )}
 
-          <Stack
-            direction="row"
-            spacing={1.5}
-            sx={{ flexWrap: 'wrap', gap: 1 }}
-          >
+          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1 }}>
             <Button
               variant="contained"
               disabled={busy === 'verify'}
-              onClick={() =>
-                ejecutar('verify', () => verifyDomain(propio.hostname))
-              }
+              onClick={() => ejecutar('verify', () => verifyDomain(propio.hostname))}
               sx={{ borderRadius: 2, textTransform: 'none' }}
             >
               {busy === 'verify' ? 'Verificando...' : 'Verificar'}
@@ -535,9 +481,7 @@ export default function StoreDomainSection() {
               variant="outlined"
               color="inherit"
               disabled={busy === 'delete'}
-              onClick={() =>
-                ejecutar('delete', () => deleteDomain(propio.hostname))
-              }
+              onClick={() => ejecutar('delete', () => deleteDomain(propio.hostname))}
               sx={{ borderRadius: 2, textTransform: 'none' }}
             >
               {busy === 'delete' ? 'Quitando...' : 'Quitar dominio'}
@@ -546,8 +490,7 @@ export default function StoreDomainSection() {
 
           {propio.lastCheckedAt && (
             <Typography variant="caption" color="text.secondary">
-              Última comprobación:{' '}
-              {new Date(propio.lastCheckedAt).toLocaleString('es-AR')}
+              Última comprobación: {new Date(propio.lastCheckedAt).toLocaleString('es-AR')}
             </Typography>
           )}
         </Stack>
@@ -575,23 +518,14 @@ export default function StoreDomainSection() {
               certificado a propósito: mientras esto no se resuelva, el
               certificado tampoco se emite. */}
           {propio.edgeVerification?.length > 0 && (
-            <Alert
-              severity="warning"
-              variant="outlined"
-              sx={{ borderRadius: 2 }}
-            >
-              <AlertTitle sx={{ fontWeight: 700 }}>
-                Falta un paso más
-              </AlertTitle>
+            <Alert severity="warning" variant="outlined" sx={{ borderRadius: 2 }}>
+              <AlertTitle sx={{ fontWeight: 700 }}>Falta un paso más</AlertTitle>
               <Typography variant="body2" sx={{ mb: 1.5 }}>
-                Tu dominio ya figura en otra cuenta de nuestro proveedor. Para
-                que podamos servirlo, agregá también este registro en tu DNS.
+                Tu dominio ya figura en otra cuenta de nuestro proveedor. Para que podamos servirlo,
+                agregá también este registro en tu DNS.
               </Typography>
 
-              <Table
-                size="small"
-                sx={{ '& td, & th': { border: 0, px: 0, py: 0.5 } }}
-              >
+              <Table size="small" sx={{ '& td, & th': { border: 0, px: 0, py: 0.5 } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell>Tipo</TableCell>
@@ -615,8 +549,8 @@ export default function StoreDomainSection() {
               </Table>
 
               <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
-                Cuando lo cargues, tocá «Verificar» de nuevo. Podés borrarlo una
-                vez que tu tienda abra.
+                Cuando lo cargues, tocá «Verificar» de nuevo. Podés borrarlo una vez que tu tienda
+                abra.
               </Typography>
             </Alert>
           )}
@@ -624,24 +558,14 @@ export default function StoreDomainSection() {
           {/* El certificado lo emite el borde y puede tardar unos minutos
               después de verificar. Decirlo evita el ticket de "verifiqué y me
               da error de seguridad". */}
-          {propio.sslStatus === 'pending' &&
-            !propio.edgeVerification?.length && (
-              <Alert
-                severity="info"
-                variant="outlined"
-                sx={{ borderRadius: 2 }}
-              >
-                Estamos emitiendo el certificado de seguridad. Puede tardar unos
-                minutos; hasta entonces el navegador puede mostrar una
-                advertencia.
-              </Alert>
-            )}
+          {propio.sslStatus === 'pending' && !propio.edgeVerification?.length && (
+            <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
+              Estamos emitiendo el certificado de seguridad. Puede tardar unos minutos; hasta
+              entonces el navegador puede mostrar una advertencia.
+            </Alert>
+          )}
 
-          <Stack
-            direction="row"
-            spacing={1.5}
-            sx={{ flexWrap: 'wrap', gap: 1 }}
-          >
+          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1 }}>
             {/* Reintentar tiene que estar acá, no solo mientras el dominio está
                 pendiente: si el borde pide un registro más, el comercio lo carga
                 y necesita una forma de decir "ya está". Sin este botón, el aviso
@@ -651,9 +575,7 @@ export default function StoreDomainSection() {
                 size="small"
                 variant="contained"
                 disabled={busy === 'verify'}
-                onClick={() =>
-                  ejecutar('verify', () => verifyDomain(propio.hostname))
-                }
+                onClick={() => ejecutar('verify', () => verifyDomain(propio.hostname))}
                 sx={{ borderRadius: 2, textTransform: 'none' }}
               >
                 {busy === 'verify' ? 'Verificando...' : 'Verificar de nuevo'}
@@ -665,9 +587,7 @@ export default function StoreDomainSection() {
               variant="outlined"
               color="inherit"
               disabled={busy === 'delete'}
-              onClick={() =>
-                ejecutar('delete', () => deleteDomain(propio.hostname))
-              }
+              onClick={() => ejecutar('delete', () => deleteDomain(propio.hostname))}
               sx={{ borderRadius: 2, textTransform: 'none' }}
             >
               {busy === 'delete' ? 'Quitando...' : 'Quitar dominio'}
