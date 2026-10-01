@@ -56,6 +56,21 @@ process.env.REFRESH_TOKEN_SECRET ??= 'test-refresh-secret-no-usar-fuera-de-prueb
 // necesitan base levantan su propio `MongoMemoryServer` y no usan esta URI.
 process.env.MONGODB_URL ??= 'mongodb://127.0.0.1:27017/henko'
 
+// El panel compartido se reconoce por ADMIN_BASE_DOMAIN: `tenantMiddleware` lo
+// atiende ANTES de buscar el comercio por dominio, y de ahí sale que la sesión
+// —y no el host— decida sobre qué comercio se escribe.
+//
+// `tenantHeaderIsolation.test.js` manda el header `x-tenant-domain:
+// admin.henko.local` dando por sentado que ese host ES el panel compartido, pero
+// no fija la variable: la tomaba de `.env.development`. Sin ella el host no se
+// reconoce, no se resuelve comercio y la ruta responde 404 donde la prueba
+// espera 201 y 401.
+//
+// El valor es el mismo que usa el script `dev` del panel (`HOST=admin.henko.local`),
+// así que esto alinea las pruebas con el entorno de desarrollo real. Las
+// validaciones que cruzan este dominio con las URLs son solo de produccion.
+process.env.ADMIN_BASE_DOMAIN ??= 'admin.henko.local'
+
 // `createSubscriptionClient` rechaza la credencial de plataforma si no tiene
 // forma de token de Mercado Pago —tiene que empezar en `TEST-` o `APP_USR-`— y
 // tira MP_ACCESS_TOKEN_INVALID antes de intentar cualquier llamada. Sin esto,
