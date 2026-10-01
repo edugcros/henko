@@ -56,6 +56,31 @@ process.env.REFRESH_TOKEN_SECRET ??= 'test-refresh-secret-no-usar-fuera-de-prueb
 // necesitan base levantan su propio `MongoMemoryServer` y no usan esta URI.
 process.env.MONGODB_URL ??= 'mongodb://127.0.0.1:27017/henko'
 
+// El panel compartido se reconoce por ADMIN_BASE_DOMAIN: `tenantMiddleware` lo
+// atiende ANTES de buscar el comercio por dominio, y de ahí sale que la sesión
+// —y no el host— decida sobre qué comercio se escribe.
+//
+// `tenantHeaderIsolation.test.js` manda el header `x-tenant-domain:
+// admin.henko.local` dando por sentado que ese host ES el panel compartido, pero
+// no fija la variable: la tomaba de `.env.development`. Sin ella el host no se
+// reconoce, no se resuelve comercio y la ruta responde 404 donde la prueba
+// espera 201 y 401.
+//
+// El valor es el mismo que usa el script `dev` del panel (`HOST=admin.henko.local`),
+// así que esto alinea las pruebas con el entorno de desarrollo real. Las
+// validaciones que cruzan este dominio con las URLs son solo de produccion.
+process.env.ADMIN_BASE_DOMAIN ??= 'admin.henko.local'
+
+// `createSubscriptionClient` rechaza la credencial de plataforma si no tiene
+// forma de token de Mercado Pago —tiene que empezar en `TEST-` o `APP_USR-`— y
+// tira MP_ACCESS_TOKEN_INVALID antes de intentar cualquier llamada. Sin esto,
+// `subscriptionClient.test.js` falla en el chequeo de formato y nunca llega a
+// probar lo que quiere probar, que es qué métodos expone el cliente.
+//
+// NO ES UNA CREDENCIAL: es un literal con forma válida y valor evidentemente
+// falso. Ninguna prueba sale a la red con esto.
+process.env.MP_ACCESS_TOKEN ??= 'TEST-0000000000000000-000000-0000000000000000000000000000000-000000000'
+
 // Las 7 suites que pasan por `src/test/testDB.js` sí conectan a un mongod real
 // (no a uno en memoria), y de ahí derivan el nombre de base agregándole `-test`.
 // En CI lo provee el service container del workflow; en una máquina sin Mongo

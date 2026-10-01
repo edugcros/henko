@@ -65,29 +65,12 @@ jobs:
       run:
         working-directory: backend
 
-    # 7 de las 68 suites pasan por `src/test/testDB.js`, que conecta a un mongod
-    # REAL —no a uno en memoria, como hacen las otras 26— y de ahí deriva el
-    # nombre de la base agregándole `-test`. Sin un servidor al que conectar,
-    # `mongoose.connect` se queda esperando y el hook muere por timeout.
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        # Sin healthcheck los pasos arrancan antes de que mongod acepte
-        # conexiones, y el primer beforeAll vuelve a colgarse.
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
       # `resolveTestDbUri` la prefiere sobre MONGODB_URL y le agrega el sufijo,
-      # así que la base efectiva es `henko-test`. Las transacciones quedan
-      # apagadas fuera de produccion, asi que un mongod suelto alcanza: no hace
-      # falta replica set.
-      MONGODB_TEST_URI: mongodb://127.0.0.1:27017/henko
+      # así que la base efectiva es `henko-test`. El `?replicaSet=rs0` es lo que
+      # hace que el driver descubra la topologia y habilite transacciones; sin
+      # eso, ver el comentario del paso que levanta Mongo.
+      MONGODB_TEST_URI: mongodb://127.0.0.1:27017/henko?replicaSet=rs0
 
     steps:
       - uses: actions/checkout@v4
@@ -100,6 +83,65 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
+      # 7 de las 68 suites pasan por `src/test/testDB.js`, que conecta a un
+      # mongod REAL —no a uno en memoria, como hacen las otras 26— y de ahí
+      # deriva el nombre de la base agregándole `-test`. Sin un servidor al que
+      # conectar, `mongoose.connect` se queda esperando y el hook muere.
+      #
+      # Se levanta a mano en vez de con `services:` por una razón práctica: de
+      # los service containers, Actions volca el log entero al final del job.
+      # Son 32 mil líneas de mongod que sepultan la salida de Jest y dejan el
+      # fallo ilegible. Un contenedor propio no se volca, y además deja pasarle
+      # `--quiet`, que `services:` no permite (acepta opciones de docker run,
+      # no el comando del contenedor).
+      # Replica set de UN nodo, no un mongod suelto. No es un lujo:
+      # `src/utils/withOptionalTransaction.js` decide si usa transacciones por la
+      # TOPOLOGIA que informa el driver, y solo las activa con
+      # `ReplicaSetWithPrimary` o `Sharded`. Sobre standalone sigue de largo sin
+      # transaccion, asi que `reserveStockAtomic` descuenta la primera linea y no
+      # la deshace cuando la segunda falla — y el test que cubre justamente esa
+      # atomicidad (`order.test.js`) da stock 7 en vez de 10.
+      #
+      # O sea que correr el CI sobre standalone no solo falla ese test: deja sin
+      # ejercitar todo lo que depende de atomicidad, que es lo que en produccion
+      # sostiene el stock. El propio archivo cuenta que esa deteccion estuvo
+      # rota toda su vida sin que ninguna prueba lo notara.
+      #
+      # Sin `directConnection`: hace falta que el driver DESCUBRA el replica set
+      # para que informe ReplicaSetWithPrimary. Con directConnection informaria
+      # `Single` y volveriamos al mismo problema por otro camino.
+      - name: Levantar MongoDB como replica set
+        run: |
+          docker run -d --name henko-mongo -p 27017:27017 mongo:7 \
+            mongod --bind_ip_all --quiet --replSet rs0
+
+          for _ in $(seq 1 30); do
+            if docker exec henko-mongo \
+                 mongosh --quiet --eval 'db.adminCommand({ ping: 1 })' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          docker exec henko-mongo mongosh --quiet --eval '
+            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "127.0.0.1:27017" }] })
+          '
+
+          # Esperar a que el nodo sea PRIMARY: recien ahi el driver informa
+          # ReplicaSetWithPrimary y las transacciones quedan disponibles.
+          for _ in $(seq 1 30); do
+            if docker exec henko-mongo \
+                 mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then
+              echo "replica set rs0 con PRIMARY"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "el replica set no llego a PRIMARY en 60s"
+          docker logs henko-mongo
+          exit 1
 
       - run: npm ci
 
