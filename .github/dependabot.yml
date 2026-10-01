@@ -17,6 +17,17 @@ updates:
   #    producción hasta encontrar la causa). Parche/minor siguen entrando
   #    solos en los dos casos — un salto mayor necesita revisión humana
   #    deliberada.
+  #
+  # 3) eslint entra a la lista del punto 2 tras el tercer incidente de la
+  #    misma clase. eslint 10 es un mayor que pide @babel/eslint-parser 8,
+  #    y el parser está clavado en 7 porque su rama 8 exige @babel/core 8
+  #    (y las dos apps usan babel 7). Resultado: el árbol queda irresoluble
+  #    y `npm install` falla — Vercel instala limpio en cada build, así que
+  #    la build muere antes de compilar. Pasó en /admin (PR #223 →
+  #    arreglado en 4b0986c) y en /website al mismo tiempo, donde quedó sin
+  #    detectar porque ningún workflow instala ni construye las apps.
+  #    eslint solo puede subir de mayor junto con @babel/eslint-parser,
+  #    @eslint/js y @babel/core — los cuatro o ninguno.
   - package-ecosystem: "npm"
     directory: "/backend"
     schedule:
@@ -35,6 +46,8 @@ updates:
       - dependency-name: "mongoose"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@babel/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
@@ -58,6 +71,8 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@babel/*"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/website"
@@ -79,4 +94,6 @@ updates:
       - dependency-name: "react-router-dom"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@babel/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
