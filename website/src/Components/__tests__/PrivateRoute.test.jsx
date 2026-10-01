@@ -23,8 +23,8 @@ describe('🔒 PrivateRoute', () => {
   test('redirige a /login si no está autenticado', () => {
     mockUseAuth.mockReturnValue({
       isAuthenticated: false,
-      token: null,
-      userRole: null,
+      userRole: 'user',
+      user: null,
       isBlocked: false,
       isLoading: false,
     })
@@ -52,8 +52,8 @@ describe('🔒 PrivateRoute', () => {
   test('redirige a /unauthorized si está bloqueado', () => {
     mockUseAuth.mockReturnValue({
       isAuthenticated: true,
-      token: 'mock-token',
       userRole: 'user',
+      user: { role: 'user', isBlocked: true },
       isBlocked: true,
       isLoading: false,
     })
@@ -65,7 +65,7 @@ describe('🔒 PrivateRoute', () => {
             path="/cart"
             element={
               <PrivateRoute>
-                <MockComponent />
+                <ComponentMock />
               </PrivateRoute>
             }
           />
@@ -81,8 +81,8 @@ describe('🔒 PrivateRoute', () => {
   test('muestra contenido si está autenticado y no bloqueado', () => {
     mockUseAuth.mockReturnValue({
       isAuthenticated: true,
-      token: 'mock-token',
       userRole: 'user',
+      user: { role: 'user', isBlocked: false },
       isBlocked: false,
       isLoading: false,
     })
@@ -94,7 +94,7 @@ describe('🔒 PrivateRoute', () => {
             path="/cart"
             element={
               <PrivateRoute>
-                <MockComponent />
+                <ComponentMock />
               </PrivateRoute>
             }
           />

@@ -38,7 +38,10 @@
     "prune:ai-ledger:prod": "cross-env NODE_ENV=production node src/scripts/pruneAiLedger.js"
   },
   "jest": {
-    "testTimeout": 30000
+    "testTimeout": 30000,
+    "setupFiles": [
+      "<rootDir>/jest.env.js"
+    ]
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -1,0 +1,154 @@
+# Instala, construye y prueba los tres paquetes en cada PR.
+#
+# POR QUE EXISTE
+#
+# Hasta ahora ningún workflow instalaba ni construía las apps: los únicos que
+# corrían eran la revisión de código y las menciones a @claude. El primero en
+# enterarse de que algo se rompía era Vercel, en un deployment de producción.
+#
+# Pasó tres veces seguidas, siempre igual: un PR de Dependabot subía un mayor,
+# el árbol de dependencias quedaba irresoluble, el merge entraba a main y la
+# build de producción moría en `npm install`, antes de compilar una línea.
+# Express 4→5 (PR #115-#117, sitio caído), @babel/core 7→8 (PR #122/#123, las
+# dos apps) y eslint 9→10 (PR #223, el panel y la tienda; la tienda estuvo 12
+# deployments en ERROR sin que nadie lo viera).
+#
+# El paso que ataja esa clase de rotura es `npm ci`. Los tres incidentes se
+# habrían puesto rojos en el primer step de este workflow.
+#
+# POR QUE `npm ci` Y NO `npm install`
+#
+# `npm ci` falla si el lockfile no concuerda con el package.json, en vez de
+# arreglarlo en silencio. Eso convierte "el lockfile quedó desincronizado" en un
+# PR rojo y no en una sorpresa en el próximo deploy.
+#
+# POR QUE build:ci Y NO build
+#
+# `npm run build` corre con APP_ENV=production, y eso dispara assertDeployEnv()
+# en webpack.env.js, que exige las REACT_APP_* reales del deploy. Meterlas acá
+# significaría o secretos de producción en CI o valores falsos que hay que
+# mantener coherentes con los validadores. `build:ci` compila en modo producción
+# con APP_ENV=development: verifica que el bundle se arme —imports, sintaxis,
+# módulos faltantes— sin pedir ningún secreto. La validación del entorno real de
+# cada app la sigue haciendo Vercel en cada deploy, que es donde corresponde.
+#
+# LO QUE TODAVIA NO GATEA
+#
+# El lint de admin y website. Sus scripts llevan `--fix`, así que nunca pueden
+# fallar, y el glob `src/**/*.{js,jsx}` sin globstar alcanza un solo nivel de
+# directorios. Arreglar eso destapa ~3951 errores de formato de prettier, que es
+# una normalización aparte (va con el .gitattributes, porque la mitad son
+# finales de línea). El backend sí corre lint acá: su script no lleva `--fix`.
+
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+# Un push nuevo sobre la misma rama cancela la corrida anterior: lo que importa
+# es el estado del último commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    # 7 de las 68 suites pasan por `src/test/testDB.js`, que conecta a un mongod
+    # REAL —no a uno en memoria, como hacen las otras 26— y de ahí deriva el
+    # nombre de la base agregándole `-test`. Sin un servidor al que conectar,
+    # `mongoose.connect` se queda esperando y el hook muere por timeout.
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        # Sin healthcheck los pasos arrancan antes de que mongod acepte
+        # conexiones, y el primer beforeAll vuelve a colgarse.
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # `resolveTestDbUri` la prefiere sobre MONGODB_URL y le agrega el sufijo,
+      # así que la base efectiva es `henko-test`. Las transacciones quedan
+      # apagadas fuera de produccion, asi que un mongod suelto alcanza: no hace
+      # falta replica set.
+      MONGODB_TEST_URI: mongodb://127.0.0.1:27017/henko
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          # .nvmrc es la única fuente de la versión de Node en el repo.
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm test
+
+  admin:
+    name: admin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build:ci
+
+      - run: npm test
+
+  website:
+    name: website
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build:ci
+
+      - run: npm test
