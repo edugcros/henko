@@ -56,6 +56,16 @@ process.env.REFRESH_TOKEN_SECRET ??= 'test-refresh-secret-no-usar-fuera-de-prueb
 // necesitan base levantan su propio `MongoMemoryServer` y no usan esta URI.
 process.env.MONGODB_URL ??= 'mongodb://127.0.0.1:27017/henko'
 
+// `createSubscriptionClient` rechaza la credencial de plataforma si no tiene
+// forma de token de Mercado Pago —tiene que empezar en `TEST-` o `APP_USR-`— y
+// tira MP_ACCESS_TOKEN_INVALID antes de intentar cualquier llamada. Sin esto,
+// `subscriptionClient.test.js` falla en el chequeo de formato y nunca llega a
+// probar lo que quiere probar, que es qué métodos expone el cliente.
+//
+// NO ES UNA CREDENCIAL: es un literal con forma válida y valor evidentemente
+// falso. Ninguna prueba sale a la red con esto.
+process.env.MP_ACCESS_TOKEN ??= 'TEST-0000000000000000-000000-0000000000000000000000000000000-000000000'
+
 // Las 7 suites que pasan por `src/test/testDB.js` sí conectan a un mongod real
 // (no a uno en memoria), y de ahí derivan el nombre de base agregándole `-test`.
 // En CI lo provee el service container del workflow; en una máquina sin Mongo
