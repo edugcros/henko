@@ -1,28 +1,13 @@
 // src/components/checkout/CartItemEditable.jsx
 import React, { useMemo } from 'react'
-import {
-  Box,
-  Typography,
-  TextField,
-  Button,
-  IconButton,
-  Paper,
-  Tooltip,
-} from '@mui/material'
+import { Box, Typography, TextField, Button, IconButton, Paper, Tooltip } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useTenant } from '../../contexts/TenantContext'
 import { getThemeColors } from '@utils/themeRuntime'
 
-const CartItemEditable = ({
-  item,
-  quantity,
-  onQuantityChange,
-  onUpdate,
-  onRemove,
-  isUpdating,
-}) => {
+const CartItemEditable = ({ item, quantity, onQuantityChange, onUpdate, onRemove, isUpdating }) => {
   const tenantContext = useTenant()
   const themeState = useSelector(state => state.theme)
 
@@ -38,10 +23,7 @@ const CartItemEditable = ({
     return {}
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const themeColors = useMemo(
-    () => getThemeColors(activeConfig),
-    [activeConfig],
-  )
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
 
   const productId = item.productId?._id || item.productId
   const needsUpdate = quantity !== item.quantity
@@ -166,9 +148,7 @@ const CartItemEditable = ({
                 type="number"
                 variant="standard"
                 value={quantity}
-                onChange={e =>
-                  onQuantityChange(productId, e.target.value, item.stock)
-                }
+                onChange={e => onQuantityChange(productId, e.target.value, item.stock)}
                 disabled={isUpdating}
                 InputProps={{ disableUnderline: true }}
                 inputProps={{
@@ -219,11 +199,7 @@ const CartItemEditable = ({
             </Tooltip>
           </Box>
 
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', mt: 0.5 }}
-          >
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
             ${item.price.toLocaleString()} c/u
           </Typography>
         </Box>

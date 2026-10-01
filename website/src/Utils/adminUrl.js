@@ -35,8 +35,7 @@ export const buildAdminBaseUrl = () => {
   const { hostname, protocol, host } = window.location
 
   if (isLocalHostname(hostname)) {
-    const adminBase =
-      removeProtocol(env?.adminBaseDomain) || `admin.${hostname}`
+    const adminBase = removeProtocol(env?.adminBaseDomain) || `admin.${hostname}`
     return `${protocol}//${adminBase}:3001`
   }
 

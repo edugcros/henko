@@ -137,7 +137,9 @@ const PaymentConfigPage = () => {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <Box
+        sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}
+      >
         <CircularProgress />
       </Box>
     )
@@ -161,10 +163,9 @@ const PaymentConfigPage = () => {
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 980, mx: 'auto' }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }} 
-        
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+
         spacing={2}
-        
       >
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800 }}>

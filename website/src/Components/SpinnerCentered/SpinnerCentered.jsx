@@ -1,12 +1,6 @@
 // 📁 src/components/SpinnerCentered.jsx
 import React from 'react'
-import {
-  Box,
-  CircularProgress,
-  Typography,
-  Fade,
-  keyframes,
-} from '@mui/material'
+import { Box, CircularProgress, Typography, Fade, keyframes } from '@mui/material'
 
 const spin = keyframes`
   0% { transform: rotate(0deg); }
@@ -26,9 +20,7 @@ const SpinnerCentered = ({
 }) => {
   const primaryColor = '#2563eb'
   const secondaryColor = '#111827'
-  const backgroundColor = transparent
-    ? 'transparent'
-    : 'rgba(255, 255, 255, 0.96)'
+  const backgroundColor = transparent ? 'transparent' : 'rgba(255, 255, 255, 0.96)'
 
   return (
     <Fade in timeout={350}>

@@ -122,7 +122,14 @@ const Customers = () => {
       </Stack>
 
       {isLoading && customers.length === 0 ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '50vh',
+          }}
+        >
           <CircularProgress size={60} thickness={4} />
         </Box>
       ) : (

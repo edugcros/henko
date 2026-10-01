@@ -11,9 +11,7 @@ const Forbidden = () => {
   return (
     <div className="notfound-container">
       <h1 className="notfound-title">403</h1>
-      <p className="notfound-message">
-        Tu cuenta no tiene permisos para acceder a esta sección.
-      </p>
+      <p className="notfound-message">Tu cuenta no tiene permisos para acceder a esta sección.</p>
       <Link to="/admin" className="notfound-link">
         Volver al panel principal
       </Link>

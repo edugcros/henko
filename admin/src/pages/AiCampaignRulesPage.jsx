@@ -185,8 +185,7 @@ const READINESS_MESSAGES = {
     'Tus reglas activas son de WhatsApp y ese canal está apagado en Configuración del agente. Dos salidas: prenderlo, o crear una regla de carrito abandonado por Email — el correo no necesita nada de Meta y le llega a cualquier comprador que haya dejado su dirección.',
   no_active_abandoned_cart_rule:
     'No hay ninguna regla activa de tipo "carrito abandonado" por WhatsApp, así que no se recupera ningún carrito.',
-  default:
-    'La recuperación de carritos no puede ejecutarse con la configuración actual.',
+  default: 'La recuperación de carritos no puede ejecutarse con la configuración actual.',
 }
 
 const AiCampaignRulesPage = () => {

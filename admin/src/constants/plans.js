@@ -61,8 +61,7 @@ export const getPlanName = plan => PLAN_PRESENTATION[plan]?.name || 'Desconocido
  * significa "el dueño todavía no lo definió" — no "es gratis" y no "es a
  * medida". Ofrecer el botón igual llevaría a un checkout que no puede cobrar.
  */
-export const isPlanContratable = priceArs =>
-  typeof priceArs === 'number' && priceArs > 0
+export const isPlanContratable = priceArs => typeof priceArs === 'number' && priceArs > 0
 
 /**
  * Pesos, siempre. HENKO cobra en pesos y no hay precio en dólares en ningún

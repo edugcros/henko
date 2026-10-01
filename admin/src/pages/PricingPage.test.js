@@ -181,12 +181,8 @@ describe('PricingPage · aplicar el precio', () => {
     // qué hacer con eso.
     await elegirProductoYAnalizar()
 
-    expect(
-      await screen.findByText(/Qué encontramos en este producto/i),
-    ).toBeDefined()
-    expect(
-      screen.getByText(/menos de lo que definiste como piso/i),
-    ).toBeDefined()
+    expect(await screen.findByText(/Qué encontramos en este producto/i)).toBeDefined()
+    expect(screen.getByText(/menos de lo que definiste como piso/i)).toBeDefined()
   })
 
   test('el botón aplica el precio que dejó la política', async () => {
@@ -205,9 +201,7 @@ describe('PricingPage · aplicar el precio', () => {
   test('después de aplicar dice qué cambió', async () => {
     await elegirProductoYAnalizar()
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /Aplicar/i }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: /Aplicar/i }))
 
     expect(await screen.findByText(/Precio actualizado/i)).toBeDefined()
   })
@@ -237,17 +231,13 @@ describe('PricingPage · producto sin senales', () => {
     await waitFor(() => expect(mockGetProducts).toHaveBeenCalled())
 
     await userEvent.type(screen.getByLabelText(/producto/i), 'Casco')
-    await userEvent.click(
-      await screen.findByRole('option', { name: /Casco AGV/i }),
-    )
+    await userEvent.click(await screen.findByRole('option', { name: /Casco AGV/i }))
     await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
 
     await waitFor(() => expect(mockRecommend).toHaveBeenCalled())
     expect(await screen.findByText(/Nada que corregir/i)).toBeDefined()
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Analizar igual/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Analizar igual/i }))
 
     expect(mockRecommend).toHaveBeenLastCalledWith(
       expect.objectContaining({ productId: 'p1', force: true }),
@@ -289,9 +279,7 @@ describe('PricingPage · la recomendacion no cambia nada', () => {
     await waitFor(() => expect(mockGetProducts).toHaveBeenCalled())
 
     await userEvent.type(screen.getByLabelText(/producto/i), 'Casco')
-    await userEvent.click(
-      await screen.findByRole('option', { name: /Casco AGV/i }),
-    )
+    await userEvent.click(await screen.findByRole('option', { name: /Casco AGV/i }))
     await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
 
     expect(await screen.findByText(/dejar el precio como está/i)).toBeDefined()

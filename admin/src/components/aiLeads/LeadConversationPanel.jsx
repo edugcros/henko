@@ -94,18 +94,10 @@ const LeadConversationPanel = ({
 
         {historial.length > 1 && (
           <Box sx={{ mt: 1.5 }}>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ fontWeight: 700 }}
-            >
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
               {historial.length} conversaciones de este cliente
             </Typography>
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ mt: 0.8, flexWrap: 'wrap', gap: 0.8 }}
-            >
+            <Stack direction="row" spacing={1} sx={{ mt: 0.8, flexWrap: 'wrap', gap: 0.8 }}>
               {historial.map((item, index) => (
                 <Chip
                   key={item.id}

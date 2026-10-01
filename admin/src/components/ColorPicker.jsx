@@ -116,32 +116,32 @@ const ColorPicker = ({
         placeholder="#3B82F6"
         slotProps={{
           input: {
-          startAdornment: (
-            <InputAdornment position="start">
-              <Box
-                onClick={handleOpen}
-                sx={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 1,
-                  backgroundColor: isValidHex(draftValue) ? draftValue : '#000000',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  cursor: 'pointer',
-                }}
-              />
-            </InputAdornment>
-          ),
-          endAdornment:
-            showReset && onReset ? (
-              <InputAdornment position="end">
-                <Tooltip title="Restaurar color">
-                  <IconButton size="small" edge="end" onClick={onReset}>
-                    <RefreshIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+            startAdornment: (
+              <InputAdornment position="start">
+                <Box
+                  onClick={handleOpen}
+                  sx={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 1,
+                    backgroundColor: isValidHex(draftValue) ? draftValue : '#000000',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    cursor: 'pointer',
+                  }}
+                />
               </InputAdornment>
-            ) : null,
+            ),
+            endAdornment:
+              showReset && onReset ? (
+                <InputAdornment position="end">
+                  <Tooltip title="Restaurar color">
+                    <IconButton size="small" edge="end" onClick={onReset}>
+                      <RefreshIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </InputAdornment>
+              ) : null,
           },
         }}
         sx={{
@@ -169,11 +169,13 @@ const ColorPicker = ({
           />
 
           <Box
-            
-            
-            sx={{ mt: 1, textAlign: 'center', fontFamily: 'monospace',
+            sx={{
+              mt: 1,
+              textAlign: 'center',
+              fontFamily: 'monospace',
               fontSize: 12,
-              color: 'text.secondary', }}
+              color: 'text.secondary',
+            }}
           >
             {draftValue.toUpperCase()}
           </Box>

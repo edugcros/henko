@@ -251,7 +251,9 @@ const AiAgentDashboardPage = () => {
 
   if (loading && !metrics) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <Box
+        sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}
+      >
         <CircularProgress />
       </Box>
     )
@@ -262,10 +264,9 @@ const AiAgentDashboardPage = () => {
       {/* Header */}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }} 
-        
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+
         spacing={2}
-        
       >
         <Box>
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
@@ -408,7 +409,11 @@ const AiAgentDashboardPage = () => {
         </Typography>
         <Divider sx={{ mb: 2.5 }} />
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          sx={{ alignItems: 'flex-start' }}
+        >
           <TextField
             fullWidth
             multiline
@@ -473,8 +478,8 @@ const AiAgentDashboardPage = () => {
         <Box sx={{ p: 2.5, pb: 1.5 }}>
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
-            sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }} 
-            
+            sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}
+
             spacing={1}
           >
             <Box>
@@ -590,10 +595,15 @@ const AiAgentDashboardPage = () => {
         {recoveryPagination.pages > 1 && (
           <Stack
             direction="row"
-            
-            
+
             spacing={1}
-            sx={{ justifyContent: 'flex-end', alignItems: 'center', p: 1.5, borderTop: '1px solid', borderColor: 'divider' }}
+            sx={{
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              p: 1.5,
+              borderTop: '1px solid',
+              borderColor: 'divider',
+            }}
           >
             <Typography variant="caption" color="text.secondary">
               {recoveryPagination.page} / {recoveryPagination.pages}

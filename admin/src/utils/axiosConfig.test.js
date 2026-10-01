@@ -40,8 +40,7 @@ const makeAdapter = ({ failFirst = true } = {}) => {
     const url = String(config.url || '')
     calls.push({
       url,
-      authorization:
-        config.headers?.Authorization || config.headers?.authorization || null,
+      authorization: config.headers?.Authorization || config.headers?.authorization || null,
     })
 
     if (url.includes('/user/refresh')) {

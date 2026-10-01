@@ -15,14 +15,12 @@ export const STATUS_META = {
   scheduled: {
     label: 'Programado',
     color: 'info',
-    description:
-      'Imagen programada para una hora específica. Aún no en análisis.',
+    description: 'Imagen programada para una hora específica. Aún no en análisis.',
   },
   imported: {
     label: 'En AddProduct',
     color: 'primary',
-    description:
-      'Admin abrió AddProduct con esta imagen. Preparando análisis IA.',
+    description: 'Admin abrió AddProduct con esta imagen. Preparando análisis IA.',
   },
   processing: {
     label: 'Procesando',
@@ -32,8 +30,7 @@ export const STATUS_META = {
   completed: {
     label: 'Analizado',
     color: 'success',
-    description:
-      'IA terminó análisis. Datos listos. Pendiente aprobación del admin.',
+    description: 'IA terminó análisis. Datos listos. Pendiente aprobación del admin.',
   },
   failed: {
     label: 'Fallido',

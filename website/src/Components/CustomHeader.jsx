@@ -122,18 +122,11 @@ const CustomHeader = () => {
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
   const isThemePreviewRoute =
-    typeof window !== 'undefined' &&
-    window.location.pathname === '/theme-preview'
+    typeof window !== 'undefined' && window.location.pathname === '/theme-preview'
   const isReady =
-    tenantReady ||
-    !!reduxConfig ||
-    (previewMode && !!previewConfig) ||
-    isThemePreviewRoute
+    tenantReady || !!reduxConfig || (previewMode && !!previewConfig) || isThemePreviewRoute
 
-  const themeColors = useMemo(
-    () => getThemeColors(activeConfig),
-    [activeConfig],
-  )
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
 
   // Datos de usuario
   const isAuthenticated = !!userState?.user
@@ -184,10 +177,8 @@ const CustomHeader = () => {
 
   const typography = useMemo(
     () => ({
-      fontFamily:
-        activeConfig?.typography?.fontFamily || theme.typography.fontFamily,
-      headingFont:
-        activeConfig?.typography?.headingFont || theme.typography.fontFamily,
+      fontFamily: activeConfig?.typography?.fontFamily || theme.typography.fontFamily,
+      headingFont: activeConfig?.typography?.headingFont || theme.typography.fontFamily,
     }),
     [activeConfig?.typography, theme.typography],
   )
@@ -201,8 +192,7 @@ const CustomHeader = () => {
 
   const contrastColor = colors.text
 
-  const configuredHeaderBackground =
-    colors.background || theme.palette.background.paper
+  const configuredHeaderBackground = colors.background || theme.palette.background.paper
 
   const headerBackground = headerConfig.isTransparent
     ? `linear-gradient(
@@ -212,9 +202,7 @@ const CustomHeader = () => {
       )`
     : configuredHeaderBackground
 
-  const headerBackdropFilter = headerConfig.isTransparent
-    ? 'blur(14px) saturate(160%)'
-    : 'none'
+  const headerBackdropFilter = headerConfig.isTransparent ? 'blur(14px) saturate(160%)' : 'none'
 
   const headerBoxShadow = headerConfig.isTransparent
     ? '0 8px 28px rgba(15, 23, 42, 0.08)'
@@ -314,11 +302,7 @@ const CustomHeader = () => {
       <List>
         {menuLinks.map(({ label, path }) => (
           <ListItem key={label} disablePadding>
-            <ListItemButton
-              component={Link}
-              to={path}
-              onClick={toggleDrawer(false)}
-            >
+            <ListItemButton component={Link} to={path} onClick={toggleDrawer(false)}>
               <ListItemText primary={label} />
             </ListItemButton>
           </ListItem>
@@ -330,11 +314,7 @@ const CustomHeader = () => {
       <List>
         {displayLinks.map(({ label, path, icon: Icon, badge }) => (
           <ListItem key={label} disablePadding>
-            <ListItemButton
-              component={Link}
-              to={path}
-              onClick={toggleDrawer(false)}
-            >
+            <ListItemButton component={Link} to={path} onClick={toggleDrawer(false)}>
               <Box display="flex" alignItems="center" gap={2}>
                 {badge > 0 ? (
                   <Badge badgeContent={badge} color="error">
@@ -361,10 +341,7 @@ const CustomHeader = () => {
                   toggleDrawer(false)()
                 }}
               >
-                <ListItemText
-                  primary="Cerrar Sesión"
-                  sx={{ color: 'error.main' }}
-                />
+                <ListItemText primary="Cerrar Sesión" sx={{ color: 'error.main' }} />
               </ListItemButton>
             </ListItem>
           </List>
@@ -416,11 +393,7 @@ const CustomHeader = () => {
           {/* LOGO */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {headerConfig.showLogo && (
-              <Box
-                component={Link}
-                to="/"
-                sx={{ textDecoration: 'none', color: 'inherit' }}
-              >
+              <Box component={Link} to="/" sx={{ textDecoration: 'none', color: 'inherit' }}>
                 {logoUrl ? (
                   <Box
                     component="img"
@@ -483,10 +456,7 @@ const CustomHeader = () => {
           >
             {displayLinks.map(({ label, path, icon: Icon, badge }) => (
               <Tooltip key={label} title={label}>
-                <IconButton
-                  onClick={() => navigate(path)}
-                  sx={{ color: colors.icon }}
-                >
+                <IconButton onClick={() => navigate(path)} sx={{ color: colors.icon }}>
                   {badge > 0 ? (
                     <Badge badgeContent={badge} color="error">
                       <Icon />
@@ -500,10 +470,7 @@ const CustomHeader = () => {
 
             {headerConfig.showSearch && (
               <Tooltip title="Buscar">
-                <IconButton
-                  onClick={() => navigate('/product')}
-                  sx={{ color: colors.icon }}
-                >
+                <IconButton onClick={() => navigate('/product')} sx={{ color: colors.icon }}>
                   <SearchIcon />
                 </IconButton>
               </Tooltip>
@@ -524,10 +491,7 @@ const CustomHeader = () => {
             )}
 
             {isMobile && (
-              <IconButton
-                onClick={toggleDrawer(true)}
-                sx={{ color: colors.icon }}
-              >
+              <IconButton onClick={toggleDrawer(true)} sx={{ color: colors.icon }}>
                 <MenuIcon />
               </IconButton>
             )}

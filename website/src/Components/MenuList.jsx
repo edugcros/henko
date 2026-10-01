@@ -20,10 +20,7 @@ const MenuList = ({ anchorEl, setAnchorEl, ListMenu }) => {
     return {}
   }, [reduxConfig, tenantConfig, previewConfig, previewMode])
 
-  const themeColors = useMemo(
-    () => getThemeColors(activeConfig),
-    [activeConfig],
-  )
+  const themeColors = useMemo(() => getThemeColors(activeConfig), [activeConfig])
 
   const handleClose = handleOnClick => {
     setAnchorEl(null)
@@ -69,10 +66,7 @@ const MenuList = ({ anchorEl, setAnchorEl, ListMenu }) => {
       sx={menuListStyles.root}
     >
       {ListMenu.map(item => (
-        <MenuItem
-          key={item.title}
-          onClick={() => handleClose(item.handleOnClick)}
-        >
+        <MenuItem key={item.title} onClick={() => handleClose(item.handleOnClick)}>
           <ListItemText sx={menuListStyles.listItemText} primary={item.title} />
         </MenuItem>
       ))}

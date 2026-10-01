@@ -159,7 +159,7 @@ const DEFAULTS = {
     warning: '#ed6c02',
     success: '#2e7d32',
     accent: '#ff9800',
-    info: '#0288d1',  
+    info: '#0288d1',
   },
 
   typography: {

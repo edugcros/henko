@@ -155,9 +155,7 @@ class ErrorBoundary extends React.Component {
 
     // Dos mensajes distintos porque son dos problemas distintos, y lo que el
     // usuario puede hacer al respecto también.
-    const titulo = esChunk
-      ? '🔄 No se pudo cargar esta sección'
-      : '😢 Ocurrió un error inesperado'
+    const titulo = esChunk ? '🔄 No se pudo cargar esta sección' : '😢 Ocurrió un error inesperado'
 
     const mensaje = esChunk
       ? 'Puede que haya una versión nueva del panel. Recargá la página; si vuelve a pasar, avisanos.'

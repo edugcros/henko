@@ -85,17 +85,13 @@ describe('getCurrentUser · la forma de /me', () => {
       data: { success: true, data: { algo: 'que no es un usuario' } },
     })
 
-    await expect(authService.getCurrentUser()).rejects.toThrow(
-      /No se pudo recuperar el perfil/i,
-    )
+    await expect(authService.getCurrentUser()).rejects.toThrow(/No se pudo recuperar el perfil/i)
 
     mockApi.mockResolvedValue({
       data: { success: true, data: { _id: 'x' } },
     })
 
-    await expect(authService.getCurrentUser()).rejects.toThrow(
-      /No se pudo recuperar el perfil/i,
-    )
+    await expect(authService.getCurrentUser()).rejects.toThrow(/No se pudo recuperar el perfil/i)
   })
 })
 
@@ -156,9 +152,7 @@ const OTRO_USUARIO = {
 
 describe('buildSessionKey · a quién pertenece lo cacheado', () => {
   test('la clave junta usuario y comercio', () => {
-    expect(buildSessionKey(USUARIO)).toBe(
-      '64b7f0000000000000000009:6a4dcc911161615f76a8131f',
-    )
+    expect(buildSessionKey(USUARIO)).toBe('64b7f0000000000000000009:6a4dcc911161615f76a8131f')
   })
 
   test('dos cuentas distintas nunca comparten clave', () => {
@@ -172,9 +166,7 @@ describe('buildSessionKey · a quién pertenece lo cacheado', () => {
   test('el mismo usuario en otro comercio da OTRA clave', () => {
     const mismoUsuarioOtroComercio = { ...USUARIO, tenantId: 'otro-comercio' }
 
-    expect(buildSessionKey(mismoUsuarioOtroComercio)).not.toBe(
-      buildSessionKey(USUARIO),
-    )
+    expect(buildSessionKey(mismoUsuarioOtroComercio)).not.toBe(buildSessionKey(USUARIO))
   })
 
   test('acepta el tenantId populado, no solo el id suelto', () => {
@@ -208,9 +200,7 @@ describe('getMe · lo cacheado no sobrevive a un cambio de cuenta', () => {
 
     return {
       resultado,
-      reseteo: dispatch.mock.calls.some(
-        ([accion]) => accion?.type === SESSION_RESET,
-      ),
+      reseteo: dispatch.mock.calls.some(([accion]) => accion?.type === SESSION_RESET),
     }
   }
 
@@ -222,9 +212,7 @@ describe('getMe · lo cacheado no sobrevive a un cambio de cuenta', () => {
   // EL CASO. La pestaña tenía cacheada la cuenta de otro comercio porque una
   // segunda pestaña entró con otra cuenta y pisó la cookie del origen.
   test('si la cookie devuelve OTRA cuenta, se tira todo el estado', async () => {
-    const { reseteo, resultado } = await correrGetMe(
-      buildSessionKey(OTRO_USUARIO),
-    )
+    const { reseteo, resultado } = await correrGetMe(buildSessionKey(OTRO_USUARIO))
 
     expect(reseteo).toBe(true)
     // Y lo que queda es lo que dijo la cookie, no lo que había cacheado.

@@ -33,12 +33,7 @@ export const getPlatformAiSpend = async period => {
  * costar veinte dolares o cien segun que modelo responda — y eso lo decide la
  * cadena de respaldo, no nosotros.
  */
-export const updatePlatformAiBudget = async ({
-  tokens,
-  usd,
-  perTenantShare,
-  reason,
-}) => {
+export const updatePlatformAiBudget = async ({ tokens, usd, perTenantShare, reason }) => {
   const response = await api.put('/platform/ai-spend/budget', {
     // undefined no viaja en JSON, asi que un campo que no se toca no llega al
     // backend y no se escribe. Es lo que permite mover uno sin pisar los otros.

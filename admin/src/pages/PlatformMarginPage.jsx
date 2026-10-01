@@ -66,10 +66,7 @@ export default function PlatformMarginPage() {
         if (err?.response?.status === 403) {
           setForbidden(true)
         } else {
-          setError(
-            err?.response?.data?.message ||
-              'No se pudo cargar el reporte de margen.',
-          )
+          setError(err?.response?.data?.message || 'No se pudo cargar el reporte de margen.')
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -120,11 +117,7 @@ export default function PlatformMarginPage() {
         Período: {report?.period}
       </Typography>
 
-      <Stack
-        direction="row"
-        spacing={2}
-        sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}
-      >
+      <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
           <Typography variant="caption" color="text.secondary">
             Comercios
@@ -162,9 +155,7 @@ export default function PlatformMarginPage() {
             Infra + storage (plataforma)
           </Typography>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {formatArs(
-              (totals.infraCostArs || 0) + (totals.storageCostArs || 0),
-            )}
+            {formatArs((totals.infraCostArs || 0) + (totals.storageCostArs || 0))}
           </Typography>
         </Paper>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
@@ -191,10 +182,7 @@ export default function PlatformMarginPage() {
             <Typography variant="caption" color="error.main">
               Pierden plata
             </Typography>
-            <Typography
-              variant="h6"
-              sx={{ fontWeight: 800, color: 'error.main' }}
-            >
+            <Typography variant="h6" sx={{ fontWeight: 800, color: 'error.main' }}>
               {totals.unprofitableCount}
             </Typography>
             <Typography variant="caption" color="text.secondary">
@@ -207,11 +195,7 @@ export default function PlatformMarginPage() {
       <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1 }}>
         Ciclo de vida de comercios
       </Typography>
-      <Stack
-        direction="row"
-        spacing={2}
-        sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}
-      >
+      <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Paper sx={{ p: 2, borderRadius: 3, minWidth: 180 }} variant="outlined">
           <Typography variant="caption" color="text.secondary">
             Altas este período
@@ -254,11 +238,7 @@ export default function PlatformMarginPage() {
         </Paper>
       </Stack>
 
-      <TableContainer
-        component={Paper}
-        variant="outlined"
-        sx={{ borderRadius: 3, mb: 3 }}
-      >
+      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3, mb: 3 }}>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -293,9 +273,7 @@ export default function PlatformMarginPage() {
                 }
               >
                 <TableCell>{tenant.name}</TableCell>
-                <TableCell sx={{ textTransform: 'capitalize' }}>
-                  {tenant.plan}
-                </TableCell>
+                <TableCell sx={{ textTransform: 'capitalize' }}>{tenant.plan}</TableCell>
                 <TableCell>
                   <Chip
                     size="small"
@@ -304,23 +282,14 @@ export default function PlatformMarginPage() {
                     sx={{ textTransform: 'capitalize' }}
                   />
                 </TableCell>
-                <TableCell align="right">
-                  {formatArs(tenant.planPriceArs)}
-                </TableCell>
-                <TableCell align="right">
-                  {formatArs(tenant.aiCostArs)}
-                </TableCell>
-                <TableCell align="right">
-                  {formatArs(tenant.communicationsCostArs)}
-                </TableCell>
-                <TableCell align="right">
-                  {formatArs(tenant.estimatedMarginArs)}
-                </TableCell>
+                <TableCell align="right">{formatArs(tenant.planPriceArs)}</TableCell>
+                <TableCell align="right">{formatArs(tenant.aiCostArs)}</TableCell>
+                <TableCell align="right">{formatArs(tenant.communicationsCostArs)}</TableCell>
+                <TableCell align="right">{formatArs(tenant.estimatedMarginArs)}</TableCell>
                 <TableCell align="right">
                   {/* null = el plan no tiene precio cargado. Sin ingreso no hay
                       porcentaje, y un cero ahí se leería como "no deja nada". */}
-                  {tenant.marginPercent === null ||
-                  tenant.marginPercent === undefined
+                  {tenant.marginPercent === null || tenant.marginPercent === undefined
                     ? '—'
                     : `${tenant.marginPercent}%`}
                 </TableCell>
@@ -328,11 +297,7 @@ export default function PlatformMarginPage() {
             ))}
             {!tenants.length && (
               <TableRow>
-                <TableCell
-                  colSpan={8}
-                  align="center"
-                  sx={{ py: 4, color: 'text.secondary' }}
-                >
+                <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                   Sin datos para este período.
                 </TableCell>
               </TableRow>

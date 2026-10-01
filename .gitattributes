@@ -1,0 +1,39 @@
+# Finales de línea, normalizados de una vez.
+#
+# POR QUE EXISTE ESTE ARCHIVO
+#
+# Sin él, el repo tenía 285 de 761 archivos versionados con CRLF y el resto con
+# LF, mezclados dentro de un mismo paquete y a veces del mismo directorio. Eso
+# no es cosmético:
+#
+# - Prettier y ESLint tratan el final de línea como contenido, así que el mismo
+#   archivo da errores distintos según en qué máquina se abra.
+# - Un `git diff` de un cambio de una línea puede aparecer como el archivo
+#   entero reescrito, lo que vuelve inútil la revisión y `git blame`.
+# - Dos personas en sistemas distintos se pisan los cambios sin tocar la misma
+#   lógica.
+#
+# `text=auto eol=lf` deja LF en el repositorio para todo lo que git detecte como
+# texto. En el disco de quien trabaja en Windows, git sigue respetando lo que
+# diga su `core.autocrlf`, así que esto no le cambia el editor a nadie: cambia
+# lo que queda guardado.
+#
+# El commit que lo introduce trae además la renormalización
+# (`git add --renormalize .`) en el mismo movimiento, y NADA MAS. Va solo para
+# que se pueda saltear entero al leer la historia y para que `git blame` siga
+# sirviendo: es un commit sin cambios de comportamiento, archivo por archivo.
+
+* text=auto eol=lf
+
+# Binarios declarados a mano. `text=auto` los detecta bien en general, pero
+# dejarlo explícito evita que un heurístico los corrompa si alguna vez cambia.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.ico  binary
+
+# Los lockfiles los genera npm y no se revisan a mano: marcarlos así saca miles
+# de líneas del diff cuando se actualizan dependencias, sin dejar de versionarlos.
+package-lock.json linguist-generated=true diff=npm
