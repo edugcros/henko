@@ -16,6 +16,7 @@ There is no root-level `package.json`; each package is managed independently.
 - `admin/package.json`: admin app development, build, lint, and format scripts.
 - `website/package.json`: storefront development, build, lint, test, and format scripts.
 - `backend/jest.env.js` and `website/jest.env.js`: the minimum environment the test suites need, so they run on a clean checkout. `backend/.env.development` is gitignored and is NOT required to run the tests.
+- `.github/workflows/trabajos-periodicos.yml`: the external scheduler for the eight periodic jobs. They are still registered with `setInterval` in `server.js`, but the hosting plan sleeps the service, so a sleeping timer never reaches its interval. The workflow calls `POST /api/internal/jobs/:nombre`, defined in `app.js` before the CSRF and rate-limit middleware and guarded by `JOBS_TRIGGER_SECRET`. Read that endpoint's comment before adding or renaming a job.
 
 ## Important patterns for an AI coding agent
 

@@ -82,3 +82,8 @@ export const stopAiCartRecoveryWorker = () => {
 
   isRunning = false
 }
+
+// Se exporta para poder dispararlo desde afuera, igual que runInsightCycle en
+// el worker de insights. El porqué está en app.js: en un plan que duerme el
+// servicio, un setInterval no alcanza su intervalo nunca.
+export { runRecoveryCycle }
