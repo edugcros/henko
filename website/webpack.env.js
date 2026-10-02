@@ -204,9 +204,7 @@ const assertDeployEnv = () => {
   // se descubre cuando alguien cruza las ventas contra lo que efectivamente
   // entró, que puede ser días después.
   if (mpPublicKey && mpPublicKey.startsWith('TEST-')) {
-    throw new Error(
-      `REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en ${APP_ENV}`,
-    )
+    throw new Error(`REACT_APP_MP_PUBLIC_KEY de prueba no está permitida en ${APP_ENV}`)
   }
 
   if (hasPlaceholder(mpPublicKey)) {

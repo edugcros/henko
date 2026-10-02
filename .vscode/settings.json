@@ -1,0 +1,59 @@
+{
+  // Único archivo del editor que se versiona. Existe para que el formato no
+  // dependa de cómo tenga configurada VS Code cada persona.
+  //
+  // POR QUÉ HACE FALTA
+  //
+  // El PR #247 resolvió un conflicto entre eslint y prettier que se deshacían
+  // el trabajo mutuamente, y el CI ahora exige el lint en los tres paquetes.
+  // Pero sin esto, el formateo al guardar lo decide cada máquina: alcanza con
+  // que alguien tenga otro formateador por defecto para que el conflicto
+  // vuelva a entrar por la puerta de atrás, archivo por archivo.
+
+  // prettier.config.cjs está en la RAÍZ y vale para los tres paquetes.
+  // Antes había dos copias idénticas, en admin/ y en website/, y el backend
+  // no tenía ninguna: sus archivos se formateaban con los valores por defecto
+  // de prettier, que son los contrarios a los que usa (punto y coma y comillas
+  // dobles). Medido antes de unificar: con esta config, 0 de 331 archivos del
+  // backend cambian. O sea que ya estaba escrito así, solo faltaba declararlo.
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+
+  // eslint NO corre con --fix al guardar, a propósito. El formato lo resuelve
+  // prettier, que está medido; los arreglos automáticos de eslint no, y
+  // `npm run lint` del backend reporta sin tocar archivos justamente para que
+  // nadie los reescriba sin querer. Para arreglar: `npm run lint:fix`.
+  "eslint.format.enable": false,
+
+  // Sin un package.json en la raíz, la extensión de eslint no adivina dónde
+  // empieza cada paquete y no encuentra los eslint.config.js.
+  "eslint.workingDirectories": ["backend", "admin", "website"],
+
+  // .gitattributes deja todo el repositorio en LF y pide no commitear CRLF.
+  // Esto evita que el editor los vuelva a meter en archivos nuevos.
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  // En Markdown dos espacios al final son un salto de línea, no basura.
+  "[markdown]": {
+    "files.trimTrailingWhitespace": false
+  },
+
+  "js/ts.implicitProjectConfig.checkJs": false,
+  "typescript.tsc.autoDetect": "off",
+  "typescript.disableAutomaticTypeAcquisition": true,
+
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/dist": true,
+    "**/coverage": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/build/**": true,
+    "**/dist/**": true,
+    "**/coverage/**": true
+  }
+}

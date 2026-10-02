@@ -60,7 +60,12 @@ website/build/
 **/*.zip
 
 # --- VSCode / OS ---
-.vscode/
+# Del editor se versiona SOLO settings.json, que es lo que hace que todos
+# formateen igual. El resto —launch.json personal, estado de la UI— sigue
+# afuera. Tiene que ser `.vscode/*` y no `.vscode/`: git no puede desexcluir
+# un archivo si el directorio entero está excluido.
+.vscode/*
+!.vscode/settings.json
 *.code-workspace
 .DS_Store
 Thumbs.db
