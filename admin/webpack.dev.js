@@ -72,5 +72,4 @@ export default merge(baseConfig, {
   stats: {
     errorDetails: true,
   },
-  
 })
