@@ -173,6 +173,27 @@ export const getDomainCandidates = value => {
   )]
 }
 
+/**
+ * ¿Este host es el panel compartido de la plataforma?
+ *
+ * Vive acá, y no en quien la usa, porque la necesitan dos módulos que no se
+ * pueden importar entre sí: `tenantMiddleware` —para resolver el comercio
+ * desde la sesión en vez del dominio— y `cookieHelper` —para saber de qué
+ * superficie es la sesión—. Duplicarla sería repetir exactamente el error que
+ * cuenta el encabezado de cookieHelper: dos implementaciones del mismo criterio
+ * que divergen con el tiempo.
+ *
+ * Recibe el dominio del panel por parámetro en lugar de leer `env`, para que
+ * este archivo siga sin dependencias y se pueda probar sin entorno.
+ */
+export const esHostDePanelDePlataforma = (host, adminBaseDomain) => {
+  const panel = normalizeHostname(adminBaseDomain || '')
+
+  if (!panel || !host) return false
+
+  return getDomainCandidates(host).includes(panel)
+}
+
 // =====================================================
 // Helpers
 // =====================================================

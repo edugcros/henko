@@ -7,6 +7,7 @@ import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
 import {
+  esHostDePanelDePlataforma,
   getDomainCandidates,
   normalizeHostname,
 } from '../utils/domainUtils.js'
@@ -199,15 +200,11 @@ const clearTenantContext = req => {
  * dice la sesión, que es de donde debería haber salido siempre: el dominio lo
  * elige quien hace la petición, el token lo firma el servidor.
  */
-const isPlatformAdminHost = host => {
-  const panel = normalizeHostname(
+const isPlatformAdminHost = host =>
+  esHostDePanelDePlataforma(
+    host,
     env.tenantAdminBaseDomain || env.adminBaseDomain,
   )
-
-  if (!panel || !host) return false
-
-  return getDomainCandidates(host).includes(panel)
-}
 
 /**
  * El comercio que dice la sesión, para el panel compartido.

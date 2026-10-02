@@ -26,7 +26,11 @@ import {
   sendWelcomeEmail,
 } from '../services/email/verificationEmail.service.js'
 import { sendResponse } from '../utils/response.js'
-import { getCookieDomain, usePartitionedCookies } from '../utils/cookieHelper.js'
+import {
+  getCookieDomain,
+  getSessionCookieNames,
+  usePartitionedCookies,
+} from '../utils/cookieHelper.js'
 import { buildPlatformTenantDomains, isReservedSlug } from '../utils/domainUtils.js'
 import {
   getUserIdFromRequest,
@@ -456,8 +460,13 @@ const clearAuthCookies = (res, req) => {
     ...(usePartitionedCookies(sameSite) ? { partitioned: true } : {}),
   }
 
-  res.clearCookie('token', httpOnlyCookieOptions)
-  res.clearCookie('refreshToken', httpOnlyCookieOptions)
+  // Solo las de ESTA superficie. Borrar también las de la otra haría que
+  // cerrar sesión en el panel desloguee de la tienda, que es justamente la
+  // mezcla que se vino a separar.
+  const { access, refresh } = getSessionCookieNames(req)
+
+  res.clearCookie(access, httpOnlyCookieOptions)
+  res.clearCookie(refresh, httpOnlyCookieOptions)
   res.clearCookie('_csrf', httpOnlyCookieOptions)
   res.clearCookie(env.csrfCookieName || 'XSRF-TOKEN', {
     ...httpOnlyCookieOptions,
@@ -476,7 +485,12 @@ const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
 
   const partitioned = usePartitionedCookies(sameSite)
 
-  res.cookie('refreshToken', refreshToken, {
+  // Panel y tienda escriben en casilleros distintos, así que las dos sesiones
+  // conviven en el mismo navegador sin pisarse. Ver cookieHelper.
+  const { access: nombreAccess, refresh: nombreRefresh } =
+    getSessionCookieNames(req)
+
+  res.cookie(nombreRefresh, refreshToken, {
     httpOnly: true,
     secure,
     sameSite,
@@ -487,7 +501,7 @@ const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
   })
 
   if (accessToken) {
-    res.cookie('token', accessToken, {
+    res.cookie(nombreAccess, accessToken, {
       httpOnly: true,
       secure,
       sameSite,
@@ -1210,7 +1224,7 @@ const REFRESH_GRACE_MS = Math.max(
 )
 
 export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
-  const refreshToken = req.cookies?.refreshToken
+  const refreshToken = req.cookies?.[getSessionCookieNames(req).refresh]
   if (!refreshToken) return sendResponse(res, 403, false, 'No hay token de refresco')
 
   let decoded
@@ -1421,7 +1435,7 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
 })
 
 export const logout = expressAsyncHandler(async (req, res) => {
-  const refreshToken = req.cookies?.refreshToken
+  const refreshToken = req.cookies?.[getSessionCookieNames(req).refresh]
 
   if (refreshToken) {
     try {
