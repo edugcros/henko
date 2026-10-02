@@ -1,0 +1,118 @@
+# Ejecuta los trabajos periódicos del backend desde afuera.
+#
+# POR QUE EXISTE ESTE ARCHIVO
+#
+# Los ocho trabajos se programan con `setInterval` dentro del proceso web. Eso
+# funciona mientras el proceso viva, y en el plan actual de Render NO vive: el
+# servicio se duerme por inactividad y un temporizador dormido no alcanza su
+# intervalo nunca. Cada despertar reinicia la cuenta desde cero, así que un
+# trabajo diario podía pasar semanas sin correr una vez entera.
+#
+# El arreglo no es mover la lógica: es que algo DESPIERTO toque la puerta. Y
+# GitHub Actions ya está acá, es gratis y tiene cron. La alternativa era un
+# cron de Render, que en este plan se paga.
+#
+# Los `setInterval` del backend se dejan tal cual. En un plan que no duerma
+# vuelven a ser el camino principal, y en desarrollo siguen siendo cómodos.
+#
+# QUE HACE FALTA PARA QUE ESTO FUNCIONE
+#
+#   1. La variable JOBS_TRIGGER_SECRET cargada en Render.
+#   2. El mismo valor como secreto del repositorio, con ese nombre.
+#
+# Sin el secreto en Render el endpoint contesta 503 y no ejecuta nada, así que
+# olvidarse no rompe nada: deja los trabajos como estaban.
+
+name: Trabajos periódicos
+
+on:
+  schedule:
+    # Cada hora, para los que miran cosas que cambian durante el día.
+    - cron: '17 * * * *'
+    # Una vez por día, 06:40 UTC (03:40 en Argentina), para las auditorías.
+    # Fuera de horario de compras: son consultas pesadas contra Mercado Pago.
+    - cron: '40 6 * * *'
+  # Para poder correr cualquiera a mano sin esperar al reloj.
+  workflow_dispatch:
+    inputs:
+      trabajo:
+        description: 'Nombre del trabajo (vacío = los de la tanda diaria)'
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: trabajos-periodicos
+  cancel-in-progress: false
+
+jobs:
+  disparar:
+    name: disparar
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Elegir qué trabajos corren en esta pasada
+        id: plan
+        env:
+          TRABAJO_MANUAL: ${{ inputs.trabajo }}
+          CRON: ${{ github.event.schedule }}
+        run: |
+          if [ -n "$TRABAJO_MANUAL" ]; then
+            echo "trabajos=$TRABAJO_MANUAL" >> "$GITHUB_OUTPUT"
+          elif [ "$CRON" = '17 * * * *' ]; then
+            # Horarios: atienden cosas que no pueden esperar al día siguiente.
+            # Un carrito abandonado se recupera hoy o no se recupera, y un
+            # dominio recién agregado no puede quedar sin certificado 24 horas.
+            echo "trabajos=recuperacion-de-carritos certificados operaciones-colgadas" >> "$GITHUB_OUTPUT"
+          else
+            # Diarios: auditorías. Reportan, no corrigen, y consultar al
+            # proveedor cuesta una llamada por orden.
+            echo "trabajos=ordenes suscripciones historial-de-precios contabilidad-ia insights" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ejecutar
+        env:
+          API: https://api.henkart.com.ar/api
+          SECRETO: ${{ secrets.JOBS_TRIGGER_SECRET }}
+          TRABAJOS: ${{ steps.plan.outputs.trabajos }}
+        run: |
+          if [ -z "$SECRETO" ]; then
+            echo "::error::Falta el secreto JOBS_TRIGGER_SECRET en el repositorio."
+            exit 1
+          fi
+
+          fallos=0
+
+          for trabajo in $TRABAJOS; do
+            echo "::group::$trabajo"
+
+            # --max-time generoso a propósito: la primera llamada despierta el
+            # servicio, y un arranque en frío de Render se come varios segundos
+            # antes de que el backend llegue siquiera a mirar el pedido.
+            codigo=$(curl -sS -o respuesta.json -w '%{http_code}' \
+              --max-time 600 \
+              --retry 2 --retry-connrefused --retry-delay 10 \
+              -X POST "$API/internal/jobs/$trabajo" \
+              -H "x-jobs-secret: $SECRETO")
+
+            echo "HTTP $codigo"
+            # El cuerpo trae el resultado de la auditoría, que es justamente lo
+            # que uno quiere leer cuando algo no cerró.
+            head -c 4000 respuesta.json || true
+            echo
+
+            case "$codigo" in
+              200) ;;
+              # Ya estaba corriendo: lo disparó el intervalo del proceso. No es
+              # un fallo, es el candado haciendo su trabajo.
+              409) echo "::notice::$trabajo ya estaba corriendo; se saltea." ;;
+              503) echo "::error::$trabajo: falta JOBS_TRIGGER_SECRET en Render."; fallos=$((fallos+1)) ;;
+              *)   echo "::error::$trabajo devolvió HTTP $codigo"; fallos=$((fallos+1)) ;;
+            esac
+
+            echo "::endgroup::"
+          done
+
+          exit $fallos

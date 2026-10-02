@@ -5,6 +5,7 @@ import helmet from 'helmet'
 import morgan from 'morgan'
 import mongoSanitize from 'express-mongo-sanitize'
 import path from 'path'
+import crypto from 'node:crypto'
 import { fileURLToPath } from 'url'
 import cors from 'cors'
 
@@ -24,6 +25,17 @@ import { notFound, errorHandler } from './src/middlewares/errorHandler.js'
 import { globalApiLimiter } from './src/middlewares/globalApiLimiter.js'
 import { requestId } from './src/middlewares/requestId.js'
 import apiRoutes from './src/routes/index.js'
+
+// Los ocho trabajos periódicos, para poder dispararlos desde afuera. El
+// porqué está en la sección correspondiente, más abajo.
+import { runRecoveryCycle } from './src/workers/aiCartRecoveryWorker.js'
+import { runInsightCycle } from './src/workers/aiInsightWorker.js'
+import { sweepStaleOperations } from './src/services/ai/aiBudgetService.js'
+import { runAccountingAudit } from './src/services/ai/aiAccountingService.js'
+import { refreshPendingCertificates } from './src/services/tenant/tenantDomainService.js'
+import { runSubscriptionAudit } from './src/services/subscriptionPaymentService.js'
+import { runPriceHistoryAudit } from './src/services/pricing/priceHistoryAuditService.js'
+import { runOrderReconciliation } from './src/services/paymentOrderService.js'
 
 // =======================================================
 // APP INIT
@@ -151,6 +163,148 @@ const health = (req, res) => {
 
 app.get('/health', health)
 app.get(`${env.apiPrefix}/health`, health)
+
+// =======================================================
+// DISPARADOR EXTERNO DE LOS TRABAJOS PERIÓDICOS
+// =======================================================
+//
+// POR QUÉ EXISTE
+//
+// Los ocho trabajos de abajo se programan con `setInterval` dentro del proceso
+// web (ver server.js). Eso funciona mientras el proceso viva, y en el plan
+// actual de Render NO vive: el servicio se duerme por inactividad, y un
+// temporizador dormido no alcanza su intervalo nunca. Cada despertar vuelve a
+// arrancar la cuenta desde cero, así que un trabajo diario podía pasar semanas
+// sin correr una vez entera.
+//
+// Hasta ahora tampoco había forma de ejecutarlos desde afuera: ninguna ruta,
+// ningún comando. La única manera de que corrieran era que alguien entrara al
+// sitio y esperara los dos minutos de la pasada de arranque.
+//
+// Esto le pone una puerta. El trabajo sigue viviendo donde vivía; lo único que
+// cambia es que ahora se puede golpear desde un programador externo que sí
+// está despierto. Los `setInterval` se dejan tal cual: en un plan que no
+// duerma vuelven a ser el camino principal, y en desarrollo siguen siendo
+// cómodos.
+//
+// DÓNDE ESTÁ MONTADO Y POR QUÉ ACÁ
+//
+// Antes del CSRF y del límite de tasa globales, igual que los health checks.
+// No es casualidad: un cron no tiene cómo traer un token CSRF, y pasarlo por
+// el limitador global lo dejaría sujeto al tráfico de los compradores.
+//
+// CÓMO SE AUTENTICA
+//
+// Con un secreto propio, no con una sesión: no hay “usuario” detrás de un
+// cron, y las rutas de plataforma exigen un JWT de administrador que una
+// máquina no puede obtener. El secreto es solo para esto —`env.js` ya valida
+// que los secretos de sesión no se compartan entre sí por el mismo motivo— y
+// se compara en tiempo constante.
+//
+// Si no está configurado, el endpoint responde 503 y no ejecuta nada. Esa es
+// la razón de que `JOBS_TRIGGER_SECRET` sea opcional: olvidarse de ponerlo
+// deja todo exactamente como estaba, en vez de tumbar el arranque.
+const TRABAJOS = {
+  'recuperacion-de-carritos': () => runRecoveryCycle({ logger }),
+  insights: () => runInsightCycle({ logger }),
+  'operaciones-colgadas': () => sweepStaleOperations({ logger }),
+  'contabilidad-ia': () => runAccountingAudit({ logger }),
+  certificados: () => refreshPendingCertificates({ logger }),
+  suscripciones: () => runSubscriptionAudit(),
+  'historial-de-precios': () => runPriceHistoryAudit(),
+  ordenes: () => runOrderReconciliation(),
+}
+
+// Ninguno de los ocho se protege por dentro contra correr dos veces a la vez,
+// y ahora hay dos disparadores posibles: el intervalo y esta ruta. Sin esto,
+// una pasada lenta podía solaparse con la siguiente y consultar dos veces al
+// proveedor por las mismas órdenes.
+const trabajosEnCurso = new Set()
+
+const secretoValido = recibido => {
+  const esperado = env.jobsTriggerSecret
+
+  if (!esperado) return false
+
+  const a = Buffer.from(String(recibido || ''))
+  const b = Buffer.from(esperado)
+
+  // timingSafeEqual exige el mismo largo; comparar antes no filtra nada que
+  // el atacante no pueda medir probando largos.
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
+app.post(`${env.apiPrefix}/internal/jobs/:nombre`, async (req, res) => {
+  if (!env.jobsTriggerSecret) {
+    return res.status(503).json({
+      success: false,
+      message: 'JOBS_TRIGGER_SECRET no está configurado; no se ejecuta nada.',
+    })
+  }
+
+  if (!secretoValido(req.headers['x-jobs-secret'])) {
+    logger.warn('[TRABAJOS] Intento con secreto inválido', {
+      trabajo: req.params.nombre,
+      ip: req.ip,
+    })
+    return res.status(401).json({ success: false, message: 'No autorizado' })
+  }
+
+  const { nombre } = req.params
+  const trabajo = TRABAJOS[nombre]
+
+  if (!trabajo) {
+    return res.status(404).json({
+      success: false,
+      message: `Trabajo desconocido: ${nombre}`,
+      disponibles: Object.keys(TRABAJOS),
+    })
+  }
+
+  if (trabajosEnCurso.has(nombre)) {
+    // 409 y no 200: que el programador externo lo vea como lo que es —una
+    // pasada que no ocurrió— en vez de creer que corrió.
+    return res.status(409).json({
+      success: false,
+      message: `${nombre} ya está corriendo`,
+    })
+  }
+
+  trabajosEnCurso.add(nombre)
+  const inicio = Date.now()
+
+  try {
+    const resultado = await trabajo()
+
+    logger.info('[TRABAJOS] Ejecutado desde afuera', {
+      trabajo: nombre,
+      ms: Date.now() - inicio,
+    })
+
+    return res.json({
+      success: true,
+      trabajo: nombre,
+      ms: Date.now() - inicio,
+      resultado: resultado ?? null,
+    })
+  } catch (error) {
+    logger.error('[TRABAJOS] Falló', {
+      trabajo: nombre,
+      ms: Date.now() - inicio,
+      error: error.message,
+    })
+
+    // Se contesta acá en vez de delegar al manejador global para que el cron
+    // reciba QUÉ trabajo falló y por qué, no un 500 genérico.
+    return res.status(500).json({
+      success: false,
+      trabajo: nombre,
+      message: error.message,
+    })
+  } finally {
+    trabajosEnCurso.delete(nombre)
+  }
+})
 
 // =======================================================
 // CSRF GLOBAL DINÁMICO

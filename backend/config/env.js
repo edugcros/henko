@@ -211,6 +211,12 @@ export const env = {
     '7d',
   ),
 
+  // Secreto con el que un programador externo —GitHub Actions, un cron de
+  // Render, lo que sea— dispara los trabajos periódicos. Opcional a propósito:
+  // sin él el endpoint responde 503 y no ejecuta nada, así que olvidarse no
+  // rompe el arranque, solo deja los trabajos como estaban. Ver app.js.
+  jobsTriggerSecret: process.env.JOBS_TRIGGER_SECRET || '',
+
   resetKey: process.env.RESET_KEY,
   cookieSecret: getFirstValue(
     process.env.COOKIE_SECRET,
