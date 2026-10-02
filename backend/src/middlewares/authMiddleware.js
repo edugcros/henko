@@ -5,6 +5,10 @@ import {
   getAccessTokenFromRequest,
 } from '../utils/authRequest.js'
 import { isValidObjectId } from '../utils/requestContext.js'
+import {
+  SESSION_COOKIE_NAMES,
+  getSessionCookieNames,
+} from '../utils/cookieHelper.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
 
@@ -34,9 +38,15 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
   // ---------------------------------------------------
   const token = getAccessTokenFromRequest(req)
 
+  // Los nombres dependen de la superficie, así que el diagnóstico tiene que
+  // mirar los mismos que mira la lectura real. Con los literales viejos, este
+  // log decía "no hay cookie" en cada petición del panel.
+  const cookiesDeSesion = getSessionCookieNames(req)
+
   logger.debug('[AUTH] Credenciales recibidas', {
-    hasCookieToken: Boolean(req.cookies?.token),
-    hasCookieRefreshToken: Boolean(req.cookies?.refreshToken),
+    superficie: cookiesDeSesion === SESSION_COOKIE_NAMES.admin ? 'panel' : 'tienda',
+    hasCookieToken: Boolean(req.cookies?.[cookiesDeSesion.access]),
+    hasCookieRefreshToken: Boolean(req.cookies?.[cookiesDeSesion.refresh]),
     hasAuthorization: Boolean(req.headers.authorization),
     hasXAccessToken: Boolean(req.headers['x-access-token']),
     origin: req.headers.origin || null,

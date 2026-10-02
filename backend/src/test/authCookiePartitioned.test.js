@@ -213,3 +213,98 @@ describe('qué obliga a SameSite=None', () => {
     ).toEqual(['ALLOWED_ORIGINS: https://henkart.com.ar'])
   })
 })
+
+// =====================================================
+// Panel y tienda no comparten casillero de sesión
+// =====================================================
+//
+// EL ERROR QUE CIERRA ESTE BLOQUE
+//
+// Al entrar a la tienda con un comprador, el panel empezaba a devolver 403:
+// leía la sesión del comprador, que no tiene permisos de administración.
+//
+// La causa es la de arriba vista al revés. El comentario de este archivo dice
+// que con CHIPS "cada pantalla queda en su propia partición", y eso NO vale
+// entre subdominios del mismo sitio: la partición se indexa por el dominio
+// registrable, y admin.henkart.com.ar y henkart.com.ar registran los dos bajo
+// henkart.com.ar. Súmese que la cookie es host-only de la API —que es la misma
+// para las dos apps— y queda un único casillero con un único nombre.
+//
+// De las tres cosas que lo identifican (host emisor, partición, nombre) la
+// única elegible por petición es el nombre. Por eso se separa ahí.
+
+const { SESSION_COOKIE_NAMES, getSessionCookieNames } = await import(
+  '../utils/cookieHelper.js'
+)
+const { env: entorno } = await import('../../config/env.js')
+
+const DOMINIO_DEL_PANEL = entorno.tenantAdminBaseDomain || entorno.adminBaseDomain
+
+describe('cookies de sesión · el panel y la tienda no se pisan', () => {
+  test('el panel y la tienda no usan el mismo nombre', () => {
+    expect(SESSION_COOKIE_NAMES.admin.access).not.toBe(
+      SESSION_COOKIE_NAMES.storefront.access,
+    )
+    expect(SESSION_COOKIE_NAMES.admin.refresh).not.toBe(
+      SESSION_COOKIE_NAMES.storefront.refresh,
+    )
+  })
+
+  test('una petición del panel compartido usa las cookies del panel', () => {
+    const req = { headers: { origin: `https://${DOMINIO_DEL_PANEL}` } }
+
+    expect(getSessionCookieNames(req)).toEqual(SESSION_COOKIE_NAMES.admin)
+  })
+
+  test('una petición de la tienda conserva los nombres de siempre', () => {
+    const req = { headers: { origin: 'https://mitienda.example' } }
+
+    // No es un detalle: cambiar estos nombres desloguearía a todos los
+    // compradores de todas las tiendas. El nombre nuevo va del lado del panel,
+    // donde el costo es que cada admin entre una vez más.
+    expect(getSessionCookieNames(req)).toEqual({
+      access: 'token',
+      refresh: 'refreshToken',
+    })
+  })
+
+  test('lo que resolvió tenantMiddleware manda sobre el Origin', () => {
+    // Cubre el panel propio de un comercio, que no coincide con el dominio de
+    // panel de la plataforma y por Origin no se reconocería.
+    const req = {
+      headers: { origin: 'https://panel.mitienda.example' },
+      isAdminContext: true,
+      isShopContext: false,
+    }
+
+    expect(getSessionCookieNames(req)).toEqual(SESSION_COOKIE_NAMES.admin)
+  })
+
+  test("un dominio 'both' queda del lado de la tienda, como antes", () => {
+    // Una sola URL sirviendo tienda y panel es un único origen con un único
+    // cookie jar: no hay nada que separar. Se deja como estaba para no
+    // cambiarle el comportamiento a nadie.
+    const req = {
+      headers: { origin: 'https://ambas.example' },
+      isAdminContext: true,
+      isShopContext: true,
+    }
+
+    expect(getSessionCookieNames(req)).toEqual(SESSION_COOKIE_NAMES.storefront)
+  })
+
+  test('sin Origin ni contexto cae a la tienda', () => {
+    expect(getSessionCookieNames({ headers: {} })).toEqual(
+      SESSION_COOKIE_NAMES.storefront,
+    )
+    expect(getSessionCookieNames(undefined)).toEqual(
+      SESSION_COOKIE_NAMES.storefront,
+    )
+  })
+
+  test('el Referer sirve de respaldo cuando no hay Origin', () => {
+    const req = { headers: { referer: `https://${DOMINIO_DEL_PANEL}/productos` } }
+
+    expect(getSessionCookieNames(req)).toEqual(SESSION_COOKIE_NAMES.admin)
+  })
+})

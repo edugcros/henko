@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken'
 import { env } from '../../config/env.js'
 
 import { isValidObjectId } from './requestContext.js'
+import { getSessionCookieNames } from './cookieHelper.js'
 
 export const parseBearer = req => {
   const auth = req.headers?.authorization
@@ -12,9 +13,18 @@ export const parseBearer = req => {
 }
 
 export const getAccessTokenFromRequest = req => {
+  // El nombre depende de la app que hace la petición: panel y tienda tienen
+  // cookies distintas porque comparten host de API y partición, y con un solo
+  // nombre el último login pisaba al otro. El porqué está en cookieHelper.
+  //
+  // Se lee SOLO el nombre de la superficie, sin caer al otro. Caer sería
+  // volver a traer el bug: el panel leería la sesión del comprador y seguiría
+  // devolviendo 403.
+  const { access } = getSessionCookieNames(req)
+
   return (
     parseBearer(req) ||
-    req.cookies?.token ||
+    req.cookies?.[access] ||
     req.headers['x-access-token'] ||
     req.headers.token ||
     null
