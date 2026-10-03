@@ -20,7 +20,7 @@
 // mock.
 
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 
@@ -46,7 +46,7 @@ const PERFIL = {
 let mongod
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
   // El índice único ES el mecanismo: sin construirlo, el primer test correría
   // sin candado y pasaría por casualidad.

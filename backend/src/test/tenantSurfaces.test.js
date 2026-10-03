@@ -26,7 +26,7 @@
 
 import mongoose from 'mongoose'
 import request from 'supertest'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 
@@ -37,7 +37,7 @@ const { createTestTenant, createTestUser, getCSRFToken } = await import('./testS
 let mongod
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create({ instance: { launchTimeout: 60000 } })
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
 }, 180000)
 

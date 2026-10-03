@@ -14,7 +14,7 @@
 // contaría un gasto que se revirtió.
 
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 
 const TENANT = new mongoose.Types.ObjectId();
 const PERIODO = "2026-09";
@@ -44,7 +44,7 @@ const porMetrica = async metric =>
   (await getPeriodSpendByMetric(PERIODO)).find(row => row.metric === metric);
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await crearMongoEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   Ledger = (await import("../models/aiConsumptionLedgerModel.js")).default;

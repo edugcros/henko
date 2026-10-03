@@ -36,7 +36,7 @@
 
 import mongoose from 'mongoose'
 import request from 'supertest'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 
@@ -52,7 +52,7 @@ beforeAll(async () => {
   // —varias suites levantando su propia base en secuencia— no alcanza. El
   // síntoma es "Instance failed to start within 10000ms", que se lee como si
   // fallara la prueba cuando en realidad no llegó a correr.
-  mongod = await MongoMemoryServer.create({ instance: { launchTimeout: 60000 } })
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
 }, 180000)
 

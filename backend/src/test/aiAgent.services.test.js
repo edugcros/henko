@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 
 import { buildAgentActions } from "../services/aiAgent/aiAgentActionService.js";
 import { buildAgentSystemPrompt } from "../services/aiAgent/aiAgentPromptService.js";
@@ -199,7 +199,7 @@ describe("leads · una charla nueva no pisa la oportunidad cerrada", () => {
     });
 
   beforeAll(async () => {
-    mongod = await MongoMemoryServer.create();
+    mongod = await crearMongoEnMemoria();
     await mongoose.connect(mongod.getUri());
 
     AiLead = (await import("../models/aiLeadModel.js")).default;
@@ -345,7 +345,7 @@ describe("reglas de campaña · editar una regla existente", () => {
   const TENANT = new mongoose.Types.ObjectId();
 
   beforeAll(async () => {
-    mongod = await MongoMemoryServer.create();
+    mongod = await crearMongoEnMemoria();
     await mongoose.connect(mongod.getUri());
     AiCampaignRule = (await import("../models/aiCampaignRuleModel.js")).default;
   }, 60000);
@@ -420,7 +420,7 @@ describe("recuperación de carritos · por qué no corre", () => {
     });
 
   beforeAll(async () => {
-    mongod = await MongoMemoryServer.create();
+    mongod = await crearMongoEnMemoria();
     await mongoose.connect(mongod.getUri());
     AiAgent = (await import("../models/aiAgentModel.js")).default;
     AiCampaignRule = (await import("../models/aiCampaignRuleModel.js")).default;
@@ -618,7 +618,7 @@ describe("recuperación de carritos · el correo también sirve", () => {
   });
 
   beforeAll(async () => {
-    mongod = await MongoMemoryServer.create();
+    mongod = await crearMongoEnMemoria();
     await mongoose.connect(mongod.getUri());
 
     AiAgent = (await import("../models/aiAgentModel.js")).default;

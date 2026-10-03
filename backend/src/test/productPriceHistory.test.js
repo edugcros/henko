@@ -11,7 +11,7 @@
 
 import { jest } from "@jest/globals";
 import mongoose from "mongoose";
-import { MongoMemoryReplSet } from "mongodb-memory-server";
+import { crearReplicaEnMemoria } from "./testDB.js";
 
 const TENANT = new mongoose.Types.ObjectId();
 const USER = new mongoose.Types.ObjectId();
@@ -27,7 +27,7 @@ let withOptionalTransaction;
 // precio se revierta cuando su historial no entra— no se puede ni ejecutar.
 // Producción es Atlas, o sea replica set, así que además se parece más.
 beforeAll(async () => {
-  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  mongod = await crearReplicaEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   Product = (await import("../models/productModel.js")).default;

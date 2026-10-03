@@ -18,7 +18,7 @@
 // con el plugin de aislamiento salteado a propósito.
 
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 // Precios y cambio fijos: sin esto las cuentas esperadas dependerían del
@@ -78,7 +78,7 @@ const asentar = ({ tenantId, costUsd, tenantProviderCostUsd = null, keySource = 
   })
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
 }, 180000)
 

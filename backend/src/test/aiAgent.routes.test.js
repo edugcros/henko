@@ -7,7 +7,7 @@ import AiInsight from '../models/aiInsightModel.js'
 import AiLearningSuggestion from '../models/aiLearningSuggestionModel.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 import mongoose from 'mongoose'
 
 import { authHeaders, createTestTenant, createTestUser } from './testSetup.js'
@@ -74,7 +74,7 @@ describe('colas de revisión · primero lo urgente', () => {
     // se insertan en el beforeAll y otra suite puede dropear la base entre
     // medio. Un test que falla una de cada tres corridas no dice nada sobre el
     // código, y enseña a ignorar el rojo.
-    mongod = await MongoMemoryServer.create()
+    mongod = await crearMongoEnMemoria()
     await mongoose.connect(mongod.getUri())
 
     tenantContext = await createTestTenant()

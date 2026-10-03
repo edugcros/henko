@@ -14,7 +14,7 @@
 // coincidan con lo que el medidor escribió por el otro camino.
 
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
@@ -56,7 +56,7 @@ const PERFIL = {
 let mongod
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
   await AiOperation.init()
   await AiProviderCall.init()

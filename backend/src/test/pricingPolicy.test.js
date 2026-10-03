@@ -354,9 +354,9 @@ describe("aplicar el precio recomendado", () => {
 
   beforeAll(async () => {
     mongoose = (await import("mongoose")).default;
-    const { MongoMemoryServer } = await import("mongodb-memory-server");
+    const { crearMongoEnMemoria } = await import("./testDB.js");
 
-    mongod = await MongoMemoryServer.create();
+    mongod = await crearMongoEnMemoria();
     await mongoose.connect(mongod.getUri());
 
     TENANT = new mongoose.Types.ObjectId();

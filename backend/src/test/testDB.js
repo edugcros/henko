@@ -93,3 +93,52 @@ export const disconnectTestDB = async () => {
 
   await mongoose.connection.close()
 }
+
+// =====================================================
+// Mongo en memoria
+// =====================================================
+
+/**
+ * Cuánto se le da a `mongod` para levantar antes de darlo por fallado.
+ *
+ * POR QUÉ NO ALCANZABAN LOS 10 SEGUNDOS QUE TRAE POR DEFECTO
+ *
+ * Veintisiete suites levantan y apagan su propio `mongod`, y como la suite
+ * corre con `--runInBand` son veintisiete arranques en fila dentro de la misma
+ * corrida. En una máquina ocupada —un antivirus mirando el binario, la caché
+ * de disco fría, un build corriendo al lado— alguno se pasa de diez segundos y
+ * la suite entera se cae con:
+ *
+ *   GenericMMSError: Instance failed to start within 10000ms
+ *
+ * Medido: pasó con `aiReconciliation`, que tiró sus 39 pruebas y volvió a
+ * pasar sola al correrla aislada. Eso es lo peor de un verde inestable — no se
+ * distingue de un rojo real hasta que se investiga.
+ *
+ * Cuatro suites ya pasaban este mismo valor, agregado a mano cuando les falló
+ * a ellas. Acá queda en un solo lugar y con el motivo escrito.
+ *
+ * Subir el techo no hace más lenta ninguna corrida: si `mongod` arranca en
+ * trescientos milisegundos, arranca en trescientos milisegundos. Lo único que
+ * cambia es cuánto se espera antes de declararlo muerto.
+ */
+const ARRANQUE_MONGO_MS = 60000
+
+export const crearMongoEnMemoria = async (opciones = {}) => {
+  const { MongoMemoryServer } = await import('mongodb-memory-server')
+
+  return MongoMemoryServer.create({
+    ...opciones,
+    instance: { launchTimeout: ARRANQUE_MONGO_MS, ...opciones.instance },
+  })
+}
+
+export const crearReplicaEnMemoria = async (opciones = {}) => {
+  const { MongoMemoryReplSet } = await import('mongodb-memory-server')
+
+  return MongoMemoryReplSet.create({
+    replSet: { count: 1, ...opciones.replSet },
+    ...opciones,
+    instanceOpts: opciones.instanceOpts || [{ launchTimeout: ARRANQUE_MONGO_MS }],
+  })
+}

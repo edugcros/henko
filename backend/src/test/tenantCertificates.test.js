@@ -19,7 +19,7 @@
 
 import { jest } from '@jest/globals'
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 import { EventEmitter } from 'node:events'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
@@ -71,7 +71,7 @@ const { refreshPendingCertificates, hasValidCertificate } = await import(
 let mongod
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create({ instance: { launchTimeout: 60000 } })
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
 }, 180000)
 

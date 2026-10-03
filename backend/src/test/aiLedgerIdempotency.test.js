@@ -10,7 +10,7 @@
 // existe?" y después insertar es la misma carrera que uno quiere evitar.
 
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 
 const TENANT = new mongoose.Types.ObjectId();
 const OTRO_TENANT = new mongoose.Types.ObjectId();
@@ -34,7 +34,7 @@ const fila = (extra = {}) => ({
 const insertar = async extra => Ledger.collection.insertOne(fila(extra));
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await crearMongoEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   Ledger = (await import("../models/aiConsumptionLedgerModel.js")).default;

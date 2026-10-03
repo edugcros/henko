@@ -18,7 +18,7 @@
 // con el aislamiento salteado a propósito. Con mocks se probarían los mocks.
 
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 // Techos fijos para que las cuentas del test se puedan seguir a mano.
@@ -76,7 +76,7 @@ const asentar = ({ tenantId, day, costUsd, tokens = 1000, model = 'gemini-3.1-fl
   })
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
   await AiTenantPolicy.init()
 }, 180000)

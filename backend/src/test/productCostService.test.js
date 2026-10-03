@@ -9,7 +9,7 @@
 // pasar un filtro mal escrito, que es el fallo probable.
 
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 
 const TENANT = new mongoose.Types.ObjectId();
 const OTRO_TENANT = new mongoose.Types.ObjectId();
@@ -22,7 +22,7 @@ let resolveProductCostInputs;
 let COST_SOURCE;
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await crearMongoEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   Product = (await import("../models/productModel.js")).default;
