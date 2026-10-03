@@ -18,7 +18,7 @@
 // los comercios, y con mocks se probaría el mock.
 
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
@@ -54,7 +54,7 @@ let contador = 0
 const PERIODO_REAL = getCurrentPeriod()
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
   await AiOperation.init()
   await AiProviderCall.init()

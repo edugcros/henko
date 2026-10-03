@@ -12,7 +12,7 @@
 // el único fallo que importa acá.
 
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 
 const TIENDA_A = new mongoose.Types.ObjectId();
 const TIENDA_B = new mongoose.Types.ObjectId();
@@ -21,7 +21,7 @@ let mongod;
 let Ledger;
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await crearMongoEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   // Se usa el ledger de consumo de IA porque lleva el plugin y no arrastra

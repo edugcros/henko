@@ -21,7 +21,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
@@ -55,7 +55,7 @@ const PERFIL = {
 let mongod
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
 
   // Los índices únicos son el mecanismo bajo prueba: sin esto, Mongoose los

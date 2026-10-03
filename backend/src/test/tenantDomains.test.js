@@ -19,7 +19,7 @@
 
 import { jest } from '@jest/globals'
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 // El dominio de la plataforma, para poder probar que no se puede reclamar.
@@ -45,7 +45,7 @@ const {
 let mongod
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create({ instance: { launchTimeout: 60000 } })
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
   await Tenant.init()
 }, 180000)

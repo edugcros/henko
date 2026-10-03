@@ -18,7 +18,7 @@
 // legítimos que ya existen no hacen ruido.
 
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 import { jest } from "@jest/globals";
 
 const mockLogger = {
@@ -40,7 +40,7 @@ let Nota;
 let runWithTenantContext;
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await crearMongoEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   const { tenantPlugin } = await import("../models/tenantPlugin.js");

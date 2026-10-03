@@ -29,7 +29,7 @@
 // array de Mongo. Con mocks se probaría el mock.
 
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 process.env.JWT_SECRET = 'test-access-secret-para-las-sesiones'
@@ -42,7 +42,7 @@ let mongod
 const TENANT = new mongoose.Types.ObjectId()
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
 }, 180000)
 

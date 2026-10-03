@@ -11,7 +11,7 @@
 // instancias analicen la misma imagen y HENKO le pague dos veces a Google.
 
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 
 const TENANT = new mongoose.Types.ObjectId();
 const OTRO_TENANT = new mongoose.Types.ObjectId();
@@ -25,7 +25,7 @@ const HACE_UNA_HORA = new Date(Date.now() - 3600_000);
 const DENTRO_DE_UNA_HORA = new Date(Date.now() + 3600_000);
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await crearMongoEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   ProductAnalysisJob = (await import("../models/productAnalysisJobModel.js")).default;

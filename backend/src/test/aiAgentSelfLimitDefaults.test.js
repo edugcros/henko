@@ -14,7 +14,7 @@
 // mockeando el modelo.
 
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString(
   "base64url",
@@ -26,7 +26,7 @@ let mongod;
 let AiAgent;
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await crearMongoEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   AiAgent = (await import("../models/aiAgentModel.js")).default;

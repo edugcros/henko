@@ -21,7 +21,7 @@
 // qué días entran a la base.
 
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 
@@ -62,7 +62,7 @@ const asentar = async ({ tenantId, day, costUsd, event = LEDGER_EVENT.CONSUMED }
   })
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
 }, 180000)
 

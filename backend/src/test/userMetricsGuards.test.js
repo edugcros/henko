@@ -26,7 +26,7 @@
 // tenant, que con mocks solo probaría que la escribí como la escribí.
 
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { crearMongoEnMemoria } from "./testDB.js";
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString(
   "base64url",
@@ -79,7 +79,7 @@ const evento = (extra = {}) => ({
 });
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await crearMongoEnMemoria();
   await mongoose.connect(mongod.getUri());
 
   ({ trackUserMetricEvent } = await import("../controller/userMetricsCtrl.js"));

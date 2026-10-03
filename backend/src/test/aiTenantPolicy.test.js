@@ -21,7 +21,7 @@
 // resuelve Mongo. Con un mock se probaría el mock.
 
 import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 // El techo global del que sale la fracción. Fijo acá para que las cuentas del
@@ -88,7 +88,7 @@ const perfil = (tenantId, extra = {}) => ({
 let mongod
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
+  mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
   await AiTenantPolicy.init()
   await AiRateWindow.init()
