@@ -32,11 +32,7 @@ const normalizeHostname = value => {
 const isLocalHostname = hostname => {
   const value = normalizeHostname(hostname)
 
-  return (
-    value === 'localhost' ||
-    value === '127.0.0.1' ||
-    value.endsWith('.local')
-  )
+  return value === 'localhost' || value === '127.0.0.1' || value.endsWith('.local')
 }
 
 const ensureUrl = value => {
@@ -183,11 +179,7 @@ const getTenantAdminUrl = tenant => {
 // =====================================================
 
 export const getFrontendBaseUrl = (req = null, tenant = null) => {
-  const envFallback =
-    env.clientUrl ||
-    env.shopFrontendUrl ||
-    env.app?.url ||
-    null
+  const envFallback = env.clientUrl || env.shopFrontendUrl || env.app?.url || null
 
   /**
    * El dominio del comercio manda, también en producción.

@@ -22,7 +22,11 @@ const __dirname = path.dirname(__filename)
 const rootDir = path.resolve(__dirname, '../../')
 
 const ensureDir = async dir => {
-  try { await fs.mkdir(dir, { recursive: true }) } catch (_) {_}
+  try {
+    await fs.mkdir(dir, { recursive: true })
+  } catch (_) {
+    _
+  }
 }
 
 const ensureSingleMain = product => product.ensureSingleMainImage()
@@ -93,13 +97,20 @@ export const deleteProductImage = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: 'Producto no encontrado' })
 
     const idx = product.images.findIndex(img => String(img.public_id) === String(public_id))
-    if (idx === -1) return res.status(404).json({ success: false, message: 'Imagen no encontrada en el producto' })
+    if (idx === -1)
+      return res
+        .status(404)
+        .json({ success: false, message: 'Imagen no encontrada en el producto' })
 
     if (driver === 'cloudinary' && cloudinary) {
       await cloudinary.uploader.destroy(public_id, { resource_type: 'image' })
     } else {
       const abs = path.join(rootDir, 'uploads', public_id)
-      try { await fs.unlink(abs) } catch (_) {_}
+      try {
+        await fs.unlink(abs)
+      } catch (_) {
+        _
+      }
     }
 
     const wasMain = !!product.images[idx]?.isMain

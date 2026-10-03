@@ -21,9 +21,7 @@ function safeString(value, { lower = false, maxLength = 500 } = {}) {
 function uniqueStringArray(value, { lower = false, maxItems = 30 } = {}) {
   if (!Array.isArray(value)) return []
 
-  const normalized = value
-    .map(v => safeString(v, { lower, maxLength: 120 }))
-    .filter(Boolean)
+  const normalized = value.map(v => safeString(v, { lower, maxLength: 120 })).filter(Boolean)
 
   return [...new Set(normalized)].slice(0, maxItems)
 }
@@ -88,17 +86,64 @@ function mapFieldToPreferenceType(field) {
 }
 
 function hash(value) {
-  return crypto.createHash('sha256').update(String(value || '')).digest('hex')
+  return crypto
+    .createHash('sha256')
+    .update(String(value || ''))
+    .digest('hex')
 }
 
 // Stoplist chica, no exhaustiva — alcanza para descartar ruido de
 // conectores/artículos al detectar palabras de contenido evitadas.
 const SPANISH_STOPWORDS = new Set([
-  'de', 'la', 'el', 'en', 'un', 'una', 'unos', 'unas', 'y', 'con', 'para',
-  'que', 'los', 'las', 'del', 'al', 'es', 'por', 'su', 'sus', 'se', 'lo',
-  'este', 'esta', 'estos', 'estas', 'muy', 'más', 'mas', 'sin', 'como',
-  'tiene', 'tienen', 'ser', 'son', 'fue', 'han', 'ha', 'les', 'nos', 'tus',
-  'pero', 'todo', 'toda', 'todos', 'todas', 'también', 'sobre', 'entre',
+  'de',
+  'la',
+  'el',
+  'en',
+  'un',
+  'una',
+  'unos',
+  'unas',
+  'y',
+  'con',
+  'para',
+  'que',
+  'los',
+  'las',
+  'del',
+  'al',
+  'es',
+  'por',
+  'su',
+  'sus',
+  'se',
+  'lo',
+  'este',
+  'esta',
+  'estos',
+  'estas',
+  'muy',
+  'más',
+  'mas',
+  'sin',
+  'como',
+  'tiene',
+  'tienen',
+  'ser',
+  'son',
+  'fue',
+  'han',
+  'ha',
+  'les',
+  'nos',
+  'tus',
+  'pero',
+  'todo',
+  'toda',
+  'todos',
+  'todas',
+  'también',
+  'sobre',
+  'entre',
 ])
 
 // Proxy barata de "tono" — frecuencia de signos de exclamación/emojis. No
@@ -158,7 +203,9 @@ function dedupeRules(rules) {
   const map = new Map()
 
   for (const rule of rules.filter(Boolean)) {
-    const key = rule.fingerprint || `${rule.type}:${rule.field}:${rule.rawInput}:${rule.correctedValue}`.toLowerCase()
+    const key =
+      rule.fingerprint ||
+      `${rule.type}:${rule.field}:${rule.rawInput}:${rule.correctedValue}`.toLowerCase()
     const existing = map.get(key)
 
     if (!existing || Number(existing.confidence || 0) < Number(rule.confidence || 0)) {
@@ -170,12 +217,10 @@ function dedupeRules(rules) {
 }
 
 function addDiff(diff, field, originalValue, correctedValue) {
-  const originalString = originalValue === undefined || originalValue === null
-    ? null
-    : String(originalValue)
-  const correctedString = correctedValue === undefined || correctedValue === null
-    ? null
-    : String(correctedValue)
+  const originalString =
+    originalValue === undefined || originalValue === null ? null : String(originalValue)
+  const correctedString =
+    correctedValue === undefined || correctedValue === null ? null : String(correctedValue)
 
   if (originalString !== correctedString) {
     diff.push({
@@ -316,7 +361,8 @@ function computeLearnedRules(originalIAOutput, humanCorrection) {
           rawInput: 'preferencia_tono_puntuacion',
           correctedValue: 'sobria',
           confidence: 0.7,
-          reason: 'Este comercio le sacó los signos de exclamación / emojis a la descripción — preferí un tono sobrio, sin exclamaciones ni emojis.',
+          reason:
+            'Este comercio le sacó los signos de exclamación / emojis a la descripción — preferí un tono sobrio, sin exclamaciones ni emojis.',
         }),
       )
     } else if (correctedEmphasis > originalEmphasis) {
@@ -326,7 +372,8 @@ function computeLearnedRules(originalIAOutput, humanCorrection) {
           rawInput: 'preferencia_tono_puntuacion',
           correctedValue: 'entusiasta',
           confidence: 0.7,
-          reason: 'Este comercio agregó signos de exclamación / emojis a la descripción — preferí un tono más entusiasta.',
+          reason:
+            'Este comercio agregó signos de exclamación / emojis a la descripción — preferí un tono más entusiasta.',
         }),
       )
     }
@@ -427,7 +474,11 @@ export async function registerVisualFeedback({
 
   if (!normalizedTenantId) throw new Error('tenantId es requerido')
 
-  if (!originalIAOutput || typeof originalIAOutput !== 'object' || Array.isArray(originalIAOutput)) {
+  if (
+    !originalIAOutput ||
+    typeof originalIAOutput !== 'object' ||
+    Array.isArray(originalIAOutput)
+  ) {
     throw new Error('originalIAOutput es requerido')
   }
 

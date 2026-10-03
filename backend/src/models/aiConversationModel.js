@@ -31,7 +31,13 @@ const messageSchema = new Schema(
 
 const aiConversationSchema = new Schema(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true, immutable: true },
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Tenant',
+      required: true,
+      index: true,
+      immutable: true,
+    },
     channel: { type: String, enum: ['whatsapp', 'webchat'], default: 'whatsapp', index: true },
     externalUserId: { type: String, required: true, trim: true, index: true },
 
@@ -75,7 +81,15 @@ const aiConversationSchema = new Schema(
 
     status: {
       type: String,
-      enum: ['open', 'waiting_customer', 'waiting_human', 'human_active', 'closed', 'converted', 'lost'],
+      enum: [
+        'open',
+        'waiting_customer',
+        'waiting_human',
+        'human_active',
+        'closed',
+        'converted',
+        'lost',
+      ],
       default: 'open',
       index: true,
     },
@@ -92,7 +106,11 @@ const aiConversationSchema = new Schema(
     lastBusinessMessageAt: { type: Date, default: null, index: true },
     lastMessageAt: { type: Date, default: Date.now, index: true },
 
-    source: { type: String, enum: ['organic', 'cart_recovery', 'campaign', 'post_purchase'], default: 'organic' },
+    source: {
+      type: String,
+      enum: ['organic', 'cart_recovery', 'campaign', 'post_purchase'],
+      default: 'organic',
+    },
     metadata: { type: Schema.Types.Mixed, default: {} },
     deletedAt: { type: Date, default: undefined, index: true },
     deletedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
@@ -118,5 +136,6 @@ aiConversationSchema.plugin(tenantPlugin, {
   addTenantField: false,
 })
 
-const AiConversation = mongoose.models.AiConversation || mongoose.model('AiConversation', aiConversationSchema)
+const AiConversation =
+  mongoose.models.AiConversation || mongoose.model('AiConversation', aiConversationSchema)
 export default AiConversation

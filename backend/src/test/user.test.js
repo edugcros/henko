@@ -4,12 +4,7 @@ import app from '../../app.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
-import {
-  authHeaders,
-  createTestTenant,
-  getCSRFToken,
-  registerAndLoginUser,
-} from './testSetup.js'
+import { authHeaders, createTestTenant, getCSRFToken, registerAndLoginUser } from './testSetup.js'
 
 describe('user controller', () => {
   let tenantContext
@@ -83,10 +78,12 @@ describe('user controller', () => {
 
     const res = await request(app)
       .get('/api/user/me')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
@@ -114,8 +111,7 @@ describe('authMiddleware · códigos de error', () => {
     await disconnectTestDB()
   })
 
-  const pedirMiUsuario = cabeceras =>
-    request(app).get('/api/user/me').set(cabeceras)
+  const pedirMiUsuario = cabeceras => request(app).get('/api/user/me').set(cabeceras)
 
   test('sin token · 401 AUTH_TOKEN_MISSING', async () => {
     const res = await pedirMiUsuario({

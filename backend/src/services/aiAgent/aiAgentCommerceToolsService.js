@@ -48,8 +48,7 @@ const normalizeMoney = (value, currency = 'ARS') => {
   }
 }
 
-const AI_AGENT_DEBUG =
-  String(process.env.AI_AGENT_DEBUG || '').toLowerCase() === 'true'
+const AI_AGENT_DEBUG = String(process.env.AI_AGENT_DEBUG || '').toLowerCase() === 'true'
 
 const debugLog = (message, meta = {}) => {
   if (!AI_AGENT_DEBUG) return
@@ -159,17 +158,13 @@ const getVariantStock = variant => {
 const getProductStock = product => {
   if (product?.hasVariants && Array.isArray(product.variants)) {
     return product.variants
-      .filter(
-        variant => variant?.isActive !== false && variant?.active !== false,
-      )
+      .filter(variant => variant?.isActive !== false && variant?.active !== false)
       .reduce((total, variant) => total + getVariantStock(variant), 0)
   }
 
   if (Array.isArray(product?.variants) && product.variants.length > 0) {
     const variantStock = product.variants
-      .filter(
-        variant => variant?.isActive !== false && variant?.active !== false,
-      )
+      .filter(variant => variant?.isActive !== false && variant?.active !== false)
       .reduce((total, variant) => total + getVariantStock(variant), 0)
 
     if (variantStock > 0) return variantStock
@@ -185,11 +180,7 @@ const getProductStock = product => {
 }
 
 const normalizeAttributes = attributes => {
-  if (
-    !attributes ||
-    typeof attributes !== 'object' ||
-    Array.isArray(attributes)
-  ) {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) {
     return {}
   }
 
@@ -216,8 +207,7 @@ const getVariantAttributes = variant => {
 
 const getImageUrl = product => {
   if (Array.isArray(product.images) && product.images.length > 0) {
-    const image =
-      product.images.find(item => item?.isMain) || product.images[0]
+    const image = product.images.find(item => item?.isMain) || product.images[0]
     return image?.url || image?.secure_url || image?.src || ''
   }
 
@@ -226,17 +216,12 @@ const getImageUrl = product => {
 
 const getProductTitle = product => {
   return (
-    clean(product.title) ||
-    clean(product.name) ||
-    clean(product.nombre) ||
-    'Producto sin nombre'
+    clean(product.title) || clean(product.name) || clean(product.nombre) || 'Producto sin nombre'
   )
 }
 
 const getProductDescription = product => {
-  return clean(
-    product.description || product.descripcion || product.shortDescription,
-  ).slice(0, 900)
+  return clean(product.description || product.descripcion || product.shortDescription).slice(0, 900)
 }
 
 const getProductBrand = product => {
@@ -248,14 +233,11 @@ const getProductCategory = product => {
 }
 
 const getProductSubcategory = product => {
-  return clean(
-    product.subcategoria || product.subcategory || product.subcategoryName,
-  )
+  return clean(product.subcategoria || product.subcategory || product.subcategoryName)
 }
 
 const getProductTags = product => {
-  if (Array.isArray(product.tags))
-    return product.tags.map(clean).filter(Boolean)
+  if (Array.isArray(product.tags)) return product.tags.map(clean).filter(Boolean)
 
   if (typeof product.tags === 'string') {
     return product.tags.split(',').map(clean).filter(Boolean)
@@ -271,33 +253,31 @@ export const normalizeProductForAgentTool = (product = {}) => {
 
   const variants = Array.isArray(product.variants)
     ? product.variants
-      .filter(
-        variant => variant?.isActive !== false && variant?.active !== false,
-      )
-      .slice(0, 30)
-      .map(variant => {
-        const variantPrice = getVariantPrice({
-          variant,
-          fallbackPrice: price,
+        .filter(variant => variant?.isActive !== false && variant?.active !== false)
+        .slice(0, 30)
+        .map(variant => {
+          const variantPrice = getVariantPrice({
+            variant,
+            fallbackPrice: price,
+          })
+
+          const variantStock = getVariantStock(variant)
+
+          return {
+            id: String(variant._id || variant.id || ''),
+            key: clean(variant.key || variant.name || variant.title),
+            sku: clean(variant.sku || variant.SKU),
+            price: variantPrice,
+            formattedPrice: normalizeMoney(variantPrice, currency),
+            stock: variantStock,
+            available: variantStock > 0,
+            attributes: getVariantAttributes(variant),
+            image:
+              typeof variant.image === 'string'
+                ? variant.image
+                : variant.image?.url || variant.image?.secure_url || '',
+          }
         })
-
-        const variantStock = getVariantStock(variant)
-
-        return {
-          id: String(variant._id || variant.id || ''),
-          key: clean(variant.key || variant.name || variant.title),
-          sku: clean(variant.sku || variant.SKU),
-          price: variantPrice,
-          formattedPrice: normalizeMoney(variantPrice, currency),
-          stock: variantStock,
-          available: variantStock > 0,
-          attributes: getVariantAttributes(variant),
-          image:
-            typeof variant.image === 'string'
-              ? variant.image
-              : variant.image?.url || variant.image?.secure_url || '',
-        }
-      })
     : []
 
   return {
@@ -339,11 +319,7 @@ const buildBaseProductQuery = tenantId => ({
   tenantId,
   $and: [
     {
-      $or: [
-        { isDeleted: false },
-        { isDeleted: null },
-        { isDeleted: { $exists: false } },
-      ],
+      $or: [{ isDeleted: false }, { isDeleted: null }, { isDeleted: { $exists: false } }],
     },
     {
       $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
@@ -375,18 +351,18 @@ const buildBaseProductQuery = tenantId => ({
 const getProductSearchText = product => {
   const variantText = Array.isArray(product.variants)
     ? product.variants
-      .map(variant =>
-        [
-          variant?.sku,
-          variant?.key,
-          variant?.name,
-          variant?.title,
-          ...Object.values(getVariantAttributes(variant)),
-        ]
-          .filter(Boolean)
-          .join(' '),
-      )
-      .join(' ')
+        .map(variant =>
+          [
+            variant?.sku,
+            variant?.key,
+            variant?.name,
+            variant?.title,
+            ...Object.values(getVariantAttributes(variant)),
+          ]
+            .filter(Boolean)
+            .join(' '),
+        )
+        .join(' ')
     : ''
 
   return normalizeText(
@@ -425,10 +401,7 @@ const scoreProduct = ({ product, query }) => {
   }
 
   if (getProductStock(product) > 0) score += 20
-  if (
-    product.hasVariants ||
-    (Array.isArray(product.variants) && product.variants.length > 0)
-  ) {
+  if (product.hasVariants || (Array.isArray(product.variants) && product.variants.length > 0)) {
     score += 5
   }
   if (product.updatedAt) score += 2
@@ -478,11 +451,7 @@ const buildProductSearchCondition = regex => {
   }
 }
 
-export const searchProductsTool = async ({
-  tenantId,
-  query,
-  limit = 12,
-} = {}) => {
+export const searchProductsTool = async ({ tenantId, query, limit = 12 } = {}) => {
   if (!tenantId) return []
 
   const regex = buildRegex(query)
@@ -507,8 +476,7 @@ export const searchProductsTool = async ({
         .lean()
     } catch (error) {
       const textIndexUnavailable =
-        error?.code === 27 ||
-        /text index|required for \$text/i.test(clean(error?.message))
+        error?.code === 27 || /text index|required for \$text/i.test(clean(error?.message))
 
       if (!textIndexUnavailable) throw error
 
@@ -539,10 +507,10 @@ export const searchProductsTool = async ({
     products.length > 0
       ? products
       : await Product.find(baseQuery)
-        .setOptions({ tenantId })
-        .sort({ updatedAt: -1, createdAt: -1 })
-        .limit(cleanLimit)
-        .lean()
+          .setOptions({ tenantId })
+          .sort({ updatedAt: -1, createdAt: -1 })
+          .limit(cleanLimit)
+          .lean()
 
   const normalizedProducts = sourceProducts
     .map(product => ({
@@ -578,7 +546,6 @@ export const searchProductsTool = async ({
   return normalizedProducts
 }
 
-
 export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
   if (!tenantId) return []
 
@@ -590,11 +557,7 @@ export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
       tenantId,
       $and: [
         {
-          $or: [
-            { isDeleted: false },
-            { isDeleted: null },
-            { isDeleted: { $exists: false } },
-          ],
+          $or: [{ isDeleted: false }, { isDeleted: null }, { isDeleted: { $exists: false } }],
         },
         {
           $or: [{ isActive: true }, { active: true }],
@@ -607,11 +570,7 @@ export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
           ],
         },
         {
-          $or: [
-            { endDate: { $gte: now } },
-            { endDate: null },
-            { endDate: { $exists: false } },
-          ],
+          $or: [{ endDate: { $gte: now } }, { endDate: null }, { endDate: { $exists: false } }],
         },
         {
           $or: [
@@ -631,9 +590,7 @@ export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
       ...new Set(
         coupons
           .flatMap(coupon => [
-            ...(Array.isArray(coupon.applicableProducts)
-              ? coupon.applicableProducts
-              : []),
+            ...(Array.isArray(coupon.applicableProducts) ? coupon.applicableProducts : []),
             ...(Array.isArray(coupon.products) ? coupon.products : []),
             ...(Array.isArray(coupon.productIds) ? coupon.productIds : []),
           ])
@@ -650,16 +607,11 @@ export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
         _id: { $in: productIds },
       })
         .setOptions({ tenantId })
-        .select(
-          '_id title name nombre slug sku price finalPrice salePrice stock variants',
-        )
+        .select('_id title name nombre slug sku price finalPrice salePrice stock variants')
         .lean()
 
       for (const product of relatedProducts) {
-        productMap.set(
-          String(product._id),
-          normalizeProductForAgentTool(product),
-        )
+        productMap.set(String(product._id), normalizeProductForAgentTool(product))
       }
     }
 
@@ -667,9 +619,7 @@ export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
       const applicableProductIds = [
         ...new Set(
           [
-            ...(Array.isArray(coupon.applicableProducts)
-              ? coupon.applicableProducts
-              : []),
+            ...(Array.isArray(coupon.applicableProducts) ? coupon.applicableProducts : []),
             ...(Array.isArray(coupon.products) ? coupon.products : []),
             ...(Array.isArray(coupon.productIds) ? coupon.productIds : []),
           ]
@@ -711,15 +661,11 @@ export const getPromotionsTool = async ({ tenantId, limit = 8 } = {}) => {
         applicableProductIds,
         applicableProducts,
 
-        usageScope: appliesToSpecificProducts
-          ? 'specific_products'
-          : 'general_cart',
+        usageScope: appliesToSpecificProducts ? 'specific_products' : 'general_cart',
 
         usageText: appliesToSpecificProducts
           ? applicableProducts.length > 0
-            ? `Válido solo para: ${applicableProducts
-              .map(product => product.title)
-              .join(', ')}`
+            ? `Válido solo para: ${applicableProducts.map(product => product.title).join(', ')}`
             : 'Válido solo para productos específicos configurados. Requiere validación antes de usarlo.'
           : 'Válido para compra general según condiciones del cupón',
       }
@@ -761,10 +707,7 @@ export const getPromotionalOffersTool = async ({ tenantId, limit = 8 } = {}) => 
 
         const price = getProductBasePrice(product)
         const currency = product.currency || 'ARS'
-        const finalPrice = Math.max(
-          0,
-          Math.round(price * (1 - discountPercentage / 100)),
-        )
+        const finalPrice = Math.max(0, Math.round(price * (1 - discountPercentage / 100)))
         const stock = getProductStock(product)
         const productId = String(product._id)
 
@@ -810,10 +753,7 @@ export const getPromotionalOffersTool = async ({ tenantId, limit = 8 } = {}) => 
   }
 }
 
-export const buildProductRecommendationTool = ({
-  products = [],
-  maxItems = 3,
-} = {}) => {
+export const buildProductRecommendationTool = ({ products = [], maxItems = 3 } = {}) => {
   return products
     .filter(product => product.available)
     .sort((a, b) => {

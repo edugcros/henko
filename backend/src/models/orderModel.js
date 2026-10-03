@@ -51,15 +51,13 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // =====================================================
 
 const isSameTenant = (docTenantId, tenantId) => {
-  return Boolean(
-    docTenantId &&
-      tenantId &&
-      String(docTenantId) === String(tenantId),
-  )
+  return Boolean(docTenantId && tenantId && String(docTenantId) === String(tenantId))
 }
 
 const normalizeEmail = value => {
-  return String(value || '').trim().toLowerCase()
+  return String(value || '')
+    .trim()
+    .toLowerCase()
 }
 
 const deriveOrderStatus = doc => {
@@ -67,10 +65,7 @@ const deriveOrderStatus = doc => {
     return ORDER_STATUS.REFUNDED
   }
 
-  if (
-    doc.paymentStatus === PAYMENT_STATUS.CANCELLED ||
-    doc.cancellation?.cancelled === true
-  ) {
+  if (doc.paymentStatus === PAYMENT_STATUS.CANCELLED || doc.cancellation?.cancelled === true) {
     return ORDER_STATUS.CANCELLED
   }
 
@@ -804,21 +799,21 @@ const orderSchema = new Schema(
 
       address: {
         type: String,
-    
+
         maxlength: 255,
         trim: true,
       },
 
       city: {
         type: String,
-    
+
         maxlength: 100,
         trim: true,
       },
 
       zipCode: {
         type: String,
-    
+
         maxlength: 20,
         trim: true,
       },
@@ -1070,10 +1065,7 @@ orderSchema.pre('validate', function orderPreValidate(next) {
 })
 
 orderSchema.pre('save', function orderPreSave(next) {
-  const productsSubtotalCents = sumBy(
-    this.products,
-    product => product.subtotalCents,
-  )
+  const productsSubtotalCents = sumBy(this.products, product => product.subtotalCents)
 
   if (productsSubtotalCents !== this.paymentIntent.originalAmountCents) {
     return next(
@@ -1083,10 +1075,7 @@ orderSchema.pre('save', function orderPreSave(next) {
     )
   }
 
-  if (
-    this.paymentIntent.discountAmountCents >
-    this.paymentIntent.originalAmountCents
-  ) {
+  if (this.paymentIntent.discountAmountCents > this.paymentIntent.originalAmountCents) {
     return next(
       new Error(
         `INTEGRITY_ERROR: discountAmountCents (${this.paymentIntent.discountAmountCents}) cannot exceed originalAmountCents (${this.paymentIntent.originalAmountCents})`,
@@ -1095,8 +1084,7 @@ orderSchema.pre('save', function orderPreSave(next) {
   }
 
   const expectedAmount =
-    this.paymentIntent.originalAmountCents -
-    this.paymentIntent.discountAmountCents
+    this.paymentIntent.originalAmountCents - this.paymentIntent.discountAmountCents
 
   if (this.paymentIntent.amountCents !== expectedAmount) {
     return next(
@@ -1156,17 +1144,15 @@ orderSchema.methods.syncDerivedState = function syncDerivedState() {
   return this
 }
 
-orderSchema.methods.recordPaymentFailure = async function recordPaymentFailure(
-  {
-    tenantId,
-    code = null,
-    message = null,
-    performedBy = null,
-    session = null,
-    req = null,
-    metadata = {},
-  } = {},
-) {
+orderSchema.methods.recordPaymentFailure = async function recordPaymentFailure({
+  tenantId,
+  code = null,
+  message = null,
+  performedBy = null,
+  session = null,
+  req = null,
+  metadata = {},
+} = {}) {
   if (!isSameTenant(this.tenantId, tenantId)) {
     throw new Error('Access denied: tenant mismatch')
   }
@@ -1324,15 +1310,13 @@ orderSchema.methods.updateFulfillmentStatus = async function updateFulfillmentSt
   return this
 }
 
-orderSchema.methods.markCancelled = async function markCancelled(
-  {
-    tenantId,
-    cancelledBy = null,
-    reason = 'Cancelación manual',
-    session = null,
-    req = null,
-  } = {},
-) {
+orderSchema.methods.markCancelled = async function markCancelled({
+  tenantId,
+  cancelledBy = null,
+  reason = 'Cancelación manual',
+  session = null,
+  req = null,
+} = {}) {
   if (!isSameTenant(this.tenantId, tenantId)) {
     throw new Error('Access denied: tenant mismatch')
   }
@@ -1382,9 +1366,13 @@ orderSchema.methods.markCancelled = async function markCancelled(
   return this
 }
 
-orderSchema.methods.markRefunded = async function markRefunded(
-  { tenantId, performedBy = null, reason = null, session = null, req = null } = {},
-) {
+orderSchema.methods.markRefunded = async function markRefunded({
+  tenantId,
+  performedBy = null,
+  reason = null,
+  session = null,
+  req = null,
+} = {}) {
   if (!isSameTenant(this.tenantId, tenantId)) {
     throw new Error('Access denied: tenant mismatch')
   }
@@ -1422,9 +1410,12 @@ orderSchema.methods.markRefunded = async function markRefunded(
   return this
 }
 
-orderSchema.methods.restoreStock = async function restoreStock(
-  { tenantId, performedBy = null, reason = null, session = null } = {},
-) {
+orderSchema.methods.restoreStock = async function restoreStock({
+  tenantId,
+  performedBy = null,
+  reason = null,
+  session = null,
+} = {}) {
   if (!isSameTenant(this.tenantId, tenantId)) {
     throw new Error('Access denied: tenant mismatch')
   }
@@ -1482,11 +1473,7 @@ orderSchema.methods.restoreStock = async function restoreStock(
 // STATICS
 // =====================================================
 
-orderSchema.statics.findByIdAndTenant = function findByIdAndTenant(
-  id,
-  tenantId,
-  options = {},
-) {
+orderSchema.statics.findByIdAndTenant = function findByIdAndTenant(id, tenantId, options = {}) {
   return this.findOne({
     _id: id,
     tenantId,
@@ -1502,13 +1489,7 @@ orderSchema.statics.findByUserAndTenant = function findByUserAndTenant(
   tenantId,
   options = {},
 ) {
-  const {
-    page = 1,
-    limit = 20,
-    status,
-    paymentStatus,
-    fulfillmentStatus,
-  } = options
+  const { page = 1, limit = 20, status, paymentStatus, fulfillmentStatus } = options
 
   const query = {
     orderby: userId,
@@ -1535,10 +1516,7 @@ orderSchema.statics.countByTenant = function countByTenant(tenantId, filters = {
   }).setOptions({ tenantId })
 }
 
-orderSchema.statics.aggregateByTenant = function aggregateByTenant(
-  tenantId,
-  pipeline = [],
-) {
+orderSchema.statics.aggregateByTenant = function aggregateByTenant(tenantId, pipeline = []) {
   return this.aggregate([
     {
       $match: {

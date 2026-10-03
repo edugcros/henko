@@ -23,18 +23,13 @@ import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64url')
 
-const { computeToolCostUsd, getToolPrice } = await import(
-  '../services/ai/aiModelPricing.js'
-)
+const { computeToolCostUsd, getToolPrice } = await import('../services/ai/aiModelPricing.js')
 const { default: AiProviderCall } = await import('../models/aiProviderCallModel.js')
-const { default: AiConsumptionLedger } = await import(
-  '../models/aiConsumptionLedgerModel.js'
-)
+const { default: AiConsumptionLedger } = await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
-const { recordToolSpend, recordTokenSpend, recordAiConsumption, AI_METRICS } = await import(
-  '../services/ai/aiBudgetService.js'
-)
+const { recordToolSpend, recordTokenSpend, recordAiConsumption, AI_METRICS } =
+  await import('../services/ai/aiBudgetService.js')
 
 const SRC = path.resolve('src')
 
@@ -231,8 +226,9 @@ describe('registrar el consumo de una herramienta', () => {
     }
     await asentar()
 
-    const filas = await AiProviderCall.countDocuments({ tenantId: TENANT, operationId })
-      .setOptions({ tenantId: TENANT })
+    const filas = await AiProviderCall.countDocuments({ tenantId: TENANT, operationId }).setOptions(
+      { tenantId: TENANT },
+    )
     expect(filas).toBe(1)
 
     const plataforma = await AiPlatformUsage.findOne({ period }).lean()
@@ -246,14 +242,24 @@ describe('registrar el consumo de una herramienta', () => {
     const operationId = 'busqueda-y-extraccion'
 
     await recordToolSpend({
-      tenantId: TENANT, metric: AI_METRICS.MARKET_TOKENS,
-      tool: 'tavily_search', quantity: 2,
-      profile: PERFIL, period, operationId, provider: 'tavily',
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      tool: 'tavily_search',
+      quantity: 2,
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'tavily',
     })
     await recordToolSpend({
-      tenantId: TENANT, metric: AI_METRICS.MARKET_TOKENS,
-      tool: 'tavily_extract', quantity: 3,
-      profile: PERFIL, period, operationId, provider: 'tavily',
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      tool: 'tavily_extract',
+      quantity: 3,
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'tavily',
     })
     await asentar()
 
@@ -272,9 +278,14 @@ describe('registrar el consumo de una herramienta', () => {
     const period = '2033-05'
 
     await recordToolSpend({
-      tenantId: TENANT, metric: AI_METRICS.MARKET_TOKENS,
-      tool: 'tavily_extract', quantity: 10,
-      profile: PERFIL, period, operationId: 'solo-plata', provider: 'tavily',
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      tool: 'tavily_extract',
+      quantity: 10,
+      profile: PERFIL,
+      period,
+      operationId: 'solo-plata',
+      provider: 'tavily',
     })
     await asentar()
 
@@ -290,9 +301,14 @@ describe('registrar el consumo de una herramienta', () => {
     const period = '2033-06'
 
     await recordToolSpend({
-      tenantId: TENANT, metric: AI_METRICS.MARKET_TOKENS,
-      tool: 'tavily_search', quantity: 1,
-      profile: PERFIL, period, operationId: 'unidad-propia', provider: 'tavily',
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      tool: 'tavily_search',
+      quantity: 1,
+      profile: PERFIL,
+      period,
+      operationId: 'unidad-propia',
+      provider: 'tavily',
     })
     await asentar()
 
@@ -446,10 +462,14 @@ describe('nivel de servicio · el tier multiplica la tarifa', () => {
     const { computeCostUsd } = await import('../services/ai/aiModelPricing.js')
 
     const sinTier = computeCostUsd({
-      model: 'gemini-3.8-flash', inputTokens: 1_000_000, outputTokens: 1_000_000,
+      model: 'gemini-3.8-flash',
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
     })
     const standard = computeCostUsd({
-      model: 'gemini-3.8-flash', inputTokens: 1_000_000, outputTokens: 1_000_000,
+      model: 'gemini-3.8-flash',
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
       serviceTier: 'standard',
     })
 
@@ -465,7 +485,9 @@ describe('nivel de servicio · el tier multiplica la tarifa', () => {
     const { computeCostUsd } = await import('../services/ai/aiModelPricing.js')
 
     const r = computeCostUsd({
-      model: 'gemini-3.8-flash', inputTokens: 1_000_000, outputTokens: 1_000_000,
+      model: 'gemini-3.8-flash',
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
       serviceTier: 'turbo-premium-inventado',
     })
 
@@ -501,7 +523,9 @@ describe('nivel de servicio · el tier multiplica la tarifa', () => {
       operationId,
       provider: 'gemini',
       usage: {
-        inputTokens: 8000, outputTokens: 2000, totalTokens: 10000,
+        inputTokens: 8000,
+        outputTokens: 2000,
+        totalTokens: 10000,
         serviceTier: 'batch',
       },
     })
@@ -519,7 +543,8 @@ describe('nivel de servicio · el tier multiplica la tarifa', () => {
     expect(fila.priceInputPerMillion).toBeCloseTo(0.375, 6)
     expect(fila.costUsd).toBeCloseTo(
       (fila.inputTokens * fila.priceInputPerMillion +
-        fila.outputTokens * fila.priceOutputPerMillion) / 1e6,
+        fila.outputTokens * fila.priceOutputPerMillion) /
+        1e6,
       6,
     )
   })
@@ -540,10 +565,7 @@ describe('version del catalogo · reconstruir que tabla estaba activa', () => {
     // mientras alguien se acuerde, y ese fue el motivo por el que esto no se
     // hizo antes. El hash del contenido la vuelve confiable: si se corrige una
     // tarifa y se olvida la etiqueta, las filas quedan distinguibles igual.
-    const fuente = fs.readFileSync(
-      path.join(SRC, 'services/ai/aiModelPricing.js'),
-      'utf8',
-    )
+    const fuente = fs.readFileSync(path.join(SRC, 'services/ai/aiModelPricing.js'), 'utf8')
 
     const bloque = fuente.slice(
       fuente.indexOf('const hashDelCatalogo'),
@@ -600,15 +622,20 @@ describe('BYOK · un solo camino para los dos registradores', () => {
     const period = '2034-01'
 
     await recordTokenSpend({
-      tenantId: TENANT, metric: AI_METRICS.VISION,
+      tenantId: TENANT,
+      metric: AI_METRICS.VISION,
       model: 'gemini-3.1-flash-lite',
-      inputTokens: 3000, outputTokens: 500,
-      profile: BYOK, period, operationId: 'byok-vision',
+      inputTokens: 3000,
+      outputTokens: 500,
+      profile: BYOK,
+      period,
+      operationId: 'byok-vision',
     })
     await asentar()
 
     const usage = await AiUsage.findOne({ tenantId: TENANT, period })
-      .setOptions({ tenantId: TENANT }).lean()
+      .setOptions({ tenantId: TENANT })
+      .lean()
 
     expect(usage.byokTokens).toBe(3500)
   })
@@ -619,23 +646,33 @@ describe('BYOK · un solo camino para los dos registradores', () => {
     const periodoB = '2034-03'
 
     await recordTokenSpend({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
       model: 'gemini-3.1-flash-lite',
-      inputTokens: 800, outputTokens: 200,
-      profile: BYOK, period: periodoA, operationId: 'por-tokenspend',
+      inputTokens: 800,
+      outputTokens: 200,
+      profile: BYOK,
+      period: periodoA,
+      operationId: 'por-tokenspend',
     })
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1000, model: 'gemini-3.1-flash-lite',
-      profile: BYOK, period: periodoB, operationId: 'por-consumption',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1000,
+      model: 'gemini-3.1-flash-lite',
+      profile: BYOK,
+      period: periodoB,
+      operationId: 'por-consumption',
       usage: { inputTokens: 800, outputTokens: 200, totalTokens: 1000 },
     })
     await asentar()
 
     const a = await AiUsage.findOne({ tenantId: TENANT, period: periodoA })
-      .setOptions({ tenantId: TENANT }).lean()
+      .setOptions({ tenantId: TENANT })
+      .lean()
     const b = await AiUsage.findOne({ tenantId: TENANT, period: periodoB })
-      .setOptions({ tenantId: TENANT }).lean()
+      .setOptions({ tenantId: TENANT })
+      .lean()
 
     expect(a.byokTokens).toBe(1000)
     expect(b.byokTokens).toBe(1000)
@@ -646,15 +683,20 @@ describe('BYOK · un solo camino para los dos registradores', () => {
     const period = '2034-04'
 
     await recordTokenSpend({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
       model: 'gemini-3.1-flash-lite',
-      inputTokens: 800, outputTokens: 200,
-      profile: PERFIL, period, operationId: 'con-key-de-henko',
+      inputTokens: 800,
+      outputTokens: 200,
+      profile: PERFIL,
+      period,
+      operationId: 'con-key-de-henko',
     })
     await asentar()
 
     const usage = await AiUsage.findOne({ tenantId: TENANT, period })
-      .setOptions({ tenantId: TENANT }).lean()
+      .setOptions({ tenantId: TENANT })
+      .lean()
 
     expect(usage.byokTokens || 0).toBe(0)
     expect(usage.estimatedCostUsd).toBeGreaterThan(0)
@@ -672,15 +714,20 @@ describe('quien paga · costo de HENKO contra consumo del comercio', () => {
     const operationId = 'byok-con-costo'
 
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1_000_000, model: 'gemini-3.1-flash-lite',
-      profile: BYOK, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1_000_000,
+      model: 'gemini-3.1-flash-lite',
+      profile: BYOK,
+      period,
+      operationId,
       usage: { inputTokens: 800000, outputTokens: 200000, totalTokens: 1_000_000 },
     })
     await asentar()
 
     const fila = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
-      .setOptions({ tenantId: TENANT }).lean()
+      .setOptions({ tenantId: TENANT })
+      .lean()
 
     expect(fila.costUsd).toBe(0)
     // 800k a 0,25 + 200k a 1,5 = 0,20 + 0,30
@@ -696,15 +743,20 @@ describe('quien paga · costo de HENKO contra consumo del comercio', () => {
     const operationId = 'plataforma-con-costo'
 
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1_000_000, model: 'gemini-3.1-flash-lite',
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1_000_000,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period,
+      operationId,
       usage: { inputTokens: 800000, outputTokens: 200000, totalTokens: 1_000_000 },
     })
     await asentar()
 
     const fila = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
-      .setOptions({ tenantId: TENANT }).lean()
+      .setOptions({ tenantId: TENANT })
+      .lean()
 
     expect(fila.costUsd).toBeCloseTo(0.5, 4)
     expect(fila.tenantProviderCostUsd).toBe(fila.costUsd)
@@ -717,9 +769,13 @@ describe('quien paga · costo de HENKO contra consumo del comercio', () => {
     const period = '2034-07'
 
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1_000_000, model: 'gemini-3.1-flash-lite',
-      profile: BYOK, period, operationId: 'byok-no-toca-el-techo',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1_000_000,
+      model: 'gemini-3.1-flash-lite',
+      profile: BYOK,
+      period,
+      operationId: 'byok-no-toca-el-techo',
       usage: { inputTokens: 800000, outputTokens: 200000, totalTokens: 1_000_000 },
     })
     await asentar()

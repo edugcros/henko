@@ -120,10 +120,10 @@ export const analyzeProduct = asyncHandler(async (req, res) => {
 
   const { costs, provenance } = productId
     ? await resolveProductCostInputs({
-      tenantId,
-      productId,
-      overrides: req.body?.costs || {},
-    })
+        tenantId,
+        productId,
+        overrides: req.body?.costs || {},
+      })
     : { costs: parseCosts(req.body?.costs), provenance: {} }
 
   const analysis = await analyzeMarketDemand({

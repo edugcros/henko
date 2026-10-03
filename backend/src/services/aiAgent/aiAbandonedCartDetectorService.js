@@ -2,10 +2,7 @@
 import Cart from '../../models/cartModel.js'
 import Tenant from '../../models/tenantModel.js'
 import AiCartRecovery from '../../models/aiCartRecoveryModel.js'
-import {
-  createCartRecoveryFromCart,
-  getCartRecoveryReadiness,
-} from './aiCartRecoveryService.js'
+import { createCartRecoveryFromCart, getCartRecoveryReadiness } from './aiCartRecoveryService.js'
 
 const toSafeNumber = (value, fallback) => {
   const number = Number(value)
@@ -117,9 +114,7 @@ export const detectAbandonedCarts = async ({
 
       if (existing) continue
 
-      const tenant = await Tenant.findById(cart.tenantId)
-        .setOptions({ ignoreTenant: true })
-        .lean()
+      const tenant = await Tenant.findById(cart.tenantId).setOptions({ ignoreTenant: true }).lean()
 
       if (!tenant) {
         results.push({

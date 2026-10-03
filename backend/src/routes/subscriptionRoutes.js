@@ -16,10 +16,7 @@ import {
 } from '../controller/subscriptionCtrl.js'
 
 import { authMiddleware } from '../middlewares/authMiddleware.js'
-import {
-  resolveTenantByDomain,
-  requireTenant,
-} from '../middlewares/tenantMiddleware.js'
+import { resolveTenantByDomain, requireTenant } from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
 
@@ -31,8 +28,8 @@ const subscriptionPaymentLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
   store: new SharedRateLimitStore('subscription-payment'),
-  windowMs: 60 * 60 * 1000,  // 1 hora
-  max: 10,                    // 10 intentos por hora
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 10, // 10 intentos por hora
   standardHeaders: true,
   legacyHeaders: false,
 
@@ -43,8 +40,7 @@ const subscriptionPaymentLimiter = rateLimit({
   // ya usan enqRoute.js y userMetricsRoutes.js.
   keyGenerator: req => {
     const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
-    const userId =
-      req.user?._id || req.user?.id || (req.ip ? ipKeyGenerator(req.ip) : 'anonymous')
+    const userId = req.user?._id || req.user?.id || (req.ip ? ipKeyGenerator(req.ip) : 'anonymous')
     return `${tenantId}:${userId}`
   },
 
@@ -72,13 +68,7 @@ const subscriptionPaymentLimiter = rateLimit({
 // son los precios de venta — información de vidriera.
 router.get('/plans', getSubscriptionPlans)
 
-router.get(
-  '/config',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  getSubscriptionConfig,
-)
+router.get('/config', resolveTenantByDomain, requireTenant, authMiddleware, getSubscriptionConfig)
 
 /**
  * POST /api/subscriptions/process-payment
@@ -126,13 +116,7 @@ router.post(
  * Obtener información actual de suscripción del tenant
  * Acceso: Autenticado + Tenant resuelto
  */
-router.get(
-  '/current',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  getCurrentSubscription,
-)
+router.get('/current', resolveTenantByDomain, requireTenant, authMiddleware, getCurrentSubscription)
 
 /**
  * POST /api/subscriptions/change-plan
@@ -174,13 +158,7 @@ router.post(
  *   }
  * }
  */
-router.post(
-  '/cancel',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  cancelSubscription,
-)
+router.post('/cancel', resolveTenantByDomain, requireTenant, authMiddleware, cancelSubscription)
 
 /**
  * GET /api/subscriptions/invoices

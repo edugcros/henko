@@ -48,9 +48,7 @@ const WebhookLogSchema = new Schema(
   { timestamps: true },
 )
 
-const WebhookLog =
-  mongoose.models.WebhookLog ||
-  mongoose.model('WebhookLog', WebhookLogSchema)
+const WebhookLog = mongoose.models.WebhookLog || mongoose.model('WebhookLog', WebhookLogSchema)
 
 const sanitizeString = (value, fallback = '') => {
   if (typeof value !== 'string') return fallback
@@ -86,11 +84,7 @@ export const verifyMercadoPagoWebhookSignature = req => {
   const xSignature = req.headers['x-signature']
   const xRequestId = req.headers['x-request-id']
 
-  const dataId =
-    req.query['data.id'] ||
-    req.body?.data?.id ||
-    req.query.id ||
-    ''
+  const dataId = req.query['data.id'] || req.body?.data?.id || req.query.id || ''
 
   if (!xSignature || !xRequestId || !dataId) return false
 
@@ -101,10 +95,7 @@ export const verifyMercadoPagoWebhookSignature = req => {
   const normalizedDataId = String(dataId).toLowerCase()
   const manifest = `id:${normalizedDataId};request-id:${xRequestId};ts:${ts};`
 
-  const digest = crypto
-    .createHmac('sha256', secret)
-    .update(manifest)
-    .digest('hex')
+  const digest = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
 
   const digestBuffer = Buffer.from(digest, 'utf8')
   const signatureBuffer = Buffer.from(String(v1), 'utf8')
@@ -119,13 +110,7 @@ export const isWebhookProcessed = async webhookId => {
   return Boolean(exists)
 }
 
-export const markWebhookProcessed = async (
-  webhookId,
-  paymentId,
-  tenantId,
-  orderId,
-  status,
-) => {
+export const markWebhookProcessed = async (webhookId, paymentId, tenantId, orderId, status) => {
   try {
     await WebhookLog.create({
       webhookId,

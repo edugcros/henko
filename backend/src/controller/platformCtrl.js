@@ -111,21 +111,24 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
       setting: PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET,
       normalizar: v => Math.floor(v),
       valido: v => Number.isFinite(v) && v >= 0,
-      error: 'El techo en tokens debe ser un número no negativo, o null para volver a la variable de entorno.',
+      error:
+        'El techo en tokens debe ser un número no negativo, o null para volver a la variable de entorno.',
     },
     {
       valor: usd,
       setting: PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET,
       normalizar: v => Math.round(v * 100) / 100,
       valido: v => Number.isFinite(v) && v >= 0,
-      error: 'El techo en dólares debe ser un número no negativo, o null para volver a la variable de entorno.',
+      error:
+        'El techo en dólares debe ser un número no negativo, o null para volver a la variable de entorno.',
     },
     {
       valor: perTenantShare,
       setting: PLATFORM_AI_SETTINGS.PER_TENANT_SHARE,
       normalizar: v => Math.round(v * 10000) / 10000,
       valido: v => Number.isFinite(v) && v >= 0.01 && v <= 1,
-      error: 'El reparto por comercio debe estar entre 0.01 y 1, o null para volver a la variable de entorno.',
+      error:
+        'El reparto por comercio debe estar entre 0.01 y 1, o null para volver a la variable de entorno.',
     },
   ]
 
@@ -239,9 +242,16 @@ export const updateTenantAiPolicy = expressAsyncHandler(async (req, res) => {
 
   await setTenantAiPolicy({
     tenantId: String(tenantId).trim(),
-    share: share === undefined ? undefined : share === null ? null : Math.round(Number(share) * 10000) / 10000,
+    share:
+      share === undefined
+        ? undefined
+        : share === null
+          ? null
+          : Math.round(Number(share) * 10000) / 10000,
     suspended: suspended === undefined ? undefined : Boolean(suspended),
-    suspendedReason: String(suspendedReason || '').trim().slice(0, 300),
+    suspendedReason: String(suspendedReason || '')
+      .trim()
+      .slice(0, 300),
     changedByEmail: req.user?.email,
     reason: cleanReason.slice(0, 500),
   })
@@ -274,9 +284,7 @@ export const getPlanPrices = expressAsyncHandler(async (req, res) => {
       plans,
       // Solo el historial de precios: el mismo registro guarda también los
       // cambios del techo de IA, que en esta pantalla son ruido.
-      history: history.filter(row =>
-        Object.values(PLANES_CON_PRECIO).includes(row.setting),
-      ),
+      history: history.filter(row => Object.values(PLANES_CON_PRECIO).includes(row.setting)),
     },
   })
 })
@@ -295,7 +303,9 @@ export const updatePlanPrice = expressAsyncHandler(async (req, res) => {
   // "gratis", "" o un typo y le pondría el precio al starter sin que nadie se
   // entere. La guarda de abajo dejó de ser alcanzable el día que el catálogo
   // quedó en dos planes y ambos tienen clave de precio.
-  const rawPlan = String(plan || '').trim().toLowerCase()
+  const rawPlan = String(plan || '')
+    .trim()
+    .toLowerCase()
 
   if (!AI_PLANS.includes(rawPlan)) {
     return res.status(400).json({
@@ -322,7 +332,8 @@ export const updatePlanPrice = expressAsyncHandler(async (req, res) => {
   if (!isRemoval && (!Number.isFinite(value) || value < 0)) {
     return res.status(400).json({
       success: false,
-      message: 'El precio debe ser un número de pesos no negativo, o null para volver al valor por defecto.',
+      message:
+        'El precio debe ser un número de pesos no negativo, o null para volver al valor por defecto.',
     })
   }
 
@@ -352,9 +363,7 @@ export const updatePlanPrice = expressAsyncHandler(async (req, res) => {
     data: {
       currency: 'ARS',
       plans: getPlanCatalog(),
-      history: history.filter(row =>
-        Object.values(PLANES_CON_PRECIO).includes(row.setting),
-      ),
+      history: history.filter(row => Object.values(PLANES_CON_PRECIO).includes(row.setting)),
     },
   })
 })

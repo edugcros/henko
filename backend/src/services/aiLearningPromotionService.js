@@ -86,14 +86,7 @@ function confidenceScore(logRule, occurrences, contradictions) {
   return Math.max(0, Math.min(1, finalScore))
 }
 
-async function upsertPreference({
-  tenantId,
-  rawInput,
-  correctedValue,
-  type,
-  field,
-  confidence,
-}) {
+async function upsertPreference({ tenantId, rawInput, correctedValue, type, field, confidence }) {
   return AIPreference.findOneAndUpdate(
     {
       tenantId,
@@ -155,10 +148,11 @@ export async function promoteLearnedRulesForTenant(tenantId) {
     const learnedRules = Array.isArray(log?.learnedRules) ? log.learnedRules : []
 
     for (const learned of learnedRules) {
-      const field = safeString(learned?.field, {
-        lower: true,
-        maxLength: 120,
-      }) || 'general'
+      const field =
+        safeString(learned?.field, {
+          lower: true,
+          maxLength: 120,
+        }) || 'general'
       // Siempre se recalcula desde field, nunca desde learned.type: el
       // enum de CorrectionLog puede haber degradado el type original a
       // 'general' al guardarse (bug ya corregido, pero logs viejos
@@ -203,22 +197,14 @@ export async function promoteLearnedRulesForTenant(tenantId) {
   const skipped = []
 
   for (const candidate of candidates.values()) {
-    const outcomes = [...candidate.outcomes.values()].sort(
-      (a, b) => b.occurrences - a.occurrences,
-    )
+    const outcomes = [...candidate.outcomes.values()].sort((a, b) => b.occurrences - a.occurrences)
 
     if (!outcomes.length) continue
 
     const winner = outcomes[0]
-    const contradictions = outcomes
-      .slice(1)
-      .reduce((sum, item) => sum + item.occurrences, 0)
+    const contradictions = outcomes.slice(1).reduce((sum, item) => sum + item.occurrences, 0)
 
-    const score = confidenceScore(
-      winner.exampleRule,
-      winner.occurrences,
-      contradictions,
-    )
+    const score = confidenceScore(winner.exampleRule, winner.occurrences, contradictions)
 
     const shouldPromote =
       winner.occurrences >= PROMOTION_MIN_OCCURRENCES &&

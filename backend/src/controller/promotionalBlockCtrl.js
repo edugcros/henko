@@ -16,10 +16,7 @@ import {
   findPublicBlocks,
   validateProductsBelongToTenant,
 } from '../services/promotionalBlockService.js'
-import {
-  getUserIdFromRequest,
-  resolveTenantFromRequest,
-} from '../utils/requestContext.js'
+import { getUserIdFromRequest, resolveTenantFromRequest } from '../utils/requestContext.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import logger from '../../config/logger.js'
 
@@ -270,16 +267,15 @@ export const updatePromotionalBlock = expressAsyncHandler(async (req, res) => {
 
   await validateProductsBelongToTenant({ tenantId, products })
 
-  const nextTitle = req.body.title !== undefined
-    ? String(req.body.title || '').trim()
-    : block.title
+  const nextTitle = req.body.title !== undefined ? String(req.body.title || '').trim() : block.title
 
-  const nextSlug = req.body.slug || req.body.title
-    ? normalizeBlockSlug({
-      slug: req.body.slug,
-      title: nextTitle,
-    })
-    : block.slug
+  const nextSlug =
+    req.body.slug || req.body.title
+      ? normalizeBlockSlug({
+          slug: req.body.slug,
+          title: nextTitle,
+        })
+      : block.slug
 
   const duplicate = await PromotionalBlock.findOne({
     _id: { $ne: block._id },
@@ -379,7 +375,6 @@ export const togglePromotionalBlockStatus = expressAsyncHandler(async (req, res)
   })
 })
 
-
 // =====================================================
 // ADMIN: DELETE
 // Soft delete por defecto.
@@ -393,7 +388,9 @@ export const deletePromotionalBlock = expressAsyncHandler(async (req, res) => {
   const userId = getUserId(req)
 
   const hardDelete =
-    String(req.query.hard || '').trim().toLowerCase() === 'true'
+    String(req.query.hard || '')
+      .trim()
+      .toLowerCase() === 'true'
 
   const block = await PromotionalBlock.findOne({
     _id: req.params.id,

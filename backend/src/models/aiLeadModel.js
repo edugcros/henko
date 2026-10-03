@@ -157,15 +157,7 @@ const aiLeadSchema = new Schema(
 
     status: {
       type: String,
-      enum: [
-        'new',
-        'qualified',
-        'hot',
-        'follow_up',
-        'won',
-        'lost',
-        'discarded',
-      ],
+      enum: ['new', 'qualified', 'hot', 'follow_up', 'won', 'lost', 'discarded'],
       default: 'new',
       index: true,
     },

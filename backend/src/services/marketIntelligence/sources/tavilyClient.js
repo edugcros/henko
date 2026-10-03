@@ -30,8 +30,7 @@ const num = (name, fallback) => {
 const SEARCH_URL =
   String(process.env.TAVILY_API_URL || '').trim() || 'https://api.tavily.com/search'
 
-const SEARCH_DEPTH =
-  String(process.env.TAVILY_SEARCH_DEPTH || '').trim() || 'basic'
+const SEARCH_DEPTH = String(process.env.TAVILY_SEARCH_DEPTH || '').trim() || 'basic'
 
 /**
  * Cuántos resultados pedir por búsqueda.
@@ -82,8 +81,7 @@ export const hasTavilyKey = () => Boolean(String(process.env.TAVILY_API_KEY || '
 const EXTRACT_URL =
   String(process.env.TAVILY_EXTRACT_URL || '').trim() || 'https://api.tavily.com/extract'
 
-const EXTRACT_DEPTH =
-  String(process.env.TAVILY_EXTRACT_DEPTH || '').trim() || 'basic'
+const EXTRACT_DEPTH = String(process.env.TAVILY_EXTRACT_DEPTH || '').trim() || 'basic'
 
 /**
  * El CUERPO de las páginas, no el extracto del buscador.
@@ -139,8 +137,7 @@ const EXTRACT_DEPTH =
 const CREDITOS_POR_BUSQUEDA = depth => (String(depth).toLowerCase() === 'advanced' ? 2 : 1)
 
 const CREDITOS_POR_EXTRACCION = (urlsResueltas, depth) =>
-  Math.ceil(Math.max(0, urlsResueltas) / 5) *
-  (String(depth).toLowerCase() === 'advanced' ? 2 : 1)
+  Math.ceil(Math.max(0, urlsResueltas) / 5) * (String(depth).toLowerCase() === 'advanced' ? 2 : 1)
 
 /** Anota un consumo en el acumulador, si quien llamó pasó uno. */
 const anotar = (toolUsage, tool, quantity) => {

@@ -9,7 +9,10 @@
 
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export const normalizeEmail = value => String(value || '').trim().toLowerCase()
+export const normalizeEmail = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
 
 export const isValidEmail = value => EMAIL_REGEX.test(normalizeEmail(value))
 
@@ -38,6 +41,8 @@ export const escapeHtml = value => {
 export const sanitizeString = (value, fallback = '') => {
   if (value === undefined || value === null) return fallback
 
-  const clean = String(value).replace(/[\r\n]+/g, ' ').trim()
+  const clean = String(value)
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
   return clean || fallback
 }

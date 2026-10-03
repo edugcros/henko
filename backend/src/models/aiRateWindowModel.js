@@ -99,10 +99,7 @@ const aiRateWindowSchema = new mongoose.Schema(
  * respuesta "no hay lugar", resuelta por la base y no por una comprobación
  * previa que podría perder la carrera.
  */
-aiRateWindowSchema.index(
-  { tenantId: 1, window: 1, windowStart: 1 },
-  { unique: true },
-)
+aiRateWindowSchema.index({ tenantId: 1, window: 1, windowStart: 1 }, { unique: true })
 
 /**
  * Las ventanas viejas se borran solas.

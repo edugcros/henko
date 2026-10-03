@@ -38,7 +38,9 @@ const buildFingerprint = ({ type, entityId }) => `${type}:${entityId || 'tenant'
 const upsertInsight = async (tenantId, candidate) => {
   const fingerprint = buildFingerprint({ type: candidate.type, entityId: candidate.entity?.id })
 
-  const existing = await AiInsight.findOne({ tenantId, fingerprint }).setOptions({ tenantId }).lean()
+  const existing = await AiInsight.findOne({ tenantId, fingerprint })
+    .setOptions({ tenantId })
+    .lean()
 
   if (existing && !MUTABLE_STATUSES.includes(existing.status)) {
     return existing

@@ -22,10 +22,7 @@
 //
 // Convención heredada de aiUsageService: 0 = ilimitado.
 
-import {
-  getPlatformAiOverride,
-  PLATFORM_AI_SETTINGS,
-} from './platformAiSettingService.js'
+import { getPlatformAiOverride, PLATFORM_AI_SETTINGS } from './platformAiSettingService.js'
 
 const clean = value => String(value || '').trim()
 
@@ -160,7 +157,6 @@ const readEnvLimit = name => {
   return Math.floor(parsed)
 }
 
-
 /**
  * Tope mensual de una métrica para un plan. 0 = ilimitado.
  */
@@ -207,7 +203,7 @@ export const getPerTenantShare = () => {
   const raw =
     override !== null && Number.isFinite(override)
       ? override
-      : readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5
+      : (readEnvNumber('AI_PLATFORM_PER_TENANT_SHARE') ?? 0.5)
 
   return Math.min(Math.max(raw, 0.01), 1)
 }
@@ -564,8 +560,7 @@ export const getPlanCatalog = () =>
  * Si está viejo, el margen se ve mejor o peor de lo que es. Por eso vale
  * mantenerlo, y por eso el reporte informa con qué valor se calculó.
  */
-export const getUsdToArsRate = () =>
-  Math.max(1, readEnvNumber('USD_ARS_RATE') ?? 1530)
+export const getUsdToArsRate = () => Math.max(1, readEnvNumber('USD_ARS_RATE') ?? 1530)
 //
 // A diferencia de la primera versión de esto (que quedaba en 0 porque no
 // había números reales a mano), estos defaults salen de una búsqueda de
@@ -772,8 +767,7 @@ export const getMaxInboundMessageChars = () =>
  * totalTokens de las filas de visión del período lo dice. Cuando el panel de
  * costos exista, conviene contrastarlo y ajustar por entorno.
  */
-const getVisionTokensPerCall = () =>
-  Math.max(1, readEnvNumber('AI_VISION_TOKENS_PER_CALL') ?? 4900)
+const getVisionTokensPerCall = () => Math.max(1, readEnvNumber('AI_VISION_TOKENS_PER_CALL') ?? 4900)
 
 /**
  * Techo por tenant sobre la key COMPARTIDA de la plataforma.

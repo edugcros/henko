@@ -30,10 +30,7 @@ const JOB_STATUS = Object.freeze({
   FAILED: 'failed',
 })
 
-const notDeleted = [
-  { deletedAt: { $exists: false } },
-  { deletedAt: null },
-]
+const notDeleted = [{ deletedAt: { $exists: false } }, { deletedAt: null }]
 
 /**
  * Filtro para RECLAMAR un job concreto.

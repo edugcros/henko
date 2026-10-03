@@ -23,11 +23,7 @@ const adminContext = [
   authMiddleware,
   isAdmin,
 ]
-const publicContext = [
-  resolveTenantByDomain,
-  requireTenant,
-  requireShopDomain,
-]
+const publicContext = [resolveTenantByDomain, requireTenant, requireShopDomain]
 
 router.post('/', adminContext, createColor)
 router.put('/:id', adminContext, updateColor)

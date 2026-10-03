@@ -90,9 +90,30 @@ describe('colas de revisión · primero lo urgente', () => {
     // La huella es única por (comercio, tipo:entidad): insertando con el
     // driver crudo hay que ponerla a mano, o las tres filas chocan entre sí.
     await AiInsight.collection.insertMany([
-      { ...base, priority: 'medium', title: 'Media', type: 'low_conversion', fingerprint: 'low_conversion:media', updatedAt: new Date() },
-      { ...base, priority: 'low', title: 'Baja', type: 'low_conversion', fingerprint: 'low_conversion:baja', updatedAt: new Date() },
-      { ...base, priority: 'high', title: 'Alta', type: 'low_conversion', fingerprint: 'low_conversion:alta', updatedAt: new Date() },
+      {
+        ...base,
+        priority: 'medium',
+        title: 'Media',
+        type: 'low_conversion',
+        fingerprint: 'low_conversion:media',
+        updatedAt: new Date(),
+      },
+      {
+        ...base,
+        priority: 'low',
+        title: 'Baja',
+        type: 'low_conversion',
+        fingerprint: 'low_conversion:baja',
+        updatedAt: new Date(),
+      },
+      {
+        ...base,
+        priority: 'high',
+        title: 'Alta',
+        type: 'low_conversion',
+        fingerprint: 'low_conversion:alta',
+        updatedAt: new Date(),
+      },
     ])
 
     await AiLearningSuggestion.collection.insertMany([
@@ -111,26 +132,26 @@ describe('colas de revisión · primero lo urgente', () => {
   test('Diagnóstico devuelve primero la prioridad alta', async () => {
     const res = await request(app)
       .get('/api/insights')
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
-    expect(res.body.data.items.map(item => item.priority)).toEqual([
-      'high',
-      'medium',
-      'low',
-    ])
+    expect(res.body.data.items.map(item => item.priority)).toEqual(['high', 'medium', 'low'])
   })
 
   test('Revisión de aprendizaje devuelve primero lo crítico', async () => {
     const res = await request(app)
       .get('/api/ai-agent/learning-suggestions')
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data.items.map(item => item.priority)).toEqual([

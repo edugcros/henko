@@ -212,14 +212,9 @@ export async function getWebResearchSignals({
 
   // Primero las que opinan. Tomar las primeras doce que vengan dejaba el
   // análisis a merced del ranking del buscador — ver opinionScore().
-  const ordenadas = [...relevantes].sort(
-    (a, b) => opinionScore(b, brand) - opinionScore(a, brand),
-  )
+  const ordenadas = [...relevantes].sort((a, b) => opinionScore(b, brand) - opinionScore(a, brand))
 
-  const usadas = await conTextoCompleto(
-    conTopePorDominio(ordenadas).slice(0, MAX_PAGES),
-    toolUsage,
-  )
+  const usadas = await conTextoCompleto(conTopePorDominio(ordenadas).slice(0, MAX_PAGES), toolUsage)
 
   const extraction = await callAgentLLM({
     systemPrompt: buildExtractionPrompt({ product, country }),
@@ -355,7 +350,8 @@ const COMMUNITY_HOSTS =
   /(reddit|youtube|youtu\.be|tiktok|instagram|facebook|quora|forocoches|taringa|vitalmx)/i
 
 /** Marcas de página de venta: tiene precio y botón de comprar, no opiniones. */
-const SHOP_MARKERS = /(\/products?\/|\/productos?\/|\/collections?\/|\/comprar|\/tienda\/|\/shop\/|\/cart)/i
+const SHOP_MARKERS =
+  /(\/products?\/|\/productos?\/|\/collections?\/|\/comprar|\/tienda\/|\/shop\/|\/cart)/i
 
 function opinionScore(page, brand = null) {
   const url = String(page?.url || '')
@@ -387,7 +383,10 @@ function esSitioDeLaMarca(url, brand) {
   if (token.length < 3) return false
 
   try {
-    return new URL(url).hostname.toLowerCase().replace(/[^a-z0-9]/g, '').includes(token)
+    return new URL(url).hostname
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .includes(token)
   } catch {
     return false
   }

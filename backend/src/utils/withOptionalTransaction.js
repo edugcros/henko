@@ -42,8 +42,7 @@ export const withOptionalTransaction = async callback => {
   const topologyType = resolveTopologyType(mongoose.connection)
 
   const supportsTransactions =
-    topologyType === 'ReplicaSetWithPrimary' ||
-    topologyType === 'Sharded'
+    topologyType === 'ReplicaSetWithPrimary' || topologyType === 'Sharded'
 
   if (!supportsTransactions) {
     // Sobre standalone esto es lo esperado y no hay nada que reportar. En

@@ -110,7 +110,6 @@ platformAiSettingSchema.index({ setting: 1, createdAt: -1 })
 // comercio — mismo criterio que aiPlatformUsageModel.
 
 const PlatformAiSetting =
-  mongoose.models.PlatformAiSetting ||
-  mongoose.model('PlatformAiSetting', platformAiSettingSchema)
+  mongoose.models.PlatformAiSetting || mongoose.model('PlatformAiSetting', platformAiSettingSchema)
 
 export default PlatformAiSetting

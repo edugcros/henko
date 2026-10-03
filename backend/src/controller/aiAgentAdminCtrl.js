@@ -29,8 +29,6 @@ const requireTenantId = req =>
     requireUserTenant: true,
   }).tenantId
 
-
-
 const PERIOD_MS = {
   '7d': 7 * 86400000,
   '30d': 30 * 86400000,
@@ -72,10 +70,7 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
       {
         $facet: {
           byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
-          hotLeads: [
-            { $match: { leadScore: { $gte: 75 } } },
-            { $count: 'count' },
-          ],
+          hotLeads: [{ $match: { leadScore: { $gte: 75 } } }, { $count: 'count' }],
           scoreStats: [
             {
               $group: {
@@ -97,15 +92,11 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
     getAiInfluencedSalesStats(tenantId, periodDate),
   ])
 
-  const convByStatus = Object.fromEntries(
-    conversationStats.map(s => [s._id, s.count]),
-  )
+  const convByStatus = Object.fromEntries(conversationStats.map(s => [s._id, s.count]))
   const totalConversations = conversationStats.reduce((sum, s) => sum + s.count, 0)
 
   const leadFacet = leadStats[0] || {}
-  const leadByStatus = Object.fromEntries(
-    (leadFacet.byStatus || []).map(s => [s._id, s.count]),
-  )
+  const leadByStatus = Object.fromEntries((leadFacet.byStatus || []).map(s => [s._id, s.count]))
   const totalLeads = Object.values(leadByStatus).reduce((sum, c) => sum + c, 0)
 
   return res.status(200).json({
@@ -119,9 +110,10 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
         waitingHuman: convByStatus.waiting_human || 0,
         closed: convByStatus.closed || 0,
         converted: convByStatus.converted || 0,
-        conversionRate: totalConversations > 0
-          ? Math.round(((convByStatus.converted || 0) / totalConversations) * 10000) / 100
-          : 0,
+        conversionRate:
+          totalConversations > 0
+            ? Math.round(((convByStatus.converted || 0) / totalConversations) * 10000) / 100
+            : 0,
       },
 
       leads: {
@@ -148,8 +140,6 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
     },
   })
 })
-
-
 
 export const permanentlyDeleteAiConversation = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)

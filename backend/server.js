@@ -9,19 +9,13 @@ import {
   startAiCartRecoveryWorker,
   stopAiCartRecoveryWorker,
 } from './src/workers/aiCartRecoveryWorker.js'
-import {
-  startAiInsightWorker,
-  stopAiInsightWorker,
-} from './src/workers/aiInsightWorker.js'
+import { startAiInsightWorker, stopAiInsightWorker } from './src/workers/aiInsightWorker.js'
 import { refreshPlatformAiSettings } from './src/services/ai/platformAiSettingService.js'
 import {
   startStaleOperationSweeper,
   stopStaleOperationSweeper,
 } from './src/services/ai/aiBudgetService.js'
-import {
-  startAccountingAudit,
-  stopAccountingAudit,
-} from './src/services/ai/aiAccountingService.js'
+import { startAccountingAudit, stopAccountingAudit } from './src/services/ai/aiAccountingService.js'
 import {
   startCertificateWatcher,
   stopCertificateWatcher,
@@ -172,7 +166,9 @@ const startServer = async () => {
       logger.error(`❌ Error en servidor HTTP: ${err.message}`)
 
       if (err.code === 'EADDRINUSE') {
-        logger.error(`❌ El puerto ${PORT} ya está en uso. Cerrá el proceso anterior o cambiá PORT.`)
+        logger.error(
+          `❌ El puerto ${PORT} ya está en uso. Cerrá el proceso anterior o cambiá PORT.`,
+        )
         logger.error(`👉 Windows: netstat -ano | findstr :${PORT}`)
         logger.error('👉 Luego: taskkill /PID TU_PID /F')
       }

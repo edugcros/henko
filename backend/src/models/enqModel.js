@@ -54,7 +54,7 @@ const enqSchema = new mongoose.Schema(
       index: true,
     },
   },
-  { 
+  {
     timestamps: true,
   },
 )

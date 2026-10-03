@@ -44,7 +44,9 @@ export class SharedRateLimitStore {
    */
   constructor(name) {
     if (!name) {
-      throw new Error('SharedRateLimitStore necesita un nombre para no compartir contador con otro limitador')
+      throw new Error(
+        'SharedRateLimitStore necesita un nombre para no compartir contador con otro limitador',
+      )
     }
 
     this.prefix = `${PREFIX}${name}:`

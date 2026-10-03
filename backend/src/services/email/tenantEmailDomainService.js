@@ -74,9 +74,7 @@ const normalizeRecords = records => {
     type: clean(item?.type),
     value: clean(item?.value),
     priority:
-      item?.priority === undefined || item?.priority === null
-        ? null
-        : Number(item.priority),
+      item?.priority === undefined || item?.priority === null ? null : Number(item.priority),
   }))
 }
 
@@ -88,8 +86,7 @@ const SENDGRID_API = 'https://api.sendgrid.com/v3'
 // contraseña = esta key): no hace falta una segunda credencial salvo que se
 // quiera separar una key de solo-envío de una con permiso de administrar
 // dominios, para lo cual SENDGRID_API_KEY pisa a EMAIL_PASS.
-const getSendGridApiKey = () =>
-  clean(process.env.SENDGRID_API_KEY) || clean(process.env.EMAIL_PASS)
+const getSendGridApiKey = () => clean(process.env.SENDGRID_API_KEY) || clean(process.env.EMAIL_PASS)
 
 const sendGridRequest = async (path, { method = 'GET', body } = {}) => {
   const key = getSendGridApiKey()
@@ -118,9 +115,7 @@ const sendGridRequest = async (path, { method = 'GET', body } = {}) => {
 
     if (!response.ok) {
       const message =
-        data?.errors?.[0]?.message ||
-        data?.message ||
-        `SendGrid respondió ${response.status}`
+        data?.errors?.[0]?.message || data?.message || `SendGrid respondió ${response.status}`
       const error = new Error(message)
       // SendGrid controla permisos por scope de API key, no por un código de
       // error dedicado: un 401/403 acá casi siempre significa que la key no
@@ -338,8 +333,7 @@ export const refreshTenantDomainStatus = async tenantId => {
           $set: {
             'email.status': 'pending',
             'email.lastCheckedAt': new Date(),
-            'email.lastError':
-                'El dominio todavía no figura en la cuenta del proveedor.',
+            'email.lastError': 'El dominio todavía no figura en la cuenta del proveedor.',
           },
         },
       )

@@ -59,7 +59,7 @@ router.post(
   resolveTenantByDomain,
   requireShopDomain,
   authMiddleware,
-  
+
   validateCoupon,
 )
 
@@ -75,7 +75,7 @@ router.post(
   resolveTenantByDomain,
   requireShopDomain,
   authMiddleware,
-  
+
   applyCouponToOrder,
 )
 
@@ -85,12 +85,7 @@ router.post(
  *
  * Público/storefront.
  */
-router.get(
-  '/by-product/:productId',
-  resolveTenantByDomain,
-  requireShopDomain,
-  getCouponsByProduct,
-)
+router.get('/by-product/:productId', resolveTenantByDomain, requireShopDomain, getCouponsByProduct)
 
 // =====================================================
 // ADMINISTRACIÓN
@@ -103,7 +98,7 @@ router.get(
 router.post(
   '/',
   adminContext,
-  
+
   validateCouponCreation,
   createCoupon,
 )
@@ -115,7 +110,7 @@ router.post(
 router.post(
   '/bulk',
   adminContext,
-  
+
   generateBulkCoupons,
 )
 
@@ -123,21 +118,13 @@ router.post(
  * Listar cupones activos/no eliminados.
  * GET /api/coupon
  */
-router.get(
-  '/',
-  adminContext,
-  getCoupons,
-)
+router.get('/', adminContext, getCoupons)
 
 /**
  * Listar cupones eliminados lógicamente.
  * GET /api/coupon/deleted
  */
-router.get(
-  '/deleted',
-  adminContext,
-  getDeletedCoupons,
-)
+router.get('/deleted', adminContext, getDeletedCoupons)
 
 /**
  * Eliminar permanentemente un cupón.
@@ -146,7 +133,7 @@ router.get(
 router.delete(
   '/:id/permanent',
   adminContext,
-  
+
   permanentDeleteCoupon,
 )
 
@@ -157,7 +144,7 @@ router.delete(
 router.patch(
   '/:id/restore',
   adminContext,
-  
+
   restoreCoupon,
 )
 
@@ -168,7 +155,7 @@ router.patch(
 router.post(
   '/:id/clone',
   adminContext,
-  
+
   cloneCoupon,
 )
 
@@ -179,7 +166,7 @@ router.post(
 router.put(
   '/:couponId/products',
   adminContext,
-  
+
   assignProductsToCoupon,
 )
 
@@ -187,11 +174,7 @@ router.put(
  * Obtener cupón por ID.
  * GET /api/coupon/:id
  */
-router.get(
-  '/:id',
-  adminContext,
-  getCouponById,
-)
+router.get('/:id', adminContext, getCouponById)
 
 /**
  * Actualizar cupón.
@@ -200,7 +183,7 @@ router.get(
 router.put(
   '/:id',
   adminContext,
-  
+
   updateCoupon,
 )
 
@@ -211,7 +194,7 @@ router.put(
 router.delete(
   '/:id',
   adminContext,
-  
+
   deleteCoupon,
 )
 

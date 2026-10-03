@@ -3,7 +3,6 @@ import { body } from 'express-validator'
 import { handleValidationErrors } from '../middlewares/handleValidationErrors.js'
 import { isValidObjectId } from './requestContext.js'
 
-
 /**
  * Middleware flexible para validar un ObjectId en distintas ubicaciones
  * @param {'user' | 'params' | 'body'} source - De dónde obtener el ID
@@ -14,17 +13,17 @@ export const validateMongoDbIdMiddleware = (source = 'user', key = '_id') => {
     let id
 
     switch (source) {
-    case 'user':
-      id = req.user?.[key]
-      break
-    case 'params':
-      id = req.params?.[key]
-      break
-    case 'body':
-      id = req.body?.[key]
-      break
-    default:
-      return sendResponse(res, 400, false, 'Origen de ID no válido')
+      case 'user':
+        id = req.user?.[key]
+        break
+      case 'params':
+        id = req.params?.[key]
+        break
+      case 'body':
+        id = req.body?.[key]
+        break
+      default:
+        return sendResponse(res, 400, false, 'Origen de ID no válido')
     }
 
     if (!isValidObjectId(id)) {
@@ -34,4 +33,3 @@ export const validateMongoDbIdMiddleware = (source = 'user', key = '_id') => {
     next()
   }
 }
-

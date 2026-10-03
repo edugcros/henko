@@ -283,7 +283,13 @@ const productTextValues = product => {
     ...getObjectTextValues(productAttributes),
     ...getObjectTextValues(categoryAttributes),
     ...getObjectTextValues(atributos),
-    ...specifications.flatMap(spec => [spec?.key, spec?.label, spec?.value, spec?.unit, spec?.group]),
+    ...specifications.flatMap(spec => [
+      spec?.key,
+      spec?.label,
+      spec?.value,
+      spec?.unit,
+      spec?.group,
+    ]),
     ...filterAttributes.flatMap(attr => [attr?.key, attr?.label, attr?.value]),
     ...variants.flatMap(variant => [
       variant?.sku,
@@ -338,13 +344,13 @@ const collectAllowedNumbers = ({ products = [], promotions = [], policies = {} }
     ]),
     ...extractNumbers(policies?.knowledgeText || '').map(parseLocalizedNumber),
     ...Object.values(toPlainObject(policies?.raw)).flatMap(value =>
-      extractNumbers(typeof value === 'string' ? value : JSON.stringify(value || '')).map(parseLocalizedNumber),
+      extractNumbers(typeof value === 'string' ? value : JSON.stringify(value || '')).map(
+        parseLocalizedNumber,
+      ),
     ),
   ]
 
-  return values
-    .map(value => Number(value))
-    .filter(value => Number.isFinite(value) && value > 0)
+  return values.map(value => Number(value)).filter(value => Number.isFinite(value) && value > 0)
 }
 
 const detectIntents = ({ responseText = '', userMessage = '' } = {}) => {
@@ -352,15 +358,26 @@ const detectIntents = ({ responseText = '', userMessage = '' } = {}) => {
 
   return {
     price: /\$|ars|precio|vale|sale|cuesta|cuestan|valor|importe/.test(text),
-    stock: /stock|disponible|disponibles|hay unidades|tenemos|queda|quedan|agotado|agotada/.test(text),
+    stock: /stock|disponible|disponibles|hay unidades|tenemos|queda|quedan|agotado|agotada/.test(
+      text,
+    ),
     discount: /descuento|cupon|cupon|promo|promocion|oferta|rebaja|% off|por ciento/.test(text),
     shipping: /envio|envios|entrega|delivery|correo|retirar|retiro|sucursal|domicilio/.test(text),
-    payment: /pago|pagos|tarjeta|mercado pago|transferencia|cuota|cuotas|financiacion|financiación/.test(text),
+    payment:
+      /pago|pagos|tarjeta|mercado pago|transferencia|cuota|cuotas|financiacion|financiación/.test(
+        text,
+      ),
     returns: /cambio|cambios|devolucion|devoluciones|reintegro|reembolso/.test(text),
     warranty: /garantia|garantía|garantizado|garantizada|falla|fallas/.test(text),
-    recommendation: /recomiendo|recomendaria|recomendaría|te sugiero|ideal para|conviene|mejor opcion|mejor opción|opciones/.test(text),
+    recommendation:
+      /recomiendo|recomendaria|recomendaría|te sugiero|ideal para|conviene|mejor opcion|mejor opción|opciones/.test(
+        text,
+      ),
     comparison: /comparar|diferencia|versus| vs |mejor que|cual conviene|cuál conviene/.test(text),
-    variant: /talle|talla|color|medida|capacidad|modelo|variante|presentacion|presentación|numero|número/.test(text),
+    variant:
+      /talle|talla|color|medida|capacidad|modelo|variante|presentacion|presentación|numero|número/.test(
+        text,
+      ),
     purchase: /comprar|carrito|checkout|link|lo quiero|me lo llevo|reservar|pedido/.test(text),
     lead: /telefono|teléfono|whatsapp|contacto|asesor|humano/.test(text),
   }
@@ -368,7 +385,9 @@ const detectIntents = ({ responseText = '', userMessage = '' } = {}) => {
 
 const isAvailabilityClaim = text => {
   const lower = normalizeText(text)
-  return /tenemos|hay stock|disponible|disponibles|queda|quedan|listo para comprar|lo podes comprar|lo podés comprar/.test(lower)
+  return /tenemos|hay stock|disponible|disponibles|queda|quedan|listo para comprar|lo podes comprar|lo podés comprar/.test(
+    lower,
+  )
 }
 
 const shouldIgnoreNumber = ({ parsed, raw, context, intents }) => {
@@ -384,12 +403,18 @@ const shouldIgnoreNumber = ({ parsed, raw, context, intents }) => {
   if (parsed >= 1900 && parsed <= 2100) return true
 
   // Horarios y tiempos frecuentes que no son precio.
-  if (/hora|hs|dias|días|dia|día|minuto|minutos|semana|semanas|mes|meses|hábil|habil/.test(lowerContext)) {
+  if (
+    /hora|hs|dias|días|dia|día|minuto|minutos|semana|semanas|mes|meses|hábil|habil/.test(
+      lowerContext,
+    )
+  ) {
     return true
   }
 
   // Cuotas, talles y medidas pueden no estar en price context.
-  if (/cuota|cuotas|talle|talla|numero|número|cm|mm|kg|gr|litro|ml|gb|tb|pulgada/.test(lowerContext)) {
+  if (
+    /cuota|cuotas|talle|talla|numero|número|cm|mm|kg|gr|litro|ml|gb|tb|pulgada/.test(lowerContext)
+  ) {
     return !intents.price && !intents.discount
   }
 
@@ -423,7 +448,14 @@ const calculateScore = ({ blockedReasons, hardWarnings, softWarnings, evidence }
   return Math.max(0, Math.min(100, score))
 }
 
-const buildLearningSignal = ({ type, title, question, priority = 'medium', tags = [], metadata = {} }) => {
+const buildLearningSignal = ({
+  type,
+  title,
+  question,
+  priority = 'medium',
+  tags = [],
+  metadata = {},
+}) => {
   return {
     type,
     title,
@@ -434,7 +466,14 @@ const buildLearningSignal = ({ type, title, question, priority = 'medium', tags 
   }
 }
 
-const buildLearningSignals = ({ intents, products, promotions, policies, userMessage, warnings }) => {
+const buildLearningSignals = ({
+  intents,
+  products,
+  promotions,
+  policies,
+  userMessage,
+  warnings,
+}) => {
   const signals = []
   const message = clean(userMessage)
 
@@ -490,12 +529,16 @@ const buildLearningSignals = ({ intents, products, promotions, policies, userMes
     )
   }
 
-  if ((intents.price || intents.stock || intents.recommendation) && safeArray(products).length === 0) {
+  if (
+    (intents.price || intents.stock || intents.recommendation) &&
+    safeArray(products).length === 0
+  ) {
     signals.push(
       buildLearningSignal({
         type: 'catalog_gap',
         title: 'Mejorar recuperación de catálogo',
-        question: message || 'El cliente preguntó por productos pero no se recuperó contexto de catálogo.',
+        question:
+          message || 'El cliente preguntó por productos pero no se recuperó contexto de catálogo.',
         priority: 'high',
         tags: ['catalogo', 'retrieval', 'commerce_ai'],
         metadata: { intent: 'catalog', productsCount: safeArray(products).length },
@@ -627,7 +670,10 @@ const getSpecSummary = product => {
   const specs = safeArray(product?.specifications)
     .filter(spec => spec?.visible !== false && clean(spec?.value))
     .slice(0, 2)
-    .map(spec => `${clean(spec.label || spec.key)}: ${clean(spec.value)}${spec.unit ? ` ${spec.unit}` : ''}`)
+    .map(
+      spec =>
+        `${clean(spec.label || spec.key)}: ${clean(spec.value)}${spec.unit ? ` ${spec.unit}` : ''}`,
+    )
 
   return specs.length ? ` · ${specs.join(' · ')}` : ''
 }
@@ -661,7 +707,14 @@ const buildPolicyFallback = ({ intents, policies }) => {
   return ''
 }
 
-const buildRepairInstruction = ({ warnings, blockedReasons, products, promotions, policies, userMessage }) => {
+const buildRepairInstruction = ({
+  warnings,
+  blockedReasons,
+  products,
+  promotions,
+  policies,
+  userMessage,
+}) => {
   const instructions = [
     'Reescribí la respuesta usando solamente datos presentes en el contexto.',
     'No inventes precios, stock, descuentos, cuotas, tiempos de envío ni garantías.',
@@ -684,10 +737,18 @@ const buildRepairInstruction = ({ warnings, blockedReasons, products, promotions
     if (codes) instructions.push(`Promociones/códigos válidos: ${codes}.`)
   }
 
-  if (!hasPolicyValue(policies.shipping)) instructions.push('Si preguntan por envío, reconocé que falta la política de envíos y ofrecé derivar o pedir zona.')
-  if (!hasPolicyValue(policies.payments)) instructions.push('Si preguntan por pagos/cuotas, no confirmes financiación sin datos del comercio.')
-  if (!hasPolicyValue(policies.returns)) instructions.push('Si preguntan por cambios/devoluciones, no inventes condiciones.')
-  if (!hasPolicyValue(policies.warranty)) instructions.push('Si preguntan por garantía, no confirmes plazos no disponibles.')
+  if (!hasPolicyValue(policies.shipping))
+    instructions.push(
+      'Si preguntan por envío, reconocé que falta la política de envíos y ofrecé derivar o pedir zona.',
+    )
+  if (!hasPolicyValue(policies.payments))
+    instructions.push(
+      'Si preguntan por pagos/cuotas, no confirmes financiación sin datos del comercio.',
+    )
+  if (!hasPolicyValue(policies.returns))
+    instructions.push('Si preguntan por cambios/devoluciones, no inventes condiciones.')
+  if (!hasPolicyValue(policies.warranty))
+    instructions.push('Si preguntan por garantía, no confirmes plazos no disponibles.')
 
   return {
     userMessage: clean(userMessage),
@@ -785,10 +846,18 @@ export const validateAgentCommerceResponse = ({
   }
 
   if (
-    (intents.shipping && /llega|demora|tarda|envio gratis|envío gratis|costo|precio/.test(lower) && !hasPolicyValue(normalizedPolicies.shipping)) ||
-    (intents.payment && /aceptamos|cuotas|sin interes|sin interés|financiacion|financiación/.test(lower) && !hasPolicyValue(normalizedPolicies.payments)) ||
-    (intents.returns && /podes cambiar|podés cambiar|devolvemos|reembolso|dias|días/.test(lower) && !hasPolicyValue(normalizedPolicies.returns)) ||
-    (intents.warranty && /garantia de|garantía de|meses|años|anos|cubre/.test(lower) && !hasPolicyValue(normalizedPolicies.warranty))
+    (intents.shipping &&
+      /llega|demora|tarda|envio gratis|envío gratis|costo|precio/.test(lower) &&
+      !hasPolicyValue(normalizedPolicies.shipping)) ||
+    (intents.payment &&
+      /aceptamos|cuotas|sin interes|sin interés|financiacion|financiación/.test(lower) &&
+      !hasPolicyValue(normalizedPolicies.payments)) ||
+    (intents.returns &&
+      /podes cambiar|podés cambiar|devolvemos|reembolso|dias|días/.test(lower) &&
+      !hasPolicyValue(normalizedPolicies.returns)) ||
+    (intents.warranty &&
+      /garantia de|garantía de|meses|años|anos|cubre/.test(lower) &&
+      !hasPolicyValue(normalizedPolicies.warranty))
   ) {
     warnings.push('answers_policy_without_policy_context')
   }
@@ -802,7 +871,8 @@ export const validateAgentCommerceResponse = ({
 
   if (safeArray(products).length > 0 && intents.recommendation) {
     if (!mentionsKnownProduct) {
-      const specificRecommendation = /te recomiendo\s+([a-z0-9áéíóúñü\s-]{4,})|elegi\s+|elegí\s+|compra\s+|comprá\s+/.test(lower)
+      const specificRecommendation =
+        /te recomiendo\s+([a-z0-9áéíóúñü\s-]{4,})|elegi\s+|elegí\s+|compra\s+|comprá\s+/.test(lower)
       if (specificRecommendation) {
         warnings.push('specific_recommendation_without_known_product_reference')
       } else {
@@ -811,7 +881,11 @@ export const validateAgentCommerceResponse = ({
     }
   }
 
-  if (safeArray(products).length > 0 && !mentionsKnownProduct && /tenemos|encontre|encontré|opciones|producto/.test(lower)) {
+  if (
+    safeArray(products).length > 0 &&
+    !mentionsKnownProduct &&
+    /tenemos|encontre|encontré|opciones|producto/.test(lower)
+  ) {
     softWarnings.push('does_not_reference_available_product_when_context_exists')
   }
 
@@ -842,14 +916,19 @@ export const validateAgentCommerceResponse = ({
     const commercialNumber =
       item.raw.includes('$') ||
       item.raw.includes('%') ||
-      /precio|sale|cuesta|vale|ars|descuento|promo|stock|unidades|cuotas|financiacion|financiación/.test(context)
+      /precio|sale|cuesta|vale|ars|descuento|promo|stock|unidades|cuotas|financiacion|financiación/.test(
+        context,
+      )
 
     if (!commercialNumber) return false
 
     return !isNumberAllowed({ parsed, allowedNumbers })
   })
 
-  if (suspiciousNumbers.length > 0 && (mentionsPrice || mentionsDiscount || mentionsStock || intents.payment)) {
+  if (
+    suspiciousNumbers.length > 0 &&
+    (mentionsPrice || mentionsDiscount || mentionsStock || intents.payment)
+  ) {
     warnings.push('contains_unverified_commercial_numbers')
   }
 
@@ -894,17 +973,17 @@ export const validateAgentCommerceResponse = ({
 
   const fallbackResponse = shouldFallback
     ? buildSafeFallbackResponse({
-      products,
-      promotions,
-      userMessage,
-      businessContext,
-      policies: normalizedPolicies,
-      validation: {
-        warnings: allWarnings,
-        blockedReasons,
-        intents,
-      },
-    })
+        products,
+        promotions,
+        userMessage,
+        businessContext,
+        policies: normalizedPolicies,
+        validation: {
+          warnings: allWarnings,
+          blockedReasons,
+          intents,
+        },
+      })
     : null
 
   return {
@@ -927,7 +1006,9 @@ export const validateAgentCommerceResponse = ({
       allowedNumbers,
     },
     missingContext: {
-      products: safeArray(products).length === 0 && (mentionsPrice || mentionsStock || intents.recommendation),
+      products:
+        safeArray(products).length === 0 &&
+        (mentionsPrice || mentionsStock || intents.recommendation),
       promotions: safeArray(promotions).length === 0 && mentionsDiscount,
       shippingPolicy: intents.shipping && !hasPolicyValue(normalizedPolicies.shipping),
       paymentPolicy: intents.payment && !hasPolicyValue(normalizedPolicies.payments),
@@ -960,15 +1041,21 @@ export const buildSafeFallbackResponse = ({
   const normalizedPolicies = policies?.raw
     ? policies
     : normalizePolicies({ policies, businessContext })
-  const currency = clean(businessContext?.currency || businessContext?.moneda || DEFAULT_CURRENCY).toUpperCase()
+  const currency = clean(
+    businessContext?.currency || businessContext?.moneda || DEFAULT_CURRENCY,
+  ).toUpperCase()
   const productList = safeArray(products)
   const promotionList = safeArray(promotions)
-  const availableProducts = productList
-    .filter(isProductAvailable)
-    .slice(0, MAX_FALLBACK_PRODUCTS)
+  const availableProducts = productList.filter(isProductAvailable).slice(0, MAX_FALLBACK_PRODUCTS)
   const policyText = buildPolicyFallback({ intents, policies: normalizedPolicies })
 
-  if (policyText && productList.length === 0 && !intents.price && !intents.stock && !intents.recommendation) {
+  if (
+    policyText &&
+    productList.length === 0 &&
+    !intents.price &&
+    !intents.stock &&
+    !intents.recommendation
+  ) {
     return [
       policyText,
       '',
@@ -977,30 +1064,24 @@ export const buildSafeFallbackResponse = ({
   }
 
   if (availableProducts.length > 0) {
-    const intro = intents.recommendation || intents.comparison
-      ? 'Con la información disponible, estas son las opciones más seguras para recomendar:'
-      : intents.stock
-        ? 'Estas opciones figuran disponibles en el catálogo:'
-        : intents.price
-          ? 'Estas opciones tienen precio cargado en el catálogo:'
-          : 'Encontré estas opciones del catálogo:'
+    const intro =
+      intents.recommendation || intents.comparison
+        ? 'Con la información disponible, estas son las opciones más seguras para recomendar:'
+        : intents.stock
+          ? 'Estas opciones figuran disponibles en el catálogo:'
+          : intents.price
+            ? 'Estas opciones tienen precio cargado en el catálogo:'
+            : 'Encontré estas opciones del catálogo:'
 
     const lines = availableProducts.map(product => buildProductLine({ product, currency }))
-    const promoLine = promotionList.length > 0
-      ? `\nPromociones detectadas: ${collectAllowedPromotionCodes(promotionList).slice(0, 3).join(', ') || 'hay promociones activas, a confirmar según producto'}.`
-      : ''
+    const promoLine =
+      promotionList.length > 0
+        ? `\nPromociones detectadas: ${collectAllowedPromotionCodes(promotionList).slice(0, 3).join(', ') || 'hay promociones activas, a confirmar según producto'}.`
+        : ''
     const policyLine = policyText ? `\n${policyText}` : ''
     const question = buildClarifyingQuestion(intents)
 
-    return [
-      intro,
-      '',
-      ...lines,
-      promoLine,
-      policyLine,
-      '',
-      question,
-    ]
+    return [intro, '', ...lines, promoLine, policyLine, '', question]
       .filter(line => line !== null && line !== undefined)
       .join('\n')
       .replace(/\n{3,}/g, '\n\n')
@@ -1008,7 +1089,9 @@ export const buildSafeFallbackResponse = ({
   }
 
   if (productList.length > 0) {
-    const lines = productList.slice(0, MAX_FALLBACK_PRODUCTS).map(product => buildProductLine({ product, currency }))
+    const lines = productList
+      .slice(0, MAX_FALLBACK_PRODUCTS)
+      .map(product => buildProductLine({ product, currency }))
 
     return [
       'Encontré productos relacionados, pero no puedo confirmar disponibilidad exacta con la información actual:',
@@ -1051,5 +1134,3 @@ export const buildSafeFallbackResponse = ({
     buildClarifyingQuestion(intents),
   ].join('\n')
 }
-
-

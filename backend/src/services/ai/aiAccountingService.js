@@ -139,9 +139,7 @@ export const rebuildTenantProjection = async ({ tenantId, period, apply = false 
     },
   ]).option({ ignoreTenant: true, platformScope: 'platform:reconciliacion-ia' })
 
-  const almacenado = await AiUsage.findOne({ tenantId, period })
-    .setOptions({ tenantId })
-    .lean()
+  const almacenado = await AiUsage.findOne({ tenantId, period }).setOptions({ tenantId }).lean()
 
   // ¿ESTÁ COMPLETO EL LIBRO?
   //
@@ -159,8 +157,7 @@ export const rebuildTenantProjection = async ({ tenantId, period, apply = false 
   // operaciones que el ledger no conoce, el que está incompleto es el ledger.
   const [operaciones, enElLedger] = await Promise.all([
     AiOperation.distinct('operationId', { tenantId, period }).setOptions({ tenantId }),
-    AiConsumptionLedger.distinct('operationId', { tenantId, period })
-      .setOptions({ tenantId }),
+    AiConsumptionLedger.distinct('operationId', { tenantId, period }).setOptions({ tenantId }),
   ])
 
   // Las filas de una llamada extra entran al ledger como 'operacion:llamada',
@@ -200,9 +197,7 @@ export const rebuildTenantProjection = async ({ tenantId, period, apply = false 
 
   // Cada métrica lee SOLO las filas de su propia unidad. Es la línea de la que
   // depende que el número signifique algo — ver el caso de `vision` arriba.
-  const delLedger = new Map(
-    filas.map(f => [`${f._id.metric}:${f._id.unit}`, f]),
-  )
+  const delLedger = new Map(filas.map(f => [`${f._id.metric}:${f._id.unit}`, f]))
 
   const counters = {}
   let hasDrift = false
@@ -428,9 +423,7 @@ export const rebuildPlatformProjection = async ({ period, apply = false }) => {
 
 /** La misma clave que arma el medidor. Si difiere, esto duplica en vez de rellenar. */
 const claveDeLibro = (operationId, callId) =>
-  !operationId || !callId || callId === CALL_ID.MAIN
-    ? operationId
-    : `${operationId}:${callId}`
+  !operationId || !callId || callId === CALL_ID.MAIN ? operationId : `${operationId}:${callId}`
 
 /**
  * Encuentra llamadas al proveedor sin fila en el libro y las repone.
@@ -461,9 +454,7 @@ export const backfillLedgerFromProviderCalls = async ({
     }).setOptions({ ignoreTenant: true, platformScope: 'platform:relleno-libro' }),
   )
 
-  const faltantes = llamadas.filter(
-    ll => !enElLibro.has(claveDeLibro(ll.operationId, ll.callId)),
-  )
+  const faltantes = llamadas.filter(ll => !enElLibro.has(claveDeLibro(ll.operationId, ll.callId)))
 
   const report = {
     period,

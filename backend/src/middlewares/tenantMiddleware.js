@@ -11,18 +11,10 @@ import {
   getDomainCandidates,
   normalizeHostname,
 } from '../utils/domainUtils.js'
-import {
-  isValidObjectId,
-  toObjectId,
-} from '../utils/requestContext.js'
+import { isValidObjectId, toObjectId } from '../utils/requestContext.js'
 
-import {
-  runWithTenantContext,
-} from '../utils/tenantRequestContext.js'
-import {
-  decodeAccessToken,
-  getAccessTokenFromRequest,
-} from '../utils/authRequest.js'
+import { runWithTenantContext } from '../utils/tenantRequestContext.js'
+import { decodeAccessToken, getAccessTokenFromRequest } from '../utils/authRequest.js'
 import expressAsyncHandler from 'express-async-handler'
 
 // =====================================================
@@ -32,11 +24,7 @@ import expressAsyncHandler from 'express-async-handler'
 const isDev = env.isDevelopment
 const isTest = env.nodeEnv === 'test'
 
-const DEV_DOMAINS = new Set([
-  'localhost',
-  '127.0.0.1',
-  '0.0.0.0',
-])
+const DEV_DOMAINS = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 
 const CACHE_TTL = 5 * 60 * 1000
 const CLEANUP_INTERVAL = 30 * 60 * 1000
@@ -55,9 +43,7 @@ const getHeaderValue = (req, headerName) => {
 
 const getHostResolutionInput = req => {
   const explicitTenantHeader =
-    getHeaderValue(req, env.tenantHeader) ||
-    getHeaderValue(req, 'x-tenant-domain') ||
-    null
+    getHeaderValue(req, env.tenantHeader) || getHeaderValue(req, 'x-tenant-domain') || null
 
   const forwardedHost = getHeaderValue(req, 'x-forwarded-host') || null
   const hostHeader = getHeaderValue(req, 'host') || null
@@ -66,11 +52,7 @@ const getHostResolutionInput = req => {
     explicitTenantHeader,
     forwardedHost,
     hostHeader,
-    selectedHost:
-      explicitTenantHeader ||
-      forwardedHost ||
-      hostHeader ||
-      '',
+    selectedHost: explicitTenantHeader || forwardedHost || hostHeader || '',
   }
 }
 
@@ -83,10 +65,7 @@ const isApiHostWithoutTenantHeader = ({ explicitTenantHeader, selectedHost }) =>
 
   if (!apiDomain) return false
 
-  return (
-    !explicitTenantHeader &&
-    normalizeHostname(selectedHost) === apiDomain
-  )
+  return !explicitTenantHeader && normalizeHostname(selectedHost) === apiDomain
 }
 
 const extractDomain = req => {
@@ -201,10 +180,7 @@ const clearTenantContext = req => {
  * elige quien hace la petición, el token lo firma el servidor.
  */
 const isPlatformAdminHost = host =>
-  esHostDePanelDePlataforma(
-    host,
-    env.tenantAdminBaseDomain || env.adminBaseDomain,
-  )
+  esHostDePanelDePlataforma(host, env.tenantAdminBaseDomain || env.adminBaseDomain)
 
 /**
  * El comercio que dice la sesión, para el panel compartido.
@@ -320,10 +296,7 @@ const findTenantByDomainCandidates = async candidates => {
         domains: {
           $elemMatch: {
             status: 'active',
-            $or: [
-              { hostname: { $in: candidates } },
-              { normalizedHostname: { $in: candidates } },
-            ],
+            $or: [{ hostname: { $in: candidates } }, { normalizedHostname: { $in: candidates } }],
           },
         },
       },
@@ -331,17 +304,16 @@ const findTenantByDomainCandidates = async candidates => {
         adminDomains: {
           $elemMatch: {
             status: 'active',
-            $or: [
-              { hostname: { $in: candidates } },
-              { normalizedHostname: { $in: candidates } },
-            ],
+            $or: [{ hostname: { $in: candidates } }, { normalizedHostname: { $in: candidates } }],
           },
         },
       },
       { legacyDomains: { $in: candidates } },
       { legacyAdminDomains: { $in: candidates } },
     ],
-  }).select('_id name slug domains adminDomains status plan email').lean()
+  })
+    .select('_id name slug domains adminDomains status plan email')
+    .lean()
 }
 
 const attachTenantToRequest = ({
@@ -401,10 +373,7 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
     })
   }
 
-  const candidates = [...new Set([
-    domain,
-    domain.replace(/^www\./, ''),
-  ])]
+  const candidates = [...new Set([domain, domain.replace(/^www\./, '')])]
 
   const tenant = await Tenant.findOne({
     status: 'active',
@@ -429,9 +398,7 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
     return res.status(404).json({
       success: false,
       message: 'Tenant no encontrado',
-      debug: process.env.NODE_ENV !== 'production'
-        ? { domain, candidates }
-        : undefined,
+      debug: process.env.NODE_ENV !== 'production' ? { domain, candidates } : undefined,
     })
   }
 
@@ -456,12 +423,7 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
 
 export const resolveTenantByDomain = async (req, res, next) => {
   try {
-    const {
-      explicitTenantHeader,
-      rawHost,
-      host,
-      candidates,
-    } = extractDomain(req)
+    const { explicitTenantHeader, rawHost, host, candidates } = extractDomain(req)
 
     if (!host || candidates.length === 0) {
       return sendResponse(res, 400, false, 'No se pudo determinar el dominio')
@@ -668,8 +630,6 @@ export const requireShopDomain = (req, res, next) => {
 //
 // La resolución de comercio para controllers vive en un solo lugar:
 // utils/requestContext.js.
-
-
 
 export const cleanupTenantCache = () => {
   const now = Date.now()

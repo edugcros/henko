@@ -46,11 +46,7 @@ const findVariant = ({ product, cartItem }) => {
 }
 
 const getProductImageUrl = product => {
-  return (
-    product?.images?.find?.(image => image?.isMain)?.url ||
-    product?.images?.[0]?.url ||
-    null
-  )
+  return product?.images?.find?.(image => image?.isMain)?.url || product?.images?.[0]?.url || null
 }
 
 const getVariantImageUrl = variant => variant?.image?.url || null
@@ -77,12 +73,7 @@ export const validateCartOwnership = ({ cart, userId, tenantId }) => {
   }
 }
 
-export const calculateCartLines = async ({
-  cart,
-  tenantId,
-  session = null,
-  money,
-}) => {
+export const calculateCartLines = async ({ cart, tenantId, session = null, money }) => {
   const tenantObjectId = normalizeObjectId(tenantId)
 
   if (!tenantObjectId) {
@@ -107,9 +98,7 @@ export const calculateCartLines = async ({
     .session(session)
     .lean()
 
-  const productMap = new Map(
-    dbProducts.map(product => [String(product._id), product]),
-  )
+  const productMap = new Map(dbProducts.map(product => [String(product._id), product]))
 
   let currency = null
   let subtotalCents = 0
@@ -134,15 +123,11 @@ export const calculateCartLines = async ({
     const variant = findVariant({ product, cartItem })
 
     if (product.hasVariants && !variant) {
-      throw new Error(
-        `La variante seleccionada ya no existe para "${product.title}"`,
-      )
+      throw new Error(`La variante seleccionada ya no existe para "${product.title}"`)
     }
 
     if (variant && variant.isActive === false) {
-      throw new Error(
-        `La variante seleccionada está inactiva para "${product.title}"`,
-      )
+      throw new Error(`La variante seleccionada está inactiva para "${product.title}"`)
     }
 
     const availableStock = variant
@@ -161,9 +146,7 @@ export const calculateCartLines = async ({
       variant,
     })
 
-    const lineCurrency = String(
-      cartItem.currency || product.currency || 'ARS',
-    ).toUpperCase()
+    const lineCurrency = String(cartItem.currency || product.currency || 'ARS').toUpperCase()
 
     if (!ALLOWED_CURRENCIES.includes(lineCurrency)) {
       throw new Error(`Moneda inválida: ${lineCurrency}`)
@@ -176,9 +159,7 @@ export const calculateCartLines = async ({
     }
 
     const priceCents = money.fromDecimal(pricing.price)
-    const originalPriceCents = money.fromDecimal(
-      pricing.originalPrice ?? pricing.price,
-    )
+    const originalPriceCents = money.fromDecimal(pricing.originalPrice ?? pricing.price)
     const lineSubtotalCents = money.multiply(priceCents, count)
     const originalSubtotalCents = money.multiply(originalPriceCents, count)
 

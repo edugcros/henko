@@ -247,7 +247,6 @@ aiOperationSchema.index({ period: 1, actualModel: 1 })
 
 aiOperationSchema.plugin(tenantPlugin)
 
-const AiOperation =
-  mongoose.models.AiOperation || mongoose.model('AiOperation', aiOperationSchema)
+const AiOperation = mongoose.models.AiOperation || mongoose.model('AiOperation', aiOperationSchema)
 
 export default AiOperation

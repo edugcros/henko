@@ -90,10 +90,7 @@ const aiContactPreferenceSchema = new Schema(
   { timestamps: true },
 )
 
-aiContactPreferenceSchema.index(
-  { tenantId: 1, channel: 1, destination: 1 },
-  { unique: true },
-)
+aiContactPreferenceSchema.index({ tenantId: 1, channel: 1, destination: 1 }, { unique: true })
 aiContactPreferenceSchema.index({ tenantId: 1, channel: 1, optedOut: 1 })
 aiContactPreferenceSchema.index({ tenantId: 1, channel: 1, marketingConsent: 1 })
 

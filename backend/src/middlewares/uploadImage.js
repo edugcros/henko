@@ -3,25 +3,21 @@
 import multer from 'multer'
 import sharp from 'sharp'
 import logger from '../../config/logger.js'
-import {
-  ALLOWED_IMAGE_MIME_TYPES,
-  MAX_IMAGE_UPLOAD_BYTES,
-} from '../../config/imageUploadPolicy.js'
-import {
-  ALLOWED_VIDEO_MIME_TYPES,
-  MAX_VIDEO_UPLOAD_BYTES,
-} from '../../config/videoUploadPolicy.js'
+import { ALLOWED_IMAGE_MIME_TYPES, MAX_IMAGE_UPLOAD_BYTES } from '../../config/imageUploadPolicy.js'
+import { ALLOWED_VIDEO_MIME_TYPES, MAX_VIDEO_UPLOAD_BYTES } from '../../config/videoUploadPolicy.js'
 
 const MAX_SIZE_BYTES = MAX_IMAGE_UPLOAD_BYTES
 const ALLOWED_MIME = new Set(ALLOWED_IMAGE_MIME_TYPES)
 const ALLOWED_VIDEO_MIME = new Set(ALLOWED_VIDEO_MIME_TYPES)
 
 const sanitizeName = name => {
-  const base = String(name || 'image').toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9_.-]/g, '')
-    .replace(/-+/g, '-')
-    .slice(0, 64) || 'image'
+  const base =
+    String(name || 'image')
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9_.-]/g, '')
+      .replace(/-+/g, '-')
+      .slice(0, 64) || 'image'
   return base
 }
 
@@ -60,14 +56,9 @@ export const uploadVideo = multer({
 })
 
 export const productImgResize = async (req, res, next) => {
-  
   try {
     // Soportar tanto req.files (array) como req.file (single)
-    const files = req.files
-      ? Object.values(req.files).flat()
-      : req.file
-        ? [req.file]
-        : []    
+    const files = req.files ? Object.values(req.files).flat() : req.file ? [req.file] : []
     if (req.file && !req.files) {
       req.files = [req.file]
     }
@@ -81,15 +72,15 @@ export const productImgResize = async (req, res, next) => {
         const safeBase = sanitizeName(
           file.originalname?.split('.').slice(0, -1).join('.') || 'image',
         )
-        
+
         // Procesar con sharp
         const processed = await sharp(file.buffer)
           .rotate()
-          .resize({ 
-            width: 1200, 
-            height: 1200, 
-            fit: 'inside', 
-            withoutEnlargement: true, 
+          .resize({
+            width: 1200,
+            height: 1200,
+            fit: 'inside',
+            withoutEnlargement: true,
           })
           .webp({ quality: 80 })
           .toBuffer()
@@ -100,7 +91,7 @@ export const productImgResize = async (req, res, next) => {
         file.buffer = processed // Compatibilidad backward
         file.safeName = `${Date.now()}-${safeBase}.webp`
         file.mimetype = 'image/webp' // Actualizar MIME type
-        
+
         logger.debug(`Imagen procesada: ${file.originalname} -> ${processed.length} bytes`)
       }),
     )

@@ -34,7 +34,6 @@ const MP_TO_DOMAIN_PAYMENT_STATUS = {
   charged_back: PAYMENT_STATUS.REFUNDED,
 }
 
-
 export const NEGATIVE_PAYMENT_STATUSES = new Set([
   PAYMENT_STATUS.REJECTED,
   PAYMENT_STATUS.CANCELLED,
@@ -126,10 +125,7 @@ const buildNotificationUrl = () => {
     return null
   }
 
-  const apiPrefix = `/${sanitizeString(process.env.API_PREFIX, '/api').replace(
-    /^\/+|\/+$/g,
-    '',
-  )}`
+  const apiPrefix = `/${sanitizeString(process.env.API_PREFIX, '/api').replace(/^\/+|\/+$/g, '')}`
 
   return `${publicBackendUrl}${apiPrefix}/payments/webhook/mercadopago?source_news=webhooks`
 }
@@ -215,9 +211,7 @@ export const mapMercadoPagoError = error => {
   const rawMessage = String(error?.message || '').toLowerCase()
   const cause = Array.isArray(error?.cause) ? error.cause : []
 
-  const causeText = cause
-    .map(item => String(item?.description || '').toLowerCase())
-    .join(' | ')
+  const causeText = cause.map(item => String(item?.description || '').toLowerCase()).join(' | ')
 
   const combined = `${rawMessage} ${causeText}`
   const status = Number(error?.status || error?.statusCode || 400)
@@ -233,7 +227,8 @@ export const mapMercadoPagoError = error => {
       status: 503,
       code: 'MP_ACCESS_TOKEN_INVALID',
       message: 'Mercado Pago no está configurado correctamente para este comercio.',
-      details: 'El Access Token del backend es inválido, vencido o no pertenece a esta integración.',
+      details:
+        'El Access Token del backend es inválido, vencido o no pertenece a esta integración.',
     }
   }
 

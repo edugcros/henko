@@ -1,9 +1,6 @@
 // 📁 src/services/statsService.js
 
-import Order, {
-  ORDER_STATUS,
-  PAYMENT_STATUS,
-} from '../models/orderModel.js'
+import Order, { ORDER_STATUS, PAYMENT_STATUS } from '../models/orderModel.js'
 import Product from '../models/productModel.js'
 import User from '../models/userModel.js'
 import Cart from '../models/cartModel.js'
@@ -37,7 +34,6 @@ const metricsConfig = {
   realtimeWindowMinutes: 5,
   ...(env?.metrics || {}),
 }
-
 
 // ============================================================================
 // 1. MÉTRICAS PRINCIPALES DEL DASHBOARD (KPIs)
@@ -171,10 +167,19 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
       // aiAgentRevenueInsightsService.js::getTotalGeneratedValue.
       totalGeneratedValue: totalGeneratedValueStats.totalGeneratedValue || 0,
       conversionRate,
-      productClickThroughRate: calculateRate(userBehaviorStats.productClicks, userBehaviorStats.productImpressions),
-      productViewRate: calculateRate(userBehaviorStats.productViewSessions, userBehaviorStats.sessions),
+      productClickThroughRate: calculateRate(
+        userBehaviorStats.productClicks,
+        userBehaviorStats.productImpressions,
+      ),
+      productViewRate: calculateRate(
+        userBehaviorStats.productViewSessions,
+        userBehaviorStats.sessions,
+      ),
       addToCartRate: calculateRate(userBehaviorStats.addToCartSessions, userBehaviorStats.sessions),
-      checkoutStartRate: calculateRate(userBehaviorStats.checkoutStartSessions, userBehaviorStats.sessions),
+      checkoutStartRate: calculateRate(
+        userBehaviorStats.checkoutStartSessions,
+        userBehaviorStats.sessions,
+      ),
       paymentApprovalRate: paymentStats.approvalRate,
     },
     lowStock: lowStockProducts,
@@ -219,8 +224,10 @@ export const getDashboardStats = async (tenantId, timeframe = '30d') => {
       realtime: realtimeStats.definition,
       revenueSources: {
         revenue: 'Order (paymentStatus/orderStatus aprobados, excluye canceladas/reembolsadas)',
-        metaRevenueAndRecoveredAndAiInfluenced: 'UserMetricEvent PURCHASE (source:system), registrado al aprobar el pago — no se actualiza si la orden se cancela o reembolsa después, así que puede no sumar exacto contra `revenue` en comercios con cancelaciones frecuentes.',
-        totalGeneratedValue: 'Suma de UserMetricEvent PURCHASE con atribución de campaña, influencia de IA, o recuperación de carrito — cada orden cuenta una sola vez aunque cumpla más de una condición (evita doble conteo cuando se solapan).',
+        metaRevenueAndRecoveredAndAiInfluenced:
+          'UserMetricEvent PURCHASE (source:system), registrado al aprobar el pago — no se actualiza si la orden se cancela o reembolsa después, así que puede no sumar exacto contra `revenue` en comercios con cancelaciones frecuentes.',
+        totalGeneratedValue:
+          'Suma de UserMetricEvent PURCHASE con atribución de campaña, influencia de IA, o recuperación de carrito — cada orden cuenta una sola vez aunque cumpla más de una condición (evita doble conteo cuando se solapan).',
       },
     },
     realtime: realtimeStats,
@@ -287,9 +294,10 @@ const getSalesStats = async (tenantId, dateRange) => {
   const previous = previousPeriod[0] || { totalRevenue: 0 }
 
   // Calcular crecimiento porcentual
-  const growth = previous.totalRevenue > 0
-    ? ((current.totalRevenue - previous.totalRevenue) / previous.totalRevenue * 100).toFixed(2)
-    : 0
+  const growth =
+    previous.totalRevenue > 0
+      ? (((current.totalRevenue - previous.totalRevenue) / previous.totalRevenue) * 100).toFixed(2)
+      : 0
 
   // Agregar días sin ventas para gráfico completo
   const dailyBreakdown = fillMissingDays(
@@ -408,15 +416,14 @@ const getOrderStats = async (tenantId, dateRange) => {
   }
   const previous = previousStats[0] || { totalOrders: 0 }
 
-  const growth = previous.totalOrders > 0
-    ? ((current.totalOrders - previous.totalOrders) / previous.totalOrders * 100).toFixed(2)
-    : 0
+  const growth =
+    previous.totalOrders > 0
+      ? (((current.totalOrders - previous.totalOrders) / previous.totalOrders) * 100).toFixed(2)
+      : 0
 
   // AOV real: revenue pagado / órdenes pagadas.
   const paidOrders = current.paidOrders || 0
-  const aov = paidOrders > 0
-    ? Money.toDecimal(current.paidAmount || 0) / paidOrders
-    : 0
+  const aov = paidOrders > 0 ? Money.toDecimal(current.paidAmount || 0) / paidOrders : 0
 
   const statusCounts = (current.statusBreakdown || []).reduce((acc, status) => {
     acc[status || 'unknown'] = (acc[status || 'unknown'] || 0) + 1
@@ -520,10 +527,7 @@ const buildInventoryValueExpression = () => ({
       },
     },
     {
-      $multiply: [
-        { $ifNull: ['$price', 0] },
-        { $ifNull: ['$stock', 0] },
-      ],
+      $multiply: [{ $ifNull: ['$price', 0] }, { $ifNull: ['$stock', 0] }],
     },
   ],
 })
@@ -647,7 +651,10 @@ const getLowStockProducts = async (tenantId, limit = metricsConfig.topProductsLi
  * Datos para gráfico de ventas (usado en adminController.getSalesChartData)
  * y también internamente para el dashboard
  */
-export const getSalesChartDataInternal = async (tenantId, days = metricsConfig.internalPeriodDays) => {
+export const getSalesChartDataInternal = async (
+  tenantId,
+  days = metricsConfig.internalPeriodDays,
+) => {
   const startDate = new Date()
   startDate.setDate(startDate.getDate() - parseInt(days))
   startDate.setHours(0, 0, 0, 0)
@@ -706,7 +713,6 @@ export const getSalesChartDataInternal = async (tenantId, days = metricsConfig.i
 // órdenes: eso es lo que se muestra y lo que se mantiene. Si algún día hace
 // falta GA4, se hace completo y andando en vez de dejar el esqueleto puesto.
 
-
 /**
  * Calcula rango de fechas según timeframe
  */
@@ -716,7 +722,9 @@ const getDateRange = timeframe => {
   end.setHours(23, 59, 59, 999)
 
   let start = new Date(now)
-  const normalized = String(timeframe || '30d').trim().toLowerCase()
+  const normalized = String(timeframe || '30d')
+    .trim()
+    .toLowerCase()
   const dynamicDaysMatch = normalized.match(/^(\d+)d$/)
 
   if (dynamicDaysMatch) {
@@ -724,24 +732,24 @@ const getDateRange = timeframe => {
     start.setDate(start.getDate() - days)
   } else {
     switch (normalized) {
-    case 'mtd':
-      start.setDate(1)
-      break
-    case 'ytd':
-      start.setMonth(0, 1)
-      break
-    case '1y':
-      start.setFullYear(start.getFullYear() - 1)
-      break
-    case '90d':
-      start.setDate(start.getDate() - 90)
-      break
-    case '7d':
-      start.setDate(start.getDate() - 7)
-      break
-    case '30d':
-    default:
-      start.setDate(start.getDate() - 30)
+      case 'mtd':
+        start.setDate(1)
+        break
+      case 'ytd':
+        start.setMonth(0, 1)
+        break
+      case '1y':
+        start.setFullYear(start.getFullYear() - 1)
+        break
+      case '90d':
+        start.setDate(start.getDate() - 90)
+        break
+      case '7d':
+        start.setDate(start.getDate() - 7)
+        break
+      case '30d':
+      default:
+        start.setDate(start.getDate() - 30)
     }
   }
 
@@ -801,9 +809,6 @@ const fillMissingDays = (data, startDate, endDate) => {
 // 9. EXPORTACIONES ADICIONALES (para uso en otros controller)
 // ============================================================================
 
-
-
-
 const getCartValueExpression = () => ({
   $cond: [
     { $gt: [{ $ifNull: ['$totalAfterDiscount', 0] }, 0] },
@@ -821,10 +826,7 @@ const buildCartProductPreviewExpression = productPreviewLimit => ({
         in: {
           productId: '$$product.productId',
           title: {
-            $ifNull: [
-              '$$product.title',
-              { $ifNull: ['$$product.name', 'Producto'] },
-            ],
+            $ifNull: ['$$product.title', { $ifNull: ['$$product.name', 'Producto'] }],
           },
           quantity: { $ifNull: ['$$product.quantity', 1] },
           subtotal: {
@@ -917,7 +919,11 @@ const getActiveCartStats = async (tenantId, dateRange) => {
   }
 }
 
-const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.topProductsLimit) => {
+const getTopVisitedProducts = async (
+  tenantId,
+  dateRange,
+  limit = metricsConfig.topProductsLimit,
+) => {
   const tenantObjectId = new mongoose.Types.ObjectId(tenantId)
   const safeLimit = Math.max(1, Math.min(50, Number(limit || 10)))
 
@@ -959,11 +965,7 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
           ],
         },
         productObjectId: {
-          $cond: [
-            { $eq: [{ $type: '$productId' }, 'objectId'] },
-            '$productId',
-            null,
-          ],
+          $cond: [{ $eq: [{ $type: '$productId' }, 'objectId'] }, '$productId', null],
         },
       },
     },
@@ -978,10 +980,7 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
         productObjectId: { $first: '$productObjectId' },
         titleFromEvent: {
           $first: {
-            $ifNull: [
-              '$metadata.title',
-              { $ifNull: ['$metadata.productTitle', 'Producto'] },
-            ],
+            $ifNull: ['$metadata.title', { $ifNull: ['$metadata.productTitle', 'Producto'] }],
           },
         },
         views: {
@@ -1045,10 +1044,7 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
         _id: 0,
         productId: '$_id',
         title: {
-          $ifNull: [
-            '$product.title',
-            { $ifNull: ['$titleFromEvent', 'Producto'] },
-          ],
+          $ifNull: ['$product.title', { $ifNull: ['$titleFromEvent', 'Producto'] }],
         },
         sku: '$product.sku',
         slug: '$product.slug',
@@ -1080,8 +1076,7 @@ const getTopVisitedProducts = async (tenantId, dateRange, limit = metricsConfig.
     // son las impresiones. Si un producto no tiene impresiones registradas
     // (tracking incompleto), null es más honesto que un porcentaje sobre
     // cero o que volver al denominador equivocado.
-    clickThroughRate:
-      row.impressions > 0 ? calculateRate(row.clicks, row.impressions) : null,
+    clickThroughRate: row.impressions > 0 ? calculateRate(row.clicks, row.impressions) : null,
   }))
 }
 
@@ -1109,11 +1104,7 @@ const getCartDailyStats = async (tenantId, dateRange) => {
         },
         itemCount: { $sum: '$products.quantity' },
         value: {
-          $cond: [
-            { $gt: ['$totalAfterDiscount', 0] },
-            '$totalAfterDiscount',
-            '$cartTotal',
-          ],
+          $cond: [{ $gt: ['$totalAfterDiscount', 0] }, '$totalAfterDiscount', '$cartTotal'],
         },
         isAbandoned: { $lte: ['$updatedAt', abandonedBefore] },
       },
@@ -1220,7 +1211,8 @@ const getAbandonedCartStats = async (tenantId, dateRange) => {
     items: result.items,
     definition: {
       source: 'Cart',
-      countedWhen: 'El carrito pertenece al tenant, tiene productos y no fue actualizado dentro del umbral configurado.',
+      countedWhen:
+        'El carrito pertenece al tenant, tiene productos y no fue actualizado dentro del umbral configurado.',
       dateField: 'updatedAt',
       periodStart: dateRange.start,
       periodEnd: dateRange.end,
@@ -1236,7 +1228,11 @@ const getAbandonedCartStats = async (tenantId, dateRange) => {
   }
 }
 
-const getTopSellingProducts = async (tenantId, dateRange, limit = metricsConfig.topProductsLimit) => {
+const getTopSellingProducts = async (
+  tenantId,
+  dateRange,
+  limit = metricsConfig.topProductsLimit,
+) => {
   const rows = await Order.aggregate([
     {
       $match: {
@@ -1383,22 +1379,20 @@ const getTopClickedProducts = async (
 
   const products = validProductObjectIds.length
     ? await Product.find({
-      _id: { $in: validProductObjectIds },
-      tenantId: tenantObjectId,
-    })
-      // FIX: sin setOptions el tenantPlugin bloquea la query y no devuelve
-      // ningún producto, así que el productMap quedaba vacío y todos los
-      // títulos caían al fallback 'Producto'. getTopVisitedProducts no tiene
-      // el problema porque resuelve el producto con $lookup dentro de un
-      // aggregate, que no pasa por el plugin.
-      .setOptions({ tenantId })
-      .select('title name slug sku images price categoria category marca brand')
-      .lean()
+        _id: { $in: validProductObjectIds },
+        tenantId: tenantObjectId,
+      })
+        // FIX: sin setOptions el tenantPlugin bloquea la query y no devuelve
+        // ningún producto, así que el productMap quedaba vacío y todos los
+        // títulos caían al fallback 'Producto'. getTopVisitedProducts no tiene
+        // el problema porque resuelve el producto con $lookup dentro de un
+        // aggregate, que no pasa por el plugin.
+        .setOptions({ tenantId })
+        .select('title name slug sku images price categoria category marca brand')
+        .lean()
     : []
 
-  const productMap = new Map(
-    products.map(product => [String(product._id), product]),
-  )
+  const productMap = new Map(products.map(product => [String(product._id), product]))
 
   return rows.map(row => {
     const productId = String(row._id || '')
@@ -1411,11 +1405,7 @@ const getTopClickedProducts = async (
       // Orden de preferencia: nombre actual del catálogo → nombre al momento
       // del click → aviso de que ya no existe. Nunca un genérico ("Producto")
       // que se confunda con un error de carga.
-      title:
-        product?.title ||
-        product?.name ||
-        row.titleFromEvent ||
-        'Producto eliminado',
+      title: product?.title || product?.name || row.titleFromEvent || 'Producto eliminado',
       // Permite al panel distinguir un producto vivo de uno borrado sin
       // inferirlo del título.
       exists: Boolean(product),
@@ -1916,12 +1906,7 @@ const calculateRate = (numerator, denominator) => {
   return Number(((Number(numerator || 0) / base) * 100).toFixed(2))
 }
 
-const mergeDailyMetrics = (
-  revenueRows = [],
-  orderRows = [],
-  activityRows = [],
-  cartRows = [],
-) => {
+const mergeDailyMetrics = (revenueRows = [], orderRows = [], activityRows = [], cartRows = []) => {
   const orderMap = new Map(orderRows.map(row => [row.date, row]))
   const activityMap = new Map(activityRows.map(row => [row.date, row]))
   const cartMap = new Map(cartRows.map(row => [row.date, row]))

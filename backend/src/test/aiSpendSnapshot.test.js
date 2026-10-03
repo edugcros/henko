@@ -29,9 +29,8 @@ process.env.AI_PLATFORM_PER_TENANT_SHARE = '0.5'
 const { default: Tenant } = await import('../models/tenantModel.js')
 const { default: AiTenantPolicy } = await import('../models/aiTenantPolicyModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
-const { default: AiConsumptionLedger, LEDGER_EVENT } = await import(
-  '../models/aiConsumptionLedgerModel.js'
-)
+const { default: AiConsumptionLedger, LEDGER_EVENT } =
+  await import('../models/aiConsumptionLedgerModel.js')
 const { getPlatformSpendSnapshot } = await import('../services/ai/aiSpendReportService.js')
 const { setTenantAiPolicy } = await import('../services/ai/platformAiSettingService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')

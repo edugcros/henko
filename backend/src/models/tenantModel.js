@@ -9,10 +9,7 @@ import {
   normalizeHostname,
   normalizeSlug,
 } from '../utils/domainUtils.js'
-import {
-  encryptSecret,
-  decryptSecret,
-} from '../services/aiAgent/secretCryptoService.js'
+import { encryptSecret, decryptSecret } from '../services/aiAgent/secretCryptoService.js'
 
 const { Schema } = mongoose
 
@@ -392,15 +389,7 @@ const tenantSchema = new Schema(
 
       step: {
         type: String,
-        enum: [
-          'account',
-          'store',
-          'theme',
-          'products',
-          'payments',
-          'domain',
-          'completed',
-        ],
+        enum: ['account', 'store', 'theme', 'products', 'payments', 'domain', 'completed'],
         default: 'account',
       },
 
@@ -788,10 +777,7 @@ tenantSchema.methods.hasDomain = function hasDomain(hostname) {
   const normalized = normalizeHostname(hostname)
 
   return this.domains.some(domain => {
-    return (
-      domain.normalizedHostname === normalized ||
-      domain.hostname === normalized
-    )
+    return domain.normalizedHostname === normalized || domain.hostname === normalized
   })
 }
 
@@ -801,10 +787,7 @@ tenantSchema.methods.hasActiveDomain = function hasActiveDomain(hostname) {
   return this.domains.some(domain => {
     return (
       domain.status === 'active' &&
-      (
-        domain.normalizedHostname === normalized ||
-        domain.hostname === normalized
-      )
+      (domain.normalizedHostname === normalized || domain.hostname === normalized)
     )
   })
 }
@@ -813,10 +796,7 @@ tenantSchema.methods.hasAdminDomain = function hasAdminDomain(hostname) {
   const normalized = normalizeHostname(hostname)
 
   return this.adminDomains.some(domain => {
-    return (
-      domain.normalizedHostname === normalized ||
-      domain.hostname === normalized
-    )
+    return domain.normalizedHostname === normalized || domain.hostname === normalized
   })
 }
 
@@ -826,10 +806,7 @@ tenantSchema.methods.hasActiveAdminDomain = function hasActiveAdminDomain(hostna
   return this.adminDomains.some(domain => {
     return (
       domain.status === 'active' &&
-      (
-        domain.normalizedHostname === normalized ||
-        domain.hostname === normalized
-      )
+      (domain.normalizedHostname === normalized || domain.hostname === normalized)
     )
   })
 }
@@ -849,10 +826,7 @@ tenantSchema.statics.findByDomain = function findByDomain(hostname) {
         domains: {
           $elemMatch: {
             status: 'active',
-            $or: [
-              { hostname: raw },
-              { normalizedHostname: normalized },
-            ],
+            $or: [{ hostname: raw }, { normalizedHostname: normalized }],
           },
         },
       },
@@ -860,10 +834,7 @@ tenantSchema.statics.findByDomain = function findByDomain(hostname) {
         adminDomains: {
           $elemMatch: {
             status: 'active',
-            $or: [
-              { hostname: raw },
-              { normalizedHostname: normalized },
-            ],
+            $or: [{ hostname: raw }, { normalizedHostname: normalized }],
           },
         },
       },
@@ -886,10 +857,7 @@ tenantSchema.statics.findStorefrontByDomain = function findStorefrontByDomain(ho
         domains: {
           $elemMatch: {
             status: 'active',
-            $or: [
-              { hostname: raw },
-              { normalizedHostname: normalized },
-            ],
+            $or: [{ hostname: raw }, { normalizedHostname: normalized }],
           },
         },
       },
@@ -910,10 +878,7 @@ tenantSchema.statics.findAdminByDomain = function findAdminByDomain(hostname) {
         adminDomains: {
           $elemMatch: {
             status: 'active',
-            $or: [
-              { hostname: raw },
-              { normalizedHostname: normalized },
-            ],
+            $or: [{ hostname: raw }, { normalizedHostname: normalized }],
           },
         },
       },
@@ -927,8 +892,4 @@ const Tenant = mongoose.models.Tenant || mongoose.model('Tenant', tenantSchema)
 
 export default Tenant
 
-export {
-  normalizeDomainValue,
-  normalizeHostname,
-  normalizeSlug,
-}
+export { normalizeDomainValue, normalizeHostname, normalizeSlug }

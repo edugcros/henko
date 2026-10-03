@@ -41,10 +41,7 @@ router.post('/leads/:leadId/discard', discardAiLead)
 
 router.delete('/leads/:leadId/permanent', permanentlyDeleteAiLead)
 
-router.delete(
-  '/leads/:leadId/products-of-interest/:productRef',
-  removeLeadProductOfInterest,
-)
+router.delete('/leads/:leadId/products-of-interest/:productRef', removeLeadProductOfInterest)
 
 router.delete('/leads/:leadId', deleteAiLead)
 

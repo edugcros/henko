@@ -53,7 +53,6 @@ const CATALOG = [
   { models: ['gemini-2.5-flash-lite'], from: null, until: null, input: 0.1, output: 0.4 },
 ]
 
-
 /**
  * Herramientas: lo que se paga POR LLAMADA, no por token.
  *
@@ -195,7 +194,9 @@ const warnedTools = new Set()
  * @returns {{tool:string, unitCostUsd:number, fallback?:boolean}}
  */
 export const getToolPrice = (tool, at = new Date()) => {
-  const name = String(tool || '').trim().toLowerCase()
+  const name = String(tool || '')
+    .trim()
+    .toLowerCase()
   const when = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date()
 
   const entry = TOOL_CATALOG.find(e => e.tools.includes(name) && inWindow(e, when))
@@ -277,9 +278,7 @@ export const computeToolCostUsd = ({ tool, quantity, at = new Date() } = {}) => 
  * haya una cifra real conviene cerrar esta ventana y abrir una nueva en vez de
  * editar esta.
  */
-const IMAGE_CATALOG = [
-  { from: null, until: null, perImage: 0.02 },
-]
+const IMAGE_CATALOG = [{ from: null, until: null, perImage: 0.02 }]
 
 /**
  * Precio de UNA generación de imagen, a la fecha del consumo.
@@ -454,9 +453,7 @@ export const getAssumedInputRatio = (metric, model) => {
   // normalize() es la misma forma canónica con la que se busca el precio: sin
   // esto 'models/Gemini-3.6-Flash' no encontraría su par y caería un nivel.
   const porModelo =
-    metric && model
-      ? ASSUMED_INPUT_RATIO_BY_MODEL[`${metric}|${normalize(model)}`]
-      : undefined
+    metric && model ? ASSUMED_INPUT_RATIO_BY_MODEL[`${metric}|${normalize(model)}`] : undefined
 
   if (porModelo !== undefined) return { ratio: porModelo, source: 'metric+model' }
 
@@ -545,7 +542,6 @@ export const getModelPrice = (model, at = new Date(), serviceTier = null) => {
   }
 }
 
-
 /**
  * El nivel de servicio MULTIPLICA la tarifa, y por mucho.
  *
@@ -587,7 +583,10 @@ const warnedTiers = new Set()
  * @returns {{tier:string, multiplier:number, known:boolean}}
  */
 export const getTierMultiplier = tier => {
-  const name = String(tier || 'standard').trim().toLowerCase() || 'standard'
+  const name =
+    String(tier || 'standard')
+      .trim()
+      .toLowerCase() || 'standard'
   const multiplier = TIER_MULTIPLIER[name]
 
   if (multiplier !== undefined) return { tier: name, multiplier, known: true }

@@ -14,10 +14,7 @@ const compact = value => clean(value).replace(/\s+/g, ' ')
 
 const getProductTitle = product => {
   return (
-    clean(product?.title) ||
-    clean(product?.name) ||
-    clean(product?.nombre) ||
-    'Producto sin nombre'
+    clean(product?.title) || clean(product?.name) || clean(product?.nombre) || 'Producto sin nombre'
   )
 }
 
@@ -64,13 +61,22 @@ const formatKeyValueObject = (value, max = 8) => {
   if (!entries.length) return ''
 
   return entries
-    .map(([key, itemValue]) => `${key}: ${Array.isArray(itemValue) ? itemValue.join(', ') : itemValue}`)
+    .map(
+      ([key, itemValue]) =>
+        `${key}: ${Array.isArray(itemValue) ? itemValue.join(', ') : itemValue}`,
+    )
     .join(' | ')
 }
 
 const formatSpecifications = product => {
   const rows = safeArray(product?.specifications)
-    .filter(item => item?.visible !== false && item?.value !== undefined && item?.value !== null && clean(item.value))
+    .filter(
+      item =>
+        item?.visible !== false &&
+        item?.value !== undefined &&
+        item?.value !== null &&
+        clean(item.value),
+    )
     .slice(0, 10)
 
   if (rows.length) {
@@ -97,12 +103,20 @@ const formatLogistics = product => {
   const rows = []
 
   if (Number(logistics.weightKg) > 0) rows.push(`Peso: ${logistics.weightKg} kg`)
-  if (Number(dimensions.length) > 0 || Number(dimensions.width) > 0 || Number(dimensions.height) > 0) {
-    rows.push(`Dimensiones: ${dimensions.length || 0} x ${dimensions.width || 0} x ${dimensions.height || 0} cm`)
+  if (
+    Number(dimensions.length) > 0 ||
+    Number(dimensions.width) > 0 ||
+    Number(dimensions.height) > 0
+  ) {
+    rows.push(
+      `Dimensiones: ${dimensions.length || 0} x ${dimensions.width || 0} x ${dimensions.height || 0} cm`,
+    )
   }
   if (clean(logistics.shippingType)) rows.push(`Tipo de envío: ${logistics.shippingType}`)
-  if (clean(logistics.warranty || product?.warranty)) rows.push(`Garantía: ${logistics.warranty || product.warranty}`)
-  if (clean(logistics.originCountry || product?.originCountry)) rows.push(`Origen: ${logistics.originCountry || product.originCountry}`)
+  if (clean(logistics.warranty || product?.warranty))
+    rows.push(`Garantía: ${logistics.warranty || product.warranty}`)
+  if (clean(logistics.originCountry || product?.originCountry))
+    rows.push(`Origen: ${logistics.originCountry || product.originCountry}`)
 
   return rows.join(' | ')
 }
@@ -152,7 +166,9 @@ const formatProducts = (products, currency = 'ARS') => {
 
       const specifications = formatSpecifications(product)
       const logistics = formatLogistics(product)
-      const shortDescription = clean(product?.seo?.shortDescription || product?.shortDescription || product?.summary)
+      const shortDescription = clean(
+        product?.seo?.shortDescription || product?.shortDescription || product?.summary,
+      )
 
       return [
         `${index + 1}. ${getProductTitle(product)}`,
@@ -223,9 +239,7 @@ const formatPromotions = (promotions, currency = 'ARS') => {
     .map((promo, index) => {
       const usageScope =
         promo.usageScope ||
-        (safeArray(promo.applicableProducts).length > 0
-          ? 'specific_products'
-          : 'general_cart')
+        (safeArray(promo.applicableProducts).length > 0 ? 'specific_products' : 'general_cart')
 
       const appliesToSpecificProducts =
         promo.appliesToSpecificProducts === true || usageScope === 'specific_products'
@@ -352,14 +366,14 @@ const formatConversationMemory = memory => {
       : '',
     Object.keys(preferences).length
       ? `Preferencias detectadas: ${Object.entries(preferences)
-        .map(([key, value]) => `${key}=${value}`)
-        .join(', ')}`
+          .map(([key, value]) => `${key}=${value}`)
+          .join(', ')}`
       : '',
     safeArray(memory.lastUserMessages).length
       ? `Últimos mensajes del cliente:\n${memory.lastUserMessages
-        .slice(-4)
-        .map((message, index) => `  ${index + 1}. ${message}`)
-        .join('\n')}`
+          .slice(-4)
+          .map((message, index) => `  ${index + 1}. ${message}`)
+          .join('\n')}`
       : '',
   ].filter(Boolean)
 
@@ -384,11 +398,7 @@ export const buildAgentSystemPrompt = ({
     commerceContext?.tenant?.name ||
     'la tienda'
 
-  const currency =
-    commerceContext?.tenant?.currency ||
-    tenant?.currency ||
-    tenant?.moneda ||
-    'ARS'
+  const currency = commerceContext?.tenant?.currency || tenant?.currency || tenant?.moneda || 'ARS'
 
   return `
 Sos el asistente comercial IA de ${tenantName}.

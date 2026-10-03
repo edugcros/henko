@@ -20,237 +20,108 @@
 // de suscripciones, que use las credenciales de HENKO y no las del comercio, y
 // que el controlador llame a un método que existe.
 
-import { jest } from "@jest/globals";
+import { jest } from '@jest/globals'
 
-const TENANT = { _id: "64b7f0000000000000000001", name: "Comercio" };
-const USER_ID = "64b7f0000000000000000009";
+const TENANT = { _id: '64b7f0000000000000000001', name: 'Comercio' }
+const USER_ID = '64b7f0000000000000000009'
 
-const mockCreate = jest.fn();
-const mockTenantUpdate = jest.fn();
-const mockSendEmail = jest.fn();
-const mockResolveTenant = jest.fn();
+const mockCreate = jest.fn()
+const mockTenantUpdate = jest.fn()
+const mockSendEmail = jest.fn()
+const mockResolveTenant = jest.fn()
 
-const mockTenantFindById = jest.fn();
+const mockTenantFindById = jest.fn()
 
-jest.unstable_mockModule("../models/tenantModel.js", () => ({
+jest.unstable_mockModule('../models/tenantModel.js', () => ({
   default: {
     findByIdAndUpdate: mockTenantUpdate,
     findById: mockTenantFindById,
     findOne: jest.fn(),
   },
-}));
+}))
 
-jest.unstable_mockModule("../services/emailService.js", () => ({
+jest.unstable_mockModule('../services/emailService.js', () => ({
   sendTemplateEmail: mockSendEmail,
-}));
+}))
 
-jest.unstable_mockModule("../../config/logger.js", () => ({
+jest.unstable_mockModule('../../config/logger.js', () => ({
   default: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
-}));
+}))
 
 // La forma REAL de lo que devuelve: no es el documento del comercio, es el
 // resultado de resolver a quién pertenece la request. Mockearlo devolviendo un
 // Tenant sería reproducir el malentendido que causó el bug.
-jest.unstable_mockModule("../utils/requestContext.js", () => ({
+jest.unstable_mockModule('../utils/requestContext.js', () => ({
   resolveAuthorizedTenantFromRequest: mockResolveTenant,
   getUserIdFromRequest: () => USER_ID,
   getTenantIdFromRequest: () => TENANT._id,
   isValidObjectId: () => true,
   toObjectId: value => value,
-}));
+}))
 
-const { createSubscriptionClient } = await import(
-  "../services/subscriptionPaymentService.js"
-);
+const { createSubscriptionClient } = await import('../services/subscriptionPaymentService.js')
 
-const TOKEN_ORIGINAL = process.env.MP_ACCESS_TOKEN;
+const TOKEN_ORIGINAL = process.env.MP_ACCESS_TOKEN
 
 afterEach(() => {
-  if (TOKEN_ORIGINAL === undefined) delete process.env.MP_ACCESS_TOKEN;
-  else process.env.MP_ACCESS_TOKEN = TOKEN_ORIGINAL;
-  jest.clearAllMocks();
-});
+  if (TOKEN_ORIGINAL === undefined) delete process.env.MP_ACCESS_TOKEN
+  else process.env.MP_ACCESS_TOKEN = TOKEN_ORIGINAL
+  jest.clearAllMocks()
+})
 
-describe("createSubscriptionClient · el cliente correcto", () => {
-  test("expone los métodos de suscripciones, no los de pagos", () => {
+describe('createSubscriptionClient · el cliente correcto', () => {
+  test('expone los métodos de suscripciones, no los de pagos', () => {
     // Un cliente de pagos no tiene create/get/update de preapproval, y era
     // exactamente el que se estaba construyendo.
-    const cliente = createSubscriptionClient();
+    const cliente = createSubscriptionClient()
 
-    expect(typeof cliente.create).toBe("function");
-    expect(typeof cliente.get).toBe("function");
-    expect(typeof cliente.update).toBe("function");
-  });
+    expect(typeof cliente.create).toBe('function')
+    expect(typeof cliente.get).toBe('function')
+    expect(typeof cliente.update).toBe('function')
+  })
 
-  test("NO tiene el `.subscription` que el controlador llamaba", () => {
+  test('NO tiene el `.subscription` que el controlador llamaba', () => {
     // La llamada vieja era mpClient.subscription.create(...). Si alguien la
     // reintroduce, esto deja claro que ese objeto no existe.
-    expect(createSubscriptionClient().subscription).toBeUndefined();
-  });
+    expect(createSubscriptionClient().subscription).toBeUndefined()
+  })
 
-  test("no recibe ningún argumento: las credenciales son de la plataforma", () => {
+  test('no recibe ningún argumento: las credenciales son de la plataforma', () => {
     // El comercio le paga a HENKO, así que la plata entra a la cuenta de HENKO.
     // Pasarle el id del comercio era la raíz del error.
-    expect(createSubscriptionClient.length).toBe(0);
-  });
-});
+    expect(createSubscriptionClient.length).toBe(0)
+  })
+})
 
-describe("createSubscriptionClient · credenciales ausentes", () => {
+describe('createSubscriptionClient · credenciales ausentes', () => {
   // El módulo lee env.mercadoPago.accessToken, que se resuelve al cargar
   // config/env.js. Estos casos comprueban la validación con el valor que ese
   // módulo ya tiene.
-  test("un token con formato de Mercado Pago es aceptado", () => {
-    const token = String(process.env.MP_ACCESS_TOKEN || "");
+  test('un token con formato de Mercado Pago es aceptado', () => {
+    const token = String(process.env.MP_ACCESS_TOKEN || '')
 
     // El entorno de test trae una credencial de prueba o productiva; en
     // cualquiera de los dos casos la fábrica no debe lanzar.
-    if (token.startsWith("APP_USR-") || token.startsWith("TEST-")) {
-      expect(() => createSubscriptionClient()).not.toThrow();
+    if (token.startsWith('APP_USR-') || token.startsWith('TEST-')) {
+      expect(() => createSubscriptionClient()).not.toThrow()
     } else {
       // Sin credencial, falla de forma explícita y con 500: es un problema de
       // configuración de la plataforma, no del comercio que se quiso suscribir.
-      expect(() => createSubscriptionClient()).toThrow("MP_ACCESS_TOKEN_INVALID");
+      expect(() => createSubscriptionClient()).toThrow('MP_ACCESS_TOKEN_INVALID')
     }
-  });
+  })
 
-  test("un id de comercio NO es una credencial válida", () => {
+  test('un id de comercio NO es una credencial válida', () => {
     // Es literalmente lo que se le pasaba. Se comprueba contra la misma regla
     // que usaba la función vieja para rechazarlo.
     const pareceCredencial = valor =>
-      String(valor).startsWith("APP_USR-") || String(valor).startsWith("TEST-");
+      String(valor).startsWith('APP_USR-') || String(valor).startsWith('TEST-')
 
-    expect(pareceCredencial(TENANT._id)).toBe(false);
-  });
-});
+    expect(pareceCredencial(TENANT._id)).toBe(false)
+  })
+})
 
-describe("subscriptionCtrl · el alta llega a Mercado Pago", () => {
-  const respuesta = () => ({
-    statusCode: 0,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload) {
-      this.body = payload;
-      return this;
-    },
-  });
-
-  // Exactamente lo que envía el Brick de Mercado Pago. SIN `payer.name`: no lo
-  // manda, porque el nombre del titular viaja dentro del token de la tarjeta.
-  const pedido = () => ({
-    user: { _id: USER_ID, tenantId: TENANT._id },
-    body: {
-      plan: "pro",
-      token: "fa2a788ac4f2ff028502dd2b9471f04a",
-      paymentMethodId: "master",
-      issuerId: "12468",
-      payer: {
-        email: "duenio@comercio.com",
-        identification: { type: "DNI", number: "32680474" },
-      },
-    },
-  });
-
-  test("se llama create() sobre el cliente, y la respuesta no es 503", async () => {
-    // El 503 era el síntoma: "Mercado Pago no está disponible" sin que se
-    // hubiera intentado ninguna llamada.
-    jest.resetModules();
-
-    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
-      createSubscriptionClient: () => ({ create: mockCreate }),
-      buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
-      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
-      mapMercadoPagoSubscriptionStatus: () => "active",
-      createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
-      readProviderBillingDates: () => ({
-        currentPeriodStart: null,
-        currentPeriodEnd: null,
-        nextBillingAt: null,
-      }),
-    }));
-
-    mockCreate.mockResolvedValue({ id: "mp-sub-1", status: "authorized" });
-    // Lo que devuelve de verdad: la resolución, no el documento.
-    mockResolveTenant.mockResolvedValue({
-      tenantId: TENANT._id,
-      tenantObjectId: TENANT._id,
-      source: "user",
-    });
-    mockTenantFindById.mockResolvedValue(TENANT);
-    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} });
-    mockSendEmail.mockResolvedValue({});
-
-    const { processSubscriptionPayment } = await import(
-      "../controller/subscriptionCtrl.js"
-    );
-
-    const res = respuesta();
-    await processSubscriptionPayment(pedido(), res);
-
-    expect(mockCreate).toHaveBeenCalledTimes(1);
-    expect(res.statusCode).not.toBe(503);
-  });
-
-  test("el alta no muere con 'Cannot read properties of undefined'", async () => {
-    // El error exacto que devolvía producción, con su 400.
-    //
-    // resolveAuthorizedTenantFromRequest devuelve
-    // { tenantId, tenantObjectId, userTenantId, source }, y el handler lo
-    // guardaba en una variable llamada `tenant` para después leer `tenant._id`.
-    // Ese undefined llegaba a `tenantId.toString()` al armar el metadata de
-    // Mercado Pago.
-    jest.resetModules();
-
-    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
-      createSubscriptionClient: () => ({ create: mockCreate }),
-      // El builder REAL hace tenantId.toString(); replicarlo es lo que hace que
-      // este test valga.
-      buildMercadoPagoSubscriptionData: ({ tenantId, userId }) => ({
-        subscriptionData: {
-          metadata: { tenant_id: tenantId.toString(), user_id: userId.toString() },
-        },
-      }),
-      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
-      mapMercadoPagoSubscriptionStatus: () => "active",
-      createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
-      readProviderBillingDates: () => ({
-        currentPeriodStart: null,
-        currentPeriodEnd: null,
-        nextBillingAt: null,
-      }),
-    }));
-
-    mockCreate.mockResolvedValue({ id: "mp-sub-1", status: "authorized" });
-    mockResolveTenant.mockResolvedValue({
-      tenantId: TENANT._id,
-      tenantObjectId: TENANT._id,
-      source: "user",
-    });
-    mockTenantFindById.mockResolvedValue(TENANT);
-    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} });
-    mockSendEmail.mockResolvedValue({});
-
-    const { processSubscriptionPayment } = await import(
-      "../controller/subscriptionCtrl.js"
-    );
-
-    const res = respuesta();
-    await processSubscriptionPayment(pedido(), res);
-
-    expect(String(res.body?.message || "")).not.toContain(
-      "Cannot read properties of undefined",
-    );
-    expect(res.statusCode).not.toBe(400);
-
-    // Y el id que viajó a Mercado Pago es el del comercio, no undefined.
-    const [[{ body }]] = mockCreate.mock.calls;
-    expect(body.metadata.tenant_id).toBe(TENANT._id);
-  });
-});
-
-describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
+describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
   const respuesta = () => ({
     statusCode: 0,
     body: null,
@@ -264,18 +135,139 @@ describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
     },
   })
 
-  test("un pago sin payer.name NO se rechaza", async () => {
+  // Exactamente lo que envía el Brick de Mercado Pago. SIN `payer.name`: no lo
+  // manda, porque el nombre del titular viaja dentro del token de la tarjeta.
+  const pedido = () => ({
+    user: { _id: USER_ID, tenantId: TENANT._id },
+    body: {
+      plan: 'pro',
+      token: 'fa2a788ac4f2ff028502dd2b9471f04a',
+      paymentMethodId: 'master',
+      issuerId: '12468',
+      payer: {
+        email: 'duenio@comercio.com',
+        identification: { type: 'DNI', number: '32680474' },
+      },
+    },
+  })
+
+  test('se llama create() sobre el cliente, y la respuesta no es 503', async () => {
+    // El 503 era el síntoma: "Mercado Pago no está disponible" sin que se
+    // hubiera intentado ninguna llamada.
+    jest.resetModules()
+
+    jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
+      createSubscriptionClient: () => ({ create: mockCreate }),
+      buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
+      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: 'x' }),
+      mapMercadoPagoSubscriptionStatus: () => 'active',
+      createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
+      readProviderBillingDates: () => ({
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        nextBillingAt: null,
+      }),
+    }))
+
+    mockCreate.mockResolvedValue({ id: 'mp-sub-1', status: 'authorized' })
+    // Lo que devuelve de verdad: la resolución, no el documento.
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: 'user',
+    })
+    mockTenantFindById.mockResolvedValue(TENANT)
+    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} })
+    mockSendEmail.mockResolvedValue({})
+
+    const { processSubscriptionPayment } = await import('../controller/subscriptionCtrl.js')
+
+    const res = respuesta()
+    await processSubscriptionPayment(pedido(), res)
+
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+    expect(res.statusCode).not.toBe(503)
+  })
+
+  test("el alta no muere con 'Cannot read properties of undefined'", async () => {
+    // El error exacto que devolvía producción, con su 400.
+    //
+    // resolveAuthorizedTenantFromRequest devuelve
+    // { tenantId, tenantObjectId, userTenantId, source }, y el handler lo
+    // guardaba en una variable llamada `tenant` para después leer `tenant._id`.
+    // Ese undefined llegaba a `tenantId.toString()` al armar el metadata de
+    // Mercado Pago.
+    jest.resetModules()
+
+    jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
+      createSubscriptionClient: () => ({ create: mockCreate }),
+      // El builder REAL hace tenantId.toString(); replicarlo es lo que hace que
+      // este test valga.
+      buildMercadoPagoSubscriptionData: ({ tenantId, userId }) => ({
+        subscriptionData: {
+          metadata: { tenant_id: tenantId.toString(), user_id: userId.toString() },
+        },
+      }),
+      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: 'x' }),
+      mapMercadoPagoSubscriptionStatus: () => 'active',
+      createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
+      readProviderBillingDates: () => ({
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        nextBillingAt: null,
+      }),
+    }))
+
+    mockCreate.mockResolvedValue({ id: 'mp-sub-1', status: 'authorized' })
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: 'user',
+    })
+    mockTenantFindById.mockResolvedValue(TENANT)
+    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} })
+    mockSendEmail.mockResolvedValue({})
+
+    const { processSubscriptionPayment } = await import('../controller/subscriptionCtrl.js')
+
+    const res = respuesta()
+    await processSubscriptionPayment(pedido(), res)
+
+    expect(String(res.body?.message || '')).not.toContain('Cannot read properties of undefined')
+    expect(res.statusCode).not.toBe(400)
+
+    // Y el id que viajó a Mercado Pago es el del comercio, no undefined.
+    const [[{ body }]] = mockCreate.mock.calls
+    expect(body.metadata.tenant_id).toBe(TENANT._id)
+  })
+})
+
+describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
+
+  test('un pago sin payer.name NO se rechaza', async () => {
     // Rechazaba todos: la validación exigía `payer.name`, un campo del
     // formulario propio que el Brick reemplazó. El síntoma en producción era
     // 400 "Datos del pagador incompletos" con una tarjeta perfectamente
     // tokenizada.
     jest.resetModules()
 
-    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
+    jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
       createSubscriptionClient: () => ({ create: mockCreate }),
       buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
-      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
-      mapMercadoPagoSubscriptionStatus: () => "active",
+      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: 'x' }),
+      mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -284,44 +276,42 @@ describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
       }),
     }))
 
-    mockCreate.mockResolvedValue({ id: "mp-sub-1", status: "authorized" })
+    mockCreate.mockResolvedValue({ id: 'mp-sub-1', status: 'authorized' })
     mockResolveTenant.mockResolvedValue({
       tenantId: TENANT._id,
       tenantObjectId: TENANT._id,
-      source: "user",
+      source: 'user',
     })
     mockTenantFindById.mockResolvedValue(TENANT)
     mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} })
     mockSendEmail.mockResolvedValue({})
 
-    const { processSubscriptionPayment } = await import(
-      "../controller/subscriptionCtrl.js"
-    )
+    const { processSubscriptionPayment } = await import('../controller/subscriptionCtrl.js')
 
     const req = {
       user: { _id: USER_ID, tenantId: TENANT._id },
       body: {
-        plan: "pro",
-        token: "fa2a788ac4f2ff028502dd2b9471f04a",
-        payer: { email: "duenio@comercio.com" },
+        plan: 'pro',
+        token: 'fa2a788ac4f2ff028502dd2b9471f04a',
+        payer: { email: 'duenio@comercio.com' },
       },
     }
 
     const res = respuesta()
     await processSubscriptionPayment(req, res)
 
-    expect(String(res.body?.message || "")).not.toContain("pagador incompletos")
+    expect(String(res.body?.message || '')).not.toContain('pagador incompletos')
     expect(mockCreate).toHaveBeenCalledTimes(1)
   })
 
-  test("sin email sí se rechaza: es lo único que Mercado Pago necesita", async () => {
+  test('sin email sí se rechaza: es lo único que Mercado Pago necesita', async () => {
     jest.resetModules()
 
-    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
+    jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
       createSubscriptionClient: () => ({ create: mockCreate }),
       buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
-      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: "x" }),
-      mapMercadoPagoSubscriptionStatus: () => "active",
+      mapMercadoPagoSubscriptionError: () => ({ status: 400, message: 'x' }),
+      mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -333,25 +323,23 @@ describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
     mockResolveTenant.mockResolvedValue({
       tenantId: TENANT._id,
       tenantObjectId: TENANT._id,
-      source: "user",
+      source: 'user',
     })
     mockTenantFindById.mockResolvedValue(TENANT)
 
-    const { processSubscriptionPayment } = await import(
-      "../controller/subscriptionCtrl.js"
-    )
+    const { processSubscriptionPayment } = await import('../controller/subscriptionCtrl.js')
 
     const res = respuesta()
     await processSubscriptionPayment(
       {
         user: { _id: USER_ID, tenantId: TENANT._id },
-        body: { plan: "pro", token: "tok", payer: {} },
+        body: { plan: 'pro', token: 'tok', payer: {} },
       },
       res,
     )
 
     expect(res.statusCode).toBe(400)
-    expect(res.body.message).toContain("email")
+    expect(res.body.message).toContain('email')
   })
 })
 
@@ -376,81 +364,92 @@ describe("subscriptionCtrl · acepta lo que manda el Brick", () => {
 // suscribirse hasta terminar de configurar su tienda es un comercio que no
 // paga.
 
-describe("configuración de suscripción · los dos Mercado Pago son independientes", () => {
+describe('configuración de suscripción · los dos Mercado Pago son independientes', () => {
   const respuesta = () => ({
     statusCode: 0,
     body: null,
-    status(code) { this.statusCode = code; return this; },
-    json(payload) { this.body = payload; return this; },
-  });
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
 
   const prepararConfig = async ({ comercioTieneMp }) => {
-    jest.resetModules();
-    process.env.MP_PUBLIC_KEY = "APP_USR-clave-de-la-plataforma";
+    jest.resetModules()
+    process.env.MP_PUBLIC_KEY = 'APP_USR-clave-de-la-plataforma'
 
-    jest.unstable_mockModule("../services/paymentTenantConfigService.js", () => ({
+    jest.unstable_mockModule('../services/paymentTenantConfigService.js', () => ({
       getTenantMercadoPagoContext: async () => {
         if (!comercioTieneMp) {
-          const e = new Error("Mercado Pago no tiene credenciales válidas para este comercio");
-          e.statusCode = 503;
-          throw e;
+          const e = new Error('Mercado Pago no tiene credenciales válidas para este comercio')
+          e.statusCode = 503
+          throw e
         }
-        return { publicKey: "APP_USR-clave-DEL-COMERCIO", accessToken: "APP_USR-x", mode: "production" };
+        return {
+          publicKey: 'APP_USR-clave-DEL-COMERCIO',
+          accessToken: 'APP_USR-x',
+          mode: 'production',
+        }
       },
       getTenantConfig: async () => ({}),
-      getTenantToken: async () => "APP_USR-x",
+      getTenantToken: async () => 'APP_USR-x',
       getTenantPaymentPublicConfig: async () => ({}),
       createMercadoPagoPaymentClient: () => ({}),
       describeMpAccount: async () => ({ isTestAccount: false }),
       extractMpAccountId: () => null,
-    }));
+    }))
 
     mockResolveTenant.mockResolvedValue({
       tenantId: TENANT._id,
       tenantObjectId: TENANT._id,
-      source: "user",
-    });
+      source: 'user',
+    })
     mockTenantFindById.mockReturnValue({
-      select: () => Promise.resolve({ plan: "starter", subscriptionStatus: "trialing", trialEndsAt: null }),
-    });
+      select: () =>
+        Promise.resolve({ plan: 'starter', subscriptionStatus: 'trialing', trialEndsAt: null }),
+    })
 
-    const { getSubscriptionConfig } = await import("../controller/subscriptionCtrl.js");
-    const res = respuesta();
-    await getSubscriptionConfig({}, res);
-    return res;
-  };
+    const { getSubscriptionConfig } = await import('../controller/subscriptionCtrl.js')
+    const res = respuesta()
+    await getSubscriptionConfig({}, res)
+    return res
+  }
 
-  test("un comercio recién creado, sin sus keys, PUEDE abrir el checkout", async () => {
+  test('un comercio recién creado, sin sus keys, PUEDE abrir el checkout', async () => {
     // ESTA ES LA PROPIEDAD. Antes: 503 y el alta bloqueada.
-    const res = await prepararConfig({ comercioTieneMp: false });
+    const res = await prepararConfig({ comercioTieneMp: false })
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body?.data?.mpPublicKey).toBe("APP_USR-clave-de-la-plataforma");
-  });
+    expect(res.statusCode).toBe(200)
+    expect(res.body?.data?.mpPublicKey).toBe('APP_USR-clave-de-la-plataforma')
+  })
 
-  test("la clave que se devuelve es la de HENKO, nunca la del comercio", async () => {
+  test('la clave que se devuelve es la de HENKO, nunca la del comercio', async () => {
     // El token de tarjeta lo tiene que crear la misma cuenta que después lo
     // consume, y esta suscripción la cobra la plataforma. Devolver la del
     // comercio da un token que la cuenta de HENKO no puede usar, y el rechazo
     // de Mercado Pago no dice eso: dice que el token está mal.
-    const res = await prepararConfig({ comercioTieneMp: true });
+    const res = await prepararConfig({ comercioTieneMp: true })
 
-    expect(res.body?.data?.mpPublicKey).toBe("APP_USR-clave-de-la-plataforma");
-    expect(res.body?.data?.mpPublicKey).not.toBe("APP_USR-clave-DEL-COMERCIO");
-  });
+    expect(res.body?.data?.mpPublicKey).toBe('APP_USR-clave-de-la-plataforma')
+    expect(res.body?.data?.mpPublicKey).not.toBe('APP_USR-clave-DEL-COMERCIO')
+  })
 
-  test("informa si el comercio ya puede cobrarle a sus clientes, sin bloquear", async () => {
+  test('informa si el comercio ya puede cobrarle a sus clientes, sin bloquear', async () => {
     // El dato sigue siendo útil —el panel puede sugerir el siguiente paso—
     // pero deja de ser una condición para pagar.
-    const sin = await prepararConfig({ comercioTieneMp: false });
-    const con = await prepararConfig({ comercioTieneMp: true });
+    const sin = await prepararConfig({ comercioTieneMp: false })
+    const con = await prepararConfig({ comercioTieneMp: true })
 
-    expect(sin.body?.data?.tenantPaymentsReady).toBe(false);
-    expect(con.body?.data?.tenantPaymentsReady).toBe(true);
-    expect(sin.statusCode).toBe(200);
-    expect(con.statusCode).toBe(200);
-  });
-});
+    expect(sin.body?.data?.tenantPaymentsReady).toBe(false)
+    expect(con.body?.data?.tenantPaymentsReady).toBe(true)
+    expect(sin.statusCode).toBe(200)
+    expect(con.statusCode).toBe(200)
+  })
+})
 
 // CUANDO LA TARJETA NO PASA, OFRECER AUTORIZAR DESDE MERCADO PAGO
 //
@@ -462,115 +461,144 @@ describe("configuración de suscripción · los dos Mercado Pago son independien
 // Mercado Pago once veces seguidas, y el panel del vendedor recomendaba "pague
 // con otro medio de pago". La plataforma no ofrecia ninguno.
 
-describe("cobro rechazado · se ofrece autorizar desde Mercado Pago", () => {
+describe('cobro rechazado · se ofrece autorizar desde Mercado Pago', () => {
   const respuesta = () => ({
     statusCode: 0,
     body: null,
-    status(code) { this.statusCode = code; return this; },
-    json(payload) { this.body = payload; return this; },
-  });
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
 
   const pedido = () => ({
     body: {
-      plan: "starter",
-      token: "tok-1",
-      payer: { email: "duenio@comercio.com", identification: { type: "DNI", number: "32680474" } },
+      plan: 'starter',
+      token: 'tok-1',
+      payer: { email: 'duenio@comercio.com', identification: { type: 'DNI', number: '32680474' } },
     },
-  });
+  })
 
-  const mockCrearAutorizable = jest.fn();
+  const mockCrearAutorizable = jest.fn()
 
-  const preparar = async ({ estadoActual = "trialing" } = {}) => {
-    jest.resetModules();
+  const preparar = async ({ estadoActual = 'trialing' } = {}) => {
+    jest.resetModules()
 
-    jest.unstable_mockModule("../services/subscriptionPaymentService.js", () => ({
+    jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
       createSubscriptionClient: () => ({
-        create: async () => { throw Object.assign(new Error("CC_VAL_433 Credit card validation has failed"), { status: 400, causes: [] }); },
+        create: async () => {
+          throw Object.assign(new Error('CC_VAL_433 Credit card validation has failed'), {
+            status: 400,
+            causes: [],
+          })
+        },
       }),
       buildMercadoPagoSubscriptionData: () => ({ subscriptionData: {} }),
       mapMercadoPagoSubscriptionError: () => ({
-        status: 400, code: "SUBSCRIPTION_PAYMENT_ERROR",
-        message: "No se pudo procesar el pago de suscripción", details: "CC_VAL_433",
+        status: 400,
+        code: 'SUBSCRIPTION_PAYMENT_ERROR',
+        message: 'No se pudo procesar el pago de suscripción',
+        details: 'CC_VAL_433',
       }),
-      mapMercadoPagoSubscriptionStatus: () => "pending",
-      readProviderBillingDates: () => ({ nextBillingAt: null, currentPeriodEnd: null, currentPeriodStart: null }),
+      mapMercadoPagoSubscriptionStatus: () => 'pending',
+      readProviderBillingDates: () => ({
+        nextBillingAt: null,
+        currentPeriodEnd: null,
+        currentPeriodStart: null,
+      }),
       createAuthorizableSubscription: mockCrearAutorizable,
-    }));
+    }))
 
     mockResolveTenant.mockResolvedValue({
-      tenantId: TENANT._id, tenantObjectId: TENANT._id, source: "user",
-    });
-    mockTenantFindById.mockResolvedValue({ ...TENANT, subscriptionStatus: estadoActual });
-    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} });
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: 'user',
+    })
+    mockTenantFindById.mockResolvedValue({ ...TENANT, subscriptionStatus: estadoActual })
+    mockTenantUpdate.mockResolvedValue({ ...TENANT, integrations: {} })
 
-    const { processSubscriptionPayment } = await import("../controller/subscriptionCtrl.js");
-    const res = respuesta();
-    await processSubscriptionPayment(pedido(), res);
-    return res;
-  };
+    const { processSubscriptionPayment } = await import('../controller/subscriptionCtrl.js')
+    const res = respuesta()
+    await processSubscriptionPayment(pedido(), res)
+    return res
+  }
 
-  test("el rechazo trae el enlace para autorizar con otro medio", async () => {
+  test('el rechazo trae el enlace para autorizar con otro medio', async () => {
     // ESTA ES LA PROPIEDAD. Antes el comercio recibia el error y nada mas.
     mockCrearAutorizable.mockResolvedValue({
-      id: "pre-1", status: "pending", initPoint: "https://mercadopago.com/autorizar/pre-1",
-    });
+      id: 'pre-1',
+      status: 'pending',
+      initPoint: 'https://mercadopago.com/autorizar/pre-1',
+    })
 
-    const res = await preparar();
+    const res = await preparar()
 
-    expect(res.statusCode).toBe(400);
-    expect(res.body?.data?.initPoint).toBe("https://mercadopago.com/autorizar/pre-1");
-  });
+    expect(res.statusCode).toBe(400)
+    expect(res.body?.data?.initPoint).toBe('https://mercadopago.com/autorizar/pre-1')
+  })
 
-  test("guarda el id pendiente, o el webhook no va a saber de quien es", async () => {
+  test('guarda el id pendiente, o el webhook no va a saber de quien es', async () => {
     // Sin esto el rodeo muere en el ultimo paso: el comercio autoriza, llega
     // el aviso, y "Tenant no encontrado".
     mockCrearAutorizable.mockResolvedValue({
-      id: "pre-2", status: "pending", initPoint: "https://mercadopago.com/autorizar/pre-2",
-    });
+      id: 'pre-2',
+      status: 'pending',
+      initPoint: 'https://mercadopago.com/autorizar/pre-2',
+    })
 
-    await preparar();
+    await preparar()
 
-    const guardados = mockTenantUpdate.mock.calls.map(([, c]) => c);
-    expect(guardados.some(c =>
-      c["integrations.subscriptionMercadoPago.subscriptionId"] === "pre-2")).toBe(true);
-  });
+    const guardados = mockTenantUpdate.mock.calls.map(([, c]) => c)
+    expect(
+      guardados.some(c => c['integrations.subscriptionMercadoPago.subscriptionId'] === 'pre-2'),
+    ).toBe(true)
+  })
 
-  test("NO da el plan por pagado", async () => {
+  test('NO da el plan por pagado', async () => {
     // Un init_point es una invitacion a pagar, no un pago. Activar aca seria
     // regalar el servicio a quien abandone la pantalla de Mercado Pago.
     mockCrearAutorizable.mockResolvedValue({
-      id: "pre-3", status: "pending", initPoint: "https://mercadopago.com/autorizar/pre-3",
-    });
+      id: 'pre-3',
+      status: 'pending',
+      initPoint: 'https://mercadopago.com/autorizar/pre-3',
+    })
 
-    await preparar();
+    await preparar()
 
-    const estados = mockTenantUpdate.mock.calls.map(([, c]) => c?.subscriptionStatus);
-    expect(estados).not.toContain("active");
-  });
+    const estados = mockTenantUpdate.mock.calls.map(([, c]) => c?.subscriptionStatus)
+    expect(estados).not.toContain('active')
+  })
 
-  test("con una suscripcion ACTIVA no se pisa su id", async () => {
+  test('con una suscripcion ACTIVA no se pisa su id', async () => {
     // Pisarlo dejaria a la auditoria comparando contra la suscripcion
     // equivocada, y a la que esta cobrando sin nadie que la mire.
     mockCrearAutorizable.mockResolvedValue({
-      id: "pre-4", status: "pending", initPoint: "https://mercadopago.com/autorizar/pre-4",
-    });
+      id: 'pre-4',
+      status: 'pending',
+      initPoint: 'https://mercadopago.com/autorizar/pre-4',
+    })
 
-    await preparar({ estadoActual: "active" });
+    await preparar({ estadoActual: 'active' })
 
-    const guardados = mockTenantUpdate.mock.calls.map(([, c]) => c);
-    expect(guardados.some(c =>
-      c["integrations.subscriptionMercadoPago.subscriptionId"] === "pre-4")).toBe(false);
-  });
+    const guardados = mockTenantUpdate.mock.calls.map(([, c]) => c)
+    expect(
+      guardados.some(c => c['integrations.subscriptionMercadoPago.subscriptionId'] === 'pre-4'),
+    ).toBe(false)
+  })
 
-  test("si el rodeo tampoco se puede armar, el error del cobro llega igual", async () => {
+  test('si el rodeo tampoco se puede armar, el error del cobro llega igual', async () => {
     // El comercio tiene que enterarse de por que no se pudo cobrar, aunque la
     // alternativa falle.
-    mockCrearAutorizable.mockRejectedValue(new Error("MP caido"));
+    mockCrearAutorizable.mockRejectedValue(new Error('MP caido'))
 
-    const res = await preparar();
+    const res = await preparar()
 
-    expect(res.statusCode).toBe(400);
-    expect(res.body?.data?.code).toBe("SUBSCRIPTION_PAYMENT_ERROR");
-    expect(res.body?.data?.initPoint).toBeNull();
-  });
-});
+    expect(res.statusCode).toBe(400)
+    expect(res.body?.data?.code).toBe('SUBSCRIPTION_PAYMENT_ERROR')
+    expect(res.body?.data?.initPoint).toBeNull()
+  })
+})

@@ -39,10 +39,7 @@ import {
   registrarDominioEnBorde,
   quitarDominioDelBorde,
 } from './edgeDomainService.js'
-import {
-  normalizeDomainValue,
-  normalizeHostname,
-} from '../../utils/domainUtils.js'
+import { normalizeDomainValue, normalizeHostname } from '../../utils/domainUtils.js'
 
 /** El prefijo donde se busca el TXT de verificación. */
 export const VERIFICATION_PREFIX = '_henko-verify'
@@ -175,17 +172,15 @@ const serializeDomain = domain => ({
   // panel tuviera que distinguir "no falta nada" de "todavía no se intentó".
   edgeVerification: domain.edgeVerification?.length
     ? domain.edgeVerification.map(item => ({
-      type: item.type,
-      name: item.name,
-      value: item.value,
-    }))
+        type: item.type,
+        name: item.name,
+        value: item.value,
+      }))
     : null,
 })
 
 const findDomainEntry = (tenant, hostname) =>
-  (tenant.domains || []).find(
-    domain => normalizeHostname(domain.hostname) === hostname,
-  )
+  (tenant.domains || []).find(domain => normalizeHostname(domain.hostname) === hostname)
 
 export const listTenantDomains = async tenantId => {
   const tenant = await Tenant.findById(tenantId).select('domains')
@@ -385,9 +380,7 @@ export const verifyTenantDomain = async ({ tenantId, hostname: raw }) => {
   return {
     verified: verificado,
     domain: serializeDomain(findDomainEntry(tenant, hostname)),
-    instructions: verificado
-      ? null
-      : buildInstructions(hostname, entry.verificationToken),
+    instructions: verificado ? null : buildInstructions(hostname, entry.verificationToken),
   }
 }
 
@@ -414,9 +407,7 @@ export const removeTenantDomain = async ({ tenantId, hostname: raw }) => {
     )
   }
 
-  tenant.domains = tenant.domains.filter(
-    domain => normalizeHostname(domain.hostname) !== hostname,
-  )
+  tenant.domains = tenant.domains.filter(domain => normalizeHostname(domain.hostname) !== hostname)
 
   await tenant.save()
 

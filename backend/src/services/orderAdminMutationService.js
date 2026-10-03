@@ -1,8 +1,4 @@
-import {
-  FULFILLMENT_STATUS,
-  ORDER_STATUS,
-  PAYMENT_STATUS,
-} from '../models/orderModel.js'
+import { FULFILLMENT_STATUS, ORDER_STATUS, PAYMENT_STATUS } from '../models/orderModel.js'
 import { restoreStockForLines } from './orderInventoryService.js'
 import { releaseReservedStock } from './paymentOrderOpsService.js'
 
@@ -68,10 +64,7 @@ export const appendOrderAdminAuditEntry = ({
   })
 }
 
-export const orderRequiresForceDeletion = ({
-  order,
-  legacyOrderStatus,
-}) => {
+export const orderRequiresForceDeletion = ({ order, legacyOrderStatus }) => {
   const paymentStatus = String(order?.paymentStatus || '').toLowerCase()
   const orderStatus = String(order?.orderStatus || '').toLowerCase()
   const fulfillmentStatus = String(order?.fulfillmentStatus || '').toLowerCase()

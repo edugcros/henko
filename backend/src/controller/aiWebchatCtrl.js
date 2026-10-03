@@ -18,13 +18,7 @@ const getVisitorId = req => {
   return clean(req.body?.visitorId || req.headers['x-ai-visitor-id']).slice(0, 160)
 }
 
-const buildExternalUserId = ({
-  sessionId,
-  visitorId,
-  customerEmail,
-  customerPhone,
-  user,
-}) => {
+const buildExternalUserId = ({ sessionId, visitorId, customerEmail, customerPhone, user }) => {
   // Para webchat comercial, la conversación debe poder separarse por sesión.
   // Email/teléfono se usan para fusionar/actualizar Lead, no necesariamente para agrupar chat.
   if (sessionId) return `session:${clean(sessionId)}`
@@ -52,14 +46,11 @@ const getRequestUser = async req => {
 
 const buildCustomerData = ({ req, user }) => {
   const bodyName = clean(req.body?.customerName).slice(0, 160)
-  const bodyEmail = clean(req.body?.customerEmail)
-    .toLowerCase()
-    .slice(0, 320)
+  const bodyEmail = clean(req.body?.customerEmail).toLowerCase().slice(0, 320)
   const bodyPhone = clean(req.body?.customerPhone).slice(0, 40)
 
   const userName = clean(
-    user?.name ||
-      [user?.firstname, user?.lastname].filter(Boolean).join(' '),
+    user?.name || [user?.firstname, user?.lastname].filter(Boolean).join(' '),
   ).slice(0, 160)
 
   return {
@@ -122,10 +113,7 @@ export const sendWebchatMessage = asyncHandler(async (req, res) => {
     customerEmail,
     customerPhone,
     text: message,
-    externalMessageId: clean(req.body?.messageId || req.body?.eventId).slice(
-      0,
-      200,
-    ),
+    externalMessageId: clean(req.body?.messageId || req.body?.eventId).slice(0, 200),
   })
 
   return res.status(200).json({

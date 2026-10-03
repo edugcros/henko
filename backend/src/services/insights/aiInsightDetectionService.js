@@ -388,7 +388,12 @@ export const detectCampaignUnderperformance = async (tenantId, { days = 30 } = {
       return {
         type: 'campaign_underperformance',
         entity: { kind: 'campaign', id: row.campaign, label: row.campaign },
-        evidence: { sessions: row.sessions, conversions: row.conversions, conversionRate: conversionPct, days },
+        evidence: {
+          sessions: row.sessions,
+          conversions: row.conversions,
+          conversionRate: conversionPct,
+          days,
+        },
         priority: conversionPct === 0 ? 'high' : 'medium',
         title: `Campaña de bajo rendimiento: ${row.campaign}`,
         description: `La campaña "${row.campaign}" trajo ${row.sessions} sesiones pero solo ${row.conversions} compras (${conversionPct}% de conversión) en los últimos ${days} días. Se recomienda revisar la segmentación, la página de destino, o pausarla si el costo por sesión es alto. Se vuelve a medir la conversión de esta campaña más adelante para confirmar si el cambio funcionó.`,
@@ -434,7 +439,9 @@ export const detectCustomerInactivity = async tenantId => {
   ])
 
   return rows.map(row => {
-    const daysSinceLastOrder = Math.floor((Date.now() - new Date(row.lastOrderAt).getTime()) / 86400000)
+    const daysSinceLastOrder = Math.floor(
+      (Date.now() - new Date(row.lastOrderAt).getTime()) / 86400000,
+    )
     const label = row.lastCustomerName || 'Cliente'
     return {
       type: 'customer_inactivity',
@@ -538,7 +545,13 @@ export const measureProductMargin = async (tenantId, productId, { days = 30 } = 
       },
       { $unwind: '$items' },
       { $match: { 'items.productObjectId': productObjectId } },
-      { $group: { _id: null, revenue: { $sum: '$items.subtotal' }, units: { $sum: '$items.quantity' } } },
+      {
+        $group: {
+          _id: null,
+          revenue: { $sum: '$items.subtotal' },
+          units: { $sum: '$items.quantity' },
+        },
+      },
     ]),
   ])
 
@@ -608,6 +621,8 @@ export const measureCustomerDaysSinceLastOrder = async (tenantId, customerId) =>
 
   if (!lastOrder) return { daysSinceLastOrder: null }
 
-  const daysSinceLastOrder = Math.floor((Date.now() - new Date(lastOrder.createdAt).getTime()) / 86400000)
+  const daysSinceLastOrder = Math.floor(
+    (Date.now() - new Date(lastOrder.createdAt).getTime()) / 86400000,
+  )
   return { daysSinceLastOrder }
 }

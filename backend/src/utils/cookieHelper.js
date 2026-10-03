@@ -46,8 +46,7 @@ export const getCookieDomain = () => undefined
  * default es encendido, para que olvidarse no deje sesiones rotas.
  */
 export const usePartitionedCookies = sameSite =>
-  process.env.AUTH_COOKIE_PARTITIONED !== 'false' &&
-  String(sameSite).toLowerCase() === 'none'
+  process.env.AUTH_COOKIE_PARTITIONED !== 'false' && String(sameSite).toLowerCase() === 'none'
 
 /**
  * El nombre de las cookies de sesión, que depende de QUÉ APP las usa.

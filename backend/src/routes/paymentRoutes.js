@@ -35,23 +35,17 @@ const paymentWriteLimiter = rateLimit({
   legacyHeaders: false,
 
   keyGenerator: req => {
-    const tenantId =
-      req.tenantId ||
-      req.user?.tenantId ||
-      'no-tenant'
+    const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
 
     const actorId =
-      req.user?._id ||
-      req.user?.id ||
-      (req.ip ? `ip:${ipKeyGenerator(req.ip)}` : 'anonymous')
+      req.user?._id || req.user?.id || (req.ip ? `ip:${ipKeyGenerator(req.ip)}` : 'anonymous')
 
     return `${tenantId}:${actorId}`
   },
 
   message: {
     success: false,
-    message:
-      'Demasiados intentos de pago. Esperá unos minutos e intentá nuevamente.',
+    message: 'Demasiados intentos de pago. Esperá unos minutos e intentá nuevamente.',
   },
 })
 
@@ -65,18 +59,11 @@ const mpWebhookLimiter = rateLimit({
   legacyHeaders: false,
 
   keyGenerator: req => {
-    const mpSignature =
-      req.headers['x-signature'] || 'no-signature'
+    const mpSignature = req.headers['x-signature'] || 'no-signature'
 
-    const mpRequestId =
-      req.headers['x-request-id'] || 'no-request-id'
+    const mpRequestId = req.headers['x-request-id'] || 'no-request-id'
 
-    return [
-      'mp-webhook',
-      mpSignature,
-      mpRequestId,
-      ipKeyGenerator(req.ip),
-    ].join(':')
+    return ['mp-webhook', mpSignature, mpRequestId, ipKeyGenerator(req.ip)].join(':')
   },
 
   message: {
@@ -154,10 +141,6 @@ router.get(
  * - data.id / payment id
  * - metadata / external_reference / orderId
  */
-router.post(
-  '/webhook/mercadopago',
-  mpWebhookLimiter,
-  mpWebhook,
-)
+router.post('/webhook/mercadopago', mpWebhookLimiter, mpWebhook)
 
 export default router

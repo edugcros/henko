@@ -21,20 +21,11 @@ import { searchRelevantKnowledgeForAgent } from './aiAgentToolService.js'
 import { runAgentCommerceTools } from './aiAgentCommerceToolsService.js'
 import { registerConversationLearningSignal } from './aiAgentLearningService.js'
 import { getOrCreateAiAgentForTenant } from './aiAgentProvisioningService.js'
-import {
-  registerCustomerInboundMessage,
-  optOutCustomer,
-} from './aiContactPolicyService.js'
+import { registerCustomerInboundMessage, optOutCustomer } from './aiContactPolicyService.js'
 import { validateAgentCommerceResponse } from './aiAgentResponseValidatorService.js'
 import { extractLeadPreferences } from './aiLeadProfileService.js'
-import {
-  buildActionAwareReplySuffix,
-  buildAgentActions,
-} from './aiAgentActionService.js'
-import {
-  detectLeadIntentFromText,
-  upsertLeadFromConversation,
-} from './aiLeadCommercialService.js'
+import { buildActionAwareReplySuffix, buildAgentActions } from './aiAgentActionService.js'
+import { detectLeadIntentFromText, upsertLeadFromConversation } from './aiLeadCommercialService.js'
 
 const clean = value => String(value || '').trim()
 const ALLOWED_CHANNELS = new Set(['webchat', 'whatsapp', 'admin_test', 'unknown'])
@@ -74,12 +65,7 @@ const requiresHumanByPolicy = ({ text, agent }) => {
   const normalized = normalizeText(text)
   const behavior = agent?.behavior || {}
 
-  if (
-    includesConfiguredKeyword(
-      normalized,
-      agent?.guardrails?.humanHandoffKeywords || [],
-    )
-  ) {
+  if (includesConfiguredKeyword(normalized, agent?.guardrails?.humanHandoffKeywords || [])) {
     return true
   }
 
@@ -99,10 +85,7 @@ const requiresHumanByPolicy = ({ text, agent }) => {
 }
 
 const isBlockedTopic = ({ text, agent }) => {
-  return includesConfiguredKeyword(
-    text,
-    agent?.guardrails?.blockedTopics || [],
-  )
+  return includesConfiguredKeyword(text, agent?.guardrails?.blockedTopics || [])
 }
 
 const extractCustomerDataFromText = text => {
@@ -126,12 +109,7 @@ const extractCustomerDataFromText = text => {
   }
 }
 
-const resolveCustomerData = ({
-  text,
-  customerName,
-  customerPhone,
-  customerEmail,
-}) => {
+const resolveCustomerData = ({ text, customerName, customerPhone, customerEmail }) => {
   const extracted = extractCustomerDataFromText(text)
 
   return {
@@ -177,7 +155,6 @@ const buildConversationHistory = conversation => {
     }))
 }
 
-
 const getRecentConversationMessages = (conversation, max = 10) => {
   return (conversation?.messages || [])
     .slice(-Math.max(2, max))
@@ -210,9 +187,7 @@ const extractProductTitlesFromMessages = messages => {
   const seen = new Set()
 
   for (const message of messages || []) {
-    const products = Array.isArray(message?.metadata?.products)
-      ? message.metadata.products
-      : []
+    const products = Array.isArray(message?.metadata?.products) ? message.metadata.products : []
 
     for (const product of products) {
       const id = clean(product)
@@ -239,10 +214,14 @@ const extractPreferenceHints = text => {
   const normalized = normalizeText(text)
   const hints = {}
 
-  const budgetMatch = normalized.match(/(?:hasta|maximo|max|menos de|presupuesto)\s*\$?\s*(\d[\d.,]*)/i)
+  const budgetMatch = normalized.match(
+    /(?:hasta|maximo|max|menos de|presupuesto)\s*\$?\s*(\d[\d.,]*)/i,
+  )
   if (budgetMatch?.[1]) hints.budgetMax = budgetMatch[1]
 
-  const colorMatch = normalized.match(/\b(negro|negra|blanco|blanca|rojo|roja|azul|verde|amarillo|amarilla|gris|marron|marrón|rosa|dorado|dorada|plateado|plateada)\b/i)
+  const colorMatch = normalized.match(
+    /\b(negro|negra|blanco|blanca|rojo|roja|azul|verde|amarillo|amarilla|gris|marron|marrón|rosa|dorado|dorada|plateado|plateada)\b/i,
+  )
   if (colorMatch?.[1]) hints.color = colorMatch[1]
 
   const sizeMatch = normalized.match(/\b(?:talle|medida|numero|número)\s*([a-z0-9.\-/]+)\b/i)
@@ -287,13 +266,11 @@ const buildConversationMemory = ({ conversation, currentText }) => {
     mentionedProducts,
     preferenceHints,
     summary: [
-      mentionedProducts.length
-        ? `Productos/IDs ya tratados: ${mentionedProducts.join(', ')}`
-        : '',
+      mentionedProducts.length ? `Productos/IDs ya tratados: ${mentionedProducts.join(', ')}` : '',
       Object.keys(preferenceHints).length
         ? `Preferencias detectadas: ${Object.entries(preferenceHints)
-          .map(([key, value]) => `${key}=${value}`)
-          .join(', ')}`
+            .map(([key, value]) => `${key}=${value}`)
+            .join(', ')}`
         : '',
       lastAssistant?.content
         ? `Última respuesta del asistente: ${clean(lastAssistant.content).slice(0, 220)}`
@@ -313,9 +290,7 @@ const buildContextualCommerceQuery = ({ text, conversationMemory }) => {
     .slice(-3)
     .join(' | ')
 
-  const productContext = (conversationMemory.mentionedProducts || [])
-    .slice(-3)
-    .join(' ')
+  const productContext = (conversationMemory.mentionedProducts || []).slice(-3).join(' ')
 
   const preferenceContext = Object.values(conversationMemory.preferenceHints || {})
     .filter(Boolean)
@@ -451,7 +426,8 @@ const buildConversationalFallbackResponse = ({
   if (availableProducts.length > 0 && !shouldForceSafeFallback(validation)) {
     const lines = availableProducts.map(product => {
       const title = clean(product.title || product.name || product.nombre || 'Producto')
-      const price = product.formattedPrice || (product.price ? `$${product.price}` : 'precio a confirmar')
+      const price =
+        product.formattedPrice || (product.price ? `$${product.price}` : 'precio a confirmar')
       const stock = Number(product.stock || 0)
       return `• ${title}${price ? ` — ${price}` : ''}${stock ? ` — stock: ${stock}` : ''}`
     })
@@ -663,12 +639,7 @@ const registerTokenUsage = async ({
   })
 }
 
-const updateAgentStats = async ({
-  tenantId,
-  newConversation,
-  becameLead,
-  becameHandoff,
-}) => {
+const updateAgentStats = async ({ tenantId, newConversation, becameLead, becameHandoff }) => {
   if (!tenantId) return null
 
   const increment = {
@@ -843,12 +814,7 @@ export const processAgentMessage = async ({
     tenant,
   })
 
-  if (
-    includesConfiguredKeyword(
-      cleanText,
-      agent?.guardrails?.optOutKeywords || [],
-    )
-  ) {
+  if (includesConfiguredKeyword(cleanText, agent?.guardrails?.optOutKeywords || [])) {
     await optOutCustomer({
       tenantId,
       channel,
@@ -879,8 +845,7 @@ export const processAgentMessage = async ({
 
   if (!agent?.enabled) {
     return {
-      reply:
-        'Gracias por escribirnos. En este momento un asesor va a revisar tu consulta.',
+      reply: 'Gracias por escribirnos. En este momento un asesor va a revisar tu consulta.',
       intent: 'general_question',
       leadScore: 0,
       handoffRequired: true,
@@ -891,8 +856,7 @@ export const processAgentMessage = async ({
 
   if (channel === 'webchat' && agent?.channels?.webchat?.enabled === false) {
     return {
-      reply:
-        'El asistente web no está activo para este comercio en este momento.',
+      reply: 'El asistente web no está activo para este comercio en este momento.',
       intent: 'general_question',
       leadScore: 0,
       handoffRequired: true,
@@ -915,20 +879,15 @@ export const processAgentMessage = async ({
       .lean()
 
     if (duplicateConversation) {
-      const priorReply = [...(duplicateConversation.messages || [])]
-        .reverse()
-        .find(message => {
-          return (
-            message.role === 'assistant' &&
-            message.metadata?.replyToExternalMessageId ===
-              preQuotaExternalMessageId
-          )
-        })
+      const priorReply = [...(duplicateConversation.messages || [])].reverse().find(message => {
+        return (
+          message.role === 'assistant' &&
+          message.metadata?.replyToExternalMessageId === preQuotaExternalMessageId
+        )
+      })
 
       return {
-        reply:
-          priorReply?.content ||
-          'Tu mensaje ya fue recibido y está siendo procesado.',
+        reply: priorReply?.content || 'Tu mensaje ya fue recibido y está siendo procesado.',
         conversationId: duplicateConversation._id || null,
         externalUserId,
         duplicate: true,
@@ -951,19 +910,15 @@ export const processAgentMessage = async ({
       .lean()
 
     if (duplicateConversation) {
-      const priorReply = [...(duplicateConversation.messages || [])]
-        .reverse()
-        .find(message => {
-          return (
-            message.role === 'assistant' &&
-            message.metadata?.replyToExternalMessageId === cleanExternalMessageId
-          )
-        })
+      const priorReply = [...(duplicateConversation.messages || [])].reverse().find(message => {
+        return (
+          message.role === 'assistant' &&
+          message.metadata?.replyToExternalMessageId === cleanExternalMessageId
+        )
+      })
 
       return {
-        reply:
-          priorReply?.content ||
-          'Tu mensaje ya fue recibido y está siendo procesado.',
+        reply: priorReply?.content || 'Tu mensaje ya fue recibido y está siendo procesado.',
         conversationId: duplicateConversation._id,
         externalUserId,
         duplicate: true,
@@ -1083,19 +1038,15 @@ export const processAgentMessage = async ({
     })
       .setOptions({ tenantId })
       .lean()
-    const priorReply = [...(duplicateConversation?.messages || [])]
-      .reverse()
-      .find(message => {
-        return (
-          message.role === 'assistant' &&
-          message.metadata?.replyToExternalMessageId === cleanExternalMessageId
-        )
-      })
+    const priorReply = [...(duplicateConversation?.messages || [])].reverse().find(message => {
+      return (
+        message.role === 'assistant' &&
+        message.metadata?.replyToExternalMessageId === cleanExternalMessageId
+      )
+    })
 
     return {
-      reply:
-        priorReply?.content ||
-        'Tu mensaje ya fue recibido y está siendo procesado.',
+      reply: priorReply?.content || 'Tu mensaje ya fue recibido y está siendo procesado.',
       conversationId: duplicateConversation?._id || null,
       externalUserId,
       duplicate: true,
@@ -1317,8 +1268,7 @@ export const processAgentMessage = async ({
     Boolean(aiResult.fallback && aiResult.error) ||
     actions.some(action => action.type === 'request_human') ||
     requiresHumanByPolicy({ text: cleanText, agent }) ||
-    (conversation.messages || []).length >=
-      Number(agent?.behavior?.maxMessagesBeforeHuman || 12)
+    (conversation.messages || []).length >= Number(agent?.behavior?.maxMessagesBeforeHuman || 12)
 
   const assistantMessage = {
     role: 'assistant',
@@ -1332,12 +1282,8 @@ export const processAgentMessage = async ({
       truncated: Boolean(aiResult.truncated),
       intent,
       leadScore,
-      products: products
-        .map(product => product.id || product._id)
-        .filter(Boolean),
-      promotions: promotions
-        .map(promotion => promotion.code || promotion.id)
-        .filter(Boolean),
+      products: products.map(product => product.id || product._id).filter(Boolean),
+      promotions: promotions.map(promotion => promotion.code || promotion.id).filter(Boolean),
       actions,
       validation: aiResult.validation || validation,
       fallback: Boolean(aiResult.fallback),
@@ -1363,9 +1309,7 @@ export const processAgentMessage = async ({
         intent,
         leadScore: Math.max(conversation.leadScore || 0, leadScore),
         handoffRequired: shouldHandoff,
-        handoffReason: shouldHandoff
-          ? aiResult.error || 'action_policy_or_max_messages'
-          : '',
+        handoffReason: shouldHandoff ? aiResult.error || 'action_policy_or_max_messages' : '',
         status: shouldHandoff ? 'waiting_human' : 'open',
         lastMessageAt: new Date(),
         lastBusinessMessageAt: new Date(),

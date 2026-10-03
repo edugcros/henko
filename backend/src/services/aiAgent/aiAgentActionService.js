@@ -172,11 +172,7 @@ const findBestActionProduct = ({ text, responseText, products }) => {
 }
 
 const getVariantSearchText = variant => {
-  const attributes =
-    variant?.attributes ||
-    variant?.selectedAttributes ||
-    variant?.options ||
-    {}
+  const attributes = variant?.attributes || variant?.selectedAttributes || variant?.options || {}
 
   return normalize(
     [
@@ -192,11 +188,11 @@ const getVariantSearchText = variant => {
 }
 
 const getBestAvailableVariant = ({ product, text, responseText }) => {
-  const availableVariants = (
-    Array.isArray(product?.variants) ? product.variants : []
-  ).filter(variant => {
-    return variant?.available || Number(variant?.stock || 0) > 0
-  })
+  const availableVariants = (Array.isArray(product?.variants) ? product.variants : []).filter(
+    variant => {
+      return variant?.available || Number(variant?.stock || 0) > 0
+    },
+  )
 
   if (availableVariants.length === 0) return null
   if (availableVariants.length === 1) return availableVariants[0]
@@ -225,13 +221,7 @@ const getProductPrice = product => {
 }
 
 const getVariantStock = variant => {
-  return Number(
-    variant?.stock ||
-      variant?.quantity ||
-      variant?.qty ||
-      variant?.inventory ||
-      0,
-  )
+  return Number(variant?.stock || variant?.quantity || variant?.qty || variant?.inventory || 0)
 }
 
 const getProductStock = product => {
@@ -241,13 +231,7 @@ const getProductStock = product => {
       .reduce((total, variant) => total + getVariantStock(variant), 0)
   }
 
-  return Number(
-    product?.stock ||
-      product?.quantity ||
-      product?.qty ||
-      product?.inventory ||
-      0,
-  )
+  return Number(product?.stock || product?.quantity || product?.qty || product?.inventory || 0)
 }
 
 const isProductAvailableForCart = product => {
@@ -303,15 +287,12 @@ export const buildAgentActions = ({
     responseText: cleanResponse,
   })
 
-  const allowProductAction =
-    selectedProduct && (!genericHelp || productWasActuallyMentioned)
+  const allowProductAction = selectedProduct && (!genericHelp || productWasActuallyMentioned)
 
   const shouldCreateViewAction =
     behavior.canRecommendProducts !== false &&
     allowProductAction &&
-    (wantsProductDetails(cleanText) ||
-      wantsAddToCart(cleanText) ||
-      productWasActuallyMentioned)
+    (wantsProductDetails(cleanText) || wantsAddToCart(cleanText) || productWasActuallyMentioned)
 
   const shouldCreateCartAction =
     behavior.canCreateCartLinks !== false &&
@@ -355,8 +336,7 @@ export const buildAgentActions = ({
         variantId: variant?.id || variant?._id || null,
         sku: variant?.sku || getProductSku(selectedProduct),
         variantSku: variant?.sku || '',
-        selectedAttributes:
-          variant?.attributes || variant?.selectedAttributes || {},
+        selectedAttributes: variant?.attributes || variant?.selectedAttributes || {},
         quantity: 1,
         title: getProductTitle(selectedProduct),
         price: Number(variant?.price || getProductPrice(selectedProduct)),
@@ -367,10 +347,9 @@ export const buildAgentActions = ({
     }
   }
 
-  const wantsPromotion =
-    /promo|promocion|promoción|descuento|cupon|cupón|oferta/.test(
-      normalize(`${cleanText} ${cleanResponse}`),
-    )
+  const wantsPromotion = /promo|promocion|promoción|descuento|cupon|cupón|oferta/.test(
+    normalize(`${cleanText} ${cleanResponse}`),
+  )
 
   if (
     behavior.canOfferDiscounts !== false &&
@@ -378,9 +357,7 @@ export const buildAgentActions = ({
     Array.isArray(promotions) &&
     promotions.length > 0
   ) {
-    const selectedProductId = selectedProduct
-      ? String(getProductId(selectedProduct))
-      : ''
+    const selectedProductId = selectedProduct ? String(getProductId(selectedProduct)) : ''
 
     const applicablePromotion =
       promotions.find(promo => {
@@ -401,10 +378,7 @@ export const buildAgentActions = ({
             ? `Usar cupón ${applicablePromotion.code} en producto válido`
             : `Usar cupón ${applicablePromotion.code}`,
         couponCode: applicablePromotion.code,
-        description:
-          applicablePromotion.usageText ||
-          applicablePromotion.description ||
-          '',
+        description: applicablePromotion.usageText || applicablePromotion.description || '',
         usageScope: applicablePromotion.usageScope,
         applicableProductIds: applicablePromotion.applicableProductIds || [],
         applicableProducts: applicablePromotion.applicableProducts || [],
@@ -439,12 +413,8 @@ export const buildActionAwareReplySuffix = actions => {
   if (!Array.isArray(actions) || actions.length === 0) return ''
 
   const hasCartAction = actions.some(action => action.type === 'add_to_cart')
-  const hasViewAction = actions.some(
-    action => action.type === 'view_product',
-  )
-  const hasHumanAction = actions.some(
-    action => action.type === 'request_human',
-  )
+  const hasViewAction = actions.some(action => action.type === 'view_product')
+  const hasHumanAction = actions.some(action => action.type === 'request_human')
 
   if (hasCartAction) {
     return '\n\nTe dejé una acción lista para agregar ese producto al carrito.'

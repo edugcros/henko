@@ -29,9 +29,7 @@ export const resolveTestDbUri = () => {
   ).trim()
 
   if (!raw.startsWith('mongodb')) {
-    throw new Error(
-      'Cadena de conexión Mongo inválida. Verifica MONGODB_TEST_URI o MONGO_TEST_URI',
-    )
+    throw new Error('Cadena de conexión Mongo inválida. Verifica MONGODB_TEST_URI o MONGO_TEST_URI')
   }
 
   // `mongodb+srv://` no lo entiende URL sin ayuda, y acá solo hace falta separar

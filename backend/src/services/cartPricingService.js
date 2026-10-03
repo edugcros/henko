@@ -6,14 +6,8 @@ const toMoney = value => {
   return Number(num.toFixed(2))
 }
 
-export const resolveCartPricing = async ({
-  tenantId,
-  product,
-  variant = null,
-}) => {
-  const originalPrice = variant
-    ? Number(variant.price || 0)
-    : Number(product.price || 0)
+export const resolveCartPricing = async ({ tenantId, product, variant = null }) => {
+  const originalPrice = variant ? Number(variant.price || 0) : Number(product.price || 0)
 
   const promotion = await resolveBestActiveProductPromotion({
     tenantId,
@@ -32,10 +26,7 @@ export const resolveCartPricing = async ({
     }
   }
 
-  const discountPercentage = Math.min(
-    100,
-    Math.max(0, Number(promotion.discountPercentage || 0)),
-  )
+  const discountPercentage = Math.min(100, Math.max(0, Number(promotion.discountPercentage || 0)))
 
   const discountedPrice = originalPrice * (1 - discountPercentage / 100)
 

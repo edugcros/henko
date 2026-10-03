@@ -13,13 +13,7 @@ import {
 } from '../utils/requestContext.js'
 
 const clean = value => String(value || '').trim()
-const allowedStatuses = new Set([
-  'pending_review',
-  'approving',
-  'approved',
-  'rejected',
-  'archived',
-])
+const allowedStatuses = new Set(['pending_review', 'approving', 'approved', 'rejected', 'archived'])
 const allowedTypes = new Set([
   'faq_suggestion',
   'product_gap',
@@ -45,10 +39,9 @@ const validateSuggestionId = (req, res) => {
 }
 
 export const listAiLearningSuggestions = asyncHandler(async (req, res) => {
-  const { tenantId, tenantObjectId } =
-    resolveAuthorizedTenantFromRequest(req, {
-      requireUserTenant: true,
-    })
+  const { tenantId, tenantObjectId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  })
 
   const status = clean(req.query.status || 'pending_review')
   const type = clean(req.query.type)
@@ -65,18 +58,8 @@ export const listAiLearningSuggestions = asyncHandler(async (req, res) => {
   if (type && type !== 'all' && allowedTypes.has(type)) query.type = type
 
   if (search) {
-    const regex = new RegExp(
-      search
-        .slice(0, 120)
-        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-      'i',
-    )
-    query.$or = [
-      { title: regex },
-      { question: regex },
-      { suggestedAnswer: regex },
-      { tags: regex },
-    ]
+    const regex = new RegExp(search.slice(0, 120).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    query.$or = [{ title: regex }, { question: regex }, { suggestedAnswer: regex }, { tags: regex }]
   }
 
   const [items, total, counters] = await Promise.all([

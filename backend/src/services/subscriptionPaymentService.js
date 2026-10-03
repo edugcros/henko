@@ -48,9 +48,7 @@ export const createSubscriptionClient = () => {
     throw error
   }
 
-  return new PreApproval(
-    new MercadoPagoConfig({ accessToken, options: { timeout: 15000 } }),
-  )
+  return new PreApproval(new MercadoPagoConfig({ accessToken, options: { timeout: 15000 } }))
 }
 
 const sanitizeString = (value, fallback = '') => {
@@ -73,13 +71,7 @@ const isValidEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(v
  * automática es lo que una suscripción es. Mantenerlos en la firma sugería que
  * hacían algo.
  */
-export const buildMercadoPagoSubscriptionData = ({
-  plan,
-  tenantId,
-  userId,
-  email,
-  token,
-}) => {
+export const buildMercadoPagoSubscriptionData = ({ plan, tenantId, userId, email, token }) => {
   const normalizedPlan = normalizePlan(plan)
   const priceArs = getPlanMonthlyPriceArs(normalizedPlan)
 
@@ -148,8 +140,7 @@ export const buildMercadoPagoSubscriptionData = ({
     // Mercado Pago rechaza una back_url inválida. env.adminUrl sí es
     // obligatoria en producción. La ruta también estaba mal: el router del
     // panel no tiene /subscription/success, sí /admin/mi-suscripcion.
-    back_url:
-      process.env.SUBSCRIPTION_SUCCESS_URL || `${env.adminUrl}/admin/mi-suscripcion`,
+    back_url: process.env.SUBSCRIPTION_SUCCESS_URL || `${env.adminUrl}/admin/mi-suscripcion`,
     // notification_url NO se manda, y ahora hay prueba de por qué.
     //
     // No está en PreApprovalRequest, y se comprobó contra una suscripción real:
@@ -302,12 +293,12 @@ export const mapMercadoPagoSubscriptionStatus = (mpStatus, mpReason) => {
 
   // Estados de MP para suscripciones: authorized, pending, processing, paused, cancelled, suspended
   const statusMap = {
-    authorized: 'active',      // Suscripción autorizada y activa
-    pending: 'pending',        // Pendiente de confirmación
-    processing: 'pending',     // En procesamiento
-    paused: 'paused',         // Pausa temporal
-    cancelled: 'cancelled',   // Cancelada por usuario
-    suspended: 'cancelled',   // Suspendida (timeout de pagos)
+    authorized: 'active', // Suscripción autorizada y activa
+    pending: 'pending', // Pendiente de confirmación
+    processing: 'pending', // En procesamiento
+    paused: 'paused', // Pausa temporal
+    cancelled: 'cancelled', // Cancelada por usuario
+    suspended: 'cancelled', // Suspendida (timeout de pagos)
   }
 
   return statusMap[status] || 'pending'
@@ -341,12 +332,7 @@ export const mapMercadoPagoSubscriptionStatus = (mpStatus, mpReason) => {
  * después por webhook. Devolver un init_point y dar el plan por pagado sería
  * regalar el servicio a quien abandone la pantalla de Mercado Pago.
  */
-export const createAuthorizableSubscription = async ({
-  plan,
-  tenantId,
-  userId,
-  email,
-}) => {
+export const createAuthorizableSubscription = async ({ plan, tenantId, userId, email }) => {
   const { subscriptionData } = buildMercadoPagoSubscriptionData({
     plan,
     tenantId,

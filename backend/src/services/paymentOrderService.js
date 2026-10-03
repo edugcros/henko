@@ -1,7 +1,4 @@
-import Order, {
-  PAYMENT_STATUS,
-  REFUND_STATUS,
-} from '../models/orderModel.js'
+import Order, { PAYMENT_STATUS, REFUND_STATUS } from '../models/orderModel.js'
 import { Money } from '../utils/money.js'
 import { normalizeMpStatus } from './paymentMercadoPagoService.js'
 import logger from '../../config/logger.js'
@@ -97,12 +94,7 @@ export const applyMercadoPagoStatusToOrder = ({
     throw new Error(`Estado de Mercado Pago no soportado: ${mpStatus}`)
   }
 
-  if (
-    !canApplyPaymentTransition(
-      order.paymentStatus,
-      normalizedPaymentStatus,
-    )
-  ) {
+  if (!canApplyPaymentTransition(order.paymentStatus, normalizedPaymentStatus)) {
     return order
   }
 
@@ -114,9 +106,7 @@ export const applyMercadoPagoStatusToOrder = ({
   }
 
   if (providerRawStatus || mpStatus) {
-    order.paymentIntent.providerRawStatus = sanitizeString(
-      providerRawStatus || mpStatus,
-    )
+    order.paymentIntent.providerRawStatus = sanitizeString(providerRawStatus || mpStatus)
   }
 
   if (statusDetail) {
@@ -158,10 +148,8 @@ export const applyMercadoPagoStatusToOrder = ({
 
   if (normalizedPaymentStatus === PAYMENT_STATUS.CANCELLED) {
     order.cancellation.cancelled = true
-    order.cancellation.cancelledAt =
-      order.cancellation.cancelledAt || new Date()
-    order.cancellation.reason =
-      order.cancellation.reason || 'Cancelado por Mercado Pago'
+    order.cancellation.cancelledAt = order.cancellation.cancelledAt || new Date()
+    order.cancellation.reason = order.cancellation.reason || 'Cancelado por Mercado Pago'
   }
 
   order.syncDerivedState?.()
@@ -302,8 +290,10 @@ export const checkOrderInternals = order => {
   // El neto puede ser MENOR que cobrado - comisión, porque hay retenciones e
   // impuestos que solo aparecen en el neto. Mayor no puede ser nunca.
   if (
-    comision !== null && comision !== undefined &&
-    neto !== null && neto !== undefined &&
+    comision !== null &&
+    comision !== undefined &&
+    neto !== null &&
+    neto !== undefined &&
     Number(neto) + Number(comision) > cobrado
   ) {
     anotar('net-plus-fee-exceeds-amount', {
@@ -347,9 +337,7 @@ export const checkOrderAgainstProvider = (order, pago) => {
     })
   }
 
-  const netoProveedor = centavosDeProveedor(
-    pago?.transaction_details?.net_received_amount,
-  )
+  const netoProveedor = centavosDeProveedor(pago?.transaction_details?.net_received_amount)
 
   if (
     netoProveedor !== null &&
@@ -464,9 +452,7 @@ export const auditOrderFinancials = async ({
   // Solo las que tienen un pago del proveedor al cual preguntarle. Las de
   // efectivo contra entrega no pasan por Mercado Pago.
   const consultables = ordenes.filter(
-    o =>
-      o.paymentIntent?.provider === 'mercadopago' &&
-      o.paymentIntent?.providerPaymentId,
+    o => o.paymentIntent?.provider === 'mercadopago' && o.paymentIntent?.providerPaymentId,
   )
 
   if (!consultables.length) {
@@ -620,10 +606,7 @@ export const startOrderReconciliation = ({ logger: log = logger } = {}) => {
 
   // Cada seis horas: cada pasada es una llamada a Mercado Pago por orden
   // reciente, y una devolución parcial no es una urgencia de minutos.
-  const intervalMs = envEnteroPositivo(
-    'ORDER_RECONCILIATION_INTERVAL_MS',
-    6 * 60 * 60 * 1000,
-  )
+  const intervalMs = envEnteroPositivo('ORDER_RECONCILIATION_INTERVAL_MS', 6 * 60 * 60 * 1000)
   const arranqueMs = envEnteroPositivo('ORDER_RECONCILIATION_ON_START_MS', 240 * 1000)
 
   arranqueRef = setTimeout(() => {

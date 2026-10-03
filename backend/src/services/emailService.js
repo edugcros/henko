@@ -131,12 +131,7 @@ const getAdminEmail = (recipientAdminEmail = null, tenantConfig = {}) => {
   )
 }
 
-const getBuyerEmail = ({
-  recipientEmail = null,
-  order = null,
-  payer = null,
-  user = null,
-} = {}) => {
+const getBuyerEmail = ({ recipientEmail = null, order = null, payer = null, user = null } = {}) => {
   const safeOrder = normalizeObject(order)
 
   return (
@@ -174,11 +169,7 @@ export const resolveSenderAddress = (tenantConfig = {}) => {
 
   if (tenantSender) return tenantSender
 
-  return (
-    validateEmail(process.env.EMAIL_FROM) ||
-    validateEmail(process.env.EMAIL_USER) ||
-    ''
-  )
+  return validateEmail(process.env.EMAIL_FROM) || validateEmail(process.env.EMAIL_USER) || ''
 }
 
 const getFromAddress = tenantConfig => {
@@ -212,11 +203,7 @@ const normalizeOrderId = order => {
   const safeOrder = normalizeObject(order)
 
   const rawId =
-    safeOrder?.orderNumber ||
-    safeOrder?.idempotencyKey ||
-    safeOrder?._id ||
-    safeOrder?.id ||
-    null
+    safeOrder?.orderNumber || safeOrder?.idempotencyKey || safeOrder?._id || safeOrder?.id || null
 
   if (!rawId) return 'SIN-ID'
 
@@ -280,29 +267,20 @@ const normalizeOrderItems = order => {
   return items.map(item => {
     const safeItem = normalizeObject(item)
 
-    const quantity = Number(
-      safeItem.quantity ||
-        safeItem.count ||
-        safeItem.qty ||
-        1,
-    )
+    const quantity = Number(safeItem.quantity || safeItem.count || safeItem.qty || 1)
 
     const price = Number(
       safeItem.price ??
         safeItem.unitPrice ??
         safeItem.priceDecimal ??
-        (safeItem.priceCents !== undefined
-          ? safeItem.priceCents / 100
-          : undefined) ??
+        (safeItem.priceCents !== undefined ? safeItem.priceCents / 100 : undefined) ??
         0,
     )
 
     const subtotal = Number(
       safeItem.subtotal ??
         safeItem.subtotalDecimal ??
-        (safeItem.subtotalCents !== undefined
-          ? safeItem.subtotalCents / 100
-          : undefined) ??
+        (safeItem.subtotalCents !== undefined ? safeItem.subtotalCents / 100 : undefined) ??
         price * quantity,
     )
 
@@ -432,18 +410,9 @@ const normalizeShippingAddress = order => {
   }
 }
 
-const buildPlainTextSummary = ({
-  orderNumber,
-  items,
-  totals,
-  shippingAddress,
-  storeName,
-}) => {
+const buildPlainTextSummary = ({ orderNumber, items, totals, shippingAddress, storeName }) => {
   const lines = items.map(item => {
-    return `- ${item.title} x${item.quantity}: ${formatMoney(
-      item.subtotal,
-      totals.currency,
-    )}`
+    return `- ${item.title} x${item.quantity}: ${formatMoney(item.subtotal, totals.currency)}`
   })
 
   return [
@@ -454,9 +423,7 @@ const buildPlainTextSummary = ({
     ...lines,
     '',
     `Subtotal: ${formatMoney(totals.subtotal, totals.currency)}`,
-    totals.discount > 0
-      ? `Descuento: -${formatMoney(totals.discount, totals.currency)}`
-      : null,
+    totals.discount > 0 ? `Descuento: -${formatMoney(totals.discount, totals.currency)}` : null,
     `Total: ${formatMoney(totals.total, totals.currency)}`,
     '',
     `Cliente: ${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
@@ -536,9 +503,7 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
       const apiKey = getSendGridApiKeyForSend()
 
       if (!apiKey) {
-        const error = new Error(
-          'SendGrid API: falta EMAIL_PASS o SENDGRID_API_KEY',
-        )
+        const error = new Error('SendGrid API: falta EMAIL_PASS o SENDGRID_API_KEY')
         error.code = 'SENDGRID_API_NOT_CONFIGURED'
         throw error
       }
@@ -554,10 +519,7 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
       // que pasó al probar SMTP contra el plan Free de Render antes de
       // migrar a la Web API (ver docs/EMAIL_PRODUCTION.md).
       const abortController = new AbortController()
-      const timeoutId = setTimeout(
-        () => abortController.abort(),
-        EMAIL_SEND_TIMEOUT_MS,
-      )
+      const timeoutId = setTimeout(() => abortController.abort(), EMAIL_SEND_TIMEOUT_MS)
 
       let response
       try {
@@ -578,9 +540,7 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         })
       } catch (fetchError) {
         if (fetchError.name === 'AbortError') {
-          const timeoutError = new Error(
-            `SendGrid API no respondió en ${EMAIL_SEND_TIMEOUT_MS}ms`,
-          )
+          const timeoutError = new Error(`SendGrid API no respondió en ${EMAIL_SEND_TIMEOUT_MS}ms`)
           timeoutError.code = 'SENDGRID_TIMEOUT'
           throw timeoutError
         }
@@ -594,9 +554,10 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         const error = new Error(
           `SendGrid API rechazó el envío (${response.status}): ${body.slice(0, 500)}`,
         )
-        error.code = response.status === 401 || response.status === 403
-          ? 'SENDGRID_AUTH_FAILED'
-          : 'SENDGRID_REQUEST_INVALID'
+        error.code =
+          response.status === 401 || response.status === 403
+            ? 'SENDGRID_AUTH_FAILED'
+            : 'SENDGRID_REQUEST_INVALID'
         throw error
       }
 
@@ -733,29 +694,29 @@ const buildHeaderHtml = ({ storeName, logoUrl, primaryColor, subtitle }) => {
     <tr>
       <td style="background: ${primaryColor}; padding: 34px 30px; text-align: center;">
         ${
-  logoUrl
-    ? `
+          logoUrl
+            ? `
               <img src="${escapeHtml(logoUrl)}"
                    alt="${escapeHtml(storeName)}"
                    style="max-width: 160px; max-height: 70px; margin-bottom: 18px;"
               />
             `
-    : ''
-}
+            : ''
+        }
 
         <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">
           ${escapeHtml(storeName)}
         </h1>
 
         ${
-  subtitle
-    ? `
+          subtitle
+            ? `
               <p style="color: rgba(255,255,255,0.92); margin: 10px 0 0 0; font-size: 16px;">
                 ${escapeHtml(subtitle)}
               </p>
             `
-    : ''
-}
+            : ''
+        }
       </td>
     </tr>
   `
@@ -798,8 +759,7 @@ const buildItemsHtml = ({ items, totals }) => {
           </div>
         `
 
-      const hasDiscount =
-        Number(item.originalPrice || 0) > Number(item.price || 0)
+      const hasDiscount = Number(item.originalPrice || 0) > Number(item.price || 0)
 
       return `
         <tr>
@@ -813,28 +773,28 @@ const buildItemsHtml = ({ items, totals }) => {
             </div>
 
             ${
-  item.variantSku
-    ? `<div style="color: #777; font-size: 13px; margin-top: 4px;">SKU: ${escapeHtml(item.variantSku)}</div>`
-    : ''
-}
+              item.variantSku
+                ? `<div style="color: #777; font-size: 13px; margin-top: 4px;">SKU: ${escapeHtml(item.variantSku)}</div>`
+                : ''
+            }
 
             ${
-  attributes
-    ? `<div style="color: #777; font-size: 13px; margin-top: 4px;">${attributes}</div>`
-    : ''
-}
+              attributes
+                ? `<div style="color: #777; font-size: 13px; margin-top: 4px;">${attributes}</div>`
+                : ''
+            }
 
             <div style="color: #666; font-size: 14px; margin-top: 4px;">
               Cantidad: ${item.quantity} × ${
-  hasDiscount
-    ? `
+                hasDiscount
+                  ? `
                     <span style="text-decoration: line-through; color: #999;">
                       ${formatMoney(item.originalPrice, totals.currency)}
                     </span>
                     <strong>${formatMoney(item.price, totals.currency)}</strong>
                   `
-    : formatMoney(item.price, totals.currency)
-}
+                  : formatMoney(item.price, totals.currency)
+              }
             </div>
           </td>
 
@@ -861,8 +821,8 @@ const buildTotalsHtml = ({ totals, primaryColor }) => {
         </tr>
 
         ${
-  hasDiscount
-    ? `
+          hasDiscount
+            ? `
               <tr>
                 <td style="padding: 8px 0; color: #16a34a;">Descuento</td>
                 <td style="padding: 8px 0; text-align: right; color: #16a34a; font-weight: 600;">
@@ -870,8 +830,8 @@ const buildTotalsHtml = ({ totals, primaryColor }) => {
                 </td>
               </tr>
             `
-    : ''
-}
+            : ''
+        }
 
         <tr>
           <td colspan="2" style="border-top: 2px solid ${primaryColor}; height: 10px;"></td>
@@ -897,51 +857,51 @@ const buildShippingHtml = shippingAddress => {
 
       <p style="margin: 4px 0; color: #555;">
         <strong>Cliente:</strong> ${escapeHtml(
-    `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
-  )}
+          `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
+        )}
       </p>
 
       ${
-  shippingAddress.email
-    ? `<p style="margin: 4px 0; color: #555;"><strong>Email:</strong> ${escapeHtml(shippingAddress.email)}</p>`
-    : ''
-}
+        shippingAddress.email
+          ? `<p style="margin: 4px 0; color: #555;"><strong>Email:</strong> ${escapeHtml(shippingAddress.email)}</p>`
+          : ''
+      }
 
       ${
-  shippingAddress.phone
-    ? `<p style="margin: 4px 0; color: #555;"><strong>Teléfono:</strong> ${escapeHtml(shippingAddress.phone)}</p>`
-    : ''
-}
+        shippingAddress.phone
+          ? `<p style="margin: 4px 0; color: #555;"><strong>Teléfono:</strong> ${escapeHtml(shippingAddress.phone)}</p>`
+          : ''
+      }
 
       ${
-  shippingAddress.address
-    ? `<p style="margin: 4px 0; color: #555;"><strong>Dirección:</strong> ${escapeHtml(shippingAddress.address)}</p>`
-    : ''
-}
+        shippingAddress.address
+          ? `<p style="margin: 4px 0; color: #555;"><strong>Dirección:</strong> ${escapeHtml(shippingAddress.address)}</p>`
+          : ''
+      }
 
       ${
-  shippingAddress.city
-    ? `<p style="margin: 4px 0; color: #555;"><strong>Ciudad:</strong> ${escapeHtml(shippingAddress.city)}</p>`
-    : ''
-}
+        shippingAddress.city
+          ? `<p style="margin: 4px 0; color: #555;"><strong>Ciudad:</strong> ${escapeHtml(shippingAddress.city)}</p>`
+          : ''
+      }
 
       ${
-  shippingAddress.zipCode
-    ? `<p style="margin: 4px 0; color: #555;"><strong>CP:</strong> ${escapeHtml(shippingAddress.zipCode)}</p>`
-    : ''
-}
+        shippingAddress.zipCode
+          ? `<p style="margin: 4px 0; color: #555;"><strong>CP:</strong> ${escapeHtml(shippingAddress.zipCode)}</p>`
+          : ''
+      }
 
       ${
-  shippingAddress.province
-    ? `<p style="margin: 4px 0; color: #555;"><strong>Provincia:</strong> ${escapeHtml(shippingAddress.province)}</p>`
-    : ''
-}
+        shippingAddress.province
+          ? `<p style="margin: 4px 0; color: #555;"><strong>Provincia:</strong> ${escapeHtml(shippingAddress.province)}</p>`
+          : ''
+      }
 
       ${
-  shippingAddress.country
-    ? `<p style="margin: 4px 0; color: #555;"><strong>País:</strong> ${escapeHtml(shippingAddress.country)}</p>`
-    : ''
-}
+        shippingAddress.country
+          ? `<p style="margin: 4px 0; color: #555;"><strong>País:</strong> ${escapeHtml(shippingAddress.country)}</p>`
+          : ''
+      }
     </div>
   `
 }
@@ -950,16 +910,16 @@ const buildFooterHtml = ({ storeName, supportEmail, storeUrl }) => {
   return `
     <p style="color: #999; font-size: 14px; text-align: center; margin-top: 40px; line-height: 1.6;">
       ${
-  supportEmail
-    ? `Si tenés preguntas, escribinos a <a href="mailto:${escapeHtml(supportEmail)}" style="color: #666;">${escapeHtml(supportEmail)}</a>.<br />`
-    : ''
-}
+        supportEmail
+          ? `Si tenés preguntas, escribinos a <a href="mailto:${escapeHtml(supportEmail)}" style="color: #666;">${escapeHtml(supportEmail)}</a>.<br />`
+          : ''
+      }
 
       ${
-  storeUrl
-    ? `<a href="${escapeHtml(storeUrl)}" style="color: #666; text-decoration: none;">${escapeHtml(storeUrl)}</a><br />`
-    : ''
-}
+        storeUrl
+          ? `<a href="${escapeHtml(storeUrl)}" style="color: #666; text-decoration: none;">${escapeHtml(storeUrl)}</a><br />`
+          : ''
+      }
 
       <strong>${escapeHtml(storeName)}</strong> © ${new Date().getFullYear()}
     </p>
@@ -1040,11 +1000,11 @@ export const sendOrderConfirmationEmail = async (
             <td align="center">
               <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 ${buildHeaderHtml({
-    storeName,
-    logoUrl,
-    primaryColor,
-    subtitle: `Orden #${orderNumber}`,
-  })}
+                  storeName,
+                  logoUrl,
+                  primaryColor,
+                  subtitle: `Orden #${orderNumber}`,
+                })}
 
                 <tr>
                   <td style="padding: 40px 30px;">
@@ -1105,8 +1065,7 @@ export const sendAdminNotificationEmail = async (
     orderId: safeOrder?._id?.toString?.() || safeOrder?.id || null,
     recipientAdminEmail,
     tenantAdminEmail: tenantConfig?.adminEmail,
-    developmentFallbackConfigured:
-      !isProd && Boolean(validateEmail(process.env.ADMIN_EMAIL)),
+    developmentFallbackConfigured: !isProd && Boolean(validateEmail(process.env.ADMIN_EMAIL)),
     resolvedEmail: to,
   })
 
@@ -1114,8 +1073,7 @@ export const sendAdminNotificationEmail = async (
     logger.warn('⚠️ No hay email de admin configurado', {
       recipientAdminEmail,
       tenantAdminEmail: tenantConfig?.adminEmail,
-      developmentFallbackConfigured:
-        !isProd && Boolean(validateEmail(process.env.ADMIN_EMAIL)),
+      developmentFallbackConfigured: !isProd && Boolean(validateEmail(process.env.ADMIN_EMAIL)),
     })
 
     return {
@@ -1137,13 +1095,13 @@ export const sendAdminNotificationEmail = async (
 
   const itemsSummary = items.length
     ? items
-      .map(item => {
-        return `${escapeHtml(item.title)} x${item.quantity} = ${formatMoney(
-          item.subtotal,
-          totals.currency,
-        )}`
-      })
-      .join('<br />')
+        .map(item => {
+          return `${escapeHtml(item.title)} x${item.quantity} = ${formatMoney(
+            item.subtotal,
+            totals.currency,
+          )}`
+        })
+        .join('<br />')
     : 'Sin productos disponibles para mostrar'
 
   const shippingHtml = buildShippingHtml(shippingAddress)
@@ -1164,11 +1122,11 @@ export const sendAdminNotificationEmail = async (
             <td align="center">
               <table width="650" cellpadding="0" cellspacing="0" style="background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.08);">
                 ${buildHeaderHtml({
-    storeName,
-    logoUrl,
-    primaryColor,
-    subtitle: `Nueva venta #${orderNumber}`,
-  })}
+                  storeName,
+                  logoUrl,
+                  primaryColor,
+                  subtitle: `Nueva venta #${orderNumber}`,
+                })}
 
                 <tr>
                   <td style="padding: 30px;">
@@ -1191,8 +1149,8 @@ export const sendAdminNotificationEmail = async (
                         </tr>
 
                         ${
-  totals.discount > 0
-    ? `
+                          totals.discount > 0
+                            ? `
                               <tr>
                                 <td style="padding: 8px 0;"><strong>Descuento:</strong></td>
                                 <td style="padding: 8px 0; text-align: right; color: #16a34a; font-weight: bold;">
@@ -1200,8 +1158,8 @@ export const sendAdminNotificationEmail = async (
                                 </td>
                               </tr>
                             `
-    : ''
-}
+                            : ''
+                        }
 
                         <tr>
                           <td style="padding: 8px 0;"><strong>Cliente:</strong></td>
@@ -1211,8 +1169,8 @@ export const sendAdminNotificationEmail = async (
                         </tr>
 
                         ${
-  shippingAddress.email
-    ? `
+                          shippingAddress.email
+                            ? `
                               <tr>
                                 <td style="padding: 8px 0;"><strong>Email cliente:</strong></td>
                                 <td style="padding: 8px 0; text-align: right;">
@@ -1222,12 +1180,12 @@ export const sendAdminNotificationEmail = async (
                                 </td>
                               </tr>
                             `
-    : ''
-}
+                            : ''
+                        }
 
                         ${
-  shippingAddress.phone
-    ? `
+                          shippingAddress.phone
+                            ? `
                               <tr>
                                 <td style="padding: 8px 0;"><strong>Teléfono:</strong></td>
                                 <td style="padding: 8px 0; text-align: right;">
@@ -1235,8 +1193,8 @@ export const sendAdminNotificationEmail = async (
                                 </td>
                               </tr>
                             `
-    : ''
-}
+                            : ''
+                        }
                       </table>
                     </div>
 
@@ -1312,11 +1270,11 @@ const buildOrderStatusEmailHtml = ({
             <td align="center">
               <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 ${buildHeaderHtml({
-    storeName,
-    logoUrl,
-    primaryColor,
-    subtitle: `Orden #${orderNumber}`,
-  })}
+                  storeName,
+                  logoUrl,
+                  primaryColor,
+                  subtitle: `Orden #${orderNumber}`,
+                })}
 
                 <tr>
                   <td style="padding: 40px 30px;">
@@ -1338,11 +1296,7 @@ const buildOrderStatusEmailHtml = ({
   `
 }
 
-const resolveOrderStatusEmailRecipient = ({
-  order,
-  recipientEmail,
-  context,
-}) => {
+const resolveOrderStatusEmailRecipient = ({ order, recipientEmail, context }) => {
   return getBuyerEmail({
     recipientEmail,
     order: normalizeObject(order),
@@ -1378,13 +1332,9 @@ export const sendOrderShippedEmail = async (
   const shippingAddress = normalizeShippingAddress(safeOrder)
 
   const trackingNumber = sanitizeString(
-    safeOrder?.shipment?.trackingNumber ||
-    safeOrder?.trackingNumber,
+    safeOrder?.shipment?.trackingNumber || safeOrder?.trackingNumber,
   )
-  const carrier = sanitizeString(
-    safeOrder?.shipment?.carrier ||
-    safeOrder?.carrier,
-  )
+  const carrier = sanitizeString(safeOrder?.shipment?.carrier || safeOrder?.carrier)
 
   const trackingHtml = trackingNumber
     ? `
@@ -1475,8 +1425,8 @@ export const sendOrderDeliveredEmail = async (
       Esperamos que disfrutes tu compra. Si tenés algún inconveniente, no dudes en contactarnos.
     </p>
     ${
-  storeUrl
-    ? `
+      storeUrl
+        ? `
         <div style="text-align: center; margin-top: 30px;">
           <a href="${escapeHtml(storeUrl)}"
              style="display: inline-block; background: ${primaryColor}; color: #ffffff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">
@@ -1484,8 +1434,8 @@ export const sendOrderDeliveredEmail = async (
           </a>
         </div>
       `
-    : ''
-}
+        : ''
+    }
   `
 
   const html = buildOrderStatusEmailHtml({
@@ -1554,16 +1504,16 @@ export const sendOrderCancelledEmail = async (
       <strong>${formatMoney(totals.total, totals.currency)}</strong> fue cancelada.
     </p>
     ${
-  reason
-    ? `
+      reason
+        ? `
         <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 20px 0;">
           <p style="margin: 0; color: #991b1b; font-size: 14px;">
             <strong>Motivo:</strong> ${escapeHtml(reason)}
           </p>
         </div>
       `
-    : ''
-}
+        : ''
+    }
     <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px;">
       Si tenés preguntas sobre esta cancelación, no dudes en contactarnos.
     </p>
@@ -1637,16 +1587,16 @@ export const sendOrderRefundedEmail = async (
       a tu medio de pago original.
     </p>
     ${
-  reason
-    ? `
+      reason
+        ? `
         <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin: 20px 0;">
           <p style="margin: 0; color: #1e40af; font-size: 14px;">
             <strong>Motivo:</strong> ${escapeHtml(reason)}
           </p>
         </div>
       `
-    : ''
-}
+        : ''
+    }
     <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px;">
       El plazo de acreditación depende de tu medio de pago y puede demorar algunos días hábiles.
       Si tenés preguntas, no dudes en contactarnos.

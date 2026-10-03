@@ -9,11 +9,7 @@ import Product from '../models/productModel.js'
 // =====================================================
 
 const toUniqueStringIds = values => {
-  return [...new Set(
-    (values || [])
-      .filter(Boolean)
-      .map(value => String(value)),
-  )]
+  return [...new Set((values || []).filter(Boolean).map(value => String(value)))]
 }
 
 const escapeRegex = value => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -25,11 +21,7 @@ const sortPublicProducts = products => {
 }
 
 const isActiveProductPromotionItem = item => {
-  return Boolean(
-    item &&
-      item.isActive !== false &&
-      Number(item.discountPercentage || 0) > 0,
-  )
+  return Boolean(item && item.isActive !== false && Number(item.discountPercentage || 0) > 0)
 }
 
 const buildPublicBlockQuery = ({ tenantId, placement, type }) => {
@@ -67,9 +59,7 @@ const publicProductPopulateConfig = tenantId => ({
 // =====================================================
 
 export const validateProductsBelongToTenant = async ({ tenantId, products = [] }) => {
-  const productIds = toUniqueStringIds(
-    products.map(item => item?.productId),
-  )
+  const productIds = toUniqueStringIds(products.map(item => item?.productId))
 
   if (productIds.length === 0) return
 
@@ -83,9 +73,7 @@ export const validateProductsBelongToTenant = async ({ tenantId, products = [] }
     .lean()
 
   if (foundProducts.length !== productIds.length) {
-    const error = new Error(
-      'Uno o más productos no pertenecen a este comercio o no existen.',
-    )
+    const error = new Error('Uno o más productos no pertenecen a este comercio o no existen.')
     error.statusCode = 400
     throw error
   }
@@ -113,7 +101,7 @@ export const findAdminBlocks = async ({
   }
 
   if (includeDeleted === true) {
-  // No filtra isDeleted: trae activos y eliminados.
+    // No filtra isDeleted: trae activos y eliminados.
   } else {
     query.isDeleted = false
   }
@@ -124,11 +112,7 @@ export const findAdminBlocks = async ({
   if (q) {
     const safeRegex = new RegExp(escapeRegex(String(q).trim().slice(0, 80)), 'i')
 
-    query.$or = [
-      { title: safeRegex },
-      { slug: safeRegex },
-      { description: safeRegex },
-    ]
+    query.$or = [{ title: safeRegex }, { slug: safeRegex }, { description: safeRegex }]
   }
 
   const [data, total] = await Promise.all([
@@ -166,14 +150,8 @@ export const findAdminBlocks = async ({
 // STOREFRONT
 // =====================================================
 
-export const findPublicBlocks = async ({
-  tenantId,
-  placement = 'home',
-  type,
-}) => {
-  const blocks = await PromotionalBlock.find(
-    buildPublicBlockQuery({ tenantId, placement, type }),
-  )
+export const findPublicBlocks = async ({ tenantId, placement = 'home', type }) => {
+  const blocks = await PromotionalBlock.find(buildPublicBlockQuery({ tenantId, placement, type }))
     .setOptions({ tenantId })
     .sort({ priority: 1, createdAt: -1 })
     .populate(publicProductPopulateConfig(tenantId))
@@ -215,10 +193,7 @@ export const findPublicBlockBySlug = async ({ tenantId, slug }) => {
  * 3. si empatan, menor priority del item gana,
  * 4. si empatan, bloque más reciente gana.
  */
-export const resolveBestActiveProductPromotion = async ({
-  tenantId,
-  productId,
-}) => {
+export const resolveBestActiveProductPromotion = async ({ tenantId, productId }) => {
   if (!tenantId || !productId) return null
 
   const now = new Date()
@@ -247,10 +222,7 @@ export const resolveBestActiveProductPromotion = async ({
   const candidates = blocks.flatMap(block => {
     return (block.products || [])
       .filter(item => {
-        return (
-          String(item.productId) === String(productId) &&
-          isActiveProductPromotionItem(item)
-        )
+        return String(item.productId) === String(productId) && isActiveProductPromotionItem(item)
       })
       .map(item => ({
         promotionId: block._id,

@@ -8,12 +8,9 @@ const normalizeGraphApiVersion = value => {
   return /^v\d{1,2}\.\d{1,2}$/.test(version) ? version : 'v20.0'
 }
 
-const GRAPH_API_VERSION = normalizeGraphApiVersion(
-  process.env.WHATSAPP_GRAPH_VERSION,
-)
+const GRAPH_API_VERSION = normalizeGraphApiVersion(process.env.WHATSAPP_GRAPH_VERSION)
 
-const sleep = milliseconds =>
-  new Promise(resolve => setTimeout(resolve, milliseconds))
+const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
 const toNumber = (value, fallback) => {
   const number = Number(value)
@@ -59,11 +56,7 @@ const getRetryAfterMs = response => {
   return null
 }
 
-export const verifyWhatsappSignature = ({
-  rawBody,
-  signatureHeader,
-  appSecret,
-}) => {
+export const verifyWhatsappSignature = ({ rawBody, signatureHeader, appSecret }) => {
   const cleanSecret = clean(appSecret)
 
   // Sin appSecret configurado no hay forma de validar que el webhook venga
@@ -99,10 +92,7 @@ const callWhatsappApi = async ({ phoneNumberId, accessToken, payload }) => {
     Math.max(toNumber(process.env.WHATSAPP_API_TIMEOUT_MS, 15000), 1000),
     60000,
   )
-  const maxAttempts = Math.min(
-    Math.max(toNumber(process.env.WHATSAPP_API_MAX_ATTEMPTS, 3), 1),
-    5,
-  )
+  const maxAttempts = Math.min(Math.max(toNumber(process.env.WHATSAPP_API_MAX_ATTEMPTS, 3), 1), 5)
   const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(
     clean(phoneNumberId),
   )}/messages`
@@ -149,9 +139,9 @@ const callWhatsappApi = async ({ phoneNumberId, accessToken, payload }) => {
       const normalizedError =
         error?.name === 'AbortError'
           ? buildWhatsappError({
-            message: 'WhatsApp API timeout',
-            code: 'WHATSAPP_API_TIMEOUT',
-          })
+              message: 'WhatsApp API timeout',
+              code: 'WHATSAPP_API_TIMEOUT',
+            })
           : error
 
       const retryable =
@@ -169,19 +159,16 @@ const callWhatsappApi = async ({ phoneNumberId, accessToken, payload }) => {
     await sleep(retryDelayMs ?? Math.min(250 * 2 ** (attempt - 1), 2000))
   }
 
-  throw lastError ||
+  throw (
+    lastError ||
     buildWhatsappError({
       message: 'WhatsApp API unavailable',
       code: 'WHATSAPP_API_UNAVAILABLE',
     })
+  )
 }
 
-export const sendWhatsappTextMessage = async ({
-  phoneNumberId,
-  accessToken,
-  to,
-  text,
-}) => {
+export const sendWhatsappTextMessage = async ({ phoneNumberId, accessToken, to, text }) => {
   const cleanPhoneNumberId = clean(phoneNumberId)
   const cleanAccessToken = clean(accessToken)
   const destination = normalizePhone(to)
@@ -194,14 +181,10 @@ export const sendWhatsappTextMessage = async ({
   // Configuración del agente. Quien leía ese error terminaba buscando la
   // variable en Render, donde no está ni tiene que estar.
   if (!cleanPhoneNumberId) {
-    throw new Error(
-      'Falta el Phone Number ID de WhatsApp en la configuración del asistente',
-    )
+    throw new Error('Falta el Phone Number ID de WhatsApp en la configuración del asistente')
   }
   if (!cleanAccessToken) {
-    throw new Error(
-      'Falta el Access Token de WhatsApp en la configuración del asistente',
-    )
+    throw new Error('Falta el Access Token de WhatsApp en la configuración del asistente')
   }
   if (!destination) throw new Error('Destinatario WhatsApp faltante')
   if (!body) throw new Error('Mensaje WhatsApp vacío')
@@ -243,22 +226,18 @@ export const sendWhatsappTemplateMessage = async ({
   // Configuración del agente. Quien leía ese error terminaba buscando la
   // variable en Render, donde no está ni tiene que estar.
   if (!cleanPhoneNumberId) {
-    throw new Error(
-      'Falta el Phone Number ID de WhatsApp en la configuración del asistente',
-    )
+    throw new Error('Falta el Phone Number ID de WhatsApp en la configuración del asistente')
   }
   if (!cleanAccessToken) {
-    throw new Error(
-      'Falta el Access Token de WhatsApp en la configuración del asistente',
-    )
+    throw new Error('Falta el Access Token de WhatsApp en la configuración del asistente')
   }
   if (!destination) throw new Error('Destinatario WhatsApp faltante')
 
   const parameters = Array.isArray(bodyParameters)
     ? bodyParameters.map(text => ({
-      type: 'text',
-      text: sanitizeTemplateParameter(text),
-    }))
+        type: 'text',
+        text: sanitizeTemplateParameter(text),
+      }))
     : []
 
   return callWhatsappApi({
@@ -273,11 +252,11 @@ export const sendWhatsappTemplateMessage = async ({
         language: { code: normalizeLanguageCode(languageCode) },
         components: parameters.length
           ? [
-            {
-              type: 'body',
-              parameters,
-            },
-          ]
+              {
+                type: 'body',
+                parameters,
+              },
+            ]
           : [],
       },
     },
@@ -357,13 +336,10 @@ export const checkWhatsappConnection = async ({
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
-      const response = await fetch(
-        `https://graph.facebook.com/${GRAPH_API_VERSION}/${path}`,
-        {
-          headers: { Authorization: `Bearer ${cleanAccessToken}` },
-          signal: controller.signal,
-        },
-      )
+      const response = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${path}`, {
+        headers: { Authorization: `Bearer ${cleanAccessToken}` },
+        signal: controller.signal,
+      })
 
       return { status: response.status, data: await response.json().catch(() => null) }
     } catch (error) {
@@ -415,9 +391,7 @@ export const checkWhatsappConnection = async ({
     checks.webhook.detail =
       'Cargá el Business Account ID para poder verificar el webhook desde acá.'
   } else if (checks.accessToken.ok) {
-    const subscribed = await ask(
-      `${encodeURIComponent(cleanBusinessAccountId)}/subscribed_apps`,
-    )
+    const subscribed = await ask(`${encodeURIComponent(cleanBusinessAccountId)}/subscribed_apps`)
 
     const apps = Array.isArray(subscribed.data?.data) ? subscribed.data.data : []
 
@@ -434,8 +408,7 @@ export const checkWhatsappConnection = async ({
     }
   }
 
-  const connected =
-    checks.phoneNumberId.ok && checks.accessToken.ok && checks.appSecret.ok
+  const connected = checks.phoneNumberId.ok && checks.accessToken.ok && checks.appSecret.ok
 
   return {
     connected,
@@ -443,10 +416,10 @@ export const checkWhatsappConnection = async ({
     number:
       numberResponse.status === 200
         ? {
-          displayPhoneNumber: clean(numberResponse.data?.display_phone_number),
-          verifiedName: clean(numberResponse.data?.verified_name),
-          qualityRating: clean(numberResponse.data?.quality_rating),
-        }
+            displayPhoneNumber: clean(numberResponse.data?.display_phone_number),
+            verifiedName: clean(numberResponse.data?.verified_name),
+            qualityRating: clean(numberResponse.data?.quality_rating),
+          }
         : null,
   }
 }

@@ -113,9 +113,7 @@ const sanitizeMetricValue = (value, depth = 0) => {
   if (typeof value === 'boolean') return value
 
   if (Array.isArray(value)) {
-    return value
-      .slice(0, MAX_ARRAY_LENGTH)
-      .map(item => sanitizeMetricValue(item, depth + 1))
+    return value.slice(0, MAX_ARRAY_LENGTH).map(item => sanitizeMetricValue(item, depth + 1))
   }
 
   if (typeof value === 'object') {
@@ -220,10 +218,7 @@ const eventToSignalUpdate = type => {
   return null
 }
 
-const assertConversationBelongsToTenant = async ({
-  tenantId,
-  conversationId,
-}) => {
+const assertConversationBelongsToTenant = async ({ tenantId, conversationId }) => {
   if (!conversationId) return true
 
   const exists = await AiConversation.exists({

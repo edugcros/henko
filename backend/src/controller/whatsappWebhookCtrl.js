@@ -32,11 +32,7 @@ export const buildWebhookVerifyToken = tenantId => {
 
   if (!secret || !id) return ''
 
-  const signature = crypto
-    .createHmac('sha256', secret)
-    .update(id)
-    .digest('hex')
-    .slice(0, 32)
+  const signature = crypto.createHmac('sha256', secret).update(id).digest('hex').slice(0, 32)
 
   return `${id}.${signature}`
 }
@@ -61,14 +57,11 @@ export const verifyWhatsappWebhook = async (req, res) => {
   const accepted =
     mode === 'subscribe' &&
     token &&
-    ((globalVerifyToken && token === globalVerifyToken) ||
-      isValidTenantVerifyToken(token))
+    ((globalVerifyToken && token === globalVerifyToken) || isValidTenantVerifyToken(token))
 
   if (accepted) return res.status(200).send(challenge)
 
-  return res
-    .status(403)
-    .json({ success: false, message: 'Webhook verification failed' })
+  return res.status(403).json({ success: false, message: 'Webhook verification failed' })
 }
 
 export const receiveWhatsappWebhook = async (req, res) => {
@@ -83,9 +76,7 @@ export const receiveWhatsappWebhook = async (req, res) => {
         enabled: true,
         'channels.whatsapp.enabled': true,
       })
-        .select(
-          '+channels.whatsapp.accessToken +channels.whatsapp.appSecret',
-        )
+        .select('+channels.whatsapp.accessToken +channels.whatsapp.appSecret')
         .setOptions({ ignoreTenant: true })
 
       if (!agent) continue

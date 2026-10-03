@@ -51,9 +51,8 @@ describe('describeMpAccount: preguntarle a Mercado Pago de quién es', () => {
   let fetchMock
 
   beforeAll(async () => {
-    ;({ describeMpAccount, extractMpAccountId } = await import(
-      '../services/paymentTenantConfigService.js'
-    ))
+    ;({ describeMpAccount, extractMpAccountId } =
+      await import('../services/paymentTenantConfigService.js'))
   })
 
   beforeEach(() => {
@@ -104,15 +103,11 @@ describe('describeMpAccount: preguntarle a Mercado Pago de quién es', () => {
     // credencial que Mercado Pago rechace. Tiene que romper.
     fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) })
 
-    await expect(describeMpAccount(TOKEN_APP_USR)).rejects.toThrow(
-      'MP_ACCOUNT_LOOKUP_FAILED',
-    )
+    await expect(describeMpAccount(TOKEN_APP_USR)).rejects.toThrow('MP_ACCOUNT_LOOKUP_FAILED')
   })
 
   test('no sale a la red con un token que ni siquiera tiene forma válida', async () => {
-    await expect(describeMpAccount('pegar_aca')).rejects.toThrow(
-      'MP_ACCESS_TOKEN_INVALID_FORMAT',
-    )
+    await expect(describeMpAccount('pegar_aca')).rejects.toThrow('MP_ACCESS_TOKEN_INVALID_FORMAT')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -271,8 +266,7 @@ describe('guardar credenciales en el panel del comercio', () => {
     // cuerpo, un comercio ya en "production" podría cambiar su credencial por
     // una de prueba sin que nadie la revisara.
     mockFindById.mockReturnValue({
-      select: () =>
-        Promise.resolve({ integrations: { mercadopago: { mode: 'production' } } }),
+      select: () => Promise.resolve({ integrations: { mercadopago: { mode: 'production' } } }),
     })
     mockDescribeMpAccount.mockResolvedValue({
       id: '3458885025',

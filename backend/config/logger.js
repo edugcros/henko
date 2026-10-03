@@ -31,9 +31,10 @@ const logger = winston.createLogger({
   transports: [
     // 📄 Log en consola con colores para desarrollo
     new winston.transports.Console({
-      format: process.env.NODE_ENV === 'production'
-        ? winston.format.combine(winston.format.timestamp(), winston.format.json())
-        : winston.format.combine(winston.format.colorize(), winston.format.simple()),
+      format:
+        process.env.NODE_ENV === 'production'
+          ? winston.format.combine(winston.format.timestamp(), winston.format.json())
+          : winston.format.combine(winston.format.colorize(), winston.format.simple()),
     }),
 
     // 📄 Archivos rotativos para producción

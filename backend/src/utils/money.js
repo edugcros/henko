@@ -5,13 +5,13 @@ export const Money = {
     if (isNaN(num) || num < 0) throw new Error(`Monto inválido: ${amount}`)
     return Math.round(num * 100)
   },
-  
+
   toDecimal: cents => {
     const num = Number(cents)
     if (isNaN(num)) return 0
     return Number((num / 100).toFixed(2))
   },
-  
+
   multiply: (cents, quantity) => Math.round(cents * Number(quantity)),
 }
 

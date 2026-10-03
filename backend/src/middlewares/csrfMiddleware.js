@@ -3,10 +3,7 @@ import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import crypto from 'node:crypto'
 import { getCookieDomain, usePartitionedCookies } from '../utils/cookieHelper.js'
-import {
-  SUBSCRIPTION_WEBHOOK_PATH,
-  SENDGRID_WEBHOOK_PATH,
-} from '../config/subscriptionConfig.js'
+import { SUBSCRIPTION_WEBHOOK_PATH, SENDGRID_WEBHOOK_PATH } from '../config/subscriptionConfig.js'
 
 /**
  * Rutas que no pasan por CSRF.
@@ -84,10 +81,7 @@ const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 const getCsrfSigningSecret = () => {
   const secret =
-    env.csrfSecret ||
-    process.env.CSRF_SECRET ||
-    env.cookieSecret ||
-    process.env.COOKIE_SECRET
+    env.csrfSecret || process.env.CSRF_SECRET || env.cookieSecret || process.env.COOKIE_SECRET
 
   if (!secret) {
     throw new Error('CSRF_SECRET or COOKIE_SECRET is required')
@@ -306,10 +300,7 @@ export const handleCsrfError = (err, req, res, next) => {
 export const logCsrfStatus = (req, res, next) => {
   if (!env.isProduction) {
     const hasSecret = req.cookies?._csrf ? '✅' : '❌'
-    const tokenInHeader =
-      req.headers[env.csrfHeaderName || 'x-csrf-token']
-        ? '✅'
-        : '❌'
+    const tokenInHeader = req.headers[env.csrfHeaderName || 'x-csrf-token'] ? '✅' : '❌'
 
     logger.debug(
       `[CSRF] Secret: ${hasSecret} | Header: ${tokenInHeader} | Method: ${req.method} | Host: ${req.get('host')}`,

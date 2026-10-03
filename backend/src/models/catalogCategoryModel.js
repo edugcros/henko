@@ -7,15 +7,7 @@ import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
 
-const ATTRIBUTE_TYPES = [
-  'text',
-  'textarea',
-  'number',
-  'select',
-  'multiselect',
-  'boolean',
-  'color',
-]
+const ATTRIBUTE_TYPES = ['text', 'textarea', 'number', 'select', 'multiselect', 'boolean', 'color']
 
 const normalizeText = value => (typeof value === 'string' ? value.trim() : value)
 
@@ -215,7 +207,9 @@ const normalizeValues = values => {
 }
 
 catalogAttributeSchema.pre('validate', function normalizeAttribute(next) {
-  this.name = String(this.name || '').trim().toLowerCase()
+  this.name = String(this.name || '')
+    .trim()
+    .toLowerCase()
   this.label = normalizeText(this.label) || this.name
   this.type = ATTRIBUTE_TYPES.includes(this.type) ? this.type : 'text'
   this.values = normalizeValues(this.values)
@@ -226,15 +220,23 @@ catalogAttributeSchema.pre('validate', function normalizeAttribute(next) {
 
 subcategorySchema.pre('validate', function normalizeSubcategory(next) {
   this.name = normalizeText(this.name)
-  this.normalizedName = String(this.normalizedName || '').trim().toLowerCase()
-  this.slug = String(this.slug || this.normalizedName).trim().toLowerCase()
+  this.normalizedName = String(this.normalizedName || '')
+    .trim()
+    .toLowerCase()
+  this.slug = String(this.slug || this.normalizedName)
+    .trim()
+    .toLowerCase()
   next()
 })
 
 catalogCategorySchema.pre('validate', function normalizeCategory(next) {
   this.name = normalizeText(this.name)
-  this.normalizedName = String(this.normalizedName || '').trim().toLowerCase()
-  this.slug = String(this.slug || this.normalizedName).trim().toLowerCase()
+  this.normalizedName = String(this.normalizedName || '')
+    .trim()
+    .toLowerCase()
+  this.slug = String(this.slug || this.normalizedName)
+    .trim()
+    .toLowerCase()
   next()
 })
 

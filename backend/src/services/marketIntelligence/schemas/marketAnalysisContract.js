@@ -47,15 +47,10 @@ function buildMarketAnalysisResponse(doc) {
     // true = el score sale solo de datos del propio comercio. Responde
     // "¿mis clientes quieren esto?", NO "¿el mercado quiere esto?". La UI
     // debe decirlo explícitamente: son preguntas distintas.
-    internalOnly:
-      !doc.rawSignals?.shopping?.available && !doc.rawSignals?.research?.available,
+    internalOnly: !doc.rawSignals?.shopping?.available && !doc.rawSignals?.research?.available,
     unmeasured: doc.unmeasured ?? [],
     rawSignals: doc.rawSignals,
-    recommendation: buildRecommendation(
-      doc.demandScore,
-      doc.confidenceScore,
-      doc.breakdown,
-    ),
+    recommendation: buildRecommendation(doc.demandScore, doc.confidenceScore, doc.breakdown),
     profitability: doc.profitability ?? null,
     priceStats: doc.rawSignals?.shopping?.priceStats ?? null,
     // Las ofertas concretas, no solo el conteo: sin poder ver quién vende y
@@ -78,8 +73,7 @@ const SOURCE_LABELS = {
 
 const SOURCE_ROLES = {
   shopping: 'Precios publicados hoy en tiendas online, cada uno con el link del que salió.',
-  research:
-    'Lo que dicen las páginas sobre el producto: interés, marcas, quejas repetidas.',
+  research: 'Lo que dicen las páginas sobre el producto: interés, marcas, quejas repetidas.',
   internal: 'Tus ventas, tu stock y la rotación de la categoría.',
 }
 

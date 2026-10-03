@@ -43,11 +43,7 @@ export const withoutWww = value => {
  * - henko + henko.local => henko.local / admin.henko.local
  * - tienda + henko.local => tienda.henko.local / admin.tienda.henko.local
  */
-export const buildPlatformTenantDomains = ({
-  slug,
-  publicBaseDomain,
-  adminBaseDomain,
-}) => {
+export const buildPlatformTenantDomains = ({ slug, publicBaseDomain, adminBaseDomain }) => {
   const normalizedSlug = normalizeSlug(slug)
   const publicBase = normalizeHostname(publicBaseDomain)
   const adminBase = normalizeHostname(adminBaseDomain)
@@ -98,17 +94,71 @@ export const buildPlatformTenantDomains = ({
 // =====================================================
 
 const RESERVED_SLUGS = new Set([
-  'api', 'admin', 'www', 'mail', 'smtp', 'imap', 'pop',
-  'ftp', 'sftp', 'ssh', 'cdn', 'assets', 'static', 'media',
-  'ns1', 'ns2', 'ns3', 'dns', 'mx', 'autoconfig', 'autodiscover',
-  'webmail', 'cpanel', 'whm', 'cgi', 'status', 'health',
-  'blog', 'docs', 'support', 'help', 'app', 'dashboard',
-  'login', 'signup', 'register', 'auth', 'oauth', 'sso',
-  'graphql', 'ws', 'wss', 'socket', 'realtime',
-  'test', 'staging', 'dev', 'demo', 'sandbox', 'preview',
-  'null', 'undefined', 'root', 'system', 'platform',
-  'billing', 'payment', 'checkout', 'store', 'shop',
-  'henko', 'noreply', 'no-reply', 'postmaster', 'abuse',
+  'api',
+  'admin',
+  'www',
+  'mail',
+  'smtp',
+  'imap',
+  'pop',
+  'ftp',
+  'sftp',
+  'ssh',
+  'cdn',
+  'assets',
+  'static',
+  'media',
+  'ns1',
+  'ns2',
+  'ns3',
+  'dns',
+  'mx',
+  'autoconfig',
+  'autodiscover',
+  'webmail',
+  'cpanel',
+  'whm',
+  'cgi',
+  'status',
+  'health',
+  'blog',
+  'docs',
+  'support',
+  'help',
+  'app',
+  'dashboard',
+  'login',
+  'signup',
+  'register',
+  'auth',
+  'oauth',
+  'sso',
+  'graphql',
+  'ws',
+  'wss',
+  'socket',
+  'realtime',
+  'test',
+  'staging',
+  'dev',
+  'demo',
+  'sandbox',
+  'preview',
+  'null',
+  'undefined',
+  'root',
+  'system',
+  'platform',
+  'billing',
+  'payment',
+  'checkout',
+  'store',
+  'shop',
+  'henko',
+  'noreply',
+  'no-reply',
+  'postmaster',
+  'abuse',
 ])
 
 // Distancia de edición simple (Levenshtein) para atrapar typos de slugs
@@ -195,16 +245,13 @@ export const getDomainCandidates = value => {
 
   const normalized = normalizeHostname(raw)
 
-  return [...new Set(
-    [
-      raw,
-      normalized,
-      withoutWww(raw),
-      withoutWww(normalized),
-    ]
-      .filter(Boolean)
-      .map(item => String(item).trim().toLowerCase()),
-  )]
+  return [
+    ...new Set(
+      [raw, normalized, withoutWww(raw), withoutWww(normalized)]
+        .filter(Boolean)
+        .map(item => String(item).trim().toLowerCase()),
+    ),
+  ]
 }
 
 /**
@@ -242,12 +289,10 @@ export const getDomainHostname = domain => {
   return normalizeDomainValue(domain.hostname || domain.normalizedHostname || '')
 }
 
-
 export const buildDomainKeys = ({ domains = [], adminDomains = [] } = {}) => {
-  return [...new Set(
-    [...domains, ...adminDomains]
-      .map(getDomainHostname)
-      .filter(Boolean)
-      .map(normalizeHostname),
-  )]
+  return [
+    ...new Set(
+      [...domains, ...adminDomains].map(getDomainHostname).filter(Boolean).map(normalizeHostname),
+    ),
+  ]
 }

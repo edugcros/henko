@@ -62,13 +62,7 @@ const toNumber = (value, defaultValue = 0) => {
 }
 
 const getTenantId = req => {
-  return (
-    req.tenant?._id ||
-    req.resolvedTenant?._id ||
-    req.tenantId ||
-    req.user?.tenantId ||
-    null
-  )
+  return req.tenant?._id || req.resolvedTenant?._id || req.tenantId || req.user?.tenantId || null
 }
 
 const getClientIp = req => {
@@ -105,9 +99,7 @@ const sanitizeMetricValue = (value, depth = 0) => {
   if (typeof value === 'boolean') return value
 
   if (Array.isArray(value)) {
-    return value
-      .slice(0, MAX_ARRAY_LENGTH)
-      .map(item => sanitizeMetricValue(item, depth + 1))
+    return value.slice(0, MAX_ARRAY_LENGTH).map(item => sanitizeMetricValue(item, depth + 1))
   }
 
   if (typeof value === 'object') {
@@ -166,10 +158,7 @@ const normalizeEventBody = ({ req, rawEvent }) => {
     conversationId: rawEvent?.conversationId || null,
     channel,
     externalUserId: clean(
-      rawEvent?.externalUserId ||
-        rawEvent?.userId ||
-        rawEvent?.sessionId ||
-        rawEvent?.anonymousId,
+      rawEvent?.externalUserId || rawEvent?.userId || rawEvent?.sessionId || rawEvent?.anonymousId,
     ),
     type,
     actionType,
@@ -244,9 +233,7 @@ export const trackAiAgentEvent = asyncHandler(async (req, res) => {
     })
   }
 
-  const rawEvents = Array.isArray(req.body?.events)
-    ? req.body.events
-    : [req.body]
+  const rawEvents = Array.isArray(req.body?.events) ? req.body.events : [req.body]
 
   if (rawEvents.length === 0) {
     return res.status(400).json({

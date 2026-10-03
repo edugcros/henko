@@ -31,9 +31,7 @@ export const runOrderTransaction = async work => {
     return result
   } catch (error) {
     if (!isProd && isTransactionUnsupportedError(error)) {
-      logger.warn(
-        '⚠️ Mongo sin transacciones en desarrollo; usando fallback no transaccional',
-      )
+      logger.warn('⚠️ Mongo sin transacciones en desarrollo; usando fallback no transaccional')
       return work(null)
     }
 
@@ -43,11 +41,7 @@ export const runOrderTransaction = async work => {
   }
 }
 
-export const validateUserTenantMembership = async ({
-  userId,
-  tenantId,
-  session = null,
-}) => {
+export const validateUserTenantMembership = async ({ userId, tenantId, session = null }) => {
   const [user, tenant] = await Promise.all([
     User.findOne({
       _id: toObjectId(userId),

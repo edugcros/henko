@@ -208,9 +208,7 @@ correctionLogSchema.pre('validate', function normalize(next) {
       field: rule?.field ? normalizeLower(rule.field).slice(0, 160) : null,
       type: normalizeRuleType(rule?.type),
       rawInput: rule?.rawInput ? normalizeLower(rule.rawInput).slice(0, 180) : null,
-      correctedValue: rule?.correctedValue
-        ? clean(rule.correctedValue).slice(0, 180)
-        : null,
+      correctedValue: rule?.correctedValue ? clean(rule.correctedValue).slice(0, 180) : null,
       confidence: clampConfidence(rule?.confidence),
     }))
   }

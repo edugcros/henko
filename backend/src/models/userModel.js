@@ -20,7 +20,11 @@ const { Schema } = mongoose
  * @returns {number}
  */
 const parseExpireToMs = (value = '1h', fallbackMs = 60 * 60 * 1000) => {
-  const match = /^(\d+)(ms|s|m|h|d)$/.exec(String(value || '').trim().toLowerCase())
+  const match = /^(\d+)(ms|s|m|h|d)$/.exec(
+    String(value || '')
+      .trim()
+      .toLowerCase(),
+  )
 
   if (!match) return fallbackMs
 
@@ -38,7 +42,10 @@ const parseExpireToMs = (value = '1h', fallbackMs = 60 * 60 * 1000) => {
   return num * multipliers[unit]
 }
 
-const normalizeEmail = value => String(value || '').trim().toLowerCase()
+const normalizeEmail = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
 
 const sanitizePlainText = value => {
   return sanitizeHtml(String(value || ''), {
@@ -279,15 +286,10 @@ userSchema.index({ tenantId: 1 })
 userSchema.methods.createEmailVerificationToken = function () {
   const rawToken = crypto.randomBytes(32).toString('hex')
 
-  this.emailVerificationToken = crypto
-    .createHash('sha256')
-    .update(rawToken)
-    .digest('hex')
+  this.emailVerificationToken = crypto.createHash('sha256').update(rawToken).digest('hex')
 
-  this.emailVerificationExpires = Date.now() + parseExpireToMs(
-    process.env.EMAIL_VERIFY_EXPIRES || '24h',
-    24 * 60 * 60 * 1000,
-  )
+  this.emailVerificationExpires =
+    Date.now() + parseExpireToMs(process.env.EMAIL_VERIFY_EXPIRES || '24h', 24 * 60 * 60 * 1000)
 
   return rawToken
 }
@@ -295,24 +297,17 @@ userSchema.methods.createEmailVerificationToken = function () {
 userSchema.methods.createPasswordResetToken = function () {
   const resetToken = crypto.randomBytes(32).toString('hex')
 
-  this.passwordResetToken = crypto
-    .createHash('sha256')
-    .update(resetToken)
-    .digest('hex')
+  this.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex')
 
-  this.passwordResetExpires = Date.now() + parseExpireToMs(
-    process.env.PASSWORD_RESET_EXPIRES || '1h',
-    60 * 60 * 1000,
-  )
+  this.passwordResetExpires =
+    Date.now() + parseExpireToMs(process.env.PASSWORD_RESET_EXPIRES || '1h', 60 * 60 * 1000)
 
   return resetToken
 }
 
 userSchema.methods.isResetTokenValid = function () {
   return Boolean(
-    this.passwordResetToken &&
-    this.passwordResetExpires &&
-    this.passwordResetExpires > Date.now(),
+    this.passwordResetToken && this.passwordResetExpires && this.passwordResetExpires > Date.now(),
   )
 }
 

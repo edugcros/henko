@@ -15,13 +15,7 @@ export const ALLOWED_IMAGE_MIME_TYPES = Object.freeze([
 
 // Formatos que reporta sharp() al leer el contenido real del archivo
 // (usados para validar por firma binaria, no solo por Content-Type declarado).
-export const ALLOWED_IMAGE_SHARP_FORMATS = Object.freeze([
-  'jpeg',
-  'png',
-  'webp',
-  'avif',
-  'heif',
-])
+export const ALLOWED_IMAGE_SHARP_FORMATS = Object.freeze(['jpeg', 'png', 'webp', 'avif', 'heif'])
 
 export const MAX_IMAGE_UPLOAD_MB = Number(process.env.MAX_IMAGE_MB || 10)
 export const MAX_IMAGE_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_MB * 1024 * 1024

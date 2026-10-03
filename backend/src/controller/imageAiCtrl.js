@@ -26,9 +26,7 @@ export const handleImageAiStatus = expressAsyncHandler(async (req, res) => {
     data: {
       localBackgroundRemoval: local,
       replicateConfigured: Boolean(process.env.REPLICATE_API_TOKEN),
-      huggingfaceConfigured: Boolean(
-        process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN,
-      ),
+      huggingfaceConfigured: Boolean(process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN),
     },
   })
 })
@@ -59,11 +57,15 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
 
   const prompt = req.body.prompt?.trim()
   if (!prompt) {
-    return res.status(400).json({ success: false, message: 'Se requiere un prompt describiendo los cambios deseados' })
+    return res
+      .status(400)
+      .json({ success: false, message: 'Se requiere un prompt describiendo los cambios deseados' })
   }
 
   if (prompt.length > 1000) {
-    return res.status(400).json({ success: false, message: 'El prompt no puede superar los 1000 caracteres' })
+    return res
+      .status(400)
+      .json({ success: false, message: 'El prompt no puede superar los 1000 caracteres' })
   }
 
   const tenantId = String(req.user?.tenantId || req.tenantId || '').trim()

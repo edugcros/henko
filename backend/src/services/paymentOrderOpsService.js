@@ -13,7 +13,6 @@ const getSafeErrorMessage = error => {
   return error?.message || 'Error inesperado'
 }
 
-
 // Reserva stock descontando `stock`/`variants[].stock` (el modelo canónico de
 // inventario, el mismo que usa orderInventoryService.js para el flujo COD).
 // El producto no distingue "disponible" de "reservado": reservar significa

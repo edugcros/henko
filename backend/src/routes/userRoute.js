@@ -42,9 +42,7 @@ import {
   resolveTenantByDomain,
 } from '../middlewares/tenantMiddleware.js'
 
-import {
-  csrfProtectionDynamic,
-} from '../middlewares/csrfMiddleware.js'
+import { csrfProtectionDynamic } from '../middlewares/csrfMiddleware.js'
 import { verifyTurnstile } from '../middlewares/turnstileMiddleware.js'
 import { env } from '../../config/env.js'
 
@@ -136,43 +134,19 @@ const registerAdminLimiter = rateLimit({
 router.get('/verify-email', verifyEmail)
 
 // Login storefront por dominio actual.
-router.post(
-  '/login',
-  authLimiter,
-  resolveTenantByDomain,
-  loginUser,
-)
+router.post('/login', authLimiter, resolveTenantByDomain, loginUser)
 
 // Login panel admin por dominio admin actual.
-router.post(
-  '/admin-login',
-  authLimiter,
-  resolveTenantByDomain,
-  loginAdmin,
-)
+router.post('/admin-login', authLimiter, resolveTenantByDomain, loginAdmin)
 
 // Registro de comprador dentro de una tienda existente.
-router.post(
-  '/register',
-  authLimiter,
-  verifyTurnstile,
-  resolveTenantByDomain,
-  createUser,
-)
+router.post('/register', authLimiter, verifyTurnstile, resolveTenantByDomain, createUser)
 
 // Registro SaaS: crea tenant + admin principal.
-router.post(
-  '/register-admin',
-  registerAdminLimiter,
-  verifyTurnstile,
-  createUserAdmin,
-)
+router.post('/register-admin', registerAdminLimiter, verifyTurnstile, createUserAdmin)
 
 // Refresh token.
-router.post(
-  '/refresh',
-  handleRefreshToken,
-)
+router.post('/refresh', handleRefreshToken)
 
 // Reenvío del correo de verificación, tenant-aware.
 // Sin esta ruta, un correo de alta que no llegaba dejaba la cuenta bloqueada
@@ -185,151 +159,65 @@ router.post(
 )
 
 // Recuperación de contraseña tenant-aware.
-router.post(
-  '/forgot-password',
-  forgotPasswordLimiter,
-  resolveTenantByDomain,
-  forgotPassword,
-)
+router.post('/forgot-password', forgotPasswordLimiter, resolveTenantByDomain, forgotPassword)
 
 // Reset por token global seguro.
-router.put(
-  '/reset-password',
-  resetPassword,
-)
+router.put('/reset-password', resetPassword)
 
 // ======================================================
 // 👤 2. RUTAS PRIVADAS DEL USUARIO
 // ======================================================
 
 // Usuario actual en el contexto del dominio vigente.
-router.get(
-  '/me',
-  resolveTenantByDomain,
-  authMiddleware,
-  getCurrentUser,
-)
+router.get('/me', resolveTenantByDomain, authMiddleware, getCurrentUser)
 
 // Logout usa refresh cookie; no requiere authMiddleware para cerrar sesión.
-router.post(
-  '/logout',
-  logout,
-)
+router.post('/logout', logout)
 
 // Cambios sensibles sobre cuenta propia.
-router.put(
-  '/password',
-  resolveTenantByDomain,
-  authMiddleware,
-  updatePassword,
-)
+router.put('/password', resolveTenantByDomain, authMiddleware, updatePassword)
 
-router.put(
-  '/edit-user',
-  resolveTenantByDomain,
-  authMiddleware,
-  updateUser,
-)
+router.put('/edit-user', resolveTenantByDomain, authMiddleware, updateUser)
 
-router.put(
-  '/save-address',
-  resolveTenantByDomain,
-  authMiddleware,
-  validateAddress,
-  saveAddress,
-)
+router.put('/save-address', resolveTenantByDomain, authMiddleware, validateAddress, saveAddress)
 
 // ======================================================
 // 🧡 3. WISHLIST
 // ======================================================
 
 // GET no requiere CSRF.
-router.get(
-  '/wishlist',
-  resolveTenantByDomain,
-  authMiddleware,
-  getWishlist,
-)
+router.get('/wishlist', resolveTenantByDomain, authMiddleware, getWishlist)
 
-router.put(
-  '/wishlist/:productId',
-  resolveTenantByDomain,
-  authMiddleware,
-  toggleWishlist,
-)
+router.put('/wishlist/:productId', resolveTenantByDomain, authMiddleware, toggleWishlist)
 
 // ======================================================
 // 🛒 4. CARRITO
 // ======================================================
 
-router.post(
-  '/cart',
-  resolveTenantByDomain,
-  authMiddleware,
-  userCart,
-)
+router.post('/cart', resolveTenantByDomain, authMiddleware, userCart)
 
 // GET no requiere CSRF.
-router.get(
-  '/user-cart',
-  resolveTenantByDomain,
-  authMiddleware,
-  getUserCart,
-)
+router.get('/user-cart', resolveTenantByDomain, authMiddleware, getUserCart)
 
-router.delete(
-  '/cart/empty',
-  resolveTenantByDomain,
-  authMiddleware,
-  emptyCart,
-)
+router.delete('/cart/empty', resolveTenantByDomain, authMiddleware, emptyCart)
 
-router.delete(
-  '/cart/:productId',
-  resolveTenantByDomain,
-  authMiddleware,
-  removeFromCart,
-)
+router.delete('/cart/:productId', resolveTenantByDomain, authMiddleware, removeFromCart)
 
 // ======================================================
 // 🔐 5. ADMINISTRACIÓN DE USUARIOS
 // ======================================================
 
-router.get(
-  '/all-users',
-  adminContext,
-  getAllUsers,
-)
+router.get('/all-users', adminContext, getAllUsers)
 
-router.put(
-  '/block-user/:id',
-  adminContext,
-  blockUser,
-)
+router.put('/block-user/:id', adminContext, blockUser)
 
-router.put(
-  '/unblock-user/:id',
-  adminContext,
-  unblockUser,
-)
+router.put('/unblock-user/:id', adminContext, unblockUser)
 
-router.put(
-  '/verify-user/:id',
-  adminContext,
-  verifyUserManually,
-)
+router.put('/verify-user/:id', adminContext, verifyUserManually)
 
-router.delete(
-  '/delete-user/:id',
-  adminContext,
-  deleteUser,
-)
+router.delete('/delete-user/:id', adminContext, deleteUser)
 
 // ⚠️ Debe ir al final porque captura rutas dinámicas.
-router.get(
-  '/:id',
-  adminContext,
-  getUserById,
-)
+router.get('/:id', adminContext, getUserById)
 
 export default router

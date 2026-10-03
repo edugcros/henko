@@ -32,12 +32,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import { env } from '../../config/env.js'
 import { SharedRateLimitStore } from './sharedRateLimitStore.js'
 
-const RUTAS_EXENTAS = [
-  '/webhooks',
-  '/payments/webhook',
-  '/whatsapp/webhook',
-  '/health',
-]
+const RUTAS_EXENTAS = ['/webhooks', '/payments/webhook', '/whatsapp/webhook', '/health']
 
 export const globalApiLimiter = rateLimit({
   windowMs: env.rateLimit.windowMs,

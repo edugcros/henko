@@ -27,11 +27,7 @@ const serializeLineForCouponUsage = line => ({
   quantity: line.count,
 })
 
-export const findUsableCouponById = async ({
-  couponId,
-  tenantId,
-  session = null,
-}) => {
+export const findUsableCouponById = async ({ couponId, tenantId, session = null }) => {
   const now = new Date()
 
   return Coupon.findOne({
@@ -51,11 +47,7 @@ export const findUsableCouponById = async ({
     .session(session)
 }
 
-export const findUsableCouponByCode = async ({
-  code,
-  tenantId,
-  session = null,
-}) => {
+export const findUsableCouponByCode = async ({ code, tenantId, session = null }) => {
   const cleanCode = sanitizeString(code).toUpperCase()
   if (!cleanCode) return null
 
@@ -103,12 +95,7 @@ export const ensureCouponUsageAllowedForUser = async ({
   }
 }
 
-export const evaluateCouponDiscount = ({
-  coupon,
-  lineContexts,
-  subtotalCents,
-  money,
-}) => {
+export const evaluateCouponDiscount = ({ coupon, lineContexts, subtotalCents, money }) => {
   if (!coupon) {
     return {
       applicableLines: [],
@@ -146,18 +133,13 @@ export const evaluateCouponDiscount = ({
   if (typeof coupon.calculateDiscountCents === 'function') {
     discountCents = coupon.calculateDiscountCents(applicableSubtotalCents)
   } else if (coupon.discountType === 'percentage') {
-    discountCents = Math.round(
-      applicableSubtotalCents * (Number(coupon.discountValue || 0) / 100),
-    )
+    discountCents = Math.round(applicableSubtotalCents * (Number(coupon.discountValue || 0) / 100))
   } else {
     discountCents = money.fromDecimal(coupon.discountValue || 0)
   }
 
   if (coupon.maxDiscountAmount) {
-    discountCents = Math.min(
-      discountCents,
-      money.fromDecimal(coupon.maxDiscountAmount),
-    )
+    discountCents = Math.min(discountCents, money.fromDecimal(coupon.maxDiscountAmount))
   }
 
   if (discountCents <= 0) {
@@ -171,11 +153,7 @@ export const evaluateCouponDiscount = ({
   }
 }
 
-export const consumeCouponAtomic = async ({
-  coupon,
-  tenantId,
-  session = null,
-}) => {
+export const consumeCouponAtomic = async ({ coupon, tenantId, session = null }) => {
   const now = new Date()
 
   const consumed = await Coupon.findOneAndUpdate(
@@ -218,12 +196,7 @@ export const consumeCouponAtomic = async ({
  * no pueden pasar ambas aunque ambas hayan pasado el chequeo de lectura
  * previo. Sin límite por usuario (null/undefined), no hace nada.
  */
-export const consumeCouponForUserAtomic = async ({
-  coupon,
-  userId,
-  tenantId,
-  session = null,
-}) => {
+export const consumeCouponForUserAtomic = async ({ coupon, userId, tenantId, session = null }) => {
   const limit = coupon?.usageLimitPerUser
 
   if (limit === null || limit === undefined) return
@@ -291,8 +264,7 @@ export const createCouponUsageRecord = async ({
         finalAmountCents: finalCents,
         currency,
         ipAddress: req?.clientContext?.ip || req?.ip || null,
-        userAgent:
-          req?.clientContext?.userAgent || req?.headers?.['user-agent'] || null,
+        userAgent: req?.clientContext?.userAgent || req?.headers?.['user-agent'] || null,
       },
     ],
     { session },
@@ -320,12 +292,7 @@ export const createCouponUsageRecord = async ({
  * para seguimiento manual — el peor caso es un cupón sub-contado, no una
  * reutilización indebida.
  */
-export const consumeOrderCouponIfNeeded = async ({
-  order,
-  tenantId,
-  userId,
-  req,
-}) => {
+export const consumeOrderCouponIfNeeded = async ({ order, tenantId, userId, req }) => {
   const couponId = order.coupon?.couponId
 
   if (!couponId || order.couponConsumedAt) return null
@@ -360,13 +327,10 @@ export const consumeOrderCouponIfNeeded = async ({
     })
   } catch (usageError) {
     if (usageError?.code === 11000) {
-      logger.info(
-        'Cupón ya registrado como usado para esta orden, se omite doble consumo',
-        {
-          orderId: order._id?.toString?.(),
-          couponId: String(couponId),
-        },
-      )
+      logger.info('Cupón ya registrado como usado para esta orden, se omite doble consumo', {
+        orderId: order._id?.toString?.(),
+        couponId: String(couponId),
+      })
 
       order.couponConsumedAt = new Date()
       return null

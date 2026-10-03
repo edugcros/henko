@@ -55,10 +55,7 @@ import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 import { escapeRegex } from '../../utils/escapeRegex.js'
 import AiProviderCall, { CALL_ID } from '../../models/aiProviderCallModel.js'
-import AiRateWindow, {
-  RATE_WINDOW,
-  windowStartFor,
-} from '../../models/aiRateWindowModel.js'
+import AiRateWindow, { RATE_WINDOW, windowStartFor } from '../../models/aiRateWindowModel.js'
 // El freno de velocidad se configura por el mismo mecanismo que los techos:
 // override en base, con motivo e historial, y la variable de entorno como
 // respaldo.
@@ -169,8 +166,7 @@ const avisarResidual = (breakdown, { tenantId, metric, model }) => {
     metric,
     model,
     residualTokens: breakdown.residualTokens,
-    detalle:
-      'se cobraron como salida; revisar si usageMetadata trae una clave nueva',
+    detalle: 'se cobraron como salida; revisar si usageMetadata trae una clave nueva',
   })
 }
 
@@ -201,8 +197,7 @@ const avisarEstimacion = (breakdown, { tenantId, metric, model, operationId }) =
     ratioOrigen: breakdown.assumedRatio?.source ?? null,
     inputTokens: breakdown.inputTokens,
     outputTokens: breakdown.outputTokens,
-    detalle:
-      'el proveedor no desgloso entrada y salida; el reparto es un supuesto',
+    detalle: 'el proveedor no desgloso entrada y salida; el reparto es un supuesto',
   })
 }
 
@@ -216,8 +211,7 @@ const resolvePricingModel = (model, { tenantId, metric } = {}) => {
     tenantId: tenantId ? String(tenantId) : null,
     metric,
     inferido,
-    detalle:
-      'el llamador no informó con qué modelo gastó; el costo es un supuesto',
+    detalle: 'el llamador no informó con qué modelo gastó; el costo es un supuesto',
   })
 
   return { model: inferido, pricingFallback: true }
@@ -579,9 +573,7 @@ const closeOperation = ({
  * conteo de operaciones dejó de estar inflado.
  */
 const ledgerKey = (operationId, callId) =>
-  !operationId || !callId || callId === CALL_ID.MAIN
-    ? operationId
-    : `${operationId}:${callId}`
+  !operationId || !callId || callId === CALL_ID.MAIN ? operationId : `${operationId}:${callId}`
 
 const writeLedgerEntry = ({
   tenantId,
@@ -677,41 +669,41 @@ export const buildBudgetDenialMessage = (result = {}) => {
   const label = AI_METRIC_LABELS[result.metric] || 'funciones de IA'
 
   switch (result.reason) {
-  case DENY_REASONS.SUBSCRIPTION:
-    return 'Las funciones de IA están pausadas porque la suscripción no está al día. El resto de la tienda sigue funcionando normalmente.'
+    case DENY_REASONS.SUBSCRIPTION:
+      return 'Las funciones de IA están pausadas porque la suscripción no está al día. El resto de la tienda sigue funcionando normalmente.'
 
-  case DENY_REASONS.NO_API_KEY:
-    return 'El servicio de IA no está configurado. Configurá una API key propia desde el panel o contactá al soporte.'
+    case DENY_REASONS.NO_API_KEY:
+      return 'El servicio de IA no está configurado. Configurá una API key propia desde el panel o contactá al soporte.'
 
-  case DENY_REASONS.PLATFORM_BUDGET:
-    return 'El servicio de IA está temporalmente pausado por mantenimiento de capacidad. Volvé a intentar más tarde.'
+    case DENY_REASONS.PLATFORM_BUDGET:
+      return 'El servicio de IA está temporalmente pausado por mantenimiento de capacidad. Volvé a intentar más tarde.'
 
-  // Este caso faltaba y caía en el default, que dice "se alcanzó el límite
-  // mensual de tu plan". Era falso y además mandaba al comercio a la acción
-  // equivocada: le sugería subir de plan cuando lo único que tenía que hacer
-  // era esperar un minuto.
-  case DENY_REASONS.RATE_LIMIT:
-    return 'Estás haciendo muchas consultas seguidas. Esperá un momento y volvé a intentar.'
+    // Este caso faltaba y caía en el default, que dice "se alcanzó el límite
+    // mensual de tu plan". Era falso y además mandaba al comercio a la acción
+    // equivocada: le sugería subir de plan cuando lo único que tenía que hacer
+    // era esperar un minuto.
+    case DENY_REASONS.RATE_LIMIT:
+      return 'Estás haciendo muchas consultas seguidas. Esperá un momento y volvé a intentar.'
 
-  // Se dice que es temporal y que el asistente sigue andando: sin eso, el
-  // comercio asume que se quedó sin plan y abre un ticket por algo que se
-  // resuelve solo.
-  case DENY_REASONS.DEGRADED:
-    return `${label} está pausado temporalmente por alta demanda en la plataforma. El asistente de tu tienda sigue funcionando normalmente. Volvé a intentar más tarde.`
+    // Se dice que es temporal y que el asistente sigue andando: sin eso, el
+    // comercio asume que se quedó sin plan y abre un ticket por algo que se
+    // resuelve solo.
+    case DENY_REASONS.DEGRADED:
+      return `${label} está pausado temporalmente por alta demanda en la plataforma. El asistente de tu tienda sigue funcionando normalmente. Volvé a intentar más tarde.`
 
-  // El motivo se muestra porque lo escribió una persona para que se lea. Si no
-  // lo escribió, queda un mensaje que igual dice a dónde ir: un servicio que
-  // se apaga sin explicar por qué genera un ticket por cada comercio.
-  case DENY_REASONS.TENANT_SUSPENDED:
-    return result.detail
-      ? `Las funciones de IA de tu cuenta están pausadas: ${result.detail}`
-      : 'Las funciones de IA de tu cuenta están pausadas. Contactá al soporte para reactivarlas.'
+    // El motivo se muestra porque lo escribió una persona para que se lea. Si no
+    // lo escribió, queda un mensaje que igual dice a dónde ir: un servicio que
+    // se apaga sin explicar por qué genera un ticket por cada comercio.
+    case DENY_REASONS.TENANT_SUSPENDED:
+      return result.detail
+        ? `Las funciones de IA de tu cuenta están pausadas: ${result.detail}`
+        : 'Las funciones de IA de tu cuenta están pausadas. Contactá al soporte para reactivarlas.'
 
-  case DENY_REASONS.GUARD_LIMIT:
-    return `Se alcanzó el límite mensual de ${label} de tu plan. Se renueva el mes que viene, o podés subir de plan.`
+    case DENY_REASONS.GUARD_LIMIT:
+      return `Se alcanzó el límite mensual de ${label} de tu plan. Se renueva el mes que viene, o podés subir de plan.`
 
-  default:
-    return `Se alcanzó el límite mensual de ${label} de tu plan (${result.limit}). Se renueva el mes que viene, o podés subir de plan.`
+    default:
+      return `Se alcanzó el límite mensual de ${label} de tu plan (${result.limit}). Se renueva el mes que viene, o podés subir de plan.`
   }
 }
 
@@ -780,11 +772,9 @@ const buildDeniedResult = ({ metric, limit, used, reason, detail, profile }) => 
 const reservePlatformCost = async ({ period, estimate, usdBudget }) => {
   if (usdBudget === UNLIMITED || !(estimate > 0)) return 0
 
-  await AiPlatformUsage.updateOne(
-    { period },
-    { $setOnInsert: { period } },
-    { upsert: true },
-  ).catch(() => null)
+  await AiPlatformUsage.updateOne({ period }, { $setOnInsert: { period } }, { upsert: true }).catch(
+    () => null,
+  )
 
   const updated = await AiPlatformUsage.findOneAndUpdate(
     {
@@ -924,8 +914,7 @@ const evaluatePlatformBudget = async () => {
   const tokens = Number(usage?.tokens || 0)
   // Gastado MÁS comprometido. Mirar solo lo gastado dejaría entrar a cien
   // requests simultáneos: ninguno habría liquidado todavía.
-  const costUsd =
-    Number(usage?.estimatedCostUsd || 0) + Number(usage?.reservedCostUsd || 0)
+  const costUsd = Number(usage?.estimatedCostUsd || 0) + Number(usage?.reservedCostUsd || 0)
 
   // La plata se evalúa primero: entre dos techos pasados, el que hay que
   // contarle al dueño de la plataforma es el que le cuesta dinero.
@@ -1016,10 +1005,7 @@ const announceBudgetPressure = async ({ period, usage, budget, usdBudget = UNLIM
     const claimed = await AiPlatformUsage.findOneAndUpdate(
       {
         period,
-        $or: [
-          { alertedThreshold: { $exists: false } },
-          { alertedThreshold: { $lt: reached } },
-        ],
+        $or: [{ alertedThreshold: { $exists: false } }, { alertedThreshold: { $lt: reached } }],
       },
       { $set: { alertedThreshold: reached } },
       { new: true },
@@ -1071,11 +1057,7 @@ const announceBudgetPressure = async ({ period, usage, budget, usdBudget = UNLIM
   }
 }
 
-const registerPlatformConsumption = async ({
-  tokens,
-  costUsd,
-  period: requestedPeriod = null,
-}) => {
+const registerPlatformConsumption = async ({ tokens, costUsd, period: requestedPeriod = null }) => {
   const period = requestedPeriod || getCurrentPeriod()
   const budget = getPlatformMonthlyTokenBudget()
   const usdBudget = getPlatformMonthlyUsdBudget()
@@ -1118,10 +1100,7 @@ const registerPlatformConsumption = async ({
     const claimed = await AiPlatformUsage.findOneAndUpdate(
       {
         period,
-        $or: [
-          { breakerTrippedAt: null },
-          { breakerTrippedAt: { $exists: false } },
-        ],
+        $or: [{ breakerTrippedAt: null }, { breakerTrippedAt: { $exists: false } }],
       },
       { $set: { breakerTrippedAt: new Date(), breakerReason } },
       { new: true },
@@ -1166,7 +1145,6 @@ const normalizeAmount = (value, fallback = 1) => {
   return Math.max(1, Math.floor(numeric))
 }
 
-
 /**
  * Inicializa el documento del período sin intentar reservar en el mismo upsert.
  * Separar "crear documento" de "incrementar contador" evita que un filtro de
@@ -1195,9 +1173,7 @@ const ensureUsageDocument = async ({ tenantId, period }) => {
  */
 const ensureCounter = async ({ tenantId, period, metric }) => {
   const path = counterPath(metric)
-  const valueExpression = metric === AI_METRICS.VISION
-    ? { $ifNull: ['$analysisCount', 0] }
-    : 0
+  const valueExpression = metric === AI_METRICS.VISION ? { $ifNull: ['$analysisCount', 0] } : 0
 
   await AiUsage.updateOne(
     {
@@ -1222,10 +1198,7 @@ const buildQuotaExpression = ({ metric, limit, amount }) => {
   return {
     $lte: [
       {
-        $add: [
-          { $ifNull: [path, 0] },
-          amount,
-        ],
+        $add: [{ $ifNull: [path, 0] }, amount],
       },
       limit,
     ],
@@ -1236,10 +1209,7 @@ const buildGuardExpression = ({ metric, limit }) => {
   if (limit === UNLIMITED) return null
 
   return {
-    $lt: [
-      { $ifNull: [`$${counterPath(metric)}`, 0] },
-      limit,
-    ],
+    $lt: [{ $ifNull: [`$${counterPath(metric)}`, 0] }, limit],
   }
 }
 
@@ -1384,10 +1354,7 @@ const resolveUpfrontCostUsd = async ({ tenantId, period, operationId, metric, am
       metric,
       event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.RESERVED] },
       costUsd: { $gt: 0 },
-      $or: [
-        { operationId },
-        { operationId: { $regex: `^${escapeRegex(String(operationId))}:` } },
-      ],
+      $or: [{ operationId }, { operationId: { $regex: `^${escapeRegex(String(operationId))}:` } }],
     })
       .select('costUsd')
       .lean()
@@ -1531,9 +1498,7 @@ const rateLimitFor = window => {
   if (override !== null && Number.isFinite(override) && override > 0) return override
 
   const env = readEnvPositiveInt(
-    window === RATE_WINDOW.MINUTE
-      ? 'AI_RATE_LIMIT_PER_MINUTE'
-      : 'AI_RATE_LIMIT_PER_HOUR',
+    window === RATE_WINDOW.MINUTE ? 'AI_RATE_LIMIT_PER_MINUTE' : 'AI_RATE_LIMIT_PER_HOUR',
   )
 
   return env ?? RATE_DEFAULTS[window]
@@ -1618,8 +1583,7 @@ const checkRateLimit = async ({ tenantId, at = new Date() }) => {
         tenantId: String(tenantId),
         window,
         limit,
-        detalle:
-          'el cupo mensual no lo habria frenado: mide acumulado, no ritmo',
+        detalle: 'el cupo mensual no lo habria frenado: mide acumulado, no ritmo',
       })
 
       return { allowed: false, window, limit }
@@ -1858,8 +1822,7 @@ export const reserveAiBudget = async ({
   // Una edición de imagen no se estima: su tarifa es plana y ya se conoce acá,
   // así que se compromete el número exacto.
   const usdBudget = getPlatformMonthlyUsdBudget()
-  const estimateUsd =
-    upfrontCostUsd > 0 ? upfrontCostUsd : getEstimatedCostUsd(normalizedMetric)
+  const estimateUsd = upfrontCostUsd > 0 ? upfrontCostUsd : getEstimatedCostUsd(normalizedMetric)
 
   const reservedUsd = await reservePlatformCost({
     period,
@@ -2165,18 +2128,13 @@ export const refundAiBudget = async ({
         tenantId: id,
         period,
         $expr: {
-          $gte: [
-            { $ifNull: [`$${counterPath(normalizedMetric)}`, 0] },
-            refundAmount,
-          ],
+          $gte: [{ $ifNull: [`$${counterPath(normalizedMetric)}`, 0] }, refundAmount],
         },
       },
       {
         $inc: {
           [counterPath(normalizedMetric)]: -refundAmount,
-          ...(normalizedMetric === AI_METRICS.VISION
-            ? { analysisCount: -refundAmount }
-            : {}),
+          ...(normalizedMetric === AI_METRICS.VISION ? { analysisCount: -refundAmount } : {}),
           ...(upfrontCostUsd > 0 ? { estimatedCostUsd: -upfrontCostUsd } : {}),
         },
         $set: { lastActivityAt: new Date() },
@@ -2289,20 +2247,20 @@ export const recordAiConsumption = async ({
   // caché y modelo estaban todos en null para BYOK.
   const breakdown = isTokenMetric
     ? computeCostUsd({
-      model: usedModel,
-      inputTokens,
-      outputTokens,
-      // Al 10% de la entrada, y viene sin pedirlo: Gemini cachea implícito.
-      cachedInputTokens: usage?.cachedInputTokens ?? null,
-      // El nivel de servicio MULTIPLICA la tarifa: batch y flex valen la
-      // mitad, priority 1,8 veces. Sin pasarlo, un trabajo en batch se
-      // cobraría al DOBLE de lo que cuesta.
-      serviceTier: usage?.serviceTier ?? null,
-      totalTokens: normalizedAmount,
-      // Si hay que repartir, con la proporcion medida de ESTA feature. El 0,8
-      // global se equivocaba en todas: el agente mide 0,988.
-      metric: normalizedMetric,
-    })
+        model: usedModel,
+        inputTokens,
+        outputTokens,
+        // Al 10% de la entrada, y viene sin pedirlo: Gemini cachea implícito.
+        cachedInputTokens: usage?.cachedInputTokens ?? null,
+        // El nivel de servicio MULTIPLICA la tarifa: batch y flex valen la
+        // mitad, priority 1,8 veces. Sin pasarlo, un trabajo en batch se
+        // cobraría al DOBLE de lo que cuesta.
+        serviceTier: usage?.serviceTier ?? null,
+        totalTokens: normalizedAmount,
+        // Si hay que repartir, con la proporcion medida de ESTA feature. El 0,8
+        // global se equivocaba en todas: el agente mide 0,988.
+        metric: normalizedMetric,
+      })
     : null
 
   avisarResidual(breakdown, { tenantId: id, metric: normalizedMetric, model: usedModel })
@@ -2407,14 +2365,16 @@ export const recordAiConsumption = async ({
   }
 
   if (isTokenMetric && !isByok) {
-    await registerPlatformConsumption({ tokens: normalizedAmount, costUsd, period }).catch(error => {
-      logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma', {
-        tenantId: id,
-        metric: normalizedMetric,
-        period,
-        error: error.message,
-      })
-    })
+    await registerPlatformConsumption({ tokens: normalizedAmount, costUsd, period }).catch(
+      error => {
+        logger.warn('[AI BUDGET] No se pudo registrar consumo de plataforma', {
+          tenantId: id,
+          metric: normalizedMetric,
+          period,
+          error: error.message,
+        })
+      },
+    )
   }
 
   writeLedgerEntry({
@@ -3078,9 +3038,7 @@ export const getAiBudgetSnapshot = async tenantId => {
   const period = getCurrentPeriod()
 
   const profile = await loadTenantAiProfile(id)
-  const usage = await AiUsage.findOne({ tenantId: id, period })
-    .setOptions({ tenantId: id })
-    .lean()
+  const usage = await AiUsage.findOne({ tenantId: id, period }).setOptions({ tenantId: id }).lean()
   const selfLimits = await loadAgentSelfLimits(id)
   const tenantPolicy = await getTenantAiPolicy(id)
 

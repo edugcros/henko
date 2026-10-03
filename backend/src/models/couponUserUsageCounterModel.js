@@ -38,10 +38,7 @@ const couponUserUsageCounterSchema = new Schema(
   { timestamps: true },
 )
 
-couponUserUsageCounterSchema.index(
-  { tenantId: 1, coupon: 1, user: 1 },
-  { unique: true },
-)
+couponUserUsageCounterSchema.index({ tenantId: 1, coupon: 1, user: 1 }, { unique: true })
 
 couponUserUsageCounterSchema.plugin(tenantPlugin, { addTenantField: false })
 

@@ -25,110 +25,106 @@
 // Va contra una base real: lo que se prueba es una consulta con filtro por
 // tenant, que con mocks solo probaría que la escribí como la escribí.
 
-import mongoose from "mongoose";
-import { crearMongoEnMemoria } from "./testDB.js";
+import mongoose from 'mongoose'
+import { crearMongoEnMemoria } from './testDB.js'
 
-process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString(
-  "base64url",
-);
+process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
-const TENANT = new mongoose.Types.ObjectId();
-const OTRO_TENANT = new mongoose.Types.ObjectId();
-const PRODUCTO_PROPIO = new mongoose.Types.ObjectId();
-const PRODUCTO_AJENO = new mongoose.Types.ObjectId();
-const ORDEN_AJENA = new mongoose.Types.ObjectId();
+const TENANT = new mongoose.Types.ObjectId()
+const OTRO_TENANT = new mongoose.Types.ObjectId()
+const PRODUCTO_PROPIO = new mongoose.Types.ObjectId()
+const PRODUCTO_AJENO = new mongoose.Types.ObjectId()
+const ORDEN_AJENA = new mongoose.Types.ObjectId()
 
-let mongod;
-let trackUserMetricEvent;
-let UserMetricEvent;
+let mongod
+let trackUserMetricEvent
+let UserMetricEvent
 
 const respuesta = () => ({
   statusCode: 0,
   body: null,
   status(code) {
-    this.statusCode = code;
-    return this;
+    this.statusCode = code
+    return this
   },
   json(payload) {
-    this.body = payload;
-    return this;
+    this.body = payload
+    return this
   },
-});
+})
 
 const enviar = async evento => {
   const req = {
     tenantId: TENANT,
-    headers: { host: "tienda.test", "user-agent": "jest" },
+    headers: { host: 'tienda.test', 'user-agent': 'jest' },
     body: Array.isArray(evento) ? { events: evento } : evento,
-    originalUrl: "/api/metrics/events",
-    socket: { remoteAddress: "1.2.3.4" },
-  };
-  const res = respuesta();
+    originalUrl: '/api/metrics/events',
+    socket: { remoteAddress: '1.2.3.4' },
+  }
+  const res = respuesta()
 
   await trackUserMetricEvent(req, res, err => {
-    if (err) throw err;
-  });
+    if (err) throw err
+  })
 
-  return res;
-};
+  return res
+}
 
 const evento = (extra = {}) => ({
-  eventType: "product_view",
-  sessionId: "sesion-1",
+  eventType: 'product_view',
+  sessionId: 'sesion-1',
   ...extra,
-});
+})
 
 beforeAll(async () => {
-  mongod = await crearMongoEnMemoria();
-  await mongoose.connect(mongod.getUri());
+  mongod = await crearMongoEnMemoria()
+  await mongoose.connect(mongod.getUri())
 
-  ({ trackUserMetricEvent } = await import("../controller/userMetricsCtrl.js"));
-  UserMetricEvent = (await import("../models/userMetricEventModel.js")).default;
+  ;({ trackUserMetricEvent } = await import('../controller/userMetricsCtrl.js'))
+  UserMetricEvent = (await import('../models/userMetricEventModel.js')).default
 
-  const db = mongoose.connection.db;
+  const db = mongoose.connection.db
 
-  await db.collection("products").insertMany([
-    { _id: PRODUCTO_PROPIO, tenantId: TENANT, title: "Propio" },
-    { _id: PRODUCTO_AJENO, tenantId: OTRO_TENANT, title: "Ajeno" },
-  ]);
-  await db
-    .collection("orders")
-    .insertOne({ _id: ORDEN_AJENA, tenantId: OTRO_TENANT });
-}, 60_000);
+  await db.collection('products').insertMany([
+    { _id: PRODUCTO_PROPIO, tenantId: TENANT, title: 'Propio' },
+    { _id: PRODUCTO_AJENO, tenantId: OTRO_TENANT, title: 'Ajeno' },
+  ])
+  await db.collection('orders').insertOne({ _id: ORDEN_AJENA, tenantId: OTRO_TENANT })
+}, 60_000)
 
 afterAll(async () => {
-  await mongoose.disconnect();
-  await mongod?.stop();
-});
+  await mongoose.disconnect()
+  await mongod?.stop()
+})
 
 afterEach(async () => {
-  await UserMetricEvent.collection.deleteMany({});
-});
+  await UserMetricEvent.collection.deleteMany({})
+})
 
-const guardado = () => UserMetricEvent.collection.findOne({});
+const guardado = () => UserMetricEvent.collection.findOne({})
 
-describe("métricas · fuentes reservadas", () => {
+describe('métricas · fuentes reservadas', () => {
   test("un cliente NO puede declararse 'system'", async () => {
     // El evento que inflaba el tablero económico.
     const res = await enviar(
       evento({
-        eventType: "purchase",
-        source: "system",
+        eventType: 'purchase',
+        source: 'system',
         value: 999999,
         metadata: { aiInfluenced: true },
       }),
-    );
+    )
 
-    expect(res.statusCode).toBe(400);
-    expect(await guardado()).toBeNull();
-  });
+    expect(res.statusCode).toBe(400)
+    expect(await guardado()).toBeNull()
+  })
 
   test("tampoco 'admin', ni escrita de otra forma", async () => {
-    for (const source of ["admin", "SYSTEM", " System "]) {
-      const res = await enviar(evento({ source }));
-      expect({ source, status: res.statusCode }).toEqual({ source, status: 400 });
+    for (const source of ['admin', 'SYSTEM', ' System ']) {
+      const res = await enviar(evento({ source }))
+      expect({ source, status: res.statusCode }).toEqual({ source, status: 400 })
     }
-  });
+  })
 
   test("'agent' NO está reservada: la manda el navegador", async () => {
     // AiCartActionBridge marca con ella el agregado al carrito que originó el
@@ -137,118 +133,114 @@ describe("métricas · fuentes reservadas", () => {
     // clasificación obvia habría roto una función que anda.
     const res = await enviar(
       evento({
-        eventType: "add_to_cart",
-        source: "agent",
+        eventType: 'add_to_cart',
+        source: 'agent',
         productId: String(PRODUCTO_PROPIO),
       }),
-    );
+    )
 
-    expect(res.statusCode).toBe(201);
-    expect((await guardado()).source).toBe("agent");
-  });
+    expect(res.statusCode).toBe(201)
+    expect((await guardado()).source).toBe('agent')
+  })
 
-  test("un lote entero se rechaza si UNO de sus eventos la reclama", async () => {
+  test('un lote entero se rechaza si UNO de sus eventos la reclama', async () => {
     // Quedarse con el resto sería aceptar un envío que ya se sabe manipulado.
     const res = await enviar([
       evento(),
-      evento({ eventType: "purchase", source: "system", value: 500000 }),
-    ]);
+      evento({ eventType: 'purchase', source: 'system', value: 500000 }),
+    ])
 
-    expect(res.statusCode).toBe(400);
-    expect(await guardado()).toBeNull();
-  });
+    expect(res.statusCode).toBe(400)
+    expect(await guardado()).toBeNull()
+  })
 
-  test("las fuentes de cliente siguen funcionando", async () => {
-    const res = await enviar(evento({ source: "storefront" }));
+  test('las fuentes de cliente siguen funcionando', async () => {
+    const res = await enviar(evento({ source: 'storefront' }))
 
-    expect(res.statusCode).toBe(201);
-    expect((await guardado()).source).toBe("storefront");
-  });
+    expect(res.statusCode).toBe(201)
+    expect((await guardado()).source).toBe('storefront')
+  })
 
   test("una fuente desconocida se guarda como 'unknown', no se rechaza", async () => {
     // No es un intento de suplantación: es un cliente viejo o un typo.
-    const res = await enviar(evento({ source: "algo-raro" }));
+    const res = await enviar(evento({ source: 'algo-raro' }))
 
-    expect(res.statusCode).toBe(201);
-    expect((await guardado()).source).toBe("unknown");
-  });
+    expect(res.statusCode).toBe(201)
+    expect((await guardado()).source).toBe('unknown')
+  })
 
-  test("la tienda puede seguir reportando su propia compra", async () => {
+  test('la tienda puede seguir reportando su propia compra', async () => {
     // El checkout manda purchase y payment_approved desde el navegador. Eso no
     // se bloquea: queda con fuente 'storefront', que es analítica de cliente y
     // los agregados económicos no la miran.
-    const res = await enviar(
-      evento({ eventType: "purchase", source: "storefront", value: 1500 }),
-    );
+    const res = await enviar(evento({ eventType: 'purchase', source: 'storefront', value: 1500 }))
 
-    expect(res.statusCode).toBe(201);
-    expect((await guardado()).source).toBe("storefront");
-  });
-});
+    expect(res.statusCode).toBe(201)
+    expect((await guardado()).source).toBe('storefront')
+  })
+})
 
-describe("métricas · referencias de otro comercio", () => {
-  test("un producto ajeno no queda vinculado, ni como id ni como texto", async () => {
-    const res = await enviar(evento({ productId: String(PRODUCTO_AJENO) }));
+describe('métricas · referencias de otro comercio', () => {
+  test('un producto ajeno no queda vinculado, ni como id ni como texto', async () => {
+    const res = await enviar(evento({ productId: String(PRODUCTO_AJENO) }))
 
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(201)
 
-    const fila = await guardado();
+    const fila = await guardado()
 
     // El evento se conserva —la visita ocurrió— pero sin la referencia.
-    expect(fila.productId).toBeNull();
+    expect(fila.productId).toBeNull()
     // `productRef` es la copia en texto del mismo id. Dejarla es dejar el id
     // del producto de otro comercio guardado igual.
-    expect(fila.productRef).toBeFalsy();
-  });
+    expect(fila.productRef).toBeFalsy()
+  })
 
-  test("una orden ajena tampoco", async () => {
-    const res = await enviar(
-      evento({ eventType: "purchase", orderId: String(ORDEN_AJENA) }),
-    );
+  test('una orden ajena tampoco', async () => {
+    const res = await enviar(evento({ eventType: 'purchase', orderId: String(ORDEN_AJENA) }))
 
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(201)
 
-    const fila = await guardado();
+    const fila = await guardado()
 
-    expect(fila.orderObjectId).toBeNull();
+    expect(fila.orderObjectId).toBeNull()
     // Y el string: el modelo tiene un hook que reconstruye orderObjectId desde
     // orderId cuando el primero viene vacío, así que anular solo el ObjectId lo
     // devuelve intacto antes de guardar.
-    expect(fila.orderId).toBeFalsy();
-  });
+    expect(fila.orderId).toBeFalsy()
+  })
 
-  test("un producto propio sí se vincula", async () => {
-    const res = await enviar(evento({ productId: String(PRODUCTO_PROPIO) }));
+  test('un producto propio sí se vincula', async () => {
+    const res = await enviar(evento({ productId: String(PRODUCTO_PROPIO) }))
 
-    expect(res.statusCode).toBe(201);
-    expect(String((await guardado()).productId)).toBe(String(PRODUCTO_PROPIO));
-  });
+    expect(res.statusCode).toBe(201)
+    expect(String((await guardado()).productId)).toBe(String(PRODUCTO_PROPIO))
+  })
 
-  test("un id que no existe se trata como ajeno", async () => {
-    const inexistente = new mongoose.Types.ObjectId();
+  test('un id que no existe se trata como ajeno', async () => {
+    const inexistente = new mongoose.Types.ObjectId()
 
-    await enviar(evento({ productId: String(inexistente) }));
+    await enviar(evento({ productId: String(inexistente) }))
 
-    expect((await guardado()).productId).toBeNull();
-  });
+    expect((await guardado()).productId).toBeNull()
+  })
 
-  test("un lote mezclado conserva lo propio y anula lo ajeno", async () => {
+  test('un lote mezclado conserva lo propio y anula lo ajeno', async () => {
     await enviar([
-      evento({ sessionId: "s1", productId: String(PRODUCTO_PROPIO) }),
-      evento({ sessionId: "s2", productId: String(PRODUCTO_AJENO) }),
-    ]);
+      evento({ sessionId: 's1', productId: String(PRODUCTO_PROPIO) }),
+      evento({ sessionId: 's2', productId: String(PRODUCTO_AJENO) }),
+    ])
 
-    const filas = await UserMetricEvent.collection.find({}).toArray();
+    const filas = await UserMetricEvent.collection.find({}).toArray()
     const porSesion = Object.fromEntries(
       filas.map(f => [f.sessionId, f.productId ? String(f.productId) : null]),
-    );
+    )
 
     expect(porSesion).toEqual({
       s1: String(PRODUCTO_PROPIO),
       s2: null,
-    });
-  });
-});
+    })
+  })
+})
 
 // ─── Lo que el tablero cuenta como actividad de la tienda ────────────────────
 //
@@ -263,13 +255,13 @@ describe("métricas · referencias de otro comercio", () => {
 //  2. Una venta deja DOS eventos purchase, el del navegador y el del backend.
 //     El embudo mostraba 6 compras sobre 3 órdenes pagadas.
 
-describe("métricas · actividad de la tienda vs. del panel", () => {
-  const TENANT_STATS = new mongoose.Types.ObjectId();
+describe('métricas · actividad de la tienda vs. del panel', () => {
+  const TENANT_STATS = new mongoose.Types.ObjectId()
 
-  let getDashboardStats;
+  let getDashboardStats
 
   const guardarEventos = async eventos => {
-    const ahora = new Date();
+    const ahora = new Date()
 
     await UserMetricEvent.collection.insertMany(
       eventos.map((e, i) => ({
@@ -284,48 +276,53 @@ describe("métricas · actividad de la tienda vs. del panel", () => {
         value: e.value || 0,
         attribution: e.attribution || {},
         metadata: e.metadata || {},
-        path: "/",
+        path: '/',
         eventIndex: i,
       })),
-    );
-  };
+    )
+  }
 
   beforeAll(async () => {
-    ({ getDashboardStats } = await import("../services/statsService.js"));
-  });
+    ;({ getDashboardStats } = await import('../services/statsService.js'))
+  })
 
   afterEach(async () => {
-    await UserMetricEvent.collection.deleteMany({ tenantId: TENANT_STATS });
-  });
+    await UserMetricEvent.collection.deleteMany({ tenantId: TENANT_STATS })
+  })
 
-  test("los eventos del panel no cuentan como actividad de la tienda", async () => {
+  test('los eventos del panel no cuentan como actividad de la tienda', async () => {
     await guardarEventos([
-      { eventType: "login", source: "admin", sessionId: "sesion-del-duenio" },
-      { eventType: "login", source: "admin", sessionId: "sesion-del-duenio" },
-      { eventType: "login", source: "storefront", sessionId: "sesion-de-un-cliente" },
-      { eventType: "page_view", source: "storefront", sessionId: "sesion-de-un-cliente" },
-    ]);
+      { eventType: 'login', source: 'admin', sessionId: 'sesion-del-duenio' },
+      { eventType: 'login', source: 'admin', sessionId: 'sesion-del-duenio' },
+      { eventType: 'login', source: 'storefront', sessionId: 'sesion-de-un-cliente' },
+      { eventType: 'page_view', source: 'storefront', sessionId: 'sesion-de-un-cliente' },
+    ])
 
-    const { summary } = await getDashboardStats(String(TENANT_STATS), "30d");
+    const { summary } = await getDashboardStats(String(TENANT_STATS), '30d')
 
     // Antes: 3 logins y 2 sesiones. El dueño entrando a su propio panel movía
     // la conversión de su tienda.
-    expect(summary.logins).toBe(1);
-    expect(summary.sessions).toBe(1);
-  });
+    expect(summary.logins).toBe(1)
+    expect(summary.sessions).toBe(1)
+  })
 
-  test("una venta es una compra, aunque deje dos eventos", async () => {
+  test('una venta es una compra, aunque deje dos eventos', async () => {
     await guardarEventos([
-      { eventType: "purchase", source: "storefront", sessionId: "sesion-de-un-cliente", value: 1000 },
-      { eventType: "purchase", source: "system", sessionId: "sesion-de-un-cliente", value: 1000 },
-    ]);
+      {
+        eventType: 'purchase',
+        source: 'storefront',
+        sessionId: 'sesion-de-un-cliente',
+        value: 1000,
+      },
+      { eventType: 'purchase', source: 'system', sessionId: 'sesion-de-un-cliente', value: 1000 },
+    ])
 
-    const { summary } = await getDashboardStats(String(TENANT_STATS), "30d");
+    const { summary } = await getDashboardStats(String(TENANT_STATS), '30d')
 
     // El evento server-side es el único con una emisión por venta.
-    expect(summary.purchaseEvents).toBe(1);
-  });
-});
+    expect(summary.purchaseEvents).toBe(1)
+  })
+})
 
 // ─── Unidades: pesos y centavos no son lo mismo ──────────────────────────────
 //
@@ -333,41 +330,41 @@ describe("métricas · actividad de la tienda vs. del panel", () => {
 // Money.toDecimal —que convierte de centavos— a dos de las cifras del bloque
 // "Valor generado por HENKO", así que las dividía por cien.
 
-describe("métricas · el valor generado se informa en pesos", () => {
-  const TENANT_PESOS = new mongoose.Types.ObjectId();
+describe('métricas · el valor generado se informa en pesos', () => {
+  const TENANT_PESOS = new mongoose.Types.ObjectId()
 
-  let getDashboardStats;
+  let getDashboardStats
 
   beforeAll(async () => {
-    ({ getDashboardStats } = await import("../services/statsService.js"));
-  });
+    ;({ getDashboardStats } = await import('../services/statsService.js'))
+  })
 
   afterEach(async () => {
-    await UserMetricEvent.collection.deleteMany({ tenantId: TENANT_PESOS });
-  });
+    await UserMetricEvent.collection.deleteMany({ tenantId: TENANT_PESOS })
+  })
 
-  test("una venta de $150.000 influenciada por IA no se muestra como $1.500", async () => {
-    const ahora = new Date();
+  test('una venta de $150.000 influenciada por IA no se muestra como $1.500', async () => {
+    const ahora = new Date()
 
     await UserMetricEvent.collection.insertMany([
       {
         tenantId: TENANT_PESOS,
-        eventType: "purchase",
-        source: "system",
-        sessionId: "sesion-de-la-venta",
+        eventType: 'purchase',
+        source: 'system',
+        sessionId: 'sesion-de-la-venta',
         occurredAt: ahora,
         createdAt: ahora,
         value: 150000,
-        attribution: { utmCampaign: "primavera" },
+        attribution: { utmCampaign: 'primavera' },
         metadata: { aiInfluenced: true },
-        path: "/",
+        path: '/',
       },
-    ]);
+    ])
 
-    const { summary } = await getDashboardStats(String(TENANT_PESOS), "30d");
+    const { summary } = await getDashboardStats(String(TENANT_PESOS), '30d')
 
-    expect(summary.aiInfluencedRevenue).toBe(150000);
+    expect(summary.aiInfluencedRevenue).toBe(150000)
     // Misma venta, contada una sola vez: es la tarjeta grande del panel.
-    expect(summary.totalGeneratedValue).toBe(150000);
-  });
-});
+    expect(summary.totalGeneratedValue).toBe(150000)
+  })
+})

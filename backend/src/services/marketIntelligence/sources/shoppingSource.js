@@ -97,8 +97,7 @@ const MIN_SAMPLE_FOR_QUARTILES = num('SHOPPING_MIN_SAMPLE_QUARTILES', 5)
  * Lo que se le agrega al nombre del producto para empujar la búsqueda hacia
  * páginas de venta y no hacia notas o reseñas, que no traen precio.
  */
-const SEARCH_SUFFIX =
-  String(process.env.SHOPPING_QUERY_SUFFIX || '').trim() || 'precio comprar'
+const SEARCH_SUFFIX = String(process.env.SHOPPING_QUERY_SUFFIX || '').trim() || 'precio comprar'
 
 /**
  * La moneda no es decoración: se usa para descartar precios que están en otra
@@ -129,12 +128,7 @@ const MARKET_BY_COUNTRY = {
  * @property {Object} priceStats        - min, p25, median, p75, max, currency
  * @property {Array} offers             - muestra para mostrar en el panel
  */
-export async function getShoppingSignals({
-  product,
-  country,
-  brand = null,
-  toolUsage = null,
-}) {
+export async function getShoppingSignals({ product, country, brand = null, toolUsage = null }) {
   const provider = (process.env.SHOPPING_PROVIDER || 'tavily').trim().toLowerCase()
 
   if (provider === 'none') {
@@ -248,9 +242,7 @@ const ADAPTERS = {
       // argentinos: la mediana de la Coca-Cola se desplomó de $5.800 a $3.875.
       // El parámetro de país de Tavily no garantiza el país de la tienda.
       const soloLocales = resultados =>
-        tld
-          ? resultados.filter(r => (hostnameOf(r?.url) || '').endsWith(tld))
-          : resultados
+        tld ? resultados.filter(r => (hostnameOf(r?.url) || '').endsWith(tld)) : resultados
 
       const abiertos = await buscar({
         query: `${product} ${SEARCH_SUFFIX} ${pais || ''}`.trim(),
@@ -314,10 +306,7 @@ function normalizeTavilyResults(results, locale, product = '', brand = null) {
     // Un pack por cinco no es el precio del kilo.
     if (looksLikeBundle(item, product)) continue
 
-    const encontrado = findPriceInText(
-      `${item?.title || ''} ${item?.content || ''}`,
-      locale,
-    )
+    const encontrado = findPriceInText(`${item?.title || ''} ${item?.content || ''}`, locale)
 
     if (!encontrado) continue
 
@@ -348,12 +337,58 @@ function mergeOffers(primeras, segundas) {
 
 /** Palabras que describen presentación o variante, no qué es la cosa. */
 const NOISE_WORDS = new Set([
-  'de', 'del', 'la', 'el', 'los', 'las', 'con', 'sin', 'para', 'por', 'y', 'o',
-  'a', 'en', 'un', 'una', 'al', 'su', 'x', 'talle', 'talles', 'medida',
-  'medidas', 'color', 'colores', 'pack', 'unidad', 'unidades', 'combo', 'set',
-  'kit', 'modelo', 'nuevo', 'nueva', 'original', 'importado', 'oferta',
-  'promo', 'envio', 'gratis', 'cuotas', 'negro', 'blanco', 'rojo', 'azul',
-  'verde', 'gris', 'amarillo', 'rosa', 'marron', 'beige', 'bicolor',
+  'de',
+  'del',
+  'la',
+  'el',
+  'los',
+  'las',
+  'con',
+  'sin',
+  'para',
+  'por',
+  'y',
+  'o',
+  'a',
+  'en',
+  'un',
+  'una',
+  'al',
+  'su',
+  'x',
+  'talle',
+  'talles',
+  'medida',
+  'medidas',
+  'color',
+  'colores',
+  'pack',
+  'unidad',
+  'unidades',
+  'combo',
+  'set',
+  'kit',
+  'modelo',
+  'nuevo',
+  'nueva',
+  'original',
+  'importado',
+  'oferta',
+  'promo',
+  'envio',
+  'gratis',
+  'cuotas',
+  'negro',
+  'blanco',
+  'rojo',
+  'azul',
+  'verde',
+  'gris',
+  'amarillo',
+  'rosa',
+  'marron',
+  'beige',
+  'bicolor',
 ])
 
 const sinAcentos = texto =>
@@ -381,11 +416,41 @@ const sinAcentos = texto =>
  * decir que una página es del producto buscado.
  */
 const ATTRIBUTE_WORDS = new Set([
-  'cuero', 'sintetico', 'sintetica', 'eco', 'ecocuero', 'gamuzado', 'algodon',
-  'lana', 'acero', 'inoxidable', 'inox', 'plastico', 'madera', 'vidrio',
-  'metal', 'aluminio', 'goma', 'tela', 'lino', 'seda', 'nylon', 'poliester',
-  'suela', 'liviano', 'pesado', 'grande', 'chico', 'mediano', 'premium',
-  'clasico', 'clasica', 'deportivo', 'deportiva', 'urbano', 'urbana',
+  'cuero',
+  'sintetico',
+  'sintetica',
+  'eco',
+  'ecocuero',
+  'gamuzado',
+  'algodon',
+  'lana',
+  'acero',
+  'inoxidable',
+  'inox',
+  'plastico',
+  'madera',
+  'vidrio',
+  'metal',
+  'aluminio',
+  'goma',
+  'tela',
+  'lino',
+  'seda',
+  'nylon',
+  'poliester',
+  'suela',
+  'liviano',
+  'pesado',
+  'grande',
+  'chico',
+  'mediano',
+  'premium',
+  'clasico',
+  'clasica',
+  'deportivo',
+  'deportiva',
+  'urbano',
+  'urbana',
 ])
 
 function significantTokens(product) {
@@ -575,9 +640,7 @@ function mentionsProduct(item, palabras) {
   const texto = sinAcentos(`${item?.title || ''} ${item?.url || ''}`)
 
   // Tolera el plural: "camperas" cuando se buscó "campera".
-  return palabras.some(
-    p => texto.includes(p) || texto.includes(p.replace(/s$/, '')),
-  )
+  return palabras.some(p => texto.includes(p) || texto.includes(p.replace(/s$/, '')))
 }
 
 function hostnameOf(url) {
@@ -695,9 +758,7 @@ function parsePriceFromText(texto) {
   // Tres dígitos al final, o más de un separador: son miles.
   const esMiles = ultima.length === 3 || partes.length > 2
 
-  const normalizado = esMiles
-    ? partes.join('')
-    : `${partes.slice(0, -1).join('')}.${ultima}`
+  const normalizado = esMiles ? partes.join('') : `${partes.slice(0, -1).join('')}.${ultima}`
 
   const valor = Number(normalizado)
   return Number.isFinite(valor) && valor > 0 ? valor : null
@@ -768,9 +829,7 @@ function withoutOutliers(sorted) {
 }
 
 function computePriceStats(offers) {
-  const prices = withoutOutliers(
-    offers.map(o => o.price).sort((a, b) => a - b),
-  )
+  const prices = withoutOutliers(offers.map(o => o.price).sort((a, b) => a - b))
 
   // Los cuartiles solo cuando hay muestra que los sostenga. null es "no se
   // puede saber", que es distinto de un número interpolado entre dos precios.

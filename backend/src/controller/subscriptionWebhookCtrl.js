@@ -144,8 +144,8 @@ export const handleSubscriptionWebhook = async (req, res) => {
 
     const tenant = preapprovalId
       ? await Tenant.findOne({
-        'integrations.subscriptionMercadoPago.subscriptionId': preapprovalId,
-      })
+          'integrations.subscriptionMercadoPago.subscriptionId': preapprovalId,
+        })
       : null
 
     if (!tenant) {
@@ -167,58 +167,58 @@ export const handleSubscriptionWebhook = async (req, res) => {
     }
 
     switch (type) {
-    case 'subscription_update':
-      await handleSubscriptionUpdate(tenant, data)
-      break
+      case 'subscription_update':
+        await handleSubscriptionUpdate(tenant, data)
+        break
 
-    case 'subscription_authorized':
-      await handlePaymentAuthorized(tenant, data)
-      break
-
-    case 'subscription_failed':
-      await handlePaymentFailed(tenant, data)
-      break
-
-    case 'subscription_canceled':
-      await handleSubscriptionCanceled(tenant, data)
-      break
-
-    // LOS AVISOS DE PAGO CAIAN ACA, EN "no procesado"
-    //
-    // `payment` y `subscription_authorized_payment` son las RENOVACIONES y los
-    // PAGOS RECHAZADOS: todo el ciclo de vida posterior al alta. No estaban en
-    // el switch, así que aunque se resolviera el comercio no pasaba nada.
-    //
-    // El estado sale del pago que ya se consultó para resolver la suscripción;
-    // no hay una segunda llamada. Sin el pago no se decide nada: marcar un
-    // cobro como aprobado o rechazado sin saberlo es peor que no hacer nada.
-    case 'payment':
-    case 'subscription_authorized_payment': {
-      const estado = String(payment?.status || '').toLowerCase()
-
-      if (estado === 'approved') {
+      case 'subscription_authorized':
         await handlePaymentAuthorized(tenant, data)
-      } else if (['rejected', 'cancelled'].includes(estado)) {
-        logger.warn('Cobro de suscripción rechazado por el proveedor', {
-          tenantId: String(tenant._id),
-          // El motivo real: 'cc_rejected_high_risk' y compañía. Es lo que
-          // permite decirle al comercio por qué, en vez de un genérico.
-          statusDetail: payment?.status_detail || null,
-          paymentMethod: payment?.payment_method_id || null,
-          paymentType: payment?.payment_type_id || null,
-        })
-        await handlePaymentFailed(tenant, data)
-      } else {
-        logger.info('Cobro de suscripción en estado no terminal', {
-          tenantId: String(tenant._id),
-          estado: estado || '(sin pago consultable)',
-        })
-      }
-      break
-    }
+        break
 
-    default:
-      logger.info('Tipo de evento no procesado', { type })
+      case 'subscription_failed':
+        await handlePaymentFailed(tenant, data)
+        break
+
+      case 'subscription_canceled':
+        await handleSubscriptionCanceled(tenant, data)
+        break
+
+      // LOS AVISOS DE PAGO CAIAN ACA, EN "no procesado"
+      //
+      // `payment` y `subscription_authorized_payment` son las RENOVACIONES y los
+      // PAGOS RECHAZADOS: todo el ciclo de vida posterior al alta. No estaban en
+      // el switch, así que aunque se resolviera el comercio no pasaba nada.
+      //
+      // El estado sale del pago que ya se consultó para resolver la suscripción;
+      // no hay una segunda llamada. Sin el pago no se decide nada: marcar un
+      // cobro como aprobado o rechazado sin saberlo es peor que no hacer nada.
+      case 'payment':
+      case 'subscription_authorized_payment': {
+        const estado = String(payment?.status || '').toLowerCase()
+
+        if (estado === 'approved') {
+          await handlePaymentAuthorized(tenant, data)
+        } else if (['rejected', 'cancelled'].includes(estado)) {
+          logger.warn('Cobro de suscripción rechazado por el proveedor', {
+            tenantId: String(tenant._id),
+            // El motivo real: 'cc_rejected_high_risk' y compañía. Es lo que
+            // permite decirle al comercio por qué, en vez de un genérico.
+            statusDetail: payment?.status_detail || null,
+            paymentMethod: payment?.payment_method_id || null,
+            paymentType: payment?.payment_type_id || null,
+          })
+          await handlePaymentFailed(tenant, data)
+        } else {
+          logger.info('Cobro de suscripción en estado no terminal', {
+            tenantId: String(tenant._id),
+            estado: estado || '(sin pago consultable)',
+          })
+        }
+        break
+      }
+
+      default:
+        logger.info('Tipo de evento no procesado', { type })
     }
 
     await marcarProcesado(event._id, tenant._id)
@@ -305,15 +305,14 @@ const handlePaymentAuthorized = async (tenant, data) => {
       'integrations.subscriptionMercadoPago.updatedAt': new Date(),
       ...(ciclo.nextBillingAt
         ? {
-          'integrations.subscriptionMercadoPago.nextBillingAt': ciclo.nextBillingAt,
-          'integrations.subscriptionMercadoPago.currentPeriodEnd': ciclo.currentPeriodEnd,
-        }
+            'integrations.subscriptionMercadoPago.nextBillingAt': ciclo.nextBillingAt,
+            'integrations.subscriptionMercadoPago.currentPeriodEnd': ciclo.currentPeriodEnd,
+          }
         : {}),
       ...(ciclo.currentPeriodStart
         ? {
-          'integrations.subscriptionMercadoPago.currentPeriodStart':
-              ciclo.currentPeriodStart,
-        }
+            'integrations.subscriptionMercadoPago.currentPeriodStart': ciclo.currentPeriodStart,
+          }
         : {}),
     },
     { new: true },

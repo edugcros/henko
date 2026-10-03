@@ -34,11 +34,9 @@ const MIN_REPRESENTATIVE_SAMPLE = 5
  * @returns {number} 0-100
  */
 export function calculateConfidence(rawSignals, measuredWeight = 0) {
-  const availableSources = [
-    rawSignals.shopping,
-    rawSignals.research,
-    rawSignals.internal,
-  ].filter(s => s?.available).length
+  const availableSources = [rawSignals.shopping, rawSignals.research, rawSignals.internal].filter(
+    s => s?.available,
+  ).length
 
   // Cobertura del modelo: es la señal más honesta de cuánto sabemos.
   const modelCoverageScore = measuredWeight * 45
@@ -51,9 +49,7 @@ export function calculateConfidence(rawSignals, measuredWeight = 0) {
 
   const consistencyBonus = checkConsistency(rawSignals) ? 15 : 0
 
-  return Math.round(
-    modelCoverageScore + sourceCoverageScore + quantitativeBonus + consistencyBonus,
-  )
+  return Math.round(modelCoverageScore + sourceCoverageScore + quantitativeBonus + consistencyBonus)
 }
 
 /**

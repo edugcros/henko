@@ -343,7 +343,10 @@ const matchesRoute = (req, route) => {
 
   const matched = routeMethod === reqMethod && regex.test(reqPath)
 
-  if (!env.isProduction && String(process.env.PREDEPLOY_TUNNEL_MODE || '').toLowerCase() === 'true') {
+  if (
+    !env.isProduction &&
+    String(process.env.PREDEPLOY_TUNNEL_MODE || '').toLowerCase() === 'true'
+  ) {
     logger.debug('[CSRF ROUTE MATCH]', {
       route: route.path,
       routeMethod,
@@ -358,16 +361,16 @@ const matchesRoute = (req, route) => {
 }
 
 const isTrustedPredeployTunnelRequest = req => {
-  const origin = String(req.headers.origin || '').replace(/\/+$/, '').toLowerCase()
+  const origin = String(req.headers.origin || '')
+    .replace(/\/+$/, '')
+    .toLowerCase()
 
-  const allowedPredeployOrigins = [
-    env.clientUrl,
-    env.adminFrontendUrl,
-  ].filter(Boolean).map(u => u.replace(/\/+$/, '').toLowerCase())
+  const allowedPredeployOrigins = [env.clientUrl, env.adminFrontendUrl]
+    .filter(Boolean)
+    .map(u => u.replace(/\/+$/, '').toLowerCase())
 
   const enabled =
-    !env.isProduction &&
-    String(process.env.PREDEPLOY_TUNNEL_MODE || '').toLowerCase() === 'true'
+    !env.isProduction && String(process.env.PREDEPLOY_TUNNEL_MODE || '').toLowerCase() === 'true'
 
   if (enabled) {
     logger.debug('[PREDEPLOY CSRF CHECK]', {
@@ -435,7 +438,6 @@ const tunnelCsrfExemptRoutes = [
   // Productos
   { method: 'PUT', path: `${env.apiPrefix}/product/rating/:productId` },
   { method: 'PUT', path: `${env.apiPrefix}/product/:productId/rating/:ratingId/helpful` },
-
 ]
 
 const isCsrfExempt = req => {

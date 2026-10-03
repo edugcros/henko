@@ -18,9 +18,7 @@ import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
-const { default: AiConsumptionLedger } = await import(
-  '../models/aiConsumptionLedgerModel.js'
-)
+const { default: AiConsumptionLedger } = await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiOperation } = await import('../models/aiOperationModel.js')
 const { default: AiProviderCall } = await import('../models/aiProviderCallModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
@@ -28,12 +26,14 @@ const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageMode
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 
 const {
-  reserveAiBudget, refundAiBudget, recordAiConsumption, recordToolSpend,
-  sweepStaleOperations, AI_METRICS,
+  reserveAiBudget,
+  refundAiBudget,
+  recordAiConsumption,
+  recordToolSpend,
+  sweepStaleOperations,
+  AI_METRICS,
 } = await import('../services/ai/aiBudgetService.js')
-const { getPlatformSpendSnapshot } = await import(
-  '../services/ai/aiSpendReportService.js'
-)
+const { getPlatformSpendSnapshot } = await import('../services/ai/aiSpendReportService.js')
 const {
   rebuildTenantProjection,
   rebuildPlatformProjection,
@@ -83,17 +83,29 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     const period = '2040-01'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'a',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'a',
     })
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'b',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'b',
     })
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 1200,
-      model: 'gemini-3.1-flash-lite', inputTokens: 900, outputTokens: 300,
-      profile: PERFIL, period, operationId: 'a',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1200,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 900,
+      outputTokens: 300,
+      profile: PERFIL,
+      period,
+      operationId: 'a',
     })
     await asentar()
 
@@ -109,12 +121,17 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     const period = '2040-02'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'va-y-vuelve',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'va-y-vuelve',
     })
     await refundAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      period, operationId: 'va-y-vuelve',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      period,
+      operationId: 'va-y-vuelve',
     })
     await asentar()
 
@@ -133,14 +150,23 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     const period = '2040-03'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.VISION,
-      profile: PERFIL, period, operationId: 'una-vision',
+      tenantId: TENANT,
+      metric: AI_METRICS.VISION,
+      profile: PERFIL,
+      period,
+      operationId: 'una-vision',
     })
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.VISION,
-      amount: 48000, unit: 'tokens', operationId: 'una-vision-tokens',
-      keySource: 'platform', costUsd: 0.02,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.VISION,
+      amount: 48000,
+      unit: 'tokens',
+      operationId: 'una-vision-tokens',
+      keySource: 'platform',
+      costUsd: 0.02,
     })
     await asentar()
 
@@ -153,8 +179,11 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     const period = '2040-04'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'legitima',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'legitima',
     })
     await asentar()
 
@@ -188,8 +217,11 @@ describe('reconciliación · el ledger reconstruye el contador', () => {
     const period = '2040-05'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'idempotente',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'idempotente',
     })
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
@@ -213,9 +245,15 @@ describe('reconciliación de plataforma · el contador del disyuntor', () => {
     const period = '2040-06'
 
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 5000,
-      model: 'gemini-3.1-flash-lite', inputTokens: 4000, outputTokens: 1000,
-      profile: PERFIL, period, operationId: 'plataforma-1',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 5000,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 4000,
+      outputTokens: 1000,
+      profile: PERFIL,
+      period,
+      operationId: 'plataforma-1',
     })
     await asentar()
 
@@ -240,10 +278,15 @@ describe('reconciliación de plataforma · el contador del disyuntor', () => {
     const period = '2040-07'
 
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 9000,
-      model: 'gemini-3.1-flash-lite', inputTokens: 7000, outputTokens: 2000,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 9000,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 7000,
+      outputTokens: 2000,
       profile: { ...PERFIL, keySource: 'tenant' },
-      period, operationId: 'byok-1',
+      period,
+      operationId: 'byok-1',
     })
     await asentar()
 
@@ -262,9 +305,15 @@ describe('la diferencia se ve sin que nadie corra nada', () => {
     const period = '2040-08'
 
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 3000,
-      model: 'gemini-3.1-flash-lite', inputTokens: 2000, outputTokens: 1000,
-      profile: PERFIL, period, operationId: 'para-el-snapshot',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 3000,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 2000,
+      outputTokens: 1000,
+      profile: PERFIL,
+      period,
+      operationId: 'para-el-snapshot',
     })
     await asentar()
     await AiPlatformUsage.updateOne({ period }, { $inc: { tokens: 2000 } })
@@ -302,15 +351,19 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     // que es el comportamiento correcto de una clave de idempotencia.
     for (const operationId of ['corto-1', 'corto-2', 'corto-3']) {
       await reserveAiBudget({
-        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-        profile: PERFIL, period, operationId,
+        tenantId: TENANT,
+        metric: AI_METRICS.AGENT_MESSAGES,
+        profile: PERFIL,
+        period,
+        operationId,
       })
     }
     await asentar()
 
     // La escritura del ledger de una de ellas falló.
-    await AiConsumptionLedger.deleteOne({ tenantId: TENANT, operationId: 'corto-3' })
-      .setOptions({ tenantId: TENANT })
+    await AiConsumptionLedger.deleteOne({ tenantId: TENANT, operationId: 'corto-3' }).setOptions({
+      tenantId: TENANT,
+    })
 
     const informe = await rebuildTenantProjection({ tenantId: TENANT, period })
 
@@ -329,8 +382,11 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     const period = '2050-02'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'completa',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'completa',
     })
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
@@ -351,13 +407,23 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     const period = '2050-03'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'con-reparacion',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'con-reparacion',
     })
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 600,
-      model: 'gemini-3.1-flash-lite', inputTokens: 400, outputTokens: 200,
-      profile: PERFIL, period, operationId: 'con-reparacion', callId: 'repair',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 600,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 400,
+      outputTokens: 200,
+      profile: PERFIL,
+      period,
+      operationId: 'con-reparacion',
+      callId: 'repair',
     })
     await asentar()
 
@@ -388,18 +454,35 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     const operationId = `agent:${TENANT}:msg_9f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f`
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 800,
-      model: 'gemini-3.1-flash-lite', inputTokens: 600, outputTokens: 200,
-      profile: PERFIL, period, operationId, callId: 'main',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 800,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 600,
+      outputTokens: 200,
+      profile: PERFIL,
+      period,
+      operationId,
+      callId: 'main',
     })
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 500,
-      model: 'gemini-3.1-flash-lite', inputTokens: 400, outputTokens: 100,
-      profile: PERFIL, period, operationId, callId: 'repair',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 500,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 400,
+      outputTokens: 100,
+      profile: PERFIL,
+      period,
+      operationId,
+      callId: 'repair',
     })
     await asentar()
 
@@ -417,13 +500,21 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     const operationId = `agent:${TENANT}:msg_herramienta`
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.MARKET_ANALYSES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_ANALYSES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     await recordToolSpend({
-      tenantId: TENANT, metric: AI_METRICS.MARKET_TOKENS,
-      tool: 'tavily_search', quantity: 4,
-      profile: PERFIL, period, operationId, provider: 'tavily',
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      tool: 'tavily_search',
+      quantity: 4,
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'tavily',
     })
     await asentar()
 
@@ -440,14 +531,18 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
     const period = '2050-06'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: `agent:${TENANT}:msg_sin_libro`,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: `agent:${TENANT}:msg_sin_libro`,
     })
     await asentar()
 
     // Se borran TODAS sus filas del ledger: la operacion queda huerfana.
-    await AiConsumptionLedger.deleteMany({ operationId: { $regex: 'msg_sin_libro' } })
-      .setOptions({ tenantId: TENANT })
+    await AiConsumptionLedger.deleteMany({ operationId: { $regex: 'msg_sin_libro' } }).setOptions({
+      tenantId: TENANT,
+    })
 
     const informe = await rebuildTenantProjection({ tenantId: TENANT, period })
 
@@ -467,8 +562,11 @@ describe('fuente de verdad · no se corrige contra un libro corto', () => {
 describe('reservas colgadas · el cupo vuelve solo', () => {
   const vieja = async (operationId, period, minutos = 60) => {
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
 
     // Se la envejece: el barrido mira startedAt.
@@ -499,8 +597,11 @@ describe('reservas colgadas · el cupo vuelve solo', () => {
     const period = '2051-02'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'recien-empezada',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'recien-empezada',
     })
     await asentar()
 
@@ -530,13 +631,22 @@ describe('reservas colgadas · el cupo vuelve solo', () => {
     const period = '2051-04'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'termino-bien',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'termino-bien',
     })
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 300,
-      model: 'gemini-3.1-flash-lite', inputTokens: 200, outputTokens: 100,
-      profile: PERFIL, period, operationId: 'termino-bien',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 300,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 200,
+      outputTokens: 100,
+      profile: PERFIL,
+      period,
+      operationId: 'termino-bien',
     })
     await AiOperation.updateOne(
       { tenantId: TENANT, operationId: 'termino-bien' },
@@ -561,9 +671,15 @@ describe('auditoría contable · detectar, no corregir', () => {
     const period = '2060-01'
 
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 12000,
-      model: 'gemini-3.1-flash-lite', inputTokens: 9000, outputTokens: 3000,
-      profile: PERFIL, period, operationId: 'cuadra-1',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 12000,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 9000,
+      outputTokens: 3000,
+      profile: PERFIL,
+      period,
+      operationId: 'cuadra-1',
     })
     await asentar()
 
@@ -582,9 +698,15 @@ describe('auditoría contable · detectar, no corregir', () => {
     const period = '2060-02'
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'enunciado',
-      keySource: 'platform', costUsd: 82.31,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'enunciado',
+      keySource: 'platform',
+      costUsd: 82.31,
     })
     await AiPlatformUsage.updateOne(
       { period },
@@ -625,9 +747,15 @@ describe('auditoría contable · detectar, no corregir', () => {
     const period = '2060-03'
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'no-corregir',
-      keySource: 'platform', costUsd: 50,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'no-corregir',
+      keySource: 'platform',
+      costUsd: 50,
     })
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
@@ -668,9 +796,15 @@ describe('auditoría contable · detectar, no corregir', () => {
     const period = '2060-09'
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'apenas-encima',
-      keySource: 'platform', costUsd: 10,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'apenas-encima',
+      keySource: 'platform',
+      costUsd: 10,
     })
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
@@ -692,12 +826,20 @@ describe('auditoría contable · detectar, no corregir', () => {
     const period = '2060-04'
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'ruido',
-      keySource: 'platform', costUsd: 10.000_02,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'ruido',
+      keySource: 'platform',
+      costUsd: 10.000_02,
     })
     await AiPlatformUsage.updateOne(
-      { period }, { $set: { estimatedCostUsd: 10 } }, { upsert: true },
+      { period },
+      { $set: { estimatedCostUsd: 10 } },
+      { upsert: true },
     )
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
@@ -728,12 +870,20 @@ describe('auditoría contable · detectar, no corregir', () => {
     const period = '2060-05'
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'borde-de-centavo',
-      keySource: 'platform', costUsd: 1.00499,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'borde-de-centavo',
+      keySource: 'platform',
+      costUsd: 1.00499,
     })
     await AiPlatformUsage.updateOne(
-      { period }, { $set: { estimatedCostUsd: 1.00502 } }, { upsert: true },
+      { period },
+      { $set: { estimatedCostUsd: 1.00502 } },
+      { upsert: true },
     )
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
@@ -755,12 +905,20 @@ describe('auditoría contable · detectar, no corregir', () => {
     const period = '2060-06'
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'medio-centavo',
-      keySource: 'platform', costUsd: 1.071712,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'medio-centavo',
+      keySource: 'platform',
+      costUsd: 1.071712,
     })
     await AiPlatformUsage.updateOne(
-      { period }, { $set: { estimatedCostUsd: 1.076655 } }, { upsert: true },
+      { period },
+      { $set: { estimatedCostUsd: 1.076655 } },
+      { upsert: true },
     )
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
@@ -787,7 +945,9 @@ describe('auditoría contable · detectar, no corregir', () => {
     // El libro y los comercios coinciden: eso es lo que señala al contador de
     // plataforma como el roto.
     expect(
-      auditoria.findings.find(f => f.between.includes('tenantUsage') && f.between.includes('ledger')),
+      auditoria.findings.find(
+        f => f.between.includes('tenantUsage') && f.between.includes('ledger'),
+      ),
     ).toBeUndefined()
   })
 
@@ -812,21 +972,31 @@ describe('auditoría contable · detectar, no corregir', () => {
 
     // Lo que pagó la plataforma.
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'byok-plataforma',
-      keySource: 'platform', costUsd: 1,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'byok-plataforma',
+      keySource: 'platform',
+      costUsd: 1,
     })
     // Lo que pagó el comercio con su propia key: entra al libro y a su
     // agregado, NO al contador de plataforma.
     await AiConsumptionLedger.create({
-      tenantId: OTRO, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'byok-comercio',
-      keySource: 'tenant', costUsd: 0.056,
+      tenantId: OTRO,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'byok-comercio',
+      keySource: 'tenant',
+      costUsd: 0.056,
     })
 
-    await AiPlatformUsage.updateOne(
-      { period }, { $set: { estimatedCostUsd: 1 } }, { upsert: true },
-    )
+    await AiPlatformUsage.updateOne({ period }, { $set: { estimatedCostUsd: 1 } }, { upsert: true })
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
       { $set: { estimatedCostUsd: 1 }, $setOnInsert: { tenantId: TENANT, period } },
@@ -858,18 +1028,32 @@ describe('auditoría contable · detectar, no corregir', () => {
     const OTRO = new mongoose.Types.ObjectId()
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'deriva-plataforma',
-      keySource: 'platform', costUsd: 1,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'deriva-plataforma',
+      keySource: 'platform',
+      costUsd: 1,
     })
     await AiConsumptionLedger.create({
-      tenantId: OTRO, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: 'deriva-comercio',
-      keySource: 'tenant', costUsd: 0.056,
+      tenantId: OTRO,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: 'deriva-comercio',
+      keySource: 'tenant',
+      costUsd: 0.056,
     })
 
     await AiPlatformUsage.updateOne(
-      { period }, { $set: { estimatedCostUsd: 1.004943 } }, { upsert: true },
+      { period },
+      { $set: { estimatedCostUsd: 1.004943 } },
+      { upsert: true },
     )
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
@@ -912,8 +1096,11 @@ describe('reservas colgadas · también sueltan la plata comprometida', () => {
 
       const operationId = 'colgada-con-plata'
       await reserveAiBudget({
-        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-        profile: PERFIL, period, operationId,
+        tenantId: TENANT,
+        metric: AI_METRICS.AGENT_MESSAGES,
+        profile: PERFIL,
+        period,
+        operationId,
       })
 
       const retenida = await AiPlatformUsage.findOne({ period }).lean()
@@ -951,9 +1138,8 @@ describe('auditoria automatica · un timer largo que nunca corre no sirve', () =
     // ejecuto nunca. Es la misma leccion que ya tenia escrita el barrido de
     // reservas viejas, y aca pegaba mas fuerte porque el intervalo es cuatro
     // veces mas largo.
-    const { startAccountingAudit, stopAccountingAudit } = await import(
-      '../services/ai/aiAccountingService.js'
-    )
+    const { startAccountingAudit, stopAccountingAudit } =
+      await import('../services/ai/aiAccountingService.js')
 
     const lineas = []
     const log = {
@@ -968,8 +1154,11 @@ describe('auditoria automatica · un timer largo que nunca corre no sirve', () =
     try {
       startAccountingAudit({ logger: log })
 
-      const arranque = lineas.find(l => l.msg?.includes('Auditoria automatica iniciada') ||
-        l.msg?.includes('Auditoría automática iniciada'))
+      const arranque = lineas.find(
+        l =>
+          l.msg?.includes('Auditoria automatica iniciada') ||
+          l.msg?.includes('Auditoría automática iniciada'),
+      )
       expect(arranque).toBeDefined()
       // El anuncio dice cuando va a correr la primera, no solo cada cuanto.
       expect(arranque.meta.primeraPasadaEnSegundos).toBeGreaterThanOrEqual(0)
@@ -984,17 +1173,16 @@ describe('auditoria automatica · un timer largo que nunca corre no sirve', () =
   test('apagarla cancela TAMBIEN la pasada de arranque', async () => {
     // Sin esto, stop dejaba una auditoria pendiente que se disparaba despues
     // de haber apagado el ciclo — en un test, sobre una base ya cerrada.
-    const { startAccountingAudit, stopAccountingAudit } = await import(
-      '../services/ai/aiAccountingService.js'
-    )
+    const { startAccountingAudit, stopAccountingAudit } =
+      await import('../services/ai/aiAccountingService.js')
 
     process.env.AI_ACCOUNTING_AUDIT_ON_START_MS = '150'
 
     const lineas = []
     const log = {
-      info: (msg) => lineas.push(msg),
-      warn: (msg) => lineas.push(msg),
-      error: (msg) => lineas.push(msg),
+      info: msg => lineas.push(msg),
+      warn: msg => lineas.push(msg),
+      error: msg => lineas.push(msg),
     }
 
     try {
@@ -1048,8 +1236,11 @@ describe('devolución · al precio que se cobró, no al de hoy', () => {
     process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.02'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.IMAGE_EDITS,
-      profile: { ...PERFIL, plan: 'pro' }, period, operationId: 'imagen-precio',
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      profile: { ...PERFIL, plan: 'pro' },
+      period,
+      operationId: 'imagen-precio',
     })
     await asentar()
 
@@ -1060,8 +1251,10 @@ describe('devolución · al precio que se cobró, no al de hoy', () => {
     process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.05'
 
     await refundAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.IMAGE_EDITS,
-      period, operationId: 'imagen-precio',
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      period,
+      operationId: 'imagen-precio',
     })
     await asentar()
 
@@ -1076,20 +1269,28 @@ describe('devolución · al precio que se cobró, no al de hoy', () => {
 
     process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.02'
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.IMAGE_EDITS,
-      profile: { ...PERFIL, plan: 'pro' }, period, operationId: 'imagen-libro',
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      profile: { ...PERFIL, plan: 'pro' },
+      period,
+      operationId: 'imagen-libro',
     })
     await asentar()
 
     process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.05'
     await refundAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.IMAGE_EDITS,
-      period, operationId: 'imagen-libro',
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      period,
+      operationId: 'imagen-libro',
     })
     await asentar()
 
     const devolucion = await AiConsumptionLedger.findOne({
-      tenantId: TENANT, period, event: 'refunded', metric: AI_METRICS.IMAGE_EDITS,
+      tenantId: TENANT,
+      period,
+      event: 'refunded',
+      metric: AI_METRICS.IMAGE_EDITS,
     }).lean()
 
     expect(Number(devolucion?.costUsd)).toBeCloseTo(0.02, 6)
@@ -1114,23 +1315,24 @@ describe('relleno del libro · desde las llamadas al proveedor', () => {
   // incluye el periodo, asi que cada caso necesita su propia operacion.
   const opDe = period => `op-perdida-${period}`
 
-  const llamada = (period, extra = {}) => AiProviderCall.create({
-    tenantId: TENANT,
-    operationId: opDe(period),
-    callId: 'main',
-    period,
-    metric: AI_METRICS.AGENT_TOKENS,
-    provider: 'gemini',
-    actualModel: 'gemini-3.1-flash-lite',
-    inputTokens: 900,
-    outputTokens: 300,
-    totalTokens: 1200,
-    costUsd: 0.000239,
-    tenantProviderCostUsd: 0.000239,
-    keySource: 'platform',
-    plan: 'starter',
-    ...extra,
-  })
+  const llamada = (period, extra = {}) =>
+    AiProviderCall.create({
+      tenantId: TENANT,
+      operationId: opDe(period),
+      callId: 'main',
+      period,
+      metric: AI_METRICS.AGENT_TOKENS,
+      provider: 'gemini',
+      actualModel: 'gemini-3.1-flash-lite',
+      inputTokens: 900,
+      outputTokens: 300,
+      totalTokens: 1200,
+      costUsd: 0.000239,
+      tenantProviderCostUsd: 0.000239,
+      keySource: 'platform',
+      plan: 'starter',
+      ...extra,
+    })
 
   test('detecta la fila que falta y por defecto NO escribe', async () => {
     // ESTA ES LA PROPIEDAD. Sin esto el libro queda incompleto para siempre.
@@ -1144,8 +1346,9 @@ describe('relleno del libro · desde las llamadas al proveedor', () => {
     expect(informe.missing[0].operationId).toBe(opDe(period))
     expect(informe.applied).toBe(false)
 
-    const filas = await AiConsumptionLedger.countDocuments({ period })
-      .setOptions({ tenantId: TENANT })
+    const filas = await AiConsumptionLedger.countDocuments({ period }).setOptions({
+      tenantId: TENANT,
+    })
     expect(filas).toBe(0)
   })
 
@@ -1251,13 +1454,17 @@ describe('ciclo de auditoría · mira si el libro está completo', () => {
     const period = '2063-02'
 
     await AiConsumptionLedger.create({
-      tenantId: TENANT, period, event: 'consumed', metric: AI_METRICS.AGENT_TOKENS,
-      amount: 1, unit: 'tokens', operationId: `completa-${period}`,
-      keySource: 'platform', costUsd: 5,
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1,
+      unit: 'tokens',
+      operationId: `completa-${period}`,
+      keySource: 'platform',
+      costUsd: 5,
     })
-    await AiPlatformUsage.updateOne(
-      { period }, { $set: { estimatedCostUsd: 5 } }, { upsert: true },
-    )
+    await AiPlatformUsage.updateOne({ period }, { $set: { estimatedCostUsd: 5 } }, { upsert: true })
     await AiUsage.updateOne(
       { tenantId: TENANT, period },
       { $set: { estimatedCostUsd: 5 }, $setOnInsert: { tenantId: TENANT, period } },

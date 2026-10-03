@@ -5,10 +5,7 @@ import expressAsyncHandler from 'express-async-handler'
 import Tenant from '../models/tenantModel.js'
 import AiAgent from '../models/aiAgentModel.js'
 
-import {
-  getDomainCandidates,
-  normalizeSlug,
-} from '../utils/domainUtils.js'
+import { getDomainCandidates, normalizeSlug } from '../utils/domainUtils.js'
 
 // =====================================================
 // Helpers
@@ -120,11 +117,7 @@ export const resolveTenant = expressAsyncHandler(async (req, res) => {
     })
   }
 
-  const requestedDomain =
-    domains ||
-    domain ||
-    req.headers['x-tenant-domain'] ||
-    null
+  const requestedDomain = domains || domain || req.headers['x-tenant-domain'] || null
 
   if (!requestedDomain) {
     return res.status(400).json({

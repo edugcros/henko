@@ -54,9 +54,7 @@ export const startAiCartRecoveryWorker = ({ logger = console } = {}) => {
 
   if (intervalRef) return
 
-  const configuredInterval = Number(
-    process.env.AI_CART_RECOVERY_WORKER_INTERVAL_MS || 60000,
-  )
+  const configuredInterval = Number(process.env.AI_CART_RECOVERY_WORKER_INTERVAL_MS || 60000)
   const intervalMs = Number.isFinite(configuredInterval)
     ? Math.min(Math.max(configuredInterval, 10000), 3600000)
     : 60000

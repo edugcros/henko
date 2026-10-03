@@ -17,13 +17,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
-const {
-  computeCostUsd,
-  computeImageCostUsd,
-  getAssumedInputRatio,
-  getImagePrice,
-  getModelPrice,
-} = await import('../services/ai/aiModelPricing.js')
+const { computeCostUsd, computeImageCostUsd, getAssumedInputRatio, getImagePrice, getModelPrice } =
+  await import('../services/ai/aiModelPricing.js')
 
 const SRC = path.resolve('src')
 
@@ -184,10 +179,7 @@ describe('costeo · con el modelo que respondió', () => {
     // La precedencia preguntaba primero por GEMINI_IMAGE_MODEL para costear
     // TOKENS. Un llamador que se olvidara del modelo pagaba 3x por un error de
     // orden, no por una decisión.
-    const fuente = fs.readFileSync(
-      path.join(SRC, 'services/ai/aiBudgetService.js'),
-      'utf8',
-    )
+    const fuente = fs.readFileSync(path.join(SRC, 'services/ai/aiBudgetService.js'), 'utf8')
     const bloque = fuente.slice(
       fuente.indexOf('const getDefaultPricingModel'),
       fuente.indexOf('const resolvePricingModel'),
@@ -199,10 +191,7 @@ describe('costeo · con el modelo que respondió', () => {
 
   test('adivinar el modelo deja marca y no pasa desapercibido', () => {
     // Un costo supuesto que se ve igual que uno medido es peor que no tenerlo.
-    const fuente = fs.readFileSync(
-      path.join(SRC, 'services/ai/aiBudgetService.js'),
-      'utf8',
-    )
+    const fuente = fs.readFileSync(path.join(SRC, 'services/ai/aiBudgetService.js'), 'utf8')
 
     expect(fuente).toContain('pricingFallback')
     expect(fuente).toContain('[AI PRICING] Costo calculado con un modelo INFERIDO')
@@ -308,10 +297,7 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     expect(conPensar.costUsd).toBeGreaterThan(sinPensar.costUsd)
 
     const precio = getModelPrice('gemini-3.6-flash')
-    expect(conPensar.costUsd - sinPensar.costUsd).toBeCloseTo(
-      (462 * precio.output) / 1e6,
-      6,
-    )
+    expect(conPensar.costUsd - sinPensar.costUsd).toBeCloseTo((462 * precio.output) / 1e6, 6)
   })
 
   test('el remanente que el proveedor no desglosa se cobra, y como salida', () => {
@@ -358,10 +344,7 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
   })
 
   test('el remanente se avisa en vez de quedar como columna en cero', () => {
-    const fuente = fs.readFileSync(
-      path.join(SRC, 'services/ai/aiBudgetService.js'),
-      'utf8',
-    )
+    const fuente = fs.readFileSync(path.join(SRC, 'services/ai/aiBudgetService.js'), 'utf8')
 
     expect(fuente).toContain('[AI PRICING] El proveedor cobró tokens que no desglosó')
   })
@@ -394,10 +377,7 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     expect(sinLeerlo.costUsd).toBeCloseTo(0.002236, 6)
 
     // Lo que cuesta de verdad: 4450 frescos a 0,25 + 4075 a 0,025 + 70 a 1,5.
-    expect(conCache.costUsd).toBeCloseTo(
-      (4450 * 0.25 + 4075 * 0.025 + 70 * 1.5) / 1e6,
-      6,
-    )
+    expect(conCache.costUsd).toBeCloseTo((4450 * 0.25 + 4075 * 0.025 + 70 * 1.5) / 1e6, 6)
     expect(conCache.costUsd).toBeCloseTo(0.001319, 6)
 
     // 41% de sobrecobro. Y de más es tan malo como de menos: el disyuntor de
@@ -717,16 +697,18 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     // cambio de numero es la prueba de que la cascada esta actuando.
     expect(conLoMedido.assumedRatio).toEqual({ ratio: 0.987, source: 'metric+model' })
     // Redondeado a 6 decimales, que es lo que la funcion promete.
-    expect(conLoMedido.costUsd).toBe(
-      Number(((9870 * 0.25 + 130 * 1.5) / 1e6).toFixed(6)),
-    )
+    expect(conLoMedido.costUsd).toBe(Number(((9870 * 0.25 + 130 * 1.5) / 1e6).toFixed(6)))
 
     // 0,005 contra 0,00266. Y sobrestimar corta el disyuntor antes de tiempo.
     expect(conElViejo.costUsd / conLoMedido.costUsd).toBeGreaterThan(1.8)
   })
 
   test('cuando se reparte, la fila dice con que proporcion y de donde salio', () => {
-    const r = computeCostUsd({ model: 'gemini-3.1-flash-lite', totalTokens: 1000, metric: 'vision' })
+    const r = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      totalTokens: 1000,
+      metric: 'vision',
+    })
 
     expect(r.estimated).toBe(true)
     expect(r.assumedRatio).toEqual({ ratio: 0.861, source: 'metric' })

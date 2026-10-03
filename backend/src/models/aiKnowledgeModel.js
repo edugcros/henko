@@ -15,19 +15,45 @@ const aiKnowledgeSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ['faq', 'policy', 'product_hint', 'objection', 'sales_script', 'custom', 'learning_suggestion'],
+      enum: [
+        'faq',
+        'policy',
+        'product_hint',
+        'objection',
+        'sales_script',
+        'custom',
+        'learning_suggestion',
+      ],
       default: 'custom',
       index: true,
     },
     title: { type: String, required: true, trim: true, maxlength: 200 },
     content: { type: String, required: true, trim: true, maxlength: 10000 },
     source: { type: String, enum: ['admin', 'conversation', 'import', 'system'], default: 'admin' },
-    status: { type: String, enum: ['draft', 'pending_approval', 'approved', 'rejected', 'archived'], default: 'approved', index: true },
+    status: {
+      type: String,
+      enum: ['draft', 'pending_approval', 'approved', 'rejected', 'archived'],
+      default: 'approved',
+      index: true,
+    },
     confidence: { type: Number, default: 1, min: 0, max: 1 },
     tags: {
       type: [String],
       default: [],
-      set: value => (Array.isArray(value) ? [...new Set(value.map(item => String(item || '').trim().toLowerCase()).filter(Boolean))].slice(0, 80) : []),
+      set: value =>
+        Array.isArray(value)
+          ? [
+              ...new Set(
+                value
+                  .map(item =>
+                    String(item || '')
+                      .trim()
+                      .toLowerCase(),
+                  )
+                  .filter(Boolean),
+              ),
+            ].slice(0, 80)
+          : [],
     },
     relatedSuggestionId: {
       type: Schema.Types.ObjectId,
@@ -40,7 +66,7 @@ const aiKnowledgeSchema = new Schema(
     archivedAt: { type: Date, default: null },
     metadata: { type: Schema.Types.Mixed, default: {} },
   },
-  
+
   { timestamps: true },
 )
 

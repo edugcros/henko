@@ -64,9 +64,8 @@ jest.unstable_mockModule('node:tls', () => ({
 }))
 
 const { default: Tenant } = await import('../models/tenantModel.js')
-const { refreshPendingCertificates, hasValidCertificate } = await import(
-  '../services/tenant/tenantDomainService.js'
-)
+const { refreshPendingCertificates, hasValidCertificate } =
+  await import('../services/tenant/tenantDomainService.js')
 
 let mongod
 

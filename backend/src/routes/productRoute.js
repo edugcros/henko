@@ -54,16 +54,9 @@ const adminContext = [
   isAdmin,
 ]
 
-const shopContext = [
-  resolveTenantByDomain,
-  requireTenant,
-  requireShopDomain,
-]
+const shopContext = [resolveTenantByDomain, requireTenant, requireShopDomain]
 
-const tenantReadContext = [
-  resolveTenantByDomain,
-  requireTenant,
-]
+const tenantReadContext = [resolveTenantByDomain, requireTenant]
 
 const aiVisualLimiter = rateLimiter
 
@@ -125,8 +118,7 @@ router.post(
       // no es un error del request: sin el código, en producción solo se ve
       // un 500 opaco y no hay forma de saber qué arreglar.
       const isProviderConfigError =
-        error.code === 'AI_PROVIDER_DISABLED' ||
-        error.code === 'AI_PROVIDER_KEY_MALFORMED'
+        error.code === 'AI_PROVIDER_DISABLED' || error.code === 'AI_PROVIDER_KEY_MALFORMED'
 
       if (error.code === 'AI_USAGE_LIMIT_EXCEEDED') {
         return res.status(429).json({
@@ -258,7 +250,12 @@ router.put(
 router.put('/rating/:productId', shopContext, authMiddleware, rating)
 
 router.get('/categories', tenantReadContext, productPublicReadLimiter, getProductCategories)
-router.get('/categories/:category/config', tenantReadContext, productPublicReadLimiter, getCategoryConfig)
+router.get(
+  '/categories/:category/config',
+  tenantReadContext,
+  productPublicReadLimiter,
+  getCategoryConfig,
+)
 router.get('/', tenantReadContext, productPublicReadLimiter, getAllProduct)
 router.get('/:productId', tenantReadContext, productPublicReadLimiter, getaProduct)
 

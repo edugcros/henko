@@ -4,10 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import { SharedRateLimitStore } from '../middlewares/sharedRateLimitStore.js'
 
 import { trackUserMetricEvent } from '../controller/userMetricsCtrl.js'
-import {
-  requireTenant,
-  resolveTenantByDomain,
-} from '../middlewares/tenantMiddleware.js'
+import { requireTenant, resolveTenantByDomain } from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
 

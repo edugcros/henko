@@ -62,9 +62,7 @@ const clean = value => String(value || '').trim()
 const lastMessageOf = (conversation, role) => {
   const messages = Array.isArray(conversation?.messages) ? conversation.messages : []
 
-  return clean(
-    [...messages].reverse().find(message => message?.role === role)?.content,
-  )
+  return clean([...messages].reverse().find(message => message?.role === role)?.content)
 }
 
 const customerOf = conversation => ({
@@ -104,7 +102,12 @@ const run = async () => {
     modo: applyChanges ? 'APLICANDO' : 'simulación (usar --apply para escribir)',
   })
 
-  const resumen = { yaVinculadas: 0, listaCompletada: 0, leadsCreadosOActualizados: 0, sinTenant: 0 }
+  const resumen = {
+    yaVinculadas: 0,
+    listaCompletada: 0,
+    leadsCreadosOActualizados: 0,
+    sinTenant: 0,
+  }
 
   for (const conversation of conversations) {
     const tenantId = conversation.tenantId

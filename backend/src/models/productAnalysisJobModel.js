@@ -187,7 +187,12 @@ const productAnalysisJobSchema = new mongoose.Schema(
     importedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
     rejectionReason: { type: String, trim: true, default: '', maxlength: 1000 },
-    createdProductId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null, index: true },
+    createdProductId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+      default: null,
+      index: true,
+    },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   {
@@ -204,14 +209,20 @@ productAnalysisJobSchema.pre('validate', function normalize(next) {
   if (this.analysis) {
     if (!this.analysis.title && this.analysis.titulo) this.analysis.title = this.analysis.titulo
     if (!this.analysis.titulo && this.analysis.title) this.analysis.titulo = this.analysis.title
-    if (!this.analysis.category && this.analysis.categoria) this.analysis.category = this.analysis.categoria
-    if (!this.analysis.categoria && this.analysis.category) this.analysis.categoria = this.analysis.category
-    if (!this.analysis.subcategory && this.analysis.subcategoria) this.analysis.subcategory = this.analysis.subcategoria
-    if (!this.analysis.subcategoria && this.analysis.subcategory) this.analysis.subcategoria = this.analysis.subcategory
+    if (!this.analysis.category && this.analysis.categoria)
+      this.analysis.category = this.analysis.categoria
+    if (!this.analysis.categoria && this.analysis.category)
+      this.analysis.categoria = this.analysis.category
+    if (!this.analysis.subcategory && this.analysis.subcategoria)
+      this.analysis.subcategory = this.analysis.subcategoria
+    if (!this.analysis.subcategoria && this.analysis.subcategory)
+      this.analysis.subcategoria = this.analysis.subcategory
     if (!this.analysis.brand && this.analysis.marca) this.analysis.brand = this.analysis.marca
     if (!this.analysis.marca && this.analysis.brand) this.analysis.marca = this.analysis.brand
-    if (!this.analysis.description && this.analysis.descripcion) this.analysis.description = this.analysis.descripcion
-    if (!this.analysis.descripcion && this.analysis.description) this.analysis.descripcion = this.analysis.description
+    if (!this.analysis.description && this.analysis.descripcion)
+      this.analysis.description = this.analysis.descripcion
+    if (!this.analysis.descripcion && this.analysis.description)
+      this.analysis.descripcion = this.analysis.description
     if (this.analysis.suggestedPrice == null && this.analysis.precio_sugerido != null) {
       this.analysis.suggestedPrice = this.analysis.precio_sugerido
     }

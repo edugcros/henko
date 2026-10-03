@@ -32,13 +32,10 @@ process.env.PLATFORM_INFRA_MONTHLY_COST_USD = '0'
 process.env.PLATFORM_STORAGE_MONTHLY_COST_USD = '0'
 
 const { default: Tenant } = await import('../models/tenantModel.js')
-const { default: AiConsumptionLedger, LEDGER_EVENT } = await import(
-  '../models/aiConsumptionLedgerModel.js'
-)
+const { default: AiConsumptionLedger, LEDGER_EVENT } =
+  await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
-const { getPlatformMarginReport } = await import(
-  '../services/platform/platformMarginService.js'
-)
+const { getPlatformMarginReport } = await import('../services/platform/platformMarginService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 
 const PERIODO = getCurrentPeriod()

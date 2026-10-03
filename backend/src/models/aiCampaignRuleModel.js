@@ -78,7 +78,6 @@ aiCampaignRuleSchema.plugin(tenantPlugin, {
 })
 
 const AiCampaignRule =
-  mongoose.models.AiCampaignRule ||
-  mongoose.model('AiCampaignRule', aiCampaignRuleSchema)
+  mongoose.models.AiCampaignRule || mongoose.model('AiCampaignRule', aiCampaignRuleSchema)
 
 export default AiCampaignRule

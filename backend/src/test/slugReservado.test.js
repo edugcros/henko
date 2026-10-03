@@ -36,12 +36,9 @@ describe('identificadores de tienda reservados', () => {
     expect(conDominio('henkart')).toBe(true)
   })
 
-  test.each(['admin', 'api', 'www', 'henko'])(
-    'sigue bloqueado el de siempre: %s',
-    slug => {
-      expect(conDominio(slug)).toBe(true)
-    },
-  )
+  test.each(['admin', 'api', 'www', 'henko'])('sigue bloqueado el de siempre: %s', slug => {
+    expect(conDominio(slug)).toBe(true)
+  })
 
   test('un nombre de comercio normal pasa', () => {
     expect(conDominio('mitienda')).toBe(false)
@@ -58,11 +55,7 @@ describe('identificadores de tienda reservados', () => {
 
   test('la protección se mueve sola si cambia el dominio', () => {
     // No hay nada hardcodeado: con otro dominio base, el reservado es otro.
-    expect(isReservedSlug('ejemplo', { publicBaseDomain: 'ejemplo.com' })).toBe(
-      true,
-    )
-    expect(isReservedSlug('henkart', { publicBaseDomain: 'ejemplo.com' })).toBe(
-      false,
-    )
+    expect(isReservedSlug('ejemplo', { publicBaseDomain: 'ejemplo.com' })).toBe(true)
+    expect(isReservedSlug('henkart', { publicBaseDomain: 'ejemplo.com' })).toBe(false)
   })
 })

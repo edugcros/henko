@@ -53,11 +53,7 @@ export const buildSlugFromTitle = title => {
 }
 
 export const normalizeProductId = value => {
-  const raw =
-    value?._id ||
-    value?.id ||
-    value?.productId ||
-    value
+  const raw = value?._id || value?.id || value?.productId || value
 
   const clean = String(raw || '').trim()
 
@@ -85,7 +81,6 @@ export const normalizePriority = value => {
     fallback: 1,
   })
 }
-
 
 export const normalizePromotionalProducts = products => {
   if (!Array.isArray(products)) return []

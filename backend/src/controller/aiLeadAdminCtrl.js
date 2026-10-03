@@ -37,10 +37,7 @@ const normalizeLead = lead => {
   if (!obj) return null
 
   const displayName =
-    obj.customer?.name ||
-    obj.customer?.email ||
-    obj.customer?.phone ||
-    'Cliente web'
+    obj.customer?.name || obj.customer?.email || obj.customer?.phone || 'Cliente web'
 
   return {
     ...obj,
@@ -114,9 +111,7 @@ const buildProductOfInterest = product => ({
   slug: clean(product?.slug).slice(0, 180),
   sku: clean(product?.sku || product?.variantSku || product?.variantSKU).slice(0, 120),
   price: Math.max(Number(product?.price || 0), 0),
-  lastMentionedAt: product?.lastMentionedAt
-    ? new Date(product.lastMentionedAt)
-    : new Date(),
+  lastMentionedAt: product?.lastMentionedAt ? new Date(product.lastMentionedAt) : new Date(),
 })
 
 export const getAiLeadSummary = asyncHandler(async (req, res) => {
@@ -262,14 +257,14 @@ export const getAiLeadById = asyncHandler(async (req, res) => {
 
   const conversations = uniqueHistoryIds.length
     ? await AiConversation.find({
-      _id: { $in: uniqueHistoryIds },
-      tenantId,
-      deletedAt: { $exists: false },
-    })
-      .setOptions({ tenantId })
-      .select('_id channel status lastMessageAt createdAt messages')
-      .sort({ lastMessageAt: -1, createdAt: -1 })
-      .lean()
+        _id: { $in: uniqueHistoryIds },
+        tenantId,
+        deletedAt: { $exists: false },
+      })
+        .setOptions({ tenantId })
+        .select('_id channel status lastMessageAt createdAt messages')
+        .sort({ lastMessageAt: -1, createdAt: -1 })
+        .lean()
     : []
 
   // Solo el resumen: el cuerpo de los mensajes viaja una vez, en la charla que
@@ -292,11 +287,11 @@ export const getAiLeadById = asyncHandler(async (req, res) => {
 
   const conversation = selectedId
     ? await AiConversation.findOne({ _id: selectedId, tenantId })
-      .setOptions({ tenantId })
-      .select(
-        '_id channel status externalUserId customer customerName customerEmail customerPhone messages lastMessageAt createdAt updatedAt',
-      )
-      .lean()
+        .setOptions({ tenantId })
+        .select(
+          '_id channel status externalUserId customer customerName customerEmail customerPhone messages lastMessageAt createdAt updatedAt',
+        )
+        .lean()
     : null
 
   return res.json({
@@ -485,10 +480,7 @@ export const deleteAiLead = asyncHandler(async (req, res) => {
 
   if (!lead) return sendNotFound(res)
 
-  const conversationIds = [
-    lead.conversationId,
-    lead.lastConversationId,
-  ].filter(isValidObjectId)
+  const conversationIds = [lead.conversationId, lead.lastConversationId].filter(isValidObjectId)
 
   if (conversationIds.length) {
     await AiConversation.updateMany(
@@ -501,8 +493,7 @@ export const deleteAiLead = asyncHandler(async (req, res) => {
         $set: {
           deletedAt: lead.deletedAt || new Date(),
           deletedBy: req.user?._id || null,
-          deletedReason:
-            reason || 'Lead eliminado desde bandeja comercial',
+          deletedReason: reason || 'Lead eliminado desde bandeja comercial',
         },
       },
     ).setOptions({ tenantId })
@@ -542,9 +533,7 @@ export const permanentlyDeleteAiLead = asyncHandler(async (req, res) => {
     message: 'Lead eliminado permanentemente',
     data: {
       deletedId: String(lead._id),
-      conversationIds: [lead.conversationId, lead.lastConversationId]
-        .filter(Boolean)
-        .map(String),
+      conversationIds: [lead.conversationId, lead.lastConversationId].filter(Boolean).map(String),
     },
   })
 })
@@ -573,13 +562,7 @@ export const removeLeadProductOfInterest = asyncHandler(async (req, res) => {
   const before = lead.productsOfInterest?.length || 0
 
   lead.productsOfInterest = (lead.productsOfInterest || []).filter(product => {
-    const refs = [
-      product?._id,
-      product?.productId,
-      product?.slug,
-      product?.sku,
-      product?.title,
-    ]
+    const refs = [product?._id, product?.productId, product?.slug, product?.sku, product?.title]
       .map(value => clean(value))
       .filter(Boolean)
 
@@ -593,9 +576,7 @@ export const removeLeadProductOfInterest = asyncHandler(async (req, res) => {
     text:
       before === after
         ? `Se intentó remover un producto de interés no encontrado: ${productRef}`
-        : `Producto de interés removido: ${productRef}${
-          reason ? `. Motivo: ${reason}` : ''
-        }`,
+        : `Producto de interés removido: ${productRef}${reason ? `. Motivo: ${reason}` : ''}`,
     createdBy: req.user?._id || null,
   })
 
@@ -613,9 +594,7 @@ export const updateLeadProductsOfInterest = asyncHandler(async (req, res) => {
 
   if (!isValidObjectId(leadId)) return sendNotFound(res)
 
-  const products = Array.isArray(req.body?.productsOfInterest)
-    ? req.body.productsOfInterest
-    : []
+  const products = Array.isArray(req.body?.productsOfInterest) ? req.body.productsOfInterest : []
 
   const normalizedProducts = products
     .map(buildProductOfInterest)

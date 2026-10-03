@@ -12,10 +12,7 @@ import {
   getOrCreateAiAgentForTenant,
   provisionAiAgentDefaultsForTenant,
 } from '../services/aiAgent/aiAgentProvisioningService.js'
-import {
-  isValidObjectId,
-  resolveAuthorizedTenantFromRequest,
-} from '../utils/requestContext.js'
+import { isValidObjectId, resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 
 const clean = value => String(value || '').trim()
 const requireTenantId = req =>
@@ -36,10 +33,7 @@ const toBoundedNumber = (value, { min, max, fallback }) => {
 
 const cleanStringList = (value, maxItems = 50) => {
   if (!Array.isArray(value)) return []
-  return value
-    .map(clean)
-    .filter(Boolean)
-    .slice(0, maxItems)
+  return value.map(clean).filter(Boolean).slice(0, maxItems)
 }
 
 const allowedKnowledgeTypes = new Set([
@@ -51,20 +45,9 @@ const allowedKnowledgeTypes = new Set([
   'custom',
   'learning_suggestion',
 ])
-const allowedRuleTypes = new Set([
-  'abandoned_cart',
-  'lead_follow_up',
-  'post_purchase',
-  'winback',
-])
+const allowedRuleTypes = new Set(['abandoned_cart', 'lead_follow_up', 'post_purchase', 'winback'])
 const allowedRuleChannels = new Set(['whatsapp', 'email'])
-const allowedTones = new Set([
-  'formal',
-  'friendly',
-  'premium',
-  'technical',
-  'sales',
-])
+const allowedTones = new Set(['formal', 'friendly', 'premium', 'technical', 'sales'])
 const BUSINESS_HOUR_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
 
 const isMaskedSecret = value => clean(value).includes('***')
@@ -90,9 +73,7 @@ const buildAgentConfigUpdate = body => {
 
   if (body.channels?.webchat) {
     if (body.channels.webchat.enabled !== undefined) {
-      update['channels.webchat.enabled'] = toBoolean(
-        body.channels.webchat.enabled,
-      )
+      update['channels.webchat.enabled'] = toBoolean(body.channels.webchat.enabled)
     }
   }
 
@@ -108,10 +89,7 @@ const buildAgentConfigUpdate = body => {
       'accessToken',
       'appSecret',
     ]) {
-      if (
-        whatsapp[field] !== undefined &&
-        !isMaskedSecret(whatsapp[field])
-      ) {
+      if (whatsapp[field] !== undefined && !isMaskedSecret(whatsapp[field])) {
         update[`channels.whatsapp.${field}`] = clean(whatsapp[field]).slice(
           0,
           field === 'accessToken' || field === 'appSecret' ? 2000 : 300,
@@ -140,24 +118,16 @@ const buildAgentConfigUpdate = body => {
 
         if (
           section === 'guardrails' &&
-          ['blockedTopics', 'humanHandoffKeywords', 'optOutKeywords'].includes(
-            field,
-          )
+          ['blockedTopics', 'humanHandoffKeywords', 'optOutKeywords'].includes(field)
         ) {
           update[`${section}.${field}`] = cleanStringList(value, 80)
-        } else if (
-          section === 'behavior' &&
-          field === 'maxMessagesBeforeHuman'
-        ) {
+        } else if (section === 'behavior' && field === 'maxMessagesBeforeHuman') {
           update[`${section}.${field}`] = toBoundedNumber(value, {
             min: 1,
             max: 80,
             fallback: 14,
           })
-        } else if (
-          section === 'behavior' &&
-          field === 'minConfidenceToAnswer'
-        ) {
+        } else if (section === 'behavior' && field === 'minConfidenceToAnswer') {
           update[`${section}.${field}`] = toBoundedNumber(value, {
             min: 0,
             max: 1,
@@ -168,10 +138,7 @@ const buildAgentConfigUpdate = body => {
           if (allowedTones.has(tone)) update[`${section}.${field}`] = tone
         } else if (section === 'personality' && field === 'signature') {
           update[`${section}.${field}`] = clean(value).slice(0, 250)
-        } else if (
-          section === 'behavior' ||
-          section === 'learning'
-        ) {
+        } else if (section === 'behavior' || section === 'learning') {
           update[`${section}.${field}`] = toBoolean(value)
         } else {
           update[`${section}.${field}`] = clean(value).slice(0, 500)
@@ -181,9 +148,7 @@ const buildAgentConfigUpdate = body => {
   }
 
   if (body.businessContext?.description !== undefined) {
-    update['businessContext.description'] = clean(
-      body.businessContext.description,
-    ).slice(0, 5000)
+    update['businessContext.description'] = clean(body.businessContext.description).slice(0, 5000)
   }
   if (body.businessContext?.faq !== undefined) {
     update['businessContext.faq'] = cleanFaq(body.businessContext.faq)
@@ -209,16 +174,18 @@ const buildAgentConfigUpdate = body => {
   // vive en reserveAiBudget (applyLimitOverride), no acá, para que no haya
   // dos lugares donde recordar la regla.
   if (body.quotas?.monthlyMessageLimit !== undefined) {
-    update['quotas.monthlyMessageLimit'] = toBoundedNumber(
-      body.quotas.monthlyMessageLimit,
-      { min: 0, max: 1000000, fallback: 0 },
-    )
+    update['quotas.monthlyMessageLimit'] = toBoundedNumber(body.quotas.monthlyMessageLimit, {
+      min: 0,
+      max: 1000000,
+      fallback: 0,
+    })
   }
   if (body.quotas?.monthlyAiTokenLimit !== undefined) {
-    update['quotas.monthlyAiTokenLimit'] = toBoundedNumber(
-      body.quotas.monthlyAiTokenLimit,
-      { min: 0, max: 1000000000, fallback: 0 },
-    )
+    update['quotas.monthlyAiTokenLimit'] = toBoundedNumber(body.quotas.monthlyAiTokenLimit, {
+      min: 0,
+      max: 1000000000,
+      fallback: 0,
+    })
   }
 
   return update
@@ -310,8 +277,7 @@ export const checkWhatsappConnectionCtrl = asyncHandler(async (req, res) => {
 export const testAiAgentMessage = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
   const message = clean(req.body?.message)
-  const externalUserId =
-    clean(req.body?.externalUserId).slice(0, 160) || 'admin-test-user'
+  const externalUserId = clean(req.body?.externalUserId).slice(0, 160) || 'admin-test-user'
 
   if (!message || message.length > 2000) {
     return res.status(400).json({
@@ -332,8 +298,15 @@ export const testAiAgentMessage = asyncHandler(async (req, res) => {
 })
 
 const ALLOWED_RECOVERY_STATUSES = new Set([
-  'pending', 'scheduled', 'processing', 'sent',
-  'responded', 'converted', 'cancelled', 'expired', 'failed',
+  'pending',
+  'scheduled',
+  'processing',
+  'sent',
+  'responded',
+  'converted',
+  'cancelled',
+  'expired',
+  'failed',
 ])
 
 export const listCartRecoveries = asyncHandler(async (req, res) => {
@@ -371,8 +344,7 @@ export const createKnowledgeItem = asyncHandler(async (req, res) => {
   const title = clean(req.body.title).slice(0, 200)
   const content = clean(req.body.content).slice(0, 10000)
   const type = clean(req.body.type) || 'custom'
-  const status =
-    req.body.status === 'pending_approval' ? 'pending_approval' : 'approved'
+  const status = req.body.status === 'pending_approval' ? 'pending_approval' : 'approved'
 
   if (!allowedKnowledgeTypes.has(type)) {
     return res.status(400).json({
@@ -557,10 +529,7 @@ export const listCampaignRules = asyncHandler(async (req, res) => {
   if (channel && allowedRuleChannels.has(channel)) filter.channel = channel
 
   const [items, readiness] = await Promise.all([
-    AiCampaignRule.find(filter)
-      .setOptions({ tenantId })
-      .sort({ updatedAt: -1 })
-      .lean(),
+    AiCampaignRule.find(filter).setOptions({ tenantId }).sort({ updatedAt: -1 }).lean(),
 
     // Si la recuperación de carritos puede correr o no, y por qué no.
     //
@@ -582,9 +551,9 @@ export const deleteCampaignRule = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'ID de regla inválido' })
   }
 
-  const rule = await AiCampaignRule.findOneAndDelete(
-    { _id: req.params.id, tenantId },
-  ).setOptions({ tenantId })
+  const rule = await AiCampaignRule.findOneAndDelete({ _id: req.params.id, tenantId }).setOptions({
+    tenantId,
+  })
 
   if (!rule) {
     return res.status(404).json({ success: false, message: 'Regla no encontrada' })
@@ -653,19 +622,18 @@ export const upsertCampaignRule = asyncHandler(async (req, res) => {
     channel,
     messageTemplate,
     useAiPersonalization:
-      body.useAiPersonalization === undefined
-        ? true
-        : toBoolean(body.useAiPersonalization),
+      body.useAiPersonalization === undefined ? true : toBoolean(body.useAiPersonalization),
     trigger: {
       delayMinutes: toBoundedNumber(body.trigger?.delayMinutes, {
         min: 1,
         max: 43200,
         fallback: 30,
       }),
-      minCartAmountCents: toBoundedNumber(
-        body.trigger?.minCartAmountCents,
-        { min: 0, max: 100000000000, fallback: 0 },
-      ),
+      minCartAmountCents: toBoundedNumber(body.trigger?.minCartAmountCents, {
+        min: 0,
+        max: 100000000000,
+        fallback: 0,
+      }),
       maxAttempts: toBoundedNumber(body.trigger?.maxAttempts, {
         min: 1,
         max: 5,
@@ -679,16 +647,16 @@ export const upsertCampaignRule = asyncHandler(async (req, res) => {
         start: businessHoursStart,
         end: businessHoursEnd,
       },
-      minHoursBetweenContacts: toBoundedNumber(
-        body.trigger?.minHoursBetweenContacts,
-        { min: 1, max: 168, fallback: 6 },
-      ),
+      minHoursBetweenContacts: toBoundedNumber(body.trigger?.minHoursBetweenContacts, {
+        min: 1,
+        max: 168,
+        fallback: 6,
+      }),
     },
     whatsappTemplate: {
       enabled: toBoolean(body.whatsappTemplate?.enabled),
       name: clean(body.whatsappTemplate?.name).slice(0, 120),
-      languageCode:
-        clean(body.whatsappTemplate?.languageCode).slice(0, 20) || 'es_AR',
+      languageCode: clean(body.whatsappTemplate?.languageCode).slice(0, 20) || 'es_AR',
     },
     offer: {
       enabled: toBoolean(body.offer?.enabled),

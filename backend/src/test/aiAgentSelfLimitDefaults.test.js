@@ -13,68 +13,66 @@
 // lo materializa Mongoose al crear el documento y no hay forma de verlo
 // mockeando el modelo.
 
-import mongoose from "mongoose";
-import { crearMongoEnMemoria } from "./testDB.js";
+import mongoose from 'mongoose'
+import { crearMongoEnMemoria } from './testDB.js'
 
-process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString(
-  "base64url",
-);
+process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
-const TENANT = new mongoose.Types.ObjectId();
+const TENANT = new mongoose.Types.ObjectId()
 
-let mongod;
-let AiAgent;
+let mongod
+let AiAgent
 
 beforeAll(async () => {
-  mongod = await crearMongoEnMemoria();
-  await mongoose.connect(mongod.getUri());
+  mongod = await crearMongoEnMemoria()
+  await mongoose.connect(mongod.getUri())
 
-  AiAgent = (await import("../models/aiAgentModel.js")).default;
-}, 60_000);
+  AiAgent = (await import('../models/aiAgentModel.js')).default
+}, 60_000)
 
 afterAll(async () => {
-  await mongoose.disconnect();
-  await mongod?.stop();
-});
+  await mongoose.disconnect()
+  await mongod?.stop()
+})
 
 afterEach(async () => {
-  await AiAgent.deleteMany({}).setOptions({ ignoreTenant: true });
-});
+  await AiAgent.deleteMany({}).setOptions({ ignoreTenant: true })
+})
 
-describe("aiAgentModel · autolímites", () => {
-  test("un agente recién creado NO trae autolímite puesto", async () => {
+describe('aiAgentModel · autolímites', () => {
+  test('un agente recién creado NO trae autolímite puesto', async () => {
     // Nadie tocó la configuración: solo se aprovisionó el agente.
-    const agent = await AiAgent.create({ tenantId: TENANT });
+    const agent = await AiAgent.create({ tenantId: TENANT })
 
     // 0 es la forma de decir "sin autolímite" en todo el resto del sistema
     // (getAgentSelfLimit lo traduce a null, el panel lo rotula "0 = sin
     // autolímite"). Cualquier otro valor acá es un freno que el comercio no
     // pidió.
-    expect(agent.quotas.monthlyMessageLimit).toBe(0);
-    expect(agent.quotas.monthlyAiTokenLimit).toBe(0);
-  });
+    expect(agent.quotas.monthlyMessageLimit).toBe(0)
+    expect(agent.quotas.monthlyAiTokenLimit).toBe(0)
+  })
 
-  test("lo que se lee de la base tampoco trae autolímite", async () => {
+  test('lo que se lee de la base tampoco trae autolímite', async () => {
     // El default se aplica al crear Y al hidratar un documento viejo al que
     // le falte el campo, así que hay que mirar las dos vías.
-    await AiAgent.collection.insertOne({ tenantId: TENANT });
+    await AiAgent.collection.insertOne({ tenantId: TENANT })
 
     const agent = await AiAgent.findOne({ tenantId: TENANT }).setOptions({
       tenantId: TENANT,
-    });
+    })
 
-    expect(agent.quotas.monthlyMessageLimit).toBe(0);
-    expect(agent.quotas.monthlyAiTokenLimit).toBe(0);
-  });
+    expect(agent.quotas.monthlyMessageLimit).toBe(0)
+    expect(agent.quotas.monthlyAiTokenLimit).toBe(0)
+  })
 
-  test("el autolímite que el comercio sí configura se guarda tal cual", async () => {
+  test('el autolímite que el comercio sí configura se guarda tal cual', async () => {
     // La contracara: sacar el default no puede romper el control real.
     const agent = await AiAgent.create({
       tenantId: TENANT,
       quotas: { monthlyMessageLimit: 500, monthlyAiTokenLimit: 250_000 },
-    });
+    })
 
-    expect(agent.quotas.monthlyMessageLimit).toBe(500);
-    expect(agent.quotas.monthlyAiTokenLimit).toBe(250_000);
-  });
-});
+    expect(agent.quotas.monthlyMessageLimit).toBe(500)
+    expect(agent.quotas.monthlyAiTokenLimit).toBe(250_000)
+  })
+})

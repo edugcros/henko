@@ -66,9 +66,7 @@ const sanitizeValue = (value, depth = 0) => {
   if (typeof value === 'boolean') return value
 
   if (Array.isArray(value)) {
-    return value
-      .slice(0, MAX_ARRAY_LENGTH)
-      .map(item => sanitizeValue(item, depth + 1))
+    return value.slice(0, MAX_ARRAY_LENGTH).map(item => sanitizeValue(item, depth + 1))
   }
 
   if (typeof value === 'object') {

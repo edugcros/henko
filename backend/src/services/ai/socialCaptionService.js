@@ -121,9 +121,7 @@ Devolvé ÚNICAMENTE ese JSON, sin texto antes ni después, sin bloque de códig
 export const generateSocialCaption = async (product, { apiKey, storeName } = {}) => {
   const summary = buildProductSummary(product)
 
-  const userMessage = storeName
-    ? `Tienda: ${clean(storeName)}\n\n${summary}`
-    : summary
+  const userMessage = storeName ? `Tienda: ${clean(storeName)}\n\n${summary}` : summary
 
   const result = await callAgentLLM({
     systemPrompt: SYSTEM_PROMPT,
@@ -172,9 +170,9 @@ export const generateSocialCaption = async (product, { apiKey, storeName } = {})
   const caption = clean(parsed?.caption)
   const hashtags = Array.isArray(parsed?.hashtags)
     ? parsed.hashtags
-      .map(tag => clean(tag).replace(/^#/, '').replace(/\s+/g, ''))
-      .filter(Boolean)
-      .slice(0, 15)
+        .map(tag => clean(tag).replace(/^#/, '').replace(/\s+/g, ''))
+        .filter(Boolean)
+        .slice(0, 15)
     : []
 
   if (!caption) {

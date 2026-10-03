@@ -46,7 +46,7 @@ const getRetryDelay = attemptNumber => {
  */
 const isRetryableError = error => {
   if (!error) return false
-  
+
   // Errores de conexión que conviene reintentar
   const retryableErrors = [
     'ECONNRESET',
@@ -57,10 +57,12 @@ const isRetryableError = error => {
     'ENOTFOUND',
     'ERR_HTTP2_STREAM_CLOSED',
   ]
-  
-  return retryableErrors.includes(error.code) || 
-         retryableErrors.includes(error.syscall) ||
-         (error.message && retryableErrors.some(e => error.message.includes(e)))
+
+  return (
+    retryableErrors.includes(error.code) ||
+    retryableErrors.includes(error.syscall) ||
+    (error.message && retryableErrors.some(e => error.message.includes(e)))
+  )
 }
 
 /**
@@ -86,67 +88,63 @@ const uploadToCloudinary = (buffer, folder, options = {}) => {
           resourceType === 'video'
             ? options.transformation || []
             : [
-              { quality: 'auto:good', fetch_format: 'auto' },
-              { width: 2000, crop: 'limit' },
-              ...(options.transformation || []),
-            ],
+                { quality: 'auto:good', fetch_format: 'auto' },
+                { width: 2000, crop: 'limit' },
+                ...(options.transformation || []),
+              ],
       }
 
       let timeoutHandle = null
       let streamEnded = false
 
-      const stream = cloudinary.uploader.upload_stream(
-        uploadOptions,
-        (error, result) => {
-          clearTimeout(timeoutHandle)
-          streamEnded = true
+      const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+        clearTimeout(timeoutHandle)
+        streamEnded = true
 
-          if (error) {
-            logger.warn(`⚠️ Cloudinary upload attempt ${attemptNumber}/${MAX_RETRIES} failed:`, {
-              code: error.code,
-              message: error.message,
-              syscall: error.syscall,
-            })
+        if (error) {
+          logger.warn(`⚠️ Cloudinary upload attempt ${attemptNumber}/${MAX_RETRIES} failed:`, {
+            code: error.code,
+            message: error.message,
+            syscall: error.syscall,
+          })
 
-            // Si es reintentatble y no hemos alcanzado el límite, reintentar
-            if (isRetryableError(error) && attemptNumber < MAX_RETRIES) {
-              const delayMs = getRetryDelay(attemptNumber - 1)
-              logger.info(`🔄 Reintentando en ${delayMs}ms (intento ${attemptNumber + 1}/${MAX_RETRIES})`)
-              setTimeout(attemptUpload, delayMs)
-            } else {
-              // Error no reintentatble o agotamos reintentos
-              logger.error(
-                `❌ Cloudinary upload falló (${attemptNumber} intentos):`,
-                error,
-              )
-              reject(error)
-            }
-            return
+          // Si es reintentatble y no hemos alcanzado el límite, reintentar
+          if (isRetryableError(error) && attemptNumber < MAX_RETRIES) {
+            const delayMs = getRetryDelay(attemptNumber - 1)
+            logger.info(
+              `🔄 Reintentando en ${delayMs}ms (intento ${attemptNumber + 1}/${MAX_RETRIES})`,
+            )
+            setTimeout(attemptUpload, delayMs)
+          } else {
+            // Error no reintentatble o agotamos reintentos
+            logger.error(`❌ Cloudinary upload falló (${attemptNumber} intentos):`, error)
+            reject(error)
           }
+          return
+        }
 
-          // Success
-          logger.info(`✅ Imagen subida exitosamente (intento ${attemptNumber}): ${result.public_id}`)
-          resolve(result)
-        },
-      )
+        // Success
+        logger.info(`✅ Imagen subida exitosamente (intento ${attemptNumber}): ${result.public_id}`)
+        resolve(result)
+      })
 
       // Timeout: si no termina en UPLOAD_TIMEOUT_MS, abortar
       timeoutHandle = setTimeout(() => {
         if (!streamEnded) {
-          logger.warn(`⏱️ Cloudinary upload timeout (${UPLOAD_TIMEOUT_MS}ms) en intento ${attemptNumber}`)
+          logger.warn(
+            `⏱️ Cloudinary upload timeout (${UPLOAD_TIMEOUT_MS}ms) en intento ${attemptNumber}`,
+          )
           stream.destroy()
 
           // Si no hemos alcanzado el límite de reintentos, reintentar
           if (attemptNumber < MAX_RETRIES) {
             const delayMs = getRetryDelay(attemptNumber - 1)
-            logger.info(`🔄 Reintentando en ${delayMs}ms (intento ${attemptNumber + 1}/${MAX_RETRIES})`)
+            logger.info(
+              `🔄 Reintentando en ${delayMs}ms (intento ${attemptNumber + 1}/${MAX_RETRIES})`,
+            )
             setTimeout(attemptUpload, delayMs)
           } else {
-            reject(
-              new Error(
-                `Cloudinary upload timeout después de ${MAX_RETRIES} intentos`,
-              ),
-            )
+            reject(new Error(`Cloudinary upload timeout después de ${MAX_RETRIES} intentos`))
           }
         }
       }, UPLOAD_TIMEOUT_MS)
@@ -160,7 +158,9 @@ const uploadToCloudinary = (buffer, folder, options = {}) => {
 
           if (isRetryableError(error) && attemptNumber < MAX_RETRIES) {
             const delayMs = getRetryDelay(attemptNumber - 1)
-            logger.info(`🔄 Reintentando en ${delayMs}ms (intento ${attemptNumber + 1}/${MAX_RETRIES})`)
+            logger.info(
+              `🔄 Reintentando en ${delayMs}ms (intento ${attemptNumber + 1}/${MAX_RETRIES})`,
+            )
             setTimeout(attemptUpload, delayMs)
           } else {
             reject(error)
@@ -209,10 +209,9 @@ export const cloudinaryUploadImg = async (buffer, productId, tenantId) => {
     })
     // `cause` conserva el error original: sin eso, el stack que llega arriba
     // arranca en esta línea y se pierde qué falló adentro de Cloudinary.
-    throw new Error(
-      `Error al subir imagen: ${error.message || 'Cloudinary no disponible'}`,
-      { cause: error },
-    )
+    throw new Error(`Error al subir imagen: ${error.message || 'Cloudinary no disponible'}`, {
+      cause: error,
+    })
   }
 }
 
@@ -252,10 +251,9 @@ export const cloudinaryUploadVideo = async (buffer, productId, tenantId) => {
       productId,
       tenantId,
     })
-    throw new Error(
-      `Error al subir video: ${error.message || 'Cloudinary no disponible'}`,
-      { cause: error },
-    )
+    throw new Error(`Error al subir video: ${error.message || 'Cloudinary no disponible'}`, {
+      cause: error,
+    })
   }
 }
 
@@ -351,12 +349,9 @@ export const cloudinaryDeleteVideo = async publicId => {
   }
 }
 
-
 // ==========================================
 // FUNCIONES ADICIONALES ÚTILES
 // ==========================================
-
-
 
 // ==========================================
 // EXPORT DEFAULT

@@ -33,24 +33,18 @@ export const getAccessTokenFromRequest = req => {
 
 export const decodeAccessToken = (
   token,
-  {
-    secret = process.env.JWT_SECRET,
-    algorithms = ['HS256'],
-  } = {},
+  { secret = process.env.JWT_SECRET, algorithms = ['HS256'] } = {},
 ) => {
-  return jwt.verify(token, secret, { 
+  return jwt.verify(token, secret, {
     algorithms,
     issuer: env.jwtIssuer || 'commerce-platform-api',
-    audience: env.jwtAudience || 'commerce-platform-client', 
+    audience: env.jwtAudience || 'commerce-platform-client',
   })
 }
 
 export const getOptionalUserFromAccessToken = (
   req,
-  {
-    secret = process.env.JWT_SECRET,
-    algorithms = ['HS256'],
-  } = {},
+  { secret = process.env.JWT_SECRET, algorithms = ['HS256'] } = {},
 ) => {
   const token = getAccessTokenFromRequest(req)
 
@@ -67,9 +61,7 @@ export const getOptionalUserFromAccessToken = (
       tenantId: decoded.tenantId,
       role: decoded.role,
       email: decoded.email || null,
-      allowedTenants: Array.isArray(decoded.allowedTenants)
-        ? decoded.allowedTenants
-        : [],
+      allowedTenants: Array.isArray(decoded.allowedTenants) ? decoded.allowedTenants : [],
     }
   } catch {
     return null

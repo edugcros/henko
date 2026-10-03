@@ -61,12 +61,9 @@ process.env.AI_LIMIT_PRO_AGENT_TOKENS = '0'
 process.env.GEMINI_API_KEY = 'AIzaTEST-no-usar-fuera-de-pruebas'
 
 const { default: AiTenantPolicy } = await import('../models/aiTenantPolicyModel.js')
-const { default: AiRateWindow, RATE_WINDOW } = await import(
-  '../models/aiRateWindowModel.js'
-)
-const { getTenantAiPolicy, setTenantAiPolicy } = await import(
-  '../services/ai/platformAiSettingService.js'
-)
+const { default: AiRateWindow, RATE_WINDOW } = await import('../models/aiRateWindowModel.js')
+const { getTenantAiPolicy, setTenantAiPolicy } =
+  await import('../services/ai/platformAiSettingService.js')
 const { reserveAiBudget, DENY_REASONS, AI_METRICS, getAiBudgetSnapshot, buildBudgetDenialMessage } =
   await import('../services/ai/aiBudgetService.js')
 const { getSharedKeyTenantCap } = await import('../services/ai/aiPlanPolicy.js')
@@ -166,9 +163,7 @@ describe('la fracción por comercio', () => {
     })
 
     expect((await getTenantAiPolicy(ACOTADO)).share).toBe(null)
-    expect((await getAiBudgetSnapshot(ACOTADO)).metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(
-      500000,
-    )
+    expect((await getAiBudgetSnapshot(ACOTADO)).metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(500000)
   })
 
   test('no mandar el campo deja la fracción como estaba', async () => {

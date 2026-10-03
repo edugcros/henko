@@ -52,18 +52,20 @@ const timingSafeEqualString = (left = '', right = '') => {
   return crypto.timingSafeEqual(leftBuffer, rightBuffer)
 }
 
-const normalizeDomain = value => String(value || '')
-  .trim()
-  .toLowerCase()
-  .replace(/^https?:\/\//, '')
-  .split('/')[0]
-  .split(':')[0]
-  .replace(/^www\./, '')
+const normalizeDomain = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    .split(':')[0]
+    .replace(/^www\./, '')
 
-const hashAgentKey = value => crypto
-  .createHash('sha256')
-  .update(String(value || ''))
-  .digest('hex')
+const hashAgentKey = value =>
+  crypto
+    .createHash('sha256')
+    .update(String(value || ''))
+    .digest('hex')
 
 const loadAgentKeyHashes = () => {
   const raw = process.env.PRODUCT_ANALYSIS_AGENT_KEYS_JSON
@@ -84,7 +86,9 @@ const loadAgentKeyHashes = () => {
     Object.entries(parsed)
       .map(([domain, keyHash]) => [
         normalizeDomain(domain),
-        String(keyHash || '').trim().toLowerCase(),
+        String(keyHash || '')
+          .trim()
+          .toLowerCase(),
       ])
       .filter(([domain, keyHash]) => domain && /^[a-f0-9]{64}$/.test(keyHash)),
   )
@@ -109,9 +113,7 @@ const authenticateAgent = (req, res, next) => {
   const requestHash = requestAgentKey ? hashAgentKey(requestAgentKey) : ''
 
   let valid = Boolean(
-    configuredHash &&
-    requestHash &&
-    timingSafeEqualString(requestHash, configuredHash),
+    configuredHash && requestHash && timingSafeEqualString(requestHash, configuredHash),
   )
 
   // Compatibilidad limitada para desarrollo. Producción exige claves por tenant.
@@ -156,14 +158,9 @@ const analysisWriteLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
   store: new SharedRateLimitStore('product-analysis'),
-  windowMs: Number(
-    process.env.PRODUCT_ANALYSIS_RATE_LIMIT_WINDOW_MS ||
-      15 * 60 * 1000,
-  ),
+  windowMs: Number(process.env.PRODUCT_ANALYSIS_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
 
-  max: Number(
-    process.env.PRODUCT_ANALYSIS_RATE_LIMIT_MAX || 240,
-  ),
+  max: Number(process.env.PRODUCT_ANALYSIS_RATE_LIMIT_MAX || 240),
 
   standardHeaders: true,
   legacyHeaders: false,
@@ -174,11 +171,7 @@ const analysisWriteLimiter = rateLimit({
 
     // Agente: aislado por tenant + hash de su API key.
     if (agentKey) {
-      const agentId = crypto
-        .createHash('sha256')
-        .update(agentKey)
-        .digest('hex')
-        .slice(0, 16)
+      const agentId = crypto.createHash('sha256').update(agentKey).digest('hex').slice(0, 16)
 
       return `${tenantId}:agent:${agentId}`
     }
@@ -196,8 +189,7 @@ const analysisWriteLimiter = rateLimit({
 
   message: {
     success: false,
-    message:
-      'Demasiadas operaciones de análisis. Intente nuevamente más tarde.',
+    message: 'Demasiadas operaciones de análisis. Intente nuevamente más tarde.',
   },
 })
 
@@ -332,12 +324,7 @@ router.post(
   analysisWriteLimiter,
   runWishlistPromotionNotifications,
 )
-router.post(
-  '/agent-heartbeat',
-  agentOrAdminAuth,
-  analysisWriteLimiter,
-  reportAgentHeartbeat,
-)
+router.post('/agent-heartbeat', agentOrAdminAuth, analysisWriteLimiter, reportAgentHeartbeat)
 
 router.use(authenticateAdmin)
 

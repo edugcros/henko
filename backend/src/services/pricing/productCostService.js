@@ -126,11 +126,7 @@ const positive = value => {
  *   cuando no hay costo unitario por ningún lado: el motor no debe calcular
  *   un margen sobre un costo inventado.
  */
-export const resolveProductCostInputs = async ({
-  tenantId,
-  productId = null,
-  overrides = {},
-}) => {
+export const resolveProductCostInputs = async ({ tenantId, productId = null, overrides = {} }) => {
   const provenance = {}
 
   let stored = null
@@ -143,9 +139,7 @@ export const resolveProductCostInputs = async ({
       // acá la consulta queda acotada por sí misma, y de paso el test de
       // aislamiento de este servicio prueba algo real en vez de pasar porque
       // el plugin lo tapa.
-      stored = await Product.findOne({ _id: productId, tenantId })
-        .select('costoUnitario')
-        .lean()
+      stored = await Product.findOne({ _id: productId, tenantId }).select('costoUnitario').lean()
     } catch (error) {
       logger.warn('[PRICING] No se pudo leer el costo del producto', {
         tenantId: String(tenantId),

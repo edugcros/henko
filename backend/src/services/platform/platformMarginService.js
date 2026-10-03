@@ -60,9 +60,7 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     // Sin filtrar por status acá a propósito: el margen (abajo) solo mira
     // comercios no borrados, pero el ciclo de vida (más abajo) necesita ver
     // también los borrados para poder contarlos en el período.
-    Tenant.find({})
-      .select('name plan status subscriptionStatus createdAt updatedAt')
-      .lean(),
+    Tenant.find({}).select('name plan status subscriptionStatus createdAt updatedAt').lean(),
     // EL COSTO DE IA SALE DEL LIBRO, NO DEL CONTADOR.
     //
     // Acá había un AiUsage.aggregate sobre estimatedCostUsd. AiUsage es una
@@ -82,15 +80,15 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     // envío real, no un estimado).
     range
       ? Order.aggregate([
-        { $match: { emailSent: true, createdAt: { $gte: range.start, $lt: range.end } } },
-        { $group: { _id: '$tenantId', count: { $sum: 1 } } },
-      ]).option({ ignoreTenant: true, platformScope: 'platform:margen' })
+          { $match: { emailSent: true, createdAt: { $gte: range.start, $lt: range.end } } },
+          { $group: { _id: '$tenantId', count: { $sum: 1 } } },
+        ]).option({ ignoreTenant: true, platformScope: 'platform:margen' })
       : Promise.resolve([]),
     range
       ? AiCartRecovery.aggregate([
-        { $match: { sentAt: { $gte: range.start, $lt: range.end } } },
-        { $group: { _id: { tenantId: '$tenantId', channel: '$channel' }, count: { $sum: 1 } } },
-      ]).option({ ignoreTenant: true, platformScope: 'platform:margen' })
+          { $match: { sentAt: { $gte: range.start, $lt: range.end } } },
+          { $group: { _id: { tenantId: '$tenantId', channel: '$channel' }, count: { $sum: 1 } } },
+        ]).option({ ignoreTenant: true, platformScope: 'platform:margen' })
       : Promise.resolve([]),
   ])
 
@@ -102,9 +100,7 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     spendRows.map(row => [String(row.tenantId), row.platformCostUsd || 0]),
   )
 
-  const emailSendsByTenant = new Map(
-    emailOrderRows.map(row => [String(row._id), row.count || 0]),
-  )
+  const emailSendsByTenant = new Map(emailOrderRows.map(row => [String(row._id), row.count || 0]))
 
   const recoveryEmailByTenant = new Map()
   const recoveryWhatsappByTenant = new Map()
@@ -144,9 +140,7 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     )
 
     const estimatedMarginArs =
-      planPriceArs === null
-        ? null
-        : planPriceArs - aArs(aiCostUsd) - aArs(communicationsCostUsd)
+      planPriceArs === null ? null : planPriceArs - aArs(aiCostUsd) - aArs(communicationsCostUsd)
 
     return {
       tenantId: tenant._id,
@@ -186,7 +180,8 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
 
   const byPlan = tenantRows.reduce((acc, row) => {
     const key = row.plan
-    if (!acc[key]) acc[key] = { count: 0, aiCostArs: 0, communicationsCostArs: 0, planRevenueArs: 0 }
+    if (!acc[key])
+      acc[key] = { count: 0, aiCostArs: 0, communicationsCostArs: 0, planRevenueArs: 0 }
     acc[key].count += 1
     acc[key].aiCostArs += row.aiCostArs
     acc[key].communicationsCostArs += row.communicationsCostArs
@@ -211,9 +206,8 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   // existe flujo de cobro ni un campo que se actualice al cancelar — así que
   // no se inventan, se señalan explícitamente en notes.
   const newTenantsInPeriod = range
-    ? allTenants.filter(
-      tenant => tenant.createdAt >= range.start && tenant.createdAt < range.end,
-    ).length
+    ? allTenants.filter(tenant => tenant.createdAt >= range.start && tenant.createdAt < range.end)
+        .length
     : null
 
   // Aproximación: no existe un campo deletedAt. Se infiere del updatedAt de
@@ -222,11 +216,11 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   // disponible sin agregar un campo nuevo al modelo.
   const deletedInPeriodApprox = range
     ? allTenants.filter(
-      tenant =>
-        tenant.status === 'deleted' &&
-        tenant.updatedAt >= range.start &&
-        tenant.updatedAt < range.end,
-    ).length
+        tenant =>
+          tenant.status === 'deleted' &&
+          tenant.updatedAt >= range.start &&
+          tenant.updatedAt < range.end,
+      ).length
     : null
 
   const lifecycle = {
@@ -238,9 +232,8 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     // Comercios con una suscripción efectivamente activa. Antes esto contaba
     // "plan distinto de free", que desde que no existe el plan gratuito sería
     // todos. Quien paga se distingue por el estado, no por el plan.
-    activeSubscriptionCount: tenants.filter(
-      tenant => tenant.subscriptionStatus === 'active',
-    ).length,
+    activeSubscriptionCount: tenants.filter(tenant => tenant.subscriptionStatus === 'active')
+      .length,
   }
 
   const unprofitable = tenantRows.filter(row => row.unprofitable)

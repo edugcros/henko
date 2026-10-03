@@ -40,11 +40,7 @@ const isLocalDevelopmentOrigin = origin => {
 
     return (
       protocol === 'http:' &&
-      (
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname.endsWith('.local')
-      )
+      (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.local'))
     )
   } catch {
     return false
@@ -109,15 +105,11 @@ const isTenantOriginAllowed = async hostnameCandidates => {
 
   const recurrirACacheVencida = causa => {
     if (cached) {
-      logger.warn(
-        `CORS: la base no respondió (${causa}); se usa la caché vencida para ${cacheKey}`,
-      )
+      logger.warn(`CORS: la base no respondió (${causa}); se usa la caché vencida para ${cacheKey}`)
       return cached.allowed
     }
 
-    const error = new Error(
-      `No se pudo verificar el origen contra la base (${causa})`,
-    )
+    const error = new Error(`No se pudo verificar el origen contra la base (${causa})`)
     error.code = 'CORS_TENANT_LOOKUP_UNAVAILABLE'
     throw error
   }
@@ -180,10 +172,7 @@ export const corsOptions = {
     'x-access-token',
   ],
 
-  exposedHeaders: [
-    'X-CSRF-Token',
-    'x-csrf-token',
-  ],
+  exposedHeaders: ['X-CSRF-Token', 'x-csrf-token'],
 
   async origin(origin, callback) {
     try {

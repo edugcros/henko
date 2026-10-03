@@ -16,9 +16,7 @@ import {
   createSubscriptionClient,
   createAuthorizableSubscription,
 } from '../services/subscriptionPaymentService.js'
-import {
-  getTenantMercadoPagoContext,
-} from '../services/paymentTenantConfigService.js'
+import { getTenantMercadoPagoContext } from '../services/paymentTenantConfigService.js'
 import {
   AI_PLANS,
   normalizePlan,
@@ -178,7 +176,9 @@ export const getSubscriptionConfig = async (req, res) => {
     }
 
     // Obtener plan actual del tenant desde la BD
-    const tenant = await Tenant.findById(tenantObjectId).select('plan subscriptionStatus trialEndsAt')
+    const tenant = await Tenant.findById(tenantObjectId).select(
+      'plan subscriptionStatus trialEndsAt',
+    )
     if (!tenant) {
       return sendResponse(res, 404, false, 'Comercio no encontrado')
     }
@@ -196,7 +196,11 @@ export const getSubscriptionConfig = async (req, res) => {
   } catch (error) {
     const statusCode = error?.statusCode || 500
     const message = error?.message || 'Error al obtener configuración'
-    logger.error('Error en getSubscriptionConfig:', { error: message, statusCode, stack: error?.stack })
+    logger.error('Error en getSubscriptionConfig:', {
+      error: message,
+      statusCode,
+      stack: error?.stack,
+    })
     return sendResponse(res, statusCode, false, message)
   }
 }
@@ -228,7 +232,13 @@ export const processSubscriptionPayment = async (req, res) => {
     // typo y cobraría un starter que el comercio no pidió. Antes se rechazaban
     // 'free' y 'enterprise' por nombre; ahora esos no existen y la lista es la
     // que manda.
-    if (!AI_PLANS.includes(String(plan || '').trim().toLowerCase())) {
+    if (
+      !AI_PLANS.includes(
+        String(plan || '')
+          .trim()
+          .toLowerCase(),
+      )
+    ) {
       return sendResponse(res, 400, false, 'Plan no válido para suscripción')
     }
 
@@ -461,23 +471,20 @@ export const processSubscriptionPayment = async (req, res) => {
 
     // Si el estado es pendiente, guardar pero no activar completamente
     if (subscriptionStatus === 'pending') {
-      await Tenant.findByIdAndUpdate(
-        tenant._id,
-        {
-          'integrations.subscriptionMercadoPago': {
-            subscriptionId: mpSubscription.id,
-            status: mpSubscription.status,
-            payerEmail: payer.email,
-            planSelected: normalizedPlan,
-            // `createdAt` no está en el schema y se descartaba; el campo que
-            // corresponde es subscribedAt. Guardar el id es lo que importa acá:
-            // es lo único que le permite al webhook encontrar a este comercio
-            // cuando Mercado Pago resuelva el pago pendiente.
-            subscribedAt: new Date(),
-            ...readProviderBillingDates(mpSubscription),
-          },
+      await Tenant.findByIdAndUpdate(tenant._id, {
+        'integrations.subscriptionMercadoPago': {
+          subscriptionId: mpSubscription.id,
+          status: mpSubscription.status,
+          payerEmail: payer.email,
+          planSelected: normalizedPlan,
+          // `createdAt` no está en el schema y se descartaba; el campo que
+          // corresponde es subscribedAt. Guardar el id es lo que importa acá:
+          // es lo único que le permite al webhook encontrar a este comercio
+          // cuando Mercado Pago resuelva el pago pendiente.
+          subscribedAt: new Date(),
+          ...readProviderBillingDates(mpSubscription),
         },
-      )
+      })
 
       return sendResponse(res, 202, true, 'Pago en proceso', {
         subscriptionId: mpSubscription.id,
@@ -550,7 +557,13 @@ export const changeSubscriptionPlan = async (req, res) => {
     }
 
     const normalizedNewPlan = normalizePlan(newPlan)
-    if (!AI_PLANS.includes(String(newPlan || '').trim().toLowerCase())) {
+    if (
+      !AI_PLANS.includes(
+        String(newPlan || '')
+          .trim()
+          .toLowerCase(),
+      )
+    ) {
       return sendResponse(res, 400, false, 'Plan no válido para cambio')
     }
 

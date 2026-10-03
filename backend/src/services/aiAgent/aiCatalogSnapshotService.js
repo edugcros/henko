@@ -47,38 +47,25 @@ const normalizeNumber = value => {
 const getProductStock = product => {
   if (Array.isArray(product?.variants) && product.variants.length > 0) {
     const variantStock = product.variants
-      .filter(
-        variant => variant?.isActive !== false && variant?.active !== false,
-      )
+      .filter(variant => variant?.isActive !== false && variant?.active !== false)
       .reduce((total, variant) => {
         return (
           total +
-          normalizeNumber(
-            variant?.stock ||
-              variant?.quantity ||
-              variant?.qty ||
-              variant?.inventory,
-          )
+          normalizeNumber(variant?.stock || variant?.quantity || variant?.qty || variant?.inventory)
         )
       }, 0)
 
     if (variantStock > 0) return variantStock
   }
 
-  return normalizeNumber(
-    product?.stock || product?.quantity || product?.qty || product?.inventory,
-  )
+  return normalizeNumber(product?.stock || product?.quantity || product?.qty || product?.inventory)
 }
 
 const buildProductMatch = tenantId => ({
   tenantId,
   $and: [
     {
-      $or: [
-        { isDeleted: false },
-        { isDeleted: null },
-        { isDeleted: { $exists: false } },
-      ],
+      $or: [{ isDeleted: false }, { isDeleted: null }, { isDeleted: { $exists: false } }],
     },
     {
       $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
@@ -113,11 +100,7 @@ const extractTopProducts = products => {
     .slice(0, 10)
     .map(product => ({
       id: String(product._id),
-      title:
-        product.title ||
-        product.name ||
-        product.nombre ||
-        'Producto sin nombre',
+      title: product.title || product.name || product.nombre || 'Producto sin nombre',
       slug: product.slug || '',
       brand: product.marca || product.brand || '',
       category: product.categoria || product.category || '',
@@ -180,10 +163,7 @@ export const buildCatalogSnapshotForTenant = async ({ tenantId } = {}) => {
                           $ifNull: [
                             '$$variant.quantity',
                             {
-                              $ifNull: [
-                                '$$variant.qty',
-                                { $ifNull: ['$$variant.inventory', 0] },
-                              ],
+                              $ifNull: ['$$variant.qty', { $ifNull: ['$$variant.inventory', 0] }],
                             },
                           ],
                         },
@@ -207,10 +187,7 @@ export const buildCatalogSnapshotForTenant = async ({ tenantId } = {}) => {
                 $ifNull: [
                   '$stock',
                   {
-                    $ifNull: [
-                      '$quantity',
-                      { $ifNull: ['$qty', { $ifNull: ['$inventory', 0] }] },
-                    ],
+                    $ifNull: ['$quantity', { $ifNull: ['$qty', { $ifNull: ['$inventory', 0] }] }],
                   },
                 ],
               },
@@ -227,18 +204,12 @@ export const buildCatalogSnapshotForTenant = async ({ tenantId } = {}) => {
           },
           categories: {
             $addToSet: {
-              $ifNull: [
-                '$categoria',
-                { $ifNull: ['$category', '$categoryName'] },
-              ],
+              $ifNull: ['$categoria', { $ifNull: ['$category', '$categoryName'] }],
             },
           },
           subcategories: {
             $addToSet: {
-              $ifNull: [
-                '$subcategoria',
-                { $ifNull: ['$subcategory', '$subcategoryName'] },
-              ],
+              $ifNull: ['$subcategoria', { $ifNull: ['$subcategory', '$subcategoryName'] }],
             },
           },
           brands: {
@@ -263,10 +234,10 @@ export const buildCatalogSnapshotForTenant = async ({ tenantId } = {}) => {
     visibleProducts: totalProducts,
     withStock,
     withoutStock: Math.max(0, totalProducts - withStock),
-    categories: uniq([
-      ...(summary.categories || []),
-      ...(summary.subcategories || []),
-    ]).slice(0, 80),
+    categories: uniq([...(summary.categories || []), ...(summary.subcategories || [])]).slice(
+      0,
+      80,
+    ),
     brands: uniq(summary.brands || []).slice(0, 80),
     topAvailableProducts: extractTopProducts(products),
     lastUpdatedAt: summary.lastUpdatedAt || null,

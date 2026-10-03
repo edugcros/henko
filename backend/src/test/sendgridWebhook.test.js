@@ -30,9 +30,8 @@ jest.unstable_mockModule('../../config/logger.js', () => ({
   },
 }))
 
-const { handleSendgridEvents, verifySendgridSignature } = await import(
-  '../controller/sendgridWebhookCtrl.js'
-)
+const { handleSendgridEvents, verifySendgridSignature } =
+  await import('../controller/sendgridWebhookCtrl.js')
 const config = await import('../config/subscriptionConfig.js')
 
 // Par de claves ECDSA propio: firmar de verdad es la única forma de saber que
@@ -226,8 +225,7 @@ describe('eventos de entrega de SendGrid · la ruta llega al controlador', () =>
     const { csrfExemptRoutes } = await import('../middlewares/csrfMiddleware.js')
 
     const exenta = csrfExemptRoutes.some(
-      ruta =>
-        ruta.method === 'POST' && ruta.path.endsWith(config.SENDGRID_WEBHOOK_PATH),
+      ruta => ruta.method === 'POST' && ruta.path.endsWith(config.SENDGRID_WEBHOOK_PATH),
     )
 
     expect(exenta).toBe(true)
@@ -236,9 +234,7 @@ describe('eventos de entrega de SendGrid · la ruta llega al controlador', () =>
   test('la ruta registrada es la misma que se declara', async () => {
     const { default: webhookRoutes } = await import('../routes/webhookRoutes.js')
 
-    const rutas = webhookRoutes.stack
-      .filter(capa => capa.route)
-      .map(capa => capa.route.path)
+    const rutas = webhookRoutes.stack.filter(capa => capa.route).map(capa => capa.route.path)
 
     expect(rutas).toContain(config.SENDGRID_WEBHOOK_ROUTE)
   })

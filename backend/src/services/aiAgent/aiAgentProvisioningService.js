@@ -82,7 +82,6 @@ const uniqueValues = values => {
   return [...map.values()]
 }
 
-
 const normalizeAttributeValueList = value => {
   if (value === undefined || value === null || value === '') return []
 
@@ -91,12 +90,7 @@ const normalizeAttributeValueList = value => {
   }
 
   if (typeof value === 'object') {
-    const direct =
-      value.value ??
-      value.label ??
-      value.name ??
-      value.text ??
-      value.title
+    const direct = value.value ?? value.label ?? value.name ?? value.text ?? value.title
 
     if (direct !== undefined && direct !== null && direct !== '') {
       return normalizeAttributeValueList(direct)
@@ -143,7 +137,11 @@ const getTenantLocale = tenant => {
   return clean(tenant?.locale || tenant?.language || DEFAULT_LANGUAGE) || DEFAULT_LANGUAGE
 }
 
-const buildHash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex')
+const buildHash = value =>
+  crypto
+    .createHash('sha256')
+    .update(String(value || ''))
+    .digest('hex')
 
 const buildLegacyFingerprint = ({ tenantId, key }) => {
   return `default:${tenantId}:${key}`.slice(0, 40)
@@ -161,10 +159,7 @@ const buildSuggestionQuery = ({ tenantId, key, namespace = 'default' }) => {
 
   return {
     tenantId,
-    $or: [
-      { fingerprint },
-      { fingerprint: legacyFingerprint },
-    ],
+    $or: [{ fingerprint }, { fingerprint: legacyFingerprint }],
   }
 }
 
@@ -175,10 +170,7 @@ const buildSuggestionQuery = ({ tenantId, key, namespace = 'default' }) => {
 // que Mongoose descartaba en silencio por no existir en el schema y que
 // ningún lector consultaba — puro ruido. El test de contrato
 // aiAgent.services.test.js falla si esto vuelve a divergir del schema.
-export const buildDefaultAiAgentPayload = ({
-  tenantId,
-  tenant = null,
-} = {}) => {
+export const buildDefaultAiAgentPayload = ({ tenantId, tenant = null } = {}) => {
   const storeName = getTenantName(tenant)
   const currency = getTenantCurrency(tenant)
   const locale = getTenantLocale(tenant)
@@ -287,8 +279,7 @@ const buildDefaultKnowledgeItems = ({ tenantId, tenant } = {}) => {
     {
       type: 'custom',
       title: 'Identidad del comercio',
-      content:
-        `El asistente representa a ${storeName}. Debe responder en español rioplatense claro, amable y profesional. Su objetivo es ayudar a comprar, resolver dudas y derivar a un asesor cuando falte información. Nunca debe decir que es dueño del comercio ni inventar políticas.`,
+      content: `El asistente representa a ${storeName}. Debe responder en español rioplatense claro, amable y profesional. Su objetivo es ayudar a comprar, resolver dudas y derivar a un asesor cuando falte información. Nunca debe decir que es dueño del comercio ni inventar políticas.`,
       tags: ['base', 'identidad', 'asistente', 'tono'],
     },
     {
@@ -322,8 +313,7 @@ const buildDefaultKnowledgeItems = ({ tenantId, tenant } = {}) => {
     {
       type: 'custom',
       title: 'Comparación de productos',
-      content:
-        `Para comparar productos, el asistente debe explicar diferencias por precio en ${currency}, stock, variantes, especificaciones visibles, garantía, envío y uso recomendado. Si no tiene datos suficientes para comparar, debe decirlo y pedir el dato faltante o derivar.`,
+      content: `Para comparar productos, el asistente debe explicar diferencias por precio en ${currency}, stock, variantes, especificaciones visibles, garantía, envío y uso recomendado. Si no tiene datos suficientes para comparar, debe decirlo y pedir el dato faltante o derivar.`,
       tags: ['catalogo', 'comparacion', 'razonamiento'],
     },
     {
@@ -440,7 +430,8 @@ const buildLearningSuggestions = ({ tenantId, tenant } = {}) => {
     {
       key: 'payment-policy',
       title: 'Completar medios de pago',
-      question: '¿Qué medios de pago, cuotas, financiación o promociones bancarias acepta el comercio?',
+      question:
+        '¿Qué medios de pago, cuotas, financiación o promociones bancarias acepta el comercio?',
       suggestedAnswer:
         'Completá los medios de pago reales: tarjetas, cuotas, transferencia, Mercado Pago, efectivo, financiación y restricciones.',
       priority: 'high',
@@ -787,7 +778,9 @@ const buildCatalogKnowledgeContent = ({ snapshot, tenant } = {}) => {
   const currency = getTenantCurrency(tenant)
 
   const attributeSummary = countValues(
-    safeArray(snapshot?.attributeRows).map(row => `${row.label || row.key}: ${row.value}${row.unit ? ` ${row.unit}` : ''}`),
+    safeArray(snapshot?.attributeRows).map(
+      row => `${row.label || row.key}: ${row.value}${row.unit ? ` ${row.unit}` : ''}`,
+    ),
   ).slice(0, MAX_ATTRIBUTES_IN_SUMMARY)
 
   const categoryText = safeArray(snapshot?.categories)
@@ -810,9 +803,7 @@ const buildCatalogKnowledgeContent = ({ snapshot, tenant } = {}) => {
     .map(item => `- ${item.value} (${item.count})`)
     .join('\n')
 
-  const attributeText = attributeSummary
-    .map(item => `- ${item.value} (${item.count})`)
-    .join('\n')
+  const attributeText = attributeSummary.map(item => `- ${item.value} (${item.count})`).join('\n')
 
   const productText = safeArray(snapshot?.productExamples)
     .slice(0, 40)
@@ -950,18 +941,22 @@ const ensureCatalogPreferencesForTenant = async ({ tenantId } = {}) => {
   const snapshot = await fetchCatalogSnapshot({ tenantId })
 
   const preferences = [
-    ...safeArray(snapshot.categories).slice(0, MAX_PREFERENCES_PER_TYPE).map(item => ({
-      rawInput: item.value,
-      correctedValue: item.value,
-      type: 'category',
-      metadata: { count: item.count },
-    })),
-    ...safeArray(snapshot.brands).slice(0, MAX_PREFERENCES_PER_TYPE).map(item => ({
-      rawInput: item.value,
-      correctedValue: item.value,
-      type: 'brand',
-      metadata: { count: item.count },
-    })),
+    ...safeArray(snapshot.categories)
+      .slice(0, MAX_PREFERENCES_PER_TYPE)
+      .map(item => ({
+        rawInput: item.value,
+        correctedValue: item.value,
+        type: 'category',
+        metadata: { count: item.count },
+      })),
+    ...safeArray(snapshot.brands)
+      .slice(0, MAX_PREFERENCES_PER_TYPE)
+      .map(item => ({
+        rawInput: item.value,
+        correctedValue: item.value,
+        type: 'brand',
+        metadata: { count: item.count },
+      })),
   ]
 
   const results = []
@@ -982,19 +977,10 @@ const ensureCatalogPreferencesForTenant = async ({ tenantId } = {}) => {
   return results.filter(Boolean)
 }
 
-export const provisionAiAgentDefaultsForTenant = async ({
-  tenantId,
-  tenant = null,
-} = {}) => {
+export const provisionAiAgentDefaultsForTenant = async ({ tenantId, tenant = null } = {}) => {
   if (!tenantId) return null
 
-  const [
-    campaignRules,
-    knowledge,
-    catalogKnowledge,
-    suggestions,
-    preferences,
-  ] = await Promise.all([
+  const [campaignRules, knowledge, catalogKnowledge, suggestions, preferences] = await Promise.all([
     ensureDefaultCampaignRulesForTenant({ tenantId }),
     ensureDefaultKnowledgeForTenant({ tenantId, tenant }),
     ensureCatalogKnowledgeForTenant({ tenantId, tenant }),
@@ -1040,9 +1026,7 @@ export const getOrCreateAiAgentForTenant = async ({
     throw new Error('tenantId es obligatorio para provisionar AiAgent')
   }
 
-  const existingAgent = await AiAgent.findOne({ tenantId })
-    .setOptions({ tenantId })
-    .lean()
+  const existingAgent = await AiAgent.findOne({ tenantId }).setOptions({ tenantId }).lean()
 
   if (existingAgent) {
     if (refreshAgentConfig) {
@@ -1058,9 +1042,7 @@ export const getOrCreateAiAgentForTenant = async ({
       await provisionAiAgentDefaultsForTenant({ tenantId, tenant })
     }
 
-    return AiAgent.findOne({ tenantId })
-      .setOptions({ tenantId })
-      .lean()
+    return AiAgent.findOne({ tenantId }).setOptions({ tenantId }).lean()
   }
 
   const payload = buildDefaultAiAgentPayload({

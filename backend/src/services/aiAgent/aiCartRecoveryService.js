@@ -52,9 +52,7 @@ const getUserName = user => {
 const resolveTenantDomain = tenant => {
   const domains = Array.isArray(tenant?.domains) ? tenant.domains : []
 
-  const primary = domains.find(
-    domain => domain?.status === 'active' && domain?.isPrimary,
-  )
+  const primary = domains.find(domain => domain?.status === 'active' && domain?.isPrimary)
   const firstActive = domains.find(domain => domain?.status === 'active')
   const selected = primary || firstActive
 
@@ -64,10 +62,7 @@ const resolveTenantDomain = tenant => {
 const buildCheckoutUrl = ({ tenant, recoveryId }) => {
   const domain = resolveTenantDomain(tenant)
   const explicitBaseUrl =
-    process.env.PUBLIC_STOREFRONT_URL ||
-    process.env.FRONTEND_URL ||
-    process.env.WEBSITE_URL ||
-    ''
+    process.env.PUBLIC_STOREFRONT_URL || process.env.FRONTEND_URL || process.env.WEBSITE_URL || ''
 
   if (explicitBaseUrl && explicitBaseUrl.includes('{domain}') && domain) {
     const resolved = explicitBaseUrl.replaceAll('{domain}', domain)
@@ -75,17 +70,11 @@ const buildCheckoutUrl = ({ tenant, recoveryId }) => {
   }
 
   if (domain) {
-    const protocol =
-      domain.includes('localhost') || domain.includes('.local')
-        ? 'http'
-        : 'https'
+    const protocol = domain.includes('localhost') || domain.includes('.local') ? 'http' : 'https'
     return `${protocol}://${domain.replace(/\/+$/, '')}/checkout?recovery=${recoveryId}`
   }
 
-  if (
-    explicitBaseUrl &&
-    process.env.AI_ALLOW_GLOBAL_STOREFRONT_URL === 'true'
-  ) {
+  if (explicitBaseUrl && process.env.AI_ALLOW_GLOBAL_STOREFRONT_URL === 'true') {
     return `${explicitBaseUrl.replace(/\/+$/, '')}/checkout?recovery=${recoveryId}`
   }
 
@@ -112,11 +101,7 @@ const getVariantSnapshot = item => {
   return {
     cartKey: item?.cartKey || null,
     variantId: item?.variantId || item?.selectedVariant?.id || null,
-    variantSku:
-      item?.variantSku ||
-      item?.variantSKU ||
-      item?.selectedVariant?.sku ||
-      null,
+    variantSku: item?.variantSku || item?.variantSKU || item?.selectedVariant?.sku || null,
     selectedAttributes:
       item?.selectedAttributes ||
       item?.variantAttributes ||
@@ -148,7 +133,13 @@ const getVariantSnapshot = item => {
  */
 export const getCartRecoveryReadiness = async ({ tenantId } = {}) => {
   if (!tenantId) {
-    return { ready: false, reason: 'tenant_missing', agentEnabled: false, whatsappEnabled: false, hasActiveRule: false }
+    return {
+      ready: false,
+      reason: 'tenant_missing',
+      agentEnabled: false,
+      whatsappEnabled: false,
+      hasActiveRule: false,
+    }
   }
 
   const [agent, rules] = await Promise.all([
@@ -227,9 +218,7 @@ export const createCartRecoveryFromCart = async ({
       .setOptions({ tenantId })
       .lean(),
 
-    userId
-      ? User.findOne({ _id: userId, tenantId }).setOptions({ tenantId }).lean()
-      : null,
+    userId ? User.findOne({ _id: userId, tenantId }).setOptions({ tenantId }).lean() : null,
   ])
 
   if (!agent || !user) {
@@ -275,9 +264,7 @@ export const createCartRecoveryFromCart = async ({
 
   const productIds = [
     ...new Set(
-      cartItems
-        .map(item => normalizeProductId(item?.productId || item?.product))
-        .filter(Boolean),
+      cartItems.map(item => normalizeProductId(item?.productId || item?.product)).filter(Boolean),
     ),
   ]
 
@@ -292,9 +279,7 @@ export const createCartRecoveryFromCart = async ({
     )
     .lean()
 
-  const productMap = new Map(
-    products.map(product => [String(product._id), product]),
-  )
+  const productMap = new Map(products.map(product => [String(product._id), product]))
 
   const snapshotItems = cartItems
     .map(item => {
@@ -302,9 +287,7 @@ export const createCartRecoveryFromCart = async ({
       if (!productId) return null
 
       const product = productMap.get(String(productId))
-      const price = Number(
-        item?.price ?? item?.selectedVariant?.price ?? product?.price ?? 0,
-      )
+      const price = Number(item?.price ?? item?.selectedVariant?.price ?? product?.price ?? 0)
       const quantity = Math.max(toSafePositiveNumber(item?.quantity || item?.count, 1), 1)
       const title = clean(item?.title || product?.title || 'Producto')
       const slug = clean(product?.slug)
@@ -327,10 +310,7 @@ export const createCartRecoveryFromCart = async ({
 
   const subtotalCents =
     toCents(cart.totalAfterDiscount || cart.cartTotal) ||
-    snapshotItems.reduce(
-      (total, item) => total + item.priceCents * item.quantity,
-      0,
-    )
+    snapshotItems.reduce((total, item) => total + item.priceCents * item.quantity, 0)
 
   if (subtotalCents < toSafePositiveNumber(rule.trigger?.minCartAmountCents, 0)) {
     return null
@@ -362,8 +342,7 @@ export const createCartRecoveryFromCart = async ({
         cartSnapshot: {
           items: snapshotItems,
           subtotalCents,
-          currency:
-            clean(cartItems[0]?.currency || tenant?.currency || 'ARS') || 'ARS',
+          currency: clean(cartItems[0]?.currency || tenant?.currency || 'ARS') || 'ARS',
           checkoutUrl,
         },
         status: 'scheduled',
@@ -371,10 +350,7 @@ export const createCartRecoveryFromCart = async ({
         scheduledAt: addMinutes(new Date(), rule.trigger?.delayMinutes || 30),
         expiresAt: addMinutes(
           new Date(),
-          toSafePositiveNumber(
-            process.env.AI_CART_RECOVERY_EXPIRE_MINUTES,
-            60 * 24 * 7,
-          ),
+          toSafePositiveNumber(process.env.AI_CART_RECOVERY_EXPIRE_MINUTES, 60 * 24 * 7),
         ),
         attempts: 0,
         metadata: {
@@ -438,10 +414,9 @@ export const markCartRecoveryConverted = async ({ order, tenantId }) => {
         { tenantId, type: 'abandoned_cart' },
         { $inc: { 'stats.conversions': 1 } },
       ).setOptions({ tenantId }),
-      AiAgent.updateOne(
-        { tenantId },
-        { $inc: { 'stats.cartRecoveriesConverted': 1 } },
-      ).setOptions({ tenantId }),
+      AiAgent.updateOne({ tenantId }, { $inc: { 'stats.cartRecoveriesConverted': 1 } }).setOptions({
+        tenantId,
+      }),
       // Misma señal que markOrderAiInfluenced deja en el mismo evento de
       // PURCHASE (mismo eventId determinístico) — permite calcular "valor
       // generado por HENKO" contando cada orden una sola vez, sin duplicar

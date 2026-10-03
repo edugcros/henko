@@ -5,16 +5,7 @@ import { env } from './env.js'
 const getIssuer = () => env.jwtIssuer || 'commerce-platform-api'
 const getAudience = () => env.jwtAudience || 'commerce-platform-client'
 const TOKEN_VERSION = 1
-const RESERVED_CLAIMS = new Set([
-  'sub',
-  'iss',
-  'aud',
-  'iat',
-  'exp',
-  'nbf',
-  'jti',
-  'ver',
-])
+const RESERVED_CLAIMS = new Set(['sub', 'iss', 'aud', 'iat', 'exp', 'nbf', 'jti', 'ver'])
 
 const sanitizeExtraPayload = payload => {
   return Object.fromEntries(

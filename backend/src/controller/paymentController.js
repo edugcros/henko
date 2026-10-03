@@ -3,9 +3,7 @@
 
 import crypto from 'node:crypto'
 
-import Order, {
-  PAYMENT_STATUS,
-} from '../models/orderModel.js'
+import Order, { PAYMENT_STATUS } from '../models/orderModel.js'
 
 import { Money } from '../utils/money.js'
 import {
@@ -26,12 +24,12 @@ import {
   reserveStockAtomic,
   restoreCommittedStockOnRefundIfNeeded,
 } from '../services/paymentOrderOpsService.js'
-import {
-  processPendingEmails,
-  queuePaymentEmails,
-} from '../services/paymentEmailService.js'
+import { processPendingEmails, queuePaymentEmails } from '../services/paymentEmailService.js'
 import { sendMetaPurchaseEvent } from '../services/meta/metaCapiService.js'
-import { recordServerPurchaseEvent, markOrderAiInfluenced } from '../services/commerceEvents/commerceEventService.js'
+import {
+  recordServerPurchaseEvent,
+  markOrderAiInfluenced,
+} from '../services/commerceEvents/commerceEventService.js'
 import { markCartRecoveryConverted } from '../services/aiAgent/aiCartRecoveryService.js'
 import { consumeOrderCouponIfNeeded } from '../services/orderCouponService.js'
 import {
@@ -64,8 +62,7 @@ import logger from '../../config/logger.js'
 // =====================================================
 
 const isProd = process.env.NODE_ENV === 'production'
-const isPaymentDebugEnabled =
-  !isProd && process.env.PAYMENT_DEBUG_RESPONSE === 'true'
+const isPaymentDebugEnabled = !isProd && process.env.PAYMENT_DEBUG_RESPONSE === 'true'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DEFAULT_PAYMENT_LOCK_TTL_SECONDS = 30
@@ -93,10 +90,7 @@ const getSafeErrorMessage = error => {
 }
 
 const isMercadoPagoOrder = order => {
-  return (
-    sanitizeString(order?.paymentIntent?.provider).toLowerCase() ===
-    'mercadopago'
-  )
+  return sanitizeString(order?.paymentIntent?.provider).toLowerCase() === 'mercadopago'
 }
 
 const buildStableHash = value => {
@@ -169,13 +163,7 @@ const safelyReleaseReservedStock = async ({ order, tenantId, reason }) => {
   }
 }
 
-const queueApprovedPaymentSideEffects = async ({
-  order,
-  tenantId,
-  userId,
-  payer,
-  req,
-}) => {
+const queueApprovedPaymentSideEffects = async ({ order, tenantId, userId, payer, req }) => {
   await clearUserCartAfterApprovedPayment({
     userId: userId || order.orderby,
     tenantId,
@@ -205,13 +193,7 @@ const queueApprovedPaymentSideEffects = async ({
   })
 }
 
-const commitApprovedPaymentIfNeeded = async ({
-  order,
-  tenantId,
-  userId,
-  payer,
-  req,
-}) => {
+const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, req }) => {
   if (order.paymentStatus !== PAYMENT_STATUS.APPROVED) return null
 
   // Reclamo atómico: processPayment, el webhook y el polling de
@@ -258,11 +240,7 @@ const commitApprovedPaymentIfNeeded = async ({
   })
 }
 
-const releaseRejectedPaymentReservationIfNeeded = async ({
-  order,
-  tenantId,
-  previousStatus,
-}) => {
+const releaseRejectedPaymentReservationIfNeeded = async ({ order, tenantId, previousStatus }) => {
   if (
     previousStatus === PAYMENT_STATUS.PENDING &&
     NEGATIVE_PAYMENT_STATUSES.has(order.paymentStatus) &&
@@ -274,15 +252,11 @@ const releaseRejectedPaymentReservationIfNeeded = async ({
   }
 }
 
-
 // =====================================================
 // TENANT CONTEXT
 // =====================================================
 
-const resolveTenantContext = (
-  req,
-  { allowPrivilegedRoleBypass = false } = {},
-) => {
+const resolveTenantContext = (req, { allowPrivilegedRoleBypass = false } = {}) => {
   return resolveAuthorizedTenantFromRequest(req, {
     allowPrivilegedRoleBypass,
     missingTenantMessage: 'TENANT_INVALIDO: No se pudo identificar el comercio',
@@ -474,11 +448,7 @@ export const processPayment = async (req, res) => {
       order.stockReservedAt = new Date()
     }
 
-    const {
-      paymentData,
-      transactionAmount,
-      validatedInstallments,
-    } = buildMercadoPagoPaymentData({
+    const { paymentData, transactionAmount, validatedInstallments } = buildMercadoPagoPaymentData({
       order,
       userId,
       tenantId,
@@ -691,10 +661,7 @@ export const mpWebhook = async (req, res) => {
       return
     }
 
-    const paymentId =
-      req.body?.data?.id ||
-      req.query['data.id'] ||
-      req.query.id
+    const paymentId = req.body?.data?.id || req.query['data.id'] || req.query.id
 
     if (!paymentId) {
       logger.warn('⚠️ Webhook sin paymentId')
@@ -831,13 +798,7 @@ export const mpWebhook = async (req, res) => {
       await order.save({ tenantId })
     }
 
-    await markWebhookProcessed(
-      webhookId,
-      paymentId,
-      tenantId,
-      order._id,
-      mpInfo.status,
-    )
+    await markWebhookProcessed(webhookId, paymentId, tenantId, order._id, mpInfo.status)
 
     logger.info('Webhook: orden actualizada', {
       orderId: order._id?.toString?.(),
@@ -912,12 +873,9 @@ export const getPaymentStatus = async (req, res) => {
     }
 
     let providerRawStatus =
-      sanitizeString(order.paymentIntent?.providerRawStatus).toLowerCase() ||
-      null
-    let statusDetail =
-      sanitizeString(order.paymentIntent?.statusDetail) || null
-    const providerPaymentId =
-      sanitizeString(order.paymentIntent?.providerPaymentId) || null
+      sanitizeString(order.paymentIntent?.providerRawStatus).toLowerCase() || null
+    let statusDetail = sanitizeString(order.paymentIntent?.statusDetail) || null
+    const providerPaymentId = sanitizeString(order.paymentIntent?.providerPaymentId) || null
 
     if (isMercadoPagoOrder(order) && providerPaymentId) {
       reconciliationResourceId = `reconcile:${tenantId}:${orderId}`
@@ -935,8 +893,7 @@ export const getPaymentStatus = async (req, res) => {
           return res.status(503).json({
             success: false,
             code: 'MP_CREDENTIALS_NOT_FOUND',
-            message:
-              'Mercado Pago no está configurado correctamente para este comercio.',
+            message: 'Mercado Pago no está configurado correctamente para este comercio.',
           })
         }
 
@@ -967,12 +924,9 @@ export const getPaymentStatus = async (req, res) => {
             order,
             mpStatus: providerRawStatus,
             providerPaymentId,
-            paymentMethodId:
-              mpInfo.payment_method_id || order.paymentIntent?.method,
-            installments:
-              mpInfo.installments ?? order.paymentIntent?.installments,
-            payerEmail:
-              mpInfo.payer?.email || order.paymentIntent?.payerEmail,
+            paymentMethodId: mpInfo.payment_method_id || order.paymentIntent?.method,
+            installments: mpInfo.installments ?? order.paymentIntent?.installments,
+            payerEmail: mpInfo.payer?.email || order.paymentIntent?.payerEmail,
             statusDetail,
             providerRawStatus,
             ...extractMercadoPagoFees(mpInfo),
@@ -1042,11 +996,7 @@ export const getPaymentStatus = async (req, res) => {
       debug: buildDebugResponse(error),
     })
   } finally {
-    if (
-      reconciliationLockAcquired &&
-      reconciliationResourceId &&
-      tenantId
-    ) {
+    if (reconciliationLockAcquired && reconciliationResourceId && tenantId) {
       await releasePaymentLock(reconciliationResourceId, tenantId)
     }
   }

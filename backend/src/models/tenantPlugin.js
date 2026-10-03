@@ -60,9 +60,7 @@ const shouldIgnoreTenant = context => {
   const options = getQueryOptions(context)
 
   return Boolean(
-    options.ignoreTenant ||
-    options.skipTenant ||
-    context?._mongooseOptions?.ignoreTenant,
+    options.ignoreTenant || options.skipTenant || context?._mongooseOptions?.ignoreTenant,
   )
 }
 
@@ -129,11 +127,7 @@ const getTenantIdFromQueryContext = context => {
   const requestContext = getTenantContext()
 
   return (
-    options.tenantId ||
-    context?._tenantId ||
-    requestContext?.tenantId ||
-    filter.tenantId ||
-    null
+    options.tenantId || context?._tenantId || requestContext?.tenantId || filter.tenantId || null
   )
 }
 
@@ -184,13 +178,7 @@ const assertValidTenantUpsert = ({ update, tenantId, modelName }) => {
 const assertNoTenantMutationInNestedOperators = update => {
   if (!update) return
 
-  const operators = [
-    '$push',
-    '$addToSet',
-    '$pull',
-    '$pullAll',
-    '$pop',
-  ]
+  const operators = ['$push', '$addToSet', '$pull', '$pullAll', '$pop']
 
   for (const operator of operators) {
     if (!update[operator]) continue
@@ -335,7 +323,10 @@ export const tenantPlugin = (schema, options = {}) => {
   }
 
   schema.pre(['find', 'findOne', 'countDocuments'], applyTenantFilter)
-  schema.pre(['findOneAndUpdate', 'updateMany', 'updateOne', 'deleteMany', 'deleteOne'], applyTenantUpdateGuard)
+  schema.pre(
+    ['findOneAndUpdate', 'updateMany', 'updateOne', 'deleteMany', 'deleteOne'],
+    applyTenantUpdateGuard,
+  )
 
   schema.pre('save', function validateTenantOnSave(next) {
     try {
@@ -373,16 +364,16 @@ export const tenantPlugin = (schema, options = {}) => {
     const pipeline = this.pipeline()
     const pipelineTenantId = getTenantIdFromPipeline(pipeline)
     const normalizedTenantId = ensureObjectId(
-      options.tenantId ||
-        requestContext?.tenantId ||
-        pipelineTenantId,
+      options.tenantId || requestContext?.tenantId || pipelineTenantId,
     )
 
     if (!normalizedTenantId) {
-      return next(createTenantError({
-        code: 'TENANT_INVALID',
-        message: '[Tenant] Missing or invalid tenantId for aggregate operation',
-      }))
+      return next(
+        createTenantError({
+          code: 'TENANT_INVALID',
+          message: '[Tenant] Missing or invalid tenantId for aggregate operation',
+        }),
+      )
     }
 
     if (!pipelineTenantId) {
@@ -396,4 +387,3 @@ export const tenantPlugin = (schema, options = {}) => {
 // =====================================================
 // Query helper explícito
 // =====================================================
-

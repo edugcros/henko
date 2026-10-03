@@ -72,7 +72,8 @@ export function calculateProfitability(costs, priceStats) {
       version: PROFITABILITY_VERSION,
       viable: false,
       reason: 'DEDUCCIONES_EXCEDEN_INGRESO',
-      message: 'Las comisiones e impuestos declarados suman 100% o más del precio de venta. Revisá esos porcentajes.',
+      message:
+        'Las comisiones e impuestos declarados suman 100% o más del precio de venta. Revisá esos porcentajes.',
       totalUnitCost,
       breakEvenPrice: null,
       scenarios: null,
@@ -86,11 +87,11 @@ export function calculateProfitability(costs, priceStats) {
 
   const scenarios = priceStats
     ? {
-      atMin: evaluatePrice(priceStats.min, { totalUnitCost, deductionRate }),
-      atP25: evaluatePrice(priceStats.p25, { totalUnitCost, deductionRate }),
-      atMedian: evaluatePrice(priceStats.median, { totalUnitCost, deductionRate }),
-      atP75: evaluatePrice(priceStats.p75, { totalUnitCost, deductionRate }),
-    }
+        atMin: evaluatePrice(priceStats.min, { totalUnitCost, deductionRate }),
+        atP25: evaluatePrice(priceStats.p25, { totalUnitCost, deductionRate }),
+        atMedian: evaluatePrice(priceStats.median, { totalUnitCost, deductionRate }),
+        atP75: evaluatePrice(priceStats.p75, { totalUnitCost, deductionRate }),
+      }
     : null
 
   const targetPrice = positiveNumber(costs?.targetPrice)
@@ -142,14 +143,16 @@ function assessMarketPosition(breakEvenPrice, priceStats) {
   if (breakEvenPrice > priceStats.max) {
     return {
       level: 'INVIABLE',
-      message: 'Tu costo supera el precio más alto del mercado. No hay precio al que puedas vender con ganancia.',
+      message:
+        'Tu costo supera el precio más alto del mercado. No hay precio al que puedas vender con ganancia.',
     }
   }
 
   if (breakEvenPrice > median) {
     return {
       level: 'MUY_AJUSTADO',
-      message: 'Necesitás vender por encima de la mediana del mercado solo para no perder. Competir por precio no es opción.',
+      message:
+        'Necesitás vender por encima de la mediana del mercado solo para no perder. Competir por precio no es opción.',
     }
   }
 
@@ -158,7 +161,8 @@ function assessMarketPosition(breakEvenPrice, priceStats) {
   if (p25 !== null && p25 !== undefined && breakEvenPrice > p25) {
     return {
       level: 'AJUSTADO',
-      message: 'Tenés margen, pero quedás en la mitad cara del mercado. Vas a competir contra opciones más baratas.',
+      message:
+        'Tenés margen, pero quedás en la mitad cara del mercado. Vas a competir contra opciones más baratas.',
     }
   }
 
@@ -171,7 +175,8 @@ function assessMarketPosition(breakEvenPrice, priceStats) {
 
   return {
     level: 'MUY_COMPETITIVO',
-    message: 'Tu costo queda por debajo del precio más bajo publicado. Tenés espacio amplio de maniobra.',
+    message:
+      'Tu costo queda por debajo del precio más bajo publicado. Tenés espacio amplio de maniobra.',
   }
 }
 

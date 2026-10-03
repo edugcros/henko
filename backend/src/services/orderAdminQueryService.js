@@ -10,11 +10,7 @@ const escapeRegex = value => {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-export const buildAdminOrdersQuery = async ({
-  tenantObjectId,
-  queryParams,
-  money,
-}) => {
+export const buildAdminOrdersQuery = async ({ tenantObjectId, queryParams, money }) => {
   const {
     status,
     paymentStatus,
@@ -65,11 +61,7 @@ export const buildAdminOrdersQuery = async ({
 
     const users = await User.find({
       tenantId: tenantObjectId,
-      $or: [
-        { email: safeRegex },
-        { firstname: safeRegex },
-        { lastname: safeRegex },
-      ],
+      $or: [{ email: safeRegex }, { firstname: safeRegex }, { lastname: safeRegex }],
     })
       .setOptions({ tenantId: String(tenantObjectId) })
       .select('_id')

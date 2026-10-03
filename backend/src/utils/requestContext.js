@@ -106,14 +106,10 @@ export const resolveAuthorizedTenantFromRequest = (
   } = {},
 ) => {
   const rawDomainTenantId = req.tenantId || req.tenant?._id || null
-  const domainTenantId = isValidObjectId(rawDomainTenantId)
-    ? String(rawDomainTenantId)
-    : null
+  const domainTenantId = isValidObjectId(rawDomainTenantId) ? String(rawDomainTenantId) : null
 
   const rawUserTenantId = req.user?.tenantId || req.user?.tenant?._id || null
-  const userTenantId = isValidObjectId(rawUserTenantId)
-    ? String(rawUserTenantId)
-    : null
+  const userTenantId = isValidObjectId(rawUserTenantId) ? String(rawUserTenantId) : null
 
   if (requireUserTenant && !userTenantId) {
     const error = new Error(missingUserTenantMessage)

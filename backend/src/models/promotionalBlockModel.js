@@ -323,10 +323,10 @@ promotionalBlockSchema.pre('validate', function promotionalBlockPreValidate(next
 promotionalBlockSchema.methods.isCurrentlyPublic = function isCurrentlyPublic(now = new Date()) {
   return Boolean(
     !this.isDeleted &&
-      this.isActive &&
-      this.visibility === 'public' &&
-      now >= this.startDate &&
-      now <= this.endDate,
+    this.isActive &&
+    this.visibility === 'public' &&
+    now >= this.startDate &&
+    now <= this.endDate,
   )
 }
 
@@ -352,7 +352,6 @@ promotionalBlockSchema.plugin(tenantPlugin, {
 // =====================================================
 
 const PromotionalBlock =
-  mongoose.models.PromotionalBlock ||
-  mongoose.model('PromotionalBlock', promotionalBlockSchema)
+  mongoose.models.PromotionalBlock || mongoose.model('PromotionalBlock', promotionalBlockSchema)
 
 export default PromotionalBlock

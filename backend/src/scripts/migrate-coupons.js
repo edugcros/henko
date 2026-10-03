@@ -11,11 +11,14 @@ const cleanCouponIndexes = async () => {
 
     // Obtener índices actuales
     const indexes = await collection.indexes()
-    console.log('📋 Índices actuales:', indexes.map(i => i.name))
+    console.log(
+      '📋 Índices actuales:',
+      indexes.map(i => i.name),
+    )
 
     // Eliminar índices obsoletos
     const obsoleteIndexes = ['name_1', 'code_1'] // code_1 sin tenant es obsoleto
-    
+
     for (const indexName of obsoleteIndexes) {
       try {
         await collection.dropIndex(indexName)
@@ -35,11 +38,13 @@ const cleanCouponIndexes = async () => {
 
     // Verificar índices finales
     const finalIndexes = await collection.indexes()
-    console.log('📋 Índices finales:', finalIndexes.map(i => i.name))
+    console.log(
+      '📋 Índices finales:',
+      finalIndexes.map(i => i.name),
+    )
 
     await mongoose.disconnect()
     console.log('👋 Desconectado')
-
   } catch (error) {
     console.error('❌ Error:', error)
     process.exit(1)

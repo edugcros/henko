@@ -39,14 +39,10 @@ const PaymentAttemptSchema = new Schema(
   { timestamps: true },
 )
 
-PaymentAttemptSchema.index(
-  { tenantId: 1, userId: 1, resourceKey: 1 },
-  { unique: true },
-)
+PaymentAttemptSchema.index({ tenantId: 1, userId: 1, resourceKey: 1 }, { unique: true })
 
 const PaymentAttempt =
-  mongoose.models.PaymentAttempt ||
-  mongoose.model('PaymentAttempt', PaymentAttemptSchema)
+  mongoose.models.PaymentAttempt || mongoose.model('PaymentAttempt', PaymentAttemptSchema)
 
 const DistributedLockSchema = new Schema(
   {
@@ -79,8 +75,7 @@ const DistributedLockSchema = new Schema(
 )
 
 const DistributedLock =
-  mongoose.models.DistributedLock ||
-  mongoose.model('DistributedLock', DistributedLockSchema)
+  mongoose.models.DistributedLock || mongoose.model('DistributedLock', DistributedLockSchema)
 
 const sanitizeString = (value, fallback = '') => {
   if (typeof value !== 'string') return fallback
