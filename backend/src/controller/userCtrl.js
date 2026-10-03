@@ -14,7 +14,7 @@ import { verifyRefreshToken, hashRefreshJti } from '../../config/generateRefresh
 import { generateAccessToken } from '../../config/generateAccessToken.js'
 import { generateRefreshToken } from '../../config/generateRefreshToken.js'
 
-import { buildFrontendUrl } from '../utils/frontendUrl.js'
+import { buildAdminUrl, buildFrontendUrl } from '../utils/frontendUrl.js'
 import { withOptionalTransaction } from '../utils/withOptionalTransaction.js'
 import { normalizeArgentinePhone } from '../utils/normalizePhone.js'
 import {
@@ -1556,9 +1556,44 @@ export const forgotPasswordLimiter = rateLimit({
   },
 })
 
+/**
+ * EN EL PANEL COMPARTIDO EL COMERCIO SALE DEL EMAIL, NO DE LA SESIÓN
+ *
+ * `tenantMiddleware` resuelve el comercio desde la sesión cuando el host es el
+ * panel compartido, y lo deja vacío si no hay sesión —lo cual es correcto: por
+ * ahí pasa el login—. Pero recuperar la contraseña es, por definición, lo que
+ * se hace SIN sesión.
+ *
+ * El efecto medido en producción: dos intentos devolvieron 200 y no mandaron
+ * nada. Salían en la primera guarda de abajo, que no deja rastro en el log —
+ * ni siquiera el aviso de "email no encontrado"—. El usuario leía "te enviamos
+ * un enlace" y no llegaba nunca. Recuperar contraseña desde el panel estaba
+ * muerto, en silencio.
+ *
+ * El login ya tenía esto resuelto con `resolveAdminTenantFromRequest`, que en
+ * el panel deduce el comercio a partir del email. Se reusa tal cual, con su
+ * garantía: filtra por `role: 'admin'`, y un email de admin es único en toda
+ * la plataforma porque el alta lo rechaza si existe en cualquier comercio. Dos
+ * COMPRADORES sí pueden repetir email entre tiendas, y por eso el filtro de
+ * rol no es decorativo.
+ *
+ * Desde la tienda nada cambia: ahí el comercio se resuelve por dominio y
+ * `req.tenantId` llega como siempre.
+ */
 export const forgotPassword = expressAsyncHandler(async (req, res) => {
   const email = normalizeEmail(req.body?.email)
-  const tenantId = req.tenantId
+
+  let tenantId = req.tenantId
+  let tenant = req.tenant || null
+
+  if (!tenantId && email && req.isPlatformAdminSurface) {
+    const porEmail = await resolveAdminTenantFromRequest(req, email)
+
+    if (porEmail) {
+      tenant = porEmail
+      tenantId = porEmail._id
+    }
+  }
 
   if (!email || !tenantId) {
     return sendResponse(res, 200, true, 'Si el correo existe, un enlace será enviado.')
@@ -1576,7 +1611,19 @@ export const forgotPassword = expressAsyncHandler(async (req, res) => {
   user.passwordResetExpires = Date.now() + PASSWORD_RESET_TTL_MS
   await user.save({ validateBeforeSave: false })
 
-  const resetUrl = buildFrontendUrl(`/reset-password/${resetToken}`, req)
+  // EL ENLACE TIENE QUE APUNTAR A LA APP DONDE ESA PERSONA TIENE CUENTA
+  //
+  // `buildFrontendUrl` arma la URL de la TIENDA. Para un admin eso lo manda a
+  // un sitio donde no tiene usuario: exactamente el error que ya documenta
+  // `getAdminBaseUrl` ("terminaba en un 'ya podés iniciar sesión' sobre la
+  // aplicación equivocada"). El rol es el discriminador correcto y no la
+  // superficie desde la que pidió: un admin necesita el enlace al panel aunque
+  // haya hecho el pedido desde otro lado.
+  const rutaDeReseteo = `/reset-password/${resetToken}`
+  const resetUrl =
+    user.role === 'admin'
+      ? buildAdminUrl(rutaDeReseteo, req, tenant)
+      : buildFrontendUrl(rutaDeReseteo, req, tenant)
 
   if (!shouldSendTransactionalEmail()) {
     logger.info(`Correo de recuperación omitido en test para ${user.email}`)
@@ -1584,7 +1631,9 @@ export const forgotPassword = expressAsyncHandler(async (req, res) => {
   }
 
   try {
-    await sendResetPasswordEmail(user, resetUrl, req.tenant || null)
+    // `tenant`, no `req.tenant`: en el panel compartido este último viene
+    // vacío y el correo saldría sin la marca del comercio.
+    await sendResetPasswordEmail(user, resetUrl, tenant)
     logger.info(`Correo de recuperación enviado a ${user.email}`)
     return sendResponse(res, 200, true, 'Si el correo existe, un enlace será enviado.')
   } catch (error) {

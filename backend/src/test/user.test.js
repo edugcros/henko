@@ -4,7 +4,13 @@ import app from '../../app.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
-import { authHeaders, createTestTenant, getCSRFToken, registerAndLoginUser } from './testSetup.js'
+import {
+  authHeaders,
+  createTestTenant,
+  createTestUser,
+  getCSRFToken,
+  registerAndLoginUser,
+} from './testSetup.js'
 
 describe('user controller', () => {
   let tenantContext
@@ -159,5 +165,100 @@ describe('authMiddleware · códigos de error', () => {
     })
 
     expect(sinToken.body.code).not.toBe(tokenRoto.body.code)
+  })
+})
+
+// =====================================================
+// Recuperar contraseña desde el panel compartido
+// =====================================================
+//
+// EL BUG QUE CIERRA ESTE BLOQUE
+//
+// `tenantMiddleware` resuelve el comercio desde la SESIÓN cuando el host es el
+// panel compartido, y lo deja vacío si no hay sesión. Es correcto: por ahí
+// pasa el login. Pero recuperar la contraseña es, por definición, lo que se
+// hace sin sesión.
+//
+// `forgotPassword` exigía ese comercio y, al no tenerlo, salía en su primera
+// guarda devolviendo el mismo 200 tranquilizador de siempre. Medido en
+// producción: dos intentos, 200 los dos, cero correos, y NI UNA línea de log —
+// ni siquiera el aviso de "email no encontrado", porque no llegaba hasta ahí.
+// Recuperar contraseña desde el panel estaba muerto, en silencio.
+//
+// La respuesta genérica sigue siendo la misma en todos los casos: eso es
+// deliberado, para no revelar qué direcciones existen.
+
+describe('recuperar contraseña · el panel compartido no tiene sesión', () => {
+  const PANEL = 'admin.henko.local'
+  let contexto
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(User, Tenant)
+    contexto = await createTestTenant()
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  const pedirRecuperacion = (email, dominio) =>
+    request(app).post('/api/user/forgot-password').set('x-tenant-domain', dominio).send({ email })
+
+  test('un admin que pide desde el panel llega hasta el final', async () => {
+    const admin = await createTestUser({
+      tenantId: contexto.tenant._id,
+      role: 'admin',
+    })
+
+    const res = await pedirRecuperacion(admin.user.email, PANEL)
+
+    expect(res.status).toBe(200)
+
+    // El token guardado es la prueba de que el flujo avanzó: sin resolver el
+    // comercio desde el email, la petición salía antes de buscar al usuario.
+    // `.setOptions({ tenantId })` porque tenantPlugin rechaza toda consulta
+    // sin comercio: fuera de una petición no hay contexto que heredar.
+    const guardado = await User.findById(admin.user._id)
+      .setOptions({ tenantId: contexto.tenant._id })
+      .select('passwordResetToken passwordResetExpires')
+    expect(guardado.passwordResetToken).toBeTruthy()
+    expect(guardado.passwordResetExpires.getTime()).toBeGreaterThan(Date.now())
+  })
+
+  test('un comprador que pide desde la tienda sigue funcionando igual', async () => {
+    const comprador = await createTestUser({ tenantId: contexto.tenant._id })
+
+    const res = await pedirRecuperacion(comprador.user.email, contexto.shopDomain)
+
+    expect(res.status).toBe(200)
+
+    const guardado = await User.findById(comprador.user._id)
+      .setOptions({ tenantId: contexto.tenant._id })
+      .select('passwordResetToken')
+    expect(guardado.passwordResetToken).toBeTruthy()
+  })
+
+  test('el email de un comprador NO resuelve comercio en el panel', async () => {
+    // `resolveAdminTenantFromRequest` filtra por rol a propósito: el índice de
+    // usuarios es {email, tenantId}, así que dos compradores pueden repetir
+    // email entre tiendas y no habría forma de saber a cuál se refiere.
+    const comprador = await createTestUser({ tenantId: contexto.tenant._id })
+
+    const res = await pedirRecuperacion(comprador.user.email, PANEL)
+
+    expect(res.status).toBe(200)
+
+    const guardado = await User.findById(comprador.user._id)
+      .setOptions({ tenantId: contexto.tenant._id })
+      .select('passwordResetToken')
+    expect(guardado.passwordResetToken).toBeFalsy()
+  })
+
+  test('un email desconocido contesta lo mismo, sin pistas', async () => {
+    const res = await pedirRecuperacion('no-existe@test.com', PANEL)
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
   })
 })
