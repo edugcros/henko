@@ -5,9 +5,7 @@ import User from '../models/userModel.js'
 import Product from '../models/productModel.js'
 import Cart from '../models/cartModel.js'
 import Tenant from '../models/tenantModel.js'
-import UserMetricEvent, {
-  USER_METRIC_EVENTS,
-} from '../models/userMetricEventModel.js'
+import UserMetricEvent, { USER_METRIC_EVENTS } from '../models/userMetricEventModel.js'
 
 import { resolveCartPricing } from '../services/cartPricingService.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
@@ -81,9 +79,7 @@ const notifyPasswordChanged = (user, tenant = null) => {
   if (!shouldSendTransactionalEmail()) return
 
   sendPasswordChangedEmail(user, tenant).catch(error => {
-    logger.error(
-      `No se pudo avisar el cambio de contraseña a ${user?.email}: ${error.message}`,
-    )
+    logger.error(`No se pudo avisar el cambio de contraseña a ${user?.email}: ${error.message}`)
   })
 }
 
@@ -98,7 +94,10 @@ const USER_PROFILE_FIELDS = ['firstname', 'lastname', 'mobile', 'address']
 
 const hashToken = token => crypto.createHash('sha256').update(String(token)).digest('hex')
 
-const normalizeEmail = value => String(value || '').trim().toLowerCase()
+const normalizeEmail = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
 
 const normalizeSlug = value => {
   return String(value || '')
@@ -158,7 +157,9 @@ const sanitizeProfilePayload = payload => {
 }
 
 const parseDurationToMs = (value, fallbackMs) => {
-  const input = String(value || '').trim().toLowerCase()
+  const input = String(value || '')
+    .trim()
+    .toLowerCase()
   const match = input.match(/^(\d+)(ms|s|m|h|d)$/)
 
   if (!match) return fallbackMs
@@ -185,10 +186,7 @@ const getRefreshCookieMaxAge = role => {
     )
   }
 
-  return parseDurationToMs(
-    process.env.JWT_REFRESH_EXPIRES,
-    DEFAULT_REFRESH_COOKIE_MAX_AGE_MS,
-  )
+  return parseDurationToMs(process.env.JWT_REFRESH_EXPIRES, DEFAULT_REFRESH_COOKIE_MAX_AGE_MS)
 }
 
 const getAccessCookieMaxAge = () => {
@@ -204,10 +202,7 @@ const buildTenantDomains = storeSlug => {
     ? env.publicBaseDomain
     : env.tenantPublicBaseDomain || env.publicBaseDomain || 'localhost'
 
-  const adminBaseDomain =
-    env.tenantAdminBaseDomain ||
-    env.adminBaseDomain ||
-    `admin.${baseDomain}`
+  const adminBaseDomain = env.tenantAdminBaseDomain || env.adminBaseDomain || `admin.${baseDomain}`
   const { shopDomain, adminDomain } = buildPlatformTenantDomains({
     slug: storeSlug,
     publicBaseDomain: baseDomain,
@@ -219,12 +214,8 @@ const buildTenantDomains = storeSlug => {
   return {
     shopDomain,
     adminDomain,
-    shopUrl: isLocal
-      ? `${protocol}://${shopDomain}:3002`
-      : `${protocol}://${shopDomain}`,
-    adminUrl: isLocal
-      ? `${protocol}://${adminDomain}:3001`
-      : `${protocol}://${adminDomain}`,
+    shopUrl: isLocal ? `${protocol}://${shopDomain}:3002` : `${protocol}://${shopDomain}`,
+    adminUrl: isLocal ? `${protocol}://${adminDomain}:3001` : `${protocol}://${adminDomain}`,
   }
 }
 
@@ -234,20 +225,11 @@ const getDomainCandidates = value => {
 }
 
 const getTenantDomainFromRequest = req => {
-  return (
-    req.headers['x-tenant-domain'] ||
-    req.headers['x-forwarded-host'] ||
-    req.headers.host ||
-    ''
-  )
+  return req.headers['x-tenant-domain'] || req.headers['x-forwarded-host'] || req.headers.host || ''
 }
 
 const getMetricSessionIdFromRequest = req => {
-  return (
-    req.headers['x-metric-session-id'] ||
-    req.headers['x-session-id'] ||
-    crypto.randomUUID()
-  )
+  return req.headers['x-metric-session-id'] || req.headers['x-session-id'] || crypto.randomUUID()
 }
 
 const recordAuthMetric = ({ req, user, tenant, eventType, source }) => {
@@ -273,11 +255,7 @@ const recordAuthMetric = ({ req, user, tenant, eventType, source }) => {
   })
 }
 
-const scheduleWishlistPromotionNotification = ({
-  tenantId,
-  userId,
-  productId,
-}) => {
+const scheduleWishlistPromotionNotification = ({ tenantId, userId, productId }) => {
   setTimeout(async () => {
     try {
       const result = await notifyWishlistPromotions({
@@ -360,9 +338,7 @@ const resolveAdminTenantFromRequest = async (req, email) => {
 
   if (!admin?.tenantId) return null
 
-  return Tenant.findOne({ _id: admin.tenantId, status: 'active' }).select(
-    TENANT_LOGIN_FIELDS,
-  )
+  return Tenant.findOne({ _id: admin.tenantId, status: 'active' }).select(TENANT_LOGIN_FIELDS)
 }
 
 const serializeTenant = tenant => ({
@@ -487,8 +463,7 @@ const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
 
   // Panel y tienda escriben en casilleros distintos, así que las dos sesiones
   // conviven en el mismo navegador sin pisarse. Ver cookieHelper.
-  const { access: nombreAccess, refresh: nombreRefresh } =
-    getSessionCookieNames(req)
+  const { access: nombreAccess, refresh: nombreRefresh } = getSessionCookieNames(req)
 
   res.cookie(nombreRefresh, refreshToken, {
     httpOnly: true,
@@ -545,7 +520,6 @@ const getTenantScopedUserQuery = (req, userId) => {
   }
 }
 
-
 // =====================================================
 // EMAIL VERIFICATION
 // =====================================================
@@ -575,23 +549,14 @@ export const verifyEmail = expressAsyncHandler(async (req, res) => {
   // casilla confirmada a la que escribirle. Es el instante de mayor atención
   // del usuario y hasta ahora se desaprovechaba.
   if (shouldSendTransactionalEmail()) {
-    const tenant = await Tenant.findById(user.tenantId)
-      .select('name domains settings email')
-      .lean()
+    const tenant = await Tenant.findById(user.tenantId).select('name domains settings email').lean()
 
     sendWelcomeEmail(user, tenant).catch(error => {
-      logger.error(
-        `No se pudo enviar la bienvenida a ${user.email}: ${error.message}`,
-      )
+      logger.error(`No se pudo enviar la bienvenida a ${user.email}: ${error.message}`)
     })
   }
 
-  return sendResponse(
-    res,
-    200,
-    true,
-    'Email verificado correctamente. Ya puedes iniciar sesión.',
-  )
+  return sendResponse(res, 200, true, 'Email verificado correctamente. Ya puedes iniciar sesión.')
 })
 
 // =====================================================
@@ -629,12 +594,7 @@ export const createUser = [
 
     const existingUser = await User.exists({ email, tenantId })
     if (existingUser) {
-      return sendResponse(
-        res,
-        409,
-        false,
-        'Ya existe una cuenta con ese correo en este comercio.',
-      )
+      return sendResponse(res, 409, false, 'Ya existe una cuenta con ese correo en este comercio.')
     }
 
     const newUser = new User({
@@ -718,10 +678,7 @@ export const createUserAdmin = [
       }
       return true
     }),
-  body('plan')
-    .optional()
-    .isIn(['starter', 'pro'])
-    .withMessage('El plan seleccionado no es válido'),
+  body('plan').optional().isIn(['starter', 'pro']).withMessage('El plan seleccionado no es válido'),
 
   expressAsyncHandler(async (req, res) => {
     const errors = validationResult(req)
@@ -730,19 +687,10 @@ export const createUserAdmin = [
     }
 
     const email = normalizeEmail(req.body.email)
-    const {
-      password,
-      firstname,
-      lastname,
-      mobile,
-      storeName,
-      storeSlug,
-    } = req.body
+    const { password, firstname, lastname, mobile, storeName, storeSlug } = req.body
     const finalSlug = normalizeSlug(storeSlug)
     const finalMobile = normalizeArgentinePhone(mobile)
-    const plan = ['starter', 'pro'].includes(req.body.plan)
-      ? req.body.plan
-      : 'starter'
+    const plan = ['starter', 'pro'].includes(req.body.plan) ? req.body.plan : 'starter'
 
     const { shopDomain, adminDomain, shopUrl, adminUrl } = buildTenantDomains(finalSlug)
     const shopDomainCandidates = uniqueValues([shopDomain, normalizeDomain(shopDomain)])
@@ -770,7 +718,9 @@ export const createUserAdmin = [
         const opts = { session }
 
         const [emailExists, slugExists, domainExists] = await Promise.all([
-          User.exists({ email }).setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' }).session(session),
+          User.exists({ email })
+            .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
+            .session(session),
           Tenant.exists({ slug: finalSlug }).session(session),
           Tenant.exists({
             $or: [
@@ -827,17 +777,17 @@ export const createUserAdmin = [
               adminDomains: esPanelCompartido
                 ? []
                 : [
-                  {
-                    hostname: adminDomain,
-                    normalizedHostname: normalizeDomain(adminDomain),
-                    type: 'platform_subdomain',
-                    context: 'admin',
-                    status: 'active',
-                    isPrimary: true,
-                    verifiedAt: new Date(),
-                    // Ídem: lo deriva el schema del tipo del dominio.
-                  },
-                ],
+                    {
+                      hostname: adminDomain,
+                      normalizedHostname: normalizeDomain(adminDomain),
+                      type: 'platform_subdomain',
+                      context: 'admin',
+                      status: 'active',
+                      isPrimary: true,
+                      verifiedAt: new Date(),
+                      // Ídem: lo deriva el schema del tipo del dominio.
+                    },
+                  ],
               currency: 'ARS',
               locale: 'es-AR',
               timezone: 'America/Argentina/Buenos_Aires',
@@ -1008,9 +958,7 @@ const loginHandler = expressAsyncHandler(async (req, res, isAdmin = false) => {
   const user = await User.findOne({
     email,
     tenantId: loginTenantId,
-  }).select(
-    '+password +refreshToken +failedLoginAttempts +isBlocked +blockedUntil',
-  )
+  }).select('+password +refreshToken +failedLoginAttempts +isBlocked +blockedUntil')
 
   if (!user) {
     logger.warn(`Usuario inexistente o fuera de tenant: ${email}`)
@@ -1206,10 +1154,7 @@ export const getCurrentUser = expressAsyncHandler(async (req, res) => {
  * desde un dispositivo nuevo agrega una entrada para siempre. Al pasarse, se
  * cae la más vieja, que es la que con más probabilidad ya nadie usa.
  */
-const MAX_REFRESH_SESSIONS = Math.max(
-  Number(process.env.MAX_REFRESH_SESSIONS) || 10,
-  1,
-)
+const MAX_REFRESH_SESSIONS = Math.max(Number(process.env.MAX_REFRESH_SESSIONS) || 10, 1)
 
 /**
  * Cuánto sigue siendo aceptable el token recién rotado.
@@ -1222,10 +1167,7 @@ const MAX_REFRESH_SESSIONS = Math.max(
  * Alargarlo debilita la rotación; acortarlo devuelve los 403 que esto vino a
  * sacar. Configurable porque el punto justo depende de la latencia real.
  */
-const REFRESH_GRACE_MS = Math.max(
-  Number(process.env.REFRESH_GRACE_MS) || 60000,
-  1000,
-)
+const REFRESH_GRACE_MS = Math.max(Number(process.env.REFRESH_GRACE_MS) || 60000, 1000)
 
 export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
   const refreshToken = req.cookies?.[getSessionCookieNames(req).refresh]
@@ -1244,11 +1186,13 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
     return sendResponse(res, 403, false, 'Tenant inválido o inactivo')
   }
 
-  const { refreshToken: newRefreshToken, hashedJti: newHashedJti } =
-    await generateRefreshToken(decoded.sub, {
+  const { refreshToken: newRefreshToken, hashedJti: newHashedJti } = await generateRefreshToken(
+    decoded.sub,
+    {
       tenantId: decoded.tenantId,
       role: decoded.role,
-    })
+    },
+  )
 
   // Rotación atómica: compare-and-swap sobre el hash determinístico del jti
   // vigente (ver hashRefreshJti en generateRefreshToken.js — antes esto era
@@ -1459,10 +1403,7 @@ export const logout = expressAsyncHandler(async (req, res) => {
         {
           $pull: {
             refreshSessions: {
-              $or: [
-                { tokenHash: hashedLogout },
-                { previousTokenHash: hashedLogout },
-              ],
+              $or: [{ tokenHash: hashedLogout }, { previousTokenHash: hashedLogout }],
             },
           },
           // Y el casillero viejo, para los que todavía no migraron.
@@ -1557,8 +1498,7 @@ export const resendVerificationLimiter = rateLimit({
  * direcciones están registradas en una tienda.
  */
 export const resendVerificationEmail = expressAsyncHandler(async (req, res) => {
-  const GENERIC_RESPONSE =
-    'Si la cuenta existe y todavía no fue verificada, te enviamos un correo.'
+  const GENERIC_RESPONSE = 'Si la cuenta existe y todavía no fue verificada, te enviamos un correo.'
 
   const email = normalizeEmail(req.body?.email)
   const tenantId = req.tenantId
@@ -1570,9 +1510,7 @@ export const resendVerificationEmail = expressAsyncHandler(async (req, res) => {
   const user = await User.findOne({ email, tenantId })
 
   if (!user || user.isEmailVerified) {
-    logger.info(
-      `Reenvío de verificación sin efecto para ${email} (inexistente o ya verificada)`,
-    )
+    logger.info(`Reenvío de verificación sin efecto para ${email} (inexistente o ya verificada)`)
     return sendResponse(res, 200, true, GENERIC_RESPONSE)
   }
 
@@ -1838,14 +1776,10 @@ export const verifyUserManually = expressAsyncHandler(async (req, res) => {
   )
 
   if (shouldSendTransactionalEmail()) {
-    const tenant = await Tenant.findById(user.tenantId)
-      .select('name domains settings email')
-      .lean()
+    const tenant = await Tenant.findById(user.tenantId).select('name domains settings email').lean()
 
     sendWelcomeEmail(user, tenant).catch(error => {
-      logger.error(
-        `No se pudo enviar la bienvenida a ${user.email}: ${error.message}`,
-      )
+      logger.error(`No se pudo enviar la bienvenida a ${user.email}: ${error.message}`)
     })
   }
 
@@ -1896,7 +1830,7 @@ export const toggleWishlist = expressAsyncHandler(async (req, res) => {
     visibility: 'visible',
     status: { $in: ['active', 'out-of-stock'] },
   })
-  
+
   if (!product) {
     return sendResponse(res, 404, false, 'El producto no pertenece a este comercio o no existe.')
   }
@@ -1909,11 +1843,9 @@ export const toggleWishlist = expressAsyncHandler(async (req, res) => {
     ? { $pull: { wishlist: productId } }
     : { $addToSet: { wishlist: productId } }
 
-  const updatedUser = await User.findOneAndUpdate(
-    { _id: userId, tenantId },
-    updateAction,
-    { new: true },
-  ).populate({
+  const updatedUser = await User.findOneAndUpdate({ _id: userId, tenantId }, updateAction, {
+    new: true,
+  }).populate({
     path: 'wishlist',
     match: { tenantId },
     select: 'title price images slug stock tenantId',
@@ -1972,13 +1904,7 @@ export const saveAddress = [
 
     if (!updatedUser) return sendResponse(res, 404, false, 'Usuario no encontrado')
 
-    return sendResponse(
-      res,
-      200,
-      true,
-      'Dirección actualizada correctamente',
-      updatedUser,
-    )
+    return sendResponse(res, 200, true, 'Dirección actualizada correctamente', updatedUser)
   }),
 ]
 
@@ -2017,7 +1943,6 @@ export const userCart = expressAsyncHandler(async (req, res) => {
     return sendResponse(res, 400, false, 'Cantidad inválida')
   }
 
-  
   const product = await Product.findOne({
     _id: productId,
     tenantId,
@@ -2077,30 +2002,26 @@ export const userCart = expressAsyncHandler(async (req, res) => {
 
   const finalVariantId = resolvedVariant?._id || null
   const finalVariantSku = resolvedVariant?.sku || null
-  const finalCartKey = finalVariantId
-    ? `${productId}::${finalVariantId}`
-    : `${productId}::base`
+  const finalCartKey = finalVariantId ? `${productId}::${finalVariantId}` : `${productId}::base`
   const finalImage =
-    resolvedVariant?.image?.url ||
-    product.images?.[0]?.url ||
-    '/assets/images/placeholder.png'
+    resolvedVariant?.image?.url || product.images?.[0]?.url || '/assets/images/placeholder.png'
   const finalTitle = product.title || 'Producto sin título'
 
   const variantSnapshot = hasVariants
     ? {
-      id: finalVariantId,
-      sku: finalVariantSku,
-      price: pricing.price,
-      originalPrice: pricing.originalPrice,
-      discountPercentage: pricing.discountPercentage,
-      hasPromotion: pricing.hasPromotion,
-      promotionId: pricing.promotionId,
-      promotionTitle: pricing.promotionTitle,
-      promotionType: pricing.promotionType,
-      stock: Number(resolvedVariant?.stock || 0),
-      image: finalImage,
-      attributes: resolvedAttributes,
-    }
+        id: finalVariantId,
+        sku: finalVariantSku,
+        price: pricing.price,
+        originalPrice: pricing.originalPrice,
+        discountPercentage: pricing.discountPercentage,
+        hasPromotion: pricing.hasPromotion,
+        promotionId: pricing.promotionId,
+        promotionTitle: pricing.promotionTitle,
+        promotionType: pricing.promotionType,
+        stock: Number(resolvedVariant?.stock || 0),
+        image: finalImage,
+        attributes: resolvedAttributes,
+      }
     : null
 
   const { action } = await cart.addOrUpdateProduct({
@@ -2140,9 +2061,7 @@ export const userCart = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message:
-      action === 'added'
-        ? 'Producto agregado al carrito'
-        : 'Cantidad actualizada en el carrito',
+      action === 'added' ? 'Producto agregado al carrito' : 'Cantidad actualizada en el carrito',
     data: {
       products: cart.products,
       cartTotal: cart.cartTotal,

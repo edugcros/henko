@@ -120,6 +120,5 @@ aiCartRecoverySchema.plugin(tenantPlugin, {
 })
 
 const AiCartRecovery =
-  mongoose.models.AiCartRecovery ||
-  mongoose.model('AiCartRecovery', aiCartRecoverySchema)
+  mongoose.models.AiCartRecovery || mongoose.model('AiCartRecovery', aiCartRecoverySchema)
 export default AiCartRecovery

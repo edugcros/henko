@@ -5,12 +5,7 @@ import Product from '../models/productModel.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
-import {
-  authHeaders,
-  createTestTenant,
-  createTestUser,
-  getCSRFToken,
-} from './testSetup.js'
+import { authHeaders, createTestTenant, createTestUser, getCSRFToken } from './testSetup.js'
 
 describe('product controller', () => {
   let tenantContext
@@ -38,12 +33,14 @@ describe('product controller', () => {
   test('creates a product as tenant admin', async () => {
     const res = await request(app)
       .post('/api/product')
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-        csrfToken: csrf.csrfToken,
-        csrfCookie: csrf.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+          csrfToken: csrf.csrfToken,
+          csrfCookie: csrf.csrfCookie,
+        }),
+      )
       .send({
         title: 'Producto de prueba',
         description: 'Descripción de prueba',
@@ -82,12 +79,14 @@ describe('product controller', () => {
   test('updates a product as tenant admin', async () => {
     const res = await request(app)
       .put(`/api/product/${productId}`)
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-        csrfToken: csrf.csrfToken,
-        csrfCookie: csrf.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+          csrfToken: csrf.csrfToken,
+          csrfCookie: csrf.csrfCookie,
+        }),
+      )
       .send({ price: 1500 })
 
     expect(res.statusCode).toBe(200)
@@ -101,12 +100,14 @@ describe('product controller', () => {
     // los declaraba y el normalizador devolvía solo cinco claves.
     const res = await request(app)
       .post('/api/product')
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-        csrfToken: csrf.csrfToken,
-        csrfCookie: csrf.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+          csrfToken: csrf.csrfToken,
+          csrfCookie: csrf.csrfCookie,
+        }),
+      )
       .send({
         title: 'Producto con posicionamiento',
         description: 'Descripción',
@@ -149,12 +150,14 @@ describe('product controller', () => {
     // puede borrarlos.
     const editado = await request(app)
       .put(`/api/product/${res.body.data._id}`)
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-        csrfToken: csrf.csrfToken,
-        csrfCookie: csrf.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+          csrfToken: csrf.csrfToken,
+          csrfCookie: csrf.csrfCookie,
+        }),
+      )
       .send({ metaTitle: 'Otro título para buscadores' })
 
     expect(editado.statusCode).toBe(200)
@@ -167,12 +170,14 @@ describe('product controller', () => {
   test('deletes a product as tenant admin', async () => {
     const res = await request(app)
       .delete(`/api/product/${productId}`)
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-        csrfToken: csrf.csrfToken,
-        csrfCookie: csrf.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+          csrfToken: csrf.csrfToken,
+          csrfCookie: csrf.csrfCookie,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)

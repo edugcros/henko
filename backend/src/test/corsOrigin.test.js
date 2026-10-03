@@ -39,9 +39,7 @@ const { default: corsOptions } = await import('../../config/corsOptions.js')
 
 const pedirOrigen = origin =>
   new Promise(resolve => {
-    corsOptions.origin(origin, (error, permitido) =>
-      resolve({ error, permitido }),
-    )
+    corsOptions.origin(origin, (error, permitido) => resolve({ error, permitido }))
   })
 
 // La cadena real es .select().maxTimeMS().lean()

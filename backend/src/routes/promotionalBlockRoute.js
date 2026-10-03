@@ -47,12 +47,7 @@ const adminContext = [
  * Alias legacy para compatibilidad con frontend existente.
  * GET /api/promotional-blocks/store
  */
-router.get(
-  '/store',
-  resolveTenantByDomain,
-  requireShopDomain,
-  getPublicPromotionalBlocks,
-)
+router.get('/store', resolveTenantByDomain, requireShopDomain, getPublicPromotionalBlocks)
 
 /**
  * Alias legacy para compatibilidad con frontend existente.
@@ -69,12 +64,7 @@ router.get(
  * Contrato público recomendado.
  * GET /api/promotional-blocks/public
  */
-router.get(
-  '/public',
-  resolveTenantByDomain,
-  requireShopDomain,
-  getPublicPromotionalBlocks,
-)
+router.get('/public', resolveTenantByDomain, requireShopDomain, getPublicPromotionalBlocks)
 
 /**
  * Contrato público recomendado.
@@ -95,23 +85,13 @@ router.get(
  * Listar bloques promocionales para admin.
  * GET /api/promotional-blocks
  */
-router.get(
-  '/',
-  adminContext,
-  getPromotionalBlocksValidator,
-  getAdminPromotionalBlocks,
-)
+router.get('/', adminContext, getPromotionalBlocksValidator, getAdminPromotionalBlocks)
 
 /**
  * Crear bloque promocional.
  * POST /api/promotional-blocks
  */
-router.post(
-  '/',
-  adminContext,
-  createPromotionalBlockValidator,
-  createPromotionalBlock,
-)
+router.post('/', adminContext, createPromotionalBlockValidator, createPromotionalBlock)
 
 /**
  * Cambiar estado activo/inactivo.
@@ -131,12 +111,7 @@ router.patch(
  * Obtener bloque promocional por ID para admin.
  * GET /api/promotional-blocks/:id
  */
-router.get(
-  '/:id',
-  adminContext,
-  promotionalBlockIdValidator,
-  getAdminPromotionalBlockById,
-)
+router.get('/:id', adminContext, promotionalBlockIdValidator, getAdminPromotionalBlockById)
 
 /**
  * Actualizar bloque promocional.
@@ -154,11 +129,6 @@ router.put(
  * Eliminar bloque promocional.
  * DELETE /api/promotional-blocks/:id
  */
-router.delete(
-  '/:id',
-  adminContext,
-  promotionalBlockIdValidator,
-  deletePromotionalBlock,
-)
+router.delete('/:id', adminContext, promotionalBlockIdValidator, deletePromotionalBlock)
 
 export default router

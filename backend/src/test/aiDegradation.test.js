@@ -37,9 +37,7 @@ const {
 const { getModelChain, setEconomyMode, getEconomyMode, resetDeadModels, getModelHealth } =
   await import('../services/ai/geminiModels.js')
 
-const { buildBudgetDenialMessage, DENY_REASONS } = await import(
-  '../services/ai/aiBudgetService.js'
-)
+const { buildBudgetDenialMessage, DENY_REASONS } = await import('../services/ai/aiBudgetService.js')
 
 beforeEach(() => {
   resetDeadModels()

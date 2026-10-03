@@ -25,20 +25,18 @@ import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
-const { default: AiConsumptionLedger } = await import(
-  '../models/aiConsumptionLedgerModel.js'
-)
-const { default: AiOperation, AI_OPERATION_STATUS, AI_FEATURES, AI_PROVIDERS } =
-  await import('../models/aiOperationModel.js')
+const { default: AiConsumptionLedger } = await import('../models/aiConsumptionLedgerModel.js')
+const {
+  default: AiOperation,
+  AI_OPERATION_STATUS,
+  AI_FEATURES,
+  AI_PROVIDERS,
+} = await import('../models/aiOperationModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
-const { default: AiProviderCall, CALL_ID } = await import(
-  '../models/aiProviderCallModel.js'
-)
+const { default: AiProviderCall, CALL_ID } = await import('../models/aiProviderCallModel.js')
 const { reserveAiBudget, refundAiBudget, recordTokenSpend, recordAiConsumption, AI_METRICS } =
-  await import(
-  '../services/ai/aiBudgetService.js'
-  )
+  await import('../services/ai/aiBudgetService.js')
 
 const TENANT = '64b7f0000000000000000001'
 const OTRO_TENANT = '64b7f0000000000000000002'
@@ -87,12 +85,18 @@ describe('reserva · el reintento no vuelve a cobrar', () => {
     const operationId = 'job-abc-123'
 
     const primera = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     const segunda = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
 
     // Las dos permiten seguir: la reserva original se hizo y el reintento
@@ -110,12 +114,18 @@ describe('reserva · el reintento no vuelve a cobrar', () => {
     const operationId = 'hash-de-la-misma-imagen'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     const otro = await reserveAiBudget({
-      tenantId: OTRO_TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: { ...PERFIL, tenantId: OTRO_TENANT }, period, operationId,
+      tenantId: OTRO_TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: { ...PERFIL, tenantId: OTRO_TENANT },
+      period,
+      operationId,
     })
 
     expect(otro.allowed).toBe(true)
@@ -130,10 +140,16 @@ describe('reserva · el reintento no vuelve a cobrar', () => {
     const period = '2030-03'
 
     const a = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, profile: PERFIL, period,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
     })
     const b = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, profile: PERFIL, period,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
     })
 
     expect(a.operationId).not.toBe(b.operationId)
@@ -145,9 +161,14 @@ describe('reserva · el reintento no vuelve a cobrar', () => {
     const operationId = 'con-trazabilidad'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
-      feature: 'aiAgent', provider: 'gemini', requestedModel: 'gemini-3.8-flash',
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
+      feature: 'aiAgent',
+      provider: 'gemini',
+      requestedModel: 'gemini-3.8-flash',
     })
 
     const op = await AiOperation.findOne({ tenantId: TENANT, operationId })
@@ -169,10 +190,14 @@ describe('consumo · los tokens de plataforma se cuentan una vez', () => {
 
     for (let i = 0; i < 2; i++) {
       await recordTokenSpend({
-        tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+        tenantId: TENANT,
+        metric: AI_METRICS.AGENT_TOKENS,
         model: 'gemini-3.1-flash-lite',
-        inputTokens: 1000, outputTokens: 500,
-        profile: PERFIL, period, operationId,
+        inputTokens: 1000,
+        outputTokens: 500,
+        profile: PERFIL,
+        period,
+        operationId,
       })
     }
     await asentar()
@@ -182,7 +207,8 @@ describe('consumo · los tokens de plataforma se cuentan una vez', () => {
       .setOptions({ tenantId: TENANT })
       .lean()
     const filas = await AiConsumptionLedger.countDocuments({
-      tenantId: TENANT, operationId,
+      tenantId: TENANT,
+      operationId,
     }).setOptions({ tenantId: TENANT })
 
     // Antes del arreglo: 3000.
@@ -192,10 +218,14 @@ describe('consumo · los tokens de plataforma se cuentan una vez', () => {
     // El costo tampoco se duplica: iba en el mismo camino sin guarda.
     const esperado = usage.estimatedCostUsd
     await recordTokenSpend({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
       model: 'gemini-3.1-flash-lite',
-      inputTokens: 1000, outputTokens: 500,
-      profile: PERFIL, period, operationId,
+      inputTokens: 1000,
+      outputTokens: 500,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     await asentar()
 
@@ -211,17 +241,24 @@ describe('consumo · los tokens de plataforma se cuentan una vez', () => {
     const operationId = 'fallback-visible'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
       requestedModel: 'gemini-3.8-flash',
     })
 
     // El fallback entregó otro modelo, y es el que se paga.
     await recordTokenSpend({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
       model: 'gemini-3.1-flash-lite',
-      inputTokens: 800, outputTokens: 200,
-      profile: PERFIL, period, operationId,
+      inputTokens: 800,
+      outputTokens: 200,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     await asentar()
 
@@ -242,17 +279,26 @@ describe('devolución · tampoco se repite', () => {
     const operationId = 'devolver-una-vez'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     expect(await contador(period)).toBe(1)
 
     await refundAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      period,
+      operationId,
     })
     await asentar()
     await refundAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      period,
+      operationId,
     })
 
     // Sin la guarda, el segundo refund dejaba el contador en -1 o abría cupo
@@ -276,13 +322,21 @@ describe('sin cupo · la operación queda marcada como fallida', () => {
     const operationId = 'sin-cupo'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'consume-todo', limitOverride: limite,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'consume-todo',
+      limitOverride: limite,
     })
 
     const denegada = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId, limitOverride: limite,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
+      limitOverride: limite,
     })
     await asentar()
 
@@ -316,19 +370,31 @@ describe('reintento · depende de si hay cupo retenido', () => {
     const operationId = 'sin-cupo'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'quema-el-cupo', limitOverride: 1,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'quema-el-cupo',
+      limitOverride: 1,
     })
 
     const primera = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId, limitOverride: 1,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
+      limitOverride: 1,
     })
     await asentar()
 
     const reintento = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId, limitOverride: 1,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
+      limitOverride: 1,
     })
 
     expect(primera.allowed).toBe(false)
@@ -345,18 +411,27 @@ describe('reintento · depende de si hay cupo retenido', () => {
     const operationId = 'proveedor-caido'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     await refundAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      period,
+      operationId,
     })
     await asentar()
     expect(await contador(period)).toBe(0)
 
     const reintento = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
 
     expect(reintento.allowed).toBe(true)
@@ -372,8 +447,11 @@ describe('reintento · depende de si hay cupo retenido', () => {
     for (let i = 0; i < 10; i++) {
       resultados.push(
         await reserveAiBudget({
-          tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-          profile: PERFIL, period, operationId,
+          tenantId: TENANT,
+          metric: AI_METRICS.AGENT_MESSAGES,
+          profile: PERFIL,
+          period,
+          operationId,
         }),
       )
     }
@@ -384,8 +462,10 @@ describe('reintento · depende de si hay cupo retenido', () => {
     expect(resultados.filter(r => r.reason === 'replay')).toHaveLength(9)
     expect(await contador(period)).toBe(1)
 
-    const operaciones = await AiOperation.countDocuments({ tenantId: TENANT, operationId })
-      .setOptions({ tenantId: TENANT })
+    const operaciones = await AiOperation.countDocuments({
+      tenantId: TENANT,
+      operationId,
+    }).setOptions({ tenantId: TENANT })
     expect(operaciones).toBe(1)
   })
 })
@@ -396,8 +476,11 @@ describe('trazabilidad · de dónde vino y quién cobró', () => {
     const operationId = 'con-origen'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
       feature: AI_FEATURES.CART_RECOVERY,
       provider: AI_PROVIDERS.GEMINI,
     })
@@ -415,8 +498,11 @@ describe('trazabilidad · de dónde vino y quién cobró', () => {
     // categorías que deberían ser una, y nadie se entera.
     await expect(
       AiOperation.create({
-        tenantId: TENANT, operationId: 'inventada', period: '2031-05',
-        metric: 'agentMessages', feature: 'carritoRecuperado',
+        tenantId: TENANT,
+        operationId: 'inventada',
+        period: '2031-05',
+        metric: 'agentMessages',
+        feature: 'carritoRecuperado',
       }),
     ).rejects.toThrow(/validation/i)
   })
@@ -432,8 +518,12 @@ describe('trazabilidad · de dónde vino y quién cobró', () => {
       AI_FEATURES.SOCIAL_PROMOTION,
     ]) {
       await reserveAiBudget({
-        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-        profile: PERFIL, period, operationId: `op-${feature}`, feature,
+        tenantId: TENANT,
+        metric: AI_METRICS.AGENT_MESSAGES,
+        profile: PERFIL,
+        period,
+        operationId: `op-${feature}`,
+        feature,
       })
     }
 
@@ -443,9 +533,7 @@ describe('trazabilidad · de dónde vino y quién cobró', () => {
       { $sort: { _id: 1 } },
     ])
 
-    expect(porFuncion.map(f => f._id)).toEqual([
-      'aiAgent', 'cartRecovery', 'socialPromotion',
-    ])
+    expect(porFuncion.map(f => f._id)).toEqual(['aiAgent', 'cartRecovery', 'socialPromotion'])
   })
 })
 
@@ -462,18 +550,27 @@ describe('devolución · exactamente una vez, no al menos una', () => {
     const operationId = 'carrera-de-refunds'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     expect(await contador(period)).toBe(1)
 
     // En paralelo, que es donde la guarda vieja se rompía.
     await Promise.all([
       refundAiBudget({
-        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+        tenantId: TENANT,
+        metric: AI_METRICS.AGENT_MESSAGES,
+        period,
+        operationId,
       }),
       refundAiBudget({
-        tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+        tenantId: TENANT,
+        metric: AI_METRICS.AGENT_MESSAGES,
+        period,
+        operationId,
       }),
     ])
     await asentar()
@@ -488,18 +585,29 @@ describe('devolución · exactamente una vez, no al menos una', () => {
 
     // Se agota el tope y se intenta reservar: queda 'failed', sin cupo.
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId: 'quema', limitOverride: 1,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId: 'quema',
+      limitOverride: 1,
     })
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId, limitOverride: 1,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
+      limitOverride: 1,
     })
     await asentar()
     expect(await contador(period)).toBe(1)
 
     await refundAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      period,
+      operationId,
     })
     await asentar()
 
@@ -523,19 +631,35 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
     const operationId = 'contesta-y-repara'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period,
+      operationId,
     })
 
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 1000,
-      model: 'gemini-3.1-flash-lite', inputTokens: 700, outputTokens: 300,
-      profile: PERFIL, period, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 1000,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 700,
+      outputTokens: 300,
+      profile: PERFIL,
+      period,
+      operationId,
     })
     await recordAiConsumption({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 400,
-      model: 'gemini-3.1-flash-lite', inputTokens: 300, outputTokens: 100,
-      profile: PERFIL, period, operationId, callId: CALL_ID.REPAIR,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 400,
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 300,
+      outputTokens: 100,
+      profile: PERFIL,
+      period,
+      operationId,
+      callId: CALL_ID.REPAIR,
     })
     await asentar()
 
@@ -544,8 +668,10 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
     expect(await contador(period, 'agentTokens')).toBe(1400)
 
     // Una sola operación.
-    const operaciones = await AiOperation.countDocuments({ tenantId: TENANT, operationId })
-      .setOptions({ tenantId: TENANT })
+    const operaciones = await AiOperation.countDocuments({
+      tenantId: TENANT,
+      operationId,
+    }).setOptions({ tenantId: TENANT })
     expect(operaciones).toBe(1)
 
     // Dos llamadas.
@@ -556,7 +682,8 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
 
     // Y dos filas de consumo en el ledger, distinguibles.
     const filas = await AiConsumptionLedger.countDocuments({
-      tenantId: TENANT, event: 'consumed',
+      tenantId: TENANT,
+      event: 'consumed',
       operationId: { $in: [operationId, `${operationId}:repair`] },
     }).setOptions({ tenantId: TENANT })
     expect(filas).toBe(2)
@@ -568,17 +695,26 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
 
     for (let i = 0; i < 5; i++) {
       await recordAiConsumption({
-        tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS, amount: 500,
-        model: 'gemini-3.1-flash-lite', inputTokens: 400, outputTokens: 100,
-        profile: PERFIL, period, operationId, callId: CALL_ID.REPAIR,
+        tenantId: TENANT,
+        metric: AI_METRICS.AGENT_TOKENS,
+        amount: 500,
+        model: 'gemini-3.1-flash-lite',
+        inputTokens: 400,
+        outputTokens: 100,
+        profile: PERFIL,
+        period,
+        operationId,
+        callId: CALL_ID.REPAIR,
       })
     }
     await asentar()
 
     expect(await contador(period, 'agentTokens')).toBe(500)
 
-    const llamadas = await AiProviderCall.countDocuments({ tenantId: TENANT, operationId })
-      .setOptions({ tenantId: TENANT })
+    const llamadas = await AiProviderCall.countDocuments({
+      tenantId: TENANT,
+      operationId,
+    }).setOptions({ tenantId: TENANT })
     expect(llamadas).toBe(1)
   })
 
@@ -587,11 +723,16 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
     const operationId = 'llamada-completa'
 
     await recordTokenSpend({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
       model: 'gemini-3.1-flash-lite',
-      inputTokens: 2000, outputTokens: 500,
-      profile: PERFIL, period, operationId,
-      provider: 'gemini', requestedModel: 'gemini-3.8-flash',
+      inputTokens: 2000,
+      outputTokens: 500,
+      profile: PERFIL,
+      period,
+      operationId,
+      provider: 'gemini',
+      requestedModel: 'gemini-3.8-flash',
     })
     await asentar()
 
@@ -733,9 +874,10 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
     // Sigue retenida: es lo que pasaba en producción con TODOS los análisis.
     expect(colgada.status).toBe('running')
     expect(
-      await AiProviderCall.countDocuments({ tenantId: TENANT, operationId: sinOperacion }).setOptions(
-        { tenantId: TENANT },
-      ),
+      await AiProviderCall.countDocuments({
+        tenantId: TENANT,
+        operationId: sinOperacion,
+      }).setOptions({ tenantId: TENANT }),
     ).toBe(0)
   })
 })

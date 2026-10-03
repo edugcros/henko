@@ -342,7 +342,6 @@ aiProviderCallSchema.index({ provider: 1, ok: 1, createdAt: -1 })
 aiProviderCallSchema.plugin(tenantPlugin)
 
 const AiProviderCall =
-  mongoose.models.AiProviderCall ||
-  mongoose.model('AiProviderCall', aiProviderCallSchema)
+  mongoose.models.AiProviderCall || mongoose.model('AiProviderCall', aiProviderCallSchema)
 
 export default AiProviderCall

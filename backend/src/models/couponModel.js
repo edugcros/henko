@@ -31,10 +31,7 @@ const normalizeCode = value => {
 }
 
 const hasApplicableRestriction = coupon => {
-  return Boolean(
-    coupon.applicableProducts?.length ||
-      coupon.applicableCategories?.length,
-  )
+  return Boolean(coupon.applicableProducts?.length || coupon.applicableCategories?.length)
 }
 
 // =====================================================
@@ -255,17 +252,11 @@ couponSchema.pre('validate', function couponPreValidate(next) {
       this.maxDiscountAmount = null
     }
 
-    if (
-      this.maxDiscountAmount !== null &&
-      this.maxDiscountAmount < 0
-    ) {
+    if (this.maxDiscountAmount !== null && this.maxDiscountAmount < 0) {
       throw new Error('El descuento máximo no puede ser negativo')
     }
 
-    if (
-      this.usageLimit !== null &&
-      Number(this.usageCount || 0) > Number(this.usageLimit)
-    ) {
+    if (this.usageLimit !== null && Number(this.usageCount || 0) > Number(this.usageLimit)) {
       throw new Error('usageCount no puede superar usageLimit')
     }
 
@@ -278,11 +269,11 @@ couponSchema.pre('validate', function couponPreValidate(next) {
     }
 
     if (Array.isArray(this.applicableCategories)) {
-      this.applicableCategories = [...new Set(
-        this.applicableCategories
-          .map(value => String(value || '').trim())
-          .filter(Boolean),
-      )]
+      this.applicableCategories = [
+        ...new Set(
+          this.applicableCategories.map(value => String(value || '').trim()).filter(Boolean),
+        ),
+      ]
     }
 
     return next()
@@ -314,10 +305,10 @@ couponSchema.virtual('isExhausted').get(function () {
 couponSchema.methods.isCurrentlyUsable = function isCurrentlyUsable(now = new Date()) {
   return Boolean(
     this.isActive &&
-      !this.isDeleted &&
-      now >= this.startDate &&
-      now <= this.endDate &&
-      (this.usageLimit === null || this.usageCount < this.usageLimit),
+    !this.isDeleted &&
+    now >= this.startDate &&
+    now <= this.endDate &&
+    (this.usageLimit === null || this.usageCount < this.usageLimit),
   )
 }
 
@@ -340,7 +331,9 @@ couponSchema.methods.appliesToProduct = function appliesToProduct(product) {
   return Boolean(appliesByProduct || appliesByCategory)
 }
 
-couponSchema.methods.calculateDiscountCents = function calculateDiscountCents(applicableSubtotalCents) {
+couponSchema.methods.calculateDiscountCents = function calculateDiscountCents(
+  applicableSubtotalCents,
+) {
   const subtotal = Number(applicableSubtotalCents || 0)
 
   if (!Number.isFinite(subtotal) || subtotal <= 0) return 0
@@ -390,7 +383,11 @@ couponSchema.methods.restore = async function restore() {
 // STATICS
 // =====================================================
 
-couponSchema.statics.findActiveByCode = function findActiveByCode({ tenantId, code, now = new Date() }) {
+couponSchema.statics.findActiveByCode = function findActiveByCode({
+  tenantId,
+  code,
+  now = new Date(),
+}) {
   return this.findOne({
     tenantId,
     code: normalizeCode(code),

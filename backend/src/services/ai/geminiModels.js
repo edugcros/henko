@@ -90,11 +90,7 @@ import logger from '../../../config/logger.js'
  * TODO: revisar cada vez que Google anuncie retiros o nuevas versiones, y
  * verificar con una llamada real antes de agregar un nombre acá.
  */
-const FALLBACK_MODELS = [
-  'gemini-3.5-flash-lite',
-  'gemini-3.1-flash-lite',
-  'gemini-3.7-flash',
-]
+const FALLBACK_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.7-flash']
 
 /**
  * La cadena cuando hay que ahorrar, ordenada por TARIFA y no por calidad.
@@ -163,7 +159,9 @@ const cooldownModels = new Map()
 const QUOTA_COOLDOWN_MS = Number(process.env.GEMINI_QUOTA_COOLDOWN_MS) || 15 * 60 * 1000
 
 export const normalizeModelName = value =>
-  String(value || '').trim().replace(/^models\//, '')
+  String(value || '')
+    .trim()
+    .replace(/^models\//, '')
 
 /** ¿Este modelo está en cooldown ahora mismo? Limpia la entrada si ya venció. */
 const isCoolingDown = model => {
@@ -253,9 +251,7 @@ export const extractErrorStatus = error => {
   const fromMessage = Number(String(error.message || '').match(/\[(\d{3})\s/)?.[1])
 
   return (
-    error.status ??
-    error.statusCode ??
-    (Number.isFinite(fromMessage) ? fromMessage : undefined)
+    error.status ?? error.statusCode ?? (Number.isFinite(fromMessage) ? fromMessage : undefined)
   )
 }
 

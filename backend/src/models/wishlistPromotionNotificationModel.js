@@ -77,7 +77,4 @@ wishlistPromotionNotificationSchema.plugin(tenantPlugin, {
   addTenantField: false,
 })
 
-export default mongoose.model(
-  'WishlistPromotionNotification',
-  wishlistPromotionNotificationSchema,
-)
+export default mongoose.model('WishlistPromotionNotification', wishlistPromotionNotificationSchema)

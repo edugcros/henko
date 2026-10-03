@@ -29,9 +29,7 @@ const formatMetaResponse = meta => ({
 export const getMetaPixelConfig = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
 
-  const tenant = await Tenant.findById(tenantId)
-    .select('integrations.meta')
-    .lean()
+  const tenant = await Tenant.findById(tenantId).select('integrations.meta').lean()
 
   if (!tenant) {
     return res.status(404).json({ success: false, message: 'Tenant no encontrado' })
@@ -58,8 +56,7 @@ export const updateMetaPixelConfig = asyncHandler(async (req, res) => {
     })
   }
 
-  const current = await Tenant.findById(tenantId)
-    .select('+integrations.meta.accessToken')
+  const current = await Tenant.findById(tenantId).select('+integrations.meta.accessToken')
 
   if (!current) {
     return res.status(404).json({ success: false, message: 'Tenant no encontrado' })
@@ -94,11 +91,9 @@ export const updateMetaPixelConfig = asyncHandler(async (req, res) => {
     $set['integrations.meta.connectedAt'] = new Date()
   }
 
-  const tenant = await Tenant.findByIdAndUpdate(
-    tenantId,
-    { $set },
-    { new: true },
-  ).select('integrations.meta')
+  const tenant = await Tenant.findByIdAndUpdate(tenantId, { $set }, { new: true }).select(
+    'integrations.meta',
+  )
 
   await invalidateTenantMetaProfile(tenantId)
 

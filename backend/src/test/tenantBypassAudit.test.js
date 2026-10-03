@@ -17,167 +17,162 @@
 // datos afuera. Ese es el caso que se audita, y por eso los veintipico de usos
 // legítimos que ya existen no hacen ruido.
 
-import mongoose from "mongoose";
-import { crearMongoEnMemoria } from "./testDB.js";
-import { jest } from "@jest/globals";
+import mongoose from 'mongoose'
+import { crearMongoEnMemoria } from './testDB.js'
+import { jest } from '@jest/globals'
 
 const mockLogger = {
   info: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
   debug: jest.fn(),
-};
+}
 
-jest.unstable_mockModule("../../config/logger.js", () => ({
+jest.unstable_mockModule('../../config/logger.js', () => ({
   default: mockLogger,
-}));
+}))
 
-const TENANT_A = new mongoose.Types.ObjectId();
-const TENANT_B = new mongoose.Types.ObjectId();
+const TENANT_A = new mongoose.Types.ObjectId()
+const TENANT_B = new mongoose.Types.ObjectId()
 
-let mongod;
-let Nota;
-let runWithTenantContext;
+let mongod
+let Nota
+let runWithTenantContext
 
 beforeAll(async () => {
-  mongod = await crearMongoEnMemoria();
-  await mongoose.connect(mongod.getUri());
+  mongod = await crearMongoEnMemoria()
+  await mongoose.connect(mongod.getUri())
 
-  const { tenantPlugin } = await import("../models/tenantPlugin.js");
-  ({ runWithTenantContext } = await import("../utils/tenantRequestContext.js"));
+  const { tenantPlugin } = await import('../models/tenantPlugin.js')
+  ;({ runWithTenantContext } = await import('../utils/tenantRequestContext.js'))
 
-  const schema = new mongoose.Schema({ titulo: String });
-  schema.plugin(tenantPlugin);
-  Nota = mongoose.model("NotaDePrueba", schema);
-}, 60_000);
+  const schema = new mongoose.Schema({ titulo: String })
+  schema.plugin(tenantPlugin)
+  Nota = mongoose.model('NotaDePrueba', schema)
+}, 60_000)
 
 afterAll(async () => {
-  await mongoose.disconnect();
-  await mongod?.stop();
-});
+  await mongoose.disconnect()
+  await mongod?.stop()
+})
 
 // Los datos se rehacen en cada test y no una sola vez: uno de estos casos hace
 // un updateMany que cruza comercios, y con una semilla compartida el resultado
 // de la suite dependería del orden en que corran.
 beforeEach(async () => {
-  jest.clearAllMocks();
+  jest.clearAllMocks()
 
-  await Nota.collection.deleteMany({});
+  await Nota.collection.deleteMany({})
   await Nota.collection.insertMany([
-    { tenantId: TENANT_A, titulo: "de A" },
-    { tenantId: TENANT_B, titulo: "de B" },
-  ]);
-});
+    { tenantId: TENANT_A, titulo: 'de A' },
+    { tenantId: TENANT_B, titulo: 'de B' },
+  ])
+})
 
 // El await va ADENTRO del scope a propósito. Una query de Mongoose es perezosa:
 // si el callback la devuelve sin esperarla, los hooks corren cuando el await
 // externo la ejecuta, y para entonces el AsyncLocalStorage ya salió del
 // contexto. El test estaría probando el caso sin tenant sin darse cuenta.
-const enRequestDe = (tenantId, fn) =>
-  runWithTenantContext({ tenantId }, async () => fn());
+const enRequestDe = (tenantId, fn) => runWithTenantContext({ tenantId }, async () => fn())
 
 const avisos = () =>
   mockLogger.error.mock.calls.filter(([mensaje]) =>
-    String(mensaje).includes("Aislamiento salteado"),
-  );
+    String(mensaje).includes('Aislamiento salteado'),
+  )
 
-describe("tenantPlugin · escapes dentro de una request", () => {
-  test("saltear el aislamiento con tenant activo queda registrado", async () => {
-    await enRequestDe(TENANT_A, () =>
-      Nota.find({}).setOptions({ ignoreTenant: true }),
-    );
+describe('tenantPlugin · escapes dentro de una request', () => {
+  test('saltear el aislamiento con tenant activo queda registrado', async () => {
+    await enRequestDe(TENANT_A, () => Nota.find({}).setOptions({ ignoreTenant: true }))
 
-    expect(avisos()).toHaveLength(1);
+    expect(avisos()).toHaveLength(1)
 
-    const [, detalle] = avisos()[0];
+    const [, detalle] = avisos()[0]
 
-    expect(detalle.model).toBe("NotaDePrueba");
-    expect(detalle.tenantEnContexto).toBe(String(TENANT_A));
-  });
+    expect(detalle.model).toBe('NotaDePrueba')
+    expect(detalle.tenantEnContexto).toBe(String(TENANT_A))
+  })
 
-  test("y de verdad devuelve datos de otros comercios", async () => {
+  test('y de verdad devuelve datos de otros comercios', async () => {
     // El aviso no es teórico: esto es lo que la consulta ve.
     const filas = await enRequestDe(TENANT_A, () =>
       Nota.find({}).setOptions({ ignoreTenant: true }),
-    );
+    )
 
-    expect(filas).toHaveLength(2);
-  });
+    expect(filas).toHaveLength(2)
+  })
 
-  test("declarando el motivo no se registra nada", async () => {
+  test('declarando el motivo no se registra nada', async () => {
     // `platformScope` es la forma de decir "el cruce es a propósito", escrita en
     // el mismo lugar donde ocurre, que es lo que se quiere poder leer en una
     // revisión.
     await enRequestDe(TENANT_A, () =>
       Nota.find({}).setOptions({
         ignoreTenant: true,
-        platformScope: "platform:reporte-de-gasto",
+        platformScope: 'platform:reporte-de-gasto',
       }),
-    );
+    )
 
-    expect(avisos()).toHaveLength(0);
-  });
+    expect(avisos()).toHaveLength(0)
+  })
 
-  test("un motivo vacío no alcanza para silenciarlo", async () => {
+  test('un motivo vacío no alcanza para silenciarlo', async () => {
     await enRequestDe(TENANT_A, () =>
-      Nota.find({}).setOptions({ ignoreTenant: true, platformScope: "   " }),
-    );
+      Nota.find({}).setOptions({ ignoreTenant: true, platformScope: '   ' }),
+    )
 
-    expect(avisos()).toHaveLength(1);
-  });
+    expect(avisos()).toHaveLength(1)
+  })
 
-  test("skipTenant se audita igual que ignoreTenant", async () => {
+  test('skipTenant se audita igual que ignoreTenant', async () => {
     // Son dos nombres para lo mismo; auditar uno solo dejaría el otro abierto.
-    await enRequestDe(TENANT_A, () =>
-      Nota.find({}).setOptions({ skipTenant: true }),
-    );
+    await enRequestDe(TENANT_A, () => Nota.find({}).setOptions({ skipTenant: true }))
 
-    expect(avisos()).toHaveLength(1);
-  });
+    expect(avisos()).toHaveLength(1)
+  })
 
-  test("una agregación que cruza comercios también", async () => {
+  test('una agregación que cruza comercios también', async () => {
     // Es la vía por la que pasan los reportes de plataforma.
     await enRequestDe(TENANT_A, () =>
-      Nota.aggregate([{ $group: { _id: "$tenantId" } }]).option({
+      Nota.aggregate([{ $group: { _id: '$tenantId' } }]).option({
         ignoreTenant: true,
       }),
-    );
+    )
 
-    expect(avisos()).toHaveLength(1);
-    expect(avisos()[0][1].operation).toBe("aggregate");
-  });
+    expect(avisos()).toHaveLength(1)
+    expect(avisos()[0][1].operation).toBe('aggregate')
+  })
 
-  test("un update que escapa el filtro también", async () => {
+  test('un update que escapa el filtro también', async () => {
     await enRequestDe(TENANT_A, () =>
-      Nota.updateMany({}, { $set: { titulo: "x" } }).setOptions({
+      Nota.updateMany({}, { $set: { titulo: 'x' } }).setOptions({
         ignoreTenant: true,
       }),
-    );
+    )
 
-    expect(avisos()).toHaveLength(1);
-  });
-});
+    expect(avisos()).toHaveLength(1)
+  })
+})
 
-describe("tenantPlugin · lo que NO tiene que hacer ruido", () => {
-  test("un worker sin contexto no registra nada", async () => {
+describe('tenantPlugin · lo que NO tiene que hacer ruido', () => {
+  test('un worker sin contexto no registra nada', async () => {
     // Es el caso de aiCartRecoveryWorkerService y de los scripts de migración.
-    await Nota.find({}).setOptions({ ignoreTenant: true });
+    await Nota.find({}).setOptions({ ignoreTenant: true })
 
-    expect(avisos()).toHaveLength(0);
-  });
+    expect(avisos()).toHaveLength(0)
+  })
 
-  test("una consulta normal dentro de una request tampoco", async () => {
-    await enRequestDe(TENANT_A, () => Nota.find({}));
+  test('una consulta normal dentro de una request tampoco', async () => {
+    await enRequestDe(TENANT_A, () => Nota.find({}))
 
-    expect(avisos()).toHaveLength(0);
-  });
+    expect(avisos()).toHaveLength(0)
+  })
 
-  test("y esa consulta normal sigue aislada", async () => {
+  test('y esa consulta normal sigue aislada', async () => {
     // La guarda es un registro, no un cambio de comportamiento: el filtro por
     // tenant tiene que seguir aplicándose igual que antes.
-    const filas = await enRequestDe(TENANT_A, () => Nota.find({}));
+    const filas = await enRequestDe(TENANT_A, () => Nota.find({}))
 
-    expect(filas).toHaveLength(1);
-    expect(filas[0].titulo).toBe("de A");
-  });
-});
+    expect(filas).toHaveLength(1)
+    expect(filas[0].titulo).toBe('de A')
+  })
+})

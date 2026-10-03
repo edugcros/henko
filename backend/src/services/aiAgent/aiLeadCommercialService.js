@@ -29,22 +29,14 @@ export const AI_LEAD_INTENT = Object.freeze({
   POST_SALE: 'post_sale',
 })
 
-const FINAL_STATUSES = new Set([
-  AI_LEAD_STATUS.WON,
-  AI_LEAD_STATUS.LOST,
-  AI_LEAD_STATUS.DISCARDED,
-])
+const FINAL_STATUSES = new Set([AI_LEAD_STATUS.WON, AI_LEAD_STATUS.LOST, AI_LEAD_STATUS.DISCARDED])
 
 const clean = value => String(value || '').trim()
 const lower = value => clean(value).toLowerCase()
 
 const uniqueCleanValues = (values, maxItems = 20) => {
   return [
-    ...new Set(
-      (Array.isArray(values) ? values : [])
-        .map(value => clean(value))
-        .filter(Boolean),
-    ),
+    ...new Set((Array.isArray(values) ? values : []).map(value => clean(value)).filter(Boolean)),
   ].slice(0, maxItems)
 }
 
@@ -120,9 +112,7 @@ const getProductIdentityKey = product => {
   const productId = clean(product?.productId || product?._id || product?.id)
   const slug = lower(product?.slug)
   const sku = lower(product?.sku || product?.variantSku || product?.variantSKU)
-  const title = normalizeTextForMatch(
-    product?.title || product?.name || product?.nombre,
-  )
+  const title = normalizeTextForMatch(product?.title || product?.name || product?.nombre)
 
   return productId || slug || sku || title
 }
@@ -141,28 +131,11 @@ const uniqueProductsByIdentity = products => {
   })
 }
 
-const normalizeCustomer = ({
-  conversation,
-  customerName,
-  customerEmail,
-  customerPhone,
-} = {}) => {
+const normalizeCustomer = ({ conversation, customerName, customerEmail, customerPhone } = {}) => {
   return {
-    name: clean(
-      customerName ||
-        conversation?.customer?.name ||
-        conversation?.customerName,
-    ),
-    email: lower(
-      customerEmail ||
-        conversation?.customer?.email ||
-        conversation?.customerEmail,
-    ),
-    phone: clean(
-      customerPhone ||
-        conversation?.customer?.phone ||
-        conversation?.customerPhone,
-    ),
+    name: clean(customerName || conversation?.customer?.name || conversation?.customerName),
+    email: lower(customerEmail || conversation?.customer?.email || conversation?.customerEmail),
+    phone: clean(customerPhone || conversation?.customer?.phone || conversation?.customerPhone),
   }
 }
 
@@ -201,9 +174,7 @@ export const detectLeadIntentFromText = value => {
   }
 
   if (
-    /comprar|lo quiero|quiero pagar|pagar|checkout|finalizar compra|reservar|seña|señar/.test(
-      text,
-    )
+    /comprar|lo quiero|quiero pagar|pagar|checkout|finalizar compra|reservar|seña|señar/.test(text)
   ) {
     add(35, AI_LEAD_INTENT.CHECKOUT_INTENT)
   }
@@ -213,9 +184,7 @@ export const detectLeadIntentFromText = value => {
   }
 
   if (
-    /cuotas|financiaci[oó]n|financiar|tarjeta|mercado pago|mercadopago|transferencia/.test(
-      text,
-    )
+    /cuotas|financiaci[oó]n|financiar|tarjeta|mercado pago|mercadopago|transferencia/.test(text)
   ) {
     add(22, AI_LEAD_INTENT.PURCHASE_INTENT)
   }
@@ -236,11 +205,7 @@ export const detectLeadIntentFromText = value => {
     add(8, AI_LEAD_INTENT.POLICY_QUESTION)
   }
 
-  if (
-    /asesor|vendedor|humano|llamar|whatsapp|contacto|hablar con alguien/.test(
-      text,
-    )
-  ) {
+  if (/asesor|vendedor|humano|llamar|whatsapp|contacto|hablar con alguien/.test(text)) {
     add(22, AI_LEAD_INTENT.PURCHASE_INTENT)
   }
 
@@ -288,17 +253,10 @@ const normalizeIntent = value => {
 const normalizeProductOfInterest = product => {
   if (!product) return null
 
-  const productId = toObjectIdOrNull(
-    product.productId || product._id || product.id,
-  )
-  const title = clean(product.title || product.name || product.nombre).slice(
-    0,
-    180,
-  )
+  const productId = toObjectIdOrNull(product.productId || product._id || product.id)
+  const title = clean(product.title || product.name || product.nombre).slice(0, 180)
   const slug = clean(product.slug).slice(0, 180)
-  const sku = clean(
-    product.sku || product.variantSku || product.variantSKU,
-  ).slice(0, 120)
+  const sku = clean(product.sku || product.variantSku || product.variantSKU).slice(0, 120)
 
   if (!productId && !title && !slug && !sku) return null
 
@@ -307,15 +265,9 @@ const normalizeProductOfInterest = product => {
     title,
     slug,
     sku,
-    price: Math.max(
-      Number(product.price || product.finalPrice || product.salePrice || 0) ||
-        0,
-      0,
-    ),
+    price: Math.max(Number(product.price || product.finalPrice || product.salePrice || 0) || 0, 0),
     currency: clean(product.currency) || 'ARS',
-    lastMentionedAt: product.lastMentionedAt
-      ? new Date(product.lastMentionedAt)
-      : new Date(),
+    lastMentionedAt: product.lastMentionedAt ? new Date(product.lastMentionedAt) : new Date(),
   }
 }
 
@@ -443,20 +395,11 @@ const buildExistingProductRefs = products => {
   )
 }
 
-const filterNewProductsOnly = ({
-  existingProducts = [],
-  nextProducts = [],
-} = {}) => {
+const filterNewProductsOnly = ({ existingProducts = [], nextProducts = [] } = {}) => {
   const existingRefs = buildExistingProductRefs(existingProducts)
 
   return nextProducts.filter(product => {
-    const refs = [
-      product?._id,
-      product?.productId,
-      product?.slug,
-      product?.sku,
-      product?.title,
-    ]
+    const refs = [product?._id, product?.productId, product?.slug, product?.sku, product?.title]
       .map(value => lower(value))
       .filter(Boolean)
 
@@ -484,9 +427,7 @@ export const upsertLeadFromConversation = async ({
 } = {}) => {
   if (!tenantId) return null
 
-  const conversationId = toObjectIdOrNull(
-    conversation?._id || conversation?.id,
-  )
+  const conversationId = toObjectIdOrNull(conversation?._id || conversation?.id)
 
   const baseCustomer = normalizeCustomer({
     conversation,
@@ -503,9 +444,7 @@ export const upsertLeadFromConversation = async ({
 
   const existingLead = await AiLead.findOne(lookup)
     .setOptions({ tenantId })
-    .select(
-      '_id status leadScore customer productsOfInterest preferences metadata',
-    )
+    .select('_id status leadScore customer productsOfInterest preferences metadata')
     .lean()
 
   const customer = mergeCustomerForUpdate({
@@ -551,11 +490,7 @@ export const upsertLeadFromConversation = async ({
   }
 
   const normalizedPreferences =
-    preferences &&
-    typeof preferences === 'object' &&
-    !Array.isArray(preferences)
-      ? preferences
-      : {}
+    preferences && typeof preferences === 'object' && !Array.isArray(preferences) ? preferences : {}
   const mergedPreferences = {
     colors: uniqueCleanValues([
       ...(existingLead?.preferences?.colors || []),
@@ -575,7 +510,7 @@ export const upsertLeadFromConversation = async ({
     ]),
     budgetMax: Number.isFinite(Number(normalizedPreferences.budgetMax))
       ? Math.max(0, Number(normalizedPreferences.budgetMax))
-      : existingLead?.preferences?.budgetMax ?? null,
+      : (existingLead?.preferences?.budgetMax ?? null),
   }
 
   const resolvedChannel = clean(channel || conversation?.channel) || 'webchat'
@@ -688,13 +623,7 @@ export const addLeadNote = async ({ tenantId, leadId, text, user } = {}) => {
   ).setOptions({ tenantId })
 }
 
-export const updateLeadStatus = async ({
-  tenantId,
-  leadId,
-  status,
-  reason = '',
-  user,
-} = {}) => {
+export const updateLeadStatus = async ({ tenantId, leadId, status, reason = '', user } = {}) => {
   if (!tenantId || !isValidObjectId(leadId)) return null
 
   const cleanStatus = clean(status)
@@ -764,9 +693,7 @@ export const assignLead = async ({ tenantId, leadId, assignedTo } = {}) => {
     {
       $set: {
         assignedTo:
-          assignedTo && isValidObjectId(assignedTo)
-            ? new Types.ObjectId(String(assignedTo))
-            : null,
+          assignedTo && isValidObjectId(assignedTo) ? new Types.ObjectId(String(assignedTo)) : null,
         lastInteractionAt: new Date(),
       },
     },
@@ -776,11 +703,7 @@ export const assignLead = async ({ tenantId, leadId, assignedTo } = {}) => {
   ).setOptions({ tenantId })
 }
 
-export const scheduleLeadFollowUp = async ({
-  tenantId,
-  leadId,
-  nextFollowUpAt,
-} = {}) => {
+export const scheduleLeadFollowUp = async ({ tenantId, leadId, nextFollowUpAt } = {}) => {
   if (!tenantId || !isValidObjectId(leadId)) return null
 
   const date = nextFollowUpAt ? new Date(nextFollowUpAt) : null

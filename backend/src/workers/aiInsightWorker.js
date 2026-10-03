@@ -6,7 +6,10 @@
 // confirmar que los números tienen sentido antes de dejarlo correr solo.
 
 import Tenant from '../models/tenantModel.js'
-import { runInsightScanForTenant, remeasureDueInsights } from '../services/insights/aiInsightService.js'
+import {
+  runInsightScanForTenant,
+  remeasureDueInsights,
+} from '../services/insights/aiInsightService.js'
 
 let intervalRef = null
 let isRunning = false

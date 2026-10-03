@@ -85,8 +85,7 @@ const crearColor = async ({ dominio, token, title }) => {
     .send({ title })
 }
 
-const listarColores = dominio =>
-  request(app).get('/api/color').set('x-tenant-domain', dominio)
+const listarColores = dominio => request(app).get('/api/color').set('x-tenant-domain', dominio)
 
 describe('dominios separados · lo que ya funcionaba sigue igual', () => {
   test('el dominio de panel sirve el panel', async () => {
@@ -247,9 +246,7 @@ describe('panel propio · un dominio del comercio declarado solo como panel', ()
     const { tienda, token } = await crearConPanelPropio()
 
     expect((await listarColores(tienda)).status).toBe(200)
-    expect(
-      (await crearColor({ dominio: tienda, token, title: 'coral' })).status,
-    ).toBe(403)
+    expect((await crearColor({ dominio: tienda, token, title: 'coral' })).status).toBe(403)
   })
 
   test('los dos hostnames resuelven el MISMO comercio', async () => {

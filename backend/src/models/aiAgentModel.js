@@ -1,10 +1,7 @@
 // 📁 src/models/aiAgentModel.js
 // VERSIÓN GO PRODUCCIÓN - Agente IA Comercial Multitenant
 import mongoose from 'mongoose'
-import {
-  encryptSecret,
-  decryptSecret,
-} from '../services/aiAgent/secretCryptoService.js'
+import { encryptSecret, decryptSecret } from '../services/aiAgent/secretCryptoService.js'
 import { tenantPlugin } from './tenantPlugin.js'
 
 const { Schema } = mongoose
@@ -119,24 +116,11 @@ const aiAgentSchema = new Schema(
       blockedTopics: { type: [String], default: [] },
       humanHandoffKeywords: {
         type: [String],
-        default: [
-          'reclamo',
-          'denuncia',
-          'abogado',
-          'estafa',
-          'no me llegó',
-          'fraude',
-        ],
+        default: ['reclamo', 'denuncia', 'abogado', 'estafa', 'no me llegó', 'fraude'],
       },
       optOutKeywords: {
         type: [String],
-        default: [
-          'stop',
-          'baja',
-          'cancelar',
-          'no me escribas',
-          'no quiero recibir',
-        ],
+        default: ['stop', 'baja', 'cancelar', 'no me escribas', 'no quiero recibir'],
       },
     },
 
@@ -206,7 +190,6 @@ aiAgentSchema.plugin(tenantPlugin, {
   addTenantField: false,
 })
 
-const AiAgent =
-  mongoose.models.AiAgent || mongoose.model('AiAgent', aiAgentSchema)
+const AiAgent = mongoose.models.AiAgent || mongoose.model('AiAgent', aiAgentSchema)
 
 export default AiAgent

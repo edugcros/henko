@@ -2,10 +2,7 @@ import mongoose from 'mongoose'
 
 import Order from '../models/orderModel.js'
 import { Money } from '../utils/money.js'
-import {
-  sendAdminNotificationEmail,
-  sendOrderConfirmationEmail,
-} from './emailService.js'
+import { sendAdminNotificationEmail, sendOrderConfirmationEmail } from './emailService.js'
 import logger from '../../config/logger.js'
 import { normalizeEmail, isValidEmail } from './email/emailShared.js'
 
@@ -67,9 +64,7 @@ const EmailJobSchema = new Schema(
 EmailJobSchema.index({ status: 1, createdAt: 1 })
 EmailJobSchema.index({ orderId: 1, type: 1 }, { unique: true })
 
-const EmailJob =
-  mongoose.models.EmailJob ||
-  mongoose.model('EmailJob', EmailJobSchema)
+const EmailJob = mongoose.models.EmailJob || mongoose.model('EmailJob', EmailJobSchema)
 
 const getSafeErrorMessage = error => error?.message || 'Error inesperado'
 
@@ -121,9 +116,7 @@ const buildOrderForEmail = order => {
   }, 0)
 
   const discountCents = Number(
-    order.coupon?.discountAmountCents ||
-    order.paymentIntent?.discountAmountCents ||
-    0,
+    order.coupon?.discountAmountCents || order.paymentIntent?.discountAmountCents || 0,
   )
 
   return {
@@ -169,12 +162,7 @@ const buildOrderForEmail = order => {
   }
 }
 
-export const queuePaymentEmails = async ({
-  order,
-  payer,
-  req,
-  tenantConfig = {},
-}) => {
+export const queuePaymentEmails = async ({ order, payer, req, tenantConfig = {} }) => {
   const buyerEmail = extractBuyerEmail({ order, payer, req })
 
   // ADMIN_EMAIL es una casilla única de toda la plataforma — en producción
@@ -204,15 +192,10 @@ export const queuePaymentEmails = async ({
 
   if (buyerEmail) {
     jobs.push(
-      sendOrderConfirmationEmail(
-        orderForEmail,
-        buyerEmail,
-        tenantConfig,
-        {
-          payer,
-          user: req?.user,
-        },
-      )
+      sendOrderConfirmationEmail(orderForEmail, buyerEmail, tenantConfig, {
+        payer,
+        user: req?.user,
+      })
         .then(result => ({
           type: 'customer',
           success: Boolean(result?.success),
@@ -232,15 +215,10 @@ export const queuePaymentEmails = async ({
 
   if (adminEmail) {
     jobs.push(
-      sendAdminNotificationEmail(
-        orderForEmail,
-        adminEmail,
-        tenantConfig,
-        {
-          payer,
-          user: req?.user,
-        },
-      )
+      sendAdminNotificationEmail(orderForEmail, adminEmail, tenantConfig, {
+        payer,
+        user: req?.user,
+      })
         .then(result => ({
           type: 'admin',
           success: Boolean(result?.success),
@@ -283,10 +261,7 @@ export const queuePaymentEmails = async ({
       logger.info(`✅ Email enviado: ${result.type}`, {
         orderId: order?._id?.toString?.(),
         tenantId: order?.tenantId?.toString?.(),
-        messageId:
-          result.result?.messageId ||
-          result.result?.info?.messageId ||
-          null,
+        messageId: result.result?.messageId || result.result?.info?.messageId || null,
       })
     } else {
       logger.error(`❌ Error enviando email: ${result.type}`, {
@@ -360,8 +335,10 @@ export const processPendingEmails = async () => {
         job.attempts += 1
         await job.save()
 
-        const order = await Order.findById(job.orderId)
-          .populate('orderby', 'email firstName lastName firstname lastname')
+        const order = await Order.findById(job.orderId).populate(
+          'orderby',
+          'email firstName lastName firstname lastname',
+        )
 
         if (!order) {
           job.status = 'failed'

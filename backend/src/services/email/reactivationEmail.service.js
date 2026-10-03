@@ -47,9 +47,7 @@ export const sendReactivationEmail = async ({
   const safeStoreName = escapeHtml(storeName)
   const safeStoreUrl = escapeHtml(storeUrl)
   const safeBody = escapeHtml(clean(body))
-  const greeting = clean(customerName)
-    ? `Hola ${escapeHtml(clean(customerName))},`
-    : 'Hola,'
+  const greeting = clean(customerName) ? `Hola ${escapeHtml(clean(customerName))},` : 'Hola,'
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; line-height: 1.5;">

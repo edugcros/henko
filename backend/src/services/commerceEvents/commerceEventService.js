@@ -17,7 +17,10 @@ import UserMetricEvent, { USER_METRIC_EVENTS } from '../../models/userMetricEven
 import { Money } from '../../utils/money.js'
 import logger from '../../../config/logger.js'
 
-const sanitizeString = (value, max = 500) => String(value || '').trim().slice(0, max)
+const sanitizeString = (value, max = 500) =>
+  String(value || '')
+    .trim()
+    .slice(0, max)
 
 // Determinístico y distinto del `purchase-<uuid>` aleatorio que usa el
 // cliente (ver userMetricsService.js) — así nunca colisionan en el índice
@@ -25,15 +28,16 @@ const sanitizeString = (value, max = 500) => String(value || '').trim().slice(0,
 // o poll, siempre pisa el mismo documento en vez de crear uno nuevo.
 const getOrderEventId = order => `commerce_purchase:${order._id}`
 
-const buildItems = order => (order.products || []).map(item => ({
-  productId: String(item.product || ''),
-  productObjectId: item.product || null,
-  title: sanitizeString(item.titleSnapshot, 180),
-  sku: sanitizeString(item.skuSnapshot, 120),
-  quantity: Number(item.count || 0),
-  price: Money.toDecimal(item.priceCents || 0),
-  subtotal: Money.toDecimal((item.priceCents || 0) * (item.count || 0)),
-}))
+const buildItems = order =>
+  (order.products || []).map(item => ({
+    productId: String(item.product || ''),
+    productObjectId: item.product || null,
+    title: sanitizeString(item.titleSnapshot, 180),
+    sku: sanitizeString(item.skuSnapshot, 120),
+    quantity: Number(item.count || 0),
+    price: Money.toDecimal(item.priceCents || 0),
+    subtotal: Money.toDecimal((item.priceCents || 0) * (item.count || 0)),
+  }))
 
 /**
  * Nunca tira — un fallo acá no debe romper la confirmación del pago.

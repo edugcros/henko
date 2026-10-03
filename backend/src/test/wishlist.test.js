@@ -41,12 +41,14 @@ describe('wishlist', () => {
   test('adds a product to the wishlist', async () => {
     const res = await request(app)
       .put(`/api/user/wishlist/${product._id}`)
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
@@ -56,10 +58,12 @@ describe('wishlist', () => {
   test('returns the authenticated user wishlist', async () => {
     const res = await request(app)
       .get('/api/user/wishlist')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)

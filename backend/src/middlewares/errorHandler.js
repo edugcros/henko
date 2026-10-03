@@ -1,4 +1,3 @@
-
 import { buildFrontendUrl } from '../utils/frontendUrl.js'
 import logger from '../../config/logger.js'
 
@@ -23,15 +22,11 @@ export const errorHandler = (err, req, res, next) => {
 
   const declaredStatus = Number(err.statusCode || err.status)
   const safeDeclaredStatus =
-    Number.isInteger(declaredStatus) &&
-    declaredStatus >= 400 &&
-    declaredStatus <= 599
+    Number.isInteger(declaredStatus) && declaredStatus >= 400 && declaredStatus <= 599
       ? declaredStatus
       : 500
   const statusCode =
-    res.statusCode >= 400 && res.statusCode <= 599
-      ? res.statusCode
-      : safeDeclaredStatus
+    res.statusCode >= 400 && res.statusCode <= 599 ? res.statusCode : safeDeclaredStatus
 
   // Único punto que ve todos los errores de la app — sin esto, un incidente
   // real en producción no deja ningún rastro server-side, solo lo que el

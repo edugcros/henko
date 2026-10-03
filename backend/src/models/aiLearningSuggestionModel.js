@@ -188,10 +188,7 @@ const aiLearningSuggestionSchema = new Schema(
   },
 )
 
-aiLearningSuggestionSchema.index(
-  { tenantId: 1, fingerprint: 1 },
-  { unique: true },
-)
+aiLearningSuggestionSchema.index({ tenantId: 1, fingerprint: 1 }, { unique: true })
 
 aiLearningSuggestionSchema.index({
   tenantId: 1,
@@ -205,7 +202,4 @@ aiLearningSuggestionSchema.plugin(tenantPlugin, {
   addTenantField: false,
 })
 
-export default mongoose.model(
-  'AiLearningSuggestion',
-  aiLearningSuggestionSchema,
-)
+export default mongoose.model('AiLearningSuggestion', aiLearningSuggestionSchema)

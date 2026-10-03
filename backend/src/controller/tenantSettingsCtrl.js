@@ -42,7 +42,9 @@ export const getTenantSettings = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
 
   const tenant = await Tenant.findById(tenantId)
-    .select('name slug settings onboarding plan subscriptionStatus trialEndsAt currency locale timezone country')
+    .select(
+      'name slug settings onboarding plan subscriptionStatus trialEndsAt currency locale timezone country',
+    )
     .lean()
 
   if (!tenant) {
@@ -101,8 +103,7 @@ export const updateEmailDomain = asyncHandler(async (req, res) => {
 
   return res.status(200).json({
     success: true,
-    message:
-      'Dominio registrado. Cargá los registros DNS y después verificá el estado.',
+    message: 'Dominio registrado. Cargá los registros DNS y después verificá el estado.',
     data,
   })
 })
@@ -116,10 +117,9 @@ export const verifyEmailDomain = asyncHandler(async (req, res) => {
 
   return res.status(200).json({
     success: true,
-    message:
-      data.usingOwnDomain
-        ? 'Dominio verificado: tus correos ya salen desde tu dirección.'
-        : 'El dominio todavía no está verificado. Los cambios de DNS pueden tardar en propagarse.',
+    message: data.usingOwnDomain
+      ? 'Dominio verificado: tus correos ya salen desde tu dirección.'
+      : 'El dominio todavía no está verificado. Los cambios de DNS pueden tardar en propagarse.',
     data,
   })
 })
@@ -265,24 +265,29 @@ export const updateTenantSettings = asyncHandler(async (req, res) => {
 
   if (body.settings?.branding) {
     const b = body.settings.branding
-    if (b.logoUrl !== undefined) tenant.settings.branding.logoUrl = clean(b.logoUrl).slice(0, 500) || null
-    if (b.faviconUrl !== undefined) tenant.settings.branding.faviconUrl = clean(b.faviconUrl).slice(0, 500) || null
+    if (b.logoUrl !== undefined)
+      tenant.settings.branding.logoUrl = clean(b.logoUrl).slice(0, 500) || null
+    if (b.faviconUrl !== undefined)
+      tenant.settings.branding.faviconUrl = clean(b.faviconUrl).slice(0, 500) || null
   }
 
   if (body.settings?.store) {
     const s = body.settings.store
-    if (s.description !== undefined) tenant.settings.store.description = clean(s.description).slice(0, 300)
+    if (s.description !== undefined)
+      tenant.settings.store.description = clean(s.description).slice(0, 300)
     if (s.contactEmail !== undefined) {
       const email = clean(s.contactEmail)
       tenant.settings.store.contactEmail = email && isValidEmail(email) ? email.toLowerCase() : null
     }
-    if (s.contactPhone !== undefined) tenant.settings.store.contactPhone = clean(s.contactPhone).slice(0, 30) || null
+    if (s.contactPhone !== undefined)
+      tenant.settings.store.contactPhone = clean(s.contactPhone).slice(0, 30) || null
     if (s.address !== undefined) tenant.settings.store.address = clean(s.address).slice(0, 200)
   }
 
   if (body.settings?.checkout) {
     const c = body.settings.checkout
-    if (c.allowGuestCheckout !== undefined) tenant.settings.checkout.allowGuestCheckout = Boolean(c.allowGuestCheckout)
+    if (c.allowGuestCheckout !== undefined)
+      tenant.settings.checkout.allowGuestCheckout = Boolean(c.allowGuestCheckout)
   }
 
   await tenant.save()

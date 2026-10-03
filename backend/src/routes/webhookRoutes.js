@@ -4,10 +4,7 @@
 import express from 'express'
 import { handleSubscriptionWebhook } from '../controller/subscriptionWebhookCtrl.js'
 import { handleSendgridEvents } from '../controller/sendgridWebhookCtrl.js'
-import {
-  SUBSCRIPTION_WEBHOOK_ROUTE,
-  SENDGRID_WEBHOOK_ROUTE,
-} from '../config/subscriptionConfig.js'
+import { SUBSCRIPTION_WEBHOOK_ROUTE, SENDGRID_WEBHOOK_ROUTE } from '../config/subscriptionConfig.js'
 
 const router = express.Router()
 

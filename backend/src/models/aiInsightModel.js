@@ -129,12 +129,7 @@ const aiInsightSchema = new Schema(
     action: {
       actionType: {
         type: String,
-        enum: [
-          'reactivation_message',
-          'cart_recovery_reinforcement',
-          'price_reduction',
-          null,
-        ],
+        enum: ['reactivation_message', 'cart_recovery_reinforcement', 'price_reduction', null],
         default: null,
       },
       // channel/message solo aplican a reactivation_message.

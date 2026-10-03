@@ -457,9 +457,7 @@ export const removeBackgroundLocal = async imageBuffer => {
     .toBuffer()
 
   if (alpha.length !== width * height) {
-    throw new Error(
-      `Máscara con tamaño inesperado: ${alpha.length} bytes para ${width}x${height}`,
-    )
+    throw new Error(`Máscara con tamaño inesperado: ${alpha.length} bytes para ${width}x${height}`)
   }
 
   const base = await sharp(imageBuffer).removeAlpha().toBuffer()

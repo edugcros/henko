@@ -14,10 +14,7 @@ import {
 } from '../services/productAnalysisLease.js'
 import Product from '../models/productModel.js'
 import AgentHeartbeat from '../models/agentHeartbeatModel.js'
-import {
-  getAiBudgetSnapshot,
-  getAiUsageSnapshot,
-} from '../services/ai/aiBudgetService.js'
+import { getAiBudgetSnapshot, getAiUsageSnapshot } from '../services/ai/aiBudgetService.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import {
   getActorIdFromRequest,
@@ -68,13 +65,7 @@ export const AUTO_PUBLISH_MIN_CONFIDENCE = Math.min(
 const AUTO_PUBLISH_ENABLED =
   String(process.env.AI_AUTO_PUBLISH_ENABLED || 'false').toLowerCase() === 'true'
 
-const SAFE_SORT_FIELDS = new Set([
-  'createdAt',
-  'updatedAt',
-  'status',
-  'source',
-  'originalFilename',
-])
+const SAFE_SORT_FIELDS = new Set(['createdAt', 'updatedAt', 'status', 'source', 'originalFilename'])
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -89,10 +80,7 @@ const isAnalysisJobReusableAfterProductDeletion = async ({ job, tenantId }) => {
 
   if (job.deletedAt) return true
 
-  if (
-    job.status === JOB_STATUS.REJECTED &&
-    !job.createdProductId
-  ) {
+  if (job.status === JOB_STATUS.REJECTED && !job.createdProductId) {
     return true
   }
 
@@ -103,11 +91,7 @@ const isAnalysisJobReusableAfterProductDeletion = async ({ job, tenantId }) => {
   const product = await Product.findOne({
     _id: job.createdProductId,
     tenantId,
-    $or: [
-      { isDeleted: false },
-      { isDeleted: null },
-      { isDeleted: { $exists: false } },
-    ],
+    $or: [{ isDeleted: false }, { isDeleted: null }, { isDeleted: { $exists: false } }],
     deletedAt: { $exists: false },
   })
     .setOptions({ tenantId })
@@ -133,10 +117,12 @@ const ensureDir = async dir => {
 }
 
 const getPublicBaseUrl = () => {
-  return normalizeString(process.env.PUBLIC_URL) ||
+  return (
+    normalizeString(process.env.PUBLIC_URL) ||
     normalizeString(process.env.API_PUBLIC_URL) ||
     normalizeString(process.env.BACKEND_PUBLIC_URL) ||
     ''
+  )
 }
 
 const normalizeString = value => {
@@ -289,36 +275,35 @@ export const sanitizeAnalysis = analysis => {
   const suggestedPriceRange =
     analysis.suggestedPriceRange && typeof analysis.suggestedPriceRange === 'object'
       ? {
-        min:
+          min:
             typeof analysis.suggestedPriceRange.min === 'number'
               ? analysis.suggestedPriceRange.min
               : null,
-        max:
+          max:
             typeof analysis.suggestedPriceRange.max === 'number'
               ? analysis.suggestedPriceRange.max
               : null,
-        currency: analysis.suggestedPriceRange.currency || 'ARS',
-      }
+          currency: analysis.suggestedPriceRange.currency || 'ARS',
+        }
       : {
-        min: null,
-        max: null,
-        currency: 'ARS',
-      }
+          min: null,
+          max: null,
+          currency: 'ARS',
+        }
 
   return {
     titulo: normalizeString(analysis.titulo || analysis.title),
     categoria: normalizeString(analysis.categoria || analysis.category),
     subcategoria: normalizeString(analysis.subcategoria || analysis.subcategory),
-    marca: analysis.marca || analysis.brand ? normalizeString(analysis.marca || analysis.brand) : null,
+    marca:
+      analysis.marca || analysis.brand ? normalizeString(analysis.marca || analysis.brand) : null,
     title: normalizeString(analysis.title || analysis.titulo),
     category: normalizeString(analysis.category || analysis.categoria),
     subcategory: normalizeString(analysis.subcategory || analysis.subcategoria),
-    brand: analysis.brand || analysis.marca ? normalizeString(analysis.brand || analysis.marca) : null,
+    brand:
+      analysis.brand || analysis.marca ? normalizeString(analysis.brand || analysis.marca) : null,
     material: analysis.material ? normalizeString(analysis.material) : null,
-    color:
-      analysis.color ||
-      analysis.mainColor ||
-      null,
+    color: analysis.color || analysis.mainColor || null,
     attributes:
       analysis.attributes && typeof analysis.attributes === 'object'
         ? analysis.attributes
@@ -326,7 +311,10 @@ export const sanitizeAnalysis = analysis => {
           ? analysis.atributos
           : {},
     tags: Array.isArray(analysis.tags)
-      ? analysis.tags.map(tag => normalizeString(tag)).filter(Boolean).slice(0, 30)
+      ? analysis.tags
+          .map(tag => normalizeString(tag))
+          .filter(Boolean)
+          .slice(0, 30)
       : [],
     descripcion: normalizeString(analysis.descripcion || analysis.description),
     description: normalizeString(analysis.description || analysis.descripcion),
@@ -337,9 +325,10 @@ export const sanitizeAnalysis = analysis => {
     // El slice respeta los maxlength del modelo (180 / 300); metaDescription
     // admite hasta 320 en el servicio y sin recortar rompería la validación.
     seoTitle: normalizeString(analysis.seoTitle || analysis.seo?.metaTitle).slice(0, 180),
-    seoDescription: normalizeString(
-      analysis.seoDescription || analysis.seo?.metaDescription,
-    ).slice(0, 300),
+    seoDescription: normalizeString(analysis.seoDescription || analysis.seo?.metaDescription).slice(
+      0,
+      300,
+    ),
     suggestedPrice:
       typeof analysis.suggestedPrice === 'number'
         ? analysis.suggestedPrice
@@ -348,9 +337,7 @@ export const sanitizeAnalysis = analysis => {
           : null,
     suggestedPriceRange,
     confidence:
-      typeof analysis.confidence === 'number'
-        ? Math.min(Math.max(analysis.confidence, 0), 1)
-        : 0,
+      typeof analysis.confidence === 'number' ? Math.min(Math.max(analysis.confidence, 0), 1) : 0,
     warnings: Array.isArray(analysis.warnings)
       ? analysis.warnings.map(warning => normalizeString(warning)).filter(Boolean)
       : [],
@@ -366,22 +353,20 @@ export const canAutoPublishAnalysis = analysis => {
   )
 
   const material = normalizeString(
-    analysis?.material ||
-      analysis?.attributes?.material ||
-      analysis?.atributos?.material,
+    analysis?.material || analysis?.attributes?.material || analysis?.atributos?.material,
   )
 
   return Boolean(
     AUTO_PUBLISH_ENABLED &&
-      analysis &&
-      analysis.confidence >= AUTO_PUBLISH_MIN_CONFIDENCE &&
-      normalizeString(analysis.titulo || analysis.title) &&
-      normalizeString(analysis.categoria || analysis.category) &&
-      price !== null &&
-      material &&
-      !analysis.needsReview &&
-      !analysis.requiresHumanReview &&
-      analysis.aiProcessed !== false,
+    analysis &&
+    analysis.confidence >= AUTO_PUBLISH_MIN_CONFIDENCE &&
+    normalizeString(analysis.titulo || analysis.title) &&
+    normalizeString(analysis.categoria || analysis.category) &&
+    price !== null &&
+    material &&
+    !analysis.needsReview &&
+    !analysis.requiresHumanReview &&
+    analysis.aiProcessed !== false,
   )
 }
 
@@ -425,10 +410,13 @@ const uploadImageToStorage = async ({ file, tenantId }) => {
         publicId: uploaded.public_id,
       }
     } catch (error) {
-      logger.warn('[ProductAnalysis] Cloudinary no disponible para análisis. Usando storage local.', {
-        tenantId: tenantId?.toString(),
-        error: error.message,
-      })
+      logger.warn(
+        '[ProductAnalysis] Cloudinary no disponible para análisis. Usando storage local.',
+        {
+          tenantId: tenantId?.toString(),
+          error: error.message,
+        },
+      )
     }
   }
 
@@ -501,9 +489,7 @@ export const runVisualAnalysis = async ({ tenantId, file, originalFilename }) =>
     })
   }
 
-  throw new Error(
-    'aiVisionService no exporta analyzeProductImage ni analyzeImage',
-  )
+  throw new Error('aiVisionService no exporta analyzeProductImage ni analyzeImage')
 }
 
 /**
@@ -687,10 +673,12 @@ const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFile
     await job.save()
 
     if (job.autoCreateProduct && !job.createdProductId) {
-      const publish = job.autoPublishProduct && canAutoPublishAnalysis({
-        ...rawAnalysis,
-        ...analysis,
-      })
+      const publish =
+        job.autoPublishProduct &&
+        canAutoPublishAnalysis({
+          ...rawAnalysis,
+          ...analysis,
+        })
 
       if (job.autoPublishProduct && !publish) {
         logger.warn('[ProductAnalysis] Auto-publicación bloqueada por calidad insuficiente', {
@@ -769,10 +757,13 @@ const releaseOrAnalyzeScheduledJob = async payload => {
       await job.save()
     }
 
-    logger.info('[ProductAnalysis] Job programado liberado a AddProduct (sin analizar en background)', {
-      tenantId: payload.tenantId?.toString(),
-      jobId: payload.jobId?.toString(),
-    })
+    logger.info(
+      '[ProductAnalysis] Job programado liberado a AddProduct (sin analizar en background)',
+      {
+        tenantId: payload.tenantId?.toString(),
+        jobId: payload.jobId?.toString(),
+      },
+    )
 
     return job
   }
@@ -803,11 +794,14 @@ const scheduleAnalysisJob = payload => {
   }
 
   if (delayMs > 2147483647) {
-    logger.info('[ProductAnalysis] Job programado a largo plazo; se procesará por scheduler periódico', {
-      tenantId: payload.tenantId?.toString(),
-      jobId: payload.jobId?.toString(),
-      scheduledAt: payload.scheduledAt,
-    })
+    logger.info(
+      '[ProductAnalysis] Job programado a largo plazo; se procesará por scheduler periódico',
+      {
+        tenantId: payload.tenantId?.toString(),
+        jobId: payload.jobId?.toString(),
+        scheduledAt: payload.scheduledAt,
+      },
+    )
     return
   }
 
@@ -855,9 +849,7 @@ const processDueScheduledJobs = async ({ tenantId = null, limit = 10 } = {}) => 
     .sort({ scheduledAt: 1 })
     .limit(limit)
     .setOptions(
-      tenantId
-        ? {}
-        : { ignoreTenant: true, platformScope: 'platform:barrido-de-analisis' },
+      tenantId ? {} : { ignoreTenant: true, platformScope: 'platform:barrido-de-analisis' },
     )
 
   // Fire-and-forget con concurrencia acotada: no bloquea al caller (ni el
@@ -916,11 +908,7 @@ const deleteJobImageFromStorage = async job => {
   const isInsideUploads =
     localPath === uploadsDir || localPath.startsWith(`${uploadsDir}${path.sep}`)
   const isLocalAsset =
-    isInsideUploads &&
-    (
-      imageUrl.includes('/uploads/') ||
-      Boolean(path.extname(publicId))
-    )
+    isInsideUploads && (imageUrl.includes('/uploads/') || Boolean(path.extname(publicId)))
 
   if (isLocalAsset) {
     try {
@@ -987,13 +975,14 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     normalizeString(analysis.descripcion) ||
     'Descripción pendiente de revisión.'
 
-  const price = pickFirstNonNegativeNumber(
-    overrides.price,
-    overrides.precio,
-    analysis.suggestedPrice,
-    analysis.precio_sugerido,
-    analysis.suggestedPriceRange?.min,
-  ) || 0
+  const price =
+    pickFirstNonNegativeNumber(
+      overrides.price,
+      overrides.precio,
+      analysis.suggestedPrice,
+      analysis.precio_sugerido,
+      analysis.suggestedPriceRange?.min,
+    ) || 0
 
   const category = normalizeString(overrides.categoria) || normalizeString(analysis.categoria)
   const subcategory =
@@ -1012,7 +1001,8 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     normalizeString(overrides.atributos?.color) ||
     normalizeString(analysis.color) ||
     normalizeString(analysis.attributes?.color) ||
-    normalizeString(analysis.atributos?.color) || normalizeString(analysis.color)
+    normalizeString(analysis.atributos?.color) ||
+    normalizeString(analysis.color)
   const safeJobSuffix = String(job._id || Date.now()).slice(-8)
 
   /**
@@ -1043,7 +1033,8 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
 
     images: [
       {
-        public_id: job.imagePublicId || `product-analysis/${job.tenantId}/${job.imageHash || job._id}`,
+        public_id:
+          job.imagePublicId || `product-analysis/${job.tenantId}/${job.imageHash || job._id}`,
         url: job.imageUrl,
         alt: titulo,
         isMain: true,
@@ -1057,10 +1048,10 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     marca: brand,
     sku: normalizeString(overrides.sku) || normalizeString(job.metadata?.sku) || undefined,
 
-    tags: sanitizeStringArray(
-      Array.isArray(overrides.tags) ? overrides.tags : analysis.tags,
-      { lower: true, maxItems: 30 },
-    ),
+    tags: sanitizeStringArray(Array.isArray(overrides.tags) ? overrides.tags : analysis.tags, {
+      lower: true,
+      maxItems: 30,
+    }),
 
     atributos: {
       ...(analysis.attributes || {}),
@@ -1072,9 +1063,12 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     },
 
     seo: {
-      metaTitle: normalizeString(overrides.seoTitle) || normalizeString(analysis.seoTitle) || undefined,
+      metaTitle:
+        normalizeString(overrides.seoTitle) || normalizeString(analysis.seoTitle) || undefined,
       metaDescription:
-        normalizeString(overrides.seoDescription) || normalizeString(analysis.seoDescription) || undefined,
+        normalizeString(overrides.seoDescription) ||
+        normalizeString(analysis.seoDescription) ||
+        undefined,
     },
 
     status: 'draft',
@@ -1092,7 +1086,12 @@ const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
   }
 }
 
-const createProductFromAnalysisJob = async ({ job, overrides = {}, userId = null, publish = false }) => {
+const createProductFromAnalysisJob = async ({
+  job,
+  overrides = {},
+  userId = null,
+  publish = false,
+}) => {
   if (job.createdProductId) return null
 
   const productPayload = buildProductDraftFromJob({
@@ -1152,11 +1151,9 @@ const ensureJobBelongsToTenant = async ({ jobId, tenantId, select = null }) => {
   return job
 }
 
-
 // =====================================================
 // CONTROLLERS
 // =====================================================
-
 
 /**
  * PATCH /api/product-analysis/:jobId/hide
@@ -1209,7 +1206,6 @@ export const hideAnalysisJob = asyncHandler(async (req, res) => {
   })
 })
 
-
 /**
  * PATCH /api/product-analysis/:jobId/unhide
  *
@@ -1250,7 +1246,6 @@ export const unhideAnalysisJob = asyncHandler(async (req, res) => {
     job,
   })
 })
-
 
 /**
  * POST /api/product-analysis/import
@@ -1337,12 +1332,9 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
         originalFilename,
       })
       const retrySucceeded =
-        retriedJob.status === JOB_STATUS.COMPLETED ||
-        retriedJob.status === JOB_STATUS.APPROVED
+        retriedJob.status === JOB_STATUS.COMPLETED || retriedJob.status === JOB_STATUS.APPROVED
 
-      return res.status(
-        retrySucceeded ? 200 : retriedJob.error?.retryable ? 503 : 422,
-      ).json({
+      return res.status(retrySucceeded ? 200 : retriedJob.error?.retryable ? 503 : 422).json({
         success: retrySucceeded,
         code: retrySucceeded ? undefined : retriedJob.error?.code,
         message: retrySucceeded
@@ -1352,11 +1344,10 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
       })
     }
 
-    const isDiscardedLegacyJob =
-      await isAnalysisJobReusableAfterProductDeletion({
-        job: existing,
-        tenantId,
-      })
+    const isDiscardedLegacyJob = await isAnalysisJobReusableAfterProductDeletion({
+      job: existing,
+      tenantId,
+    })
 
     if (isDiscardedLegacyJob) {
       await ProductAnalysisJob.deleteOne({
@@ -1398,9 +1389,7 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
       imageUrl: storedImage.url,
       imagePublicId: storedImage.publicId,
       imageHash,
-      status: shouldSchedule
-        ? JOB_STATUS.SCHEDULED
-        : JOB_STATUS.PENDING,
+      status: shouldSchedule ? JOB_STATUS.SCHEDULED : JOB_STATUS.PENDING,
       scheduledAt,
       autoCreateProduct,
       autoPublishProduct,
@@ -1492,8 +1481,8 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
     originalFilename,
   })
 
-  const analysisSucceeded = processedJob.status === JOB_STATUS.COMPLETED ||
-    processedJob.status === JOB_STATUS.APPROVED
+  const analysisSucceeded =
+    processedJob.status === JOB_STATUS.COMPLETED || processedJob.status === JOB_STATUS.APPROVED
 
   const failureStatus = processedJob.error?.retryable ? 503 : 422
 
@@ -1558,8 +1547,7 @@ export const bulkImportImagesForAnalysis = asyncHandler(async (req, res) => {
       }
 
       const imageHash = createSha256(file.buffer)
-      const originalFilename =
-        normalizeString(file.originalname) || `bulk-image-${Date.now()}`
+      const originalFilename = normalizeString(file.originalname) || `bulk-image-${Date.now()}`
 
       const existing = await ProductAnalysisJob.findOne({ tenantId, imageHash })
 
@@ -1651,10 +1639,7 @@ export const listAnalysisJobs = asyncHandler(async (req, res) => {
     tenantId,
     $and: [
       {
-        $or: [
-          { deletedAt: { $exists: false } },
-          { deletedAt: null },
-        ],
+        $or: [{ deletedAt: { $exists: false } }, { deletedAt: null }],
       },
     ],
   }
@@ -1686,11 +1671,7 @@ export const listAnalysisJobs = asyncHandler(async (req, res) => {
   }
 
   const [items, total] = await Promise.all([
-    ProductAnalysisJob.find(filter)
-      .sort(sort)
-      .skip(skip)
-      .limit(limit)
-      .lean(),
+    ProductAnalysisJob.find(filter).sort(sort).skip(skip).limit(limit).lean(),
     ProductAnalysisJob.countDocuments(filter),
   ])
 
@@ -1774,10 +1755,7 @@ export const getAnalysisAgentStatus = asyncHandler(async (req, res) => {
 
   const baseFilter = {
     tenantId,
-    $or: [
-      { deletedAt: { $exists: false } },
-      { deletedAt: null },
-    ],
+    $or: [{ deletedAt: { $exists: false } }, { deletedAt: null }],
   }
 
   const [scheduled, processing, pendingReview, failed, pending, nextJob] = await Promise.all([
@@ -1812,10 +1790,10 @@ export const getAnalysisAgentStatus = asyncHandler(async (req, res) => {
     },
     nextRun: nextJob
       ? {
-        jobId: String(nextJob._id),
-        scheduledAt: nextJob.scheduledAt,
-        originalFilename: nextJob.originalFilename,
-      }
+          jobId: String(nextJob._id),
+          scheduledAt: nextJob.scheduledAt,
+          originalFilename: nextJob.originalFilename,
+        }
       : null,
   })
 })
@@ -1863,9 +1841,7 @@ export const reportAgentHeartbeat = asyncHandler(async (req, res) => {
 export const getAgentHeartbeat = asyncHandler(async (req, res) => {
   const tenantId = getTenantId(req)
 
-  const heartbeat = await AgentHeartbeat.findOne({ tenantId })
-    .setOptions({ tenantId })
-    .lean()
+  const heartbeat = await AgentHeartbeat.findOne({ tenantId }).setOptions({ tenantId }).lean()
 
   return res.status(200).json({
     success: true,
@@ -1988,7 +1964,8 @@ export const rescheduleAnalysisJob = asyncHandler(async (req, res) => {
   job.scheduledAt = scheduledAt
 
   if (job.metadata) {
-    job.metadata.AddProductAt = job.metadata.autoAnalyze === false ? scheduledAt : job.metadata.AddProductAt
+    job.metadata.AddProductAt =
+      job.metadata.autoAnalyze === false ? scheduledAt : job.metadata.AddProductAt
   }
 
   await job.save()
@@ -2089,9 +2066,7 @@ export const markAnalysisJobImportedToAddProduct = asyncHandler(async (req, res)
   // el análisis ya calculado para que el formulario se autocomplete sin
   // gastar una llamada más a la IA.
   if (job.status === JOB_STATUS.COMPLETED) {
-    const normalized = job.analysisRaw
-      ? buildNormalizedDraftFromAnalysis(job.analysisRaw)
-      : null
+    const normalized = job.analysisRaw ? buildNormalizedDraftFromAnalysis(job.analysisRaw) : null
 
     return res.status(200).json({
       success: true,
@@ -2104,9 +2079,10 @@ export const markAnalysisJobImportedToAddProduct = asyncHandler(async (req, res)
   if (job.status !== JOB_STATUS.PENDING) {
     return res.status(409).json({
       success: false,
-      message: job.status === JOB_STATUS.SCHEDULED
-        ? 'La imagen todavía está programada. Va a estar disponible en el horario indicado.'
-        : 'La imagen ya fue tomada o procesada.',
+      message:
+        job.status === JOB_STATUS.SCHEDULED
+          ? 'La imagen todavía está programada. Va a estar disponible en el horario indicado.'
+          : 'La imagen ya fue tomada o procesada.',
       currentStatus: job.status,
     })
   }
@@ -2162,10 +2138,7 @@ export const completeAddProductJob = asyncHandler(async (req, res) => {
     })
   }
 
-  if (
-    job.status === JOB_STATUS.APPROVED &&
-    String(job.createdProductId || '') === productId
-  ) {
+  if (job.status === JOB_STATUS.APPROVED && String(job.createdProductId || '') === productId) {
     return res.status(200).json({
       success: true,
       message: 'El trabajo ya estaba vinculado al producto.',
@@ -2283,8 +2256,7 @@ export const rejectAnalysisJob = asyncHandler(async (req, res) => {
   job.status = JOB_STATUS.REJECTED
   job.rejectedAt = new Date()
   job.rejectedBy = userId
-  job.rejectionReason =
-    normalizeString(req.body?.reason) || 'Rechazado por administrador.'
+  job.rejectionReason = normalizeString(req.body?.reason) || 'Rechazado por administrador.'
 
   await job.save()
 
@@ -2394,7 +2366,4 @@ export const runWishlistPromotionNotifications = asyncHandler(async (req, res) =
   return res.status(200).json(result)
 })
 
-export {
-  JOB_STATUS,
-  JOB_SOURCE,
-}
+export { JOB_STATUS, JOB_SOURCE }

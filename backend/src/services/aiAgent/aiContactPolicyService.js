@@ -47,11 +47,7 @@ export const canContactCustomer = async ({
     allowWhatsappCustomerWindow &&
     isWithinWhatsappCustomerWindow(preference)
 
-  if (
-    requireMarketingConsent &&
-    !preference?.marketingConsent &&
-    !withinWhatsappWindow
-  ) {
+  if (requireMarketingConsent && !preference?.marketingConsent && !withinWhatsappWindow) {
     return { allowed: false, reason: 'missing_marketing_consent', preference }
   }
 
@@ -63,12 +59,9 @@ export const canContactCustomer = async ({
   }
 
   const resetAt = preference?.contactCountResetAt || preference?.updatedAt
-  const countStillInWindow =
-    resetAt && resetAt >= getRolling24hWindowStart()
+  const countStillInWindow = resetAt && resetAt >= getRolling24hWindowStart()
 
-  const currentCount = countStillInWindow
-    ? Number(preference?.contactCount24h || 0)
-    : 0
+  const currentCount = countStillInWindow ? Number(preference?.contactCount24h || 0) : 0
 
   if (maxContactsPer24h > 0 && currentCount >= maxContactsPer24h) {
     return { allowed: false, reason: 'daily_contact_limit_reached', preference }
@@ -77,11 +70,7 @@ export const canContactCustomer = async ({
   return { allowed: true, reason: 'allowed', preference }
 }
 
-export const registerCustomerContact = async ({
-  tenantId,
-  channel,
-  destination,
-}) => {
+export const registerCustomerContact = async ({ tenantId, channel, destination }) => {
   const cleanChannel = normalizeChannel(channel)
   const cleanDestination = normalizeDestination(destination, cleanChannel)
 
@@ -194,8 +183,5 @@ export const optOutCustomer = async ({
 export const isWithinWhatsappCustomerWindow = preference => {
   if (!preference?.lastCustomerMessageAt) return false
 
-  return (
-    Date.now() - preference.lastCustomerMessageAt.getTime() <=
-    24 * 60 * 60 * 1000
-  )
+  return Date.now() - preference.lastCustomerMessageAt.getTime() <= 24 * 60 * 60 * 1000
 }

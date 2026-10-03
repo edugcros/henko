@@ -94,15 +94,11 @@ const aiTenantPolicySchema = new mongoose.Schema(
 // 'tenantId_1' y el segundo rebotaba con "An existing index has the same name".
 // El síntoma no era un índice de menos —era que el modelo entero dejaba de
 // poder usarse, porque el error sale en cada operación.
-aiTenantPolicySchema.index(
-  { tenantId: 1 },
-  { unique: true, name: 'aiTenantPolicy_tenant_unique' },
-)
+aiTenantPolicySchema.index({ tenantId: 1 }, { unique: true, name: 'aiTenantPolicy_tenant_unique' })
 
 aiTenantPolicySchema.plugin(tenantPlugin)
 
 const AiTenantPolicy =
-  mongoose.models.AiTenantPolicy ||
-  mongoose.model('AiTenantPolicy', aiTenantPolicySchema)
+  mongoose.models.AiTenantPolicy || mongoose.model('AiTenantPolicy', aiTenantPolicySchema)
 
 export default AiTenantPolicy

@@ -2,7 +2,9 @@ import { body, validationResult } from 'express-validator'
 
 export const validateCouponCreation = [
   body('description').notEmpty().withMessage('La descripción es requerida'),
-  body('discountType').isIn(['percentage', 'fixed_amount']).withMessage('Tipo de descuento inválido'),
+  body('discountType')
+    .isIn(['percentage', 'fixed_amount'])
+    .withMessage('Tipo de descuento inválido'),
   body('discountValue').isFloat({ min: 0 }).withMessage('El valor de descuento debe ser positivo'),
   body('startDate').isISO8601().withMessage('Fecha de inicio inválida'),
   body('endDate').isISO8601().withMessage('Fecha de fin inválida'),

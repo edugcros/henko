@@ -1,5 +1,6 @@
 // eslint.config.js
 import eslintPluginJs from '@eslint/js'
+import eslintConfigPrettier from 'eslint-config-prettier'
 import eslintPluginJest from 'eslint-plugin-jest'
 import globals from 'globals'
 
@@ -53,14 +54,26 @@ export default [
       },
     },
     rules: {
-      quotes: ['error', 'single'],
-      semi: ['error', 'never'],
-      indent: ['error', 2],
-      'comma-dangle': ['error', 'always-multiline'],
-      'object-curly-spacing': ['error', 'always'],
-      'arrow-parens': ['error', 'as-needed'],
       'no-unused-vars': ['warn'],
       'no-console': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
     },
   },
+
+  // SIEMPRE AL FINAL: apaga las reglas de FORMATO que chocan con prettier.
+  //
+  // POR QUÉ SE FUERON SEIS REGLAS DE ACÁ
+  //
+  // Este bloque declaraba quotes, semi, indent, comma-dangle,
+  // object-curly-spacing y arrow-parens: las seis son decisiones de formato, y
+  // el formato lo decide prettier.config.cjs. Mientras el backend no tuvo
+  // config de prettier la duplicación no se notaba, porque nadie formateaba.
+  //
+  // Se notó al formatearlo: 629 errores de `indent`, todos por discrepar con
+  // la sangría que elige prettier. Dos herramientas peleando por lo mismo, que
+  // es exactamente lo que el PR #247 arregló en admin y en website y lo que
+  // AGENTS.md pide no repetir.
+  //
+  // eslint-config-prettier ya era dependencia; solo faltaba aplicarlo. Va
+  // último porque gana la última configuración que toca una regla.
+  eslintConfigPrettier,
 ]

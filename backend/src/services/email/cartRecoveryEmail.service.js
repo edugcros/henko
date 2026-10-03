@@ -18,12 +18,7 @@ import { escapeHtml, sanitizeString as clean } from './emailShared.js'
  *                reemplazadas. Es lo que el comercio escribió; el correo lo
  *                respeta en vez de imponer su propia redacción.
  */
-export const sendCartRecoveryEmail = async ({
-  to,
-  tenantConfig = {},
-  values = {},
-  body = '',
-}) => {
+export const sendCartRecoveryEmail = async ({ to, tenantConfig = {}, values = {}, body = '' }) => {
   const destination = clean(to)
 
   if (!destination) {
@@ -55,9 +50,7 @@ export const sendCartRecoveryEmail = async ({
   const safeProductName = escapeHtml(clean(values.productName))
   const safeCartTotal = escapeHtml(clean(values.cartTotal))
 
-  const greeting = customerName
-    ? `Hola ${escapeHtml(customerName)},`
-    : 'Hola,'
+  const greeting = customerName ? `Hola ${escapeHtml(customerName)},` : 'Hola,'
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; line-height: 1.5;">
@@ -68,12 +61,12 @@ export const sendCartRecoveryEmail = async ({
       ${safeBody ? `<p>${safeBody}</p>` : `<p>Guardamos tu carrito en <strong>${safeStoreName}</strong> para que puedas terminar la compra cuando quieras.</p>`}
 
       ${
-  safeProductName
-    ? `<p style="background:#f7f7f7; padding:12px 16px; border-radius:6px;">
+        safeProductName
+          ? `<p style="background:#f7f7f7; padding:12px 16px; border-radius:6px;">
              <strong>${safeProductName}</strong>${safeCartTotal ? `<br/>Total: ${safeCartTotal}` : ''}
            </p>`
-    : ''
-}
+          : ''
+      }
 
       <div style="text-align: center; margin: 30px 0;">
         <a href="${safeCheckoutUrl}"

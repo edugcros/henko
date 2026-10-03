@@ -24,7 +24,9 @@ const GRAPH_API_VERSION = 'v21.0'
 const CAPI_TIMEOUT_MS = 8000
 
 const hashForMeta = value => {
-  const clean = String(value || '').trim().toLowerCase()
+  const clean = String(value || '')
+    .trim()
+    .toLowerCase()
   if (!clean) return null
   return crypto.createHash('sha256').update(clean).digest('hex')
 }

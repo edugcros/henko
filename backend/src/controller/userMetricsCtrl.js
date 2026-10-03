@@ -1,16 +1,10 @@
 import asyncHandler from 'express-async-handler'
 
-import UserMetricEvent, {
-  USER_METRIC_EVENTS,
-} from '../models/userMetricEventModel.js'
+import UserMetricEvent, { USER_METRIC_EVENTS } from '../models/userMetricEventModel.js'
 import Product from '../models/productModel.js'
 import Order from '../models/orderModel.js'
 import { getOptionalUserFromAccessToken } from '../utils/authRequest.js'
-import {
-  getTenantIdFromRequest,
-  isValidObjectId,
-  toObjectId,
-} from '../utils/requestContext.js'
+import { getTenantIdFromRequest, isValidObjectId, toObjectId } from '../utils/requestContext.js'
 import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
@@ -121,11 +115,7 @@ const sanitizeItems = items => {
 
   return items.slice(0, MAX_ITEMS).map(item => {
     const productId = clean(
-      item?.productId ||
-        item?.id ||
-        item?.item_id ||
-        item?.productObjectId ||
-        '',
+      item?.productId || item?.id || item?.item_id || item?.productObjectId || '',
       120,
     )
 
@@ -197,8 +187,7 @@ const normalizeSource = value => {
   return CLIENT_SOURCES.has(source) ? source : 'unknown'
 }
 
-const claimsReservedSource = rawEvent =>
-  RESERVED_SOURCES.has(cleanLower(rawEvent?.source, 40))
+const claimsReservedSource = rawEvent => RESERVED_SOURCES.has(cleanLower(rawEvent?.source, 40))
 
 const normalizeOccurredAt = value => {
   const date = value ? new Date(value) : new Date()
@@ -238,10 +227,7 @@ const normalizeEventPayload = ({ req, rawEvent, tenantId, user }) => {
     eventId: clean(rawEvent?.eventId || rawEvent?.id, 180),
 
     sessionId,
-    tenantDomain: cleanLower(
-      rawEvent?.tenantDomain || getTenantDomainFromRequest(req),
-      180,
-    ),
+    tenantDomain: cleanLower(rawEvent?.tenantDomain || getTenantDomainFromRequest(req), 180),
 
     eventType,
     source: normalizeSource(rawEvent?.source),
@@ -324,8 +310,14 @@ const normalizeEventPayload = ({ req, rawEvent, tenantId, user }) => {
 const filterReferencesByTenant = async (events, tenantId) => {
   const tenantObjectId = toObjectId(tenantId)
 
-  const idsDe = campo =>
-    [...new Set(events.map(e => e[campo]).filter(Boolean).map(String))]
+  const idsDe = campo => [
+    ...new Set(
+      events
+        .map(e => e[campo])
+        .filter(Boolean)
+        .map(String),
+    ),
+  ]
 
   const productIds = idsDe('productId')
   const orderIds = idsDe('orderObjectId')
@@ -333,19 +325,19 @@ const filterReferencesByTenant = async (events, tenantId) => {
   const [productosPropios, ordenesPropias] = await Promise.all([
     productIds.length
       ? Product.collection
-        .find(
-          { _id: { $in: productIds.map(toObjectId) }, tenantId: tenantObjectId },
-          { projection: { _id: 1 } },
-        )
-        .toArray()
+          .find(
+            { _id: { $in: productIds.map(toObjectId) }, tenantId: tenantObjectId },
+            { projection: { _id: 1 } },
+          )
+          .toArray()
       : [],
     orderIds.length
       ? Order.collection
-        .find(
-          { _id: { $in: orderIds.map(toObjectId) }, tenantId: tenantObjectId },
-          { projection: { _id: 1 } },
-        )
-        .toArray()
+          .find(
+            { _id: { $in: orderIds.map(toObjectId) }, tenantId: tenantObjectId },
+            { projection: { _id: 1 } },
+          )
+          .toArray()
       : [],
   ])
 

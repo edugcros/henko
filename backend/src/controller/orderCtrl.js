@@ -25,9 +25,7 @@ import {
   clearCart,
   validateCartOwnership,
 } from '../services/orderCartService.js'
-import {
-  decrementStockForLines,
-} from '../services/orderInventoryService.js'
+import { decrementStockForLines } from '../services/orderInventoryService.js'
 import { releaseReservedStock } from '../services/paymentOrderOpsService.js'
 import { registerMarketingConsent } from '../services/aiAgent/aiContactPolicyService.js'
 
@@ -168,21 +166,26 @@ const toBooleanInput = value => {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value === 1
   if (typeof value === 'string') {
-    return ['true', '1', 'yes', 'si', 'sí'].includes(
-      value.trim().toLowerCase(),
-    )
+    return ['true', '1', 'yes', 'si', 'sí'].includes(value.trim().toLowerCase())
   }
   return false
 }
 
-const normalizeEmail = value => String(value || '').trim().toLowerCase()
+const normalizeEmail = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
 
 const sanitizePhone = value => {
   return sanitizeString(value).slice(0, 50)
 }
 
 const sanitizeCountryCode = value => {
-  return sanitizeString(value || 'AR').slice(0, 2).toUpperCase() || 'AR'
+  return (
+    sanitizeString(value || 'AR')
+      .slice(0, 2)
+      .toUpperCase() || 'AR'
+  )
 }
 
 const validateEmailOrThrow = email => {
@@ -285,13 +288,12 @@ const enrichOrderForResponse = order => {
 
   const subtotalCents = Array.isArray(raw.products)
     ? raw.products.reduce((sum, product) => {
-      return sum + Number(product.subtotalCents || 0)
-    }, 0)
+        return sum + Number(product.subtotalCents || 0)
+      }, 0)
     : 0
 
   const discountCents = raw.paymentIntent?.discountAmountCents || 0
-  const totalCents =
-    raw.paymentIntent?.amountCents || Math.max(0, subtotalCents - discountCents)
+  const totalCents = raw.paymentIntent?.amountCents || Math.max(0, subtotalCents - discountCents)
 
   return {
     ...raw,
@@ -307,22 +309,22 @@ const enrichOrderForResponse = order => {
 
     products: Array.isArray(raw.products)
       ? raw.products.map(product => ({
-        ...product,
-        selectedAttributes: mapToObject(product.selectedAttributes),
-        price: Money.toDecimal(product.priceCents),
-        originalPrice: Money.toDecimal(product.originalPriceCents),
-        subtotal: Money.toDecimal(product.subtotalCents),
-        originalSubtotal: Money.toDecimal(product.originalSubtotalCents),
-      }))
+          ...product,
+          selectedAttributes: mapToObject(product.selectedAttributes),
+          price: Money.toDecimal(product.priceCents),
+          originalPrice: Money.toDecimal(product.originalPriceCents),
+          subtotal: Money.toDecimal(product.subtotalCents),
+          originalSubtotal: Money.toDecimal(product.originalSubtotalCents),
+        }))
       : [],
 
     paymentIntent: raw.paymentIntent
       ? {
-        ...raw.paymentIntent,
-        amount: Money.toDecimal(raw.paymentIntent.amountCents),
-        originalAmount: Money.toDecimal(raw.paymentIntent.originalAmountCents),
-        discountAmount: Money.toDecimal(raw.paymentIntent.discountAmountCents),
-      }
+          ...raw.paymentIntent,
+          amount: Money.toDecimal(raw.paymentIntent.amountCents),
+          originalAmount: Money.toDecimal(raw.paymentIntent.originalAmountCents),
+          discountAmount: Money.toDecimal(raw.paymentIntent.discountAmountCents),
+        }
       : null,
   }
 }
@@ -346,12 +348,7 @@ const buildShippingAddress = ({ req, body }) => {
     country: sanitizeCountryCode(shippingAddress.country),
   }
 
-  const requiredFields = [
-    'firstName',
-    'lastName',
-    'email',
-    'phone',
-  ]
+  const requiredFields = ['firstName', 'lastName', 'email', 'phone']
 
   const missing = requiredFields.filter(field => !result[field])
 
@@ -364,22 +361,10 @@ const buildShippingAddress = ({ req, body }) => {
 
 const buildCustomerSnapshot = ({ user, shippingAddress }) => ({
   userId: user._id,
-  firstname:
-    shippingAddress.firstName ||
-    user.firstname ||
-    user.firstName ||
-    '',
-  lastname:
-    shippingAddress.lastName ||
-    user.lastname ||
-    user.lastName ||
-    '',
+  firstname: shippingAddress.firstName || user.firstname || user.firstName || '',
+  lastname: shippingAddress.lastName || user.lastname || user.lastName || '',
   email: normalizeEmail(shippingAddress.email),
-  mobile:
-    shippingAddress.phone ||
-    user.mobile ||
-    user.phone ||
-    '',
+  mobile: shippingAddress.phone || user.mobile || user.phone || '',
   validatedAt: new Date(),
 })
 
@@ -412,14 +397,10 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
   // Opt-in explícito de marketing desde el checkout (checkbox). Estricto:
   // solo true booleano o 'true' string cuentan como consentimiento.
   const marketingConsentGiven =
-    req.body?.marketingConsent === true ||
-    req.body?.marketingConsent === 'true'
-  const bodyCouponCode = sanitizeString(
-    req.body?.coupon || req.body?.couponDetails?.code,
-  )
+    req.body?.marketingConsent === true || req.body?.marketingConsent === 'true'
+  const bodyCouponCode = sanitizeString(req.body?.coupon || req.body?.couponDetails?.code)
 
-  const idempotencyKey =
-    sanitizeString(req.body?.idempotencyKey) || crypto.randomUUID()
+  const idempotencyKey = sanitizeString(req.body?.idempotencyKey) || crypto.randomUUID()
 
   const existingOrder = await Order.findOne({
     tenantId: tenantObjectId,
@@ -456,12 +437,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
 
       validateCartOwnership({ cart, userId, tenantId })
 
-      const {
-        lines,
-        lineContexts,
-        subtotalCents,
-        currency,
-      } = await calculateCartLines({
+      const { lines, lineContexts, subtotalCents, currency } = await calculateCartLines({
         cart,
         tenantId,
         session,
@@ -490,10 +466,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
       }
 
       if (couponDoc) {
-        if (
-          typeof couponDoc.isCurrentlyUsable === 'function' &&
-          !couponDoc.isCurrentlyUsable()
-        ) {
+        if (typeof couponDoc.isCurrentlyUsable === 'function' && !couponDoc.isCurrentlyUsable()) {
           throw new Error('Cupón inválido, vencido o agotado')
         }
 
@@ -515,9 +488,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
       }
 
       const finalCents = Math.max(0, subtotalCents - discountCents)
-      const paymentStatus = isCOD
-        ? PAYMENT_STATUS.APPROVED
-        : PAYMENT_STATUS.PENDING
+      const paymentStatus = isCOD ? PAYMENT_STATUS.APPROVED : PAYMENT_STATUS.PENDING
 
       const shippingAddress = buildShippingAddress({ req, body: req.body })
 
@@ -559,9 +530,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
         })
       }
 
-      const attribution = parseAttributionHeader(
-        req.headers['x-metric-attribution'],
-      )
+      const attribution = parseAttributionHeader(req.headers['x-metric-attribution'])
 
       const order = new Order({
         tenantId: tenantObjectId,
@@ -616,18 +585,14 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
 
         coupon: couponDoc
           ? {
-            couponId: couponDoc._id,
-            code: couponDoc.code,
-            discountPercent:
-                couponDoc.discountType === 'percentage'
-                  ? couponDoc.discountValue
-                  : 0,
-            discountAmountCents: discountCents,
-            applicableProducts:
-                couponDoc.applicableProducts?.map(productId =>
-                  normalizeObjectId(productId),
-                ) || [],
-          }
+              couponId: couponDoc._id,
+              code: couponDoc.code,
+              discountPercent:
+                couponDoc.discountType === 'percentage' ? couponDoc.discountValue : 0,
+              discountAmountCents: discountCents,
+              applicableProducts:
+                couponDoc.applicableProducts?.map(productId => normalizeObjectId(productId)) || [],
+            }
           : undefined,
 
         // COD consume el cupón al crear la orden (más abajo); Mercado Pago lo
@@ -691,9 +656,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
   if (isCOD) {
     await dispatchOrderCreationEmails({
       order: createdOrder,
-      buyerEmail:
-        createdOrder.shippingAddress?.email ||
-        createdOrder.customerSnapshot?.email,
+      buyerEmail: createdOrder.shippingAddress?.email || createdOrder.customerSnapshot?.email,
     })
   }
 
@@ -712,9 +675,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
     { channel: 'whatsapp', destination: createdOrder.shippingAddress?.phone },
     {
       channel: 'email',
-      destination:
-        createdOrder.shippingAddress?.email ||
-        createdOrder.customerSnapshot?.email,
+      destination: createdOrder.shippingAddress?.email || createdOrder.customerSnapshot?.email,
     },
   ]
 
@@ -805,9 +766,7 @@ export const resendConfirmationEmail = expressAsyncHandler(async (req, res) => {
   const result = await resendOrderConfirmationEmail({
     order,
     tenantId: tenantObjectId,
-    buyerEmail:
-      order.shippingAddress?.email ||
-      order.customerSnapshot?.email,
+    buyerEmail: order.shippingAddress?.email || order.customerSnapshot?.email,
   })
 
   if (result?.success) {
@@ -859,12 +818,8 @@ export const getOrders = expressAsyncHandler(async (req, res) => {
   }
 
   const requestedOrderStatus = normalizeOrderStatusInput(req.query.status)
-  const requestedPaymentStatus = sanitizeString(
-    req.query.paymentStatus,
-  ).toLowerCase()
-  const requestedFulfillmentStatus = sanitizeString(
-    req.query.fulfillmentStatus,
-  ).toLowerCase()
+  const requestedPaymentStatus = sanitizeString(req.query.paymentStatus).toLowerCase()
+  const requestedFulfillmentStatus = sanitizeString(req.query.fulfillmentStatus).toLowerCase()
 
   if (Object.values(ORDER_STATUS).includes(requestedOrderStatus)) {
     query.orderStatus = requestedOrderStatus
@@ -874,18 +829,12 @@ export const getOrders = expressAsyncHandler(async (req, res) => {
     query.paymentStatus = requestedPaymentStatus
   }
 
-  if (
-    Object.values(FULFILLMENT_STATUS).includes(requestedFulfillmentStatus)
-  ) {
+  if (Object.values(FULFILLMENT_STATUS).includes(requestedFulfillmentStatus)) {
     query.fulfillmentStatus = requestedFulfillmentStatus
   }
 
   const [orders, total] = await Promise.all([
-    Order.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .setOptions({ tenantId }),
+    Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).setOptions({ tenantId }),
 
     Order.countDocuments(query).setOptions({ tenantId }),
   ])
@@ -971,9 +920,7 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
     if (!Object.values(ORDER_STATUS).includes(nextStatus)) {
       return res.status(400).json({
         success: false,
-        message: `Estado inválido. Permitidos: ${Object.values(
-          ORDER_STATUS,
-        ).join(', ')}`,
+        message: `Estado inválido. Permitidos: ${Object.values(ORDER_STATUS).join(', ')}`,
       })
     }
 
@@ -993,10 +940,7 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       return refundOrder(req, res)
     }
 
-    const finalStatuses = [
-      ORDER_STATUS.CANCELLED,
-      ORDER_STATUS.REFUNDED,
-    ]
+    const finalStatuses = [ORDER_STATUS.CANCELLED, ORDER_STATUS.REFUNDED]
 
     if (finalStatuses.includes(currentStatus)) {
       return res.status(400).json({
@@ -1054,10 +998,7 @@ export const updateOrderStatus = expressAsyncHandler(async (req, res) => {
       action: 'order_status_updated',
       req,
       performedBy,
-      reason: sanitizeString(
-        req.body?.reason,
-        'Actualización manual de estado comercial',
-      ),
+      reason: sanitizeString(req.body?.reason, 'Actualización manual de estado comercial'),
       metadata: {
         previousStatus: currentStatus,
         nextStatus,
@@ -1107,9 +1048,7 @@ export const updateOrderPaymentStatus = expressAsyncHandler(async (req, res) => 
     if (!Object.values(PAYMENT_STATUS).includes(nextPaymentStatus)) {
       return res.status(400).json({
         success: false,
-        message: `paymentStatus inválido. Permitidos: ${Object.values(
-          PAYMENT_STATUS,
-        ).join(', ')}`,
+        message: `paymentStatus inválido. Permitidos: ${Object.values(PAYMENT_STATUS).join(', ')}`,
       })
     }
 
@@ -1137,9 +1076,7 @@ export const updateOrderPaymentStatus = expressAsyncHandler(async (req, res) => 
     }
 
     if (
-      [PAYMENT_STATUS.REJECTED, PAYMENT_STATUS.CANCELLED].includes(
-        nextPaymentStatus,
-      ) &&
+      [PAYMENT_STATUS.REJECTED, PAYMENT_STATUS.CANCELLED].includes(nextPaymentStatus) &&
       order.paymentStatus === PAYMENT_STATUS.PENDING &&
       order.stockReservedAt
     ) {
@@ -1185,16 +1122,14 @@ export const updateOrderFulfillmentStatus = expressAsyncHandler(async (req, res)
       isValidId,
     })
 
-    const nextFulfillmentStatus = sanitizeString(
-      req.body?.fulfillmentStatus,
-    ).toLowerCase()
+    const nextFulfillmentStatus = sanitizeString(req.body?.fulfillmentStatus).toLowerCase()
 
     if (!Object.values(FULFILLMENT_STATUS).includes(nextFulfillmentStatus)) {
       return res.status(400).json({
         success: false,
-        message: `fulfillmentStatus inválido. Permitidos: ${Object.values(
-          FULFILLMENT_STATUS,
-        ).join(', ')}`,
+        message: `fulfillmentStatus inválido. Permitidos: ${Object.values(FULFILLMENT_STATUS).join(
+          ', ',
+        )}`,
       })
     }
 
@@ -1202,10 +1137,7 @@ export const updateOrderFulfillmentStatus = expressAsyncHandler(async (req, res)
       tenantId,
       performedBy,
       req,
-      reason: sanitizeString(
-        req.body?.reason,
-        'Actualización manual de logística',
-      ),
+      reason: sanitizeString(req.body?.reason, 'Actualización manual de logística'),
     })
 
     if (nextFulfillmentStatus === FULFILLMENT_STATUS.SHIPPED) {
@@ -1222,9 +1154,7 @@ export const updateOrderFulfillmentStatus = expressAsyncHandler(async (req, res)
       message: 'Estado logístico actualizado correctamente',
     })
   } catch (error) {
-    logger.error(
-      `❌ Error actualizando fulfillmentStatus: ${error.stack || error.message}`,
-    )
+    logger.error(`❌ Error actualizando fulfillmentStatus: ${error.stack || error.message}`)
 
     return res.status(error.statusCode || 400).json({
       success: false,
@@ -1232,7 +1162,6 @@ export const updateOrderFulfillmentStatus = expressAsyncHandler(async (req, res)
     })
   }
 })
-
 
 // =====================================================
 // SHIPMENT DATA
@@ -1322,15 +1251,11 @@ export const deleteOrder = expressAsyncHandler(async (req, res) => {
       includeDeleted: true,
     })
 
-    const {
-      protectedOrder,
-      paymentStatus,
-      orderStatus,
-      fulfillmentStatus,
-    } = orderRequiresForceDeletion({
-      order,
-      legacyOrderStatus: LEGACY_ORDER_STATUS,
-    })
+    const { protectedOrder, paymentStatus, orderStatus, fulfillmentStatus } =
+      orderRequiresForceDeletion({
+        order,
+        legacyOrderStatus: LEGACY_ORDER_STATUS,
+      })
 
     if (protectedOrder && !force) {
       return res.status(409).json({
@@ -1509,11 +1434,7 @@ export const getAllOrders = expressAsyncHandler(async (req, res) => {
     const limit = toSafeLimit(req.query.limit, 10)
     const skip = (page - 1) * limit
 
-    const {
-      query,
-      filters,
-      sorting,
-    } = await buildAdminOrdersQuery({
+    const { query, filters, sorting } = await buildAdminOrdersQuery({
       tenantObjectId,
       queryParams: req.query,
       money: Money,
@@ -1560,10 +1481,7 @@ export const getAllOrders = expressAsyncHandler(async (req, res) => {
                               input: { $ifNull: ['$products', []] },
                               initialValue: 0,
                               in: {
-                                $add: [
-                                  '$$value',
-                                  { $ifNull: ['$$this.subtotalCents', 0] },
-                                ],
+                                $add: ['$$value', { $ifNull: ['$$this.subtotalCents', 0] }],
                               },
                             },
                           },

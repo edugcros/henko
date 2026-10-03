@@ -29,8 +29,7 @@ const publicEnquiryLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 
-  keyGenerator: req =>
-    `${req.tenantId || 'no-tenant'}:${ipKeyGenerator(req.ip)}`,
+  keyGenerator: req => `${req.tenantId || 'no-tenant'}:${ipKeyGenerator(req.ip)}`,
 
   message: {
     success: false,
@@ -46,11 +45,7 @@ const adminContext = [
   isAdmin,
 ]
 
-router.post(
-  '/reply/:id',
-  adminContext,
-  replyEnquiry,
-)
+router.post('/reply/:id', adminContext, replyEnquiry)
 router.post(
   '/',
   resolveTenantByDomain,

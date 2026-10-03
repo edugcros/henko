@@ -1,14 +1,8 @@
 import asyncHandler from 'express-async-handler'
 import logger from '../../config/logger.js'
-import {
-  decodeAccessToken,
-  getAccessTokenFromRequest,
-} from '../utils/authRequest.js'
+import { decodeAccessToken, getAccessTokenFromRequest } from '../utils/authRequest.js'
 import { isValidObjectId } from '../utils/requestContext.js'
-import {
-  SESSION_COOKIE_NAMES,
-  getSessionCookieNames,
-} from '../utils/cookieHelper.js'
+import { SESSION_COOKIE_NAMES, getSessionCookieNames } from '../utils/cookieHelper.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
 
@@ -111,7 +105,9 @@ export const authMiddleware = asyncHandler(async (req, res, next) => {
     }
 
     const user = await User.findById(decoded.sub)
-      .select('tenantId role email firstname lastname mobile isBlocked blockedUntil passwordChangedAt')
+      .select(
+        'tenantId role email firstname lastname mobile isBlocked blockedUntil passwordChangedAt',
+      )
       .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-del-token' })
 
     if (!user) {

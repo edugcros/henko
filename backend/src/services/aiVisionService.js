@@ -46,9 +46,7 @@ const findInvalidHeaderChar = value => {
   return null
 }
 
-const GEMINI_API_KEY_INVALID_CHAR = GEMINI_API_KEY
-  ? findInvalidHeaderChar(GEMINI_API_KEY)
-  : null
+const GEMINI_API_KEY_INVALID_CHAR = GEMINI_API_KEY ? findInvalidHeaderChar(GEMINI_API_KEY) : null
 
 if (!GEMINI_API_KEY) {
   logger.error('[AI VISION] ❌ GEMINI_API_KEY no configurada - analyzeImage fallará')
@@ -70,7 +68,9 @@ if (!GEMINI_API_KEY) {
 }
 
 const DEFAULT_MODEL = 'gemini-3.8-flash'
-const DEFAULT_CURRENCY = String(process.env.AI_VISION_DEFAULT_CURRENCY || 'ARS').trim().toUpperCase()
+const DEFAULT_CURRENCY = String(process.env.AI_VISION_DEFAULT_CURRENCY || 'ARS')
+  .trim()
+  .toUpperCase()
 
 const normalizeGeminiModelName = value => {
   const model = String(value || DEFAULT_MODEL).trim()
@@ -97,10 +97,7 @@ const MIN_PRICE_CONFIDENCE_FOR_AUTOSAVE = clampNumber(
   0,
   1,
 )
-const MAX_RETRIES = Math.min(
-  Math.max(Number(process.env.GEMINI_MAX_RETRIES || 3), 2),
-  5,
-)
+const MAX_RETRIES = Math.min(Math.max(Number(process.env.GEMINI_MAX_RETRIES || 3), 2), 5)
 const GEMINI_RETRY_BASE_DELAY_MS = Math.min(
   Math.max(Number(process.env.GEMINI_RETRY_BASE_DELAY_MS || 1000), 100),
   10000,
@@ -146,7 +143,8 @@ const SUPPORTED_MIME_TYPES = new Set([
 const IMAGE_SIGNATURES = [
   {
     mimeType: 'image/jpeg',
-    test: buffer => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff,
+    test: buffer =>
+      buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff,
   },
   {
     mimeType: 'image/png',
@@ -178,10 +176,7 @@ const IMAGE_SIGNATURES = [
   },
 ]
 
-const BLOCKED_HOSTNAMES = new Set([
-  'localhost',
-  'localhost.localdomain',
-])
+const BLOCKED_HOSTNAMES = new Set(['localhost', 'localhost.localdomain'])
 
 const COMMERCIAL_MATERIALS = [
   'algodón',
@@ -307,7 +302,6 @@ function loggerinfo(message, meta = {}) {
   logger.info('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
 }
 
-
 function logError(message, meta = {}) {
   logger.error('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
 }
@@ -360,9 +354,7 @@ function sleep(ms) {
  */
 async function runWithTimeout(fn, timeoutMs) {
   if (typeof fn !== 'function') {
-    const error = new TypeError(
-      'runWithTimeout requiere una función como primer argumento',
-    )
+    const error = new TypeError('runWithTimeout requiere una función como primer argumento')
 
     error.code = 'INVALID_TIMEOUT_FUNCTION'
     error.retryable = false
@@ -370,13 +362,8 @@ async function runWithTimeout(fn, timeoutMs) {
     throw error
   }
 
-  if (
-    !Number.isFinite(timeoutMs) ||
-    timeoutMs <= 0
-  ) {
-    const error = new TypeError(
-      `timeoutMs inválido: ${timeoutMs}`,
-    )
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    const error = new TypeError(`timeoutMs inválido: ${timeoutMs}`)
 
     error.code = 'INVALID_TIMEOUT'
     error.retryable = false
@@ -394,9 +381,7 @@ async function runWithTimeout(fn, timeoutMs) {
       // Intenta abortar cualquier operación pendiente
       controller.abort()
 
-      const timeoutError = new Error(
-        `Gemini generateContent excedió el timeout de ${timeoutMs}ms`,
-      )
+      const timeoutError = new Error(`Gemini generateContent excedió el timeout de ${timeoutMs}ms`)
 
       timeoutError.code = 'GEMINI_TIMEOUT'
       timeoutError.retryable = true
@@ -406,10 +391,7 @@ async function runWithTimeout(fn, timeoutMs) {
   })
 
   try {
-    return await Promise.race([
-      operationPromise,
-      timeoutPromise,
-    ])
+    return await Promise.race([operationPromise, timeoutPromise])
   } finally {
     if (timeoutHandle) {
       clearTimeout(timeoutHandle)
@@ -417,7 +399,6 @@ async function runWithTimeout(fn, timeoutMs) {
     controller.abort()
   }
 }
-
 
 function isRetryableGeminiError(error) {
   const message = String(error?.message || '').toLowerCase()
@@ -477,7 +458,10 @@ function isRetryableGeminiError(error) {
   )
 }
 
-async function withRetry(fn, { maxRetries = MAX_RETRIES, baseDelayMs = GEMINI_RETRY_BASE_DELAY_MS, context = {} } = {}) {
+async function withRetry(
+  fn,
+  { maxRetries = MAX_RETRIES, baseDelayMs = GEMINI_RETRY_BASE_DELAY_MS, context = {} } = {},
+) {
   let lastError = null
 
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
@@ -503,7 +487,10 @@ async function withRetry(fn, { maxRetries = MAX_RETRIES, baseDelayMs = GEMINI_RE
 
       // Backoff exponencial con jitter: ~1s/2s/4s con baseDelayMs=1000 (default)
       const jitterMs = Math.floor(Math.random() * 300)
-      const backoffMs = Math.min(baseDelayMs * Math.pow(2, attempt - 1) + jitterMs, GEMINI_RETRY_MAX_DELAY_MS)
+      const backoffMs = Math.min(
+        baseDelayMs * Math.pow(2, attempt - 1) + jitterMs,
+        GEMINI_RETRY_MAX_DELAY_MS,
+      )
 
       logger.warn('Retry transitorio contra Gemini', {
         attempt: `${attempt}/${maxRetries}`,
@@ -522,7 +509,8 @@ async function withRetry(fn, { maxRetries = MAX_RETRIES, baseDelayMs = GEMINI_RE
 }
 
 function safeString(value, { lower = false, upper = false, maxLength = 500 } = {}) {
-  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return null
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean')
+    return null
 
   const clean = String(value).trim()
   if (!clean) return null
@@ -535,9 +523,7 @@ function safeString(value, { lower = false, upper = false, maxLength = 500 } = {
 
 function uniqueStringArray(value, { lower = false, maxItems = 30, maxLength = 80 } = {}) {
   const source = Array.isArray(value) ? value : []
-  const out = source
-    .map(v => safeString(v, { lower, maxLength }))
-    .filter(Boolean)
+  const out = source.map(v => safeString(v, { lower, maxLength })).filter(Boolean)
 
   return [...new Set(out)].slice(0, maxItems)
 }
@@ -1303,8 +1289,12 @@ CONDICIONES DE SALIDA
 `.trim()
 }
 
-function normalizeSeo(parsedSeo = {}, { title, description, tags, category, subcategory, currency }) {
-  const seo = parsedSeo && typeof parsedSeo === 'object' && !Array.isArray(parsedSeo) ? parsedSeo : {}
+function normalizeSeo(
+  parsedSeo = {},
+  { title, description, tags, category, subcategory, currency },
+) {
+  const seo =
+    parsedSeo && typeof parsedSeo === 'object' && !Array.isArray(parsedSeo) ? parsedSeo : {}
   const shortDescription =
     safeString(seo.shortDescription, { maxLength: 260 }) ||
     safeString(seo.short_description, { maxLength: 260 }) ||
@@ -1312,7 +1302,10 @@ function normalizeSeo(parsedSeo = {}, { title, description, tags, category, subc
     safeString(description, { maxLength: 260 })
 
   return {
-    slug: normalizeKey(seo.slug || title, { fallback: '' }).replace(/_/g, '-').slice(0, 160) || null,
+    slug:
+      normalizeKey(seo.slug || title, { fallback: '' })
+        .replace(/_/g, '-')
+        .slice(0, 160) || null,
     shortDescription,
     metaTitle:
       safeString(seo.metaTitle || seo.meta_title, { maxLength: 160 }) ||
@@ -1321,13 +1314,15 @@ function normalizeSeo(parsedSeo = {}, { title, description, tags, category, subc
       safeString(seo.metaDescription || seo.meta_description, { maxLength: 320 }) ||
       shortDescription,
     keywords: [
-      ...new Set([
-        ...uniqueStringArray(seo.keywords, { lower: true, maxItems: 12, maxLength: 60 }),
-        ...uniqueStringArray(tags, { lower: true, maxItems: 12, maxLength: 60 }),
-        safeString(category, { lower: true, maxLength: 60 }),
-        safeString(subcategory, { lower: true, maxLength: 60 }),
-        currency ? null : null,
-      ].filter(Boolean)),
+      ...new Set(
+        [
+          ...uniqueStringArray(seo.keywords, { lower: true, maxItems: 12, maxLength: 60 }),
+          ...uniqueStringArray(tags, { lower: true, maxItems: 12, maxLength: 60 }),
+          safeString(category, { lower: true, maxLength: 60 }),
+          safeString(subcategory, { lower: true, maxLength: 60 }),
+          currency ? null : null,
+        ].filter(Boolean),
+      ),
     ].slice(0, 18),
   }
 }
@@ -1363,7 +1358,10 @@ function normalizeSpecifications(value, fallbackAttributes = {}) {
           : rawValue,
       unit: safeString(item.unit || item.unidad, { maxLength: 40 }) || '',
       type: normalizeSpecificationType(item.type),
-      group: normalizeKey(item.group || item.grupo || 'general', { fallback: 'general' }).slice(0, 80),
+      group: normalizeKey(item.group || item.grupo || 'general', { fallback: 'general' }).slice(
+        0,
+        80,
+      ),
       visible: item.visible !== false,
       filterable: normalizeBoolean(item.filterable, false),
       searchable: normalizeBoolean(item.searchable, true),
@@ -1394,7 +1392,10 @@ function normalizeSpecifications(value, fallbackAttributes = {}) {
 
 function buildFilterAttributesFromSpecifications(specifications = []) {
   return specifications
-    .filter(item => item?.filterable && item?.value !== undefined && item?.value !== null && item?.value !== '')
+    .filter(
+      item =>
+        item?.filterable && item?.value !== undefined && item?.value !== null && item?.value !== '',
+    )
     .flatMap(item => {
       const values = Array.isArray(item.value) ? item.value : [item.value]
 
@@ -1414,9 +1415,12 @@ function buildFilterAttributesFromSpecifications(specifications = []) {
 function normalizeLogistics(value = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
   const dimensions = source.dimensionsCm || source.dimensions || source.medidas || {}
-  const shippingType = normalizeKey(source.shippingType || source.shipping_type || source.shipping, {
-    fallback: 'standard',
-  })
+  const shippingType = normalizeKey(
+    source.shippingType || source.shipping_type || source.shipping,
+    {
+      fallback: 'standard',
+    },
+  )
 
   const normalizeDimension = raw => {
     if (raw === null || raw === undefined || raw === '') return null
@@ -1433,7 +1437,9 @@ function normalizeLogistics(value = {}) {
     },
     shippingType: ALLOWED_SHIPPING_TYPES.has(shippingType) ? shippingType : 'standard',
     warranty: safeString(source.warranty || source.garantia, { maxLength: 300 }),
-    originCountry: safeString(source.originCountry || source.countryOfOrigin || source.origen, { maxLength: 80 }),
+    originCountry: safeString(source.originCountry || source.countryOfOrigin || source.origen, {
+      maxLength: 80,
+    }),
   }
 }
 
@@ -1446,18 +1452,27 @@ function normalizeVariantSuggestions(value) {
       const attributes = normalizeAttributesObject(item.attributes || item.combinacion || item, {
         preserveArrays: false,
       })
-      const key = normalizeKey(item.key || Object.entries(attributes).map(([k, v]) => `${k}_${v}`).join('_'), {
-        fallback: `variant_${index + 1}`,
-      })
+      const key = normalizeKey(
+        item.key ||
+          Object.entries(attributes)
+            .map(([k, v]) => `${k}_${v}`)
+            .join('_'),
+        {
+          fallback: `variant_${index + 1}`,
+        },
+      )
 
       return {
         key,
         nombre:
-          safeString(item.nombre || item.name || Object.values(attributes).join(' / '), { maxLength: 140 }) ||
-          `Variante ${index + 1}`,
+          safeString(item.nombre || item.name || Object.values(attributes).join(' / '), {
+            maxLength: 140,
+          }) || `Variante ${index + 1}`,
         attributes,
         price: normalizePrice(item.price || item.precio),
-        stock: Number.isFinite(Number(item.stock)) ? Math.max(0, Math.trunc(Number(item.stock))) : null,
+        stock: Number.isFinite(Number(item.stock))
+          ? Math.max(0, Math.trunc(Number(item.stock)))
+          : null,
         sku: safeString(item.sku, { upper: true, maxLength: 80 }),
         confidence: clampConfidence(item.confidence, 0.45),
       }
@@ -1484,11 +1499,14 @@ function deriveReviewReasons({
   if (!category) reasons.add('missing_category')
   if (confidence < MIN_CONFIDENCE) reasons.add('low_general_confidence')
   if (!material) reasons.add('missing_material')
-  if (material && materialConfidence < MIN_MATERIAL_CONFIDENCE_FOR_AUTOSAVE) reasons.add('low_material_confidence')
+  if (material && materialConfidence < MIN_MATERIAL_CONFIDENCE_FOR_AUTOSAVE)
+    reasons.add('low_material_confidence')
   if (price == null) reasons.add('missing_price')
-  if (price != null && priceConfidence < MIN_PRICE_CONFIDENCE_FOR_AUTOSAVE) reasons.add('low_price_confidence')
+  if (price != null && priceConfidence < MIN_PRICE_CONFIDENCE_FOR_AUTOSAVE)
+    reasons.add('low_price_confidence')
   if (reasoningFlags.includes('multiple_objects_detected')) reasons.add('multiple_objects_detected')
-  if (reasoningFlags.includes('no_clear_commercial_product')) reasons.add('no_clear_commercial_product')
+  if (reasoningFlags.includes('no_clear_commercial_product'))
+    reasons.add('no_clear_commercial_product')
   if (reasoningFlags.includes('low_visual_quality')) reasons.add('low_visual_quality')
   if (reasoningFlags.includes('partial_product_visible')) reasons.add('partial_product_visible')
 
@@ -1507,7 +1525,9 @@ function normalizeAnalysis(parsed, { hash, tenantId }) {
   const categoria = safeString(parsed?.categoria || parsed?.category, { maxLength: 120 })
   const subcategoria = safeString(parsed?.subcategoria || parsed?.subcategory, { maxLength: 120 })
   const marca = safeString(parsed?.marca || parsed?.brand, { maxLength: 120 })
-  const moneda = safeString(parsed?.moneda || parsed?.currency, { upper: true, maxLength: 12 }) || DEFAULT_CURRENCY
+  const moneda =
+    safeString(parsed?.moneda || parsed?.currency, { upper: true, maxLength: 12 }) ||
+    DEFAULT_CURRENCY
 
   const parsedAttributes = normalizeAttributesObject(parsed?.atributos || parsed?.attributes, {
     preserveArrays: false,
@@ -1520,7 +1540,9 @@ function normalizeAnalysis(parsed, { hash, tenantId }) {
     ...(material ? { material } : {}),
   }
 
-  const precio_sugerido = normalizePrice(parsed?.precio_sugerido ?? parsed?.suggestedPrice ?? parsed?.price)
+  const precio_sugerido = normalizePrice(
+    parsed?.precio_sugerido ?? parsed?.suggestedPrice ?? parsed?.price,
+  )
   const material_confidence = clampConfidence(parsed?.material_confidence)
   const price_confidence = clampConfidence(parsed?.price_confidence)
   const price_reasoning = safeString(parsed?.price_reasoning, { maxLength: 600 })
@@ -1532,19 +1554,24 @@ function normalizeAnalysis(parsed, { hash, tenantId }) {
   })
 
   const productAttributes = {
-    ...normalizeAttributesObject(parsed?.productAttributes || parsed?.product_attributes, { preserveArrays: true }),
+    ...normalizeAttributesObject(parsed?.productAttributes || parsed?.product_attributes, {
+      preserveArrays: true,
+    }),
     ...atributos,
   }
-  const categoryAttributes = normalizeAttributesObject(parsed?.categoryAttributes || parsed?.category_attributes, {
-    preserveArrays: true,
-  })
+  const categoryAttributes = normalizeAttributesObject(
+    parsed?.categoryAttributes || parsed?.category_attributes,
+    {
+      preserveArrays: true,
+    },
+  )
 
   const specifications = normalizeSpecifications(parsed?.specifications, productAttributes)
   const filterAttributes = Array.isArray(parsed?.filterAttributes)
     ? buildFilterAttributesFromSpecifications([
-      ...specifications,
-      ...normalizeSpecifications(parsed.filterAttributes, {}),
-    ])
+        ...specifications,
+        ...normalizeSpecifications(parsed.filterAttributes, {}),
+      ])
     : buildFilterAttributesFromSpecifications(specifications)
 
   const seo = normalizeSeo(parsed?.seo || {}, {
@@ -1557,7 +1584,9 @@ function normalizeAnalysis(parsed, { hash, tenantId }) {
   })
 
   const logistics = normalizeLogistics(parsed?.logistics || {})
-  const variantSuggestions = normalizeVariantSuggestions(parsed?.variantSuggestions || parsed?.variant_suggestions)
+  const variantSuggestions = normalizeVariantSuggestions(
+    parsed?.variantSuggestions || parsed?.variant_suggestions,
+  )
   const hasVariants = normalizeBoolean(parsed?.hasVariants, variantSuggestions.length > 0)
 
   const reviewReasons = deriveReviewReasons({
@@ -1621,10 +1650,9 @@ function normalizeAnalysis(parsed, { hash, tenantId }) {
 
 function buildProviderError(error) {
   const message = error?.message || 'error desconocido'
-  const analysisError = new Error(
-    `El proveedor de IA no pudo completar el análisis: ${message}`,
-    { cause: error },
-  )
+  const analysisError = new Error(`El proveedor de IA no pudo completar el análisis: ${message}`, {
+    cause: error,
+  })
 
   analysisError.code = error?.code || 'AI_ANALYSIS_FAILED'
   analysisError.retryable = isRetryableGeminiError(error)
@@ -1727,7 +1755,6 @@ async function assertSafeRemoteHost(url) {
   }
 }
 
-
 export async function analyzeImage(imageBuffer, mimeType, tenantId) {
   /**
    * ============================================================
@@ -1799,9 +1826,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
   const sniffedMime = validateImageBuffer(imageBuffer)
 
   if (!sniffedMime) {
-    const error = new Error(
-      'No se pudo determinar el tipo MIME de la imagen',
-    )
+    const error = new Error('No se pudo determinar el tipo MIME de la imagen')
 
     error.code = 'INVALID_IMAGE_MIME'
     error.retryable = false
@@ -1809,31 +1834,17 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     throw error
   }
 
-  const hash = crypto
-    .createHash('sha256')
-    .update(imageBuffer)
-    .digest('hex')
+  const hash = crypto.createHash('sha256').update(imageBuffer).digest('hex')
 
-  const safeMime = mimeType
-    ? normalizeMimeType(mimeType, { strict: true })
-    : sniffedMime
+  const safeMime = mimeType ? normalizeMimeType(mimeType, { strict: true }) : sniffedMime
 
-  if (
-    safeMime !== sniffedMime &&
-    !(
-      safeMime === 'image/heif' &&
-      sniffedMime === 'image/heic'
-    )
-  ) {
-    logger.warn(
-      'MIME declarado distinto a firma detectada; se usa MIME detectado',
-      {
-        tenantId: normalizedTenantId,
-        declaredMimeType: safeMime,
-        sniffedMimeType: sniffedMime,
-        hash,
-      },
-    )
+  if (safeMime !== sniffedMime && !(safeMime === 'image/heif' && sniffedMime === 'image/heic')) {
+    logger.warn('MIME declarado distinto a firma detectada; se usa MIME detectado', {
+      tenantId: normalizedTenantId,
+      declaredMimeType: safeMime,
+      sniffedMimeType: sniffedMime,
+      hash,
+    })
   }
 
   /**
@@ -1852,10 +1863,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     hash,
   })
 
-  const cachedResult = getCachedEntry(
-    resultCache,
-    cacheKey,
-  )
+  const cachedResult = getCachedEntry(resultCache, cacheKey)
 
   if (cachedResult) {
     logger.info('Análisis IA devuelto desde cache local', {
@@ -1925,21 +1933,15 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
      * ==========================================================
      */
 
-    const learningContext =
-      await loadTenantLearningContext(
-        normalizedTenantId,
-      )
+    const learningContext = await loadTenantLearningContext(normalizedTenantId)
 
     logger.info('Contexto de aprendizaje cargado', {
       tenantId: normalizedTenantId,
       hash,
       model: MODEL_NAME,
-      knownCategories:
-        learningContext.knownCategories.length,
-      knownBrands:
-        learningContext.knownBrands.length,
-      learnedRules:
-        learningContext.learnedRules.length,
+      knownCategories: learningContext.knownCategories.length,
+      knownBrands: learningContext.knownBrands.length,
+      learnedRules: learningContext.learnedRules.length,
       imageBytes: imageBuffer.length,
       mimeType: finalMime,
     })
@@ -1952,14 +1954,10 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
     const prompt = buildPrompt({
       tenantId: normalizedTenantId,
-      knownCategories:
-        learningContext.knownCategories,
-      knownBrands:
-        learningContext.knownBrands,
-      learnedRules:
-        learningContext.learnedRules,
-      preferencesByType:
-        learningContext.preferencesByType,
+      knownCategories: learningContext.knownCategories,
+      knownBrands: learningContext.knownBrands,
+      learnedRules: learningContext.learnedRules,
+      preferencesByType: learningContext.preferencesByType,
       materials: COMMERCIAL_MATERIALS,
       currency: DEFAULT_CURRENCY,
     })
@@ -2004,9 +2002,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     const base64Image = imageBuffer.toString('base64')
 
     if (!base64Image) {
-      const error = new Error(
-        'No fue posible convertir la imagen a Base64',
-      )
+      const error = new Error('No fue posible convertir la imagen a Base64')
 
       error.code = 'IMAGE_BASE64_CONVERSION_FAILED'
       error.retryable = false
@@ -2025,13 +2021,8 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
      * Validación adicional para evitar enviar un payload
      * corrupto al proveedor.
      */
-    if (
-      typeof base64Image !== 'string' ||
-      !base64Image.length
-    ) {
-      const error = new Error(
-        'El payload Base64 de la imagen no es válido',
-      )
+    if (typeof base64Image !== 'string' || !base64Image.length) {
+      const error = new Error('El payload Base64 de la imagen no es válido')
 
       error.code = 'INVALID_BASE64_PAYLOAD'
       error.retryable = false
@@ -2086,18 +2077,11 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
                   contents,
 
                   generationConfig: {
-                    temperature: clampNumber(
-                      process.env.AI_VISION_TEMPERATURE,
-                      0.15,
-                      0,
-                      0.7,
-                    ),
+                    temperature: clampNumber(process.env.AI_VISION_TEMPERATURE, 0.15, 0, 0.7),
 
                     topP: clampNumber(process.env.AI_VISION_TOP_P, 0.95, 0.1, 1),
 
-                    topK: Math.round(
-                      clampNumber(process.env.AI_VISION_TOP_K, 40, 1, 100),
-                    ),
+                    topK: Math.round(clampNumber(process.env.AI_VISION_TOP_K, 40, 1, 100)),
 
                     maxOutputTokens: MAX_OUTPUT_TOKENS,
 
@@ -2206,9 +2190,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     const rawText = response.text()
 
     if (!rawText?.trim()) {
-      const error = new Error(
-        'Gemini devolvió una respuesta vacía',
-      )
+      const error = new Error('Gemini devolvió una respuesta vacía')
 
       error.code = 'EMPTY_AI_RESPONSE'
       error.retryable = false
@@ -2224,13 +2206,10 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
     const parsed = extractJsonObject(rawText)
 
-    const normalized = normalizeAnalysis(
-      parsed,
-      {
-        hash,
-        tenantId: normalizedTenantId,
-      },
-    )
+    const normalized = normalizeAnalysis(parsed, {
+      hash,
+      tenantId: normalizedTenantId,
+    })
 
     /**
      * ==========================================================
@@ -2238,12 +2217,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
      * ==========================================================
      */
 
-    setCachedEntry(
-      resultCache,
-      cacheKey,
-      normalized,
-      RESULT_CACHE_TTL_MS,
-    )
+    setCachedEntry(resultCache, cacheKey, normalized, RESULT_CACHE_TTL_MS)
 
     /**
      * ==========================================================
@@ -2261,10 +2235,8 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
       categoria: normalized.categoria,
       subcategoria: normalized.subcategoria,
       marca: normalized.marca,
-      priceConfidence:
-        normalized.price_confidence,
-      materialConfidence:
-        normalized.material_confidence,
+      priceConfidence: normalized.price_confidence,
+      materialConfidence: normalized.material_confidence,
       specs: normalized.specifications.length,
     })
 
@@ -2300,7 +2272,6 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     throw buildProviderError(error)
   }
 }
-
 
 export async function analyzeProductImage(input, legacyMimeType = null, legacyTenantId = null) {
   if (Buffer.isBuffer(input)) {

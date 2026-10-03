@@ -52,9 +52,7 @@ const toNumber = (value, defaultValue = 0) => {
 const toObjectIdOrNull = value => {
   const clean = normalizeString(value)
 
-  return mongoose.Types.ObjectId.isValid(clean)
-    ? new mongoose.Types.ObjectId(clean)
-    : null
+  return mongoose.Types.ObjectId.isValid(clean) ? new mongoose.Types.ObjectId(clean) : null
 }
 
 const metricItemSchema = new Schema(
@@ -403,14 +401,8 @@ userMetricEventSchema.pre('validate', function normalizeEvent(next) {
   }
 
   if (this.device.viewport) {
-    this.device.viewport.width = Math.max(
-      0,
-      toNumber(this.device.viewport.width, 0),
-    )
-    this.device.viewport.height = Math.max(
-      0,
-      toNumber(this.device.viewport.height, 0),
-    )
+    this.device.viewport.width = Math.max(0, toNumber(this.device.viewport.width, 0))
+    this.device.viewport.height = Math.max(0, toNumber(this.device.viewport.height, 0))
   }
 
   if (Array.isArray(this.items)) {
@@ -465,7 +457,6 @@ userMetricEventSchema.plugin(tenantPlugin, {
 })
 
 const UserMetricEvent =
-  mongoose.models.UserMetricEvent ||
-  mongoose.model('UserMetricEvent', userMetricEventSchema)
+  mongoose.models.UserMetricEvent || mongoose.model('UserMetricEvent', userMetricEventSchema)
 
 export default UserMetricEvent

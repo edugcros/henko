@@ -54,9 +54,7 @@ const parseLocalizedNumber = value => {
     const isDecimal = decimals > 0 && decimals <= 2
 
     normalized = isDecimal
-      ? `${raw.slice(0, separatorIndex).replace(/[.,]/g, '')}.${raw.slice(
-        separatorIndex + 1,
-      )}`
+      ? `${raw.slice(0, separatorIndex).replace(/[.,]/g, '')}.${raw.slice(separatorIndex + 1)}`
       : raw.replace(/[.,]/g, '')
   }
 
@@ -81,10 +79,19 @@ const COLOR_ALIASES = [
 ]
 
 const INTENT_RULES = [
-  ['purchase', /\b(comprar|lo llevo|la llevo|pagar|checkout|finalizar|reservar|señar|senar|hacer pedido)\b/],
-  ['price_sensitive', /\b(barato|economico|economico|menos|oferta|promo|descuento|rebaja|liquidacion|liquidación)\b/],
+  [
+    'purchase',
+    /\b(comprar|lo llevo|la llevo|pagar|checkout|finalizar|reservar|señar|senar|hacer pedido)\b/,
+  ],
+  [
+    'price_sensitive',
+    /\b(barato|economico|economico|menos|oferta|promo|descuento|rebaja|liquidacion|liquidación)\b/,
+  ],
   ['shipping_interest', /\b(envio|envios|entrega|retiro|retirar|delivery|despacho|correo)\b/],
-  ['financing_interest', /\b(cuotas|financiacion|financiación|financiar|tarjeta|mercado pago|mercadopago|transferencia)\b/],
+  [
+    'financing_interest',
+    /\b(cuotas|financiacion|financiación|financiar|tarjeta|mercado pago|mercadopago|transferencia)\b/,
+  ],
   ['stock_interest', /\b(stock|disponible|disponibles|hay|queda|quedan|tenes|tienen)\b/],
 ]
 
@@ -131,9 +138,7 @@ const extractCategories = ({ value, knownCategories }) => {
 }
 
 const extractIntents = value => {
-  return INTENT_RULES.filter(([, regex]) => regex.test(value)).map(
-    ([intent]) => intent,
-  )
+  return INTENT_RULES.filter(([, regex]) => regex.test(value)).map(([intent]) => intent)
 }
 
 const extractBudgetMax = value => {
@@ -160,9 +165,8 @@ const normalizeBudget = value => {
 }
 
 export const extractLeadPreferences = (input, options = {}) => {
-  const source = input && typeof input === 'object' && !Array.isArray(input)
-    ? input
-    : { text: input }
+  const source =
+    input && typeof input === 'object' && !Array.isArray(input) ? input : { text: input }
 
   const text = source.text
   const knownCategories = Array.isArray(source.knownCategories)
@@ -191,4 +195,3 @@ export const extractLeadPreferences = (input, options = {}) => {
     budgetMax: extractBudgetMax(value),
   }
 }
-

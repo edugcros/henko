@@ -86,9 +86,7 @@ export const roundToEnding = (price, endings = [990], floor = 0) => {
   const viables = candidates.filter(c => c >= floor)
   if (!viables.length) return price
 
-  return viables.reduce((best, c) =>
-    Math.abs(c - price) < Math.abs(best - price) ? c : best,
-  )
+  return viables.reduce((best, c) => (Math.abs(c - price) < Math.abs(best - price) ? c : best))
 }
 
 /**
@@ -117,7 +115,11 @@ export const applyPricingPolicy = ({ recommendation, policy, signals }) => {
 
   let proposed = Number(recommendation?.recommendedPrice)
 
-  if (!Number.isFinite(proposed) || proposed <= 0 || recommendation?.action === PRICING_ACTION.HOLD) {
+  if (
+    !Number.isFinite(proposed) ||
+    proposed <= 0 ||
+    recommendation?.action === PRICING_ACTION.HOLD
+  ) {
     return {
       allowed: true,
       action: PRICING_ACTION.HOLD,
@@ -178,7 +180,11 @@ export const applyPricingPolicy = ({ recommendation, policy, signals }) => {
     adjustments.push(ADJUSTMENT.CLAMPED_BY_FLOOR)
   }
 
-  if (Number.isFinite(policy.priceCeiling) && policy.priceCeiling > 0 && proposed > policy.priceCeiling) {
+  if (
+    Number.isFinite(policy.priceCeiling) &&
+    policy.priceCeiling > 0 &&
+    proposed > policy.priceCeiling
+  ) {
     proposed = policy.priceCeiling
     adjustments.push(ADJUSTMENT.CLAMPED_BY_CEILING)
   }
@@ -187,10 +193,10 @@ export const applyPricingPolicy = ({ recommendation, policy, signals }) => {
   if (policy.rounding?.enabled) {
     const marginFloor = signals?.cost?.totalUnitCost
       ? minPriceForMargin({
-        totalUnitCost: signals.cost.totalUnitCost,
-        deductionRate: signals.cost.deductionRate,
-        marginPercent: policy.minMarginPercent,
-      })
+          totalUnitCost: signals.cost.totalUnitCost,
+          deductionRate: signals.cost.deductionRate,
+          marginPercent: policy.minMarginPercent,
+        })
       : 0
 
     const rounded = roundToEnding(proposed, policy.rounding.endings, marginFloor || 0)

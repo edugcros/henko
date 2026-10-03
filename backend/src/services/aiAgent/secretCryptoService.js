@@ -31,7 +31,9 @@ const getKey = () => {
   }
 
   if (process.env.NODE_ENV === 'production' && secret.length < 32) {
-    throw new Error('AI_AGENT_SECRET_ENCRYPTION_KEY debe tener al menos 32 caracteres en producción')
+    throw new Error(
+      'AI_AGENT_SECRET_ENCRYPTION_KEY debe tener al menos 32 caracteres en producción',
+    )
   }
 
   return crypto.createHash('sha256').update(secret).digest()
@@ -47,26 +49,19 @@ export const encryptSecret = value => {
     authTagLength: TAG_LENGTH,
   })
 
-  const encrypted = Buffer.concat([
-    cipher.update(plainText, 'utf8'),
-    cipher.final(),
-  ])
+  const encrypted = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()])
   const tag = cipher.getAuthTag()
 
-  return [
-    'v1',
-    iv.toString(ENCODING),
-    tag.toString(ENCODING),
-    encrypted.toString(ENCODING),
-  ].join('.')
+  return ['v1', iv.toString(ENCODING), tag.toString(ENCODING), encrypted.toString(ENCODING)].join(
+    '.',
+  )
 }
 
 export const decryptSecret = value => {
   const encryptedValue = clean(value)
   if (!encryptedValue) return ''
 
-  const [version, ivEncoded, tagEncoded, payloadEncoded] =
-    encryptedValue.split('.')
+  const [version, ivEncoded, tagEncoded, payloadEncoded] = encryptedValue.split('.')
 
   if (version !== 'v1' || !ivEncoded || !tagEncoded || !payloadEncoded) {
     const allowLegacyPlaintext =
@@ -96,9 +91,7 @@ export const decryptSecret = value => {
   })
   decipher.setAuthTag(tag)
 
-  return Buffer.concat([decipher.update(payload), decipher.final()]).toString(
-    'utf8',
-  )
+  return Buffer.concat([decipher.update(payload), decipher.final()]).toString('utf8')
 }
 
 export const maskSecret = value => {

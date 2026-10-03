@@ -1,10 +1,6 @@
 import Color from '../models/colorModel.js'
 import asyncHandler from 'express-async-handler'
-import {
-  getTenantIdFromRequest,
-  isValidObjectId,
-  toObjectId,
-} from '../utils/requestContext.js'
+import { getTenantIdFromRequest, isValidObjectId, toObjectId } from '../utils/requestContext.js'
 import logger from '../../config/logger.js'
 
 const resolveTenantId = req => {
@@ -23,7 +19,10 @@ export const createColor = asyncHandler(async (req, res) => {
   const tenantId = resolveTenantId(req)
   let { title } = req.body
   if (!title || title.trim().length < 2) {
-    return res.status(400).json({ success: false, message: 'El título es obligatorio y debe tener al menos 2 caracteres' })
+    return res.status(400).json({
+      success: false,
+      message: 'El título es obligatorio y debe tener al menos 2 caracteres',
+    })
   }
 
   title = title.trim().toLowerCase()
@@ -89,7 +88,9 @@ export const updateColor = asyncHandler(async (req, res) => {
   }
 
   if (!title || title.trim().length < 2) {
-    return res.status(400).json({ success: false, message: 'El título debe tener al menos 2 caracteres' })
+    return res
+      .status(400)
+      .json({ success: false, message: 'El título debe tener al menos 2 caracteres' })
   }
 
   title = title.trim().toLowerCase()
@@ -126,6 +127,8 @@ export const deleteColor = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Color no encontrado' })
   }
 
-  logger.warn(`Color eliminado: ${deletedColor.title} (ID: ${deletedColor._id}, tenant: ${tenantId})`)
+  logger.warn(
+    `Color eliminado: ${deletedColor.title} (ID: ${deletedColor._id}, tenant: ${tenantId})`,
+  )
   res.status(200).json({ success: true, message: 'Color eliminado correctamente' })
 })

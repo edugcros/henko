@@ -93,16 +93,12 @@ export const readUsage = result => {
   // cero de salida, que es un dato, no una ausencia— y de paso captura
   // cualquier categoría de salida que Google agregue con un nombre nuevo.
   const porDiferencia =
-    declaredTotal !== null && inputTokens !== null
-      ? Math.max(0, declaredTotal - inputTokens)
-      : null
+    declaredTotal !== null && inputTokens !== null ? Math.max(0, declaredTotal - inputTokens) : null
 
   // Gana la mayor: si las dos vías coinciden da igual, y si difieren la culpa
   // es de una clave que no estamos leyendo, que se cobra igual.
   const outputTokens =
-    porDiferencia !== null
-      ? Math.max(porDiferencia, desglosada || 0)
-      : desglosada
+    porDiferencia !== null ? Math.max(porDiferencia, desglosada || 0) : desglosada
 
   // Entrada servida desde la caché de contexto. Hoy siempre viene vacío porque
   // HENKO no usa caché —verificado contra la API: la clave no aparece en la
@@ -149,8 +145,7 @@ export const readUsage = result => {
      * SOLO, sin que nadie tenga que acordarse de cablear nada. Un costo que
      * depende de que alguien se acuerde es un costo que no se cobra.
      */
-    groundingQueries:
-      result?.groundingMetadata?.webSearchQueries?.length || 0,
+    groundingQueries: result?.groundingMetadata?.webSearchQueries?.length || 0,
 
     model: result?.model || null,
   }

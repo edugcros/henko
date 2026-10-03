@@ -48,12 +48,14 @@ describe('orders - storefront user', () => {
   test('creates a cash-on-delivery order from the cart', async () => {
     const cartRes = await request(app)
       .post('/api/user/cart')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
       .send({
         productId: product._id,
         quantity: 1,
@@ -63,12 +65,14 @@ describe('orders - storefront user', () => {
 
     const orderRes = await request(app)
       .post('/api/order/create')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
       .send({
         COD: true,
         shippingAddress: {
@@ -92,10 +96,12 @@ describe('orders - storefront user', () => {
   test('returns authenticated user orders', async () => {
     const res = await request(app)
       .get('/api/order/my-orders')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data.length).toBeGreaterThan(0)
@@ -118,22 +124,26 @@ describe('orders - storefront user', () => {
   test('freezes visitor attribution and Meta click ids on the order', async () => {
     await request(app)
       .post('/api/user/cart')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
       .send({ productId: product._id, quantity: 1 })
 
     const orderRes = await request(app)
       .post('/api/order/create')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
       .set('x-metric-session-id', 'sesion-atribucion-1')
       .set(
         'x-metric-attribution',
@@ -175,22 +185,26 @@ describe('orders - storefront user', () => {
   test('survives a corrupted attribution header without failing checkout', async () => {
     await request(app)
       .post('/api/user/cart')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
       .send({ productId: product._id, quantity: 1 })
 
     const orderRes = await request(app)
       .post('/api/order/create')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
       .set('x-metric-attribution', '{no-es-json')
       .send({
         COD: true,
@@ -259,9 +273,7 @@ describe('reserva de stock - atomicidad entre líneas', () => {
       { product: sinStock._id, count: 5, titleSnapshot: 'Sin stock' },
     ]
 
-    await expect(
-      reserveStockAtomic(lineas, tenantContext.tenant._id),
-    ).rejects.toThrow()
+    await expect(reserveStockAtomic(lineas, tenantContext.tenant._id)).rejects.toThrow()
 
     const recargado = await Product.findOne({
       _id: conStock._id,

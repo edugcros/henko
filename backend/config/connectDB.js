@@ -20,8 +20,6 @@ import dns from 'node:dns'
  */
 mongoose.set('strictQuery', false)
 
-
-
 if (String(process.env.MONGO_FORCE_PUBLIC_DNS || '').toLowerCase() === 'true') {
   dns.setServers(['1.1.1.1', '8.8.8.8'])
   logger.warn('🌐 Mongo DNS override activo: 1.1.1.1, 8.8.8.8')
@@ -68,7 +66,6 @@ const registerConnectionListeners = () => {
     logger.info('🔄 MongoDB reconectado')
   })
 }
-
 
 // =====================================================
 // Connect

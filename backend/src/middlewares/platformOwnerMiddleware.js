@@ -11,7 +11,10 @@
 // reporte con datos financieros de todos los comercios nunca debe quedar
 // abierto por default.
 
-const clean = value => String(value || '').trim().toLowerCase()
+const clean = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
 
 /** Los emails habilitados, ya normalizados. Vacío = nadie. */
 const allowlist = () =>

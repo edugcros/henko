@@ -31,24 +31,18 @@ const getBuyerEmail = ({ order, buyerEmail, context = {} }) => {
     order?.orderby?.email,
   ]
 
-  return candidates
-    .map(normalizeEmail)
-    .find(candidate => candidate && isValidEmail(candidate)) || null
+  return (
+    candidates.map(normalizeEmail).find(candidate => candidate && isValidEmail(candidate)) || null
+  )
 }
 
 export const buildOrderForEmail = order => {
-  const enriched = typeof order?.toObject === 'function'
-    ? order.toObject({ virtuals: true })
-    : order
+  const enriched =
+    typeof order?.toObject === 'function' ? order.toObject({ virtuals: true }) : order
   const products = enriched?.products || []
-  const subtotalCents = products.reduce(
-    (sum, line) => sum + Number(line.subtotalCents || 0),
-    0,
-  )
+  const subtotalCents = products.reduce((sum, line) => sum + Number(line.subtotalCents || 0), 0)
   const discountCents = Number(
-    enriched?.coupon?.discountAmountCents ||
-      enriched?.paymentIntent?.discountAmountCents ||
-      0,
+    enriched?.coupon?.discountAmountCents || enriched?.paymentIntent?.discountAmountCents || 0,
   )
 
   return {
@@ -61,9 +55,7 @@ export const buildOrderForEmail = order => {
     items: products.map(line => ({
       title: line.titleSnapshot || 'Producto',
       price: Money.toDecimal(line.priceCents),
-      originalPrice: Money.toDecimal(
-        line.originalPriceCents ?? line.priceCents,
-      ),
+      originalPrice: Money.toDecimal(line.originalPriceCents ?? line.priceCents),
       quantity: line.count,
       image: line.imageSnapshot || null,
       subtotal: Money.toDecimal(line.subtotalCents),
@@ -116,8 +108,7 @@ export const dispatchApprovedOrderEmails = async ({
     }
   }
 
-  const resolvedTenantConfig =
-    tenantConfig || await getTenantConfig(order.tenantId)
+  const resolvedTenantConfig = tenantConfig || (await getTenantConfig(order.tenantId))
   const resolvedBuyerEmail = getBuyerEmail({
     order,
     buyerEmail,
@@ -127,8 +118,7 @@ export const dispatchApprovedOrderEmails = async ({
   const results = []
   const resolvedAdminEmail = normalizeEmail(resolvedTenantConfig?.adminEmail)
   const recipientsAreDistinct =
-    Boolean(resolvedBuyerEmail && resolvedAdminEmail) &&
-    resolvedBuyerEmail !== resolvedAdminEmail
+    Boolean(resolvedBuyerEmail && resolvedAdminEmail) && resolvedBuyerEmail !== resolvedAdminEmail
 
   if (order.emailSent && order.adminEmailSent) {
     return {
@@ -174,14 +164,10 @@ export const dispatchApprovedOrderEmails = async ({
   const customerEmailSent = Boolean(order.emailSent)
   const adminEmailSent = Boolean(order.adminEmailSent)
   const failed = results.filter(result => result.success !== true)
-  const noRecipientAvailable =
-    !resolvedBuyerEmail && !resolvedAdminEmail
+  const noRecipientAvailable = !resolvedBuyerEmail && !resolvedAdminEmail
 
   order.addAuditEntry?.({
-    action:
-      failed.length || noRecipientAvailable
-        ? 'email_failed'
-        : 'email_sent',
+    action: failed.length || noRecipientAvailable ? 'email_failed' : 'email_sent',
     performedByRole: 'system',
     metadata: {
       customerEmailSent,
@@ -194,12 +180,8 @@ export const dispatchApprovedOrderEmails = async ({
         success: Boolean(result.success),
         code: result.code || result.error || null,
         messageId: result.messageId || null,
-        acceptedCount: Array.isArray(result.accepted)
-          ? result.accepted.length
-          : 0,
-        rejectedCount: Array.isArray(result.rejected)
-          ? result.rejected.length
-          : 0,
+        acceptedCount: Array.isArray(result.accepted) ? result.accepted.length : 0,
+        rejectedCount: Array.isArray(result.rejected) ? result.rejected.length : 0,
       })),
     },
   })
@@ -248,8 +230,7 @@ export const resendOrderConfirmationEmail = async ({
     }
   }
 
-  const resolvedTenantConfig =
-    tenantConfig || await getTenantConfig(tenantId)
+  const resolvedTenantConfig = tenantConfig || (await getTenantConfig(tenantId))
   const resolvedBuyerEmail = getBuyerEmail({
     order,
     buyerEmail,
@@ -305,17 +286,11 @@ export const dispatchOrderStatusEmail = async ({
   }
 
   try {
-    const resolvedTenantConfig =
-      tenantConfig || await getTenantConfig(order.tenantId)
+    const resolvedTenantConfig = tenantConfig || (await getTenantConfig(order.tenantId))
     const orderForEmail = buildOrderForEmail(order)
     const buyerEmail = getBuyerEmail({ order, context: {} })
 
-    const result = await sender(
-      orderForEmail,
-      buyerEmail,
-      resolvedTenantConfig,
-      { reason },
-    )
+    const result = await sender(orderForEmail, buyerEmail, resolvedTenantConfig, { reason })
 
     logger.info('📧 Email de estado de orden procesado', {
       orderId: order._id.toString(),

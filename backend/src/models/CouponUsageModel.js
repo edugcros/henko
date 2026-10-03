@@ -185,7 +185,6 @@ couponUsageSchema.plugin(tenantPlugin, {
 // MODEL
 // =====================================================
 
-const CouponUsage =
-  mongoose.models.CouponUsage || mongoose.model('CouponUsage', couponUsageSchema)
+const CouponUsage = mongoose.models.CouponUsage || mongoose.model('CouponUsage', couponUsageSchema)
 
 export default CouponUsage

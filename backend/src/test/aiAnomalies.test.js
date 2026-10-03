@@ -25,9 +25,8 @@ import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 
-const { default: AiConsumptionLedger, LEDGER_EVENT } = await import(
-  '../models/aiConsumptionLedgerModel.js'
-)
+const { default: AiConsumptionLedger, LEDGER_EVENT } =
+  await import('../models/aiConsumptionLedgerModel.js')
 const { getSpendAnomalies } = await import('../services/ai/aiSpendReportService.js')
 
 const TRANQUILO = new mongoose.Types.ObjectId('64b7f00000000000000000b1')

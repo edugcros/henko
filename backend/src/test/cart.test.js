@@ -42,12 +42,14 @@ describe('user cart', () => {
   test('adds products to the cart', async () => {
     const res = await request(app)
       .post('/api/user/cart')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
       .send({
         productId: product._id,
         quantity: 2,
@@ -61,10 +63,12 @@ describe('user cart', () => {
   test('returns the authenticated user cart', async () => {
     const res = await request(app)
       .get('/api/user/user-cart')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data.products.length).toBeGreaterThan(0)
@@ -73,12 +77,14 @@ describe('user cart', () => {
   test('removes a product from the cart', async () => {
     const res = await request(app)
       .delete(`/api/user/cart/${product._id}`)
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
@@ -87,12 +93,14 @@ describe('user cart', () => {
   test('empties the cart', async () => {
     await request(app)
       .post('/api/user/cart')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
       .send({
         productId: product._id,
         quantity: 1,
@@ -100,12 +108,14 @@ describe('user cart', () => {
 
     const res = await request(app)
       .delete('/api/user/cart/empty')
-      .set(authHeaders({
-        token: session.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: session.csrfToken,
-        csrfCookie: session.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.message).toMatch(/vac/i)

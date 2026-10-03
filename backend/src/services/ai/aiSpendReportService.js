@@ -32,10 +32,7 @@ import {
   DEGRADATION_ECONOMY_PERCENT,
   DEGRADATION_ESSENTIAL_PERCENT,
 } from './aiPlanPolicy.js'
-import {
-  getPlatformAiSettingHistory,
-  getAllTenantAiPolicies,
-} from './platformAiSettingService.js'
+import { getPlatformAiSettingHistory, getAllTenantAiPolicies } from './platformAiSettingService.js'
 import Tenant from '../../models/tenantModel.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 // La contabilidad vive aparte: este archivo REPORTA, aquel RECONCILIA.
@@ -342,7 +339,6 @@ const getSpendByKeySource = async period => {
     tenantProviderCostUsd: round(row.tenantProviderCostUsd, 6),
   }))
 }
-
 
 /**
  * Quién se está gastando el presupuesto.
@@ -845,42 +841,41 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     anomalies,
     settingHistory,
     reconciliation,
-  ] =
-    await Promise.all([
-      AiPlatformUsage.findOne({ period }).lean(),
-      getPeriodSpendByMetric(period),
-      getPeriodSpendByModel(period),
-      getPeriodQuality(period),
-      getSpendByKeySource(period),
-      getPeriodSpendByTenant(period),
-      getPeriodDailySpend(period),
-      // No tumba el reporte si falla: es una señal adicional, y perderla no
-      // puede dejar sin pantalla a quien necesita ver el gasto.
-      getSpendAnomalies(period).catch(error => {
-        logger.warn('[AI ANOMALÍAS] No se pudieron calcular', {
-          period,
-          error: error.message,
-        })
-        return []
-      }),
-      getPlatformAiSettingHistory(10).catch(() => []),
-      // La diferencia entre el contador y el libro, SIN corregir. Va acá y no
-      // en un script que alguien tiene que acordarse de correr: una
-      // reconciliación que nadie mira es código muerto, y este contador es el
-      // que decide si el disyuntor corta la IA de todos los comercios.
-      //
-      // Nunca escribe desde esta lectura. Corregir un agregado como efecto
-      // secundario de abrir una pantalla es la clase de sorpresa que uno no
-      // quiere en el camino de la plata: el reporte muestra, la corrección se
-      // pide.
-      rebuildPlatformProjection({ period }).catch(error => {
-        logger.warn('[AI RECONCILE] No se pudo calcular la diferencia', {
-          period,
-          error: error.message,
-        })
-        return null
-      }),
-    ])
+  ] = await Promise.all([
+    AiPlatformUsage.findOne({ period }).lean(),
+    getPeriodSpendByMetric(period),
+    getPeriodSpendByModel(period),
+    getPeriodQuality(period),
+    getSpendByKeySource(period),
+    getPeriodSpendByTenant(period),
+    getPeriodDailySpend(period),
+    // No tumba el reporte si falla: es una señal adicional, y perderla no
+    // puede dejar sin pantalla a quien necesita ver el gasto.
+    getSpendAnomalies(period).catch(error => {
+      logger.warn('[AI ANOMALÍAS] No se pudieron calcular', {
+        period,
+        error: error.message,
+      })
+      return []
+    }),
+    getPlatformAiSettingHistory(10).catch(() => []),
+    // La diferencia entre el contador y el libro, SIN corregir. Va acá y no
+    // en un script que alguien tiene que acordarse de correr: una
+    // reconciliación que nadie mira es código muerto, y este contador es el
+    // que decide si el disyuntor corta la IA de todos los comercios.
+    //
+    // Nunca escribe desde esta lectura. Corregir un agregado como efecto
+    // secundario de abrir una pantalla es la clase de sorpresa que uno no
+    // quiere en el camino de la plata: el reporte muestra, la corrección se
+    // pide.
+    rebuildPlatformProjection({ period }).catch(error => {
+      logger.warn('[AI RECONCILE] No se pudo calcular la diferencia', {
+        period,
+        error: error.message,
+      })
+      return null
+    }),
+  ])
 
   const tokens = Number(usage?.tokens || 0)
   const hasBudget = budget !== UNLIMITED
@@ -888,8 +883,7 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
   // Lo gastado Y lo comprometido: el pronóstico tiene que partir del mismo
   // número contra el que corta el disyuntor, o diría que hay margen donde el
   // medidor ya está cortando.
-  const gastadoUsd =
-    Number(usage?.estimatedCostUsd || 0) + Number(usage?.reservedCostUsd || 0)
+  const gastadoUsd = Number(usage?.estimatedCostUsd || 0) + Number(usage?.reservedCostUsd || 0)
 
   // El porcentaje del techo que esté MÁS CERCA de cortar — el mismo criterio
   // que usa el medidor para decidir el escalón, y el mismo que usa el aviso por
@@ -956,12 +950,11 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       percentUsdUsed:
         usdBudget !== UNLIMITED && usdBudget > 0
           ? round(
-            ((Number(usage?.estimatedCostUsd || 0) +
-                Number(usage?.reservedCostUsd || 0)) /
+              ((Number(usage?.estimatedCostUsd || 0) + Number(usage?.reservedCostUsd || 0)) /
                 usdBudget) *
                 100,
-            1,
-          )
+              1,
+            )
           : null,
       lastActivityAt: usage?.lastActivityAt || null,
     },

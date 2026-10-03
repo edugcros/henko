@@ -48,10 +48,7 @@ const basePromotionalBlockRules = ({ partial = false } = {}) => {
       .isLength({ max: 140 })
       .withMessage('El slug no puede superar 140 caracteres.'),
 
-    body('type')
-      .optional()
-      .isIn(PROMOTIONAL_BLOCK_TYPES)
-      .withMessage('Tipo de bloque inválido.'),
+    body('type').optional().isIn(PROMOTIONAL_BLOCK_TYPES).withMessage('Tipo de bloque inválido.'),
 
     body('placement')
       .optional()
@@ -91,15 +88,9 @@ const basePromotionalBlockRules = ({ partial = false } = {}) => {
         .custom(validateDateRange),
     ),
 
-    body('isActive')
-      .optional()
-      .isBoolean()
-      .withMessage('isActive debe ser booleano.'),
+    body('isActive').optional().isBoolean().withMessage('isActive debe ser booleano.'),
 
-    body('visibility')
-      .optional()
-      .isIn(['public', 'hidden'])
-      .withMessage('Visibilidad inválida.'),
+    body('visibility').optional().isIn(['public', 'hidden']).withMessage('Visibilidad inválida.'),
 
     body('products')
       .optional()
@@ -135,16 +126,11 @@ const basePromotionalBlockRules = ({ partial = false } = {}) => {
 // =====================================================
 
 export const promotionalBlockIdValidator = [
-  param('id')
-    .isMongoId()
-    .withMessage('ID de bloque promocional inválido.'),
+  param('id').isMongoId().withMessage('ID de bloque promocional inválido.'),
 ]
 
 export const getPromotionalBlocksValidator = [
-  query('page')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('La página debe ser válida.'),
+  query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser válida.'),
 
   query('limit')
     .optional()
@@ -156,22 +142,15 @@ export const getPromotionalBlocksValidator = [
     .isIn(PROMOTIONAL_BLOCK_PLACEMENTS)
     .withMessage('Ubicación inválida.'),
 
-  query('type')
-    .optional()
-    .isIn(PROMOTIONAL_BLOCK_TYPES)
-    .withMessage('Tipo inválido.'),
+  query('type').optional().isIn(PROMOTIONAL_BLOCK_TYPES).withMessage('Tipo inválido.'),
 ]
 
-export const createPromotionalBlockValidator =
-  basePromotionalBlockRules({ partial: false })
+export const createPromotionalBlockValidator = basePromotionalBlockRules({ partial: false })
 
-export const updatePromotionalBlockValidator =
-  basePromotionalBlockRules({ partial: true })
+export const updatePromotionalBlockValidator = basePromotionalBlockRules({ partial: true })
 
 export const togglePromotionalBlockStatusValidator = [
   ...promotionalBlockIdValidator,
 
-  body('isActive')
-    .isBoolean()
-    .withMessage('isActive debe ser booleano.'),
+  body('isActive').isBoolean().withMessage('isActive debe ser booleano.'),
 ]

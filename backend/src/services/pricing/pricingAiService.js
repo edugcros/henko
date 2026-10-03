@@ -101,11 +101,11 @@ const buildUserPrompt = ({ signals, policy }) => {
     'COSTOS',
     signals.cost
       ? [
-        `Costo total por unidad: ${money(signals.cost.totalUnitCost)}`,
-        `Precio de equilibrio: ${money(signals.cost.breakEvenPrice)}`,
-        `Deducciones (comisiones + impuestos): ${pct(Math.round((signals.cost.deductionRate || 0) * 100))}`,
-        `Margen actual: ${pct(signals.marginPercent)}`,
-      ].join('\n')
+          `Costo total por unidad: ${money(signals.cost.totalUnitCost)}`,
+          `Precio de equilibrio: ${money(signals.cost.breakEvenPrice)}`,
+          `Deducciones (comisiones + impuestos): ${pct(Math.round((signals.cost.deductionRate || 0) * 100))}`,
+          `Margen actual: ${pct(signals.marginPercent)}`,
+        ].join('\n')
       : 'Sin costo cargado: no se puede evaluar margen.',
     '',
     'DEMANDA',
@@ -118,7 +118,10 @@ const buildUserPrompt = ({ signals, policy }) => {
   ]
 
   if (signals.costChangePercent !== null) {
-    lines.push('', `El costo varió ${pct(signals.costChangePercent)} desde el último cambio de precio.`)
+    lines.push(
+      '',
+      `El costo varió ${pct(signals.costChangePercent)} desde el último cambio de precio.`,
+    )
   }
 
   if (signals.lastPriceChange) {
@@ -300,9 +303,8 @@ export const parseRecommendation = raw => {
     recommendedPrice,
     // Fuera de rango se trata como desconocido y no se recorta a 1: una
     // confianza inventada por el modelo no mejora por acotarla.
-    confidence: Number.isFinite(confidence) && confidence >= 0 && confidence <= 1
-      ? confidence
-      : null,
+    confidence:
+      Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? confidence : null,
     reason: typeof data.reason === 'string' ? data.reason.trim().slice(0, 600) : '',
     expectedImpact: {
       marginPercent: Number.isFinite(Number(data.expectedImpact?.marginPercent))

@@ -114,10 +114,7 @@ const extraerVerificacionPendiente = cuerpo => {
  * parte importante —la verificación de propiedad— y un fallo del proveedor no
  * debe deshacerla ni dejar al comercio con un error que no puede resolver.
  */
-export const registrarDominioEnBorde = async (
-  hostname,
-  { surface = SUPERFICIE.TIENDA } = {},
-) => {
+export const registrarDominioEnBorde = async (hostname, { surface = SUPERFICIE.TIENDA } = {}) => {
   if (!isEdgeProvisioningEnabled(surface)) {
     return {
       ok: false,
@@ -173,10 +170,7 @@ export const registrarDominioEnBorde = async (
 }
 
 /** Baja del dominio en el borde, para cuando el comercio lo quita. */
-export const quitarDominioDelBorde = async (
-  hostname,
-  { surface = SUPERFICIE.TIENDA } = {},
-) => {
+export const quitarDominioDelBorde = async (hostname, { surface = SUPERFICIE.TIENDA } = {}) => {
   if (!isEdgeProvisioningEnabled(surface)) {
     return { ok: false, motivo: 'sin_credenciales' }
   }
@@ -208,8 +202,7 @@ export const quitarDominioDelBorde = async (
  * como pendiente en vez de dar una instrucción equivocada — que es peor que no
  * dar ninguna.
  */
-export const obtenerDestinoDelBorde = () =>
-  limpio(process.env.PLATFORM_EDGE_CNAME) || null
+export const obtenerDestinoDelBorde = () => limpio(process.env.PLATFORM_EDGE_CNAME) || null
 
 export default {
   SUPERFICIE,

@@ -11,172 +11,157 @@
 // dólar nunca fue el precio: era una traducción para mostrar, y guardar la
 // traducción en vez del hecho es lo que hacía que el margen se corriera solo.
 
-import { jest } from "@jest/globals";
+import { jest } from '@jest/globals'
 
-const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 
-jest.unstable_mockModule("../../config/logger.js", () => ({
+jest.unstable_mockModule('../../config/logger.js', () => ({
   default: mockLogger,
-}));
+}))
 
-const mockOverride = jest.fn();
+const mockOverride = jest.fn()
 
-jest.unstable_mockModule("../services/ai/platformAiSettingService.js", () => ({
+jest.unstable_mockModule('../services/ai/platformAiSettingService.js', () => ({
   getPlatformAiOverride: mockOverride,
   PLATFORM_AI_SETTINGS: {
-    MONTHLY_TOKEN_BUDGET: "monthlyTokenBudget",
-    PER_TENANT_SHARE: "perTenantShare",
-    PLAN_PRICE_STARTER: "planPriceStarterArs",
-    PLAN_PRICE_PRO: "planPriceProArs",
+    MONTHLY_TOKEN_BUDGET: 'monthlyTokenBudget',
+    PER_TENANT_SHARE: 'perTenantShare',
+    PLAN_PRICE_STARTER: 'planPriceStarterArs',
+    PLAN_PRICE_PRO: 'planPriceProArs',
   },
-}));
+}))
 
-const {
-  getPlanMonthlyPriceArs,
-  getPlanPriceSource,
-  getPlanCatalog,
-  getUsdToArsRate,
-} = await import("../services/ai/aiPlanPolicy.js");
+const { getPlanMonthlyPriceArs, getPlanPriceSource, getPlanCatalog, getUsdToArsRate } =
+  await import('../services/ai/aiPlanPolicy.js')
 
-const CLAVES = [
-  "PLAN_PRICE_ARS_STARTER",
-  "PLAN_PRICE_ARS_PRO",
-  "USD_ARS_RATE",
-];
+const CLAVES = ['PLAN_PRICE_ARS_STARTER', 'PLAN_PRICE_ARS_PRO', 'USD_ARS_RATE']
 
 beforeEach(() => {
-  jest.clearAllMocks();
-  mockOverride.mockReturnValue(null);
-  for (const clave of CLAVES) delete process.env[clave];
-});
+  jest.clearAllMocks()
+  mockOverride.mockReturnValue(null)
+  for (const clave of CLAVES) delete process.env[clave]
+})
 
 afterAll(() => {
-  for (const clave of CLAVES) delete process.env[clave];
-});
+  for (const clave of CLAVES) delete process.env[clave]
+})
 
-describe("precio de plan · en pesos y sin conversión", () => {
-  test("sin configurar, un plan vendible NO tiene precio", () => {
+describe('precio de plan · en pesos y sin conversión', () => {
+  test('sin configurar, un plan vendible NO tiene precio', () => {
     // Tenían 40.000 y 151.470 escritos en el código. Un número puesto ahí meses
     // atrás y que después alguien cobra de verdad es lo que este trabajo vino a
     // sacar: el precio es una decisión del dueño y su lugar es el panel.
-    expect(getPlanMonthlyPriceArs("starter")).toBeNull();
-    expect(getPlanMonthlyPriceArs("pro")).toBeNull();
-  });
+    expect(getPlanMonthlyPriceArs('starter')).toBeNull()
+    expect(getPlanMonthlyPriceArs('pro')).toBeNull()
+  })
 
-  test("un plan sin precio no se puede vender", async () => {
+  test('un plan sin precio no se puede vender', async () => {
     // Es la consecuencia que hace seguro no tener default: en vez de cobrar un
     // número que nadie eligió, no se cobra nada.
-    const { buildMercadoPagoSubscriptionData } = await import(
-      "../services/subscriptionPaymentService.js"
-    );
+    const { buildMercadoPagoSubscriptionData } =
+      await import('../services/subscriptionPaymentService.js')
 
     expect(() =>
       buildMercadoPagoSubscriptionData({
-        plan: "starter",
-        tenantId: "64b7f0000000000000000001",
-        userId: "64b7f0000000000000000009",
-        email: "duenio@comercio.com",
-        token: "tok",
+        plan: 'starter',
+        tenantId: '64b7f0000000000000000001',
+        userId: '64b7f0000000000000000009',
+        email: 'duenio@comercio.com',
+        token: 'tok',
       }),
-    ).toThrow("SUBSCRIPTION_PLAN_INVALID");
-  });
+    ).toThrow('SUBSCRIPTION_PLAN_INVALID')
+  })
 
-  test("no existe ninguna función que devuelva un precio en dólares", async () => {
-    const policy = await import("../services/ai/aiPlanPolicy.js");
+  test('no existe ninguna función que devuelva un precio en dólares', async () => {
+    const policy = await import('../services/ai/aiPlanPolicy.js')
 
-    expect(policy.getPlanMonthlyPriceUsd).toBeUndefined();
-  });
+    expect(policy.getPlanMonthlyPriceUsd).toBeUndefined()
+  })
 
-  test("mover el tipo de cambio NO mueve ningún precio", async () => {
+  test('mover el tipo de cambio NO mueve ningún precio', async () => {
     // Era el comportamiento anterior y el origen del problema: el precio se
     // derivaba del dólar, así que cambiaba solo.
-    process.env.PLAN_PRICE_ARS_STARTER = "40000";
-    const antes = getPlanMonthlyPriceArs("starter");
+    process.env.PLAN_PRICE_ARS_STARTER = '40000'
+    const antes = getPlanMonthlyPriceArs('starter')
 
-    process.env.USD_ARS_RATE = "3000";
+    process.env.USD_ARS_RATE = '3000'
 
-    expect(getPlanMonthlyPriceArs("starter")).toBe(antes);
-  });
-});
+    expect(getPlanMonthlyPriceArs('starter')).toBe(antes)
+  })
+})
 
-describe("precio de plan · quién manda", () => {
-  test("el panel gana sobre todo lo demás", () => {
-    process.env.PLAN_PRICE_ARS_STARTER = "45000";
-    mockOverride.mockImplementation(setting =>
-      setting === "planPriceStarterArs" ? 52000 : null,
-    );
+describe('precio de plan · quién manda', () => {
+  test('el panel gana sobre todo lo demás', () => {
+    process.env.PLAN_PRICE_ARS_STARTER = '45000'
+    mockOverride.mockImplementation(setting => (setting === 'planPriceStarterArs' ? 52000 : null))
 
-    expect(getPlanMonthlyPriceArs("starter")).toBe(52000);
-    expect(getPlanPriceSource("starter")).toBe("panel");
-  });
+    expect(getPlanMonthlyPriceArs('starter')).toBe(52000)
+    expect(getPlanPriceSource('starter')).toBe('panel')
+  })
 
-  test("sin panel, manda la variable de entorno", () => {
-    process.env.PLAN_PRICE_ARS_STARTER = "45000";
+  test('sin panel, manda la variable de entorno', () => {
+    process.env.PLAN_PRICE_ARS_STARTER = '45000'
 
-    expect(getPlanMonthlyPriceArs("starter")).toBe(45000);
-    expect(getPlanPriceSource("starter")).toBe("env");
-  });
+    expect(getPlanMonthlyPriceArs('starter')).toBe(45000)
+    expect(getPlanPriceSource('starter')).toBe('env')
+  })
 
   test("sin nada configurado, el origen lo dice: 'unset'", () => {
     // Distinguir "nadie lo configuró todavía" de "quedó el valor por defecto"
     // importa: el primero es un plan que no se puede vender y hay que decirlo.
-    expect(getPlanPriceSource("starter")).toBe("unset");
-  });
+    expect(getPlanPriceSource('starter')).toBe('unset')
+  })
 
-  test("un plan que no existe se cotiza como el más chico, no como gratis", () => {
+  test('un plan que no existe se cotiza como el más chico, no como gratis', () => {
     // El catálogo quedó en starter y pro. Antes 'free' devolvía 0 y
     // 'enterprise' null; hoy cualquier valor ajeno normaliza al plan más chico,
     // que es lo contrario de regalar: quien reciba un plan del exterior tiene
     // que validarlo CRUDO contra AI_PLANS antes de llegar acá.
-    process.env.PLAN_PRICE_ARS_STARTER = "40000";
+    process.env.PLAN_PRICE_ARS_STARTER = '40000'
 
-    expect(getPlanMonthlyPriceArs("free")).toBe(40000);
-    expect(getPlanMonthlyPriceArs("enterprise")).toBe(40000);
-    expect(getPlanPriceSource("cualquier-cosa")).toBe("env");
-  });
+    expect(getPlanMonthlyPriceArs('free')).toBe(40000)
+    expect(getPlanMonthlyPriceArs('enterprise')).toBe(40000)
+    expect(getPlanPriceSource('cualquier-cosa')).toBe('env')
+  })
 
-  test("un override de cero se respeta: un plan puede volverse gratis", () => {
+  test('un override de cero se respeta: un plan puede volverse gratis', () => {
     // Con `|| null` en vez de una comprobación explícita, un 0 caería al default
     // y el plan seguiría cobrando.
-    mockOverride.mockImplementation(setting =>
-      setting === "planPriceProArs" ? 0 : null,
-    );
+    mockOverride.mockImplementation(setting => (setting === 'planPriceProArs' ? 0 : null))
 
-    expect(getPlanMonthlyPriceArs("pro")).toBe(0);
-  });
-});
+    expect(getPlanMonthlyPriceArs('pro')).toBe(0)
+  })
+})
 
-describe("catálogo de planes", () => {
-  test("trae los dos planes, en pesos, con su procedencia", () => {
-    const catalogo = getPlanCatalog();
+describe('catálogo de planes', () => {
+  test('trae los dos planes, en pesos, con su procedencia', () => {
+    const catalogo = getPlanCatalog()
 
-    expect(catalogo.map(p => p.plan)).toEqual(["starter", "pro"]);
-    expect(catalogo.every(p => p.currency === "ARS")).toBe(true);
-    expect(catalogo.find(p => p.plan === "starter").monthlyPriceArs).toBeNull();
-  });
+    expect(catalogo.map(p => p.plan)).toEqual(['starter', 'pro'])
+    expect(catalogo.every(p => p.currency === 'ARS')).toBe(true)
+    expect(catalogo.find(p => p.plan === 'starter').monthlyPriceArs).toBeNull()
+  })
 
-  test("es lo que consume el panel, así que refleja el override", () => {
-    mockOverride.mockImplementation(setting =>
-      setting === "planPriceStarterArs" ? 52000 : null,
-    );
+  test('es lo que consume el panel, así que refleja el override', () => {
+    mockOverride.mockImplementation(setting => (setting === 'planPriceStarterArs' ? 52000 : null))
 
-    const starter = getPlanCatalog().find(p => p.plan === "starter");
+    const starter = getPlanCatalog().find(p => p.plan === 'starter')
 
-    expect(starter.monthlyPriceArs).toBe(52000);
-    expect(starter.source).toBe("panel");
-  });
-});
+    expect(starter.monthlyPriceArs).toBe(52000)
+    expect(starter.source).toBe('panel')
+  })
+})
 
-describe("tipo de cambio · solo para costos", () => {
-  test("existe, porque los costos sí llegan en dólares", () => {
+describe('tipo de cambio · solo para costos', () => {
+  test('existe, porque los costos sí llegan en dólares', () => {
     // Google, Replicate, SendGrid y Meta facturan en USD. El reporte de margen
     // resta costos a ingresos y necesita una sola unidad.
-    expect(getUsdToArsRate()).toBe(1530);
-  });
+    expect(getUsdToArsRate()).toBe(1530)
+  })
 
-  test("se puede corregir por entorno", () => {
-    process.env.USD_ARS_RATE = "1800";
+  test('se puede corregir por entorno', () => {
+    process.env.USD_ARS_RATE = '1800'
 
-    expect(getUsdToArsRate()).toBe(1800);
-  });
-});
+    expect(getUsdToArsRate()).toBe(1800)
+  })
+})

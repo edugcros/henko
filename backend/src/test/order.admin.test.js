@@ -45,12 +45,14 @@ describe('orders - admin routes', () => {
 
     await request(app)
       .post('/api/user/cart')
-      .set(authHeaders({
-        token: buyerSession.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: buyerSession.csrfToken,
-        csrfCookie: buyerSession.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: buyerSession.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: buyerSession.csrfToken,
+          csrfCookie: buyerSession.csrfCookie,
+        }),
+      )
       .send({
         productId: product._id,
         quantity: 1,
@@ -65,12 +67,14 @@ describe('orders - admin routes', () => {
   async function createTestOrder() {
     await request(app)
       .post('/api/user/cart')
-      .set(authHeaders({
-        token: buyerSession.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: buyerSession.csrfToken,
-        csrfCookie: buyerSession.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: buyerSession.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: buyerSession.csrfToken,
+          csrfCookie: buyerSession.csrfCookie,
+        }),
+      )
       .send({
         productId: product._id,
         quantity: 1,
@@ -78,12 +82,14 @@ describe('orders - admin routes', () => {
 
     return request(app)
       .post('/api/order/create')
-      .set(authHeaders({
-        token: buyerSession.token,
-        domain: tenantContext.shopDomain,
-        csrfToken: buyerSession.csrfToken,
-        csrfCookie: buyerSession.csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: buyerSession.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: buyerSession.csrfToken,
+          csrfCookie: buyerSession.csrfCookie,
+        }),
+      )
       .send({
         COD: true,
         shippingAddress: {
@@ -106,10 +112,12 @@ describe('orders - admin routes', () => {
   test('lists tenant orders from the admin domain', async () => {
     const res = await request(app)
       .get('/api/order/getAll')
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.success).toBe(true)
@@ -128,10 +136,12 @@ describe('orders - admin routes', () => {
 
     const res = await request(app)
       .get('/api/order/getAll?limit=1')
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+        }),
+      )
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data).toHaveLength(1)
@@ -146,10 +156,7 @@ describe('orders - admin routes', () => {
     expect(res.body.summary.total).toBeGreaterThan(sumaDeLaPagina)
 
     // Los contadores por estado también salen del total, no de la página.
-    const contados = Object.values(res.body.summary.byStatus).reduce(
-      (sum, count) => sum + count,
-      0,
-    )
+    const contados = Object.values(res.body.summary.byStatus).reduce((sum, count) => sum + count, 0)
     expect(contados).toBe(res.body.pagination.total)
   })
 
@@ -158,12 +165,14 @@ describe('orders - admin routes', () => {
 
     const res = await request(app)
       .put(`/api/order/${orderId}/fulfillment-status`)
-      .set(authHeaders({
-        token: adminSession.token,
-        domain: tenantContext.adminDomain,
-        csrfToken,
-        csrfCookie,
-      }))
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+          csrfToken,
+          csrfCookie,
+        }),
+      )
       .send({ fulfillmentStatus: FULFILLMENT_STATUS.PREPARING })
 
     expect(res.statusCode).toBe(200)

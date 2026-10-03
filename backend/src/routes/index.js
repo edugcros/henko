@@ -30,7 +30,6 @@ import subscriptionRoutes from './subscriptionRoutes.js'
 import webhookRoutes from './webhookRoutes.js'
 import { SUBSCRIPTION_WEBHOOK_MOUNT } from '../config/subscriptionConfig.js'
 
-
 const router = express.Router()
 
 // =======================================================
@@ -39,13 +38,11 @@ const router = express.Router()
 router.use('/user', userRoute)
 router.use('/dash', dashboardRoute)
 
-
 // =======================================================
 // 📊 MARKET INTELLIGENCE
 // =======================================================
 
 router.use('/market-intelligence', marketintelligenceRoutes)
-
 
 // =======================================================
 // 🛍️ CATÁLOGO DE PRODUCTOS
@@ -84,8 +81,7 @@ router.use('/meta-pixel-config', metaPixelConfigRoutes)
 router.use('/image-ai', imageAiRoutes)
 router.use(SUBSCRIPTION_WEBHOOK_MOUNT, webhookRoutes)
 
-
-router.use('/promotional-blocks', promotionalBlockRoute) 
+router.use('/promotional-blocks', promotionalBlockRoute)
 // =======================================================
 // 📬 COMUNICACIÓN
 // =======================================================

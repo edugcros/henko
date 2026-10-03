@@ -48,9 +48,7 @@ import MarketAnalysis from './schemas/MarketAnalysis.js'
  * operador conoce su mercado mejor que este archivo.
  */
 const CACHE_TTL_HOURS =
-  Number(process.env.MARKET_CACHE_TTL_HOURS) > 0
-    ? Number(process.env.MARKET_CACHE_TTL_HOURS)
-    : 24
+  Number(process.env.MARKET_CACHE_TTL_HOURS) > 0 ? Number(process.env.MARKET_CACHE_TTL_HOURS) : 24
 
 /**
  * @param {Object} params
@@ -66,8 +64,10 @@ export async function analyzeMarketDemand({
   forceRefresh = false,
   costs = null,
 }) {
-  if (!tenantId) throw new Error('tenantId es requerido: el análisis nunca corre sin contexto de tenant')
-  if (!product || typeof product !== 'string') throw new Error('product es requerido y debe ser string')
+  if (!tenantId)
+    throw new Error('tenantId es requerido: el análisis nunca corre sin contexto de tenant')
+  if (!product || typeof product !== 'string')
+    throw new Error('product es requerido y debe ser string')
 
   const normalizedQuery = normalizeProductQuery(product)
 
@@ -87,7 +87,11 @@ export async function analyzeMarketDemand({
       .lean()
 
     if (cached) {
-      logger.info('[marketIntelligence] cache hit', { normalizedQuery, country, tenantId: String(tenantId) })
+      logger.info('[marketIntelligence] cache hit', {
+        normalizedQuery,
+        country,
+        tenantId: String(tenantId),
+      })
 
       // La rentabilidad NO se sirve desde cache: depende de los costos que
       // el comercio ingresó en ESTA consulta, no en la que llenó el cache.
@@ -171,12 +175,9 @@ export async function analyzeMarketDemand({
   // en las tres primeras corridas medidas.
   const toolUsage = []
 
-  const [internalResult] = await Promise.allSettled([
-    getInternalBiSignals({ tenantId, product }),
-  ])
+  const [internalResult] = await Promise.allSettled([getInternalBiSignals({ tenantId, product })])
 
-  const brand =
-    internalResult.status === 'fulfilled' ? internalResult.value?.brand || null : null
+  const brand = internalResult.status === 'fulfilled' ? internalResult.value?.brand || null : null
 
   const [shoppingResult, researchResult] = await Promise.allSettled([
     getShoppingSignals({ product, country, brand, toolUsage }),
@@ -275,8 +276,7 @@ export async function analyzeMarketDemand({
   // Refund solo si el análisis no produjo NADA. Con fuentes externas caídas
   // pero BI interna suficiente sí hay un resultado útil (limitado al propio
   // catálogo), así que ahí el consumo se cobra: el trabajo se hizo.
-  const noExternalSources =
-    !rawSignals.shopping?.available && !rawSignals.research?.available
+  const noExternalSources = !rawSignals.shopping?.available && !rawSignals.research?.available
   const producedNothing = breakdown.total === null
 
   if (producedNothing) {

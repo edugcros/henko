@@ -8,10 +8,7 @@ import {
   isWithinWhatsappCustomerWindow,
   registerCustomerContact,
 } from './aiContactPolicyService.js'
-import {
-  sendWhatsappTemplateMessage,
-  sendWhatsappTextMessage,
-} from './whatsappService.js'
+import { sendWhatsappTemplateMessage, sendWhatsappTextMessage } from './whatsappService.js'
 import { sendCartRecoveryEmail } from '../email/cartRecoveryEmail.service.js'
 import {
   AI_FEATURES,
@@ -73,9 +70,7 @@ const getTimeParts = (date, timezone) => {
       minute: '2-digit',
       hourCycle: 'h23',
     }).formatToParts(date)
-    const values = Object.fromEntries(
-      parts.map(part => [part.type, part.value]),
-    )
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
     return { hour: Number(values.hour), minute: Number(values.minute) }
   } catch {
     return { hour: date.getHours(), minute: date.getMinutes() }
@@ -86,11 +81,9 @@ const canSendByBusinessHours = ({ rule, tenant }) => {
   if (!rule?.trigger?.onlyBusinessHours) return true
 
   const start =
-    normalizeBusinessHour(rule?.trigger?.businessHours?.start) ||
-    normalizeBusinessHour('09:00')
+    normalizeBusinessHour(rule?.trigger?.businessHours?.start) || normalizeBusinessHour('09:00')
   const end =
-    normalizeBusinessHour(rule?.trigger?.businessHours?.end) ||
-    normalizeBusinessHour('20:00')
+    normalizeBusinessHour(rule?.trigger?.businessHours?.end) || normalizeBusinessHour('20:00')
   const now = getTimeParts(new Date(), getTenantTimezone(tenant))
   const current = now.hour * 60 + now.minute
 
@@ -104,8 +97,7 @@ const canSendByBusinessHours = ({ rule, tenant }) => {
 
 const getNextBusinessHour = rule => {
   const start =
-    normalizeBusinessHour(rule?.trigger?.businessHours?.start) ||
-    normalizeBusinessHour('09:00')
+    normalizeBusinessHour(rule?.trigger?.businessHours?.start) || normalizeBusinessHour('09:00')
   const nextAttempt = new Date()
   nextAttempt.setHours(start.hour, start.minute, 0, 0)
 
@@ -116,8 +108,7 @@ const getNextBusinessHour = rule => {
 const buildTemplateValues = (recovery, tenant) => {
   const items = recovery?.cartSnapshot?.items || []
   const firstItem = items[0]
-  const customerName =
-    clean(recovery?.customer?.name).split(/\s+/)[0] || 'Hola'
+  const customerName = clean(recovery?.customer?.name).split(/\s+/)[0] || 'Hola'
 
   return {
     customerName,
@@ -195,11 +186,14 @@ export const tryPersonalizeMessage = async ({ tenantId, values }) => {
       metric: AI_METRICS.AGENT_MESSAGES,
       operationId: reservation.operationId,
     })
-    logger.warn('⚠️ No se pudo personalizar el mensaje de recuperación con IA, se usa la plantilla', {
-      tenantId: String(tenantId),
-      message: error?.message,
-      code: error?.code,
-    })
+    logger.warn(
+      '⚠️ No se pudo personalizar el mensaje de recuperación con IA, se usa la plantilla',
+      {
+        tenantId: String(tenantId),
+        message: error?.message,
+        code: error?.code,
+      },
+    )
     return null
   }
 }
@@ -269,7 +263,6 @@ const markExpiredProcessingAsFailed = async () => {
     },
   ).setOptions({ ignoreTenant: true })
 }
-
 
 const markExpiredScheduledRecoveries = async () => {
   const now = new Date()
@@ -347,8 +340,8 @@ export const resolveRecoveryChannel = ({ recovery, agent } = {}) => {
 
   const whatsappReady = Boolean(
     agent?.channels?.whatsapp?.enabled &&
-      clean(agent?.channels?.whatsapp?.phoneNumberId) &&
-      clean(agent?.channels?.whatsapp?.accessToken),
+    clean(agent?.channels?.whatsapp?.phoneNumberId) &&
+    clean(agent?.channels?.whatsapp?.accessToken),
   )
 
   const preferred = clean(recovery?.channel).toLowerCase()
@@ -366,10 +359,7 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
   const cleanLimit = Math.min(Math.max(Number(limit || 25), 1), 100)
   const results = []
 
-  await Promise.all([
-    markExpiredProcessingAsFailed(),
-    markExpiredScheduledRecoveries(),
-  ])
+  await Promise.all([markExpiredProcessingAsFailed(), markExpiredScheduledRecoveries()])
 
   for (let index = 0; index < cleanLimit; index += 1) {
     const claimed = await claimNextRecovery()
@@ -424,16 +414,16 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
 
       const rule = recovery?.metadata?.ruleId
         ? await AiCampaignRule.findOne({
-          _id: recovery.metadata.ruleId,
-          tenantId,
-          enabled: true,
-        }).setOptions({ tenantId })
+            _id: recovery.metadata.ruleId,
+            tenantId,
+            enabled: true,
+          }).setOptions({ tenantId })
         : await AiCampaignRule.findOne({
-          tenantId,
-          type: 'abandoned_cart',
-          enabled: true,
-          channel,
-        }).setOptions({ tenantId })
+            tenantId,
+            type: 'abandoned_cart',
+            enabled: true,
+            channel,
+          }).setOptions({ tenantId })
 
       if (!rule) {
         await cancelRecovery(lockParams, 'tenant_agent_or_rule_disabled')
@@ -442,9 +432,7 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
       }
 
       const destination =
-        channel === 'email'
-          ? clean(recovery?.customer?.email)
-          : clean(recovery?.customer?.phone)
+        channel === 'email' ? clean(recovery?.customer?.email) : clean(recovery?.customer?.phone)
 
       if (!destination) {
         await cancelRecovery(lockParams, 'missing_customer_contact')
@@ -480,9 +468,7 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
         tenantId,
         channel,
         destination,
-        minHoursBetweenContacts: Number(
-          rule?.trigger?.minHoursBetweenContacts || 6,
-        ),
+        minHoursBetweenContacts: Number(rule?.trigger?.minHoursBetweenContacts || 6),
         requireMarketingConsent: true,
       })
 
@@ -523,8 +509,7 @@ export const processDueCartRecoveries = async ({ limit = 25 } = {}) => {
       // La ventana de 24h es una regla de WhatsApp: fuera de ella Meta solo
       // acepta plantillas aprobadas. Al correo no lo condiciona nada de eso.
       const withinCustomerWindow =
-        channel === 'whatsapp' &&
-        isWithinWhatsappCustomerWindow(policy.preference)
+        channel === 'whatsapp' && isWithinWhatsappCustomerWindow(policy.preference)
 
       // Solo email y WhatsApp-texto-libre pueden llevar contenido generado
       // por IA — la ruta de plantilla (abajo) exige texto pre-aprobado por

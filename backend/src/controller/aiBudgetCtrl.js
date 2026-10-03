@@ -9,10 +9,7 @@
 
 import asyncHandler from 'express-async-handler'
 import { getAiBudgetSnapshot } from '../services/ai/aiBudgetService.js'
-import {
-  clearTenantAiKey,
-  setTenantAiKey,
-} from '../services/ai/aiCredentialsService.js'
+import { clearTenantAiKey, setTenantAiKey } from '../services/ai/aiCredentialsService.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 
 const requireTenantId = req =>

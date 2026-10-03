@@ -15,10 +15,10 @@ import { tenantPlugin } from './tenantPlugin.js'
  * dónde se inclina una recomendación cuando hay margen para moverse.
  */
 export const PRICING_STRATEGY = Object.freeze({
-  MARGIN: 'margin',           // proteger rentabilidad
-  ROTATION: 'rotation',       // mover stock
-  LIQUIDATE: 'liquidate',     // vaciar inventario
-  REVENUE: 'revenue',         // maximizar facturación
+  MARGIN: 'margin', // proteger rentabilidad
+  ROTATION: 'rotation', // mover stock
+  LIQUIDATE: 'liquidate', // vaciar inventario
+  REVENUE: 'revenue', // maximizar facturación
   COMPETITIVE: 'competitive', // defender posición de precio
 })
 
@@ -31,8 +31,8 @@ export const PRICING_STRATEGY = Object.freeze({
  * recomendaciones aceptadas con resultado medido, no de una casilla.
  */
 export const PRICING_MODE = Object.freeze({
-  MANUAL: 'manual',       // solo sugiere
-  SEMI: 'semi',           // aplica solo dentro de un tope chico, el resto pide aprobación
+  MANUAL: 'manual', // solo sugiere
+  SEMI: 'semi', // aplica solo dentro de un tope chico, el resto pide aprobación
   AUTOPILOT: 'autopilot', // aplica dentro de la política
 })
 

@@ -73,13 +73,7 @@ router.post(
  *
  * Solo storefront.
  */
-router.get(
-  '/my-orders',
-  resolveTenantByDomain,
-  requireShopDomain,
-  authMiddleware,
-  getOrders,
-)
+router.get('/my-orders', resolveTenantByDomain, requireShopDomain, authMiddleware, getOrders)
 
 router.get(
   '/my-orders/:orderId',

@@ -251,8 +251,20 @@ async function findMatchingProducts({ tenantId, product, terms }) {
 /** Palabras significativas del query, sin stopwords ni ruido. */
 function buildSearchTerms(product) {
   const STOPWORDS = new Set([
-    'de', 'la', 'el', 'los', 'las', 'un', 'una', 'para',
-    'con', 'del', 'en', 'por', 'que', 'ver',
+    'de',
+    'la',
+    'el',
+    'los',
+    'las',
+    'un',
+    'una',
+    'para',
+    'con',
+    'del',
+    'en',
+    'por',
+    'que',
+    'ver',
   ])
 
   return String(product || '')

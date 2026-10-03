@@ -18,7 +18,11 @@ const buildPeriodMatch = (
   tenantId: tenantObjectId,
   ...extra,
   ...(periodDate
-    ? { [dateField]: periodEndDate ? { $gte: periodDate, $lt: periodEndDate } : { $gte: periodDate } }
+    ? {
+        [dateField]: periodEndDate
+          ? { $gte: periodDate, $lt: periodEndDate }
+          : { $gte: periodDate },
+      }
     : {}),
 })
 
@@ -37,7 +41,9 @@ export const getCartRecoveryRevenue = async (tenantId, periodDate, periodEndDate
   const tenantObjectId = new mongoose.Types.ObjectId(String(tenantId))
 
   const recoveryStats = await AiCartRecovery.aggregate([
-    { $match: buildPeriodMatch(tenantObjectId, periodDate, { dateField: 'sentAt', periodEndDate }) },
+    {
+      $match: buildPeriodMatch(tenantObjectId, periodDate, { dateField: 'sentAt', periodEndDate }),
+    },
     {
       $group: {
         _id: '$status',
@@ -106,7 +112,8 @@ export const getAiInfluencedSalesStats = async (tenantId, periodDate) => {
     aiInfluencedRevenue,
     totalOrders: facet?.totalOrders || 0,
     aiInfluencedOrders: facet?.aiInfluencedOrders || 0,
-    percentage: totalRevenue > 0 ? Math.round((aiInfluencedRevenue / totalRevenue) * 10000) / 100 : 0,
+    percentage:
+      totalRevenue > 0 ? Math.round((aiInfluencedRevenue / totalRevenue) * 10000) / 100 : 0,
   }
 }
 

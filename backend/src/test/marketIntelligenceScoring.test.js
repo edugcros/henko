@@ -31,7 +31,15 @@ const señalesReales = (extra = {}) => ({
     provider: 'tavily',
     offerCount: 8,
     merchantCount: 7,
-    priceStats: { min: 4450, p25: 4786, median: 8000, p75: 20060, max: 30600, currency: 'ARS', sampleSize: 8 },
+    priceStats: {
+      min: 4450,
+      p25: 4786,
+      median: 8000,
+      p75: 20060,
+      max: 30600,
+      currency: 'ARS',
+      sampleSize: 8,
+    },
     offers: [],
   },
   research: { available: false, error: CUOTA_AGOTADA },
@@ -83,7 +91,13 @@ describe('puntaje de demanda · las ofertas del mercado cuentan', () => {
   test('cero ofertas con el buscador respondiendo es una medición, no un vacío', () => {
     const { components } = calculateDemandScore(
       señalesReales({
-        shopping: { available: true, offerCount: 0, merchantCount: 0, priceStats: null, offers: [] },
+        shopping: {
+          available: true,
+          offerCount: 0,
+          merchantCount: 0,
+          priceStats: null,
+          offers: [],
+        },
       }),
     )
 
@@ -171,9 +185,7 @@ describe('confianza · se cuentan las fuentes que existen', () => {
       },
     })
 
-    expect(calculateConfidence(chica, 0.7)).toBeLessThan(
-      calculateConfidence(señalesReales(), 0.7),
-    )
+    expect(calculateConfidence(chica, 0.7)).toBeLessThan(calculateConfidence(señalesReales(), 0.7))
   })
 })
 
@@ -206,7 +218,6 @@ describe('respuesta al panel · los errores se cuentan en castellano', () => {
     expect(sources.find(s => s.key === 'internal').detail).toMatch(/catálogo/i)
   })
 
-
   test('un modelo dado de baja manda a donde se cambia', () => {
     const { sources } = respuesta(
       señalesReales({
@@ -217,9 +228,7 @@ describe('respuesta al panel · los errores se cuentan en castellano', () => {
       }),
     )
 
-    expect(sources.find(s => s.key === 'research').detail).toMatch(
-      /Configuración del agente/i,
-    )
+    expect(sources.find(s => s.key === 'research').detail).toMatch(/Configuración del agente/i)
   })
 })
 
@@ -284,14 +293,20 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
   const resultado = (url, title, content) => ({ url, title, content })
 
   beforeAll(async () => {
-    ;({ __test__: { normalizeTavilyResults } } = await import(
-      '../services/marketIntelligence/sources/shoppingSource.js'
-    ))
+    ;({
+      __test__: { normalizeTavilyResults },
+    } = await import('../services/marketIntelligence/sources/shoppingSource.js'))
   })
 
   test('toma el precio marcado con moneda', () => {
     const ofertas = normalizeTavilyResults(
-      [resultado('https://www.tienda.com.ar/campera', 'Campera de cuero', 'Campera biker $ 89.999 envío gratis')],
+      [
+        resultado(
+          'https://www.tienda.com.ar/campera',
+          'Campera de cuero',
+          'Campera biker $ 89.999 envío gratis',
+        ),
+      ],
       AR,
     )
 
@@ -316,7 +331,9 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
     ]
 
     for (const [texto, esperado] of casos) {
-      expect(normalizeTavilyResults([resultado('https://t.com.ar/a', '', texto)], AR)[0].price).toBe(esperado)
+      expect(
+        normalizeTavilyResults([resultado('https://t.com.ar/a', '', texto)], AR)[0].price,
+      ).toBe(esperado)
     }
   })
 
@@ -324,7 +341,13 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
     // "12 cuotas sin interés de $ 7.499" sobre una campera de 89.999: tomar la
     // cuota hunde la mediana a una fracción de la real.
     const ofertas = normalizeTavilyResults(
-      [resultado('https://x.com.ar/a', 'Campera', '12 cuotas sin interés de $ 7.499. Precio $ 89.999')],
+      [
+        resultado(
+          'https://x.com.ar/a',
+          'Campera',
+          '12 cuotas sin interés de $ 7.499. Precio $ 89.999',
+        ),
+      ],
       AR,
     )
 
@@ -392,9 +415,21 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
     // $18.473 fijaban el mínimo contra una campera de $157.499.
     const ofertas = normalizeTavilyResults(
       [
-        resultado('https://www.billabong.com.ar/p/campera-laguna', 'Campera Mujer Laguna parka matelaseada', 'Precio $157.499'),
-        resultado('https://briganti.com.ar/p/pantubota', 'Pantubota Bambi Mujer de Cuero Sintético Gamuzado Suela', 'Precio $89.999'),
-        resultado('https://www.sgcdeportes.com.ar/p/botines', 'BOTINES NTX STADIO FUTSAL CUERO SINTETICO SUELA', 'Precio $18.473'),
+        resultado(
+          'https://www.billabong.com.ar/p/campera-laguna',
+          'Campera Mujer Laguna parka matelaseada',
+          'Precio $157.499',
+        ),
+        resultado(
+          'https://briganti.com.ar/p/pantubota',
+          'Pantubota Bambi Mujer de Cuero Sintético Gamuzado Suela',
+          'Precio $89.999',
+        ),
+        resultado(
+          'https://www.sgcdeportes.com.ar/p/botines',
+          'BOTINES NTX STADIO FUTSAL CUERO SINTETICO SUELA',
+          'Precio $18.473',
+        ),
       ],
       AR,
       'Campera De Cuero Sintético Biker Bicolor Blanco Y Suela',
@@ -423,7 +458,11 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
     const ofertas = normalizeTavilyResults(
       [
         resultado('https://a.com.ar/p/yerba-1kg', 'Yerba Mate Playadito 1kg', 'Precio $4.100'),
-        resultado('https://b.com.ar/p/yerba-pack', 'Yerba Playadito 1kg - Pack x 5un', 'Precio $27.200'),
+        resultado(
+          'https://b.com.ar/p/yerba-pack',
+          'Yerba Playadito 1kg - Pack x 5un',
+          'Precio $27.200',
+        ),
       ],
       AR,
       'Yerba Mate Playadito 1kg',
@@ -435,7 +474,13 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
 
   test('si se pide un pack, el pack vale', () => {
     const ofertas = normalizeTavilyResults(
-      [resultado('https://b.com.ar/p/yerba-pack', 'Yerba Playadito 1kg Pack x 5un', 'Precio $27.200')],
+      [
+        resultado(
+          'https://b.com.ar/p/yerba-pack',
+          'Yerba Playadito 1kg Pack x 5un',
+          'Precio $27.200',
+        ),
+      ],
       AR,
       'Yerba Mate Playadito Pack x 5 unidades',
     )
@@ -445,7 +490,13 @@ describe('precios desde texto · lo que NO se puede tomar por precio', () => {
 
   test('una página sin precio legible no inventa uno', () => {
     const ofertas = normalizeTavilyResults(
-      [resultado('https://blog.com/nota', 'Las mejores camperas de 2026', 'Repasamos los modelos del año')],
+      [
+        resultado(
+          'https://blog.com/nota',
+          'Las mejores camperas de 2026',
+          'Repasamos los modelos del año',
+        ),
+      ],
       AR,
     )
 
@@ -457,9 +508,9 @@ describe('estadísticas de precio · los atípicos no deciden el piso', () => {
   let getPriceStatsForTest
 
   beforeAll(async () => {
-    ;({ __test__: { computePriceStats: getPriceStatsForTest } } = await import(
-      '../services/marketIntelligence/sources/shoppingSource.js'
-    ))
+    ;({
+      __test__: { computePriceStats: getPriceStatsForTest },
+    } = await import('../services/marketIntelligence/sources/shoppingSource.js'))
   })
 
   test('el extremo disparatado no entra a las estadísticas', () => {
@@ -485,7 +536,12 @@ describe('estadísticas de precio · los atípicos no deciden el piso', () => {
   test('con muestra chica no se descarta nada', () => {
     // Con cuatro precios el rango intercuartil no describe nada y recortar
     // sería inventar un criterio.
-    const stats = getPriceStatsForTest([{ price: 100 }, { price: 200 }, { price: 300 }, { price: 99000 }])
+    const stats = getPriceStatsForTest([
+      { price: 100 },
+      { price: 200 },
+      { price: 300 },
+      { price: 99000 },
+    ])
 
     expect(stats.min).toBe(100)
     expect(stats.max).toBe(99000)
@@ -497,9 +553,8 @@ describe('persistencia · ninguna fuente se pierde al guardar', () => {
   let MarketAnalysis
 
   beforeAll(async () => {
-    MarketAnalysis = (await import(
-      '../services/marketIntelligence/schemas/MarketAnalysis.js'
-    )).default
+    MarketAnalysis = (await import('../services/marketIntelligence/schemas/MarketAnalysis.js'))
+      .default
   })
 
   test('el schema declara las tres fuentes del análisis', () => {
@@ -510,7 +565,6 @@ describe('persistencia · ninguna fuente se pierde al guardar', () => {
       expect(MarketAnalysis.schema.path(`rawSignals.${fuente}`)).toBeDefined()
     }
   })
-
 })
 
 // ─── Lo ajustable se ajusta sin tocar código ────────────────────────────────
@@ -569,9 +623,8 @@ describe('investigación web · el modelo ordena, no recuerda', () => {
   }
 
   beforeAll(async () => {
-    ;({ getWebResearchSignals } = await import(
-      '../services/marketIntelligence/sources/webResearchSource.js'
-    ))
+    ;({ getWebResearchSignals } =
+      await import('../services/marketIntelligence/sources/webResearchSource.js'))
   })
 
   beforeEach(() => {
@@ -777,9 +830,7 @@ describe('listados · no se cotiza una página de categoría', () => {
 
   test('las dos URLs que ensuciaron la corrida real son listados', () => {
     expect(isListingPage('https://www.motordos.com.ar/marca-fox-racing-21')).toBe(true)
-    expect(
-      isListingPage('https://listado.mercadolibre.com.ar/gorra-fox-hombre'),
-    ).toBe(true)
+    expect(isListingPage('https://listado.mercadolibre.com.ar/gorra-fox-hombre')).toBe(true)
   })
 
   test('las fichas de producto que sí sirvieron siguen entrando', () => {
@@ -799,9 +850,9 @@ describe('listados · no se cotiza una página de categoría', () => {
   test('Shopify publica la ficha dentro de una colección, y sigue siendo ficha', () => {
     // /collections/ sin /products/ es la categoría; con /products/ es el
     // producto. Sin esta distinción se pierde media tienda Shopify.
-    expect(
-      isListingPage('https://tienda.com.ar/collections/gorras/products/gorra-fox-negra'),
-    ).toBe(false)
+    expect(isListingPage('https://tienda.com.ar/collections/gorras/products/gorra-fox-negra')).toBe(
+      false,
+    )
     expect(isListingPage('https://tienda.com.ar/collections/gorras')).toBe(true)
   })
 
@@ -878,9 +929,8 @@ describe('investigación web · una barra de más no es otra página', () => {
   })
 
   beforeAll(async () => {
-    ;({ getWebResearchSignals } = await import(
-      '../services/marketIntelligence/sources/webResearchSource.js'
-    ))
+    ;({ getWebResearchSignals } =
+      await import('../services/marketIntelligence/sources/webResearchSource.js'))
   })
 
   test('es.alpinestars.com//products y /products son la misma', () => {
@@ -912,12 +962,10 @@ describe('investigación web · una barra de más no es otra página', () => {
       }),
     })
 
-    return getWebResearchSignals({ product: 'gorra', country: 'AR', apiKey: 'k' }).then(
-      signals => {
-        expect(signals.pagesFound).toBe(2)
-        expect(signals.sources).toHaveLength(2)
-      },
-    )
+    return getWebResearchSignals({ product: 'gorra', country: 'AR', apiKey: 'k' }).then(signals => {
+      expect(signals.pagesFound).toBe(2)
+      expect(signals.sources).toHaveLength(2)
+    })
   })
 })
 
@@ -951,16 +999,43 @@ describe('marca · el filtro que sí separa', () => {
 
   // Títulos textuales de la corrida medida contra la API.
   const AJENAS = [
-    ['226ERS GORRA CYCLING HYDRAZERO NEGRA', 'https://cabberty.com/gorras/226ers-gorra-cycling-hydrazero-negra'],
+    [
+      '226ERS GORRA CYCLING HYDRAZERO NEGRA',
+      'https://cabberty.com/gorras/226ers-gorra-cycling-hydrazero-negra',
+    ],
     ['La Argentina | Tienda Oficial', 'https://www.mercadolibre.com.ar/tienda/la-argentina'],
-    ['HRT Gorra Racing negro/blanco', 'https://www.paddock-legends.com/es/hrt-gorra-racing-negro-blanco/p-15298'],
-    ['Gorra Snapback Intuitive - Gorra de Moto | Alpinestars®', 'https://es.alpinestars.com/products/intuitive-snapback-hat'],
-    ['Gorra trucker McLAREN RACING Lifestyle | PUMA', 'https://eu.puma.com/es/es/pd/gorra-trucker-mclaren-racing-lifestyle/027483'],
-    ['Gorras Hombre | Gorra Running | PUMA', 'https://eu.puma.com/es/es/hombre/accesorios/accesorios-para-la-cabeza'],
-    ['Waykins | Gorra de nailon con logo negra', 'https://www.trendhim.com/es/waykins-gorra-de-nailon-con-logo-negra-p.html'],
-    ['31 Hats Gorra Negra LA Bordada – El Mago Drop', 'https://thirtyonehats.com.mx/producto/31-hats-x-el-mago-magic-club'],
-    ['Gorra Ariat Negra Logo De Toro Blanco – Ariat Mexico', 'https://ariat.com.mx/gorra-ariat-negra'],
-    ['Armani Exchange: Gorra con Logo Blanco Hombre', 'https://elpalaciodehierro.com/armani-gorra-logo'],
+    [
+      'HRT Gorra Racing negro/blanco',
+      'https://www.paddock-legends.com/es/hrt-gorra-racing-negro-blanco/p-15298',
+    ],
+    [
+      'Gorra Snapback Intuitive - Gorra de Moto | Alpinestars®',
+      'https://es.alpinestars.com/products/intuitive-snapback-hat',
+    ],
+    [
+      'Gorra trucker McLAREN RACING Lifestyle | PUMA',
+      'https://eu.puma.com/es/es/pd/gorra-trucker-mclaren-racing-lifestyle/027483',
+    ],
+    [
+      'Gorras Hombre | Gorra Running | PUMA',
+      'https://eu.puma.com/es/es/hombre/accesorios/accesorios-para-la-cabeza',
+    ],
+    [
+      'Waykins | Gorra de nailon con logo negra',
+      'https://www.trendhim.com/es/waykins-gorra-de-nailon-con-logo-negra-p.html',
+    ],
+    [
+      '31 Hats Gorra Negra LA Bordada – El Mago Drop',
+      'https://thirtyonehats.com.mx/producto/31-hats-x-el-mago-magic-club',
+    ],
+    [
+      'Gorra Ariat Negra Logo De Toro Blanco – Ariat Mexico',
+      'https://ariat.com.mx/gorra-ariat-negra',
+    ],
+    [
+      'Armani Exchange: Gorra con Logo Blanco Hombre',
+      'https://elpalaciodehierro.com/armani-gorra-logo',
+    ],
     ['Gorra Roland Garros Logo - Blanco', 'https://tenniswarehouse-europe.com/gorra-roland-garros'],
   ]
 
@@ -974,7 +1049,8 @@ describe('marca · el filtro que sí separa', () => {
     expect(
       mentionsBrand(
         {
-          title: 'Las mejores ofertas en Gorra de béisbol Gorras de deportes para Fox Hombres | eBay',
+          title:
+            'Las mejores ofertas en Gorra de béisbol Gorras de deportes para Fox Hombres | eBay',
           url: 'https://co.ebay.com/b/Fox-Baseball-Cap-Sports-Hats-for-Men/52365/bn_72214316',
         },
         'Fox Racing',
@@ -989,7 +1065,10 @@ describe('marca · el filtro que sí separa', () => {
 
   test('las dos páginas de la yerba nombran Playadito y entran', () => {
     const paginas = [
-      ['Playadito on Instagram: "Playadito Sin Palo está elaborada..."', 'https://instagram.com/p/x'],
+      [
+        'Playadito on Instagram: "Playadito Sin Palo está elaborada..."',
+        'https://instagram.com/p/x',
+      ],
       ['Cata de Yerba Mate | Unión, Taragüi, Mañanita y Playadito', 'https://blog.com.ar/cata'],
     ]
 
@@ -1039,12 +1118,10 @@ describe('techo del modelo · un producto bueno tiene que poder recomendarse', (
   let buildMarketAnalysisResponse
 
   beforeAll(async () => {
-    ;({ calculateDemandScore } = await import(
-      '../services/marketIntelligence/scoring/demandScoreEngine.js'
-    ))
-    ;({ buildMarketAnalysisResponse } = await import(
-      '../services/marketIntelligence/schemas/marketAnalysisContract.js'
-    ))
+    ;({ calculateDemandScore } =
+      await import('../services/marketIntelligence/scoring/demandScoreEngine.js'))
+    ;({ buildMarketAnalysisResponse } =
+      await import('../services/marketIntelligence/schemas/marketAnalysisContract.js'))
   })
 
   // Un producto con mercado de verdad: la gente busca para comprar, hay diez
@@ -1141,9 +1218,8 @@ describe('investigación web · se lee el cuerpo, no el resumen', () => {
   }
 
   beforeAll(async () => {
-    ;({ getWebResearchSignals } = await import(
-      '../services/marketIntelligence/sources/webResearchSource.js'
-    ))
+    ;({ getWebResearchSignals } =
+      await import('../services/marketIntelligence/sources/webResearchSource.js'))
   })
 
   beforeEach(() => {
@@ -1222,14 +1298,18 @@ describe('investigación web · se leen las que opinan', () => {
       url: 'https://www.fc-moto.de/es/Alpinestars-Tech-7-Enduro-2026-Botas-de-motocross',
     }
 
-    expect(opinionScore(resena, 'Alpinestars')).toBeGreaterThan(
-      opinionScore(tienda, 'Alpinestars'),
-    )
+    expect(opinionScore(resena, 'Alpinestars')).toBeGreaterThan(opinionScore(tienda, 'Alpinestars'))
   })
 
   test('el foro y YouTube son opinión aunque no digan "review"', () => {
-    const foro = { title: 'Botas alpinestars tech7 ¿Que tal son?', url: 'https://embarrados.com/enduro/viewtopic.php?t=42337' }
-    const yt = { title: 'Alpinestars Tech 7 Boots', url: 'https://www.youtube.com/watch?v=erJ3y9hFvdo' }
+    const foro = {
+      title: 'Botas alpinestars tech7 ¿Que tal son?',
+      url: 'https://embarrados.com/enduro/viewtopic.php?t=42337',
+    }
+    const yt = {
+      title: 'Alpinestars Tech 7 Boots',
+      url: 'https://www.youtube.com/watch?v=erJ3y9hFvdo',
+    }
 
     expect(opinionScore(foro, 'Alpinestars')).toBeGreaterThan(0)
     expect(opinionScore(yt, 'Alpinestars')).toBeGreaterThan(0)
@@ -1238,8 +1318,14 @@ describe('investigación web · se leen las que opinan', () => {
   test('la tienda del propio fabricante va al fondo', () => {
     // Una marca no publica las quejas sobre su producto. En una corrida real,
     // cuatro de las doce páginas eran es.alpinestars.com.
-    const propia = { title: 'Tech 7 - Botas de MX Azul | Alpinestars', url: 'https://es.alpinestars.com//products/tech-7-boots-blue' }
-    const ajena = { title: 'Botas Alpinestars Tech 7', url: 'https://mxzambrana.com/botas-moto/botas-alpinestars-tech-7' }
+    const propia = {
+      title: 'Tech 7 - Botas de MX Azul | Alpinestars',
+      url: 'https://es.alpinestars.com//products/tech-7-boots-blue',
+    }
+    const ajena = {
+      title: 'Botas Alpinestars Tech 7',
+      url: 'https://mxzambrana.com/botas-moto/botas-alpinestars-tech-7',
+    }
 
     expect(opinionScore(propia, 'Alpinestars')).toBeLessThan(opinionScore(ajena, 'Alpinestars'))
   })

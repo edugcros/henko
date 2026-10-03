@@ -121,9 +121,7 @@ export const describeMpAccount = async (token, { timeoutMs = 5000 } = {}) => {
     nickname: sanitizeString(cuenta?.nickname) || null,
     // La marca la pone Mercado Pago, no nosotros. Si algún día deja de venir,
     // esto da false y el que llame decide: preferimos no inventar un veredicto.
-    isTestAccount: Array.isArray(cuenta?.tags)
-      ? cuenta.tags.includes('test_user')
-      : false,
+    isTestAccount: Array.isArray(cuenta?.tags) ? cuenta.tags.includes('test_user') : false,
   }
 }
 
@@ -138,9 +136,7 @@ const assertCompatibleMpMode = ({ token, tenantMode }) => {
 
   if (tenantMode && ['test', 'production'].includes(tenantMode)) {
     if (tenantMode !== tokenMode) {
-      const error = new Error(
-        `MP_MODE_MISMATCH: tenant=${tenantMode}, token=${tokenMode}`,
-      )
+      const error = new Error(`MP_MODE_MISMATCH: tenant=${tenantMode}, token=${tokenMode}`)
       error.statusCode = 500
       throw error
     }
@@ -165,15 +161,9 @@ export const getTenantConfig = async tenantId => {
           sanitizeString(process.env.APP_NAME) ||
           'Tienda',
         storeLogo: sanitizeString(process.env.EMAIL_LOGO_URL) || null,
-        adminEmail:
-          (!isProd ? normalizeEmail(process.env.ADMIN_EMAIL) : null) ||
-          null,
-        primaryColor:
-          sanitizeString(process.env.EMAIL_PRIMARY_COLOR) ||
-          '#111827',
-        currency:
-          sanitizeString(process.env.DEFAULT_CURRENCY) ||
-          'ARS',
+        adminEmail: (!isProd ? normalizeEmail(process.env.ADMIN_EMAIL) : null) || null,
+        primaryColor: sanitizeString(process.env.EMAIL_PRIMARY_COLOR) || '#111827',
+        currency: sanitizeString(process.env.DEFAULT_CURRENCY) || 'ARS',
       }
     }
 
@@ -231,19 +221,11 @@ export const getTenantConfig = async tenantId => {
 
     return {
       storeName:
-        sanitizeString(process.env.STORE_NAME) ||
-        sanitizeString(process.env.APP_NAME) ||
-        'Tienda',
+        sanitizeString(process.env.STORE_NAME) || sanitizeString(process.env.APP_NAME) || 'Tienda',
       storeLogo: sanitizeString(process.env.EMAIL_LOGO_URL) || null,
-      adminEmail:
-        (!isProd ? normalizeEmail(process.env.ADMIN_EMAIL) : null) ||
-        null,
-      primaryColor:
-        sanitizeString(process.env.EMAIL_PRIMARY_COLOR) ||
-        '#111827',
-      currency:
-        sanitizeString(process.env.DEFAULT_CURRENCY) ||
-        'ARS',
+      adminEmail: (!isProd ? normalizeEmail(process.env.ADMIN_EMAIL) : null) || null,
+      primaryColor: sanitizeString(process.env.EMAIL_PRIMARY_COLOR) || '#111827',
+      currency: sanitizeString(process.env.DEFAULT_CURRENCY) || 'ARS',
     }
   }
 }
@@ -296,16 +278,12 @@ export const getTenantMercadoPagoContext = async tenantId => {
     configuredMode: configuredMode || null,
     accessTokenMode,
     publicKeyMode,
-    accessTokenPrefix: isValidMpAccessToken(accessToken)
-      ? getMpTokenPrefix(accessToken)
-      : null,
+    accessTokenPrefix: isValidMpAccessToken(accessToken) ? getMpTokenPrefix(accessToken) : null,
     hasPublicKey: Boolean(publicKeyMode),
   })
 
   if (!isValidMpAccessToken(accessToken) || !publicKey || !publicKeyMode) {
-    const error = new Error(
-      'Mercado Pago no tiene credenciales válidas para este comercio',
-    )
+    const error = new Error('Mercado Pago no tiene credenciales válidas para este comercio')
     error.statusCode = 503
     error.code = 'MP_CREDENTIALS_NOT_FOUND'
     throw error

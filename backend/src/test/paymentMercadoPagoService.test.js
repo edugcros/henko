@@ -2,10 +2,8 @@ import { jest } from '@jest/globals'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64url')
 
-const {
-  normalizeMpStatus,
-  NEGATIVE_PAYMENT_STATUSES,
-} = await import('../services/paymentMercadoPagoService.js')
+const { normalizeMpStatus, NEGATIVE_PAYMENT_STATUSES } =
+  await import('../services/paymentMercadoPagoService.js')
 const { PAYMENT_STATUS } = await import('../models/orderModel.js')
 
 describe('normalizeMpStatus', () => {

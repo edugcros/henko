@@ -14,9 +14,7 @@ const TOKEN_VERSION = 1
 // token firmado — de forma consistente. No afecta a clientes de la tienda
 // (siguen con env.jwtRefreshExpires, 7 días).
 const getRefreshExpiresIn = role =>
-  role === 'admin'
-    ? process.env.JWT_ADMIN_REFRESH_EXPIRES || '1h'
-    : env.jwtRefreshExpires
+  role === 'admin' ? process.env.JWT_ADMIN_REFRESH_EXPIRES || '1h' : env.jwtRefreshExpires
 
 /**
  * Hash determinístico del jti (un UUID random, 122 bits de entropía — no un

@@ -228,7 +228,11 @@ const detectQuestionSubtype = text => {
     return 'shipping_policy'
   }
 
-  if (/pago|pagos|cuota|cuotas|financiacion|financiación|tarjeta|transferencia|mercado pago|mercadopago/.test(value)) {
+  if (
+    /pago|pagos|cuota|cuotas|financiacion|financiación|tarjeta|transferencia|mercado pago|mercadopago/.test(
+      value,
+    )
+  ) {
     return 'payment_policy'
   }
 
@@ -252,7 +256,11 @@ const detectQuestionSubtype = text => {
     return 'price'
   }
 
-  if (/color|talle|talla|medida|presentacion|presentación|capacidad|litro|ml|gb|ram|almacenamiento/.test(value)) {
+  if (
+    /color|talle|talla|medida|presentacion|presentación|capacidad|litro|ml|gb|ram|almacenamiento/.test(
+      value,
+    )
+  ) {
     return 'variant_or_specification'
   }
 
@@ -279,12 +287,7 @@ const detectQuestionType = text => {
   const subtype = detectQuestionSubtype(text)
 
   if (
-    [
-      'shipping_policy',
-      'payment_policy',
-      'warranty_policy',
-      'returns_policy',
-    ].includes(subtype)
+    ['shipping_policy', 'payment_policy', 'warranty_policy', 'returns_policy'].includes(subtype)
   ) {
     return 'policy_gap'
   }
@@ -362,21 +365,28 @@ const buildProductsSummary = products => {
       const price = product?.formattedPrice || product?.price || ''
       const variants = Array.isArray(product?.variants)
         ? product.variants
-          .slice(0, 4)
-          .map(variant => {
-            const attributes = toPlainObject(variant?.attributes || variant?.combinacion)
-            const attrText = Object.entries(attributes)
-              .map(([key, value]) => `${key}:${value}`)
-              .join('/')
-            return [variant?.sku, attrText, `stock:${variant?.stock ?? 0}`]
-              .filter(Boolean)
-              .join(' ')
-          })
-          .filter(Boolean)
-          .join(' | ')
+            .slice(0, 4)
+            .map(variant => {
+              const attributes = toPlainObject(variant?.attributes || variant?.combinacion)
+              const attrText = Object.entries(attributes)
+                .map(([key, value]) => `${key}:${value}`)
+                .join('/')
+              return [variant?.sku, attrText, `stock:${variant?.stock ?? 0}`]
+                .filter(Boolean)
+                .join(' ')
+            })
+            .filter(Boolean)
+            .join(' | ')
         : ''
 
-      return [title, brand, category, price ? `precio:${price}` : '', stock !== '' ? `stock:${stock}` : '', variants]
+      return [
+        title,
+        brand,
+        category,
+        price ? `precio:${price}` : '',
+        stock !== '' ? `stock:${stock}` : '',
+        variants,
+      ]
         .filter(Boolean)
         .join(' · ')
     })
@@ -406,12 +416,8 @@ const normalizeValidation = validation => {
     warnings: Array.isArray(validation.warnings) ? validation.warnings : [],
     hardWarnings: Array.isArray(validation.hardWarnings) ? validation.hardWarnings : [],
     softWarnings: Array.isArray(validation.softWarnings) ? validation.softWarnings : [],
-    blockedReasons: Array.isArray(validation.blockedReasons)
-      ? validation.blockedReasons
-      : [],
-    learningSignals: Array.isArray(validation.learningSignals)
-      ? validation.learningSignals
-      : [],
+    blockedReasons: Array.isArray(validation.blockedReasons) ? validation.blockedReasons : [],
+    learningSignals: Array.isArray(validation.learningSignals) ? validation.learningSignals : [],
   }
 }
 
@@ -434,7 +440,8 @@ const analyzeResponseQuality = ({
   const catalogDump = isCatalogDumpResponse(cleanAssistantText)
   const repeated = hasRepeatedAssistantText({ assistantText: cleanAssistantText, conversation })
   const validationInfo = normalizeValidation(validation)
-  const shortUnhelpful = questionLike && normalizedAssistant.length > 0 && normalizedAssistant.length < 18
+  const shortUnhelpful =
+    questionLike && normalizedAssistant.length > 0 && normalizedAssistant.length < 18
 
   const issues = []
 
@@ -445,7 +452,8 @@ const analyzeResponseQuality = ({
   if (shortUnhelpful) issues.push('too_short_for_user_question')
   if (continuity.isFollowUp && genericFallback) issues.push('follow_up_lost_context')
   if (continuity.isFollowUp && catalogDump) issues.push('follow_up_answered_as_new_search')
-  if (questionLike && !hasActions && !hasProducts && genericFallback) issues.push('question_unresolved')
+  if (questionLike && !hasActions && !hasProducts && genericFallback)
+    issues.push('question_unresolved')
 
   if (validationInfo?.shouldFallback) issues.push('validator_requested_fallback')
   for (const reason of validationInfo?.blockedReasons || []) issues.push(`blocked:${reason}`)
@@ -498,9 +506,10 @@ const buildCanonicalQuestion = ({ userText, quality, subtype }) => {
     const previousTokens = tokenize(
       `${quality.continuity.previousUserText} ${quality.continuity.lastAssistantText}`,
     ).slice(0, 10)
-    return normalize(
-      [subtype, ...previousTokens, ...tokens].filter(Boolean).join(' '),
-    ).slice(0, 400)
+    return normalize([subtype, ...previousTokens, ...tokens].filter(Boolean).join(' ')).slice(
+      0,
+      400,
+    )
   }
 
   return normalizedQuestion.slice(0, 400)
@@ -510,13 +519,7 @@ const buildFingerprint = ({ tenantId, type, normalizedQuestion, subtype }) => {
   return hash(`${tenantId}:${type}:${subtype || 'general'}:${normalizedQuestion}`).slice(0, 40)
 }
 
-const buildSuggestedAnswer = ({
-  userText,
-  assistantText,
-  handoffRequired,
-  quality,
-  products,
-}) => {
+const buildSuggestedAnswer = ({ userText, assistantText, handoffRequired, quality, products }) => {
   const cleanAssistantText = clean(assistantText)
 
   if (
@@ -530,10 +533,7 @@ const buildSuggestedAnswer = ({
     return cleanAssistantText.slice(0, 1800)
   }
 
-  const lines = [
-    `Pregunta detectada: ${clean(userText)}`,
-    '',
-  ]
+  const lines = [`Pregunta detectada: ${clean(userText)}`, '']
 
   if (quality?.continuity?.isFollowUp) {
     lines.push('Contexto conversacional detectado:')
@@ -615,9 +615,12 @@ const shouldCreateSuggestion = ({
   if (quality.severe) return { create: true, quality, reason: 'severe_response_quality_issue' }
   if (quality.genericFallback) return { create: true, quality, reason: 'generic_fallback_response' }
   if (quality.catalogDump) return { create: true, quality, reason: 'catalog_dump_response' }
-  if (quality.repeated && quality.questionLike) return { create: true, quality, reason: 'repeated_answer' }
-  if (quality.continuity.isFollowUp && !quality.ok) return { create: true, quality, reason: 'follow_up_needs_learning' }
-  if (quality.questionLike && !clean(assistantText)) return { create: true, quality, reason: 'question_without_answer' }
+  if (quality.repeated && quality.questionLike)
+    return { create: true, quality, reason: 'repeated_answer' }
+  if (quality.continuity.isFollowUp && !quality.ok)
+    return { create: true, quality, reason: 'follow_up_needs_learning' }
+  if (quality.questionLike && !clean(assistantText))
+    return { create: true, quality, reason: 'question_without_answer' }
 
   const hasActions = normalizeActions(actions).length > 0
   const hasProducts = Array.isArray(products) && products.length > 0
@@ -799,14 +802,14 @@ export const registerConversationLearningSignal = async ({
       },
       validation: validationInfo
         ? {
-          shouldFallback: validationInfo.shouldFallback,
-          riskLevel: validationInfo.riskLevel,
-          score: validationInfo.score,
-          warnings: validationInfo.warnings,
-          hardWarnings: validationInfo.hardWarnings,
-          softWarnings: validationInfo.softWarnings,
-          blockedReasons: validationInfo.blockedReasons,
-        }
+            shouldFallback: validationInfo.shouldFallback,
+            riskLevel: validationInfo.riskLevel,
+            score: validationInfo.score,
+            warnings: validationInfo.warnings,
+            hardWarnings: validationInfo.hardWarnings,
+            softWarnings: validationInfo.softWarnings,
+            blockedReasons: validationInfo.blockedReasons,
+          }
         : null,
       learningSignals: signalTypes,
       preferences:
@@ -815,17 +818,17 @@ export const registerConversationLearningSignal = async ({
           : {},
       catalogSnapshot: commerceContext?.catalogSnapshot
         ? {
-          totalProducts: commerceContext.catalogSnapshot.totalProducts,
-          activeProducts: commerceContext.catalogSnapshot.activeProducts,
-          visibleProducts: commerceContext.catalogSnapshot.visibleProducts,
-          withStock: commerceContext.catalogSnapshot.withStock,
-          categories: Array.isArray(commerceContext.catalogSnapshot.categories)
-            ? commerceContext.catalogSnapshot.categories.slice(0, 20)
-            : [],
-          brands: Array.isArray(commerceContext.catalogSnapshot.brands)
-            ? commerceContext.catalogSnapshot.brands.slice(0, 20)
-            : [],
-        }
+            totalProducts: commerceContext.catalogSnapshot.totalProducts,
+            activeProducts: commerceContext.catalogSnapshot.activeProducts,
+            visibleProducts: commerceContext.catalogSnapshot.visibleProducts,
+            withStock: commerceContext.catalogSnapshot.withStock,
+            categories: Array.isArray(commerceContext.catalogSnapshot.categories)
+              ? commerceContext.catalogSnapshot.categories.slice(0, 20)
+              : [],
+            brands: Array.isArray(commerceContext.catalogSnapshot.brands)
+              ? commerceContext.catalogSnapshot.brands.slice(0, 20)
+              : [],
+          }
         : null,
     },
   }
@@ -916,9 +919,7 @@ export const registerConversationLearningSignal = async ({
       .lean()
   } catch (error) {
     if (error?.code !== 11000) throw error
-    return AiLearningSuggestion.findOne({ tenantId, fingerprint })
-      .setOptions({ tenantId })
-      .lean()
+    return AiLearningSuggestion.findOne({ tenantId, fingerprint }).setOptions({ tenantId }).lean()
   }
 }
 
@@ -1042,9 +1043,7 @@ export const approveLearningSuggestion = async ({
         tenantId,
       }).setOptions({ tenantId })
 
-      const conflictError = new Error(
-        'La sugerencia cambió mientras se procesaba la aprobación',
-      )
+      const conflictError = new Error('La sugerencia cambió mientras se procesaba la aprobación')
       conflictError.statusCode = 409
       throw conflictError
     }
@@ -1088,11 +1087,7 @@ export const rejectLearningSuggestion = async ({
   return suggestion.toObject()
 }
 
-export const archiveLearningSuggestion = async ({
-  tenantId,
-  suggestionId,
-  reviewerId,
-} = {}) => {
+export const archiveLearningSuggestion = async ({ tenantId, suggestionId, reviewerId } = {}) => {
   const suggestion = await AiLearningSuggestion.findOne({
     _id: suggestionId,
     tenantId,

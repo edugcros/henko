@@ -18,11 +18,9 @@ import {
 
 const clean = value => String(value || '').trim()
 
-const sleep = milliseconds =>
-  new Promise(resolve => setTimeout(resolve, milliseconds))
+const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
-const DEFAULT_GEMINI_API_BASE_URL =
-  'https://generativelanguage.googleapis.com/v1beta'
+const DEFAULT_GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
 const DEFAULT_MODEL = 'gemini-3.8-flash'
 const DEFAULT_PROVIDER = 'gemini'
@@ -103,7 +101,10 @@ const normalizeGeminiModelName = value => {
 const getLastUserMessage = messages => {
   return [...(messages || [])]
     .reverse()
-    .find(message => clean(message?.content) && message.role !== 'assistant' && message.role !== 'model')
+    .find(
+      message =>
+        clean(message?.content) && message.role !== 'assistant' && message.role !== 'model',
+    )
 }
 
 const isFollowUpMessage = text => {
@@ -200,15 +201,9 @@ const normalizeMessagesForGemini = (messages, maxCharsOverride = null) => {
   // está mandando puede pedir más, hasta el presupuesto total.
   const maxCharsPerMessage = maxCharsOverride
     ? Math.min(Math.max(maxCharsOverride, 800), 200000)
-    : Math.min(
-      Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_CHARS_PER_MESSAGE, 5000), 800),
-      12000,
-    )
+    : Math.min(Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_CHARS_PER_MESSAGE, 5000), 800), 12000)
   const totalBudget = Math.max(
-    Math.min(
-      Math.max(toNumber(process.env.AI_AGENT_LLM_TOTAL_INPUT_CHARS, 28000), 5000),
-      80000,
-    ),
+    Math.min(Math.max(toNumber(process.env.AI_AGENT_LLM_TOTAL_INPUT_CHARS, 28000), 5000), 80000),
     // El presupuesto total nunca puede quedar por debajo de lo que el propio
     // llamador pidió para un mensaje: recortaría por la otra punta.
     maxCharsPerMessage,
@@ -245,9 +240,7 @@ const toGeminiContents = (messages, maxCharsPerMessage = null) => {
 }
 
 const getGeminiFinishInfo = response => {
-  const candidates = Array.isArray(response?.candidates)
-    ? response.candidates
-    : []
+  const candidates = Array.isArray(response?.candidates) ? response.candidates : []
 
   const firstCandidate = candidates[0] || {}
 
@@ -262,14 +255,10 @@ const getGeminiFinishInfo = response => {
 }
 
 const normalizeGeminiText = response => {
-  const candidates = Array.isArray(response?.candidates)
-    ? response.candidates
-    : []
+  const candidates = Array.isArray(response?.candidates) ? response.candidates : []
 
   return candidates
-    .flatMap(candidate =>
-      Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [],
-    )
+    .flatMap(candidate => (Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []))
     .map(part => part?.text || '')
     .filter(Boolean)
     .join('\n')
@@ -277,10 +266,7 @@ const normalizeGeminiText = response => {
 }
 
 const buildGeminiError = ({ response, data }) => {
-  const message =
-    data?.error?.message ||
-    data?.message ||
-    `Gemini API error ${response.status}`
+  const message = data?.error?.message || data?.message || `Gemini API error ${response.status}`
 
   const error = new Error(message)
   error.statusCode = response.status
@@ -292,10 +278,7 @@ const buildGeminiError = ({ response, data }) => {
 
 const isQuotaExceededError = error => {
   const message = String(
-    error?.message ||
-      error?.details?.error?.message ||
-      error?.details?.message ||
-      '',
+    error?.message || error?.details?.error?.message || error?.details?.message || '',
   ).toLowerCase()
 
   return (
@@ -335,10 +318,7 @@ const fetchGemini = async ({ url, apiKey, payload, timeoutOverrideMs }) => {
     ),
     120000,
   )
-  const maxAttempts = Math.min(
-    Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_ATTEMPTS, 3), 1),
-    5,
-  )
+  const maxAttempts = Math.min(Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_ATTEMPTS, 3), 1), 5)
 
   let lastError
 
@@ -369,9 +349,9 @@ const fetchGemini = async ({ url, apiKey, payload, timeoutOverrideMs }) => {
       const normalizedError =
         error?.name === 'AbortError'
           ? Object.assign(new Error('Gemini API timeout'), {
-            code: 'AI_LLM_TIMEOUT',
-            provider: DEFAULT_PROVIDER,
-          })
+              code: 'AI_LLM_TIMEOUT',
+              provider: DEFAULT_PROVIDER,
+            })
           : error
 
       if (!isRetryableGeminiError(normalizedError) || attempt === maxAttempts) {
@@ -437,20 +417,12 @@ const buildProviderFallbackContent = ({ messages = [], reason = '' } = {}) => {
 
 const buildSystemInstruction = ({ systemPrompt, messages, conversationalMode }) => {
   const systemText = clean(systemPrompt)
-  const styleGuard = conversationalMode
-    ? buildConversationStyleInstruction({ messages })
-    : ''
+  const styleGuard = conversationalMode ? buildConversationStyleInstruction({ messages }) : ''
 
   return [systemText, styleGuard]
     .filter(Boolean)
     .join('\n\n')
-    .slice(
-      0,
-      Math.max(
-        Number(process.env.AI_AGENT_MAX_SYSTEM_PROMPT_CHARS || 50000),
-        5000,
-      ),
-    )
+    .slice(0, Math.max(Number(process.env.AI_AGENT_MAX_SYSTEM_PROMPT_CHARS || 50000), 5000))
 }
 
 const getSafetySettings = () => {
@@ -458,8 +430,7 @@ const getSafetySettings = () => {
     return undefined
   }
 
-  const threshold =
-    clean(process.env.AI_AGENT_SAFETY_THRESHOLD) || 'BLOCK_MEDIUM_AND_ABOVE'
+  const threshold = clean(process.env.AI_AGENT_SAFETY_THRESHOLD) || 'BLOCK_MEDIUM_AND_ABOVE'
 
   return [
     'HARM_CATEGORY_HARASSMENT',
@@ -479,10 +450,7 @@ const buildGenerationConfig = ({
 }) => {
   const safeMaxOutputTokens = Math.min(
     Math.max(
-      toNumber(
-        maxOutputTokens,
-        toNumber(process.env.AI_AGENT_MAX_OUTPUT_TOKENS, 1400),
-      ),
+      toNumber(maxOutputTokens, toNumber(process.env.AI_AGENT_MAX_OUTPUT_TOKENS, 1400)),
       256,
     ),
     8192,
@@ -510,9 +478,7 @@ const buildGenerationConfig = ({
     // NO pases thinkingBudget bajo en esa llamada específica — el modelo
     // puede necesitar presupuesto de thinking para decidir qué buscar, y
     // cortarlo temprano corta el grounding a mitad de camino.
-    ...(Number.isFinite(thinkingBudget)
-      ? { thinkingConfig: { thinkingBudget } }
-      : {}),
+    ...(Number.isFinite(thinkingBudget) ? { thinkingConfig: { thinkingBudget } } : {}),
   }
 }
 
@@ -584,10 +550,10 @@ export const callGemini = async ({
   const payload = {
     ...(systemText
       ? {
-        system_instruction: {
-          parts: [{ text: systemText }],
-        },
-      }
+          system_instruction: {
+            parts: [{ text: systemText }],
+          },
+        }
       : {}),
     contents,
     generationConfig: buildGenerationConfig({
@@ -613,9 +579,7 @@ export const callGemini = async ({
   )
 
   if (candidates.length === 0) {
-    const error = new Error(
-      'Ningún modelo disponible soporta la búsqueda con Google',
-    )
+    const error = new Error('Ningún modelo disponible soporta la búsqueda con Google')
     error.code = 'AI_NO_GROUNDING_MODEL'
     throw error
   }
@@ -674,8 +638,7 @@ export const callGemini = async ({
 
   return {
     content:
-      content ||
-      buildProviderFallbackContent({ messages, reason: 'empty_provider_response' }),
+      content || buildProviderFallbackContent({ messages, reason: 'empty_provider_response' }),
     provider: DEFAULT_PROVIDER,
     // El que RESPONDIÓ. Puede no ser el que se pidió: la cadena de respaldo
     // entrega otro cuando el primero está saturado o sin cupo.
@@ -714,9 +677,7 @@ export const callAgentLLM = async ({
   // PATCH: propagado igual que el resto de los parámetros opcionales.
   tools,
 } = {}) => {
-  const provider = clean(
-    process.env.AI_AGENT_PROVIDER || DEFAULT_PROVIDER,
-  ).toLowerCase()
+  const provider = clean(process.env.AI_AGENT_PROVIDER || DEFAULT_PROVIDER).toLowerCase()
 
   if (!SUPPORTED_PROVIDERS.has(provider)) {
     const error = new Error(`Proveedor IA no soportado: ${provider}`)

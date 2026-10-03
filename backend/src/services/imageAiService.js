@@ -2,10 +2,7 @@ import sharp from 'sharp'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import { getModelChain, isModelUnavailable, markModelDead } from './ai/geminiModels.js'
-import {
-  removeBackgroundLocal,
-  isLocalBackgroundRemovalEnabled,
-} from './ai/backgroundRemoval.js'
+import { removeBackgroundLocal, isLocalBackgroundRemovalEnabled } from './ai/backgroundRemoval.js'
 
 /**
  * Motores de imagen
@@ -26,8 +23,7 @@ import {
 const REPLICATE_API = 'https://api.replicate.com/v1'
 const HF_ROUTER = 'https://router.huggingface.co/hf-inference/models'
 
-const BG_REMOVER_VERSION =
-  'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc'
+const BG_REMOVER_VERSION = 'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc'
 const FLUX_MODEL = 'black-forest-labs/flux-schnell'
 const HF_TXT2IMG_MODEL = 'stabilityai/stable-diffusion-3-medium-diffusers'
 
@@ -179,9 +175,10 @@ const normalize = async imageBuffer => {
   const meta = await image.metadata()
 
   const needsResize = Math.max(meta.width || 0, meta.height || 0) > MAX_EDGE
-  const buffer = await (needsResize
-    ? image.resize(MAX_EDGE, MAX_EDGE, { fit: 'inside', withoutEnlargement: true })
-    : image
+  const buffer = await (
+    needsResize
+      ? image.resize(MAX_EDGE, MAX_EDGE, { fit: 'inside', withoutEnlargement: true })
+      : image
   )
     .png()
     .toBuffer()

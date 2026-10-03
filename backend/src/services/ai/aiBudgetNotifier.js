@@ -177,9 +177,12 @@ export const notifyAccountingDrift = async audit => {
     const recipients = getRecipients()
 
     if (!recipients.length) {
-      logger.warn('[AI ACCOUNTING] Hay una diferencia para avisar y PLATFORM_OWNER_EMAILS está vacío', {
-        period: audit?.period,
-      })
+      logger.warn(
+        '[AI ACCOUNTING] Hay una diferencia para avisar y PLATFORM_OWNER_EMAILS está vacío',
+        {
+          period: audit?.period,
+        },
+      )
       return { sent: false, reason: 'no_recipients' }
     }
 
@@ -193,9 +196,9 @@ export const notifyAccountingDrift = async audit => {
       ['Libro (ledger)', cost.ledger],
       ...(cost.byok
         ? [
-          ['  del cual, key propia del comercio', cost.byok],
-          ['  libro sin key propia (base del contador)', cost.ledgerSinByok],
-        ]
+            ['  del cual, key propia del comercio', cost.byok],
+            ['  libro sin key propia (base del contador)', cost.ledgerSinByok],
+          ]
         : []),
       ['Suma de los comercios', cost.tenantUsage],
       ['Contador de plataforma', cost.platformUsage],
@@ -209,7 +212,10 @@ export const notifyAccountingDrift = async audit => {
       .join('')
 
     const diferencias = findings
-      .map(f => `<li>${f.between[0]} vs ${f.between[1]}: <strong>${moneyPreciso(f.difference)}</strong></li>`)
+      .map(
+        f =>
+          `<li>${f.between[0]} vs ${f.between[1]}: <strong>${moneyPreciso(f.difference)}</strong></li>`,
+      )
       .join('')
 
     const subject = `[HENKO] La contabilidad de IA no cuadra (${period})`
@@ -220,14 +226,16 @@ export const notifyAccountingDrift = async audit => {
         <table style="border-collapse:collapse;font-size:14px;margin:12px 0">${filas}</table>
         <p style="font-size:14px;margin-bottom:4px"><strong>Diferencias</strong></p>
         <ul style="font-size:14px;margin-top:4px">${diferencias}</ul>
-        ${ledgerMissing
-    ? `<p style="font-size:14px;background:#fdf0e6;border-left:3px solid #a03e12;padding:10px 14px">
+        ${
+          ledgerMissing
+            ? `<p style="font-size:14px;background:#fdf0e6;border-left:3px solid #a03e12;padding:10px 14px">
              <strong>Y al libro le faltan ${ledgerMissing} fila(s).</strong> Están en las
              llamadas al proveedor pero no llegaron al libro, así que cualquier
              comparación contra él se hace sobre datos incompletos. Se reponen con
              <code>backfillLedgerFromProviderCalls({ period, apply: true })</code>.
            </p>`
-    : ''}
+            : ''
+        }
         <p style="font-size:13px;color:#555;margin-top:20px">
           El libro es la fuente de verdad. NO se corrigió nada de forma
           automática: la corrección se pide a mano y solo cuando el libro está
@@ -297,7 +305,9 @@ export const notifySubscriptionDrift = async audit => {
     const recipients = getRecipients()
 
     if (!recipients.length) {
-      logger.warn('[SUSCRIPCIONES] Hay una diferencia para avisar y PLATFORM_OWNER_EMAILS está vacío')
+      logger.warn(
+        '[SUSCRIPCIONES] Hay una diferencia para avisar y PLATFORM_OWNER_EMAILS está vacío',
+      )
       return { sent: false, reason: 'no_recipients' }
     }
 
@@ -330,7 +340,8 @@ export const notifySubscriptionDrift = async audit => {
     const text = [
       `${findings.length} suscripcion(es) no coinciden con Mercado Pago.`,
       ...findings.map(
-        f => `${f.slug}: HENKO dice ${f.stored?.subscriptionStatus}, Mercado Pago dice ${f.provider?.mapped}`,
+        f =>
+          `${f.slug}: HENKO dice ${f.stored?.subscriptionStatus}, Mercado Pago dice ${f.provider?.mapped}`,
       ),
       'No se corrigio nada automaticamente.',
     ].join('\n')

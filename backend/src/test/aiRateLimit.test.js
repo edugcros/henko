@@ -24,12 +24,13 @@ import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64url')
 
-const { default: AiRateWindow, RATE_WINDOW, windowStartFor } = await import(
-  '../models/aiRateWindowModel.js'
-)
-const { reserveAiBudget, DENY_REASONS, AI_METRICS } = await import(
-  '../services/ai/aiBudgetService.js'
-)
+const {
+  default: AiRateWindow,
+  RATE_WINDOW,
+  windowStartFor,
+} = await import('../models/aiRateWindowModel.js')
+const { reserveAiBudget, DENY_REASONS, AI_METRICS } =
+  await import('../services/ai/aiBudgetService.js')
 
 const TENANT = '64b7f0000000000000000091'
 const OTRO = '64b7f0000000000000000092'
@@ -191,9 +192,7 @@ describe('el freno de velocidad', () => {
     // filtro del findOneAndUpdate, asi que lo resuelve la base.
     process.env.AI_RATE_LIMIT_PER_MINUTE = '5'
 
-    const resultados = await Promise.all(
-      Array.from({ length: 20 }, () => reservar()),
-    )
+    const resultados = await Promise.all(Array.from({ length: 20 }, () => reservar()))
 
     const pasaron = resultados.filter(r => r.allowed).length
     expect(pasaron).toBe(5)

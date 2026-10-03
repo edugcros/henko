@@ -120,7 +120,6 @@ describe('lo que hay hoy en producción no cambia', () => {
   })
 
   test('sin ninguno de los dos, no hay disyuntor', async () => {
-
     await conConsumo({ tokens: 99999999, costUsd: 99999 })
 
     const resultado = await reservar(nuevaClave())
@@ -261,10 +260,14 @@ describe('liquidación · se devuelve la diferencia', () => {
     expect(conReserva.estimatedCostUsd || 0).toBe(0)
 
     await recordTokenSpend({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_TOKENS,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
       model: 'gemini-3.1-flash-lite',
-      inputTokens: 2000, outputTokens: 500,
-      profile: PERFIL, period: PERIODO_REAL, operationId,
+      inputTokens: 2000,
+      outputTokens: 500,
+      profile: PERFIL,
+      period: PERIODO_REAL,
+      operationId,
     })
     await new Promise(r => setTimeout(r, 300))
 
@@ -282,14 +285,20 @@ describe('liquidación · se devuelve la diferencia', () => {
     process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
 
     await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period: PERIODO_REAL,
-      operationId: nuevaClave(), limitOverride: 1,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period: PERIODO_REAL,
+      operationId: nuevaClave(),
+      limitOverride: 1,
     })
     const denegada = await reserveAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      profile: PERFIL, period: PERIODO_REAL,
-      operationId: nuevaClave(), limitOverride: 1,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period: PERIODO_REAL,
+      operationId: nuevaClave(),
+      limitOverride: 1,
     })
 
     expect(denegada.allowed).toBe(false)
@@ -306,8 +315,10 @@ describe('liquidación · se devuelve la diferencia', () => {
     await reservar(operationId)
 
     await refundAiBudget({
-      tenantId: TENANT, metric: AI_METRICS.AGENT_MESSAGES,
-      period: PERIODO_REAL, operationId,
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      period: PERIODO_REAL,
+      operationId,
     })
     await new Promise(r => setTimeout(r, 200))
 

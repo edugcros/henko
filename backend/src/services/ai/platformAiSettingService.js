@@ -27,9 +27,7 @@
 import mongoose from 'mongoose'
 
 import logger from '../../../config/logger.js'
-import PlatformAiSetting, {
-  PLATFORM_AI_SETTINGS,
-} from '../../models/platformAiSettingModel.js'
+import PlatformAiSetting, { PLATFORM_AI_SETTINGS } from '../../models/platformAiSettingModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import AiTenantPolicy from '../../models/aiTenantPolicyModel.js'
 import { getCurrentPeriod } from './aiPeriod.js'

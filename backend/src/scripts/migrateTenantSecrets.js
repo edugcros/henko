@@ -5,10 +5,7 @@ import logger from '../../config/logger.js'
 import Tenant from '../models/tenantModel.js'
 import { encryptSecret } from '../services/aiAgent/secretCryptoService.js'
 
-const SECRET_PATHS = [
-  'integrations.mercadopago.accessToken',
-  'integrations.meta.accessToken',
-]
+const SECRET_PATHS = ['integrations.mercadopago.accessToken', 'integrations.meta.accessToken']
 
 const isEncrypted = value => String(value || '').startsWith('v1.')
 

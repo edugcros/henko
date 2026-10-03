@@ -26,8 +26,7 @@ import { escapeHtml, sanitizeString } from './emailShared.js'
  * hace que olvidarse deje de ser posible.
  */
 const resolveTenantFor = async (tenantOrName, user, porDefecto) => {
-  let tenant =
-    typeof tenantOrName === 'object' && tenantOrName !== null ? tenantOrName : null
+  let tenant = typeof tenantOrName === 'object' && tenantOrName !== null ? tenantOrName : null
 
   if (!tenant && user?.tenantId) {
     try {
@@ -73,11 +72,7 @@ export const sendVerificationEmail = async (
     throw new Error('Token de verificación requerido')
   }
 
-  const { tenant, tenantName } = await resolveTenantFor(
-    tenantOrName,
-    user,
-    'Henko Store',
-  )
+  const { tenant, tenantName } = await resolveTenantFor(tenantOrName, user, 'Henko Store')
 
   const safeTenantName = escapeHtml(tenantName)
   const safeUserName = escapeHtml(user.firstname || user.email)
@@ -200,11 +195,7 @@ export const sendResetPasswordEmail = async (user, resetUrl, tenant = null) => {
 export const sendPasswordChangedEmail = async (user, tenantOrName = null) => {
   if (!user?.email) return { success: false, skipped: true }
 
-  const { tenant, tenantName } = await resolveTenantFor(
-    tenantOrName,
-    user,
-    'Tu cuenta',
-  )
+  const { tenant, tenantName } = await resolveTenantFor(tenantOrName, user, 'Tu cuenta')
 
   const safeTenantName = escapeHtml(tenantName)
   const safeUserName = escapeHtml(user.firstname || user.email)
@@ -258,11 +249,7 @@ export const sendPasswordChangedEmail = async (user, tenantOrName = null) => {
 export const sendWelcomeEmail = async (user, tenantOrName = null) => {
   if (!user?.email) return { success: false, skipped: true }
 
-  const { tenant, tenantName } = await resolveTenantFor(
-    tenantOrName,
-    user,
-    'la tienda',
-  )
+  const { tenant, tenantName } = await resolveTenantFor(tenantOrName, user, 'la tienda')
 
   const safeTenantName = escapeHtml(tenantName)
   const safeUserName = escapeHtml(user.firstname || user.email)
@@ -291,15 +278,15 @@ export const sendWelcomeEmail = async (user, tenantOrName = null) => {
       </p>
 
       ${
-  safeStoreUrl
-    ? `<div style="text-align: center; margin: 30px 0;">
+        safeStoreUrl
+          ? `<div style="text-align: center; margin: 30px 0;">
              <a href="${safeStoreUrl}"
                 style="background:#000; color:#fff; padding:12px 25px; text-decoration:none; border-radius:6px; font-weight:bold;">
                IR A LA TIENDA
              </a>
            </div>`
-    : ''
-}
+          : ''
+      }
 
       <p style="font-size: 0.8rem; color: #666;">
         Si tenés alguna consulta, respondé este correo y te contestamos.

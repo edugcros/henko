@@ -81,9 +81,7 @@ const normalizeBoolean = value => value === true || value === 'true'
 const normalizeMapLikeObject = value => {
   if (!value) return {}
 
-  const rawObject = value instanceof Map
-    ? Object.fromEntries(value.entries())
-    : value
+  const rawObject = value instanceof Map ? Object.fromEntries(value.entries()) : value
 
   if (typeof rawObject !== 'object' || Array.isArray(rawObject)) return {}
 
@@ -99,22 +97,26 @@ const normalizeMapLikeObject = value => {
 }
 
 const normalizeStringArray = value => {
-  return [...new Set(
-    (Array.isArray(value) ? value : String(value || '').split(','))
-      .map(item => String(item || '').trim())
-      .filter(Boolean),
-  )]
+  return [
+    ...new Set(
+      (Array.isArray(value) ? value : String(value || '').split(','))
+        .map(item => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  ]
 }
 
 const normalizeTags = tags => {
   if (!Array.isArray(tags)) return []
 
-  return [...new Set(
-    tags
-      .filter(value => value !== undefined && value !== null)
-      .map(value => String(value).trim().toLowerCase())
-      .filter(Boolean),
-  )]
+  return [
+    ...new Set(
+      tags
+        .filter(value => value !== undefined && value !== null)
+        .map(value => String(value).trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ]
 }
 
 const normalizeAttributesObject = attributes => {
@@ -147,14 +149,18 @@ const buildVariantKeyFromAttributes = attributes => {
 }
 
 const normalizeSku = value => {
-  const clean = String(value || '').trim().toUpperCase()
+  const clean = String(value || '')
+    .trim()
+    .toUpperCase()
   return clean || undefined
 }
 
 const calculateAverageRating = ratings => {
   if (!Array.isArray(ratings) || ratings.length === 0) return 0
 
-  const validRatings = ratings.filter(rating => Number(rating?.star) >= 1 && Number(rating?.star) <= 5)
+  const validRatings = ratings.filter(
+    rating => Number(rating?.star) >= 1 && Number(rating?.star) <= 5,
+  )
 
   if (!validRatings.length) return 0
 
@@ -281,7 +287,6 @@ const normalizeVariantAttributes = variantAttributes => {
   }
 }
 
-
 const normalizeSeoFields = product => {
   if (!product.seo || typeof product.seo !== 'object') {
     product.seo = {}
@@ -289,8 +294,10 @@ const normalizeSeoFields = product => {
 
   product.seo.slug = normalizeText(product.seo.slug) || product.slug
   product.seo.metaTitle = normalizeText(product.seo.metaTitle) || product.title
-  product.seo.metaDescription = normalizeText(product.seo.metaDescription) || String(product.description || '').slice(0, 320)
-  product.seo.shortDescription = normalizeText(product.seo.shortDescription) || String(product.description || '').slice(0, 500)
+  product.seo.metaDescription =
+    normalizeText(product.seo.metaDescription) || String(product.description || '').slice(0, 320)
+  product.seo.shortDescription =
+    normalizeText(product.seo.shortDescription) || String(product.description || '').slice(0, 500)
   product.seo.keywords = normalizeTags(product.seo.keywords)
 }
 
@@ -320,7 +327,9 @@ const normalizeLogisticsFields = product => {
 const normalizeSpecifications = specifications => {
   return (Array.isArray(specifications) ? specifications : [])
     .map((specification, index) => {
-      const key = normalizeKeyPart(specification?.key || specification?.name || specification?.label)
+      const key = normalizeKeyPart(
+        specification?.key || specification?.name || specification?.label,
+      )
       if (!key) return null
 
       const type = ALLOWED_PRODUCT_ATTRIBUTE_TYPES.includes(specification?.type)
@@ -328,9 +337,7 @@ const normalizeSpecifications = specifications => {
         : 'text'
 
       const rawValue = specification?.value
-      const value = type === 'multiselect'
-        ? normalizeStringArray(rawValue)
-        : rawValue
+      const value = type === 'multiselect' ? normalizeStringArray(rawValue) : rawValue
 
       if (
         value === undefined ||
@@ -362,9 +369,16 @@ const normalizeSpecifications = specifications => {
 
 const buildFilterAttributesFromSpecifications = specifications => {
   return (Array.isArray(specifications) ? specifications : [])
-    .filter(specification => specification?.filterable && specification.value !== undefined && specification.value !== null)
+    .filter(
+      specification =>
+        specification?.filterable &&
+        specification.value !== undefined &&
+        specification.value !== null,
+    )
     .flatMap(specification => {
-      const values = Array.isArray(specification.value) ? specification.value : [specification.value]
+      const values = Array.isArray(specification.value)
+        ? specification.value
+        : [specification.value]
 
       return values
         .map(value => String(value || '').trim())
@@ -395,7 +409,8 @@ const normalizeDerivedProductFields = product => {
   product.marca = normalizeText(product.marca)
   product.categoria = normalizeText(product.categoria)
   product.subcategoria = normalizeText(product.subcategoria)
-  product.currency = normalizeText(product.currency || DEFAULT_CURRENCY)?.toUpperCase() || DEFAULT_CURRENCY
+  product.currency =
+    normalizeText(product.currency || DEFAULT_CURRENCY)?.toUpperCase() || DEFAULT_CURRENCY
   product.sku = normalizeSku(product.sku)
   product.tags = normalizeTags(product.tags)
   product.price = toMoney(product.price)
@@ -567,7 +582,6 @@ const ratingSchema = new Schema(
     timestamps: true,
   },
 )
-
 
 const seoSchema = new Schema(
   {
@@ -1075,7 +1089,14 @@ productSchema.index({ tenantId: 1, slug: 1 }, { unique: true })
 productSchema.index({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
 productSchema.index({ tenantId: 1, 'variants.sku': 1 }, { sparse: true })
 productSchema.index({ tenantId: 1, status: 1, visibility: 1, isDeleted: 1, createdAt: -1 })
-productSchema.index({ tenantId: 1, categoria: 1, subcategoria: 1, status: 1, visibility: 1, isDeleted: 1 })
+productSchema.index({
+  tenantId: 1,
+  categoria: 1,
+  subcategoria: 1,
+  status: 1,
+  visibility: 1,
+  isDeleted: 1,
+})
 productSchema.index({ tenantId: 1, isDeleted: 1, updatedAt: -1 })
 productSchema.index({ tenantId: 1, 'filterAttributes.key': 1, 'filterAttributes.value': 1 })
 productSchema.index({ tenantId: 1, 'logistics.shippingType': 1 })
@@ -1151,15 +1172,15 @@ productSchema.methods.getVariantData = function getVariantData(attributes) {
 
   return variant
     ? {
-      price: variant.price,
-      // Costo real de esta combinación puntual — si la variante no cargó
-      // el suyo, cae al costo del producto (puede seguir siendo null).
-      costoUnitario: variant.costoUnitario ?? this.costoUnitario,
-      stock: variant.stock,
-      sku: variant.sku,
-      image: variant.image,
-      variantId: variant._id,
-    }
+        price: variant.price,
+        // Costo real de esta combinación puntual — si la variante no cargó
+        // el suyo, cae al costo del producto (puede seguir siendo null).
+        costoUnitario: variant.costoUnitario ?? this.costoUnitario,
+        stock: variant.stock,
+        sku: variant.sku,
+        image: variant.image,
+        variantId: variant._id,
+      }
     : null
 }
 
@@ -1322,9 +1343,8 @@ const buildEntry = ({ previous, next, cost, variantKey }) => {
     unitCostAtChange: unitCost,
     // Margen bruto sobre el precio nuevo. Null —no cero— cuando no hay costo:
     // un cero acá se leería como "no deja margen", que es otra afirmación.
-    marginAtChange: unitCost !== null && now > 0
-      ? Number(((now - unitCost) / now).toFixed(4))
-      : null,
+    marginAtChange:
+      unitCost !== null && now > 0 ? Number(((now - unitCost) / now).toFixed(4)) : null,
   }
 }
 
@@ -1362,9 +1382,8 @@ productSchema.post('save', async function recordPriceHistory(doc) {
     if (!entries.length) return
 
     const ctx = doc.$locals?.priceChange || {}
-    const { default: ProductPriceHistory, PRICE_CHANGE_SOURCE } = await import(
-      './productPriceHistoryModel.js'
-    )
+    const { default: ProductPriceHistory, PRICE_CHANGE_SOURCE } =
+      await import('./productPriceHistoryModel.js')
 
     // La sesión del save, si el que llamó abrió una transacción. Con ella el
     // historial entra en la MISMA transacción que el precio: o se guardan los

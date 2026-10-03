@@ -336,9 +336,7 @@ describe('el comercio no se puede elegir por el query string', () => {
     expect(titulos).toContain('Zapatilla Propia')
 
     // Y sobre todo: ni una sola fila del otro comercio, mire por donde se mire.
-    const ajenos = devueltos.filter(
-      p => String(p.tenantId) === String(ajeno.tenant._id),
-    )
+    const ajenos = devueltos.filter(p => String(p.tenantId) === String(ajeno.tenant._id))
     expect(ajenos).toEqual([])
   })
 

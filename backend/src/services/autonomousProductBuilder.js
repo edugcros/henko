@@ -116,11 +116,30 @@ const normalizeDynamicFieldType = value => {
 }
 
 const AI_FIELD_BLOCKLIST = new Set([
-  'titulo', 'title', 'descripcion', 'description',
-  'descripcion_tecnica', 'technical_description', 'technicaldescription',
-  'categoria', 'category', 'subcategoria', 'subcategory',
-  'marca', 'brand', 'precio', 'price', 'precio_sugerido', 'suggestedprice',
-  'color', 'material', 'tags', 'confidence', 'hash', 'source', 'reasoningflags',
+  'titulo',
+  'title',
+  'descripcion',
+  'description',
+  'descripcion_tecnica',
+  'technical_description',
+  'technicaldescription',
+  'categoria',
+  'category',
+  'subcategoria',
+  'subcategory',
+  'marca',
+  'brand',
+  'precio',
+  'price',
+  'precio_sugerido',
+  'suggestedprice',
+  'color',
+  'material',
+  'tags',
+  'confidence',
+  'hash',
+  'source',
+  'reasoningflags',
 ])
 
 const normalizeAiSpecificationRows = analysis => {
@@ -292,10 +311,10 @@ const buildVariantsFromAi = (analysis, { fallbackPrice = 0 } = {}) => {
       typeof variant === 'string'
         ? { opcion: variant }
         : Object.fromEntries(
-          Object.entries(variant || {}).filter(
-            ([key]) => !['precio', 'stock', 'sku', 'price', 'imagen', 'image'].includes(key),
-          ),
-        )
+            Object.entries(variant || {}).filter(
+              ([key]) => !['precio', 'stock', 'sku', 'price', 'imagen', 'image'].includes(key),
+            ),
+          )
 
     return {
       key: buildVariantKey(combination) || `ai-variant-${idx}`,
@@ -354,11 +373,9 @@ const buildSeoFromAi = ({ analysis, title, description, slugFallback, tags = [] 
 
   return {
     slug: slugifyKeyPart(seo.slug || slugFallback || title).replace(/_/g, '-') || undefined,
-    shortDescription:
-      normalizeString(seo.shortDescription) || sourceDescription.slice(0, 240),
+    shortDescription: normalizeString(seo.shortDescription) || sourceDescription.slice(0, 240),
     metaTitle: normalizeString(seo.metaTitle) || normalizeString(title).slice(0, 70),
-    metaDescription:
-      normalizeString(seo.metaDescription) || sourceDescription.slice(0, 160),
+    metaDescription: normalizeString(seo.metaDescription) || sourceDescription.slice(0, 160),
     keywords: [
       ...new Set(
         [...rawKeywords, ...keywordCandidates]
@@ -381,7 +398,9 @@ const buildLogisticsFromAi = analysis => {
       width: normalizeNumberValue(dimensions.width),
       height: normalizeNumberValue(dimensions.height),
     },
-    shippingType: normalizeString(logistics?.shipping?.type || logistics.shippingType || 'standard'),
+    shippingType: normalizeString(
+      logistics?.shipping?.type || logistics.shippingType || 'standard',
+    ),
     warranty: normalizeString(logistics.warranty),
     originCountry: normalizeString(logistics.countryOfOrigin || logistics.originCountry),
   }
@@ -423,9 +442,7 @@ const buildDynamicFieldDefsFromAi = analysis => {
       name: key,
       label: normalizeAiFieldLabel(key),
       type: Array.isArray(value) ? 'multiselect' : typeof value === 'number' ? 'number' : 'text',
-      values: Array.isArray(value)
-        ? value.map(item => normalizeString(item)).filter(Boolean)
-        : [],
+      values: Array.isArray(value) ? value.map(item => normalizeString(item)).filter(Boolean) : [],
       unit: '',
       placeholder: 'Dato complementario detectado por IA',
       required: false,
@@ -462,8 +479,7 @@ const buildDynamicValuesForFields = (analysis, fields) => {
 }
 
 const buildFormFieldsFromAi = (analysis, dynamicValues) => {
-  const attrs =
-    analysis?.atributos_detectados || analysis?.atributos || analysis?.attributes || {}
+  const attrs = analysis?.atributos_detectados || analysis?.atributos || analysis?.attributes || {}
   const colorValue = getFirstFilled(attrs?.color, analysis?.color)
   const materialValue = getFirstFilled(attrs?.material, analysis?.material)
   const seo = analysis?.seo || {}
@@ -543,7 +559,11 @@ export const buildNormalizedDraftFromAnalysis = analysis => {
   }))
 
   const tags = [
-    ...new Set(safeArray(analysis?.tags).map(tag => normalizeString(tag).toLowerCase()).filter(Boolean)),
+    ...new Set(
+      safeArray(analysis?.tags)
+        .map(tag => normalizeString(tag).toLowerCase())
+        .filter(Boolean),
+    ),
   ]
 
   return {
@@ -603,7 +623,11 @@ export const buildAutonomousProductPayload = ({ analysis, job, tenantId }) => {
       : []
 
   const tags = [
-    ...new Set(safeArray(analysis?.tags).map(tag => normalizeString(tag).toLowerCase()).filter(Boolean)),
+    ...new Set(
+      safeArray(analysis?.tags)
+        .map(tag => normalizeString(tag).toLowerCase())
+        .filter(Boolean),
+    ),
   ]
 
   const specifications = buildSpecificationsFromAi(analysis)
@@ -634,7 +658,9 @@ export const buildAutonomousProductPayload = ({ analysis, job, tenantId }) => {
     slug,
     description,
     technicalDescription: normalizeString(
-      analysis?.descripcion_tecnica || analysis?.technicalDescription || analysis?.technical_description,
+      analysis?.descripcion_tecnica ||
+        analysis?.technicalDescription ||
+        analysis?.technical_description,
     ),
 
     categoria: category,
@@ -665,7 +691,8 @@ export const buildAutonomousProductPayload = ({ analysis, job, tenantId }) => {
 
     images: [
       {
-        public_id: job?.imagePublicId || `product-analysis/${tenantId}/${job?.imageHash || job?._id}`,
+        public_id:
+          job?.imagePublicId || `product-analysis/${tenantId}/${job?.imageHash || job?._id}`,
         url: job?.imageUrl,
         alt: title,
         isMain: true,

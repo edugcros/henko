@@ -87,7 +87,10 @@ export const updatePricingPolicy = asyncHandler(async (req, res) => {
     update.rounding = {
       enabled: Boolean(body.rounding.enabled),
       endings: Array.isArray(body.rounding.endings)
-        ? body.rounding.endings.map(Number).filter(n => Number.isFinite(n) && n >= 0).slice(0, 5)
+        ? body.rounding.endings
+            .map(Number)
+            .filter(n => Number.isFinite(n) && n >= 0)
+            .slice(0, 5)
         : [990],
     }
   }
@@ -116,12 +119,16 @@ export const updatePricingPolicy = asyncHandler(async (req, res) => {
     })
   }
 
-  const policy = await PricingPolicy.findOneAndUpdate({ tenantId }, { $set: update }, {
-    new: true,
-    upsert: true,
-    setDefaultsOnInsert: true,
-    runValidators: true,
-  }).lean()
+  const policy = await PricingPolicy.findOneAndUpdate(
+    { tenantId },
+    { $set: update },
+    {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+      runValidators: true,
+    },
+  ).lean()
 
   logger.info('[PRICING] Política actualizada', {
     tenantId: String(tenantId),

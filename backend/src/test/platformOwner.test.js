@@ -20,9 +20,8 @@
 
 import { jest } from '@jest/globals'
 
-const { isPlatformOwner, requirePlatformOwner } = await import(
-  '../middlewares/platformOwnerMiddleware.js'
-)
+const { isPlatformOwner, requirePlatformOwner } =
+  await import('../middlewares/platformOwnerMiddleware.js')
 
 const original = process.env.PLATFORM_OWNER_EMAILS
 

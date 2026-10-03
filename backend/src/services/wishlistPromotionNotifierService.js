@@ -5,9 +5,7 @@ import Product from '../models/productModel.js'
 import PromotionalBlock from '../models/promotionalBlockModel.js'
 import Tenant from '../models/tenantModel.js'
 import User from '../models/userModel.js'
-import UserMetricEvent, {
-  USER_METRIC_EVENTS,
-} from '../models/userMetricEventModel.js'
+import UserMetricEvent, { USER_METRIC_EVENTS } from '../models/userMetricEventModel.js'
 import WishlistPromotionNotification from '../models/wishlistPromotionNotificationModel.js'
 import { sendEmail } from './emailService.js'
 import { env } from '../../config/env.js'
@@ -27,12 +25,7 @@ const ADMIN_ROLES = new Set([
   'seller',
 ])
 
-const CUSTOMER_ROLES = new Set([
-  'user',
-  'customer',
-  'cliente',
-  'buyer',
-])
+const CUSTOMER_ROLES = new Set(['user', 'customer', 'cliente', 'buyer'])
 
 const toObjectId = value => {
   if (!mongoose.Types.ObjectId.isValid(value)) return null
@@ -56,10 +49,7 @@ const formatMoney = (value, currency = 'ARS') => {
 }
 
 const getUserName = user => {
-  const fullName = [
-    user?.firstname || user?.firstName,
-    user?.lastname || user?.lastName,
-  ]
+  const fullName = [user?.firstname || user?.firstName, user?.lastname || user?.lastName]
     .filter(Boolean)
     .join(' ')
     .trim()
@@ -69,10 +59,7 @@ const getUserName = user => {
 
 const getUserRole = user => {
   return sanitizeString(
-    user?.role ||
-      user?.userType ||
-      user?.accountType ||
-      user?.type,
+    user?.role || user?.userType || user?.accountType || user?.type,
   ).toLowerCase()
 }
 
@@ -116,12 +103,7 @@ const canReceivePromotionEmails = user => {
 }
 
 const getTenantOwnerIds = tenant => {
-  return [
-    tenant?.ownerUserId,
-    tenant?.owner,
-    tenant?.adminUserId,
-    tenant?.createdBy,
-  ]
+  return [tenant?.ownerUserId, tenant?.owner, tenant?.adminUserId, tenant?.createdBy]
     .filter(Boolean)
     .map(toIdString)
 }
@@ -155,10 +137,7 @@ const normalizeDomainValue = domain => {
 
   if (typeof domain === 'object') {
     return sanitizeString(
-      domain.hostname ||
-        domain.normalizedHostname ||
-        domain.domain ||
-        domain.value,
+      domain.hostname || domain.normalizedHostname || domain.domain || domain.value,
     )
       .replace(/^https?:\/\//i, '')
       .replace(/\/+$/, '')
@@ -175,8 +154,7 @@ const getPrimaryStorefrontDomain = tenant => {
     if (typeof domain === 'string') return true
 
     return (
-      domain?.context === 'storefront' &&
-      ['active', undefined, null, ''].includes(domain?.status)
+      domain?.context === 'storefront' && ['active', undefined, null, ''].includes(domain?.status)
     )
   })
 
@@ -192,18 +170,14 @@ const buildStoreUrl = tenant => {
 
   if (domain) {
     const protocol =
-      domain.includes('localhost') ||
-      domain.includes('127.0.0.1') ||
-      domain.endsWith('.local')
+      domain.includes('localhost') || domain.includes('127.0.0.1') || domain.endsWith('.local')
         ? 'http'
         : 'https'
 
     return `${protocol}://${domain}`.replace(/\/+$/, '')
   }
 
-  const configured =
-    sanitizeString(env.shopFrontendUrl) ||
-    sanitizeString(env.clientUrl)
+  const configured = sanitizeString(env.shopFrontendUrl) || sanitizeString(env.clientUrl)
 
   return configured.replace(/\/+$/, '')
 }
@@ -284,10 +258,10 @@ const buildPromotionEmail = ({ tenant, user, product, promotion }) => {
 
       <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; max-width: 560px;">
         ${
-  imageUrl
-    ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(productTitle)}" style="width: 100%; max-height: 260px; object-fit: contain; border-radius: 8px; margin-bottom: 14px;" />`
-    : ''
-}
+          imageUrl
+            ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(productTitle)}" style="width: 100%; max-height: 260px; object-fit: contain; border-radius: 8px; margin-bottom: 14px;" />`
+            : ''
+        }
 
         <h3 style="margin: 0 0 8px;">${escapeHtml(productTitle)}</h3>
 
@@ -306,10 +280,10 @@ const buildPromotionEmail = ({ tenant, user, product, promotion }) => {
         </p>
 
         ${
-  productUrl
-    ? `<a href="${escapeHtml(productUrl)}" style="display: inline-block; background: #111827; color: #ffffff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">Ver producto</a>`
-    : ''
-}
+          productUrl
+            ? `<a href="${escapeHtml(productUrl)}" style="display: inline-block; background: #111827; color: #ffffff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">Ver producto</a>`
+            : ''
+        }
       </div>
 
       <p style="color: #6b7280; font-size: 12px; margin-top: 18px;">
@@ -380,39 +354,23 @@ const getActivePromotionItems = async ({
   })
 }
 
-const buildCustomerEligibilityQuery = ({
-  tenantId,
-  ownerIds = [],
-  userId = null,
-}) => {
+const buildCustomerEligibilityQuery = ({ tenantId, ownerIds = [], userId = null }) => {
   const query = {
     tenantId,
     isBlocked: { $ne: true },
     email: { $exists: true, $ne: '' },
     $and: [
       {
-        $or: [
-          { role: { $exists: false } },
-          { role: { $in: [...CUSTOMER_ROLES] } },
-        ],
+        $or: [{ role: { $exists: false } }, { role: { $in: [...CUSTOMER_ROLES] } }],
       },
       {
-        $or: [
-          { isAdmin: { $exists: false } },
-          { isAdmin: { $ne: true } },
-        ],
+        $or: [{ isAdmin: { $exists: false } }, { isAdmin: { $ne: true } }],
       },
       {
-        $or: [
-          { isSuperAdmin: { $exists: false } },
-          { isSuperAdmin: { $ne: true } },
-        ],
+        $or: [{ isSuperAdmin: { $exists: false } }, { isSuperAdmin: { $ne: true } }],
       },
       {
-        $or: [
-          { isOwner: { $exists: false } },
-          { isOwner: { $ne: true } },
-        ],
+        $or: [{ isOwner: { $exists: false } }, { isOwner: { $ne: true } }],
       },
     ],
   }
@@ -422,19 +380,13 @@ const buildCustomerEligibilityQuery = ({
   }
 
   if (userId) {
-    query._id = ownerIds.length
-      ? { $eq: userId, $nin: ownerIds }
-      : userId
+    query._id = ownerIds.length ? { $eq: userId, $nin: ownerIds } : userId
   }
 
   return query
 }
 
-const getWishlistProductIdsFromMetrics = async ({
-  tenantId,
-  productIds,
-  userId = null,
-}) => {
+const getWishlistProductIdsFromMetrics = async ({ tenantId, productIds, userId = null }) => {
   const productIdStrings = (productIds || []).map(id => String(id))
 
   const events = await UserMetricEvent.find({
@@ -446,10 +398,7 @@ const getWishlistProductIdsFromMetrics = async ({
       { 'metadata.productId': { $in: productIdStrings } },
     ],
     eventType: {
-      $in: [
-        USER_METRIC_EVENTS.WISHLIST_ADD,
-        USER_METRIC_EVENTS.WISHLIST_REMOVE,
-      ],
+      $in: [USER_METRIC_EVENTS.WISHLIST_ADD, USER_METRIC_EVENTS.WISHLIST_REMOVE],
     },
   })
     .sort({ occurredAt: -1, createdAt: -1 })
@@ -462,11 +411,7 @@ const getWishlistProductIdsFromMetrics = async ({
   events.forEach(event => {
     if (!event.userId) return
 
-    const productKey =
-      event.productId ||
-      event.productRef ||
-      event.metadata?.productId ||
-      ''
+    const productKey = event.productId || event.productRef || event.metadata?.productId || ''
 
     if (!productKey) return
 
@@ -495,9 +440,6 @@ const getWishlistProductIdsFromMetrics = async ({
   return productIdsByUser
 }
 
-
-
-
 export const notifyWishlistPromotions = async ({
   tenantId,
   promotionBlockId = null,
@@ -507,9 +449,7 @@ export const notifyWishlistPromotions = async ({
   limit = 100,
 }) => {
   const normalizedTenantId = toObjectId(tenantId)
-  const normalizedPromotionBlockId = promotionBlockId
-    ? toObjectId(promotionBlockId)
-    : null
+  const normalizedPromotionBlockId = promotionBlockId ? toObjectId(promotionBlockId) : null
   const normalizedProductId = productId ? toObjectId(productId) : null
   const normalizedUserId = userId ? toObjectId(userId) : null
 
@@ -545,9 +485,7 @@ export const notifyWishlistPromotions = async ({
 
   logger.info('[WishlistPromotionNotifier] Promociones activas detectadas', {
     tenantId: String(normalizedTenantId),
-    promotionBlockId: normalizedPromotionBlockId
-      ? String(normalizedPromotionBlockId)
-      : null,
+    promotionBlockId: normalizedPromotionBlockId ? String(normalizedPromotionBlockId) : null,
     productId: normalizedProductId ? String(normalizedProductId) : null,
     userId: normalizedUserId ? String(normalizedUserId) : null,
     count: promotionItems.length,
@@ -573,11 +511,7 @@ export const notifyWishlistPromotions = async ({
   }
 
   const productIds = [
-    ...new Set(
-      promotionItems
-        .map(item => String(item.productId || ''))
-        .filter(Boolean),
-    ),
+    ...new Set(promotionItems.map(item => String(item.productId || '')).filter(Boolean)),
   ]
 
   const products = await Product.find({
@@ -591,9 +525,7 @@ export const notifyWishlistPromotions = async ({
     .select('_id title slug price currency images status visibility')
     .lean()
 
-  const productById = new Map(
-    products.map(product => [String(product._id), product]),
-  )
+  const productById = new Map(products.map(product => [String(product._id), product]))
 
   const validProductIds = products.map(product => product._id)
   const validProductIdStrings = validProductIds.map(id => String(id))
@@ -636,10 +568,7 @@ export const notifyWishlistPromotions = async ({
       userId: normalizedUserId,
     }),
 
-    $or: [
-      { wishlist: { $in: validProductIds } },
-      { wishlist: { $in: validProductIdStrings } },
-    ],
+    $or: [{ wishlist: { $in: validProductIds } }, { wishlist: { $in: validProductIdStrings } }],
   }
 
   const usersFromWishlist = await User.find(userQuery)
@@ -650,9 +579,7 @@ export const notifyWishlistPromotions = async ({
     .limit(safeLimit)
     .lean()
 
-  const usersById = new Map(
-    usersFromWishlist.map(user => [String(user._id), user]),
-  )
+  const usersById = new Map(usersFromWishlist.map(user => [String(user._id), user]))
 
   const metricUserIds = [...wishlistProductIdsByUser.keys()]
     .filter(userIdFromMetric => !usersById.has(userIdFromMetric))
@@ -715,11 +642,7 @@ export const notifyWishlistPromotions = async ({
       continue
     }
 
-    if (
-      isTenantOwnerUser({ user, tenant }) ||
-      isAdminLikeUser(user) ||
-      !isCustomerLikeUser(user)
-    ) {
+    if (isTenantOwnerUser({ user, tenant }) || isAdminLikeUser(user) || !isCustomerLikeUser(user)) {
       skipped += 1
       results.push({
         status: 'skipped',
@@ -742,19 +665,13 @@ export const notifyWishlistPromotions = async ({
       continue
     }
 
-    const wishlistSet = new Set(
-      (user.wishlist || []).map(id => String(id)),
-    )
-    const metricWishlistSet =
-      wishlistProductIdsByUser.get(String(user._id)) || new Set()
+    const wishlistSet = new Set((user.wishlist || []).map(id => String(id)))
+    const metricWishlistSet = wishlistProductIdsByUser.get(String(user._id)) || new Set()
 
     const matchingItems = promotionItems.filter(item => {
       const itemProductId = String(item.productId)
 
-      return (
-        wishlistSet.has(itemProductId) ||
-        metricWishlistSet.has(itemProductId)
-      )
+      return wishlistSet.has(itemProductId) || metricWishlistSet.has(itemProductId)
     })
 
     for (const promotion of matchingItems) {
@@ -780,9 +697,9 @@ export const notifyWishlistPromotions = async ({
         promotionId: promotion.promotionId,
       }
 
-      const existing =
-        await WishlistPromotionNotification.findOne(notificationKey)
-          .setOptions({ tenantId: normalizedTenantId })
+      const existing = await WishlistPromotionNotification.findOne(notificationKey).setOptions({
+        tenantId: normalizedTenantId,
+      })
 
       if (existing?.status === 'sent' || existing?.status === 'pending') {
         skipped += 1
@@ -890,12 +807,9 @@ export const notifyWishlistPromotions = async ({
           notification.errorMessage = error.message
 
           await notification.save().catch(saveError => {
-            logger.warn(
-              '[WishlistPromotionNotifier] No se pudo guardar fallo',
-              {
-                error: saveError.message,
-              },
-            )
+            logger.warn('[WishlistPromotionNotifier] No se pudo guardar fallo', {
+              error: saveError.message,
+            })
           })
         }
 

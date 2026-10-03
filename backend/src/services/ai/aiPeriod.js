@@ -19,7 +19,6 @@ export const getCurrentPeriod = () => {
 }
 
 /** 'YYYY-MM' válido, o null. Para no confiar en un período que llega por query. */
-export const isValidPeriod = period =>
-  /^\d{4}-(0[1-9]|1[0-2])$/.test(String(period || '').trim())
+export const isValidPeriod = period => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(period || '').trim())
 
 export default { getCurrentPeriod, isValidPeriod }

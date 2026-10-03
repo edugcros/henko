@@ -32,10 +32,7 @@ import {
   cloudinaryUploadVideo,
 } from '../utils/cloudinary.js'
 import { MAX_VIDEO_DURATION_SECONDS } from '../../config/videoUploadPolicy.js'
-import {
-  getUserIdFromRequest,
-  isValidObjectId,
-} from '../utils/requestContext.js'
+import { getUserIdFromRequest, isValidObjectId } from '../utils/requestContext.js'
 import { validateMongoDbIdMiddleware } from '../utils/validation.js'
 import { generateUniqueSlug } from '../utils/slugService.js'
 import { registerVisualFeedback } from '../services/aiLearningService.js'
@@ -109,10 +106,7 @@ const deleteStoredProductImage = async publicId => {
   const uploadsDir = path.resolve(rootDir, 'uploads')
   const imagePath = path.resolve(uploadsDir, normalizedPublicId)
 
-  if (
-    imagePath !== uploadsDir &&
-    !imagePath.startsWith(`${uploadsDir}${path.sep}`)
-  ) {
+  if (imagePath !== uploadsDir && !imagePath.startsWith(`${uploadsDir}${path.sep}`)) {
     throw new Error('Ruta de imagen fuera del directorio permitido')
   }
 
@@ -135,9 +129,7 @@ const removeProductFromCarts = async ({ productId, tenantId }) => {
 
   for (const cart of carts) {
     const previousLength = cart.products.length
-    cart.products = cart.products.filter(
-      item => String(item.productId) !== String(productId),
-    )
+    cart.products = cart.products.filter(item => String(item.productId) !== String(productId))
 
     if (cart.products.length !== previousLength) {
       await cart.save()
@@ -148,8 +140,6 @@ const removeProductFromCarts = async ({ productId, tenantId }) => {
   return modifiedCount
 }
 
-
-
 const publicBaseUrl = () => process.env.PUBLIC_URL || ''
 
 const normalizeText = (value, fallback = '') => {
@@ -159,12 +149,7 @@ const normalizeText = (value, fallback = '') => {
 }
 
 const normalizeRatingValue = body => {
-  const raw =
-    body?.star ??
-    body?.rating ??
-    body?.value ??
-    body?.rate ??
-    body?.score
+  const raw = body?.star ?? body?.rating ?? body?.value ?? body?.rate ?? body?.score
 
   if (raw === undefined || raw === null || raw === '') {
     return {
@@ -174,12 +159,7 @@ const normalizeRatingValue = body => {
   }
 
   if (typeof raw === 'object') {
-    const nested =
-      raw.star ??
-      raw.rating ??
-      raw.value ??
-      raw.rate ??
-      raw.score
+    const nested = raw.star ?? raw.rating ?? raw.value ?? raw.rate ?? raw.score
 
     return {
       value: Number(nested),
@@ -338,11 +318,12 @@ const normalizeMarketAttributesObject = rawValue => {
     }, {})
   }
 
-  const plain = parsed instanceof Map
-    ? Object.fromEntries(parsed.entries())
-    : typeof parsed === 'object'
-      ? parsed
-      : {}
+  const plain =
+    parsed instanceof Map
+      ? Object.fromEntries(parsed.entries())
+      : typeof parsed === 'object'
+        ? parsed
+        : {}
 
   return Object.entries(plain).reduce((acc, [rawKey, rawValue]) => {
     const key = normalizeMarketKey(rawKey)
@@ -355,15 +336,16 @@ const normalizeMarketAttributesObject = rawValue => {
 
 const normalizeKeywordList = value => {
   const parsed = safeJsonParse(value, value)
-  const values = Array.isArray(parsed)
-    ? parsed
-    : String(parsed || '')
-      .split(/[\n,;|]+/g)
+  const values = Array.isArray(parsed) ? parsed : String(parsed || '').split(/[\n,;|]+/g)
 
   return [
     ...new Set(
       values
-        .map(item => String(item || '').trim().toLowerCase())
+        .map(item =>
+          String(item || '')
+            .trim()
+            .toLowerCase(),
+        )
         .filter(Boolean)
         .slice(0, 40),
     ),
@@ -379,26 +361,23 @@ const normalizeKeywordList = value => {
  */
 const normalizePhraseList = (value, max = 20) => {
   const parsed = safeJsonParse(value, value)
-  const values = Array.isArray(parsed)
-    ? parsed
-    : String(parsed || '').split(/[\n;|]+/g)
+  const values = Array.isArray(parsed) ? parsed : String(parsed || '').split(/[\n;|]+/g)
 
   return [
     ...new Set(
       values
-        .map(item => String(item || '').trim().slice(0, 300))
+        .map(item =>
+          String(item || '')
+            .trim()
+            .slice(0, 300),
+        )
         .filter(Boolean)
         .slice(0, max),
     ),
   ]
 }
 
-const ALLOWED_SEO_SEARCH_INTENTS = [
-  'informational',
-  'commercial',
-  'transactional',
-  'navigational',
-]
+const ALLOWED_SEO_SEARCH_INTENTS = ['informational', 'commercial', 'transactional', 'navigational']
 
 /**
  * @param {object} current - El SEO que el producto ya tiene. Se usa como piso:
@@ -435,9 +414,7 @@ const normalizeSeoPayload = ({
     '',
   )
 
-  const resolvedSlug = normalizePublicSlug(
-    source.slug || rawSeo.slug || slug || title,
-  )
+  const resolvedSlug = normalizePublicSlug(source.slug || rawSeo.slug || slug || title)
 
   // El posicionamiento: lo escribe una persona en el formulario de alta y hasta
   // ahora se descartaba entero. Los nombres duplicados (seoPositioning y
@@ -494,10 +471,7 @@ const normalizeLogisticsPayload = body => {
   )
 
   const shippingType = normalizeText(
-    rawLogistics.shippingType ||
-      rawLogistics.shipping ||
-      body?.shippingType ||
-      body?.shipping,
+    rawLogistics.shippingType || rawLogistics.shipping || body?.shippingType || body?.shipping,
     'standard',
   )
 
@@ -514,11 +488,7 @@ const normalizeLogisticsPayload = body => {
     shippingType: ALLOWED_LOGISTICS_SHIPPING_TYPES.includes(shippingType)
       ? shippingType
       : 'standard',
-    warranty: truncateText(
-      rawLogistics.warranty || body?.warranty || body?.garantia,
-      300,
-      '',
-    ),
+    warranty: truncateText(rawLogistics.warranty || body?.warranty || body?.garantia, 300, ''),
     originCountry: truncateText(
       rawLogistics.originCountry ||
         rawLogistics.countryOfOrigin ||
@@ -545,15 +515,9 @@ const getSpecificationValue = (rawValue, type = 'text') => {
   }
 
   if (type === 'multiselect') {
-    const values = Array.isArray(rawValue)
-      ? rawValue
-      : String(rawValue || '').split(/[\n,;|]+/g)
+    const values = Array.isArray(rawValue) ? rawValue : String(rawValue || '').split(/[\n,;|]+/g)
 
-    const normalized = [
-      ...new Set(
-        values.map(item => normalizeText(String(item))).filter(Boolean),
-      ),
-    ]
+    const normalized = [...new Set(values.map(item => normalizeText(String(item))).filter(Boolean))]
 
     return normalized.length ? normalized : undefined
   }
@@ -622,7 +586,13 @@ const normalizeSpecificationsPayload = ({
       {
         key,
         label: key.replace(/_/g, ' ').replace(/^./, char => char.toUpperCase()),
-        type: Array.isArray(value) ? 'multiselect' : typeof value === 'number' ? 'number' : typeof value === 'boolean' ? 'boolean' : 'text',
+        type: Array.isArray(value)
+          ? 'multiselect'
+          : typeof value === 'number'
+            ? 'number'
+            : typeof value === 'boolean'
+              ? 'boolean'
+              : 'text',
         visible: true,
         filterable: Array.isArray(value) || ['string', 'number', 'boolean'].includes(typeof value),
         searchable: typeof value === 'string',
@@ -740,12 +710,7 @@ const buildVariantFilterMatch = variantFilters => {
     $elemMatch: {
       isActive: { $ne: false },
       stock: { $gt: 0 },
-      ...Object.fromEntries(
-        entries.map(([key, values]) => [
-          `attributes.${key}`,
-          { $in: values },
-        ]),
-      ),
+      ...Object.fromEntries(entries.map(([key, values]) => [`attributes.${key}`, { $in: values }])),
     },
   }
 }
@@ -886,30 +851,19 @@ const slugifySkuPart = value => {
 }
 
 const isWeakSku = sku => {
-  const normalized = String(sku || '').trim().toLowerCase()
+  const normalized = String(sku || '')
+    .trim()
+    .toLowerCase()
 
   if (!normalized) return true
 
-  return [
-    '1',
-    '2',
-    '3',
-    'sku',
-    'default',
-    'sin-sku',
-    'n/a',
-    'na',
-    'null',
-    'undefined',
-  ].includes(normalized)
+  return ['1', '2', '3', 'sku', 'default', 'sin-sku', 'n/a', 'na', 'null', 'undefined'].includes(
+    normalized,
+  )
 }
 
 const getVariantAttributesForSku = variant => {
-  const attrs =
-    variant?.attributes ||
-    variant?.attributeValues ||
-    variant?.selectedAttributes ||
-    {}
+  const attrs = variant?.attributes || variant?.attributeValues || variant?.selectedAttributes || {}
 
   if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs)) {
     return {}
@@ -992,9 +946,7 @@ const normalizeVariantsPayload = (rawVariants, tenantId) => {
   if (!Array.isArray(rawVariants)) return []
 
   return rawVariants.map((variant, index) => {
-    const attributes = normalizeVariantAttributes(
-      variant.attributes || variant.combinacion || {},
-    )
+    const attributes = normalizeVariantAttributes(variant.attributes || variant.combinacion || {})
 
     const key =
       normalizeText(variant.key) ||
@@ -1032,9 +984,7 @@ const normalizeVariantAttributesPayload = rawVariantAttributes => {
       return {
         name,
         label: normalizeText(attr.label || attr.name || name),
-        type: ALLOWED_VARIANT_ATTRIBUTE_TYPES.includes(attr.type)
-          ? attr.type
-          : 'select',
+        type: ALLOWED_VARIANT_ATTRIBUTE_TYPES.includes(attr.type) ? attr.type : 'select',
         values: Array.isArray(attr.values)
           ? [...new Set(attr.values.map(value => normalizeText(String(value))).filter(Boolean))]
           : [],
@@ -1046,11 +996,12 @@ const normalizeVariantAttributesPayload = rawVariantAttributes => {
 }
 
 const findVariantIndex = (variants = [], variantId) => {
-  return variants.findIndex(variant =>
-    String(variant._id) === String(variantId) ||
-    String(variant.id) === String(variantId) ||
-    String(variant.key) === String(variantId) ||
-    String(variant.sku) === String(variantId),
+  return variants.findIndex(
+    variant =>
+      String(variant._id) === String(variantId) ||
+      String(variant.id) === String(variantId) ||
+      String(variant.key) === String(variantId) ||
+      String(variant.sku) === String(variantId),
   )
 }
 
@@ -1072,15 +1023,9 @@ const sanitizeCreateProductInput = body => ({
   costoUnitario: toSafeNumber(body.costoUnitario, null),
   currency: normalizeText(body.currency, 'ARS').toUpperCase(),
   sku: normalizeText(body.sku, '').toUpperCase() || undefined,
-  condicion: ALLOWED_PRODUCT_CONDITIONS.includes(body.condicion)
-    ? body.condicion
-    : 'nuevo',
-  status: ALLOWED_PRODUCT_STATUSES.includes(body.status)
-    ? body.status
-    : 'active',
-  visibility: ALLOWED_PRODUCT_VISIBILITIES.includes(body.visibility)
-    ? body.visibility
-    : 'visible',
+  condicion: ALLOWED_PRODUCT_CONDITIONS.includes(body.condicion) ? body.condicion : 'nuevo',
+  status: ALLOWED_PRODUCT_STATUSES.includes(body.status) ? body.status : 'active',
+  visibility: ALLOWED_PRODUCT_VISIBILITIES.includes(body.visibility) ? body.visibility : 'visible',
   iaGenerated: parseBoolean(body.iaGenerated, false),
   iaSource: normalizeText(body.iaSource, 'manual'),
 })
@@ -1100,9 +1045,12 @@ const sanitizeUpdateProductInput = body => {
   }
   if (body.marca !== undefined) updates.marca = normalizeOptionalText(body.marca)
   if (body.categoria !== undefined) updates.categoria = normalizeOptionalText(body.categoria)
-  if (body.subcategoria !== undefined) updates.subcategoria = normalizeOptionalText(body.subcategoria)
-  if (body.compareAtPrice !== undefined) updates.compareAtPrice = toSafeNumber(body.compareAtPrice, 0)
-  if (body.currency !== undefined) updates.currency = normalizeText(body.currency, 'ARS').toUpperCase()
+  if (body.subcategoria !== undefined)
+    updates.subcategoria = normalizeOptionalText(body.subcategoria)
+  if (body.compareAtPrice !== undefined)
+    updates.compareAtPrice = toSafeNumber(body.compareAtPrice, 0)
+  if (body.currency !== undefined)
+    updates.currency = normalizeText(body.currency, 'ARS').toUpperCase()
   if (body.sku !== undefined) updates.sku = normalizeText(body.sku, '').toUpperCase() || undefined
   if (body.condicion !== undefined && ALLOWED_PRODUCT_CONDITIONS.includes(body.condicion)) {
     updates.condicion = body.condicion
@@ -1118,7 +1066,8 @@ const sanitizeUpdateProductInput = body => {
   if (body.price !== undefined) updates.price = toSafeNumber(body.price, 0)
   // Bloque 8.5 — opcional, null borra el costo informado (permite volver a
   // "no informado" si el comercio se equivocó al cargarlo).
-  if (body.costoUnitario !== undefined) updates.costoUnitario = toSafeNumber(body.costoUnitario, null)
+  if (body.costoUnitario !== undefined)
+    updates.costoUnitario = toSafeNumber(body.costoUnitario, null)
   if (body.stock !== undefined) updates.stock = toSafeNumber(body.stock, 0)
   if (body.lowStockThreshold !== undefined) {
     updates.lowStockThreshold = toSafeNumber(body.lowStockThreshold, DEFAULT_LOW_STOCK_THRESHOLD)
@@ -1134,9 +1083,7 @@ const buildHumanCorrectionPayload = payload => ({
   subcategoria: normalizeText(payload.subcategoria, null),
   marca: normalizeText(payload.marca, null),
   precio_sugerido:
-    payload.price !== undefined && payload.price !== null
-      ? toSafeNumber(payload.price, 0)
-      : null,
+    payload.price !== undefined && payload.price !== null ? toSafeNumber(payload.price, 0) : null,
   moneda: normalizeText(payload.currency, 'ARS'),
   atributos:
     typeof payload.atributos === 'string'
@@ -1173,11 +1120,7 @@ const sendControllerError = (res, error, fallbackMessage) => {
   })
 }
 
-const syncProductCatalogTemplate = async ({
-  tenantId,
-  product,
-  userId,
-}) => {
+const syncProductCatalogTemplate = async ({ tenantId, product, userId }) => {
   if (!product?.categoria || !product?.subcategoria) return null
 
   return upsertSubcategoryVariantTemplate({
@@ -1243,17 +1186,20 @@ const getCatalogChangeTypeForProductUpdate = changedFields => {
     return CATALOG_CHANGE_TYPES.STOCK_CHANGED
   }
 
-  if (
-    [...fields].some(field =>
-      ['variants', 'variantAttributes', 'hasVariants'].includes(field),
-    )
-  ) {
+  if ([...fields].some(field => ['variants', 'variantAttributes', 'hasVariants'].includes(field))) {
     return CATALOG_CHANGE_TYPES.VARIANT_CHANGED
   }
 
   if (
     [...fields].some(field =>
-      ['categoria', 'subcategoria', 'productAttributes', 'categoryAttributes', 'specifications', 'filterAttributes'].includes(field),
+      [
+        'categoria',
+        'subcategoria',
+        'productAttributes',
+        'categoryAttributes',
+        'specifications',
+        'filterAttributes',
+      ].includes(field),
     )
   ) {
     return CATALOG_CHANGE_TYPES.CATEGORY_CHANGED
@@ -1288,9 +1234,7 @@ const buildProductSku = ({ title, tenantId }) => {
 
   const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase()
 
-  return [titlePart || 'PRODUCTO', tenantPart, randomPart]
-    .filter(Boolean)
-    .join('-')
+  return [titlePart || 'PRODUCTO', tenantPart, randomPart].filter(Boolean).join('-')
 }
 
 // =====================================================
@@ -1310,10 +1254,7 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       tenantId,
     })
 
-    const rawVariants = safeJsonParse(
-      req.body.variants,
-      req.body.variants || [],
-    )
+    const rawVariants = safeJsonParse(req.body.variants, req.body.variants || [])
 
     const rawVariantAttributes = safeJsonParse(
       req.body.variantAttributes,
@@ -1328,10 +1269,7 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       req.body.productAttributes,
       req.body.productAttributes || req.body.dynamicFields || {},
     )
-    const rawDynamicFields = safeJsonParse(
-      req.body.dynamicFields,
-      req.body.dynamicFields || {},
-    )
+    const rawDynamicFields = safeJsonParse(req.body.dynamicFields, req.body.dynamicFields || {})
     const rawCategoryAttributes = safeJsonParse(
       req.body.categoryAttributes,
       req.body.categoryAttributes || {},
@@ -1372,26 +1310,18 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     const aiOriginal = safeJsonParse(req.body.aiOriginalOutput, null)
 
     const iaGenerated =
-      req.body.iaGenerated === true ||
-      req.body.iaGenerated === 'true' ||
-      Boolean(aiOriginal)
+      req.body.iaGenerated === true || req.body.iaGenerated === 'true' || Boolean(aiOriginal)
 
     const hasVariants = parseBoolean(req.body.hasVariants, variants.length > 0)
 
     const aiConfidence =
-      aiOriginal?.confidence ??
-      aiOriginal?.confianza ??
-      toSafeNumber(req.body.aiConfidence, null)
+      aiOriginal?.confidence ?? aiOriginal?.confianza ?? toSafeNumber(req.body.aiConfidence, null)
 
     const aiSource =
-      aiOriginal?.source ||
-      aiOriginal?.model ||
-      normalizeText(req.body.aiSource, null)
+      aiOriginal?.source || aiOriginal?.model || normalizeText(req.body.aiSource, null)
 
     const aiImageHash =
-      aiOriginal?.hash ||
-      aiOriginal?.imageHash ||
-      normalizeText(req.body.aiImageHash, null)
+      aiOriginal?.hash || aiOriginal?.imageHash || normalizeText(req.body.aiImageHash, null)
 
     const aiNeedsReview =
       aiOriginal?.needsReview === true ||
@@ -1403,12 +1333,12 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     const normalizedProductSku = normalizeSku(req.body.sku)
 
     const productSku =
-        normalizedProductSku ||
-        buildProductSku({
-          title: finalTitle,
-          tenantId,
-        })
-        
+      normalizedProductSku ||
+      buildProductSku({
+        title: finalTitle,
+        tenantId,
+      })
+
     const product = new Product({
       ...safeBody,
 
@@ -1447,17 +1377,17 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       aiImageHash,
       aiNeedsReview,
       aiAgentJobId: isValidObjectId(req.body.aiAgentJobId) ? req.body.aiAgentJobId : null,
-      aiAgentScheduledAt: req.body.aiAgentScheduledAt ? new Date(req.body.aiAgentScheduledAt) : null,
-      aiAutomationMode: ['manual', 'agent-assisted', 'agent-autosave'].includes(req.body.aiAutomationMode)
+      aiAgentScheduledAt: req.body.aiAgentScheduledAt
+        ? new Date(req.body.aiAgentScheduledAt)
+        : null,
+      aiAutomationMode: ['manual', 'agent-assisted', 'agent-autosave'].includes(
+        req.body.aiAutomationMode,
+      )
         ? req.body.aiAutomationMode
         : 'manual',
 
       audit: {
-        createdSource: req.body.aiAgentJobId
-          ? 'agent'
-          : iaGenerated
-            ? 'ai'
-            : 'manual',
+        createdSource: req.body.aiAgentJobId ? 'agent' : iaGenerated ? 'ai' : 'manual',
         lastSource: req.body.aiAutomationMode || req.body.aiSource || 'createProduct',
       },
 
@@ -1590,13 +1520,13 @@ export const getaProduct = expressAsyncHandler(async (req, res) => {
 
   const productQuery = isValidObjectId(cleanParam)
     ? {
-      _id: cleanParam,
-      ...storefrontMatch,
-    }
+        _id: cleanParam,
+        ...storefrontMatch,
+      }
     : {
-      slug: cleanParam,
-      ...storefrontMatch,
-    }
+        slug: cleanParam,
+        ...storefrontMatch,
+      }
 
   const product = await Product.findOne(productQuery)
     .select('-costoUnitario -variants.costoUnitario')
@@ -1637,9 +1567,8 @@ export const listDraftProducts = expressAsyncHandler(async (req, res) => {
   const limit = toSafePositiveInt(req.query.limit, 50, { min: 1, max: 200 })
   const skip = (page - 1) * limit
 
-  const onlyAiGenerated = req.query.iaGenerated === undefined
-    ? true
-    : parseBoolean(req.query.iaGenerated, true)
+  const onlyAiGenerated =
+    req.query.iaGenerated === undefined ? true : parseBoolean(req.query.iaGenerated, true)
 
   const query = {
     tenantId: new mongoose.Types.ObjectId(String(tenantId)),
@@ -1682,9 +1611,7 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
   const tenantId = requireUserTenantId(req)
   assertSameResolvedTenant(req, tenantId)
 
-  const productIds = Array.isArray(req.body?.productIds)
-    ? req.body.productIds
-    : []
+  const productIds = Array.isArray(req.body?.productIds) ? req.body.productIds : []
   const validIds = productIds.filter(isValidObjectId)
 
   if (!validIds.length) {
@@ -1746,15 +1673,11 @@ export const listAdminProducts = expressAsyncHandler(async (req, res) => {
   const skip = (page - 1) * limit
 
   const q = normalizeText(req.query.q)
-  const status = ALLOWED_PRODUCT_STATUSES.includes(req.query.status)
-    ? req.query.status
-    : null
+  const status = ALLOWED_PRODUCT_STATUSES.includes(req.query.status) ? req.query.status : null
   const visibility = ALLOWED_PRODUCT_VISIBILITIES.includes(req.query.visibility)
     ? req.query.visibility
     : null
-  const stockFilter = ['low', 'out'].includes(req.query.stockFilter)
-    ? req.query.stockFilter
-    : null
+  const stockFilter = ['low', 'out'].includes(req.query.stockFilter) ? req.query.stockFilter : null
 
   const sortMap = {
     'price-asc': { price: 1, _id: 1 },
@@ -1772,15 +1695,15 @@ export const listAdminProducts = expressAsyncHandler(async (req, res) => {
 
   const searchMatch = q
     ? {
-      $or: [
-        { title: new RegExp(escapeRegex(q), 'i') },
-        { marca: new RegExp(escapeRegex(q), 'i') },
-        { categoria: new RegExp(escapeRegex(q), 'i') },
-        { subcategoria: new RegExp(escapeRegex(q), 'i') },
-        { sku: new RegExp(escapeRegex(q), 'i') },
-        { 'variants.sku': new RegExp(escapeRegex(q), 'i') },
-      ],
-    }
+        $or: [
+          { title: new RegExp(escapeRegex(q), 'i') },
+          { marca: new RegExp(escapeRegex(q), 'i') },
+          { categoria: new RegExp(escapeRegex(q), 'i') },
+          { subcategoria: new RegExp(escapeRegex(q), 'i') },
+          { sku: new RegExp(escapeRegex(q), 'i') },
+          { 'variants.sku': new RegExp(escapeRegex(q), 'i') },
+        ],
+      }
     : {}
 
   // Base para las stats: respeta la búsqueda pero no el filtro de
@@ -1797,11 +1720,11 @@ export const listAdminProducts = expressAsyncHandler(async (req, res) => {
       ? { stock: { $lte: 0 } }
       : stockFilter === 'low'
         ? {
-          stock: { $gt: 0 },
-          $expr: {
-            $lt: ['$stock', { $ifNull: ['$lowStockThreshold', DEFAULT_LOW_STOCK_THRESHOLD] }],
-          },
-        }
+            stock: { $gt: 0 },
+            $expr: {
+              $lt: ['$stock', { $ifNull: ['$lowStockThreshold', DEFAULT_LOW_STOCK_THRESHOLD] }],
+            },
+          }
         : {}
 
   const listQuery = {
@@ -1946,9 +1869,9 @@ export const getAllProduct = expressAsyncHandler(async (req, res) => {
     Product.countDocuments(query).setOptions({ tenantId }),
     includeFacets
       ? buildVariantFacets({
-        tenantId,
-        match: baseQuery,
-      })
+          tenantId,
+          match: baseQuery,
+        })
       : Promise.resolve([]),
   ])
 
@@ -2059,15 +1982,11 @@ export const getProductCategories = expressAsyncHandler(async (req, res) => {
       })
     }
 
-    category.subcategories.sort((a, b) =>
-      String(a.name).localeCompare(String(b.name), 'es'),
-    )
+    category.subcategories.sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'))
     data.push(category)
   }
 
-  data.sort((a, b) =>
-    String(a.name).localeCompare(String(b.name), 'es'),
-  )
+  data.sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'))
 
   return res.status(200).json({
     success: true,
@@ -2122,9 +2041,7 @@ export const getCategoryConfig = expressAsyncHandler(async (req, res) => {
   )
 
   const configuredSubcategories = rows.map(row => {
-    const configuredSubcategory = configuredSubcategoryMap.get(
-      normalizeCatalogKey(row.name),
-    )
+    const configuredSubcategory = configuredSubcategoryMap.get(normalizeCatalogKey(row.name))
 
     return {
       id: configuredSubcategory?._id,
@@ -2141,16 +2058,13 @@ export const getCategoryConfig = expressAsyncHandler(async (req, res) => {
     }
   })
 
-  configuredSubcategories.sort((a, b) =>
-    String(a.name).localeCompare(String(b.name), 'es'),
-  )
+  configuredSubcategories.sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'))
 
   const selectedSubcategory = requestedSubcategory
     ? configuredSubcategories.find(
-      subcategory =>
-        normalizeCatalogKey(subcategory.name) ===
-        normalizeCatalogKey(requestedSubcategory),
-    ) || null
+        subcategory =>
+          normalizeCatalogKey(subcategory.name) === normalizeCatalogKey(requestedSubcategory),
+      ) || null
     : null
 
   return res.status(200).json({
@@ -2177,9 +2091,7 @@ export const upsertCategoryConfig = expressAsyncHandler(async (req, res) => {
     assertSameResolvedTenant(req, tenantId)
 
     const category = normalizeText(req.body.category || req.body.categoria)
-    const subcategory = normalizeText(
-      req.body.subcategory || req.body.subcategoria,
-    )
+    const subcategory = normalizeText(req.body.subcategory || req.body.subcategoria)
 
     if (!category || !subcategory) {
       return res.status(400).json({
@@ -2196,10 +2108,7 @@ export const upsertCategoryConfig = expressAsyncHandler(async (req, res) => {
       req.body.productAttributes || req.body.productFields,
       req.body.productAttributes || req.body.productFields || [],
     )
-    const specifications = safeJsonParse(
-      req.body.specifications,
-      req.body.specifications || [],
-    )
+    const specifications = safeJsonParse(req.body.specifications, req.body.specifications || [])
     const requiredAttributes = safeJsonParse(
       req.body.requiredAttributes,
       req.body.requiredAttributes || [],
@@ -2239,11 +2148,7 @@ export const upsertCategoryConfig = expressAsyncHandler(async (req, res) => {
     })
   } catch (error) {
     logger.error(`❌ Error en upsertCategoryConfig: ${error.stack || error.message}`)
-    return sendControllerError(
-      res,
-      error,
-      'Error guardando la configuración de subcategoría',
-    )
+    return sendControllerError(res, error, 'Error guardando la configuración de subcategoría')
   }
 })
 
@@ -2293,15 +2198,9 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
       const rawVariants = safeJsonParse(req.body.variants, req.body.variants)
       const normalizedVariants = normalizeVariantsPayload(rawVariants, tenantId)
 
-      updates.variants = ensureUniqueVariantSkus(
-        normalizedVariants,
-        updates.title || product.title,
-      )
+      updates.variants = ensureUniqueVariantSkus(normalizedVariants, updates.title || product.title)
 
-      updates.hasVariants = parseBoolean(
-        req.body.hasVariants,
-        updates.variants.length > 0,
-      )
+      updates.hasVariants = parseBoolean(req.body.hasVariants, updates.variants.length > 0)
 
       if (!updates.hasVariants) {
         updates.variants = []
@@ -2347,10 +2246,7 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
         req.body.productAttributes,
         req.body.productAttributes,
       )
-      const rawDynamicFields = safeJsonParse(
-        req.body.dynamicFields,
-        req.body.dynamicFields,
-      )
+      const rawDynamicFields = safeJsonParse(req.body.dynamicFields, req.body.dynamicFields)
       const rawCategoryAttributes = safeJsonParse(
         req.body.categoryAttributes,
         req.body.categoryAttributes,
@@ -2431,12 +2327,14 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
     // para no tener dos fuentes de verdad sobre el origen del cambio.
     const contextoDePrecio = {
       userId: getRequestUserId(req),
-      source: (req.body.aiAutomationMode || req.body.aiSource)
-        ? PRICE_CHANGE_SOURCE.AI_RECOMMENDATION
-        : PRICE_CHANGE_SOURCE.MANUAL,
-      reason: typeof req.body.priceChangeReason === 'string'
-        ? req.body.priceChangeReason.trim().slice(0, 600)
-        : '',
+      source:
+        req.body.aiAutomationMode || req.body.aiSource
+          ? PRICE_CHANGE_SOURCE.AI_RECOMMENDATION
+          : PRICE_CHANGE_SOURCE.MANUAL,
+      reason:
+        typeof req.body.priceChangeReason === 'string'
+          ? req.body.priceChangeReason.trim().slice(0, 600)
+          : '',
     }
 
     // El precio y su historial, en una sola transacción. El hook de
@@ -2603,10 +2501,7 @@ export const deleteProduct = expressAsyncHandler(async (req, res) => {
       Coupon.updateMany(
         {
           tenantId,
-          $or: [
-            { applicableProducts: productObjectId },
-            { excludedProducts: productObjectId },
-          ],
+          $or: [{ applicableProducts: productObjectId }, { excludedProducts: productObjectId }],
         },
         {
           $pull: {
@@ -2631,8 +2526,7 @@ export const deleteProduct = expressAsyncHandler(async (req, res) => {
           $set: {
             status: 'rejected',
             rejectedAt: new Date(),
-            rejectionReason:
-              'Producto asociado eliminado. Imagen liberada para reimportación.',
+            rejectionReason: 'Producto asociado eliminado. Imagen liberada para reimportación.',
             isHidden: false,
           },
           $unset: {
@@ -2659,9 +2553,7 @@ export const deleteProduct = expressAsyncHandler(async (req, res) => {
     const imageCleanupResults = await Promise.allSettled(
       uniqueImagePublicIds.map(deleteStoredProductImage),
     )
-    const imageCleanupFailures = imageCleanupResults.filter(
-      result => result.status === 'rejected',
-    )
+    const imageCleanupFailures = imageCleanupResults.filter(result => result.status === 'rejected')
 
     if (imageCleanupFailures.length) {
       logger.warn('[Product] Algunas imágenes no pudieron eliminarse del storage', {
@@ -2713,8 +2605,7 @@ export const deleteProduct = expressAsyncHandler(async (req, res) => {
         promotionsModified: promotionsResult.modifiedCount || 0,
         couponsModified: couponsResult.modifiedCount || 0,
         notificationsDeleted: notificationsResult.deletedCount || 0,
-        imagesDeleted:
-          uniqueImagePublicIds.length - imageCleanupFailures.length,
+        imagesDeleted: uniqueImagePublicIds.length - imageCleanupFailures.length,
         imageCleanupFailures: imageCleanupFailures.length,
       },
     })
@@ -3169,10 +3060,7 @@ export const deleteProductImage = expressAsyncHandler(async (req, res) => {
     product.images.splice(imageIndex, 1)
 
     product.variants.forEach(variant => {
-      if (
-        variant?.image?.public_id &&
-        String(variant.image.public_id) === String(publicId)
-      ) {
+      if (variant?.image?.public_id && String(variant.image.public_id) === String(publicId)) {
         variant.image = null
       }
     })
@@ -3290,12 +3178,7 @@ export const rating = expressAsyncHandler(async (req, res) => {
     })
 
     const postedByName = normalizeText(
-      [
-        user.firstname || user.firstName,
-        user.lastname || user.lastName,
-      ]
-        .filter(Boolean)
-        .join(' '),
+      [user.firstname || user.firstName, user.lastname || user.lastName].filter(Boolean).join(' '),
       user.name || user.email || 'Usuario',
     )
 
@@ -3327,11 +3210,10 @@ export const rating = expressAsyncHandler(async (req, res) => {
     product.totalrating =
       validRatings.length > 0
         ? Number(
-          (
-            validRatings.reduce((sum, row) => sum + Number(row.star), 0) /
-              validRatings.length
-          ).toFixed(1),
-        )
+            (
+              validRatings.reduce((sum, row) => sum + Number(row.star), 0) / validRatings.length
+            ).toFixed(1),
+          )
         : 0
 
     product.markModified('ratings')
@@ -3418,10 +3300,7 @@ export const toggleHelpfulVote = expressAsyncHandler(async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message:
-        voteIndex === -1
-          ? 'Voto útil registrado'
-          : 'Voto útil eliminado',
+      message: voteIndex === -1 ? 'Voto útil registrado' : 'Voto útil eliminado',
       ratingId,
       helpfulVotes: ratingRow.helpfulVotes,
       helpfulVotesCount: ratingRow.helpfulVotes.length,
@@ -3437,19 +3316,11 @@ export const toggleHelpfulVote = expressAsyncHandler(async (req, res) => {
 // =====================================================
 
 const getRateLimitTenantKey = req => {
-  const tenantId =
-    req.tenantId ||
-    req.user?.tenantId ||
-    'no-tenant'
+  const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
 
-  const clientIp =
-    req.ip ||
-    req.socket?.remoteAddress ||
-    'unknown-client'
+  const clientIp = req.ip || req.socket?.remoteAddress || 'unknown-client'
 
-  return `${tenantId}:${clientIp !== 'unknown-client'
-    ? ipKeyGenerator(clientIp)
-    : clientIp}`
+  return `${tenantId}:${clientIp !== 'unknown-client' ? ipKeyGenerator(clientIp) : clientIp}`
 }
 
 const productRateLimitHandler = message => (req, res, _next, options) => {
@@ -3490,7 +3361,5 @@ export const rateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getRateLimitTenantKey,
-  handler: productRateLimitHandler(
-    'Demasiadas solicitudes, intenta nuevamente más tarde.',
-  ),
+  handler: productRateLimitHandler('Demasiadas solicitudes, intenta nuevamente más tarde.'),
 })

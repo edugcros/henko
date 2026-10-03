@@ -17,153 +17,151 @@
 // al controlador: que no exista un segundo paso que cobre, y que la devolución
 // use la clave de la reserva que anula.
 
-import { jest } from "@jest/globals";
+import { jest } from '@jest/globals'
 
-const OPERATION_ID = "op-de-la-reserva-123";
-const TENANT_ID = "64b7f0000000000000000001";
+const OPERATION_ID = 'op-de-la-reserva-123'
+const TENANT_ID = '64b7f0000000000000000001'
 
-const mockReserve = jest.fn();
-const mockRefund = jest.fn();
-const mockGenerate = jest.fn();
+const mockReserve = jest.fn()
+const mockRefund = jest.fn()
+const mockGenerate = jest.fn()
 
-jest.unstable_mockModule("../services/ai/aiBudgetService.js", () => ({
-  AI_METRICS: { IMAGE_EDITS: "imageEdits" },
+jest.unstable_mockModule('../services/ai/aiBudgetService.js', () => ({
+  AI_METRICS: { IMAGE_EDITS: 'imageEdits' },
   // El controlador declara de que funcion viene y contra quien presupuesta.
   // Van con los valores reales y no con placeholders: abajo se comprueba que
   // el controlador mande EXACTAMENTE estos.
-  AI_FEATURES: { IMAGE_AI: "imageAi" },
-  AI_PROVIDERS: { REPLICATE: "replicate" },
-  buildBudgetDenialMessage: () => "sin cupo",
+  AI_FEATURES: { IMAGE_AI: 'imageAi' },
+  AI_PROVIDERS: { REPLICATE: 'replicate' },
+  buildBudgetDenialMessage: () => 'sin cupo',
   refundAiBudget: mockRefund,
   reserveAiBudget: mockReserve,
-}));
+}))
 
-jest.unstable_mockModule("../services/imageAiService.js", () => ({
+jest.unstable_mockModule('../services/imageAiService.js', () => ({
   generateVariation: mockGenerate,
   removeBackground: jest.fn(),
-}));
+}))
 
-jest.unstable_mockModule("../services/ai/backgroundRemoval.js", () => ({
+jest.unstable_mockModule('../services/ai/backgroundRemoval.js', () => ({
   getBackgroundRemovalStatus: () => ({}),
-}));
+}))
 
-jest.unstable_mockModule("../services/ai/aiCredentialsService.js", () => ({
-  resolveTenantAiCredentials: async () => ({ apiKey: "AIzaTEST" }),
-}));
+jest.unstable_mockModule('../services/ai/aiCredentialsService.js', () => ({
+  resolveTenantAiCredentials: async () => ({ apiKey: 'AIzaTEST' }),
+}))
 
-const { handleGenerateVariation } = await import(
-  "../controller/imageAiCtrl.js"
-);
+const { handleGenerateVariation } = await import('../controller/imageAiCtrl.js')
 
 const pedido = () => ({
-  file: { buffer: Buffer.from("imagen"), mimetype: "image/png" },
-  body: { prompt: "fondo blanco" },
+  file: { buffer: Buffer.from('imagen'), mimetype: 'image/png' },
+  body: { prompt: 'fondo blanco' },
   user: { tenantId: TENANT_ID },
-});
+})
 
 const respuesta = () => ({
   statusCode: 200,
   body: null,
   status(code) {
-    this.statusCode = code;
-    return this;
+    this.statusCode = code
+    return this
   },
   json(payload) {
-    this.body = payload;
-    return this;
+    this.body = payload
+    return this
   },
-});
+})
 
 const correr = async () => {
-  const res = respuesta();
+  const res = respuesta()
   await handleGenerateVariation(pedido(), res, err => {
-    if (err) throw err;
-  });
-  return res;
-};
+    if (err) throw err
+  })
+  return res
+}
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.clearAllMocks()
   mockReserve.mockResolvedValue({
     allowed: true,
     operationId: OPERATION_ID,
-    metric: "imageEdits",
-  });
-});
+    metric: 'imageEdits',
+  })
+})
 
-describe("imageAiCtrl · cobro de la edición", () => {
-  test("una generación exitosa cobra en un solo movimiento", async () => {
+describe('imageAiCtrl · cobro de la edición', () => {
+  test('una generación exitosa cobra en un solo movimiento', async () => {
     mockGenerate.mockResolvedValue({
-      buffer: Buffer.from("resultado"),
-      contentType: "image/png",
-    });
+      buffer: Buffer.from('resultado'),
+      contentType: 'image/png',
+    })
 
-    const res = await correr();
+    const res = await correr()
 
-    expect(res.body.success).toBe(true);
+    expect(res.body.success).toBe(true)
     // Toda la contabilidad de una edición que salió bien es la reserva. Un
     // segundo paso que cobre es exactamente lo que se podía perder.
-    expect(mockReserve).toHaveBeenCalledTimes(1);
-    expect(mockRefund).not.toHaveBeenCalled();
-  });
+    expect(mockReserve).toHaveBeenCalledTimes(1)
+    expect(mockRefund).not.toHaveBeenCalled()
+  })
 
-  test("si el proveedor falla se devuelve con la clave de la reserva", async () => {
+  test('si el proveedor falla se devuelve con la clave de la reserva', async () => {
     // La devolución tiene que poder unirse con lo que anula: sin la clave son
     // dos filas sueltas, y un reintento del refund descuenta dos veces.
-    mockGenerate.mockRejectedValue(new Error("replicate caído"));
+    mockGenerate.mockRejectedValue(new Error('replicate caído'))
 
-    await expect(correr()).rejects.toThrow("replicate caído");
+    await expect(correr()).rejects.toThrow('replicate caído')
 
     expect(mockRefund).toHaveBeenCalledWith(
       expect.objectContaining({
-        metric: "imageEdits",
+        metric: 'imageEdits',
         operationId: OPERATION_ID,
       }),
-    );
-  });
+    )
+  })
 
-  test("el controlador no inventa la clave, usa la que le devuelven", async () => {
-    mockGenerate.mockRejectedValue(new Error("replicate caído"));
+  test('el controlador no inventa la clave, usa la que le devuelven', async () => {
+    mockGenerate.mockRejectedValue(new Error('replicate caído'))
 
-    await expect(correr()).rejects.toThrow();
+    await expect(correr()).rejects.toThrow()
 
-    const [[reserva]] = mockReserve.mock.calls;
-    const [[devolucion]] = mockRefund.mock.calls;
+    const [[reserva]] = mockReserve.mock.calls
+    const [[devolucion]] = mockRefund.mock.calls
 
-    expect(reserva.operationId).toBeUndefined();
-    expect(devolucion.operationId).toBe(OPERATION_ID);
-  });
+    expect(reserva.operationId).toBeUndefined()
+    expect(devolucion.operationId).toBe(OPERATION_ID)
+  })
 
-  test("sin cupo no se llama al proveedor ni se devuelve nada", async () => {
+  test('sin cupo no se llama al proveedor ni se devuelve nada', async () => {
     mockReserve.mockResolvedValue({
       allowed: false,
-      reason: "limit_reached",
-      metric: "imageEdits",
-    });
+      reason: 'limit_reached',
+      metric: 'imageEdits',
+    })
 
-    const res = await correr();
+    const res = await correr()
 
-    expect(res.statusCode).toBe(402);
-    expect(mockGenerate).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(402)
+    expect(mockGenerate).not.toHaveBeenCalled()
     // No se reservó nada, así que no hay nada que devolver.
-    expect(mockRefund).not.toHaveBeenCalled();
-  });
-});
+    expect(mockRefund).not.toHaveBeenCalled()
+  })
+})
 
 // Un mock que solo satisface el import no prueba nada: prueba el mock. Esto
 // comprueba que el controlador declare de que funcion viene y contra quien
 // presupuesta, que es lo unico que despues permite responder "¿que funcion me
 // esta costando la plata?" — agentMessages lo comparten tres funciones y
 // `metric` no las distingue.
-test("declara de que funcion viene y contra quien presupuesta", async () => {
+test('declara de que funcion viene y contra quien presupuesta', async () => {
   mockGenerate.mockResolvedValue({
-    buffer: Buffer.from("resultado"),
-    contentType: "image/png",
-  });
+    buffer: Buffer.from('resultado'),
+    contentType: 'image/png',
+  })
 
-  await correr();
+  await correr()
 
   expect(mockReserve).toHaveBeenCalledWith(
-    expect.objectContaining({ feature: "imageAi", provider: "replicate" }),
-  );
-});
+    expect.objectContaining({ feature: 'imageAi', provider: 'replicate' }),
+  )
+})

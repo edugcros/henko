@@ -19,10 +19,7 @@ export const AI_PREFERENCE_TYPES = Object.freeze([
   'general',
 ])
 
-export const AI_PREFERENCE_SOURCES = Object.freeze([
-  'manual',
-  'auto-learning',
-])
+export const AI_PREFERENCE_SOURCES = Object.freeze(['manual', 'auto-learning'])
 
 const clean = value => String(value || '').trim()
 const normalizeLower = value => clean(value).toLowerCase()
@@ -134,10 +131,7 @@ const aIPreferenceSchema = new mongoose.Schema(
   },
 )
 
-aIPreferenceSchema.index(
-  { tenantId: 1, rawInput: 1, type: 1 },
-  { unique: true },
-)
+aIPreferenceSchema.index({ tenantId: 1, rawInput: 1, type: 1 }, { unique: true })
 
 aIPreferenceSchema.index({ tenantId: 1, type: 1, usageCount: -1 })
 aIPreferenceSchema.index({ tenantId: 1, type: 1, confidence: -1, usageCount: -1 })

@@ -26,11 +26,7 @@ const buildSearchRegex = query => {
   return new RegExp(words.map(escapeRegex).join('|'), 'i')
 }
 
-export const searchRelevantKnowledgeForAgent = async ({
-  tenantId,
-  query,
-  limit = 6,
-} = {}) => {
+export const searchRelevantKnowledgeForAgent = async ({ tenantId, query, limit = 6 } = {}) => {
   if (!tenantId) return []
 
   const cleanLimit = Math.min(Math.max(Number(limit || 6), 1), 20)
@@ -64,8 +60,7 @@ export const searchRelevantKnowledgeForAgent = async ({
       .lean()
   } catch (error) {
     const isMissingTextIndex =
-      error?.code === 27 ||
-      /text index|required for \$text|text search/i.test(error?.message || '')
+      error?.code === 27 || /text index|required for \$text|text search/i.test(error?.message || '')
 
     if (!isMissingTextIndex) throw error
 

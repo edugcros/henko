@@ -8,9 +8,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-import ThemeConfig, {
-  DEFAULT_THEME_CONFIG,
-} from './themeConfigModel.js'
+import ThemeConfig, { DEFAULT_THEME_CONFIG } from './themeConfigModel.js'
 import Tenant from '../../models/tenantModel.js'
 import {
   getUserIdFromRequest,
@@ -18,10 +16,7 @@ import {
   resolveTenantFromRequest,
   toObjectId,
 } from '../../utils/requestContext.js'
-import {
-  sendErrorResponse,
-  sendSuccessResponse,
-} from '../../utils/response.js'
+import { sendErrorResponse, sendSuccessResponse } from '../../utils/response.js'
 import logger from '../../../config/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -66,7 +61,14 @@ const DESIGN_ROOT_KEYS = new Set([
 ])
 
 const IMAGE_FIELDS = new Set(['backgroundImage', 'logo', 'favicon'])
-const ALLOWED_UPLOAD_TYPES = new Set(['background', 'backgroundImage', 'logo', 'favicon', 'hero', 'generic'])
+const ALLOWED_UPLOAD_TYPES = new Set([
+  'background',
+  'backgroundImage',
+  'logo',
+  'favicon',
+  'hero',
+  'generic',
+])
 
 // =====================================================
 // RESPUESTAS
@@ -98,10 +100,10 @@ const resolveTenantContext = req => resolveTenantFromRequest(req)
 const isPlainObject = value => {
   return Boolean(
     value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      !(value instanceof Date) &&
-      !(value instanceof mongoose.Types.ObjectId),
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    !(value instanceof Date) &&
+    !(value instanceof mongoose.Types.ObjectId),
   )
 }
 
@@ -226,9 +228,7 @@ const buildFullPayloadFromActive = ({ active, updates }) => {
 
 const buildAdminResponse = theme => {
   const publicData =
-    theme && typeof theme.toPublicJSON === 'function'
-      ? theme.toPublicJSON()
-      : theme
+    theme && typeof theme.toPublicJSON === 'function' ? theme.toPublicJSON() : theme
 
   return {
     ...publicData,
@@ -333,7 +333,6 @@ const getThemeByPublicTenantId = async tenantId => {
   }).setOptions({ tenantId: String(tenantId) })
 }
 
-
 const recoverActiveThemeAfterDuplicateKey = async ({ req, error }) => {
   const tenantId = req.tenantId || req.tenant?._id || req.user?.tenantId
   const tenantObjectId = toObjectId(tenantId)
@@ -436,12 +435,7 @@ const configureCloudinaryIfNeeded = () => {
   })
 }
 
-const uploadBufferToCloudinary = async ({
-  buffer,
-  mimetype,
-  tenantId,
-  type = 'generic',
-}) => {
+const uploadBufferToCloudinary = async ({ buffer, mimetype, tenantId, type = 'generic' }) => {
   configureCloudinaryIfNeeded()
 
   if (
@@ -571,14 +565,16 @@ export const getThemeCSS = async (req, res, next) => {
     res.setHeader('Content-Type', 'text/css; charset=utf-8')
     setNoStoreHeaders(res)
 
-    return res.status(200).send(
-      theme.compiledCSS ||
-        (typeof theme.toCSSStringMinified === 'function'
-          ? theme.toCSSStringMinified()
-          : typeof theme.toCSSString === 'function'
-            ? theme.toCSSString()
-            : ''),
-    )
+    return res
+      .status(200)
+      .send(
+        theme.compiledCSS ||
+          (typeof theme.toCSSStringMinified === 'function'
+            ? theme.toCSSStringMinified()
+            : typeof theme.toCSSString === 'function'
+              ? theme.toCSSString()
+              : ''),
+      )
   } catch (error) {
     return next(error)
   }
@@ -722,9 +718,7 @@ export const toggleMaintenance = async (req, res, next) => {
         updates: { maintenanceMode: enabled },
         userId: getUserId(req),
         changeType: 'patch',
-        changeNote: enabled
-          ? 'Mantenimiento activado'
-          : 'Mantenimiento desactivado',
+        changeNote: enabled ? 'Mantenimiento activado' : 'Mantenimiento desactivado',
         session,
       })
     })
@@ -789,11 +783,7 @@ export const importTheme = async (req, res, next) => {
     }
 
     if (!importData.colors || !importData.typography) {
-      return errorResponse(
-        res,
-        'JSON inválido: se requieren "colors" y "typography"',
-        400,
-      )
+      return errorResponse(res, 'JSON inválido: se requieren "colors" y "typography"', 400)
     }
 
     const theme = await runThemeTransaction(session => {
@@ -866,11 +856,14 @@ export const uploadImage = async (req, res, next) => {
         storage: 'cloudinary',
       })
     } catch (cloudinaryError) {
-      logger.warn('[ThemeConfig] Cloudinary no disponible. Usando storage local para imagen de theme.', {
-        tenantId,
-        type,
-        error: cloudinaryError.message,
-      })
+      logger.warn(
+        '[ThemeConfig] Cloudinary no disponible. Usando storage local para imagen de theme.',
+        {
+          tenantId,
+          type,
+          error: cloudinaryError.message,
+        },
+      )
 
       upload = await uploadThemeImageLocally({
         file: req.file,
@@ -914,9 +907,7 @@ export const validateTheme = async (req, res, next) => {
     return successResponse(res, {
       valid: true,
       accessibility:
-        typeof tempTheme.checkAccessibility === 'function'
-          ? tempTheme.checkAccessibility()
-          : null,
+        typeof tempTheme.checkAccessibility === 'function' ? tempTheme.checkAccessibility() : null,
       generatedCSS:
         typeof tempTheme.toCSSString === 'function'
           ? `${tempTheme.toCSSString().slice(0, 1000)}...`

@@ -62,7 +62,10 @@ const buildStoreUrl = tenant => {
 }
 
 const buildFallbackMessage = values => {
-  const days = values.daysSinceLastOrder !== '' ? ` hace ${values.daysSinceLastOrder} días que no comprás` : ' hace un tiempo que no comprás'
+  const days =
+    values.daysSinceLastOrder !== ''
+      ? ` hace ${values.daysSinceLastOrder} días que no comprás`
+      : ' hace un tiempo que no comprás'
   return `Hola ${values.customerName}, te extrañamos —${days}. Date una vuelta por la tienda: ${values.storeUrl}`
 }
 
@@ -197,8 +200,8 @@ export const sendReactivationMessage = async ({ tenantId, insightId, adminUserId
   const phone = clean(user.mobile)
   const whatsappReady = Boolean(
     agent?.channels?.whatsapp?.enabled &&
-      clean(agent?.channels?.whatsapp?.phoneNumberId) &&
-      clean(agent?.channels?.whatsapp?.accessToken),
+    clean(agent?.channels?.whatsapp?.phoneNumberId) &&
+    clean(agent?.channels?.whatsapp?.accessToken),
   )
 
   // Solo WhatsApp DENTRO de la ventana de 24h puede llevar el texto libre
@@ -361,7 +364,9 @@ const loadAbandonedCartRules = tenantId =>
  */
 export const previewCartRecoveryReinforcement = async ({ tenantId, insight }) => {
   if (insight?.type !== 'cart_recovery_underperformance') {
-    const error = new Error('Esta acción solo aplica a insights de recuperación de carrito con baja conversión')
+    const error = new Error(
+      'Esta acción solo aplica a insights de recuperación de carrito con baja conversión',
+    )
     error.statusCode = 400
     throw error
   }
@@ -409,7 +414,9 @@ export const applyCartRecoveryReinforcement = async ({ tenantId, insightId, admi
   const plans = rules.map(buildReinforcementPlan).filter(plan => plan.changed)
 
   if (!plans.length) {
-    const error = new Error('La configuración de recuperación ya está al máximo — no hay nada para reforzar')
+    const error = new Error(
+      'La configuración de recuperación ya está al máximo — no hay nada para reforzar',
+    )
     error.statusCode = 409
     throw error
   }
@@ -540,7 +547,9 @@ export const applyPriceReduction = async ({ tenantId, insightId, adminUserId, ne
     throw error
   }
 
-  const product = await Product.findOne({ _id: insight.entity?.id, tenantId }).setOptions({ tenantId })
+  const product = await Product.findOne({ _id: insight.entity?.id, tenantId }).setOptions({
+    tenantId,
+  })
 
   if (!product) {
     const error = new Error('Producto no encontrado')

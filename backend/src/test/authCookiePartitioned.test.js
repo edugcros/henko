@@ -162,9 +162,7 @@ describe('qué obliga a SameSite=None', () => {
       allowCustomDomains: true,
     })
 
-    expect(razones).toEqual([
-      'ALLOW_CUSTOM_DOMAINS: los dominios propios de los comercios',
-    ])
+    expect(razones).toEqual(['ALLOW_CUSTOM_DOMAINS: los dominios propios de los comercios'])
   })
 
   test('un origen de otro sitio es motivo', () => {
@@ -181,9 +179,9 @@ describe('qué obliga a SameSite=None', () => {
   test('también mira ALLOWED_ROOT_DOMAINS, no solo la lista de orígenes', () => {
     // corsOptions deja entrar por las dos vías. Mirar una sola daría vía libre
     // a 'Lax' con orígenes cruzados entrando por la otra.
-    expect(
-      crossSiteReasons({ rootDomain: raiz, allowedRootDomains: ['otracosa.com'] }),
-    ).toEqual(['ALLOWED_ROOT_DOMAINS: otracosa.com'])
+    expect(crossSiteReasons({ rootDomain: raiz, allowedRootDomains: ['otracosa.com'] })).toEqual([
+      'ALLOWED_ROOT_DOMAINS: otracosa.com',
+    ])
   })
 
   test('un dominio que solo EMPIEZA parecido es ajeno', () => {
@@ -200,9 +198,9 @@ describe('qué obliga a SameSite=None', () => {
 
   test('un origen ilegible cuenta como cruzado', () => {
     // Ante la duda, la opción que no deja a nadie sin sesión es exigir None.
-    expect(
-      crossSiteReasons({ rootDomain: raiz, allowedOrigins: ['no-es-una-url'] }),
-    ).toEqual(['ALLOWED_ORIGINS: no-es-una-url (no se puede leer como URL)'])
+    expect(crossSiteReasons({ rootDomain: raiz, allowedOrigins: ['no-es-una-url'] })).toEqual([
+      'ALLOWED_ORIGINS: no-es-una-url (no se puede leer como URL)',
+    ])
   })
 
   test('sin raíz configurada, todo es cruzado', () => {
@@ -233,21 +231,15 @@ describe('qué obliga a SameSite=None', () => {
 // De las tres cosas que lo identifican (host emisor, partición, nombre) la
 // única elegible por petición es el nombre. Por eso se separa ahí.
 
-const { SESSION_COOKIE_NAMES, getSessionCookieNames } = await import(
-  '../utils/cookieHelper.js'
-)
+const { SESSION_COOKIE_NAMES, getSessionCookieNames } = await import('../utils/cookieHelper.js')
 const { env: entorno } = await import('../../config/env.js')
 
 const DOMINIO_DEL_PANEL = entorno.tenantAdminBaseDomain || entorno.adminBaseDomain
 
 describe('cookies de sesión · el panel y la tienda no se pisan', () => {
   test('el panel y la tienda no usan el mismo nombre', () => {
-    expect(SESSION_COOKIE_NAMES.admin.access).not.toBe(
-      SESSION_COOKIE_NAMES.storefront.access,
-    )
-    expect(SESSION_COOKIE_NAMES.admin.refresh).not.toBe(
-      SESSION_COOKIE_NAMES.storefront.refresh,
-    )
+    expect(SESSION_COOKIE_NAMES.admin.access).not.toBe(SESSION_COOKIE_NAMES.storefront.access)
+    expect(SESSION_COOKIE_NAMES.admin.refresh).not.toBe(SESSION_COOKIE_NAMES.storefront.refresh)
   })
 
   test('una petición del panel compartido usa las cookies del panel', () => {
@@ -294,12 +286,8 @@ describe('cookies de sesión · el panel y la tienda no se pisan', () => {
   })
 
   test('sin Origin ni contexto cae a la tienda', () => {
-    expect(getSessionCookieNames({ headers: {} })).toEqual(
-      SESSION_COOKIE_NAMES.storefront,
-    )
-    expect(getSessionCookieNames(undefined)).toEqual(
-      SESSION_COOKIE_NAMES.storefront,
-    )
+    expect(getSessionCookieNames({ headers: {} })).toEqual(SESSION_COOKIE_NAMES.storefront)
+    expect(getSessionCookieNames(undefined)).toEqual(SESSION_COOKIE_NAMES.storefront)
   })
 
   test('el Referer sirve de respaldo cuando no hay Origin', () => {

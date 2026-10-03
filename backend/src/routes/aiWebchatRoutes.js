@@ -4,10 +4,7 @@ import { sendWebchatMessage } from '../controller/aiWebchatCtrl.js'
 import { aiWebchatLimiter } from '../middlewares/aiWebchatLimiter.js'
 import { aiWebchatDailyCap } from '../middlewares/aiWebchatDailyCap.js'
 import { trackAiAgentEvent } from '../controller/aiAgentEventCtrl.js'
-import {
-  requireTenant,
-  resolveTenantByDomain,
-} from '../middlewares/tenantMiddleware.js'
+import { requireTenant, resolveTenantByDomain } from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
 

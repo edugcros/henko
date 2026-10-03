@@ -28,21 +28,17 @@ process.env.SHOPPING_PROVIDER = 'tavily'
 
 const mockSearch = jest.fn()
 
-jest.unstable_mockModule(
-  '../services/marketIntelligence/sources/tavilyClient.js',
-  () => ({
-    tavilySearch: mockSearch,
-    tavilyExtract: jest.fn(),
-    hasTavilyKey: () => true,
-    // El mock tiene que exportar TODO lo que el modulo real exporta, o la
-    // importacion falla antes de correr un solo test.
-    TAVILY_COUNTRY: { AR: 'argentina' },
-  }),
-)
+jest.unstable_mockModule('../services/marketIntelligence/sources/tavilyClient.js', () => ({
+  tavilySearch: mockSearch,
+  tavilyExtract: jest.fn(),
+  hasTavilyKey: () => true,
+  // El mock tiene que exportar TODO lo que el modulo real exporta, o la
+  // importacion falla antes de correr un solo test.
+  TAVILY_COUNTRY: { AR: 'argentina' },
+}))
 
-const { getShoppingSignals } = await import(
-  '../services/marketIntelligence/sources/shoppingSource.js'
-)
+const { getShoppingSignals } =
+  await import('../services/marketIntelligence/sources/shoppingSource.js')
 
 /** Un resultado de Tavily con precio, en un dominio argentino distinto. */
 const oferta = (n, precio = 100000) => ({
@@ -51,8 +47,7 @@ const oferta = (n, precio = 100000) => ({
   content: `Precio: $${precio.toLocaleString('es-AR')} en stock`,
 })
 
-const analizar = () =>
-  getShoppingSignals({ product: 'Casco de moto LS2 Storm', country: 'AR' })
+const analizar = () => getShoppingSignals({ product: 'Casco de moto LS2 Storm', country: 'AR' })
 
 beforeEach(() => {
   jest.clearAllMocks()

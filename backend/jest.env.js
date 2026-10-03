@@ -108,7 +108,8 @@ process.env.ADMIN_BASE_DOMAIN ??= 'admin.henko.local'
 //
 // NO ES UNA CREDENCIAL: es un literal con forma válida y valor evidentemente
 // falso. Ninguna prueba sale a la red con esto.
-process.env.MP_ACCESS_TOKEN ??= 'TEST-0000000000000000-000000-0000000000000000000000000000000-000000000'
+process.env.MP_ACCESS_TOKEN ??=
+  'TEST-0000000000000000-000000-0000000000000000000000000000000-000000000'
 
 // Las 7 suites que pasan por `src/test/testDB.js` sí conectan a un mongod real
 // (no a uno en memoria), y de ahí derivan el nombre de base agregándole `-test`.

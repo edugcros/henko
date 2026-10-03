@@ -88,65 +88,66 @@ const findVariant = ({ product, cartItem }) => {
   if (!variantIdentifier) return null
 
   return (
-    product.variants?.find(variant =>
-      String(variant._id) === String(variantIdentifier) ||
-      String(variant.key) === String(variantIdentifier) ||
-      String(variant.sku) === String(variantIdentifier),
+    product.variants?.find(
+      variant =>
+        String(variant._id) === String(variantIdentifier) ||
+        String(variant.key) === String(variantIdentifier) ||
+        String(variant.sku) === String(variantIdentifier),
     ) || null
   )
 }
 
 const buildStatusQuery = (status, now = new Date()) => {
   switch (status) {
-  case 'active':
-    return {
-      isDeleted: false,
-      isActive: true,
-      startDate: { $lte: now },
-      endDate: { $gte: now },
-      $or: [
-        { usageLimit: null },
-        { usageLimit: { $exists: false } },
-        { $expr: { $lt: ['$usageCount', '$usageLimit'] } },
-      ],
-    }
+    case 'active':
+      return {
+        isDeleted: false,
+        isActive: true,
+        startDate: { $lte: now },
+        endDate: { $gte: now },
+        $or: [
+          { usageLimit: null },
+          { usageLimit: { $exists: false } },
+          { $expr: { $lt: ['$usageCount', '$usageLimit'] } },
+        ],
+      }
 
-  case 'expired':
-    return {
-      isDeleted: false,
-      endDate: { $lt: now },
-    }
+    case 'expired':
+      return {
+        isDeleted: false,
+        endDate: { $lt: now },
+      }
 
-  case 'scheduled':
-    return {
-      isDeleted: false,
-      startDate: { $gt: now },
-      isActive: true,
-    }
+    case 'scheduled':
+      return {
+        isDeleted: false,
+        startDate: { $gt: now },
+        isActive: true,
+      }
 
-  case 'exhausted':
-    return {
-      isDeleted: false,
-      isActive: true,
-      usageLimit: { $ne: null },
-      $expr: { $gte: ['$usageCount', '$usageLimit'] },
-    }
+    case 'exhausted':
+      return {
+        isDeleted: false,
+        isActive: true,
+        usageLimit: { $ne: null },
+        $expr: { $gte: ['$usageCount', '$usageLimit'] },
+      }
 
-  case 'inactive':
-    return {
-      isDeleted: false,
-      isActive: false,
-    }
+    case 'inactive':
+      return {
+        isDeleted: false,
+        isActive: false,
+      }
 
-  case 'deleted':
-    return {
-      isDeleted: true,
-    }
+    case 'deleted':
+      return {
+        isDeleted: true,
+      }
 
-  default:
-    return {
-      isDeleted: false,
-    }
+    default:
+      return {
+        isDeleted: false,
+      }
   }
 }
 
@@ -204,10 +205,7 @@ const getCouponUnavailablePayload = (coupon, now = new Date()) => {
     }
   }
 
-  if (
-    coupon.usageLimit !== null &&
-    Number(coupon.usageCount || 0) >= Number(coupon.usageLimit)
-  ) {
+  if (coupon.usageLimit !== null && Number(coupon.usageCount || 0) >= Number(coupon.usageLimit)) {
     return {
       status: 400,
       code: 'COUPON_EXHAUSTED',
@@ -219,10 +217,11 @@ const getCouponUnavailablePayload = (coupon, now = new Date()) => {
 }
 
 const generateCouponCode = async ({ tenantId, prefix = 'CUPON' }) => {
-  const cleanPrefix = sanitizeString(prefix, 'CUPON')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 12) || 'CUPON'
+  const cleanPrefix =
+    sanitizeString(prefix, 'CUPON')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 12) || 'CUPON'
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const suffix = crypto.randomBytes(4).toString('hex').toUpperCase()
@@ -319,12 +318,7 @@ const buildCartPricingLines = async ({ cart, tenantId }) => {
   return lines
 }
 
-const evaluateCouponForCart = async ({
-  coupon,
-  userId,
-  tenantId,
-  cart,
-}) => {
+const evaluateCouponForCart = async ({ coupon, userId, tenantId, cart }) => {
   const now = new Date()
 
   if (!coupon.isCurrentlyUsable(now)) {
@@ -339,10 +333,7 @@ const evaluateCouponForCart = async ({
     tenantId,
   })
 
-  if (
-    coupon.usageLimitPerUser !== null &&
-    userUsageCount >= coupon.usageLimitPerUser
-  ) {
+  if (coupon.usageLimitPerUser !== null && userUsageCount >= coupon.usageLimitPerUser) {
     const error = new Error('Ya alcanzaste el límite de uso de este cupón')
     error.code = 'USER_LIMIT_REACHED'
     throw error
@@ -362,10 +353,7 @@ const evaluateCouponForCart = async ({
     0,
   )
 
-  const cartSubtotalCents = lines.reduce(
-    (total, line) => total + line.subtotalCents,
-    0,
-  )
+  const cartSubtotalCents = lines.reduce((total, line) => total + line.subtotalCents, 0)
 
   const discountAmountCents = coupon.calculateDiscountCents(applicableSubtotalCents)
 
@@ -577,10 +565,7 @@ export const getCouponsByProduct = async (req, res) => {
       endDate: { $gte: now },
       $and: [
         {
-          $or: [
-            { excludedProducts: { $size: 0 } },
-            { excludedProducts: { $ne: product._id } },
-          ],
+          $or: [{ excludedProducts: { $size: 0 } }, { excludedProducts: { $ne: product._id } }],
         },
         {
           $or: [
@@ -673,9 +658,7 @@ export const createCoupon = async (req, res) => {
     return res.status(statusCode).json({
       success: false,
       message:
-        error.code === 11000
-          ? 'El código de cupón ya existe en este comercio'
-          : error.message,
+        error.code === 11000 ? 'El código de cupón ya existe en este comercio' : error.message,
     })
   }
 }
@@ -704,10 +687,7 @@ export const getCoupons = async (req, res) => {
 
     if (search?.trim()) {
       const safeRegex = new RegExp(escapeRegex(search.trim().slice(0, 80)), 'i')
-      query.$or = [
-        { code: safeRegex },
-        { description: safeRegex },
-      ]
+      query.$or = [{ code: safeRegex }, { description: safeRegex }]
     }
 
     const currentPage = toSafePage(page)

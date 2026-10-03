@@ -80,7 +80,15 @@ const normalizePromotionSnapshot = ({
   }
 }
 
-const findMatchingCartItem = ({ products, productId, variantId, cartKey, colorId, size, gender }) => {
+const findMatchingCartItem = ({
+  products,
+  productId,
+  variantId,
+  cartKey,
+  colorId,
+  size,
+  gender,
+}) => {
   return products.find(item => {
     const sameProduct = String(item.productId) === String(productId)
     if (!sameProduct) return false
@@ -103,12 +111,15 @@ const findMatchingCartItem = ({ products, productId, variantId, cartKey, colorId
 const resolveVariant = ({ product, variantId }) => {
   if (!variantId || !Array.isArray(product?.variants)) return null
 
-  return product.variants.find(variant =>
-    String(variant._id) === String(variantId) ||
-    String(variant.id) === String(variantId) ||
-    String(variant.key) === String(variantId) ||
-    String(variant.sku) === String(variantId),
-  ) || null
+  return (
+    product.variants.find(
+      variant =>
+        String(variant._id) === String(variantId) ||
+        String(variant.id) === String(variantId) ||
+        String(variant.key) === String(variantId) ||
+        String(variant.sku) === String(variantId),
+    ) || null
+  )
 }
 
 // =====================================================
@@ -399,9 +410,7 @@ cartSchema.methods.calculateTotals = function () {
     item.subtotal = toMoney(Number(item.price || 0) * Number(item.quantity || 0))
   })
 
-  this.cartTotal = toMoney(
-    this.products.reduce((acc, item) => acc + Number(item.subtotal || 0), 0),
-  )
+  this.cartTotal = toMoney(this.products.reduce((acc, item) => acc + Number(item.subtotal || 0), 0))
 
   if (!this.appliedCoupon) {
     this.totalAfterDiscount = this.cartTotal
@@ -461,11 +470,13 @@ cartSchema.methods.addOrUpdateProduct = async function ({
   )
 
   const resolvedVariantId = variantId || selectedVariant?.id || selectedVariant?._id || null
-  const resolvedCartKey = cartKey || buildCartKey({
-    productId: product._id.toString(),
-    variantId: resolvedVariantId,
-    selectedAttributes: normalizedSelectedAttributes,
-  })
+  const resolvedCartKey =
+    cartKey ||
+    buildCartKey({
+      productId: product._id.toString(),
+      variantId: resolvedVariantId,
+      selectedAttributes: normalizedSelectedAttributes,
+    })
 
   const matchedVariant = resolveVariant({ product, variantId: resolvedVariantId })
 
@@ -521,7 +532,8 @@ cartSchema.methods.addOrUpdateProduct = async function ({
     promotionType: promotionType ?? selectedVariant?.promotionType ?? null,
   })
 
-  const resolvedVariantSku = variantSku || variantSKU || selectedVariant?.sku || matchedVariant?.sku || null
+  const resolvedVariantSku =
+    variantSku || variantSKU || selectedVariant?.sku || matchedVariant?.sku || null
   const resolvedVariantImage =
     selectedVariant?.image ||
     matchedVariant?.image?.url ||
@@ -557,19 +569,19 @@ cartSchema.methods.addOrUpdateProduct = async function ({
     selectedVariant:
       resolvedVariantId || Object.keys(normalizedSelectedAttributes).length
         ? {
-          id: resolvedVariantId,
-          sku: resolvedVariantSku,
-          price: pricing.price,
-          originalPrice: pricing.originalPrice,
-          discountPercentage: pricing.discountPercentage,
-          hasPromotion: pricing.hasPromotion,
-          promotionId: pricing.promotionId,
-          promotionTitle: pricing.promotionTitle,
-          promotionType: pricing.promotionType,
-          stock: typeof stockAvailable === 'number' ? stockAvailable : 0,
-          image: resolvedVariantImage,
-          attributes: normalizedSelectedAttributes,
-        }
+            id: resolvedVariantId,
+            sku: resolvedVariantSku,
+            price: pricing.price,
+            originalPrice: pricing.originalPrice,
+            discountPercentage: pricing.discountPercentage,
+            hasPromotion: pricing.hasPromotion,
+            promotionId: pricing.promotionId,
+            promotionTitle: pricing.promotionTitle,
+            promotionType: pricing.promotionType,
+            stock: typeof stockAvailable === 'number' ? stockAvailable : 0,
+            image: resolvedVariantImage,
+            attributes: normalizedSelectedAttributes,
+          }
         : null,
   }
 

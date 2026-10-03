@@ -470,7 +470,6 @@ aiAgentEventSchema.plugin(tenantPlugin, {
 })
 
 const AiAgentEvent =
-  mongoose.models.AiAgentEvent ||
-  mongoose.model('AiAgentEvent', aiAgentEventSchema)
+  mongoose.models.AiAgentEvent || mongoose.model('AiAgentEvent', aiAgentEventSchema)
 
 export default AiAgentEvent

@@ -27,12 +27,7 @@ const TIMESTAMP_HEADER = 'x-twilio-email-event-webhook-timestamp'
  * `deferred` queda afuera a propósito: es un reintento en curso, no un fallo, y
  * tratarlo como error llenaría los logs de alarmas que se resuelven solas.
  */
-const EVENTOS_DE_FALLO = new Set([
-  'bounce',
-  'dropped',
-  'blocked',
-  'spamreport',
-])
+const EVENTOS_DE_FALLO = new Set(['bounce', 'dropped', 'blocked', 'spamreport'])
 
 /**
  * Cuánto se tolera de desfasaje entre el reloj de SendGrid y el nuestro.

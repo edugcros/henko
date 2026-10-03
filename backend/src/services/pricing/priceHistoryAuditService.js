@@ -69,9 +69,7 @@ const envEnteroPositivo = (nombre, porDefecto) => {
 const precioActualDeLaCadena = (producto, variantId) => {
   if (!variantId) return producto.price
 
-  const variante = (producto.variants || []).find(
-    v => String(v?.key) === String(variantId),
-  )
+  const variante = (producto.variants || []).find(v => String(v?.key) === String(variantId))
 
   return variante ? variante.price : undefined
 }
@@ -90,9 +88,7 @@ const mismoPrecio = (a, b) => Number(a) === Number(b)
  * }>}
  */
 export const auditPriceHistory = async ({ tenantId = null } = {}) => {
-  const filtro = tenantId
-    ? { tenantId: new mongoose.Types.ObjectId(String(tenantId)) }
-    : {}
+  const filtro = tenantId ? { tenantId: new mongoose.Types.ObjectId(String(tenantId)) } : {}
 
   // Ordenar ANTES de agrupar: $push conserva el orden que traiga la etapa
   // anterior, y sin eso la cadena se arma en el orden que devuelva el índice.
@@ -263,10 +259,7 @@ export const startPriceHistoryAudit = ({ logger: log = logger } = {}) => {
   // transaccional, un hueco nuevo significa que alguien tocó un precio por un
   // camino sin transacción y justo falló la escritura. Mirarlo cada hora
   // reportaría veinticuatro veces el mismo hueco viejo.
-  const intervalMs = envEnteroPositivo(
-    'PRICE_HISTORY_AUDIT_INTERVAL_MS',
-    24 * 60 * 60 * 1000,
-  )
+  const intervalMs = envEnteroPositivo('PRICE_HISTORY_AUDIT_INTERVAL_MS', 24 * 60 * 60 * 1000)
   const arranqueMs = envEnteroPositivo('PRICE_HISTORY_AUDIT_ON_START_MS', 180 * 1000)
 
   arranqueRef = setTimeout(() => {

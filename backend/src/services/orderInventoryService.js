@@ -28,10 +28,7 @@ export const decrementLineStock = async ({ line, tenantId, session = null }) => 
             stock: { $gte: line.count },
           },
         },
-        $or: [
-          { stock: { $gte: line.count } },
-          { quantity: { $gte: line.count } },
-        ],
+        $or: [{ stock: { $gte: line.count } }, { quantity: { $gte: line.count } }],
       },
       {
         $inc: {
@@ -74,9 +71,7 @@ export const decrementLineStock = async ({ line, tenantId, session = null }) => 
   }
 
   if (!product) {
-    throw new Error(
-      `Stock insuficiente o producto no disponible: ${line.titleSnapshot}`,
-    )
+    throw new Error(`Stock insuficiente o producto no disponible: ${line.titleSnapshot}`)
   }
 
   const remainingStock = Number(product.stock ?? product.quantity ?? 0)
@@ -149,21 +144,13 @@ export const incrementLineStock = async ({ line, tenantId, session = null }) => 
   return product
 }
 
-export const decrementStockForLines = async ({
-  lines,
-  tenantId,
-  session = null,
-}) => {
+export const decrementStockForLines = async ({ lines, tenantId, session = null }) => {
   for (const line of lines) {
     await decrementLineStock({ line, tenantId, session })
   }
 }
 
-export const restoreStockForLines = async ({
-  lines,
-  tenantId,
-  session = null,
-}) => {
+export const restoreStockForLines = async ({ lines, tenantId, session = null }) => {
   for (const line of lines) {
     await incrementLineStock({ line, tenantId, session })
   }

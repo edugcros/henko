@@ -200,12 +200,12 @@ export const buildPricingSignals = async ({ tenantId, productId, policy }) => {
     stock,
     cost: costs
       ? {
-        unitCost: costs.unitCost,
-        totalUnitCost: profitability?.totalUnitCost ?? null,
-        breakEvenPrice: round(breakEvenPrice),
-        deductionRate: profitability?.deductionRate ?? null,
-        sources: provenance,
-      }
+          unitCost: costs.unitCost,
+          totalUnitCost: profitability?.totalUnitCost ?? null,
+          breakEvenPrice: round(breakEvenPrice),
+          deductionRate: profitability?.deductionRate ?? null,
+          sources: provenance,
+        }
       : null,
     marginPercent: margin,
     demand: {

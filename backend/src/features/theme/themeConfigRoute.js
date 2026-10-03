@@ -50,20 +50,13 @@ const upload = multer({
     files: 1,
   },
   fileFilter: (req, file, cb) => {
-    const allowedMimes = [
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-    ]
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp']
 
     if (allowedMimes.includes(file.mimetype)) {
       return cb(null, true)
     }
 
-    return cb(
-      new Error('Formato no soportado. Use: JPG, PNG o WebP'),
-      false,
-    )
+    return cb(new Error('Formato no soportado. Use: JPG, PNG o WebP'), false)
   },
 })
 
@@ -97,15 +90,9 @@ const handleMulterError = (err, req, res, next) => {
 // =====================================================
 
 const getAdminRateLimitKey = req => {
-  const actorId =
-    req.user?._id ||
-    req.user?.id ||
-    (req.ip ? ipKeyGenerator(req.ip) : 'anonymous')
+  const actorId = req.user?._id || req.user?.id || (req.ip ? ipKeyGenerator(req.ip) : 'anonymous')
 
-  const tenantId =
-    req.tenantId ||
-    req.user?.tenantId ||
-    'no-tenant'
+  const tenantId = req.tenantId || req.user?.tenantId || 'no-tenant'
 
   return `${tenantId}:${actorId}`
 }
@@ -113,10 +100,7 @@ const getAdminRateLimitKey = req => {
 const createRateLimitHandler = message => {
   return (req, res, _next, options) => {
     const retryAfterSeconds = Number(req.rateLimit?.resetTime)
-      ? Math.max(
-        1,
-        Math.ceil((new Date(req.rateLimit.resetTime).getTime() - Date.now()) / 1000),
-      )
+      ? Math.max(1, Math.ceil((new Date(req.rateLimit.resetTime).getTime() - Date.now()) / 1000))
       : undefined
 
     if (retryAfterSeconds) {
@@ -167,10 +151,7 @@ const publicLimiter = rateLimit({
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req =>
-    req.tenantId
-      ? String(req.tenantId)
-      : `ip:${ipKeyGenerator(req.ip)}`,
+  keyGenerator: req => (req.tenantId ? String(req.tenantId) : `ip:${ipKeyGenerator(req.ip)}`),
 })
 
 const cssLimiter = rateLimit({
@@ -181,10 +162,7 @@ const cssLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req =>
-    req.tenantId
-      ? String(req.tenantId)
-      : `ip:${ipKeyGenerator(req.ip)}`,
+  keyGenerator: req => (req.tenantId ? String(req.tenantId) : `ip:${ipKeyGenerator(req.ip)}`),
   message: {
     success: false,
     message: 'Demasiadas peticiones de CSS',
@@ -246,11 +224,7 @@ router.get(
  *
  * No usa resolveTenantByDomain porque el tenant se recibe por parámetro.
  */
-router.get(
-  '/public/:tenantId',
-  publicLimiter,
-  getPublicThemeById,
-)
+router.get('/public/:tenantId', publicLimiter, getPublicThemeById)
 
 // =====================================================
 // RUTAS ADMIN - ADMIN DOMAIN
@@ -260,87 +234,49 @@ router.get(
  * Obtener theme para panel admin.
  * GET /api/theme-config/admin
  */
-router.get(
-  '/admin',
-  adminContext,
-  getThemeForAdmin,
-)
+router.get('/admin', adminContext, getThemeForAdmin)
 
 /**
  * Exportar configuración del theme.
  * GET /api/theme-config/admin/export
  */
-router.get(
-  '/admin/export',
-  adminContext,
-  exportTheme,
-)
+router.get('/admin/export', adminContext, exportTheme)
 
 /**
  * Actualización completa del theme.
  * PUT /api/theme-config/admin
  */
-router.put(
-  '/admin',
-  adminContext,
-  strictLimiter,
-  updateTheme,
-)
+router.put('/admin', adminContext, strictLimiter, updateTheme)
 
 /**
  * Actualización parcial del theme.
  * PATCH /api/theme-config/admin
  */
-router.patch(
-  '/admin',
-  adminContext,
-  patchLimiter,
-  patchTheme,
-)
+router.patch('/admin', adminContext, patchLimiter, patchTheme)
 
 /**
  * Resetear theme.
  * POST /api/theme-config/admin/reset
  */
-router.post(
-  '/admin/reset',
-  adminContext,
-  strictLimiter,
-  resetTheme,
-)
+router.post('/admin/reset', adminContext, strictLimiter, resetTheme)
 
 /**
  * Activar/desactivar mantenimiento.
  * POST /api/theme-config/admin/maintenance
  */
-router.post(
-  '/admin/maintenance',
-  adminContext,
-  strictLimiter,
-  toggleMaintenance,
-)
+router.post('/admin/maintenance', adminContext, strictLimiter, toggleMaintenance)
 
 /**
  * Validar configuración del theme.
  * POST /api/theme-config/admin/validate
  */
-router.post(
-  '/admin/validate',
-  adminContext,
-  strictLimiter,
-  validateTheme,
-)
+router.post('/admin/validate', adminContext, strictLimiter, validateTheme)
 
 /**
  * Importar configuración del theme.
  * POST /api/theme-config/admin/import
  */
-router.post(
-  '/admin/import',
-  adminContext,
-  strictLimiter,
-  importTheme,
-)
+router.post('/admin/import', adminContext, strictLimiter, importTheme)
 
 /**
  * Subir imagen del theme.

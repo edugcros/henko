@@ -3,10 +3,7 @@ import Consultas from '../models/enqModel.js'
 import asyncHandler from 'express-async-handler'
 import { sendEmail } from '../utils/sendEmail.js'
 import validator from 'validator'
-import {
-  getTenantIdFromRequest,
-  isValidObjectId,
-} from '../utils/requestContext.js'
+import { getTenantIdFromRequest, isValidObjectId } from '../utils/requestContext.js'
 import { escapeRegex } from '../utils/escapeRegex.js'
 import logger from '../../config/logger.js'
 
@@ -31,7 +28,9 @@ export const replyEnquiry = asyncHandler(async (req, res) => {
   const tenantId = getTenantIdFromRequest(req)
 
   if (!tenantId) {
-    return res.status(401).json({ success: false, message: 'No autorizado: Tenant no identificado' })
+    return res
+      .status(401)
+      .json({ success: false, message: 'No autorizado: Tenant no identificado' })
   }
 
   if (!message || message.trim().length < 5) {
@@ -41,7 +40,9 @@ export const replyEnquiry = asyncHandler(async (req, res) => {
   // 🔴 BUSCAR CONSULTA POR ID Y TENANT (aislamiento)
   const enquiry = await Consultas.findOne({ _id: id, tenantId })
   if (!enquiry) {
-    return res.status(404).json({ success: false, message: 'Consulta no encontrada o no pertenece a este tenant' })
+    return res
+      .status(404)
+      .json({ success: false, message: 'Consulta no encontrada o no pertenece a este tenant' })
   }
 
   try {
@@ -83,7 +84,7 @@ export const replyEnquiry = asyncHandler(async (req, res) => {
 // Crear nueva consulta (pública o desde admin)
 export const createEnquiry = asyncHandler(async (req, res) => {
   const { name, email, mobile, comment } = req.body
-  
+
   // El tenant público debe venir del dominio resuelto por middleware, no del body.
   const tenantId = getTenantIdFromRequest(req, { allowBodyTenantId: false })
 
@@ -91,9 +92,9 @@ export const createEnquiry = asyncHandler(async (req, res) => {
   // Si viene del admin, lo tomamos del usuario
   if (!tenantId) {
     logger.error(`❌ Intento de consulta sin tenantId desde: ${req.get('host')}`)
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Error de contexto: No se pudo vincular la consulta a ninguna tienda.', 
+    return res.status(400).json({
+      success: false,
+      message: 'Error de contexto: No se pudo vincular la consulta a ninguna tienda.',
     })
   }
 
@@ -108,11 +109,11 @@ export const createEnquiry = asyncHandler(async (req, res) => {
 
   const cleanMobile = String(mobile).replace(/[\s-]/g, '')
   const mobileRegex = /^\+?[0-9]{10,15}$/
-  
+
   if (!mobileRegex.test(cleanMobile)) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Número de teléfono inválido. Debe incluir código de área (ej: +54...)', 
+    return res.status(400).json({
+      success: false,
+      message: 'Número de teléfono inválido. Debe incluir código de área (ej: +54...)',
     })
   }
 
@@ -130,19 +131,21 @@ export const createEnquiry = asyncHandler(async (req, res) => {
 
   logger.info(`📧 Consulta creada ID: ${newConsulta._id} [Tenant: ${tenantId}]`)
 
-  res.status(201).json({ 
-    success: true, 
+  res.status(201).json({
+    success: true,
     message: '¡Consulta enviada! Nos pondremos en contacto pronto.',
-    data: newConsulta, 
+    data: newConsulta,
   })
 })
 
 // 🔴 CORREGIDO: Obtener consultas del tenant actual (admin) con paginación
 export const getAllEnquiries = asyncHandler(async (req, res) => {
   const tenantId = getTenantIdFromRequest(req)
-  
+
   if (!tenantId) {
-    return res.status(401).json({ success: false, message: 'No autorizado: Tenant no identificado' })
+    return res
+      .status(401)
+      .json({ success: false, message: 'No autorizado: Tenant no identificado' })
   }
 
   const page = parseInt(req.query.page) || 1
@@ -164,14 +167,13 @@ export const getAllEnquiries = asyncHandler(async (req, res) => {
   }
 
   const [enquiries, total] = await Promise.all([
-    Consultas.find(filter)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 }),
+    Consultas.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
     Consultas.countDocuments(filter), // 🔴 Contar solo del tenant
   ])
 
-  logger.info(`📋 Consultas listadas: ${enquiries.length} de ${total} (tenant: ${tenantId}, page: ${page})`)
+  logger.info(
+    `📋 Consultas listadas: ${enquiries.length} de ${total} (tenant: ${tenantId}, page: ${page})`,
+  )
 
   res.status(200).json({
     success: true,
@@ -227,11 +229,11 @@ export const updateEnquiryStatus = asyncHandler(async (req, res) => {
 
   // 🔴 ACTUALIZAR SOLO SI PERTENECE AL TENANT
   const updatedEnquiry = await Consultas.findOneAndUpdate(
-    { _id: id, tenantId }, 
-    { status }, 
+    { _id: id, tenantId },
+    { status },
     { new: true, runValidators: true },
   )
-  
+
   if (!updatedEnquiry) {
     return res.status(404).json({ success: false, message: 'Consulta no encontrada' })
   }
@@ -255,7 +257,7 @@ export const deleteEnquiry = asyncHandler(async (req, res) => {
 
   // 🔴 ELIMINAR SOLO SI PERTENECE AL TENANT
   const deletedEnquiry = await Consultas.findOneAndDelete({ _id: id, tenantId })
-  
+
   if (!deletedEnquiry) {
     return res.status(404).json({ success: false, message: 'Consulta no encontrada' })
   }

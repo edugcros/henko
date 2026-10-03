@@ -76,9 +76,7 @@ export const normalizeCatalogAttributeTemplate = (attribute, index = 0) => {
   const name = normalizeCatalogKey(attribute?.name || attribute?.key || attribute?.label)
   if (!name) return null
 
-  const type = ALLOWED_ATTRIBUTE_TYPES.includes(attribute?.type)
-    ? attribute.type
-    : 'text'
+  const type = ALLOWED_ATTRIBUTE_TYPES.includes(attribute?.type) ? attribute.type : 'text'
 
   return {
     name,
@@ -91,9 +89,7 @@ export const normalizeCatalogAttributeTemplate = (attribute, index = 0) => {
     visible: attribute?.visible === false || attribute?.showInStorefront === false ? false : true,
     filterable: normalizeBoolean(attribute?.filterable),
     searchable: normalizeBoolean(attribute?.searchable),
-    sortOrder: Number.isFinite(Number(attribute?.sortOrder))
-      ? Number(attribute.sortOrder)
-      : index,
+    sortOrder: Number.isFinite(Number(attribute?.sortOrder)) ? Number(attribute.sortOrder) : index,
     description: normalizeText(attribute?.description || attribute?.helpText),
   }
 }
@@ -132,9 +128,7 @@ export const normalizeVariantTemplate = ({ variantAttributes, variants }) => {
     })
   }
 
-  return [...result.values()].sort(
-    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
-  )
+  return [...result.values()].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
 }
 
 export const normalizeProductTemplate = attributes => {
@@ -148,10 +142,12 @@ const mergeAttributeTemplates = (current = [], incoming = [], replace = false) =
   if (replace) return incoming
 
   const merged = new Map(
-    toArray(current).map(attribute => {
-      const normalized = normalizeCatalogAttributeTemplate(attribute)
-      return normalized ? [normalized.name, normalized] : null
-    }).filter(Boolean),
+    toArray(current)
+      .map(attribute => {
+        const normalized = normalizeCatalogAttributeTemplate(attribute)
+        return normalized ? [normalized.name, normalized] : null
+      })
+      .filter(Boolean),
   )
 
   for (const rawAttribute of incoming) {
@@ -170,15 +166,11 @@ const mergeAttributeTemplates = (current = [], incoming = [], replace = false) =
     })
   }
 
-  return [...merged.values()].sort(
-    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
-  )
+  return [...merged.values()].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
 }
 
 const getSubcategoryByKey = (categoryDocument, subcategoryKey) => {
-  return categoryDocument.subcategories.find(
-    item => item.normalizedName === subcategoryKey,
-  )
+  return categoryDocument.subcategories.find(item => item.normalizedName === subcategoryKey)
 }
 
 const buildSubcategoryPayload = ({
@@ -250,15 +242,17 @@ export const upsertSubcategoryTemplate = async ({
   let subcategoryDocument = getSubcategoryByKey(categoryDocument, subcategoryKey)
 
   if (!subcategoryDocument) {
-    categoryDocument.subcategories.push(buildSubcategoryPayload({
-      subcategoryName,
-      subcategoryKey,
-      variantAttributes: incomingVariantAttributes,
-      productAttributes: incomingProductAttributes,
-      productFields: incomingProductFields,
-      specifications: incomingSpecifications,
-      requiredAttributes: incomingRequiredAttributes,
-    }))
+    categoryDocument.subcategories.push(
+      buildSubcategoryPayload({
+        subcategoryName,
+        subcategoryKey,
+        variantAttributes: incomingVariantAttributes,
+        productAttributes: incomingProductAttributes,
+        productFields: incomingProductFields,
+        specifications: incomingSpecifications,
+        requiredAttributes: incomingRequiredAttributes,
+      }),
+    )
   } else {
     subcategoryDocument.name = subcategoryName
     subcategoryDocument.isActive = true
@@ -334,15 +328,17 @@ export const upsertSubcategoryTemplate = async ({
         replace,
       )
     } else {
-      concurrentDocument.subcategories.push(buildSubcategoryPayload({
-        subcategoryName,
-        subcategoryKey,
-        variantAttributes: incomingVariantAttributes,
-        productAttributes: incomingProductAttributes,
-        productFields: incomingProductFields,
-        specifications: incomingSpecifications,
-        requiredAttributes: incomingRequiredAttributes,
-      }))
+      concurrentDocument.subcategories.push(
+        buildSubcategoryPayload({
+          subcategoryName,
+          subcategoryKey,
+          variantAttributes: incomingVariantAttributes,
+          productAttributes: incomingProductAttributes,
+          productFields: incomingProductFields,
+          specifications: incomingSpecifications,
+          requiredAttributes: incomingRequiredAttributes,
+        }),
+      )
     }
 
     concurrentDocument.updatedBy = userId

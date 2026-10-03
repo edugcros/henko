@@ -18,13 +18,7 @@ const VALIDATION = {
   cssVar: /^var\(--[a-zA-Z0-9_-]+\)$/,
 }
 
-export const THEME_CHANGE_TYPES = [
-  'initial',
-  'update',
-  'patch',
-  'reset',
-  'import',
-]
+export const THEME_CHANGE_TYPES = ['initial', 'update', 'patch', 'reset', 'import']
 
 export const DEFAULT_THEME_CONFIG = {
   general: {
@@ -302,7 +296,10 @@ const colorSchema = new Schema(
     actionSecondaryText: {
       type: String,
       default: '#ffffff',
-      validate: { validator: isValidColor, message: 'Color de texto en acción secundaria inválido' },
+      validate: {
+        validator: isValidColor,
+        message: 'Color de texto en acción secundaria inválido',
+      },
     },
     link: {
       type: String,
@@ -509,7 +506,11 @@ const productsSchema = new Schema(
     gridStyle: { type: String, enum: ['grid', 'masonry', 'list'], default: 'grid' },
     columns: { type: Number, default: 4, min: 1, max: 6 },
     gap: { type: Number, default: 24, min: 0, max: 100 },
-    hoverEffect: { type: String, enum: ['none', 'zoom', 'lift', 'border', 'scale'], default: 'lift' },
+    hoverEffect: {
+      type: String,
+      enum: ['none', 'zoom', 'lift', 'border', 'scale'],
+      default: 'lift',
+    },
     cardTitle: {
       size: { type: String, default: '1.1rem' },
       weight: { type: Number, default: 600, min: 100, max: 900 },
@@ -552,7 +553,11 @@ const productsSchema = new Schema(
 
 const animationsSchema = new Schema(
   {
-    preset: { type: String, enum: ['subtle', 'smooth', 'bouncy', 'instant', 'dramatic'], default: 'smooth' },
+    preset: {
+      type: String,
+      enum: ['subtle', 'smooth', 'bouncy', 'instant', 'dramatic'],
+      default: 'smooth',
+    },
     pageTransitions: { type: String, enum: ['fade', 'slide', 'scale', 'bounce'], default: 'fade' },
     elementEntrance: { type: String, default: 'fadeUp' },
     stagger: { type: Number, default: 0.1, min: 0, max: 2 },
@@ -582,7 +587,8 @@ const advancedSchema = new Schema(
         },
         {
           validator: isSafeCustomCss,
-          message: 'CSS custom contiene un patrón potencialmente peligroso (expression, url(javascript:...), @import, -moz-binding, behavior, o una etiqueta <script>/<style>)',
+          message:
+            'CSS custom contiene un patrón potencialmente peligroso (expression, url(javascript:...), @import, -moz-binding, behavior, o una etiqueta <script>/<style>)',
         },
       ],
     },
@@ -732,24 +738,20 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
     if (value === undefined || value === null) return null
 
     switch (type) {
-    case 'color':
-      return isValidColor(value) ? value.toLowerCase().trim() : null
-    case 'number': {
-      const num = Number.parseFloat(value)
-      return Number.isFinite(num) ? num : null
-    }
-    case 'px': {
-      const px = Number.parseFloat(value)
-      return Number.isFinite(px) && px >= 0 ? `${Math.round(px)}px` : null
-    }
-    case 'string':
-      return String(value)
-        .replace(/[<>]/g, '')
-        .replace(/["\\]/g, '\\$&')
-        .trim()
-        .slice(0, 500)
-    default:
-      return String(value)
+      case 'color':
+        return isValidColor(value) ? value.toLowerCase().trim() : null
+      case 'number': {
+        const num = Number.parseFloat(value)
+        return Number.isFinite(num) ? num : null
+      }
+      case 'px': {
+        const px = Number.parseFloat(value)
+        return Number.isFinite(px) && px >= 0 ? `${Math.round(px)}px` : null
+      }
+      case 'string':
+        return String(value).replace(/[<>]/g, '').replace(/["\\]/g, '\\$&').trim().slice(0, 500)
+      default:
+        return String(value)
     }
   }
 
@@ -768,9 +770,11 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
   const vars = {}
   const colors = this.colors || {}
   const actionPrimary = colors.actionPrimary || DEFAULT_THEME_CONFIG.colors.actionPrimary
-  const actionPrimaryText = colors.actionPrimaryText || DEFAULT_THEME_CONFIG.colors.actionPrimaryText
+  const actionPrimaryText =
+    colors.actionPrimaryText || DEFAULT_THEME_CONFIG.colors.actionPrimaryText
   const actionSecondary = colors.actionSecondary || DEFAULT_THEME_CONFIG.colors.actionSecondary
-  const actionSecondaryText = colors.actionSecondaryText || DEFAULT_THEME_CONFIG.colors.actionSecondaryText
+  const actionSecondaryText =
+    colors.actionSecondaryText || DEFAULT_THEME_CONFIG.colors.actionSecondaryText
   const link = colors.link || DEFAULT_THEME_CONFIG.colors.link
   const price = colors.price || DEFAULT_THEME_CONFIG.colors.price
   const headerBackground = colors.headerBackground || DEFAULT_THEME_CONFIG.colors.headerBackground
@@ -791,15 +795,51 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
     [cssVar('color', 'secondary')]: varValue(colors.secondary, '#dc004e', 'color'),
     [cssVar('color', 'background')]: varValue(colors.background, '#ffffff', 'color'),
     [cssVar('color', 'surface')]: varValue(colors.surface, '#f5f5f5', 'color'),
-    [cssVar('color', 'header', 'background')]: varValue(headerBackground, DEFAULT_THEME_CONFIG.colors.headerBackground, 'color'),
-    [cssVar('color', 'header', 'text')]: varValue(headerText, DEFAULT_THEME_CONFIG.colors.headerText, 'color'),
-    [cssVar('color', 'header', 'link')]: varValue(headerLink, DEFAULT_THEME_CONFIG.colors.headerLink, 'color'),
-    [cssVar('color', 'header', 'icon')]: varValue(headerIcon, DEFAULT_THEME_CONFIG.colors.headerIcon, 'color'),
-    [cssVar('color', 'card', 'background')]: varValue(cardBackground, DEFAULT_THEME_CONFIG.colors.cardBackground, 'color'),
-    [cssVar('color', 'card', 'text')]: varValue(cardText, DEFAULT_THEME_CONFIG.colors.cardText, 'color'),
-    [cssVar('color', 'card', 'text-muted')]: varValue(cardMutedText, DEFAULT_THEME_CONFIG.colors.cardMutedText, 'color'),
-    [cssVar('color', 'card', 'border')]: varValue(cardBorder, DEFAULT_THEME_CONFIG.colors.cardBorder, 'color'),
-    [cssVar('color', 'card', 'price')]: varValue(cardPrice, DEFAULT_THEME_CONFIG.colors.cardPrice, 'color'),
+    [cssVar('color', 'header', 'background')]: varValue(
+      headerBackground,
+      DEFAULT_THEME_CONFIG.colors.headerBackground,
+      'color',
+    ),
+    [cssVar('color', 'header', 'text')]: varValue(
+      headerText,
+      DEFAULT_THEME_CONFIG.colors.headerText,
+      'color',
+    ),
+    [cssVar('color', 'header', 'link')]: varValue(
+      headerLink,
+      DEFAULT_THEME_CONFIG.colors.headerLink,
+      'color',
+    ),
+    [cssVar('color', 'header', 'icon')]: varValue(
+      headerIcon,
+      DEFAULT_THEME_CONFIG.colors.headerIcon,
+      'color',
+    ),
+    [cssVar('color', 'card', 'background')]: varValue(
+      cardBackground,
+      DEFAULT_THEME_CONFIG.colors.cardBackground,
+      'color',
+    ),
+    [cssVar('color', 'card', 'text')]: varValue(
+      cardText,
+      DEFAULT_THEME_CONFIG.colors.cardText,
+      'color',
+    ),
+    [cssVar('color', 'card', 'text-muted')]: varValue(
+      cardMutedText,
+      DEFAULT_THEME_CONFIG.colors.cardMutedText,
+      'color',
+    ),
+    [cssVar('color', 'card', 'border')]: varValue(
+      cardBorder,
+      DEFAULT_THEME_CONFIG.colors.cardBorder,
+      'color',
+    ),
+    [cssVar('color', 'card', 'price')]: varValue(
+      cardPrice,
+      DEFAULT_THEME_CONFIG.colors.cardPrice,
+      'color',
+    ),
     [cssVar('color', 'text')]: varValue(colors.text, '#1a1a1a', 'color'),
     [cssVar('color', 'text', 'muted')]: varValue(colors.mutedText, '#666666', 'color'),
     [cssVar('color', 'border')]: varValue(colors.border, '#e0e0e0', 'color'),
@@ -807,12 +847,28 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
     [cssVar('color', 'action', 'primary')]: varValue(actionPrimary, '#1976d2', 'color'),
     [cssVar('color', 'action', 'primary-text')]: varValue(actionPrimaryText, '#ffffff', 'color'),
     [cssVar('color', 'action', 'secondary')]: varValue(actionSecondary, '#dc004e', 'color'),
-    [cssVar('color', 'action', 'secondary-text')]: varValue(actionSecondaryText, '#ffffff', 'color'),
+    [cssVar('color', 'action', 'secondary-text')]: varValue(
+      actionSecondaryText,
+      '#ffffff',
+      'color',
+    ),
     [cssVar('color', 'link')]: varValue(link, DEFAULT_THEME_CONFIG.colors.link, 'color'),
     [cssVar('color', 'price')]: varValue(price, DEFAULT_THEME_CONFIG.colors.price, 'color'),
-    [cssVar('color', 'price', 'sale')]: varValue(salePrice, DEFAULT_THEME_CONFIG.colors.salePrice, 'color'),
-    [cssVar('color', 'badge', 'background')]: varValue(badgeBackground, DEFAULT_THEME_CONFIG.colors.badgeBackground, 'color'),
-    [cssVar('color', 'badge', 'text')]: varValue(badgeText, DEFAULT_THEME_CONFIG.colors.badgeText, 'color'),
+    [cssVar('color', 'price', 'sale')]: varValue(
+      salePrice,
+      DEFAULT_THEME_CONFIG.colors.salePrice,
+      'color',
+    ),
+    [cssVar('color', 'badge', 'background')]: varValue(
+      badgeBackground,
+      DEFAULT_THEME_CONFIG.colors.badgeBackground,
+      'color',
+    ),
+    [cssVar('color', 'badge', 'text')]: varValue(
+      badgeText,
+      DEFAULT_THEME_CONFIG.colors.badgeText,
+      'color',
+    ),
     [cssVar('color', 'error')]: varValue(colors.error, '#d32f2f', 'color'),
     [cssVar('color', 'warning')]: varValue(colors.warning, '#ed6c02', 'color'),
     [cssVar('color', 'info')]: varValue(colors.info, '#0288d1', 'color'),
@@ -823,9 +879,17 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
   const baseSize = varValue(typography.baseSize, 16, 'number') || 16
   const scaleRatio = varValue(typography.scale, 1.25, 'number') || 1.25
 
-  vars[cssVar('font', 'family')] = varValue(typography.fontFamily, 'Inter, Roboto, sans-serif, Garamond', 'string')
+  vars[cssVar('font', 'family')] = varValue(
+    typography.fontFamily,
+    'Inter, Roboto, sans-serif, Garamond',
+    'string',
+  )
   vars[cssVar('font', 'heading')] = varValue(typography.headingFont, 'Inter, sans-serif', 'string')
-  vars[cssVar('font', 'secondary')] = varValue(typography.secondaryFont, 'Open Sans, sans-serif', 'string')
+  vars[cssVar('font', 'secondary')] = varValue(
+    typography.secondaryFont,
+    'Open Sans, sans-serif',
+    'string',
+  )
   vars[cssVar('font', 'size', 'base')] = `${baseSize}px`
   vars[cssVar('font', 'size', 'scale')] = scaleRatio
   vars[cssVar('font', 'line-height')] = varValue(typography.lineHeight, 1.5, 'number')
@@ -835,9 +899,18 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
     const defaultSize = Math.round(baseSize * Math.pow(scaleRatio, 5 - index))
 
     vars[cssVar('font', level, 'size')] = varValue(heading.size, defaultSize, 'px')
-    vars[cssVar('font', level, 'weight')] = varValue(heading.weight, Math.max(400, 700 - index * 100), 'number')
-    vars[cssVar('font', level, 'line-height')] = varValue(heading.lineHeight, 1.3 - index * 0.02, 'number')
-    vars[cssVar('font', level, 'letter-spacing')] = `${varValue(heading.letterSpacing, -0.3 + index * 0.1, 'number')}px`
+    vars[cssVar('font', level, 'weight')] = varValue(
+      heading.weight,
+      Math.max(400, 700 - index * 100),
+      'number',
+    )
+    vars[cssVar('font', level, 'line-height')] = varValue(
+      heading.lineHeight,
+      1.3 - index * 0.02,
+      'number',
+    )
+    vars[cssVar('font', level, 'letter-spacing')] =
+      `${varValue(heading.letterSpacing, -0.3 + index * 0.1, 'number')}px`
     vars[cssVar('font', level, 'transform')] = varValue(heading.transform, 'none', 'string')
   }
 
@@ -872,7 +945,9 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
   const header = this.header || {}
   vars[cssVar('header', 'height')] = varValue(header.height, 64, 'px')
   vars[cssVar('header', 'sticky')] = header.sticky ? 'fixed' : 'relative'
-  vars[cssVar('header', 'transparent')] = header.transparent ? 'transparent' : 'var(--color-surface)'
+  vars[cssVar('header', 'transparent')] = header.transparent
+    ? 'transparent'
+    : 'var(--color-surface)'
   vars[cssVar('header', 'logo', 'width')] = varValue(header.logoWidth, 120, 'px')
 
   const hero = this.hero || {}
@@ -904,7 +979,9 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
   vars[cssVar('animation', 'easing')] = varValue(animations.easing, 'ease-in-out', 'string')
   vars[cssVar('animation', 'stagger')] = `${varValue(animations.stagger, 0.1, 'number')}s`
   vars[cssVar('animation', 'hover', 'scale')] = varValue(animations.hoverScale, 1.02, 'number')
-  vars[cssVar('animation', 'reduced-motion')] = animations.respectPrefersReducedMotion ? 'reduce' : 'no-preference'
+  vars[cssVar('animation', 'reduced-motion')] = animations.respectPrefersReducedMotion
+    ? 'reduce'
+    : 'no-preference'
 
   const shadowIntensity = varValue(layout.shadowIntensity, 2, 'number') || 2
   const alpha = Math.min(0.1 * shadowIntensity, 0.5)
@@ -921,7 +998,9 @@ themeConfigSchema.methods.toCSSVariables = function toCSSVariables() {
   }
 
   return Object.fromEntries(
-    Object.entries(vars).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+    Object.entries(vars).filter(
+      ([, value]) => value !== undefined && value !== null && value !== '',
+    ),
   )
 }
 
@@ -941,11 +1020,7 @@ themeConfigSchema.methods.toCSSString = function toCSSString() {
 }
 
 themeConfigSchema.methods.toCSSStringMinified = function toCSSStringMinified() {
-  return this.toCSSString()
-    .replace(/\s+/g, ' ')
-    .replace(/;\s*}/g, '}')
-    .replace(/{\s+/g, '{')
-    .trim()
+  return this.toCSSString().replace(/\s+/g, ' ').replace(/;\s*}/g, '}').replace(/{\s+/g, '{').trim()
 }
 
 themeConfigSchema.methods.getCSSVarsByPrefix = function getCSSVarsByPrefix(prefix) {
@@ -976,7 +1051,9 @@ themeConfigSchema.methods.checkAccessibility = function checkAccessibility() {
       contrastRatio: null,
       wcagAA: null,
       wcagAAA: null,
-      suggestions: ['El contraste automático solo se calcula para colores hexadecimales de 6 dígitos.'],
+      suggestions: [
+        'El contraste automático solo se calcula para colores hexadecimales de 6 dígitos.',
+      ],
     }
   }
 
@@ -1068,7 +1145,6 @@ themeConfigSchema.plugin(tenantPlugin, {
 // MODEL
 // =====================================================
 
-const ThemeConfig =
-  mongoose.models.ThemeConfig || mongoose.model('ThemeConfig', themeConfigSchema)
+const ThemeConfig = mongoose.models.ThemeConfig || mongoose.model('ThemeConfig', themeConfigSchema)
 
 export default ThemeConfig

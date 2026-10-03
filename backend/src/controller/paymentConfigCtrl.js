@@ -22,9 +22,7 @@ const formatMpResponse = mp => ({
 export const getPaymentConfig = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
 
-  const tenant = await Tenant.findById(tenantId)
-    .select('integrations.mercadopago')
-    .lean()
+  const tenant = await Tenant.findById(tenantId).select('integrations.mercadopago').lean()
 
   if (!tenant) {
     return res.status(404).json({ success: false, message: 'Tenant no encontrado' })
@@ -52,8 +50,7 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
     })
   }
 
-  const current = await Tenant.findById(tenantId)
-    .select('+integrations.mercadopago.accessToken')
+  const current = await Tenant.findById(tenantId).select('+integrations.mercadopago.accessToken')
 
   if (!current) {
     return res.status(404).json({ success: false, message: 'Tenant no encontrado' })
@@ -77,8 +74,10 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
   }
 
   if (publicKey && mode) {
-    const pkMode = publicKey.startsWith('TEST-') ? 'test'
-      : publicKey.startsWith('APP_USR-') ? 'production'
+    const pkMode = publicKey.startsWith('TEST-')
+      ? 'test'
+      : publicKey.startsWith('APP_USR-')
+        ? 'production'
         : null
     if (pkMode && pkMode !== mode) {
       return res.status(400).json({
@@ -89,8 +88,10 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
   }
 
   if (accessToken && mode) {
-    const tkMode = accessToken.startsWith('TEST-') ? 'test'
-      : accessToken.startsWith('APP_USR-') ? 'production'
+    const tkMode = accessToken.startsWith('TEST-')
+      ? 'test'
+      : accessToken.startsWith('APP_USR-')
+        ? 'production'
         : null
     if (tkMode && tkMode !== mode) {
       return res.status(400).json({
@@ -125,8 +126,7 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
     } catch (error) {
       return res.status(503).json({
         success: false,
-        message:
-          'No pudimos verificar la cuenta con Mercado Pago. Probá de nuevo en un minuto.',
+        message: 'No pudimos verificar la cuenta con Mercado Pago. Probá de nuevo en un minuto.',
         code: error.code || 'MP_ACCOUNT_LOOKUP_FAILED',
       })
     }
@@ -156,11 +156,9 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
     $set['integrations.mercadopago.connectedAt'] = new Date()
   }
 
-  const tenant = await Tenant.findByIdAndUpdate(
-    tenantId,
-    { $set },
-    { new: true },
-  ).select('integrations.mercadopago')
+  const tenant = await Tenant.findByIdAndUpdate(tenantId, { $set }, { new: true }).select(
+    'integrations.mercadopago',
+  )
 
   return res.status(200).json({
     success: true,

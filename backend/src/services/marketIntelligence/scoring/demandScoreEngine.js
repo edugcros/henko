@@ -125,12 +125,12 @@ const ACTIVE_MERCHANTS = num('MARKET_ACTIVE_MERCHANTS', 8)
 const ACTIVE_CATEGORY_UNITS = num('MARKET_ACTIVE_CATEGORY_UNITS', 30)
 
 const WEIGHTS = {
-  demand: 0.30,
-  trend: 0.20,
+  demand: 0.3,
+  trend: 0.2,
   competition: 0.15,
-  social: 0.10,
+  social: 0.1,
   commercial: 0.15,
-  opportunity: 0.10,
+  opportunity: 0.1,
 }
 
 /**
@@ -184,7 +184,12 @@ export function calculateDemandScore(rawSignals) {
   const MIN_COVERAGE = 0.35
 
   if (measuredWeight < MIN_COVERAGE) {
-    return { total: null, components, measuredWeight: Number(measuredWeight.toFixed(2)), unmeasured }
+    return {
+      total: null,
+      components,
+      measuredWeight: Number(measuredWeight.toFixed(2)),
+      unmeasured,
+    }
   }
 
   // Renormalización: los pesos de los componentes medibles se reescalan para
@@ -293,9 +298,7 @@ function scoreTrend(signals) {
  * sube con la cantidad de vendedores en vez de bajar.
  */
 function scoreCompetition(signals) {
-  const merchants = signals.shopping?.available
-    ? Number(signals.shopping.merchantCount || 0)
-    : null
+  const merchants = signals.shopping?.available ? Number(signals.shopping.merchantCount || 0) : null
 
   if (merchants !== null && merchants > 0) {
     // TODO CALIBRACIÓN: los cortes salen de la misma escala cualitativa que
@@ -360,9 +363,7 @@ function scoreSocial() {
  */
 function scoreCommercial(signals) {
   const categoryUnits = signals.internal?.categoryUnitsSold
-  const offerCount = signals.shopping?.available
-    ? Number(signals.shopping.offerCount || 0)
-    : null
+  const offerCount = signals.shopping?.available ? Number(signals.shopping.offerCount || 0) : null
   const hasPublishedPrices = Boolean(signals.research?.priceRange?.min)
 
   if (offerCount === null && categoryUnits == null && !hasPublishedPrices) {
@@ -378,10 +379,7 @@ function scoreCommercial(signals) {
   //
   // ACTIVE_MERCHANTS es cuántos vendedores distintos se consideran un mercado
   // plenamente activo. Ocho es la referencia, ajustable sin tocar el código.
-  const offerSignal =
-    offerCount !== null
-      ? clamp((offerCount / ACTIVE_MERCHANTS) * 80, 0, 80)
-      : 0
+  const offerSignal = offerCount !== null ? clamp((offerCount / ACTIVE_MERCHANTS) * 80, 0, 80) : 0
 
   // Precios publicados = hay mercado activo, pero no dice cuánto se vende.
   const priceSignal = hasPublishedPrices ? 40 : 0
@@ -391,9 +389,7 @@ function scoreCommercial(signals) {
   // punto—, así que se mide contra lo que se considera una categoría con
   // movimiento.
   const internalSignal =
-    categoryUnits != null
-      ? clamp((categoryUnits / ACTIVE_CATEGORY_UNITS) * 60, 0, 60)
-      : 0
+    categoryUnits != null ? clamp((categoryUnits / ACTIVE_CATEGORY_UNITS) * 60, 0, 60) : 0
 
   return clamp(Math.max(offerSignal, priceSignal, internalSignal), 0, 100)
 }
@@ -407,7 +403,11 @@ function scoreOpportunity(signals) {
   let score = Array.isArray(complaints) ? clamp(complaints.length * 15, 0, 70) : 0
 
   // Categoría que rota pero producto que no: hueco en el catálogo propio.
-  if (internal?.isInCatalog && internal?.unitsSoldLast90Days === 0 && internal?.categoryUnitsSold > 0) {
+  if (
+    internal?.isInCatalog &&
+    internal?.unitsSoldLast90Days === 0 &&
+    internal?.categoryUnitsSold > 0
+  ) {
     score += 30
   } else if (internal?.isInCatalog && internal?.unitsSoldLast90Days === 0) {
     score += 20
