@@ -140,3 +140,41 @@ export const crearReplicaEnMemoria = async (opciones = {}) => {
     instanceOpts: opciones.instanceOpts || [{ launchTimeout: ARRANQUE_MONGO_MS }],
   })
 }
+
+/**
+ * Espera a que una lectura cumpla una condición, en vez de dormir un rato fijo
+ * y cruzar los dedos.
+ *
+ * POR QUÉ
+ *
+ * Varias pruebas esperaban con `setTimeout` un plazo elegido a ojo y después
+ * afirmaban sobre la base. Eso es una carrera: en una máquina ocupada el plazo
+ * se queda corto y la prueba falla sin que nada esté roto — la clase de verde
+ * inestable que no se distingue de un rojo real.
+ *
+ * Sondear invierte el trato: termina apenas la condición se cumple, así que es
+ * MÁS rápido en el caso normal, y aguanta mucho más cuando la máquina está
+ * lenta. Y cuando se agota, dice cuál fue el último valor visto, que es lo que
+ * uno necesita para entender por qué.
+ *
+ * No sirve para afirmar que algo NO pasó: eso no se puede sondear y hay que
+ * esperar un plazo de verdad.
+ */
+export const esperarA = async (leer, cumple, { timeoutMs = 10000, pasoMs = 20 } = {}) => {
+  const limite = Date.now() + timeoutMs
+  let ultimo
+
+  for (;;) {
+    ultimo = await leer()
+
+    if (cumple(ultimo)) return ultimo
+
+    if (Date.now() >= limite) {
+      throw new Error(
+        `La condición no se cumplió en ${timeoutMs}ms. Último valor leído: ${JSON.stringify(ultimo)}`,
+      )
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pasoMs))
+  }
+}

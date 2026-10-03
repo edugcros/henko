@@ -18,7 +18,7 @@
 // los comercios, y con mocks se probaría el mock.
 
 import mongoose from 'mongoose'
-import { crearMongoEnMemoria } from './testDB.js'
+import { crearMongoEnMemoria, esperarA } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
@@ -269,9 +269,13 @@ describe('liquidación · se devuelve la diferencia', () => {
       period: PERIODO_REAL,
       operationId,
     })
-    await new Promise(r => setTimeout(r, 300))
-
-    const liquidado = await AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean()
+    // Se sondea la liquidación en vez de dormir 300 ms a ojo: termina apenas
+    // ocurre, y si la máquina está lenta aguanta en lugar de fallar sin que
+    // nada esté roto.
+    const liquidado = await esperarA(
+      () => AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean(),
+      doc => doc?.reservedCostUsd === 0,
+    )
 
     // La retención vuelve a cero y queda SOLO el gasto real.
     expect(liquidado.reservedCostUsd).toBe(0)
@@ -320,9 +324,10 @@ describe('liquidación · se devuelve la diferencia', () => {
       period: PERIODO_REAL,
       operationId,
     })
-    await new Promise(r => setTimeout(r, 200))
-
-    const doc = await AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean()
+    const doc = await esperarA(
+      () => AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean(),
+      d => d?.reservedCostUsd === 0,
+    )
     expect(doc.reservedCostUsd).toBe(0)
   })
 

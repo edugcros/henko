@@ -93,6 +93,34 @@ describe('extractDomain', () => {
     expect(extractDomain('no-es-un-mail')).toBe('')
     expect(extractDomain('')).toBe('')
   })
+
+  // Un dominio de envío tiene que poder publicar registros DNS, así que tiene
+  // que poder EXISTIR. EMAIL_REGEX valida la forma de una dirección y la
+  // comparten todos los registros del sistema, por lo que es permisiva a
+  // propósito: dejaba pasar TLD de una letra y con dígitos.
+  //
+  // No es teórico: en la cuenta de SendGrid quedó un `em5064.gmail.c` en
+  // "pending" para siempre, de un alta que jamás podía verificarse.
+  test.each(['juan@gmail.c', 'juan@x.a', 'juan@mitienda.c0m'])(
+    'rechaza un dominio que no puede existir: %s',
+    direccion => {
+      expect(extractDomain(direccion)).toBe('')
+    },
+  )
+
+  test('los TLD de verdad siguen pasando, incluidos los compuestos', () => {
+    expect(extractDomain('juan@mitienda.com.ar')).toBe('mitienda.com.ar')
+    expect(extractDomain('juan@mitienda.shop')).toBe('mitienda.shop')
+  })
+
+  test('un typo de un dominio que SÍ existe pasa, y está bien', () => {
+    // `gmai.com` es un dominio posible: solo que no es suyo. Distinguirlo
+    // exigiría comparar por parecido contra la lista de proveedores, y eso
+    // bloquearía dominios legítimos por cercanía — `soho.com` está a un
+    // carácter de `zoho.com`. Ese caso lo resuelve la verificación: nunca
+    // pasa a 'verified', y solo se envía desde dominios verificados.
+    expect(extractDomain('juan@gmai.com')).toBe('gmai.com')
+  })
 })
 
 describe('registro de dominio', () => {

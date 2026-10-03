@@ -18,10 +18,42 @@ import { sanitizeString as clean, EMAIL_REGEX as EMAIL_RE } from './emailShared.
 
 const REQUEST_TIMEOUT_MS = 15000
 
+/**
+ * Un TLD de verdad: dos letras o más, sin dígitos.
+ *
+ * POR QUÉ NO ALCANZA CON EMAIL_REGEX
+ *
+ * Esa expresión valida la FORMA de una dirección y la comparten todos los
+ * registros del sistema, así que es deliberadamente permisiva. Para un dominio
+ * de ENVÍO no alcanza: acá hay que poder publicar registros DNS, y eso exige
+ * un dominio que pueda existir.
+ *
+ * Medido sobre lo que aceptaba antes:
+ *
+ *   juan@gmail.c        -> "gmail.c"        TLD de una letra
+ *   juan@x.a            -> "x.a"            íd.
+ *   juan@mitienda.c0m   -> "mitienda.c0m"   TLD con un dígito
+ *
+ * Ninguno puede existir. No hay TLD de una sola letra ni con números, así que
+ * esto no deja afuera nada legítimo. Y apareció solo: en la cuenta de SendGrid
+ * quedó un `em5064.gmail.c` en estado "pending" para siempre, de un alta que
+ * nunca iba a poder verificarse.
+ */
+const TLD_PLAUSIBLE = /\.[a-z]{2,}$/
+
 export const extractDomain = address => {
   const value = clean(address).toLowerCase()
   if (!EMAIL_RE.test(value)) return ''
-  return value.split('@')[1] || ''
+
+  const domain = value.split('@')[1] || ''
+
+  // NO intenta adivinar typos como `gmai.com`. Eso es un dominio que PODRÍA
+  // existir, solo que no es suyo, y distinguirlo exigiría comparar por
+  // parecido contra la lista de proveedores — que bloquearía dominios
+  // legítimos por cercanía (`soho.com` está a un carácter de `zoho.com`). Ese
+  // caso lo resuelve bien la verificación de SendGrid: nunca pasa a
+  // 'verified', y el remitente efectivo solo usa dominios verificados.
+  return TLD_PLAUSIBLE.test(domain) ? domain : ''
 }
 
 // Proveedores de correo gratuitos/personales conocidos. El DNS de estos

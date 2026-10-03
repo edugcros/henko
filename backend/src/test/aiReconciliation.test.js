@@ -1190,7 +1190,16 @@ describe('auditoria automatica · un timer largo que nunca corre no sirve', () =
       stopAccountingAudit()
 
       const antes = lineas.length
-      await new Promise(r => setTimeout(r, 350))
+
+      // Esta espera NO se puede reemplazar por un sondeo: lo que se afirma es
+      // que NO aparece nada, y la ausencia de un evento no se puede sondear.
+      // Hay que esperar un plazo de verdad y recién ahí mirar.
+      //
+      // Siete veces el plazo de arranque (150 ms) en vez de dos. El riesgo
+      // acá no es la intermitencia sino la INDULGENCIA: si la pasada se
+      // dispara tarde en una máquina ocupada, un margen corto la deja pasar
+      // y la prueba termina aprobando el bug que vino a detectar.
+      await new Promise(r => setTimeout(r, 1100))
 
       // Pasado el plazo de arranque, no aparecio ninguna linea nueva.
       expect(lineas.length).toBe(antes)
