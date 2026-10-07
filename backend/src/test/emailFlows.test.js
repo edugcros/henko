@@ -76,7 +76,7 @@ jest.unstable_mockModule('@aws-sdk/client-sesv2', () => ({
   CreateTenantResourceAssociationCommand: comandoSes('CreateTenantResourceAssociation'),
 }))
 
-const { resolveSenderAddress } = await import('../services/emailService.js')
+const { resolveSenderAddress, sendEmail } = await import('../services/emailService.js')
 const { extractDomain } = await import('../services/email/tenantEmailDomainService.js')
 
 const { CODIGOS, esReintentable, proveedorActivo, enviarConProveedor, dominiosDelProveedor } =
@@ -907,5 +907,98 @@ describe('dominios · alta en SES', () => {
 
     const fallido = await dominiosDelProveedor().estado({ dominio: 'tiendax.com' })
     expect(fallido.status).toBe('failed')
+  })
+})
+
+describe('SES · el inquilino viaja con cada correo', () => {
+  // LO QUE ESTE BLOQUE EVITA
+  //
+  // El inquilino es lo único que hace que la reputación se mida por comercio.
+  // Si el envío no lo lleva, el alta del inquilino existe pero no sirve para
+  // nada: todo sale con la reputación de la cuenta, que es exactamente lo que
+  // se quiso evitar — y no hay ningún error que lo delate.
+  //
+  // Por eso se deriva del comercio y no se le pide a cada punto de envío que
+  // se acuerde de pasarlo: hay una docena, y el que se olvidara volvería a la
+  // reputación compartida en silencio.
+
+  let restaurar
+
+  const CON_DOMINIO_PROPIO = {
+    _id: 'comercio-1',
+    name: 'Tienda X',
+    email: { status: 'verified', provider: 'ses', fromAddress: 'hola@tiendax.com' },
+  }
+
+  beforeEach(() => {
+    restaurar = guardarEntorno([
+      'EMAIL_PROVIDER',
+      'EMAIL_FROM',
+      'AWS_ACCESS_KEY_ID',
+      'AWS_SECRET_ACCESS_KEY',
+    ])
+
+    process.env.EMAIL_PROVIDER = 'ses'
+    process.env.EMAIL_FROM = 'no-reply@plataforma.com'
+    process.env.AWS_ACCESS_KEY_ID = 'clave-de-prueba'
+    process.env.AWS_SECRET_ACCESS_KEY = 'secreto-de-prueba'
+
+    comandosSes.length = 0
+    Object.keys(respuestasSes).forEach(clave => delete respuestasSes[clave])
+
+    respuestasSes.SendEmail = () => ({ MessageId: 'ses-1' })
+  })
+
+  afterEach(() => restaurar())
+
+  const enviar = async extra => {
+    await sendEmail({ to: 'compradora@ejemplo.com', subject: 'Asunto', text: 'Cuerpo', ...extra })
+
+    return comandosSes.find(c => c.tipo === 'SendEmail')?.input
+  }
+
+  test('con dominio propio verificado, el envío lleva el inquilino', async () => {
+    const envio = await enviar({ tenantConfig: CON_DOMINIO_PROPIO })
+
+    expect(envio.TenantName).toBe('comercio-1')
+    expect(envio.FromEmailAddress).toContain('hola@tiendax.com')
+  })
+
+  test('saliendo por la plataforma NO lleva inquilino', async () => {
+    // Esto no es una omisión: SES valida que el inquilino tenga permiso sobre
+    // la identidad que se usa, y la de la plataforma no está asociada a él.
+    // Mandarlo igual no sería más aislamiento, sería un envío rechazado.
+    const envio = await enviar({
+      tenantConfig: {
+        _id: 'comercio-1',
+        email: { status: 'pending', provider: 'ses', fromAddress: 'hola@tiendax.com' },
+      },
+    })
+
+    expect(envio.TenantName).toBeUndefined()
+    expect(envio.FromEmailAddress).toContain('no-reply@plataforma.com')
+  })
+
+  test('un dominio verificado con OTRO proveedor tampoco lo lleva', async () => {
+    const envio = await enviar({
+      tenantConfig: {
+        _id: 'comercio-1',
+        email: { status: 'verified', provider: 'sendgrid', fromAddress: 'hola@tiendax.com' },
+      },
+    })
+
+    expect(envio.TenantName).toBeUndefined()
+    expect(envio.FromEmailAddress).toContain('no-reply@plataforma.com')
+  })
+
+  test('con un remitente explícito no se deduce nada', async () => {
+    // Quien pasa `from` eligió una identidad que este módulo no resolvió, así
+    // que adivinar el inquilino sería arriesgar un rechazo.
+    const envio = await enviar({
+      tenantConfig: CON_DOMINIO_PROPIO,
+      from: 'Otra cosa <otra@tiendax.com>',
+    })
+
+    expect(envio.TenantName).toBeUndefined()
   })
 })

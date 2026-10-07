@@ -213,6 +213,37 @@ const getReplyTo = tenantConfig => {
   return getSupportEmail(tenantConfig) || undefined
 }
 
+/**
+ * El inquilino de SES para este correo, o null.
+ *
+ * POR QUÉ NO SIEMPRE
+ *
+ * El inquilino se crea al dar de alta el dominio del comercio, y lo que
+ * queda asociado a él es ESA identidad. SES valida que el inquilino tenga
+ * permiso sobre la identidad que se está usando, así que mandar el inquilino
+ * junto con el remitente de la plataforma no sería "más aislamiento": sería
+ * un envío rechazado.
+ *
+ * Entonces se manda exactamente cuando el correo sale por la identidad propia
+ * del comercio, que es la condición que ya resolvió el remitente. Se pregunta
+ * con la misma función, no con una copia de la regla, para que no puedan
+ * discrepar.
+ *
+ * Los comercios que todavía salen por la plataforma comparten la reputación
+ * de la plataforma, que es exactamente de quién es esa identidad. Aislarlos
+ * también exigiría asociarles la identidad compartida al crear cada comercio;
+ * queda para cuando haya volumen que lo justifique.
+ */
+const resolveTenantName = tenantConfig => {
+  const propia = validateEmail(tenantConfig?.email?.fromAddress)
+
+  if (!propia || resolveSenderAddress(tenantConfig) !== propia) return null
+
+  const id = tenantConfig?._id
+
+  return id ? String(id) : null
+}
+
 // =====================================================
 // ORDER NORMALIZERS
 // =====================================================
@@ -611,12 +642,16 @@ export const sendEmail = async ({
     replyTo: replyTo || getReplyTo(tenantConfig),
     attachments: Array.isArray(attachments) ? attachments : [],
 
-    // Sólo lo usa el driver de SES, y sólo cuando el comercio ya tiene su
-    // identidad dada de alta como inquilino: es lo que hace que la
-    // reputación se mida por comercio y no por cuenta, así una tienda con
-    // la lista sucia no pause el envío de todas las demás. Los otros
-    // proveedores lo ignoran.
-    tenantName: sanitizeString(tenantName) || null,
+    // Sólo lo usa el driver de SES. Es lo que hace que la reputación se mida
+    // por comercio y no por cuenta, así una tienda con la lista sucia no
+    // pause el envío de todas las demás. Los otros proveedores lo ignoran.
+    //
+    // Se deriva del comercio en vez de depender de que cada punto de envío se
+    // acuerde de pasarlo: hay una docena de lugares que mandan correo, y el
+    // que se olvidara volvería a la reputación compartida sin que nada
+    // avisara. Con un `from` explícito no se deduce nada, porque ahí quien
+    // llama eligió una identidad que este módulo no resolvió.
+    tenantName: sanitizeString(tenantName) || (from ? null : resolveTenantName(tenantConfig)),
   }
 
   Object.keys(mailOptions).forEach(key => {

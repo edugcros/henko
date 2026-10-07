@@ -356,6 +356,33 @@ describe('eventos de entrega de SES · firma de SNS', () => {
     expect(res.statusCode).toBe(204)
   })
 
+  test('el pedido del certificado no sigue redirecciones', async () => {
+    // Sin esto el allowlist se evapora: el host es de AWS, AWS contesta un
+    // 302 a donde sea, y fetch lo sigue solo — que es justo el pedido que la
+    // comprobación de host viene a impedir.
+    const res = armarRespuesta()
+
+    // Una URL propia de esta prueba: los certificados se cachean por URL, así
+    // que reusar la de las otras no dispararía ningún pedido que mirar.
+    const certificado =
+      'https://sns.us-east-1.amazonaws.com/SimpleNotificationService-sin-redirecciones.pem'
+
+    await handleSesEvents(
+      peticionDeSns(
+        mensajeDeSns({
+          Message: eventoDeSes({ eventType: 'Delivery', mail: { messageId: 'm-1' } }),
+          SigningCertURL: certificado,
+        }),
+      ),
+      res,
+    )
+
+    const [, opciones] = global.fetch.mock.calls.find(([url]) => String(url) === certificado)
+
+    expect(res.statusCode).toBe(204)
+    expect(opciones.redirect).toBe('error')
+  })
+
   test('una firma inválida devuelve 401 y no procesa nada', async () => {
     const res = armarRespuesta()
 
@@ -450,7 +477,10 @@ describe('eventos de entrega de SES · alta de la suscripción', () => {
     )
 
     expect(res.statusCode).toBe(204)
-    expect(global.fetch.mock.calls.some(([url]) => url === confirmacion)).toBe(true)
+
+    // Se compara con String() porque el pedido se arma con un objeto URL
+    // rearmado desde el host ya comprobado, no con la cadena que llegó.
+    expect(global.fetch.mock.calls.some(([url]) => String(url) === confirmacion)).toBe(true)
   })
 
   test('una SubscribeURL que no es de AWS no se visita', async () => {

@@ -194,12 +194,46 @@ const esUrlDeSns = valor => {
   }
 }
 
-const buscar = async url => {
+/**
+ * Un GET contra SNS, y sólo contra SNS.
+ *
+ * POR QUÉ LA COMPROBACIÓN VA ACÁ Y NO SÓLO EN QUIEN LLAMA
+ *
+ * Las dos URLs que este controlador visita —el certificado y la confirmación
+ * del alta— vienen del cuerpo del mensaje, o sea de afuera. Quien llama las
+ * valida antes, para poder contestar un error con sentido; pero si ésa fuera
+ * la única comprobación, alcanzaría con que alguien agregue mañana una
+ * tercera llamada sin validar para convertir esto en un servidor que va a
+ * buscar cualquier URL que le manden.
+ *
+ * Acá la garantía es estructural: no hay forma de pedir algo que no sea SNS.
+ */
+const buscarEnSns = async valor => {
+  let url
+
+  try {
+    url = new URL(String(valor))
+  } catch {
+    throw new Error('URL ilegible')
+  }
+
+  if (url.protocol !== 'https:' || !HOST_DE_SNS.test(url.hostname)) {
+    throw new Error(`URL que no es de SNS: ${url.hostname}`)
+  }
+
+  // Se rearma desde el host ya comprobado en vez de reusar la cadena que
+  // llegó: así no hay forma de que lo que se pide difiera de lo que se
+  // validó.
+  const destino = new URL(`https://${url.hostname}${url.pathname}${url.search}`)
+
   const control = new AbortController()
   const reloj = setTimeout(() => control.abort(), TIEMPO_DE_RED_MS)
 
   try {
-    return await fetch(url, { signal: control.signal })
+    // Sin `redirect: 'error'` el allowlist se evapora: AWS contesta un 302 a
+    // donde sea y fetch lo sigue solo, que es exactamente el pedido que esto
+    // viene a impedir.
+    return await fetch(destino, { signal: control.signal, redirect: 'error' })
   } finally {
     clearTimeout(reloj)
   }
@@ -214,7 +248,7 @@ const certificadosDeSns = new Map()
 const obtenerCertificadoDeSns = async url => {
   if (certificadosDeSns.has(url)) return certificadosDeSns.get(url)
 
-  const respuesta = await buscar(url)
+  const respuesta = await buscarEnSns(url)
 
   if (!respuesta.ok) {
     throw new Error(`El certificado de SNS respondió ${respuesta.status}`)
@@ -357,7 +391,7 @@ export const handleSesEvents = async (req, res) => {
       return sendResponse(res, 400, false, 'SubscribeURL inválida')
     }
 
-    const respuesta = await buscar(mensaje.SubscribeURL).catch(error => {
+    const respuesta = await buscarEnSns(mensaje.SubscribeURL).catch(error => {
       logger.error('[SES] No se pudo confirmar la suscripción', { message: error.message })
       return null
     })
