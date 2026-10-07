@@ -49,11 +49,18 @@ mientras sus correos siguen saliendo por la plataforma.
 
 ## El transporte
 
-Proveedor único: **SendGrid**, por su Web API HTTPS (`POST
-/v3/mail/send`), autenticada con `EMAIL_PASS` (o `SENDGRID_API_KEY` si se
-quiere separar una key de solo-envío de una con permiso de administrar
-dominios). No hay SMTP ni un segundo proveedor de respaldo en el código —
-`emailService.js` solo sabe hablar con la Web API de SendGrid.
+El proveedor lo elige **`EMAIL_PROVIDER`** y los drivers viven en
+`src/services/email/emailProviders.js`. Hay tres, todos por HTTPS:
+
+| `EMAIL_PROVIDER` | Credencial | Notas |
+| --- | --- | --- |
+| `sendgrid` (por omisión) | `EMAIL_PASS`, o `SENDGRID_API_KEY` | `POST /v3/mail/send` |
+| `resend` | `RESEND_API_KEY` | `POST /emails` |
+| `ses` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | SDK `@aws-sdk/client-sesv2`; opcionales `AWS_REGION`, `SES_CONFIGURATION_SET` |
+
+No hay SMTP en ninguno: el plan Free de Render bloquea esos puertos (abajo
+el detalle). El valor por omisión sigue siendo SendGrid, así que desplegar
+esta versión no cambia por dónde sale el correo — hay que pedirlo.
 
 Esto no siempre fue así. Durante un tiempo el comentario en el código decía
 que SMTP "muere en Render", basado en un incidente real contra
@@ -68,13 +75,36 @@ propia API de Render (`GET /v1/services/{id}` → `serviceDetails.plan:
 colgada sin error ni éxito — consistente con un bloqueo silencioso de
 puerto, no con credenciales rotas.
 
-El proyecto también tuvo Resend disponible como alternativa en algún
-momento (paralelo a SMTP). Se retiró del código por completo: mantener dos
-proveedores vivos —cada uno con su propia lógica de remitente, su propio
-formato de error, su propia gestión de dominios— era la fuente real de los
-bugs de este documento (la variable correcta configurada para el proveedor
-equivocado, el default silencioso cuando faltaba una key). Con un solo
-proveedor, esa clase entera de bug deja de ser posible.
+### Por qué volvió a haber más de un proveedor
+
+Este documento decía, con razón, que tener varios proveedores vivos era la
+fuente real de los bugs de acá: cada uno con su propia lógica de remitente,
+su propio formato de error y su propia gestión de dominios. De ahí salieron
+la variable correcta configurada para el proveedor equivocado y el default
+silencioso cuando faltaba una key. La conclusión de entonces —dejar uno
+solo— era la correcta para ese código.
+
+Lo que cambió:
+
+1. **SendGrid dejó de ser una opción permanente.** Eliminaron el plan
+   gratuito en mayo de 2025; el trial de esta cuenta vence el 12/10/2026 y
+   después no sale un correo. Quedarse con un proveedor único ya no era una
+   decisión disponible.
+2. **El destino es multi-inquilino.** Con miles de comercios, cada uno con
+   su dominio, lo que decide es el techo de identidades verificadas y que
+   la reputación se mida por comercio — si no, una tienda con la lista
+   sucia pausa el envío de todas. Eso lleva a Amazon SES y su función de
+   *tenants*.
+
+Y lo que evita repetir aquellos bugs no es tener un solo proveedor, sino
+que los proveedores no decidan nada propio. La lógica de remitente, la
+política de reintentos y el armado del mensaje están una sola vez en
+`emailService.js`; cada driver sabe únicamente traducir al formato de su
+API y traducir sus fallas a los códigos de `CODIGOS`. Un driver no elige
+remitente, no reintenta y no inventa un default. El "default silencioso" en
+particular ya no es posible: un `EMAIL_PROVIDER` desconocido voltea el
+arranque en producción nombrando las opciones válidas, en vez de fallar
+recién en el primer correo.
 
 Fuente: [Render changelog — Free web services will no longer allow outbound
 traffic to SMTP
@@ -85,8 +115,8 @@ ports](https://render.com/changelog/free-web-services-will-no-longer-allow-outbo
 Sin esto no llega ningún correo, de ningún comercio. El transporte (SendGrid
 por su Web API) se verificó en vivo el 14/08/2026 — confirmado con un
 registro real contra `https://henko.onrender.com`: `[EMAIL] Proveedor:
-SendGrid (Web API)` en los logs de Render, sin error, con `x-message-id` de
-SendGrid en la respuesta. Eso sigue siendo cierto.
+SendGrid` en los logs de Render, sin error, con `x-message-id` de SendGrid
+en la respuesta. Eso sigue siendo cierto.
 
 **Pero el 25/08/2026 se encontró un problema distinto, más serio**:
 `EMAIL_FROM` está cargado con una dirección `@gmail.com`. SendGrid acepta

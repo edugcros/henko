@@ -1,11 +1,16 @@
 // 📁 src/services/emailService.js
-// Envío transaccional — proveedor único: SendGrid (Web API HTTPS).
-// Ver docs/EMAIL_PRODUCTION.md para el porqué (Render Free bloquea SMTP
-// saliente; la Web API corre por HTTPS/443 y no la afecta).
+// Envío transaccional. Quién pone el correo en la red lo decide
+// EMAIL_PROVIDER y vive en email/emailProviders.js; acá queda el armado del
+// mensaje, la resolución del remitente y la política de reintentos, que no
+// dependen del proveedor.
+//
+// Todos los proveedores soportados hablan por HTTPS/443: el plan Free de
+// Render bloquea los puertos SMTP salientes. Ver docs/EMAIL_PRODUCTION.md.
 
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import { validateEmail, escapeHtml, sanitizeString } from './email/emailShared.js'
+import { enviarConProveedor, esReintentable, proveedorActivo } from './email/emailProviders.js'
 
 // =====================================================
 // CONSTANTES
@@ -153,8 +158,9 @@ let missingSenderWarned = false
 /**
  * Desde qué dirección sale este correo. Única definición de la regla.
  *
- * Orden: dominio propio del comercio si está VERIFICADO en SendGrid, después
- * el remitente de la plataforma (EMAIL_FROM, o EMAIL_USER como respaldo).
+ * Orden: dominio propio del comercio si está VERIFICADO en el proveedor,
+ * después el remitente de la plataforma (EMAIL_FROM, o EMAIL_USER como
+ * respaldo).
  *
  * El estado 'verified' no es un detalle administrativo: un dominio que aún no
  * publica SPF/DKIM no autoriza a nadie a enviar en su nombre, así que usarlo
@@ -176,10 +182,11 @@ const getFromAddress = tenantConfig => {
   const storeName = getStoreName(tenantConfig)
   const fromEmail = resolveSenderAddress(tenantConfig)
 
-  // SendGrid no tiene sandbox al que caer: sin EMAIL_FROM/EMAIL_USER no hay
-  // remitente, y el envío va a fallar explícito río abajo en vez de fingir
-  // que salió — pero sin este aviso, el motivo (una variable vacía) queda
-  // escondido detrás de un error genérico de "solicitud inválida".
+  // Ninguno de los proveedores tiene un sandbox al que caer: sin
+  // EMAIL_FROM/EMAIL_USER no hay remitente, y el envío va a fallar explícito
+  // río abajo en vez de fingir que salió — pero sin este aviso, el motivo
+  // (una variable vacía) queda escondido detrás de un error genérico de
+  // "solicitud inválida".
   if (!fromEmail && !missingSenderWarned) {
     missingSenderWarned = true
 
@@ -439,47 +446,29 @@ const buildPlainTextSummary = ({ orderNumber, items, totals, shippingAddress, st
 }
 
 // =====================================================
-// TRANSPORTE — SendGrid, Web API (HTTPS)
+// TRANSPORTE
 // =====================================================
 //
-// henko-api corre en el plan FREE de Render (verificado contra la propia
-// API de Render, no asumido), y ese plan bloquea los puertos SMTP salientes
-// (25, 465, 587) desde septiembre 2025 — un intento real contra
+// El transporte concreto vive en email/emailProviders.js. Acá sólo queda la
+// política que es igual para todos: cuántas veces reintentar, cuánto
+// esperar entre intentos, y qué se registra.
+//
+// henko-api corre en el plan FREE de Render (verificado contra la propia API
+// de Render, no asumido), y ese plan bloquea los puertos SMTP salientes (25,
+// 465, 587) desde septiembre 2025 — un intento real contra
 // smtp.sendgrid.net:587 se quedó colgado sin error ni éxito, consistente con
-// un bloqueo silencioso de puerto, no con credenciales inválidas. La Web API
-// usa el puerto 443 como cualquier request HTTPS normal, así que ese bloqueo
-// no la afecta — por eso es el único transporte que este servicio soporta.
+// un bloqueo silencioso de puerto, no con credenciales inválidas. Por eso
+// todo proveedor soportado tiene que hablar por HTTPS/443.
 // Fuente: https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports
 // Detalle completo: docs/EMAIL_PRODUCTION.md
 
-const SENDGRID_MAIL_SEND_URL = 'https://api.sendgrid.com/v3/mail/send'
-const EMAIL_SEND_TIMEOUT_MS = 15000
-
-const getSendGridApiKeyForSend = () =>
-  sanitizeString(process.env.SENDGRID_API_KEY) || sanitizeString(process.env.EMAIL_PASS)
-
-// El from llega armado como 'Nombre <email>' (o solo 'email') porque así lo
-// arma getFromAddress. La Web API de SendGrid en cambio pide from como
-// {email, name}.
-const parseFromHeader = raw => {
-  const str = sanitizeString(raw)
-  const match = /^(.*)<([^>]+)>\s*$/.exec(str)
-
-  if (match) {
-    const name = match[1].trim().replace(/^"|"$/g, '')
-    return { email: match[2].trim(), name: name || undefined }
-  }
-
-  return { email: str }
-}
-
 let transportAnnounced = false
 
-const announceTransportOnce = () => {
+const announceTransportOnce = proveedor => {
   if (transportAnnounced) return
   transportAnnounced = true
 
-  logger.info('[EMAIL] Proveedor: SendGrid (Web API)')
+  logger.info(`[EMAIL] Proveedor: ${proveedor}`)
 }
 
 // =====================================================
@@ -491,89 +480,32 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
 
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
     try {
+      const proveedor = proveedorActivo().nombre
+
+      announceTransportOnce(proveedor)
+
       logger.info('📤 Enviando email', {
         attempt,
         maxRetries,
+        proveedor,
         to: mailOptions.to,
         subject: mailOptions.subject,
       })
 
-      announceTransportOnce()
+      const { messageId } = await enviarConProveedor(mailOptions)
 
-      const apiKey = getSendGridApiKeyForSend()
-
-      if (!apiKey) {
-        const error = new Error('SendGrid API: falta EMAIL_PASS o SENDGRID_API_KEY')
-        error.code = 'SENDGRID_API_NOT_CONFIGURED'
-        throw error
-      }
-
-      const { email: fromEmail, name: fromName } = parseFromHeader(mailOptions.from)
-      const content = [
-        mailOptions.text ? { type: 'text/plain', value: mailOptions.text } : null,
-        mailOptions.html ? { type: 'text/html', value: mailOptions.html } : null,
-      ].filter(Boolean)
-
-      // Sin timeout, una respuesta que nunca llega deja la promesa colgada
-      // indefinidamente en vez de fallar y dejar reintentar — es justo lo
-      // que pasó al probar SMTP contra el plan Free de Render antes de
-      // migrar a la Web API (ver docs/EMAIL_PRODUCTION.md).
-      const abortController = new AbortController()
-      const timeoutId = setTimeout(() => abortController.abort(), EMAIL_SEND_TIMEOUT_MS)
-
-      let response
-      try {
-        response = await fetch(SENDGRID_MAIL_SEND_URL, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            personalizations: [{ to: [{ email: mailOptions.to }] }],
-            from: { email: fromEmail, ...(fromName ? { name: fromName } : {}) },
-            ...(mailOptions.replyTo ? { reply_to: { email: mailOptions.replyTo } } : {}),
-            subject: mailOptions.subject,
-            content,
-          }),
-          signal: abortController.signal,
-        })
-      } catch (fetchError) {
-        if (fetchError.name === 'AbortError') {
-          const timeoutError = new Error(`SendGrid API no respondió en ${EMAIL_SEND_TIMEOUT_MS}ms`)
-          timeoutError.code = 'SENDGRID_TIMEOUT'
-          throw timeoutError
-        }
-        throw fetchError
-      } finally {
-        clearTimeout(timeoutId)
-      }
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => '')
-        const error = new Error(
-          `SendGrid API rechazó el envío (${response.status}): ${body.slice(0, 500)}`,
-        )
-        error.code =
-          response.status === 401 || response.status === 403
-            ? 'SENDGRID_AUTH_FAILED'
-            : 'SENDGRID_REQUEST_INVALID'
-        throw error
-      }
-
-      const messageId = response.headers.get('x-message-id')
-
-      // "Aceptado", no "enviado". El 202 de SendGrid significa "lo recibí,
-      // después veré qué hago": el rebote, el descarte por lista de supresión y
-      // el bloqueo ocurren DESPUÉS y por otro canal.
+      // "Aceptado", no "enviado". Todos estos proveedores contestan "lo
+      // recibí, después veré qué hago": el rebote, el descarte por lista de
+      // supresión y el bloqueo ocurren DESPUÉS y por otro canal.
       //
       // Decía "✅ Email enviado correctamente" y eso engañó de verdad: el
       // 18/09/2026 un correo figuraba así en los logs mientras SendGrid lo tenía
       // en `Dropped` porque la dirección estaba suprimida por rebotes previos.
       //
-      // Lo que realmente pasó llega por el webhook de eventos
-      // (sendgridWebhookCtrl), que registra los fallos como error.
-      logger.info('📨 Email aceptado por SendGrid', {
+      // Lo que realmente pasó llega por el webhook de eventos del proveedor,
+      // que registra los fallos como error.
+      logger.info('📨 Email aceptado por el proveedor', {
+        proveedor,
         messageId,
       })
 
@@ -582,7 +514,7 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         messageId: messageId || null,
         accepted: [mailOptions.to],
         rejected: [],
-        response: 'sendgrid-api-accepted',
+        response: `${proveedor}: aceptado`,
         attempt,
       }
     } catch (error) {
@@ -597,28 +529,19 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
         code: error.code,
       })
 
-      // Config rota o pedido inválido: reintentar no cambia nada.
-      if (error.code === 'SENDGRID_API_NOT_CONFIGURED' || error.code === 'SENDGRID_AUTH_FAILED') {
-        logger.error('🔒 Error de configuración de SendGrid API', {
-          suggestion: 'Verificá EMAIL_PASS (o SENDGRID_API_KEY) en las variables de entorno.',
-        })
-
-        return {
-          success: false,
-          error: 'SENDGRID_AUTHENTICATION_FAILED',
-          details: error.message,
+      // Credenciales rotas, pedido mal armado o envío pausado por
+      // reputación: reintentar da la misma falla tres veces y demora la
+      // respuesta sin ganar nada. Qué entra en esta categoría lo decide
+      // emailProviders.js, que es quien traduce el error de cada proveedor.
+      if (!esReintentable(error.code)) {
+        logger.error('🔒 Falla definitiva de envío — no se reintenta', {
           code: error.code,
-        }
-      }
-
-      if (error.code === 'SENDGRID_REQUEST_INVALID') {
-        logger.error('⚠️ SendGrid API rechazó el envío (solicitud inválida)', {
           details: error.message,
         })
 
         return {
           success: false,
-          error: 'SENDGRID_REQUEST_INVALID',
+          error: error.code,
           details: error.message,
           code: error.code,
         }
@@ -639,7 +562,8 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
 
   return {
     success: false,
-    error: lastError?.message || 'UNKNOWN_EMAIL_ERROR',
+    error: lastError?.code || 'UNKNOWN_EMAIL_ERROR',
+    details: lastError?.message || 'Se agotaron los reintentos sin una causa identificada',
     code: lastError?.code || null,
     attempts: maxRetries,
   }
@@ -655,6 +579,7 @@ export const sendEmail = async ({
   replyTo = null,
   attachments = [],
   maxRetries = 3,
+  tenantName = null,
 }) => {
   const validTo = validateEmail(to)
 
@@ -674,6 +599,13 @@ export const sendEmail = async ({
     text,
     replyTo: replyTo || getReplyTo(tenantConfig),
     attachments: Array.isArray(attachments) ? attachments : [],
+
+    // Sólo lo usa el driver de SES, y sólo cuando el comercio ya tiene su
+    // identidad dada de alta como inquilino: es lo que hace que la
+    // reputación se mida por comercio y no por cuenta, así una tienda con
+    // la lista sucia no pause el envío de todas las demás. Los otros
+    // proveedores lo ignoran.
+    tenantName: sanitizeString(tenantName) || null,
   }
 
   Object.keys(mailOptions).forEach(key => {

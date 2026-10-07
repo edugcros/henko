@@ -46,6 +46,9 @@ const { sendCartRecoveryEmail } = await import('../services/email/cartRecoveryEm
 const { resolveSenderAddress } = await import('../services/emailService.js')
 const { extractDomain } = await import('../services/email/tenantEmailDomainService.js')
 
+const { CODIGOS, esReintentable, proveedorActivo, enviarConProveedor } =
+  await import('../services/email/emailProviders.js')
+
 const { resolveRecoveryChannel } =
   await import('../services/aiAgent/aiCartRecoveryWorkerService.js')
 
@@ -438,5 +441,241 @@ describe('remitente por comercio', () => {
     expect(extractDomain('HOLA@TiendaX.com')).toBe('tiendax.com')
     expect(extractDomain('sin-arroba')).toBe('')
     expect(extractDomain('')).toBe('')
+  })
+})
+
+// =====================================================
+// Proveedor de envío intercambiable
+// =====================================================
+//
+// El proveedor dejó de estar clavado a fuego y ahora lo elige EMAIL_PROVIDER.
+// Lo que estos bloques fijan es el contrato que hace que cambiarlo sea
+// seguro: que cada proveedor reciba el mensaje con la forma que pide, y que
+// sus fallas se traduzcan todas al mismo vocabulario — porque de esa
+// traducción depende si se reintenta o no.
+
+const guardarEntorno = claves => {
+  const previas = Object.fromEntries(claves.map(clave => [clave, process.env[clave]]))
+
+  return () =>
+    claves.forEach(clave => {
+      if (previas[clave] === undefined) delete process.env[clave]
+      else process.env[clave] = previas[clave]
+    })
+}
+
+describe('proveedor de envío · cuál queda activo', () => {
+  let restaurar
+
+  beforeEach(() => {
+    restaurar = guardarEntorno(['EMAIL_PROVIDER'])
+  })
+
+  afterEach(() => restaurar())
+
+  test('sin EMAIL_PROVIDER sigue siendo SendGrid', () => {
+    // Mientras dure la mudanza, no configurar nada tiene que dejar todo como
+    // estaba: el cambio de proveedor es una decisión explícita, no un efecto
+    // de haber desplegado esta versión.
+    delete process.env.EMAIL_PROVIDER
+
+    expect(proveedorActivo().nombre).toBe('SendGrid')
+  })
+
+  test('EMAIL_PROVIDER elige el driver, sin importar mayúsculas ni espacios', () => {
+    process.env.EMAIL_PROVIDER = '  SES  '
+    expect(proveedorActivo().nombre).toBe('Amazon SES')
+
+    process.env.EMAIL_PROVIDER = 'resend'
+    expect(proveedorActivo().nombre).toBe('Resend')
+  })
+
+  test('un proveedor inexistente falla nombrando las opciones', () => {
+    // Un typo en una variable de entorno no se ve en ningún diff. Si el
+    // mensaje no dice qué valores son válidos, el error aparece recién en el
+    // primer correo que no sale.
+    process.env.EMAIL_PROVIDER = 'mailchimp'
+
+    expect(() => proveedorActivo()).toThrow(/mailchimp/)
+    expect(() => proveedorActivo()).toThrow(/sendgrid, resend, ses/)
+  })
+})
+
+describe('proveedor de envío · qué se reintenta y qué no', () => {
+  // EL BUG QUE CIERRA ESTE BLOQUE
+  //
+  // La clasificación anterior mandaba todo lo que no fuera 401/403 al cajón
+  // de "pedido inválido", que es no-reintentable. O sea que un 429 ("pediste
+  // de más, esperá") y un 503 ("estoy caído, volvé") abortaban en el primer
+  // intento — los dos únicos casos donde reintentar es exactamente lo que
+  // corresponde. El bucle de reintentos existía y no se usaba para aquello
+  // que sirve.
+
+  test('lo pasajero se reintenta', () => {
+    expect(esReintentable(CODIGOS.LIMITE_DE_TASA)).toBe(true)
+    expect(esReintentable(CODIGOS.PROVEEDOR_CAIDO)).toBe(true)
+    expect(esReintentable(CODIGOS.TIEMPO_AGOTADO)).toBe(true)
+  })
+
+  test('lo que no se arregla solo, no', () => {
+    expect(esReintentable(CODIGOS.AUTENTICACION)).toBe(false)
+    expect(esReintentable(CODIGOS.PEDIDO_INVALIDO)).toBe(false)
+    expect(esReintentable(CODIGOS.SIN_CONFIGURAR)).toBe(false)
+
+    // Un inquilino pausado por reputación en SES no se destraba
+    // reintentando: hay que resolver el motivo primero.
+    expect(esReintentable(CODIGOS.ENVIO_PAUSADO)).toBe(false)
+  })
+})
+
+describe('proveedor de envío · forma del pedido y traducción de fallas', () => {
+  const CORREO = {
+    to: 'compradora@ejemplo.com',
+    from: 'Tienda X <no-reply@tiendax.com>',
+    subject: 'Asunto',
+    text: 'Cuerpo',
+  }
+
+  let restaurar
+  let fetchOriginal
+
+  beforeEach(() => {
+    restaurar = guardarEntorno([
+      'EMAIL_PROVIDER',
+      'SENDGRID_API_KEY',
+      'EMAIL_PASS',
+      'RESEND_API_KEY',
+    ])
+    fetchOriginal = global.fetch
+
+    process.env.EMAIL_PROVIDER = 'sendgrid'
+    process.env.SENDGRID_API_KEY = 'clave-de-prueba'
+  })
+
+  afterEach(() => {
+    global.fetch = fetchOriginal
+    restaurar()
+  })
+
+  const responderCon = status => {
+    global.fetch = async () => ({
+      ok: false,
+      status,
+      text: async () => 'detalle del proveedor',
+      json: async () => ({ message: 'detalle del proveedor' }),
+      headers: { get: () => null },
+    })
+  }
+
+  test('429 se traduce a límite de tasa, que sí se reintenta', async () => {
+    responderCon(429)
+
+    await expect(enviarConProveedor(CORREO)).rejects.toMatchObject({
+      code: CODIGOS.LIMITE_DE_TASA,
+    })
+    expect(esReintentable(CODIGOS.LIMITE_DE_TASA)).toBe(true)
+  })
+
+  test('503 se traduce a proveedor caído, que sí se reintenta', async () => {
+    responderCon(503)
+
+    await expect(enviarConProveedor(CORREO)).rejects.toMatchObject({
+      code: CODIGOS.PROVEEDOR_CAIDO,
+    })
+    expect(esReintentable(CODIGOS.PROVEEDOR_CAIDO)).toBe(true)
+  })
+
+  test('401 se traduce a autenticación, que no se reintenta', async () => {
+    responderCon(401)
+
+    await expect(enviarConProveedor(CORREO)).rejects.toMatchObject({
+      code: CODIGOS.AUTENTICACION,
+    })
+  })
+
+  test('400 se traduce a pedido inválido, que no se reintenta', async () => {
+    responderCon(400)
+
+    await expect(enviarConProveedor(CORREO)).rejects.toMatchObject({
+      code: CODIGOS.PEDIDO_INVALIDO,
+    })
+  })
+
+  test('sin credencial no se sale a la red siquiera', async () => {
+    delete process.env.SENDGRID_API_KEY
+    delete process.env.EMAIL_PASS
+
+    let huboLlamada = false
+    global.fetch = async () => {
+      huboLlamada = true
+      throw new Error('no debería haberse llamado')
+    }
+
+    await expect(enviarConProveedor(CORREO)).rejects.toMatchObject({
+      code: CODIGOS.SIN_CONFIGURAR,
+    })
+    expect(huboLlamada).toBe(false)
+  })
+
+  test('los adjuntos fallan en voz alta en vez de desaparecer', async () => {
+    // Antes se aceptaban como parámetro y se descartaban en silencio: quien
+    // llamaba se quedaba creyendo que el adjunto había salido. Nadie los usa
+    // todavía, así que el costo de decirlo es cero y el de callarlo es un
+    // bug que sólo aparece cuando alguien confíe en ellos.
+    let huboLlamada = false
+    global.fetch = async () => {
+      huboLlamada = true
+      throw new Error('no debería haberse llamado')
+    }
+
+    await expect(
+      enviarConProveedor({ ...CORREO, attachments: [{ filename: 'factura.pdf' }] }),
+    ).rejects.toMatchObject({ code: CODIGOS.ADJUNTOS_NO_SOPORTADOS })
+    expect(huboLlamada).toBe(false)
+  })
+
+  test('SendGrid recibe el remitente partido en {email, name}', async () => {
+    let cuerpo = null
+
+    global.fetch = async (url, opciones) => {
+      cuerpo = JSON.parse(opciones.body)
+
+      return {
+        ok: true,
+        status: 202,
+        text: async () => '',
+        headers: { get: cabecera => (cabecera === 'x-message-id' ? 'sg-123' : null) },
+      }
+    }
+
+    const resultado = await enviarConProveedor(CORREO)
+
+    expect(cuerpo.from).toEqual({ email: 'no-reply@tiendax.com', name: 'Tienda X' })
+    expect(cuerpo.personalizations).toEqual([{ to: [{ email: 'compradora@ejemplo.com' }] }])
+    expect(resultado).toEqual({ messageId: 'sg-123', proveedor: 'SendGrid' })
+  })
+
+  test('Resend recibe el remitente entero, que es como lo pide', async () => {
+    process.env.EMAIL_PROVIDER = 'resend'
+    process.env.RESEND_API_KEY = 'clave-de-prueba'
+
+    let cuerpo = null
+
+    global.fetch = async (url, opciones) => {
+      cuerpo = JSON.parse(opciones.body)
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 'res-456' }),
+        headers: { get: () => null },
+      }
+    }
+
+    const resultado = await enviarConProveedor(CORREO)
+
+    expect(cuerpo.from).toBe('Tienda X <no-reply@tiendax.com>')
+    expect(cuerpo.to).toEqual(['compradora@ejemplo.com'])
+    expect(resultado).toEqual({ messageId: 'res-456', proveedor: 'Resend' })
   })
 })
