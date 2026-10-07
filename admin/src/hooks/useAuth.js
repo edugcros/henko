@@ -6,6 +6,7 @@ import {
   logoutUser,
   setCsrfToken,
   openSessionChannel,
+  marcaDeSesion,
   SESSION_RESET,
 } from '@features/auth/authSlice'
 
@@ -120,8 +121,21 @@ export const useAuth = () => {
   // respuesta. No se dispara logoutUser() acá si falla: un 401 en el
   // bootstrap significa "nunca hubo sesión", no "había una sesión que
   // cerrar" — dispatchear logout ahí llamaría al backend sin necesidad.
+  //
+  // Y no se pregunta si no hay a quién preguntarle por: a quien cae en
+  // /login sin haber entrado nunca en este navegador no hay sesión que
+  // restaurarle, y preguntar le costaba dos llamadas garantizadas en cada
+  // carga (401 + 403) más dos errores en consola que parecían una rotura.
+  // La marca la mantiene authSlice en cada entrada, confirmación y salida;
+  // no es prueba de sesión —la verdad sigue siendo la cookie httpOnly— sino
+  // la única forma de saber que NO hace falta preguntar.
   useEffect(() => {
     let active = true
+
+    if (!marcaDeSesion.hay()) {
+      setBootstrapped(true)
+      return undefined
+    }
 
     dispatch(getMe()).finally(() => {
       if (active) setBootstrapped(true)
@@ -154,8 +168,14 @@ export const useAuth = () => {
       // Se tira todo y se vuelve a preguntar quién sos. getMe resuelve contra
       // la cookie, que es la única que sabe la verdad; si ya no hay sesión, su
       // rejected deja isAuthenticated en false y el guard manda al login.
+      //
+      // Salvo que la otra pestaña haya CERRADO sesión: la marca vive en
+      // localStorage, que sí se comparte entre pestañas, así que para
+      // entonces ya no está. SESSION_RESET solo alcanza para que el guard
+      // mande al login, y preguntar sería repetir el 401 + 403 de siempre.
       dispatch({ type: SESSION_RESET })
-      dispatch(getMe())
+
+      if (marcaDeSesion.hay()) dispatch(getMe())
     }
 
     return () => {
