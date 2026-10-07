@@ -135,5 +135,8 @@
     "webpack-cli": "^7.2.3",
     "webpack-dev-server": "^6.0.0",
     "webpack-merge": "^6.0.1"
+  },
+  "overrides": {
+    "compression": "^1.8.2"
   }
 }
