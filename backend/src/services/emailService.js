@@ -166,12 +166,23 @@ let missingSenderWarned = false
  * publica SPF/DKIM no autoriza a nadie a enviar en su nombre, así que usarlo
  * como remitente no es "casi funcionar" — es garantizar el rebote o la
  * carpeta de spam. Por eso pending y failed salen por la plataforma.
+ *
+ * Y 'verified' sólo vale PARA EL PROVEEDOR QUE LO VERIFICÓ. Los registros
+ * DKIM que publicó el comercio apuntan a ese servicio y a ningún otro: al
+ * cambiar de proveedor, ese mismo dominio deja de estar autorizado hasta que
+ * se vuelva a verificar. Sin este chequeo, el día de la mudanza todos los
+ * comercios con dominio propio seguirían saliendo con su identidad y cada
+ * correo rebotaría o caería en spam, con el estado diciendo "verificado".
  */
 export const resolveSenderAddress = (tenantConfig = {}) => {
-  const tenantSender =
-    tenantConfig?.email?.status === 'verified'
-      ? validateEmail(tenantConfig?.email?.fromAddress)
-      : null
+  const email = tenantConfig?.email || {}
+
+  // Un registro sin proveedor es anterior a que hubiera más de uno, y en ese
+  // momento el único era SendGrid: eso es lo que significa que esté vacío.
+  const verificadoPor = email.provider || 'sendgrid'
+
+  const sirveAca = email.status === 'verified' && verificadoPor === proveedorActivo().id
+  const tenantSender = sirveAca ? validateEmail(email.fromAddress) : null
 
   if (tenantSender) return tenantSender
 

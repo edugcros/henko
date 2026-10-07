@@ -43,10 +43,43 @@ const {
 
 const { sendCartRecoveryEmail } = await import('../services/email/cartRecoveryEmail.service.js')
 
+// El SDK de AWS se intercepta entero: lo que interesa verificar es QUÉ
+// comandos se mandan y con qué forma —sobre todo que se cree el inquilino y
+// se le asocien los recursos—, no que AWS los acepte.
+const comandosSes = []
+const respuestasSes = {}
+
+const comandoSes = tipo =>
+  class {
+    constructor(input) {
+      this.__tipo = tipo
+      this.input = input
+    }
+  }
+
+jest.unstable_mockModule('@aws-sdk/client-sesv2', () => ({
+  SESv2Client: class {
+    async send(comando) {
+      comandosSes.push({ tipo: comando.__tipo, input: comando.input })
+
+      const respuesta = respuestasSes[comando.__tipo]
+
+      if (typeof respuesta === 'function') return respuesta(comando.input)
+
+      return respuesta || {}
+    }
+  },
+  SendEmailCommand: comandoSes('SendEmail'),
+  CreateEmailIdentityCommand: comandoSes('CreateEmailIdentity'),
+  GetEmailIdentityCommand: comandoSes('GetEmailIdentity'),
+  CreateTenantCommand: comandoSes('CreateTenant'),
+  CreateTenantResourceAssociationCommand: comandoSes('CreateTenantResourceAssociation'),
+}))
+
 const { resolveSenderAddress } = await import('../services/emailService.js')
 const { extractDomain } = await import('../services/email/tenantEmailDomainService.js')
 
-const { CODIGOS, esReintentable, proveedorActivo, enviarConProveedor } =
+const { CODIGOS, esReintentable, proveedorActivo, enviarConProveedor, dominiosDelProveedor } =
   await import('../services/email/emailProviders.js')
 
 const { resolveRecoveryChannel } =
@@ -677,5 +710,202 @@ describe('proveedor de envío · forma del pedido y traducción de fallas', () =
     expect(cuerpo.from).toBe('Tienda X <no-reply@tiendax.com>')
     expect(cuerpo.to).toEqual(['compradora@ejemplo.com'])
     expect(resultado).toEqual({ messageId: 'res-456', proveedor: 'Resend' })
+  })
+})
+
+// =====================================================
+// Dominio propio del comercio, al cambiar de proveedor
+// =====================================================
+
+describe('remitente · un dominio verificado vale sólo para quien lo verificó', () => {
+  // LO QUE ESTE BLOQUE EVITA
+  //
+  // Los registros DKIM que publica un comercio autorizan a UN servicio a
+  // firmar en su nombre, no a cualquiera. Cuando la plataforma cambia de
+  // proveedor, ese dominio deja de estar autorizado hasta volver a
+  // verificarlo — pero el estado guardado en la base sigue diciendo
+  // 'verified', porque nadie lo tocó.
+  //
+  // Sin este chequeo, el día de la mudanza todos los comercios con dominio
+  // propio seguirían saliendo con su identidad, el nuevo proveedor firmaría
+  // con una clave que ese dominio no autoriza, y cada correo rebotaría o
+  // caería en spam — mostrando "verificado" en el panel todo el tiempo.
+
+  let restaurar
+
+  beforeEach(() => {
+    restaurar = guardarEntorno(['EMAIL_PROVIDER', 'EMAIL_FROM'])
+    process.env.EMAIL_FROM = 'no-reply@plataforma.com'
+  })
+
+  afterEach(() => restaurar())
+
+  const DOMINIO_PROPIO = {
+    email: { status: 'verified', fromAddress: 'hola@tiendax.com', provider: 'sendgrid' },
+  }
+
+  test('con el mismo proveedor, sale desde el comercio', () => {
+    process.env.EMAIL_PROVIDER = 'sendgrid'
+
+    expect(resolveSenderAddress(DOMINIO_PROPIO)).toBe('hola@tiendax.com')
+  })
+
+  test('con otro proveedor, vuelve a salir por la plataforma', () => {
+    process.env.EMAIL_PROVIDER = 'ses'
+
+    expect(resolveSenderAddress(DOMINIO_PROPIO)).toBe('no-reply@plataforma.com')
+  })
+
+  test('un registro sin proveedor cuenta como de SendGrid', () => {
+    // Son los que se guardaron antes de que hubiera más de uno. Tratarlos
+    // como "de proveedor desconocido" dejaría sin dominio propio a comercios
+    // que hoy lo tienen funcionando.
+    process.env.EMAIL_PROVIDER = 'sendgrid'
+
+    expect(
+      resolveSenderAddress({ email: { status: 'verified', fromAddress: 'hola@tiendax.com' } }),
+    ).toBe('hola@tiendax.com')
+  })
+})
+
+describe('dominios · no todos los proveedores los administran', () => {
+  let restaurar
+
+  beforeEach(() => {
+    restaurar = guardarEntorno(['EMAIL_PROVIDER'])
+  })
+
+  afterEach(() => restaurar())
+
+  test('Resend lo dice explícitamente', () => {
+    // Resend está como puente mientras SES sale del sandbox. Dar de alta el
+    // dominio de un comercio ahí sería hacerle publicar registros que habría
+    // que reemplazar en días: mejor que el panel diga que no se puede.
+    process.env.EMAIL_PROVIDER = 'resend'
+
+    expect(dominiosDelProveedor().soportado).toBe(false)
+  })
+
+  test('SendGrid y SES sí', () => {
+    process.env.EMAIL_PROVIDER = 'sendgrid'
+    expect(dominiosDelProveedor().soportado).toBe(true)
+
+    process.env.EMAIL_PROVIDER = 'ses'
+    expect(dominiosDelProveedor().soportado).toBe(true)
+  })
+})
+
+describe('dominios · alta en SES', () => {
+  let restaurar
+
+  beforeEach(() => {
+    restaurar = guardarEntorno([
+      'EMAIL_PROVIDER',
+      'AWS_ACCESS_KEY_ID',
+      'AWS_SECRET_ACCESS_KEY',
+      'AWS_ACCOUNT_ID',
+      'AWS_REGION',
+      'SES_CONFIGURATION_SET',
+    ])
+
+    process.env.EMAIL_PROVIDER = 'ses'
+    process.env.AWS_ACCESS_KEY_ID = 'clave-de-prueba'
+    process.env.AWS_SECRET_ACCESS_KEY = 'secreto-de-prueba'
+    process.env.AWS_ACCOUNT_ID = '123456789012'
+    process.env.AWS_REGION = 'us-east-1'
+    process.env.SES_CONFIGURATION_SET = 'henko'
+
+    comandosSes.length = 0
+    Object.keys(respuestasSes).forEach(clave => delete respuestasSes[clave])
+
+    respuestasSes.CreateEmailIdentity = () => ({
+      VerifiedForSendingStatus: false,
+      DkimAttributes: { Status: 'PENDING', Tokens: ['aaa', 'bbb', 'ccc'] },
+    })
+  })
+
+  afterEach(() => restaurar())
+
+  test('devuelve los tres CNAME de Easy DKIM y ninguno toca el MX', async () => {
+    const alta = await dominiosDelProveedor().alta('tiendax.com', { inquilino: 'comercio-1' })
+
+    expect(alta.status).toBe('pending')
+    expect(alta.dns).toHaveLength(3)
+
+    expect(alta.dns.map(r => r.type)).toEqual(['CNAME', 'CNAME', 'CNAME'])
+    expect(alta.dns[0]).toMatchObject({
+      name: 'aaa._domainkey.tiendax.com',
+      value: 'aaa.dkim.amazonses.com',
+    })
+
+    // Que no haya MX no es un detalle: la variante con MX le robaría al
+    // comercio su correo ENTRANTE.
+    expect(alta.dns.some(r => r.type === 'MX')).toBe(false)
+  })
+
+  test('crea el inquilino con lista de supresión propia', async () => {
+    await dominiosDelProveedor().alta('tiendax.com', { inquilino: 'comercio-1' })
+
+    const inquilino = comandosSes.find(c => c.tipo === 'CreateTenant')
+
+    expect(inquilino.input.TenantName).toBe('comercio-1')
+
+    // Con la lista de la cuenta —el valor por omisión— un comprador que
+    // marca spam a UNA tienda queda bloqueado para TODAS.
+    expect(inquilino.input.SuppressionAttributes).toEqual({
+      SuppressionScope: 'TENANT',
+      SuppressedReasons: ['BOUNCE', 'COMPLAINT'],
+    })
+  })
+
+  test('asocia al inquilino la identidad y el conjunto de configuración', async () => {
+    await dominiosDelProveedor().alta('tiendax.com', { inquilino: 'comercio-1' })
+
+    const asociados = comandosSes
+      .filter(c => c.tipo === 'CreateTenantResourceAssociation')
+      .map(c => c.input.ResourceArn)
+
+    // SES exige las dos: sin el conjunto de configuración el alta queda a
+    // medias y el primer envío falla con un error que no menciona esto.
+    expect(asociados).toEqual([
+      'arn:aws:ses:us-east-1:123456789012:identity/tiendax.com',
+      'arn:aws:ses:us-east-1:123456789012:configuration-set/henko',
+    ])
+  })
+
+  test('sin inquilino no se crea ninguno, pero la identidad sí', async () => {
+    await dominiosDelProveedor().alta('tiendax.com')
+
+    expect(comandosSes.map(c => c.tipo)).toEqual(['CreateEmailIdentity'])
+  })
+
+  test('un AWS_ACCOUNT_ID que no es una cuenta se dice por su nombre', async () => {
+    // El ARN se arma a mano, así que una cuenta mal cargada se manifestaría
+    // como "no existe ese recurso" — un error que no señala a la variable.
+    process.env.AWS_ACCOUNT_ID = 'mi-cuenta'
+
+    await expect(
+      dominiosDelProveedor().alta('tiendax.com', { inquilino: 'comercio-1' }),
+    ).rejects.toThrow(/AWS_ACCOUNT_ID/)
+  })
+
+  test('DKIM en SUCCESS queda verificado; en FAILED, fallido', async () => {
+    // SES sí tiene un estado terminal, a diferencia de SendGrid. Informar
+    // FAILED como "pendiente" dejaría al comercio esperando para siempre.
+    respuestasSes.GetEmailIdentity = () => ({
+      VerifiedForSendingStatus: true,
+      DkimAttributes: { Status: 'SUCCESS', Tokens: ['aaa'] },
+    })
+
+    const verificado = await dominiosDelProveedor().estado({ dominio: 'tiendax.com' })
+    expect(verificado.status).toBe('verified')
+
+    respuestasSes.GetEmailIdentity = () => ({
+      VerifiedForSendingStatus: false,
+      DkimAttributes: { Status: 'FAILED', Tokens: ['aaa'] },
+    })
+
+    const fallido = await dominiosDelProveedor().estado({ dominio: 'tiendax.com' })
+    expect(fallido.status).toBe('failed')
   })
 })

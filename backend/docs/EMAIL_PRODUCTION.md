@@ -56,7 +56,7 @@ El proveedor lo elige **`EMAIL_PROVIDER`** y los drivers viven en
 | --- | --- | --- |
 | `sendgrid` (por omisión) | `EMAIL_PASS`, o `SENDGRID_API_KEY` | `POST /v3/mail/send` |
 | `resend` | `RESEND_API_KEY` | `POST /emails` |
-| `ses` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | SDK `@aws-sdk/client-sesv2`; opcionales `AWS_REGION`, `SES_CONFIGURATION_SET` |
+| `ses` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | SDK `@aws-sdk/client-sesv2`. Para dominios por comercio hacen falta además `AWS_ACCOUNT_ID`, `AWS_REGION` y `SES_CONFIGURATION_SET` |
 
 No hay SMTP en ninguno: el plan Free de Render bloquea esos puertos (abajo
 el detalle). El valor por omisión sigue siendo SendGrid, así que desplegar
@@ -172,37 +172,67 @@ quedan anotados acá:
 
 ## Paso 1 — que cada comercio mande desde su dominio
 
-La pantalla del panel (`SendingDomainSection`) y los endpoints hablan
-siempre con SendGrid:
+La pantalla del panel (`SendingDomainSection`) y los endpoints hablan con el
+proveedor activo, a través del mismo driver que usa el envío:
 
 1. El comercio carga la dirección desde la que quiere enviar
-   (`PUT /api/tenants/me/email-domain`). El dominio se da de alta en
-   SendGrid y quedan guardados los registros DNS a publicar.
+   (`PUT /api/tenants/me/email-domain`). El dominio se da de alta en el
+   proveedor y quedan guardados los registros DNS a publicar.
 2. El comercio carga esos registros en su DNS.
-3. Pide verificar (`POST /api/tenants/me/email-domain/verify`). Si
-   SendGrid confirma, el estado pasa a `verified` y **desde el siguiente
+3. Pide verificar (`POST /api/tenants/me/email-domain/verify`). Si el
+   proveedor confirma, el estado pasa a `verified` y **desde el siguiente
    correo** el remitente es suyo.
 
 Mientras tanto, todo sigue funcionando por la plataforma. No hay ventana en la
 que el comercio se quede sin correos.
 
-### Requiere una key con permisos
+En ambos proveedores los registros son **CNAME** y ninguno toca el MX: el
+correo ENTRANTE del comercio sigue funcionando igual. SendGrid lo consigue
+con `automatic_security`; SES, con Easy DKIM (tres CNAME).
 
-Dar de alta y consultar dominios necesita una API key de administración:
+### Un dominio verificado vale sólo para quien lo verificó
 
-```
-SENDGRID_API_KEY=SG.xxxxxxxx   # opcional: si no está, se reusa EMAIL_PASS
-```
+Los registros DKIM autorizan a **un** servicio a firmar en nombre de ese
+dominio. Al cambiar de proveedor, el dominio deja de estar autorizado hasta
+volver a verificarlo — aunque el estado guardado siga diciendo `verified`.
 
-La MISMA key que autentica el envío normalmente alcanza — `SENDGRID_API_KEY`
-solo hace falta si se quiere separar una key de solo-envío de una con
-permiso de administrar dominios (SendGrid controla esto por scope de la
-key).
+Por eso se guarda `email.provider` y `resolveSenderAddress` lo compara
+contra el proveedor activo. Sin esa comparación, el día de la mudanza todos
+los comercios con dominio propio seguirían saliendo con su identidad, el
+proveedor nuevo firmaría con una clave que ese dominio no autoriza, y cada
+correo rebotaría o caería en spam mostrando "verificado" en el panel.
 
-Sin la key de administración correspondiente, el alta se registra igual en
-estado `pending` con el motivo explicado en `email.lastError`, y alguien lo
-completa a mano desde el panel de SendGrid. El sistema nunca queda creyendo
-que manda desde un dominio que no controla.
+Cuando el refresco detecta que el dominio se verificó con otro proveedor, lo
+vuelve a dar de alta en el actual y devuelve los registros nuevos en la
+misma pantalla, con el motivo en `email.lastError`.
+
+### SES: un inquilino por comercio
+
+En SES cada comercio se da de alta además como **tenant**, y se le asocian
+su identidad y el conjunto de configuración.
+
+No es opcional a escala. Sin inquilino la reputación de envío se mide por
+CUENTA: una tienda que importa una lista comprada y rebota el 40% no se
+hunde sola, hunde el envío de todas las demás. Con inquilino, SES pausa esa
+sola. Cada uno lleva también su propia **lista de supresión**: con la de la
+cuenta, un comprador que marca spam a una tienda queda bloqueado para todas.
+
+### Credenciales con permisos
+
+| Proveedor | Variables | Notas |
+| --- | --- | --- |
+| SendGrid | `SENDGRID_API_KEY` (opcional) | Si no está se reusa `EMAIL_PASS`. La misma key del envío suele alcanzar; sólo hace falta separarlas para tener una de solo-envío (SendGrid controla esto por *scope*). |
+| SES | `AWS_ACCOUNT_ID`, `AWS_REGION`, `SES_CONFIGURATION_SET` | `AWS_ACCOUNT_ID` son los 12 dígitos de la cuenta: hacen falta para armar el ARN que pide asociar una identidad a un inquilino, y `CreateEmailIdentity` no lo devuelve. |
+
+Resend **no administra dominios de comercios** a propósito: está como
+puente mientras SES sale del sandbox, y hacer publicar registros que habría
+que reemplazar en días es trabajo tirado. El panel lo dice en vez de dejar
+un estado `pending` que nadie va a confirmar.
+
+Sin la credencial de administración correspondiente, el alta se registra
+igual en estado `pending` con el motivo en `email.lastError`, y alguien lo
+completa a mano desde la consola del proveedor. El sistema nunca queda
+creyendo que manda desde un dominio que no controla.
 
 ## Endpoints
 

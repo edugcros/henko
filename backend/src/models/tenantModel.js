@@ -296,6 +296,23 @@ const tenantSchema = new Schema(
         trim: true,
       },
 
+      // Con qué proveedor se verificó este dominio ('sendgrid', 'ses', ...).
+      //
+      // No es informativo: los registros DKIM que publicó el comercio
+      // autorizan a UN servicio y a ninguno otro. Si la plataforma cambia de
+      // proveedor, este dominio deja de estar autorizado aunque el estado
+      // siga diciendo 'verified' — y seguir usándolo como remitente haría
+      // rebotar cada correo. Por eso resolveSenderAddress lo compara contra
+      // el proveedor activo antes de confiar en el estado.
+      //
+      // Vacío significa 'sendgrid': son los registros anteriores a que
+      // hubiera más de un proveedor.
+      provider: {
+        type: String,
+        default: '',
+        trim: true,
+      },
+
       // Id del dominio en el proveedor, cuando se lo creó por API.
       providerDomainId: {
         type: String,
