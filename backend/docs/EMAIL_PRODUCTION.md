@@ -234,6 +234,55 @@ igual en estado `pending` con el motivo en `email.lastError`, y alguien lo
 completa a mano desde la consola del proveedor. El sistema nunca queda
 creyendo que manda desde un dominio que no controla.
 
+## Paso 2 — enterarse de lo que pasó después
+
+Que el proveedor acepte el correo sólo significa "lo recibí". El rebote, el
+descarte por lista de supresión y el bloqueo ocurren más tarde y por otro
+canal.
+
+Pasó el 18/09/2026: un correo figuraba en los logs como enviado y en SendGrid
+estaba en `Dropped`. Sin estos eventos, un cliente que no recibe su correo de
+verificación es indistinguible de uno que sí.
+
+Hay **una ruta por proveedor**, no una que adivine. Cada uno firma distinto, y
+un endpoint único que mirara la forma del cuerpo para elegir el verificador le
+daría al atacante justamente eso: elegir con qué firma lo van a verificar.
+
+```
+POST /api/webhooks/sendgrid/events    firma ECDSA sobre el cuerpo crudo
+POST /api/webhooks/ses/events         mensaje de SNS firmado + tópico propio
+```
+
+Las dos están exentas de CSRF: un webhook servidor-a-servidor no trae cookies,
+así que el CSRF no puede protegerlo y la firma sí.
+
+### SendGrid
+
+```
+SENDGRID_WEBHOOK_PUBLIC_KEY=...     sin esto, en producción no se procesa nada
+```
+
+### SES, que llega por SNS
+
+SES publica en un tópico de SNS y SNS reenvía. Eso agrega dos cosas:
+
+```
+SES_SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:...
+```
+
+1. **El alta de la suscripción.** Una suscripción HTTPS sólo queda confirmada
+   si el propio endpoint visita la URL que le mandan — es como AWS comprueba
+   que quien contesta lo controla. El controlador lo hace solo.
+2. **La firma.** El mensaje dice con qué certificado verificarlo, así que lo
+   primero es comprobar que esa URL sea de AWS. Sin ese chequeo cualquiera
+   manda un mensaje apuntando a un certificado suyo, lo firma con su clave, y
+   la verificación da bien: queda inventando rebotes de cualquier comercio con
+   los logs diciendo que vinieron de AWS.
+
+`SES_SNS_TOPIC_ARN` no es decorativo: una firma válida de AWS vale para
+**cualquier tópico de cualquier cuenta**. Sin comparar el tópico, alguien con
+una cuenta de AWS puede mandar eventos firmados de verdad desde un tópico suyo.
+
 ## Endpoints
 
 ```

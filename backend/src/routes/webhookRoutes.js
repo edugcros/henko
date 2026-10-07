@@ -3,8 +3,12 @@
 
 import express from 'express'
 import { handleSubscriptionWebhook } from '../controller/subscriptionWebhookCtrl.js'
-import { handleSendgridEvents } from '../controller/sendgridWebhookCtrl.js'
-import { SUBSCRIPTION_WEBHOOK_ROUTE, SENDGRID_WEBHOOK_ROUTE } from '../config/subscriptionConfig.js'
+import { handleSendgridEvents, handleSesEvents } from '../controller/emailWebhookCtrl.js'
+import {
+  SUBSCRIPTION_WEBHOOK_ROUTE,
+  SENDGRID_WEBHOOK_ROUTE,
+  SES_WEBHOOK_ROUTE,
+} from '../config/subscriptionConfig.js'
 
 const router = express.Router()
 
@@ -41,5 +45,16 @@ router.post(SUBSCRIPTION_WEBHOOK_ROUTE, handleSubscriptionWebhook)
  * envio solo sabe que la API lo acepto.
  */
 router.post(SENDGRID_WEBHOOK_ROUTE, handleSendgridEvents)
+
+/**
+ * POST /api/webhooks/ses/events
+ *
+ * Lo mismo para Amazon SES: Bounce, Complaint, Delivery, Reject. Llegan por
+ * SNS, así que este endpoint atiende además el apretón de manos que da de
+ * alta la suscripción — una suscripción HTTPS sólo queda confirmada si el
+ * propio endpoint visita la URL que le mandan, que es como AWS comprueba que
+ * quien contesta lo controla.
+ */
+router.post(SES_WEBHOOK_ROUTE, handleSesEvents)
 
 export default router

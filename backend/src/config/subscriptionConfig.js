@@ -52,6 +52,15 @@ export const SUBSCRIPTION_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${SUBSCRI
 export const SENDGRID_WEBHOOK_ROUTE = '/sendgrid/events'
 export const SENDGRID_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${SENDGRID_WEBHOOK_ROUTE}`
 
+// Eventos de entrega de Amazon SES, que llegan por SNS.
+//
+// Es una ruta aparte y no la misma que la de SendGrid a propósito: cada
+// proveedor firma distinto, y un endpoint único que mirara la forma del cuerpo
+// para elegir el verificador le daría al atacante justamente eso — elegir con
+// qué firma lo van a verificar.
+export const SES_WEBHOOK_ROUTE = '/ses/events'
+export const SES_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${SES_WEBHOOK_ROUTE}`
+
 const getApiPrefix = () => `/${clean(process.env.API_PREFIX || 'api').replace(/^\/+|\/+$/g, '')}`
 
 /**
