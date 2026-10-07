@@ -41,6 +41,88 @@ const safeStorage = {
   },
 }
 
+/**
+ * Marca de "acá alguien inició sesión alguna vez", para no preguntar al
+ * pedo.
+ *
+ * POR QUÉ EXISTE
+ *
+ * El access token vive en una cookie httpOnly: JS no puede leerla, así que
+ * la app arrancaba preguntándole siempre al backend si había sesión. Para un
+ * visitante que nunca se logueó eso son dos llamadas garantizadas —
+ * /user/me da 401 y /user/refresh da 403— en CADA carga, más dos errores en
+ * la consola que parecen una rotura y no lo son.
+ *
+ * Esta marca no reemplaza a la cookie ni prueba nada: la verdad sigue siendo
+ * lo que conteste el backend. Lo único que decide es si vale la pena
+ * preguntar.
+ *
+ * POR QUÉ localStorage Y NO sessionStorage
+ *
+ * sessionStorage se borra al cerrar la pestaña. Usarlo acá haría que alguien
+ * con sesión viva que abre una pestaña nueva apareciera deslogueado — un
+ * problema peor que el que se viene a resolver. localStorage sobrevive, y se
+ * pierde junto con las cookies cuando se borran los datos del sitio, que es
+ * el caso en que además no hay sesión que recordar.
+ *
+ * QUÉ PASA SI SE EQUIVOCA, EN CADA DIRECCIÓN
+ *
+ * Si hay marca y la sesión ya murió: se pregunta, da 401, se borra la marca.
+ * Una carga con el comportamiento de antes, y ninguna más.
+ *
+ * Si no hay marca pero la cookie sigue viva: la persona se ve deslogueada
+ * hasta que entre de nuevo. Por eso la marca se escribe en cada confirmación
+ * de sesión, no sólo al entrar — para que se renueve sola mientras la usen.
+ */
+const CLAVE_DE_MARCA = 'henko.sesion'
+
+// Siete días, que es lo que dura el token de refresco (JWT_REFRESH_EXPIRES
+// en el backend). Pasado ese plazo la cookie ya no sirve ni aunque esté, así
+// que preguntar sería perder el viaje igual.
+const DURACION_DE_MARCA_MS = 7 * 24 * 60 * 60 * 1000
+
+export const marcaDeSesion = {
+  poner: () => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem(CLAVE_DE_MARCA, String(Date.now() + DURACION_DE_MARCA_MS))
+    } catch {
+      // Modo privado o almacenamiento bloqueado. Sin marca se vuelve al
+      // comportamiento de antes —preguntar siempre—, que funciona.
+    }
+  },
+
+  sacar: () => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.removeItem(CLAVE_DE_MARCA)
+    } catch {
+      /* ídem */
+    }
+  },
+
+  hay: () => {
+    if (typeof window === 'undefined') return false
+    try {
+      const vence = Number(localStorage.getItem(CLAVE_DE_MARCA))
+
+      if (!Number.isFinite(vence) || vence <= 0) return false
+
+      if (Date.now() > vence) {
+        localStorage.removeItem(CLAVE_DE_MARCA)
+        return false
+      }
+
+      return true
+    } catch {
+      // Si no se puede leer, se asume que puede haber sesión y se pregunta:
+      // ante la duda conviene el error que cuesta una llamada, no el que
+      // deja a alguien afuera de su cuenta.
+      return true
+    }
+  },
+}
+
 /* ---------------------------
    Estado inicial
    --------------------------- */
@@ -383,6 +465,7 @@ const userSlice = createSlice({
       state.message = ''
       state.wishlist = []
       safeStorage.removeUser()
+      marcaDeSesion.sacar()
     },
     // Reemplazar wishlist manualmente (útil para sync)
     setWishlist: (state, action) => {
@@ -411,6 +494,7 @@ const userSlice = createSlice({
         state.user = action.payload.user
         state.isError = false
         state.message = ''
+        marcaDeSesion.poner()
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.isLoading = false
@@ -430,6 +514,12 @@ const userSlice = createSlice({
         state.user = action.payload?.user || null
         state.isAuthenticated = Boolean(action.payload?.user)
         state.isError = false
+
+        // Se renueva en cada confirmación, no sólo al entrar: así la marca
+        // acompaña a quien usa la tienda seguido y no vence por calendario
+        // mientras la sesión sigue viva.
+        if (action.payload?.user) marcaDeSesion.poner()
+        else marcaDeSesion.sacar()
       })
       .addCase(getMe.rejected, (state, action) => {
         state.isLoading = false
@@ -440,6 +530,10 @@ const userSlice = createSlice({
           typeof action.payload === 'string'
             ? action.payload
             : action.payload?.message || 'Error al obtener perfil'
+
+        // El backend ya dijo que no hay sesión: la marca quedó vieja y
+        // mantenerla haría repetir la pregunta en cada carga.
+        marcaDeSesion.sacar()
       })
 
       .addCase(updateProfile.pending, state => {
@@ -516,6 +610,7 @@ const userSlice = createSlice({
         state.csrfToken = null
         state.wishlist = []
         safeStorage.removeUser()
+        marcaDeSesion.sacar()
       })
       .addCase(logoutUser.rejected, (state, action) => {
         state.isLoading = false

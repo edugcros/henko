@@ -1,7 +1,7 @@
 // 📁 src/hooks/useAuth.js
 import { useEffect, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
-import { getMe } from '@features/user/userSlice'
+import { getMe, marcaDeSesion } from '@features/user/userSlice'
 
 /**
  * Hook para manejar la sesión del usuario en el Frontend.
@@ -22,9 +22,24 @@ import { getMe } from '@features/user/userSlice'
  */
 let authBootstrapPromise = null
 
+/**
+ * Pregunta por la sesión sólo si tiene sentido preguntarla.
+ *
+ * A quien nunca inició sesión en este navegador no hay nada que
+ * restaurarle, y preguntar le costaba dos llamadas garantizadas en cada
+ * carga —/user/me da 401, /user/refresh da 403— más dos errores en la
+ * consola que parecían una rotura. Multiplicado por cada visitante anónimo
+ * de cada tienda, es tráfico que el backend paga para enterarse de algo que
+ * ya se sabía.
+ *
+ * La marca la mantiene userSlice en cada entrada, confirmación y salida. No
+ * es prueba de sesión —la verdad sigue siendo la cookie httpOnly, que JS no
+ * puede leer—: sólo evita la pregunta cuando con certeza no hay nada que
+ * preguntar.
+ */
 const ensureAuthBootstrap = dispatch => {
   if (!authBootstrapPromise) {
-    authBootstrapPromise = dispatch(getMe())
+    authBootstrapPromise = marcaDeSesion.hay() ? dispatch(getMe()) : Promise.resolve(null)
   }
 
   return authBootstrapPromise
