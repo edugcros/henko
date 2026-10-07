@@ -101,7 +101,32 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
     const status = error?.response?.status
     const message = extractApiError(error, 'Error en la petición')
 
-    if (status === 403 && /csrf|token/i.test(message) && options.skipCsrf !== true) {
+    // Sólo CSRF, no cualquier 403 que mencione un token.
+    //
+    // EL BUG QUE CIERRA ESTO
+    //
+    // La condición era /csrf|token/i, y el backend contesta el refresco sin
+    // sesión con 403 "No hay token de refresco". Esa frase contiene "token",
+    // así que entraba acá como si fuera un CSRF vencido y se reintentaba la
+    // petición entera.
+    //
+    // Medido en producción el 07/10/2026, en una visita anónima a la tienda:
+    //
+    //   /api/user/me       401   ← el bootstrap pregunta si hay sesión
+    //   /api/user/refresh  403   ← el interceptor intenta refrescar
+    //   /api/user/me       401   ← ESTE reintento, por el falso positivo
+    //   /api/user/refresh  403   ← y el interceptor otra vez
+    //
+    // Cuatro llamadas donde correspondían dos, en cada carga de cada
+    // visitante que no está logueado, y cuatro errores en la consola que
+    // parecían una rotura.
+    //
+    // El CSRF real del backend es `EBADCSRFTOKEN` con el mensaje "CSRF token
+    // inválido o ausente" (csrfMiddleware.js), así que pedir "csrf" no deja
+    // afuera ningún caso legítimo.
+    const esErrorDeCsrf = error?.response?.data?.code === 'EBADCSRFTOKEN' || /csrf/i.test(message)
+
+    if (status === 403 && esErrorDeCsrf && options.skipCsrf !== true) {
       try {
         resetCsrf()
 
