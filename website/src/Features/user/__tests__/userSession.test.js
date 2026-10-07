@@ -24,6 +24,7 @@
 
 import api from '@utils/axiosConfig'
 import userService from '../userService.js'
+import reducer, { getMe, marcaDeSesion, resetAuthState } from '../userSlice.js'
 
 jest.mock('@utils/axiosConfig', () => ({
   __esModule: true,
@@ -103,5 +104,82 @@ describe('apiRequest · qué 403 merece un reintento', () => {
     await userService.getCurrentUser()
 
     expect(llamadas).toHaveLength(1)
+  })
+})
+
+// =====================================================
+// La marca de sesión
+// =====================================================
+//
+// Decide si vale la pena preguntarle al backend por la sesión. No la prueba:
+// la verdad sigue siendo la cookie httpOnly, que JS no puede leer.
+//
+// Sin esto, un visitante que nunca inició sesión se comía dos llamadas
+// garantizadas en cada carga (401 + 403) para enterarse de algo que ya se
+// sabía, multiplicado por cada tienda de la plataforma.
+
+describe('marcaDeSesion', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  test('sin marca no hay nada que preguntar', () => {
+    expect(marcaDeSesion.hay()).toBe(false)
+  })
+
+  test('poner y sacar', () => {
+    marcaDeSesion.poner()
+    expect(marcaDeSesion.hay()).toBe(true)
+
+    marcaDeSesion.sacar()
+    expect(marcaDeSesion.hay()).toBe(false)
+  })
+
+  test('una marca vencida no cuenta, y se limpia sola', () => {
+    // Siete días es lo que dura el token de refresco. Pasado ese plazo la
+    // cookie no sirve ni aunque esté, así que preguntar sería perder el
+    // viaje igual.
+    localStorage.setItem('henko.sesion', String(Date.now() - 1000))
+
+    expect(marcaDeSesion.hay()).toBe(false)
+    expect(localStorage.getItem('henko.sesion')).toBeNull()
+  })
+
+  test('una marca ilegible no cuenta', () => {
+    localStorage.setItem('henko.sesion', 'cualquier cosa')
+
+    expect(marcaDeSesion.hay()).toBe(false)
+  })
+})
+
+describe('marcaDeSesion · enganchada al ciclo de la sesión', () => {
+  // Lo que se verifica acá no es el helper sino el CABLEADO: que cada
+  // transición real de sesión la actualice. Un helper correcto que nadie
+  // llama deja el problema igual.
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  test('confirmar la sesión la pone', () => {
+    reducer(undefined, { type: getMe.fulfilled.type, payload: { user: { _id: '1' } } })
+
+    expect(marcaDeSesion.hay()).toBe(true)
+  })
+
+  test('que el backend diga que no hay sesión la saca', () => {
+    marcaDeSesion.poner()
+
+    reducer(undefined, { type: getMe.rejected.type, payload: 'sin sesión' })
+
+    expect(marcaDeSesion.hay()).toBe(false)
+  })
+
+  test('cerrar sesión la saca', () => {
+    marcaDeSesion.poner()
+
+    reducer(undefined, resetAuthState())
+
+    expect(marcaDeSesion.hay()).toBe(false)
   })
 })
