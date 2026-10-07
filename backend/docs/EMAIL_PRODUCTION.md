@@ -49,11 +49,18 @@ mientras sus correos siguen saliendo por la plataforma.
 
 ## El transporte
 
-Proveedor único: **SendGrid**, por su Web API HTTPS (`POST
-/v3/mail/send`), autenticada con `EMAIL_PASS` (o `SENDGRID_API_KEY` si se
-quiere separar una key de solo-envío de una con permiso de administrar
-dominios). No hay SMTP ni un segundo proveedor de respaldo en el código —
-`emailService.js` solo sabe hablar con la Web API de SendGrid.
+El proveedor lo elige **`EMAIL_PROVIDER`** y los drivers viven en
+`src/services/email/emailProviders.js`. Hay tres, todos por HTTPS:
+
+| `EMAIL_PROVIDER` | Credencial | Notas |
+| --- | --- | --- |
+| `sendgrid` (por omisión) | `EMAIL_PASS`, o `SENDGRID_API_KEY` | `POST /v3/mail/send` |
+| `resend` | `RESEND_API_KEY` | `POST /emails` |
+| `ses` | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` | SDK `@aws-sdk/client-sesv2`. Para dominios por comercio hacen falta además `AWS_ACCOUNT_ID`, `AWS_REGION` y `SES_CONFIGURATION_SET` |
+
+No hay SMTP en ninguno: el plan Free de Render bloquea esos puertos (abajo
+el detalle). El valor por omisión sigue siendo SendGrid, así que desplegar
+esta versión no cambia por dónde sale el correo — hay que pedirlo.
 
 Esto no siempre fue así. Durante un tiempo el comentario en el código decía
 que SMTP "muere en Render", basado en un incidente real contra
@@ -68,13 +75,36 @@ propia API de Render (`GET /v1/services/{id}` → `serviceDetails.plan:
 colgada sin error ni éxito — consistente con un bloqueo silencioso de
 puerto, no con credenciales rotas.
 
-El proyecto también tuvo Resend disponible como alternativa en algún
-momento (paralelo a SMTP). Se retiró del código por completo: mantener dos
-proveedores vivos —cada uno con su propia lógica de remitente, su propio
-formato de error, su propia gestión de dominios— era la fuente real de los
-bugs de este documento (la variable correcta configurada para el proveedor
-equivocado, el default silencioso cuando faltaba una key). Con un solo
-proveedor, esa clase entera de bug deja de ser posible.
+### Por qué volvió a haber más de un proveedor
+
+Este documento decía, con razón, que tener varios proveedores vivos era la
+fuente real de los bugs de acá: cada uno con su propia lógica de remitente,
+su propio formato de error y su propia gestión de dominios. De ahí salieron
+la variable correcta configurada para el proveedor equivocado y el default
+silencioso cuando faltaba una key. La conclusión de entonces —dejar uno
+solo— era la correcta para ese código.
+
+Lo que cambió:
+
+1. **SendGrid dejó de ser una opción permanente.** Eliminaron el plan
+   gratuito en mayo de 2025; el trial de esta cuenta vence el 12/10/2026 y
+   después no sale un correo. Quedarse con un proveedor único ya no era una
+   decisión disponible.
+2. **El destino es multi-inquilino.** Con miles de comercios, cada uno con
+   su dominio, lo que decide es el techo de identidades verificadas y que
+   la reputación se mida por comercio — si no, una tienda con la lista
+   sucia pausa el envío de todas. Eso lleva a Amazon SES y su función de
+   *tenants*.
+
+Y lo que evita repetir aquellos bugs no es tener un solo proveedor, sino
+que los proveedores no decidan nada propio. La lógica de remitente, la
+política de reintentos y el armado del mensaje están una sola vez en
+`emailService.js`; cada driver sabe únicamente traducir al formato de su
+API y traducir sus fallas a los códigos de `CODIGOS`. Un driver no elige
+remitente, no reintenta y no inventa un default. El "default silencioso" en
+particular ya no es posible: un `EMAIL_PROVIDER` desconocido voltea el
+arranque en producción nombrando las opciones válidas, en vez de fallar
+recién en el primer correo.
 
 Fuente: [Render changelog — Free web services will no longer allow outbound
 traffic to SMTP
@@ -85,8 +115,8 @@ ports](https://render.com/changelog/free-web-services-will-no-longer-allow-outbo
 Sin esto no llega ningún correo, de ningún comercio. El transporte (SendGrid
 por su Web API) se verificó en vivo el 14/08/2026 — confirmado con un
 registro real contra `https://henko.onrender.com`: `[EMAIL] Proveedor:
-SendGrid (Web API)` en los logs de Render, sin error, con `x-message-id` de
-SendGrid en la respuesta. Eso sigue siendo cierto.
+SendGrid` en los logs de Render, sin error, con `x-message-id` de SendGrid
+en la respuesta. Eso sigue siendo cierto.
 
 **Pero el 25/08/2026 se encontró un problema distinto, más serio**:
 `EMAIL_FROM` está cargado con una dirección `@gmail.com`. SendGrid acepta
@@ -142,37 +172,116 @@ quedan anotados acá:
 
 ## Paso 1 — que cada comercio mande desde su dominio
 
-La pantalla del panel (`SendingDomainSection`) y los endpoints hablan
-siempre con SendGrid:
+La pantalla del panel (`SendingDomainSection`) y los endpoints hablan con el
+proveedor activo, a través del mismo driver que usa el envío:
 
 1. El comercio carga la dirección desde la que quiere enviar
-   (`PUT /api/tenants/me/email-domain`). El dominio se da de alta en
-   SendGrid y quedan guardados los registros DNS a publicar.
+   (`PUT /api/tenants/me/email-domain`). El dominio se da de alta en el
+   proveedor y quedan guardados los registros DNS a publicar.
 2. El comercio carga esos registros en su DNS.
-3. Pide verificar (`POST /api/tenants/me/email-domain/verify`). Si
-   SendGrid confirma, el estado pasa a `verified` y **desde el siguiente
+3. Pide verificar (`POST /api/tenants/me/email-domain/verify`). Si el
+   proveedor confirma, el estado pasa a `verified` y **desde el siguiente
    correo** el remitente es suyo.
 
 Mientras tanto, todo sigue funcionando por la plataforma. No hay ventana en la
 que el comercio se quede sin correos.
 
-### Requiere una key con permisos
+En ambos proveedores los registros son **CNAME** y ninguno toca el MX: el
+correo ENTRANTE del comercio sigue funcionando igual. SendGrid lo consigue
+con `automatic_security`; SES, con Easy DKIM (tres CNAME).
 
-Dar de alta y consultar dominios necesita una API key de administración:
+### Un dominio verificado vale sólo para quien lo verificó
+
+Los registros DKIM autorizan a **un** servicio a firmar en nombre de ese
+dominio. Al cambiar de proveedor, el dominio deja de estar autorizado hasta
+volver a verificarlo — aunque el estado guardado siga diciendo `verified`.
+
+Por eso se guarda `email.provider` y `resolveSenderAddress` lo compara
+contra el proveedor activo. Sin esa comparación, el día de la mudanza todos
+los comercios con dominio propio seguirían saliendo con su identidad, el
+proveedor nuevo firmaría con una clave que ese dominio no autoriza, y cada
+correo rebotaría o caería en spam mostrando "verificado" en el panel.
+
+Cuando el refresco detecta que el dominio se verificó con otro proveedor, lo
+vuelve a dar de alta en el actual y devuelve los registros nuevos en la
+misma pantalla, con el motivo en `email.lastError`.
+
+### SES: un inquilino por comercio
+
+En SES cada comercio se da de alta además como **tenant**, y se le asocian
+su identidad y el conjunto de configuración.
+
+No es opcional a escala. Sin inquilino la reputación de envío se mide por
+CUENTA: una tienda que importa una lista comprada y rebota el 40% no se
+hunde sola, hunde el envío de todas las demás. Con inquilino, SES pausa esa
+sola. Cada uno lleva también su propia **lista de supresión**: con la de la
+cuenta, un comprador que marca spam a una tienda queda bloqueado para todas.
+
+### Credenciales con permisos
+
+| Proveedor | Variables | Notas |
+| --- | --- | --- |
+| SendGrid | `SENDGRID_API_KEY` (opcional) | Si no está se reusa `EMAIL_PASS`. La misma key del envío suele alcanzar; sólo hace falta separarlas para tener una de solo-envío (SendGrid controla esto por *scope*). |
+| SES | `AWS_ACCOUNT_ID`, `AWS_REGION`, `SES_CONFIGURATION_SET` | `AWS_ACCOUNT_ID` son los 12 dígitos de la cuenta: hacen falta para armar el ARN que pide asociar una identidad a un inquilino, y `CreateEmailIdentity` no lo devuelve. |
+
+Resend **no administra dominios de comercios** a propósito: está como
+puente mientras SES sale del sandbox, y hacer publicar registros que habría
+que reemplazar en días es trabajo tirado. El panel lo dice en vez de dejar
+un estado `pending` que nadie va a confirmar.
+
+Sin la credencial de administración correspondiente, el alta se registra
+igual en estado `pending` con el motivo en `email.lastError`, y alguien lo
+completa a mano desde la consola del proveedor. El sistema nunca queda
+creyendo que manda desde un dominio que no controla.
+
+## Paso 2 — enterarse de lo que pasó después
+
+Que el proveedor acepte el correo sólo significa "lo recibí". El rebote, el
+descarte por lista de supresión y el bloqueo ocurren más tarde y por otro
+canal.
+
+Pasó el 18/09/2026: un correo figuraba en los logs como enviado y en SendGrid
+estaba en `Dropped`. Sin estos eventos, un cliente que no recibe su correo de
+verificación es indistinguible de uno que sí.
+
+Hay **una ruta por proveedor**, no una que adivine. Cada uno firma distinto, y
+un endpoint único que mirara la forma del cuerpo para elegir el verificador le
+daría al atacante justamente eso: elegir con qué firma lo van a verificar.
 
 ```
-SENDGRID_API_KEY=SG.xxxxxxxx   # opcional: si no está, se reusa EMAIL_PASS
+POST /api/webhooks/sendgrid/events    firma ECDSA sobre el cuerpo crudo
+POST /api/webhooks/ses/events         mensaje de SNS firmado + tópico propio
 ```
 
-La MISMA key que autentica el envío normalmente alcanza — `SENDGRID_API_KEY`
-solo hace falta si se quiere separar una key de solo-envío de una con
-permiso de administrar dominios (SendGrid controla esto por scope de la
-key).
+Las dos están exentas de CSRF: un webhook servidor-a-servidor no trae cookies,
+así que el CSRF no puede protegerlo y la firma sí.
 
-Sin la key de administración correspondiente, el alta se registra igual en
-estado `pending` con el motivo explicado en `email.lastError`, y alguien lo
-completa a mano desde el panel de SendGrid. El sistema nunca queda creyendo
-que manda desde un dominio que no controla.
+### SendGrid
+
+```
+SENDGRID_WEBHOOK_PUBLIC_KEY=...     sin esto, en producción no se procesa nada
+```
+
+### SES, que llega por SNS
+
+SES publica en un tópico de SNS y SNS reenvía. Eso agrega dos cosas:
+
+```
+SES_SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:...
+```
+
+1. **El alta de la suscripción.** Una suscripción HTTPS sólo queda confirmada
+   si el propio endpoint visita la URL que le mandan — es como AWS comprueba
+   que quien contesta lo controla. El controlador lo hace solo.
+2. **La firma.** El mensaje dice con qué certificado verificarlo, así que lo
+   primero es comprobar que esa URL sea de AWS. Sin ese chequeo cualquiera
+   manda un mensaje apuntando a un certificado suyo, lo firma con su clave, y
+   la verificación da bien: queda inventando rebotes de cualquier comercio con
+   los logs diciendo que vinieron de AWS.
+
+`SES_SNS_TOPIC_ARN` no es decorativo: una firma válida de AWS vale para
+**cualquier tópico de cualquier cuenta**. Sin comparar el tópico, alguien con
+una cuenta de AWS puede mandar eventos firmados de verdad desde un tópico suyo.
 
 ## Endpoints
 

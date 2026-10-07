@@ -306,6 +306,9 @@ export const env = {
 
   // Email
   email: {
+    // Quién pone el correo en la red. Los drivers viven en
+    // services/email/emailProviders.js, que es también donde se agrega uno.
+    provider: (process.env.EMAIL_PROVIDER || 'sendgrid').trim().toLowerCase(),
     host: process.env.EMAIL_HOST,
     port: Number(process.env.EMAIL_PORT || 465),
     user: process.env.EMAIL_USER,
@@ -525,20 +528,52 @@ if (env.isProduction) {
     throw new Error('ALLOW_LOCALHOST=true no está permitido en producción')
   }
 
-  // SendGrid es el único proveedor de envío soportado (ver
-  // services/emailService.js — el porqué está en docs/EMAIL_PRODUCTION.md).
-  // EMAIL_PASS ya sirve como API key; SENDGRID_API_KEY solo hace falta si se
-  // quiere separar una key de solo-envío de una con permiso de administrar
-  // dominios.
-  if (!process.env.EMAIL_PASS?.trim() && !process.env.SENDGRID_API_KEY?.trim()) {
+  // Qué credencial hace falta depende del proveedor activo. Antes se exigía
+  // siempre la de SendGrid, así que cambiar de proveedor volteaba el arranque
+  // en producción con un mensaje que nombraba al proveedor equivocado — el
+  // peor momento y la peor pista posibles.
+  //
+  // La lista de proveedores válidos también está en
+  // services/email/emailProviders.js, que es donde se implementan: agregar
+  // uno pide tocar los dos lugares, y si se olvida éste, el arranque en
+  // producción lo dice por nombre en vez de fallar al primer envío.
+  const CREDENCIAL_POR_PROVEEDOR = {
+    sendgrid: {
+      // EMAIL_PASS ya sirve como API key; SENDGRID_API_KEY solo hace falta
+      // para separar una key de solo-envío de una con permiso de administrar
+      // dominios.
+      presente: () => process.env.EMAIL_PASS?.trim() || process.env.SENDGRID_API_KEY?.trim(),
+      falta: 'Falta EMAIL_PASS (o SENDGRID_API_KEY) en producción — es la API key de SendGrid',
+    },
+    resend: {
+      presente: () => process.env.RESEND_API_KEY?.trim(),
+      falta: 'Falta RESEND_API_KEY en producción',
+    },
+    ses: {
+      presente: () =>
+        process.env.AWS_ACCESS_KEY_ID?.trim() && process.env.AWS_SECRET_ACCESS_KEY?.trim(),
+      falta:
+        'Faltan AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY en producción — ' +
+        'son las credenciales de Amazon SES',
+    },
+  }
+
+  const credencialDelProveedor = CREDENCIAL_POR_PROVEEDOR[env.email.provider]
+
+  if (!credencialDelProveedor) {
     throw new Error(
-      'Falta EMAIL_PASS (o SENDGRID_API_KEY) en producción — es la API key de SendGrid',
+      `EMAIL_PROVIDER="${env.email.provider}" no es un proveedor conocido. ` +
+        `Opciones: ${Object.keys(CREDENCIAL_POR_PROVEEDOR).join(', ')}`,
     )
+  }
+
+  if (!credencialDelProveedor.presente()) {
+    throw new Error(credencialDelProveedor.falta)
   }
 
   if (!process.env.EMAIL_FROM?.trim()) {
     throw new Error(
-      'Falta EMAIL_FROM en producción (la dirección verificada como Single Sender en SendGrid)',
+      'Falta EMAIL_FROM en producción (la dirección de remitente verificada en el proveedor)',
     )
   }
 

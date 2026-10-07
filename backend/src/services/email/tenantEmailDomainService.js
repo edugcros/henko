@@ -7,16 +7,21 @@
 // una exigencia de un proveedor en particular: es cómo funciona el correo.
 // Cualquiera serio pide lo mismo, y sin eso el mensaje rebota o cae en spam.
 //
-// Este servicio da de alta el dominio en SendGrid (el único proveedor de
-// envío, ver emailService.js), guarda los registros DNS que el comercio
-// tiene que cargar, y consulta el estado de verificación.
+// Este servicio da de alta el dominio en el proveedor activo (cuál es lo
+// decide EMAIL_PROVIDER; los drivers están en emailProviders.js), guarda los
+// registros DNS que el comercio tiene que cargar, y consulta el estado de
+// verificación.
+//
+// Lo que es del proveedor —qué endpoint, qué forma tiene el DNS, cómo se
+// llama su estado de verificación— vive en el driver. Acá queda lo que no
+// cambia al mudarse: qué dominios se aceptan, de quién es cada uno, y qué se
+// guarda.
 
 import Tenant from '../../models/tenantModel.js'
 import logger from '../../../config/logger.js'
 import { resolveSenderAddress } from '../emailService.js'
 import { sanitizeString as clean, EMAIL_REGEX as EMAIL_RE } from './emailShared.js'
-
-const REQUEST_TIMEOUT_MS = 15000
+import { CODIGOS, dominiosDelProveedor } from './emailProviders.js'
 
 /**
  * Un TLD de verdad: dos letras o más, sin dígitos.
@@ -97,150 +102,23 @@ const FREE_EMAIL_PROVIDER_DOMAINS = new Set([
 export const isFreeEmailProviderDomain = domain =>
   FREE_EMAIL_PROVIDER_DOMAINS.has(clean(domain).toLowerCase())
 
-const normalizeRecords = records => {
-  if (!Array.isArray(records)) return []
-
-  return records.map(item => ({
-    record: clean(item?.record),
-    name: clean(item?.name),
-    type: clean(item?.type),
-    value: clean(item?.value),
-    priority:
-      item?.priority === undefined || item?.priority === null ? null : Number(item.priority),
-  }))
-}
-
-// ─── SendGrid ────────────────────────────────────────────
-
-const SENDGRID_API = 'https://api.sendgrid.com/v3'
-
-// Misma cuenta que autentica el envío por SMTP (usuario literal "apikey",
-// contraseña = esta key): no hace falta una segunda credencial salvo que se
-// quiera separar una key de solo-envío de una con permiso de administrar
-// dominios, para lo cual SENDGRID_API_KEY pisa a EMAIL_PASS.
-const getSendGridApiKey = () => clean(process.env.SENDGRID_API_KEY) || clean(process.env.EMAIL_PASS)
-
-const sendGridRequest = async (path, { method = 'GET', body } = {}) => {
-  const key = getSendGridApiKey()
-
-  if (!key) {
-    const error = new Error('No hay API key de SendGrid configurada')
-    error.code = 'PROVIDER_NOT_CONFIGURED'
-    throw error
+/**
+ * Qué decirle al comercio cuando el proveedor rechaza administrar dominios.
+ *
+ * El código es del sistema (ver CODIGOS en emailProviders.js), así que el
+ * mensaje no depende de cuál sea el proveedor — pero sí nombra al activo,
+ * porque es el dato que falta para saber dónde mirar.
+ */
+const explicarFalla = (error, proveedor) => {
+  if (error?.code === CODIGOS.AUTENTICACION) {
+    return `La credencial configurada no puede administrar dominios en ${proveedor}. Un administrador tiene que darlo de alta a mano.`
   }
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${SENDGRID_API}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    })
-
-    const data = await response.json().catch(() => null)
-
-    if (!response.ok) {
-      const message =
-        data?.errors?.[0]?.message || data?.message || `SendGrid respondió ${response.status}`
-      const error = new Error(message)
-      // SendGrid controla permisos por scope de API key, no por un código de
-      // error dedicado: un 401/403 acá casi siempre significa que la key no
-      // tiene el scope de Domain Authentication habilitado.
-      error.code =
-        response.status === 401 || response.status === 403
-          ? 'PROVIDER_KEY_CANNOT_MANAGE_DOMAINS'
-          : 'PROVIDER_ERROR'
-      error.statusCode = response.status
-      throw error
-    }
-
-    return data
-  } finally {
-    clearTimeout(timeout)
+  if (error?.code === CODIGOS.SIN_CONFIGURAR) {
+    return `Falta configurar las credenciales de ${proveedor}.`
   }
-}
 
-// El DNS de SendGrid llega como objeto {mail_cname, dkim1, dkim2, ...}, no
-// como array — cada clave es un registro con {type, host, data}.
-const normalizeSendGridDns = dns => {
-  if (!dns || typeof dns !== 'object') return []
-
-  return Object.entries(dns).map(([key, record]) => ({
-    record: key,
-    name: clean(record?.host),
-    type: clean(record?.type) || 'CNAME',
-    value: clean(record?.data),
-    priority: null,
-  }))
-}
-
-// SendGrid no expone un estado terminal de "falló": un dominio queda
-// pendiente indefinidamente hasta que el DNS esté bien, nunca se marca como
-// fallido. Por eso acá solo hay dos estados posibles.
-const mapSendGridStatus = valid => (valid ? 'verified' : 'pending')
-
-const sendGridCreateDomain = async domain => {
-  const created = await sendGridRequest('/whitelabel/domains', {
-    method: 'POST',
-    body: {
-      domain,
-      // CNAME en vez de TXT+MX: la variante MX reemplaza el registro MX del
-      // dominio, lo que le robaría al comercio su correo entrante real. La
-      // variante CNAME (automatic_security) convive con cualquier MX que ya
-      // tenga.
-      automatic_security: true,
-    },
-  })
-
-  return {
-    id: clean(created?.id),
-    dns: normalizeSendGridDns(created?.dns),
-    status: mapSendGridStatus(created?.valid),
-  }
-}
-
-const sendGridFindDomainId = async domain => {
-  const list = await sendGridRequest('/whitelabel/domains')
-
-  const match = Array.isArray(list)
-    ? list.find(item => clean(item?.domain).toLowerCase() === domain)
-    : null
-
-  return clean(match?.id)
-}
-
-const sendGridFetchDomain = async ({ domainId, domain }) => {
-  const id = domainId || (await sendGridFindDomainId(domain))
-
-  if (!id) return null
-
-  // GET devuelve el último estado conocido; validate fuerza una consulta
-  // fresca de DNS, que es justo lo que un refresh necesita. Los valores de
-  // los registros (host/data) no cambian una vez asignados, así que no hace
-  // falta pedirlos de nuevo — se conserva lo ya guardado.
-  const validated = await sendGridRequest(`/whitelabel/domains/${id}/validate`, {
-    method: 'POST',
-  })
-
-  return {
-    id,
-    dns: null,
-    status: mapSendGridStatus(validated?.valid),
-  }
-}
-
-const isDuplicateDomainError = error => {
-  const message = String(error?.message || '').toLowerCase()
-  return (
-    /already exists|already authenticated|duplicate|conflict/.test(message) ||
-    error?.statusCode === 409
-  )
+  return error?.message || `No se pudo completar la operación en ${proveedor}.`
 }
 
 // ─── API pública ─────────────────────────────────────────
@@ -299,9 +177,24 @@ export const registerTenantSendingDomain = async ({ tenantId, fromAddress }) => 
     throw error
   }
 
+  const proveedor = dominiosDelProveedor()
+
+  // Un proveedor que no administra dominios de terceros tiene que decirlo
+  // ANTES de guardar nada: si no, el comercio queda con un estado
+  // "pendiente" esperando una verificación que nadie va a hacer.
+  if (!proveedor.soportado) {
+    const error = new Error(
+      `El proveedor de correo activo (${proveedor.proveedor}) no permite registrar el dominio propio de un comercio. Es temporal, mientras se completa la mudanza de proveedor.`,
+    )
+    error.statusCode = 503
+    error.code = 'DOMAIN_MANAGEMENT_UNAVAILABLE'
+    throw error
+  }
+
   const update = {
     'email.fromAddress': address,
     'email.domain': domain,
+    'email.provider': proveedor.id,
     'email.status': 'pending',
     'email.verifiedAt': null,
     'email.lastCheckedAt': new Date(),
@@ -311,26 +204,23 @@ export const registerTenantSendingDomain = async ({ tenantId, fromAddress }) => 
   }
 
   try {
-    const created = await sendGridCreateDomain(domain)
+    // El inquilino es el comercio: es lo que hace que la reputación de envío
+    // se mida por tienda y no por cuenta. Sin eso, una que mande a una lista
+    // sucia se lleva puesto el envío de todas las demás.
+    const creado = await proveedor.alta(domain, { inquilino: String(tenantId) })
 
-    update['email.providerDomainId'] = created.id
-    update['email.dnsRecords'] = created.dns
-    update['email.status'] = created.status
+    update['email.providerDomainId'] = creado.id
+    update['email.dnsRecords'] = creado.dns
+    update['email.status'] = creado.status
   } catch (error) {
-    // Un dominio ya dado de alta antes no es un fallo: se resuelve al
-    // consultar el estado.
-    if (!isDuplicateDomainError(error)) {
-      update['email.lastError'] =
-        error.code === 'PROVIDER_KEY_CANNOT_MANAGE_DOMAINS'
-          ? 'La API key configurada no puede administrar dominios. Un administrador tiene que dar de alta el dominio en SendGrid.'
-          : error.message
+    update['email.lastError'] = explicarFalla(error, proveedor.proveedor)
 
-      logger.warn('[EMAIL DOMAIN] No se pudo dar de alta el dominio', {
-        tenantId: String(tenantId),
-        domain,
-        code: error.code,
-      })
-    }
+    logger.warn('[EMAIL DOMAIN] No se pudo dar de alta el dominio', {
+      tenantId: String(tenantId),
+      domain,
+      proveedor: proveedor.id,
+      code: error.code,
+    })
   }
 
   await Tenant.updateOne({ _id: tenantId }, { $set: update })
@@ -350,15 +240,43 @@ export const refreshTenantDomainStatus = async tenantId => {
     throw error
   }
 
+  const proveedor = dominiosDelProveedor()
+
+  if (!proveedor.soportado) {
+    await Tenant.updateOne(
+      { _id: tenantId },
+      {
+        $set: {
+          'email.lastCheckedAt': new Date(),
+          'email.lastError': `El proveedor activo (${proveedor.proveedor}) no administra dominios de comercios. El estado guardado no se puede confirmar ahora.`,
+        },
+      },
+    )
+
+    return getTenantEmailIdentity(tenantId)
+  }
+
   const domainId = clean(tenant.email.providerDomainId)
 
-  try {
-    const data = await sendGridFetchDomain({
-      domainId,
-      domain: tenant.email.domain,
-    })
+  // El dominio se verificó con OTRO proveedor.
+  //
+  // Los registros DNS y el id guardados son de ese servicio y no significan
+  // nada acá: preguntarle al proveedor nuevo por un dominio que nunca le
+  // dieron de alta responde "no existe", y el comercio quedaría en un callejón
+  // sin salida sin entender por qué. Como el alta es idempotente, se rehace
+  // acá mismo: así se lleva los registros nuevos en la misma pantalla.
+  const seMudoDeProveedor = Boolean(tenant.email.provider) && tenant.email.provider !== proveedor.id
 
-    if (!data) {
+  try {
+    const datos = seMudoDeProveedor
+      ? await proveedor.alta(tenant.email.domain, { inquilino: String(tenantId) })
+      : await proveedor.estado({
+          id: domainId,
+          dominio: tenant.email.domain,
+          inquilino: String(tenantId),
+        })
+
+    if (!datos) {
       await Tenant.updateOne(
         { _id: tenantId },
         {
@@ -377,14 +295,17 @@ export const refreshTenantDomainStatus = async tenantId => {
       { _id: tenantId },
       {
         $set: {
-          'email.providerDomainId': data.id || domainId,
-          'email.status': data.status,
+          'email.provider': proveedor.id,
+          'email.providerDomainId': datos.id || domainId,
+          'email.status': datos.status,
           // null significa "no volver a pedirlos": ya están guardados y no
           // cambian una vez asignados por el proveedor.
-          ...(data.dns ? { 'email.dnsRecords': data.dns } : {}),
+          ...(datos.dns ? { 'email.dnsRecords': datos.dns } : {}),
           'email.lastCheckedAt': new Date(),
-          'email.lastError': '',
-          ...(data.status === 'verified' ? { 'email.verifiedAt': new Date() } : {}),
+          'email.lastError': seMudoDeProveedor
+            ? `La plataforma cambió de proveedor de correo a ${proveedor.proveedor}. Hay registros DNS nuevos para publicar: los anteriores ya no sirven.`
+            : '',
+          ...(datos.status === 'verified' ? { 'email.verifiedAt': new Date() } : {}),
         },
       },
     )
@@ -394,10 +315,7 @@ export const refreshTenantDomainStatus = async tenantId => {
       {
         $set: {
           'email.lastCheckedAt': new Date(),
-          'email.lastError':
-            error.code === 'PROVIDER_KEY_CANNOT_MANAGE_DOMAINS'
-              ? 'La API key configurada no puede consultar dominios. Verificá el estado desde el panel de SendGrid.'
-              : error.message,
+          'email.lastError': explicarFalla(error, proveedor.proveedor),
         },
       },
     )
@@ -413,6 +331,7 @@ export const clearTenantSendingDomain = async tenantId => {
       $set: {
         'email.fromAddress': '',
         'email.domain': '',
+        'email.provider': '',
         'email.providerDomainId': '',
         'email.status': 'none',
         'email.dnsRecords': [],
@@ -434,7 +353,7 @@ export const getTenantEmailIdentity = async tenantId => {
     .lean()
 
   const email = tenant?.email || {}
-  const verified = email.status === 'verified' && Boolean(email.fromAddress)
+  const proveedor = dominiosDelProveedor()
 
   return {
     fromName: tenant?.name || '',
@@ -443,8 +362,14 @@ export const getTenantEmailIdentity = async tenantId => {
     // discrepar, el comercio vería "verificado" mientras sus correos siguen
     // saliendo por la plataforma.
     effectiveFromAddress: resolveSenderAddress({ email }),
-    usingOwnDomain: verified,
-    provider: 'SendGrid',
+
+    // Se pregunta lo mismo que el envío, por la misma razón: un dominio
+    // verificado con el proveedor ANTERIOR no autoriza a nadie a enviar con
+    // el actual, y mostrarlo como propio sería prometer algo que no pasa.
+    usingOwnDomain:
+      resolveSenderAddress({ email }) === email.fromAddress && Boolean(email.fromAddress),
+
+    provider: proveedor.proveedor,
     replyTo: tenant?.settings?.store?.contactEmail || null,
     requested: {
       fromAddress: email.fromAddress || '',
@@ -455,7 +380,8 @@ export const getTenantEmailIdentity = async tenantId => {
       lastCheckedAt: email.lastCheckedAt || null,
       lastError: email.lastError || '',
     },
-    canManageDomains: Boolean(getSendGridApiKey()),
+
+    canManageDomains: proveedor.soportado,
   }
 }
 
