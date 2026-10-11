@@ -22,7 +22,13 @@ jest.unstable_mockModule('../../utils/axiosConfig', () => ({
   fetchCsrfToken: jest.fn().mockResolvedValue('csrf-de-prueba'),
 }))
 
-const { default: reducer, getMe, marcaDeSesion, resetAuthState } = await import('./authSlice')
+const {
+  default: reducer,
+  getMe,
+  marcaDeSesion,
+  hayUsuarioCacheado,
+  resetAuthState,
+} = await import('./authSlice')
 
 const CLAVE = 'henko.sesion.admin'
 
@@ -101,5 +107,92 @@ describe('marcaDeSesion · enganchada al ciclo de la sesión', () => {
     reducer(undefined, resetAuthState())
 
     expect(marcaDeSesion.hay()).toBe(false)
+  })
+})
+
+// Dos fuentes de verdad que se contradicen y ninguna capaz de corregir a la otra.
+//
+// EL LAZO, medido en la consola del panel el 11/10/2026
+//
+//   GET /api/dash/stats?days=30&compare=true&t=...  401
+//   GET /api/dash/subscription-metrics              401
+//   ... repetidos para siempre, espaciados ~15 min
+//
+// initialState arranca `isAuthenticated: !!safeStorage.getUser()`, optimista
+// desde la copia en sessionStorage. Cuando la sesión moría del lado del
+// servidor, getMe.rejected limpiaba Redux y la marca pero NO esa copia. En la
+// carga siguiente la copia seguía ahí —isAuthenticated arrancaba en true— y la
+// marca ya no estaba, así que useAuth se salteaba getMe y nada corregía el
+// estado nunca.
+//
+// El intervalo de 30s del Dashboard pollea condicionado a ese flag, así que
+// cobraba 401 en cada vuelta contra una sesión muerta. En una pestaña de fondo
+// Chrome estrangula el timer, y por eso los 401 aparecían cada ~15 minutos en
+// lugar de cada 30 segundos, lo que lo disfrazaba de otra cosa.
+describe('authSlice · la copia cacheada no puede sobrevivir al veredicto del backend', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  test('getMe.rejected borra el usuario cacheado, no solo el estado de Redux', () => {
+    sessionStorage.setItem('user', JSON.stringify({ _id: 'u1', role: 'admin' }))
+
+    expect(hayUsuarioCacheado()).toBe(true)
+
+    const estado = reducer(undefined, getMe.rejected(null, '', undefined, 'sin sesion'))
+
+    expect(estado.isAuthenticated).toBe(false)
+    expect(estado.user).toBeNull()
+    // Esto es lo que faltaba: sin borrar la copia, el próximo initialState
+    // volvía a arrancar en true y el lazo se cerraba.
+    expect(hayUsuarioCacheado()).toBe(false)
+  })
+
+  test('un usuario cacheado es razón suficiente para preguntar por la sesión', () => {
+    // useAuth se saltea getMe solo cuando NO hay marca Y NO hay nada cacheado.
+    // Una copia cacheada es evidencia de que alguien entró en este navegador,
+    // así que hay a quién preguntarle aunque la marca ya no esté.
+    marcaDeSesion.sacar()
+    sessionStorage.setItem('user', JSON.stringify({ _id: 'u1', role: 'admin' }))
+
+    expect(marcaDeSesion.hay()).toBe(false)
+    expect(hayUsuarioCacheado()).toBe(true)
+  })
+
+  test('sin marca y sin caché no hay a quién preguntarle', () => {
+    // El caso para el que se creó la marca: un visitante que nunca entró. Acá
+    // sí hay que saltearse getMe, que es lo que ahorra el 401 + 403.
+    marcaDeSesion.sacar()
+
+    expect(marcaDeSesion.hay()).toBe(false)
+    expect(hayUsuarioCacheado()).toBe(false)
+  })
+})
+
+// Una copia ilegible se descarta, no se arrastra.
+//
+// Al reescribir safeStorage para que no pueda tirar, el parseo pasó a
+// `tocarStorage(() => JSON.parse(raw)) ?? null`: devolvía null pero DEJABA el
+// valor corrupto en sessionStorage, releído y re-fallando en cada getUser
+// durante toda la sesión de la pestaña. La versión anterior lo borraba. Es un
+// autosaneamiento chico que no conviene perder al endurecer el helper.
+describe('safeStorage · una copia corrupta se limpia sola', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  test('getUser descarta el valor ilegible y lo borra', () => {
+    sessionStorage.setItem('user', '{esto no es json')
+
+    expect(hayUsuarioCacheado()).toBe(false)
+    // Lo que importa: no quedó para la próxima lectura.
+    expect(sessionStorage.getItem('user')).toBeNull()
+  })
+
+  test('getUser no borra una copia válida', () => {
+    sessionStorage.setItem('user', JSON.stringify({ _id: 'u1', role: 'admin' }))
+
+    expect(hayUsuarioCacheado()).toBe(true)
+    expect(sessionStorage.getItem('user')).not.toBeNull()
   })
 })

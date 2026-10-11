@@ -187,23 +187,49 @@ export const marcaDeSesion = {
 // ---------------------------
 // Safe Storage Helpers
 // ---------------------------
+// Igual que en el storefront: ninguna de estas operaciones puede tirar.
+//
+// EL BUG, ya corregido en website/src/Features/user/userSlice.js
+//
+// setUser envolvía el setItem en try/catch pero llamaba a removeItem DENTRO
+// del catch, y getUser hacía lo mismo. Con los datos del sitio bloqueados,
+// sessionStorage no falla sólo al escribir: falla al tocarlo. Entonces setItem
+// tiraba, entraba al catch, y removeItem tiraba otra vez — y ese segundo throw
+// no lo capturaba nadie: salía del try del thunk de login y caía en su catch,
+// que rechaza el login. En el storefront eso daba un login aceptado por el
+// backend que el usuario veía como error. El panel tenía el mismo patrón
+// intacto y la misma estructura de login, así que el mismo riesgo.
+//
+// Guardar esta copia es una conveniencia —la verdad de la sesión es la cookie
+// httpOnly—, así que no tiene derecho a hacer fallar nada.
+const tocarStorage = accion => {
+  if (typeof window === 'undefined') return undefined
+
+  try {
+    return accion()
+  } catch {
+    return undefined
+  }
+}
+
 const safeStorage = {
   setUser: user => {
-    if (typeof window === 'undefined') return
-    try {
-      sessionStorage.setItem('user', JSON.stringify(user))
-    } catch {
-      sessionStorage.removeItem('user')
-    }
+    tocarStorage(() => sessionStorage.setItem('user', JSON.stringify(user)))
   },
   getUser: () => {
-    if (typeof window === 'undefined') return null
+    const raw = tocarStorage(() => sessionStorage.getItem('user'))
+
+    if (!raw || raw === 'undefined') return null
+
+    // El parseo va aparte para que el intento de limpiar no pueda tirar. Pero
+    // la limpieza tiene que seguir ocurriendo: la versión anterior borraba la
+    // copia corrupta, y perder eso dejaba un valor ilegible en sessionStorage
+    // durante toda la sesión de la pestaña, releído y re-fallando en cada
+    // getUser.
     try {
-      const raw = sessionStorage.getItem('user')
-      if (!raw || raw === 'undefined') return null
-      return JSON.parse(raw)
+      return JSON.parse(raw) ?? null
     } catch {
-      sessionStorage.removeItem('user')
+      tocarStorage(() => sessionStorage.removeItem('user'))
       return null
     }
   },
@@ -224,18 +250,18 @@ const safeStorage = {
   // removeToken se conserva por una razón concreta: limpiar lo que dejó la
   // versión anterior en el navegador de quien ya inició sesión.
   removeToken: () => {
-    if (typeof window === 'undefined') return
-    sessionStorage.removeItem('auth_token')
+    tocarStorage(() => sessionStorage.removeItem('auth_token'))
   },
   removeUser: () => {
-    if (typeof window === 'undefined') return
-    sessionStorage.removeItem('user')
-    sessionStorage.removeItem('wishlist')
-    sessionStorage.removeItem('csrfToken')
-    // La copia de redux-persist faltaba acá. Sobrevivía al logout y a
-    // cualquier limpieza, así que quedaba como una segunda fuente de verdad
-    // más vieja que la primera.
-    sessionStorage.removeItem(PERSIST_KEY)
+    tocarStorage(() => {
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('wishlist')
+      sessionStorage.removeItem('csrfToken')
+      // La copia de redux-persist faltaba acá. Sobrevivía al logout y a
+      // cualquier limpieza, así que quedaba como una segunda fuente de verdad
+      // más vieja que la primera.
+      sessionStorage.removeItem(PERSIST_KEY)
+    })
     safeStorage.removeToken()
   },
   // El access token vive en una cookie httpOnly. JS no puede leerla ni
@@ -244,6 +270,12 @@ const safeStorage = {
     safeStorage.removeUser()
   },
 }
+
+// Si hay un usuario cacheado, alguien entró en este navegador y hay a quién
+// preguntarle por su sesión — aunque la marca ya no esté. useAuth lo usa para
+// no saltearse getMe en ese caso: saltearlo dejaba `isAuthenticated` optimista
+// y sin nadie capaz de bajarlo.
+export const hayUsuarioCacheado = () => Boolean(safeStorage.getUser())
 
 // ---------------------------
 // Estado inicial
@@ -567,6 +599,17 @@ const authSlice = createSlice({
         // El backend ya dijo que no hay sesión: la marca quedó vieja y
         // mantenerla haría repetir la pregunta en cada carga.
         marcaDeSesion.sacar()
+
+        // Y la copia en sessionStorage también, que es la que faltaba.
+        //
+        // initialState arranca `isAuthenticated: !!safeStorage.getUser()`. Al
+        // limpiar Redux y la marca pero dejar la copia, la carga siguiente
+        // arrancaba otra vez en true y sin marca no se dispatchaba getMe: el
+        // estado quedaba optimista para siempre. El intervalo de 30s del
+        // Dashboard pollea condicionado a ese flag, así que cobraba 401 sin
+        // parar contra una sesión muerta. Dos fuentes que se contradicen y
+        // ninguna capaz de corregir a la otra.
+        safeStorage.removeUser()
       })
   },
 })

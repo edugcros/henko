@@ -60,9 +60,17 @@ const safeStorage = {
 
     if (!raw || raw === 'undefined') return null
 
-    // El parseo va aparte: si lo guardado quedó corrupto, se descarta la copia
-    // sin que el intento de limpiarla pueda tirar.
-    return tocarStorage(() => JSON.parse(raw)) ?? null
+    // El parseo va aparte para que el intento de limpiar no pueda tirar. Pero
+    // la limpieza tiene que seguir ocurriendo: la versión anterior borraba la
+    // copia corrupta, y perder eso dejaba un valor ilegible en sessionStorage
+    // durante toda la sesión de la pestaña, releído y re-fallando en cada
+    // getUser.
+    try {
+      return JSON.parse(raw) ?? null
+    } catch {
+      tocarStorage(() => sessionStorage.removeItem('user'))
+      return null
+    }
   },
   removeUser: () => {
     tocarStorage(() => {
@@ -599,6 +607,12 @@ const userSlice = createSlice({
         // El backend ya dijo que no hay sesión: la marca quedó vieja y
         // mantenerla haría repetir la pregunta en cada carga.
         marcaDeSesion.sacar()
+
+        // Y la copia en sessionStorage también. Acá no causaba el lazo que
+        // causaba en el panel —initialState arranca isAuthenticated en false a
+        // propósito—, pero dejar un usuario cacheado que el backend ya
+        // desmintió es una segunda fuente de verdad más vieja que la primera.
+        safeStorage.removeUser()
       })
 
       .addCase(updateProfile.pending, state => {
