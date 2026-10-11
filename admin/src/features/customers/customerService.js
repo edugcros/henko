@@ -31,7 +31,7 @@ const getAllUsers = async (params = {}, { signal } = {}) => {
   return req
 }
 
-const deleteUser = async id => apiRequest('delete', `/${id}`)
+const deleteUser = async id => apiRequest('delete', `/delete-user/${id}`)
 const blockUser = async id => apiRequest('put', `/block-user/${id}`)
 const unblockUser = async id => apiRequest('put', `/unblock-user/${id}`)
 const verifyUser = async id => apiRequest('put', `/verify-user/${id}`)
