@@ -15,6 +15,7 @@ import {
   setPlatformAiOverride,
   getPlatformAiSettingHistory,
   setTenantAiPolicy,
+  getLatestPlatformAiSetting,
   PLATFORM_AI_SETTINGS,
 } from '../services/ai/platformAiSettingService.js'
 import {
@@ -384,18 +385,34 @@ export const updatePlanPrice = expressAsyncHandler(async (req, res) => {
  * mismo lado: el peso se devalúa, el costo real en pesos sube, y el margen se
  * sigue informando como si no hubiera pasado nada.
  */
+const SIN_CARGAR = Object.freeze({
+  source: 'env',
+  updatedAt: null,
+  updatedByEmail: null,
+  ageDays: null,
+})
+
 const estadoDelTipoDeCambio = async () => {
   const rate = getUsdToArsRate()
-  const historial = await getPlatformAiSettingHistory(50).catch(() => [])
 
-  const ultima = historial.find(fila => fila.setting === PLATFORM_AI_SETTINGS.USD_ARS_RATE)
+  // Consulta enfocada a este ajuste y no un filtro sobre el historial general.
+  // Ese historial trae las últimas 100 filas de TODOS los ajustes, así que la
+  // fila del dólar se cae de la ventana cuando hay suficiente actividad del
+  // techo —que se mueve en caliente cuando el disyuntor corta— y la pantalla
+  // terminaba afirmando que nadie lo había cargado.
+  const ultima = await getLatestPlatformAiSetting(PLATFORM_AI_SETTINGS.USD_ARS_RATE).catch(
+    () => null,
+  )
 
-  if (!ultima?.createdAt) {
-    // Sin ninguna fila, el valor viene de la variable de entorno o del default.
-    // No hay fecha que informar y eso mismo es lo que hay que decir: nadie lo
-    // puso desde el panel todavía.
-    return { rate, source: 'env', updatedAt: null, updatedByEmail: null, ageDays: null }
-  }
+  // Sin fila, nadie lo puso desde el panel: el valor sale de la variable de
+  // entorno o del default.
+  if (!ultima?.createdAt) return { rate, ...SIN_CARGAR }
+
+  // Con fila pero valor nulo, alguien QUITÓ el override y el mando volvió a la
+  // variable de entorno. Informar 'panel' acá diría que el número lo decidió
+  // una persona cuando en realidad es el default — la procedencia engañosa que
+  // esta función existe para evitar.
+  if (ultima.value === null || ultima.value === undefined) return { rate, ...SIN_CARGAR }
 
   const ageMs = Date.now() - new Date(ultima.createdAt).getTime()
 
@@ -567,6 +584,15 @@ export const updateTenantStatus = expressAsyncHandler(async (req, res) => {
     .setOptions({ ignoreTenant: true, platformScope: 'platform:suspension-de-comercio' })
     .select('name status suspendedAt suspendedReason suspendedByEmail')
     .lean()
+
+  // Entre la lectura de arriba y esta escritura hay una ventana: si el comercio
+  // se borro en el medio, findByIdAndUpdate devuelve null. Sin esta guarda la
+  // linea siguiente tiraba TypeError y el manejador lo convertia en un 500
+  // generico, dejando a quien lo ejecuto sin saber si el comercio quedo
+  // suspendido o no. En un endpoint que corta servicio, eso no se adivina.
+  if (!actualizado) {
+    return res.status(404).json({ success: false, message: 'El comercio no existe.' })
+  }
 
   // Nivel warn y no info: cortarle el servicio a un comercio que paga es un
   // evento que alguien va a querer encontrar en los logs sin filtrar ruido.

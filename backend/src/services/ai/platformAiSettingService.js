@@ -200,6 +200,40 @@ export const setPlatformAiOverride = async ({
 }
 
 /** El historial completo de un ajuste, del más reciente al más viejo. */
+/**
+ * La última fila de auditoría de UN ajuste.
+ *
+ * POR QUÉ NO ALCANZA CON FILTRAR getPlatformAiSettingHistory
+ *
+ * Esa función hace find({}) sobre todos los ajustes con un tope de 100 filas.
+ * El mismo registro guarda los cambios del techo de tokens, del techo en
+ * dólares, de la fracción por comercio y de los precios de los dos planes, así
+ * que buscar ahí la fila de un ajuste puntual es buscar en una ventana que otros
+ * ajustes pueden desplazar.
+ *
+ * Eso ya mordió: el estado del tipo de cambio se resolvía buscando su fila entre
+ * las últimas 50 de todos, y con suficiente actividad del techo —que se mueve en
+ * caliente cuando el disyuntor corta— la fila se caía de la ventana y la
+ * pantalla afirmaba que nadie había cargado el dólar. Un aviso que grita en
+ * falso deja de ser leído.
+ *
+ * Devuelve null cuando ese ajuste nunca se tocó.
+ */
+export const getLatestPlatformAiSetting = async setting => {
+  const row = await PlatformAiSetting.findOne({ setting }).sort({ createdAt: -1 }).lean()
+
+  if (!row) return null
+
+  return {
+    setting: row.setting,
+    value: row.value,
+    previousValue: row.previousValue,
+    changedByEmail: row.changedByEmail,
+    reason: row.reason || '',
+    createdAt: row.createdAt,
+  }
+}
+
 export const getPlatformAiSettingHistory = async (limit = 20) => {
   const rows = await PlatformAiSetting.find({})
     .sort({ createdAt: -1 })
