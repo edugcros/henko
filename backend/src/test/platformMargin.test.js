@@ -36,6 +36,10 @@ const { default: AiConsumptionLedger, LEDGER_EVENT } =
   await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { getPlatformMarginReport } = await import('../services/platform/platformMarginService.js')
+const { updateTenantStatus, getUsdRate } = await import('../controller/platformCtrl.js')
+const { default: PlatformAiSetting, PLATFORM_AI_SETTINGS } = await import(
+  '../models/platformAiSettingModel.js',
+)
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 
 const PERIODO = getCurrentPeriod()
@@ -203,5 +207,206 @@ describe('qué se puede hacer con el reporte', () => {
     expect(totals.unprofitableLossArs).toBe(-15000)
     // Y el total sigue siendo la suma de los dos: 39.000 − 15.000.
     expect(totals.totalEstimatedMarginArs).toBe(24000)
+  })
+})
+
+// Suspender un comercio: lo unico que esta pantalla puede hacerle a un negocio
+// que paga, y por eso lo unico que tiene que estar bien atado.
+//
+// NO BORRA NADA, a proposito. El caso que motiva la funcion es un comercio que
+// cuesta mas de lo que paga, y para eso frenarlo alcanza. Borrarlo seria
+// irreversible justo con los datos que harian falta si despues discute un cobro.
+//
+// El corte ya lo aplica tenantMiddleware, que resuelve unicamente comercios con
+// status 'active'. Esto solo mueve la perilla.
+describe('suspension de comercio', () => {
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
+
+  const pedir = async (tenantId, cuerpo, email = 'dueno@henko.test') => {
+    const req = { params: { tenantId: String(tenantId) }, body: cuerpo, user: { email } }
+    const res = respuesta()
+
+    await updateTenantStatus(req, res, err => {
+      if (err) throw err
+    })
+
+    return res
+  }
+
+  beforeEach(async () => {
+    await crearComercio(CARO, { name: 'Caro', plan: 'starter' })
+  })
+
+  test('suspender deja el motivo y el autor en la fila', async () => {
+    const res = await pedir(CARO, { suspended: true, reason: 'Cuesta mas de lo que paga' })
+
+    expect(res.statusCode).toBe(200)
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    expect(tenant.status).toBe('suspended')
+    // Sin motivo ni autor no hay con que responder cuando el comercio reclame.
+    expect(tenant.suspendedReason).toBe('Cuesta mas de lo que paga')
+    expect(tenant.suspendedByEmail).toBe('dueno@henko.test')
+    expect(tenant.suspendedAt).toBeInstanceOf(Date)
+  })
+
+  test('no se puede suspender sin decir por que', async () => {
+    const res = await pedir(CARO, { suspended: true })
+
+    expect(res.statusCode).toBe(400)
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    expect(tenant.status).toBe('active')
+  })
+
+  test('reactivar limpia el motivo, que si no se lee como si siguiera suspendido', async () => {
+    await pedir(CARO, { suspended: true, reason: 'prueba' })
+    const res = await pedir(CARO, { suspended: false })
+
+    expect(res.statusCode).toBe(200)
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    expect(tenant.status).toBe('active')
+    expect(tenant.suspendedReason).toBeNull()
+    expect(tenant.suspendedAt).toBeNull()
+    expect(tenant.suspendedByEmail).toBeNull()
+  })
+
+  test('reactivar no necesita motivo: volver a habilitar no hay que defenderlo', async () => {
+    await pedir(CARO, { suspended: true, reason: 'prueba' })
+
+    expect((await pedir(CARO, { suspended: false })).statusCode).toBe(200)
+  })
+
+  test('suspender NO borra nada del comercio', async () => {
+    await pedir(CARO, { suspended: true, reason: 'prueba' })
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    // Lo que haria falta si el comercio reclama o discute un cobro.
+    expect(tenant.name).toBe('Caro')
+    expect(tenant.plan).toBe('starter')
+    expect(tenant.createdAt).toBeInstanceOf(Date)
+  })
+
+  test('un comercio dado de baja no se reactiva desde aca', async () => {
+    await Tenant.collection.updateOne({ _id: CARO }, { $set: { status: 'deleted' } })
+
+    const res = await pedir(CARO, { suspended: false })
+
+    // Es otra decision y esta pantalla no es el lugar para tomarla sin querer.
+    expect(res.statusCode).toBe(409)
+  })
+
+  test('un id que no es un comercio no pasa', async () => {
+    expect((await pedir('no-es-un-id', { suspended: true, reason: 'x' })).statusCode).toBe(400)
+  })
+
+  test('hace falta decir si queda suspendido o activo', async () => {
+    expect((await pedir(CARO, { reason: 'x' })).statusCode).toBe(400)
+  })
+})
+
+// De donde sale el tipo de cambio que se informa.
+//
+// El numero solo no alcanza: toda la utilidad de esta tarjeta esta en poder
+// distinguir el valor que una persona decidio del que quedo por defecto. Si la
+// procedencia miente, el aviso de "esto esta viejo" deja de significar algo.
+describe('procedencia del tipo de cambio', () => {
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
+
+  const consultar = async () => {
+    const res = respuesta()
+    await getUsdRate({}, res, err => {
+      if (err) throw err
+    })
+    return res.body.data
+  }
+
+  const asentarAjuste = (setting, value, dias = 0) =>
+    PlatformAiSetting.collection.insertOne({
+      setting,
+      value,
+      previousValue: null,
+      changedByEmail: 'dueno@henko.test',
+      reason: 'prueba',
+      createdAt: new Date(Date.now() - dias * 24 * 60 * 60 * 1000),
+    })
+
+  beforeEach(async () => {
+    await PlatformAiSetting.collection.deleteMany({})
+  })
+
+  test('sin ninguna fila dice que viene del entorno', async () => {
+    const data = await consultar()
+
+    expect(data.source).toBe('env')
+    expect(data.ageDays).toBeNull()
+  })
+
+  test('con un valor cargado dice panel, con su autor y su antiguedad', async () => {
+    await asentarAjuste(PLATFORM_AI_SETTINGS.USD_ARS_RATE, 1650, 47)
+
+    const data = await consultar()
+
+    expect(data.source).toBe('panel')
+    expect(data.updatedByEmail).toBe('dueno@henko.test')
+    // De esto depende el aviso de desactualizado.
+    expect(data.ageDays).toBe(47)
+  })
+
+  test('si se quito el override NO dice panel', async () => {
+    // Quitar el override escribe una fila con value null y devuelve el mando a
+    // la variable de entorno. Informar 'panel' ahi diria que el numero lo
+    // decidio una persona cuando en realidad es el default, y la tarjeta no
+    // mostraria el aviso de "nadie lo cargo".
+    await asentarAjuste(PLATFORM_AI_SETTINGS.USD_ARS_RATE, null, 0)
+
+    const data = await consultar()
+
+    expect(data.source).toBe('env')
+    expect(data.ageDays).toBeNull()
+  })
+
+  test('la fila del dolar se encuentra aunque otros ajustes la hayan corrido', async () => {
+    // El historial general trae las ultimas 100 filas de TODOS los ajustes. El
+    // techo se mueve en caliente cuando el disyuntor corta, asi que la fila del
+    // dolar se cae de esa ventana y la pantalla afirmaba que nadie lo habia
+    // cargado. Un aviso que grita en falso deja de ser leido.
+    await asentarAjuste(PLATFORM_AI_SETTINGS.USD_ARS_RATE, 1650, 30)
+
+    for (let i = 0; i < 120; i += 1) {
+      await asentarAjuste(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET, 200_000_000 + i, 1)
+    }
+
+    const data = await consultar()
+
+    expect(data.source).toBe('panel')
+    expect(data.ageDays).toBe(30)
   })
 })

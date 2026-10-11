@@ -6,6 +6,8 @@
 
 import expressAsyncHandler from 'express-async-handler'
 import mongoose from 'mongoose'
+import Tenant from '../models/tenantModel.js'
+import logger from '../../config/logger.js'
 import { getPlatformMarginReport } from '../services/platform/platformMarginService.js'
 import { getPlatformSpendSnapshot } from '../services/ai/aiSpendReportService.js'
 import { isValidPeriod } from '../services/ai/aiPeriod.js'
@@ -13,9 +15,15 @@ import {
   setPlatformAiOverride,
   getPlatformAiSettingHistory,
   setTenantAiPolicy,
+  getLatestPlatformAiSetting,
   PLATFORM_AI_SETTINGS,
 } from '../services/ai/platformAiSettingService.js'
-import { AI_PLANS, getPlanCatalog, normalizePlan } from '../services/ai/aiPlanPolicy.js'
+import {
+  AI_PLANS,
+  getPlanCatalog,
+  normalizePlan,
+  getUsdToArsRate,
+} from '../services/ai/aiPlanPolicy.js'
 
 // Qué plan se puede cotizar: los dos del catálogo, porque los dos se pagan.
 // El mapa se mantiene igual —y no se deriva de AI_PLANS— porque cada plan
@@ -368,10 +376,255 @@ export const updatePlanPrice = expressAsyncHandler(async (req, res) => {
   })
 })
 
+/**
+ * Cuántos días hace que alguien tocó el tipo de cambio, y de dónde sale.
+ *
+ * El número solo no alcanza: un 1530 puesto hoy y un 1530 que quedó de hace
+ * tres meses se leen igual en la pantalla y significan cosas opuestas. Lo
+ * segundo es el margen de todos los comercios mal medido, y siempre para el
+ * mismo lado: el peso se devalúa, el costo real en pesos sube, y el margen se
+ * sigue informando como si no hubiera pasado nada.
+ */
+const SIN_CARGAR = Object.freeze({
+  source: 'env',
+  updatedAt: null,
+  updatedByEmail: null,
+  ageDays: null,
+})
+
+const estadoDelTipoDeCambio = async () => {
+  const rate = getUsdToArsRate()
+
+  // Consulta enfocada a este ajuste y no un filtro sobre el historial general.
+  // Ese historial trae las últimas 100 filas de TODOS los ajustes, así que la
+  // fila del dólar se cae de la ventana cuando hay suficiente actividad del
+  // techo —que se mueve en caliente cuando el disyuntor corta— y la pantalla
+  // terminaba afirmando que nadie lo había cargado.
+  const ultima = await getLatestPlatformAiSetting(PLATFORM_AI_SETTINGS.USD_ARS_RATE).catch(
+    () => null,
+  )
+
+  // Sin fila, nadie lo puso desde el panel: el valor sale de la variable de
+  // entorno o del default.
+  if (!ultima?.createdAt) return { rate, ...SIN_CARGAR }
+
+  // Con fila pero valor nulo, alguien QUITÓ el override y el mando volvió a la
+  // variable de entorno. Informar 'panel' acá diría que el número lo decidió
+  // una persona cuando en realidad es el default — la procedencia engañosa que
+  // esta función existe para evitar.
+  if (ultima.value === null || ultima.value === undefined) return { rate, ...SIN_CARGAR }
+
+  const ageMs = Date.now() - new Date(ultima.createdAt).getTime()
+
+  return {
+    rate,
+    source: 'panel',
+    updatedAt: ultima.createdAt,
+    updatedByEmail: ultima.changedByEmail || null,
+    ageDays: Math.floor(ageMs / (24 * 60 * 60 * 1000)),
+  }
+}
+
+/**
+ * GET /api/platform/usd-rate
+ */
+export const getUsdRate = expressAsyncHandler(async (_req, res) => {
+  const estado = await estadoDelTipoDeCambio()
+
+  const history = await getPlatformAiSettingHistory(30).catch(() => [])
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      ...estado,
+      history: history.filter(fila => fila.setting === PLATFORM_AI_SETTINGS.USD_ARS_RATE),
+    },
+  })
+})
+
+/**
+ * PUT /api/platform/usd-rate
+ *
+ * Carga a mano los pesos por dólar. `rate: null` devuelve el mando a la
+ * variable de entorno.
+ */
+export const updateUsdRate = expressAsyncHandler(async (req, res) => {
+  const { rate, reason } = req.body || {}
+
+  const isRemoval = rate === null
+  const value = isRemoval ? null : Number(rate)
+
+  // Acá el cero NO se admite, a diferencia del precio de un plan: un plan puede
+  // ser gratis, pero un dólar a cero convertiría cualquier costo en cero pesos
+  // y haría que todos los comercios parezcan rentables.
+  if (!isRemoval && (!Number.isFinite(value) || value <= 0)) {
+    return res.status(400).json({
+      success: false,
+      message:
+        'El tipo de cambio debe ser un número de pesos mayor a cero, o null para volver al valor por defecto.',
+    })
+  }
+
+  const cleanReason = String(reason || '').trim()
+
+  if (!cleanReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá de dónde sacaste el valor del dólar.',
+    })
+  }
+
+  await setPlatformAiOverride({
+    setting: PLATFORM_AI_SETTINGS.USD_ARS_RATE,
+    value: isRemoval ? null : Math.round(value),
+    changedByEmail: req.user?.email,
+    changedByUserId: req.user?._id || null,
+    reason: cleanReason.slice(0, 500),
+  })
+
+  const estado = await estadoDelTipoDeCambio()
+  const history = await getPlatformAiSettingHistory(30).catch(() => [])
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      ...estado,
+      history: history.filter(fila => fila.setting === PLATFORM_AI_SETTINGS.USD_ARS_RATE),
+    },
+  })
+})
+
+/**
+ * PUT /api/platform/tenant/:tenantId/status
+ *
+ * Suspende o reactiva un comercio entero.
+ *
+ * QUÉ HACE Y QUÉ NO HACE
+ *
+ * Mueve `status` entre 'active' y 'suspended'. No borra NADA: los productos,
+ * las órdenes, los clientes y el historial de facturación quedan intactos.
+ *
+ * El corte ya estaba implementado y no hace falta nada más: tenantMiddleware
+ * resuelve únicamente comercios con status 'active', así que un suspendido deja
+ * de responder tanto en su tienda como en su panel. Esto solo mueve la perilla.
+ *
+ * POR QUÉ SUSPENDER Y NO BORRAR
+ *
+ * El caso que motiva esta pantalla es un comercio que cuesta más de lo que
+ * paga, y para eso frenarlo alcanza. Borrarlo sería irreversible justo con los
+ * datos que harían falta si después discute un cobro o reclama. El enum del
+ * modelo ya tiene 'deleted' para el día que haya un pedido concreto de baja de
+ * datos; eso es otra operación y merece su propia confirmación.
+ */
+export const updateTenantStatus = expressAsyncHandler(async (req, res) => {
+  const { tenantId } = req.params
+  const { suspended, reason } = req.body || {}
+
+  if (!mongoose.Types.ObjectId.isValid(String(tenantId || ''))) {
+    return res.status(400).json({ success: false, message: 'Comercio inválido.' })
+  }
+
+  if (typeof suspended !== 'boolean') {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá si el comercio queda suspendido (true) o activo (false).',
+    })
+  }
+
+  const cleanReason = String(reason || '').trim()
+
+  // Se exige motivo para suspender y no para reactivar: frenar a un comercio
+  // que paga es lo que alguien va a discutir después, y sin motivo ni autor no
+  // hay con qué responder. Volver a habilitarlo no necesita defensa.
+  if (suspended && !cleanReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá por qué se suspende el comercio.',
+    })
+  }
+
+  // Lectura con lean y escritura con findByIdAndUpdate: las dos esquivan el
+  // hook pre('save') del modelo a propósito.
+  //
+  // normalizeTenant recorre this.domains, así que un documento cargado con
+  // select parcial lo hace explotar con "Cannot read properties of undefined
+  // (reading 'filter')" al guardar. Cargar el documento completo lo evitaría,
+  // pero haría que un cambio de estado dispare además la normalización entera
+  // de dominios — efectos que nadie pidió en una operación que mueve un campo.
+  const tenant = await Tenant.findById(tenantId)
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:suspension-de-comercio' })
+    .select('name status')
+    .lean()
+
+  if (!tenant) {
+    return res.status(404).json({ success: false, message: 'El comercio no existe.' })
+  }
+
+  // Un comercio ya borrado no se reactiva desde acá: esa es una decisión
+  // distinta y esta pantalla no es el lugar para tomarla sin querer.
+  if (tenant.status === 'deleted') {
+    return res.status(409).json({
+      success: false,
+      message: 'El comercio está dado de baja. Reactivarlo no se hace desde esta pantalla.',
+    })
+  }
+
+  const estadoAnterior = tenant.status
+
+  // Al reactivar se limpian los tres campos: un comercio activo con un motivo
+  // de suspensión colgado se lee como si siguiera suspendido.
+  const cambios = {
+    status: suspended ? 'suspended' : 'active',
+    suspendedAt: suspended ? new Date() : null,
+    suspendedReason: suspended ? cleanReason.slice(0, 500) : null,
+    suspendedByEmail: suspended ? req.user?.email || null : null,
+  }
+
+  const actualizado = await Tenant.findByIdAndUpdate(tenantId, { $set: cambios }, { new: true })
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:suspension-de-comercio' })
+    .select('name status suspendedAt suspendedReason suspendedByEmail')
+    .lean()
+
+  // Entre la lectura de arriba y esta escritura hay una ventana: si el comercio
+  // se borro en el medio, findByIdAndUpdate devuelve null. Sin esta guarda la
+  // linea siguiente tiraba TypeError y el manejador lo convertia en un 500
+  // generico, dejando a quien lo ejecuto sin saber si el comercio quedo
+  // suspendido o no. En un endpoint que corta servicio, eso no se adivina.
+  if (!actualizado) {
+    return res.status(404).json({ success: false, message: 'El comercio no existe.' })
+  }
+
+  // Nivel warn y no info: cortarle el servicio a un comercio que paga es un
+  // evento que alguien va a querer encontrar en los logs sin filtrar ruido.
+  logger.warn('[PLATAFORMA] Estado de comercio cambiado', {
+    tenantId: String(actualizado._id),
+    nombre: actualizado.name,
+    de: estadoAnterior,
+    a: actualizado.status,
+    porEmail: req.user?.email || null,
+    motivo: actualizado.suspendedReason,
+  })
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      tenantId: String(actualizado._id),
+      name: actualizado.name,
+      status: actualizado.status,
+      suspendedAt: actualizado.suspendedAt,
+      suspendedReason: actualizado.suspendedReason,
+      suspendedByEmail: actualizado.suspendedByEmail,
+    },
+  })
+})
+
 export default {
   getMarginReport,
   getAiSpendReport,
   updateAiBudget,
+  getUsdRate,
+  updateUsdRate,
+  updateTenantStatus,
   getPlanPrices,
   updatePlanPrice,
 }

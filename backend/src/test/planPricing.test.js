@@ -28,6 +28,11 @@ jest.unstable_mockModule('../services/ai/platformAiSettingService.js', () => ({
     PER_TENANT_SHARE: 'perTenantShare',
     PLAN_PRICE_STARTER: 'planPriceStarterArs',
     PLAN_PRICE_PRO: 'planPriceProArs',
+    // Faltaba, y por eso el camino del panel para el tipo de cambio no se
+    // ejercitaba: PLATFORM_AI_SETTINGS.USD_ARS_RATE quedaba undefined, el mock
+    // devolvía null para esa clave y la prueba caía siempre en la variable de
+    // entorno sin que nada lo delatara.
+    USD_ARS_RATE: 'usdArsRate',
   },
 }))
 
@@ -163,5 +168,49 @@ describe('tipo de cambio · solo para costos', () => {
     process.env.USD_ARS_RATE = '1800'
 
     expect(getUsdToArsRate()).toBe(1800)
+  })
+})
+
+// El tipo de cambio: el único número que cruza las dos monedas del negocio.
+//
+// Los planes se cobran en pesos y los proveedores de IA facturan en dólares,
+// así que el margen —ingreso menos costo— es el único cálculo donde el cruce es
+// inevitable. Vivía SOLO en USD_ARS_RATE, o sea que corregirlo exigía un
+// deploy, y mientras nadie lo hacía el margen de todos los comercios se
+// calculaba con un dólar viejo. Mal medido siempre para el mismo lado: el peso
+// se devalúa, el costo real en pesos sube, y el margen se informa como si no.
+describe('tipo de cambio · configurable sin deploy', () => {
+  test('el panel le gana a la variable de entorno', () => {
+    process.env.USD_ARS_RATE = '1200'
+    mockOverride.mockImplementation(clave => (clave === 'usdArsRate' ? 1650 : null))
+
+    expect(getUsdToArsRate()).toBe(1650)
+  })
+
+  test('sin valor en el panel manda la variable de entorno', () => {
+    process.env.USD_ARS_RATE = '1200'
+
+    expect(getUsdToArsRate()).toBe(1200)
+  })
+
+  test('sin panel ni variable queda el default', () => {
+    expect(getUsdToArsRate()).toBe(1530)
+  })
+
+  test('un cero en el panel no puede apagar la conversión', () => {
+    // A diferencia del precio de un plan, donde cero es una decisión válida
+    // (un plan puede ser gratis), un dólar en cero convertiría cualquier costo
+    // en cero pesos y haría que TODOS los comercios parezcan rentables. Si el
+    // valor guardado fuera cero, se lo ignora en lugar de propagarlo.
+    process.env.USD_ARS_RATE = '1200'
+    mockOverride.mockImplementation(clave => (clave === 'usdArsRate' ? 0 : null))
+
+    expect(getUsdToArsRate()).toBe(1200)
+  })
+
+  test('un negativo tampoco', () => {
+    mockOverride.mockImplementation(clave => (clave === 'usdArsRate' ? -500 : null))
+
+    expect(getUsdToArsRate()).toBe(1530)
   })
 })

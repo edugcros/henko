@@ -10,7 +10,7 @@
 // server-side (requirePlatformOwner, allowlist de email) y no tiene sentido
 // mostrarle a todos los admins un ítem que les va a devolver 403.
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Box,
@@ -40,6 +40,10 @@ import {
   getPlatformAiSpend,
   updatePlatformAiBudget,
   updateTenantAiPolicy,
+  getUsdRate,
+  updateUsdRate,
+  getPlatformMarginReport,
+  updateTenantStatus,
 } from '../services/platformService'
 
 const formatUsd = value =>
@@ -49,6 +53,62 @@ const formatUsd = value =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value) || 0)
+
+/**
+ * Pesos, sin centavos.
+ *
+ * Los centavos no aportan nada aca: un costo de IA de 4.237,18 pesos se decide
+ * igual que uno de 4.237, y la columna con decimales es mas dificil de barrer
+ * con la vista. El dolar si los lleva, porque ahi los montos son chicos y 0,04
+ * contra 0,00 es la diferencia entre "algo" y "nada".
+ */
+const formatArs = value =>
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0)
+
+/**
+ * Un costo en dolares, mostrado en pesos.
+ *
+ * POR QUE PESOS ADELANTE Y NO SOLO DOLARES
+ *
+ * Esta pantalla estaba entera en dolares, que es la moneda en la que facturan
+ * los proveedores de IA pero no la del negocio. Los planes se cobran en pesos,
+ * asi que "este comercio me costo USD 3,80" no se puede comparar mentalmente
+ * con "me paga 40.000 pesos" sin hacer la cuenta en la cabeza con un dolar que
+ * uno cree recordar.
+ *
+ * POR QUE EL DOLAR NO SE BORRA
+ *
+ * Porque es lo que el proveedor factura de verdad. El peso es una conversion
+ * nuestra, hecha con un tipo de cambio que alguien cargo a mano y puede estar
+ * viejo. Sin tipo de cambio no se inventa una conversion: se muestra el dolar.
+ */
+const formatMoney = (valorUsd, rate) => {
+  if (!Number.isFinite(rate) || rate <= 0) return formatUsd(valorUsd)
+
+  return formatArs((Number(valorUsd) || 0) * rate)
+}
+
+/**
+ * El tipo de cambio vigente, para todo lo que esta pantalla muestra.
+ *
+ * Va en un contexto y no en props porque los montos aparecen en media docena de
+ * lugares anidados —el dialogo de politica, las tablas, el pronostico— y hacer
+ * bajar el mismo numero por cada nivel es la clase de cableado que despues nadie
+ * mantiene: alcanza con que un componente nuevo se olvide de recibirlo para que
+ * muestre dolares donde todo lo demas muestra pesos.
+ */
+const TipoDeCambioContext = createContext(null)
+
+/** `dinero(x)` da pesos cuando hay cambio cargado y dólares cuando no. */
+const useDinero = () => {
+  const rate = useContext(TipoDeCambioContext)
+
+  return useMemo(() => ({ dinero: valorUsd => formatMoney(valorUsd, rate), rate }), [rate])
+}
 
 const formatTokens = value => new Intl.NumberFormat('es-AR').format(Number(value) || 0)
 
@@ -271,7 +331,375 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
  * información a la vista. Separarlas obligaría a dos viajes para "bajale el
  * tope, y si sigue así apagalo".
  */
+/**
+ * El margen de un comercio, en pesos y en porcentaje.
+ *
+ * POR QUÉ LOS DOS NÚMEROS Y NO UNO
+ *
+ * Un comercio que deja $8.000 sobre un plan de $10.000 y otro que deja $8.000
+ * sobre uno de $40.000 son negocios completamente distintos, y en la columna de
+ * pesos se ven idénticos. El porcentaje es lo que permite ordenarlos y decidir
+ * si un plan está mal puesto.
+ *
+ * `null` no es cero: quiere decir que el plan no tiene precio cargado, así que
+ * no hay ingreso contra el que restar. Mostrar un cero ahí se leería como "no
+ * deja nada", que es una afirmación sobre el negocio que nadie hizo.
+ */
+function MargenDelComercio({ margen }) {
+  if (!margen) {
+    return (
+      <Tooltip title="Este comercio no aparece en el reporte de margen">
+        <Typography variant="body2" color="text.disabled">
+          —
+        </Typography>
+      </Tooltip>
+    )
+  }
+
+  if (margen.estimatedMarginArs === null) {
+    return (
+      <Tooltip title="El plan de este comercio no tiene precio cargado, así que no hay ingreso contra el que restar el costo">
+        <Typography variant="body2" color="text.disabled">
+          sin precio
+        </Typography>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <>
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: 600 }}
+        color={margen.unprofitable ? 'error.main' : 'success.main'}
+      >
+        {formatArs(margen.estimatedMarginArs)}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {margen.marginPercent === null ? 'sobre plan sin precio' : `${margen.marginPercent}%`}
+        {/* Cuesta más de lo que paga: la única fila sobre la que hay que hacer
+            algo, y sin marcarla se pierde entre las demás. */}
+        {margen.unprofitable && ' · pierde plata'}
+      </Typography>
+    </>
+  )
+}
+
+/**
+ * Suspender el comercio entero, o reactivarlo.
+ *
+ * QUÉ HACE Y QUÉ NO
+ *
+ * Mueve el estado del comercio. NO borra nada: productos, órdenes, clientes e
+ * historial de facturación quedan intactos, y se puede volver atrás en un clic.
+ *
+ * El corte ya estaba implementado: tenantMiddleware resuelve únicamente
+ * comercios activos, así que un suspendido deja de responder tanto en su tienda
+ * como en su panel.
+ *
+ * POR QUÉ SUSPENDER Y NO BORRAR
+ *
+ * El caso que motiva esta pantalla es un comercio que cuesta más de lo que
+ * paga, y para eso frenarlo alcanza. Borrarlo sería irreversible justo con los
+ * datos que harían falta si después discute un cobro o reclama. Es la decisión
+ * que se puede deshacer, y para algo que le corta el servicio a alguien que
+ * paga, poder deshacerla vale más que ahorrar espacio.
+ */
+function SuspensionDelComercio({ row, onSaved, onClose }) {
+  const [abierto, setAbierto] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  // El reporte de gasto no trae el estado del comercio, así que lo que se sabe
+  // acá es lo que el margen informó. Sin ese dato se asume activo: ofrecer
+  // "suspender" sobre un comercio ya suspendido es un error recuperable, y el
+  // backend lo deja en el mismo estado.
+  const estaSuspendido = row?.tenantStatus === 'suspended'
+
+  const aplicar = async () => {
+    if (!estaSuspendido && !motivo.trim()) {
+      setError('Indicá por qué se suspende. Queda con tu email, por si el comercio reclama.')
+      return
+    }
+
+    setGuardando(true)
+    setError('')
+
+    try {
+      await updateTenantStatus({
+        tenantId: row.tenantId,
+        suspended: !estaSuspendido,
+        reason: motivo.trim(),
+      })
+      setAbierto(false)
+      await onSaved?.()
+      onClose?.()
+    } catch (err) {
+      setError(err?.response?.data?.message || 'No se pudo cambiar el estado del comercio.')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <>
+      <Paper variant="outlined" sx={{ p: 2, mt: 2, borderColor: 'error.light' }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+          {estaSuspendido ? 'Comercio suspendido' : 'Suspender el comercio entero'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          {estaSuspendido
+            ? 'Hoy no puede vender ni entrar a su panel. Sus datos están intactos y se reactiva en un clic.'
+            : 'Deja de vender y de entrar a su panel. No se borra nada: productos, órdenes, clientes e historial quedan intactos, y se puede volver atrás.'}
+        </Typography>
+
+        <Button
+          variant="outlined"
+          color={estaSuspendido ? 'success' : 'error'}
+          onClick={() => {
+            setMotivo('')
+            setError('')
+            setAbierto(true)
+          }}
+        >
+          {estaSuspendido ? 'Reactivar el comercio' : 'Suspender el comercio'}
+        </Button>
+      </Paper>
+
+      <Dialog open={abierto} onClose={() => setAbierto(false)} fullWidth maxWidth="xs">
+        <DialogTitle>
+          {estaSuspendido ? '¿Reactivar el comercio?' : '¿Suspender el comercio?'}
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity={estaSuspendido ? 'success' : 'warning'} sx={{ mb: 2 }}>
+            {estaSuspendido ? (
+              <>
+                <strong>{row?.name}</strong> vuelve a vender y a poder entrar a su panel.
+              </>
+            ) : (
+              <>
+                <strong>{row?.name}</strong> deja de vender y de poder entrar a su panel, desde
+                ahora. No se borra nada y se puede revertir.
+              </>
+            )}
+          </Alert>
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          {/* Sólo al suspender: volver a habilitar a alguien no hay que
+              defenderlo ante nadie. */}
+          {!estaSuspendido && (
+            <TextField
+              label="Por qué se suspende"
+              fullWidth
+              multiline
+              minRows={2}
+              value={motivo}
+              onChange={event => setMotivo(event.target.value)}
+              placeholder="Ej.: cuesta más de lo que paga desde junio y no respondió los avisos"
+              helperText="Queda con tu email y la fecha. Es lo que te va a permitir responder si el comercio reclama."
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAbierto(false)} disabled={guardando}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color={estaSuspendido ? 'success' : 'error'}
+            onClick={aplicar}
+            disabled={guardando}
+          >
+            {guardando ? (
+              <CircularProgress size={22} />
+            ) : (
+              <span>{estaSuspendido ? 'Reactivar' : 'Suspender'}</span>
+            )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  )
+}
+
+/** A partir de cuántos días un tipo de cambio deja de ser confiable. */
+const DIAS_PARA_AVISAR = 15
+
+/**
+ * El tipo de cambio: mostrarlo, decir hace cuanto se cargo y poder corregirlo.
+ *
+ * POR QUE LA ANTIGUEDAD ES TAN IMPORTANTE COMO EL NUMERO
+ *
+ * Un 1530 cargado hoy y un 1530 que quedo de hace tres meses se leen identicos
+ * en la pantalla y significan cosas opuestas. El segundo quiere decir que el
+ * margen de todos los comercios esta mal medido, y siempre para el mismo lado:
+ * el peso se devalua, el costo real en pesos sube, y el margen se sigue
+ * informando como si no hubiera pasado nada. Es el modo de falla silencioso
+ * tipico: nada se rompe, los numeros simplemente mienten.
+ *
+ * POR QUE NO SE TRAE SOLO DE UNA API
+ *
+ * Porque cual dolar usar —oficial, MEP, blue— es una decision del dueno y
+ * cambia la rentabilidad informada. Una cotizacion automatica equivocada es peor
+ * que una manual puesta a conciencia, y sumaria una dependencia externa que se
+ * puede caer justo cuando hay que decidir algo.
+ */
+function TipoDeCambioCard({ fx, onSaved }) {
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState('')
+  const [motivo, setMotivo] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  const rate = fx?.rate ?? null
+  const dias = fx?.ageDays ?? null
+  const viejo = Number.isFinite(dias) && dias >= DIAS_PARA_AVISAR
+  const sinCargar = fx?.source !== 'panel'
+
+  const abrir = () => {
+    setValor(rate ? String(rate) : '')
+    setMotivo('')
+    setError('')
+    setEditando(true)
+  }
+
+  const guardar = async () => {
+    const numero = Number(valor)
+
+    if (!Number.isFinite(numero) || numero <= 0) {
+      setError('Poné cuántos pesos vale un dólar hoy.')
+      return
+    }
+
+    if (!motivo.trim()) {
+      setError('Indicá de dónde sacaste el valor, para que dentro de tres meses se entienda.')
+      return
+    }
+
+    setGuardando(true)
+    setError('')
+
+    try {
+      await updateUsdRate({ rate: Math.round(numero), reason: motivo.trim() })
+      setEditando(false)
+      await onSaved?.()
+    } catch (err) {
+      setError(err?.response?.data?.message || 'No se pudo guardar el tipo de cambio.')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <>
+      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 2,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Tipo de cambio para expresar los costos en pesos
+            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              {rate ? `$${formatTokens(rate)} por dólar` : 'sin cargar'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {sinCargar
+                ? 'Viene del valor por defecto del servidor, no lo cargó nadie.'
+                : `Cargado ${dias === 0 ? 'hoy' : `hace ${dias} ${dias === 1 ? 'día' : 'días'}`}${
+                    fx?.updatedByEmail ? ` por ${fx.updatedByEmail}` : ''
+                  }.`}
+            </Typography>
+          </Box>
+
+          <Button variant="contained" onClick={abrir}>
+            {sinCargar ? 'Cargar el dólar' : 'Actualizar'}
+          </Button>
+        </Box>
+
+        {(viejo || sinCargar) && (
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            {sinCargar ? (
+              <>
+                <strong>Nadie cargó el tipo de cambio.</strong> Los pesos de esta pantalla salen de
+                un valor por defecto del servidor, así que el margen de cada comercio puede estar
+                lejos de la realidad.
+              </>
+            ) : (
+              <>
+                <strong>Este valor tiene {dias} días.</strong> Si el dólar se movió, cada peso de
+                esta pantalla está mal — y hacia el mismo lado: el costo real es más alto y el
+                margen se ve mejor de lo que es.
+              </>
+            )}
+          </Alert>
+        )}
+      </Paper>
+
+      <Dialog open={editando} onClose={() => setEditando(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Tipo de cambio</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Cuántos pesos vale un dólar hoy. Se usa para mostrar en pesos los costos que los
+            proveedores de IA facturan en dólares, y para el margen de cada comercio. No toca los
+            precios de los planes, que ya están en pesos.
+          </Typography>
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          <TextField
+            label="Pesos por dólar"
+            value={valor}
+            onChange={event => setValor(event.target.value)}
+            fullWidth
+            margin="normal"
+            type="number"
+            inputProps={{ min: 1 }}
+          />
+
+          <TextField
+            label="De dónde sale"
+            placeholder="Dólar MEP del 11/10, pantalla de Ámbito"
+            value={motivo}
+            onChange={event => setMotivo(event.target.value)}
+            fullWidth
+            margin="normal"
+            multiline
+            minRows={2}
+            helperText="Queda guardado con tu nombre y la fecha."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditando(false)} disabled={guardando}>
+            Cancelar
+          </Button>
+          <Button variant="contained" onClick={guardar} disabled={guardando}>
+            {guardando ? <CircularProgress size={22} /> : <span>Guardar</span>}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  )
+}
+
 function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
+  const { dinero } = useDinero()
   const [share, setShare] = useState('')
   const [suspended, setSuspended] = useState(false)
   const [suspendedReason, setSuspendedReason] = useState('')
@@ -339,7 +767,7 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
       <DialogTitle>{row.name}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Este comercio lleva {formatTokens(row.tokens)} tokens y {formatUsd(row.platformCostUsd)} a
+          Este comercio lleva {formatTokens(row.tokens)} tokens y {dinero(row.platformCostUsd)} a
           cargo de HENKO en el período. Los cambios rigen de inmediato y solo afectan a este
           comercio.
         </Typography>
@@ -406,6 +834,17 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
             {error}
           </Alert>
         )}
+
+        {/* SUSPENDER EL COMERCIO ENTERO: aparte de todo lo de arriba.
+
+            Va en su propio bloque, abajo, y con su propio botón, porque es una
+            decisión de otra naturaleza. Lo de arriba acota o apaga la IA y el
+            comercio sigue vendiendo; esto lo deja sin tienda y sin panel.
+
+            Si compartiera el botón "Guardar" con el resto, alguien que vino a
+            ajustar una fracción podría cortarle el servicio a un comercio que
+            paga sin haberlo decidido. */}
+        <SuspensionDelComercio row={row} onSaved={onSaved} onClose={onClose} />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>
@@ -419,8 +858,13 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
   )
 }
 
-export default function PlatformAiSpendPage() {
+function ContenidoDelGasto({ fx, onFxSaved }) {
+  const { dinero } = useDinero()
   const [loading, setLoading] = useState(true)
+  // El margen por comercio. Es el MISMO reporte que la pantalla de margen, no
+  // un calculo nuevo: dos calculos del mismo numero terminarian dando cifras
+  // distintas para el mismo comercio en dos pantallas del mismo panel.
+  const [margen, setMargen] = useState([])
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState(null)
@@ -437,8 +881,19 @@ export default function PlatformAiSpendPage() {
     setForbidden(false)
 
     try {
-      const data = await getPlatformAiSpend()
-      if (!signal?.cancelled) setReport(data)
+      const [gasto, reporteMargen] = await Promise.allSettled([
+        getPlatformAiSpend(),
+        getPlatformMarginReport(),
+      ])
+
+      if (signal?.cancelled) return
+
+      if (gasto.status === 'rejected') throw gasto.reason
+
+      setReport(gasto.value)
+      // Si falla el margen, la columna queda en guiones y el resto de la
+      // pantalla sirve igual. Al reves no: sin gasto no hay nada que mirar.
+      setMargen(reporteMargen.status === 'fulfilled' ? reporteMargen.value?.tenants || [] : [])
     } catch (err) {
       if (signal?.cancelled) return
 
@@ -501,6 +956,10 @@ export default function PlatformAiSpendPage() {
   } = report
   const percent = consumption.percentUsed
 
+  // Indexado por comercio: recorrer el array del margen por cada fila de la
+  // tabla seria cuadratico, y con cientos de comercios eso se nota.
+  const margenPorComercio = new Map(margen.map(fila => [String(fila.tenantId), fila]))
+
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1100, mx: 'auto' }}>
       <Typography variant="h5" sx={{ fontWeight: 600 }}>
@@ -508,7 +967,14 @@ export default function PlatformAiSpendPage() {
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Período {report.period} · lo que paga HENKO por los comercios que usan la key compartida.
+        {fx?.rate
+          ? ` Los montos están en pesos, a $${formatTokens(fx.rate)} por dólar.`
+          : ' Los montos están en dólares: no hay tipo de cambio cargado.'}
       </Typography>
+
+      {/* Arriba de todo porque es el número del que depende el resto: si está
+          viejo, cada peso de esta pantalla está mal. */}
+      <TipoDeCambioCard fx={fx} onSaved={onFxSaved} />
 
       {breaker.tripped && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -557,11 +1023,11 @@ export default function PlatformAiSpendPage() {
               ? `Al ritmo actual, el techo se agota el día ${forecast.exhaustionDay}.`
               : 'Al ritmo actual, el mes cierra por encima del techo.'}
           </strong>{' '}
-          Proyección: {formatUsd(forecast.projectedUsd)} sobre un techo de {formatUsd(budget.usd)} (
+          Proyección: {dinero(forecast.projectedUsd)} sobre un techo de {dinero(budget.usd)} (
           {forecast.projectedPercent}%).{' '}
           {forecast.basis === 'recent'
-            ? `Calculado con el ritmo de los últimos ${forecast.recentWindowDays} días (${formatUsd(forecast.recentAvgUsd)} por día), que viene más alto que el promedio del mes (${formatUsd(forecast.dailyAvgUsd)}).`
-            : `Calculado con el promedio del mes, ${formatUsd(forecast.dailyAvgUsd)} por día.`}
+            ? `Calculado con el ritmo de los últimos ${forecast.recentWindowDays} días (${dinero(forecast.recentAvgUsd)} por día), que viene más alto que el promedio del mes (${dinero(forecast.dailyAvgUsd)}).`
+            : `Calculado con el promedio del mes, ${dinero(forecast.dailyAvgUsd)} por día.`}
         </Alert>
       )}
 
@@ -583,7 +1049,7 @@ export default function PlatformAiSpendPage() {
           spacing={1}
         >
           <Typography variant="h4" sx={{ fontWeight: 600 }}>
-            {formatUsd(consumption.estimatedCostUsd)}
+            {dinero(consumption.estimatedCostUsd)}
           </Typography>
           {percent !== null && (
             <Typography variant="body2" color="text.secondary">
@@ -634,10 +1100,10 @@ export default function PlatformAiSpendPage() {
             {forecast?.dailyAvgUsd > 0 && (
               <>
                 {' · '}
-                {formatUsd(forecast.dailyAvgUsd)} por día en {forecast.daysElapsed}{' '}
+                {dinero(forecast.dailyAvgUsd)} por día en {forecast.daysElapsed}{' '}
                 {forecast.daysElapsed === 1 ? 'día cerrado' : 'días cerrados'}
                 {forecast.projectedUsd !== null &&
-                  ` · proyectado al cierre: ${formatUsd(forecast.projectedUsd)}`}
+                  ` · proyectado al cierre: ${dinero(forecast.projectedUsd)}`}
               </>
             )}
           </Typography>
@@ -660,10 +1126,18 @@ export default function PlatformAiSpendPage() {
           error posible acá, porque el cambio se aplicaría sobre el equivocado. */}
       {governing && (
         <TenantPolicyDialog
-          row={governing}
+          // El estado del comercio sale del reporte de margen y no del de
+          // gasto, que no lo trae. Sin él el diálogo no puede saber si ofrecer
+          // "suspender" o "reactivar".
+          row={{
+            ...governing,
+            tenantStatus: margenPorComercio.get(governing.tenantId)?.status || 'active',
+          }}
           budget={budget}
           onClose={() => setGoverning(null)}
-          onSaved={setReport}
+          // Al suspender hay que recargar las dos cosas: el gasto por el
+          // cambio de política, y el margen porque de ahí sale el estado.
+          onSaved={load}
         />
       )}
 
@@ -686,14 +1160,14 @@ export default function PlatformAiSpendPage() {
           <Stack spacing={0.5}>
             {anomalies.map(row => (
               <Typography variant="body2" key={row.tenantId}>
-                <strong>{row.name}</strong>: {formatUsd(row.todayUsd)} hoy en{' '}
+                <strong>{row.name}</strong>: {dinero(row.todayUsd)} hoy en{' '}
                 {formatTokens(row.todayOperations)}{' '}
                 {row.todayOperations === 1 ? 'operación' : 'operaciones'}
                 {/* factor null = venía de cero. No hay múltiplo que calcular y
                     decir "infinitas veces más" no ayuda a nadie. */}
                 {row.factor === null
                   ? ', cuando no venía consumiendo nada'
-                  : `, ${row.factor}× su habitual de ${formatUsd(row.typicalUsd)} por día`}
+                  : `, ${row.factor}× su habitual de ${dinero(row.typicalUsd)} por día`}
                 .
               </Typography>
             ))}
@@ -727,6 +1201,20 @@ export default function PlatformAiSpendPage() {
                 <TableRow>
                   <TableCell>Comercio</TableCell>
                   <TableCell align="right">Paga HENKO</TableCell>
+                  {/* EL MARGEN, AL LADO DEL COSTO.
+
+                      Vivía en otra pantalla, y ésa es la razón por la que no
+                      servía: la decisión que esta tabla habilita —acotar,
+                      pausar, suspender— se toma comparando lo que un comercio
+                      cuesta contra lo que paga, y con los dos números en
+                      pantallas distintas hay que recordar uno mientras se mira
+                      el otro.
+
+                      No se recalcula nada: es el mismo reporte de margen de
+                      siempre, unido por tenantId. Dos cálculos del mismo número
+                      terminarían dando cifras distintas para el mismo
+                      comercio. */}
+                  <TableCell align="right">Margen</TableCell>
                   <TableCell align="right">Tokens</TableCell>
                   <TableCell align="right">De su parte</TableCell>
                   <TableCell align="right">Operaciones</TableCell>
@@ -781,16 +1269,19 @@ export default function PlatformAiSpendPage() {
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {formatUsd(row.platformCostUsd)}
+                        {dinero(row.platformCostUsd)}
                       </Typography>
                       {/* Lo que el proveedor le cobró a la key usada. Solo se
                           muestra cuando difiere, que es exactamente el caso
                           BYOK: si no, sería el mismo número dos veces. */}
                       {row.tenantProviderCostUsd > row.platformCostUsd && (
                         <Typography variant="caption" color="text.secondary">
-                          {formatUsd(row.tenantProviderCostUsd)} con su key
+                          {dinero(row.tenantProviderCostUsd)} con su key
                         </Typography>
                       )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <MargenDelComercio margen={margenPorComercio.get(row.tenantId)} />
                     </TableCell>
                     <TableCell align="right">{formatTokens(row.tokens)}</TableCell>
                     <TableCell align="right">
@@ -877,7 +1368,7 @@ export default function PlatformAiSpendPage() {
             {byMetric.map(row => (
               <TableRow key={row.metric}>
                 <TableCell>{metricLabel(row.metric)}</TableCell>
-                <TableCell align="right">{formatUsd(row.costUsd)}</TableCell>
+                <TableCell align="right">{dinero(row.costUsd)}</TableCell>
                 <TableCell align="right">{formatTokens(row.tokens)}</TableCell>
                 <TableCell align="right">{formatTokens(row.operations)}</TableCell>
               </TableRow>
@@ -929,7 +1420,7 @@ export default function PlatformAiSpendPage() {
                     </Tooltip>
                   )}
                 </TableCell>
-                <TableCell align="right">{formatUsd(row.costUsd)}</TableCell>
+                <TableCell align="right">{dinero(row.costUsd)}</TableCell>
                 <TableCell align="right">{formatTokens(row.tokens)}</TableCell>
                 <TableCell align="right">{formatTokens(row.operations)}</TableCell>
               </TableRow>
@@ -963,21 +1454,21 @@ export default function PlatformAiSpendPage() {
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
           <Typography variant="body2" color="text.secondary">
             {formatTokens(quality.measured ?? quality.rows)} medidos
-            {quality.measuredCostUsd !== undefined && ` · ${formatUsd(quality.measuredCostUsd)}`}
+            {quality.measuredCostUsd !== undefined && ` · ${dinero(quality.measuredCostUsd)}`}
           </Typography>
           <Typography
             variant="body2"
             color={quality.estimatedRows > 0 ? 'warning.main' : 'text.secondary'}
           >
             {formatTokens(quality.estimatedRows)} con costo repartido
-            {quality.estimatedCostUsd !== undefined && ` · ${formatUsd(quality.estimatedCostUsd)}`}
+            {quality.estimatedCostUsd !== undefined && ` · ${dinero(quality.estimatedCostUsd)}`}
           </Typography>
           <Typography
             variant="body2"
             color={quality.fallbackRows > 0 ? 'warning.main' : 'text.secondary'}
           >
             {formatTokens(quality.fallbackRows)} con tarifa de respaldo
-            {quality.fallbackCostUsd !== undefined && ` · ${formatUsd(quality.fallbackCostUsd)}`}
+            {quality.fallbackCostUsd !== undefined && ` · ${dinero(quality.fallbackCostUsd)}`}
           </Typography>
           {/* El peor caso va en error y no en warning: no saber la tarifa es
               cobrar de más o de menos; no saber el modelo es no saber nada. */}
@@ -987,19 +1478,19 @@ export default function PlatformAiSpendPage() {
           >
             {formatTokens(quality.unknownModel ?? 0)} sin modelo conocido
             {quality.unknownModelCostUsd !== undefined &&
-              ` · ${formatUsd(quality.unknownModelCostUsd)}`}
+              ` · ${dinero(quality.unknownModelCostUsd)}`}
           </Typography>
         </Stack>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
           Sobre {formatTokens(quality.rows)} movimientos de tokens
-          {quality.costUsd !== undefined && ` (${formatUsd(quality.costUsd)})`}.
+          {quality.costUsd !== undefined && ` (${dinero(quality.costUsd)})`}.
           {quality.flatRate?.rows > 0 && (
             <>
               {' '}
               Aparte, {formatTokens(quality.flatRate.rows)} movimientos de precio por unidad (
-              {formatUsd(quality.flatRate.costUsd)}): imágenes y mensajes no se cobran por token,
-              así que no hay desglose que medir ni suponer y no entran en el porcentaje.
+              {dinero(quality.flatRate.costUsd)}): imágenes y mensajes no se cobran por token, así
+              que no hay desglose que medir ni suponer y no entran en el porcentaje.
             </>
           )}{' '}
           Los ocho llamadores informan el desglose real que devuelve el proveedor; repartir el total
@@ -1049,5 +1540,51 @@ export default function PlatformAiSpendPage() {
         decisiones de producto, no maniobras de urgencia.
       </Typography>
     </Box>
+  )
+}
+
+/**
+ * El tipo de cambio es contexto de toda la pantalla, así que se trae y se provee
+ * acá afuera.
+ *
+ * Esta envoltura existe por una razón concreta y no por gusto arquitectónico:
+ * poner el Provider dentro de ContenidoDelGasto obligaba a envolver su JSX
+ * entero, y eso corría la indentación de las 400 líneas de abajo. El diff pasaba
+ * de un cambio chico y legible a 1232 líneas con 485 borrados que eran puro
+ * espacio en blanco — imposible de revisar, y justo en una pantalla donde lo que
+ * se revisa es si los números están bien.
+ *
+ * De paso queda mejor repartido: el cambio es de la página, el gasto es del
+ * contenido, y cada uno se recarga por su cuenta.
+ */
+export default function PlatformAiSpendPage() {
+  const [fx, setFx] = useState(null)
+
+  const cargarCambio = useCallback(async ({ signal } = {}) => {
+    try {
+      const data = await getUsdRate()
+      if (!signal?.cancelled) setFx(data)
+    } catch {
+      // Que falle el cambio no puede dejar la pantalla sin el gasto, que es lo
+      // que se vino a ver. Sin cambio los montos se muestran en dólares: es
+      // peor, pero no es nada.
+      if (!signal?.cancelled) setFx(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    const signal = { cancelled: false }
+    cargarCambio({ signal })
+    return () => {
+      signal.cancelled = true
+    }
+  }, [cargarCambio])
+
+  const rate = Number.isFinite(fx?.rate) && fx.rate > 0 ? fx.rate : null
+
+  return (
+    <TipoDeCambioContext.Provider value={rate}>
+      <ContenidoDelGasto fx={fx} onFxSaved={cargarCambio} />
+    </TipoDeCambioContext.Provider>
   )
 }

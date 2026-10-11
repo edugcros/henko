@@ -19,6 +19,21 @@ process.env.REACT_APP_API_BASE_URL = 'http://localhost:5000/api'
 const mockGetAiSpend = jest.fn()
 const mockUpdateBudget = jest.fn()
 const mockUpdateTenantPolicy = jest.fn()
+const mockGetUsdRate = jest.fn()
+const mockUpdateUsdRate = jest.fn()
+const mockGetMargin = jest.fn()
+const mockUpdateTenantStatus = jest.fn()
+
+// Mil pesos por dólar: elegido para que las conversiones se puedan verificar a
+// ojo en las aserciones (USD 1,23 → $1.230) en lugar de arrastrar la cuenta.
+const TIPO_DE_CAMBIO = {
+  rate: 1000,
+  source: 'panel',
+  updatedAt: new Date().toISOString(),
+  updatedByEmail: 'dueno@henko.test',
+  ageDays: 0,
+  history: [],
+}
 
 jest.unstable_mockModule('../services/platformService', () => ({
   getPlatformAiSpend: mockGetAiSpend,
@@ -27,7 +42,16 @@ jest.unstable_mockModule('../services/platformService', () => ({
   // exports que la pantalla importa: con uno de menos, el módulo entero no
   // resuelve y la suite no corre ningún test — que es lo que pasó al agregarlo.
   updateTenantAiPolicy: mockUpdateTenantPolicy,
-  getPlatformMarginReport: jest.fn(),
+  // El tipo de cambio: la pantalla lo pide junto con el gasto porque sin él no
+  // puede mostrar un peso. Se devuelve un valor fijo para que las aserciones de
+  // montos no dependan de una cotización.
+  getUsdRate: mockGetUsdRate,
+  updateUsdRate: mockUpdateUsdRate,
+  // El margen por comercio: la pantalla lo une al gasto por tenantId para que
+  // "cuánto cuesta" y "cuánto paga" se vean en la misma fila.
+  getPlatformMarginReport: mockGetMargin,
+  // Suspender el comercio ENTERO, distinto de pausarle sólo la IA.
+  updateTenantStatus: mockUpdateTenantStatus,
   default: {},
 }))
 
@@ -71,14 +95,63 @@ const load = (overrides = {}) => {
   return render(<PlatformAiSpendPage />)
 }
 
+// El mismo formato que usa la pantalla, calculado y no escrito a mano: el
+// espaciado que mete Intl para ARS cambia segun la version de ICU del runtime,
+// asi que un string fijo haria fallar la suite en otra maquina por una razon
+// que no tiene nada que ver con el codigo.
+const pesos = usd => {
+  // Solo los digitos, como expresion regular. El formato de moneda de es-AR
+  // separa el signo del numero con un espacio DURO (U+00A0), y compararlo como
+  // string literal falla por ese caracter invisible —o por el espaciado que
+  // elija otra version de ICU— sin que nada en el mensaje de error lo explique.
+  // Lo que la prueba quiere verificar es el monto convertido, no como Intl
+  // decide dibujar el signo peso.
+  const numero = new Intl.NumberFormat('es-AR', {
+    maximumFractionDigits: 0,
+  }).format(usd * TIPO_DE_CAMBIO.rate)
+
+  // El punto es el único carácter especial que puede traer un número
+  // formateado (separador de miles), así que no hace falta un escapador
+  // general: escaparlo a mano es más corto y no se puede equivocar.
+  return new RegExp(numero.split('.').join('\\.'))
+}
+
+// El gasto del mes del reporte de prueba. Se usa como centinela de "la pantalla
+// ya cargo" en casi todas las pruebas.
+const GASTO_DEL_MES = 33.12
+
+// El margen del comercio de la fixture: 'Moto Norte', con tenantId 't1'.
+//
+// Un comercio rentable por defecto. Las pruebas que miran el caso que pierde
+// plata, o el que no tiene precio de plan, lo pisan.
+const MARGEN = {
+  tenants: [
+    {
+      tenantId: 't1',
+      name: 'Moto Norte',
+      plan: 'pro',
+      status: 'active',
+      planPriceArs: 40000,
+      aiCostArs: 12500,
+      estimatedMarginArs: 27500,
+      marginPercent: 68.8,
+      unprofitable: false,
+    },
+  ],
+}
+
 beforeEach(() => {
   jest.clearAllMocks()
+  // Con cambio cargado por defecto: es el estado normal de la pantalla. Las
+  // pruebas que miran el caso sin cargar lo pisan.
+  mockGetUsdRate.mockResolvedValue(TIPO_DE_CAMBIO)
+  mockGetMargin.mockResolvedValue(MARGEN)
 })
 
 test('muestra el gasto del mes y qué lo consume', async () => {
   load()
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
 
   // Las métricas se muestran con nombre legible: 'agentTokens' no le dice nada
   // a nadie que no haya leído el código.
@@ -190,7 +263,7 @@ test('no deja guardar un techo nuevo sin motivo', async () => {
   const user = userEvent.setup()
   load()
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   expect(screen.getByRole('button', { name: /^guardar$/i })).toBeDisabled()
@@ -209,7 +282,7 @@ test('guarda el techo con el motivo y muestra el reporte actualizado', async () 
   })
   load()
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
   await user.type(screen.getByLabelText(/motivo/i), 'cortó por un bulk import')
   await user.click(screen.getByRole('button', { name: /^guardar$/i }))
@@ -232,7 +305,7 @@ test('avisa que la variable de entorno no manda cuando hay override', async () =
   const user = userEvent.setup()
   load({ budget: { ...REPORT.budget, source: 'panel' } })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   expect(
@@ -321,7 +394,7 @@ test('muestra quién lo consume, no solo cuánto', async () => {
 test('sin comercios no dibuja la tabla', async () => {
   load({ byTenant: [] })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
 
   expect(screen.queryByText('Quién lo consume')).toBeNull()
 })
@@ -332,7 +405,7 @@ test('un reporte sin byTenant no rompe la pantalla', async () => {
   mockGetAiSpend.mockResolvedValue(sinTenant)
   render(<PlatformAiSpendPage />)
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   expect(screen.queryByText('Quién lo consume')).toBeNull()
 })
 
@@ -344,7 +417,7 @@ test('el diálogo maneja los TRES frenos, no solo el de tokens', async () => {
   const user = userEvent.setup()
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   expect(screen.getByLabelText(/techo en tokens/i)).toBeInTheDocument()
@@ -359,7 +432,7 @@ test('manda SOLO el freno que se movió', async () => {
   mockUpdateBudget.mockResolvedValue(REPORT)
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   const campoUsd = screen.getByLabelText(/techo en dólares/i)
@@ -384,7 +457,7 @@ test('un campo vacío suelta el freno, y no es lo mismo que cero', async () => {
   mockUpdateBudget.mockResolvedValue(REPORT)
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   await user.clear(screen.getByLabelText(/techo en dólares/i))
@@ -551,7 +624,7 @@ test('a ritmo tranquilo no grita nada', async () => {
     },
   })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   expect(screen.queryByText(/se agota el día/i)).not.toBeInTheDocument()
 })
 
@@ -572,7 +645,7 @@ test('en modo normal no muestra ningún escalón', async () => {
     degradation: { level: 'normal', percentUsed: 12.3, economyAt: 80, essentialAt: 90 },
   })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   expect(screen.queryByText(/modo economía/i)).not.toBeInTheDocument()
 })
 
@@ -615,4 +688,251 @@ test('el que arranca de cero no muestra un múltiplo inventado', async () => {
   })
 
   await waitFor(() => expect(screen.getByText(/no venía consumiendo nada/i)).toBeInTheDocument())
+})
+
+// El tipo de cambio: el número del que depende todo lo que muestra la pantalla.
+//
+// Los planes se cobran en pesos y los proveedores de IA facturan en dólares, así
+// que para comparar "este comercio me costó" con "me paga" hay que convertir. Si
+// el valor está viejo, cada peso de la pantalla está mal — y siempre para el
+// mismo lado: el peso se devalúa, el costo real sube, y el margen se ve mejor de
+// lo que es. Es el modo de falla silencioso: nada se rompe, los números mienten.
+describe('tipo de cambio', () => {
+  test('muestra el valor, quién lo cargó y no avisa nada si es reciente', async () => {
+    load()
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+
+    // Aparece en dos lugares a propósito: el subtítulo lo menciona para que se
+    // entienda en qué moneda está la pantalla, y la tarjeta lo muestra para
+    // poder corregirlo. Que los dos digan lo mismo es la propiedad que importa.
+    expect(screen.getAllByText(/1\.000 por dólar/).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText(/dueno@henko\.test/)).toBeInTheDocument()
+    // Recién cargado: no hay nada que advertir.
+    expect(screen.queryByText(/tiene \d+ días/)).not.toBeInTheDocument()
+  })
+
+  test('avisa cuando el valor quedó viejo', async () => {
+    mockGetUsdRate.mockResolvedValue({ ...TIPO_DE_CAMBIO, ageDays: 47 })
+    load()
+
+    await waitFor(() => expect(screen.getByText(/tiene 47 días/)).toBeInTheDocument())
+
+    // Y explica para qué lado miente, que es lo que permite decidir si importa.
+    expect(screen.getByText(/el margen se ve mejor de lo que es/)).toBeInTheDocument()
+  })
+
+  test('avisa cuando nadie lo cargó y viene del valor por defecto', async () => {
+    mockGetUsdRate.mockResolvedValue({ ...TIPO_DE_CAMBIO, source: 'env', ageDays: null })
+    load()
+
+    await waitFor(() =>
+      expect(screen.getByText(/Nadie cargó el tipo de cambio/)).toBeInTheDocument(),
+    )
+  })
+
+  test('sin tipo de cambio los montos se muestran en dólares, no se inventa una conversión', async () => {
+    // Que falle el pedido del cambio no puede dejar la pantalla sin el gasto,
+    // que es lo que se vino a ver. Se degrada a dólares.
+    mockGetUsdRate.mockRejectedValue(new Error('sin red'))
+    load()
+
+    await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+
+    expect(screen.getByText(/no hay tipo de cambio cargado/)).toBeInTheDocument()
+  })
+
+  test('no se puede guardar sin decir de dónde sale el valor', async () => {
+    const user = userEvent.setup()
+    load()
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /actualizar/i }))
+    await user.type(screen.getByLabelText(/pesos por dólar/i), '1650')
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    // Dentro de tres meses, un número sin explicación no dice nada.
+    await waitFor(() => expect(screen.getByText(/Indicá de dónde sacaste/)).toBeInTheDocument())
+    expect(mockUpdateUsdRate).not.toHaveBeenCalled()
+  })
+
+  test('guarda el valor con su motivo', async () => {
+    const user = userEvent.setup()
+    mockUpdateUsdRate.mockResolvedValue(TIPO_DE_CAMBIO)
+    load()
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /actualizar/i }))
+
+    const campo = screen.getByLabelText(/pesos por dólar/i)
+    await user.clear(campo)
+    await user.type(campo, '1650')
+    await user.type(screen.getByLabelText(/de dónde sale/i), 'MEP del 11/10')
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    await waitFor(() =>
+      expect(mockUpdateUsdRate).toHaveBeenCalledWith({ rate: 1650, reason: 'MEP del 11/10' }),
+    )
+  })
+})
+
+// El REPORT por defecto NO trae byTenant: la tabla de comercios solo aparece
+// cuando una prueba lo pasa como override. Esta fila es la de esas pruebas, con
+// el mismo tenantId que MARGEN para que el join por comercio tenga con que unir.
+const UN_COMERCIO = [
+  {
+    tenantId: 't1',
+    name: 'Moto Norte',
+    plan: 'pro',
+    tokens: 4_000_000,
+    operations: 900,
+    toolCalls: 40,
+    platformCostUsd: 12.5,
+    tenantProviderCostUsd: 12.5,
+    keySources: ['platform'],
+    tokenCap: 5_000_000,
+    percentOfCap: 80,
+    percentOfPlatformUsd: 25,
+  },
+]
+
+// El margen al lado del costo, en la misma fila.
+//
+// Vivía en otra pantalla, y ésa es la razón por la que no servía: la decisión
+// que esta tabla habilita —acotar, pausar, suspender— se toma comparando lo que
+// un comercio cuesta contra lo que paga, y con los dos números en pantallas
+// distintas hay que recordar uno mientras se mira el otro.
+//
+// No se recalcula nada: es el mismo reporte de margen, unido por tenantId. Dos
+// cálculos del mismo número terminarían dando cifras distintas para el mismo
+// comercio en dos pantallas del mismo panel.
+describe('margen por comercio', () => {
+  test('muestra el margen en pesos y en porcentaje', async () => {
+    load({ byTenant: UN_COMERCIO })
+
+    await waitFor(() => expect(screen.getByText(/27\.500/)).toBeInTheDocument())
+
+    // El porcentaje importa tanto como los pesos: $8.000 sobre un plan de
+    // $10.000 y $8.000 sobre uno de $40.000 se ven idénticos en pesos y son
+    // negocios distintos.
+    expect(screen.getByText(/68,8%|68\.8%/)).toBeInTheDocument()
+  })
+
+  test('marca al comercio que cuesta más de lo que paga', async () => {
+    mockGetMargin.mockResolvedValue({
+      tenants: [
+        {
+          ...MARGEN.tenants[0],
+          estimatedMarginArs: -5000,
+          marginPercent: -12.5,
+          unprofitable: true,
+        },
+      ],
+    })
+    load({ byTenant: UN_COMERCIO })
+
+    // Es la única fila sobre la que hay que hacer algo, y sin marcarla se pierde
+    // entre las demás.
+    await waitFor(() => expect(screen.getByText(/pierde plata/)).toBeInTheDocument())
+  })
+
+  test('un plan sin precio no muestra cero, que se leería como "no deja nada"', async () => {
+    mockGetMargin.mockResolvedValue({
+      tenants: [
+        { ...MARGEN.tenants[0], planPriceArs: null, estimatedMarginArs: null, marginPercent: null },
+      ],
+    })
+    load({ byTenant: UN_COMERCIO })
+
+    await waitFor(() => expect(screen.getByText('sin precio')).toBeInTheDocument())
+  })
+
+  test('si falla el margen la pantalla sigue sirviendo', async () => {
+    // Al revés no: sin gasto no hay nada que mirar. Pero sin margen el resto de
+    // la pantalla contesta igual, así que la columna queda en guiones.
+    mockGetMargin.mockRejectedValue(new Error('sin red'))
+    load({ byTenant: UN_COMERCIO })
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+  })
+})
+
+// Suspender el comercio entero: lo único que esta pantalla puede hacerle a un
+// negocio que paga.
+//
+// NO BORRA NADA, a propósito. Frenar a un comercio que cuesta más de lo que paga
+// alcanza para el caso; borrarlo sería irreversible justo con los datos que
+// harían falta si después discute un cobro.
+describe('suspensión del comercio', () => {
+  const abrirComercio = async user => {
+    load({ byTenant: UN_COMERCIO })
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+  }
+
+  test('avisa que no se borra nada antes de confirmar', async () => {
+    const user = userEvent.setup()
+    await abrirComercio(user)
+
+    await user.click(screen.getByRole('button', { name: /suspender el comercio/i }))
+
+    // Lo que hace falta saber para decidir sin miedo.
+    await waitFor(() =>
+      expect(screen.getByText(/No se borra nada y se puede revertir/)).toBeInTheDocument(),
+    )
+  })
+
+  test('no suspende sin motivo', async () => {
+    const user = userEvent.setup()
+    await abrirComercio(user)
+
+    await user.click(screen.getByRole('button', { name: /suspender el comercio/i }))
+    await user.click(screen.getByRole('button', { name: /^suspender$/i }))
+
+    // Sin motivo ni autor no hay con qué responder si el comercio reclama.
+    await waitFor(() => expect(screen.getByText(/Indicá por qué se suspende/)).toBeInTheDocument())
+    expect(mockUpdateTenantStatus).not.toHaveBeenCalled()
+  })
+
+  test('suspende con su motivo', async () => {
+    const user = userEvent.setup()
+    mockUpdateTenantStatus.mockResolvedValue({ status: 'suspended' })
+    await abrirComercio(user)
+
+    await user.click(screen.getByRole('button', { name: /suspender el comercio/i }))
+    await user.type(screen.getByLabelText(/por qué se suspende/i), 'Cuesta más de lo que paga')
+    await user.click(screen.getByRole('button', { name: /^suspender$/i }))
+
+    await waitFor(() =>
+      expect(mockUpdateTenantStatus).toHaveBeenCalledWith({
+        tenantId: 't1',
+        suspended: true,
+        reason: 'Cuesta más de lo que paga',
+      }),
+    )
+  })
+
+  test('a un comercio ya suspendido se le ofrece reactivar, y sin pedir motivo', async () => {
+    mockGetMargin.mockResolvedValue({
+      tenants: [{ ...MARGEN.tenants[0], status: 'suspended' }],
+    })
+    mockUpdateTenantStatus.mockResolvedValue({ status: 'active' })
+
+    const user = userEvent.setup()
+    await abrirComercio(user)
+
+    await user.click(screen.getByRole('button', { name: /reactivar el comercio/i }))
+    await user.click(screen.getByRole('button', { name: /^reactivar$/i }))
+
+    // Volver a habilitar a alguien no hay que defenderlo ante nadie.
+    await waitFor(() =>
+      expect(mockUpdateTenantStatus).toHaveBeenCalledWith({
+        tenantId: 't1',
+        suspended: false,
+        reason: '',
+      }),
+    )
+  })
 })

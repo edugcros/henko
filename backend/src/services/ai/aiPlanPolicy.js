@@ -560,7 +560,17 @@ export const getPlanCatalog = () =>
  * Si está viejo, el margen se ve mejor o peor de lo que es. Por eso vale
  * mantenerlo, y por eso el reporte informa con qué valor se calculó.
  */
-export const getUsdToArsRate = () => Math.max(1, readEnvNumber('USD_ARS_RATE') ?? 1530)
+export const getUsdToArsRate = () => {
+  // El panel primero, igual que los precios de planes: cuando el dólar se
+  // mueve, corregirlo no puede depender de un deploy. El default de 1530 queda
+  // como último recurso y no como el valor normal de operación.
+  const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.USD_ARS_RATE)
+  if (override !== null && Number.isFinite(override) && override > 0) {
+    return Math.max(1, override)
+  }
+
+  return Math.max(1, readEnvNumber('USD_ARS_RATE') ?? 1530)
+}
 //
 // A diferencia de la primera versión de esto (que quedaba en 0 porque no
 // había números reales a mano), estos defaults salen de una búsqueda de
