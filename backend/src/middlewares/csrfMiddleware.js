@@ -30,6 +30,13 @@ export const csrfExemptRoutes = [
   { method: 'POST', path: `${env.apiPrefix}/user/register-admin` },
 
   { method: 'POST', path: `${env.apiPrefix}/metrics/events` },
+  // Reporte de crash del frontend. Tiene que ser inmune porque el crash puede
+  // ocurrir antes de que la app consiga su token —o justamente por no haberlo
+  // conseguido—, y entonces el 403 nos taparía el único reporte de la falla.
+  // No escribe nada: sólo emite una línea de log. Lo que lo sostiene es el
+  // rate-limit propio de 10/min por tenant + IP y el CORS estricto; falsificarlo
+  // no cambia estado, a lo sumo agrega una línea al log.
+  { method: 'POST', path: `${env.apiPrefix}/metrics/client-error` },
   { method: 'POST', path: `${env.apiPrefix}/user/forgot-password` },
   { method: 'PUT', path: `${env.apiPrefix}/user/reset-password` },
 
