@@ -522,3 +522,54 @@ describe('métricas · reporte de crash del frontend', () => {
     expect(exenta).toBe(true)
   })
 })
+
+// Si un cliente puede elegir su propia clave de rate limit, no hay rate limit.
+//
+// EL AGUJERO
+//
+// El limiter de /api/metrics/events tomaba la IP del primer valor crudo de
+// x-forwarded-for, que lo manda quien llama. Con un header distinto en cada
+// request, cada intento caía en un cubo nuevo y el techo de 180/min no frenaba
+// nada. El endpoint es público y cada evento aceptado es una escritura en
+// userMetricEvent —la colección que más crece y la única de las ocho sin TTL—,
+// así que el límite que protege la base de un flood era decorativo.
+//
+// req.ip sale de `trust proxy: 1`: lo resuelve el proxy contando saltos de
+// confianza y el cliente no lo decide.
+describe('métricas · la clave del rate limit no la elige el cliente', () => {
+  // Se usa la función exportada y no el middleware ya construido:
+  // express-rate-limit no expone su keyGenerator, así que la primera versión de
+  // esta prueba leía undefined y comparaba undefined contra undefined — pasaba
+  // sin verificar nada.
+  const claveDe = async req => {
+    const { claveDeRateLimit } = await import('../routes/userMetricsRoutes.js')
+
+    return claveDeRateLimit(req)
+  }
+
+  const pedido = xff => ({
+    ip: '203.0.113.7',
+    tenantId: TENANT,
+    headers: { host: 'tienda.test', ...(xff ? { 'x-forwarded-for': xff } : {}) },
+    socket: { remoteAddress: '203.0.113.7' },
+  })
+
+  test('cambiar x-forwarded-for no mueve la clave', async () => {
+    const a = await claveDe(pedido('1.1.1.1'))
+    const b = await claveDe(pedido('2.2.2.2, 3.3.3.3'))
+    const c = await claveDe(pedido(null))
+
+    // Si alguna de estas tres difiere, el techo se evade cambiando un header.
+    expect(a).toBe(b)
+    expect(b).toBe(c)
+    expect(a).toContain(String(TENANT))
+  })
+
+  test('IPs reales distintas sí caen en cubos distintos', async () => {
+    // El límite tiene que seguir separando clientes de verdad.
+    const uno = await claveDe({ ...pedido(null), ip: '203.0.113.7' })
+    const otro = await claveDe({ ...pedido(null), ip: '198.51.100.9' })
+
+    expect(uno).not.toBe(otro)
+  })
+})

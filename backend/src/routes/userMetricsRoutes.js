@@ -8,17 +8,6 @@ import { requireTenant, resolveTenantByDomain } from '../middlewares/tenantMiddl
 
 const router = express.Router()
 
-const getClientIp = req => {
-  return (
-    String(req.headers?.['x-forwarded-for'] || '')
-      .split(',')[0]
-      .trim() ||
-    req.ip ||
-    req.socket?.remoteAddress ||
-    'unknown-client'
-  )
-}
-
 const getTenantKey = req => {
   return (
     req.tenant?._id?.toString?.() ||
@@ -31,6 +20,28 @@ const getTenantKey = req => {
   )
 }
 
+// Clavea sobre req.ip y no sobre el primer valor de x-forwarded-for.
+//
+// EL AGUJERO
+//
+// El limiter de /events tomaba la IP del primer valor crudo de
+// x-forwarded-for, que lo elige quien llama. Mandando un header distinto en
+// cada request, cada intento caía en un cubo nuevo y el techo de 180/min no
+// frenaba absolutamente nada: /api/metrics/events es público y cada evento
+// aceptado es una escritura en userMetricEvent, la colección que más crece y la
+// única de las ocho sin TTL. O sea que el límite que protege la base de un
+// flood era decorativo.
+//
+// req.ip sale de `trust proxy: 1` (app.js): lo resuelve el proxy contando
+// saltos de confianza y el cliente no lo decide. Es lo que ya usan
+// globalApiLimiter, enqRoute, paymentRoutes, subscriptionRoutes y
+// aiWebchatLimiter — éste era el único que quedaba.
+//
+// Se exporta para poder probarla: express-rate-limit no expone el keyGenerator
+// del middleware ya construido, así que sin esto la prueba comparaba undefined
+// contra undefined y pasaba sin verificar nada.
+export const claveDeRateLimit = req => `${getTenantKey(req)}:${ipKeyGenerator(req.ip)}`
+
 const metricsRateLimiter = rateLimit({
   // Compartido entre instancias: con el almacén por defecto, que vive en la
   // memoria del proceso, este techo se multiplica por la cantidad de procesos.
@@ -39,12 +50,7 @@ const metricsRateLimiter = rateLimit({
   max: 180,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => {
-    const tenantKey = getTenantKey(req)
-    const clientIp = getClientIp(req)
-
-    return `${tenantKey}:${clientIp ? ipKeyGenerator(clientIp) : 'unknown-client'}`
-  },
+  keyGenerator: claveDeRateLimit,
   handler: (req, res, _next, options) => {
     const retryAfter = Math.ceil((options.windowMs || 60 * 1000) / 1000)
 
@@ -74,7 +80,7 @@ const crashRateLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => `${getTenantKey(req)}:${ipKeyGenerator(req.ip)}`,
+  keyGenerator: claveDeRateLimit,
   // El cliente ya está roto: no tiene sentido devolverle un cuerpo de error
   // ni que reintente.
   handler: (_req, res) => res.status(204).end(),

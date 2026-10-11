@@ -61,13 +61,24 @@ const getTenantDomainFromRequest = req => {
   )
 }
 
+// req.ip primero, y x-forwarded-for sólo como último recurso.
+//
+// Estaba al revés: tomaba el primer valor crudo del header, que lo elige quien
+// llama. Esta IP se guarda en cada evento de métricas y se escribe en el log de
+// los crashes del cliente, así que con el orden anterior cualquiera podía
+// atribuirle su tráfico —o su falla— a la IP que quisiera. Una IP falsificable
+// en un log es peor que no tener ninguna: se la lee como si fuera un dato.
+//
+// req.ip sale de `trust proxy: 1` (app.js), o sea que la resuelve el proxy
+// contando saltos de confianza y no la decide el cliente. El header queda como
+// respaldo para un entorno sin trust proxy, donde req.ip no diría nada útil.
 const getClientIp = req => {
   return clean(
-    String(req.headers?.['x-forwarded-for'] || '')
-      .split(',')[0]
-      .trim() ||
-      req.ip ||
+    req.ip ||
       req.socket?.remoteAddress ||
+      String(req.headers?.['x-forwarded-for'] || '')
+        .split(',')[0]
+        .trim() ||
       '',
     80,
   )
