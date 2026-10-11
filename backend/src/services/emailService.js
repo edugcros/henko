@@ -216,29 +216,28 @@ const getReplyTo = tenantConfig => {
 /**
  * El inquilino de SES para este correo, o null.
  *
- * POR QUÉ NO SIEMPRE
+ * QUÉ CAMBIÓ Y POR QUÉ
  *
- * El inquilino se crea al dar de alta el dominio del comercio, y lo que
- * queda asociado a él es ESA identidad. SES valida que el inquilino tenga
- * permiso sobre la identidad que se está usando, así que mandar el inquilino
- * junto con el remitente de la plataforma no sería "más aislamiento": sería
- * un envío rechazado.
+ * Al principio esto devolvía el inquilino sólo cuando el comercio salía por
+ * su propia identidad verificada, porque el inquilino se creaba recién al dar
+ * de alta su dominio.
  *
- * Entonces se manda exactamente cuando el correo sale por la identidad propia
- * del comercio, que es la condición que ya resolvió el remitente. Se pregunta
- * con la misma función, no con una copia de la regla, para que no puedan
- * discrepar.
+ * Eso dejaba el aislamiento donde menos hace falta. La mayoría de los
+ * comercios nunca configura DNS: salen por la identidad de la plataforma, y
+ * ahí compartían todos una sola reputación. O sea que la tienda que importa
+ * una lista comprada se llevaba puesto el envío de todas las demás —
+ * exactamente el problema que el aislamiento viene a resolver— y los únicos
+ * protegidos eran los pocos que sí habían configurado su dominio.
  *
- * Los comercios que todavía salen por la plataforma comparten la reputación
- * de la plataforma, que es exactamente de quién es esa identidad. Aislarlos
- * también exigiría asociarles la identidad compartida al crear cada comercio;
- * queda para cuando haya volumen que lo justifique.
+ * Ahora el inquilino acompaña a todo correo de un comercio, y el driver se
+ * encarga de asociarle la identidad que corresponda antes de enviar (ver
+ * `conInquilinoAsegurado` en emailProviders.js). Los primeros mil inquilinos
+ * no cuestan nada, y pasados ésos son medio centavo por comercio por mes.
+ *
+ * Sigue devolviendo null sin comercio: un correo de la plataforma a sí misma
+ * —un aviso de sistema— no pertenece a ninguna tienda.
  */
 const resolveTenantName = tenantConfig => {
-  const propia = validateEmail(tenantConfig?.email?.fromAddress)
-
-  if (!propia || resolveSenderAddress(tenantConfig) !== propia) return null
-
   const id = tenantConfig?._id
 
   return id ? String(id) : null
@@ -649,9 +648,13 @@ export const sendEmail = async ({
     // Se deriva del comercio en vez de depender de que cada punto de envío se
     // acuerde de pasarlo: hay una docena de lugares que mandan correo, y el
     // que se olvidara volvería a la reputación compartida sin que nada
-    // avisara. Con un `from` explícito no se deduce nada, porque ahí quien
-    // llama eligió una identidad que este módulo no resolvió.
-    tenantName: sanitizeString(tenantName) || (from ? null : resolveTenantName(tenantConfig)),
+    // avisara.
+    //
+    // Un `from` explícito ya no lo anula. Antes sí, porque el inquilino sólo
+    // servía para la identidad propia del comercio; ahora el driver asocia la
+    // identidad que de verdad se vaya a usar, sea cual sea, y si no puede
+    // envía sin inquilino en vez de fallar.
+    tenantName: sanitizeString(tenantName) || resolveTenantName(tenantConfig),
   }
 
   Object.keys(mailOptions).forEach(key => {

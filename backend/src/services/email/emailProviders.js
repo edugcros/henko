@@ -23,6 +23,7 @@
 // proveedor que solo ofrezca SMTP no entra, por bueno que sea.
 // Detalle completo en docs/EMAIL_PRODUCTION.md.
 
+import logger from '../../../config/logger.js'
 import { sanitizeString as limpiar } from './emailShared.js'
 
 const TIMEOUT_MS = 15000
@@ -256,6 +257,11 @@ const sendgrid = {
     },
   },
 
+  // SendGrid aisla reputacion con subusers, que topan en 15 en el plan Pro.
+  // Para cientos de comercios no sirve, y montar medio mecanismo seria peor
+  // que no tenerlo: el envio sigue saliendo con la reputacion de la cuenta.
+  inquilinos: { soportado: false },
+
   async enviar(correo) {
     const clave = this.clave()
 
@@ -315,6 +321,7 @@ const resend = {
   // los de SES al terminar: trabajo tirado y una verificación que se cae
   // sola. Mejor que el panel diga que no se puede ahora.
   dominios: { soportado: false },
+  inquilinos: { soportado: false },
 
   async enviar(correo) {
     const clave = this.clave()
@@ -586,12 +593,54 @@ const asegurarInquilinoEnSes = async (inquilino, dominio) => {
   }
 }
 
+// Inquilinos ya asegurados en este proceso.
+//
+// `asegurarInquilinoEnSes` es idempotente —se traga AlreadyExistsException—
+// así que este conjunto es sólo para no gastar tres llamadas a AWS en cada
+// correo. Vive en memoria a propósito: perderlo tras un reinicio cuesta una
+// llamada de más por comercio activo, y evita acoplar el transporte a la
+// base de datos.
+const inquilinosAsegurados = new Set()
+
 const ses = {
   id: 'ses',
   nombre: 'Amazon SES',
 
   estaConfigurado: () =>
     Boolean(limpiar(process.env.AWS_ACCESS_KEY_ID) && limpiar(process.env.AWS_SECRET_ACCESS_KEY)),
+
+  /**
+   * Deja listo el inquilino del comercio para la identidad desde la que va a
+   * salir este correo.
+   *
+   * POR QUÉ NO ALCANZA CON HACERLO AL REGISTRAR EL DOMINIO
+   *
+   * El alta del dominio sólo ocurre cuando un comercio configura el suyo, y
+   * la mayoría nunca lo hace: salen por la identidad de la plataforma. Si el
+   * inquilino se creara sólo ahí, el aislamiento de reputación protegería a
+   * la minoría que configuró DNS, y todos los demás compartirían una sola
+   * reputación — que es justamente lo que se quería evitar.
+   *
+   * Asociar la identidad compartida a cada inquilino es lo que SES llama
+   * asignación compartida, y está soportado. Cuesta una llamada por comercio
+   * por proceso.
+   */
+  inquilinos: {
+    soportado: true,
+
+    async asegurar(inquilino, dominio) {
+      if (!inquilino || !dominio) return false
+
+      const clave = `${inquilino}|${dominio}`
+
+      if (inquilinosAsegurados.has(clave)) return true
+
+      await asegurarInquilinoEnSes(inquilino, dominio)
+      inquilinosAsegurados.add(clave)
+
+      return true
+    },
+  },
 
   dominios: {
     soportado: true,
@@ -750,9 +799,50 @@ export const enviarConProveedor = async correo => {
     )
   }
 
-  const resultado = await proveedor.enviar(correo)
+  const correoAEnviar = await conInquilinoAsegurado(proveedor, correo)
+
+  const resultado = await proveedor.enviar(correoAEnviar)
 
   return { ...resultado, proveedor: proveedor.nombre }
+}
+
+/**
+ * Deja el inquilino listo antes de enviar, y si no se puede, envía igual.
+ *
+ * POR QUÉ DEGRADA EN VEZ DE FALLAR
+ *
+ * El inquilino sirve para que la reputación se mida por comercio. Es
+ * importante, pero no tanto como que el correo salga: un comprador esperando
+ * el enlace para recuperar su contraseña no se beneficia de que no le llegue
+ * nada porque AWS rechazó una asociación.
+ *
+ * Así que un fallo acá quita el inquilino del envío —vuelve a la reputación
+ * de la cuenta, que es como funcionaba antes— y deja el motivo en el log. Si
+ * se mandara el inquilino igual, SES rechazaría el envío entero por usar una
+ * identidad que ese inquilino no tiene asociada.
+ */
+const conInquilinoAsegurado = async (proveedor, correo) => {
+  const inquilino = limpiar(correo.tenantName)
+
+  if (!inquilino || !proveedor.inquilinos?.soportado) return correo
+
+  const { email } = separarRemitente(correo.from)
+  const dominio = email.split('@')[1] || ''
+
+  try {
+    await proveedor.inquilinos.asegurar(inquilino, dominio)
+
+    return correo
+  } catch (error) {
+    logger.warn('[EMAIL] No se pudo asegurar el inquilino; se envía sin aislar reputación', {
+      inquilino,
+      dominio,
+      code: error?.code,
+      message: error?.message,
+    })
+
+    return { ...correo, tenantName: null }
+  }
 }
 
 /**
