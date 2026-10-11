@@ -18,10 +18,6 @@ const AppInitializer = () => {
 
   useEffect(() => {
     const initializeApp = async () => {
-      // Antes que nada: lo que se rompa durante el arranque también tiene que
-      // quedar reportado.
-      registrarReporteGlobal()
-
       setApiStore(store)
 
       const isThemePreviewRoute = window.location.pathname === '/theme-preview'
@@ -60,6 +56,16 @@ const AppInitializer = () => {
     </Provider>
   )
 }
+
+// Va acá, antes del primer render, y no dentro de un useEffect.
+//
+// Un useEffect corre después de que el componente renderizó y se montó, así
+// que si el render inicial tira —el spinner de !ready, o el armado del árbol
+// de providers— React nunca llega al efecto y no quedaba instalado ningún
+// reporte: la app moría en blanco sin dejar rastro. Y el ErrorBoundary tampoco
+// cubre ese caso, porque está anidado DENTRO de Provider, BrowserRouter y los
+// dos providers de tema: sólo ve lo que pasa debajo de él.
+registrarReporteGlobal()
 
 const container = document.getElementById('root')
 const root = createRoot(container)

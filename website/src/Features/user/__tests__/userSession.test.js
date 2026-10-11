@@ -24,7 +24,7 @@
 
 import api from '@utils/axiosConfig'
 import userService from '../userService.js'
-import reducer, { getMe, marcaDeSesion, resetAuthState } from '../userSlice.js'
+import reducer, { getMe, loginUser, marcaDeSesion, resetAuthState } from '../userSlice.js'
 
 jest.mock('@utils/axiosConfig', () => ({
   __esModule: true,
@@ -181,5 +181,108 @@ describe('marcaDeSesion · enganchada al ciclo de la sesión', () => {
     reducer(undefined, resetAuthState())
 
     expect(marcaDeSesion.hay()).toBe(false)
+  })
+})
+
+// Qué pasa cuando el navegador tiene el almacenamiento bloqueado.
+//
+// EL BUG
+//
+// safeStorage.setUser envolvía el setItem en try/catch pero llamaba a
+// removeItem DENTRO del catch. Con los datos del sitio bloqueados,
+// sessionStorage no falla sólo al escribir: falla al tocarlo. Así que setItem
+// tiraba, entraba al catch, y removeItem tiraba otra vez — y ese segundo throw
+// no lo capturaba nadie: salía del try del thunk de login y caía en su catch,
+// que rechaza el login.
+//
+// Visto en producción el 11/10/2026 desde un celular: el backend devolvía 200 y
+// escribía "Login exitoso", el usuario veía un error, y la app no hacía un solo
+// request más. Al recargar aparecía logueado, porque la cookie estaba perfecta.
+// Lo único roto era el intento de guardar una copia del usuario — una
+// conveniencia que no tiene derecho a hacer fallar el login.
+describe('safeStorage · un almacenamiento bloqueado no puede hacer fallar el login', () => {
+  const USUARIO = { _id: 'u1', email: 'persona@ejemplo.com', role: 'user' }
+
+  const bloquearStorage = () => {
+    const tirar = () => {
+      throw new Error('Access is denied for this document.')
+    }
+
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(tirar)
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementation(tirar)
+    jest.spyOn(Storage.prototype, 'removeItem').mockImplementation(tirar)
+  }
+
+  const loginQueFunciona = () => {
+    api.mockImplementation(() =>
+      Promise.resolve({ data: { success: true, data: { user: USUARIO } } }),
+    )
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+    jest.clearAllMocks()
+  })
+
+  test('el login se cumple aunque sessionStorage tire en todas sus operaciones', async () => {
+    loginQueFunciona()
+    bloquearStorage()
+
+    const accion = await loginUser({ email: USUARIO.email, password: 'x' })(
+      jest.fn(),
+      () => ({}),
+      undefined,
+    )
+
+    // Lo que importa: fulfilled, no rejected. Antes acá llegaba rejected y el
+    // usuario quedaba en la pantalla de login con un error, ya logueado.
+    expect(accion.type).toBe('user/login/fulfilled')
+    expect(accion.payload.user).toEqual(USUARIO)
+  })
+
+  test('el reducer de salida no tira con el almacenamiento bloqueado', async () => {
+    bloquearStorage()
+
+    // removeUser no tenía try/catch y se la llama desde un reducer: un throw
+    // acá rompe el dispatch entero.
+    expect(() => reducer(undefined, resetAuthState())).not.toThrow()
+  })
+})
+
+// Qué merece un reporte de falla del cliente y qué no.
+//
+// El criterio original era "el login falló sin status HTTP", porque apiRequest
+// sólo llena status desde error.response.status. Pero la ausencia de status
+// cubre dos situaciones que no tienen nada que ver: el servidor contestó bien y
+// la falla ocurrió después en el navegador, o el servidor NUNCA contestó (sin
+// señal, timeout, DNS, CORS). Reportar la segunda como si fuera la primera
+// manda a buscar un bug del cliente donde hay un problema de red, y encima
+// gasta uno de los tres cupos de reporte por carga, tapando una falla real
+// posterior.
+describe('userService · distingue "no contestó" de "contestó y falló después"', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  test('un fallo de transporte queda marcado como sinRespuesta', async () => {
+    // Axios sin respuesta: sin señal, timeout, DNS, CORS.
+    api.mockImplementation(() => Promise.reject(new Error('Network Error')))
+
+    const res = await userService.loginUser({ email: 'a@b.c', password: 'x' })
+
+    expect(res.success).toBe(false)
+    expect(res.status).toBeUndefined()
+    expect(res.sinRespuesta).toBe(true)
+  })
+
+  test('un 401 trae status y no se confunde con nada', async () => {
+    const error = new Error('Credenciales inválidas')
+    error.response = { status: 401, data: { message: 'Credenciales inválidas' } }
+    api.mockImplementation(() => Promise.reject(error))
+
+    const res = await userService.loginUser({ email: 'a@b.c', password: 'x' })
+
+    expect(res.status).toBe(401)
+    expect(res.sinRespuesta).toBe(false)
   })
 })

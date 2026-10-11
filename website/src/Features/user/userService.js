@@ -160,6 +160,7 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
           success: false,
           message: retryMessage,
           status: retryError?.response?.status,
+          sinRespuesta: Boolean(!retryError?.response),
           data: retryError?.response?.data || null,
         }
       }
@@ -171,6 +172,13 @@ const apiRequest = async (method, endpoint, data = undefined, options = {}) => {
       success: false,
       message,
       status,
+      // `status` sale de error.response.status, así que queda undefined en dos
+      // situaciones que no tienen nada que ver entre sí: el servidor contestó
+      // bien y la falla ocurrió después en el navegador, o el servidor nunca
+      // contestó (sin señal, timeout, DNS, CORS). Quien lea esto afuera no
+      // puede distinguirlas sólo por la ausencia de status, y confundirlas
+      // lleva a diagnosticar un problema de red como un bug del cliente.
+      sinRespuesta: Boolean(!error?.response),
       data: error?.response?.data || null,
       errors: error?.response?.data?.errors || [],
     }
