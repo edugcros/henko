@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
-import ErrorBoundary from '@components/ErrorBoundary/ErrorBoundary.js'
+import ErrorBoundary, { registrarReporteGlobal } from '@components/ErrorBoundary/ErrorBoundary.js'
 import './App.css'
 import { store } from '@app/store'
 import { initCsrf, setApiStore } from '@utils/axiosConfig'
@@ -18,6 +18,10 @@ const AppInitializer = () => {
 
   useEffect(() => {
     const initializeApp = async () => {
+      // Antes que nada: lo que se rompa durante el arranque también tiene que
+      // quedar reportado.
+      registrarReporteGlobal()
+
       setApiStore(store)
 
       const isThemePreviewRoute = window.location.pathname === '/theme-preview'

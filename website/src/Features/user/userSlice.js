@@ -2,6 +2,11 @@
 import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit'
 import userService from '@features/user/userService'
 import { toast } from 'react-toastify'
+// Importar el reporte desde el módulo del ErrorBoundary no es ideal —un slice
+// dependiendo de un componente—, pero la función ya vive ahí y mover el reporte
+// a su propio módulo no se justifica por dos llamadas. Si aparece una tercera,
+// va a src/Utils.
+import { reportarCrash } from '@components/ErrorBoundary/ErrorBoundary.js'
 
 /**
  * userSlice.js
@@ -199,6 +204,23 @@ export const loginUser = createAsyncThunk(
 
       // Auditoría: Verificamos estructura del backend
       if (!res || !res.success) {
+        // Un 401 es una contraseña equivocada: pasa todos los días y no hay
+        // nada que reportar. Lo que sí hay que ver es un login que falla SIN
+        // status HTTP, porque eso significa que el servidor contestó bien y la
+        // falla ocurrió después, en el navegador.
+        //
+        // Ese era exactamente el caso del login desde el celular: el backend
+        // escribía "Login exitoso", el usuario veía un error y no quedaba
+        // rastro en ninguna parte. createAsyncThunk captura el rechazo, así
+        // que no es una promesa rechazada y ningún manejador global lo ve.
+        if (res && res.status === undefined) {
+          reportarCrash(
+            new Error(res.message || 'Login rechazado sin status HTTP'),
+            null,
+            'login-sin-status',
+          )
+        }
+
         return rejectWithValue(res?.message || 'Credenciales incorrectas')
       }
 
@@ -211,6 +233,14 @@ export const loginUser = createAsyncThunk(
       safeStorage.setUser(user)
       return { user }
     } catch (err) {
+      // Acá se llega con el login YA aceptado por el servidor: lo que falló es
+      // el procesamiento en el navegador (por ejemplo setUser contra un
+      // sessionStorage bloqueado). Es la otra mitad del caso de arriba y
+      // tampoco dejaba rastro.
+      if (!err?.response) {
+        reportarCrash(err, null, 'login-post-respuesta')
+      }
+
       // Evitamos el "error is not defined" asegurando que usamos 'err'
       const message = err.response?.data?.message || err.message || 'Error de conexión'
       return rejectWithValue(message)
