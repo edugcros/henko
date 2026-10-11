@@ -19,11 +19,23 @@
 // En producción autoIndex está apagado (config/connectDB.js), así que el
 // índice NO aparece solo al deployar: este script es la única puerta.
 //
-// Uso (por defecto NO borra, solo informa):
+// Uso (sin --apply el script no borra nada):
 //   npm run prune:user-metrics
 //   npm run prune:user-metrics -- --apply
 //   npm run prune:user-metrics:prod            (informa contra producción)
 //   npm run prune:user-metrics:prod -- --apply
+//
+// OJO CON LA SIMULACIÓN EN DESARROLLO
+//
+// "No borra" vale para lo que hace el script, no para lo que hace Mongo. En
+// desarrollo autoIndex está encendido (config/connectDB.js), así que al abrir
+// la conexión Mongoose construye todos los índices del esquema —incluido el
+// TTL— y Mongo empieza a vencer documentos por su cuenta, aunque se corra sin
+// --apply. Contra una base de desarrollo con historia vieja eso borra de
+// verdad.
+//
+// En producción autoIndex está apagado, así que ahí la simulación es
+// realmente inerte. El script avisa en qué caso está antes de hacer nada.
 //
 // El plazo sale de METRICS_RETENTION_DAYS (90 por defecto) para que el script
 // y el índice no puedan discrepar. --dias= lo pisa solo para la simulación.
@@ -83,6 +95,16 @@ const run = async () => {
         .toArray()
     : []
 
+  // Con autoIndex encendido el TTL ya quedó construido al abrir la conexión y
+  // Mongo vence por su cuenta: decirlo es la diferencia entre una simulación y
+  // una sorpresa.
+  if (!env.isProduction) {
+    logger.warn('[PODA MÉTRICAS] autoIndex está encendido en este entorno', {
+      detalle:
+        'Mongoose ya creó el índice TTL al conectar, así que Mongo va a vencer documentos por su cuenta aunque no se use --apply.',
+    })
+  }
+
   logger.info('[PODA MÉTRICAS] Situación', {
     dias,
     corte: corte.toISOString(),
@@ -120,8 +142,20 @@ const run = async () => {
 
     logger.info('[PODA MÉTRICAS] Lote borrado', {
       lote: lote.length,
+      borradas: deletedCount,
       acumulado: borradasTotal,
     })
+
+    // Cortar por falta de avance y no sólo por lote incompleto: si deleteMany
+    // deja de borrar —permisos, una regla del clúster, documentos que otra cosa
+    // reescribe— la próxima vuelta pediría los mismos documentos y el script
+    // giraría indefinidamente contra producción.
+    if (!deletedCount) {
+      logger.warn('[PODA MÉTRICAS] El lote no borró nada; se corta para no girar en vacío', {
+        loteEncontrado: lote.length,
+      })
+      break
+    }
 
     // Si el lote vino incompleto, no queda nada más que borrar.
     if (lote.length < LOTE) break
