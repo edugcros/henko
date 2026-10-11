@@ -19,6 +19,19 @@ process.env.REACT_APP_API_BASE_URL = 'http://localhost:5000/api'
 const mockGetAiSpend = jest.fn()
 const mockUpdateBudget = jest.fn()
 const mockUpdateTenantPolicy = jest.fn()
+const mockGetUsdRate = jest.fn()
+const mockUpdateUsdRate = jest.fn()
+
+// Mil pesos por dólar: elegido para que las conversiones se puedan verificar a
+// ojo en las aserciones (USD 1,23 → $1.230) en lugar de arrastrar la cuenta.
+const TIPO_DE_CAMBIO = {
+  rate: 1000,
+  source: 'panel',
+  updatedAt: new Date().toISOString(),
+  updatedByEmail: 'dueno@henko.test',
+  ageDays: 0,
+  history: [],
+}
 
 jest.unstable_mockModule('../services/platformService', () => ({
   getPlatformAiSpend: mockGetAiSpend,
@@ -27,6 +40,11 @@ jest.unstable_mockModule('../services/platformService', () => ({
   // exports que la pantalla importa: con uno de menos, el módulo entero no
   // resuelve y la suite no corre ningún test — que es lo que pasó al agregarlo.
   updateTenantAiPolicy: mockUpdateTenantPolicy,
+  // El tipo de cambio: la pantalla lo pide junto con el gasto porque sin él no
+  // puede mostrar un peso. Se devuelve un valor fijo para que las aserciones de
+  // montos no dependan de una cotización.
+  getUsdRate: mockGetUsdRate,
+  updateUsdRate: mockUpdateUsdRate,
   getPlatformMarginReport: jest.fn(),
   default: {},
 }))
@@ -71,14 +89,42 @@ const load = (overrides = {}) => {
   return render(<PlatformAiSpendPage />)
 }
 
+// El mismo formato que usa la pantalla, calculado y no escrito a mano: el
+// espaciado que mete Intl para ARS cambia segun la version de ICU del runtime,
+// asi que un string fijo haria fallar la suite en otra maquina por una razon
+// que no tiene nada que ver con el codigo.
+const pesos = usd => {
+  // Solo los digitos, como expresion regular. El formato de moneda de es-AR
+  // separa el signo del numero con un espacio DURO (U+00A0), y compararlo como
+  // string literal falla por ese caracter invisible —o por el espaciado que
+  // elija otra version de ICU— sin que nada en el mensaje de error lo explique.
+  // Lo que la prueba quiere verificar es el monto convertido, no como Intl
+  // decide dibujar el signo peso.
+  const numero = new Intl.NumberFormat('es-AR', {
+    maximumFractionDigits: 0,
+  }).format(usd * TIPO_DE_CAMBIO.rate)
+
+  // El punto es el único carácter especial que puede traer un número
+  // formateado (separador de miles), así que no hace falta un escapador
+  // general: escaparlo a mano es más corto y no se puede equivocar.
+  return new RegExp(numero.split('.').join('\\.'))
+}
+
+// El gasto del mes del reporte de prueba. Se usa como centinela de "la pantalla
+// ya cargo" en casi todas las pruebas.
+const GASTO_DEL_MES = 33.12
+
 beforeEach(() => {
   jest.clearAllMocks()
+  // Con cambio cargado por defecto: es el estado normal de la pantalla. Las
+  // pruebas que miran el caso sin cargar lo pisan.
+  mockGetUsdRate.mockResolvedValue(TIPO_DE_CAMBIO)
 })
 
 test('muestra el gasto del mes y qué lo consume', async () => {
   load()
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
 
   // Las métricas se muestran con nombre legible: 'agentTokens' no le dice nada
   // a nadie que no haya leído el código.
@@ -190,7 +236,7 @@ test('no deja guardar un techo nuevo sin motivo', async () => {
   const user = userEvent.setup()
   load()
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   expect(screen.getByRole('button', { name: /^guardar$/i })).toBeDisabled()
@@ -209,7 +255,7 @@ test('guarda el techo con el motivo y muestra el reporte actualizado', async () 
   })
   load()
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
   await user.type(screen.getByLabelText(/motivo/i), 'cortó por un bulk import')
   await user.click(screen.getByRole('button', { name: /^guardar$/i }))
@@ -232,7 +278,7 @@ test('avisa que la variable de entorno no manda cuando hay override', async () =
   const user = userEvent.setup()
   load({ budget: { ...REPORT.budget, source: 'panel' } })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   expect(
@@ -321,7 +367,7 @@ test('muestra quién lo consume, no solo cuánto', async () => {
 test('sin comercios no dibuja la tabla', async () => {
   load({ byTenant: [] })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
 
   expect(screen.queryByText('Quién lo consume')).toBeNull()
 })
@@ -332,7 +378,7 @@ test('un reporte sin byTenant no rompe la pantalla', async () => {
   mockGetAiSpend.mockResolvedValue(sinTenant)
   render(<PlatformAiSpendPage />)
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   expect(screen.queryByText('Quién lo consume')).toBeNull()
 })
 
@@ -344,7 +390,7 @@ test('el diálogo maneja los TRES frenos, no solo el de tokens', async () => {
   const user = userEvent.setup()
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   expect(screen.getByLabelText(/techo en tokens/i)).toBeInTheDocument()
@@ -359,7 +405,7 @@ test('manda SOLO el freno que se movió', async () => {
   mockUpdateBudget.mockResolvedValue(REPORT)
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   const campoUsd = screen.getByLabelText(/techo en dólares/i)
@@ -384,7 +430,7 @@ test('un campo vacío suelta el freno, y no es lo mismo que cero', async () => {
   mockUpdateBudget.mockResolvedValue(REPORT)
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
 
   await user.clear(screen.getByLabelText(/techo en dólares/i))
@@ -551,7 +597,7 @@ test('a ritmo tranquilo no grita nada', async () => {
     },
   })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   expect(screen.queryByText(/se agota el día/i)).not.toBeInTheDocument()
 })
 
@@ -572,7 +618,7 @@ test('en modo normal no muestra ningún escalón', async () => {
     degradation: { level: 'normal', percentUsed: 12.3, economyAt: 80, essentialAt: 90 },
   })
 
-  await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   expect(screen.queryByText(/modo economía/i)).not.toBeInTheDocument()
 })
 
@@ -615,4 +661,92 @@ test('el que arranca de cero no muestra un múltiplo inventado', async () => {
   })
 
   await waitFor(() => expect(screen.getByText(/no venía consumiendo nada/i)).toBeInTheDocument())
+})
+
+// El tipo de cambio: el número del que depende todo lo que muestra la pantalla.
+//
+// Los planes se cobran en pesos y los proveedores de IA facturan en dólares, así
+// que para comparar "este comercio me costó" con "me paga" hay que convertir. Si
+// el valor está viejo, cada peso de la pantalla está mal — y siempre para el
+// mismo lado: el peso se devalúa, el costo real sube, y el margen se ve mejor de
+// lo que es. Es el modo de falla silencioso: nada se rompe, los números mienten.
+describe('tipo de cambio', () => {
+  test('muestra el valor, quién lo cargó y no avisa nada si es reciente', async () => {
+    load()
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+
+    // Aparece en dos lugares a propósito: el subtítulo lo menciona para que se
+    // entienda en qué moneda está la pantalla, y la tarjeta lo muestra para
+    // poder corregirlo. Que los dos digan lo mismo es la propiedad que importa.
+    expect(screen.getAllByText(/1\.000 por dólar/).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText(/dueno@henko\.test/)).toBeInTheDocument()
+    // Recién cargado: no hay nada que advertir.
+    expect(screen.queryByText(/tiene \d+ días/)).not.toBeInTheDocument()
+  })
+
+  test('avisa cuando el valor quedó viejo', async () => {
+    mockGetUsdRate.mockResolvedValue({ ...TIPO_DE_CAMBIO, ageDays: 47 })
+    load()
+
+    await waitFor(() => expect(screen.getByText(/tiene 47 días/)).toBeInTheDocument())
+
+    // Y explica para qué lado miente, que es lo que permite decidir si importa.
+    expect(screen.getByText(/el margen se ve mejor de lo que es/)).toBeInTheDocument()
+  })
+
+  test('avisa cuando nadie lo cargó y viene del valor por defecto', async () => {
+    mockGetUsdRate.mockResolvedValue({ ...TIPO_DE_CAMBIO, source: 'env', ageDays: null })
+    load()
+
+    await waitFor(() =>
+      expect(screen.getByText(/Nadie cargó el tipo de cambio/)).toBeInTheDocument(),
+    )
+  })
+
+  test('sin tipo de cambio los montos se muestran en dólares, no se inventa una conversión', async () => {
+    // Que falle el pedido del cambio no puede dejar la pantalla sin el gasto,
+    // que es lo que se vino a ver. Se degrada a dólares.
+    mockGetUsdRate.mockRejectedValue(new Error('sin red'))
+    load()
+
+    await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+
+    expect(screen.getByText(/no hay tipo de cambio cargado/)).toBeInTheDocument()
+  })
+
+  test('no se puede guardar sin decir de dónde sale el valor', async () => {
+    const user = userEvent.setup()
+    load()
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /actualizar/i }))
+    await user.type(screen.getByLabelText(/pesos por dólar/i), '1650')
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    // Dentro de tres meses, un número sin explicación no dice nada.
+    await waitFor(() => expect(screen.getByText(/Indicá de dónde sacaste/)).toBeInTheDocument())
+    expect(mockUpdateUsdRate).not.toHaveBeenCalled()
+  })
+
+  test('guarda el valor con su motivo', async () => {
+    const user = userEvent.setup()
+    mockUpdateUsdRate.mockResolvedValue(TIPO_DE_CAMBIO)
+    load()
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /actualizar/i }))
+
+    const campo = screen.getByLabelText(/pesos por dólar/i)
+    await user.clear(campo)
+    await user.type(campo, '1650')
+    await user.type(screen.getByLabelText(/de dónde sale/i), 'MEP del 11/10')
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    await waitFor(() =>
+      expect(mockUpdateUsdRate).toHaveBeenCalledWith({ rate: 1650, reason: 'MEP del 11/10' }),
+    )
+  })
 })

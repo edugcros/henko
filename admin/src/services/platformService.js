@@ -101,3 +101,23 @@ export default {
   getPlanPrices,
   updatePlanPrice,
 }
+
+/**
+ * El tipo de cambio con el que se convierten los costos de IA a pesos.
+ *
+ * Trae además de dónde sale, quién lo puso y hace cuántos días. El número solo
+ * no alcanza: un 1530 cargado hoy y un 1530 que quedó de hace tres meses se
+ * leen igual en la pantalla y significan cosas opuestas.
+ */
+export const getUsdRate = async () => {
+  const response = await api.get('/platform/usd-rate')
+
+  return unwrap(response)
+}
+
+/** Carga a mano los pesos por dólar. `rate: null` vuelve al valor por defecto. */
+export const updateUsdRate = async ({ rate, reason }) => {
+  const response = await api.put('/platform/usd-rate', { rate, reason })
+
+  return unwrap(response)
+}
