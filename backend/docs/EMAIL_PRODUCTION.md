@@ -170,6 +170,84 @@ quedan anotados acá:
   opcionales al crear el sender; la API real los exige — probado en vivo,
   no asumido del doc.
 
+### Amazon SES: puesta en marcha, en orden
+
+El código está listo desde el 07/10/2026 (PR #264). Lo que falta es la cuenta,
+y el orden importa porque un paso mal puesto tira la API entera.
+
+**El orden, y por qué.** `config/env.js` corta el arranque si
+`EMAIL_PROVIDER=ses` y faltan las credenciales. Eso evita un envío roto en
+silencio, pero significa que poner `EMAIL_PROVIDER` antes que el resto **deja
+el backend sin levantar** — no es sólo el correo lo que se cae. `EMAIL_PROVIDER`
+va último, siempre.
+
+1. **Pedir acceso de producción.** Es lo único que no depende de nosotros:
+   24–48 h, y puede ser rechazado. Sin esto la cuenta está en *sandbox* y sólo
+   envía a direcciones verificadas a mano, 200 por día.
+2. **Verificar `henkart.com.ar`** como identidad. SES devuelve tres CNAME de
+   Easy DKIM; se cargan con `vercel dns` (la zona está en Vercel, no en AWS).
+3. **Crear el conjunto de configuración** y anotar su nombre.
+4. **Crear el tópico SNS**, asociarlo como destino de eventos del conjunto, y
+   suscribir `https://api.henkart.com.ar/api/webhooks/ses/events`. El endpoint
+   confirma el alta solo.
+5. **Crear el usuario IAM** con la política de abajo y cargar sus claves.
+6. **Recién ahí**, `EMAIL_PROVIDER=ses`.
+
+**Variables en Render**, en ese orden:
+
+```
+AWS_ACCESS_KEY_ID        secreto
+AWS_SECRET_ACCESS_KEY    secreto
+AWS_REGION               us-east-1
+AWS_ACCOUNT_ID           los 12 dígitos; sin esto no se arma el ARN del inquilino
+SES_CONFIGURATION_SET    el del paso 3
+SES_SNS_TOPIC_ARN        el del paso 4; sin esto el webhook contesta 503 en producción
+EMAIL_PROVIDER=ses       ÚLTIMO
+```
+
+**Política IAM mínima.** Son exactamente las cinco operaciones que el backend
+invoca, verificadas sobre el código (`grep` de `new *Command(` en `src/`), no
+copiadas de un ejemplo:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EnviarPorNuestraIdentidad",
+      "Effect": "Allow",
+      "Action": "ses:SendEmail",
+      "Resource": [
+        "arn:aws:ses:us-east-1:CUENTA:identity/*",
+        "arn:aws:ses:us-east-1:CUENTA:configuration-set/*"
+      ]
+    },
+    {
+      "Sid": "DominiosEInquilinosPorComercio",
+      "Effect": "Allow",
+      "Action": [
+        "ses:CreateEmailIdentity",
+        "ses:GetEmailIdentity",
+        "ses:CreateTenant",
+        "ses:CreateTenantResourceAssociation"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+`SendEmail` va acotado por recurso; las otras cuatro no, porque crean recursos
+que todavía no existen y no hay ARN al que apuntar.
+
+Los nombres de las acciones de inquilino siguen la convención `ses:<Operación>`
+de SES v2. Los comandos existen —verificado contra
+`@aws-sdk/client-sesv2@3.1147.0` instalado, que trae nueve comandos de
+inquilino— pero la convención del nombre IAM no la pude confirmar contra la
+referencia de autorización de AWS. Si la consola rechaza alguno al guardar la
+política, es ahí: el editor de IAM valida los nombres, así que el error aparece
+al guardar y no en producción.
+
 ## Paso 1 — que cada comercio mande desde su dominio
 
 La pantalla del panel (`SendingDomainSection`) y los endpoints hablan con el
