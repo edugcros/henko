@@ -599,6 +599,12 @@ const userSlice = createSlice({
         // El backend ya dijo que no hay sesión: la marca quedó vieja y
         // mantenerla haría repetir la pregunta en cada carga.
         marcaDeSesion.sacar()
+
+        // Y la copia en sessionStorage también. Acá no causaba el lazo que
+        // causaba en el panel —initialState arranca isAuthenticated en false a
+        // propósito—, pero dejar un usuario cacheado que el backend ya
+        // desmintió es una segunda fuente de verdad más vieja que la primera.
+        safeStorage.removeUser()
       })
 
       .addCase(updateProfile.pending, state => {

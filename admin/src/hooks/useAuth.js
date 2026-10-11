@@ -7,6 +7,7 @@ import {
   setCsrfToken,
   openSessionChannel,
   marcaDeSesion,
+  hayUsuarioCacheado,
   SESSION_RESET,
 } from '@features/auth/authSlice'
 
@@ -129,10 +130,31 @@ export const useAuth = () => {
   // La marca la mantiene authSlice en cada entrada, confirmación y salida;
   // no es prueba de sesión —la verdad sigue siendo la cookie httpOnly— sino
   // la única forma de saber que NO hace falta preguntar.
+  // La marca sola no alcanza para decidir no preguntar, y ésa era la falla.
+  //
+  // EL LAZO CERRADO
+  //
+  // initialState arranca `isAuthenticated: !!safeStorage.getUser()`, o sea
+  // optimista desde la copia en sessionStorage. Si la sesión muere del lado
+  // del servidor, getMe.rejected limpiaba Redux y la marca pero NO esa copia.
+  // En la carga siguiente la copia seguía ahí —isAuthenticated arrancaba en
+  // true— y la marca ya no estaba, así que getMe no se dispatchaba y nada
+  // corregía el estado nunca.
+  //
+  // Resultado medido en el panel: el intervalo de 30s del Dashboard pollea
+  // /api/dash/stats y /api/dash/subscription-metrics para siempre, cobrando
+  // 401 en cada vuelta, porque está condicionado a un isAuthenticated que ya
+  // nadie puede bajar. En una pestaña de fondo Chrome estrangula el timer y
+  // los 401 aparecen espaciados ~15 minutos, lo que lo disfraza de otra cosa.
+  //
+  // Un usuario cacheado ES evidencia de que alguien entró en este navegador,
+  // así que ahí sí hay a quién preguntarle. La marca sigue evitando la
+  // pregunta en el único caso para el que se creó: nadie entró nunca y no hay
+  // nada cacheado.
   useEffect(() => {
     let active = true
 
-    if (!marcaDeSesion.hay()) {
+    if (!marcaDeSesion.hay() && !hayUsuarioCacheado()) {
       setBootstrapped(true)
       return undefined
     }

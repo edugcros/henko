@@ -91,10 +91,33 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
 
   const previewWidth = VIEWPORT_WIDTH[viewport] || VIEWPORT_WIDTH.desktop
 
+  // No se manda nada hasta que el iframe se identificó.
+  //
+  // EL RUIDO
+  //
+  // postPreview depende de themeData, así que el efecto de abajo lo volvía a
+  // llamar en CADA edición del tema, y onLoad lo llamaba con el documento
+  // cargado pero antes del saludo. Si el iframe todavía está en about:blank, o
+  // si la URL de preview redirigió (o devolvió el login porque no hay sesión),
+  // su origen real no es previewTargetOrigin y el navegador rechaza el envío:
+  //
+  //   Failed to execute 'postMessage' on 'DOMWindow': The target origin
+  //   provided does not match the recipient window's origin.
+  //
+  // Medido en el panel: veinte de estos seguidos, uno por edición, con
+  // /api/theme/admin devolviendo 401 al mismo tiempo.
+  //
+  // El handshake HENKO_THEME_PREVIEW_READY ya existe y ya compara
+  // event.origin contra previewTargetOrigin, así que recibirlo es la prueba de
+  // que el destino es el que creemos. La bandera va en un ref y no en estado
+  // porque el propio handler necesita leerla ya en true, sin esperar un
+  // re-render.
+  const readyRef = useRef(false)
+
   const postPreview = useCallback(() => {
     const targetWindow = iframeRef.current?.contentWindow
 
-    if (!targetWindow || !previewTargetOrigin) return
+    if (!targetWindow || !previewTargetOrigin || !readyRef.current) return
 
     targetWindow.postMessage(
       {
@@ -116,6 +139,9 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
           readyTimeoutRef.current = null
         }
 
+        // El ref antes del postPreview: el saludo llegó, o sea que el destino
+        // quedó confirmado y recién ahora se puede enviar.
+        readyRef.current = true
         setIframeReady(true)
         setLoadWarning('')
         postPreview()
@@ -127,6 +153,9 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
   }, [postPreview, previewTargetOrigin])
 
   useEffect(() => {
+    // La URL cambió: el iframe se vuelve a cargar y hay que esperar un saludo
+    // nuevo antes de volver a hablarle.
+    readyRef.current = false
     setIframeReady(false)
     setLoadWarning('')
 
