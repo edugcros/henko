@@ -385,7 +385,8 @@ const OnboardingWizard = () => {
             </Button>
           ) : (
             <Button variant="contained" onClick={goNext} disabled={saving}>
-              {saving ? <CircularProgress size={18} /> : 'Siguiente'}
+              {/* Texto envuelto, no desnudo: ver website/src/Pages/Login.js. */}
+              {saving ? <CircularProgress size={18} /> : <span>Siguiente</span>}
             </Button>
           )}
         </Stack>

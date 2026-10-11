@@ -223,7 +223,18 @@ const CartSummary = ({ cart, onCheckout }) => {
             boxShadow: 4,
           }}
         >
-          {validating ? <CircularProgress size={24} color="inherit" /> : 'Finalizar compra'}
+          {/*
+            El texto va envuelto y no desnudo: un hijo de texto suelto que se
+            intercambia por un elemento rompe el render cuando el traductor de
+            Chrome lo envolvió en <font> (NotFoundError en removeChild). Acá
+            cuesta una venta: el comprador toca Finalizar compra y se le cae la
+            app en el checkout. Explicado en detalle en Pages/Login.js.
+          */}
+          {validating ? (
+            <CircularProgress size={24} color="inherit" />
+          ) : (
+            <span>Finalizar compra</span>
+          )}
         </Button>
       </CardContent>
     </Card>

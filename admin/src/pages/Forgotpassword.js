@@ -112,7 +112,12 @@ const Forgotpassword = () => {
                 }}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? <CircularProgress size={24} color="inherit" /> : 'Enviar enlace'}
+                {/* Texto envuelto, no desnudo: ver website/src/Pages/Login.js. */}
+                {isSubmitting ? (
+                  <CircularProgress size={24} color="inherit" />
+                ) : (
+                  <span>Enviar enlace</span>
+                )}
               </Button>
 
               {result.error && (
